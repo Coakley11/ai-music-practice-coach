@@ -1,5 +1,4 @@
-**File name: `streamlit_app.py`**
-```python
+
 import streamlit as st
 from datetime import date
 
