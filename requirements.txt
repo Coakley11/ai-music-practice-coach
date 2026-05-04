@@ -1,6 +1,8 @@
 streamlit
 numpy
 pandas
+requests
+openai
 librosa
 soundfile
 scipy
