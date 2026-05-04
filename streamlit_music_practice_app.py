@@ -1,4 +1,4 @@
-# VERSION: forced_fix_make_demo_band_style_note_2026-05-04 21:34:19
+# VERSION: fixed_checked_session_state_audio_analysis
 
 # FIX: Required helper for backing track note
 def make_demo_band_style_note():
@@ -371,6 +371,7 @@ with tab4:
         with st.spinner("Generating WAV backing track..."):
             wav = make_backing_track(song, bpm, track_style, instrument, choruses, count_in)
         st.audio(wav, format="audio/wav")
+        st.session_state.last_backing_bpm = bpm
         st.download_button("Download backing track WAV", wav, file_name=f"{song.replace(' ','_')}_{bpm}bpm.wav", mime="audio/wav")
 
 with tab5:
@@ -397,7 +398,7 @@ with tab5:
         "Expected backing-track BPM for timing comparison",
         min_value=40,
         max_value=220,
-        value=int(st.session_state.last_backing_bpm) if st.session_state.last_backing_bpm else 100,
+        value=int(st.session_state.get('last_backing_bpm', 100) or 100),
         step=5
     )
 
@@ -430,7 +431,7 @@ with tab5:
             try:
                 strengths, needs, plan = feedback(instrument, fb_song, fb_focus, rating, st.session_state.recent_notes_summary)
             except TypeError:
-                strengths, needs, plan = feedback(instrument, fb_song, fb_focus, rating)
+                strengths, needs, plan = feedback(instrument, fb_song, fb_focus, rating, st.session_state.get('recent_notes_summary', ''))
 
             for x in plan:
                 st.write(f"- {x}")
