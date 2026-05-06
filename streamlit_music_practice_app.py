@@ -1,4 +1,4 @@
-# VERSION: v11_fixed_missing_imports
+# VERSION: v13_song_catalog_search_materials_backing_song
 import os
 import json
 import io
@@ -7,6 +7,7 @@ import tempfile
 
 # VERSION: v8_ai_music_practice_tutor
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import requests
@@ -135,6 +136,66 @@ def get_client():
     if key and OpenAI is not None:
         return OpenAI(api_key=key)
     return None
+
+
+# ============================================================
+# PRACTICAL SONG CATALOG + SONG-SPECIFIC PRACTICE MATERIALS
+# ============================================================
+
+SONG_CATALOG = {
+    "Viva La Vida": {"artist":"Coldplay","style":"Pop / Ballad","key":"Ab major practice key","progression":["Db","Eb","Ab","Fm"],"sections":{"Main Loop":["Db","Eb","Ab","Fm"]},"guitar_tabs":{"Db":"x46664","Eb":"x68886","Ab":"466544","Fm":"133111"},"piano_voicings":{"Db":"LH Db / RH F-Ab-Db","Eb":"LH Eb / RH G-Bb-Eb","Ab":"LH Ab / RH C-Eb-Ab","Fm":"LH F / RH Ab-C-F"}},
+    "Shape of You": {"artist":"Ed Sheeran","style":"Pop / Ballad","key":"C# minor practice key","progression":["C#m","F#m","A","B"],"sections":{"Verse/Chorus Groove":["C#m","F#m","A","B"]},"guitar_tabs":{"C#m":"x46654","F#m":"244222","A":"x02220","B":"x24442"},"piano_voicings":{"C#m":"LH C# / RH E-G#-C#","F#m":"LH F# / RH A-C#-F#","A":"LH A / RH C#-E-A","B":"LH B / RH D#-F#-B"}},
+    "Perfect": {"artist":"Ed Sheeran","style":"Pop / Ballad","key":"G major practice key","progression":["G","Em","C","D"],"sections":{"Verse":["G","Em","C","D"],"Chorus":["G","D","Em","C"]},"guitar_tabs":{"G":"320003","Em":"022000","C":"x32010","D":"xx0232"},"piano_voicings":{"G":"LH G / RH B-D-G","Em":"LH E / RH G-B-E","C":"LH C / RH E-G-C","D":"LH D / RH F#-A-D"}},
+    "Thinking Out Loud": {"artist":"Ed Sheeran","style":"Pop / Ballad","key":"D major practice key","progression":["D","D/F#","G","A"],"sections":{"Verse":["D","D/F#","G","A"],"Chorus":["Bm","A","G","D"]},"guitar_tabs":{"D":"xx0232","D/F#":"2x0232","G":"320003","A":"x02220","Bm":"x24432"},"piano_voicings":{"D":"LH D / RH F#-A-D","D/F#":"LH F# / RH A-D-F#","G":"LH G / RH B-D-G","A":"LH A / RH C#-E-A","Bm":"LH B / RH D-F#-B"}},
+    "Say": {"artist":"John Mayer","style":"Pop / Ballad","key":"D major practice key","progression":["D","A","Bm","G"],"sections":{"Verse Practice Loop":["D","A","Bm","G"],"Chorus Practice Loop":["D","A","G","D"]},"guitar_tabs":{"D":"xx0232","A":"x02220","Bm":"x24432","G":"320003"},"piano_voicings":{"D":"LH D / RH F#-A-D","A":"LH A / RH C#-E-A","Bm":"LH B / RH D-F#-B","G":"LH G / RH B-D-G"}},
+    "Gravity": {"artist":"John Mayer","style":"Blues","key":"G major / blues practice key","progression":["G","C","G","D"],"sections":{"Slow Groove":["G","C","G","D"],"Solo Practice":["G7","C7","G7","D7"]},"guitar_tabs":{"G":"320003","C":"x32010","D":"xx0232","G7":"320001","C7":"x32310","D7":"xx0212"},"piano_voicings":{"G":"LH G / RH B-D-G","C":"LH C / RH E-G-C","D":"LH D / RH F#-A-D","G7":"LH G / RH B-D-F","C7":"LH C / RH E-G-Bb","D7":"LH D / RH F#-A-C"}},
+    "Don't Stop Believin'": {"artist":"Journey","style":"Rock","key":"E major practice key","progression":["E","B","C#m","A"],"sections":{"Verse/Piano Riff Loop":["E","B","C#m","A"],"Chorus":["E","B","A","E"]},"guitar_tabs":{"E":"022100","B":"x24442","C#m":"x46654","A":"x02220"},"piano_voicings":{"E":"LH E / RH G#-B-E","B":"LH B / RH D#-F#-B","C#m":"LH C# / RH E-G#-C#","A":"LH A / RH C#-E-A"}},
+    "Let It Be": {"artist":"The Beatles","style":"Pop / Ballad","key":"C major practice key","progression":["C","G","Am","F"],"sections":{"Verse":["C","G","Am","F"],"Chorus":["C","G","F","C"]},"guitar_tabs":{"C":"x32010","G":"320003","Am":"x02210","F":"133211"},"piano_voicings":{"C":"LH C / RH E-G-C","G":"LH G / RH B-D-G","Am":"LH A / RH C-E-A","F":"LH F / RH A-C-F"}},
+    "Here Comes the Sun": {"artist":"The Beatles","style":"Pop / Ballad","key":"A major practice key","progression":["A","D","E","A"],"sections":{"Main Practice":["A","D","E","A"],"Bridge Practice":["F","C","G","D"]},"guitar_tabs":{"A":"x02220","D":"xx0232","E":"022100","F":"133211","C":"x32010","G":"320003"},"piano_voicings":{"A":"LH A / RH C#-E-A","D":"LH D / RH F#-A-D","E":"LH E / RH G#-B-E","F":"LH F / RH A-C-F","C":"LH C / RH E-G-C","G":"LH G / RH B-D-G"}},
+    "Piano Man": {"artist":"Billy Joel","style":"Pop / Ballad","key":"C major practice key","progression":["C","G","F","C"],"sections":{"Verse Waltz Feel":["C","G","F","C"],"Chorus":["F","C","G","C"]},"guitar_tabs":{"C":"x32010","G":"320003","F":"133211"},"piano_voicings":{"C":"LH C / RH E-G-C","G":"LH G / RH B-D-G","F":"LH F / RH A-C-F"}}
+}
+
+def find_song_in_catalog(query_title, query_artist=""):
+    qtitle=(query_title or "").lower().strip()
+    qartist=(query_artist or "").lower().strip()
+    results=[]
+    for title,data in SONG_CATALOG.items():
+        hay=(title+" "+data.get("artist","")+" "+data.get("style","")).lower()
+        if (qtitle and qtitle in title.lower()) or (qartist and qartist in data.get("artist","").lower()) or (qtitle and qtitle in hay):
+            results.append((title,data))
+    return results[:12]
+
+def song_material_for(title, data, instrument, level):
+    all_chords=[]
+    for sec in data.get("sections",{}).values(): all_chords += sec
+    all_chords += data.get("progression",[])
+    uniq=list(dict.fromkeys(all_chords))
+    out=[f"## {title} — Practice Materials",f"**Artist:** {data.get('artist','')}",f"**Key:** {data.get('key','')}",f"**Style:** {data.get('style','')}"]
+    out.append("\n### Chords by Section")
+    for sec,prog in data.get("sections",{}).items():
+        out.append(f"**{sec}:** | "+" | ".join(prog)+" |")
+    out.append("\n### Core Progression\n| "+" | ".join(data.get("progression",[]))+" |")
+    if instrument=="Guitar":
+        out.append("\n### Guitar Chord Shapes / Tablature-Style Fret Numbers")
+        for ch in uniq: out.append(f"- **{ch}:** `{data.get('guitar_tabs',{}).get(ch,'shape varies')}`")
+        out.append("\n### Guitar Practice\n- Strum muted strings first.\n- Play downstrokes only.\n- Add down-up strumming after changes are clean.\n- Practice two-chord loops before full sections.")
+    elif instrument=="Piano":
+        out.append("\n### Piano Voicings")
+        for ch in uniq: out.append(f"- **{ch}:** {data.get('piano_voicings',{}).get(ch,'LH root / RH chord tones')}")
+        out.append("\n### Piano Practice\n- LH roots only first.\n- RH melody separately.\n- Then LH root + RH chord.\n- Combine melody with chord support.")
+    else:
+        out.append("\n### Horn / Flute / Trumpet / Sax Practice\n- Play roots of the chords.\n- Then play 1–3–5 chord tones.\n- Then create short melodic phrases.\n- Focus on tone, breath, articulation, and phrase endings.")
+        out.append("\n### Notes to Practice\nC D E G | E D C G | A C E D | C")
+    out.append("\n### Level-Based Focus")
+    if level=="Beginner": out.append("- Learn one section only.\n- Use slow tempo and simple rhythms.\n- Do not improvise until chord changes feel stable.")
+    elif level=="Intermediate": out.append("- Learn all sections.\n- Add chord tones and guide tones.\n- Record one take and identify weakest transition.")
+    else: out.append("- Add inversions, melodic variations, substitutions, and reharmonization ideas.")
+    return "\n".join(out)
+
+def progression_from_selected_song():
+    matches=find_song_in_catalog(st.session_state.get("song",""), st.session_state.get("artist",""))
+    if matches: return matches[0][1].get("progression",["C","G","Am","F"])
+    return []
 
 def search_musicbrainz(title, artist):
     q = []
@@ -338,6 +399,12 @@ def add(buf,start,snd):
     end=min(len(buf),start+len(snd))
     if end>start: buf[start:end]+=snd[:end-start]
 def progression(style):
+    try:
+        selected = progression_from_selected_song()
+        if selected:
+            return [(ch, 1) for ch in selected]
+    except Exception:
+        pass
     if style in ["Jazz Swing","Bossa Nova / Latin"]: return [("Dm7",1),("G7",1),("Cmaj7",2),("Em7b5",1),("A7",1),("Dm7",2)]
     if style=="Blues": return [("F7",4),("Bb7",2),("F7",2),("C7",1),("Bb7",1),("F7",1),("C7",1)]
     if style=="Jewish / Klezmer / Wedding": return [("Dm",2),("A7",2),("Dm",2),("Gm",1),("A7",1),("Dm",2)]
@@ -1152,6 +1219,141 @@ Clap before playing.
 {focus}
 """
 
+
+# ============================================================
+# REGULAR MUSIC NOTATION / ABCJS RENDERING
+# ============================================================
+
+def abc_notation_for_player(song, instrument, level, style):
+    title = f"{song} - Practice Notation"
+    tempo = 72 if level == "Beginner" else 92 if level == "Intermediate" else 116
+
+    if instrument == "Piano":
+        if level == "Beginner":
+            return f"""X:1
+T:{title}
+C:Original practice-version exercise
+M:4/4
+L:1/4
+Q:1/4={tempo}
+K:C
+V:RH clef=treble name="Right Hand"
+V:LH clef=bass name="Left Hand"
+[V:RH] C D E G | E D C G, | A, C E D | C4 |
+[V:LH] C,,4 | G,,4 | A,,4 | F,,4 |
+"""
+        if level == "Intermediate":
+            return f"""X:1
+T:{title}
+C:Original practice-version exercise
+M:4/4
+L:1/4
+Q:1/4={tempo}
+K:C
+V:RH clef=treble name="Right Hand"
+V:LH clef=bass name="Left Hand"
+[V:RH] C D E G | A G E D | C E G A | G E D C |
+[V:LH] [C,,E,,B,,]4 | [G,,F,B,]4 | [A,,G,C]4 | [F,,E,A,]4 |
+"""
+        return f"""X:1
+T:{title}
+C:Original advanced practice-version exercise
+M:4/4
+L:1/8
+Q:1/4={tempo}
+K:C
+V:RH clef=treble name="Right Hand"
+V:LH clef=bass name="Left Hand"
+[V:RH] C D E G A G E D | C E G B A G E D | F A c B A G F E | D F A c B A G F |
+[V:LH] [E,,B,,D,]4 [G,,D,F,]4 | [G,,C,E,]4 [B,,F,A,]4 | [A,,E,G,]4 [D,,A,,C]4 | [G,,F,B,]4 [C,,E,,B,,]4 |
+"""
+
+    if instrument == "Flute":
+        return f"""X:1
+T:{title}
+C:Original flute practice exercise
+M:4/4
+L:1/4
+Q:1/4={tempo}
+K:G
+V:Flute clef=treble name="Flute"
+[V:Flute] G A B c | d c B A | G B d c | B A G2 |
+"""
+
+    if instrument == "Trumpet":
+        return f"""X:1
+T:{title}
+C:Original trumpet practice exercise
+M:4/4
+L:1/4
+Q:1/4={tempo}
+K:C
+V:Trumpet clef=treble name="Trumpet"
+[V:Trumpet] C D E F | G F E D | C E G F | E D C2 |
+"""
+
+    if instrument == "Saxophone":
+        return f"""X:1
+T:{title}
+C:Original saxophone practice exercise
+M:4/4
+L:1/4
+Q:1/4={tempo}
+K:Dm
+V:Sax clef=treble name="Saxophone"
+[V:Sax] D E F G | A G F E | D F A G | F E D2 |
+"""
+
+    if instrument == "Guitar":
+        return f"""X:1
+T:{title}
+C:Original guitar melody practice exercise
+M:4/4
+L:1/4
+Q:1/4={tempo}
+K:C
+V:Guitar clef=treble name="Guitar"
+[V:Guitar] C D E G | E D C G, | A, C E D | C4 |
+"""
+
+    return f"""X:1
+T:{title}
+C:Original practice exercise
+M:4/4
+L:1/4
+Q:1/4={tempo}
+K:C
+V:Melody clef=treble name="Melody"
+[V:Melody] C D E G | E D C G, | A, C E D | C4 |
+"""
+
+def render_abc_notation(abc_text, height=420):
+    escaped = abc_text.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
+    html = f"""
+    <html>
+    <head>
+      <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
+      <style>
+        body {{ margin: 0; padding: 0; font-family: Arial, sans-serif; }}
+        #paper {{ background: white; padding: 12px; border-radius: 8px; }}
+      </style>
+    </head>
+    <body>
+      <div id="paper"></div>
+      <script>
+        const abc = `{escaped}`;
+        ABCJS.renderAbc("paper", abc, {{
+          responsive: "resize",
+          add_classes: true,
+          staffwidth: 720,
+          scale: 1.0
+        }});
+      </script>
+    </body>
+    </html>
+    """
+    components.html(html, height=height, scrolling=True)
+
 # Sidebar
 st.sidebar.title("Setup")
 instrument=st.sidebar.selectbox("Instrument",list(SKILLS.keys()))
@@ -1186,10 +1388,20 @@ with tabs[1]:
     artist=st.text_input("Composer / singer / artist",st.session_state.artist)
     col1,col2,col3=st.columns(3)
     if col1.button("Search public song database"):
-        res=search_musicbrainz(song,artist)
-        if res:
-            for i,r in enumerate(res,1): st.write(f"{i}. **{r['title']}** — {r['artist']}")
-        else: st.warning("No metadata found. AI analysis can still create a practice-version chart.")
+        local_matches = find_song_in_catalog(song, artist)
+        if local_matches:
+            st.success("Found matches in the app catalog:")
+            for i, (t, data) in enumerate(local_matches, 1):
+                st.write(f"{i}. **{t}** — {data.get('artist','')}")
+                with st.expander(f"Practice materials for {t}"):
+                    st.markdown(song_material_for(t, data, instrument, level))
+        else:
+            res=search_musicbrainz(song,artist)
+            if res:
+                st.info("Found public metadata matches:")
+                for i,r in enumerate(res,1): st.write(f"{i}. **{r['title']}** — {r['artist']}")
+            else:
+                st.warning("No metadata found. AI analysis can still create a practice-version chart.")
     if col2.button("Use this song"):
         st.session_state.song=song; st.session_state.artist=artist; st.success(f"Selected {song}")
     if col3.button("Generate deep AI practice analysis"):
@@ -1199,6 +1411,12 @@ with tabs[1]:
         st.warning("OPENAI_API_KEY not connected. App uses fallback analysis. Add key in Streamlit Secrets for true AI custom analysis.")
     st.subheader("Style song examples")
     st.write(", ".join(STYLE_SEED_SONGS[style]))
+
+    selected_matches = find_song_in_catalog(song, artist)
+    if selected_matches:
+        st.subheader("Selected Song Practice Sheet")
+        t, data = selected_matches[0]
+        st.markdown(song_material_for(t, data, instrument, level))
 
     st.subheader("Practice Sheet / Written Notes")
     st.caption("These are original practice-version note exercises, not copyrighted sheet music.")
@@ -1261,6 +1479,18 @@ with tabs[3]:
             history_summary=history_text()
         )
         st.markdown(sheet)
+
+        st.subheader("Regular Music Notation")
+        st.caption("This is original practice-version notation rendered on a staff, not copyrighted sheet music from the selected song.")
+        abc_text = abc_notation_for_player(sheet_song, instrument, sheet_level, style)
+        render_abc_notation(abc_text)
+
+        st.download_button(
+            "Download notation as ABC file",
+            data=abc_text,
+            file_name=f"{sheet_song.replace(' ','_')}_{instrument}_{sheet_level}_notation.abc",
+            mime="text/plain"
+        )
 
         st.download_button(
             "Download practice sheet as text",
