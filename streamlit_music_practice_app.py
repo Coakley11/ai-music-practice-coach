@@ -1,4 +1,9 @@
-# VERSION: v11_adaptive_practice_sheet_generator
+# VERSION: v11_fixed_missing_imports
+import os
+import json
+import io
+import wave
+import tempfile
 
 # VERSION: v8_ai_music_practice_tutor
 import streamlit as st
