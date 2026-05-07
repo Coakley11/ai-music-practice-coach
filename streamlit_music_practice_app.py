@@ -1,4 +1,4 @@
-# VERSION: v19_song_fitted_adaptive_practice_sheets
+# VERSION: v24_multitrack_recorder_3_tracks
 
 # VERSION: v18_full_chord_charts_transpose_any_key
 
@@ -965,231 +965,264 @@ def transposed_chords_for_backing(chords, from_key, to_key):
     return [(transpose_chord(ch, steps), bars) for ch, bars in chords]
 
 
+
 # ============================================================
-# SONG-FITTED ADAPTIVE PRACTICE SHEET GENERATOR
+# INSTRUMENT / LEVEL / FOCUS SPECIFIC PRACTICE SHEET ENGINE
 # ============================================================
 
-def current_song_context_for_sheet():
-    analysis = st.session_state.get("uploaded_analysis", None)
-    if analysis:
-        key = infer_key_from_notes(analysis.get("notes", []))
-        if key == "Unknown":
-            key = "C"
-        sections = detect_sections(analysis)
-        try:
-            chords_text = chord_chart_from_uploaded_analysis(analysis, st.session_state.get("transpose_to_key", key))
-        except Exception:
-            chords_text = make_song_aware_chart(analysis, instrument, level)
+def focus_specific_tasks(focus, instrument, level):
+    focus_l = str(focus).lower()
 
-        melody_lines = []
-        for m in analysis.get("measures", [])[:16]:
-            notes = [n["note"] for n in m.get("notes", [])[:12]]
-            if notes:
-                melody_lines.append(f"Measure {m['number']}: " + " ".join(notes))
+    if "rhythm" in focus_l or "strum" in focus_l or "timing" in focus_l:
+        return """
+## Focus-Specific Work: Rhythm / Timing
+- Clap the section rhythm before playing.
+- Practice with metronome at 60 BPM.
+- Play only on beat 1, then beats 1 and 3, then all beats.
+- Record one take and listen only for steadiness.
+"""
+    if "melody" in focus_l:
+        return """
+## Focus-Specific Work: Melody
+- Say note names before playing.
+- Play the melody in 2-measure chunks.
+- Circle the highest and lowest notes.
+- Add phrase shaping only after notes are secure.
+"""
+    if "chord" in focus_l or "voicing" in focus_l or "harmony" in focus_l:
+        return """
+## Focus-Specific Work: Chords / Harmony
+- Play roots through the whole form.
+- Then play 1–3–5 chord tones.
+- Then connect the closest chord tones between chords.
+- Identify the hardest chord transition and loop it.
+"""
+    if "tone" in focus_l or "breath" in focus_l or "articulation" in focus_l:
+        return """
+## Focus-Specific Work: Tone / Breath / Articulation
+- Long tone on the first note of the melody.
+- Play the phrase legato once, then articulated once.
+- Record phrase endings and check if they weaken.
+- Keep sound quality more important than speed.
+"""
+    if "improv" in focus_l:
+        return """
+## Focus-Specific Work: Improvisation
+- Chorus 1: chord tones only.
+- Chorus 2: add passing notes.
+- Chorus 3: repeat one motif through the progression.
+- End each phrase on a strong chord tone.
+"""
+    return """
+## Focus-Specific Work
+- Identify the hardest 2 measures.
+- Practice them slowly 5 times.
+- Record one take.
+- Write one concrete improvement for tomorrow.
+"""
 
-        try:
-            progression = [c for c, b in accompaniment_from_analysis(analysis)[:16]]
-        except Exception:
-            progression = ["C", "G", "Am", "F"]
-
-        return {
-            "source": "uploaded",
-            "title": analysis.get("title", "Uploaded Song"),
-            "artist": "User-uploaded file",
-            "key": key,
-            "sections": sections,
-            "chords_text": chords_text,
-            "melody_text": "\\n".join(melody_lines) if melody_lines else "No melody extracted.",
-            "progression": progression
-        }
-
-    selected_title = st.session_state.get("searched_song_title", "")
-    if "SONG_CATALOG" in globals() and selected_title in SONG_CATALOG:
-        data = SONG_CATALOG[selected_title]
-        try:
-            display_key = st.session_state.get("transpose_to_key", extract_key_root(data.get("key", "C")))
-            chart = full_chord_chart_for_selected_song(selected_title, data, display_key)
-        except Exception:
-            chart = "| " + " | ".join(data.get("progression", [])) + " |"
-
-        return {
-            "source": "catalog",
-            "title": selected_title,
-            "artist": data.get("artist", ""),
-            "key": data.get("key", "C"),
-            "sections": [{"label": sec, "start": None, "end": None} for sec in data.get("sections", {}).keys()],
-            "chords_text": chart,
-            "melody_text": "Practice-style melody fragments only. Exact copyrighted melody is not reproduced.",
-            "progression": data.get("progression", ["C", "G", "Am", "F"])
-        }
-
-    if "PUBLIC_DOMAIN_SONGS" in globals():
-        pd_title = list(PUBLIC_DOMAIN_SONGS.keys())[0]
-        pd_song = PUBLIC_DOMAIN_SONGS[pd_title]
-        try:
-            display_key = st.session_state.get("transpose_to_key", pd_song.get("key", "C"))
-            chart = full_chord_chart_for_selected_song(pd_title, pd_song, display_key)
-        except Exception:
-            chart = "| " + " | ".join(pd_song.get("progression", [])) + " |"
-        return {
-            "source": "public_domain",
-            "title": pd_title,
-            "artist": pd_song.get("composer", "Traditional"),
-            "key": pd_song.get("key", "C"),
-            "sections": [{"label": "Main Theme", "start": None, "end": None}],
-            "chords_text": chart,
-            "melody_text": pd_song.get("melody_notes", ""),
-            "progression": pd_song.get("progression", ["C", "G", "Am", "F"])
-        }
-
-    return {
-        "source": "fallback",
-        "title": "Current Song",
-        "artist": "",
-        "key": "C",
-        "sections": [{"label": "Main Form", "start": None, "end": None}],
-        "chords_text": "| C | G | Am | F |",
-        "melody_text": "C D E G | E D C G | A C E D | C",
-        "progression": ["C", "G", "Am", "F"]
-    }
-
-def song_fitted_exercises(song_ctx, instrument, level, focus):
-    title = song_ctx["title"]
+def instrument_level_sheet_block(song_ctx, instrument, level, focus):
+    title = song_ctx.get("title", "Current Song")
     progression = song_ctx.get("progression", []) or ["C", "G", "Am", "F"]
-    first_chords = progression[:4]
-    hard_transition = " → ".join(first_chords[:2]) if len(first_chords) >= 2 else "first chord change"
-
-    if level == "Beginner":
-        complexity = f"""
-## Beginner Song-Fitted Exercises for {title}
-
-### 1. Song Form
-- Work only on the first section.
-- Count 4 beats per measure.
-- Say the chord names out loud before playing.
-
-### 2. Chord Loop
-Practice this exact loop slowly:
-
-| {" | ".join(first_chords)} |
-
-### 3. Hard Transition
-Loop this transition 10 times:
-
-**{hard_transition}**
-
-### 4. Melody
-Use the extracted/public-domain melody notes shown below.
-Play only 2 measures at a time.
-
-### 5. Tempo
-Start at 60 BPM.
-Do not speed up until the chord changes are smooth.
-"""
-    elif level == "Intermediate":
-        complexity = f"""
-## Intermediate Song-Fitted Exercises for {title}
-
-### 1. Section Work
-- Practice each section separately.
-- Then connect section A into section B.
-
-### 2. Full Chord Loop
-Practice the actual detected/selected progression:
-
-| {" | ".join(progression[:12])} |
-
-### 3. Chord Tone Exercise
-For every chord, play:
-- root
-- 3rd
-- 5th
-- 7th if available
-
-### 4. Transition Drill
-Pick the weakest two-measure transition and loop it 5 times.
-
-### 5. Musical Layer
-Add dynamics, phrasing, or articulation after the notes are secure.
-"""
-    else:
-        complexity = f"""
-## Advanced Song-Fitted Exercises for {title}
-
-### 1. Full Form
-Play the whole song form using the detected/selected sections.
-
-### 2. Harmonic Depth
-Use the full chord chart below and identify:
-- tonic areas
-- dominant resolutions
-- repeated progressions
-- possible reharmonization points
-
-### 3. Transposition
-Play the progression in the selected display key and then one additional key.
-
-### 4. Improvisation / Variation
-Create one chorus using:
-- chord tones only
-- then approach notes
-- then rhythmic variation
-
-### 5. Performance Version
-Record a full take with backing track and compare it to yesterday.
-"""
+    loop = " | ".join(progression[:8])
 
     if instrument == "Piano":
-        instrument_block = """
-## Piano-Specific
-- Right hand: play the song melody/extracted melody.
-- Left hand: play the exact chord roots from the chart.
-- Then use root + fifth.
-- Then use inversions or shell voicings.
-- Keep the melody louder than the accompaniment.
+        if level == "Beginner":
+            return f"""
+## Piano — Beginner Sheet for {title}
+### Main Goal
+Play simple right-hand melody with left-hand roots.
+
+### Right Hand
+- Practice the melody/extracted notes slowly.
+- Use one finger position at a time.
+- Do not add rhythm complexity yet.
+
+### Left Hand
+- Play one root note per chord.
+- Chord loop: | {loop} |
+- Hold each bass note for 4 beats.
+
+### Both Hands
+1. RH only.
+2. LH only.
+3. Both hands together at 60 BPM.
+4. Keep RH louder than LH.
 """
-    elif instrument == "Guitar":
-        instrument_block = """
-## Guitar-Specific
-- Strum the exact chord progression first.
-- Practice two-chord transitions.
-- Add a strumming pattern only after changes are clean.
-- Then find melody fragments on the top two strings.
-- Advanced: turn one section into chord melody.
+        if level == "Intermediate":
+            return f"""
+## Piano — Intermediate Sheet for {title}
+### Main Goal
+Coordinate melody with shell voicings and smoother chord movement.
+
+### Right Hand
+- Play melody with phrase shaping.
+- Add dynamics to phrase endings.
+
+### Left Hand
+- Use root + 5th first.
+- Then use shell voicings: 1–3–7.
+- Chord loop: | {loop} |
+
+### Both Hands
+- LH plays chords on beat 1.
+- RH plays melody.
+- Add light comping after the melody is secure.
 """
-    elif instrument in ["Saxophone", "Flute", "Trumpet"]:
-        instrument_block = f"""
-## {instrument}-Specific
-- Play the extracted melody notes slowly.
-- Then play roots of each chord.
-- Then play chord tones over each section.
-- Add articulation and breath marks.
-- Advanced: improvise using chord tones over the progression.
-"""
-    else:
-        instrument_block = """
-## Instrument-Specific
-- Learn melody first.
-- Then chord roots.
-- Then full form.
-- Then record and review.
+        return f"""
+## Piano — Advanced Sheet for {title}
+### Main Goal
+Create an arrangement.
+
+### Harmony
+- Use inversions and rootless voicings.
+- Add passing diminished or secondary dominant ideas only where musical.
+- Practice in the displayed transposed key.
+
+### Performance Tasks
+- Intro: create 2 bars.
+- Main form: melody on top.
+- Second pass: reharmonize one cadence.
+- Final pass: record full performance.
 """
 
-    return complexity + "\\n" + instrument_block
+    if instrument == "Guitar":
+        if level == "Beginner":
+            return f"""
+## Guitar — Beginner Sheet for {title}
+### Main Goal
+Clean chord changes and steady strumming.
+
+### Chords
+- Practice the progression slowly: | {loop} |
+- Switch between the first two chords 10 times.
+- Then add the next chord.
+
+### Strumming
+- Start with downstrokes only.
+- Count 1-2-3-4 out loud.
+- Add down-up only when changes are clean.
+
+### Melody
+- Find short melody fragments on the top two strings.
+"""
+        if level == "Intermediate":
+            return f"""
+## Guitar — Intermediate Sheet for {title}
+### Main Goal
+Combine rhythm guitar, melody fragments, and chord tones.
+
+### Chord Work
+- Use open/barre shapes where appropriate.
+- Practice two-chord loops.
+- Add muted strums for groove.
+
+### Lead Work
+- Play chord tones over each chord.
+- Connect melody fragments to nearby chord shapes.
+
+### Strumming
+- Keep right hand moving continuously.
+- Accent beats 2 and 4.
+"""
+        return f"""
+## Guitar — Advanced Sheet for {title}
+### Main Goal
+Build a chord-melody/performance version.
+
+### Advanced Tasks
+- Use triads on top three strings.
+- Voice-lead between chord shapes.
+- Put melody note on top of chord.
+- Create one solo chorus using chord tones and approach notes.
+"""
+
+    if instrument in ["Saxophone", "Flute", "Trumpet"]:
+        if level == "Beginner":
+            return f"""
+## {instrument} — Beginner Sheet for {title}
+### Main Goal
+Play the melody clearly with good tone.
+
+### Melody
+- Say note names first.
+- Play 2 measures at a time.
+- Use full tone on every note.
+
+### Chords
+- Play roots only through the chord chart.
+- Then play root–third–fifth slowly.
+
+### Tone
+- Long tone on the first note for 8 beats.
+"""
+        if level == "Intermediate":
+            return f"""
+## {instrument} — Intermediate Sheet for {title}
+### Main Goal
+Connect melody, chord tones, and phrasing.
+
+### Melody
+- Add slurs and articulations.
+- Mark breath points.
+- Shape phrase endings.
+
+### Chord Tones
+- Play 1–3–5–7 over each chord.
+- Create one 2-bar phrase using only chord tones.
+
+### Timing
+- Practice with backing track at slow tempo.
+"""
+        return f"""
+## {instrument} — Advanced Sheet for {title}
+### Main Goal
+Use the song as an improvisation and interpretation study.
+
+### Advanced Tasks
+- Play melody straight.
+- Play ornamented melody.
+- Improvise one chorus using guide tones.
+- Add chromatic approaches into chord tones.
+- Record two versions with different phrasing.
+"""
+
+    if instrument == "Voice":
+        return f"""
+## Voice Sheet for {title} — {level}
+### Main Goal
+Pitch, breath, and phrasing.
+
+- Sing melody on “la” first.
+- Mark breaths.
+- Practice pitch targets slowly.
+- Speak the phrase naturally, then sing it.
+- Record and check pitch center and expression.
+"""
+
+    return f"""
+## {instrument} Sheet for {title} — {level}
+- Learn melody in small chunks.
+- Practice chord roots.
+- Add rhythm slowly.
+- Record one clean take.
+"""
 
 def generate_song_fitted_adaptive_sheet(song_ctx, instrument, level, focus):
     section_lines = []
     for s in song_ctx.get("sections", []):
-        if s.get("start") is not None:
+        if isinstance(s, dict) and s.get("start") is not None:
             section_lines.append(f"- {s['label']}: measures {s['start']}–{s['end']}")
+        elif isinstance(s, dict):
+            section_lines.append(f"- {s.get('label','Section')}")
         else:
-            section_lines.append(f"- {s['label']}")
+            section_lines.append(f"- {s}")
     sections_text = "\\n".join(section_lines) if section_lines else "- Main Form"
 
     return f"""
-# Adaptive Practice Sheet — Fitted to {song_ctx['title']}
+# Adaptive Practice Sheet — Fitted to {song_ctx.get('title','Current Song')}
 
-**Song/source:** {song_ctx['title']}  
+**Song/source:** {song_ctx.get('title','Current Song')}  
 **Artist/composer:** {song_ctx.get('artist','')}  
 **Key/source key:** {song_ctx.get('key','')}  
 **Instrument:** {instrument}  
@@ -1205,15 +1238,313 @@ def generate_song_fitted_adaptive_sheet(song_ctx, instrument, level, focus):
 ## Melody / Extracted Notes
 {song_ctx.get('melody_text','')}
 
-{song_fitted_exercises(song_ctx, instrument, level, focus)}
+{instrument_level_sheet_block(song_ctx, instrument, level, focus)}
+
+{focus_specific_tasks(focus, instrument, level)}
 
 ## Daily Progression Rule
-Each time you return to this song, work on:
-1. the same section from yesterday,
-2. one harder transition,
-3. one higher-level musical detail,
-4. one recorded take.
+Each time you return to this song:
+1. continue the same section,
+2. add one harder transition,
+3. increase the tempo slightly,
+4. record one take,
+5. write one specific weakness for tomorrow.
 """
+
+
+# ============================================================
+# DAILY PRACTICE PAGE: SONG-SPECIFIC CHORDS + NOTES
+# ============================================================
+
+def daily_song_specific_notes(song_ctx, instrument, level):
+    progression = song_ctx.get("progression", []) or ["C", "G", "Am", "F"]
+    melody_text = song_ctx.get("melody_text", "")
+    title = song_ctx.get("title", "Current Song")
+
+    if melody_text and "No melody" not in melody_text and "copyrighted melody is not reproduced" not in melody_text:
+        melody_block = melody_text
+    else:
+        # Legal-safe original practice notes based on the current chord loop
+        melody_block = " | ".join([
+            f"{ch}: root–3rd–5th" for ch in progression[:8]
+        ])
+
+    if instrument == "Piano":
+        instrument_notes = """
+### Piano Notes to Practice
+- RH: play the melody/extracted notes slowly.
+- LH: play the root of each chord.
+- Then play root + 5th.
+- Then play simple triads.
+- Intermediate/advanced: use inversions or shell voicings.
+"""
+    elif instrument == "Guitar":
+        instrument_notes = """
+### Guitar Notes / Shapes to Practice
+- Strum each chord once per measure.
+- Loop the hardest two-chord change.
+- Practice muted strums before full chords.
+- Then find melody fragments on the top two strings.
+- Advanced: connect chord shapes with nearby triads.
+"""
+    elif instrument in ["Saxophone", "Flute", "Trumpet"]:
+        instrument_notes = f"""
+### {instrument} Notes to Practice
+- Play the melody/extracted notes slowly.
+- Then play roots of the chord progression.
+- Then play 1–3–5 over each chord.
+- Add articulation only after notes are secure.
+- Advanced: improvise short phrases using chord tones.
+"""
+    else:
+        instrument_notes = """
+### Notes to Practice
+- Melody first.
+- Chord roots second.
+- Rhythm third.
+- Record one take.
+"""
+
+    return f"""
+## Song-Specific Notes for {title}
+
+### Melody / Exercise Notes
+{melody_block}
+
+{instrument_notes}
+"""
+
+def daily_full_chord_chart(song_ctx):
+    return f"""
+## Full Chord Chart for Today's Song
+
+{song_ctx.get("chords_text", "| C | G | Am | F |")}
+"""
+
+def daily_song_exercises(song_ctx, instrument, level, focus):
+    progression = song_ctx.get("progression", []) or ["C", "G", "Am", "F"]
+    title = song_ctx.get("title", "Current Song")
+
+    first_loop = " | ".join(progression[:4])
+    second_loop = " | ".join(progression[4:8]) if len(progression) >= 8 else first_loop
+
+    if level == "Beginner":
+        level_ex = f"""
+### Beginner Exercises for {title}
+1. Say the chord names out loud: | {first_loop} |
+2. Play only the first chord for 4 beats.
+3. Add the second chord and loop the change 10 times.
+4. Play the first 2 measures only.
+5. Record one slow take.
+"""
+    elif level == "Intermediate":
+        level_ex = f"""
+### Intermediate Exercises for {title}
+1. Practice section 1: | {first_loop} |
+2. Practice next section/loop: | {second_loop} |
+3. Play roots through the whole chart.
+4. Play 1–3–5 chord tones through the whole chart.
+5. Add dynamics, articulation, or strumming groove.
+"""
+    else:
+        level_ex = f"""
+### Advanced Exercises for {title}
+1. Play the full chart in the selected key.
+2. Identify repeated chord loops and cadences.
+3. Create one variation for each section.
+4. Improvise one chorus using chord tones.
+5. Reharmonize or revoice one section.
+6. Record a full performance take.
+"""
+
+    focus_ex = focus_specific_tasks(focus, instrument, level) if "focus_specific_tasks" in globals() else ""
+
+    return f"""
+## Targeted Exercises for This Specific Song
+
+{level_ex}
+
+{focus_ex}
+"""
+
+
+# ============================================================
+# HARDER EXERCISE GENERATOR
+# ============================================================
+
+def harder_exercise_for_song(song_ctx, instrument, level, focus, current_difficulty=1):
+    title = song_ctx.get("title", "Current Song")
+    progression = song_ctx.get("progression", []) or ["C", "G", "Am", "F"]
+    loop = " | ".join(progression[:8])
+
+    next_level = current_difficulty + 1
+
+    if instrument == "Piano":
+        if next_level <= 2:
+            exercise = f"""
+## Harder Exercise Level {next_level} — Piano
+
+### Song: {title}
+### Chord Loop
+| {loop} |
+
+### Task
+- LH: play root + fifth for each chord.
+- RH: play melody/extracted notes.
+- Add metronome at 70 BPM.
+- Keep RH louder than LH.
+
+### Challenge
+Play the full loop 3 times without stopping.
+"""
+        elif next_level <= 4:
+            exercise = f"""
+## Harder Exercise Level {next_level} — Piano
+
+### Song: {title}
+### Chord Loop
+| {loop} |
+
+### Task
+- LH: use shell voicings, 1–3–7.
+- RH: play melody with phrase shaping.
+- Add one passing tone into each chord change.
+- Practice hands together at 80 BPM.
+
+### Challenge
+Record one clean take with dynamics.
+"""
+        else:
+            exercise = f"""
+## Harder Exercise Level {next_level} — Piano
+
+### Song: {title}
+
+### Advanced Task
+- Create a short intro.
+- Use inversions or rootless voicings.
+- Reharmonize one cadence.
+- Play one full performance version.
+- Then play the same section in another key.
+
+### Challenge
+Make it sound like an arrangement, not an exercise.
+"""
+
+    elif instrument == "Guitar":
+        if next_level <= 2:
+            exercise = f"""
+## Harder Exercise Level {next_level} — Guitar
+
+### Song: {title}
+### Chord Loop
+| {loop} |
+
+### Task
+- Use down-up strumming.
+- Accent beats 2 and 4.
+- Loop the hardest chord change 10 times.
+- Then play the full loop.
+
+### Challenge
+Keep the right hand moving the whole time.
+"""
+        elif next_level <= 4:
+            exercise = f"""
+## Harder Exercise Level {next_level} — Guitar
+
+### Song: {title}
+
+### Task
+- Add muted strums.
+- Use triads on the top three strings.
+- Connect melody fragments to nearby chord shapes.
+- Play one section as rhythm guitar, then one section as melody.
+
+### Challenge
+Record rhythm guitar only and check groove.
+"""
+        else:
+            exercise = f"""
+## Harder Exercise Level {next_level} — Guitar
+
+### Song: {title}
+
+### Advanced Task
+- Build a chord-melody version of one section.
+- Put melody notes on top of chords.
+- Add passing chords where natural.
+- Improvise one chorus using chord tones.
+
+### Challenge
+Make it sound like a solo guitar arrangement.
+"""
+
+    elif instrument in ["Saxophone", "Flute", "Trumpet"]:
+        if next_level <= 2:
+            exercise = f"""
+## Harder Exercise Level {next_level} — {instrument}
+
+### Song: {title}
+
+### Task
+- Play the extracted melody slowly.
+- Then play chord roots through the form.
+- Then play 1–3–5 over each chord.
+
+### Challenge
+Play with full tone and clean articulation.
+"""
+        elif next_level <= 4:
+            exercise = f"""
+## Harder Exercise Level {next_level} — {instrument}
+
+### Song: {title}
+
+### Task
+- Play 1–3–5–7 over each chord.
+- Add one passing tone between chord tones.
+- Mark breath points.
+- Play one phrase legato, then one phrase articulated.
+
+### Challenge
+Record and check tone stability at phrase endings.
+"""
+        else:
+            exercise = f"""
+## Harder Exercise Level {next_level} — {instrument}
+
+### Song: {title}
+
+### Advanced Task
+- Improvise one chorus using guide tones.
+- Add chromatic approaches.
+- Create one repeated motif and move it through the changes.
+- Play melody straight, then ornamented.
+
+### Challenge
+Make the solo sound connected to the actual song, not random scales.
+"""
+
+    else:
+        exercise = f"""
+## Harder Exercise Level {next_level}
+
+### Song: {title}
+### Chord Loop
+| {loop} |
+
+### Task
+- Increase tempo by 10 BPM.
+- Add one harder transition.
+- Add dynamics.
+- Record one full take.
+
+### Challenge
+Play the full section without stopping.
+"""
+
+    return exercise, next_level
 
 # ============================================================
 # UI
@@ -1227,6 +1558,22 @@ if "selected_original_key" not in st.session_state:
     st.session_state.selected_original_key = "C"
 if "transpose_to_key" not in st.session_state:
     st.session_state.transpose_to_key = "C"
+if "harder_exercise_level" not in st.session_state:
+    st.session_state.harder_exercise_level = 1
+if "last_harder_exercise" not in st.session_state:
+    st.session_state.last_harder_exercise = ""
+if "multitrack_recordings" not in st.session_state:
+    st.session_state.multitrack_recordings = {
+        "Track 1": None,
+        "Track 2": None,
+        "Track 3": None,
+    }
+if "multitrack_names" not in st.session_state:
+    st.session_state.multitrack_names = {
+        "Track 1": "Instrument 1",
+        "Track 2": "Instrument 2",
+        "Track 3": "Instrument 3",
+    }
 
 st.sidebar.title("Setup")
 instrument = st.sidebar.selectbox("Instrument", INSTRUMENTS)
@@ -1248,10 +1595,11 @@ else:
 tabs = st.tabs([
     "Practice Memory",
     "Song Search",
-    "Public-Domain Songs",
+    "Daily Practice Plan",
     "Song-Aware MIDI/MusicXML",
     "Section Playback / Backing Track",
     "Practice Sheet",
+    "Multitrack Recorder",
     "Log"
 ])
 
@@ -1301,23 +1649,63 @@ with tabs[1]:
             st.success("Saved selected song to practice memory.")
 
 
+
 with tabs[2]:
-    st.header("Public-Domain Songs")
-    song_name = st.selectbox("Choose public-domain song", list(PUBLIC_DOMAIN_SONGS.keys()))
-    song = PUBLIC_DOMAIN_SONGS[song_name]
-    st.write(f"**Composer/source:** {song['composer']}")
-    st.write(f"**Key:** {song['key']}")
-    st.write("**Chords:** | " + " | ".join(transpose_progression(song["progression"], song["key"], st.session_state.transpose_to_key)) + " |")
-    st.subheader("Full Chord Chart / Transposed")
-    st.markdown(full_chord_chart_for_selected_song(song_name, song, st.session_state.transpose_to_key))
-    st.write("**Melody notes:** " + song["melody_notes"])
-    st.subheader("Regular Notation")
-    abc = public_domain_abc(song_name, instrument, level)
-    render_abc(abc)
-    if st.button("Use this public-domain song for backing track"):
-        st.session_state.selected_original_key = song["key"]
-        st.session_state.selected_chords = [(ch,1) for ch in transpose_progression(song["progression"], song["key"], st.session_state.transpose_to_key)]
-        st.success(f"Backing track will use this public-domain song progression in {st.session_state.transpose_to_key}.")
+    st.header("Daily Practice Plan")
+    st.write("Today's plan is fitted to the selected/uploaded song, with all chords, song-specific notes, and targeted exercises.")
+
+    song_ctx = current_song_context_for_sheet()
+    st.markdown(daily_full_chord_chart(song_ctx))
+    st.markdown(daily_song_specific_notes(song_ctx, instrument, level))
+    st.markdown(daily_song_exercises(song_ctx, instrument, level, focus))
+
+    st.subheader("Need Something Harder?")
+    st.write("If the current exercise is too easy, press the button and the app will generate a harder song-specific exercise.")
+    if st.button("Generate a harder exercise"):
+        harder, new_level = harder_exercise_for_song(
+            song_ctx,
+            instrument,
+            level,
+            focus,
+            st.session_state.get("harder_exercise_level", 1)
+        )
+        st.session_state.harder_exercise_level = new_level
+        st.session_state.last_harder_exercise = harder
+        add_log({
+            "date": str(date.today()),
+            "instrument": instrument,
+            "focus": focus,
+            "rating": 6,
+            "note": f"Generated harder exercise level {new_level} for {song_ctx.get('title','Current Song')}"
+        })
+
+    if st.session_state.get("last_harder_exercise", ""):
+        st.markdown(st.session_state.last_harder_exercise)
+
+    if st.button("Reset harder exercise level"):
+        st.session_state.harder_exercise_level = 1
+        st.session_state.last_harder_exercise = ""
+        st.success("Harder exercise level reset.")
+
+    st.subheader("Daily Timing Plan")
+    warmup = max(5, int(minutes * 0.20))
+    songwork = max(10, int(minutes * 0.50))
+    recording = max(5, minutes - warmup - songwork)
+
+    st.write(f"**Warmup — {warmup} minutes:** focus on {focus}.")
+    st.write(f"**Song work — {songwork} minutes:** practice the chord chart and song-specific notes above.")
+    st.write(f"**Record/review — {recording} minutes:** record one take and write one specific weakness.")
+
+    if st.button("Save today's daily plan to practice memory"):
+        add_log({
+            "date": str(date.today()),
+            "instrument": instrument,
+            "focus": focus,
+            "rating": 6,
+            "note": f"Daily plan for {song_ctx.get('title','Current Song')}"
+        })
+        st.success("Saved today's song-specific daily plan.")
+
 
 with tabs[3]:
     st.header("Song-Aware MIDI/MusicXML Integration")
@@ -1410,7 +1798,72 @@ with tabs[5]:
         mime="text/plain"
     )
 
+
 with tabs[6]:
+    st.header("Multitrack Recorder")
+    st.write("Record or upload up to 3 instrument tracks. You can listen back to each one separately while practicing.")
+
+    st.caption("Prototype: this stores tracks during the current app session. Future upgrade can mix/export all tracks together.")
+
+    for track_label in ["Track 1", "Track 2", "Track 3"]:
+        st.subheader(track_label)
+
+        col_a, col_b = st.columns([1, 1])
+        with col_a:
+            inst_name = st.text_input(
+                f"Instrument name for {track_label}",
+                value=st.session_state.multitrack_names.get(track_label, track_label),
+                key=f"{track_label}_name"
+            )
+            st.session_state.multitrack_names[track_label] = inst_name
+
+        with col_b:
+            uploaded_track = st.file_uploader(
+                f"Upload audio for {track_label}",
+                type=["wav", "mp3", "m4a", "ogg"],
+                key=f"{track_label}_upload"
+            )
+
+        recorded_track = None
+        try:
+            recorded_track = st.audio_input(f"Record {track_label}", key=f"{track_label}_record")
+        except Exception:
+            st.caption("Direct microphone recording may not be available in this Streamlit version. You can upload audio instead.")
+
+        if st.button(f"Save {track_label}", key=f"{track_label}_save"):
+            audio_obj = recorded_track if recorded_track is not None else uploaded_track
+            if audio_obj is not None:
+                st.session_state.multitrack_recordings[track_label] = audio_obj.getvalue()
+                st.success(f"{track_label} saved.")
+            else:
+                st.warning(f"Record or upload audio for {track_label} first.")
+
+        saved_audio = st.session_state.multitrack_recordings.get(track_label)
+        if saved_audio:
+            st.write(f"Playback: **{st.session_state.multitrack_names.get(track_label, track_label)}**")
+            st.audio(saved_audio)
+
+    st.divider()
+
+    if st.button("Clear all 3 tracks"):
+        st.session_state.multitrack_recordings = {
+            "Track 1": None,
+            "Track 2": None,
+            "Track 3": None,
+        }
+        st.success("All multitrack recordings cleared.")
+
+    st.subheader("How to Use")
+    st.write("""
+1. Generate or play a backing track.
+2. Record Track 1, for example guitar.
+3. Play Track 1 back while recording Track 2, for example saxophone.
+4. Add Track 3, for example voice, piano, or another instrument.
+5. Listen back to each track and decide what to improve.
+""")
+
+
+with tabs[7]:
     st.header("Practice Log")
     with st.form("log_form"):
         d = st.date_input("Date", date.today())
