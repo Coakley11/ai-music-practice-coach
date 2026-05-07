@@ -1,4 +1,4 @@
-# VERSION: v24_multitrack_recorder_3_tracks
+# VERSION: v25_fixed_current_song_context
 
 # VERSION: v18_full_chord_charts_transpose_any_key
 
@@ -1545,6 +1545,101 @@ Play the full section without stopping.
 """
 
     return exercise, next_level
+
+
+# ============================================================
+# FALLBACK SONG CONTEXT BUILDER
+# ============================================================
+
+def current_song_context_for_sheet():
+    """
+    Builds the current song context for daily practice/adaptive sheets.
+    Safe fallback if no uploaded song or selected catalog song exists.
+    """
+    analysis = st.session_state.get("uploaded_analysis", None)
+
+    if analysis:
+        key = infer_key_from_notes(analysis.get("notes", []))
+        if key == "Unknown":
+            key = "C"
+
+        try:
+            sections = detect_sections(analysis)
+        except Exception:
+            sections = [{"label": "A", "start": 1, "end": 8}]
+
+        try:
+            chords_text = chord_chart_from_uploaded_analysis(
+                analysis,
+                st.session_state.get("transpose_to_key", key)
+            )
+        except Exception:
+            try:
+                chords_text = make_song_aware_chart(analysis, instrument, level)
+            except Exception:
+                chords_text = "| C | G | Am | F |"
+
+        melody_lines = []
+        try:
+            for m in analysis.get("measures", [])[:16]:
+                notes = [n.get("note", "") for n in m.get("notes", [])[:12]]
+                notes = [n for n in notes if n]
+                if notes:
+                    melody_lines.append(f"Measure {m.get('number','')}: " + " ".join(notes))
+        except Exception:
+            pass
+
+        try:
+            progression = [c for c, b in accompaniment_from_analysis(analysis)[:16]]
+        except Exception:
+            progression = ["C", "G", "Am", "F"]
+
+        return {
+            "source": "uploaded",
+            "title": analysis.get("title", "Uploaded Song"),
+            "artist": "User-uploaded file",
+            "key": key,
+            "sections": sections,
+            "chords_text": chords_text,
+            "melody_text": "\\n".join(melody_lines) if melody_lines else "No melody extracted yet.",
+            "progression": progression
+        }
+
+    selected_title = st.session_state.get("searched_song_title", "")
+    if "SONG_CATALOG" in globals() and selected_title in SONG_CATALOG:
+        data = SONG_CATALOG[selected_title]
+        try:
+            display_key = st.session_state.get("transpose_to_key", extract_key_root(data.get("key", "C")))
+            chart = full_chord_chart_for_selected_song(selected_title, data, display_key)
+        except Exception:
+            chart = "| " + " | ".join(data.get("progression", ["C", "G", "Am", "F"])) + " |"
+
+        return {
+            "source": "catalog",
+            "title": selected_title,
+            "artist": data.get("artist", ""),
+            "key": data.get("key", "C"),
+            "sections": [{"label": sec, "start": None, "end": None} for sec in data.get("sections", {}).keys()] or [{"label": "Main Form", "start": None, "end": None}],
+            "chords_text": chart,
+            "melody_text": "Practice-style melody fragments only. Exact copyrighted melody is not reproduced.",
+            "progression": data.get("progression", ["C", "G", "Am", "F"])
+        }
+
+    # If no selected/uploaded song exists, use the current backing loop or a default loop.
+    progression = [c for c, b in st.session_state.get("selected_chords", [("C",1), ("G",1), ("Am",1), ("F",1)])]
+    if not progression:
+        progression = ["C", "G", "Am", "F"]
+
+    return {
+        "source": "fallback",
+        "title": st.session_state.get("searched_song_title", "Current Practice Song") or "Current Practice Song",
+        "artist": st.session_state.get("searched_song_artist", ""),
+        "key": st.session_state.get("transpose_to_key", "C"),
+        "sections": [{"label": "Main Form", "start": None, "end": None}],
+        "chords_text": "| " + " | ".join(progression) + " |",
+        "melody_text": "Use chord tones for each chord: root–3rd–5th. Upload MIDI/MusicXML for extracted melody notes.",
+        "progression": progression
+    }
 
 # ============================================================
 # UI
