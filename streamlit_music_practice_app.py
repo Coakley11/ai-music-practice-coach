@@ -1,4 +1,4 @@
-# VERSION: v13_song_catalog_search_materials_backing_song
+# VERSION: v14_ui_openai_api_key_input
 import os
 import json
 import io
@@ -128,11 +128,17 @@ def history_text():
     return "\n".join([f"{x.get('date')}: {x.get('song')} | focus={x.get('focus')} | rating={x.get('rating')} | notes={x.get('note')}" for x in logs])
 
 def get_client():
-    key = os.environ.get("OPENAI_API_KEY")
-    try:
-        key = st.secrets.get("OPENAI_API_KEY", key)
-    except Exception:
-        pass
+    # First use the key typed directly into the app UI.
+    key = st.session_state.get("openai_api_key_ui", "").strip()
+
+    # If no UI key was entered, fall back to Streamlit Secrets or environment variable.
+    if not key:
+        key = os.environ.get("OPENAI_API_KEY")
+        try:
+            key = st.secrets.get("OPENAI_API_KEY", key)
+        except Exception:
+            pass
+
     if key and OpenAI is not None:
         return OpenAI(api_key=key)
     return None
@@ -1356,6 +1362,22 @@ def render_abc_notation(abc_text, height=420):
 
 # Sidebar
 st.sidebar.title("Setup")
+
+st.sidebar.subheader("OpenAI API Key")
+st.sidebar.caption("For testing, paste your API key here. It is only stored for this app session.")
+typed_key = st.sidebar.text_input(
+    "Enter OpenAI API Key",
+    value=st.session_state.get("openai_api_key_ui", ""),
+    type="password",
+    help="This avoids using Streamlit Secrets while testing."
+)
+if typed_key:
+    st.session_state.openai_api_key_ui = typed_key.strip()
+    st.sidebar.success("API key entered for this session.")
+else:
+    st.sidebar.info("No API key entered. App will use fallback analysis.")
+
+
 instrument=st.sidebar.selectbox("Instrument",list(SKILLS.keys()))
 level=st.sidebar.selectbox("Level",["Beginner","Intermediate","Advanced"])
 style=st.sidebar.selectbox("Style",list(STYLE_SEED_SONGS.keys()))
@@ -1369,6 +1391,7 @@ if "song" not in st.session_state: st.session_state.song="Autumn Leaves"
 if "artist" not in st.session_state: st.session_state.artist=""
 if "bpm" not in st.session_state: st.session_state.bpm=100
 if "tracks" not in st.session_state: st.session_state.tracks=[]
+if "openai_api_key_ui" not in st.session_state: st.session_state.openai_api_key_ui = ""
 
 tabs=st.tabs(["Practice Memory","Find / Analyze Any Song","Daily Plan","Adaptive Practice Sheet","Backing Track","Record & Analyze","Multitrack","Log"])
 
@@ -1408,7 +1431,7 @@ with tabs[1]:
         st.markdown(ai_song_report(song,artist,style,instrument,level,focus))
         add_log({"date":str(date.today()),"song":song,"instrument":instrument,"focus":focus,"rating":6,"note":"Generated song analysis"})
     if not get_client():
-        st.warning("OPENAI_API_KEY not connected. App uses fallback analysis. Add key in Streamlit Secrets for true AI custom analysis.")
+        st.warning("OPENAI_API_KEY not connected. Paste your key in the sidebar OpenAI API Key box for true AI custom analysis.")
     st.subheader("Style song examples")
     st.write(", ".join(STYLE_SEED_SONGS[style]))
 
