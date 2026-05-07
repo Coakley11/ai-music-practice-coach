@@ -1,9 +1,19 @@
-# Daniel Cohen AI MUSIC PRACTICE COACH — v11
+# Daniel Cohen AI MUSIC PRACTICE COACH — v19
 
-Added an Adaptive Practice Sheet Generator.
+The Adaptive Practice Sheet Generator is now fitted to the actual song context.
 
-The app creates original practice-version sheets based on selected song, instrument, level, style, focus, and history.
+It uses:
+1. Uploaded MIDI/MusicXML analysis
+2. Selected public-domain song
+3. Selected song-search/catalog song
+4. Fallback practice progression
 
-It supports piano, guitar, saxophone, flute, trumpet, voice, and other instruments.
-
-It does not copy copyrighted sheet music.
+The adaptive sheet now includes:
+- song title/source
+- key
+- sections
+- full chord chart
+- extracted melody notes when available
+- instrument-specific exercises
+- level-specific exercises
+- song-specific transitions and chord loops

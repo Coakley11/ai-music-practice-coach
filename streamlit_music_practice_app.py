@@ -1,1603 +1,1422 @@
-# VERSION: v14_ui_openai_api_key_input
-import os
-import json
-import io
-import wave
-import tempfile
+# VERSION: v19_song_fitted_adaptive_practice_sheets
 
-# VERSION: v8_ai_music_practice_tutor
+# VERSION: v18_full_chord_charts_transpose_any_key
+
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
-import requests
+import io, os, json, wave, tempfile, zipfile
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from datetime import date
+from collections import Counter, defaultdict
+
+try:
+    import pretty_midi
+except Exception:
+    pretty_midi = None
 
 try:
     from scipy.signal import lfilter
 except Exception:
-    lfilter = None, os, json, io, wave, tempfile
-from pathlib import Path
-from datetime import date
-
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None
+    lfilter = None
 
 try:
     import librosa
 except Exception:
     librosa = None
 
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
+
+
 st.set_page_config(page_title="Daniel Cohen AI MUSIC PRACTICE COACH", page_icon="🎵", layout="wide")
 st.title("🎵 Daniel Cohen AI MUSIC PRACTICE COACH")
-st.caption("AI song coach, adaptive practice tutor, backing tracks, recording feedback, and practice memory.")
+st.caption("Legal-safe song-aware practice coach: public-domain songs, original exercises, and user-uploaded MIDI/MusicXML.")
 
 DATA_FILE = Path("practice_history.json")
 
-STYLE_SEED_SONGS = {
-    "Jazz Swing": [
-        "Autumn Leaves","Fly Me to the Moon","All of Me","Take the A Train","Blue Monk","Satin Doll",
-        "There Will Never Be Another You","Just Friends","Summertime","Misty","So What","On Green Dolphin Street",
-        "Stella by Starlight","All the Things You Are","Have You Met Miss Jones","Days of Wine and Roses",
-        "Beautiful Love","My Funny Valentine","I Got Rhythm","Cherokee","Donna Lee","Confirmation","Body and Soul",
-        "Lullaby of Birdland","A Night in Tunisia","Recorda Me","Solar","Oleo","Doxy","In a Sentimental Mood"
-    ],
-    "Bossa Nova / Latin": [
-        "Blue Bossa","The Girl from Ipanema","Corcovado","Wave","Black Orpheus","Meditation","One Note Samba",
-        "Desafinado","Triste","How Insensitive","Agua de Beber","Summer Samba","Manha de Carnaval","Mas Que Nada",
-        "Once I Loved","No More Blues"
-    ],
-    "Blues": [
-        "12-Bar Blues in F","C Jam Blues","Now's the Time","Straight No Chaser","Billie's Bounce","Tenor Madness",
-        "Blue Monk","Stormy Monday","Sweet Home Chicago","The Thrill Is Gone","Freddie Freeloader","Blue Seven"
-    ],
-    "Jewish / Klezmer / Wedding": [
-        "Hava Nagila","Od Yishama","Siman Tov U'Mazal Tov","Mazel Tov Medley","Freygish Dance Study",
-        "Klezmer Hora Study","Nigun Practice Study","Yismechu","Erev Shel Shoshanim","Dodi Li",
-        "Yerushalayim Shel Zahav","Tzena Tzena","Hevenu Shalom Aleichem","Oseh Shalom","Freylekhs Study"
-    ],
-    "Funk / R&B": [
-        "Chameleon","Cissy Strut","Superstition","Pick Up the Pieces","The Chicken","Watermelon Man",
-        "Mercy Mercy Mercy","Cold Duck Time","Pass the Peas","Ain't No Sunshine","Use Me","I Wish"
-    ],
-    "Pop / Ballad": [
-        "Stand By Me","Let It Be","Yesterday","Hallelujah","Perfect","Someone Like You","Lean on Me","Imagine",
-        "Wonderful Tonight","Can't Help Falling in Love","Thinking Out Loud","Hey Jude","A Thousand Years",
-        "Viva La Vida","Piano Man","Just the Way You Are","Vienna","She's Always a Woman",
-        "New York State of Mind","Slow Dancing in a Burning Room","Gravity","Why Georgia","No Such Thing","Neon","Stop This Train","In Your Atmosphere","Daughters","Waiting on the World to Change","Heartbreak Warfare","Edge of Desire","Belief","Vultures","Who Says","Wild Blue","Rosie","Emoji of a Wave","Love on the Weekend","New Light","Just Say",
-        "Your Body Is a Wonderland","Free Fallin'","Don't Stop Believin'","Faithfully",
-        "Open Arms","Tiny Dancer","Rocket Man","Fields of Gold","Shape of You",
-        "Photograph","Yellow","Fix You","Clocks","The Scientist","Here Comes the Sun",
-        "Something","In My Life","While My Guitar Gently Weeps","Penny Lane"
-    ],
-    "Rock": [
-        "Wish You Were Here","Come Together","Hotel California","Blackbird","Knockin' on Heaven's Door",
-        "Sweet Child O' Mine","Wonderwall","Stairway to Heaven","Comfortably Numb","Brown Eyed Girl",
-        "Don't Stop Believin'","Livin' on a Prayer","Dream On","Sweet Home Alabama",
-        "Bohemian Rhapsody","Free Bird","Smoke on the Water","Back in Black",
-        "Born to Run","More Than a Feeling","Carry On Wayward Son"
-    ]
-}
+
+# ============================================================
+# BASIC DATA
+# ============================================================
+
+INSTRUMENTS = ["Piano", "Guitar", "Saxophone", "Flute", "Trumpet", "Voice", "Other"]
 
 SKILLS = {
-    "Saxophone": ["Tone / long tones","Breath support","Embouchure","Articulation","Major scales","Minor scales",
-                  "Pentatonics","Blues scale","Chord tones","Guide tones","ii–V–I lines","Improvisation",
-                  "Sight-reading","Phrasing","Intonation","Klezmer ornaments","Jazz articulation","Overtones"],
-    "Guitar": ["Open chords","Barre chords","Triads","CAGED system","Pentatonics","Blues scale","Strumming",
-               "Fingerpicking","Rhythm guitar","Chord melody","Improvisation","Fretboard notes","Comping",
-               "Clean transitions","Arpeggios","Voice leading","Funk rhythm"],
-    "Piano": ["Scales","Chord inversions","Shell voicings","Rootless voicings","Left-hand comping","Walking bass",
-              "Sight-reading","ii–V–I progressions","Improvisation","Hand coordination","Jazz voicings"],
-    "Voice": ["Breath support","Pitch accuracy","Tone","Range","Vibrato","Phrasing","Diction","Ear training"],
-    "Flute": ["Tone / air stream","Breath support","Embouchure","Long tones","Major scales","Minor scales",
-              "Articulation","Tonguing","Sight-reading","Intonation","Vibrato","Phrasing","High register",
-              "Low register","Chromatic scale","Rhythm accuracy","Ear training"],
-    "Trumpet": ["Tone / long tones","Breath support","Embouchure","Lip slurs","Valve technique","Major scales",
-                "Minor scales","Articulation","Tonguing","Range building","Sight-reading","Intonation",
-                "Flexibility","Endurance","Chord tones","Rhythm accuracy","Ear training"],
-    "Other": ["Tone","Technique","Rhythm","Scales","Chords","Improvisation","Sight-reading","Ear training"]
+    "Piano": ["Melody", "Left-hand chords", "Both hands", "Sight-reading", "Chord voicings", "Improvisation"],
+    "Guitar": ["Strumming", "Chord changes", "Melody", "Tab", "Chord melody", "Improvisation"],
+    "Saxophone": ["Tone", "Articulation", "Melody", "Chord tones", "Improvisation", "Sight-reading"],
+    "Flute": ["Tone", "Breath", "Melody", "Articulation", "Sight-reading", "Intonation"],
+    "Trumpet": ["Tone", "Breath", "Melody", "Articulation", "Range", "Endurance"],
+    "Voice": ["Pitch accuracy", "Tone", "Breath", "Phrasing", "Ear training"],
+    "Other": ["Tone", "Rhythm", "Melody", "Chords", "Technique"]
 }
+
+PUBLIC_DOMAIN_SONGS = {
+    "Ode to Joy": {
+        "composer": "Ludwig van Beethoven",
+        "key": "D",
+        "progression": ["D", "A", "D", "G", "D", "A", "D"],
+        "abc": "F F G A | A G F E | D D E F | F E E2 |",
+        "melody_notes": "F#4 F#4 G4 A4 | A4 G4 F#4 E4 | D4 D4 E4 F#4 | F#4 E4 E4"
+    },
+    "Amazing Grace": {
+        "composer": "Traditional",
+        "key": "G",
+        "progression": ["G", "C", "G", "D", "G"],
+        "abc": "D G B | G B A | G E D | D G B |",
+        "melody_notes": "D4 G4 B4 | G4 B4 A4 | G4 E4 D4 | D4 G4 B4"
+    },
+    "When the Saints Go Marching In": {
+        "composer": "Traditional",
+        "key": "C",
+        "progression": ["C", "C", "F", "C", "G", "F", "C"],
+        "abc": "C E F G | C E F G | C E F G E | C4 |",
+        "melody_notes": "C4 E4 F4 G4 | C4 E4 F4 G4 | C4 E4 F4 G4 E4 | C4"
+    },
+    "Greensleeves": {
+        "composer": "Traditional",
+        "key": "Am",
+        "progression": ["Am", "G", "F", "E7", "Am"],
+        "abc": "E G A B | c B A G | F D E2 | A4 |",
+        "melody_notes": "E4 G4 A4 B4 | C5 B4 A4 G4 | F4 D4 E4 | A4"
+    },
+    "Scarborough Fair": {
+        "composer": "Traditional",
+        "key": "Dm",
+        "progression": ["Dm", "C", "Dm", "F", "C", "Dm"],
+        "abc": "D D A A | E F E D | C D E D | D4 |",
+        "melody_notes": "D4 D4 A4 A4 | E4 F4 E4 D4 | C4 D4 E4 D4"
+    }
+}
+
+
+# ============================================================
+# HISTORY
+# ============================================================
 
 def load_history():
     if DATA_FILE.exists():
         try:
-            return json.loads(DATA_FILE.read_text())
+            return json.loads(DATA_FILE.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            return {"logs": []}
     return {"logs": []}
 
-def save_history(h):
+def save_history(history):
     try:
-        DATA_FILE.write_text(json.dumps(h, indent=2))
+        DATA_FILE.write_text(json.dumps(history, indent=2), encoding="utf-8")
     except Exception:
         pass
 
 def add_log(entry):
-    h = load_history()
-    h.setdefault("logs", []).append(entry)
-    save_history(h)
+    history = load_history()
+    history.setdefault("logs", []).append(entry)
+    save_history(history)
 
-def recent_logs(n=10):
+def recent_logs(n=20):
     return load_history().get("logs", [])[-n:]
 
-def history_text():
-    logs = recent_logs(8)
-    if not logs:
-        return "No previous practice history yet."
-    return "\n".join([f"{x.get('date')}: {x.get('song')} | focus={x.get('focus')} | rating={x.get('rating')} | notes={x.get('note')}" for x in logs])
+
+# ============================================================
+# OPENAI UI KEY SUPPORT
+# ============================================================
+
+if "openai_api_key_ui" not in st.session_state:
+    st.session_state.openai_api_key_ui = ""
 
 def get_client():
-    # First use the key typed directly into the app UI.
     key = st.session_state.get("openai_api_key_ui", "").strip()
-
-    # If no UI key was entered, fall back to Streamlit Secrets or environment variable.
     if not key:
-        key = os.environ.get("OPENAI_API_KEY")
+        key = os.environ.get("OPENAI_API_KEY", "")
         try:
             key = st.secrets.get("OPENAI_API_KEY", key)
         except Exception:
             pass
-
-    if key and OpenAI is not None:
+    if key and OpenAI:
         return OpenAI(api_key=key)
     return None
 
 
 # ============================================================
-# PRACTICAL SONG CATALOG + SONG-SPECIFIC PRACTICE MATERIALS
+# NOTE / CHORD HELPERS
 # ============================================================
 
-SONG_CATALOG = {
-    "Viva La Vida": {"artist":"Coldplay","style":"Pop / Ballad","key":"Ab major practice key","progression":["Db","Eb","Ab","Fm"],"sections":{"Main Loop":["Db","Eb","Ab","Fm"]},"guitar_tabs":{"Db":"x46664","Eb":"x68886","Ab":"466544","Fm":"133111"},"piano_voicings":{"Db":"LH Db / RH F-Ab-Db","Eb":"LH Eb / RH G-Bb-Eb","Ab":"LH Ab / RH C-Eb-Ab","Fm":"LH F / RH Ab-C-F"}},
-    "Shape of You": {"artist":"Ed Sheeran","style":"Pop / Ballad","key":"C# minor practice key","progression":["C#m","F#m","A","B"],"sections":{"Verse/Chorus Groove":["C#m","F#m","A","B"]},"guitar_tabs":{"C#m":"x46654","F#m":"244222","A":"x02220","B":"x24442"},"piano_voicings":{"C#m":"LH C# / RH E-G#-C#","F#m":"LH F# / RH A-C#-F#","A":"LH A / RH C#-E-A","B":"LH B / RH D#-F#-B"}},
-    "Perfect": {"artist":"Ed Sheeran","style":"Pop / Ballad","key":"G major practice key","progression":["G","Em","C","D"],"sections":{"Verse":["G","Em","C","D"],"Chorus":["G","D","Em","C"]},"guitar_tabs":{"G":"320003","Em":"022000","C":"x32010","D":"xx0232"},"piano_voicings":{"G":"LH G / RH B-D-G","Em":"LH E / RH G-B-E","C":"LH C / RH E-G-C","D":"LH D / RH F#-A-D"}},
-    "Thinking Out Loud": {"artist":"Ed Sheeran","style":"Pop / Ballad","key":"D major practice key","progression":["D","D/F#","G","A"],"sections":{"Verse":["D","D/F#","G","A"],"Chorus":["Bm","A","G","D"]},"guitar_tabs":{"D":"xx0232","D/F#":"2x0232","G":"320003","A":"x02220","Bm":"x24432"},"piano_voicings":{"D":"LH D / RH F#-A-D","D/F#":"LH F# / RH A-D-F#","G":"LH G / RH B-D-G","A":"LH A / RH C#-E-A","Bm":"LH B / RH D-F#-B"}},
-    "Say": {"artist":"John Mayer","style":"Pop / Ballad","key":"D major practice key","progression":["D","A","Bm","G"],"sections":{"Verse Practice Loop":["D","A","Bm","G"],"Chorus Practice Loop":["D","A","G","D"]},"guitar_tabs":{"D":"xx0232","A":"x02220","Bm":"x24432","G":"320003"},"piano_voicings":{"D":"LH D / RH F#-A-D","A":"LH A / RH C#-E-A","Bm":"LH B / RH D-F#-B","G":"LH G / RH B-D-G"}},
-    "Gravity": {"artist":"John Mayer","style":"Blues","key":"G major / blues practice key","progression":["G","C","G","D"],"sections":{"Slow Groove":["G","C","G","D"],"Solo Practice":["G7","C7","G7","D7"]},"guitar_tabs":{"G":"320003","C":"x32010","D":"xx0232","G7":"320001","C7":"x32310","D7":"xx0212"},"piano_voicings":{"G":"LH G / RH B-D-G","C":"LH C / RH E-G-C","D":"LH D / RH F#-A-D","G7":"LH G / RH B-D-F","C7":"LH C / RH E-G-Bb","D7":"LH D / RH F#-A-C"}},
-    "Don't Stop Believin'": {"artist":"Journey","style":"Rock","key":"E major practice key","progression":["E","B","C#m","A"],"sections":{"Verse/Piano Riff Loop":["E","B","C#m","A"],"Chorus":["E","B","A","E"]},"guitar_tabs":{"E":"022100","B":"x24442","C#m":"x46654","A":"x02220"},"piano_voicings":{"E":"LH E / RH G#-B-E","B":"LH B / RH D#-F#-B","C#m":"LH C# / RH E-G#-C#","A":"LH A / RH C#-E-A"}},
-    "Let It Be": {"artist":"The Beatles","style":"Pop / Ballad","key":"C major practice key","progression":["C","G","Am","F"],"sections":{"Verse":["C","G","Am","F"],"Chorus":["C","G","F","C"]},"guitar_tabs":{"C":"x32010","G":"320003","Am":"x02210","F":"133211"},"piano_voicings":{"C":"LH C / RH E-G-C","G":"LH G / RH B-D-G","Am":"LH A / RH C-E-A","F":"LH F / RH A-C-F"}},
-    "Here Comes the Sun": {"artist":"The Beatles","style":"Pop / Ballad","key":"A major practice key","progression":["A","D","E","A"],"sections":{"Main Practice":["A","D","E","A"],"Bridge Practice":["F","C","G","D"]},"guitar_tabs":{"A":"x02220","D":"xx0232","E":"022100","F":"133211","C":"x32010","G":"320003"},"piano_voicings":{"A":"LH A / RH C#-E-A","D":"LH D / RH F#-A-D","E":"LH E / RH G#-B-E","F":"LH F / RH A-C-F","C":"LH C / RH E-G-C","G":"LH G / RH B-D-G"}},
-    "Piano Man": {"artist":"Billy Joel","style":"Pop / Ballad","key":"C major practice key","progression":["C","G","F","C"],"sections":{"Verse Waltz Feel":["C","G","F","C"],"Chorus":["F","C","G","C"]},"guitar_tabs":{"C":"x32010","G":"320003","F":"133211"},"piano_voicings":{"C":"LH C / RH E-G-C","G":"LH G / RH B-D-G","F":"LH F / RH A-C-F"}}
-}
+NOTE_TO_MIDI = {"C":60,"C#":61,"Db":61,"D":62,"D#":63,"Eb":63,"E":64,"F":65,"F#":66,"Gb":66,"G":67,"G#":68,"Ab":68,"A":69,"A#":70,"Bb":70,"B":71}
+PC_NAMES = ["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"]
 
-def find_song_in_catalog(query_title, query_artist=""):
-    qtitle=(query_title or "").lower().strip()
-    qartist=(query_artist or "").lower().strip()
-    results=[]
-    for title,data in SONG_CATALOG.items():
-        hay=(title+" "+data.get("artist","")+" "+data.get("style","")).lower()
-        if (qtitle and qtitle in title.lower()) or (qartist and qartist in data.get("artist","").lower()) or (qtitle and qtitle in hay):
-            results.append((title,data))
-    return results[:12]
+def note_name_to_midi(note_name):
+    if not note_name:
+        return 60
+    note_name = note_name.strip()
+    base = {"C":0,"D":2,"E":4,"F":5,"G":7,"A":9,"B":11}
+    step = note_name[0].upper()
+    if step not in base:
+        return 60
+    idx = 1
+    acc = 0
+    if len(note_name) > 1 and note_name[1] in ["#", "b"]:
+        acc = 1 if note_name[1] == "#" else -1
+        idx = 2
+    try:
+        octave = int(note_name[idx:])
+    except Exception:
+        octave = 4
+    return 12 * (octave + 1) + base[step] + acc
 
-def song_material_for(title, data, instrument, level):
-    all_chords=[]
-    for sec in data.get("sections",{}).values(): all_chords += sec
-    all_chords += data.get("progression",[])
-    uniq=list(dict.fromkeys(all_chords))
-    out=[f"## {title} — Practice Materials",f"**Artist:** {data.get('artist','')}",f"**Key:** {data.get('key','')}",f"**Style:** {data.get('style','')}"]
-    out.append("\n### Chords by Section")
-    for sec,prog in data.get("sections",{}).items():
-        out.append(f"**{sec}:** | "+" | ".join(prog)+" |")
-    out.append("\n### Core Progression\n| "+" | ".join(data.get("progression",[]))+" |")
-    if instrument=="Guitar":
-        out.append("\n### Guitar Chord Shapes / Tablature-Style Fret Numbers")
-        for ch in uniq: out.append(f"- **{ch}:** `{data.get('guitar_tabs',{}).get(ch,'shape varies')}`")
-        out.append("\n### Guitar Practice\n- Strum muted strings first.\n- Play downstrokes only.\n- Add down-up strumming after changes are clean.\n- Practice two-chord loops before full sections.")
-    elif instrument=="Piano":
-        out.append("\n### Piano Voicings")
-        for ch in uniq: out.append(f"- **{ch}:** {data.get('piano_voicings',{}).get(ch,'LH root / RH chord tones')}")
-        out.append("\n### Piano Practice\n- LH roots only first.\n- RH melody separately.\n- Then LH root + RH chord.\n- Combine melody with chord support.")
+def midi_to_note_name(midi_num):
+    return f"{PC_NAMES[int(midi_num) % 12]}{int(midi_num)//12 - 1}"
+
+def chord_root(chord):
+    chord = str(chord).strip()
+    if len(chord) >= 2 and chord[1] in ["b", "#"]:
+        return chord[:2]
+    return chord[:1]
+
+def chord_notes(chord):
+    root = chord_root(chord)
+    root_midi = NOTE_TO_MIDI.get(root, 60)
+    c = str(chord).lower()
+    if "m7b5" in c or "ø" in c:
+        ints = [0,3,6,10]
+    elif "maj7" in c:
+        ints = [0,4,7,11]
+    elif "m7" in c:
+        ints = [0,3,7,10]
+    elif "m" in c and "maj" not in c:
+        ints = [0,3,7]
+    elif "7" in c:
+        ints = [0,4,7,10]
     else:
-        out.append("\n### Horn / Flute / Trumpet / Sax Practice\n- Play roots of the chords.\n- Then play 1–3–5 chord tones.\n- Then create short melodic phrases.\n- Focus on tone, breath, articulation, and phrase endings.")
-        out.append("\n### Notes to Practice\nC D E G | E D C G | A C E D | C")
-    out.append("\n### Level-Based Focus")
-    if level=="Beginner": out.append("- Learn one section only.\n- Use slow tempo and simple rhythms.\n- Do not improvise until chord changes feel stable.")
-    elif level=="Intermediate": out.append("- Learn all sections.\n- Add chord tones and guide tones.\n- Record one take and identify weakest transition.")
-    else: out.append("- Add inversions, melodic variations, substitutions, and reharmonization ideas.")
+        ints = [0,4,7]
+    return [root_midi+i for i in ints]
+
+def midi_to_freq(m):
+    return 440.0 * (2 ** ((m - 69) / 12))
+
+
+# ============================================================
+# MUSICXML AND MIDI PARSING
+# ============================================================
+
+def parse_musicxml_detailed(uploaded_file):
+    try:
+        raw = uploaded_file.getvalue()
+        fname = getattr(uploaded_file, "name", "uploaded.musicxml").lower()
+
+        if fname.endswith(".mxl"):
+            with zipfile.ZipFile(io.BytesIO(raw)) as z:
+                names = [n for n in z.namelist() if n.endswith(".xml")]
+                if not names:
+                    return {"error": "No MusicXML file found inside MXL."}
+                raw = z.read(names[0])
+
+        root = ET.fromstring(raw)
+        for elem in root.iter():
+            if "}" in elem.tag:
+                elem.tag = elem.tag.split("}", 1)[1]
+
+        title = "Uploaded MusicXML"
+        movement = root.find("movement-title")
+        if movement is not None and movement.text:
+            title = movement.text
+        work = root.find("work")
+        if work is not None:
+            wt = work.find("work-title")
+            if wt is not None and wt.text:
+                title = wt.text
+
+        parts = root.findall("part")
+        if not parts:
+            return {"error": "No musical part found."}
+
+        part = parts[0]
+        divisions = 1
+        measures = []
+        chord_list = []
+        section_markers = []
+
+        for m_idx, measure in enumerate(part.findall("measure"), start=1):
+            attr = measure.find("attributes")
+            if attr is not None and attr.findtext("divisions"):
+                try:
+                    divisions = int(attr.findtext("divisions"))
+                except Exception:
+                    divisions = 1
+
+            measure_notes = []
+            measure_chords = []
+            measure_sections = []
+
+            for direction in measure.findall("direction"):
+                for words in direction.iter("words"):
+                    if words.text and words.text.strip():
+                        label = words.text.strip()
+                        if len(label) <= 40:
+                            measure_sections.append(label)
+                            section_markers.append({"measure": m_idx, "label": label})
+                for rehearsal in direction.iter("rehearsal"):
+                    if rehearsal.text and rehearsal.text.strip():
+                        label = rehearsal.text.strip()
+                        measure_sections.append(label)
+                        section_markers.append({"measure": m_idx, "label": label})
+
+            for harmony in measure.findall("harmony"):
+                root_el = harmony.find("root")
+                if root_el is not None:
+                    step = root_el.findtext("root-step", "")
+                    alter = root_el.findtext("root-alter", "")
+                    acc = "#" if alter == "1" else "b" if alter == "-1" else ""
+                    kind = harmony.findtext("kind", "")
+                    chord = step + acc
+                    if kind:
+                        kl = kind.lower()
+                        if "minor-seventh" in kl:
+                            chord += "m7"
+                        elif "major-seventh" in kl:
+                            chord += "maj7"
+                        elif "minor" in kl and "major" not in kl:
+                            chord += "m"
+                        elif "dominant" in kl or kl == "7":
+                            chord += "7"
+                        elif "diminished" in kl:
+                            chord += "dim"
+                    measure_chords.append(chord)
+                    chord_list.append(chord)
+
+            time_pos = 0.0
+            for note in measure.findall("note"):
+                duration = note.findtext("duration")
+                try:
+                    dur = float(duration) / max(divisions, 1) if duration else 1.0
+                except Exception:
+                    dur = 1.0
+                pitch = note.find("pitch")
+                if pitch is not None and note.find("rest") is None:
+                    step = pitch.findtext("step", "")
+                    alter = pitch.findtext("alter", "")
+                    octave = pitch.findtext("octave", "")
+                    acc = "#" if alter == "1" else "b" if alter == "-1" else ""
+                    name = f"{step}{acc}{octave}"
+                    measure_notes.append({"note": name, "midi": note_name_to_midi(name), "duration": dur, "start": time_pos})
+                time_pos += dur
+
+            measures.append({"number": m_idx, "notes": measure_notes, "chords": measure_chords, "sections": measure_sections})
+
+        all_notes = [n for m in measures for n in m["notes"]]
+        return {"source_type": "MusicXML", "title": title, "measures": measures, "notes": all_notes, "chords": chord_list, "sections": section_markers,
+                "summary": f"Parsed {len(measures)} measures, {len(all_notes)} notes, {len(chord_list)} chord symbols."}
+    except Exception as e:
+        return {"error": f"MusicXML parse error: {e}"}
+
+def parse_midi_detailed(uploaded_file):
+    if pretty_midi is None:
+        return {"error": "MIDI parsing requires pretty_midi. Add pretty_midi to requirements.txt."}
+    tmp = None
+    try:
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mid")
+        tmp.write(uploaded_file.getvalue())
+        tmp.close()
+
+        pm = pretty_midi.PrettyMIDI(tmp.name)
+        notes = []
+        for inst in pm.instruments:
+            if inst.is_drum:
+                continue
+            inst_name = inst.name or pretty_midi.program_to_instrument_name(inst.program)
+            for n in inst.notes[:2000]:
+                notes.append({"note": midi_to_note_name(n.pitch), "midi": int(n.pitch), "start": float(n.start), "end": float(n.end),
+                              "duration": float(n.end-n.start), "instrument": inst_name})
+        notes = sorted(notes, key=lambda x: x["start"])
+        tempos = pm.get_tempo_changes()
+        tempo = float(tempos[1][0]) if len(tempos[1]) else 100.0
+
+        measures_map = defaultdict(list)
+        sec_per_measure = 60.0 / max(tempo, 1) * 4
+        for n in notes:
+            mnum = int(n["start"] // sec_per_measure) + 1
+            measures_map[mnum].append(n)
+        measures = [{"number": k, "notes": v, "chords": [], "sections": []} for k, v in sorted(measures_map.items())]
+
+        return {"source_type": "MIDI", "title": getattr(uploaded_file, "name", "Uploaded MIDI"), "measures": measures, "notes": notes, "chords": [],
+                "sections": [], "tempo": tempo, "summary": f"Parsed {len(notes)} notes from MIDI. Approx tempo: {tempo:.1f} BPM."}
+    except Exception as e:
+        return {"error": f"MIDI parse error: {e}"}
+    finally:
+        if tmp:
+            try:
+                os.remove(tmp.name)
+            except Exception:
+                pass
+
+
+# ============================================================
+# ANALYSIS: KEY, CHORDS, SECTIONS, CHARTS
+# ============================================================
+
+def infer_key_from_notes(notes):
+    pcs = [n["midi"] % 12 for n in notes if "midi" in n]
+    if not pcs:
+        return "Unknown"
+    counts = Counter(pcs)
+    profiles = {
+        "C": [0,2,4,5,7,9,11], "G": [7,9,11,0,2,4,6], "D": [2,4,6,7,9,11,1],
+        "A": [9,11,1,2,4,6,8], "E": [4,6,8,9,11,1,3], "F": [5,7,9,10,0,2,4],
+        "Bb": [10,0,2,3,5,7,9], "Am": [9,11,0,2,4,5,7], "Em": [4,6,7,9,11,0,2],
+        "Dm": [2,4,5,7,9,10,0], "Gm": [7,9,10,0,2,3,5]
+    }
+    return max(profiles, key=lambda k: sum(counts.get(pc,0) for pc in profiles[k]))
+
+def infer_chords_from_measure_notes(measures):
+    templates = {
+        "C": [0,4,7], "Cm": [0,3,7], "C7": [0,4,7,10], "Cmaj7": [0,4,7,11],
+        "D": [2,6,9], "Dm": [2,5,9], "D7": [2,6,9,0], "Dm7": [2,5,9,0],
+        "E": [4,8,11], "Em": [4,7,11], "E7": [4,8,11,2],
+        "F": [5,9,0], "Fm": [5,8,0], "F7": [5,9,0,3], "Fmaj7": [5,9,0,4],
+        "G": [7,11,2], "Gm": [7,10,2], "G7": [7,11,2,5],
+        "A": [9,1,4], "Am": [9,0,4], "A7": [9,1,4,7], "Am7": [9,0,4,7],
+        "Bb": [10,2,5], "B": [11,3,6], "Bm": [11,2,6], "B7": [11,3,6,9]
+    }
+    inferred = []
+    for m in measures:
+        pcs = [n["midi"] % 12 for n in m.get("notes", [])]
+        if not pcs:
+            inferred.append("")
+            continue
+        counts = Counter(pcs)
+        best = max(templates, key=lambda ch: sum(counts.get(pc,0) for pc in templates[ch]) * 2 - sum(counts.get(pc,0) for pc in counts if pc not in templates[ch]) * 0.35)
+        inferred.append(best)
+    return inferred
+
+def detect_sections(analysis):
+    measures = analysis.get("measures", [])
+    explicit = analysis.get("sections", [])
+    if explicit:
+        sections = []
+        for i, sec in enumerate(explicit):
+            start = sec["measure"]
+            end = explicit[i+1]["measure"] - 1 if i+1 < len(explicit) else len(measures)
+            sections.append({"label": sec["label"], "start": start, "end": end})
+        return sections
+    labels = ["A", "B", "C", "D", "Ending"]
+    sections = []
+    start = 1
+    idx = 0
+    while start <= len(measures):
+        end = min(start+7, len(measures))
+        sections.append({"label": labels[min(idx, len(labels)-1)], "start": start, "end": end})
+        start = end + 1
+        idx += 1
+    return sections
+
+def accompaniment_from_analysis(analysis, section=None):
+    measures = analysis.get("measures", [])
+    inferred = infer_chords_from_measure_notes(measures)
+    if section:
+        measures = [m for m in measures if section["start"] <= m["number"] <= section["end"]]
+    chords = []
+    for m in measures[:24]:
+        if m.get("chords"):
+            ch = m["chords"][0]
+        else:
+            idx = m["number"] - 1
+            ch = inferred[idx] if idx < len(inferred) else "C"
+        if ch:
+            chords.append((ch, 1))
+    return chords or [("C",1), ("G",1), ("Am",1), ("F",1)]
+
+def make_song_aware_chart(analysis, instrument, level):
+    if "error" in analysis:
+        return f"Could not analyze file: {analysis['error']}"
+    measures = analysis.get("measures", [])
+    inferred = infer_chords_from_measure_notes(measures)
+    key = infer_key_from_notes(analysis.get("notes", []))
+    sections = detect_sections(analysis)
+
+    out = [f"# Song-Aware Chart: {analysis.get('title','Uploaded Song')}",
+           f"Source: {analysis.get('source_type','Uploaded file')}",
+           f"Estimated key: **{key}**",
+           analysis.get("summary","")]
+
+    out.append("\n## Section Map")
+    for s in sections:
+        out.append(f"- **{s['label']}**: measures {s['start']}–{s['end']}")
+
+    out.append("\n## Chords / Harmony by Measure")
+    for m in measures[:80]:
+        chord = " / ".join(m.get("chords", [])) if m.get("chords") else (inferred[m["number"]-1] if m["number"]-1 < len(inferred) else "")
+        if chord:
+            out.append(f"- Measure {m['number']}: {chord}")
+
+    out.append("\n## Extracted Melody by Measure")
+    for m in measures[:32]:
+        note_names = [n["note"] for n in m.get("notes", [])[:12]]
+        if note_names:
+            out.append(f"- Measure {m['number']}: " + " ".join(note_names))
+
+    out.append(f"\n## {instrument} Practice Plan — {level}")
+    if instrument == "Piano":
+        out += ["- Right hand: practice extracted melody measure by measure.",
+                "- Left hand: play one chord/root per measure from the chart.",
+                "- Both hands: combine slowly, then add comping.",
+                "- Advanced: add inversions and keep melody on top."]
+    elif instrument == "Guitar":
+        out += ["- Strum the detected/inferred chords first.",
+                "- Find the melody on the top two strings.",
+                "- Loop one section at a time.",
+                "- Advanced: build chord melody and voice-leading."]
+    elif instrument in ["Saxophone", "Flute", "Trumpet"]:
+        out += ["- Practice extracted melody notes slowly.",
+                "- Practice roots and chord tones from each measure.",
+                "- Add articulation and phrasing after notes are secure."]
+    else:
+        out += ["- Practice melody first, then chords, then section loops."]
     return "\n".join(out)
 
-def progression_from_selected_song():
-    matches=find_song_in_catalog(st.session_state.get("song",""), st.session_state.get("artist",""))
-    if matches: return matches[0][1].get("progression",["C","G","Am","F"])
-    return []
 
-def search_musicbrainz(title, artist):
-    q = []
-    if title: q.append(f'recording:"{title}"')
-    if artist: q.append(f'artist:"{artist}"')
+# ============================================================
+# ABC NOTATION RENDERING
+# ============================================================
+
+def abc_note_from_midi(midi):
+    name = midi_to_note_name(midi)
+    step = name[0]
+    acc = "^" if "#" in name else "_" if "b" in name else ""
     try:
-        r = requests.get(
-            "https://musicbrainz.org/ws/2/recording/",
-            params={"query": " AND ".join(q) or title, "fmt": "json", "limit": 10},
-            headers={"User-Agent": "DanielCohenAIMusicPracticeCoach/1.0"},
-            timeout=8
-        )
-        data = r.json()
-        out = []
-        for rec in data.get("recordings", []):
-            artists = ", ".join([c.get("artist", {}).get("name", "") for c in rec.get("artist-credit", []) if isinstance(c, dict)])
-            out.append({"title": rec.get("title", ""), "artist": artists})
-        return out
+        octave = int(name[-1])
     except Exception:
-        return []
+        octave = 4
+    abc = acc + step
+    if octave >= 5:
+        abc = abc.lower()
+        if octave > 5:
+            abc += "'" * (octave-5)
+    elif octave < 4:
+        abc += "," * (4-octave)
+    return abc
 
-def fallback_analysis(song, artist, style, instrument, level, focus):
-    if style in ["Jazz Swing","Bossa Nova / Latin"]:
-        chart = """
-**A section**  
-| Dm7 | G7 | Cmaj7 | Cmaj7 |  
-| Em7♭5 | A7 | Dm7 | Dm7 |
-
-**B / bridge**  
-| Fmaj7 | Fm7 Bb7 | Em7 | A7 |  
-| Dm7 | G7 | Cmaj7 | A7 |
-
-**Final A**  
-| Dm7 | G7 | Cmaj7 | Am7 |  
-| Dm7 | G7 | Cmaj7 | Cmaj7 |
-"""
-        harmony = "This practice-version chart emphasizes ii–V–I motion, secondary dominants, guide tones, and tension/resolution."
-        scales = "- m7: Dorian/chord tones\n- 7: Mixolydian first, altered later\n- maj7: major scale, target 3–5–7–9\n- m7♭5: chord tones first"
-    elif style == "Blues":
-        chart = """
-**12-bar form**  
-| I7 | IV7 | I7 | I7 |  
-| IV7 | IV7 | I7 | I7 |  
-| V7 | IV7 | I7 | V7 |
-"""
-        harmony = "Blues harmony treats dominant 7th chords as home sounds. Groove and call-and-response matter more than complexity."
-        scales = "- Blues scale\n- Minor pentatonic\n- Add major 3rd for dominant blues color\n- Target chord tones on IV7 and V7"
-    elif style == "Jewish / Klezmer / Wedding":
-        chart = """
-**A section**  
-| Dm | Dm | A7 | A7 |  
-| Dm | Gm | A7 | Dm |
-
-**B section**  
-| Gm | Dm | A7 | Dm |  
-| Dm | Gm | A7 | Dm |
-"""
-        harmony = "This uses tonic minor, dominant return, and freygish/harmonic minor color. Articulation, ornaments, and rhythmic drive matter."
-        scales = "- D Freygish: D Eb F# G A Bb C D\n- D harmonic minor\n- Target A7 chord tones resolving to Dm"
+def abc_from_analysis(analysis, instrument, level):
+    title = analysis.get("title", "Uploaded Song")
+    key = infer_key_from_notes(analysis.get("notes", []))
+    if key == "Unknown":
+        key = "C"
+    tempo = 72 if level == "Beginner" else 96 if level == "Intermediate" else 116
+    notes = analysis.get("notes", [])[:48]
+    if not notes:
+        melody = "C D E G | E D C G, | A, C E D | C4 |"
     else:
-        chart = """
-**Verse**  
-| C | G | Am | F |
-
-**Chorus**  
-| F | G | C | Am |  
-| F | G | C | C |
-"""
-        harmony = "This practice chart uses common pop diatonic harmony. Focus on melody, emotion, rhythm, and clean phrasing."
-        scales = "- Major scale\n- Major pentatonic\n- Target chord tones at phrase endings"
-
-    depth = {
-        "Beginner": "Learn the form, melody, roots, and basic rhythm. Work only 2–4 measures at a time.",
-        "Intermediate": "Add chord tones, guide tones, and section-by-section practice. Record yourself after each section.",
-        "Advanced": "Use motif development, substitutions, chromatic approaches, reharmonization ideas, and multiple contrasting choruses."
-    }.get(level, "")
-
-    return f"""
-## {song} — AI Practice Coach Report
-
-Artist/composer: {artist or "not specified"}  
-Style: {style}  
-Instrument: {instrument}  
-Level: {level}  
-Focus: {focus}
-
-## Full Practice-Version Form / Chords by Section
-
-{chart}
-
-## Deeper Harmony Analysis
-
-{harmony}
-
-## Scales and Sounds
-
-{scales}
-
-## Chord Outlines to Practice
-
-- Major 7: 1–3–5–7  
-- Minor 7: 1–♭3–5–♭7  
-- Dominant 7: 1–3–5–♭7  
-- Half-diminished: 1–♭3–♭5–♭7  
-- Minor triad: 1–♭3–5  
-
-## What to Work on First
-
-1. Count the form out loud.
-2. Learn the melody slowly.
-3. Play only roots through the form.
-4. Play 1–3–5–7 through the form.
-5. Record one take with the backing track.
-
-## Level-Based Analysis
-
-{depth}
-
-## Instrument-Specific Advice
-
-For **{instrument}**, focus on sound quality, rhythm, and making the song feel musical before adding complexity.
-
-## Based on Previous Practice History
-
-{history_text()}
-
-## Today's Assignment
-
-- 5 minutes: warm up on {focus}.
-- 10 minutes: isolate the hardest section.
-- 10 minutes: play chord tones with backing track.
-- 5 minutes: record and write one weakness.
-
-## Next Session
-
-Continue from the weakest section instead of restarting randomly from the beginning.
+        abc_notes = [abc_note_from_midi(n.get("midi", 60)) for n in notes]
+        bars = [" ".join(abc_notes[i:i+4]) for i in range(0, len(abc_notes), 4)]
+        melody = " | ".join(bars) + " |"
+    return f"""X:1
+T:{title} - Extracted Practice Notation
+C:User-uploaded file analysis
+M:4/4
+L:1/4
+Q:1/4={tempo}
+K:{key}
+V:Melody clef=treble name="{instrument}"
+[V:Melody] {melody}
 """
 
-def ai_song_report(song, artist, style, instrument, level, focus):
-    client = get_client()
-    if not client:
-        return fallback_analysis(song, artist, style, instrument, level, focus)
-
-    prompt = f"""
-Create a deep music practice coaching report for:
-Song: {song}
-Artist/composer/singer: {artist}
-Style: {style}
-Instrument: {instrument}
-Level: {level}
-Focus: {focus}
-Previous practice history:
-{history_text()}
-
-Give:
-1. Full song form by sections A/B/C/bridge/ending.
-2. Practice-version chord progression for every section.
-3. Deep harmonic analysis: ii-V-I, secondary dominants, tonic/dominant, blues, freygish, modal interchange where relevant.
-4. Chord outlines and guide-tone advice.
-5. Scales/sounds to use over each section.
-6. Exact sections to practice first and why.
-7. Exercises by level.
-8. Today's assignment, tomorrow's assignment, next-session recommendation.
-9. Instrument-specific advice.
-Do not provide copyrighted lyrics.
-If exact official chords are uncertain, label it "practice-version changes".
+def public_domain_abc(song_name, instrument, level):
+    song = PUBLIC_DOMAIN_SONGS[song_name]
+    tempo = 72 if level == "Beginner" else 96 if level == "Intermediate" else 116
+    if instrument == "Piano":
+        return f"""X:1
+T:{song_name} - Public Domain Practice Sheet
+C:{song['composer']}
+M:4/4
+L:1/4
+Q:1/4={tempo}
+K:{song['key']}
+V:RH clef=treble name="Right Hand"
+V:LH clef=bass name="Left Hand"
+[V:RH] {song['abc']}
+[V:LH] C,,4 | G,,4 | A,,4 | F,,4 |
 """
-    try:
-        res = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role":"system","content":"You are an expert music theory and practice coach."},
-                      {"role":"user","content":prompt}],
-            temperature=0.35
-        )
-        return res.choices[0].message.content
-    except Exception as e:
-        return fallback_analysis(song, artist, style, instrument, level, focus) + f"\n\nAI error fallback: {e}"
+    return f"""X:1
+T:{song_name} - Public Domain Practice Sheet
+C:{song['composer']}
+M:4/4
+L:1/4
+Q:1/4={tempo}
+K:{song['key']}
+V:Melody clef=treble name="{instrument}"
+[V:Melody] {song['abc']}
+"""
 
-NOTE = {"C":60,"C#":61,"Db":61,"D":62,"D#":63,"Eb":63,"E":64,"F":65,"F#":66,"Gb":66,"G":67,"G#":68,"Ab":68,"A":69,"A#":70,"Bb":70,"B":71}
-def root(chord): return chord[:2] if len(chord)>1 and chord[1] in ["b","#"] else chord[:1]
-def chord_notes(ch):
-    r=NOTE.get(root(ch),60); c=ch.lower()
-    if "m7b5" in c: ints=[0,3,6,10]
-    elif "maj7" in c: ints=[0,4,7,11]
-    elif "m7" in c: ints=[0,3,7,10]
-    elif "m" in c: ints=[0,3,7]
-    elif "7" in c: ints=[0,4,7,10]
-    else: ints=[0,4,7]
-    return [r+i for i in ints]
-def freq(m): return 440*(2**((m-69)/12))
-def tone(f,d,sr=44100,v=.15):
-    t=np.linspace(0,d,int(sr*d),False)
-    y=np.sin(2*np.pi*f*t)+.3*np.sin(2*np.pi*2*f*t)+.15*np.sin(2*np.pi*3*f*t)
-    y=y/(np.max(np.abs(y))+1e-9)
-    env=np.ones_like(y); a=max(1,int(.01*sr)); rel=max(1,int(.05*sr))
-    env[:a]=np.linspace(0,1,a); env[-rel:]=np.linspace(1,0,rel)
-    return v*y*env
-def noise(d,sr=44100,v=.08,decay=25):
-    n=int(sr*d); y=np.random.uniform(-1,1,n); env=np.exp(-np.linspace(0,decay,n)); return v*y*env
-def add(buf,start,snd):
-    end=min(len(buf),start+len(snd))
-    if end>start: buf[start:end]+=snd[:end-start]
-def progression(style):
-    try:
-        selected = progression_from_selected_song()
-        if selected:
-            return [(ch, 1) for ch in selected]
-    except Exception:
-        pass
-    if style in ["Jazz Swing","Bossa Nova / Latin"]: return [("Dm7",1),("G7",1),("Cmaj7",2),("Em7b5",1),("A7",1),("Dm7",2)]
-    if style=="Blues": return [("F7",4),("Bb7",2),("F7",2),("C7",1),("Bb7",1),("F7",1),("C7",1)]
-    if style=="Jewish / Klezmer / Wedding": return [("Dm",2),("A7",2),("Dm",2),("Gm",1),("A7",1),("Dm",2)]
-    if style=="Funk / R&B": return [("Dm7",2),("G7",2),("Dm7",2),("G7",2)]
-    return [("C",1),("G",1),("Am",1),("F",1)]
+def render_abc(abc_text, height=430):
+    escaped = abc_text.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
+    html = f"""
+    <html>
+    <head><script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script></head>
+    <body>
+    <div id="paper"></div>
+    <script>
+    const abc = `{escaped}`;
+    ABCJS.renderAbc("paper", abc, {{ responsive: "resize", staffwidth: 760, scale: 1.0 }});
+    </script>
+    </body>
+    </html>
+    """
+    components.html(html, height=height, scrolling=True)
+
+
+# ============================================================
+# BACKING TRACK GENERATION
+# ============================================================
 
 def lowpass(y, amount=0.08):
-    """Simple smoothing filter for less harsh synthesized tones."""
     if lfilter is None:
         return y
-    b = [amount]
-    a = [1, amount - 1]
-    return lfilter(b, a, y)
+    return lfilter([amount], [1, amount-1], y)
 
-def adsr_env(n, sr=44100, attack=0.01, decay=0.08, sustain=0.75, release=0.08):
-    a = max(1, int(attack * sr))
-    d = max(1, int(decay * sr))
-    r = max(1, int(release * sr))
-    s = max(1, n - a - d - r)
-    env = np.concatenate([
-        np.linspace(0, 1, a),
-        np.linspace(1, sustain, d),
-        np.full(s, sustain),
-        np.linspace(sustain, 0, r)
-    ])
-    if len(env) < n:
-        env = np.pad(env, (0, n - len(env)), constant_values=0)
-    return env[:n]
+def env(n, sr, attack=0.01, release=0.08):
+    a = max(1, int(attack*sr))
+    r = max(1, int(release*sr))
+    s = max(1, n-a-r)
+    e = np.concatenate([np.linspace(0,1,a), np.ones(s), np.linspace(1,0,r)])
+    return e[:n] if len(e) >= n else np.pad(e, (0, n-len(e)))
 
-def instrument_tone(freq_hz, duration, sr=44100, volume=0.15, kind="piano"):
-    t = np.linspace(0, duration, int(sr * duration), False)
-
+def tone(f, d, sr=44100, v=0.12, kind="piano"):
+    t = np.linspace(0, d, int(sr*d), False)
     if kind == "bass":
-        y = (
-            np.sin(2*np.pi*freq_hz*t)
-            + 0.45*np.sin(2*np.pi*2*freq_hz*t)
-            + 0.20*np.sin(2*np.pi*3*freq_hz*t)
-        )
-        env = adsr_env(len(y), sr, attack=0.006, decay=0.08, sustain=0.55, release=0.12)
-
-    elif kind == "piano":
-        y = (
-            np.sin(2*np.pi*freq_hz*t)
-            + 0.35*np.sin(2*np.pi*2*freq_hz*t)
-            + 0.18*np.sin(2*np.pi*3*freq_hz*t)
-            + 0.08*np.sin(2*np.pi*4*freq_hz*t)
-        )
-        env = adsr_env(len(y), sr, attack=0.004, decay=0.18, sustain=0.35, release=0.18)
-
-    elif kind == "organ_pad":
-        y = (
-            np.sin(2*np.pi*freq_hz*t)
-            + 0.30*np.sin(2*np.pi*(freq_hz*1.01)*t)
-            + 0.25*np.sin(2*np.pi*2*freq_hz*t)
-        )
-        env = adsr_env(len(y), sr, attack=0.05, decay=0.10, sustain=0.75, release=0.20)
-
-    elif kind == "guitar":
-        y = (
-            np.sin(2*np.pi*freq_hz*t)
-            + 0.20*np.sin(2*np.pi*2*freq_hz*t)
-            + 0.10*np.sin(2*np.pi*3*freq_hz*t)
-        )
-        env = adsr_env(len(y), sr, attack=0.002, decay=0.12, sustain=0.25, release=0.10)
-
+        y = np.sin(2*np.pi*f*t) + .45*np.sin(2*np.pi*2*f*t)
+    elif kind == "pad":
+        y = np.sin(2*np.pi*f*t) + .25*np.sin(2*np.pi*1.01*f*t) + .2*np.sin(2*np.pi*2*f*t)
     else:
-        y = np.sin(2*np.pi*freq_hz*t)
-        env = adsr_env(len(y), sr)
-
+        y = np.sin(2*np.pi*f*t) + .3*np.sin(2*np.pi*2*f*t) + .12*np.sin(2*np.pi*3*f*t)
     y = y / (np.max(np.abs(y)) + 1e-9)
     y = lowpass(y, 0.12)
-    return volume * y * env
+    return v * y * env(len(y), sr)
 
-def drum_kick(sr=44100):
-    d = 0.16
-    t = np.linspace(0, d, int(sr*d), False)
-    freq_curve = 85 * np.exp(-18*t) + 38
-    phase = 2*np.pi*np.cumsum(freq_curve)/sr
-    y = np.sin(phase) * np.exp(-22*t)
-    return 0.55 * y
-
-def drum_snare(sr=44100):
-    d = 0.14
+def noise_hit(d, sr=44100, v=0.07, decay=30):
     n = int(sr*d)
-    noise_y = np.random.uniform(-1, 1, n) * np.exp(-24*np.linspace(0, d, n))
-    tone_y = np.sin(2*np.pi*190*np.linspace(0, d, n)) * np.exp(-18*np.linspace(0, d, n))
-    return 0.22 * noise_y + 0.12 * tone_y
+    y = np.random.uniform(-1,1,n) * np.exp(-decay*np.linspace(0,d,n))
+    return v*y
 
-def drum_hat(sr=44100, open_hat=False):
-    d = 0.12 if open_hat else 0.045
-    n = int(sr*d)
-    y = np.random.uniform(-1, 1, n)
-    # crude high-pass by subtracting smoothed signal
-    smooth = lowpass(y, 0.03)
-    y = y - smooth
-    y *= np.exp((-16 if open_hat else -55) * np.linspace(0, d, n))
-    return 0.09 * y
+def add_audio(buf, start, snd):
+    end = min(len(buf), start+len(snd))
+    if end > start:
+        buf[start:end] += snd[:end-start]
 
-def add_reverb(audio, sr=44100, delay_ms=70, decay=0.18):
-    delay = int(sr * delay_ms / 1000)
-    out = audio.copy()
-    if delay < len(out):
-        out[delay:] += decay * audio[:-delay]
-    delay2 = int(delay * 1.7)
-    if delay2 < len(out):
-        out[delay2:] += (decay * 0.55) * audio[:-delay2]
-    return out
-
-def add_stereo_width(mono, sr=44100):
-    """Return stereo audio with tiny delay difference for more realistic space."""
-    delay = int(0.012 * sr)
-    left = mono.copy()
-    right = np.zeros_like(mono)
-    right[delay:] = mono[:-delay]
-    right[:delay] = mono[:delay]
-    stereo = np.vstack([left, right]).T
-    return stereo
-
-def backing_track(style,instrument,bpm,choruses=3,count_in=True):
-    """
-    Higher-quality synthesized band:
-    - walking/root-fifth bass
-    - better kick/snare/hat
-    - piano/guitar/organ-like comping
-    - stereo width and light reverb
-    This is still synthesized, not real sampled instruments.
-    """
-    sr=44100
-    beat=60/bpm
-    bar=beat*4
-    prog=progression(style)
-    total=sum(b for _,b in prog)*choruses+(1 if count_in else 0)
-    audio=np.zeros(int(total*bar*sr))
-    cur=bar if count_in else 0
+def backing_track_from_chords(chords, bpm=100, choruses=3, count_in=True):
+    sr = 44100
+    beat = 60 / bpm
+    bar = beat * 4
+    chords = chords or [("C",1), ("G",1), ("Am",1), ("F",1)]
+    total_bars = sum(b for c,b in chords) * choruses + (1 if count_in else 0)
+    audio = np.zeros(int(total_bars*bar*sr))
+    cur = bar if count_in else 0
 
     if count_in:
         for i in range(4):
-            add(audio,int(i*beat*sr),instrument_tone(1300,.04,sr,.25,"piano"))
+            add_audio(audio, int(i*beat*sr), tone(1200, .05, sr, .25))
 
     for _ in range(choruses):
-        for ch,bars in prog:
-            ns=chord_notes(ch)
-            dur=bars*bar
-
-            # Bass pattern depends on style
-            if style == "Blues":
-                bass=[ns[0]-24, ns[2]-24 if len(ns)>2 else ns[0]-12, ns[0]-12, ns[2]-24 if len(ns)>2 else ns[0]-12]
-            elif style == "Funk / R&B":
-                bass=[ns[0]-24, ns[0]-24, ns[2]-24 if len(ns)>2 else ns[0]-12, ns[0]-12]
-            else:
-                bass=[ns[0]-24, ns[2]-24 if len(ns)>2 else ns[0]-12, ns[0]-12, ns[1]-12 if len(ns)>1 else ns[0]-12]
-
+        for ch, bars in chords:
+            ns = chord_notes(ch)
             for b in range(bars*4):
-                bt=cur+b*beat
-
-                # bass
-                add(audio,int(bt*sr),instrument_tone(freq(bass[b%len(bass)]),beat*.92,sr,.20,"bass"))
-
-                # drums
-                if b%4 in [0,2]:
-                    add(audio,int(bt*sr),drum_kick(sr))
-                if b%4 in [1,3]:
-                    add(audio,int(bt*sr),drum_snare(sr))
-
-                if style=="Jazz Swing":
-                    hats=[0,.67]
-                elif style=="Funk / R&B":
-                    hats=[0,.25,.5,.75]
-                else:
-                    hats=[0,.5]
-                for h in hats:
-                    add(audio,int((bt+h*beat)*sr),drum_hat(sr, open_hat=False))
-
-            # pad bed if player is not piano
-            if instrument!="Piano":
-                for n in ns:
-                    add(audio,int(cur*sr),instrument_tone(freq(n),dur*.96,sr,.035,"organ_pad"))
-
-            # piano/guitar comping if player isn't that instrument
-            for b in range(bars*4):
-                bt=cur+b*beat
-
-                if style=="Jazz Swing":
-                    comp_offsets=[0.0,0.67]
-                elif style=="Bossa Nova / Latin":
-                    comp_offsets=[0.0,0.5,0.75]
-                elif style=="Funk / R&B":
-                    comp_offsets=[0.0,0.25,0.5,0.75]
-                else:
-                    comp_offsets=[0.0,0.5]
-
-                for off in comp_offsets:
-                    kind = "guitar" if instrument!="Guitar" else "piano"
-                    vol = 0.030 if kind=="guitar" else 0.038
+                bt = cur + b*beat
+                bass_midi = ns[0]-24 if b % 2 == 0 else (ns[min(2,len(ns)-1)]-24)
+                add_audio(audio, int(bt*sr), tone(midi_to_freq(bass_midi), beat*.85, sr, .18, "bass"))
+                if b % 4 in [0,2]:
+                    add_audio(audio, int(bt*sr), tone(55, .12, sr, .25, "bass"))
+                if b % 4 in [1,3]:
+                    add_audio(audio, int(bt*sr), noise_hit(.10, sr, .13, 25))
+                for h in [0,.5]:
+                    add_audio(audio, int((bt+h*beat)*sr), noise_hit(.04, sr, .035, 45))
+                for off in [0,.5]:
                     for n in ns[:4]:
-                        add(audio,int((bt+off*beat)*sr),instrument_tone(freq(n+12),beat*.18,sr,vol,kind))
+                        add_audio(audio, int((bt+off*beat)*sr), tone(midi_to_freq(n+12), beat*.15, sr, .028, "piano"))
+            for n in ns[:4]:
+                add_audio(audio, int(cur*sr), tone(midi_to_freq(n), bars*bar*.95, sr, .025, "pad"))
+            cur += bars*bar
 
-            cur+=dur
-
-    # light compression / saturation
-    audio = np.tanh(audio * 1.6) / 1.6
-
-    # reverb + normalize
-    audio = add_reverb(audio, sr, delay_ms=65, decay=0.16)
-    audio=audio/(np.max(np.abs(audio))+1e-9)*.90
-
-    stereo = add_stereo_width(audio, sr)
-    data=(stereo*32767).astype(np.int16)
-
-    out=io.BytesIO()
-    with wave.open(out,"wb") as wf:
-        wf.setnchannels(2)
+    audio = np.tanh(audio*1.5)/1.5
+    audio = audio / (np.max(np.abs(audio)) + 1e-9) * .9
+    data = (audio*32767).astype(np.int16)
+    out = io.BytesIO()
+    with wave.open(out, "wb") as wf:
+        wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(sr)
         wf.writeframes(data.tobytes())
     out.seek(0)
     return out.getvalue()
 
-def analyze_audio(obj,bpm):
-    if not obj: return {"error":"No audio uploaded."}
-    if librosa is None: return {"error":"librosa not installed. Check requirements.txt."}
-    data=obj.getvalue()
-    tmp=tempfile.NamedTemporaryFile(delete=False,suffix=".wav"); tmp.write(data); tmp.close()
+
+
+# ============================================================
+# SONG SEARCH / SIMILAR SONG DROPDOWN
+# ============================================================
+
+SONG_SUGGESTION_CATALOG = {
+    "Amazing Grace": {"artist": "Traditional", "style": "Folk / Hymn"},
+    "Ode to Joy": {"artist": "Beethoven", "style": "Classical"},
+    "When the Saints Go Marching In": {"artist": "Traditional", "style": "Jazz / Gospel"},
+    "Greensleeves": {"artist": "Traditional", "style": "Folk / Classical"},
+    "Scarborough Fair": {"artist": "Traditional", "style": "Folk / Modal"},
+    "House of the Rising Sun": {"artist": "Traditional", "style": "Folk / Rock"},
+
+    "Viva La Vida": {"artist": "Coldplay", "style": "Pop / Rock"},
+    "Yellow": {"artist": "Coldplay", "style": "Pop / Rock"},
+    "Fix You": {"artist": "Coldplay", "style": "Pop Ballad"},
+    "Clocks": {"artist": "Coldplay", "style": "Pop / Piano Rock"},
+    "The Scientist": {"artist": "Coldplay", "style": "Pop Ballad"},
+
+    "Shape of You": {"artist": "Ed Sheeran", "style": "Pop"},
+    "Perfect": {"artist": "Ed Sheeran", "style": "Pop Ballad"},
+    "Thinking Out Loud": {"artist": "Ed Sheeran", "style": "Pop Ballad"},
+    "Photograph": {"artist": "Ed Sheeran", "style": "Pop Ballad"},
+
+    "Say": {"artist": "John Mayer", "style": "Pop / Singer-Songwriter"},
+    "Gravity": {"artist": "John Mayer", "style": "Blues / Soul"},
+    "No Such Thing": {"artist": "John Mayer", "style": "Pop Rock"},
+    "Daughters": {"artist": "John Mayer", "style": "Pop Ballad"},
+    "Waiting on the World to Change": {"artist": "John Mayer", "style": "Pop / Soul"},
+    "Slow Dancing in a Burning Room": {"artist": "John Mayer", "style": "Blues / Rock"},
+    "Stop This Train": {"artist": "John Mayer", "style": "Acoustic"},
+    "Neon": {"artist": "John Mayer", "style": "Acoustic Guitar"},
+
+    "Don't Stop Believin'": {"artist": "Journey", "style": "Rock"},
+    "Open Arms": {"artist": "Journey", "style": "Rock Ballad"},
+    "Faithfully": {"artist": "Journey", "style": "Rock Ballad"},
+
+    "Let It Be": {"artist": "The Beatles", "style": "Pop / Rock"},
+    "Hey Jude": {"artist": "The Beatles", "style": "Pop / Rock"},
+    "Yesterday": {"artist": "The Beatles", "style": "Pop Ballad"},
+    "Here Comes the Sun": {"artist": "The Beatles", "style": "Folk Rock"},
+    "Something": {"artist": "The Beatles", "style": "Rock Ballad"},
+    "In My Life": {"artist": "The Beatles", "style": "Pop Ballad"},
+    "Blackbird": {"artist": "The Beatles", "style": "Acoustic"},
+
+    "Piano Man": {"artist": "Billy Joel", "style": "Piano Pop"},
+    "Vienna": {"artist": "Billy Joel", "style": "Piano Ballad"},
+    "Just the Way You Are": {"artist": "Billy Joel", "style": "Pop Ballad"},
+    "New York State of Mind": {"artist": "Billy Joel", "style": "Piano / Jazz Pop"},
+    "She's Always a Woman": {"artist": "Billy Joel", "style": "Piano Ballad"},
+
+    "Stand By Me": {"artist": "Ben E. King", "style": "Soul / Pop"},
+    "Hallelujah": {"artist": "Leonard Cohen", "style": "Folk / Ballad"},
+    "Lean on Me": {"artist": "Bill Withers", "style": "Soul / Gospel"},
+    "Imagine": {"artist": "John Lennon", "style": "Piano Ballad"},
+}
+
+def similarity_score(query, title, artist, style):
+    q = (query or "").lower().strip()
+    if not q:
+        return 0
+
+    hay = f"{title} {artist} {style}".lower()
+    score = 0
+
+    # Strong direct matches
+    if q == title.lower():
+        score += 100
+    if q in title.lower():
+        score += 70
+    if q in artist.lower():
+        score += 55
+    if q in style.lower():
+        score += 25
+
+    # Word overlap
+    q_words = [w for w in q.replace("'", "").split() if len(w) > 1]
+    hay_words = hay.replace("'", "").split()
+    for w in q_words:
+        if w in hay_words:
+            score += 12
+        elif any(hw.startswith(w) or w.startswith(hw) for hw in hay_words):
+            score += 6
+
+    # Small typo tolerance using difflib
     try:
-        y,sr=librosa.load(tmp.name,sr=22050,mono=True)
-        dur=librosa.get_duration(y=y,sr=sr)
-        tempo,beats=librosa.beat.beat_track(y=y,sr=sr); tempo=float(np.asarray(tempo).flatten()[0])
-        rms=librosa.feature.rms(y=y)[0]; vol=float(1/(1+np.std(rms)/(np.mean(rms)+1e-8)))
-        onsets=librosa.onset.onset_detect(y=y,sr=sr); onset_density=len(onsets)/max(dur,1)
-        f0,_,_=librosa.pyin(y,fmin=librosa.note_to_hz("C2"),fmax=librosa.note_to_hz("C7"),sr=sr)
-        voiced=f0[~np.isnan(f0)]
-        if len(voiced)>10:
-            med=float(np.median(voiced)); pstab=float(1/(1+(1200*np.std(np.log2(voiced/med)))/100)); note=librosa.hz_to_note(med)
-        else: pstab=None; note="Not enough pitched material"
-        return {"duration":dur,"tempo":tempo,"tempo_diff":abs(tempo-bpm),"volume_stability":vol,"onset_density":onset_density,"pitch_stability":pstab,"note":note}
-    except Exception as e:
-        return {"error":str(e)}
-    finally:
-        try: os.remove(tmp.name)
-        except Exception: pass
+        import difflib
+        score += int(30 * difflib.SequenceMatcher(None, q, title.lower()).ratio())
+        score += int(18 * difflib.SequenceMatcher(None, q, artist.lower()).ratio())
+    except Exception:
+        pass
 
+    return score
 
+def get_similar_song_options(query, limit=12):
+    scored = []
+    for title, data in SONG_SUGGESTION_CATALOG.items():
+        score = similarity_score(query, title, data.get("artist", ""), data.get("style", ""))
+        if score > 10:
+            label = f"{title} — {data.get('artist','Unknown')} ({data.get('style','')})"
+            scored.append((score, label, title, data))
+    scored.sort(reverse=True, key=lambda x: x[0])
 
-def written_note_exercises(instrument, song):
-    if instrument == "Flute":
-        return """
-## Flute Written Note Exercises
+    # If no query yet, give a useful starter list
+    if not query.strip():
+        starter = list(SONG_SUGGESTION_CATALOG.items())[:limit]
+        return [(f"{title} — {data.get('artist','Unknown')} ({data.get('style','')})", title, data) for title, data in starter]
 
-### Exercise 1 — Long-Tone Note Reading
-Read and play these notes slowly, holding each for 4 beats:
+    return [(label, title, data) for score, label, title, data in scored[:limit]]
 
-G4 — A4 — B4 — C5 — D5 — C5 — B4 — A4 — G4
+def render_song_search_dropdown(prefix="song_search"):
+    st.subheader("Search Song")
+    user_song_query = st.text_input(
+        "Type a song title, artist, or style",
+        key=f"{prefix}_query",
+        placeholder="Example: John Mayer, Say, Ed Sheeran, Viva La Vida, Journey"
+    )
 
-### Exercise 2 — Scale Fragment
-Play as quarter notes:
+    options = get_similar_song_options(user_song_query)
+    if options:
+        labels = [x[0] for x in options]
+        selected_label = st.selectbox("Similar songs found", labels, key=f"{prefix}_dropdown")
+        selected = options[labels.index(selected_label)]
+        selected_title = selected[1]
+        selected_data = selected[2]
 
-G4 A4 B4 C5 | D5 C5 B4 A4 | G4
+        if st.button("Use selected song", key=f"{prefix}_use"):
+            st.session_state["searched_song_title"] = selected_title
+            st.session_state["searched_song_artist"] = selected_data.get("artist", "")
+            st.session_state["searched_song_style"] = selected_data.get("style", "")
+            st.success(f"Selected: {selected_title} — {selected_data.get('artist','')}")
+        return selected_title, selected_data
 
-### Exercise 3 — Articulation Pattern
-Use the same notes, but tongue each note clearly:
+    st.warning("No similar songs found. Try typing the artist name or a simpler title.")
+    return None, None
 
-TA TA TA TA | TA TA TA TA
-
-### Exercise 4 — Phrase Shape
-Play this as one musical sentence:
-
-G4 — B4 — D5 — C5 — B4 — A4 — G4
-
-### Flute Focus
-- Keep the air stream steady.
-- Do not squeeze the embouchure.
-- Watch intonation on D5 and higher notes.
-- Practice slowly before adding speed.
-"""
-
-    if instrument == "Trumpet":
-        return """
-## Trumpet Written Note Exercises
-
-### Exercise 1 — Long-Tone Note Reading
-Read and play these notes slowly, holding each for 4 beats:
-
-C4 — D4 — E4 — F4 — G4 — F4 — E4 — D4 — C4
-
-### Exercise 2 — Valve / Scale Pattern
-Play as quarter notes:
-
-C4 D4 E4 F4 | G4 F4 E4 D4 | C4
-
-### Exercise 3 — Lip Slur Preparation
-Play without forcing:
-
-C4 — G4 — C5 — G4 — C4
-
-### Exercise 4 — Articulation Pattern
-Tongue each note clearly:
-
-C4 C4 D4 D4 | E4 E4 F4 F4 | G4
-
-### Trumpet Focus
-- Use relaxed air, not pressure.
-- Keep corners firm but not tight.
-- Rest when tired.
-- Focus on clean attacks and centered pitch.
-"""
-    if instrument == "Flute":
-        return """
-## Flute Melody + Technique Exercises
-
-### Melody Exercises
-- Say the note names before playing.
-- Play the melody in 2-measure chunks.
-- Use long, steady air through each phrase.
-- Practice phrase endings without letting pitch sag.
-
-### Note Reading Exercises
-- Read notes slowly before adding rhythm.
-- Circle high-register notes and practice them separately.
-- Practice G major and C major scale fragments.
-
-### Tone Tips
-- Air speed controls register.
-- Keep shoulders relaxed.
-- Use a tuner for long notes.
-"""
-
-    if instrument == "Trumpet":
-        return """
-## Trumpet Melody + Technique Exercises
-
-### Melody Exercises
-- Say note names and valve combinations first.
-- Play the melody slowly, resting often.
-- Practice clean attacks at the start of every phrase.
-- Do not force high notes.
-
-### Chord / Note Exercises
-- Practice chord tones as bugle-style outlines.
-- Play root–third–fifth slowly.
-- Use lip slurs to build flexibility.
-
-### Tone Tips
-- Use air support, not mouthpiece pressure.
-- Rest as much as you play.
-- Keep pitch centered with a tuner.
-"""
-
-    return ""
-
-def piano_sheet_music_exercises(song):
+def simple_selected_song_practice_sheet(title, data, instrument, level):
+    artist = data.get("artist", "")
+    style = data.get("style", "")
     return f"""
-## Piano Sheet-Music Style Exercises for {song}
-
-These are original practice-version exercises, not copyrighted sheet music.
-
-### Right Hand Melody Exercise
-Treble clef note names:
-
-C5 — D5 — E5 — G5 | E5 — D5 — C5 — G4 |
-A4 — C5 — E5 — D5 | C5
-
-Finger suggestion:
-1 — 2 — 3 — 5 | 3 — 2 — 1 — 5 | 1 — 2 — 4 — 3 | 2
-
-### Left Hand Chord Exercise
-Bass clef chord roots / simple fifths:
-
-C3–G3 | G2–D3 | A2–E3 | F2–C3
-
-Practice:
-- Hold each left-hand shape for 4 beats.
-- Keep the left hand softer than the melody.
-
-### Both Hands Together
-Right hand:
-C5 — D5 — E5 — G5 | E5 — D5 — C5 — G4
-
-Left hand:
-C3–G3 hold | G2–D3 hold | A2–E3 hold | F2–C3 hold
-
-### Two-Hand Coordination Drill
-1. Left hand only.
-2. Right hand only.
-3. Both hands, very slowly.
-4. Add metronome at 60 BPM.
-5. Record and listen for whether the melody is louder than the chords.
-
-### Chord Change Practice
-| C | G | Am | F |
-
-Play:
-- LH root + fifth
-- RH simple melody
-- Then RH block chord
-- Then RH broken chord
-"""
-
-def song_practice_sheet_music(song, instrument):
-    if instrument == "Piano":
-        return piano_sheet_music_exercises(song)
-
-    if instrument == "Flute":
-        return f"""
-## Flute Practice Sheet for {song}
-
-Original practice melody:
-
-4/4 time, moderate tempo
-
-G4 A4 B4 C5 | D5 C5 B4 A4 | G4 B4 D5 C5 | B4 A4 G4
-
-Practice steps:
-1. Clap rhythm.
-2. Say note names.
-3. Play slowly with full tone.
-4. Add phrase shape.
-"""
-
-    if instrument == "Trumpet":
-        return f"""
-## Trumpet Practice Sheet for {song}
-
-Original practice melody:
-
-4/4 time, moderate tempo
-
-C4 D4 E4 F4 | G4 F4 E4 D4 | C4 E4 G4 F4 | E4 D4 C4
-
-Practice steps:
-1. Buzz lightly first.
-2. Say valve combinations.
-3. Play slowly with clean attacks.
-4. Rest, then repeat.
-"""
-
-    return ""
-
-
-def instrument_specific_exercises(instrument, song):
-    if instrument == "Guitar":
-        return """
-## Guitar Melody + Chord Change Exercises
-
-### Melody Exercises
-- Learn the melody on ONE string first.
-- Sing the melody before playing it.
-- Play melody slowly with a metronome.
-- Practice melody using alternate picking.
-- Connect melody notes to nearby chord shapes.
-
-### Chord Change Exercises
-- Loop only two chords at a time.
-- Practice silent chord switching without strumming.
-- Play root notes before full chords.
-- Practice voice-leading between nearby chord shapes.
-- Use guide fingers to reduce motion.
-
-### Strumming Tips
-- Count aloud while strumming.
-- Keep right hand moving continuously.
-- Start with downstrokes only.
-- Add upstrokes after rhythm is stable.
-- Accent beats 2 and 4 for groove.
-- For ballads: lighter touch and longer sustain.
-- For funk/pop: shorter tighter strums.
-
-### Rhythm Practice
-- Play only muted strums first.
-- Clap difficult rhythms before playing.
-- Record your groove without melody.
-"""
-
-    if instrument == "Piano":
-        return """
-## Piano Melody + Chord Change Exercises
-
-### Melody Exercises
-- Practice right-hand melody alone slowly.
-- Sing phrases before playing them.
-- Shape phrase endings musically.
-- Practice melody with different rhythms.
-- Add dynamics: soft/loud phrase contrast.
-
-### Chord Change Exercises
-- Practice left-hand roots only first.
-- Then add shell voicings (1-3-7).
-- Move between chords using closest inversions.
-- Practice difficult transitions repeatedly.
-- Use metronome at slow tempo first.
-
-### Comping / Rhythm Tips
-- Keep comping lighter than melody.
-- Lock left hand to the groove.
-- Anticipate chord changes slightly.
-- Use shorter voicings for faster songs.
-- For jazz/bossa: lighter syncopated comping.
-- For pop/ballads: simpler sustained voicings.
-
-### Coordination Exercises
-- Play melody while holding whole-note chords.
-- Then gradually add rhythmic comping.
-- Practice hands separately before combining.
-"""
-    return ""
-
-
-def weak_areas(focus, rating, notes):
-    text=(focus+" "+notes).lower(); out=[]
-    if any(w in text for w in ["time","rhythm","beat","rushing","dragging"]): out.append("Timing")
-    if any(w in text for w in ["tone","sound","air","breath","pitch","intonation"]): out.append("Tone / Pitch")
-    if any(w in text for w in ["chord","guide","harmony","changes"]): out.append("Chord Tones")
-    if any(w in text for w in ["scale","mode","key"]): out.append("Scales")
-    if any(w in text for w in ["phrase","phrasing","expression"]): out.append("Phrasing")
-    if rating<=5: out.append("Technique / Control")
-    return list(dict.fromkeys(out)) or ["Timing","Tone / Pitch","Chord Tones"]
-def exercises(area,song):
-    d={
-        "Timing":[f"Quarter-note chorus through {song}.","Clap rhythm before playing.","Metronome on beats 2 and 4 only."],
-        "Tone / Pitch":["Long tones 8 beats each.","Crescendo-decrescendo without pitch change.","Record phrase endings and check if they weaken."],
-        "Chord Tones":[f"Play 1–3–5–7 for every chord in {song}.","Guide tones only: 3rds and 7ths.","Approach-note drill into chord tones."],
-        "Scales":["Main scale slowly, then melody.","Three-note cells: 1–2–3, 2–3–4.","End scale phrases on chord tones."],
-        "Phrasing":["2-bar call and 2-bar response.","Repeat one idea three ways.","Leave silence between phrases."],
-        "Technique / Control":["Hardest 4 measures at half speed.","10 perfect slow reps.","Record only the difficult section."]
-    }
-    return d.get(area,d["Technique / Control"])
-
-
-def adaptive_sheet_for_player(song, artist, instrument, level, style, focus, history_summary):
-    if instrument == "Piano":
-        return piano_adaptive_sheet(song, level, style, focus, history_summary)
-    if instrument == "Guitar":
-        return guitar_adaptive_sheet(song, level, style, focus, history_summary)
-    if instrument in ["Saxophone", "Flute", "Trumpet"]:
-        return wind_adaptive_sheet(song, instrument, level, style, focus, history_summary)
-    if instrument == "Voice":
-        return voice_adaptive_sheet(song, level, style, focus, history_summary)
-    return general_adaptive_sheet(song, instrument, level, style, focus, history_summary)
-
-def level_header(level):
-    if level == "Beginner":
-        return "Beginner Sheet — simplified rhythm, large chunks, roots/chord tones first"
-    if level == "Intermediate":
-        return "Intermediate Sheet — fuller rhythm, chord tones, guide tones, and coordination"
-    return "Advanced Sheet — reharmonization ideas, motivic development, voice-leading, and improvisation"
-
-def piano_adaptive_sheet(song, level, style, focus, history_summary):
-    if level == "Beginner":
-        return f"""
-# Practice Sheet: {song}
-## Piano — {level_header(level)}
-
-### Right Hand Melody — Treble Clef Note Names
-C5  D5  E5  G5  | E5  D5  C5  G4 |
-A4  C5  E5  D5  | C5  -   -   -  |
-
-### Left Hand — Bass Clef Roots
-C3  -   -   -   | G2  -   -   -  |
-A2  -   -   -   | F2  -   -   -  |
-
-### Chords
-| C | G | Am | F |
-
-### Both Hands Together
-- RH plays melody.
-- LH plays one bass note per measure.
-- Count: 1 2 3 4.
-- Keep left hand softer.
-
-### Practice Steps
-1. Say right-hand note names out loud.
-2. Play right hand only.
-3. Play left hand only.
-4. Put both hands together at 60 BPM.
-5. Record one take.
-
-### Focus
-{focus}
-"""
-    if level == "Intermediate":
-        return f"""
-# Practice Sheet: {song}
-## Piano — {level_header(level)}
-
-### Right Hand Melody
-C5 D5 E5 G5 | A5 G5 E5 D5 |
-C5 E5 G5 A5 | G5 E5 D5 C5 |
-
-### Left Hand Shell Voicings
-Cmaj7: C3 + E3 + B3  
-G7: G2 + F3 + B3  
-Am7: A2 + G3 + C4  
-Fmaj7: F2 + E3 + A3  
-
-### Chord Progression
-| Cmaj7 | G7 | Am7 | Fmaj7 |
-| Dm7 | G7 | Cmaj7 | Cmaj7 |
-
-### Both Hands Coordination
-- LH plays shell voicing on beat 1.
-- RH plays melody.
-- Add LH comping on beat 1 and the “and” of 2.
-
-### Chord-Tone Drill
-For each chord, play 1–3–5–7 ascending, then 7–5–3–1 descending.
-
-### Based on History
-{history_summary}
-"""
-    return f"""
-# Practice Sheet: {song}
-## Piano — {level_header(level)}
-
-### Advanced Form
-A: | Cmaj7 | E7alt | Am9 | Gm7 C7 |
-B: | Fmaj7 | Fm7 Bb7 | Em7 A7 | Dm7 G7 |
-Final A: | Cmaj9 | A7alt | Dm9 G13 | C6/9 |
-
-### Advanced Piano Tasks
-- Right hand: melody, then harmonized melody.
-- Left hand: rootless voicings.
-- Chorus 1: guide tones only.
-- Chorus 2: motif development.
-- Chorus 3: reharmonized final cadence.
-
-### Main Focus
-{focus}
-"""
-
-def guitar_adaptive_sheet(song, level, style, focus, history_summary):
-    if level == "Beginner":
-        return f"""
-# Practice Sheet: {song}
-## Guitar — {level_header(level)}
-
-### Chords
-| C | G | Am | F |
-
-### Simple Strumming Pattern
-Down  Down-Up  Up-Down-Up  
-Count: 1  2-&  &-4-&
-
-### Melody on High E / B Strings
-E string: 0 1 3 | 3 1 0  
-B string: 1 3 1 | 0 1
-
-### Chord Change Drill
-C → G | G → Am | Am → F | F → C
-
-### Practice Steps
-1. Mute strings and strum rhythm only.
-2. Play chords without rhythm.
-3. Add rhythm slowly.
-4. Play melody separately.
-5. Record one clean rhythm take.
-"""
-    if level == "Intermediate":
-        return f"""
-# Practice Sheet: {song}
-## Guitar — {level_header(level)}
-
-### Chord Progression
-| Cmaj7 | G7 | Am7 | Fmaj7 |
-| Dm7 | G7 | Cmaj7 | Cmaj7 |
-
-### Comping Pattern
-Beat 1: bass note  
-Beat 2-and: chord stab  
-Beat 4: light upstroke
-
-### Solo Drill
-Only use chord tones for one chorus:
-Cmaj7: C E G B  
-G7: G B D F  
-Am7: A C E G  
-Fmaj7: F A C E  
-
-### Strumming Tips
-- Keep right hand moving.
-- Accent 2 and 4.
-- For pop: lighter sustained strums.
-- For funk: shorter muted strums.
-"""
-    return f"""
-# Practice Sheet: {song}
-## Guitar — {level_header(level)}
-
-### Advanced Chord Map
-| Cmaj9 | E7#9 | Am9 | Gm9 C13 |
-| Fmaj9 | Fm9 Bb13 | Em9 A13 | Dm9 G13 |
-
-### Advanced Tasks
-- Shell voicings only.
-- Drop-2 voicings on top four strings.
-- Chord melody with melody note on top.
-- Chorus 1: chord tones only.
-- Chorus 2: chromatic approaches.
-- Chorus 3: motif development.
-"""
-
-def wind_adaptive_sheet(song, instrument, level, style, focus, history_summary):
-    if instrument == "Flute":
-        notes = "G4 A4 B4 C5 | D5 C5 B4 A4 | G4 B4 D5 C5 | B4 A4 G4"
-        reminder = "Use steady air and avoid squeezing the embouchure."
-    elif instrument == "Trumpet":
-        notes = "C4 D4 E4 F4 | G4 F4 E4 D4 | C4 E4 G4 F4 | E4 D4 C4"
-        reminder = "Use air support, avoid mouthpiece pressure, and rest often."
-    else:
-        notes = "D4 E4 F4 G4 | A4 G4 F4 E4 | D4 F4 A4 G4 | F4 E4 D4"
-        reminder = "Use full tone, clear articulation, and stable intonation."
-
-    if level == "Beginner":
-        return f"""
-# Practice Sheet: {song}
-## {instrument} — {level_header(level)}
-
-### Written Note Exercise
-{notes}
-
-### Rhythm
-All quarter notes first.
-
-### Articulation
-Tongue each note clearly: TA TA TA TA.
-
-### Practice Steps
-1. Say note names.
-2. Clap rhythm.
-3. Play slowly.
-4. Add phrase shape.
-5. Record one take.
-
-### Tone Reminder
-{reminder}
-"""
-    if level == "Intermediate":
-        return f"""
-# Practice Sheet: {song}
-## {instrument} — {level_header(level)}
-
-### Melody Study
-{notes}
-
-### Variation
-Play the same notes as:
-- quarter notes
-- eighth notes
-- slurred pairs
-- tongue two / slur two
-
-### Chord Tone Study
-| Dm7 | G7 | Cmaj7 | Cmaj7 |
-
-Dm7: D F A C  
-G7: G B D F  
-Cmaj7: C E G B  
-
-### Improvisation
-Use only chord tones for one chorus.
-"""
-    return f"""
-# Practice Sheet: {song}
-## {instrument} — {level_header(level)}
-
-### Advanced Etude
-{notes} | add chromatic approaches into target notes
-
-### Guide Tone Study
-| Dm7 | G7 | Cmaj7 | A7alt |
-| Dm7 | G7 | Cmaj7 | Cmaj7 |
-
-### Scale Colors
-- Minor 7: Dorian
-- Dominant 7: Mixolydian / altered color
-- Major 7: major scale / lydian color
-- Klezmer/freygish: lowered 2nd and raised 3rd color
-"""
-
-def voice_adaptive_sheet(song, level, style, focus, history_summary):
-    return f"""
-# Practice Sheet: {song}
-## Voice — {level_header(level)}
-
-### Vocal Melody Practice
-Sing on “la” first, then use words later.
-
-### Pitch Exercise
-1–2–3–5–3–2–1  
-Repeat in 3 comfortable keys.
-
-### Breath Marks
-Mark breaths before singing the full phrase.
-
-### Focus
-{focus}
-"""
-
-def general_adaptive_sheet(song, instrument, level, style, focus, history_summary):
-    return f"""
-# Practice Sheet: {song}
-## {instrument} — {level_header(level)}
-
-### Melody
-Learn the melody in 2-measure chunks.
-
-### Harmony
-Practice roots first, then chord tones.
-
-### Rhythm
-Clap before playing.
-
-### Focus
-{focus}
+# {title} — Practice-Style Sheet
+
+Artist: {artist}  
+Style: {style}  
+Instrument: {instrument}  
+Level: {level}
+
+## Important
+This is not copyrighted sheet music. It is a practice-style exercise inspired by the selected song/style.
+
+## Practice Plan
+- Beginner: learn the basic pulse, simple chords, and short melody fragments.
+- Intermediate: add chord tones, section loops, and rhythmic variation.
+- Advanced: add reharmonization ideas, improvisation, and arrangement choices.
+
+## Instrument Focus
+- Piano: RH melody-style phrase + LH chord roots.
+- Guitar: strumming pattern + chord-change loops.
+- Sax/Flute/Trumpet: melody fragments + chord-tone drills.
+- Voice: pitch matching + phrase shaping.
+
+## Suggested Work
+1. Listen to the song.
+2. Identify verse/chorus feel.
+3. Practice a short original exercise in that style.
+4. Record one take and write what needs improvement.
 """
 
 
 # ============================================================
-# REGULAR MUSIC NOTATION / ABCJS RENDERING
+# TRANSPOSE + FULL CHORD CHART HELPERS
 # ============================================================
 
-def abc_notation_for_player(song, instrument, level, style):
-    title = f"{song} - Practice Notation"
-    tempo = 72 if level == "Beginner" else 92 if level == "Intermediate" else 116
+CHROMATIC_SHARPS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+FLAT_TO_SHARP = {
+    "Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#",
+    "Cb": "B", "Fb": "E", "E#": "F", "B#": "C"
+}
 
-    if instrument == "Piano":
-        if level == "Beginner":
-            return f"""X:1
-T:{title}
-C:Original practice-version exercise
-M:4/4
-L:1/4
-Q:1/4={tempo}
-K:C
-V:RH clef=treble name="Right Hand"
-V:LH clef=bass name="Left Hand"
-[V:RH] C D E G | E D C G, | A, C E D | C4 |
-[V:LH] C,,4 | G,,4 | A,,4 | F,,4 |
-"""
-        if level == "Intermediate":
-            return f"""X:1
-T:{title}
-C:Original practice-version exercise
-M:4/4
-L:1/4
-Q:1/4={tempo}
-K:C
-V:RH clef=treble name="Right Hand"
-V:LH clef=bass name="Left Hand"
-[V:RH] C D E G | A G E D | C E G A | G E D C |
-[V:LH] [C,,E,,B,,]4 | [G,,F,B,]4 | [A,,G,C]4 | [F,,E,A,]4 |
-"""
-        return f"""X:1
-T:{title}
-C:Original advanced practice-version exercise
-M:4/4
-L:1/8
-Q:1/4={tempo}
-K:C
-V:RH clef=treble name="Right Hand"
-V:LH clef=bass name="Left Hand"
-[V:RH] C D E G A G E D | C E G B A G E D | F A c B A G F E | D F A c B A G F |
-[V:LH] [E,,B,,D,]4 [G,,D,F,]4 | [G,,C,E,]4 [B,,F,A,]4 | [A,,E,G,]4 [D,,A,,C]4 | [G,,F,B,]4 [C,,E,,B,,]4 |
-"""
+COMMON_KEYS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
 
-    if instrument == "Flute":
-        return f"""X:1
-T:{title}
-C:Original flute practice exercise
-M:4/4
-L:1/4
-Q:1/4={tempo}
-K:G
-V:Flute clef=treble name="Flute"
-[V:Flute] G A B c | d c B A | G B d c | B A G2 |
-"""
+def normalize_root(root):
+    return FLAT_TO_SHARP.get(root, root)
 
-    if instrument == "Trumpet":
-        return f"""X:1
-T:{title}
-C:Original trumpet practice exercise
-M:4/4
-L:1/4
-Q:1/4={tempo}
-K:C
-V:Trumpet clef=treble name="Trumpet"
-[V:Trumpet] C D E F | G F E D | C E G F | E D C2 |
-"""
+def split_chord_root(chord):
+    chord = str(chord).strip()
+    if not chord:
+        return "", ""
+    if len(chord) >= 2 and chord[1] in ["b", "#"]:
+        return chord[:2], chord[2:]
+    return chord[:1], chord[1:]
 
-    if instrument == "Saxophone":
-        return f"""X:1
-T:{title}
-C:Original saxophone practice exercise
-M:4/4
-L:1/4
-Q:1/4={tempo}
-K:Dm
-V:Sax clef=treble name="Saxophone"
-[V:Sax] D E F G | A G F E | D F A G | F E D2 |
-"""
+def transpose_root(root, semitones):
+    root = normalize_root(root)
+    if root not in CHROMATIC_SHARPS:
+        return root
+    idx = CHROMATIC_SHARPS.index(root)
+    return CHROMATIC_SHARPS[(idx + semitones) % 12]
 
-    if instrument == "Guitar":
-        return f"""X:1
-T:{title}
-C:Original guitar melody practice exercise
-M:4/4
-L:1/4
-Q:1/4={tempo}
-K:C
-V:Guitar clef=treble name="Guitar"
-[V:Guitar] C D E G | E D C G, | A, C E D | C4 |
-"""
-
-    return f"""X:1
-T:{title}
-C:Original practice exercise
-M:4/4
-L:1/4
-Q:1/4={tempo}
-K:C
-V:Melody clef=treble name="Melody"
-[V:Melody] C D E G | E D C G, | A, C E D | C4 |
-"""
-
-def render_abc_notation(abc_text, height=420):
-    escaped = abc_text.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
-    html = f"""
-    <html>
-    <head>
-      <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
-      <style>
-        body {{ margin: 0; padding: 0; font-family: Arial, sans-serif; }}
-        #paper {{ background: white; padding: 12px; border-radius: 8px; }}
-      </style>
-    </head>
-    <body>
-      <div id="paper"></div>
-      <script>
-        const abc = `{escaped}`;
-        ABCJS.renderAbc("paper", abc, {{
-          responsive: "resize",
-          add_classes: true,
-          staffwidth: 720,
-          scale: 1.0
-        }});
-      </script>
-    </body>
-    </html>
+def transpose_chord(chord, semitones):
     """
-    components.html(html, height=height, scrolling=True)
+    Transposes chord names like C, Am, Fmaj7, Bb7, D/F#.
+    Uses sharps for output to keep it simple.
+    """
+    chord = str(chord).strip()
+    if not chord:
+        return chord
 
-# Sidebar
+    if "/" in chord:
+        main, bass = chord.split("/", 1)
+        return transpose_chord(main, semitones) + "/" + transpose_chord(bass, semitones)
+
+    root, suffix = split_chord_root(chord)
+    new_root = transpose_root(root, semitones)
+    return new_root + suffix
+
+def semitone_distance(from_key, to_key):
+    from_key = normalize_root(from_key)
+    to_key = normalize_root(to_key)
+    if from_key not in CHROMATIC_SHARPS or to_key not in CHROMATIC_SHARPS:
+        return 0
+    return (CHROMATIC_SHARPS.index(to_key) - CHROMATIC_SHARPS.index(from_key)) % 12
+
+def extract_key_root(key_text):
+    if not key_text:
+        return "C"
+    first = str(key_text).split()[0].strip()
+    first = first.replace("major", "").replace("minor", "").strip()
+    if first.endswith("m") and len(first) <= 3:
+        first = first[:-1]
+    return first if first else "C"
+
+def transpose_progression(chords, from_key, to_key):
+    steps = semitone_distance(extract_key_root(from_key), to_key)
+    return [transpose_chord(ch, steps) for ch in chords]
+
+def full_chord_chart_for_selected_song(title, data, transpose_to=None):
+    """
+    Always shows all chord sections for a song and optionally transposes them.
+    """
+    original_key = data.get("key", "C")
+    to_key = transpose_to or extract_key_root(original_key)
+    steps = semitone_distance(extract_key_root(original_key), to_key)
+
+    out = []
+    out.append(f"## Full Chord Chart: {title}")
+    out.append(f"**Original key:** {original_key}")
+    out.append(f"**Displayed key:** {to_key}")
+    out.append(f"**Artist/source:** {data.get('artist', data.get('composer', 'Unknown'))}")
+
+    sections = data.get("sections", {})
+    if not sections and data.get("progression"):
+        sections = {"Main Form": data.get("progression", [])}
+
+    for section, chords in sections.items():
+        transposed = [transpose_chord(ch, steps) for ch in chords]
+        out.append(f"\n### {section}")
+        out.append("| " + " | ".join(transposed) + " |")
+
+    if data.get("progression"):
+        out.append("\n### Core Loop")
+        out.append("| " + " | ".join([transpose_chord(ch, steps) for ch in data.get("progression", [])]) + " |")
+
+    return "\n".join(out)
+
+def chord_chart_from_uploaded_analysis(analysis, transpose_to=None):
+    """
+    Full chord chart by detected sections for uploaded MusicXML/MIDI analysis.
+    """
+    if not analysis:
+        return "No uploaded analysis available."
+
+    measures = analysis.get("measures", [])
+    if not measures:
+        return "No measures found."
+
+    original_key = infer_key_from_notes(analysis.get("notes", []))
+    if original_key == "Unknown":
+        original_key = "C"
+    to_key = transpose_to or original_key
+    steps = semitone_distance(extract_key_root(original_key), to_key)
+
+    inferred = infer_chords_from_measure_notes(measures)
+    sections = detect_sections(analysis)
+
+    out = []
+    out.append(f"## Full Chord Chart: {analysis.get('title', 'Uploaded Song')}")
+    out.append(f"**Estimated original key:** {original_key}")
+    out.append(f"**Displayed key:** {to_key}")
+
+    for sec in sections:
+        out.append(f"\n### {sec['label']} — measures {sec['start']}–{sec['end']}")
+        sec_chords = []
+        for m in measures:
+            if sec["start"] <= m["number"] <= sec["end"]:
+                if m.get("chords"):
+                    ch = m["chords"][0]
+                else:
+                    idx = m["number"] - 1
+                    ch = inferred[idx] if idx < len(inferred) else ""
+                if ch:
+                    sec_chords.append(transpose_chord(ch, steps))
+        if sec_chords:
+            out.append("| " + " | ".join(sec_chords) + " |")
+        else:
+            out.append("_No chords detected in this section._")
+
+    return "\n".join(out)
+
+def transposed_chords_for_backing(chords, from_key, to_key):
+    steps = semitone_distance(extract_key_root(from_key), to_key)
+    return [(transpose_chord(ch, steps), bars) for ch, bars in chords]
+
+
+# ============================================================
+# SONG-FITTED ADAPTIVE PRACTICE SHEET GENERATOR
+# ============================================================
+
+def current_song_context_for_sheet():
+    analysis = st.session_state.get("uploaded_analysis", None)
+    if analysis:
+        key = infer_key_from_notes(analysis.get("notes", []))
+        if key == "Unknown":
+            key = "C"
+        sections = detect_sections(analysis)
+        try:
+            chords_text = chord_chart_from_uploaded_analysis(analysis, st.session_state.get("transpose_to_key", key))
+        except Exception:
+            chords_text = make_song_aware_chart(analysis, instrument, level)
+
+        melody_lines = []
+        for m in analysis.get("measures", [])[:16]:
+            notes = [n["note"] for n in m.get("notes", [])[:12]]
+            if notes:
+                melody_lines.append(f"Measure {m['number']}: " + " ".join(notes))
+
+        try:
+            progression = [c for c, b in accompaniment_from_analysis(analysis)[:16]]
+        except Exception:
+            progression = ["C", "G", "Am", "F"]
+
+        return {
+            "source": "uploaded",
+            "title": analysis.get("title", "Uploaded Song"),
+            "artist": "User-uploaded file",
+            "key": key,
+            "sections": sections,
+            "chords_text": chords_text,
+            "melody_text": "\\n".join(melody_lines) if melody_lines else "No melody extracted.",
+            "progression": progression
+        }
+
+    selected_title = st.session_state.get("searched_song_title", "")
+    if "SONG_CATALOG" in globals() and selected_title in SONG_CATALOG:
+        data = SONG_CATALOG[selected_title]
+        try:
+            display_key = st.session_state.get("transpose_to_key", extract_key_root(data.get("key", "C")))
+            chart = full_chord_chart_for_selected_song(selected_title, data, display_key)
+        except Exception:
+            chart = "| " + " | ".join(data.get("progression", [])) + " |"
+
+        return {
+            "source": "catalog",
+            "title": selected_title,
+            "artist": data.get("artist", ""),
+            "key": data.get("key", "C"),
+            "sections": [{"label": sec, "start": None, "end": None} for sec in data.get("sections", {}).keys()],
+            "chords_text": chart,
+            "melody_text": "Practice-style melody fragments only. Exact copyrighted melody is not reproduced.",
+            "progression": data.get("progression", ["C", "G", "Am", "F"])
+        }
+
+    if "PUBLIC_DOMAIN_SONGS" in globals():
+        pd_title = list(PUBLIC_DOMAIN_SONGS.keys())[0]
+        pd_song = PUBLIC_DOMAIN_SONGS[pd_title]
+        try:
+            display_key = st.session_state.get("transpose_to_key", pd_song.get("key", "C"))
+            chart = full_chord_chart_for_selected_song(pd_title, pd_song, display_key)
+        except Exception:
+            chart = "| " + " | ".join(pd_song.get("progression", [])) + " |"
+        return {
+            "source": "public_domain",
+            "title": pd_title,
+            "artist": pd_song.get("composer", "Traditional"),
+            "key": pd_song.get("key", "C"),
+            "sections": [{"label": "Main Theme", "start": None, "end": None}],
+            "chords_text": chart,
+            "melody_text": pd_song.get("melody_notes", ""),
+            "progression": pd_song.get("progression", ["C", "G", "Am", "F"])
+        }
+
+    return {
+        "source": "fallback",
+        "title": "Current Song",
+        "artist": "",
+        "key": "C",
+        "sections": [{"label": "Main Form", "start": None, "end": None}],
+        "chords_text": "| C | G | Am | F |",
+        "melody_text": "C D E G | E D C G | A C E D | C",
+        "progression": ["C", "G", "Am", "F"]
+    }
+
+def song_fitted_exercises(song_ctx, instrument, level, focus):
+    title = song_ctx["title"]
+    progression = song_ctx.get("progression", []) or ["C", "G", "Am", "F"]
+    first_chords = progression[:4]
+    hard_transition = " → ".join(first_chords[:2]) if len(first_chords) >= 2 else "first chord change"
+
+    if level == "Beginner":
+        complexity = f"""
+## Beginner Song-Fitted Exercises for {title}
+
+### 1. Song Form
+- Work only on the first section.
+- Count 4 beats per measure.
+- Say the chord names out loud before playing.
+
+### 2. Chord Loop
+Practice this exact loop slowly:
+
+| {" | ".join(first_chords)} |
+
+### 3. Hard Transition
+Loop this transition 10 times:
+
+**{hard_transition}**
+
+### 4. Melody
+Use the extracted/public-domain melody notes shown below.
+Play only 2 measures at a time.
+
+### 5. Tempo
+Start at 60 BPM.
+Do not speed up until the chord changes are smooth.
+"""
+    elif level == "Intermediate":
+        complexity = f"""
+## Intermediate Song-Fitted Exercises for {title}
+
+### 1. Section Work
+- Practice each section separately.
+- Then connect section A into section B.
+
+### 2. Full Chord Loop
+Practice the actual detected/selected progression:
+
+| {" | ".join(progression[:12])} |
+
+### 3. Chord Tone Exercise
+For every chord, play:
+- root
+- 3rd
+- 5th
+- 7th if available
+
+### 4. Transition Drill
+Pick the weakest two-measure transition and loop it 5 times.
+
+### 5. Musical Layer
+Add dynamics, phrasing, or articulation after the notes are secure.
+"""
+    else:
+        complexity = f"""
+## Advanced Song-Fitted Exercises for {title}
+
+### 1. Full Form
+Play the whole song form using the detected/selected sections.
+
+### 2. Harmonic Depth
+Use the full chord chart below and identify:
+- tonic areas
+- dominant resolutions
+- repeated progressions
+- possible reharmonization points
+
+### 3. Transposition
+Play the progression in the selected display key and then one additional key.
+
+### 4. Improvisation / Variation
+Create one chorus using:
+- chord tones only
+- then approach notes
+- then rhythmic variation
+
+### 5. Performance Version
+Record a full take with backing track and compare it to yesterday.
+"""
+
+    if instrument == "Piano":
+        instrument_block = """
+## Piano-Specific
+- Right hand: play the song melody/extracted melody.
+- Left hand: play the exact chord roots from the chart.
+- Then use root + fifth.
+- Then use inversions or shell voicings.
+- Keep the melody louder than the accompaniment.
+"""
+    elif instrument == "Guitar":
+        instrument_block = """
+## Guitar-Specific
+- Strum the exact chord progression first.
+- Practice two-chord transitions.
+- Add a strumming pattern only after changes are clean.
+- Then find melody fragments on the top two strings.
+- Advanced: turn one section into chord melody.
+"""
+    elif instrument in ["Saxophone", "Flute", "Trumpet"]:
+        instrument_block = f"""
+## {instrument}-Specific
+- Play the extracted melody notes slowly.
+- Then play roots of each chord.
+- Then play chord tones over each section.
+- Add articulation and breath marks.
+- Advanced: improvise using chord tones over the progression.
+"""
+    else:
+        instrument_block = """
+## Instrument-Specific
+- Learn melody first.
+- Then chord roots.
+- Then full form.
+- Then record and review.
+"""
+
+    return complexity + "\\n" + instrument_block
+
+def generate_song_fitted_adaptive_sheet(song_ctx, instrument, level, focus):
+    section_lines = []
+    for s in song_ctx.get("sections", []):
+        if s.get("start") is not None:
+            section_lines.append(f"- {s['label']}: measures {s['start']}–{s['end']}")
+        else:
+            section_lines.append(f"- {s['label']}")
+    sections_text = "\\n".join(section_lines) if section_lines else "- Main Form"
+
+    return f"""
+# Adaptive Practice Sheet — Fitted to {song_ctx['title']}
+
+**Song/source:** {song_ctx['title']}  
+**Artist/composer:** {song_ctx.get('artist','')}  
+**Key/source key:** {song_ctx.get('key','')}  
+**Instrument:** {instrument}  
+**Level:** {level}  
+**Focus:** {focus}
+
+## Song Sections
+{sections_text}
+
+## Full Chord Chart
+{song_ctx.get('chords_text','')}
+
+## Melody / Extracted Notes
+{song_ctx.get('melody_text','')}
+
+{song_fitted_exercises(song_ctx, instrument, level, focus)}
+
+## Daily Progression Rule
+Each time you return to this song, work on:
+1. the same section from yesterday,
+2. one harder transition,
+3. one higher-level musical detail,
+4. one recorded take.
+"""
+
+# ============================================================
+# UI
+# ============================================================
+
+if "uploaded_analysis" not in st.session_state:
+    st.session_state.uploaded_analysis = None
+if "selected_chords" not in st.session_state:
+    st.session_state.selected_chords = [("C",1), ("G",1), ("Am",1), ("F",1)]
+if "selected_original_key" not in st.session_state:
+    st.session_state.selected_original_key = "C"
+if "transpose_to_key" not in st.session_state:
+    st.session_state.transpose_to_key = "C"
+
 st.sidebar.title("Setup")
+instrument = st.sidebar.selectbox("Instrument", INSTRUMENTS)
+level = st.sidebar.selectbox("Level", ["Beginner", "Intermediate", "Advanced"])
+focus = st.sidebar.selectbox("Focus", SKILLS[instrument])
+minutes = st.sidebar.slider("Practice minutes", 10, 120, 30, 5)
+st.sidebar.subheader("Transpose")
+transpose_to_key = st.sidebar.selectbox("Transpose/display key", COMMON_KEYS, index=COMMON_KEYS.index(st.session_state.get("transpose_to_key", "C")) if st.session_state.get("transpose_to_key", "C") in COMMON_KEYS else 0)
+st.session_state.transpose_to_key = transpose_to_key
 
 st.sidebar.subheader("OpenAI API Key")
-st.sidebar.caption("For testing, paste your API key here. It is only stored for this app session.")
-typed_key = st.sidebar.text_input(
-    "Enter OpenAI API Key",
-    value=st.session_state.get("openai_api_key_ui", ""),
-    type="password",
-    help="This avoids using Streamlit Secrets while testing."
-)
+typed_key = st.sidebar.text_input("Enter OpenAI API Key", value=st.session_state.openai_api_key_ui, type="password")
 if typed_key:
     st.session_state.openai_api_key_ui = typed_key.strip()
     st.sidebar.success("API key entered for this session.")
 else:
-    st.sidebar.info("No API key entered. App will use fallback analysis.")
+    st.sidebar.info("Optional. Leave blank to use non-AI mode.")
 
-
-instrument=st.sidebar.selectbox("Instrument",list(SKILLS.keys()))
-level=st.sidebar.selectbox("Level",["Beginner","Intermediate","Advanced"])
-style=st.sidebar.selectbox("Style",list(STYLE_SEED_SONGS.keys()))
-minutes=st.sidebar.slider("Practice minutes",10,120,30,5)
-skills=st.sidebar.multiselect("Skills",SKILLS[instrument],default=SKILLS[instrument][:3])
-custom=st.sidebar.text_input("Add custom skill")
-if custom: skills.append(custom)
-focus=st.sidebar.selectbox("Main focus",skills or SKILLS[instrument])
-
-if "song" not in st.session_state: st.session_state.song="Autumn Leaves"
-if "artist" not in st.session_state: st.session_state.artist=""
-if "bpm" not in st.session_state: st.session_state.bpm=100
-if "tracks" not in st.session_state: st.session_state.tracks=[]
-if "openai_api_key_ui" not in st.session_state: st.session_state.openai_api_key_ui = ""
-
-tabs=st.tabs(["Practice Memory","Find / Analyze Any Song","Daily Plan","Adaptive Practice Sheet","Backing Track","Record & Analyze","Multitrack","Log"])
+tabs = st.tabs([
+    "Practice Memory",
+    "Song Search",
+    "Public-Domain Songs",
+    "Song-Aware MIDI/MusicXML",
+    "Section Playback / Backing Track",
+    "Practice Sheet",
+    "Log"
+])
 
 with tabs[0]:
     st.header("Practice Memory")
-    logs=recent_logs(12)
+    if st.button("Reset Practice Memory to Default"):
+        save_history({"logs": []})
+        st.session_state.uploaded_analysis = None
+        st.session_state.selected_chords = [("C",1), ("G",1), ("Am",1), ("F",1)]
+        st.success("Practice memory reset to default.")
+    logs = recent_logs(50)
     if logs:
-        st.dataframe(pd.DataFrame(logs),use_container_width=True)
-        last=logs[-1]
-        st.success(f"Continue from last time: {last.get('song')} — focus on {last.get('focus')}.")
+        st.dataframe(pd.DataFrame(logs), use_container_width=True)
     else:
-        st.info("No history yet. The app will adapt once you save logs.")
+        st.info("No practice logs yet.")
+
 
 with tabs[1]:
-    st.header("Find / Analyze Any Song")
-    song=st.text_input("Song title",st.session_state.song)
-    artist=st.text_input("Composer / singer / artist",st.session_state.artist)
-    col1,col2,col3=st.columns(3)
-    if col1.button("Search public song database"):
-        local_matches = find_song_in_catalog(song, artist)
-        if local_matches:
-            st.success("Found matches in the app catalog:")
-            for i, (t, data) in enumerate(local_matches, 1):
-                st.write(f"{i}. **{t}** — {data.get('artist','')}")
-                with st.expander(f"Practice materials for {t}"):
-                    st.markdown(song_material_for(t, data, instrument, level))
-        else:
-            res=search_musicbrainz(song,artist)
-            if res:
-                st.info("Found public metadata matches:")
-                for i,r in enumerate(res,1): st.write(f"{i}. **{r['title']}** — {r['artist']}")
-            else:
-                st.warning("No metadata found. AI analysis can still create a practice-version chart.")
-    if col2.button("Use this song"):
-        st.session_state.song=song; st.session_state.artist=artist; st.success(f"Selected {song}")
-    if col3.button("Generate deep AI practice analysis"):
-        st.markdown(ai_song_report(song,artist,style,instrument,level,focus))
-        add_log({"date":str(date.today()),"song":song,"instrument":instrument,"focus":focus,"rating":6,"note":"Generated song analysis"})
-    if not get_client():
-        st.warning("OPENAI_API_KEY not connected. Paste your key in the sidebar OpenAI API Key box for true AI custom analysis.")
-    st.subheader("Style song examples")
-    st.write(", ".join(STYLE_SEED_SONGS[style]))
-
-    selected_matches = find_song_in_catalog(song, artist)
-    if selected_matches:
-        st.subheader("Selected Song Practice Sheet")
-        t, data = selected_matches[0]
-        st.markdown(song_material_for(t, data, instrument, level))
-
-    st.subheader("Practice Sheet / Written Notes")
-    st.caption("These are original practice-version note exercises, not copyrighted sheet music.")
-    sheet = song_practice_sheet_music(song, instrument)
-    if sheet:
-        st.markdown(sheet)
-    else:
-        st.info("Choose Piano, Flute, or Trumpet to see written-note practice sheets.")
-
-with tabs[2]:
-    st.header("Daily Practice Plan")
-    logs=recent_logs(10)
-    if logs:
-        last=logs[-1]
-        st.success(f"Recommended continuation: work on **{last.get('song')}**, especially **{last.get('focus')}**.")
-    warm=max(5,int(minutes*.2)); tech=max(5,int(minutes*.3)); songwork=max(5,int(minutes*.35)); review=max(3,minutes-warm-tech-songwork)
-    st.write(f"**Warmup — {warm} min:** connect warmup to {focus}.")
-    st.write(f"**Technique — {tech} min:** slow metronome work.")
-    st.write(f"**Song work — {songwork} min:** isolate one section of {st.session_state.song}.")
-    st.write(f"**Record/review — {review} min:** record one take and write one weakness.")
-    rating=st.slider("How hard does it feel?",1,10,6)
-    note_summary=history_text()
-    st.subheader("Targeted exercises")
-    for area in weak_areas(focus,rating,note_summary):
-        st.markdown(f"### {area}")
-        for e in exercises(area,st.session_state.song): st.write(f"- {e}")
-    extra_instr = instrument_specific_exercises(instrument, st.session_state.song)
-    if extra_instr:
-        st.markdown(extra_instr)
-
-    note_ex = written_note_exercises(instrument, st.session_state.song)
-    if note_ex:
-        st.markdown(note_ex)
-
-    sheet_ex = song_practice_sheet_music(st.session_state.song, instrument)
-    if sheet_ex:
-        st.markdown(sheet_ex)
-
-
-with tabs[3]:
-    st.header("Adaptive Practice Sheet Generator")
+    st.header("Song Search")
     st.write(
-        "This creates an original practice-version sheet based on the selected song, instrument, level, focus, and previous history. "
-        "It does not copy copyrighted sheet music."
+        "Type a song title, artist, or style. A dropdown list of similar songs will appear. "
+        "This helps the user choose the song before generating practice materials or backing tracks."
     )
 
-    sheet_song = st.text_input("Song for practice sheet", st.session_state.song, key="sheet_song")
-    sheet_artist = st.text_input("Artist/composer", st.session_state.artist, key="sheet_artist")
-    sheet_level = st.selectbox("Sheet difficulty level", ["Beginner", "Intermediate", "Advanced"], index=["Beginner","Intermediate","Advanced"].index(level))
-    sheet_focus = st.selectbox("Sheet focus", skills or SKILLS[instrument], key="sheet_focus")
+    selected_title, selected_data = render_song_search_dropdown("main_song_search")
 
-    if st.button("Create adaptive practice sheet"):
-        sheet = adaptive_sheet_for_player(
-            song=sheet_song,
-            artist=sheet_artist,
-            instrument=instrument,
-            level=sheet_level,
-            style=style,
-            focus=sheet_focus,
-            history_summary=history_text()
-        )
-        st.markdown(sheet)
+    if selected_title and selected_data:
+        st.subheader("Selected Song Preview")
+        st.write(f"**Song:** {selected_title}")
+        st.write(f"**Artist:** {selected_data.get('artist','')}")
+        st.write(f"**Style:** {selected_data.get('style','')}")
 
-        st.subheader("Regular Music Notation")
-        st.caption("This is original practice-version notation rendered on a staff, not copyrighted sheet music from the selected song.")
-        abc_text = abc_notation_for_player(sheet_song, instrument, sheet_level, style)
-        render_abc_notation(abc_text)
+        st.markdown(simple_selected_song_practice_sheet(selected_title, selected_data, instrument, level))
+        # If this song exists in the detailed catalog, always show all chord sections and allow transposition.
+        if "SONG_CATALOG" in globals() and selected_title in SONG_CATALOG:
+            st.subheader("Full Chord Chart / Transposed")
+            st.markdown(full_chord_chart_for_selected_song(selected_title, SONG_CATALOG[selected_title], st.session_state.transpose_to_key))
 
-        st.download_button(
-            "Download notation as ABC file",
-            data=abc_text,
-            file_name=f"{sheet_song.replace(' ','_')}_{instrument}_{sheet_level}_notation.abc",
-            mime="text/plain"
-        )
+        if st.button("Use this song idea for practice memory", key="save_selected_song_to_memory"):
+            add_log({
+                "date": str(date.today()),
+                "instrument": instrument,
+                "focus": focus,
+                "rating": 6,
+                "note": f"Selected song from dropdown: {selected_title} by {selected_data.get('artist','')}"
+            })
+            st.success("Saved selected song to practice memory.")
 
-        st.download_button(
-            "Download practice sheet as text",
-            data=sheet,
-            file_name=f"{sheet_song.replace(' ','_')}_{instrument}_{sheet_level}_practice_sheet.txt",
-            mime="text/plain"
-        )
 
-        add_log({
-            "date": str(date.today()),
-            "song": sheet_song,
-            "instrument": instrument,
-            "focus": sheet_focus,
-            "rating": 6,
-            "note": f"Generated adaptive {sheet_level} practice sheet"
-        })
+with tabs[2]:
+    st.header("Public-Domain Songs")
+    song_name = st.selectbox("Choose public-domain song", list(PUBLIC_DOMAIN_SONGS.keys()))
+    song = PUBLIC_DOMAIN_SONGS[song_name]
+    st.write(f"**Composer/source:** {song['composer']}")
+    st.write(f"**Key:** {song['key']}")
+    st.write("**Chords:** | " + " | ".join(transpose_progression(song["progression"], song["key"], st.session_state.transpose_to_key)) + " |")
+    st.subheader("Full Chord Chart / Transposed")
+    st.markdown(full_chord_chart_for_selected_song(song_name, song, st.session_state.transpose_to_key))
+    st.write("**Melody notes:** " + song["melody_notes"])
+    st.subheader("Regular Notation")
+    abc = public_domain_abc(song_name, instrument, level)
+    render_abc(abc)
+    if st.button("Use this public-domain song for backing track"):
+        st.session_state.selected_original_key = song["key"]
+        st.session_state.selected_chords = [(ch,1) for ch in transpose_progression(song["progression"], song["key"], st.session_state.transpose_to_key)]
+        st.success(f"Backing track will use this public-domain song progression in {st.session_state.transpose_to_key}.")
 
+with tabs[3]:
+    st.header("Song-Aware MIDI/MusicXML Integration")
+    st.write("Upload a MIDI, MusicXML, or MXL file that you own, created, licensed, or are allowed to use.")
+    uploaded = st.file_uploader("Upload MIDI / MusicXML / MXL", type=["mid","midi","xml","musicxml","mxl"])
+    if uploaded is not None:
+        fname = uploaded.name.lower()
+        if fname.endswith((".xml",".musicxml",".mxl")):
+            analysis = parse_musicxml_detailed(uploaded)
+        else:
+            analysis = parse_midi_detailed(uploaded)
+
+        if "error" in analysis:
+            st.error(analysis["error"])
+        else:
+            st.session_state.uploaded_analysis = analysis
+            st.success(analysis["summary"])
+
+            chart = make_song_aware_chart(analysis, instrument, level)
+            st.markdown(chart)
+
+            st.subheader("Full Chord Chart / Transposed")
+            st.markdown(chord_chart_from_uploaded_analysis(analysis, st.session_state.transpose_to_key))
+
+            abc = abc_from_analysis(analysis, instrument, level)
+            st.subheader("Extracted Melody Notation")
+            render_abc(abc)
+
+            st.download_button("Download song-aware chart", chart, file_name="song_aware_chart.txt")
+            st.download_button("Download extracted notation ABC", abc, file_name="extracted_notation.abc")
+
+            original_key = infer_key_from_notes(analysis.get("notes", []))
+            if original_key == "Unknown":
+                original_key = "C"
+            st.session_state.selected_original_key = original_key
+            raw_chords = accompaniment_from_analysis(analysis)
+            st.session_state.selected_chords = transposed_chords_for_backing(raw_chords, original_key, st.session_state.transpose_to_key)
+            st.info(f"Accompaniment chords generated from uploaded file and transposed to {st.session_state.transpose_to_key}.")
 
 with tabs[4]:
-    st.header("Backing Track Studio")
-    st.write("Higher-quality synthesized band: fuller bass, more realistic drums, chord pads, comping patterns, stereo width, and light reverb. For true real-band audio, the next upgrade would use MIDI soundfonts or an AI music API.")
-    bpm=st.slider("BPM",50,180,st.session_state.bpm,5)
-    choruses=st.slider("Choruses",1,8,3)
-    count=st.checkbox("Count-in",True)
-    if st.button("Generate backing track"):
-        wav=backing_track(style,instrument,bpm,choruses,count)
-        st.session_state.bpm=bpm
-        st.audio(wav,format="audio/wav")
-        st.download_button("Download WAV",wav,file_name=f"{style}_{bpm}bpm.wav",mime="audio/wav")
+    st.header("Section-Based Playback / Real Accompaniment Generation")
+    analysis = st.session_state.uploaded_analysis
+    selected_section = None
+    if analysis:
+        sections = detect_sections(analysis)
+        if sections:
+            labels = [f"{s['label']} — measures {s['start']}–{s['end']}" for s in sections]
+            label = st.selectbox("Choose section", labels)
+            selected_section = sections[labels.index(label)]
+            st.write(f"Selected: **{selected_section['label']}**, measures {selected_section['start']}–{selected_section['end']}")
+            section_chords_raw = accompaniment_from_analysis(analysis, selected_section)
+            original_key = infer_key_from_notes(analysis.get("notes", []))
+            if original_key == "Unknown":
+                original_key = "C"
+            section_chords = transposed_chords_for_backing(section_chords_raw, original_key, st.session_state.transpose_to_key)
+            st.session_state.selected_chords = section_chords
+            st.write(f"Section chord loop in {st.session_state.transpose_to_key}: | " + " | ".join([c for c,b in section_chords]) + " |")
+    else:
+        st.info("Upload a MIDI/MusicXML file or select a public-domain song first.")
+
+    st.subheader("Generate Backing Track")
+
+    with st.expander("Optional: choose a song idea from dropdown"):
+        bt_title, bt_data = render_song_search_dropdown("backing_song_search")
+        if bt_title:
+            st.caption(
+                "This selects the song/style idea. For exact melody/chords, upload MIDI/MusicXML in the Song-Aware tab."
+            )
+
+    bpm = st.slider("BPM", 50, 180, 100, step=5)
+    choruses = st.slider("Choruses", 1, 8, 3)
+    st.write(f"Current chord loop in {st.session_state.transpose_to_key}: | " + " | ".join([c for c,b in st.session_state.selected_chords]) + " |")
+    if st.button("Generate accompaniment from current song/section"):
+        wav = backing_track_from_chords(st.session_state.selected_chords, bpm=bpm, choruses=choruses, count_in=True)
+        st.audio(wav, format="audio/wav")
+        st.download_button("Download backing track WAV", wav, file_name="song_aware_backing_track.wav", mime="audio/wav")
 
 with tabs[5]:
-    st.header("Record & Analyze")
-    bpm=st.number_input("Expected BPM",40,220,int(st.session_state.bpm),5)
-    rec=None
-    try: rec=st.audio_input("Record in app")
-    except Exception: st.caption("Direct recording may not be supported; upload instead.")
-    up=st.file_uploader("Upload recording",type=["wav","mp3","m4a","ogg"])
-    obj=rec or up
-    if obj: st.audio(obj)
-    if st.button("Analyze recording"):
-        m=analyze_audio(obj,bpm)
-        if "error" in m: st.error(m["error"])
-        else:
-            c1,c2,c3=st.columns(3)
-            c1.metric("Duration",f"{m['duration']:.1f}s"); c2.metric("Tempo",f"{m['tempo']:.1f}"); c3.metric("Tempo diff",f"{m['tempo_diff']:.1f}")
-            c4,c5,c6=st.columns(3)
-            c4.metric("Volume stability",f"{m['volume_stability']:.2f}"); c5.metric("Onsets/sec",f"{m['onset_density']:.2f}"); c6.metric("Median note",m["note"])
-            st.subheader("Practice feedback")
-            if m["tempo_diff"]>15: st.write("- Timing is far from target. Count/clap before playing.")
-            elif m["tempo_diff"]>5: st.write("- Timing drifts somewhat. Practice 10 BPM slower.")
-            else: st.write("- Tempo is close to target.")
-            if m["volume_stability"]<.65: st.write("- Tone/volume is uneven. Do sustained-note practice.")
-            if m["pitch_stability"] is not None and m["pitch_stability"]<.55: st.write("- Pitch stability needs work. Use tuner/drone.")
-        add_log({"date":str(date.today()),"song":st.session_state.song,"instrument":instrument,"focus":focus,"rating":6,"note":"Audio analyzed"})
+    st.header("Adaptive Practice Sheet")
+    st.write("This sheet now fits the actual selected/uploaded song context: sections, chords, melody/extracted notes, key, instrument, and level.")
+
+    song_ctx = current_song_context_for_sheet()
+    fitted_sheet = generate_song_fitted_adaptive_sheet(song_ctx, instrument, level, focus)
+    st.markdown(fitted_sheet)
+
+    st.download_button(
+        "Download song-fitted adaptive practice sheet",
+        data=fitted_sheet,
+        file_name=f"{song_ctx['title'].replace(' ','_')}_{instrument}_{level}_adaptive_sheet.txt",
+        mime="text/plain"
+    )
 
 with tabs[6]:
-    st.header("Multitrack Recorder")
-    name=st.text_input("Track name",f"Track {len(st.session_state.tracks)+1}")
-    ti=st.selectbox("Track instrument",list(SKILLS.keys()),key="ti")
-    tr=None
-    try: tr=st.audio_input("Record track")
-    except Exception: st.caption("Direct recording may not be supported; upload instead.")
-    tu=st.file_uploader("Upload track",type=["wav","mp3","m4a","ogg"],key="tu")
-    if st.button("Save track"):
-        obj=tr or tu
-        if obj:
-            st.session_state.tracks.append({"name":name,"instrument":ti,"audio":obj.getvalue()})
-            st.success("Track saved.")
-    for i,t in enumerate(st.session_state.tracks,1):
-        st.markdown(f"### {i}. {t['name']} — {t['instrument']}")
-        st.audio(t["audio"])
-    if st.button("Clear tracks"): st.session_state.tracks=[]
-
-with tabs[7]:
     st.header("Practice Log")
-    with st.form("log"):
-        d=st.date_input("Date",date.today())
-        s=st.text_input("Song",st.session_state.song)
-        f=st.text_input("Focus",focus)
-        r=st.slider("Rating",1,10,6)
-        n=st.text_area("Notes")
-        ok=st.form_submit_button("Save log")
-    if ok:
-        add_log({"date":str(d),"song":s,"instrument":instrument,"focus":f,"rating":r,"note":n})
-        st.success("Saved. Recommendations will use this history.")
-    logs=recent_logs(100)
-    if logs: st.dataframe(pd.DataFrame(logs),use_container_width=True)
+    with st.form("log_form"):
+        d = st.date_input("Date", date.today())
+        note = st.text_area("What did you practice?")
+        rating = st.slider("How did it feel?", 1, 10, 6)
+        submitted = st.form_submit_button("Save log")
+    if submitted:
+        add_log({"date": str(d), "instrument": instrument, "focus": focus, "rating": rating, "note": note})
+        st.success("Saved.")
