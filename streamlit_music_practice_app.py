@@ -1,3 +1,7 @@
+# VERSION: v33_fixed_genres_nameerror
+if "GENRES" not in globals():
+    GENRES = ["Jazz", "Pop", "Rock", "Funk", "Blues", "Classical"]
+
 # VERSION: v32_fixed_song_library_nameerror
 
 import streamlit as st
@@ -7,6 +11,9 @@ import numpy as np
 import io, json, wave
 from pathlib import Path
 from datetime import date
+
+
+GENRES = ["Jazz", "Pop", "Rock", "Funk", "Blues", "Classical"]
 
 st.set_page_config(page_title="Daniel Cohen AI Music Practice Coach", page_icon="🎵", layout="wide")
 st.title("🎵 Daniel Cohen AI MUSIC PRACTICE COACH")
