@@ -1,4 +1,4 @@
-# VERSION: v39_api_box_restored
+# VERSION: v40_song_picker_dropdown_restored
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -808,6 +808,222 @@ def render_recording_analysis_report(result, song, focus):
     for step in result["next_steps"]:
         st.write(f"- {step}")
 
+
+# -------------------------------------------------
+# SEARCHABLE SONG PICKER CATALOG
+# -------------------------------------------------
+
+SONG_PICKER_CATALOG = {
+    "Pop": {
+        "Say — John Mayer": {
+            "title": "Say",
+            "artist": "John Mayer",
+            "key": "D",
+            "sections": {
+                "Verse": ["D", "A", "Bm", "G"],
+                "Chorus": ["D", "A", "G", "D"],
+                "Bridge": ["Bm", "A", "G", "D"],
+                "Final Chorus": ["D", "A", "G", "D"],
+            },
+            "guitar_tabs": {"D":"xx0232","A":"x02220","Bm":"x24432","G":"320003"},
+        },
+        "Gravity — John Mayer": {
+            "title": "Gravity",
+            "artist": "John Mayer",
+            "key": "G",
+            "sections": {
+                "Verse Groove": ["G", "C", "G", "D"],
+                "Chorus / Lift": ["Em", "C", "G", "D"],
+                "Solo Section": ["G7", "C7", "G7", "D7"],
+                "Ending": ["G", "C", "G", "G"],
+            },
+            "guitar_tabs": {"G":"320003","C":"x32010","D":"xx0232","Em":"022000","G7":"320001","C7":"x32310","D7":"xx0212"},
+        },
+        "Viva La Vida — Coldplay": {
+            "title": "Viva La Vida",
+            "artist": "Coldplay",
+            "key": "Ab",
+            "sections": {
+                "Verse / Main Loop": ["Db", "Eb", "Ab", "Fm"],
+                "Chorus": ["Db", "Eb", "Ab", "Fm"],
+                "Bridge": ["Db", "Eb", "Ab", "Ab"],
+                "Final Chorus": ["Db", "Eb", "Ab", "Fm"],
+            },
+            "guitar_tabs": {"Db":"x46664","Eb":"x68886","Ab":"466544","Fm":"133111"},
+        },
+        "Shape of You — Ed Sheeran": {
+            "title": "Shape of You",
+            "artist": "Ed Sheeran",
+            "key": "C#",
+            "sections": {
+                "Verse": ["C#m", "F#m", "A", "B"],
+                "Pre-Chorus": ["C#m", "F#m", "A", "B"],
+                "Chorus": ["C#m", "F#m", "A", "B"],
+                "Bridge": ["C#m", "F#m", "A", "B"],
+            },
+            "guitar_tabs": {"C#m":"x46654","F#m":"244222","A":"x02220","B":"x24442"},
+        },
+        "Perfect — Ed Sheeran": {
+            "title": "Perfect",
+            "artist": "Ed Sheeran",
+            "key": "G",
+            "sections": {
+                "Verse": ["G", "Em", "C", "D"],
+                "Pre-Chorus": ["Em", "C", "G", "D"],
+                "Chorus": ["G", "D", "Em", "C"],
+                "Bridge": ["Em", "C", "G", "D"],
+            },
+            "guitar_tabs": {"G":"320003","Em":"022000","C":"x32010","D":"xx0232"},
+        },
+    },
+    "Rock": {
+        "Don't Stop Believin' — Journey": {
+            "title": "Don't Stop Believin'",
+            "artist": "Journey",
+            "key": "E",
+            "sections": {
+                "Low Part / Verse Piano Loop": ["E", "B", "C#m", "A"],
+                "Pre-Chorus": ["A", "E", "B", "C#m"],
+                "High Part / Chorus": ["E", "B", "A", "E"],
+                "Final Chorus": ["E", "B", "A", "E"],
+            },
+            "guitar_tabs": {"E":"022100","B":"x24442","C#m":"x46654","A":"x02220"},
+        },
+        "Let It Be — The Beatles": {
+            "title": "Let It Be",
+            "artist": "The Beatles",
+            "key": "C",
+            "sections": {
+                "Verse": ["C", "G", "Am", "F"],
+                "Chorus": ["C", "G", "F", "C"],
+                "Bridge": ["Am", "G", "F", "C"],
+                "Final Chorus": ["C", "G", "F", "C"],
+            },
+            "guitar_tabs": {"C":"x32010","G":"320003","Am":"x02210","F":"133211"},
+        },
+        "Hey Jude — The Beatles": {
+            "title": "Hey Jude",
+            "artist": "The Beatles",
+            "key": "F",
+            "sections": {
+                "Verse": ["F", "C", "C7", "F"],
+                "Middle": ["Bb", "F", "C", "F"],
+                "Na-Na Outro": ["F", "Eb", "Bb", "F"],
+            },
+            "guitar_tabs": {"F":"133211","C":"x32010","C7":"x32310","Bb":"x13331","Eb":"x68886"},
+        },
+    },
+    "Jazz": {
+        "Autumn Leaves — Jazz Standard": {
+            "title": "Autumn Leaves",
+            "artist": "Jazz Standard",
+            "key": "G",
+            "sections": {
+                "A Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7", "Gm7", "Gm7"],
+                "B Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7", "Gm7", "D7"],
+            },
+            "guitar_tabs": {"Cm7":"x35343","F7":"131211","Bbmaj7":"x13231","Ebmaj7":"x68786","Am7b5":"5x554x","D7":"xx0212","Gm7":"353333"},
+        },
+        "Blue Bossa — Jazz Standard": {
+            "title": "Blue Bossa",
+            "artist": "Jazz Standard",
+            "key": "C",
+            "sections": {
+                "A Section": ["Cm7", "Fm7", "Dm7b5", "G7", "Cm7", "Cm7"],
+                "B Section": ["Ebm7", "Ab7", "Dbmaj7", "Dbmaj7", "Dm7b5", "G7", "Cm7", "G7"],
+            },
+            "guitar_tabs": {"Cm7":"x35343","Fm7":"131111","Dm7b5":"x5656x","G7":"320001","Ebm7":"x68676","Ab7":"464544","Dbmaj7":"x46564"},
+        },
+        "So What — Miles Davis": {
+            "title": "So What",
+            "artist": "Miles Davis",
+            "key": "D",
+            "sections": {
+                "A Section": ["Dm7"] * 8,
+                "Bridge": ["Ebm7"] * 8,
+                "Final A": ["Dm7"] * 8,
+            },
+            "guitar_tabs": {"Dm7":"x57565","Ebm7":"x68676"},
+        },
+    },
+    "Funk": {
+        "Superstition — Stevie Wonder": {
+            "title": "Superstition",
+            "artist": "Stevie Wonder",
+            "key": "Eb",
+            "sections": {
+                "Main Groove": ["Ebm7", "Ebm7", "Ebm7", "Ebm7"],
+                "Chorus": ["Ab7", "Gb7", "Ebm7", "Ebm7"],
+                "Final Groove": ["Ebm7", "Ebm7", "Ebm7", "Ebm7"],
+            },
+            "guitar_tabs": {"Ebm7":"x68676","Ab7":"464544","Gb7":"242322"},
+        },
+        "Cissy Strut — The Meters": {
+            "title": "Cissy Strut",
+            "artist": "The Meters",
+            "key": "C",
+            "sections": {
+                "Main Funk Vamp": ["C7", "C7", "C7", "C7"],
+                "Turnaround": ["F7", "Eb7", "C7", "C7"],
+            },
+            "guitar_tabs": {"C7":"x32310","F7":"131211","Eb7":"x68686"},
+        },
+    },
+    "Blues": {
+        "12-Bar Blues in F — Traditional": {
+            "title": "12-Bar Blues in F",
+            "artist": "Traditional",
+            "key": "F",
+            "sections": {
+                "Bars 1-4": ["F7", "Bb7", "F7", "F7"],
+                "Bars 5-8": ["Bb7", "Bb7", "F7", "F7"],
+                "Bars 9-12": ["C7", "Bb7", "F7", "C7"],
+            },
+            "guitar_tabs": {"F7":"131211","Bb7":"x13131","C7":"x32310"},
+        },
+    },
+    "Classical": {
+        "Ode to Joy — Beethoven": {
+            "title": "Ode to Joy",
+            "artist": "Beethoven",
+            "key": "D",
+            "sections": {
+                "Main Theme": ["D", "A", "D", "G", "D", "A", "D"],
+                "Practice Variation": ["D", "G", "A", "D"],
+            },
+            "guitar_tabs": {"D":"xx0232","A":"x02220","G":"320003"},
+        },
+    },
+}
+
+def sync_song_library_from_picker():
+    """Replace/refresh SONG_LIBRARY from the searchable picker catalog."""
+    global SONG_LIBRARY, GENRES
+    SONG_LIBRARY = {}
+    for genre_name, songs in SONG_PICKER_CATALOG.items():
+        SONG_LIBRARY[genre_name] = {}
+        for label, data in songs.items():
+            SONG_LIBRARY[genre_name][data["title"]] = {
+                "artist": data["artist"],
+                "key": data["key"],
+                "sections": data["sections"],
+                "guitar_tabs": data.get("guitar_tabs", {}),
+            }
+    GENRES = list(SONG_LIBRARY.keys())
+
+def get_picker_labels_for_genre(genre_name):
+    return list(SONG_PICKER_CATALOG.get(genre_name, {}).keys())
+
+def set_active_song_from_picker(genre_name, picker_label):
+    data = SONG_PICKER_CATALOG[genre_name][picker_label]
+    st.session_state["active_genre"] = genre_name
+    st.session_state["active_song_title"] = data["title"]
+    st.session_state["active_song_label"] = picker_label
+    return data
+
+
+sync_song_library_from_picker()
+
 # -------------------------------------------------
 # APP UI
 # -------------------------------------------------
@@ -846,19 +1062,30 @@ else:
 
 st.sidebar.header("Setup")
 
+default_genre = st.session_state.get("active_genre", GENRES[0])
+default_genre_index = GENRES.index(default_genre) if default_genre in GENRES else 0
+
 genre = st.sidebar.selectbox(
     "What kind of music do you want to play today?",
-    GENRES
+    GENRES,
+    index=default_genre_index
 )
 
 song_options = list(
     SONG_LIBRARY[genre].keys()
 )
 
+default_song = st.session_state.get("active_song_title", song_options[0])
+default_song_index = song_options.index(default_song) if default_song in song_options else 0
+
 song = st.sidebar.selectbox(
     f"Choose a {genre} song",
-    song_options
+    song_options,
+    index=default_song_index
 )
+
+st.session_state["active_genre"] = genre
+st.session_state["active_song_title"] = song
 
 instrument = st.sidebar.selectbox(
     "Instrument",
@@ -1007,30 +1234,56 @@ Focus: **{focus}**
 
 with tabs[1]:
 
-    st.header("Song Search")
+    st.header("Song Search / Song Picker")
 
-    st.info(
-        "Songs shown here are filtered by the selected genre."
+    st.write(
+        "Pick the style first. Then choose the exact song by title and artist/composer. "
+        "The Daily Practice Plan and Backing Track will update to that song."
     )
 
-    preview_song = st.selectbox(
-        "Preview Song",
-        song_options
+    picker_genre = st.selectbox(
+        "Pick music style",
+        GENRES,
+        index=GENRES.index(genre) if genre in GENRES else 0,
+        key="picker_genre"
     )
 
-    preview_data = SONG_LIBRARY[
-        genre
-    ][preview_song]
+    picker_labels = get_picker_labels_for_genre(picker_genre)
+
+    picker_label = st.selectbox(
+        f"Pick a {picker_genre} song by title and singer/composer",
+        picker_labels,
+        key="picker_song_label"
+    )
+
+    selected_data = SONG_PICKER_CATALOG[picker_genre][picker_label]
+
+    if st.button("Use this song"):
+        set_active_song_from_picker(picker_genre, picker_label)
+        st.success(
+            f"Selected: {selected_data['title']} — {selected_data['artist']}. "
+            "Now use the left Setup panel or Daily Practice Plan."
+        )
 
     preview_sections = transpose_sections(
-        preview_data,
+        {
+            "key": selected_data["key"],
+            "sections": selected_data["sections"],
+        },
         display_key
     )
 
+    preview_song_data = {
+        "artist": selected_data["artist"],
+        "key": selected_data["key"],
+        "sections": selected_data["sections"],
+        "guitar_tabs": selected_data.get("guitar_tabs", {}),
+    }
+
     st.markdown(
         full_chord_markdown(
-            preview_song,
-            preview_data,
+            selected_data["title"],
+            preview_song_data,
             preview_sections,
             instrument
         )
