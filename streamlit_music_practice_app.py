@@ -1,4 +1,4 @@
-# VERSION: v37_multitrack_playalong_mix_export
+# VERSION: v39_api_box_restored
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -552,7 +552,8 @@ def save_logs(logs):
 
 def generate_backing_track(
     chords,
-    bpm=100
+    bpm=100,
+    loops=1
 ):
 
     sr = 44100
@@ -560,6 +561,8 @@ def generate_backing_track(
     beat = 60 / bpm
 
     bar = beat * 4
+
+    chords = chords * max(1, int(loops))
 
     audio = np.zeros(
         int(sr * bar * len(chords))
@@ -817,6 +820,28 @@ st.caption(
     "Genre-based practice plans, full-song chords, backing tracks, multitrack recording, and practice logs."
 )
 
+# -------------------------------------------------
+# OPTIONAL OPENAI API KEY
+# -------------------------------------------------
+
+st.sidebar.divider()
+st.sidebar.subheader("OpenAI API")
+
+user_api_key = st.sidebar.text_input(
+    "Enter OpenAI API Key",
+    type="password",
+    help="Optional. Needed only for AI-powered suggestion features.",
+    key="openai_api_key_box"
+)
+
+if user_api_key:
+    st.sidebar.success("API key loaded.")
+else:
+    st.sidebar.caption(
+        "No API key loaded. Local app features still work."
+    )
+
+
 # SIDEBAR
 
 st.sidebar.header("Setup")
@@ -1020,24 +1045,64 @@ with tabs[2]:
     st.header("Backing Track")
 
     st.write(
-        f"Backing track for: **{song}**"
+        f"Backing track is based on the active song: **{song}**."
     )
 
+    st.subheader("Full Chords by Song Part")
+
+    st.markdown(
+        full_chord_markdown(
+            song,
+            song_data,
+            sections,
+            instrument
+        )
+    )
+
+    st.subheader("Backing Track Settings")
+
     bpm = st.slider(
-        "Backing Track BPM",
+        "BPM",
         50,
         180,
         100,
         5
     )
 
+    form_loops = st.slider(
+        "How many loops of the full song form?",
+        1,
+        10,
+        2,
+        1
+    )
+
+    st.write(
+        f"Full form length: **{len(full_song_chords)} chord measures/blocks**"
+    )
+
+    st.write(
+        f"Total backing track length: **{len(full_song_chords) * form_loops} chord measures/blocks**"
+    )
+
+    st.subheader("Full Form Order Used for Backing Track")
+
+    for section_name, section_chords in sections.items():
+
+        st.write(f"**{section_name}:**")
+
+        st.write(
+            "| " + " | ".join(section_chords) + " |"
+        )
+
     if st.button(
-        "Generate Full Song Backing Track"
+        "Generate full-song backing track"
     ):
 
         wav = generate_backing_track(
             full_song_chords,
-            bpm=bpm
+            bpm=bpm,
+            loops=form_loops
         )
 
         st.audio(
@@ -1045,6 +1110,12 @@ with tabs[2]:
             format="audio/wav"
         )
 
+        st.download_button(
+            "Download backing track WAV",
+            wav,
+            file_name=f"{song.replace(' ', '_')}_{form_loops}_loops_backing_track.wav",
+            mime="audio/wav"
+        )
 
 # -------------------------------------------------
 # RECORDING ANALYSIS
