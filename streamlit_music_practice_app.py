@@ -1,4 +1,4 @@
-# VERSION: v28_practice_sheet_on_daily_plan
+# VERSION: v29_simplified_daily_sheet_song_chords_tabs
 
 # VERSION: v18_full_chord_charts_transpose_any_key
 
@@ -779,6 +779,7 @@ def render_song_search_dropdown(prefix="song_search"):
 
         if st.button("Use selected song", key=f"{prefix}_use"):
             st.session_state["searched_song_title"] = selected_title
+            st.session_state["selected_song_title"] = selected_title
             st.session_state["searched_song_artist"] = selected_data.get("artist", "")
             st.session_state["searched_song_style"] = selected_data.get("style", "")
             st.success(f"Selected: {selected_title} — {selected_data.get('artist','')}")
@@ -2043,6 +2044,321 @@ def harmony_breakdown_for_song(song_ctx, instrument, level):
 
     return "\n".join(out)
 
+
+# ============================================================
+# CLEAN DAILY PRACTICE PLAN ENGINE — SONG + INSTRUMENT + LEVEL
+# ============================================================
+
+PRACTICE_SONG_LIBRARY = {
+    "Say": {
+        "artist": "John Mayer",
+        "key": "D",
+        "note": "Practice-version chord chart inspired by the song. For exact licensed sheet music, upload MIDI/MusicXML.",
+        "sections": {
+            "Verse / Main Loop": ["D", "A", "Bm", "G"],
+            "Chorus Practice Loop": ["D", "A", "G", "D"],
+            "Bridge Practice": ["Bm", "A", "G", "D"]
+        },
+        "progression": ["D", "A", "Bm", "G"],
+        "guitar_tabs": {"D": "xx0232", "A": "x02220", "Bm": "x24432", "G": "320003"},
+    },
+    "Gravity": {
+        "artist": "John Mayer",
+        "key": "G",
+        "note": "Practice-version blues/soul chart.",
+        "sections": {
+            "Slow Groove": ["G", "C", "G", "D"],
+            "Solo Practice": ["G7", "C7", "G7", "D7"]
+        },
+        "progression": ["G", "C", "G", "D"],
+        "guitar_tabs": {"G": "320003", "C": "x32010", "D": "xx0232", "G7": "320001", "C7": "x32310", "D7": "xx0212"},
+    },
+    "Don't Stop Believin'": {
+        "artist": "Journey",
+        "key": "E",
+        "note": "Practice-version rock chart.",
+        "sections": {
+            "Verse / Piano Riff Loop": ["E", "B", "C#m", "A"],
+            "Chorus": ["E", "B", "A", "E"],
+            "Bridge Practice": ["A", "E", "B", "C#m"]
+        },
+        "progression": ["E", "B", "C#m", "A"],
+        "guitar_tabs": {"E": "022100", "B": "x24442", "C#m": "x46654", "A": "x02220"},
+    },
+    "Viva La Vida": {
+        "artist": "Coldplay",
+        "key": "Ab",
+        "note": "Practice-version pop loop.",
+        "sections": {
+            "Main Loop": ["Db", "Eb", "Ab", "Fm"],
+            "Chorus Practice": ["Db", "Eb", "Ab", "Fm"]
+        },
+        "progression": ["Db", "Eb", "Ab", "Fm"],
+        "guitar_tabs": {"Db": "x46664", "Eb": "x68886", "Ab": "466544", "Fm": "133111"},
+    },
+    "Shape of You": {
+        "artist": "Ed Sheeran",
+        "key": "C#m",
+        "note": "Practice-version pop groove.",
+        "sections": {
+            "Verse Groove": ["C#m", "F#m", "A", "B"],
+            "Chorus Groove": ["C#m", "F#m", "A", "B"]
+        },
+        "progression": ["C#m", "F#m", "A", "B"],
+        "guitar_tabs": {"C#m": "x46654", "F#m": "244222", "A": "x02220", "B": "x24442"},
+    },
+    "Perfect": {
+        "artist": "Ed Sheeran",
+        "key": "G",
+        "note": "Practice-version ballad chart.",
+        "sections": {
+            "Verse": ["G", "Em", "C", "D"],
+            "Chorus": ["G", "D", "Em", "C"]
+        },
+        "progression": ["G", "Em", "C", "D"],
+        "guitar_tabs": {"G": "320003", "Em": "022000", "C": "x32010", "D": "xx0232"},
+    },
+    "Let It Be": {
+        "artist": "The Beatles",
+        "key": "C",
+        "note": "Practice-version pop/rock chart.",
+        "sections": {
+            "Verse": ["C", "G", "Am", "F"],
+            "Chorus": ["C", "G", "F", "C"]
+        },
+        "progression": ["C", "G", "Am", "F"],
+        "guitar_tabs": {"C": "x32010", "G": "320003", "Am": "x02210", "F": "133211"},
+    },
+}
+
+def clean_get_selected_song_context():
+    analysis = st.session_state.get("uploaded_analysis", None)
+    if analysis:
+        key = infer_key_from_notes(analysis.get("notes", []))
+        if key == "Unknown":
+            key = "C"
+        try:
+            sections = detect_sections(analysis)
+            section_dict = {}
+            inferred = infer_chords_from_measure_notes(analysis.get("measures", []))
+            for sec in sections:
+                chords = []
+                for m in analysis.get("measures", []):
+                    if sec["start"] <= m["number"] <= sec["end"]:
+                        ch = m.get("chords", [None])[0] if m.get("chords") else (inferred[m["number"]-1] if m["number"]-1 < len(inferred) else None)
+                        if ch:
+                            chords.append(ch)
+                section_dict[sec["label"]] = chords or ["C", "G", "Am", "F"]
+            progression = list(section_dict.values())[0] if section_dict else ["C", "G", "Am", "F"]
+        except Exception:
+            section_dict = {"Main Form": ["C", "G", "Am", "F"]}
+            progression = ["C", "G", "Am", "F"]
+        melody_lines = []
+        for m in analysis.get("measures", [])[:12]:
+            ns = [n.get("note","") for n in m.get("notes", [])[:12] if n.get("note","")]
+            if ns:
+                melody_lines.append(f"Measure {m.get('number','')}: " + " ".join(ns))
+        return {
+            "title": analysis.get("title", "Uploaded Song"),
+            "artist": "Uploaded file",
+            "key": key,
+            "note": "Chord chart extracted/inferred from uploaded MIDI/MusicXML.",
+            "sections": section_dict,
+            "progression": progression,
+            "melody_text": "\n".join(melody_lines) if melody_lines else "No melody extracted yet.",
+            "guitar_tabs": {},
+            "source": "uploaded"
+        }
+
+    title = st.session_state.get("searched_song_title", "") or st.session_state.get("selected_song_title", "")
+    if title in PRACTICE_SONG_LIBRARY:
+        data = PRACTICE_SONG_LIBRARY[title].copy()
+        data["title"] = title
+        data["source"] = "library"
+        data["melody_text"] = "Use the notation below for original practice notes based on this song's chord context."
+        return data
+
+    data = PRACTICE_SONG_LIBRARY["Say"].copy()
+    data["title"] = "Say"
+    data["source"] = "library"
+    data["melody_text"] = "Use the notation below for original practice notes based on this song's chord context."
+    return data
+
+def clean_full_chord_chart(song_ctx, transpose_to_key=None):
+    original_key = song_ctx.get("key", "C")
+    to_key = transpose_to_key or st.session_state.get("transpose_to_key", extract_key_root(original_key) if "extract_key_root" in globals() else "C")
+    try:
+        steps = semitone_distance(extract_key_root(original_key), to_key)
+    except Exception:
+        steps = 0
+    out = []
+    out.append(f"### Full Chords: {song_ctx.get('title','Current Song')}")
+    out.append(f"Original key: **{original_key}** | Displayed key: **{to_key}**")
+    out.append(f"Source note: {song_ctx.get('note','Practice-version chart.')}")
+    for section, chords in song_ctx.get("sections", {"Main Form": song_ctx.get("progression", [])}).items():
+        transposed = [transpose_chord(ch, steps) if "transpose_chord" in globals() else ch for ch in chords]
+        out.append(f"\n**{section}:**")
+        out.append("| " + " | ".join(transposed) + " |")
+    return "\n".join(out)
+
+def clean_transposed_progression(song_ctx):
+    original_key = song_ctx.get("key", "C")
+    to_key = st.session_state.get("transpose_to_key", extract_key_root(original_key) if "extract_key_root" in globals() else "C")
+    try:
+        steps = semitone_distance(extract_key_root(original_key), to_key)
+        return [transpose_chord(ch, steps) for ch in song_ctx.get("progression", ["C", "G", "Am", "F"])]
+    except Exception:
+        return song_ctx.get("progression", ["C", "G", "Am", "F"])
+
+def clean_guitar_tab_block(song_ctx):
+    tabs = song_ctx.get("guitar_tabs", {})
+    prog = song_ctx.get("progression", [])
+    out = ["### Guitar chord shapes / tablature-style fret numbers"]
+    if not tabs:
+        out.append("Upload a MusicXML/MIDI file or choose a library song to see chord-shape suggestions.")
+        return "\n".join(out)
+    for ch in dict.fromkeys([c for sec in song_ctx.get("sections", {}).values() for c in sec] + prog):
+        out.append(f"- **{ch}:** `{tabs.get(ch, 'shape varies')}`")
+    out.append("\nString order is low E to high E. Example: `xx0232` = mute low E/A, then frets 0-2-3-2.")
+    return "\n".join(out)
+
+def clean_horn_block(song_ctx, instrument):
+    prog = song_ctx.get("progression", ["C", "G", "Am", "F"])
+    out = [f"### {instrument} chord-tone notes to practice"]
+    for ch in prog[:8]:
+        try:
+            names = [midi_to_note_name(m) for m in chord_notes(ch)[:4]]
+            out.append(f"- **{ch}:** " + " – ".join(names))
+        except Exception:
+            out.append(f"- **{ch}:** root – 3rd – 5th")
+    return "\n".join(out)
+
+def clean_abc_for_context(song_ctx, instrument, level):
+    key = st.session_state.get("transpose_to_key", song_ctx.get("key", "C"))
+    tempo = 72 if level == "Beginner" else 96 if level == "Intermediate" else 120
+    progression = clean_transposed_progression(song_ctx)
+    abc_notes = []
+    for ch in progression[:8]:
+        try:
+            mids = chord_notes(ch)
+            if level == "Beginner":
+                use = [mids[0], mids[min(1,len(mids)-1)], mids[min(2,len(mids)-1)], mids[0]]
+            else:
+                use = [mids[0], mids[min(1,len(mids)-1)], mids[min(2,len(mids)-1)], mids[min(3,len(mids)-1)]]
+            abc_notes.extend([abc_note_from_midi(m) for m in use])
+        except Exception:
+            abc_notes.extend(["C", "D", "E", "G"])
+    bars = [" ".join(abc_notes[i:i+4]) for i in range(0, len(abc_notes), 4)]
+    melody = " | ".join(bars[:8]) + " |"
+    if instrument == "Piano":
+        bass_bars = []
+        for ch in progression[:8]:
+            try:
+                bass_bars.append(abc_note_from_midi(chord_notes(ch)[0] - 24) + "4")
+            except Exception:
+                bass_bars.append("C,,4")
+        return f"""X:1
+T:{song_ctx.get('title','Practice Sheet')} - {level} Practice Notation
+C:Original practice notation from chord context
+M:4/4
+L:1/4
+Q:1/4={tempo}
+K:{key}
+V:RH clef=treble name="Right Hand"
+V:LH clef=bass name="Left Hand"
+[V:RH] {melody}
+[V:LH] {" | ".join(bass_bars)} |
+"""
+    return f"""X:1
+T:{song_ctx.get('title','Practice Sheet')} - {level} Practice Notation
+C:Original practice notation from chord context
+M:4/4
+L:1/4
+Q:1/4={tempo}
+K:{key}
+V:Melody clef=treble name="{instrument}"
+[V:Melody] {melody}
+"""
+
+def clean_level_only_exercises(song_ctx, instrument, level, focus, harder=False):
+    prog = clean_transposed_progression(song_ctx)
+    loop = " | ".join(prog[:8])
+    extra = "Harder variation: " if harder else ""
+    if instrument == "Guitar":
+        inst = clean_guitar_tab_block(song_ctx)
+    elif instrument in ["Saxophone", "Flute", "Trumpet"]:
+        inst = clean_horn_block(song_ctx, instrument)
+    elif instrument == "Piano":
+        inst = """### Piano application
+- RH: play the notation line.
+- LH: play chord roots first.
+- Then add root + fifth.
+- Intermediate/advanced: use inversions or shell voicings."""
+    else:
+        inst = "### Instrument application\n- Learn the notes first, then apply the chords and rhythm."
+    if level == "Beginner":
+        body = f"""
+### Beginner exercise
+- Practice only the first chord loop: | {loop} |
+- Say the chord names out loud.
+- Play slowly at 60–70 BPM.
+- Use simple rhythm only.
+- Record one short take.
+"""
+    elif level == "Intermediate":
+        body = f"""
+### Intermediate exercise
+- Practice the full section loop: | {loop} |
+- Play roots, then 1–3–5 chord tones.
+- Add rhythm/phrasing connected to your focus: **{focus}**.
+- Increase tempo gradually.
+- Record one full section.
+"""
+    else:
+        body = f"""
+### Advanced exercise
+- Practice the full form in the displayed key.
+- Add inversions, chord-tone lines, and rhythmic variation.
+- Create one variation for each section.
+- Improvise one chorus using guide tones.
+- Record a performance-level take.
+"""
+    return f"## {extra}{level} Practice Tasks\n{body}\n{inst}"
+
+def clean_harmony_breakdown(song_ctx, instrument, level):
+    key = st.session_state.get("transpose_to_key", song_ctx.get("key", "C"))
+    prog = clean_transposed_progression(song_ctx)
+    out = [f"# Harmony Breakdown — {song_ctx.get('title','Current Song')}", f"Displayed key: **{key}**"]
+    out.append("\n## Full Chord Chart")
+    out.append(clean_full_chord_chart(song_ctx, key))
+    out.append("\n## Function / Roman numeral idea")
+    out.append(" | ".join([f"{ch} = {roman_numeral_for_chord(ch, key) if 'roman_numeral_for_chord' in globals() else '?'}" for ch in prog[:16]]))
+    out.append(f"\n## {level} improvisation tips")
+    if level == "Beginner":
+        out.append("- Use roots only first.\n- Then add 3rds and 5ths.\n- End phrases on chord roots.")
+    elif level == "Intermediate":
+        out.append("- Use 1–3–5–7 over each chord.\n- Connect nearby chord tones.\n- Make 2-bar phrases.")
+    else:
+        out.append("- Use guide tones.\n- Add chromatic approaches.\n- Develop motifs across the form.\n- Try reharmonizing one cadence.")
+    if instrument == "Guitar":
+        out.append("\n## Guitar tip\nMap chord tones near the chord shapes/frets shown above.")
+    elif instrument == "Piano":
+        out.append("\n## Piano tip\nKeep melody on top and use LH shells/roots below.")
+    elif instrument in ["Saxophone", "Flute", "Trumpet"]:
+        out.append(f"\n## {instrument} tip\nTarget 3rds of chords for a strong harmonic sound.")
+    return "\n".join(out)
+
+def clean_render_practice_sheet(song_ctx, instrument, level, focus, harder=False):
+    st.subheader("Practice Sheet")
+    st.markdown(clean_full_chord_chart(song_ctx, st.session_state.get("transpose_to_key", song_ctx.get("key","C"))))
+    st.subheader("Regular music notation")
+    abc = clean_abc_for_context(song_ctx, instrument, level)
+    try:
+        render_abc(abc)
+    except Exception:
+        st.code(abc)
+    st.markdown(clean_level_only_exercises(song_ctx, instrument, level, focus, harder=harder))
+
 # ============================================================
 # UI
 # ============================================================
@@ -2149,56 +2465,44 @@ with tabs[1]:
 
 with tabs[2]:
     st.header("Daily Practice Plan")
-    st.write("This daily plan is based on both the song you chose and the skill/focus you want to work on.")
+    st.write("Choose a song, instrument, level, focus, and key. Generate the practice sheet directly on this page.")
 
-    song_ctx = current_song_context_for_sheet()
+    song_ctx = clean_get_selected_song_context()
+    st.write(f"**Current song:** {song_ctx.get('title','Current Song')} — {song_ctx.get('artist','')}")
+    st.write(f"**Instrument:** {instrument} | **Level:** {level} | **Focus:** {focus} | **Displayed key:** {st.session_state.get('transpose_to_key','C')}")
 
-    st.subheader("Current Song + Skill")
-    st.write(f"**Song:** {song_ctx.get('title','Current Song')}")
-    st.write(f"**Instrument:** {instrument}")
-    st.write(f"**Level:** {level}")
-    st.write(f"**Skill/focus:** {focus}")
+    st.markdown(clean_full_chord_chart(song_ctx, st.session_state.get("transpose_to_key", song_ctx.get("key","C"))))
 
-    daily_plan = build_skill_based_daily_plan(song_ctx, instrument, level, focus, minutes)
-    st.markdown(daily_plan)
+    if "show_practice_sheet" not in st.session_state:
+        st.session_state.show_practice_sheet = False
+    if "harder_sheet" not in st.session_state:
+        st.session_state.harder_sheet = False
 
-    st.divider()
-    st.header("Practice Sheet for Today's Plan")
-    show_on_app_practice_sheet(song_ctx, instrument, level, focus)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("Generate practice sheet"):
+            st.session_state.show_practice_sheet = True
+            st.session_state.harder_sheet = False
+    with col2:
+        if st.button("Generate another practice sheet"):
+            st.session_state.show_practice_sheet = True
+            st.session_state.harder_sheet = False
+    with col3:
+        if st.button("Make it harder"):
+            st.session_state.show_practice_sheet = True
+            st.session_state.harder_sheet = True
 
+    if st.session_state.show_practice_sheet:
+        clean_render_practice_sheet(song_ctx, instrument, level, focus, harder=st.session_state.harder_sheet)
 
-    st.subheader("Need Something Harder?")
-    st.write("If this is too easy, generate a harder exercise for the same song and same skill.")
-    if st.button("Generate a harder exercise"):
-        harder, new_level = harder_exercise_for_song(
-            song_ctx,
-            instrument,
-            level,
-            focus,
-            st.session_state.get("harder_exercise_level", 1)
-        )
-        st.session_state.harder_exercise_level = new_level
-        st.session_state.last_harder_exercise = harder
-        add_log({
-            "date": str(date.today()),
-            "instrument": instrument,
-            "focus": focus,
-            "rating": 6,
-            "note": f"Generated harder exercise level {new_level} for {song_ctx.get('title','Current Song')} focused on {focus}"
-        })
+    st.subheader("Harmony Breakdown")
+    if st.button("Break down harmony and give improv tips"):
+        st.markdown(clean_harmony_breakdown(song_ctx, instrument, level))
 
-    if st.session_state.get("last_harder_exercise", ""):
-        st.markdown(st.session_state.last_harder_exercise)
-
-    if st.button("Save today's skill-based daily plan"):
-        add_log({
-            "date": str(date.today()),
-            "instrument": instrument,
-            "focus": focus,
-            "rating": 6,
-            "note": f"Daily plan for {song_ctx.get('title','Current Song')} focused on {focus}"
-        })
-        st.success("Saved today's song + skill daily plan.")
+    st.subheader("Backing Track Chord Loop")
+    transposed_prog = clean_transposed_progression(song_ctx)
+    st.session_state.selected_chords = [(ch, 1) for ch in transposed_prog]
+    st.write("Current chord loop: | " + " | ".join(transposed_prog) + " |")
 
 with tabs[3]:
     st.header("Song-Aware MIDI/MusicXML Integration")
@@ -2277,17 +2581,8 @@ with tabs[4]:
         st.download_button("Download backing track WAV", wav, file_name="song_aware_backing_track.wav", mime="audio/wav")
 
 with tabs[5]:
-    st.header("Adaptive Practice Sheet")
-    st.write("The practice sheet is shown directly in the app and changes based on song, instrument, level, and focus.")
-
-    song_ctx = current_song_context_for_sheet()
-    show_on_app_practice_sheet(song_ctx, instrument, level, focus)
-
-    st.divider()
-    st.subheader("Harmony Breakdown + Improv Tips")
-    st.write("Press this if you want a full breakdown of the harmony and improvisation ideas.")
-    if st.button("Break down the harmony"):
-        st.markdown(harmony_breakdown_for_song(song_ctx, instrument, level))
+    st.header("Practice Sheet")
+    st.info("Practice sheets are now generated on the Daily Practice Plan page to keep the app simple.")
 
 with tabs[6]:
     st.header("Multitrack Recorder")
