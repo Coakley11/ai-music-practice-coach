@@ -1,4 +1,4 @@
-# VERSION: v29_simplified_daily_sheet_song_chords_tabs
+# VERSION: v30_full_song_sections_genres
 
 # VERSION: v18_full_chord_charts_transpose_any_key
 
@@ -2359,6 +2359,44 @@ def clean_render_practice_sheet(song_ctx, instrument, level, focus, harder=False
         st.code(abc)
     st.markdown(clean_level_only_exercises(song_ctx, instrument, level, focus, harder=harder))
 
+
+# ============================================================
+# GENRE SETUP + FULL SONG SECTION SUPPORT
+# ============================================================
+
+GENRE_SONG_MAP = {
+    "Pop": ["Shape of You", "Perfect", "Viva La Vida"],
+    "Rock": ["Don't Stop Believin'", "Let It Be", "Say", "Gravity"],
+    "Jazz": ["Autumn Leaves", "Blue Bossa", "So What", "All The Things You Are"],
+    "Funk": ["Superstition", "Cissy Strut"],
+    "Blues": ["Gravity"],
+}
+
+# Additional jazz/funk practice charts
+PRACTICE_SONG_LIBRARY.update({
+    "Autumn Leaves": {
+        "artist": "Jazz Standard",
+        "key": "Gm",
+        "note": "Jazz practice chart.",
+        "sections": {
+            "A Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7", "Gm7", "Gm7"],
+            "B Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7", "Gm7", "D7"]
+        },
+        "progression": ["Cm7","F7","Bbmaj7","Ebmaj7","Am7b5","D7","Gm7","Gm7"],
+        "guitar_tabs": {"Cm7":"x35343","F7":"131211","Bbmaj7":"x13231","Ebmaj7":"x68786","Am7b5":"5x554x","D7":"xx0212","Gm7":"353333"}
+    },
+    "Blue Bossa": {
+        "artist":"Jazz Standard",
+        "key":"Cm",
+        "note":"Latin jazz practice chart.",
+        "sections":{
+            "Main Form":["Cm7","Fm7","Dm7b5","G7","Cm7","Ebm7","Ab7","Dbmaj7"]
+        },
+        "progression":["Cm7","Fm7","Dm7b5","G7","Cm7","Ebm7","Ab7","Dbmaj7"],
+        "guitar_tabs":{"Cm7":"x35343","Fm7":"131111","Dm7b5":"x5656x","G7":"320001","Ebm7":"x68676","Ab7":"464544","Dbmaj7":"x46564"}
+    }
+})
+
 # ============================================================
 # UI
 # ============================================================
@@ -2381,6 +2419,8 @@ if "multitrack_recordings" not in st.session_state:
         "Track 2": None,
         "Track 3": None,
     }
+if "music_genre" not in st.session_state:
+    st.session_state.music_genre = "Rock"
 if "multitrack_names" not in st.session_state:
     st.session_state.multitrack_names = {
         "Track 1": "Instrument 1",
@@ -2432,36 +2472,28 @@ with tabs[0]:
 
 with tabs[1]:
     st.header("Song Search")
-    st.write(
-        "Type a song title, artist, or style. A dropdown list of similar songs will appear. "
-        "This helps the user choose the song before generating practice materials or backing tracks."
+    st.write("Song suggestions now change based on the selected genre.")
+
+    current_genre = st.session_state.get("music_genre","Rock")
+    genre_songs = GENRE_SONG_MAP.get(current_genre, [])
+
+    st.subheader(f"Suggested {current_genre} Songs")
+    selected_title = st.selectbox(
+        "Choose a song",
+        genre_songs
     )
 
-    selected_title, selected_data = render_song_search_dropdown("main_song_search")
+    if selected_title:
+        st.session_state["searched_song_title"] = selected_title
+        st.session_state["selected_song_title"] = selected_title
 
-    if selected_title and selected_data:
-        st.subheader("Selected Song Preview")
-        st.write(f"**Song:** {selected_title}")
-        st.write(f"**Artist:** {selected_data.get('artist','')}")
-        st.write(f"**Style:** {selected_data.get('style','')}")
+        data = PRACTICE_SONG_LIBRARY.get(selected_title, {})
+        st.success(f"Selected: {selected_title} — {data.get('artist','')}")
 
-        st.markdown(simple_selected_song_practice_sheet(selected_title, selected_data, instrument, level))
-        # If this song exists in the detailed catalog, always show all chord sections and allow transposition.
-        if "SONG_CATALOG" in globals() and selected_title in SONG_CATALOG:
-            st.subheader("Full Chord Chart / Transposed")
-            st.markdown(full_chord_chart_for_selected_song(selected_title, SONG_CATALOG[selected_title], st.session_state.transpose_to_key))
-
-        if st.button("Use this song idea for practice memory", key="save_selected_song_to_memory"):
-            add_log({
-                "date": str(date.today()),
-                "instrument": instrument,
-                "focus": focus,
-                "rating": 6,
-                "note": f"Selected song from dropdown: {selected_title} by {selected_data.get('artist','')}"
-            })
-            st.success("Saved selected song to practice memory.")
-
-
+        st.markdown(clean_full_chord_chart({
+            "title": selected_title,
+            **data
+        }, st.session_state.get("transpose_to_key", data.get("key","C"))))
 
 with tabs[2]:
     st.header("Daily Practice Plan")
@@ -2499,10 +2531,22 @@ with tabs[2]:
     if st.button("Break down harmony and give improv tips"):
         st.markdown(clean_harmony_breakdown(song_ctx, instrument, level))
 
-    st.subheader("Backing Track Chord Loop")
+    st.subheader("Backing Track — Full Song Sections")
     transposed_prog = clean_transposed_progression(song_ctx)
     st.session_state.selected_chords = [(ch, 1) for ch in transposed_prog]
-    st.write("Current chord loop: | " + " | ".join(transposed_prog) + " |")
+
+    for sec_name, sec_chords in song_ctx.get("sections", {}).items():
+        try:
+            steps = semitone_distance(extract_key_root(song_ctx.get("key","C")), st.session_state.get("transpose_to_key", song_ctx.get("key","C")))
+            sec_display = [transpose_chord(ch, steps) for ch in sec_chords]
+        except Exception:
+            sec_display = sec_chords
+
+        st.write(f"**{sec_name}:**")
+        st.write("| " + " | ".join(sec_display) + " |")
+
+    st.caption("Backing tracks now use the song sections instead of one generic loop.")
+
 
 with tabs[3]:
     st.header("Song-Aware MIDI/MusicXML Integration")
@@ -2581,8 +2625,8 @@ with tabs[4]:
         st.download_button("Download backing track WAV", wav, file_name="song_aware_backing_track.wav", mime="audio/wav")
 
 with tabs[5]:
-    st.header("Practice Sheet")
-    st.info("Practice sheets are now generated on the Daily Practice Plan page to keep the app simple.")
+    st.header("Music Practice")
+    st.info("Practice sheets are generated directly on the Daily Practice Plan page.")
 
 with tabs[6]:
     st.header("Multitrack Recorder")
