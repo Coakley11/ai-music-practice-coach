@@ -1,4 +1,4 @@
-# VERSION: v31_clean_genre_song_daily_log
+# VERSION: v32_fixed_song_library_nameerror
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -28,29 +28,9 @@ GENRE_SONG_MAP = {
 }
 
 # Additional jazz/funk practice charts
-PRACTICE_SONG_LIBRARY.update({
-    "Autumn Leaves": {
-        "artist": "Jazz Standard",
-        "key": "Gm",
-        "note": "Jazz practice chart.",
-        "sections": {
-            "A Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7", "Gm7", "Gm7"],
-            "B Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7", "Gm7", "D7"]
-        },
-        "progression": ["Cm7","F7","Bbmaj7","Ebmaj7","Am7b5","D7","Gm7","Gm7"],
-        "guitar_tabs": {"Cm7":"x35343","F7":"131211","Bbmaj7":"x13231","Ebmaj7":"x68786","Am7b5":"5x554x","D7":"xx0212","Gm7":"353333"}
-    },
-    "Blue Bossa": {
-        "artist":"Jazz Standard",
-        "key":"Cm",
-        "note":"Latin jazz practice chart.",
-        "sections":{
-            "Main Form":["Cm7","Fm7","Dm7b5","G7","Cm7","Ebm7","Ab7","Dbmaj7"]
-        },
-        "progression":["Cm7","Fm7","Dm7b5","G7","Cm7","Ebm7","Ab7","Dbmaj7"],
-        "guitar_tabs":{"Cm7":"x35343","Fm7":"131111","Dm7b5":"x5656x","G7":"320001","Ebm7":"x68676","Ab7":"464544","Dbmaj7":"x46564"}
-    }
-})
+
+# Removed old undefined SONG_LIBRARY patch.
+
 
 
 # -----------------------------
