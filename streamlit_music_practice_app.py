@@ -1,4 +1,4 @@
-# VERSION: v40_song_picker_dropdown_restored
+# VERSION: v41_large_typeahead_song_catalog
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -1024,6 +1024,193 @@ def set_active_song_from_picker(genre_name, picker_label):
 
 sync_song_library_from_picker()
 
+
+# -------------------------------------------------
+# LARGE SEARCHABLE SONG CATALOG + TYPEAHEAD
+# -------------------------------------------------
+
+def make_song(title, artist, genre, key, sections, guitar_tabs=None):
+    return {
+        "title": title,
+        "artist": artist,
+        "genre": genre,
+        "key": key,
+        "sections": sections,
+        "guitar_tabs": guitar_tabs or {},
+    }
+
+LARGE_SONG_ROWS = [
+    make_song("Say", "John Mayer", "Pop", "Bb", {
+        "Verse / Main Loop": ["Bb", "F", "Gm", "Eb"],
+        "Chorus": ["Bb", "F", "Eb", "Bb"],
+        "Bridge": ["Gm", "F", "Eb", "Bb"],
+        "Final Chorus": ["Bb", "F", "Eb", "Bb"],
+    }, {"Bb":"x13331","F":"133211","Gm":"355333","Eb":"x68886"}),
+    make_song("Gravity", "John Mayer", "Pop", "G", {
+        "Verse Groove": ["G", "C", "G", "C"],
+        "Chorus / Lift": ["Em", "C", "G", "D"],
+        "Solo Section": ["G7", "C7", "G7", "D7"],
+    }, {"G":"320003","C":"x32010","Em":"022000","D":"xx0232","G7":"320001","C7":"x32310","D7":"xx0212"}),
+    make_song("Waiting on the World to Change", "John Mayer", "Pop", "D", {
+        "Verse": ["D", "Bm", "G", "A"],
+        "Chorus": ["D", "Bm", "G", "A"],
+        "Bridge": ["Em", "G", "D", "A"],
+    }, {"D":"xx0232","Bm":"x24432","G":"320003","A":"x02220","Em":"022000"}),
+    make_song("Daughters", "John Mayer", "Pop", "D", {
+        "Verse": ["D", "G", "D", "A"],
+        "Chorus": ["Bm", "G", "D", "A"],
+        "Bridge": ["Em", "G", "D", "A"],
+    }, {"D":"xx0232","G":"320003","A":"x02220","Bm":"x24432","Em":"022000"}),
+    make_song("Slow Dancing in a Burning Room", "John Mayer", "Pop", "C#m", {
+        "Verse": ["C#m", "A", "E", "B"],
+        "Chorus": ["A", "E", "B", "C#m"],
+        "Solo": ["C#m", "A", "E", "B"],
+    }, {"C#m":"x46654","A":"x02220","E":"022100","B":"x24442"}),
+
+    make_song("Shape of You", "Ed Sheeran", "Pop", "C#m", {
+        "Verse": ["C#m", "F#m", "A", "B"],
+        "Pre-Chorus": ["C#m", "F#m", "A", "B"],
+        "Chorus": ["C#m", "F#m", "A", "B"],
+        "Bridge": ["C#m", "F#m", "A", "B"],
+    }, {"C#m":"x46654","F#m":"244222","A":"x02220","B":"x24442"}),
+    make_song("Perfect", "Ed Sheeran", "Pop", "G", {
+        "Verse": ["G", "Em", "C", "D"],
+        "Pre-Chorus": ["Em", "C", "G", "D"],
+        "Chorus": ["G", "D", "Em", "C"],
+        "Bridge": ["Em", "C", "G", "D"],
+    }, {"G":"320003","Em":"022000","C":"x32010","D":"xx0232"}),
+    make_song("Thinking Out Loud", "Ed Sheeran", "Pop", "D", {
+        "Verse": ["D", "D/F#", "G", "A"],
+        "Pre-Chorus": ["Em", "A", "D", "Bm"],
+        "Chorus": ["D", "D/F#", "G", "A"],
+    }, {"D":"xx0232","G":"320003","A":"x02220","Em":"022000","Bm":"x24432"}),
+
+    make_song("Viva La Vida", "Coldplay", "Pop", "Ab", {
+        "Verse / Main Loop": ["Db", "Eb", "Ab", "Fm"],
+        "Chorus": ["Db", "Eb", "Ab", "Fm"],
+        "Bridge": ["Db", "Eb", "Ab", "Ab"],
+        "Final Chorus": ["Db", "Eb", "Ab", "Fm"],
+    }, {"Db":"x46664","Eb":"x68886","Ab":"466544","Fm":"133111"}),
+    make_song("Yellow", "Coldplay", "Pop", "B", {
+        "Verse": ["B", "F#", "E", "B"],
+        "Chorus": ["E", "B", "F#", "E"],
+        "Bridge": ["G#m", "F#", "E", "B"],
+    }, {"B":"x24442","F#":"244322","E":"022100","G#m":"466444"}),
+    make_song("Fix You", "Coldplay", "Pop", "Eb", {
+        "Verse": ["Eb", "Gm", "Cm", "Bb"],
+        "Chorus": ["Ab", "Eb", "Bb", "Cm"],
+        "Bridge": ["Ab", "Eb", "Bb", "Cm"],
+    }, {"Eb":"x68886","Gm":"355333","Cm":"x35543","Bb":"x13331","Ab":"466544"}),
+
+    make_song("Don't Stop Believin'", "Journey", "Rock", "E", {
+        "Low Part / Verse Piano Loop": ["E", "B", "C#m", "A"],
+        "Pre-Chorus": ["A", "E", "B", "C#m"],
+        "High Part / Chorus": ["E", "B", "A", "E"],
+        "Final Chorus": ["E", "B", "A", "E"],
+    }, {"E":"022100","B":"x24442","C#m":"x46654","A":"x02220"}),
+    make_song("Let It Be", "The Beatles", "Rock", "C", {
+        "Verse": ["C", "G", "Am", "F"],
+        "Chorus": ["C", "G", "F", "C"],
+        "Bridge": ["Am", "G", "F", "C"],
+        "Final Chorus": ["C", "G", "F", "C"],
+    }, {"C":"x32010","G":"320003","Am":"x02210","F":"133211"}),
+    make_song("Hey Jude", "The Beatles", "Rock", "F", {
+        "Verse": ["F", "C", "C7", "F"],
+        "Middle": ["Bb", "F", "C", "F"],
+        "Na-Na Outro": ["F", "Eb", "Bb", "F"],
+    }, {"F":"133211","C":"x32010","C7":"x32310","Bb":"x13331","Eb":"x68886"}),
+    make_song("Yesterday", "The Beatles", "Rock", "F", {
+        "Verse": ["F", "Em7", "A7", "Dm"],
+        "Middle": ["Bb", "C", "F", "Dm"],
+        "Return": ["Gm", "C7", "F", "F"],
+    }, {"F":"133211","Em7":"022030","A7":"x02020","Dm":"xx0231","Bb":"x13331","C":"x32010","Gm":"355333","C7":"x32310"}),
+    make_song("Here Comes the Sun", "The Beatles", "Rock", "A", {
+        "Verse": ["A", "D", "E", "A"],
+        "Chorus": ["D", "B7", "E", "A"],
+        "Bridge": ["C", "G", "D", "A"],
+    }, {"A":"x02220","D":"xx0232","E":"022100","B7":"x21202","C":"x32010","G":"320003"}),
+
+    make_song("Autumn Leaves", "Jazz Standard", "Jazz", "Gm", {
+        "A Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7", "Gm7", "Gm7"],
+        "B Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7", "Gm7", "D7"],
+    }, {"Cm7":"x35343","F7":"131211","Bbmaj7":"x13231","Ebmaj7":"x68786","Am7b5":"5x554x","D7":"xx0212","Gm7":"353333"}),
+    make_song("Blue Bossa", "Kenny Dorham", "Jazz", "Cm", {
+        "A Section": ["Cm7", "Fm7", "Dm7b5", "G7", "Cm7", "Cm7"],
+        "B Section": ["Ebm7", "Ab7", "Dbmaj7", "Dbmaj7", "Dm7b5", "G7", "Cm7", "G7"],
+    }, {"Cm7":"x35343","Fm7":"131111","Dm7b5":"x5656x","G7":"320001","Ebm7":"x68676","Ab7":"464544","Dbmaj7":"x46564"}),
+    make_song("The Girl from Ipanema", "Antonio Carlos Jobim", "Jazz", "F", {
+        "A Section": ["Fmaj7", "G7", "Gm7", "C7", "Fmaj7", "G7", "Gm7", "C7"],
+        "Bridge": ["Gbmaj7", "B7", "F#m7", "D7", "Gm7", "Eb7", "Am7", "D7"],
+        "Final A": ["Gm7", "C7", "Fmaj7", "Fmaj7"],
+    }, {"Fmaj7":"1x2210","G7":"320001","Gm7":"353333","C7":"x32310"}),
+    make_song("Desafinado", "Antonio Carlos Jobim", "Jazz", "F", {
+        "A Section": ["Fmaj7", "G7", "Gm7", "C7", "Am7", "D7", "Gm7", "C7"],
+        "B Section": ["Fmaj7", "F#dim7", "Gm7", "C7", "Fmaj7", "D7", "Gm7", "C7"],
+    }, {"Fmaj7":"1x2210","G7":"320001","Gm7":"353333","C7":"x32310","D7":"xx0212"}),
+    make_song("Corcovado", "Antonio Carlos Jobim", "Jazz", "C", {
+        "A Section": ["Cmaj7", "D7", "Dm7", "G7", "Cmaj7", "D7", "Dm7", "G7"],
+        "B Section": ["Em7", "A7", "Dm7", "G7", "Cmaj7", "Cmaj7"],
+    }, {"Cmaj7":"x32000","D7":"xx0212","Dm7":"xx0211","G7":"320001","Em7":"022030","A7":"x02020"}),
+    make_song("All of Me", "Jazz Standard", "Jazz", "C", {
+        "A Section": ["Cmaj7", "E7", "A7", "Dm7", "E7", "Am7", "D7", "G7"],
+        "B Section": ["Cmaj7", "E7", "A7", "Dm7", "Fmaj7", "Fm7", "Cmaj7", "A7"],
+        "Turnaround": ["Dm7", "G7", "Cmaj7", "G7"],
+    }, {"Cmaj7":"x32000","E7":"020100","A7":"x02020","Dm7":"xx0211","G7":"320001","Fmaj7":"1x2210","Fm7":"131111"}),
+    make_song("Fly Me to the Moon", "Bart Howard", "Jazz", "C", {
+        "A Section": ["Am7", "Dm7", "G7", "Cmaj7", "Fmaj7", "Bm7b5", "E7", "Am7"],
+        "B Section": ["Dm7", "G7", "Cmaj7", "A7", "Dm7", "G7", "Cmaj7", "E7"],
+    }, {"Am7":"x02010","Dm7":"xx0211","G7":"320001","Cmaj7":"x32000","Fmaj7":"1x2210","E7":"020100","A7":"x02020"}),
+
+    make_song("Superstition", "Stevie Wonder", "Funk", "Eb", {
+        "Main Groove": ["Ebm7", "Ebm7", "Ebm7", "Ebm7"],
+        "Chorus": ["Ab7", "Gb7", "Ebm7", "Ebm7"],
+        "Final Groove": ["Ebm7", "Ebm7", "Ebm7", "Ebm7"],
+    }, {"Ebm7":"x68676","Ab7":"464544","Gb7":"242322"}),
+
+    make_song("12-Bar Blues in F", "Traditional", "Blues", "F", {
+        "Bars 1-4": ["F7", "Bb7", "F7", "F7"],
+        "Bars 5-8": ["Bb7", "Bb7", "F7", "F7"],
+        "Bars 9-12": ["C7", "Bb7", "F7", "C7"],
+    }, {"F7":"131211","Bb7":"x13131","C7":"x32310"}),
+]
+
+def rebuild_picker_catalog_from_rows():
+    global SONG_PICKER_CATALOG, SONG_LIBRARY, GENRES
+    SONG_PICKER_CATALOG = {}
+    SONG_LIBRARY = {}
+    for row in LARGE_SONG_ROWS:
+        genre_name = row["genre"]
+        label = f"{row['title']} — {row['artist']}"
+        SONG_PICKER_CATALOG.setdefault(genre_name, {})[label] = row
+        SONG_LIBRARY.setdefault(genre_name, {})[row["title"]] = {
+            "artist": row["artist"],
+            "key": row["key"],
+            "sections": row["sections"],
+            "guitar_tabs": row.get("guitar_tabs", {}),
+        }
+    GENRES = sorted(SONG_LIBRARY.keys())
+
+def search_song_labels(genre_name, query):
+    query = (query or "").strip().lower()
+    labels = list(SONG_PICKER_CATALOG.get(genre_name, {}).keys())
+    if not query:
+        return labels
+    matches = []
+    for label in labels:
+        data = SONG_PICKER_CATALOG[genre_name][label]
+        hay = f"{data['title']} {data['artist']} {genre_name}".lower()
+        if query in hay or any(word in hay for word in query.split()):
+            matches.append(label)
+    return matches or labels
+
+def choose_active_song_from_label(genre_name, label):
+    data = SONG_PICKER_CATALOG[genre_name][label]
+    st.session_state["active_genre"] = genre_name
+    st.session_state["active_song_title"] = data["title"]
+    return data
+
+rebuild_picker_catalog_from_rows()
+
 # -------------------------------------------------
 # APP UI
 # -------------------------------------------------
@@ -1079,10 +1266,12 @@ default_song = st.session_state.get("active_song_title", song_options[0])
 default_song_index = song_options.index(default_song) if default_song in song_options else 0
 
 song = st.sidebar.selectbox(
-    f"Choose a {genre} song",
+    f"Current {genre} song",
     song_options,
     index=default_song_index
 )
+
+st.sidebar.caption("Use the Song Search / Song Picker page to type a song, singer, or composer and change the active song.")
 
 st.session_state["active_genre"] = genre
 st.session_state["active_song_title"] = song
@@ -1237,8 +1426,8 @@ with tabs[1]:
     st.header("Song Search / Song Picker")
 
     st.write(
-        "Pick the style first. Then choose the exact song by title and artist/composer. "
-        "The Daily Practice Plan and Backing Track will update to that song."
+        "Type a song title, singer, composer, or artist. "
+        "The dropdown updates with matching songs in the selected style."
     )
 
     picker_genre = st.selectbox(
@@ -1248,21 +1437,30 @@ with tabs[1]:
         key="picker_genre"
     )
 
-    picker_labels = get_picker_labels_for_genre(picker_genre)
+    search_text = st.text_input(
+        "Type song, singer, composer, or artist",
+        placeholder="Example: Beatles, Jobim, Ed Sheeran, Say, Autumn Leaves",
+        key="song_search_text"
+    )
+
+    matching_labels = search_song_labels(
+        picker_genre,
+        search_text
+    )
 
     picker_label = st.selectbox(
-        f"Pick a {picker_genre} song by title and singer/composer",
-        picker_labels,
-        key="picker_song_label"
+        "Matching songs",
+        matching_labels,
+        key="matching_song_dropdown"
     )
 
     selected_data = SONG_PICKER_CATALOG[picker_genre][picker_label]
 
-    if st.button("Use this song"):
-        set_active_song_from_picker(picker_genre, picker_label)
+    if st.button("Use this song for practice and backing track"):
+        choose_active_song_from_label(picker_genre, picker_label)
         st.success(
             f"Selected: {selected_data['title']} — {selected_data['artist']}. "
-            "Now use the left Setup panel or Daily Practice Plan."
+            "Daily Practice Plan and Backing Track will now use this song."
         )
 
     preview_sections = transpose_sections(
@@ -1280,6 +1478,8 @@ with tabs[1]:
         "guitar_tabs": selected_data.get("guitar_tabs", {}),
     }
 
+    st.subheader("Preview Full Chords for Selected Song")
+
     st.markdown(
         full_chord_markdown(
             selected_data["title"],
@@ -1287,6 +1487,10 @@ with tabs[1]:
             preview_sections,
             instrument
         )
+    )
+
+    st.caption(
+        "These are practice-version chord charts. For exact licensed commercial charts or exact sheet music, upload a licensed MIDI/MusicXML file."
     )
 
 # -------------------------------------------------
