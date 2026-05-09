@@ -1,4 +1,4 @@
-# VERSION: v41_large_typeahead_song_catalog
+# VERSION: v42_expanded_song_catalog_billy_joel_jobim
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -1209,6 +1209,129 @@ def choose_active_song_from_label(genre_name, label):
     st.session_state["active_song_title"] = data["title"]
     return data
 
+rebuild_picker_catalog_from_rows()
+
+# -------------------------------------------------
+# V42 ADDITIONAL SONGS
+# -------------------------------------------------
+
+MORE_SONG_ROWS = [
+    make_song("Piano Man", "Billy Joel", "Pop", "C", {
+        "Verse": ["C", "G/B", "Am", "C/G", "F", "C/E", "Dm", "G"],
+        "Chorus": ["C", "G/B", "Am", "C/G", "F", "G", "C", "G"],
+        "Harmonica / Turnaround": ["C", "F", "C", "G"],
+    }, {"C":"x32010","G":"320003","Am":"x02210","F":"133211","Dm":"xx0231"}),
+
+    make_song("Turn the Lights Back On", "Billy Joel", "Pop", "C", {
+        "Verse": ["C", "Am", "F", "G", "C", "Am", "F", "G"],
+        "Pre-Chorus": ["Dm", "G", "Em", "Am", "F", "G", "C", "G"],
+        "Chorus": ["C", "Am", "F", "G", "C", "Am", "F", "G"],
+        "Bridge": ["F", "G", "Em", "Am", "Dm", "G", "C", "G"],
+    }, {"C":"x32010","Am":"x02210","F":"133211","G":"320003","Dm":"xx0231","Em":"022000"}),
+
+    make_song("Just the Way You Are", "Billy Joel", "Pop", "D", {
+        "Verse": ["Dmaj7", "Bm7", "Gmaj7", "A7", "F#m7", "B7", "Em7", "A7"],
+        "Chorus": ["Gmaj7", "Gm6", "D/F#", "B7", "Em7", "A7", "Dmaj7", "A7"],
+        "Bridge": ["Bbmaj7", "C", "Am7", "D7", "Gmaj7", "A7", "Dmaj7", "A7"],
+    }, {"Dmaj7":"xx0222","Bm7":"x24232","Gmaj7":"320002","A7":"x02020","F#m7":"242222","B7":"x21202","Em7":"022030"}),
+
+    make_song("Vienna", "Billy Joel", "Pop", "Bb", {
+        "Verse": ["Bb", "Dm", "Gm", "Eb", "Bb", "F", "Bb", "F"],
+        "Chorus": ["Eb", "F", "Dm", "Gm", "Cm", "F", "Bb", "F"],
+        "Bridge": ["Gm", "Dm", "Eb", "Bb", "Cm", "F", "Bb", "F"],
+    }, {"Bb":"x13331","Dm":"xx0231","Gm":"355333","Eb":"x68886","F":"133211","Cm":"x35543"}),
+
+    make_song("Bad Habits", "Ed Sheeran", "Pop", "Bm", {
+        "Verse": ["Bm", "G", "D", "A"],
+        "Pre-Chorus": ["Bm", "G", "D", "A"],
+        "Chorus": ["Bm", "G", "D", "A"],
+        "Bridge": ["G", "A", "Bm", "D"],
+    }, {"Bm":"x24432","G":"320003","D":"xx0232","A":"x02220"}),
+
+    make_song("Castle on the Hill", "Ed Sheeran", "Pop", "D", {
+        "Verse": ["D", "G", "Bm", "A"],
+        "Pre-Chorus": ["G", "A", "Bm", "D"],
+        "Chorus": ["D", "G", "Bm", "A"],
+        "Bridge": ["G", "D", "A", "Bm"],
+    }, {"D":"xx0232","G":"320003","Bm":"x24432","A":"x02220"}),
+
+    make_song("Shivers", "Ed Sheeran", "Pop", "Bm", {
+        "Verse": ["Bm", "G", "D", "A"],
+        "Pre-Chorus": ["Bm", "G", "D", "A"],
+        "Chorus": ["Bm", "G", "D", "A"],
+    }, {"Bm":"x24432","G":"320003","D":"xx0232","A":"x02220"}),
+
+    make_song("Someone Like You", "Adele", "Pop", "A", {
+        "Verse": ["A", "E", "F#m", "D"],
+        "Pre-Chorus": ["E", "F#m", "D", "A"],
+        "Chorus": ["A", "E", "F#m", "D"],
+        "Bridge": ["E", "F#m", "D", "D"],
+    }, {"A":"x02220","E":"022100","F#m":"244222","D":"xx0232"}),
+
+    make_song("Imagine", "John Lennon", "Pop", "C", {
+        "Verse": ["C", "Cmaj7", "F", "F"],
+        "Chorus": ["F", "Am", "Dm", "G"],
+        "Bridge": ["F", "G", "C", "E7"],
+    }, {"C":"x32010","Cmaj7":"x32000","F":"133211","Am":"x02210","Dm":"xx0231","G":"320003","E7":"020100"}),
+
+    make_song("In My Life", "The Beatles", "Rock", "A", {
+        "Verse": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
+        "Chorus": ["F#m", "D", "G", "A", "F#m", "B7", "E", "E"],
+        "Return": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
+    }, {"A":"x02220","E":"022100","F#m":"244222","A7":"x02020","D":"xx0232","Dm":"xx0231","G":"320003","B7":"x21202"}),
+
+    make_song("Come Together", "The Beatles", "Rock", "Dm", {
+        "Verse Vamp": ["Dm7", "Dm7", "Dm7", "Dm7"],
+        "Chorus": ["A7", "G7", "D7", "D7"],
+        "Bridge": ["Bm", "G", "A", "A"],
+    }, {"Dm7":"xx0211","A7":"x02020","G7":"320001","D7":"xx0212","Bm":"x24432","G":"320003"}),
+
+    make_song("While My Guitar Gently Weeps", "The Beatles", "Rock", "Am", {
+        "Verse": ["Am", "Am/G", "D/F#", "F", "Am", "G", "D", "E"],
+        "Chorus": ["A", "C#m", "F#m", "C#m", "Bm", "E", "A", "E"],
+        "Bridge": ["Am", "G", "D", "E"],
+    }, {"Am":"x02210","F":"133211","G":"320003","D":"xx0232","E":"022100","A":"x02220","C#m":"x46654","F#m":"244222","Bm":"x24432"}),
+
+    make_song("Eleanor Rigby", "The Beatles", "Rock", "Em", {
+        "Verse": ["Em", "Em", "C", "Em"],
+        "Chorus": ["Em", "C", "Em", "C"],
+        "Bridge": ["Am", "Em", "C", "Em"],
+    }, {"Em":"022000","C":"x32010","Am":"x02210"}),
+
+    make_song("Wave", "Antonio Carlos Jobim", "Jazz", "D", {
+        "A Section": ["Dmaj7", "Bbdim7", "Am7", "D7", "Gmaj7", "Gm6", "F#m7", "B7"],
+        "B Section": ["Em7", "A7", "Dmaj7", "Dmaj7", "Fm7", "Bb7", "Ebmaj7", "A7"],
+        "Final A": ["Dmaj7", "Bbdim7", "Am7", "D7", "Gmaj7", "Gm6", "Dmaj7", "A7"],
+    }, {"Dmaj7":"xx0222","Am7":"x02010","D7":"xx0212","Gmaj7":"320002","F#m7":"242222","B7":"x21202","Em7":"022030","A7":"x02020"}),
+
+    make_song("One Note Samba", "Antonio Carlos Jobim", "Jazz", "Bb", {
+        "A Section": ["Bbmaj7", "Bdim7", "Cm7", "F7", "Cm7", "F7", "Bbmaj7", "F7"],
+        "B Section": ["Dm7", "G7", "Cm7", "F7", "Dm7", "G7", "Cm7", "F7"],
+        "Final A": ["Bbmaj7", "Bdim7", "Cm7", "F7", "Bbmaj7", "Bbmaj7"],
+    }, {"Bbmaj7":"x13231","Cm7":"x35343","F7":"131211","Dm7":"xx0211","G7":"320001"}),
+
+    make_song("Summer Samba", "Marcos Valle", "Jazz", "F", {
+        "A Section": ["Fmaj7", "Gm7", "Am7", "Gm7", "Fmaj7", "Gm7", "Am7", "D7"],
+        "B Section": ["Gm7", "C7", "Fmaj7", "Dm7", "Gm7", "C7", "Fmaj7", "C7"],
+    }, {"Fmaj7":"1x2210","Gm7":"353333","Am7":"x02010","D7":"xx0212","C7":"x32310","Dm7":"xx0211"}),
+
+    make_song("Meditation", "Antonio Carlos Jobim", "Jazz", "C", {
+        "A Section": ["Cmaj7", "Cmaj7", "Bm7b5", "E7", "Am7", "D7", "Dm7", "G7"],
+        "B Section": ["Em7", "A7", "Dm7", "G7", "Cmaj7", "Cmaj7"],
+    }, {"Cmaj7":"x32000","E7":"020100","Am7":"x02010","D7":"xx0212","Dm7":"xx0211","G7":"320001","Em7":"022030","A7":"x02020"}),
+
+    make_song("Agua de Beber", "Antonio Carlos Jobim", "Jazz", "Am", {
+        "A Section": ["Am7", "D7", "Am7", "D7", "Am7", "D7", "Gmaj7", "Gmaj7"],
+        "B Section": ["Bm7b5", "E7", "Am7", "Am7", "Dm7", "G7", "Cmaj7", "E7"],
+    }, {"Am7":"x02010","D7":"xx0212","Gmaj7":"320002","E7":"020100","Dm7":"xx0211","G7":"320001","Cmaj7":"x32000"}),
+
+    make_song("How Insensitive", "Antonio Carlos Jobim", "Jazz", "Dm", {
+        "A Section": ["Dm", "Dm/C", "Bdim7", "Bbmaj7", "A7", "A7", "Dm", "Dm"],
+        "B Section": ["Gm7", "C7", "Fmaj7", "Bbmaj7", "Em7b5", "A7", "Dm", "A7"],
+    }, {"Dm":"xx0231","Bbmaj7":"x13231","A7":"x02020","Gm7":"353333","C7":"x32310","Fmaj7":"1x2210"}),
+]
+
+LARGE_SONG_ROWS.extend(MORE_SONG_ROWS)
 rebuild_picker_catalog_from_rows()
 
 # -------------------------------------------------
