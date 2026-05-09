@@ -1,4 +1,4 @@
-# VERSION: v42_expanded_song_catalog_billy_joel_jobim
+# VERSION: v43_musical_development_lab
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -1211,128 +1211,204 @@ def choose_active_song_from_label(genre_name, label):
 
 rebuild_picker_catalog_from_rows()
 
+
 # -------------------------------------------------
-# V42 ADDITIONAL SONGS
+# AI MUSICAL DEVELOPMENT LAB
 # -------------------------------------------------
 
-MORE_SONG_ROWS = [
-    make_song("Piano Man", "Billy Joel", "Pop", "C", {
-        "Verse": ["C", "G/B", "Am", "C/G", "F", "C/E", "Dm", "G"],
-        "Chorus": ["C", "G/B", "Am", "C/G", "F", "G", "C", "G"],
-        "Harmonica / Turnaround": ["C", "F", "C", "G"],
-    }, {"C":"x32010","G":"320003","Am":"x02210","F":"133211","Dm":"xx0231"}),
+def current_song_context_lab():
+    return {
+        "genre": genre,
+        "song": song,
+        "artist": song_data.get("artist", ""),
+        "key": song_data.get("key", ""),
+        "display_key": display_key,
+        "sections": sections,
+        "instrument": instrument,
+        "level": level,
+        "focus": focus,
+    }
 
-    make_song("Turn the Lights Back On", "Billy Joel", "Pop", "C", {
-        "Verse": ["C", "Am", "F", "G", "C", "Am", "F", "G"],
-        "Pre-Chorus": ["Dm", "G", "Em", "Am", "F", "G", "C", "G"],
-        "Chorus": ["C", "Am", "F", "G", "C", "Am", "F", "G"],
-        "Bridge": ["F", "G", "Em", "Am", "Dm", "G", "C", "G"],
-    }, {"C":"x32010","Am":"x02210","F":"133211","G":"320003","Dm":"xx0231","Em":"022000"}),
+def chord_quality(ch):
+    c = str(ch).lower()
+    if "m7b5" in c:
+        return "half-diminished"
+    if "dim" in c:
+        return "diminished"
+    if "maj7" in c:
+        return "major seventh"
+    if "m7" in c:
+        return "minor seventh"
+    if "m" in c and "maj" not in c:
+        return "minor"
+    if "7" in c:
+        return "dominant seventh"
+    return "major"
 
-    make_song("Just the Way You Are", "Billy Joel", "Pop", "D", {
-        "Verse": ["Dmaj7", "Bm7", "Gmaj7", "A7", "F#m7", "B7", "Em7", "A7"],
-        "Chorus": ["Gmaj7", "Gm6", "D/F#", "B7", "Em7", "A7", "Dmaj7", "A7"],
-        "Bridge": ["Bbmaj7", "C", "Am7", "D7", "Gmaj7", "A7", "Dmaj7", "A7"],
-    }, {"Dmaj7":"xx0222","Bm7":"x24232","Gmaj7":"320002","A7":"x02020","F#m7":"242222","B7":"x21202","Em7":"022030"}),
+def deep_harmonic_analysis_text(ctx):
+    all_chords = all_chords_from_sections(ctx["sections"])
+    qualities = [chord_quality(ch) for ch in all_chords]
+    dominant_count = sum(1 for q in qualities if "dominant" in q)
+    minor_count = sum(1 for q in qualities if "minor" in q)
+    maj7_count = sum(1 for q in qualities if "major seventh" in q)
 
-    make_song("Vienna", "Billy Joel", "Pop", "Bb", {
-        "Verse": ["Bb", "Dm", "Gm", "Eb", "Bb", "F", "Bb", "F"],
-        "Chorus": ["Eb", "F", "Dm", "Gm", "Cm", "F", "Bb", "F"],
-        "Bridge": ["Gm", "Dm", "Eb", "Bb", "Cm", "F", "Bb", "F"],
-    }, {"Bb":"x13331","Dm":"xx0231","Gm":"355333","Eb":"x68886","F":"133211","Cm":"x35543"}),
+    out = []
+    out.append(f"# Deep Harmonic Analyzer — {ctx['song']}")
+    out.append(f"**Artist/composer:** {ctx['artist']}")
+    out.append(f"**Style:** {ctx['genre']}")
+    out.append(f"**Original key:** {ctx['key']} | **Displayed key:** {ctx['display_key']}")
+    out.append("\n## Full Form")
+    for sec, chords in ctx["sections"].items():
+        out.append(f"### {sec}")
+        out.append("| " + " | ".join(chords) + " |")
 
-    make_song("Bad Habits", "Ed Sheeran", "Pop", "Bm", {
-        "Verse": ["Bm", "G", "D", "A"],
-        "Pre-Chorus": ["Bm", "G", "D", "A"],
-        "Chorus": ["Bm", "G", "D", "A"],
-        "Bridge": ["G", "A", "Bm", "D"],
-    }, {"Bm":"x24432","G":"320003","D":"xx0232","A":"x02220"}),
+    out.append("\n## Harmonic Character")
+    if ctx["genre"] == "Jazz":
+        out.append("- This chart uses extended harmony and functional motion.")
+        out.append("- Dominant seventh chords usually create forward pull into a resolution.")
+        out.append("- Minor seventh and half-diminished chords often prepare ii–V or minor-key motion.")
+    elif ctx["genre"] in ["Pop", "Rock"]:
+        out.append("- The song is built around memorable section loops rather than dense jazz harmony.")
+        out.append("- Repetition creates stability; section contrast creates emotional motion.")
+        out.append("- Verse, chorus, and bridge differences are the main dramatic engine.")
+    elif ctx["genre"] == "Funk":
+        out.append("- The harmony is groove-centered; repeated vamps matter more than constant chord changes.")
+    elif ctx["genre"] == "Blues":
+        out.append("- The form is built around dominant tension and call-and-response phrasing.")
+    else:
+        out.append("- The harmony supports melodic development and formal balance.")
 
-    make_song("Castle on the Hill", "Ed Sheeran", "Pop", "D", {
-        "Verse": ["D", "G", "Bm", "A"],
-        "Pre-Chorus": ["G", "A", "Bm", "D"],
-        "Chorus": ["D", "G", "Bm", "A"],
-        "Bridge": ["G", "D", "A", "Bm"],
-    }, {"D":"xx0232","G":"320003","Bm":"x24432","A":"x02220"}),
+    out.append("\n## Chord Color Summary")
+    out.append(f"- Dominant-type chords: {dominant_count}")
+    out.append(f"- Minor-type chords: {minor_count}")
+    out.append(f"- Major-seventh color chords: {maj7_count}")
 
-    make_song("Shivers", "Ed Sheeran", "Pop", "Bm", {
-        "Verse": ["Bm", "G", "D", "A"],
-        "Pre-Chorus": ["Bm", "G", "D", "A"],
-        "Chorus": ["Bm", "G", "D", "A"],
-    }, {"Bm":"x24432","G":"320003","D":"xx0232","A":"x02220"}),
+    out.append("\n## Improvisation Ideas")
+    if ctx["level"] == "Beginner":
+        out.append("- Start with chord roots, then add 3rds and 5ths.")
+        out.append("- Use short phrases, not long scale runs.")
+    elif ctx["level"] == "Intermediate":
+        out.append("- Target the 3rd of each chord on strong beats.")
+        out.append("- Use one repeated motif and move it through the sections.")
+        out.append("- Practice guide tones between adjacent chords.")
+    else:
+        out.append("- Use guide-tone lines, chromatic approaches, delayed resolutions, and rhythmic displacement.")
+        out.append("- Try reharmonizing one repeated section with secondary dominants or tritone substitutions.")
+        out.append("- Build solos from motivic development rather than scale patterns.")
 
-    make_song("Someone Like You", "Adele", "Pop", "A", {
-        "Verse": ["A", "E", "F#m", "D"],
-        "Pre-Chorus": ["E", "F#m", "D", "A"],
-        "Chorus": ["A", "E", "F#m", "D"],
-        "Bridge": ["E", "F#m", "D", "D"],
-    }, {"A":"x02220","E":"022100","F#m":"244222","D":"xx0232"}),
+    return "\n".join(out)
 
-    make_song("Imagine", "John Lennon", "Pop", "C", {
-        "Verse": ["C", "Cmaj7", "F", "F"],
-        "Chorus": ["F", "Am", "Dm", "G"],
-        "Bridge": ["F", "G", "C", "E7"],
-    }, {"C":"x32010","Cmaj7":"x32000","F":"133211","Am":"x02210","Dm":"xx0231","G":"320003","E7":"020100"}),
+def creativity_arrangement_text(ctx, target_style):
+    out = []
+    out.append(f"# Creative Arrangement Assistant — {ctx['song']}")
+    out.append(f"Transforming toward: **{target_style}**")
+    out.append("\n## Arrangement Strategy")
+    if target_style == "Jobim / Bossa":
+        out.append("- Use softer rhythmic syncopation and gentler harmonic motion.")
+        out.append("- Add major 7ths, minor 9ths, and smoother bass motion.")
+        out.append("- Keep the melody relaxed and slightly behind the beat.")
+    elif target_style == "Jazz Fusion":
+        out.append("- Use extended voicings, electric piano textures, and syncopated bass.")
+        out.append("- Add modal solo sections over one or two-chord vamps.")
+    elif target_style == "Neo-Soul":
+        out.append("- Add lush voicings: maj9, m9, 13sus, and passing diminished chords.")
+        out.append("- Use laid-back groove, inner voice movement, and reharmonized turnarounds.")
+    elif target_style == "Rock Ballad":
+        out.append("- Simplify voicings and emphasize emotional build.")
+        out.append("- Add bigger chorus texture, sustained chords, and dynamic lift.")
+    elif target_style == "Funk":
+        out.append("- Reduce harmonic motion and emphasize groove.")
+        out.append("- Use stabs, scratches, syncopated comping, and bass-driven repetition.")
+    else:
+        out.append("- Keep the melody recognizable but change groove, voicing, and form.")
 
-    make_song("In My Life", "The Beatles", "Rock", "A", {
-        "Verse": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
-        "Chorus": ["F#m", "D", "G", "A", "F#m", "B7", "E", "E"],
-        "Return": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
-    }, {"A":"x02220","E":"022100","F#m":"244222","A7":"x02020","D":"xx0232","Dm":"xx0231","G":"320003","B7":"x21202"}),
+    out.append("\n## Section-by-Section Ideas")
+    for sec, chords in ctx["sections"].items():
+        out.append(f"### {sec}")
+        out.append("- Original: | " + " | ".join(chords) + " |")
+        if target_style in ["Neo-Soul", "Jazz Fusion", "Jobim / Bossa"]:
+            out.append("- Try adding color tones: 7ths, 9ths, 11ths, or 13ths.")
+        if target_style == "Funk":
+            out.append("- Try reducing to a 1–2 chord vamp and focus on rhythmic variation.")
+        if target_style == "Rock Ballad":
+            out.append("- Try bigger sustained voicings and a stronger chorus lift.")
+    return "\n".join(out)
 
-    make_song("Come Together", "The Beatles", "Rock", "Dm", {
-        "Verse Vamp": ["Dm7", "Dm7", "Dm7", "Dm7"],
-        "Chorus": ["A7", "G7", "D7", "D7"],
-        "Bridge": ["Bm", "G", "A", "A"],
-    }, {"Dm7":"xx0211","A7":"x02020","G7":"320001","D7":"xx0212","Bm":"x24432","G":"320003"}),
+def improvisation_intelligence_text(ctx):
+    out = []
+    out.append(f"# Improvisation Intelligence System — {ctx['song']}")
+    out.append("\n## What the system is tracking")
+    out.append("- chord-tone targeting")
+    out.append("- repeated rhythmic habits")
+    out.append("- overused scalar motion")
+    out.append("- phrase length variety")
+    out.append("- tension and release")
+    out.append("- motif development")
+    out.append("- avoided intervals or registers")
+    out.append("\n## Forced Creativity Challenges")
+    if ctx["level"] == "Beginner":
+        out.append("- Improvise using only roots.")
+        out.append("- Then roots + 3rds.")
+        out.append("- Use only 2-bar phrases.")
+    elif ctx["level"] == "Intermediate":
+        out.append("- Chorus 1: chord tones only.")
+        out.append("- Chorus 2: one motif moved through the form.")
+        out.append("- Chorus 3: avoid starting phrases on beat 1.")
+    else:
+        out.append("- Use no scalar runs for one chorus.")
+        out.append("- Resolve every tension note intentionally.")
+        out.append("- Develop one 3-note motif through all sections.")
+        out.append("- Use rhythmic displacement.")
+    return "\n".join(out)
 
-    make_song("While My Guitar Gently Weeps", "The Beatles", "Rock", "Am", {
-        "Verse": ["Am", "Am/G", "D/F#", "F", "Am", "G", "D", "E"],
-        "Chorus": ["A", "C#m", "F#m", "C#m", "Bm", "E", "A", "E"],
-        "Bridge": ["Am", "G", "D", "E"],
-    }, {"Am":"x02210","F":"133211","G":"320003","D":"xx0232","E":"022100","A":"x02220","C#m":"x46654","F#m":"244222","Bm":"x24432"}),
+def adaptive_weakness_detection_text(ctx):
+    out = []
+    out.append(f"# Adaptive Weakness Detection — {ctx['song']}")
+    out.append("\n## Current practice targets")
+    if ctx["focus"] == "Improvisation":
+        out.append("- Target stronger chord-tone resolution and less repetitive phrasing.")
+    elif ctx["focus"] == "Rhythm":
+        out.append("- Target steadier pulse, cleaner entrances, and less rushing.")
+    elif ctx["focus"] == "Harmony":
+        out.append("- Target smoother chord transitions and clearer section function.")
+    elif ctx["focus"] == "Melody":
+        out.append("- Target phrase shape, note accuracy, and melodic continuity.")
+    else:
+        out.append("- Target technique, tone, and consistency.")
+    out.append("\n## Generated Drill")
+    out.append("- Pick the hardest section.")
+    out.append("- Loop it slowly 5 times.")
+    out.append("- Record one take.")
+    out.append("- Listen for only one weakness.")
+    out.append("- Repeat with one correction.")
+    return "\n".join(out)
 
-    make_song("Eleanor Rigby", "The Beatles", "Rock", "Em", {
-        "Verse": ["Em", "Em", "C", "Em"],
-        "Chorus": ["Em", "C", "Em", "C"],
-        "Bridge": ["Am", "Em", "C", "Em"],
-    }, {"Em":"022000","C":"x32010","Am":"x02210"}),
-
-    make_song("Wave", "Antonio Carlos Jobim", "Jazz", "D", {
-        "A Section": ["Dmaj7", "Bbdim7", "Am7", "D7", "Gmaj7", "Gm6", "F#m7", "B7"],
-        "B Section": ["Em7", "A7", "Dmaj7", "Dmaj7", "Fm7", "Bb7", "Ebmaj7", "A7"],
-        "Final A": ["Dmaj7", "Bbdim7", "Am7", "D7", "Gmaj7", "Gm6", "Dmaj7", "A7"],
-    }, {"Dmaj7":"xx0222","Am7":"x02010","D7":"xx0212","Gmaj7":"320002","F#m7":"242222","B7":"x21202","Em7":"022030","A7":"x02020"}),
-
-    make_song("One Note Samba", "Antonio Carlos Jobim", "Jazz", "Bb", {
-        "A Section": ["Bbmaj7", "Bdim7", "Cm7", "F7", "Cm7", "F7", "Bbmaj7", "F7"],
-        "B Section": ["Dm7", "G7", "Cm7", "F7", "Dm7", "G7", "Cm7", "F7"],
-        "Final A": ["Bbmaj7", "Bdim7", "Cm7", "F7", "Bbmaj7", "Bbmaj7"],
-    }, {"Bbmaj7":"x13231","Cm7":"x35343","F7":"131211","Dm7":"xx0211","G7":"320001"}),
-
-    make_song("Summer Samba", "Marcos Valle", "Jazz", "F", {
-        "A Section": ["Fmaj7", "Gm7", "Am7", "Gm7", "Fmaj7", "Gm7", "Am7", "D7"],
-        "B Section": ["Gm7", "C7", "Fmaj7", "Dm7", "Gm7", "C7", "Fmaj7", "C7"],
-    }, {"Fmaj7":"1x2210","Gm7":"353333","Am7":"x02010","D7":"xx0212","C7":"x32310","Dm7":"xx0211"}),
-
-    make_song("Meditation", "Antonio Carlos Jobim", "Jazz", "C", {
-        "A Section": ["Cmaj7", "Cmaj7", "Bm7b5", "E7", "Am7", "D7", "Dm7", "G7"],
-        "B Section": ["Em7", "A7", "Dm7", "G7", "Cmaj7", "Cmaj7"],
-    }, {"Cmaj7":"x32000","E7":"020100","Am7":"x02010","D7":"xx0212","Dm7":"xx0211","G7":"320001","Em7":"022030","A7":"x02020"}),
-
-    make_song("Agua de Beber", "Antonio Carlos Jobim", "Jazz", "Am", {
-        "A Section": ["Am7", "D7", "Am7", "D7", "Am7", "D7", "Gmaj7", "Gmaj7"],
-        "B Section": ["Bm7b5", "E7", "Am7", "Am7", "Dm7", "G7", "Cmaj7", "E7"],
-    }, {"Am7":"x02010","D7":"xx0212","Gmaj7":"320002","E7":"020100","Dm7":"xx0211","G7":"320001","Cmaj7":"x32000"}),
-
-    make_song("How Insensitive", "Antonio Carlos Jobim", "Jazz", "Dm", {
-        "A Section": ["Dm", "Dm/C", "Bdim7", "Bbmaj7", "A7", "A7", "Dm", "Dm"],
-        "B Section": ["Gm7", "C7", "Fmaj7", "Bbmaj7", "Em7b5", "A7", "Dm", "A7"],
-    }, {"Dm":"xx0231","Bbmaj7":"x13231","A7":"x02020","Gm7":"353333","C7":"x32310","Fmaj7":"1x2210"}),
-]
-
-LARGE_SONG_ROWS.extend(MORE_SONG_ROWS)
-rebuild_picker_catalog_from_rows()
+def musical_development_tracker_text():
+    logs = load_logs() if "load_logs" in globals() else []
+    out = ["# AI-Guided Musical Development Tracking"]
+    if not logs:
+        out.append("No practice logs yet. Start logging sessions to build a development profile.")
+        return "\n".join(out)
+    df = pd.DataFrame(logs)
+    out.append(f"Total logged sessions: **{len(df)}**")
+    if "focus" in df.columns:
+        out.append("\n## Focus Distribution")
+        for k, v in df["focus"].value_counts().to_dict().items():
+            out.append(f"- {k}: {v} sessions")
+    if "song" in df.columns:
+        out.append("\n## Most Practiced Songs")
+        for k, v in df["song"].value_counts().head(5).to_dict().items():
+            out.append(f"- {k}: {v} sessions")
+    if "rating" in df.columns:
+        try:
+            out.append(f"\nAverage self-rating: **{df['rating'].astype(float).mean():.1f}/10**")
+        except Exception:
+            pass
+    out.append("\n## Development Recommendation")
+    out.append("- Balance song learning with improvisation and ear-training.")
+    out.append("- Revisit the same song across multiple styles.")
+    out.append("- Track whether your weak area changes over time.")
+    return "\n".join(out)
 
 # -------------------------------------------------
 # APP UI
@@ -1470,6 +1546,7 @@ tabs = st.tabs([
     "Song Search",
     "Backing Track",
     "Recording Analysis",
+    "Creative Lab",
     "Multitrack Recorder",
     "Practice Log"
 ])
@@ -1481,6 +1558,8 @@ tabs = st.tabs([
 with tabs[0]:
 
     st.header("Daily Practice Plan")
+
+    st.caption("For deeper analysis, use the Creative Lab tab: harmony, improvisation, arranging, weakness detection, and musical development tracking.")
 
     st.write(
         f"""
@@ -1735,11 +1814,65 @@ with tabs[3]:
 
 
 
+
+# -------------------------------------------------
+# CREATIVE LAB
+# -------------------------------------------------
+
+with tabs[4]:
+
+    st.header("AI Musical Development + Creative Lab")
+
+    st.write(
+        "This page starts moving the app beyond ordinary practice into deeper musical development: "
+        "harmony, improvisation, arranging, weakness detection, and long-term growth tracking."
+    )
+
+    ctx = current_song_context_lab()
+
+    lab_mode = st.selectbox(
+        "Choose creative intelligence mode",
+        [
+            "Deep Harmonic Analyzer",
+            "Improvisation Intelligence",
+            "Creative Arrangement Assistant",
+            "Adaptive Weakness Detection",
+            "AI-Guided Musical Development Tracking"
+        ]
+    )
+
+    if lab_mode == "Deep Harmonic Analyzer":
+        st.markdown(deep_harmonic_analysis_text(ctx))
+
+    elif lab_mode == "Improvisation Intelligence":
+        st.markdown(improvisation_intelligence_text(ctx))
+
+    elif lab_mode == "Creative Arrangement Assistant":
+        target_style = st.selectbox(
+            "Transform toward style",
+            [
+                "Jobim / Bossa",
+                "Jazz Fusion",
+                "Neo-Soul",
+                "Rock Ballad",
+                "Funk",
+                "Cinematic"
+            ]
+        )
+        st.markdown(creativity_arrangement_text(ctx, target_style))
+
+    elif lab_mode == "Adaptive Weakness Detection":
+        st.markdown(adaptive_weakness_detection_text(ctx))
+
+    else:
+        st.markdown(musical_development_tracker_text())
+
+
 # -------------------------------------------------
 # MULTITRACK
 # -------------------------------------------------
 
-with tabs[4]:
+with tabs[5]:
 
     st.header("Multitrack Recorder")
 
@@ -2022,7 +2155,7 @@ with tabs[4]:
 # PRACTICE LOG
 # -------------------------------------------------
 
-with tabs[5]:
+with tabs[6]:
 
     st.header("Practice Log")
 
