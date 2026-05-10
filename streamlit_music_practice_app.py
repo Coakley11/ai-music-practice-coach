@@ -1,4 +1,4 @@
-# VERSION: v43_musical_development_lab
+# VERSION: v44_bigger_song_catalog
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -1409,6 +1409,100 @@ def musical_development_tracker_text():
     out.append("- Revisit the same song across multiple styles.")
     out.append("- Track whether your weak area changes over time.")
     return "\n".join(out)
+
+
+# -------------------------------------------------
+# V44 BIGGER SONG CATALOG ADDITIONS
+# -------------------------------------------------
+
+def add_song_to_catalog(title, artist, genre, key, sections, guitar_tabs=None):
+    global SONG_PICKER_CATALOG, SONG_LIBRARY, GENRES
+    label = f"{title} — {artist}"
+    row = {
+        "title": title,
+        "artist": artist,
+        "genre": genre,
+        "key": key,
+        "sections": sections,
+        "guitar_tabs": guitar_tabs or {},
+    }
+    SONG_PICKER_CATALOG.setdefault(genre, {})[label] = row
+    SONG_LIBRARY.setdefault(genre, {})[title] = {
+        "artist": artist,
+        "key": key,
+        "sections": sections,
+        "guitar_tabs": guitar_tabs or {},
+    }
+    GENRES = sorted(SONG_LIBRARY.keys())
+
+def add_more_songs_v44():
+    songs = [
+        # Billy Joel
+        ("Piano Man","Billy Joel","Pop","C",{"Verse":["C","G/B","Am","C/G","F","C/E","Dm","G"],"Chorus":["C","G/B","Am","C/G","F","G","C","G"],"Turnaround":["C","F","C","G"]}),
+        ("Turn the Lights Back On","Billy Joel","Pop","C",{"Verse":["C","Am","F","G","C","Am","F","G"],"Pre-Chorus":["Dm","G","Em","Am","F","G","C","G"],"Chorus":["C","Am","F","G","C","Am","F","G"],"Bridge":["F","G","Em","Am","Dm","G","C","G"]}),
+        ("Just the Way You Are","Billy Joel","Pop","D",{"Verse":["Dmaj7","Bm7","Gmaj7","A7","F#m7","B7","Em7","A7"],"Chorus":["Gmaj7","Gm6","D/F#","B7","Em7","A7","Dmaj7","A7"],"Bridge":["Bbmaj7","C","Am7","D7","Gmaj7","A7","Dmaj7","A7"]}),
+        ("Vienna","Billy Joel","Pop","Bb",{"Verse":["Bb","Dm","Gm","Eb","Bb","F","Bb","F"],"Chorus":["Eb","F","Dm","Gm","Cm","F","Bb","F"],"Bridge":["Gm","Dm","Eb","Bb","Cm","F","Bb","F"]}),
+        ("New York State of Mind","Billy Joel","Jazz","C",{"Verse":["Cmaj7","E7","Am7","Gm7","C7","Fmaj7","Fm7","Cmaj7"],"Chorus":["Fmaj7","Fm7","Em7","A7","Dm7","G7","Cmaj7","G7"],"Bridge":["Abmaj7","Db7","Cmaj7","A7","Dm7","G7","Cmaj7","G7"]}),
+
+        # Ed Sheeran / Pop
+        ("Shape of You","Ed Sheeran","Pop","C#m",{"Verse":["C#m","F#m","A","B"],"Pre-Chorus":["C#m","F#m","A","B"],"Chorus":["C#m","F#m","A","B"],"Bridge":["C#m","F#m","A","B"]}),
+        ("Perfect","Ed Sheeran","Pop","G",{"Verse":["G","Em","C","D"],"Pre-Chorus":["Em","C","G","D"],"Chorus":["G","D","Em","C"],"Bridge":["Em","C","G","D"]}),
+        ("Thinking Out Loud","Ed Sheeran","Pop","D",{"Verse":["D","D/F#","G","A"],"Pre-Chorus":["Em","A","D","Bm"],"Chorus":["D","D/F#","G","A"]}),
+        ("Photograph","Ed Sheeran","Pop","E",{"Verse":["E","C#m","B","A"],"Chorus":["E","B","C#m","A"],"Bridge":["C#m","A","E","B"]}),
+        ("Bad Habits","Ed Sheeran","Pop","Bm",{"Verse":["Bm","G","D","A"],"Pre-Chorus":["Bm","G","D","A"],"Chorus":["Bm","G","D","A"],"Bridge":["G","A","Bm","D"]}),
+        ("Castle on the Hill","Ed Sheeran","Pop","D",{"Verse":["D","G","Bm","A"],"Pre-Chorus":["G","A","Bm","D"],"Chorus":["D","G","Bm","A"],"Bridge":["G","D","A","Bm"]}),
+        ("Shivers","Ed Sheeran","Pop","Bm",{"Verse":["Bm","G","D","A"],"Pre-Chorus":["Bm","G","D","A"],"Chorus":["Bm","G","D","A"]}),
+        ("The A Team","Ed Sheeran","Pop","A",{"Verse":["A","E","F#m","D"],"Chorus":["A","E","F#m","D"],"Bridge":["D","A","E","E"]}),
+
+        # Coldplay
+        ("Viva La Vida","Coldplay","Pop","Ab",{"Verse":["Db","Eb","Ab","Fm"],"Chorus":["Db","Eb","Ab","Fm"],"Bridge":["Db","Eb","Ab","Ab"],"Final Chorus":["Db","Eb","Ab","Fm"]}),
+        ("Yellow","Coldplay","Pop","B",{"Verse":["B","F#","E","B"],"Chorus":["E","B","F#","E"],"Bridge":["G#m","F#","E","B"]}),
+        ("Fix You","Coldplay","Pop","Eb",{"Verse":["Eb","Gm","Cm","Bb"],"Chorus":["Ab","Eb","Bb","Cm"],"Bridge":["Ab","Eb","Bb","Cm"]}),
+        ("The Scientist","Coldplay","Pop","F",{"Verse":["Dm","Bb","F","F"],"Chorus":["Bb","F","C","Dm"],"Bridge":["Bb","F","C","C"]}),
+        ("Clocks","Coldplay","Pop","Eb",{"Main Riff":["Eb","Bbm","Fm","Fm"],"Chorus":["Ab","Eb","Bbm","Fm"],"Bridge":["Db","Ab","Eb","Bbm"]}),
+        ("A Sky Full of Stars","Coldplay","Pop","F",{"Verse":["F","Am","Dm","Bb"],"Chorus":["F","Am","Dm","Bb"],"Bridge":["Bb","C","Dm","F"]}),
+        ("Paradise","Coldplay","Pop","F",{"Verse":["F","Gm","Bb","Dm"],"Chorus":["Bb","F","C","Dm"],"Bridge":["Gm","Bb","F","C"]}),
+
+        # Beatles
+        ("Let It Be","The Beatles","Rock","C",{"Verse":["C","G","Am","F"],"Chorus":["C","G","F","C"],"Bridge":["Am","G","F","C"],"Final Chorus":["C","G","F","C"]}),
+        ("Hey Jude","The Beatles","Rock","F",{"Verse":["F","C","C7","F"],"Middle":["Bb","F","C","F"],"Na-Na Outro":["F","Eb","Bb","F"]}),
+        ("Yesterday","The Beatles","Rock","F",{"Verse":["F","Em7","A7","Dm"],"Middle":["Bb","C","F","Dm"],"Return":["Gm","C7","F","F"]}),
+        ("Here Comes the Sun","The Beatles","Rock","A",{"Verse":["A","D","E","A"],"Chorus":["D","B7","E","A"],"Bridge":["C","G","D","A"]}),
+        ("Something","The Beatles","Rock","C",{"Verse":["C","Cmaj7","C7","F"],"Chorus":["A","C#m","F#m","A"],"Bridge":["F","Eb","G","C"]}),
+        ("Blackbird","The Beatles","Rock","G",{"Main Pattern":["G","Am7","G/B","C"],"Middle":["C","Cm","G","A7"],"Return":["G","Am7","G/B","C"]}),
+        ("In My Life","The Beatles","Rock","A",{"Verse":["A","E","F#m","A7","D","Dm","A","A"],"Chorus":["F#m","D","G","A","F#m","B7","E","E"],"Return":["A","E","F#m","A7","D","Dm","A","A"]}),
+        ("Come Together","The Beatles","Rock","Dm",{"Verse Vamp":["Dm7","Dm7","Dm7","Dm7"],"Chorus":["A7","G7","D7","D7"],"Bridge":["Bm","G","A","A"]}),
+        ("While My Guitar Gently Weeps","The Beatles","Rock","Am",{"Verse":["Am","Am/G","D/F#","F","Am","G","D","E"],"Chorus":["A","C#m","F#m","C#m","Bm","E","A","E"],"Bridge":["Am","G","D","E"]}),
+        ("Eleanor Rigby","The Beatles","Rock","Em",{"Verse":["Em","Em","C","Em"],"Chorus":["Em","C","Em","C"],"Bridge":["Am","Em","C","Em"]}),
+        ("Twist and Shout","The Beatles","Rock","D",{"Verse":["D","G","A","G"],"Chorus":["D","G","A","G"],"Break":["D","D","A","A"]}),
+        ("Across the Universe","The Beatles","Rock","D",{"Verse":["D","Bm","F#m","A"],"Chorus":["G","A","D","D"],"Bridge":["G","D","A","A"]}),
+        ("A Day in the Life","The Beatles","Rock","G",{"Verse":["G","Bm","Em","Em7"],"Middle":["C","G","D","D"],"Final":["G","Bm","Em","C"]}),
+        ("Help!","The Beatles","Rock","A",{"Verse":["A","C#m","F#m","D"],"Chorus":["G","A","D","D"],"Bridge":["Bm","G","A","A"]}),
+        ("All You Need Is Love","The Beatles","Rock","G",{"Verse":["G","D","Em","D"],"Chorus":["C","D","G","G"],"Bridge":["Em","A7","D","D"]}),
+
+        # Jobim/Bossa/Jazz
+        ("The Girl from Ipanema","Antonio Carlos Jobim","Jazz","F",{"A Section":["Fmaj7","G7","Gm7","C7","Fmaj7","G7","Gm7","C7"],"Bridge":["Gbmaj7","B7","F#m7","D7","Gm7","Eb7","Am7","D7"],"Final A":["Gm7","C7","Fmaj7","Fmaj7"]}),
+        ("Wave","Antonio Carlos Jobim","Jazz","D",{"A Section":["Dmaj7","Bbdim7","Am7","D7","Gmaj7","Gm6","F#m7","B7"],"B Section":["Em7","A7","Dmaj7","Dmaj7","Fm7","Bb7","Ebmaj7","A7"],"Final A":["Dmaj7","Bbdim7","Am7","D7","Gmaj7","Gm6","Dmaj7","A7"]}),
+        ("One Note Samba","Antonio Carlos Jobim","Jazz","Bb",{"A Section":["Bbmaj7","Bdim7","Cm7","F7","Cm7","F7","Bbmaj7","F7"],"B Section":["Dm7","G7","Cm7","F7","Dm7","G7","Cm7","F7"],"Final A":["Bbmaj7","Bdim7","Cm7","F7","Bbmaj7","Bbmaj7"]}),
+        ("Desafinado","Antonio Carlos Jobim","Jazz","F",{"A Section":["Fmaj7","G7","Gm7","C7","Am7","D7","Gm7","C7"],"B Section":["Fmaj7","F#dim7","Gm7","C7","Fmaj7","D7","Gm7","C7"]}),
+        ("Corcovado","Antonio Carlos Jobim","Jazz","C",{"A Section":["Cmaj7","D7","Dm7","G7","Cmaj7","D7","Dm7","G7"],"B Section":["Em7","A7","Dm7","G7","Cmaj7","Cmaj7"]}),
+        ("Meditation","Antonio Carlos Jobim","Jazz","C",{"A Section":["Cmaj7","Cmaj7","Bm7b5","E7","Am7","D7","Dm7","G7"],"B Section":["Em7","A7","Dm7","G7","Cmaj7","Cmaj7"]}),
+        ("Agua de Beber","Antonio Carlos Jobim","Jazz","Am",{"A Section":["Am7","D7","Am7","D7","Am7","D7","Gmaj7","Gmaj7"],"B Section":["Bm7b5","E7","Am7","Am7","Dm7","G7","Cmaj7","E7"]}),
+        ("How Insensitive","Antonio Carlos Jobim","Jazz","Dm",{"A Section":["Dm","Dm/C","Bdim7","Bbmaj7","A7","A7","Dm","Dm"],"B Section":["Gm7","C7","Fmaj7","Bbmaj7","Em7b5","A7","Dm","A7"]}),
+        ("Summer Samba","Marcos Valle","Jazz","F",{"A Section":["Fmaj7","Gm7","Am7","Gm7","Fmaj7","Gm7","Am7","D7"],"B Section":["Gm7","C7","Fmaj7","Dm7","Gm7","C7","Fmaj7","C7"]}),
+
+        # More jazz standards
+        ("All of Me","Jazz Standard","Jazz","C",{"A Section":["Cmaj7","E7","A7","Dm7","E7","Am7","D7","G7"],"B Section":["Cmaj7","E7","A7","Dm7","Fmaj7","Fm7","Cmaj7","A7"],"Turnaround":["Dm7","G7","Cmaj7","G7"]}),
+        ("Fly Me to the Moon","Bart Howard","Jazz","C",{"A Section":["Am7","Dm7","G7","Cmaj7","Fmaj7","Bm7b5","E7","Am7"],"B Section":["Dm7","G7","Cmaj7","A7","Dm7","G7","Cmaj7","E7"]}),
+        ("So What","Miles Davis","Jazz","Dm",{"A Section":["Dm7"]*8,"Bridge":["Ebm7"]*8,"Final A":["Dm7"]*8}),
+        ("Take the A Train","Duke Ellington","Jazz","C",{"A Section":["Cmaj7","Cmaj7","D7","D7","Dm7","G7","Cmaj7","G7"],"B Section":["Fmaj7","Fmaj7","D7","D7","Dm7","G7","Cmaj7","G7"]}),
+        ("There Will Never Be Another You","Harry Warren","Jazz","Eb",{"A Section":["Ebmaj7","Cm7","Fm7","Bb7","Gm7","C7","Fm7","Bb7"],"B Section":["Ebmaj7","Abmaj7","Dm7b5","G7","Cm7","F7","Fm7","Bb7"]}),
+        ("All the Things You Are","Jerome Kern","Jazz","Ab",{"A Section":["Fm7","Bbm7","Eb7","Abmaj7","Dbmaj7","G7","Cmaj7","Cmaj7"],"B Section":["Cm7","Fm7","Bb7","Ebmaj7","Abmaj7","D7","Gmaj7","Gmaj7"]}),
+    ]
+    for title, artist, genre, key, sections in songs:
+        add_song_to_catalog(title, artist, genre, key, sections)
+
+add_more_songs_v44()
 
 # -------------------------------------------------
 # APP UI
