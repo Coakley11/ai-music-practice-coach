@@ -1,4 +1,4 @@
-# VERSION: v46_master_song_architecture
+# VERSION: v46_master_song_architecture + music_theory importlib load
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -33,18 +33,36 @@ st.set_page_config(
 
 DATA_FILE = Path("practice_history.json")
 
-from music_theory import (
-    COMMON_KEYS,
-    CHROMATIC,
-    FLAT_TO_SHARP,
-    NOTE_TO_MIDI,
-    normalize_root,
-    split_chord,
-    semitone_distance,
-    transpose_chord,
-    transpose_sections,
-    transpose_guitar_tabs,
+import importlib.util
+import sys
+
+_MUSIC_THEORY_PATH = Path(__file__).resolve().parent / "music_theory.py"
+if not _MUSIC_THEORY_PATH.is_file():
+    raise ImportError(
+        f"music_theory.py must sit next to this app (expected {_MUSIC_THEORY_PATH}). "
+        "Add that file to the repository root and redeploy."
+    )
+_spec = importlib.util.spec_from_file_location(
+    "music_theory",
+    str(_MUSIC_THEORY_PATH),
 )
+if _spec is None or _spec.loader is None:
+    raise ImportError(f"Could not load music_theory from {_MUSIC_THEORY_PATH}")
+_music_theory = importlib.util.module_from_spec(_spec)
+sys.modules["music_theory"] = _music_theory
+_spec.loader.exec_module(_music_theory)
+
+COMMON_KEYS = _music_theory.COMMON_KEYS
+CHROMATIC = _music_theory.CHROMATIC
+FLAT_TO_SHARP = _music_theory.FLAT_TO_SHARP
+NOTE_TO_MIDI = _music_theory.NOTE_TO_MIDI
+normalize_root = _music_theory.normalize_root
+split_chord = _music_theory.split_chord
+semitone_distance = _music_theory.semitone_distance
+transpose_chord = _music_theory.transpose_chord
+transpose_sections = _music_theory.transpose_sections
+transpose_guitar_tabs = _music_theory.transpose_guitar_tabs
+
 from song_catalog import (
     load_song_catalog,
     search_records,
