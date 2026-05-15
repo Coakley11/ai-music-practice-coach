@@ -51,17 +51,46 @@ def semitone_distance(from_key, to_key):
 
 
 def transpose_chord(chord, steps):
+    chord = str(chord).strip()
+    if "/" in chord:
+        left, bass = chord.split("/", 1)
+        lr, ls = split_chord(left)
+        nr = normalize_root(lr)
+        left_out = (
+            CHROMATIC[(CHROMATIC.index(nr) + steps) % 12] + ls
+            if nr in CHROMATIC
+            else left
+        )
+        if not bass.strip():
+            return left_out + "/"
+        br, bs = split_chord(bass)
+        nbr = normalize_root(br)
+        bass_out = (
+            CHROMATIC[(CHROMATIC.index(nbr) + steps) % 12] + bs
+            if nbr in CHROMATIC
+            else bass
+        )
+        return f"{left_out}/{bass_out}"
+
     root, suffix = split_chord(chord)
     root = normalize_root(root)
 
     if root not in CHROMATIC:
         return chord
 
-    new_root = CHROMATIC[
-        (CHROMATIC.index(root) + steps) % 12
-    ]
+    new_root = CHROMATIC[(CHROMATIC.index(root) + steps) % 12]
 
     return new_root + suffix
+
+
+def transpose_guitar_tabs(g_tabs: dict, from_key: str, to_key: str) -> dict:
+    """Transpose dictionary keys (chord symbols) so labels match displayed harmony."""
+    if not g_tabs:
+        return {}
+    steps = semitone_distance(from_key, to_key)
+    if steps == 0:
+        return dict(g_tabs)
+    return {transpose_chord(name, steps): shape for name, shape in g_tabs.items()}
 
 
 def transpose_sections(song_data, target_key):

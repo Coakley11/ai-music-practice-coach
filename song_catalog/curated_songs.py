@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from music_theory import transpose_sections_dict
-
 
 def _ext(**kwargs) -> dict[str, Any]:
     """Reserved slots for MIDI / MusicXML / analysis / improvisation metadata."""
@@ -118,49 +116,69 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Bridge": ["D", "A", "E", "E"],
         }),
 
-        # --- Coldplay ---
+        # --- Coldplay (guitar-friendly, rehearsal-level form) ---
         _s("Viva La Vida", "Coldplay", "Pop", "Ab", {
-            "Verse / Main Loop": ["Db", "Eb", "Ab", "Fm"],
+            "Intro (Strings Figure)": ["Ab", "Fm", "Db", "Eb"],
+            "Verse": ["Db", "Eb", "Ab", "Fm"],
+            "Pre-Chorus (Lift)": ["Db", "Ab", "Eb", "Fm"],
             "Chorus": ["Db", "Eb", "Ab", "Fm"],
-            "Bridge": ["Db", "Eb", "Ab", "Ab"],
-            "Final Chorus": ["Db", "Eb", "Ab", "Fm"],
+            "Bridge (Breakdown)": ["Db", "Eb", "Ab", "Ab"],
+            "Final Chorus / Outro": ["Db", "Eb", "Ab", "Fm"],
         }),
         _s("Yellow", "Coldplay", "Pop", "B", {
+            "Intro": ["B", "B", "F#", "E"],
             "Verse": ["B", "F#", "E", "B"],
             "Chorus": ["E", "B", "F#", "E"],
             "Bridge": ["G#m", "F#", "E", "B"],
+            "Outro": ["E", "B", "F#", "B"],
         }),
         _s("Fix You", "Coldplay", "Pop", "Eb", {
+            "Intro (Organ)": ["Eb", "Gm", "Cm", "Bb"],
             "Verse": ["Eb", "Gm", "Cm", "Bb"],
+            "Pre-Chorus": ["Ab", "Bb", "Gm", "Cm"],
             "Chorus": ["Ab", "Eb", "Bb", "Cm"],
-            "Bridge": ["Ab", "Eb", "Bb", "Cm"],
+            "Bridge (Build)": ["Ab", "Eb", "Bb", "Cm"],
+            "Outro / Resolution": ["Ab", "Eb", "Bb", "Eb"],
         }),
         _s("The Scientist", "Coldplay", "Pop", "F", {
+            "Intro": ["Dm", "Bb", "F", "F"],
             "Verse": ["Dm", "Bb", "F", "F"],
+            "Pre-Chorus": ["Gm", "Bb", "F", "F"],
             "Chorus": ["Bb", "F", "C", "Dm"],
-            "Bridge": ["Bb", "F", "C", "C"],
+            "Bridge": ["Bb", "F", "C", "Dm"],
+            "Outro": ["Dm", "Bb", "F", "F"],
         }),
         _s("Clocks", "Coldplay", "Pop", "Eb", {
-            "Intro / Main Riff": ["Eb", "Bbm", "Fm", "Fm"],
+            "Intro / Piano Riff": ["Eb", "Bbm", "Fm", "Fm"],
+            "Verse (Riff)": ["Eb", "Bbm", "Fm", "Fm"],
             "Chorus": ["Ab", "Eb", "Bbm", "Fm"],
             "Bridge": ["Db", "Ab", "Eb", "Bbm"],
+            "Solo / Outro Riff": ["Eb", "Bbm", "Fm", "Fm"],
         }),
         _s("A Sky Full of Stars", "Coldplay", "Pop", "F", {
+            "Intro": ["F", "Am", "Dm", "Bb"],
             "Verse": ["F", "Am", "Dm", "Bb"],
+            "Pre-Chorus": ["Bb", "C", "Dm", "Am"],
             "Chorus": ["F", "Am", "Dm", "Bb"],
             "Bridge": ["Bb", "C", "Dm", "F"],
+            "Outro": ["F", "Am", "Dm", "Bb"],
         }),
         _s("Paradise", "Coldplay", "Pop", "F", {
+            "Intro (Synth Theme)": ["F", "Gm", "Bb", "Dm"],
             "Verse": ["F", "Gm", "Bb", "Dm"],
+            "Pre-Chorus": ["Gm", "Bb", "F", "C"],
             "Chorus": ["Bb", "F", "C", "Dm"],
             "Bridge": ["Gm", "Bb", "F", "C"],
+            "Outro": ["Bb", "F", "C", "Dm"],
         }),
 
         # --- Billy Joel (composer = self where applicable) ---
         _s("Piano Man", "Billy Joel", "Pop", "C", {
-            "Verse": ["C", "G/B", "Am", "C/G", "F", "C/E", "Dm7", "G7"],
-            "Chorus": ["C", "G/B", "Am", "C/G", "F", "G", "C", "G"],
-            "Turnaround / Outro": ["C", "F", "C", "G"],
+            "Intro (Pickup / Band In)": ["C", "G/B", "Am", "C/G", "F", "C/E", "Dm7", "G7"],
+            "Verse (Story)": ["C", "G/B", "Am", "C/G", "F", "C/E", "Dm7", "G7"],
+            "Chorus (Sing Us a Song)": ["C", "G/B", "Am", "C/G", "F", "G", "C", "G"],
+            "Instrumental / Harmonica Solo": ["C", "G", "F", "G", "C", "G", "F", "G"],
+            "Final Chorus / Outro": ["C", "F", "C", "G", "C", "F", "C", "G"],
         }, composer="Billy Joel"),
         _s("Turn the Lights Back On", "Billy Joel", "Pop", "C", {
             "Verse": ["C", "Am", "F", "G", "C", "Am", "F", "G"],
@@ -200,20 +218,26 @@ def curated_song_records() -> list[dict[str, Any]]:
 
         # --- The Beatles ---
         _s("Let It Be", "The Beatles", "Rock", "C", {
+            "Intro": ["C", "G", "Am", "F"],
             "Verse": ["C", "G", "Am", "F"],
             "Chorus": ["C", "G", "F", "C"],
             "Bridge": ["Am", "G", "F", "C"],
-            "Final Chorus": ["C", "G", "F", "C"],
+            "Guitar Solo (Over Verse)": ["C", "G", "Am", "F"],
+            "Final Chorus / Outro": ["C", "G", "F", "C"],
         }, composer="John Lennon & Paul McCartney"),
         _s("Hey Jude", "The Beatles", "Rock", "F", {
+            "Intro": ["F", "C", "C7", "F"],
             "Verse": ["F", "C", "C7", "F"],
-            "Bridge / Middle": ["Bb", "F", "C", "F"],
-            "Na-Na Outro": ["F", "Eb", "Bb", "F"],
+            "Pre-Chorus (Build)": ["Bb", "Bb", "F", "F"],
+            "Chorus (Take a Sad Song)": ["Bb", "F", "C", "F"],
+            "Bridge / Middle (Instrumental)": ["Bb", "F", "C", "F"],
+            "Outro Vamp (Na-Na)": ["F", "Eb", "Bb", "F", "C", "F", "C", "F"],
         }, composer="Lennon–McCartney"),
         _s("Yesterday", "The Beatles", "Rock", "F", {
+            "Intro": ["F", "F", "F", "F"],
             "Verse": ["F", "Em7", "A7", "Dm"],
-            "Middle": ["Bb", "C7", "F", "Dm7"],
-            "Return": ["Gm7", "C7", "Fmaj7", "F6"],
+            "Middle Eight": ["Bb", "C7", "F", "Dm7"],
+            "Return / Tag": ["Gm7", "C7", "Fmaj7", "F6"],
         }, composer="Lennon–McCartney"),
         _s("Here Comes the Sun", "The Beatles", "Rock", "A", {
             "Verse": ["A", "D", "E7", "A"],
@@ -221,9 +245,11 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Bridge": ["C#m", "G#m", "A", "E7"],
         }, composer="George Harrison"),
         _s("Something", "The Beatles", "Rock", "F", {
-            "Verse": ["F", "Eb", "G", "C"],
-            "Chorus": ["A", "C#dim", "F#m7", "A"],
-            "Bridge": ["F", "Bb", "G", "C"],
+            "Intro": ["F", "Eb", "G", "C"],
+            "Verse": ["F", "Eb", "G", "C", "F", "G", "F", "Eb"],
+            "Bridge (I Don't Want to Leave)": ["A", "A/G", "F#m7", "F", "D", "G", "C", "C"],
+            "Guitar Solo (Verse Form)": ["F", "Eb", "G", "C"],
+            "Final Verse / Outro": ["F", "Eb", "G", "C"],
         }, composer="George Harrison"),
         _s("Blackbird", "The Beatles", "Rock", "G", {
             "Intro / Verse": ["G", "Am7", "G/B", "C", "G", "Am7", "G/B", "C"],
@@ -277,14 +303,16 @@ def curated_song_records() -> list[dict[str, Any]]:
 
         # --- Jobim & bossa ---
         _s("The Girl from Ipanema", "Antonio Carlos Jobim", "Jazz", "F", {
-            "A Section": ["Fmaj7", "G7", "Gm7", "C7", "Fmaj7", "G7", "Gm7", "C7"],
-            "Bridge": ["Dbmaj7", "B7", "F#m7", "B7", "Gm7", "Eb7", "Am7", "D7"],
-            "Final A": ["Gm7", "C7", "Fmaj7", "Fmaj7"],
+            "Intro (Turnaround)": ["Gm7", "C7", "Gm7", "C7"],
+            "Verse / A Section": ["Fmaj7", "G7", "Gm7", "C7", "Fmaj7", "G7", "Gm7", "C7"],
+            "Bridge / B Section": ["Dbmaj7", "B7", "F#m7", "B7", "Gm7", "Eb7", "Am7", "D7"],
+            "Last A (Recap)": ["Gm7", "C7", "Fmaj7", "Fmaj7"],
         }, composer="Antonio Carlos Jobim"),
         _s("Wave", "Antonio Carlos Jobim", "Jazz", "D", {
-            "A Section": ["Dmaj7", "Bbdim7", "Am7", "D7", "Gmaj7", "Gm6", "F#m7", "B7"],
-            "B Section": ["Em7", "A7", "Dmaj7", "Dmaj7", "Fm7", "Bb7", "Ebmaj7", "A7"],
-            "Final A": ["Dmaj7", "Bbdim7", "Am7", "D7", "Gmaj7", "Gm6", "Dmaj7", "A7"],
+            "Intro": ["Dmaj7", "Dmaj7", "Dmaj7", "Dmaj7"],
+            "Verse / A Section": ["Dmaj7", "Bbdim7", "Am7", "D7", "Gmaj7", "Gm6", "F#m7", "B7"],
+            "Bridge / B Section": ["Em7", "A7", "Dmaj7", "Dmaj7", "Fm7", "Bb7", "Ebmaj7", "A7"],
+            "Final A / Outro": ["Dmaj7", "Bbdim7", "Am7", "D7", "Gmaj7", "Gm6", "Dmaj7", "A7"],
         }, composer="Antonio Carlos Jobim"),
         _s("One Note Samba", "Antonio Carlos Jobim", "Jazz", "Bb", {
             "A Section": ["Bbmaj7", "Bdim7", "Cm7", "F7", "Cm7", "F7", "Bbmaj7", "F7"],
@@ -318,8 +346,9 @@ def curated_song_records() -> list[dict[str, Any]]:
 
         # --- Jazz standards (practice forms) ---
         _s("Autumn Leaves", "Jazz Standard", "Jazz", "Gm", {
-            "A Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7", "Gm7", "Gm7"],
-            "B Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7", "Gm7", "D7"],
+            "Intro (ii–V in relative minor)": ["Am7b5", "D7", "Gm7", "Gm7"],
+            "Verse / A": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7", "Gm7", "Gm7"],
+            "Bridge / B": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7", "Gm7", "D7"],
         }, composer="Joseph Kosma"),
         _s("Blue Bossa", "Kenny Dorham", "Jazz", "Cm", {
             "A Section": ["Cm7", "Fm7", "Dm7b5", "G7", "Cm7", "Cm7"],

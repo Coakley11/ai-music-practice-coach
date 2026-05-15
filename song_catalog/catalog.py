@@ -111,9 +111,11 @@ def _token_match(token: str, blob: str) -> bool:
         return True
     if token in blob:
         return True
-    # initials / compact match: "pia" inside "piano man" as contiguous substring
     if len(token) >= 2 and token in blob.replace(" ", ""):
         return True
+    for word in re.findall(r"[a-z0-9]+", blob):
+        if word.startswith(token):
+            return True
     return False
 
 
@@ -174,3 +176,17 @@ def format_pick_key(genre: str, label: str) -> str:
 def parse_pick_key(key: str) -> tuple[str, str]:
     genre, label = key.split("\x1f", 1)
     return genre, label
+
+
+def record_for_pick_key(records: list[dict[str, Any]], pick_key: str) -> dict[str, Any] | None:
+    """Resolve a picker/session key back to the merged catalog row."""
+    try:
+        genre, label = parse_pick_key(pick_key)
+    except ValueError:
+        return None
+    title, _, _artist = label.partition(" — ")
+    title = title.strip()
+    for r in records:
+        if r.get("genre") == genre and r.get("title") == title:
+            return r
+    return None

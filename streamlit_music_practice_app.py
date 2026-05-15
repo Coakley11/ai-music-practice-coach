@@ -1,4 +1,4 @@
-# VERSION: v45_song_catalog_search
+# VERSION: v46_master_song_architecture
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -43,15 +43,38 @@ from music_theory import (
     semitone_distance,
     transpose_chord,
     transpose_sections,
+    transpose_guitar_tabs,
 )
 from song_catalog import (
     load_song_catalog,
     search_records,
     format_pick_key,
     parse_pick_key,
+    record_for_pick_key,
+)
+from songs import (
+    apply_pick_key,
+    chord_blocks_for_backing,
+    ensure_master_song_initialized,
+    form_timeline_rows,
+    get_song_context,
+    section_order,
 )
 
 SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = load_song_catalog()
+
+ensure_master_song_initialized(
+    st,
+    all_records=ALL_SONG_RECORDS,
+    song_library=SONG_LIBRARY,
+    song_picker_catalog=SONG_PICKER_CATALOG,
+)
+
+genre, song, song_data = get_song_context(
+    st,
+    song_library=SONG_LIBRARY,
+    song_picker_catalog=SONG_PICKER_CATALOG,
+)
 
 # -------------------------------------------------
 # HELPER FUNCTIONS
@@ -187,7 +210,8 @@ def full_chord_markdown(
     song_name,
     song_data,
     sections,
-    instrument
+    instrument,
+    display_key=None,
 ):
 
     out = []
@@ -208,9 +232,12 @@ def full_chord_markdown(
     if g:
         out.append(f"Genre: **{g}**")
 
+    dk = display_key or song_data["key"]
     out.append(
         f"Original key: **{song_data['key']}**"
     )
+    if dk != song_data["key"]:
+        out.append(f"Display key: **{dk}** (chords transposed)")
 
     ext = song_data.get("extensions") or {}
     if ext.get("arrangement_notes"):
@@ -232,9 +259,10 @@ def full_chord_markdown(
             "\n## Guitar Chord Shapes"
         )
 
-        tabs = song_data.get(
-            "guitar_tabs",
-            {}
+        tabs = transpose_guitar_tabs(
+            song_data.get("guitar_tabs", {}),
+            song_data["key"],
+            dk,
         )
 
         for chord_name, tab in tabs.items():
@@ -296,22 +324,16 @@ def save_logs(logs):
         encoding="utf-8"
     )
 
-def generate_backing_track(
-    chords,
-    bpm=100,
-    loops=1
-):
-
-    sr = 44100
+def synthesize_chords_to_numpy(chords, bpm=100, loops=1, sr=44100):
 
     beat = 60 / bpm
 
     bar = beat * 4
 
-    chords = chords * max(1, int(loops))
+    chord_list = list(chords) * max(1, int(loops))
 
     audio = np.zeros(
-        int(sr * bar * len(chords))
+        int(sr * bar * len(chord_list))
     )
 
     def freq(midi_num):
@@ -347,7 +369,7 @@ def generate_backing_track(
 
     current = 0
 
-    for chord in chords:
+    for chord in chord_list:
 
         mids = chord_notes(chord)
 
@@ -383,6 +405,11 @@ def generate_backing_track(
         * 0.8
     )
 
+    return audio, sr
+
+
+def pcm16_wav_bytes_from_float(audio, sr=44100):
+
     out = io.BytesIO()
 
     with wave.open(out, "wb") as wf:
@@ -400,6 +427,162 @@ def generate_backing_track(
     out.seek(0)
 
     return out.getvalue()
+
+
+def generate_backing_track(
+    chords,
+    bpm=100,
+    loops=1
+):
+
+    audio, sr = synthesize_chords_to_numpy(chords, bpm=bpm, loops=loops)
+    return pcm16_wav_bytes_from_float(audio, sr)
+
+
+def backing_bytes_to_float(chords, bpm=100):
+
+    y, _sr = synthesize_chords_to_numpy(chords, bpm=bpm, loops=1)
+    return y
+
+
+def wav_bytes_from_float(audio, sr=44100):
+
+    return pcm16_wav_bytes_from_float(audio, sr)
+
+
+def make_count_in_click(*, bpm, beats, sr=44100):
+
+    beat_dur = 60 / bpm
+    total = int(np.ceil(sr * beat_dur * beats))
+    y = np.zeros(total)
+
+    def tick(t0, vol=0.35):
+
+        dur = min(0.06, beat_dur * 0.25)
+        t = np.linspace(0, dur, int(sr * dur), False)
+        sig = np.sin(2 * np.pi * 880 * t) * vol
+        env = np.linspace(1, 0.01, len(sig))
+        sig = sig * env
+        s0 = int(t0 * sr)
+        e = min(total, s0 + len(sig))
+        y[s0:e] += sig[: e - s0]
+
+    for b in range(beats):
+        tick(b * beat_dur)
+
+    return y
+
+
+def _load_audio_mono_bytes(audio_bytes, filename, sr):
+
+    suffix = "." + filename.split(".")[-1].lower() if "." in filename else ".wav"
+
+    if librosa is None:
+
+        try:
+
+            buf = io.BytesIO(audio_bytes)
+
+            with wave.open(buf, "rb") as wf:
+
+                n = wf.getnframes()
+                ch = wf.getnchannels()
+                raw = wf.readframes(n)
+                sw = wf.getsampwidth()
+                rate = wf.getframerate()
+
+            if sw != 2:
+                raise ValueError("Only 16-bit WAV supported without librosa.")
+
+            x = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32767.0
+
+            if ch == 2:
+                x = x.reshape(-1, 2).mean(axis=1)
+
+            if rate != sr and rate > 0:
+
+                x = np.interp(
+                    np.linspace(0, len(x) - 1, int(len(x) * sr / rate)),
+                    np.arange(len(x)),
+                    x,
+                )
+
+            return x
+
+        except Exception as exc:
+
+            raise RuntimeError(
+                "Loading this format needs librosa. Install librosa and soundfile, "
+                f"or use WAV. ({exc})"
+            ) from exc
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+
+        tmp.write(audio_bytes)
+        tmp_path = tmp.name
+
+    try:
+
+        y, _ = librosa.load(tmp_path, sr=sr, mono=True)
+
+        return y
+
+    finally:
+
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+def mix_multitrack(backing_y, track_items, sr=44100):
+
+    segs = []
+
+    max_len = 0
+
+    if backing_y is not None:
+
+        max_len = len(backing_y)
+
+    for item in track_items:
+
+        y = _load_audio_mono_bytes(
+            item["audio_bytes"],
+            item["filename"],
+            sr,
+        )
+
+        y = y * float(item["volume"])
+
+        delay = float(item["delay"])
+
+        ds = int(delay * sr)
+
+        if ds > 0:
+
+            y = np.concatenate([np.zeros(ds, dtype=y.dtype), y])
+
+        elif ds < 0:
+
+            y = y[-ds:]
+
+        segs.append(y)
+
+        max_len = max(max_len, len(y))
+
+    mix = np.zeros(max_len, dtype=np.float64)
+
+    if backing_y is not None:
+
+        mix[: len(backing_y)] += backing_y.astype(np.float64)
+
+    for y in segs:
+
+        mix[: len(y)] += y.astype(np.float64)
+
+    peak = np.max(np.abs(mix)) + 1e-9
+
+    mix = (mix / peak * 0.95).astype(np.float32)
+
+    return mix
 
 
 # -------------------------------------------------
@@ -559,13 +742,6 @@ def render_recording_analysis_report(result, song, focus):
 # ACTIVE SONG FROM PICKER
 # -------------------------------------------------
 
-def choose_active_song_from_label(genre_name, label):
-    data = SONG_PICKER_CATALOG[genre_name][label]
-    st.session_state["active_genre"] = genre_name
-    st.session_state["active_song_title"] = data["title"]
-    return data
-
-
 from creative_lab_text import (
     current_song_context_lab as lab_make_ctx,
     chord_quality as lab_chord_quality,
@@ -640,32 +816,33 @@ else:
 
 st.sidebar.header("Setup")
 
-default_genre = st.session_state.get("active_genre", GENRES[0])
-default_genre_index = GENRES.index(default_genre) if default_genre in GENRES else 0
-
-genre = st.sidebar.selectbox(
-    "What kind of music do you want to play today?",
-    GENRES,
-    index=default_genre_index
+st.sidebar.markdown(
+    f"**Active song:** {song} — {song_data['artist']}  \n"
+    f"**Style bin:** {genre}"
 )
 
-song_options = list(
-    SONG_LIBRARY[genre].keys()
+st.sidebar.caption(
+    "Select or change the piece under **Song Search / Song Picker**. "
+    "That choice is the one source of truth for every tab."
 )
 
-default_song = st.session_state.get("active_song_title", song_options[0])
-default_song_index = song_options.index(default_song) if default_song in song_options else 0
+if "display_key" not in st.session_state:
 
-song = st.sidebar.selectbox(
-    f"Current {genre} song",
-    song_options,
-    index=default_song_index
+    st.session_state.display_key = song_data["key"]
+
+if st.session_state.display_key not in COMMON_KEYS:
+
+    st.session_state.display_key = (
+        song_data["key"]
+        if song_data["key"] in COMMON_KEYS
+        else COMMON_KEYS[0]
+    )
+
+display_key = st.sidebar.selectbox(
+    "Transpose / Display Key",
+    COMMON_KEYS,
+    key="display_key",
 )
-
-st.sidebar.caption("Use the Song Search / Song Picker page to type a song, singer, or composer and change the active song.")
-
-st.session_state["active_genre"] = genre
-st.session_state["active_song_title"] = song
 
 instrument = st.sidebar.selectbox(
     "Instrument",
@@ -700,20 +877,6 @@ focus = st.sidebar.selectbox(
     ]
 )
 
-song_data = SONG_LIBRARY[genre][song]
-
-default_key_index = (
-    COMMON_KEYS.index(song_data["key"])
-    if song_data["key"] in COMMON_KEYS
-    else 0
-)
-
-display_key = st.sidebar.selectbox(
-    "Transpose / Display Key",
-    COMMON_KEYS,
-    index=default_key_index
-)
-
 minutes = st.sidebar.slider(
     "Practice Minutes",
     10,
@@ -727,9 +890,7 @@ sections = transpose_sections(
     display_key
 )
 
-full_song_chords = all_chords_from_sections(
-    sections
-)
+full_song_chords = chord_blocks_for_backing(sections)
 
 # TABS
 
@@ -768,7 +929,8 @@ Focus: **{focus}**
             song,
             song_data,
             sections,
-            instrument
+            instrument,
+            display_key=display_key,
         )
     )
 
@@ -857,6 +1019,21 @@ with tabs[1]:
         st.info("No matches — clear the box or try a shorter fragment to see more songs.")
         filtered = ALL_SONG_RECORDS[:80]
 
+    master_sel = st.session_state.get("selected_song") or {}
+    master_pk = master_sel.get("pick_key")
+    master_rec = record_for_pick_key(ALL_SONG_RECORDS, master_pk) if master_pk else None
+    if master_rec:
+        row_keys = {
+            format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
+            for r in filtered
+        }
+        mk = format_pick_key(
+            master_rec["genre"],
+            f"{master_rec['title']} — {master_rec['artist']}",
+        )
+        if mk not in row_keys:
+            filtered = [master_rec] + filtered
+
     pick_options = [
         format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
         for r in filtered
@@ -866,23 +1043,52 @@ with tabs[1]:
         g, lab = parse_pick_key(opt)
         return f"{lab}  [{g}]"
 
-    pick_key = st.selectbox(
-        "Matching songs (updates as you type)",
-        pick_options,
-        format_func=_fmt_pick,
-        key="matching_song_dropdown",
-    )
+    if not pick_options:
+
+        st.warning("No songs match this filter. Widen your search.")
+
+        pick_key = master_pk
+
+    else:
+
+        if st.session_state.get("matching_song_dropdown") not in pick_options:
+
+            st.session_state.matching_song_dropdown = (
+                master_pk if master_pk in pick_options else pick_options[0]
+            )
+
+        def _on_song_dropdown_change():
+
+            apply_pick_key(
+                st,
+                st.session_state["matching_song_dropdown"],
+                SONG_PICKER_CATALOG,
+            )
+
+            try:
+
+                st.toast("Active song updated everywhere (charts, backing track, Creative Lab, analysis).", icon="🎵")
+
+            except Exception:
+
+                pass
+
+        st.selectbox(
+            "Matching songs (pick one — this becomes the app-wide active song)",
+            pick_options,
+            format_func=_fmt_pick,
+            key="matching_song_dropdown",
+            on_change=_on_song_dropdown_change,
+        )
+
+        pick_key = st.session_state["matching_song_dropdown"]
 
     pick_genre, pick_label = parse_pick_key(pick_key)
     selected_data = SONG_PICKER_CATALOG[pick_genre][pick_label]
 
-    if st.button("Use this song for practice and backing track"):
-        choose_active_song_from_label(pick_genre, pick_label)
-        st.success(
-            f"Active song: **{selected_data['title']}** — {selected_data['artist']} "
-            f"({selected_data['genre']}). Sidebar genre/song, chords, backing track, "
-            "harmonic analyzer, exercises, and multitrack all follow this selection."
-        )
+    st.caption(
+        f"The list above is bound to the **active song**. It currently matches **{song}** — change it any time; all tabs follow."
+    )
 
     preview_sections = transpose_sections(
         {
@@ -909,7 +1115,8 @@ with tabs[1]:
             selected_data["title"],
             preview_song_data,
             preview_sections,
-            instrument
+            instrument,
+            display_key=display_key,
         )
     )
 
@@ -926,7 +1133,8 @@ with tabs[2]:
     st.header("Backing Track")
 
     st.write(
-        f"Backing track is based on the active song: **{song}**."
+        f"Uses the **active song** (same as Song Search / sidebar): **{song}** — {song_data['artist']}. "
+        f"Chords are in **{display_key}** (transpose from the sidebar if needed)."
     )
 
     st.subheader("Full Chords by Song Part")
@@ -936,39 +1144,99 @@ with tabs[2]:
             song,
             song_data,
             sections,
-            instrument
+            instrument,
+            display_key=display_key,
         )
     )
 
+    st.subheader("Form timeline (playback order)")
+
+    _tl_rows = form_timeline_rows(sections)
+
+    st.dataframe(
+        pd.DataFrame(_tl_rows).rename(
+            columns={
+                "section": "Section",
+                "start_bar": "Start bar",
+                "end_bar": "End bar",
+                "bars": "Bars (chords)",
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.caption(
+        "Sections play in table order. Each chord = one 4/4 bar in the synth. "
+        "Use **Start bar** / **End bar** to stay oriented during playback."
+    )
+
     st.subheader("Backing Track Settings")
+
+    _sec_names = [name for name, chs in section_order(sections) if chs]
+
+    back_scope = st.radio(
+        "What to loop",
+        ["Entire song (all sections in order)", "Single section only"],
+        horizontal=True,
+        key="backing_track_scope",
+    )
+
+    _only_section = None
+
+    if back_scope.startswith("Single") and _sec_names:
+
+        _only_section = st.selectbox(
+            "Section",
+            _sec_names,
+            key="backing_track_single_section",
+        )
+
+    backing_chords = chord_blocks_for_backing(
+        sections,
+        only_section=_only_section,
+    )
 
     bpm = st.slider(
         "BPM",
         50,
         180,
         100,
-        5
+        5,
+        key="backing_track_bpm",
     )
 
     form_loops = st.slider(
-        "How many loops of the full song form?",
+        "How many loops?",
         1,
         10,
         2,
-        1
+        1,
+        key="backing_track_loops",
     )
 
     st.write(
-        f"Full form length: **{len(full_song_chords)} chord measures/blocks**"
+        f"Sequence length: **{len(backing_chords)}** chord bars per loop "
+        f"({_only_section or 'full form'})"
     )
 
     st.write(
-        f"Total backing track length: **{len(full_song_chords) * form_loops} chord measures/blocks**"
+        f"**{form_loops}** loop(s) → **{len(backing_chords) * form_loops}** total chord bars"
     )
 
-    st.subheader("Full Form Order Used for Backing Track")
+    st.subheader("Chord source for this render")
 
-    for section_name, section_chords in sections.items():
+    _src_sections = (
+        [( _only_section, sections[_only_section])]
+        if _only_section
+        else section_order(sections)
+    )
+
+    for section_name, section_chords in _src_sections:
+
+        if not section_chords:
+
+            continue
 
         st.write(f"**{section_name}:**")
 
@@ -977,25 +1245,33 @@ with tabs[2]:
         )
 
     if st.button(
-        "Generate full-song backing track"
+        "Generate backing track (from active song + settings above)",
+        key="gen_backing_btn",
     ):
 
         wav = generate_backing_track(
-            full_song_chords,
+            backing_chords,
             bpm=bpm,
-            loops=form_loops
+            loops=form_loops,
         )
 
+        st.session_state["_last_backing_wav"] = wav
+
+    if st.session_state.get("_last_backing_wav"):
+
         st.audio(
-            wav,
-            format="audio/wav"
+            st.session_state["_last_backing_wav"],
+            format="audio/wav",
         )
+
+        _scope_bit = (_only_section or "full").replace(" ", "_")
 
         st.download_button(
             "Download backing track WAV",
-            wav,
-            file_name=f"{song.replace(' ', '_')}_{form_loops}_loops_backing_track.wav",
-            mime="audio/wav"
+            st.session_state["_last_backing_wav"],
+            file_name=f"{song.replace(' ', '_')}_{_scope_bit}_{form_loops}loops.wav",
+            mime="audio/wav",
+            key="dl_backing_btn",
         )
 
 # -------------------------------------------------

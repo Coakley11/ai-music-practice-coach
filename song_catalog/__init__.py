@@ -6,6 +6,7 @@ from .catalog import (
     format_pick_key,
     parse_pick_key,
     build_search_blob,
+    record_for_pick_key,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "format_pick_key",
     "parse_pick_key",
     "build_search_blob",
+    "record_for_pick_key",
 ]
