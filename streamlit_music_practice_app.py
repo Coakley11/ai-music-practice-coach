@@ -553,10 +553,25 @@ def save_logs(logs):
 def infer_groove_style(song_data, selected_style="Auto"):
     if selected_style != "Auto":
         return selected_style
-    genre_name = song_data.get("genre", "")
-    artist = song_data.get("artist", "")
-    composer = song_data.get("composer", "")
-    titleish = " ".join([genre_name, artist, composer]).lower()
+
+    def safe_text(x):
+        if x is None:
+            return ""
+        if isinstance(x, (list, tuple)):
+            return " ".join(str(i) for i in x)
+        if isinstance(x, dict):
+            return " ".join(str(v) for v in x.values())
+        return str(x)
+
+    song_data = song_data or {}
+    genre_name = safe_text(song_data.get("genre", ""))
+    artist = safe_text(song_data.get("artist", ""))
+    composer = safe_text(song_data.get("composer", ""))
+    titleish = " ".join([
+        safe_text(genre_name),
+        safe_text(artist),
+        safe_text(composer),
+    ]).lower()
     if "jobim" in titleish or "bossa" in titleish:
         return "Bossa nova"
     if genre_name == "Jazz":
