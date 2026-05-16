@@ -1,10 +1,12 @@
-"""Build SONG_LIBRARY / SONG_PICKER_CATALOG and search index from curated + bulk data.
+"""Build SONG_LIBRARY / SONG_PICKER_CATALOG and search index from curated core data.
 
 Song records may include optional ``composer`` and ``extensions`` keys
 (``midi_path``, ``musicxml_path``, ``harmonic_analysis``, etc.) for future features.
 
-To extend the library: edit ``curated_songs.py`` for hand-crafted charts, or
-``bulk_songs.py`` for generated shells. Optional JSON merge can be wired in here later.
+To extend the main library: edit ``curated_songs.py`` for hand-crafted charts.
+Generated shells in ``bulk_songs.py`` are intentionally hidden from the main app
+until they are upgraded beyond ``chart_status="placeholder"``.
+Optional JSON merge can be wired in here later.
 """
 
 from __future__ import annotations
@@ -14,6 +16,8 @@ from typing import Any
 
 from .bulk_songs import bulk_song_records
 from .curated_songs import curated_song_records
+
+INCLUDE_PLACEHOLDER_CHARTS = False
 
 
 def _norm_key(title: str, artist: str) -> tuple[str, str]:
@@ -36,6 +40,8 @@ def _merge_records() -> list[dict[str, Any]]:
         seen_gt.add(gt)
         out.append(row)
     for row in bulk_song_records():
+        if not INCLUDE_PLACEHOLDER_CHARTS and row.get("chart_status") == "placeholder":
+            continue
         ta = _norm_key(row["title"], row["artist"])
         gt = (row["genre"], row["title"].strip().lower())
         if ta in seen_ta:

@@ -1334,7 +1334,8 @@ with tabs[1]:
     st.header("Song Search / Song Picker")
 
     st.caption(
-        f"**{len(ALL_SONG_RECORDS)} songs** in the library. "
+        f"**{len(ALL_SONG_RECORDS)} songs** in the curated core library. "
+        "Placeholder charts are hidden until they are upgraded. "
         "Results filter live as you type (title, artist, composer, genre)."
     )
 
