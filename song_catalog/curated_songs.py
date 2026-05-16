@@ -27,6 +27,8 @@ def _s(
     guitar_tabs: dict[str, str] | None = None,
     composer: str | None = None,
     extensions: dict[str, Any] | None = None,
+    chart_status: str = "practice_simplified",
+    chart_versions: dict[str, dict[str, list[str]]] | None = None,
 ) -> dict[str, Any]:
     return {
         "title": title,
@@ -34,9 +36,24 @@ def _s(
         "genre": genre,
         "key": key,
         "sections": sections,
+        "chart_versions": chart_versions or {},
+        "chart_status": chart_status,
         "guitar_tabs": guitar_tabs or {},
         "composer": composer,
         "extensions": extensions or _ext(),
+    }
+
+
+def _levels(
+    *,
+    beginner: dict[str, list[str]],
+    intermediate: dict[str, list[str]],
+    advanced: dict[str, list[str]] | None = None,
+) -> dict[str, dict[str, list[str]]]:
+    return {
+        "Beginner": beginner,
+        "Intermediate": intermediate,
+        "Advanced": advanced or intermediate,
     }
 
 
@@ -44,15 +61,19 @@ def curated_song_records() -> list[dict[str, Any]]:
     return [
         # --- John Mayer / Pop foundations ---
         _s("Say", "John Mayer", "Pop", "Bb", {
-            "Verse": ["Bb", "F", "Gm", "Eb"],
-            "Chorus": ["Bb", "F", "Eb", "Bb"],
-            "Bridge": ["Gm", "F", "Eb", "Bb"],
-            "Outro / Final Chorus": ["Bb", "F", "Eb", "Bb"],
+            "Intro": ["Bb", "F/A", "Gm7", "Ebadd9"],
+            "Verse": ["Bb", "F/A", "Gm7", "Ebadd9", "Bb", "F/A", "Ebadd9", "Ebadd9"],
+            "Pre-Chorus": ["Cm7", "Eb", "Bb/D", "F"],
+            "Chorus": ["Bb", "F/A", "Ebadd9", "Bb/D", "Cm7", "Eb", "F", "Bb"],
+            "Bridge": ["Gm7", "F/A", "Ebadd9", "Bb/D", "Cm7", "Eb", "F", "F"],
+            "Outro / Final Chorus": ["Bb", "F/A", "Ebadd9", "Bb"],
         }, guitar_tabs={"Bb": "x13331", "F": "133211", "Gm": "355333", "Eb": "x68886", "Gm7": "353333"}),
         _s("Gravity", "John Mayer", "Pop", "G", {
-            "Verse Groove": ["G", "C", "G", "C"],
-            "Chorus / Lift": ["Em", "C", "G", "D"],
-            "Solo Section": ["G7", "C7", "G7", "D7"],
+            "Intro / Verse Groove": ["G", "C/G", "G", "C/G"],
+            "Verse": ["G", "C/G", "G", "C/G", "G", "C/G", "G", "C/G"],
+            "Chorus / Lift": ["Em7", "Cadd9", "G/D", "D", "Em7", "Cadd9", "G", "D"],
+            "Solo Section": ["G7", "C7", "G7", "G7", "C7", "C7", "G7", "D7"],
+            "Outro Vamp": ["G", "C/G", "G", "C/G"],
         }, guitar_tabs={"G": "320003", "C": "x32010", "Em": "022000", "D": "xx0232", "G7": "320001", "C7": "x32310", "D7": "xx0212"}),
         _s("Waiting on the World to Change", "John Mayer", "Pop", "D", {
             "Verse": ["D", "Bm", "G", "A"],
@@ -72,21 +93,25 @@ def curated_song_records() -> list[dict[str, Any]]:
 
         # --- Ed Sheeran ---
         _s("Shape of You", "Ed Sheeran", "Pop", "C#m", {
-            "Verse": ["C#m", "F#m", "A", "B"],
-            "Pre-Chorus": ["C#m", "F#m", "A", "B"],
-            "Chorus": ["C#m", "F#m", "A", "B"],
-            "Bridge": ["C#m", "F#m", "A", "B"],
+            "Intro / Main Loop": ["C#m7", "F#m7", "A", "B"],
+            "Verse": ["C#m7", "F#m7", "A", "B", "C#m7", "F#m7", "A", "B"],
+            "Pre-Chorus": ["C#m7", "F#m7", "A", "B", "C#m7", "F#m7", "A", "B"],
+            "Chorus": ["C#m7", "F#m7", "A", "B", "C#m7", "F#m7", "A", "B"],
+            "Bridge": ["C#m7", "F#m7", "A", "B"],
         }),
         _s("Perfect", "Ed Sheeran", "Pop", "G", {
-            "Verse": ["G", "Em", "C", "D"],
-            "Pre-Chorus": ["Em", "C", "G", "D"],
-            "Chorus": ["G", "D", "Em", "C"],
-            "Bridge": ["Em", "C", "G", "D"],
+            "Intro": ["G", "G", "Em7", "Cadd9"],
+            "Verse": ["G", "Em7", "Cadd9", "D", "G", "Em7", "Cadd9", "D"],
+            "Pre-Chorus": ["Em7", "Cadd9", "G", "D/F#", "Em7", "Cadd9", "G", "D"],
+            "Chorus": ["G", "D/F#", "Em7", "Cadd9", "G", "D/F#", "Cadd9", "D"],
+            "Bridge": ["Em7", "Cadd9", "G", "D", "Em7", "Cadd9", "G", "D"],
         }),
         _s("Thinking Out Loud", "Ed Sheeran", "Pop", "D", {
-            "Verse": ["D", "D/F#", "G", "A"],
-            "Pre-Chorus": ["Em", "A", "D", "Bm"],
-            "Chorus": ["D", "D/F#", "G", "A"],
+            "Intro": ["D", "D/F#", "G", "A7"],
+            "Verse": ["D", "D/F#", "G", "A7", "D", "D/F#", "G", "A7"],
+            "Pre-Chorus": ["Em7", "A7", "D", "Bm7", "Em7", "A7", "D", "A7"],
+            "Chorus": ["D", "D/F#", "G", "A7", "D", "D/F#", "G", "A7"],
+            "Bridge": ["Bm7", "A", "G", "D/F#", "Em7", "A7", "D", "A7"],
         }),
         _s("Photograph", "Ed Sheeran", "Pop", "E", {
             "Verse": ["E", "C#m", "B", "A"],
@@ -119,11 +144,11 @@ def curated_song_records() -> list[dict[str, Any]]:
         # --- Coldplay (guitar-friendly, rehearsal-level form) ---
         _s("Viva La Vida", "Coldplay", "Pop", "Ab", {
             "Intro (Strings Figure)": ["Ab", "Fm", "Db", "Eb"],
-            "Verse": ["Db", "Eb", "Ab", "Fm"],
-            "Pre-Chorus (Lift)": ["Db", "Ab", "Eb", "Fm"],
-            "Chorus": ["Db", "Eb", "Ab", "Fm"],
+            "Verse": ["Db", "Eb", "Ab/C", "Fm"],
+            "Pre-Chorus (Lift)": ["Db", "Ab/C", "Eb", "Fm"],
+            "Chorus": ["Db", "Eb", "Ab/C", "Fm"],
             "Bridge (Breakdown)": ["Db", "Eb", "Ab", "Ab"],
-            "Final Chorus / Outro": ["Db", "Eb", "Ab", "Fm"],
+            "Final Chorus / Outro": ["Db", "Eb", "Ab/C", "Fm"],
         }),
         _s("Yellow", "Coldplay", "Pop", "B", {
             "Intro": ["B", "B", "F#", "E"],
@@ -183,10 +208,11 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Final Chorus / Outro": ["C", "F", "C/E", "G7", "C", "F", "C/G", "G7"],
         }, composer="Billy Joel"),
         _s("Turn the Lights Back On", "Billy Joel", "Pop", "C", {
-            "Verse": ["C", "Am", "F", "G", "C", "Am", "F", "G"],
-            "Pre-Chorus": ["Dm", "G", "Em", "Am", "F", "G", "C", "G"],
-            "Chorus": ["C", "Am", "F", "G", "C", "Am", "F", "G"],
-            "Bridge": ["F", "G", "Em", "Am", "Dm", "G", "C", "G"],
+            "Intro": ["C", "Am7", "Fmaj7", "G"],
+            "Verse": ["C", "Am7", "Fmaj7", "G", "C/E", "Am7", "Fmaj7", "G"],
+            "Pre-Chorus": ["Dm7", "G", "Em7", "Am7", "Fmaj7", "G", "C", "G"],
+            "Chorus": ["C", "Am7", "Fmaj7", "G", "C/E", "Am7", "Fmaj7", "G"],
+            "Bridge": ["Fmaj7", "G", "Em7", "Am7", "Dm7", "G", "C", "G"],
         }, composer="Billy Joel"),
         _s("Just the Way You Are", "Billy Joel", "Pop", "D", {
             "Verse": ["Dmaj7", "Bm7", "Gmaj7", "A7", "F#m7", "B7", "Em7", "A7"],

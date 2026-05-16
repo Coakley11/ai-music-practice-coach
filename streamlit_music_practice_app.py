@@ -253,6 +253,10 @@ def _advanced_chord(chord, genre_name):
 
 
 def sections_for_level(song_data, level):
+    explicit_versions = song_data.get("chart_versions") or {}
+    if level in explicit_versions and explicit_versions[level]:
+        return explicit_versions[level]
+
     raw = song_data.get("sections", {})
     genre_name = song_data.get("genre", "")
     if level == "Beginner":
@@ -260,6 +264,16 @@ def sections_for_level(song_data, level):
     if level == "Intermediate":
         return {name: [_intermediate_chord(ch) for ch in chords] for name, chords in raw.items()}
     return {name: [_advanced_chord(ch, song_data.get("genre", "")) for ch in chords] for name, chords in raw.items()}
+
+
+def chart_status_label(song_data):
+    status = (song_data.get("chart_status") or "placeholder").strip()
+    labels = {
+        "verified": ("Verified chart", "success"),
+        "practice_simplified": ("Simplified practice chart", "info"),
+        "placeholder": ("Placeholder chart — needs verification", "warning"),
+    }
+    return labels.get(status, ("Placeholder chart — needs verification", "warning"))
 
 
 def compact_bar_summary(chords):
@@ -471,6 +485,8 @@ def full_chord_markdown(
         out.append(f"Display key: **{dk}** (chords transposed)")
 
     out.append(f"Player level chart: **{level}**")
+    status_text, _status_kind = chart_status_label(song_data)
+    out.append(f"Chart reliability: **{status_text}**")
     out.append("_One chord cell = one 4/4 bar unless the compact summary says otherwise._")
 
     ext = song_data.get("extensions") or {}
@@ -1141,6 +1157,14 @@ st.sidebar.markdown(
     f"**Style bin:** {genre}"
 )
 
+_chart_status_text, _chart_status_kind = chart_status_label(song_data)
+if _chart_status_kind == "success":
+    st.sidebar.success(_chart_status_text)
+elif _chart_status_kind == "warning":
+    st.sidebar.warning(_chart_status_text)
+else:
+    st.sidebar.info(_chart_status_text)
+
 st.sidebar.caption(
     "Select or change the piece under **Song Search / Song Picker**. "
     "That choice is the one source of truth for every tab."
@@ -1422,6 +1446,8 @@ with tabs[1]:
         "artist": selected_data["artist"],
         "key": selected_data["key"],
         "sections": selected_data["sections"],
+        "chart_versions": selected_data.get("chart_versions", {}),
+        "chart_status": selected_data.get("chart_status", "placeholder"),
         "guitar_tabs": selected_data.get("guitar_tabs", {}),
         "composer": selected_data.get("composer"),
         "genre": selected_data.get("genre"),
@@ -1574,6 +1600,10 @@ with tabs[2]:
         f"Backing architecture: **{resolved_groove}** ensemble sketch "
         "(bass + chord comping + simple drum/hat layer)."
     )
+    st.caption(
+        f"Chart version used for audio: **{level}** — "
+        f"**{chart_status_label(song_data)[0]}**"
+    )
 
     st.subheader("Chord source for this render")
 
@@ -1591,6 +1621,8 @@ with tabs[2]:
 
         st.write(f"**{section_name}:**")
 
+        st.write(f"Bars in section: **{len(section_chords)}**")
+        st.write(f"Bar-count summary: {compact_bar_summary(section_chords)}")
         st.markdown(bar_grid_markdown(section_chords))
 
     if st.button(

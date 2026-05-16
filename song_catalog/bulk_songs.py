@@ -30,6 +30,8 @@ def _row(
         "genre": genre,
         "key": key,
         "sections": sections,
+        "chart_versions": {},
+        "chart_status": "placeholder",
         "guitar_tabs": {},
         "composer": composer,
         "extensions": _ext(),
