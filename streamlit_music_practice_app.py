@@ -1,4 +1,4 @@
-# VERSION: v46_master_song_architecture + music_theory importlib load
+# VERSION: v47_musical_quality_backing_tracks
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -107,19 +107,48 @@ def all_chords_from_sections(sections):
 
     return out
 
+def _chord_head(chord):
+    return str(chord).strip().split("/", 1)[0]
+
+
+def _chord_bass(chord):
+    parts = str(chord).strip().split("/", 1)
+    return parts[1] if len(parts) == 2 and parts[1] else parts[0]
+
+
+def _midi_for_root_symbol(symbol, fallback=60):
+    root = split_chord(symbol)[0]
+    return NOTE_TO_MIDI.get(root, NOTE_TO_MIDI.get(normalize_root(root), fallback))
+
+
 def chord_notes(chord):
 
-    root = split_chord(chord)[0]
+    head = _chord_head(chord)
+
+    root, suffix = split_chord(head)
 
     base = NOTE_TO_MIDI.get(root, 60)
+    base = NOTE_TO_MIDI.get(normalize_root(root), base)
 
-    low = chord.lower()
+    low = suffix.lower()
 
     if "m7b5" in low:
         intervals = [0,3,6,10]
 
+    elif "dim7" in low:
+        intervals = [0,3,6,9]
+
+    elif "dim" in low:
+        intervals = [0,3,6]
+
+    elif "maj9" in low:
+        intervals = [0,4,7,11,14]
+
     elif "maj7" in low:
         intervals = [0,4,7,11]
+
+    elif "m9" in low:
+        intervals = [0,3,7,10,14]
 
     elif "m7" in low:
         intervals = [0,3,7,10]
@@ -127,13 +156,196 @@ def chord_notes(chord):
     elif "m" in low and "maj" not in low:
         intervals = [0,3,7]
 
+    elif "13" in low:
+        intervals = [0,4,7,10,14,21]
+
+    elif "add9" in low:
+        intervals = [0,4,7,14]
+
+    elif "9" in low:
+        intervals = [0,4,7,10,14]
+
+    elif "6" in low:
+        intervals = [0,4,7,9]
+
+    elif "sus" in low:
+        intervals = [0,5,7,10] if "7" in low else [0,5,7]
+
     elif "7" in low:
         intervals = [0,4,7,10]
 
     else:
         intervals = [0,4,7]
 
+    if "b9" in low:
+        intervals.append(13)
+    elif "#9" in low:
+        intervals.append(15)
+    if "#11" in low:
+        intervals.append(18)
+    if "b13" in low:
+        intervals.append(20)
+
     return [base+i for i in intervals]
+
+
+def bass_note(chord):
+    return _midi_for_root_symbol(_chord_bass(chord), 48)
+
+
+def _simplify_chord(chord, genre_name=""):
+    chord = str(chord).strip()
+    bass = ""
+    head = chord
+    if "/" in chord:
+        head, bass = chord.split("/", 1)
+
+    root, suffix = split_chord(head)
+    s = suffix.lower()
+    if "m7b5" in s or "dim" in s:
+        out = root + "dim"
+    elif s.startswith("m") and "maj" not in s:
+        out = root + "m"
+    elif "7" in s and ("blues" in genre_name.lower()):
+        out = root + "7"
+    else:
+        out = root
+
+    return f"{out}/{bass}" if bass else out
+
+
+def _intermediate_chord(chord):
+    chord = str(chord).strip()
+    if "maj9" in chord:
+        return chord.replace("maj9", "maj7")
+    if "m9" in chord:
+        return chord.replace("m9", "m7")
+    if "13" in chord:
+        return chord.replace("13", "7")
+    return chord.replace("7#9", "7").replace("7b9", "7")
+
+
+def _advanced_chord(chord, genre_name):
+    chord = str(chord).strip()
+    head = _chord_head(chord)
+    bass = ""
+    if "/" in chord:
+        bass = "/" + chord.split("/", 1)[1]
+    root, suffix = split_chord(head)
+    s = suffix.lower()
+    jazzish = genre_name in ["Jazz", "Blues"] or "maj7" in s or "m7" in s or "m7b5" in s
+
+    if "13" in s or "9" in s or "alt" in s or "#9" in s or "b9" in s:
+        return chord
+    if jazzish and "maj7" in s:
+        return root + "maj9" + bass
+    if jazzish and "m7b5" in s:
+        return root + "m7b5" + bass
+    if jazzish and "m7" in s:
+        return root + "m9" + bass
+    if jazzish and "7" in s and "maj" not in s:
+        return root + "13" + bass
+    if genre_name in ["Pop", "Rock"] and s == "":
+        return root + "add9" + bass
+    if genre_name in ["Pop", "Rock"] and s == "m":
+        return root + "m7" + bass
+    return chord
+
+
+def sections_for_level(song_data, level):
+    raw = song_data.get("sections", {})
+    genre_name = song_data.get("genre", "")
+    if level == "Beginner":
+        return {name: [_simplify_chord(ch, genre_name) for ch in chords] for name, chords in raw.items()}
+    if level == "Intermediate":
+        return {name: [_intermediate_chord(ch) for ch in chords] for name, chords in raw.items()}
+    return {name: [_advanced_chord(ch, song_data.get("genre", "")) for ch in chords] for name, chords in raw.items()}
+
+
+def compact_bar_summary(chords):
+    if not chords:
+        return ""
+    chunks = []
+    last = chords[0]
+    count = 1
+    for ch in chords[1:]:
+        if ch == last:
+            count += 1
+        else:
+            chunks.append(f"{last} ({count} bar{'s' if count != 1 else ''})")
+            last = ch
+            count = 1
+    chunks.append(f"{last} ({count} bar{'s' if count != 1 else ''})")
+    return "| " + " | ".join(chunks) + " |"
+
+
+def bar_grid_markdown(chords, bars_per_row=4):
+    rows = []
+    for i in range(0, len(chords), bars_per_row):
+        row = chords[i:i + bars_per_row]
+        cells = [f"{i + j + 1}. {ch}" for j, ch in enumerate(row)]
+        rows.append("| " + " | ".join(cells) + " |")
+    return "\n".join(rows)
+
+
+GUITAR_VOICING_LIBRARY = {
+    "C": "x32010", "Cmaj7": "x32000", "Cmaj9": "x32430", "Cadd9": "x32030",
+    "Cm": "x35543", "Cm7": "x35343", "Cm9": "x3133x", "C7": "x32310", "C13": "x32335",
+    "D": "xx0232", "D/F#": "2x0232", "Dmaj7": "xx0222", "Dmaj9": "x5465x", "Dm": "xx0231",
+    "Dm7": "xx0211", "Dm9": "x5355x", "D7": "xx0212", "D13": "x54557",
+    "E": "022100", "Emaj7": "021100", "Em": "022000", "Em7": "020000", "Em9": "020002", "E7": "020100",
+    "F": "133211", "Fmaj7": "1x2210", "Fmaj9": "1x2010", "Fm": "133111", "Fm7": "131111", "F7": "131211",
+    "G": "320003", "G/B": "x20003", "Gmaj7": "3x443x", "Gmaj9": "3x423x", "Gm": "355333", "Gm7": "353333", "G7": "320001", "G13": "3x3455",
+    "A": "x02220", "A/G": "3x2220", "Amaj7": "x02120", "Am": "x02210", "Am7": "x02010", "Am9": "x05500", "A7": "x02020", "A13": "x02022",
+    "Bb": "x13331", "Bbmaj7": "x13231", "Bbm7": "x13121", "Bb7": "x13131",
+    "B": "x24442", "Bm": "x24432", "Bm7": "x24232", "B7": "x21202", "Bm7b5": "x2323x",
+}
+
+
+def _voicing_family(chord, level):
+    head = _chord_head(chord)
+    root, suffix = split_chord(head)
+    low = suffix.lower()
+    if "m7b5" in low:
+        return f"{chord}: half-diminished shell, root on 5th string, shape `x-1-2-1-2-x` moved to {root}"
+    if "maj9" in low:
+        return f"{chord}: maj9 color grip, root + 3rd + 7th + 9th (avoid doubling the 5th)"
+    if "13" in low:
+        return f"{chord}: dominant 13 shell, play 3rd + b7 + 13, omit the root if bass is covered"
+    if "m9" in low:
+        return f"{chord}: minor 9 shell, root + b3 + b7 + 9"
+    if "maj7" in low:
+        return f"{chord}: movable maj7 shell, keep 3rd and 7th on adjacent strings"
+    if "m7" in low:
+        return f"{chord}: minor 7 shell / drop-2 grip"
+    if "7" in low:
+        return f"{chord}: dominant 7 shell; advanced: add 9 or 13 on top"
+    if level == "Advanced":
+        return f"{chord}: try a triad inversion plus 9th if it fits the melody"
+    return f"{chord}: playable open/barre grip; keep the top note clean"
+
+
+def guitar_voicing_lines(chords, song_data, display_key, level):
+    tabs = transpose_guitar_tabs(
+        song_data.get("guitar_tabs", {}),
+        song_data["key"],
+        display_key,
+    )
+    seen = []
+    for ch in chords:
+        if ch not in seen:
+            seen.append(ch)
+    lines = ["\n## Guitar Chord Diagrams / Voicings", "_String order: E A D G B e_"]
+    for ch in seen[:24]:
+        if ch in tabs:
+            lines.append(f"- **{ch}**: `{tabs[ch]}`")
+        elif ch in GUITAR_VOICING_LIBRARY:
+            lines.append(f"- **{ch}**: `{GUITAR_VOICING_LIBRARY[ch]}`")
+        else:
+            lines.append(f"- **{_voicing_family(ch, level)}**")
+    if len(seen) > 24:
+        lines.append(f"- ...plus {len(seen) - 24} more chord symbols in the full form.")
+    return lines
 
 def midi_note_name(m):
 
@@ -230,6 +442,7 @@ def full_chord_markdown(
     sections,
     instrument,
     display_key=None,
+    level="Intermediate",
 ):
 
     out = []
@@ -257,6 +470,9 @@ def full_chord_markdown(
     if dk != song_data["key"]:
         out.append(f"Display key: **{dk}** (chords transposed)")
 
+    out.append(f"Player level chart: **{level}**")
+    out.append("_One chord cell = one 4/4 bar unless the compact summary says otherwise._")
+
     ext = song_data.get("extensions") or {}
     if ext.get("arrangement_notes"):
         out.append(f"_Chart note:_ {ext['arrangement_notes']}")
@@ -267,27 +483,19 @@ def full_chord_markdown(
             f"\n### {section_name}"
         )
 
-        out.append(
-            "| " + " | ".join(chords) + " |"
-        )
+        out.append(f"Bars: **{len(chords)}**")
+        out.append(f"Harmonic rhythm: {compact_bar_summary(chords)}")
+        out.append(bar_grid_markdown(chords))
 
     if instrument == "Guitar":
-
-        out.append(
-            "\n## Guitar Chord Shapes"
-        )
-
-        tabs = transpose_guitar_tabs(
-            song_data.get("guitar_tabs", {}),
-            song_data["key"],
-            dk,
-        )
-
-        for chord_name, tab in tabs.items():
-
-            out.append(
-                f"- {chord_name}: `{tab}`"
+        out.extend(
+            guitar_voicing_lines(
+                all_chords_from_sections(sections),
+                song_data,
+                dk,
+                level,
             )
+        )
 
     return "\n".join(out)
 
@@ -342,87 +550,152 @@ def save_logs(logs):
         encoding="utf-8"
     )
 
-def synthesize_chords_to_numpy(chords, bpm=100, loops=1, sr=44100):
+def infer_groove_style(song_data, selected_style="Auto"):
+    if selected_style != "Auto":
+        return selected_style
+    genre_name = song_data.get("genre", "")
+    artist = song_data.get("artist", "")
+    composer = song_data.get("composer", "")
+    titleish = " ".join([genre_name, artist, composer]).lower()
+    if "jobim" in titleish or "bossa" in titleish:
+        return "Bossa nova"
+    if genre_name == "Jazz":
+        return "Jazz swing"
+    if genre_name == "Funk":
+        return "Funk groove"
+    if genre_name == "Rock":
+        return "Rock groove"
+    return "Pop groove"
+
+
+def _freq(midi_num):
+    return 440 * (2 ** ((midi_num - 69) / 12))
+
+
+def _add_tone(audio, sr, start_sec, dur_sec, midi_num, volume, wave_type="sine"):
+    start = int(start_sec * sr)
+    if start >= len(audio) or dur_sec <= 0:
+        return
+    n = max(1, int(dur_sec * sr))
+    end = min(len(audio), start + n)
+    n = end - start
+    t = np.linspace(0, dur_sec, n, False)
+    if wave_type == "bass":
+        sig = np.sin(2 * np.pi * _freq(midi_num) * t)
+        sig += 0.35 * np.sin(2 * np.pi * _freq(midi_num) * 2 * t)
+    elif wave_type == "organ":
+        sig = np.sin(2 * np.pi * _freq(midi_num) * t)
+        sig += 0.25 * np.sin(2 * np.pi * _freq(midi_num + 12) * t)
+    else:
+        sig = np.sin(2 * np.pi * _freq(midi_num) * t)
+    attack = max(1, int(0.01 * sr))
+    release = max(1, int(min(0.08, dur_sec * 0.35) * sr))
+    env = np.ones(n)
+    env[:min(attack, n)] = np.linspace(0, 1, min(attack, n))
+    env[-min(release, n):] *= np.linspace(1, 0.02, min(release, n))
+    audio[start:end] += sig * env * volume
+
+
+def _add_noise_hit(audio, sr, start_sec, dur_sec, volume, seed=0):
+    start = int(start_sec * sr)
+    if start >= len(audio):
+        return
+    n = max(1, int(dur_sec * sr))
+    end = min(len(audio), start + n)
+    n = end - start
+    rng = np.random.default_rng(seed)
+    sig = rng.normal(0, 1, n)
+    env = np.linspace(1, 0.01, n)
+    audio[start:end] += sig * env * volume
+
+
+def _style_patterns(style):
+    if style == "Jazz swing":
+        return {
+            "bass_beats": [0, 1, 2, 3],
+            "comp_beats": [1.0, 2.65],
+            "hat_beats": [0, 1.65, 2, 3.65],
+            "snare_beats": [1.0, 3.0],
+        }
+    if style == "Bossa nova":
+        return {
+            "bass_beats": [0, 1.5, 2, 3.5],
+            "comp_beats": [0.0, 1.5, 2.5, 3.5],
+            "hat_beats": [0, 0.5, 1.5, 2, 2.5, 3.5],
+            "snare_beats": [1.5, 3.5],
+        }
+    if style == "Funk groove":
+        return {
+            "bass_beats": [0, 0.75, 1.5, 2, 2.75, 3.5],
+            "comp_beats": [0.75, 1.75, 2.5, 3.25],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 3.0],
+        }
+    if style == "Rock groove":
+        return {
+            "bass_beats": [0, 1, 2, 3],
+            "comp_beats": [0, 1, 2, 3],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 3.0],
+        }
+    return {
+        "bass_beats": [0, 2],
+        "comp_beats": [0, 1.5, 2.5, 3.5],
+        "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+        "snare_beats": [1.0, 3.0],
+    }
+
+
+def synthesize_chords_to_numpy(
+    chords,
+    bpm=100,
+    loops=1,
+    sr=44100,
+    *,
+    style="Pop groove",
+    level="Intermediate",
+):
 
     beat = 60 / bpm
-
     bar = beat * 4
-
     chord_list = list(chords) * max(1, int(loops))
+    audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
+    patterns = _style_patterns(style)
 
-    audio = np.zeros(
-        int(sr * bar * len(chord_list))
-    )
+    for idx, chord in enumerate(chord_list):
 
-    def freq(midi_num):
+        bar_start = idx * bar
+        notes = chord_notes(chord)
+        bass = bass_note(chord) - 12
+        root = notes[0]
+        fifth = root + 7
 
-        return 440 * (
-            2 ** ((midi_num - 69) / 12)
-        )
+        for n, b in enumerate(patterns["bass_beats"]):
+            bass_pitch = bass if n % 2 == 0 else min(fifth - 12, bass + 12)
+            _add_tone(audio, sr, bar_start + b * beat, beat * 0.55, bass_pitch, 0.12, "bass")
 
-    def tone(
-        frequency,
-        duration,
-        volume=0.1
-    ):
+        voicing = notes[:4]
+        if level == "Advanced" and len(notes) > 4:
+            voicing = [notes[0], notes[2], notes[3], notes[4]]
+        elif level == "Beginner":
+            voicing = notes[:3]
 
-        t = np.linspace(
-            0,
-            duration,
-            int(sr * duration),
-            False
-        )
+        for b in patterns["comp_beats"]:
+            dur = beat * (0.45 if style in ["Funk groove", "Bossa nova"] else 0.75)
+            for note in voicing:
+                _add_tone(audio, sr, bar_start + b * beat, dur, note + 12, 0.025, "organ")
 
-        sig = np.sin(
-            2 * np.pi * frequency * t
-        )
+        for b in patterns["hat_beats"]:
+            _add_noise_hit(audio, sr, bar_start + b * beat, 0.035, 0.012, seed=idx * 31 + int(b * 100))
 
-        env = np.linspace(
-            1,
-            0.05,
-            len(sig)
-        )
+        for b in patterns["snare_beats"]:
+            _add_noise_hit(audio, sr, bar_start + b * beat, 0.06, 0.035, seed=idx * 67 + int(b * 100))
 
-        return sig * env * volume
-
-    current = 0
-
-    for chord in chord_list:
-
-        mids = chord_notes(chord)
-
-        for beat_num in range(4):
-
-            for note in mids[:3]:
-
-                sig = tone(
-                    freq(note + 12),
-                    beat * 0.8,
-                    0.05
-                )
-
-                start = int(
-                    (current + beat_num * beat)
-                    * sr
-                )
-
-                end = min(
-                    len(audio),
-                    start + len(sig)
-                )
-
-                audio[start:end] += sig[:end-start]
-
-        current += bar
+        for b in [0, 2]:
+            _add_tone(audio, sr, bar_start + b * beat, 0.08, 36, 0.08, "bass")
 
     audio = np.tanh(audio)
-
-    audio = (
-        audio
-        / (np.max(np.abs(audio)) + 1e-9)
-        * 0.8
-    )
-
+    audio = audio / (np.max(np.abs(audio)) + 1e-9) * 0.86
     return audio, sr
 
 
@@ -450,16 +723,30 @@ def pcm16_wav_bytes_from_float(audio, sr=44100):
 def generate_backing_track(
     chords,
     bpm=100,
-    loops=1
+    loops=1,
+    style="Pop groove",
+    level="Intermediate",
 ):
 
-    audio, sr = synthesize_chords_to_numpy(chords, bpm=bpm, loops=loops)
+    audio, sr = synthesize_chords_to_numpy(
+        chords,
+        bpm=bpm,
+        loops=loops,
+        style=style,
+        level=level,
+    )
     return pcm16_wav_bytes_from_float(audio, sr)
 
 
-def backing_bytes_to_float(chords, bpm=100):
+def backing_bytes_to_float(chords, bpm=100, style="Pop groove", level="Intermediate"):
 
-    y, _sr = synthesize_chords_to_numpy(chords, bpm=bpm, loops=1)
+    y, _sr = synthesize_chords_to_numpy(
+        chords,
+        bpm=bpm,
+        loops=1,
+        style=style,
+        level=level,
+    )
     return y
 
 
@@ -903,12 +1190,19 @@ minutes = st.sidebar.slider(
     5
 )
 
+level_source_sections = sections_for_level(song_data, level)
+level_song_data = {
+    **song_data,
+    "sections": level_source_sections,
+}
+
 sections = transpose_sections(
-    song_data,
+    level_song_data,
     display_key
 )
 
 full_song_chords = chord_blocks_for_backing(sections)
+default_groove_style = infer_groove_style(song_data, "Auto")
 
 # TABS
 
@@ -949,6 +1243,7 @@ Focus: **{focus}**
             sections,
             instrument,
             display_key=display_key,
+            level=level,
         )
     )
 
@@ -1108,14 +1403,6 @@ with tabs[1]:
         f"The list above is bound to the **active song**. It currently matches **{song}** — change it any time; all tabs follow."
     )
 
-    preview_sections = transpose_sections(
-        {
-            "key": selected_data["key"],
-            "sections": selected_data["sections"],
-        },
-        display_key
-    )
-
     preview_song_data = {
         "artist": selected_data["artist"],
         "key": selected_data["key"],
@@ -1126,6 +1413,15 @@ with tabs[1]:
         "extensions": selected_data.get("extensions") or {},
     }
 
+    preview_level_sections = sections_for_level(preview_song_data, level)
+    preview_sections = transpose_sections(
+        {
+            "key": selected_data["key"],
+            "sections": preview_level_sections,
+        },
+        display_key
+    )
+
     st.subheader("Preview Full Chords for Selected Song")
 
     st.markdown(
@@ -1135,6 +1431,7 @@ with tabs[1]:
             preview_sections,
             instrument,
             display_key=display_key,
+            level=level,
         )
     )
 
@@ -1164,6 +1461,7 @@ with tabs[2]:
             sections,
             instrument,
             display_key=display_key,
+            level=level,
         )
     )
 
@@ -1242,6 +1540,26 @@ with tabs[2]:
         f"**{form_loops}** loop(s) → **{len(backing_chords) * form_loops}** total chord bars"
     )
 
+    groove_style = st.selectbox(
+        "Groove / accompaniment style",
+        [
+            "Auto",
+            "Pop groove",
+            "Rock groove",
+            "Jazz swing",
+            "Bossa nova",
+            "Funk groove",
+        ],
+        key="backing_groove_style",
+    )
+
+    resolved_groove = infer_groove_style(song_data, groove_style)
+
+    st.caption(
+        f"Backing architecture: **{resolved_groove}** ensemble sketch "
+        "(bass + chord comping + simple drum/hat layer)."
+    )
+
     st.subheader("Chord source for this render")
 
     _src_sections = (
@@ -1258,24 +1576,50 @@ with tabs[2]:
 
         st.write(f"**{section_name}:**")
 
-        st.write(
-            "| " + " | ".join(section_chords) + " |"
-        )
+        st.markdown(bar_grid_markdown(section_chords))
 
     if st.button(
         "Generate backing track (from active song + settings above)",
         key="gen_backing_btn",
     ):
 
+        _backing_signature = (
+            song,
+            display_key,
+            level,
+            resolved_groove,
+            bpm,
+            form_loops,
+            _only_section,
+            tuple(backing_chords),
+        )
+
         wav = generate_backing_track(
             backing_chords,
             bpm=bpm,
             loops=form_loops,
+            style=resolved_groove,
+            level=level,
         )
 
         st.session_state["_last_backing_wav"] = wav
+        st.session_state["_last_backing_signature"] = _backing_signature
 
-    if st.session_state.get("_last_backing_wav"):
+    _current_backing_signature = (
+        song,
+        display_key,
+        level,
+        resolved_groove,
+        bpm,
+        form_loops,
+        _only_section,
+        tuple(backing_chords),
+    )
+
+    if (
+        st.session_state.get("_last_backing_wav")
+        and st.session_state.get("_last_backing_signature") == _current_backing_signature
+    ):
 
         st.audio(
             st.session_state["_last_backing_wav"],
@@ -1453,7 +1797,9 @@ with tabs[5]:
 
         backing_y = backing_bytes_to_float(
             full_song_chords,
-            bpm=mt_bpm
+            bpm=mt_bpm,
+            style=default_groove_style,
+            level=level,
         )
 
         if count_in_beats > 0:
@@ -1600,7 +1946,9 @@ with tabs[5]:
 
                 backing_y = backing_bytes_to_float(
                     full_song_chords,
-                    bpm=mt_bpm
+                    bpm=mt_bpm,
+                    style=default_groove_style,
+                    level=level,
                 )
 
                 if count_in_beats > 0:
