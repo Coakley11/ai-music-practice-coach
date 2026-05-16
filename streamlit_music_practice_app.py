@@ -80,10 +80,15 @@ from songs import (
 )
 
 SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = load_song_catalog()
+TRUSTED_CORE_RECORDS = [
+    r for r in ALL_SONG_RECORDS
+    if r.get("trusted_core") or r.get("chart_status") in ["trusted", "verified"]
+]
+DEFAULT_SONG_RECORDS = TRUSTED_CORE_RECORDS or ALL_SONG_RECORDS
 
 ensure_master_song_initialized(
     st,
-    all_records=ALL_SONG_RECORDS,
+    all_records=DEFAULT_SONG_RECORDS,
     song_library=SONG_LIBRARY,
     song_picker_catalog=SONG_PICKER_CATALOG,
 )
@@ -93,6 +98,20 @@ genre, song, song_data = get_song_context(
     song_library=SONG_LIBRARY,
     song_picker_catalog=SONG_PICKER_CATALOG,
 )
+
+if (
+    DEFAULT_SONG_RECORDS
+    and st.session_state.get("chart_library_mode", "Trusted core charts only") == "Trusted core charts only"
+    and song_data.get("chart_status") not in ["trusted", "verified"]
+):
+    _r0 = DEFAULT_SONG_RECORDS[0]
+    _pk0 = format_pick_key(_r0["genre"], f"{_r0['title']} — {_r0['artist']}")
+    apply_pick_key(st, _pk0, SONG_PICKER_CATALOG)
+    genre, song, song_data = get_song_context(
+        st,
+        song_library=SONG_LIBRARY,
+        song_picker_catalog=SONG_PICKER_CATALOG,
+    )
 
 # -------------------------------------------------
 # HELPER FUNCTIONS
@@ -270,10 +289,24 @@ def chart_status_label(song_data):
     status = (song_data.get("chart_status") or "placeholder").strip()
     labels = {
         "verified": ("Verified chart", "success"),
+        "trusted": ("Trusted core chart", "success"),
         "practice_simplified": ("Simplified practice chart", "info"),
         "placeholder": ("Placeholder chart — needs verification", "warning"),
     }
     return labels.get(status, ("Placeholder chart — needs verification", "warning"))
+
+
+def trusted_core_records(records):
+    return [
+        r for r in records
+        if r.get("trusted_core") or r.get("chart_status") in ["trusted", "verified"]
+    ]
+
+
+def visible_records_for_mode(records, mode):
+    if mode == "Trusted core charts only":
+        return trusted_core_records(records)
+    return [r for r in records if r.get("chart_status") != "placeholder"]
 
 
 def compact_bar_summary(chords):
@@ -1333,9 +1366,27 @@ with tabs[1]:
 
     st.header("Song Search / Song Picker")
 
+    chart_library_mode = st.radio(
+        "Chart library",
+        ["Trusted core charts only", "Include practice approximations"],
+        horizontal=True,
+        key="chart_library_mode",
+    )
+
+    visible_song_records = visible_records_for_mode(
+        ALL_SONG_RECORDS,
+        chart_library_mode,
+    )
+
+    visible_genres = [
+        g for g in GENRES
+        if any(r.get("genre") == g for r in visible_song_records)
+    ]
+
     st.caption(
-        f"**{len(ALL_SONG_RECORDS)} songs** in the curated core library. "
-        "Placeholder charts are hidden until they are upgraded. "
+        f"**{len(visible_song_records)} songs** visible in this chart library mode. "
+        "Trusted core is the default; practice approximations are opt-in. "
+        "Placeholder charts remain hidden. "
         "Results filter live as you type (title, artist, composer, genre)."
     )
 
@@ -1350,8 +1401,8 @@ with tabs[1]:
     if search_scope == "Single genre":
         filter_genre = st.selectbox(
             "Genre filter",
-            GENRES,
-            index=GENRES.index(genre) if genre in GENRES else 0,
+            visible_genres,
+            index=visible_genres.index(genre) if genre in visible_genres else 0,
             key="picker_genre",
         )
 
@@ -1362,7 +1413,7 @@ with tabs[1]:
     )
 
     filtered = search_records(
-        ALL_SONG_RECORDS,
+        visible_song_records,
         search_text,
         genre=filter_genre,
         limit=150,
@@ -1370,11 +1421,11 @@ with tabs[1]:
 
     if not filtered:
         st.info("No matches — clear the box or try a shorter fragment to see more songs.")
-        filtered = ALL_SONG_RECORDS[:80]
+        filtered = visible_song_records[:80]
 
     master_sel = st.session_state.get("selected_song") or {}
     master_pk = master_sel.get("pick_key")
-    master_rec = record_for_pick_key(ALL_SONG_RECORDS, master_pk) if master_pk else None
+    master_rec = record_for_pick_key(visible_song_records, master_pk) if master_pk else None
     if master_rec:
         row_keys = {
             format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")

@@ -19,9 +19,39 @@ from .curated_songs import curated_song_records
 
 INCLUDE_PLACEHOLDER_CHARTS = False
 
+TRUSTED_CORE_KEYS = {
+    ("Piano Man", "Billy Joel"),
+    ("Just the Way You Are", "Billy Joel"),
+    ("Turn the Lights Back On", "Billy Joel"),
+    ("Say", "John Mayer"),
+    ("Gravity", "John Mayer"),
+    ("Perfect", "Ed Sheeran"),
+    ("Thinking Out Loud", "Ed Sheeran"),
+    ("Shape of You", "Ed Sheeran"),
+    ("Viva La Vida", "Coldplay"),
+    ("Let It Be", "The Beatles"),
+    ("Hey Jude", "The Beatles"),
+    ("Yesterday", "The Beatles"),
+    ("Here Comes the Sun", "The Beatles"),
+    ("Don't Stop Believin'", "Journey"),
+}
+
 
 def _norm_key(title: str, artist: str) -> tuple[str, str]:
     return title.strip().lower(), artist.strip().lower()
+
+
+def _is_trusted_core(row: dict[str, Any]) -> bool:
+    return (row.get("title"), row.get("artist")) in TRUSTED_CORE_KEYS
+
+
+def _with_reliability(row: dict[str, Any]) -> dict[str, Any]:
+    out = dict(row)
+    trusted = _is_trusted_core(out)
+    out["trusted_core"] = trusted
+    if trusted and out.get("chart_status") != "verified":
+        out["chart_status"] = "trusted"
+    return out
 
 
 def _merge_records() -> list[dict[str, Any]]:
@@ -34,6 +64,7 @@ def _merge_records() -> list[dict[str, Any]]:
     seen_gt: set[tuple[str, str]] = set()
     out: list[dict[str, Any]] = []
     for row in curated_song_records():
+        row = _with_reliability(row)
         ta = _norm_key(row["title"], row["artist"])
         gt = (row["genre"], row["title"].strip().lower())
         seen_ta.add(ta)
@@ -42,6 +73,7 @@ def _merge_records() -> list[dict[str, Any]]:
     for row in bulk_song_records():
         if not INCLUDE_PLACEHOLDER_CHARTS and row.get("chart_status") == "placeholder":
             continue
+        row = _with_reliability(row)
         ta = _norm_key(row["title"], row["artist"])
         gt = (row["genre"], row["title"].strip().lower())
         if ta in seen_ta:
@@ -72,6 +104,7 @@ def build_libraries(records: list[dict[str, Any]]):
             "sections": r["sections"],
             "chart_versions": r.get("chart_versions") or {},
             "chart_status": r.get("chart_status", "practice_simplified"),
+            "trusted_core": bool(r.get("trusted_core")),
             "guitar_tabs": r.get("guitar_tabs") or {},
             "composer": r.get("composer"),
             "extensions": r.get("extensions") or {},
@@ -83,6 +116,7 @@ def build_libraries(records: list[dict[str, Any]]):
             "sections": r["sections"],
             "chart_versions": r.get("chart_versions") or {},
             "chart_status": r.get("chart_status", "practice_simplified"),
+            "trusted_core": bool(r.get("trusted_core")),
             "guitar_tabs": r.get("guitar_tabs") or {},
             "composer": r.get("composer"),
             "genre": g,
