@@ -43,6 +43,75 @@ def chord_quality(ch):
     return "major"
 
 
+def chord_root(ch):
+    ch = str(ch).split("/", 1)[0].strip()
+    if len(ch) >= 2 and ch[1] in ["b", "#"]:
+        return ch[:2]
+    return ch[:1]
+
+
+def section_patterns(section_name, chords):
+    text = []
+    roots = [chord_root(ch) for ch in chords]
+    qualities = [chord_quality(ch) for ch in chords]
+    joined = " ".join(chords)
+
+    if any("m7b5" in str(ch).lower() for ch in chords) and any("7" in str(ch).lower() for ch in chords):
+        text.append("- Contains minor ii-V language: half-diminished chords preparing dominant resolution.")
+    if any("maj7" in q for q in qualities) and any("dominant" in q for q in qualities):
+        text.append("- Alternates stable major colors with dominant pull, a common jazz/pop tension-release device.")
+    if len(set(chords[:4])) <= 2 and len(chords) >= 4:
+        text.append("- Uses repetition as a groove anchor; the musical interest comes from rhythm, melody, and arrangement.")
+    if "/" in joined:
+        text.append("- Slash chords create bass-line voice leading rather than block-chord jumps.")
+    if any("dim" in str(ch).lower() for ch in chords):
+        text.append("- Diminished color works as a passing or leading-tone sonority.")
+    if len(roots) >= 4 and len(set(roots[:4])) == 4:
+        text.append(f"- Opening root motion moves **{' -> '.join(roots[:4])}**, giving the section clear directional energy.")
+    if not text:
+        text.append("- Harmony is straightforward; focus on phrasing, groove, and section contrast.")
+
+    return [f"### {section_name}"] + text
+
+
+def instrument_analysis(ctx):
+    inst = ctx.get("instrument", "")
+    if inst == "Guitar":
+        return [
+            "- Use compact voicings on middle strings so changes connect smoothly.",
+            "- For comping, alternate muted groove bars with fuller section accents.",
+            "- For lead playing, target 3rds/7ths and use slides into phrase peaks.",
+        ]
+    if inst == "Piano":
+        return [
+            "- Put roots or shells in the left hand; keep 3rds/7ths in the right hand.",
+            "- Practice nearest-voicing motion between adjacent chords before adding rhythm.",
+            "- In chorus/lift sections, widen voicings or add octaves for dynamic shape.",
+        ]
+    if inst == "Bass":
+        return [
+            "- Outline roots first, then add fifths and chromatic approach tones into section downbeats.",
+            "- Where slash chords appear, treat the written bass note as intentional voice leading.",
+            "- Build groove by varying note length, not by adding too many passing notes.",
+        ]
+    if inst in ["Saxophone", "Flute", "Trumpet"]:
+        return [
+            "- Target chord 3rds on strong beats to make the harmony audible in single-note lines.",
+            "- Use long tones on stable chords and more articulated motion over dominant chords.",
+            "- Shape phrases across section boundaries; do not restart every bar.",
+        ]
+    if inst == "Voice":
+        return [
+            "- Map breaths to section boundaries and avoid spending all air before the harmonic arrival.",
+            "- Use lighter tone in setup sections and stronger vowels at chorus/hook arrival points.",
+            "- Practice lyric rhythm over the chord grid before singing full pitch.",
+        ]
+    return [
+        "- Identify the strongest arrival chord in each section and shape your phrase toward it.",
+        "- Practice the section once for time, once for tone, and once for musical direction.",
+    ]
+
+
 def deep_harmonic_analysis_text(ctx, all_chords_from_sections, chord_quality_fn):
     all_chords = all_chords_from_sections(ctx["sections"])
     qualities = [chord_quality_fn(ch) for ch in all_chords]
@@ -58,10 +127,6 @@ def deep_harmonic_analysis_text(ctx, all_chords_from_sections, chord_quality_fn)
     out.append(line)
     out.append(f"**Style:** {ctx['genre']}")
     out.append(f"**Original key:** {ctx['key']} | **Displayed key:** {ctx['display_key']}")
-    out.append("\n## Full Form")
-    for sec, chords in ctx["sections"].items():
-        out.append(f"### {sec}")
-        out.append("| " + " | ".join(chords) + " |")
 
     out.append("\n## Harmonic Character")
     if ctx["genre"] == "Jazz":
@@ -83,6 +148,13 @@ def deep_harmonic_analysis_text(ctx, all_chords_from_sections, chord_quality_fn)
     out.append(f"- Dominant-type chords: {dominant_count}")
     out.append(f"- Minor-type chords: {minor_count}")
     out.append(f"- Major-seventh color chords: {maj7_count}")
+
+    out.append("\n## Section Function")
+    for sec, chords in ctx["sections"].items():
+        out.extend(section_patterns(sec, chords))
+
+    out.append("\n## Instrument-Specific Lens")
+    out.extend(instrument_analysis(ctx))
 
     out.append("\n## Improvisation Ideas")
     if ctx["level"] == "Beginner":

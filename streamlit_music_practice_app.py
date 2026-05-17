@@ -333,6 +333,16 @@ def filter_records_by_level(records, level_filter):
     return [r for r in records if has_level_chart(r)]
 
 
+def chord_blocks_for_selected_sections(sections, selected_names=None):
+    selected = set(selected_names or [])
+    out = []
+    for section_name, section_chords in section_order(sections):
+        if selected and section_name not in selected:
+            continue
+        out.extend(section_chords)
+    return out
+
+
 def compact_bar_summary(chords):
     if not chords:
         return ""
@@ -709,6 +719,30 @@ def _chord_tone_names(chord):
         return "root - 3rd - 5th"
 
 
+def _technical_pattern_for_exercise(instrument, focus, first_chord, second_chord):
+    tones = _chord_tone_names(first_chord)
+    family = _instrument_family(instrument)
+    if focus == "Harmony":
+        return f"Play/sing arpeggios through **{first_chord} -> {second_chord}**: {tones}, then connect to the nearest chord tone in the next bar."
+    if focus == "Improvisation":
+        return f"Create a 4-note motif from **{first_chord}** chord tones ({tones}); sequence it into **{second_chord}** without changing rhythm."
+    if focus == "Rhythm":
+        return f"Use one pitch or muted strings/keys to drill the section rhythm first; then add **{first_chord} -> {second_chord}**."
+    if focus == "Melody":
+        return f"Play a chord-tone line using {tones}; add one approach note into the target note over **{second_chord}**."
+    if family == "winds":
+        return f"Long-tone ladder: sustain root, 3rd, 5th, 7th of **{first_chord}** with clean attacks."
+    if family == "voice":
+        return f"Sing chord tones of **{first_chord}** on 'mah', then repeat on the vowel from your lyric cue."
+    if family == "guitar":
+        return f"Alternate-pick the arpeggio of **{first_chord}**, then switch positions for **{second_chord}**."
+    if family == "piano":
+        return f"Play **{first_chord}** inversions up the keyboard, then resolve to the nearest inversion of **{second_chord}**."
+    if family == "bass":
+        return f"Play root-5th-octave-approach for **{first_chord}**, resolving into **{second_chord}** on beat 1."
+    return f"Practice the arpeggio of **{first_chord}**, then resolve cleanly into **{second_chord}**."
+
+
 def _instrument_family(instrument):
     if instrument in ["Saxophone", "Flute", "Trumpet"]:
         return "winds"
@@ -751,6 +785,12 @@ def song_practice_plan(song, sections, instrument, level, focus, variation):
     bars = len(section_chords)
     cycle = max(1, variation + 1)
     chord_tones = _chord_tone_names(first_chord)
+    technical_pattern = _technical_pattern_for_exercise(
+        instrument,
+        focus,
+        first_chord,
+        second_chord,
+    )
 
     warmups = {
         "guitar": [
@@ -859,6 +899,9 @@ def song_practice_plan(song, sections, instrument, level, focus, variation):
 
 **Warm-up**
 - {warmup}
+
+**Technical pattern**
+- {technical_pattern}
 
 **Main exercise**
 - {focus_task}
@@ -1956,7 +1999,109 @@ with tabs[2]:
         f"Chords are in **{display_key}** (transpose from the sidebar if needed)."
     )
 
-    st.subheader("Full Chords by Song Part")
+    st.subheader("1. Backing Track Settings")
+
+    _sec_names = [name for name, chs in section_order(sections) if chs]
+
+    playback_scope = st.radio(
+        "Playback range",
+        [
+            "Full song",
+            "Single section",
+            "Multiple selected sections",
+        ],
+        horizontal=True,
+        key="backing_track_scope",
+    )
+
+    selected_section_names = []
+
+    if playback_scope == "Single section" and _sec_names:
+        one_section = st.selectbox(
+            "Section to loop",
+            _sec_names,
+            key="backing_track_single_section",
+        )
+        selected_section_names = [one_section]
+
+    elif playback_scope == "Multiple selected sections" and _sec_names:
+        default_sections = [
+            name for name in _sec_names
+            if any(token in name.lower() for token in ["verse", "chorus"])
+        ] or _sec_names[:2]
+        selected_section_names = st.multiselect(
+            "Sections to play (keeps original song order)",
+            _sec_names,
+            default=default_sections,
+            key="backing_track_multi_sections",
+        )
+
+    selected_section_names = selected_section_names or []
+    backing_chords = chord_blocks_for_selected_sections(
+        sections,
+        selected_section_names,
+    )
+
+    col_bt_1, col_bt_2 = st.columns(2)
+
+    with col_bt_1:
+        groove_style = st.selectbox(
+            "Groove / accompaniment style",
+            [
+                "Auto",
+                "Pop groove",
+                "Rock groove",
+                "Jazz swing",
+                "Bossa nova",
+                "Funk groove",
+            ],
+            key="backing_groove_style",
+        )
+
+        bpm = st.slider(
+            "Tempo (BPM)",
+            50,
+            180,
+            100,
+            5,
+            key="backing_track_bpm",
+        )
+
+    with col_bt_2:
+        form_loops = st.slider(
+            "Number of repeats",
+            1,
+            10,
+            2,
+            1,
+            key="backing_track_loops",
+        )
+
+        st.write(f"Display key: **{display_key}**")
+        st.write(f"Chart level: **{level}**")
+
+    resolved_groove = infer_groove_style(song_data, groove_style)
+    section_scope_label = (
+        "full form"
+        if not selected_section_names
+        else " + ".join(selected_section_names)
+    )
+
+    if not backing_chords:
+        st.warning("Choose at least one section to generate a backing track.")
+
+    st.caption(
+        f"Playback target: **{section_scope_label}** | "
+        f"Groove: **{resolved_groove}** | "
+        f"{len(backing_chords)} bars per repeat, {len(backing_chords) * form_loops} total bars."
+    )
+
+    st.caption(
+        f"Chart version used for audio: **{level}** — "
+        f"**{chart_status_label(song_data)[0]}**"
+    )
+
+    st.subheader("2. Full Song Chart")
 
     st.markdown(
         full_chord_markdown(
@@ -1970,136 +2115,43 @@ with tabs[2]:
         )
     )
 
-    st.subheader("Form timeline (playback order)")
+    with st.expander("Form timeline and selected playback order", expanded=False):
+        _tl_rows = form_timeline_rows(sections)
 
-    _tl_rows = form_timeline_rows(sections)
+        st.dataframe(
+            pd.DataFrame(_tl_rows).rename(
+                columns={
+                    "section": "Section",
+                    "start_bar": "Start bar",
+                    "end_bar": "End bar",
+                    "bars": "Bars (chords)",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
 
-    st.dataframe(
-        pd.DataFrame(_tl_rows).rename(
-            columns={
-                "section": "Section",
-                "start_bar": "Start bar",
-                "end_bar": "End bar",
-                "bars": "Bars (chords)",
+        selected_rows = [
+            {
+                "Section": name,
+                "Bars": len(chords),
+                "Included": "Yes" if (not selected_section_names or name in selected_section_names) else "No",
             }
-        ),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    st.caption(
-        "Sections play in table order. Each chord = one 4/4 bar in the synth. "
-        "Use **Start bar** / **End bar** to stay oriented during playback."
-    )
-
-    st.subheader("Backing Track Settings")
-
-    _sec_names = [name for name, chs in section_order(sections) if chs]
-
-    back_scope = st.radio(
-        "What to loop",
-        ["Entire song (all sections in order)", "Single section only"],
-        horizontal=True,
-        key="backing_track_scope",
-    )
-
-    _only_section = None
-
-    if back_scope.startswith("Single") and _sec_names:
-
-        _only_section = st.selectbox(
-            "Section",
-            _sec_names,
-            key="backing_track_single_section",
+            for name, chords in section_order(sections)
+            if chords
+        ]
+        st.dataframe(
+            pd.DataFrame(selected_rows),
+            use_container_width=True,
+            hide_index=True,
         )
 
-    backing_chords = chord_blocks_for_backing(
-        sections,
-        only_section=_only_section,
-    )
-
-    bpm = st.slider(
-        "BPM",
-        50,
-        180,
-        100,
-        5,
-        key="backing_track_bpm",
-    )
-
-    form_loops = st.slider(
-        "How many loops?",
-        1,
-        10,
-        2,
-        1,
-        key="backing_track_loops",
-    )
-
-    st.write(
-        f"Sequence length: **{len(backing_chords)}** chord bars per loop "
-        f"({_only_section or 'full form'})"
-    )
-
-    st.write(
-        f"**{form_loops}** loop(s) → **{len(backing_chords) * form_loops}** total chord bars"
-    )
-
-    groove_style = st.selectbox(
-        "Groove / accompaniment style",
-        [
-            "Auto",
-            "Pop groove",
-            "Rock groove",
-            "Jazz swing",
-            "Bossa nova",
-            "Funk groove",
-        ],
-        key="backing_groove_style",
-    )
-
-    resolved_groove = infer_groove_style(song_data, groove_style)
-
-    st.caption(
-        f"Backing architecture: **{resolved_groove}** ensemble sketch "
-        "(bass + chord comping + simple drum/hat layer)."
-    )
-    st.caption(
-        f"Chart version used for audio: **{level}** — "
-        f"**{chart_status_label(song_data)[0]}**"
-    )
-
-    st.subheader("Chord source for this render")
-
-    _src_sections = (
-        [( _only_section, sections[_only_section])]
-        if _only_section
-        else section_order(sections)
-    )
-
-    for section_name, section_chords in _src_sections:
-
-        if not section_chords:
-
-            continue
-
-        st.write(f"**{section_name}:**")
-
-        st.write(f"Bars in section: **{len(section_chords)}**")
-        st.write(f"Bar-count summary: {compact_bar_summary(section_chords)}")
-        st.markdown(bar_grid_markdown(section_chords))
-        cue_text = lyric_cue_markdown(
-            section_name,
-            section_chords,
-            lyric_cues,
-            instrument,
-        )
-        if cue_text:
-            st.markdown(cue_text)
+    st.subheader("3. Generate / Play Backing Track")
 
     if st.button(
         "Generate backing track (from active song + settings above)",
         key="gen_backing_btn",
+        disabled=not bool(backing_chords),
     ):
 
         _backing_signature = (
@@ -2109,7 +2161,7 @@ with tabs[2]:
             resolved_groove,
             bpm,
             form_loops,
-            _only_section,
+            tuple(selected_section_names),
             tuple(backing_chords),
         )
 
@@ -2131,7 +2183,7 @@ with tabs[2]:
         resolved_groove,
         bpm,
         form_loops,
-        _only_section,
+        tuple(selected_section_names),
         tuple(backing_chords),
     )
 
@@ -2145,7 +2197,7 @@ with tabs[2]:
             format="audio/wav",
         )
 
-        _scope_bit = (_only_section or "full").replace(" ", "_")
+        _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
 
         st.download_button(
             "Download backing track WAV",
