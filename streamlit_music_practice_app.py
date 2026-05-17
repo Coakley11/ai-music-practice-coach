@@ -413,8 +413,49 @@ def parse_user_lyric_cues(raw_text, section_names):
     return {name: lines for name, lines in cues.items() if lines}
 
 
-def lyric_cue_markdown(section_name, chords, lyric_cues, instrument):
+def _song_slug(song_name, artist_name=""):
+    raw = f"{song_name}_{artist_name}".lower()
+    return "".join(c if c.isalnum() else "_" for c in raw).strip("_")
+
+
+def _section_base_name(section_name):
+    return section_name.split("(", 1)[0].split("/", 1)[0].strip().lower()
+
+
+def split_lyrics_by_sections(raw_text, section_names):
+    """Best-effort assignment from user-provided lyrics/cues to chart sections."""
+    if not raw_text:
+        return {}
+
+    parsed = parse_user_lyric_cues(raw_text, section_names)
+    if parsed:
+        return {name: "\n".join(lines) for name, lines in parsed.items()}
+
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    if not lines or not section_names:
+        return {}
+
+    out = {name: "" for name in section_names}
+    chunk_size = max(1, int(np.ceil(len(lines) / max(1, len(section_names)))))
+    for idx, section_name in enumerate(section_names):
+        chunk = lines[idx * chunk_size:(idx + 1) * chunk_size]
+        if chunk:
+            out[section_name] = "\n".join(chunk)
+    return {name: text for name, text in out.items() if text.strip()}
+
+
+def lyric_cues_from_section_lyrics(section_lyrics):
+    cues = {}
+    for section_name, text in (section_lyrics or {}).items():
+        lines = [line.strip() for line in str(text).splitlines() if line.strip()]
+        if lines:
+            cues[section_name] = lines
+    return cues
+
+
+def lyric_cue_markdown(section_name, chords, lyric_cues, instrument, full_section_lyrics=None):
     cues = lyric_cues.get(section_name, []) if lyric_cues else []
+    section_text = (full_section_lyrics or {}).get(section_name, "")
     out = []
 
     if cues:
@@ -423,6 +464,11 @@ def lyric_cue_markdown(section_name, chords, lyric_cues, instrument):
             bar_hint = min(idx * 4 + 1, max(1, len(chords)))
             chord_hint = chords[bar_hint - 1] if chords else "the first chord"
             out.append(f"- Bar {bar_hint} ({chord_hint}): {cue}")
+        if instrument == "Voice" and section_text:
+            out.append("\n**User-provided lyric text for this section:**")
+            for line in str(section_text).splitlines()[:8]:
+                if line.strip():
+                    out.append(f"> {line.strip()}")
     elif instrument == "Voice":
         entry = chords[0] if chords else "the first chord"
         peak = chords[max(0, len(chords) // 2)] if chords else "the middle of the phrase"
@@ -440,7 +486,7 @@ def lyric_cue_markdown(section_name, chords, lyric_cues, instrument):
     return "\n".join(out)
 
 
-def lyric_guide_markdown(sections, lyric_cues, instrument):
+def lyric_guide_markdown(sections, lyric_cues, instrument, section_lyrics=None):
     out = ["### Lyric / Section Cue Guide"]
     if instrument == "Voice":
         out.append("_Use this to map entrances, breaths, vowels, phrase peaks, and delivery. Paste your own lyrics/cues in the sidebar for exact alignment._")
@@ -449,6 +495,7 @@ def lyric_guide_markdown(sections, lyric_cues, instrument):
 
     for section_name, chords in sections.items():
         cue_lines = lyric_cues.get(section_name, []) if lyric_cues else []
+        full_text = (section_lyrics or {}).get(section_name, "")
         entry = chords[0] if chords else "the first chord"
         peak = chords[max(0, len(chords) // 2)] if chords else "the middle"
         if cue_lines:
@@ -458,6 +505,11 @@ def lyric_guide_markdown(sections, lyric_cues, instrument):
         else:
             cue = f"{section_name} entry around {entry}; listen for the section change and phrase shape."
         out.append(f"- **{section_name}** ({len(chords)} bars): {cue}")
+        if instrument == "Voice" and full_text:
+            out.append(f"  - Delivery: speak the text in rhythm first, mark a breath before bar 1, and sing stronger near **{peak}**.")
+            for line in str(full_text).splitlines()[:2]:
+                if line.strip():
+                    out.append(f"  - Lyric line: _{line.strip()}_")
     return "\n".join(out)
 
 
@@ -750,6 +802,7 @@ def full_chord_markdown(
     display_key=None,
     level="Intermediate",
     lyric_cues=None,
+    section_lyrics=None,
 ):
 
     out = []
@@ -795,7 +848,13 @@ def full_chord_markdown(
 
         out.append(f"Compact rhythm: {compact_bar_summary(chords)}")
         out.append(bar_grid_markdown(chords))
-        cue_text = lyric_cue_markdown(section_name, chords, lyric_cues or {}, instrument)
+        cue_text = lyric_cue_markdown(
+            section_name,
+            chords,
+            lyric_cues or {},
+            instrument,
+            full_section_lyrics=section_lyrics or {},
+        )
         if cue_text:
             out.append(cue_text)
 
@@ -935,7 +994,7 @@ def _difficulty_phrase(level, variation):
     ][variation % 3]
 
 
-def song_practice_plan(song, sections, instrument, level, focus, variation):
+def song_practice_plan(song, sections, instrument, level, focus, variation, section_lyrics=None):
     section_name, section_chords = _section_for_exercise(sections, variation)
     first_chord, second_chord = _transition_pair(section_chords, variation)
     family = _instrument_family(instrument)
@@ -949,6 +1008,27 @@ def song_practice_plan(song, sections, instrument, level, focus, variation):
         first_chord,
         second_chord,
     )
+    section_text = (section_lyrics or {}).get(section_name, "")
+    lyric_application = ""
+    if section_text and instrument == "Voice":
+        first_line = next(
+            (line.strip() for line in str(section_text).splitlines() if line.strip()),
+            "",
+        )
+        lyric_application = (
+            f"\n**Lyric application**\n"
+            f"- Start with this section text: _{first_line}_\n"
+            f"- Speak it in rhythm over the chord grid, mark breaths, then sing it on vowels before adding consonants.\n"
+        )
+    elif section_text:
+        first_line = next(
+            (line.strip() for line in str(section_text).splitlines() if line.strip()),
+            "",
+        )
+        lyric_application = (
+            f"\n**Form cue**\n"
+            f"- Use this cue to locate the section while playing: _{first_line}_\n"
+        )
 
     warmups = {
         "guitar": [
@@ -1066,6 +1146,7 @@ def song_practice_plan(song, sections, instrument, level, focus, variation):
 
 **Instrument coaching**
 - {instrument_task}
+{lyric_application}
 
 **Progression**
 - {development}
@@ -1803,21 +1884,6 @@ focus = st.sidebar.selectbox(
     ]
 )
 
-with st.sidebar.expander("Optional lyric / phrase cues"):
-    st.caption(
-        "Paste only lyrics or cues you provide. The app does not fetch or generate copyrighted lyrics."
-    )
-    user_lyric_cue_text = st.text_area(
-        "Section cues",
-        placeholder=(
-            "Verse: line 1 enters on bar 1, resolves by bar 4\n"
-            "Chorus: hook starts strong on bar 1\n"
-            "Bridge: sing lighter, save breath for final line"
-        ),
-        key="user_lyric_cues",
-        height=120,
-    )
-
 minutes = st.sidebar.slider(
     "Practice Minutes",
     10,
@@ -1839,10 +1905,54 @@ sections = transpose_sections(
 
 full_song_chords = chord_blocks_for_backing(sections)
 default_groove_style = infer_groove_style(song_data, "Auto")
-lyric_cues = parse_user_lyric_cues(
-    user_lyric_cue_text,
-    list(sections.keys()),
-)
+
+song_lyrics_slug = _song_slug(song, song_data.get("artist", ""))
+song_lyrics_key = f"song_lyrics::{song_lyrics_slug}"
+section_lyrics_state_key = f"section_lyrics::{song_lyrics_slug}"
+
+with st.sidebar.expander("Lyrics / lyric cues for selected song", expanded=(instrument == "Voice")):
+    st.caption(
+        "Paste only lyrics or cues you provide. The app does not fetch or generate copyrighted lyrics."
+    )
+    full_song_lyrics = st.text_area(
+        "Paste lyrics for this song",
+        value=st.session_state.get(song_lyrics_key, ""),
+        placeholder=(
+            "Paste user-provided lyrics or short cues here.\n"
+            "Optional format:\n"
+            "Verse: lyric/cue line\n"
+            "Chorus: hook cue\n"
+            "Bridge: delivery cue"
+        ),
+        key=song_lyrics_key,
+        height=150,
+    )
+
+    suggested_section_lyrics = split_lyrics_by_sections(
+        full_song_lyrics,
+        list(sections.keys()),
+    )
+    section_lyrics_state = st.session_state.setdefault(section_lyrics_state_key, {})
+
+    if st.button("Auto-assign lyrics to sections", key=f"auto_assign_lyrics::{song_lyrics_slug}"):
+        st.session_state[section_lyrics_state_key] = dict(suggested_section_lyrics)
+        st.rerun()
+
+    st.caption("Adjust section lyric boxes below if automatic assignment is uncertain.")
+    for section_name in sections.keys():
+        default_text = section_lyrics_state.get(
+            section_name,
+            suggested_section_lyrics.get(section_name, ""),
+        )
+        section_lyrics_state[section_name] = st.text_area(
+            f"{section_name} lyrics / cues",
+            value=default_text,
+            key=f"section_lyrics::{song_lyrics_slug}::{_song_slug(section_name)}",
+            height=90,
+        )
+
+section_lyrics = st.session_state.get(section_lyrics_state_key, {})
+lyric_cues = lyric_cues_from_section_lyrics(section_lyrics)
 
 # TABS
 
@@ -1892,6 +2002,7 @@ Focus: **{focus}**
             level,
             focus,
             st.session_state[exercise_key],
+            section_lyrics=section_lyrics,
         )
     )
 
@@ -1918,6 +2029,7 @@ Focus: **{focus}**
             sections,
             lyric_cues,
             instrument,
+            section_lyrics=section_lyrics,
         )
     )
 
@@ -1931,6 +2043,7 @@ Focus: **{focus}**
                 display_key=display_key,
                 level=level,
                 lyric_cues=lyric_cues,
+                section_lyrics=section_lyrics,
             )
         )
 
@@ -2287,6 +2400,7 @@ with tabs[2]:
             sections,
             lyric_cues,
             instrument,
+            section_lyrics=section_lyrics,
         )
     )
 
@@ -2301,6 +2415,7 @@ with tabs[2]:
             display_key=display_key,
             level=level,
             lyric_cues=lyric_cues,
+            section_lyrics=section_lyrics,
         )
     )
 
