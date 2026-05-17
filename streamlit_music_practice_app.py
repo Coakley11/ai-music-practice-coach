@@ -289,7 +289,7 @@ def chart_status_label(song_data):
     status = (song_data.get("chart_status") or "placeholder").strip()
     labels = {
         "verified": ("Verified chart", "success"),
-        "trusted": ("Trusted core chart", "success"),
+        "trusted": ("Trusted core practice chart", "success"),
         "practice_simplified": ("Simplified practice chart", "info"),
         "placeholder": ("Placeholder chart — needs verification", "warning"),
     }
@@ -307,6 +307,29 @@ def visible_records_for_mode(records, mode):
     if mode == "Trusted core charts only":
         return trusted_core_records(records)
     return [r for r in records if r.get("chart_status") != "placeholder"]
+
+
+def filter_records_by_chart_status(records, status_filter):
+    if status_filter == "Any non-placeholder":
+        return [r for r in records if r.get("chart_status") != "placeholder"]
+    if status_filter == "Trusted core":
+        return trusted_core_records(records)
+    if status_filter == "Verified":
+        return [r for r in records if r.get("chart_status") == "verified"]
+    if status_filter == "Practice approximation":
+        return [r for r in records if r.get("chart_status") == "practice_simplified"]
+    return records
+
+
+def filter_records_by_level(records, level_filter):
+    if level_filter == "Any level":
+        return records
+
+    def has_level_chart(row):
+        versions = row.get("chart_versions") or {}
+        return level_filter in versions or row.get("chart_status") != "placeholder"
+
+    return [r for r in records if has_level_chart(r)]
 
 
 def compact_bar_summary(chords):
@@ -633,7 +656,38 @@ def vocal_practice_text(level, sections):
 """
 
 
-def practice_text(level, instrument=None, sections=None):
+def guitar_practice_text(focus, level):
+    focus = focus or ""
+    if focus == "Rhythm":
+        return f"""
+### Guitar Rhythm Practice
+- **Groove feel:** mute lightly with the fretting hand and lock the strum to the backing track.
+- **Strumming:** start with downstrokes on quarter notes, then add eighth-note upstrokes.
+- **Muting:** practice dead-strum bars between chord changes to keep time moving.
+- **Transitions:** isolate the two hardest chord changes and loop each for 2 minutes.
+- **Comping:** use smaller 3- or 4-note voicings for clean rhythmic consistency.
+- **Level target:** {level} players should keep time steady before adding syncopation or extensions.
+"""
+    if focus == "Melody":
+        return f"""
+### Guitar Melody / Lead Practice
+- **Phrasing:** sing the line first, then play it; leave space between ideas.
+- **Slides and bends:** target chord tones on strong beats, especially 3rds and 7ths.
+- **Vibrato:** hold sustained notes over stable chords and match vibrato speed to the groove.
+- **Hammer-ons / pull-offs:** use them as articulation, not speed tricks.
+- **Double stops:** outline thirds/sixths through the section changes.
+- **Positioning:** map the melody around one fretboard position, then shift only for expressive reasons.
+"""
+    return f"""
+### Guitar Practice
+- Use playable voicings from the chart; avoid full six-string shapes when a smaller grip sounds cleaner.
+- Mark common tones between chords and keep them ringing where possible.
+- Practice one section with metronome, then with the backing track.
+- For {level} level, prioritize clean time, clean tone, and intentional voicing choices.
+"""
+
+
+def practice_text(level, instrument=None, sections=None, focus=None):
 
     if level == "Beginner":
         base = """
@@ -645,6 +699,8 @@ def practice_text(level, instrument=None, sections=None):
 """
         if instrument == "Voice":
             base += vocal_practice_text(level, sections or {})
+        if instrument == "Guitar":
+            base += guitar_practice_text(focus, level)
         return base
 
     if level == "Intermediate":
@@ -657,6 +713,8 @@ def practice_text(level, instrument=None, sections=None):
 """
         if instrument == "Voice":
             base += vocal_practice_text(level, sections or {})
+        if instrument == "Guitar":
+            base += guitar_practice_text(focus, level)
         return base
 
     base = """
@@ -668,6 +726,8 @@ def practice_text(level, instrument=None, sections=None):
 """
     if instrument == "Voice":
         base += vocal_practice_text(level, sections or {})
+    if instrument == "Guitar":
+        base += guitar_practice_text(focus, level)
     return base
 
 def load_logs():
@@ -1442,6 +1502,7 @@ Focus: **{focus}**
                 level,
                 instrument=instrument,
                 sections=sections,
+                focus=focus,
             )
         )
 
@@ -1496,6 +1557,39 @@ with tabs[1]:
         chart_library_mode,
     )
 
+    status_filter = st.selectbox(
+        "Chart status",
+        [
+            "Any non-placeholder",
+            "Trusted core",
+            "Verified",
+            "Practice approximation",
+        ],
+        index=1 if chart_library_mode == "Trusted core charts only" else 0,
+        key="song_picker_chart_status",
+    )
+
+    level_filter = st.selectbox(
+        "Chart level available",
+        [
+            "Any level",
+            "Beginner",
+            "Intermediate",
+            "Advanced",
+        ],
+        index=0,
+        key="song_picker_level_filter",
+    )
+
+    visible_song_records = filter_records_by_chart_status(
+        visible_song_records,
+        status_filter,
+    )
+    visible_song_records = filter_records_by_level(
+        visible_song_records,
+        level_filter,
+    )
+
     visible_genres = [
         g for g in GENRES
         if any(r.get("genre") == g for r in visible_song_records)
@@ -1505,7 +1599,7 @@ with tabs[1]:
         f"**{len(visible_song_records)} songs** visible in this chart library mode. "
         "Trusted core is the default; practice approximations are opt-in. "
         "Placeholder charts remain hidden. "
-        "Results filter live as you type (title, artist, composer, genre)."
+        "This tab is for browsing and selecting only; charts live in Backing Track and Daily Practice Plan."
     )
 
     search_scope = st.radio(
@@ -1517,16 +1611,19 @@ with tabs[1]:
 
     filter_genre = None
     if search_scope == "Single genre":
-        filter_genre = st.selectbox(
-            "Genre filter",
-            visible_genres,
-            index=visible_genres.index(genre) if genre in visible_genres else 0,
-            key="picker_genre",
-        )
+        if visible_genres:
+            filter_genre = st.selectbox(
+                "Genre filter",
+                visible_genres,
+                index=visible_genres.index(genre) if genre in visible_genres else 0,
+                key="picker_genre",
+            )
+        else:
+            st.warning("No genres match the current chart filters.")
 
     search_text = st.text_input(
         "Search (autocomplete-style)",
-        placeholder="Try: pia, beat, job, coldplay, kosma, autumn…",
+        placeholder="Search title, artist, composer, genre/style...",
         key="song_search_text",
     )
 
@@ -1589,7 +1686,7 @@ with tabs[1]:
 
             try:
 
-                st.toast("Active song updated everywhere (charts, backing track, Creative Lab, analysis).", icon="🎵")
+                st.toast("Song selected. Go to Backing Track, Daily Practice Plan, or Multitrack Recorder.", icon="🎵")
 
             except Exception:
 
@@ -1608,47 +1705,25 @@ with tabs[1]:
     pick_genre, pick_label = parse_pick_key(pick_key)
     selected_data = SONG_PICKER_CATALOG[pick_genre][pick_label]
 
-    st.caption(
-        f"The list above is bound to the **active song**. It currently matches **{song}** — change it any time; all tabs follow."
+    selected_status, _selected_status_kind = chart_status_label(selected_data)
+    selected_versions = selected_data.get("chart_versions") or {}
+    available_levels = ", ".join(selected_versions.keys()) if selected_versions else "Generated from practice chart"
+
+    st.success(
+        f"Song selected: **{selected_data['title']}** — {selected_data['artist']}."
     )
 
-    preview_song_data = {
-        "artist": selected_data["artist"],
-        "key": selected_data["key"],
-        "sections": selected_data["sections"],
-        "chart_versions": selected_data.get("chart_versions", {}),
-        "chart_status": selected_data.get("chart_status", "placeholder"),
-        "guitar_tabs": selected_data.get("guitar_tabs", {}),
-        "composer": selected_data.get("composer"),
-        "genre": selected_data.get("genre"),
-        "extensions": selected_data.get("extensions") or {},
-    }
-
-    preview_level_sections = sections_for_level(preview_song_data, level)
-    preview_sections = transpose_sections(
-        {
-            "key": selected_data["key"],
-            "sections": preview_level_sections,
-        },
-        display_key
+    st.write(
+        f"**Chart status:** {selected_status}  \n"
+        f"**Genre/style:** {selected_data.get('genre', 'Unknown')}  \n"
+        f"**Original key:** {selected_data.get('key', 'Unknown')}  \n"
+        f"**Available chart levels:** {available_levels}"
     )
 
-    st.subheader("Preview Full Chords for Selected Song")
-
-    st.markdown(
-        full_chord_markdown(
-            selected_data["title"],
-            preview_song_data,
-            preview_sections,
-            instrument,
-            display_key=display_key,
-            level=level,
-            lyric_cues=lyric_cues,
-        )
-    )
-
-    st.caption(
-        "These are practice-version chord charts. For exact licensed commercial charts or exact sheet music, upload a licensed MIDI/MusicXML file."
+    st.info(
+        "Go to **Backing Track** for the full chart and playback. "
+        "Go to **Daily Practice Plan** for exercises. "
+        "Go to **Multitrack Recorder** to record."
     )
 
 # -------------------------------------------------
