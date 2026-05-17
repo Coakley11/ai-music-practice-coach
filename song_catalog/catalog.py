@@ -23,6 +23,7 @@ TRUSTED_CORE_KEYS = {
     ("Piano Man", "Billy Joel"),
     ("Just the Way You Are", "Billy Joel"),
     ("Turn the Lights Back On", "Billy Joel"),
+    ("Vienna", "Billy Joel"),
     ("Say", "John Mayer"),
     ("Gravity", "John Mayer"),
     ("Perfect", "Ed Sheeran"),
@@ -34,6 +35,11 @@ TRUSTED_CORE_KEYS = {
     ("Yesterday", "The Beatles"),
     ("Here Comes the Sun", "The Beatles"),
     ("Don't Stop Believin'", "Journey"),
+    ("The Girl from Ipanema", "Antonio Carlos Jobim"),
+    ("Wave", "Antonio Carlos Jobim"),
+    ("Blue Bossa", "Kenny Dorham"),
+    ("Autumn Leaves", "Jazz Standard"),
+    ("Fly Me to the Moon", "Bart Howard"),
 }
 
 
