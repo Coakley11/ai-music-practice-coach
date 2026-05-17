@@ -57,8 +57,479 @@ def _levels(
     }
 
 
+def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
+    """Explicit musician-practice charts for the trusted core library.
+
+    One list item equals one bar. Repeated chords intentionally represent
+    repeated measures so the chart renderer and backing track share the same
+    harmonic rhythm.
+    """
+
+    def pack(key, beginner, intermediate, advanced=None, status="trusted"):
+        return {
+            "key": key,
+            "sections": intermediate,
+            "chart_versions": _levels(
+                beginner=beginner,
+                intermediate=intermediate,
+                advanced=advanced or intermediate,
+            ),
+            "chart_status": status,
+        }
+
+    return {
+        ("Say", "John Mayer"): pack("Bb",
+            {
+                "Intro": ["Bb", "F", "Gm", "Eb"],
+                "Verse": ["Bb", "F", "Gm", "Eb", "Bb", "F", "Eb", "Eb"],
+                "Pre-Chorus": ["Cm", "Eb", "Bb", "F"],
+                "Chorus": ["Bb", "F", "Eb", "Bb", "Cm", "Eb", "F", "Bb"],
+                "Bridge": ["Gm", "F", "Eb", "Bb", "Cm", "Eb", "F", "F"],
+                "Outro": ["Bb", "F", "Eb", "Bb"],
+            },
+            {
+                "Intro": ["Bb", "F/A", "Gm7", "Ebadd9"],
+                "Verse": ["Bb", "F/A", "Gm7", "Ebadd9", "Bb", "F/A", "Ebadd9", "Ebadd9"],
+                "Pre-Chorus": ["Cm7", "Eb", "Bb/D", "F"],
+                "Chorus": ["Bb", "F/A", "Ebadd9", "Bb/D", "Cm7", "Eb", "F", "Bb"],
+                "Bridge": ["Gm7", "F/A", "Ebadd9", "Bb/D", "Cm7", "Eb", "F", "F"],
+                "Outro": ["Bb", "F/A", "Ebadd9", "Bb"],
+            },
+            {
+                "Intro": ["Bbadd9", "F/A", "Gm9", "Ebmaj9"],
+                "Verse": ["Bbadd9", "F/A", "Gm9", "Ebmaj9", "Bb/D", "F/A", "Ebmaj9", "Ebmaj9"],
+                "Pre-Chorus": ["Cm9", "Ebmaj7", "Bb/D", "F13sus"],
+                "Chorus": ["Bbadd9", "F/A", "Ebmaj9", "Bb/D", "Cm9", "Ebmaj7", "F13sus", "Bbadd9"],
+                "Bridge": ["Gm9", "F/A", "Ebmaj9", "Bb/D", "Cm9", "Ebmaj7", "F13sus", "F13"],
+                "Outro": ["Bbadd9", "F/A", "Ebmaj9", "Bbadd9"],
+            },
+        ),
+        ("Gravity", "John Mayer"): pack("G",
+            {
+                "Intro / Verse Groove": ["G", "C", "G", "C"],
+                "Verse": ["G", "C", "G", "C", "G", "C", "G", "C"],
+                "Chorus": ["Em", "C", "G", "D", "Em", "C", "G", "D"],
+                "Solo": ["G7", "C7", "G7", "G7", "C7", "C7", "G7", "D7"],
+                "Outro": ["G", "C", "G", "C"],
+            },
+            {
+                "Intro / Verse Groove": ["G", "C/G", "G", "C/G"],
+                "Verse": ["G", "C/G", "G", "C/G", "G", "C/G", "G", "C/G"],
+                "Chorus": ["Em7", "Cadd9", "G/D", "D", "Em7", "Cadd9", "G", "D"],
+                "Solo": ["G7", "C7", "G7", "G7", "C7", "C7", "G7", "D7"],
+                "Outro": ["G", "C/G", "G", "C/G"],
+            },
+            {
+                "Intro / Verse Groove": ["G6", "Cmaj9/G", "G6", "Cmaj9/G"],
+                "Verse": ["G6", "Cmaj9/G", "G6", "Cmaj9/G", "G6", "Cmaj9/G", "G6", "Cmaj9/G"],
+                "Chorus": ["Em9", "Cmaj9", "G/D", "D13sus", "Em9", "Cmaj9", "G6", "D13"],
+                "Solo": ["G13", "C13", "G13", "G13", "C13", "C13", "G13", "D13"],
+                "Outro": ["G6", "Cmaj9/G", "G6", "Cmaj9/G"],
+            },
+        ),
+        ("Shape of You", "Ed Sheeran"): pack("C#m",
+            {
+                "Main Loop": ["C#m", "F#m", "A", "B"],
+                "Verse": ["C#m", "F#m", "A", "B", "C#m", "F#m", "A", "B"],
+                "Pre-Chorus": ["C#m", "F#m", "A", "B", "C#m", "F#m", "A", "B"],
+                "Chorus": ["C#m", "F#m", "A", "B", "C#m", "F#m", "A", "B"],
+                "Bridge / Breakdown": ["C#m", "F#m", "A", "B"],
+            },
+            {
+                "Main Loop": ["C#m7", "F#m7", "Aadd9", "B"],
+                "Verse": ["C#m7", "F#m7", "Aadd9", "B", "C#m7", "F#m7", "Aadd9", "B"],
+                "Pre-Chorus": ["C#m7", "F#m7", "Aadd9", "B", "C#m7", "F#m7", "Aadd9", "B"],
+                "Chorus": ["C#m7", "F#m7", "Aadd9", "B", "C#m7", "F#m7", "Aadd9", "B"],
+                "Bridge / Breakdown": ["C#m7", "F#m7", "Aadd9", "B"],
+            },
+            {
+                "Main Loop": ["C#m9", "F#m9", "Amaj9", "B13sus"],
+                "Verse": ["C#m9", "F#m9", "Amaj9", "B13sus", "C#m9", "F#m9", "Amaj9", "B13sus"],
+                "Pre-Chorus": ["C#m9", "F#m9", "Amaj9", "B13sus", "C#m9", "F#m9", "Amaj9", "B13sus"],
+                "Chorus": ["C#m9", "F#m9", "Amaj9", "B13sus", "C#m9", "F#m9", "Amaj9", "B13sus"],
+                "Bridge / Breakdown": ["C#m9", "F#m9", "Amaj9", "B13sus"],
+            },
+        ),
+        ("Perfect", "Ed Sheeran"): pack("G",
+            {
+                "Intro": ["G", "G", "Em", "C"],
+                "Verse": ["G", "Em", "C", "D", "G", "Em", "C", "D"],
+                "Pre-Chorus": ["Em", "C", "G", "D", "Em", "C", "G", "D"],
+                "Chorus": ["G", "D", "Em", "C", "G", "D", "C", "D"],
+                "Bridge": ["Em", "C", "G", "D", "Em", "C", "G", "D"],
+                "Outro": ["G", "D", "Em", "C", "G"],
+            },
+            {
+                "Intro": ["G", "G", "Em7", "Cadd9"],
+                "Verse": ["G", "Em7", "Cadd9", "D", "G", "Em7", "Cadd9", "D"],
+                "Pre-Chorus": ["Em7", "Cadd9", "G", "D/F#", "Em7", "Cadd9", "G", "D"],
+                "Chorus": ["G", "D/F#", "Em7", "Cadd9", "G", "D/F#", "Cadd9", "D"],
+                "Bridge": ["Em7", "Cadd9", "G", "D", "Em7", "Cadd9", "G", "D"],
+                "Outro": ["G", "D/F#", "Em7", "Cadd9", "G"],
+            },
+            {
+                "Intro": ["Gadd9", "Gadd9", "Em9", "Cmaj9"],
+                "Verse": ["Gadd9", "Em9", "Cmaj9", "D13sus", "Gadd9", "Em9", "Cmaj9", "D13sus"],
+                "Pre-Chorus": ["Em9", "Cmaj9", "G/B", "D/A", "Em9", "Cmaj9", "G", "D13sus"],
+                "Chorus": ["Gadd9", "D/F#", "Em9", "Cmaj9", "G/B", "D/A", "Cmaj9", "D13sus"],
+                "Bridge": ["Em9", "Cmaj9", "G/B", "D13sus", "Em9", "Cmaj9", "G", "D13sus"],
+                "Outro": ["Gadd9", "D/F#", "Em9", "Cmaj9", "Gadd9"],
+            },
+        ),
+        ("Thinking Out Loud", "Ed Sheeran"): pack("D",
+            {
+                "Intro": ["D", "D/F#", "G", "A"],
+                "Verse": ["D", "D/F#", "G", "A", "D", "D/F#", "G", "A"],
+                "Pre-Chorus": ["Em", "A", "D", "Bm", "Em", "A", "D", "A"],
+                "Chorus": ["D", "D/F#", "G", "A", "D", "D/F#", "G", "A"],
+                "Bridge": ["Bm", "A", "G", "D/F#", "Em", "A", "D", "A"],
+            },
+            {
+                "Intro": ["D", "D/F#", "G", "A7"],
+                "Verse": ["D", "D/F#", "G", "A7", "D", "D/F#", "G", "A7"],
+                "Pre-Chorus": ["Em7", "A7", "D", "Bm7", "Em7", "A7", "D", "A7"],
+                "Chorus": ["D", "D/F#", "G", "A7", "D", "D/F#", "G", "A7"],
+                "Bridge": ["Bm7", "A", "G", "D/F#", "Em7", "A7", "D", "A7"],
+            },
+            {
+                "Intro": ["Dmaj9", "D/F#", "Gmaj9", "A13"],
+                "Verse": ["Dmaj9", "D/F#", "Gmaj9", "A13", "Dmaj9", "D/F#", "Gmaj9", "A13"],
+                "Pre-Chorus": ["Em9", "A13", "Dmaj9", "Bm9", "Em9", "A13", "Dmaj9", "A13"],
+                "Chorus": ["Dmaj9", "D/F#", "Gmaj9", "A13", "Dmaj9", "D/F#", "Gmaj9", "A13"],
+                "Bridge": ["Bm9", "A13", "Gmaj9", "D/F#", "Em9", "A13", "Dmaj9", "A13"],
+            },
+        ),
+        ("Viva La Vida", "Coldplay"): pack("Ab",
+            {
+                "Intro": ["Db", "Eb", "Ab", "Fm"],
+                "Verse": ["Db", "Eb", "Ab", "Fm", "Db", "Eb", "Ab", "Fm"],
+                "Chorus": ["Db", "Eb", "Ab", "Fm", "Db", "Eb", "Ab", "Fm"],
+                "Bridge": ["Db", "Eb", "Ab", "Ab", "Db", "Eb", "Ab", "Fm"],
+                "Outro": ["Db", "Eb", "Ab", "Fm"],
+            },
+            {
+                "Intro": ["Db", "Eb", "Ab/C", "Fm"],
+                "Verse": ["Db", "Eb", "Ab/C", "Fm", "Db", "Eb", "Ab/C", "Fm"],
+                "Chorus": ["Db", "Eb", "Ab/C", "Fm", "Db", "Eb", "Ab/C", "Fm"],
+                "Bridge": ["Db", "Eb", "Ab", "Ab", "Db", "Eb", "Ab/C", "Fm"],
+                "Outro": ["Db", "Eb", "Ab/C", "Fm"],
+            },
+            {
+                "Intro": ["Dbmaj9", "Eb13sus", "Ab/C", "Fm9"],
+                "Verse": ["Dbmaj9", "Eb13sus", "Ab/C", "Fm9", "Dbmaj9", "Eb13sus", "Ab/C", "Fm9"],
+                "Chorus": ["Dbmaj9", "Eb13sus", "Ab/C", "Fm9", "Dbmaj9", "Eb13sus", "Ab/C", "Fm9"],
+                "Bridge": ["Dbmaj9", "Eb13sus", "Abadd9", "Abadd9", "Dbmaj9", "Eb13sus", "Ab/C", "Fm9"],
+                "Outro": ["Dbmaj9", "Eb13sus", "Ab/C", "Fm9"],
+            },
+        ),
+        ("Piano Man", "Billy Joel"): pack("C",
+            {
+                "Intro / Harmonica": ["C", "G", "Am", "F", "C", "G", "F", "G"],
+                "Verse": ["C", "G", "Am", "F", "C", "G", "F", "G"],
+                "Pre-Chorus": ["F", "C", "Dm", "G", "F", "C", "D", "G"],
+                "Chorus": ["C", "G", "Am", "F", "C", "G", "C", "G"],
+                "Solo": ["C", "G", "Am", "F", "C", "G", "F", "G"],
+                "Outro": ["C", "F", "C", "G", "C", "F", "C", "G"],
+            },
+            {
+                "Intro / Harmonica": ["C", "G/B", "Am", "C/G", "F", "C/E", "Dm7", "G7"],
+                "Verse": ["C", "G/B", "Am", "C/G", "F", "C/E", "Dm7", "G7"],
+                "Pre-Chorus": ["F", "C/E", "Dm7", "G7", "F", "C/E", "D7/F#", "G7"],
+                "Chorus": ["C", "G/B", "Am7", "C/G", "F", "G7", "C", "G7"],
+                "Solo": ["C", "G/B", "Am7", "C/G", "F", "C/E", "Dm7", "G7"],
+                "Outro": ["C", "F", "C/E", "G7", "C", "F", "C/G", "G7"],
+            },
+            {
+                "Intro / Harmonica": ["Cadd9", "G/B", "Am9", "C/G", "Fmaj9", "C/E", "Dm9", "G13"],
+                "Verse": ["Cadd9", "G/B", "Am9", "C/G", "Fmaj9", "C/E", "Dm9", "G13"],
+                "Pre-Chorus": ["Fmaj9", "C/E", "Dm9", "G13", "Fmaj9", "C/E", "D13/F#", "G13"],
+                "Chorus": ["Cadd9", "G/B", "Am9", "C/G", "Fmaj9", "G13", "Cadd9", "G13"],
+                "Solo": ["Cadd9", "G/B", "Am9", "C/G", "Fmaj9", "C/E", "Dm9", "G13"],
+                "Outro": ["Cadd9", "Fmaj9", "C/E", "G13", "Cadd9", "Fmaj9", "C/G", "G13"],
+            },
+        ),
+        ("Turn the Lights Back On", "Billy Joel"): pack("C",
+            {
+                "Intro": ["C", "Am", "F", "G"],
+                "Verse": ["C", "Am", "F", "G", "C", "Am", "F", "G"],
+                "Pre-Chorus": ["Dm", "G", "Em", "Am", "F", "G", "C", "G"],
+                "Chorus": ["C", "Am", "F", "G", "C", "Am", "F", "G"],
+                "Bridge": ["F", "G", "Em", "Am", "Dm", "G", "C", "G"],
+            },
+            {
+                "Intro": ["C", "Am7", "Fmaj7", "G"],
+                "Verse": ["C", "Am7", "Fmaj7", "G", "C/E", "Am7", "Fmaj7", "G"],
+                "Pre-Chorus": ["Dm7", "G", "Em7", "Am7", "Fmaj7", "G", "C", "G"],
+                "Chorus": ["C", "Am7", "Fmaj7", "G", "C/E", "Am7", "Fmaj7", "G"],
+                "Bridge": ["Fmaj7", "G", "Em7", "Am7", "Dm7", "G", "C", "G"],
+            },
+            {
+                "Intro": ["Cmaj9", "Am9", "Fmaj9", "G13sus"],
+                "Verse": ["Cmaj9", "Am9", "Fmaj9", "G13sus", "C/E", "Am9", "Fmaj9", "G13sus"],
+                "Pre-Chorus": ["Dm9", "G13", "Em9", "Am9", "Fmaj9", "G13sus", "Cmaj9", "G13"],
+                "Chorus": ["Cmaj9", "Am9", "Fmaj9", "G13sus", "C/E", "Am9", "Fmaj9", "G13sus"],
+                "Bridge": ["Fmaj9", "G13", "Em9", "Am9", "Dm9", "G13", "Cmaj9", "G13"],
+            },
+        ),
+        ("Just the Way You Are", "Billy Joel"): pack("D",
+            {
+                "Intro": ["D", "Bm", "G", "A"],
+                "Verse": ["D", "Bm", "G", "Gm", "D", "B7", "Em", "A"],
+                "Chorus": ["G", "Gm", "D", "B7", "Em", "A", "D", "A"],
+                "Bridge": ["Bb", "Eb", "Am", "D7", "G", "A", "D", "A"],
+            },
+            {
+                "Intro": ["Dmaj7", "Bm7", "Gmaj7", "A7"],
+                "Verse": ["Dmaj7", "Bm7", "Gmaj7", "Gm6", "D/F#", "B7", "Em7", "A7"],
+                "Chorus": ["Gmaj7", "Gm6", "D/F#", "B7", "Em7", "A7", "Dmaj7", "A7"],
+                "Bridge": ["Bbmaj7", "Eb13", "Am7", "D7", "Gmaj7", "A7", "Dmaj7", "A7"],
+            },
+            {
+                "Intro": ["Dmaj9", "Bm9", "Gmaj9", "A13"],
+                "Verse": ["Dmaj9", "Bm9", "Gmaj9", "Gm6", "D/F#", "B7b9", "Em9", "A13"],
+                "Chorus": ["Gmaj9", "Gm6", "D/F#", "B7b9", "Em9", "A13", "Dmaj9", "A13"],
+                "Bridge": ["Bbmaj9", "Eb13", "Am9", "D13", "Gmaj9", "A13", "Dmaj9", "A13"],
+            },
+        ),
+        ("Vienna", "Billy Joel"): pack("Bb",
+            {
+                "Intro": ["Bb", "Bb", "Eb", "F"],
+                "Verse": ["Bb", "Dm", "Gm", "Eb", "Bb", "F", "Bb", "F"],
+                "Pre-Chorus": ["Eb", "F", "Dm", "Gm", "Cm", "F", "Bb", "F"],
+                "Chorus": ["Eb", "F", "Dm", "Gm", "Cm", "F", "Bb", "F"],
+                "Bridge": ["Gm", "Dm", "Eb", "Bb", "Cm", "F", "Bb", "F"],
+            },
+            {
+                "Intro": ["Bb", "Bb/D", "Ebmaj7", "F7"],
+                "Verse": ["Bb", "Dm7", "Gm7", "Ebmaj7", "Bb/F", "F7", "Bb", "F7"],
+                "Pre-Chorus": ["Ebmaj7", "F/Eb", "Dm7", "Gm7", "Cm7", "F7", "Bb", "F7"],
+                "Chorus": ["Ebmaj7", "F7", "Dm7", "Gm7", "Cm7", "F7", "Bb", "F7"],
+                "Bridge": ["Gm7", "Dm7/F", "Ebmaj7", "Bb/D", "Cm7", "F7", "Bb", "F7"],
+            },
+            {
+                "Intro": ["Bbmaj9", "Bb/D", "Ebmaj9", "F13"],
+                "Verse": ["Bbmaj9", "Dm9", "Gm9", "Ebmaj9", "Bb/F", "F13", "Bbmaj9", "F13"],
+                "Pre-Chorus": ["Ebmaj9", "F13/Eb", "Dm9", "Gm9", "Cm9", "F13", "Bbmaj9", "F13"],
+                "Chorus": ["Ebmaj9", "F13", "Dm9", "Gm9", "Cm9", "F13", "Bbmaj9", "F13"],
+                "Bridge": ["Gm9", "Dm9/F", "Ebmaj9", "Bb/D", "Cm9", "F13", "Bbmaj9", "F13"],
+            },
+        ),
+        ("Let It Be", "The Beatles"): pack("C",
+            {
+                "Intro": ["C", "G", "Am", "F"],
+                "Verse": ["C", "G", "Am", "F", "C", "G", "F", "C"],
+                "Chorus": ["Am", "G", "F", "C", "C", "G", "F", "C"],
+                "Solo": ["C", "G", "Am", "F", "C", "G", "F", "C"],
+                "Outro": ["C", "G", "F", "C", "F", "C", "G", "C"],
+            },
+            {
+                "Intro": ["C", "G/B", "Am7", "Fmaj7"],
+                "Verse": ["C", "G/B", "Am7", "Fmaj7", "C/G", "G", "F", "C/E"],
+                "Chorus": ["Am7", "G", "F", "C/E", "C", "G", "F", "C"],
+                "Solo": ["C", "G/B", "Am7", "Fmaj7", "C/G", "G", "F", "C/E"],
+                "Outro": ["C", "G", "F", "C", "F", "C/E", "G", "C"],
+            },
+            {
+                "Intro": ["Cadd9", "G/B", "Am9", "Fmaj9"],
+                "Verse": ["Cadd9", "G/B", "Am9", "Fmaj9", "C/G", "G13sus", "Fmaj9", "C/E"],
+                "Chorus": ["Am9", "G13sus", "Fmaj9", "C/E", "Cadd9", "G13sus", "Fmaj9", "Cadd9"],
+                "Solo": ["Cadd9", "G/B", "Am9", "Fmaj9", "C/G", "G13sus", "Fmaj9", "C/E"],
+                "Outro": ["Cadd9", "G13sus", "Fmaj9", "Cadd9", "Fmaj9", "C/E", "G13sus", "Cadd9"],
+            },
+        ),
+        ("Hey Jude", "The Beatles"): pack("F",
+            {
+                "Intro": ["F", "C", "C7", "F"],
+                "Verse": ["F", "C", "C7", "F", "Bb", "F", "C", "F"],
+                "Pre-Chorus": ["Bb", "Bb", "F", "F", "C7", "C7", "F", "F"],
+                "Chorus": ["F", "Eb", "Bb", "F", "F", "Eb", "Bb", "F"],
+                "Outro Vamp": ["F", "Eb", "Bb", "F", "F", "Eb", "Bb", "F"],
+            },
+            {
+                "Intro": ["F", "C/E", "C7", "F"],
+                "Verse": ["F", "C/E", "C7", "F", "Bb", "F/A", "C7", "F"],
+                "Pre-Chorus": ["Bb", "Bb", "F/A", "F", "C7", "C7", "F", "F"],
+                "Chorus": ["F", "Eb", "Bb", "F/A", "F", "Eb", "Bb", "F"],
+                "Outro Vamp": ["F", "Eb", "Bb", "F", "F", "Eb", "Bb", "F"],
+            },
+            {
+                "Intro": ["Fadd9", "C/E", "C13", "Fadd9"],
+                "Verse": ["Fadd9", "C/E", "C13", "Fadd9", "Bbmaj9", "F/A", "C13", "Fadd9"],
+                "Pre-Chorus": ["Bbmaj9", "Bbmaj9", "F/A", "Fadd9", "C13", "C13", "Fadd9", "Fadd9"],
+                "Chorus": ["Fadd9", "Ebadd9", "Bbmaj9", "F/A", "Fadd9", "Ebadd9", "Bbmaj9", "Fadd9"],
+                "Outro Vamp": ["Fadd9", "Ebadd9", "Bbmaj9", "Fadd9", "Fadd9", "Ebadd9", "Bbmaj9", "Fadd9"],
+            },
+        ),
+        ("Yesterday", "The Beatles"): pack("F",
+            {
+                "Intro": ["F", "F"],
+                "Verse": ["F", "Em", "A7", "Dm", "Dm", "Bb", "C7", "F"],
+                "Middle Eight": ["Bb", "C7", "F", "Dm", "Gm", "C7", "F", "F"],
+                "Return / Tag": ["F", "Em", "A7", "Dm", "Gm", "C7", "F", "F"],
+            },
+            {
+                "Intro": ["Fmaj7", "F6"],
+                "Verse": ["F", "Em7", "A7", "Dm", "Dm/C", "Bbmaj7", "C7", "F"],
+                "Middle Eight": ["Bbmaj7", "C7", "F/A", "Dm7", "Gm7", "C7", "Fmaj7", "F6"],
+                "Return / Tag": ["F", "Em7", "A7", "Dm", "Gm7", "C7", "Fmaj7", "F6"],
+            },
+            {
+                "Intro": ["Fmaj9", "F6add9"],
+                "Verse": ["Fmaj9", "Em7b5", "A7b9", "Dm9", "Dm9/C", "Bbmaj9", "C13", "Fmaj9"],
+                "Middle Eight": ["Bbmaj9", "C13", "F/A", "Dm9", "Gm9", "C13", "Fmaj9", "F6add9"],
+                "Return / Tag": ["Fmaj9", "Em7b5", "A7b9", "Dm9", "Gm9", "C13", "Fmaj9", "F6add9"],
+            },
+        ),
+        ("Here Comes the Sun", "The Beatles"): pack("A",
+            {
+                "Intro": ["A", "D", "E7", "A"],
+                "Verse": ["A", "D", "E7", "A", "A", "D", "E7", "A"],
+                "Chorus": ["D", "B7", "E7", "A", "D", "B7", "E7", "A"],
+                "Bridge": ["C", "G", "D", "A", "C", "G", "D", "E7"],
+                "Outro": ["A", "D", "E7", "A"],
+            },
+            {
+                "Intro": ["A", "D/A", "E7/A", "A"],
+                "Verse": ["A", "D/F#", "E7", "A", "A", "D/F#", "E7", "A"],
+                "Chorus": ["Dmaj7", "B7", "E7", "A", "Dmaj7", "B7", "E7", "A"],
+                "Bridge": ["C", "G/B", "D", "A", "C", "G/B", "D", "E7"],
+                "Outro": ["A", "D/F#", "E7", "A"],
+            },
+            {
+                "Intro": ["Aadd9", "Dmaj9/A", "E13/A", "Aadd9"],
+                "Verse": ["Aadd9", "Dmaj9/F#", "E13", "Aadd9", "Aadd9", "Dmaj9/F#", "E13", "Aadd9"],
+                "Chorus": ["Dmaj9", "B13", "E13", "Aadd9", "Dmaj9", "B13", "E13", "Aadd9"],
+                "Bridge": ["Cadd9", "G/B", "Dadd9", "Aadd9", "Cadd9", "G/B", "Dadd9", "E13"],
+                "Outro": ["Aadd9", "Dmaj9/F#", "E13", "Aadd9"],
+            },
+        ),
+        ("Don't Stop Believin'", "Journey"): pack("E",
+            {
+                "Intro / Piano Loop": ["E", "B", "C#m", "A"],
+                "Verse": ["E", "B", "C#m", "A", "E", "B", "C#m", "A"],
+                "Pre-Chorus": ["A", "E", "B", "C#m", "A", "E", "B", "B"],
+                "Chorus": ["E", "B", "A", "E", "A", "E", "B", "B"],
+                "Final Chorus": ["E", "B", "A", "E", "A", "E", "B", "E"],
+            },
+            {
+                "Intro / Piano Loop": ["E", "B/D#", "C#m7", "Aadd9"],
+                "Verse": ["E", "B/D#", "C#m7", "Aadd9", "E", "B/D#", "C#m7", "Aadd9"],
+                "Pre-Chorus": ["Aadd9", "E/G#", "B", "C#m7", "Aadd9", "E/G#", "B", "B"],
+                "Chorus": ["E", "B/D#", "Aadd9", "E/G#", "Aadd9", "E/G#", "B", "B"],
+                "Final Chorus": ["E", "B/D#", "Aadd9", "E/G#", "Aadd9", "E/G#", "B", "E"],
+            },
+            {
+                "Intro / Piano Loop": ["Eadd9", "B/D#", "C#m9", "Amaj9"],
+                "Verse": ["Eadd9", "B/D#", "C#m9", "Amaj9", "Eadd9", "B/D#", "C#m9", "Amaj9"],
+                "Pre-Chorus": ["Amaj9", "E/G#", "B13sus", "C#m9", "Amaj9", "E/G#", "B13sus", "B13"],
+                "Chorus": ["Eadd9", "B/D#", "Amaj9", "E/G#", "Amaj9", "E/G#", "B13sus", "B13"],
+                "Final Chorus": ["Eadd9", "B/D#", "Amaj9", "E/G#", "Amaj9", "E/G#", "B13sus", "Eadd9"],
+            },
+        ),
+        ("The Girl from Ipanema", "Antonio Carlos Jobim"): pack("F",
+            {
+                "Intro": ["Gm", "C7", "Gm", "C7"],
+                "A Section": ["F", "F", "G7", "G7", "Gm", "C7", "F", "F"],
+                "B Section": ["Gb", "Gb", "B7", "B7", "F#m", "B7", "Gm", "C7"],
+                "Final A / Outro": ["Gm", "C7", "F", "F"],
+            },
+            {
+                "Intro": ["Gm7", "C7", "Gm7", "C7"],
+                "A Section": ["Fmaj7", "Fmaj7", "G7", "G7", "Gm7", "C7", "Fmaj7", "Fmaj7"],
+                "B Section": ["Gbmaj7", "Gbmaj7", "B7", "B7", "F#m7", "B7", "Gm7", "C7"],
+                "Final A / Outro": ["Gm7", "C7", "Fmaj7", "Fmaj7"],
+            },
+            {
+                "Intro": ["Gm9", "C13", "Gm9", "C13"],
+                "A Section": ["Fmaj9", "Fmaj9", "G13", "G13", "Gm9", "C13", "Fmaj9", "Fmaj9"],
+                "B Section": ["Gbmaj9", "Gbmaj9", "B13", "B13", "F#m9", "B13", "Gm9", "C13"],
+                "Final A / Outro": ["Gm9", "C13", "Fmaj9", "F6add9"],
+            },
+        ),
+        ("Wave", "Antonio Carlos Jobim"): pack("D",
+            {
+                "Intro": ["D", "D", "D", "D"],
+                "A Section": ["D", "Bbdim7", "Am", "D7", "G", "Gm", "D", "A7"],
+                "B Section": ["Em", "A7", "D", "D", "Fm", "Bb7", "Eb", "A7"],
+                "Final A / Outro": ["D", "Bbdim7", "Am", "D7", "G", "Gm", "D", "A7"],
+            },
+            {
+                "Intro": ["Dmaj7", "Dmaj7", "Dmaj7", "Dmaj7"],
+                "A Section": ["Dmaj9", "Bbdim7", "Am9", "D13", "Gmaj9", "Gm6", "F#m7", "B7b9"],
+                "B Section": ["Em9", "A13", "Dmaj9", "Dmaj9", "Fm9", "Bb13", "Ebmaj9", "A7b13"],
+                "Final A / Outro": ["Dmaj9", "Bbdim7", "Am9", "D13", "Gmaj9", "Gm6", "Dmaj9", "A13"],
+            },
+            {
+                "Intro": ["Dmaj9", "D6add9", "Dmaj9", "D6add9"],
+                "A Section": ["Dmaj9", "Bbdim7", "Am9", "D13", "Gmaj9", "Gm6", "F#m9", "B7b9"],
+                "B Section": ["Em9", "A13", "Dmaj9", "D6add9", "Fm9", "Bb13", "Ebmaj9", "A7b13"],
+                "Final A / Outro": ["Dmaj9", "Bbdim7", "Am9", "D13", "Gmaj9", "Gm6", "Dmaj9", "A13"],
+            },
+        ),
+        ("Blue Bossa", "Kenny Dorham"): pack("Cm",
+            {
+                "A Section": ["Cm", "Fm", "Dm7b5", "G7", "Cm", "Cm"],
+                "B Section": ["Ebm", "Ab7", "Db", "Db", "Dm7b5", "G7", "Cm", "G7"],
+            },
+            {
+                "A Section": ["Cm7", "Fm7", "Dm7b5", "G7", "Cm7", "Cm7"],
+                "B Section": ["Ebm7", "Ab7", "Dbmaj7", "Dbmaj7", "Dm7b5", "G7", "Cm7", "G7"],
+            },
+            {
+                "A Section": ["Cm9", "Fm9", "Dm7b5", "G7b9", "Cm9", "Cm9"],
+                "B Section": ["Ebm9", "Ab13", "Dbmaj9", "Dbmaj9", "Dm7b5", "G7b9", "Cm9", "G7b9"],
+            },
+        ),
+        ("Autumn Leaves", "Jazz Standard"): pack("Gm",
+            {
+                "Intro": ["Am7b5", "D7", "Gm", "Gm"],
+                "A Section": ["Cm", "F7", "Bb", "Eb", "Am7b5", "D7", "Gm", "Gm"],
+                "B Section": ["Cm", "F7", "Bb", "Eb", "Am7b5", "D7", "Gm", "D7"],
+            },
+            {
+                "Intro": ["Am7b5", "D7b9", "Gm7", "Gm7"],
+                "A Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7b9", "Gm7", "Gm7"],
+                "B Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7b9", "Gm7", "D7b9"],
+            },
+            {
+                "Intro": ["Am7b5", "D7b9", "Gm9", "Gm9"],
+                "A Section": ["Cm9", "F13", "Bbmaj9", "Ebmaj9", "Am7b5", "D7b9", "Gm9", "Gm9"],
+                "B Section": ["Cm9", "F13", "Bbmaj9", "Ebmaj9", "Am7b5", "D7b9", "Gm9", "D7b9"],
+            },
+        ),
+        ("Fly Me to the Moon", "Bart Howard"): pack("C",
+            {
+                "A Section": ["Am", "Dm", "G7", "C", "F", "Bm7b5", "E7", "Am"],
+                "B Section": ["Dm", "G7", "C", "A7", "Dm", "G7", "C", "E7"],
+                "Tag": ["Dm", "G7", "C", "C"],
+            },
+            {
+                "A Section": ["Am7", "Dm7", "G7", "Cmaj7", "Fmaj7", "Bm7b5", "E7", "Am7"],
+                "B Section": ["Dm7", "G7", "Cmaj7", "A7", "Dm7", "G7", "Cmaj7", "E7"],
+                "Tag": ["Dm7", "G7", "Cmaj7", "Cmaj7"],
+            },
+            {
+                "A Section": ["Am9", "Dm9", "G13", "Cmaj9", "Fmaj9", "Bm7b5", "E7b9", "Am9"],
+                "B Section": ["Dm9", "G13", "Cmaj9", "A7b9", "Dm9", "G13", "Cmaj9", "E7b9"],
+                "Tag": ["Dm9", "G13", "Cmaj9", "C6add9"],
+            },
+        ),
+    }
+
+
+def _apply_core_chart_overrides(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    overrides = _core_chart_overrides()
+    out = []
+    for row in records:
+        patch = overrides.get((row["title"], row["artist"]))
+        if patch:
+            row = {**row, **patch}
+        out.append(row)
+    return out
+
+
 def curated_song_records() -> list[dict[str, Any]]:
-    return [
+    records = [
         # --- John Mayer / Pop foundations ---
         _s("Say", "John Mayer", "Pop", "Bb", {
             "Intro": ["Bb", "F/A", "Gm7", "Ebadd9"],
@@ -456,3 +927,4 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Practice Variation": ["D", "G", "A", "D"],
         }, composer="Ludwig van Beethoven"),
     ]
+    return _apply_core_chart_overrides(records)
