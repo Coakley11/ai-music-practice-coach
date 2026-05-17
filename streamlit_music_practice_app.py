@@ -330,9 +330,76 @@ def bar_grid_markdown(chords, bars_per_row=4):
     rows = []
     for i in range(0, len(chords), bars_per_row):
         row = chords[i:i + bars_per_row]
-        cells = [f"{i + j + 1}. {ch}" for j, ch in enumerate(row)]
-        rows.append("| " + " | ".join(cells) + " |")
-    return "\n".join(rows)
+        display = []
+        for j, ch in enumerate(row):
+            absolute = i + j
+            if absolute > 0 and ch == chords[absolute - 1]:
+                display.append("%")
+            else:
+                display.append(ch)
+        bars = [f"Bar {i + j + 1}" for j in range(len(row))]
+        rows.append("| " + " | ".join(bars) + " |")
+        rows.append("| " + " | ".join(["---"] * len(row)) + " |")
+        rows.append("| " + " | ".join(f"**{cell}**" for cell in display) + " |")
+        rows.append("")
+    return "\n".join(rows).strip()
+
+
+def parse_user_lyric_cues(raw_text, section_names):
+    """User-provided cues only. No lyric scraping or generation."""
+    if not raw_text:
+        return {}
+
+    cues = {name: [] for name in section_names}
+    current = None
+
+    for raw_line in raw_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        if ":" in line:
+            maybe_section, cue = line.split(":", 1)
+            match = next(
+                (name for name in section_names if name.lower() == maybe_section.strip().lower()),
+                None,
+            )
+            if match:
+                current = match
+                if cue.strip():
+                    cues[current].append(cue.strip())
+                continue
+
+        if current is None:
+            current = section_names[0] if section_names else None
+
+        if current:
+            cues[current].append(line)
+
+    return {name: lines for name, lines in cues.items() if lines}
+
+
+def lyric_cue_markdown(section_name, chords, lyric_cues, instrument):
+    cues = lyric_cues.get(section_name, []) if lyric_cues else []
+    out = []
+
+    if cues:
+        out.append("**Lyric / phrase cues:**")
+        for idx, cue in enumerate(cues[:4]):
+            bar_hint = min(idx * 4 + 1, max(1, len(chords)))
+            chord_hint = chords[bar_hint - 1] if chords else "the first chord"
+            out.append(f"- Bar {bar_hint} ({chord_hint}): {cue}")
+    elif instrument == "Voice":
+        entry = chords[0] if chords else "the first chord"
+        peak = chords[max(0, len(chords) // 2)] if chords else "the middle of the phrase"
+        end = chords[-1] if chords else "the final chord"
+        out.append("**Vocal placement guide:**")
+        out.append(f"- Enter lightly on **{entry}**; save stronger tone for the phrase peak.")
+        out.append(f"- Breathe before the section and around bar {max(1, min(5, len(chords)))} if needed.")
+        out.append(f"- Aim phrase shape toward **{peak}**, then release cleanly into **{end}**.")
+        out.append("- Practice once on vowels only, then add diction without tightening the jaw.")
+
+    return "\n".join(out)
 
 
 GUITAR_VOICING_LIBRARY = {
@@ -490,6 +557,7 @@ def full_chord_markdown(
     instrument,
     display_key=None,
     level="Intermediate",
+    lyric_cues=None,
 ):
 
     out = []
@@ -520,7 +588,10 @@ def full_chord_markdown(
     out.append(f"Player level chart: **{level}**")
     status_text, _status_kind = chart_status_label(song_data)
     out.append(f"Chart reliability: **{status_text}**")
-    out.append("_One chord cell = one 4/4 bar unless the compact summary says otherwise._")
+    out.append("_One grid cell = one 4/4 bar. `%` means repeat the previous bar._")
+
+    total_bars = sum(len(chords) for chords in sections.values())
+    out.append(f"Total form length: **{total_bars} bars**")
 
     ext = song_data.get("extensions") or {}
     if ext.get("arrangement_notes"):
@@ -528,13 +599,13 @@ def full_chord_markdown(
 
     for section_name, chords in sections.items():
 
-        out.append(
-            f"\n### {section_name}"
-        )
+        out.append(f"\n### {section_name} — {len(chords)} bars")
 
-        out.append(f"Bars: **{len(chords)}**")
-        out.append(f"Harmonic rhythm: {compact_bar_summary(chords)}")
+        out.append(f"Compact rhythm: {compact_bar_summary(chords)}")
         out.append(bar_grid_markdown(chords))
+        cue_text = lyric_cue_markdown(section_name, chords, lyric_cues or {}, instrument)
+        if cue_text:
+            out.append(cue_text)
 
     if instrument == "Guitar":
         out.extend(
@@ -548,33 +619,56 @@ def full_chord_markdown(
 
     return "\n".join(out)
 
-def practice_text(level):
+def vocal_practice_text(level, sections):
+    longest = max((len(chords) for chords in sections.values()), default=4)
+    return f"""
+### Voice-Specific Practice
+- **Breathing:** mark breaths before each section and before long phrases over {min(longest, 8)}-bar spans.
+- **Phrase length:** speak the rhythm first, then sing on a single vowel before adding words.
+- **Range awareness:** find the pitch center from the first and last chord of each section; avoid pushing the top notes.
+- **Sustains:** practice held notes with steady air, then taper the release into the next bar.
+- **Diction:** keep consonants short and vowels consistent through sustained notes.
+- **Dynamics:** sing verses lighter, choruses fuller, and bridges with a clear emotional shift.
+- **Section practice:** loop verse entries quietly; practice chorus entrances with stronger breath support.
+"""
+
+
+def practice_text(level, instrument=None, sections=None):
 
     if level == "Beginner":
-        return """
+        base = """
 ### Beginner Focus
 - Practice slowly.
 - Learn one section at a time.
 - Focus on clean rhythm.
 - Say chord names aloud.
 """
+        if instrument == "Voice":
+            base += vocal_practice_text(level, sections or {})
+        return base
 
     if level == "Intermediate":
-        return """
+        base = """
 ### Intermediate Focus
 - Connect sections together.
 - Practice rhythm consistency.
 - Add chord-tone improvisation.
 - Record one full section.
 """
+        if instrument == "Voice":
+            base += vocal_practice_text(level, sections or {})
+        return base
 
-    return """
+    base = """
 ### Advanced Focus
 - Use voice leading.
 - Add substitutions and inversions.
 - Improvise over the full form.
 - Create variations for each section.
 """
+    if instrument == "Voice":
+        base += vocal_practice_text(level, sections or {})
+    return base
 
 def load_logs():
 
@@ -1254,6 +1348,21 @@ focus = st.sidebar.selectbox(
     ]
 )
 
+with st.sidebar.expander("Optional lyric / phrase cues"):
+    st.caption(
+        "Paste only lyrics or cues you provide. The app does not fetch or generate copyrighted lyrics."
+    )
+    user_lyric_cue_text = st.text_area(
+        "Section cues",
+        placeholder=(
+            "Verse: line 1 enters on bar 1, resolves by bar 4\n"
+            "Chorus: hook starts strong on bar 1\n"
+            "Bridge: sing lighter, save breath for final line"
+        ),
+        key="user_lyric_cues",
+        height=120,
+    )
+
 minutes = st.sidebar.slider(
     "Practice Minutes",
     10,
@@ -1275,6 +1384,10 @@ sections = transpose_sections(
 
 full_song_chords = chord_blocks_for_backing(sections)
 default_groove_style = infer_groove_style(song_data, "Auto")
+lyric_cues = parse_user_lyric_cues(
+    user_lyric_cue_text,
+    list(sections.keys()),
+)
 
 # TABS
 
@@ -1316,6 +1429,7 @@ Focus: **{focus}**
             instrument,
             display_key=display_key,
             level=level,
+            lyric_cues=lyric_cues,
         )
     )
 
@@ -1324,7 +1438,11 @@ Focus: **{focus}**
     ):
 
         st.markdown(
-            practice_text(level)
+            practice_text(
+                level,
+                instrument=instrument,
+                sections=sections,
+            )
         )
 
         st.subheader(
@@ -1525,6 +1643,7 @@ with tabs[1]:
             instrument,
             display_key=display_key,
             level=level,
+            lyric_cues=lyric_cues,
         )
     )
 
@@ -1555,6 +1674,7 @@ with tabs[2]:
             instrument,
             display_key=display_key,
             level=level,
+            lyric_cues=lyric_cues,
         )
     )
 
@@ -1676,6 +1796,14 @@ with tabs[2]:
         st.write(f"Bars in section: **{len(section_chords)}**")
         st.write(f"Bar-count summary: {compact_bar_summary(section_chords)}")
         st.markdown(bar_grid_markdown(section_chords))
+        cue_text = lyric_cue_markdown(
+            section_name,
+            section_chords,
+            lyric_cues,
+            instrument,
+        )
+        if cue_text:
+            st.markdown(cue_text)
 
     if st.button(
         "Generate backing track (from active song + settings above)",
