@@ -82,7 +82,7 @@ from songs import (
 SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = load_song_catalog()
 TRUSTED_CORE_RECORDS = [
     r for r in ALL_SONG_RECORDS
-    if r.get("trusted_core") or r.get("chart_status") in ["trusted", "verified"]
+    if r.get("trusted_core") or r.get("chart_status") == "verified"
 ]
 DEFAULT_SONG_RECORDS = TRUSTED_CORE_RECORDS or ALL_SONG_RECORDS
 
@@ -102,7 +102,8 @@ genre, song, song_data = get_song_context(
 if (
     DEFAULT_SONG_RECORDS
     and st.session_state.get("chart_library_mode", "Trusted core charts only") == "Trusted core charts only"
-    and song_data.get("chart_status") not in ["trusted", "verified"]
+    and not song_data.get("trusted_core")
+    and song_data.get("chart_status") != "verified"
 ):
     _r0 = DEFAULT_SONG_RECORDS[0]
     _pk0 = format_pick_key(_r0["genre"], f"{_r0['title']} — {_r0['artist']}")
@@ -289,8 +290,8 @@ def chart_status_label(song_data):
     status = (song_data.get("chart_status") or "placeholder").strip()
     labels = {
         "verified": ("Verified chart", "success"),
-        "trusted": ("Trusted core practice chart", "success"),
-        "practice_simplified": ("Simplified practice chart", "info"),
+        "trusted": ("Practice approximation — trusted core", "info"),
+        "practice_simplified": ("Practice approximation", "info"),
         "placeholder": ("Placeholder chart — needs verification", "warning"),
     }
     return labels.get(status, ("Placeholder chart — needs verification", "warning"))
@@ -299,7 +300,7 @@ def chart_status_label(song_data):
 def trusted_core_records(records):
     return [
         r for r in records
-        if r.get("trusted_core") or r.get("chart_status") in ["trusted", "verified"]
+        if r.get("trusted_core") or r.get("chart_status") == "verified"
     ]
 
 

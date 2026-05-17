@@ -65,7 +65,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
     harmonic rhythm.
     """
 
-    def pack(key, beginner, intermediate, advanced=None, status="trusted"):
+    def pack(key, beginner, intermediate, advanced=None, status="practice_simplified"):
         return {
             "key": key,
             "sections": intermediate,
@@ -224,28 +224,28 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ),
         ("Piano Man", "Billy Joel"): pack("C",
             {
-                "Intro / Harmonica": ["C", "G", "Am", "F", "C", "G", "F", "G"],
-                "Verse": ["C", "G", "Am", "F", "C", "G", "F", "G"],
-                "Pre-Chorus": ["F", "C", "Dm", "G", "F", "C", "D", "G"],
-                "Chorus": ["C", "G", "Am", "F", "C", "G", "C", "G"],
-                "Solo": ["C", "G", "Am", "F", "C", "G", "F", "G"],
-                "Outro": ["C", "F", "C", "G", "C", "F", "C", "G"],
+                "Intro / Harmonica (3/4)": ["C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G"],
+                "Verse (3/4)": ["C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G"],
+                "Turnaround": ["Am", "Am/G", "D7/F#", "G", "Am", "Am/G", "D7/F#", "G"],
+                "Chorus (3/4)": ["C", "G/B", "F/A", "C/G", "F", "G", "C", "G"],
+                "Harmonica Solo": ["C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G"],
+                "Outro": ["C", "F", "C/G", "G", "C", "F", "C/G", "G"],
             },
             {
-                "Intro / Harmonica": ["C", "G/B", "Am", "C/G", "F", "C/E", "Dm7", "G7"],
-                "Verse": ["C", "G/B", "Am", "C/G", "F", "C/E", "Dm7", "G7"],
-                "Pre-Chorus": ["F", "C/E", "Dm7", "G7", "F", "C/E", "D7/F#", "G7"],
+                "Intro / Harmonica (3/4)": ["C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G7"],
+                "Verse (3/4)": ["C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G7"],
+                "Turnaround": ["Am", "Am/G", "D7/F#", "G7", "Am", "Am/G", "D7/F#", "G7"],
                 "Chorus": ["C", "G/B", "Am7", "C/G", "F", "G7", "C", "G7"],
-                "Solo": ["C", "G/B", "Am7", "C/G", "F", "C/E", "Dm7", "G7"],
+                "Harmonica Solo": ["C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G7"],
                 "Outro": ["C", "F", "C/E", "G7", "C", "F", "C/G", "G7"],
             },
             {
-                "Intro / Harmonica": ["Cadd9", "G/B", "Am9", "C/G", "Fmaj9", "C/E", "Dm9", "G13"],
-                "Verse": ["Cadd9", "G/B", "Am9", "C/G", "Fmaj9", "C/E", "Dm9", "G13"],
-                "Pre-Chorus": ["Fmaj9", "C/E", "Dm9", "G13", "Fmaj9", "C/E", "D13/F#", "G13"],
-                "Chorus": ["Cadd9", "G/B", "Am9", "C/G", "Fmaj9", "G13", "Cadd9", "G13"],
-                "Solo": ["Cadd9", "G/B", "Am9", "C/G", "Fmaj9", "C/E", "Dm9", "G13"],
-                "Outro": ["Cadd9", "Fmaj9", "C/E", "G13", "Cadd9", "Fmaj9", "C/G", "G13"],
+                "Intro / Harmonica (3/4)": ["C", "G/B", "F/A", "C/G", "Fmaj7", "C/E", "D7", "G7"],
+                "Verse (3/4)": ["C", "G/B", "F/A", "C/G", "Fmaj7", "C/E", "D7", "G7"],
+                "Turnaround": ["Am7", "Am7/G", "D7/F#", "G7", "Am7", "Am7/G", "D7/F#", "G7"],
+                "Chorus": ["C", "G/B", "Am7", "C/G", "Fmaj7", "G7", "C", "G7"],
+                "Harmonica Solo": ["C", "G/B", "F/A", "C/G", "Fmaj7", "C/E", "D7", "G7"],
+                "Outro": ["C", "Fmaj7", "C/G", "G7", "C", "Fmaj7", "C/G", "G7"],
             },
         ),
         ("Turn the Lights Back On", "Billy Joel"): pack("C",
@@ -341,23 +341,20 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
             {
                 "Intro": ["F", "C", "C7", "F"],
                 "Verse": ["F", "C", "C7", "F", "Bb", "F", "C", "F"],
-                "Pre-Chorus": ["Bb", "Bb", "F", "F", "C7", "C7", "F", "F"],
-                "Chorus": ["F", "Eb", "Bb", "F", "F", "Eb", "Bb", "F"],
-                "Outro Vamp": ["F", "Eb", "Bb", "F", "F", "Eb", "Bb", "F"],
+                "Bridge / Build": ["F7", "Bb", "Bb/A", "Bb/G", "Bb/F", "C7", "F", "F"],
+                "Outro Vamp": ["F", "F7", "Eb", "Bb", "F", "F7", "Eb", "Bb"],
             },
             {
                 "Intro": ["F", "C/E", "C7", "F"],
                 "Verse": ["F", "C/E", "C7", "F", "Bb", "F/A", "C7", "F"],
-                "Pre-Chorus": ["Bb", "Bb", "F/A", "F", "C7", "C7", "F", "F"],
-                "Chorus": ["F", "Eb", "Bb", "F/A", "F", "Eb", "Bb", "F"],
-                "Outro Vamp": ["F", "Eb", "Bb", "F", "F", "Eb", "Bb", "F"],
+                "Bridge / Build": ["F7", "Bb", "Bb/A", "Bb/G", "Bb/F", "C7", "F", "F"],
+                "Outro Vamp": ["F6", "F7", "Eb", "Bb", "F6", "F7", "Eb", "Bb"],
             },
             {
-                "Intro": ["Fadd9", "C/E", "C13", "Fadd9"],
-                "Verse": ["Fadd9", "C/E", "C13", "Fadd9", "Bbmaj9", "F/A", "C13", "Fadd9"],
-                "Pre-Chorus": ["Bbmaj9", "Bbmaj9", "F/A", "Fadd9", "C13", "C13", "Fadd9", "Fadd9"],
-                "Chorus": ["Fadd9", "Ebadd9", "Bbmaj9", "F/A", "Fadd9", "Ebadd9", "Bbmaj9", "Fadd9"],
-                "Outro Vamp": ["Fadd9", "Ebadd9", "Bbmaj9", "Fadd9", "Fadd9", "Ebadd9", "Bbmaj9", "Fadd9"],
+                "Intro": ["F", "C/E", "C7", "F"],
+                "Verse": ["F", "C/E", "C7", "F", "Bb", "F/A", "C7", "F"],
+                "Bridge / Build": ["F7", "Bb", "Bb/A", "Bb/G", "Bb/F", "C7", "F", "F"],
+                "Outro Vamp": ["F6", "F7", "Eb", "Bb", "F6", "F7", "Eb", "Bb"],
             },
         ),
         ("Yesterday", "The Beatles"): pack("F",
@@ -429,19 +426,19 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("The Girl from Ipanema", "Antonio Carlos Jobim"): pack("F",
             {
                 "Intro": ["Gm", "C7", "Gm", "C7"],
-                "A Section": ["F", "F", "G7", "G7", "Gm", "C7", "F", "F"],
+                "A Section": ["F", "F", "G7", "G7", "Gm", "Gb7", "F", "Gb7"],
                 "B Section": ["Gb", "Gb", "B7", "B7", "F#m", "B7", "Gm", "C7"],
                 "Final A / Outro": ["Gm", "C7", "F", "F"],
             },
             {
                 "Intro": ["Gm7", "C7", "Gm7", "C7"],
-                "A Section": ["Fmaj7", "Fmaj7", "G7", "G7", "Gm7", "C7", "Fmaj7", "Fmaj7"],
+                "A Section": ["Fmaj7", "Fmaj7", "G7", "G7", "Gm7", "Gb7", "Fmaj7", "Gb7"],
                 "B Section": ["Gbmaj7", "Gbmaj7", "B7", "B7", "F#m7", "B7", "Gm7", "C7"],
                 "Final A / Outro": ["Gm7", "C7", "Fmaj7", "Fmaj7"],
             },
             {
                 "Intro": ["Gm9", "C13", "Gm9", "C13"],
-                "A Section": ["Fmaj9", "Fmaj9", "G13", "G13", "Gm9", "C13", "Fmaj9", "Fmaj9"],
+                "A Section": ["Fmaj9", "Fmaj9", "G13", "G13", "Gm9", "Gb13", "Fmaj9", "Gb13"],
                 "B Section": ["Gbmaj9", "Gbmaj9", "B13", "B13", "F#m9", "B13", "Gm9", "C13"],
                 "Final A / Outro": ["Gm9", "C13", "Fmaj9", "F6add9"],
             },
@@ -468,33 +465,36 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ),
         ("Blue Bossa", "Kenny Dorham"): pack("Cm",
             {
-                "A Section": ["Cm", "Fm", "Dm7b5", "G7", "Cm", "Cm"],
+                "A Section": ["Cm", "Cm", "Fm", "Fm", "Dm7b5", "G7", "Cm", "Cm"],
                 "B Section": ["Ebm", "Ab7", "Db", "Db", "Dm7b5", "G7", "Cm", "G7"],
             },
             {
-                "A Section": ["Cm7", "Fm7", "Dm7b5", "G7", "Cm7", "Cm7"],
-                "B Section": ["Ebm7", "Ab7", "Dbmaj7", "Dbmaj7", "Dm7b5", "G7", "Cm7", "G7"],
+                "A Section": ["Cm7", "Cm7", "Fm7", "Fm7", "Dm7b5", "G7", "Cm7", "Cm7"],
+                "B Section": ["Ebm7", "Ab7", "Dbmaj7", "Dbmaj7", "Dm7b5", "G7", "Cm7", "Dm7b5 G7"],
             },
             {
-                "A Section": ["Cm9", "Fm9", "Dm7b5", "G7b9", "Cm9", "Cm9"],
-                "B Section": ["Ebm9", "Ab13", "Dbmaj9", "Dbmaj9", "Dm7b5", "G7b9", "Cm9", "G7b9"],
+                "A Section": ["Cm9", "Cm9", "Fm9", "Fm9", "Dm7b5", "G7b9", "Cm9", "Cm9"],
+                "B Section": ["Ebm9", "Ab13", "Dbmaj9", "Dbmaj9", "Dm7b5", "G7b9", "Cm9", "Dm7b5 G7b9"],
             },
         ),
         ("Autumn Leaves", "Jazz Standard"): pack("Gm",
             {
                 "Intro": ["Am7b5", "D7", "Gm", "Gm"],
                 "A Section": ["Cm", "F7", "Bb", "Eb", "Am7b5", "D7", "Gm", "Gm"],
-                "B Section": ["Cm", "F7", "Bb", "Eb", "Am7b5", "D7", "Gm", "D7"],
+                "B Section": ["Am7b5", "D7", "Gm", "Gm", "Cm", "F7", "Bb", "Eb"],
+                "Final A": ["Am7b5", "D7", "Gm", "C7", "Fm", "Bb7", "Eb", "D7"],
             },
             {
                 "Intro": ["Am7b5", "D7b9", "Gm7", "Gm7"],
                 "A Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7b9", "Gm7", "Gm7"],
-                "B Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7b9", "Gm7", "D7b9"],
+                "B Section": ["Am7b5", "D7b9", "Gm7", "Gm7", "Cm7", "F7", "Bbmaj7", "Ebmaj7"],
+                "Final A": ["Am7b5", "D7b9", "Gm7", "C7", "Fm7", "Bb7", "Ebmaj7", "D7b9"],
             },
             {
                 "Intro": ["Am7b5", "D7b9", "Gm9", "Gm9"],
                 "A Section": ["Cm9", "F13", "Bbmaj9", "Ebmaj9", "Am7b5", "D7b9", "Gm9", "Gm9"],
-                "B Section": ["Cm9", "F13", "Bbmaj9", "Ebmaj9", "Am7b5", "D7b9", "Gm9", "D7b9"],
+                "B Section": ["Am7b5", "D7b9", "Gm9", "Gm9", "Cm9", "F13", "Bbmaj9", "Ebmaj9"],
+                "Final A": ["Am7b5", "D7b9", "Gm9", "C13", "Fm9", "Bb13", "Ebmaj9", "D7b9"],
             },
         ),
         ("Fly Me to the Moon", "Bart Howard"): pack("C",
@@ -524,6 +524,11 @@ def _apply_core_chart_overrides(records: list[dict[str, Any]]) -> list[dict[str,
         patch = overrides.get((row["title"], row["artist"]))
         if patch:
             row = {**row, **patch}
+            if row.get("genre") in ["Pop", "Rock"]:
+                versions = dict(row.get("chart_versions") or {})
+                if versions.get("Intermediate"):
+                    versions["Advanced"] = versions["Intermediate"]
+                    row["chart_versions"] = versions
         out.append(row)
     return out
 

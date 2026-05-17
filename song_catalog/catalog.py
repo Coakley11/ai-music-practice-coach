@@ -55,8 +55,6 @@ def _with_reliability(row: dict[str, Any]) -> dict[str, Any]:
     out = dict(row)
     trusted = _is_trusted_core(out)
     out["trusted_core"] = trusted
-    if trusted and out.get("chart_status") != "verified":
-        out["chart_status"] = "trusted"
     return out
 
 
