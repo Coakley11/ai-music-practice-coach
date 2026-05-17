@@ -1,4 +1,4 @@
-# VERSION: v47_musical_quality_backing_tracks
+# VERSION: v48_metronome_lyrics_practice
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -432,7 +432,32 @@ def lyric_cue_markdown(section_name, chords, lyric_cues, instrument):
         out.append(f"- Breathe before the section and around bar {max(1, min(5, len(chords)))} if needed.")
         out.append(f"- Aim phrase shape toward **{peak}**, then release cleanly into **{end}**.")
         out.append("- Practice once on vowels only, then add diction without tightening the jaw.")
+    else:
+        entry = chords[0] if chords else "the first chord"
+        out.append("**Section locator cue:**")
+        out.append(f"- {section_name}: phrase/section entry starts around **{entry}**. Add your own lyric cue in the sidebar for tighter alignment.")
 
+    return "\n".join(out)
+
+
+def lyric_guide_markdown(sections, lyric_cues, instrument):
+    out = ["### Lyric / Section Cue Guide"]
+    if instrument == "Voice":
+        out.append("_Use this to map entrances, breaths, vowels, phrase peaks, and delivery. Paste your own lyrics/cues in the sidebar for exact alignment._")
+    else:
+        out.append("_Short locator cues help you know where you are in the form. The app does not fetch or generate full copyrighted lyrics._")
+
+    for section_name, chords in sections.items():
+        cue_lines = lyric_cues.get(section_name, []) if lyric_cues else []
+        entry = chords[0] if chords else "the first chord"
+        peak = chords[max(0, len(chords) // 2)] if chords else "the middle"
+        if cue_lines:
+            cue = "; ".join(cue_lines[:2])
+        elif instrument == "Voice":
+            cue = f"Enter on {entry}; breathe before the section; shape toward {peak}."
+        else:
+            cue = f"{section_name} entry around {entry}; listen for the section change and phrase shape."
+        out.append(f"- **{section_name}** ({len(chords)} bars): {cue}")
     return "\n".join(out)
 
 
@@ -548,6 +573,139 @@ def render_abc(abc_text):
         height=350,
         scrolling=True
     )
+
+
+def render_metronome_widget(default_bpm=100, default_signature="4/4"):
+    config = json.dumps({
+        "bpm": int(default_bpm),
+        "signature": default_signature,
+    })
+    html = f"""
+    <div id="metro-root" style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; border:1px solid #ddd; border-radius:12px; padding:14px; max-width:760px;">
+      <h4 style="margin:0 0 10px 0;">Practice Metronome</h4>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:end;">
+        <label>BPM<br><input id="metro-bpm" type="range" min="40" max="240" value="{default_bpm}" style="width:220px;"></label>
+        <div><strong id="metro-bpm-label">{default_bpm}</strong> BPM</div>
+        <label>Time signature<br>
+          <select id="metro-sig">
+            <option>2/4</option><option>3/4</option><option selected>4/4</option>
+            <option>6/8</option><option>3/8</option><option>5/4</option><option>7/8</option>
+          </select>
+        </label>
+        <button id="metro-start" style="padding:8px 14px;">Start Metronome</button>
+        <button id="metro-stop" style="padding:8px 14px;">Stop Metronome</button>
+      </div>
+      <div style="margin-top:12px;">
+        <div>Beat: <strong id="metro-beat">-</strong> / <span id="metro-beats-per-measure">4</span> | Measure: <strong id="metro-measure">0</strong></div>
+        <div id="metro-dots" style="display:flex; gap:8px; margin-top:10px;"></div>
+      </div>
+      <p style="margin:10px 0 0 0; color:#666; font-size:13px;">First beat is accented higher/louder; other beats are softer/lower. Audio starts after pressing Start.</p>
+    </div>
+    <script>
+    (() => {{
+      const cfg = {config};
+      const bpmInput = document.getElementById("metro-bpm");
+      const bpmLabel = document.getElementById("metro-bpm-label");
+      const sigSelect = document.getElementById("metro-sig");
+      const beatEl = document.getElementById("metro-beat");
+      const measureEl = document.getElementById("metro-measure");
+      const beatsPerEl = document.getElementById("metro-beats-per-measure");
+      const dotsEl = document.getElementById("metro-dots");
+      let ctx = null;
+      let timer = null;
+      let beat = 0;
+      let measure = 0;
+
+      bpmInput.value = cfg.bpm;
+      bpmLabel.textContent = cfg.bpm;
+      sigSelect.value = cfg.signature;
+
+      function beatsPerMeasure() {{
+        return parseInt(sigSelect.value.split("/")[0], 10);
+      }}
+
+      function drawDots(activeBeat) {{
+        const beats = beatsPerMeasure();
+        beatsPerEl.textContent = beats;
+        dotsEl.innerHTML = "";
+        for (let i = 1; i <= beats; i++) {{
+          const dot = document.createElement("div");
+          dot.textContent = i;
+          dot.style.width = "34px";
+          dot.style.height = "34px";
+          dot.style.borderRadius = "50%";
+          dot.style.display = "flex";
+          dot.style.alignItems = "center";
+          dot.style.justifyContent = "center";
+          dot.style.border = "1px solid #aaa";
+          dot.style.background = i === activeBeat ? (i === 1 ? "#ffcc66" : "#b7e4ff") : "#f5f5f5";
+          dot.style.fontWeight = i === activeBeat ? "700" : "400";
+          dotsEl.appendChild(dot);
+        }}
+      }}
+
+      function click(accent) {{
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.frequency.value = accent ? 1180 : 760;
+        gain.gain.setValueAtTime(accent ? 0.42 : 0.20, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.08);
+      }}
+
+      function tick() {{
+        const beats = beatsPerMeasure();
+        beat += 1;
+        if (beat > beats) {{
+          beat = 1;
+          measure += 1;
+        }}
+        click(beat === 1);
+        beatEl.textContent = beat;
+        measureEl.textContent = measure;
+        drawDots(beat);
+      }}
+
+      function start() {{
+        stop();
+        ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+        beat = 0;
+        measure = 1;
+        tick();
+        const intervalMs = 60000 / parseInt(bpmInput.value, 10);
+        timer = setInterval(tick, intervalMs);
+      }}
+
+      function stop() {{
+        if (timer) clearInterval(timer);
+        timer = null;
+        beat = 0;
+        measure = 0;
+        beatEl.textContent = "-";
+        measureEl.textContent = "0";
+        drawDots(0);
+      }}
+
+      bpmInput.addEventListener("input", () => {{
+        bpmLabel.textContent = bpmInput.value;
+        if (timer) start();
+      }});
+      sigSelect.addEventListener("change", () => {{
+        if (timer) start();
+        else drawDots(0);
+      }});
+      document.getElementById("metro-start").addEventListener("click", start);
+      document.getElementById("metro-stop").addEventListener("click", stop);
+      drawDots(0);
+    }})();
+    </script>
+    """
+    components.html(html, height=230)
 
 def build_abc(song_name, sections):
 
@@ -912,6 +1070,15 @@ def song_practice_plan(song, sections, instrument, level, focus, variation):
 **Progression**
 - {development}
 """
+
+
+def default_time_signature(song, sections):
+    text = " ".join([song] + list(sections.keys())).lower()
+    if "3/4" in text or "piano man" in text:
+        return "3/4"
+    if "perfect" in text:
+        return "6/8"
+    return "4/4"
 
 
 def practice_text(level, instrument=None, sections=None, focus=None):
@@ -1740,6 +1907,20 @@ Focus: **{focus}**
             "Each new exercise rotates section targets and raises the musical demand gradually."
         )
 
+    st.subheader("Metronome")
+    render_metronome_widget(
+        default_bpm=100,
+        default_signature=default_time_signature(song, sections),
+    )
+
+    st.markdown(
+        lyric_guide_markdown(
+            sections,
+            lyric_cues,
+            instrument,
+        )
+    )
+
     with st.expander("Open chord chart for this practice plan", expanded=False):
         st.markdown(
             full_chord_markdown(
@@ -2099,6 +2280,14 @@ with tabs[2]:
     st.caption(
         f"Chart version used for audio: **{level}** — "
         f"**{chart_status_label(song_data)[0]}**"
+    )
+
+    st.markdown(
+        lyric_guide_markdown(
+            sections,
+            lyric_cues,
+            instrument,
+        )
     )
 
     st.subheader("2. Full Song Chart")
