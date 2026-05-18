@@ -82,7 +82,7 @@ from songs import (
 SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = load_song_catalog()
 TRUSTED_CORE_RECORDS = [
     r for r in ALL_SONG_RECORDS
-    if r.get("trusted_core") or r.get("chart_status") == "verified"
+    if r.get("trusted_core") or r.get("chart_status") in {"verified", "practice_level_verified"}
 ]
 DEFAULT_SONG_RECORDS = TRUSTED_CORE_RECORDS or ALL_SONG_RECORDS
 
@@ -103,7 +103,7 @@ if (
     DEFAULT_SONG_RECORDS
     and st.session_state.get("chart_library_mode", "Trusted core charts only") == "Trusted core charts only"
     and not song_data.get("trusted_core")
-    and song_data.get("chart_status") != "verified"
+    and song_data.get("chart_status") not in {"verified", "practice_level_verified"}
 ):
     _r0 = DEFAULT_SONG_RECORDS[0]
     _pk0 = format_pick_key(_r0["genre"], f"{_r0['title']} — {_r0['artist']}")
@@ -290,6 +290,7 @@ def chart_status_label(song_data):
     status = (song_data.get("chart_status") or "placeholder").strip()
     labels = {
         "verified": ("Verified chart", "success"),
+        "practice_level_verified": ("Practice-level verified chart", "success"),
         "trusted": ("Practice approximation — trusted core", "info"),
         "practice_simplified": ("Practice approximation", "info"),
         "placeholder": ("Placeholder chart — needs verification", "warning"),
@@ -300,7 +301,7 @@ def chart_status_label(song_data):
 def trusted_core_records(records):
     return [
         r for r in records
-        if r.get("trusted_core") or r.get("chart_status") == "verified"
+        if r.get("trusted_core") or r.get("chart_status") in {"verified", "practice_level_verified"}
     ]
 
 
@@ -316,9 +317,9 @@ def filter_records_by_chart_status(records, status_filter):
     if status_filter == "Trusted core":
         return trusted_core_records(records)
     if status_filter == "Verified":
-        return [r for r in records if r.get("chart_status") == "verified"]
+        return [r for r in records if r.get("chart_status") in {"verified", "practice_level_verified"}]
     if status_filter == "Practice approximation":
-        return [r for r in records if r.get("chart_status") == "practice_simplified"]
+        return [r for r in records if r.get("chart_status") in {"practice_simplified", "practice_level_verified"}]
     return records
 
 
@@ -1952,7 +1953,11 @@ with st.sidebar.expander("Lyrics / lyric cues for selected song", expanded=(inst
         )
 
 section_lyrics = st.session_state.get(section_lyrics_state_key, {})
-lyric_cues = lyric_cues_from_section_lyrics(section_lyrics)
+catalog_lyric_cues = song_data.get("lyric_cues") or {}
+lyric_cues = {
+    **catalog_lyric_cues,
+    **lyric_cues_from_section_lyrics(section_lyrics),
+}
 
 # TABS
 

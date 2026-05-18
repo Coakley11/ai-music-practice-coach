@@ -40,6 +40,26 @@ TRUSTED_CORE_KEYS = {
     ("Blue Bossa", "Kenny Dorham"),
     ("Autumn Leaves", "Jazz Standard"),
     ("Fly Me to the Moon", "Bart Howard"),
+    ("Shallow", "Lady Gaga / Bradley Cooper"),
+    ("All of Me", "John Legend"),
+    ("Attention", "Charlie Puth"),
+    ("Hotel California", "Eagles"),
+    ("Californication", "Red Hot Chili Peppers"),
+    ("Iris", "Goo Goo Dolls"),
+    ("Take Me Home, Country Roads", "John Denver"),
+    ("How Deep Is Your Love", "Bee Gees"),
+    ("Isn't She Lovely", "Stevie Wonder"),
+    ("Just the Two of Us", "Grover Washington Jr. / Bill Withers"),
+    ("Rocket Man", "Elton John"),
+    ("In My Life", "The Beatles"),
+    ("Across the Universe", "The Beatles"),
+    ("Girls Just Want to Have Fun", "Cyndi Lauper"),
+    ("Every Breath You Take", "The Police"),
+    ("Careless Whisper", "George Michael"),
+    ("Take On Me", "a-ha"),
+    ("Billie Jean", "Michael Jackson"),
+    ("Love Story", "Taylor Swift"),
+    ("You've Got a Friend in Me", "Randy Newman"),
 }
 
 
@@ -111,6 +131,7 @@ def build_libraries(records: list[dict[str, Any]]):
             "trusted_core": bool(r.get("trusted_core")),
             "guitar_tabs": r.get("guitar_tabs") or {},
             "composer": r.get("composer"),
+            "lyric_cues": r.get("lyric_cues") or {},
             "extensions": r.get("extensions") or {},
         }
 
@@ -123,6 +144,7 @@ def build_libraries(records: list[dict[str, Any]]):
             "trusted_core": bool(r.get("trusted_core")),
             "guitar_tabs": r.get("guitar_tabs") or {},
             "composer": r.get("composer"),
+            "lyric_cues": r.get("lyric_cues") or {},
             "genre": g,
             "extensions": r.get("extensions") or {},
         }
