@@ -1098,23 +1098,62 @@ def _inline_harmonic_analysis(section_name, chords, key_name):
     return f"Harmonic shape: <strong>{roman_text}</strong> across the main phrase."
 
 
-def _section_overlay(instrument, focus, chords):
+def _backing_chord_color_tip(chords, instrument):
+    family = _instrument_family(instrument) if "_instrument_family" in globals() else "general"
+    for chord in chords:
+        low = str(chord).lower()
+        safe = html.escape(str(chord))
+        if "add9" in low:
+            return f"{safe} has an open add9 color; keep the 9th audible instead of burying it in a thick attack."
+        if "maj7" in low:
+            if family == "piano":
+                return f"{safe} wants a lighter touch; voice the maj7 inside and let the top extension sing."
+            if family == "guitar":
+                return f"{safe} sounds best as a smaller grip; let the maj7 color ring instead of using a heavy full barre."
+            return f"{safe} is a soft color chord; phrase into it gently and avoid over-accenting the 7th."
+        if "sus" in low:
+            return f"{safe} delays resolution; lean into the suspension, then release cleanly into the next bar."
+        if "/" in str(chord):
+            return f"{safe} is about bass motion; respect the written bass note when practicing the section."
+        if "dim" in low or "m7b5" in low:
+            return f"{safe} is passing tension; keep the line moving and resolve it clearly."
+        if "7#9" in low or "7b9" in low or "13" in low:
+            return f"{safe} adds dominant bite; make the tension rhythmic, then relax into the resolution."
+    return ""
+
+
+def _section_overlay(instrument, focus, chords, section_name="", groove_style=""):
     first = chords[0] if chords else "the first chord"
     second = chords[1] if len(chords) > 1 else first
     family = _instrument_family(instrument) if "_instrument_family" in globals() else "general"
+    role = _chart_section_role(section_name)
+    feel = _chart_feel_label(groove_style)
+    color_tip = _backing_chord_color_tip(chords, instrument)
+    role_action = {
+        "verse": "keep the part sparse and leave air around the melody",
+        "pre": "increase motion so the chorus feels pulled forward",
+        "chorus": "widen the register and make the downbeats more confident",
+        "bridge": "change texture or register so the listener hears a new color",
+        "solo": "answer the groove with short phrases, not constant notes",
+        "gray": "set up or release the form without overcrowding it",
+    }.get(role, "make the section function clear")
+
     if family == "guitar":
         if focus == "Melody":
-            return f"Lead: target chord tones from <strong>{html.escape(str(first))}</strong>, then slide or bend into <strong>{html.escape(str(second))}</strong>."
-        return f"Guitar: muted 8th-note strums; keep compact voicings for <strong>{html.escape(str(first))} to {html.escape(str(second))}</strong>."
+            base = f"Lead: target chord tones from <strong>{html.escape(str(first))}</strong>, then slide/bend into <strong>{html.escape(str(second))}</strong>; {role_action}."
+        else:
+            base = f"Guitar: in this {feel}, use muted strokes in setup sections and open strums for lift; keep compact voicings for <strong>{html.escape(str(first))} to {html.escape(str(second))}</strong>."
     if family == "piano":
-        return f"Piano: left hand roots/fifths, right hand shell voicings; connect <strong>{html.escape(str(first))} to {html.escape(str(second))}</strong> by nearest motion."
-    if family == "bass":
-        return f"Bass: root on beat 1, fifth on beat 3, then a half-step approach into <strong>{html.escape(str(second))}</strong>."
-    if family == "winds":
-        return f"{html.escape(str(instrument))}: breathe before the section and target guide tones over <strong>{html.escape(str(first))}</strong>."
-    if family == "voice":
-        return f"Voice: mark a breath before bar 1, shape vowels through <strong>{html.escape(str(first))}</strong>, and save stronger dynamics for the hook."
-    return f"Lock the first change <strong>{html.escape(str(first))} to {html.escape(str(second))}</strong> to the groove before adding fills."
+        base = f"Piano: left hand roots/fifths, right hand shells or spread voicings; connect <strong>{html.escape(str(first))} to {html.escape(str(second))}</strong> by nearest motion and {role_action}."
+    elif family == "bass":
+        base = f"Bass: lock to the kick, root on beat 1, fifth or octave on beat 3, then approach <strong>{html.escape(str(second))}</strong> chromatically when the section builds."
+    elif family == "winds":
+        base = f"{html.escape(str(instrument))}: breathe before the phrase, answer the melody sparingly, and target the 3rd/7th over <strong>{html.escape(str(first))}</strong>."
+    elif family == "voice":
+        base = f"Voice: place breath before bar 1, keep vowels focused through <strong>{html.escape(str(first))}</strong>, and save the strongest dynamic for chorus/hook arrivals."
+    elif family != "guitar":
+        base = f"Lock the first change <strong>{html.escape(str(first))} to {html.escape(str(second))}</strong> to the {feel} before adding fills."
+    return f"{base} {color_tip}" if color_tip else base
 
 
 def _section_lyric_html(section_name, chords, instrument, lyric_cues=None, section_lyrics=None):
@@ -1301,7 +1340,7 @@ def full_chord_markdown(
   </div>
   {_chart_grid_html(chords)}
   {_section_lyric_html(section_name, chords, instrument, lyric_cues=lyric_cues or {}, section_lyrics=section_lyrics or {})}
-  <div class="overlay-box"><strong>{html.escape(str(instrument))}:</strong> {_section_overlay(instrument, focus, chords)}</div>
+  <div class="overlay-box"><strong>{html.escape(str(instrument))}:</strong> {_section_overlay(instrument, focus, chords, section_name=section_name, groove_style=groove_style)}</div>
   <div class="analysis-box">{_inline_harmonic_analysis(section_name, chords, dk)}</div>
 </section>
 """
@@ -3414,7 +3453,12 @@ with tabs[3]:
                 "Cinematic"
             ]
         )
-        st.markdown(creativity_arrangement_text(ctx, target_style))
+        arrangement_section = st.selectbox(
+            "Arrangement focus",
+            ["Full song"] + [name for name, chords in sections.items() if chords],
+            key="creative_arrangement_section_focus",
+        )
+        st.markdown(creativity_arrangement_text(ctx, target_style, arrangement_section))
 
     elif lab_mode == "Adaptive Weakness Detection":
         st.markdown(adaptive_weakness_detection_text(ctx))

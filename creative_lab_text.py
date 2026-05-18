@@ -172,40 +172,234 @@ def deep_harmonic_analysis_text(ctx, all_chords_from_sections, chord_quality_fn)
     return "\n".join(out)
 
 
-def creativity_arrangement_text(ctx, target_style):
+def section_role(section_name):
+    name = str(section_name or "").lower()
+    if "chorus" in name and "pre" not in name:
+        return "chorus"
+    if "pre" in name:
+        return "pre"
+    if "verse" in name or "main loop" in name:
+        return "verse"
+    if "bridge" in name:
+        return "bridge"
+    if "intro" in name:
+        return "intro"
+    if "outro" in name or "ending" in name:
+        return "outro"
+    if "solo" in name:
+        return "solo"
+    return "section"
+
+
+def compact_chord_path(chords, limit=6):
+    if not chords:
+        return "no chords"
+    out = []
+    for ch in chords:
+        if not out or out[-1] != ch:
+            out.append(ch)
+    suffix = " ..." if len(out) > limit else ""
+    return " | ".join(out[:limit]) + suffix
+
+
+def chord_color_notes(chords, instrument):
+    notes = []
+    joined = " ".join(str(ch) for ch in chords).lower()
+    family = "winds" if instrument in ["Saxophone", "Flute", "Trumpet"] else str(instrument).lower()
+
+    def add_once(text):
+        if text not in notes:
+            notes.append(text)
+
+    for ch in chords:
+        low = str(ch).lower()
+        if "add9" in low:
+            add_once(f"**{ch}** has an open add9 color; let the 9th ring instead of over-strumming it.")
+        if "maj7" in low:
+            if family == "piano":
+                add_once(f"**{ch}** wants a soft maj7 touch: keep the 7th inside the right-hand voicing and use light pedal.")
+            elif family == "guitar":
+                add_once(f"**{ch}** works well as a smaller top-four-string voicing so the maj7 sounds intimate, not heavy.")
+            else:
+                add_once(f"**{ch}** creates a softer emotional color; phrase into the 7th gently rather than attacking it.")
+        if "m7" in low and "m7b5" not in low:
+            add_once(f"**{ch}** is a stable minor-7 color; use it as a warm pad or a relaxed melodic landing.")
+        if "sus" in low:
+            add_once(f"**{ch}** delays resolution; hold the suspension a little longer before releasing the phrase.")
+        if "dim" in low or "m7b5" in low:
+            add_once(f"**{ch}** is a passing-tension color; keep it moving and resolve the line clearly.")
+        if "7#9" in low or "7b9" in low or "13" in low:
+            add_once(f"**{ch}** is altered/dominant tension; make it bite rhythmically, then relax into the next chord.")
+        if "/" in str(ch):
+            add_once(f"**{ch}** uses a written bass note for smooth motion; do not replace it with a plain root unless simplifying.")
+
+    if not notes and "/" in joined:
+        notes.append("Slash-chord motion is the main color here; keep the bass line connected.")
+    return notes[:2]
+
+
+def style_arrangement_profile(target_style, source_genre):
+    style_text = f"{target_style} {source_genre}".lower()
+    if "bossa" in style_text or "jobim" in style_text:
+        return {
+            "feel": "soft syncopated comping, light bass pulse, airy upper extensions",
+            "verse": "nylon-string or soft piano offbeats; leave room around the melody",
+            "pre": "slightly denser syncopation and rising inner voices",
+            "chorus": "wider voicings, but keep the attack brushed and relaxed",
+            "bridge": "use a pedal tone or chromatic passing chord for Jobim-like color",
+        }
+    if "neo" in style_text or "soul" in style_text:
+        return {
+            "feel": "laid-back pocket, dense voicings, upper extensions, subtle pushes behind the beat",
+            "verse": "thin the texture to shells or two-note upper structures",
+            "pre": "add inner-voice movement and anticipations before the chorus",
+            "chorus": "stack 9ths/13ths, double the hook, and widen the register",
+            "bridge": "try modal mixture or a suspended pedal before resolving",
+        }
+    if "jazz" in style_text or "fusion" in style_text:
+        return {
+            "feel": "extended harmony, guide-tone motion, syncopated comping, controlled reharm",
+            "verse": "use shells and guide tones before adding substitutions",
+            "pre": "increase harmonic rhythm with secondary dominants or ii-V approaches",
+            "chorus": "use fuller extensions and stronger rhythmic hits",
+            "bridge": "open space for reharm, pedal point, or modal vamp",
+        }
+    if "funk" in style_text:
+        return {
+            "feel": "tight pocket, short stabs, bass-driven repetition, syncopated scratches",
+            "verse": "one or two-note stabs with muted subdivisions",
+            "pre": "tighten the rhythm and add anticipations into section changes",
+            "chorus": "stronger octave/riff doubling and clear backbeat accents",
+            "bridge": "break down to bass/drums or a pedal vamp before the return",
+        }
+    if "rock" in style_text:
+        return {
+            "feel": "driving 8ths, bigger chorus lift, sustained power texture",
+            "verse": "palm-muted pulse or arpeggiated open voicings",
+            "pre": "build with rising inversions, snare-like accents, and denser rhythm",
+            "chorus": "open strums, octave doubling, stronger downbeats",
+            "bridge": "drop to half-time, pedal tone, or suspended harmony",
+        }
+    return {
+        "feel": "clear song form, memorable hooks, rhythmic comping, register contrast",
+        "verse": "sparse comping and fewer notes so the story stays forward",
+        "pre": "increase motion and tension toward the hook",
+        "chorus": "fuller voicings, doubled hooks, and stronger rhythmic emphasis",
+        "bridge": "change color with pedal point, register shift, or reharm",
+    }
+
+
+def instrument_arrangement_detail(instrument, role, chords, target_style, level):
+    first = chords[0] if chords else "the first chord"
+    second = chords[1] if len(chords) > 1 else first
+    advanced = level == "Advanced"
+    if instrument == "Guitar":
+        if role == "verse":
+            return f"Use a capo/open-string color if it fits the key; fingerpick **{first} -> {second}** with bass on beat 1 and upper strings on the offbeats."
+        if role == "chorus":
+            return f"Move to open strums or octave shapes; add add9/sus colors on top so the hook sounds wider."
+        if role == "bridge":
+            return f"Try a pedal top string while changing the lower chord shapes; add ambient swells if the bridge needs contrast."
+        return f"Use compact inversions for **{first} -> {second}**, then make one rhythmic strumming pattern the identity of this section."
+    if instrument == "Piano":
+        if role == "verse":
+            return f"Left hand plays sparse roots or fifths; right hand uses shells for **{first} -> {second}** with the top note kept singable."
+        if role == "pre":
+            return "Use rising inversions or a stepwise top voice to make the pre-chorus feel like it is climbing."
+        if role == "chorus":
+            return "Spread the voicing: left-hand octave/root-fifth, right-hand 3rd/7th plus 9th or 13th on top."
+        if role == "bridge" and advanced:
+            return "Try a gospel or neo-soul color: upper structure voicings and a passing diminished chord into the return."
+        return f"Connect **{first} -> {second}** by nearest voice leading before adding syncopated comping."
+    if instrument == "Bass":
+        if role == "verse":
+            return "Keep the pocket simple: root/fifth with consistent note length and no fill until the section ending."
+        if role == "pre":
+            return f"Use chromatic approach notes into **{second}** and slightly denser rhythm to pull into the chorus."
+        if role == "chorus":
+            return "Lock with the kick and add octave pops or longer downbeat notes so the hook feels larger."
+        if role == "bridge":
+            return "Try a pedal tone for contrast, then walk back chromatically into the final section."
+        return f"Outline roots first, then add one passing tone into **{second}** only at the phrase boundary."
+    if instrument in ["Saxophone", "Flute", "Trumpet"]:
+        if role == "chorus":
+            return f"Write a counter-melody that targets the 3rd of **{first}** on the first strong beat, then answers the vocal/hook."
+        if role == "verse":
+            return "Use sustained harmony notes or short fills at phrase endings; avoid stepping on the melody."
+        if role == "bridge":
+            return "Change articulation: long connected phrase first, then a shorter answer phrase before the return."
+        return "Use call-and-response phrasing: two bars of space, then a concise answer that lands on a guide tone."
+    if instrument == "Voice":
+        if role == "verse":
+            return "Keep diction close and conversational; place breaths before long thoughts, not after every bar."
+        if role == "pre":
+            return "Narrow the vowel slightly and build intensity through longer phrases so the chorus entrance feels inevitable."
+        if role == "chorus":
+            return "Layer harmony on the hook: main melody strong, upper harmony lighter, and save the widest vowel for the emotional peak."
+        if role == "bridge":
+            return "Change emotional color: head voice/falsetto or softer consonants can make the bridge feel like a new perspective."
+        return "Shape lyric delivery around breath placement and one clear emotional peak."
+    return f"Make **{first} -> {second}** the arrangement focus: one texture, one dynamic shape, one clear phrase ending."
+
+
+def section_arrangement_idea(section_name, chords, ctx, target_style):
+    role = section_role(section_name)
+    profile = style_arrangement_profile(target_style, ctx.get("genre", ""))
+    role_text = profile.get(role, profile.get("verse"))
+    instrument_text = instrument_arrangement_detail(
+        ctx.get("instrument", ""),
+        role,
+        chords,
+        target_style,
+        ctx.get("level", "Intermediate"),
+    )
+    color_notes = chord_color_notes(chords, ctx.get("instrument", ""))
+    path = compact_chord_path(chords)
+
+    out = [f"### {section_name} - {len(chords)} bars"]
+    out.append(f"- **Chart focus:** `{path}`")
+    out.append(f"- **Arrangement move:** {role_text}.")
+    out.append(f"- **{ctx.get('instrument', 'Instrument')} part:** {instrument_text}")
+    for note in color_notes:
+        out.append(f"- **Chord color:** {note}")
+    if role == "outro":
+        out.append("- **Ending idea:** repeat the strongest motif, thin the texture, and leave one suspended color ringing.")
+    elif role == "intro":
+        out.append("- **Entrance idea:** preview the groove or hook in a smaller register before the full form starts.")
+    return out
+
+
+def creativity_arrangement_text(ctx, target_style, selected_section="Full song"):
     out = []
     out.append(f"# Creative Arrangement Assistant — {ctx['song']}")
-    out.append(f"Transforming toward: **{target_style}**")
-    out.append("\n## Arrangement Strategy")
-    if target_style == "Jobim / Bossa":
-        out.append("- Use softer rhythmic syncopation and gentler harmonic motion.")
-        out.append("- Add major 7ths, minor 9ths, and smoother bass motion.")
-        out.append("- Keep the melody relaxed and slightly behind the beat.")
-    elif target_style == "Jazz Fusion":
-        out.append("- Use extended voicings, electric piano textures, and syncopated bass.")
-        out.append("- Add modal solo sections over one or two-chord vamps.")
-    elif target_style == "Neo-Soul":
-        out.append("- Add lush voicings: maj9, m9, 13sus, and passing diminished chords.")
-        out.append("- Use laid-back groove, inner voice movement, and reharmonized turnarounds.")
-    elif target_style == "Rock Ballad":
-        out.append("- Simplify voicings and emphasize emotional build.")
-        out.append("- Add bigger chorus texture, sustained chords, and dynamic lift.")
-    elif target_style == "Funk":
-        out.append("- Reduce harmonic motion and emphasize groove.")
-        out.append("- Use stabs, scratches, syncopated comping, and bass-driven repetition.")
-    else:
-        out.append("- Keep the melody recognizable but change groove, voicing, and form.")
+    out.append(
+        f"**Target style:** {target_style} | **Instrument:** {ctx['instrument']} | "
+        f"**Level:** {ctx['level']} | **Focus:** {ctx['focus']}"
+    )
 
-    out.append("\n## Section-by-Section Ideas")
-    for sec, chords in ctx["sections"].items():
-        out.append(f"### {sec}")
-        out.append("- Original: | " + " | ".join(chords) + " |")
-        if target_style in ["Neo-Soul", "Jazz Fusion", "Jobim / Bossa"]:
-            out.append("- Try adding color tones: 7ths, 9ths, 11ths, or 13ths.")
-        if target_style == "Funk":
-            out.append("- Try reducing to a 1–2 chord vamp and focus on rhythmic variation.")
-        if target_style == "Rock Ballad":
-            out.append("- Try bigger sustained voicings and a stronger chorus lift.")
+    profile = style_arrangement_profile(target_style, ctx.get("genre", ""))
+    out.append("\n## Producer Direction")
+    out.append(f"- **Overall feel:** {profile['feel']}.")
+    if ctx["level"] == "Beginner":
+        out.append("- Keep the reharm light: change texture and register before changing many chords.")
+    elif ctx["level"] == "Intermediate":
+        out.append("- Add one arrangement device per section: register, rhythm, voicing color, or density.")
+    else:
+        out.append("- Use advanced colors deliberately: upper extensions, pedal points, reharm, and rhythmic displacement only where the form needs lift.")
+
+    sections = ctx["sections"]
+    if selected_section and selected_section != "Full song":
+        sections = {selected_section: ctx["sections"].get(selected_section, [])}
+        out.append(f"\n## Focused Section: {selected_section}")
+    else:
+        out.append("\n## Section-by-Section Arrangement")
+
+    for sec, chords in sections.items():
+        out.extend(section_arrangement_idea(sec, chords, ctx, target_style))
+
+    out.append("\n## Keep It Musical")
+    out.append("- Preserve the original song identity: keep the strongest hook, phrase shape, or bass motion recognizable.")
+    out.append("- Make contrast audible between verse, pre-chorus, chorus, bridge, and outro; do not make every section equally dense.")
     return "\n".join(out)
 
 
