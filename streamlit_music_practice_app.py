@@ -1405,6 +1405,144 @@ def guitar_practice_text(focus, level):
 """
 
 
+GUITAR_FINGERING_OPTIONS = {
+    "Aadd9": [
+        ("open", "x02420", "Open, ringing pop color; let the B string carry the add9."),
+        ("triad", "x07600", "Small upper-register color shape; useful for ambient sections."),
+        ("barre", "577600", "Moveable A-root color with open top strings if the key allows it."),
+    ],
+    "Dadd9": [
+        ("open", "xx0230", "Easy open D color; leave high E open for the 9th."),
+        ("triad", "x54255", "Higher D color around 5th position."),
+        ("barre", "x57755", "A-shape D with added 9 on top for a fuller chorus."),
+    ],
+    "Gadd9": [
+        ("open", "320203", "Country-pop open G color; keep top notes clean."),
+        ("open-alt", "3x0203", "Lighter grip with less low-end mud."),
+        ("triad", "xx5435", "Upper-string G color for tighter comping."),
+    ],
+    "Eadd9": [
+        ("open", "024100", "Open E with F# color; good for the Love Story key-change lift."),
+        ("barre", "x79977", "Higher E add9 color for a bigger final chorus."),
+        ("triad", "xx4452", "Compact upper-voice color."),
+    ],
+    "C#m7": [
+        ("barre", "x46454", "Standard minor-7 barre shape."),
+        ("easy", "x42400", "Open-string color; works when a ringing pop texture is acceptable."),
+        ("triad", "xx2424", "Compact top-string minor color."),
+    ],
+    "B/D#": [
+        ("slash", "x64442", "B chord with D# in the bass; supports stepwise bass motion."),
+        ("compact", "xx4442", "Use when the bassist covers the slash bass."),
+    ],
+    "A/C#": [
+        ("slash", "x42220", "A chord with C# in the bass; smooth descent into Bm."),
+        ("compact", "xx2220", "Upper-string version if bass handles C#."),
+    ],
+}
+
+
+def _interesting_chord_names(chords):
+    out = []
+    for chord in chords:
+        low = str(chord).lower()
+        interesting = (
+            "maj7" in low
+            or "m7" in low
+            or "add9" in low
+            or "sus" in low
+            or "dim" in low
+            or "7b9" in low
+            or "7#9" in low
+            or "13" in low
+            or "9" in low
+            or "/" in str(chord)
+        )
+        if interesting and chord not in out:
+            out.append(chord)
+    return out
+
+
+def chord_function_summary(chord):
+    low = str(chord).lower()
+    if "/" in str(chord):
+        return "Slash chord: the chord color stays familiar while the bass note creates smoother voice leading."
+    if "add9" in low:
+        return "Add9 chord: a major or minor triad with the 9th added for open, modern color."
+    if "maj7" in low:
+        return "Major 7 chord: a soft tonic/subdominant color; it sounds settled but more emotional than a plain major triad."
+    if "m7b5" in low or "dim" in low:
+        return "Diminished/half-diminished color: passing tension that wants clear resolution."
+    if "sus" in low:
+        return "Suspended chord: the 3rd is delayed, creating tension before resolving."
+    if "7b9" in low or "7#9" in low or "13" in low:
+        return "Altered/extended dominant: strong tension that points toward the next chord."
+    if "m7" in low:
+        return "Minor 7 chord: warmer and more relaxed than a plain minor triad."
+    if "9" in low or "11" in low:
+        return "Extended chord: upper chord tones add color while the 3rd and 7th define the harmony."
+    return "Chord-tone target: identify root, 3rd, and 5th first, then add color tones."
+
+
+def chord_playing_advice(chord, instrument, level):
+    family = _instrument_family(instrument)
+    tones = _chord_tone_names(chord)
+    if family == "guitar":
+        options = GUITAR_FINGERING_OPTIONS.get(str(chord), [])
+        if options:
+            lines = [f"- **{label.title()}** `{shape}`: {desc}" for label, shape, desc in options]
+        else:
+            root, suffix = split_chord(_chord_head(chord))
+            lines = [
+                f"- **Easy version:** play a clean {root} triad first; add the color tone only after the change is steady.",
+                f"- **Barre/moveable version:** use a root-position shape around the 5th or 7th fret and keep only 3-4 strings if the full grip is muddy.",
+                f"- **Triad version:** reduce **{chord}** to three adjacent strings for rhythm parts.",
+            ]
+        return "\n".join(lines)
+    if family == "piano":
+        if level == "Advanced":
+            return (
+                f"- Left hand: root plus 7th or rootless shell.\n"
+                f"- Right hand: 3rd/7th plus color tone; spread **{chord}** so the top note sings.\n"
+                f"- Practice nearest inversion into the next chord, not block jumping."
+            )
+        return (
+            f"- Left hand: root or root-fifth.\n"
+            f"- Right hand: play the 3rd and 7th if present, then add one color tone.\n"
+            f"- Keep the top note stable while moving to the next chord."
+        )
+    if family == "bass":
+        return (
+            f"- Outline **{chord}** with root, 5th, octave, then one approach note.\n"
+            f"- Emphasize chord tones: {tones}.\n"
+            f"- If it is a slash chord, honor the written bass note on beat 1."
+        )
+    if family == "winds":
+        return (
+            f"- Target chord tones: {tones}.\n"
+            f"- Put the 3rd or 7th on a strong beat for harmonic clarity.\n"
+            f"- Use scale motion only to connect into a chord tone."
+        )
+    if family == "voice":
+        return (
+            f"- Sing the root, 3rd, and 5th of **{chord}** on a neutral vowel.\n"
+            f"- For harmony singing, try holding the 3rd or 7th while the melody moves.\n"
+            f"- Listen for whether the chord feels resolved or suspended before shaping the phrase."
+        )
+    return f"- Learn the chord tones first: {tones}. Then connect them to the next chord in the section."
+
+
+def chord_coach_markdown(chord, instrument, level):
+    return f"""
+**{chord}**
+
+{chord_function_summary(chord)}
+
+**How to play / target it on {instrument}:**
+{chord_playing_advice(chord, instrument, level)}
+""".strip()
+
+
 def _section_for_exercise(sections, variation):
     items = [(name, chords) for name, chords in sections.items() if chords]
     if not items:
@@ -1462,6 +1600,97 @@ def _instrument_family(instrument):
     if instrument == "Bass":
         return "bass"
     return "general"
+
+
+FOCUS_OPTIONS_BY_INSTRUMENT = {
+    "Guitar": [
+        "Strumming",
+        "Rhythm Guitar",
+        "Chord Transitions",
+        "Barre Chords",
+        "Fingerstyle",
+        "Triads",
+        "Double Stops",
+        "Lead Guitar",
+        "Soloing",
+        "Ear Training",
+    ],
+    "Piano": [
+        "Voicings",
+        "Left-Hand Patterns",
+        "Comping",
+        "Voice Leading",
+        "Inversions",
+        "Reharmonization",
+        "Ear Training",
+    ],
+    "Bass": [
+        "Groove",
+        "Pocket",
+        "Root Motion",
+        "Walking Bass",
+        "Syncopation",
+        "Ear Training",
+    ],
+    "Saxophone": [
+        "Tone",
+        "Scales",
+        "Articulation",
+        "Bebop Phrasing",
+        "Breath Support",
+        "Guide Tones",
+        "Ear Training",
+    ],
+    "Flute": [
+        "Tone",
+        "Scales",
+        "Articulation",
+        "Breath Support",
+        "Guide Tones",
+        "Phrasing",
+        "Ear Training",
+    ],
+    "Trumpet": [
+        "Tone",
+        "Endurance",
+        "Articulation",
+        "Range",
+        "Jazz Phrasing",
+        "Guide Tones",
+        "Ear Training",
+    ],
+    "Voice": [
+        "Breath Control",
+        "Phrasing",
+        "Pitch Accuracy",
+        "Emotional Delivery",
+        "Harmony Singing",
+        "Vibrato",
+        "Ear Training",
+    ],
+}
+
+
+def focus_options_for_instrument(instrument):
+    return FOCUS_OPTIONS_BY_INSTRUMENT.get(
+        instrument,
+        ["Melody", "Harmony", "Rhythm", "Improvisation", "Technique", "Ear Training"],
+    )
+
+
+def _focus_area(focus):
+    text = str(focus or "").lower()
+    if any(token in text for token in ["strum", "rhythm", "comp", "groove", "pocket", "syncopation", "left-hand", "left hand"]):
+        return "Rhythm"
+    if any(token in text for token in ["voicing", "voice leading", "inversion", "reharm", "harmony", "triad", "barre", "transition", "root motion"]):
+        return "Harmony"
+    if any(token in text for token in ["lead", "melody", "double stop", "phrasing", "articulation", "tone", "breath", "vibrato", "range", "endurance"]):
+        return "Melody"
+    if any(token in text for token in ["solo", "improv", "walking", "bebop", "scales", "guide tone"]):
+        return "Improvisation"
+    if "ear" in text or "pitch accuracy" in text:
+        return "Ear Training"
+    return "Technique"
 
 
 def _difficulty_phrase(level, variation):
@@ -1573,6 +1802,7 @@ def _instrument_drills(
     reps = 2 if blocks["total"] <= 20 else 3 if blocks["total"] <= 45 else 4
     advanced = level == "Advanced"
     beginner = level == "Beginner"
+    focus_area = _focus_area(focus)
 
     if family == "guitar":
         lead_task = (
@@ -1590,21 +1820,23 @@ def _instrument_drills(
         technique_task = (
             f"Picking/fretboard drill: alternate-pick **{chord_tones}** through **{first_chord}**, shift position, then resolve to **{next_guide_a}** on beat 1 of **{second_chord}**."
         )
-        if focus == "Rhythm":
+        if focus_area == "Rhythm":
             primary = rhythm_task
-        elif focus == "Melody":
+        elif focus_area == "Melody":
             primary = lead_task
-        elif focus == "Harmony":
+        elif focus_area == "Harmony":
             primary = harmony_task
-        elif focus == "Improvisation":
+        elif focus_area == "Improvisation":
             primary = f"Solo cell: make a two-bar phrase from **{guide_a}**, **{guide_b}**, and one bend/slide; repeat it over **{second_chord}** with one rhythmic change."
+        elif focus_area == "Ear Training":
+            primary = f"Ear drill: sing the roots of **{chord_path}**, then find them on one string before playing the chords. Check each change by ear before looking down."
         else:
             primary = technique_task
-        secondary = lead_task if focus == "Rhythm" else rhythm_task
+        secondary = lead_task if focus_area == "Rhythm" else rhythm_task
         return [
             primary,
             secondary,
-            harmony_task if focus != "Harmony" else technique_task,
+            harmony_task if focus_area != "Harmony" else technique_task,
         ]
 
     if family == "piano":
@@ -1622,14 +1854,16 @@ def _instrument_drills(
         reharm = (
             f"Reharm exercise: on the final bar of the {span}-bar loop, add a passing dominant or diminished approach into **{second_chord}**, then compare it to the plain chart."
         )
-        if focus == "Rhythm":
+        if focus_area == "Rhythm":
             primary = comping
-        elif focus == "Harmony":
+        elif focus_area == "Harmony":
             primary = shell if beginner else f"{shell} Then try: {reharm}"
-        elif focus == "Melody":
+        elif focus_area == "Melody":
             primary = f"Top-note melody: keep the right-hand top note singing through **{chord_path}** while the inner notes voice-lead quietly."
-        elif focus == "Improvisation":
+        elif focus_area == "Improvisation":
             primary = f"One-hand improv: left hand plays shells through **{chord_path}**; right hand improvises using **{chord_tones}** plus one neighbor tone."
+        elif focus_area == "Ear Training":
+            primary = f"Ear drill: play **{first_chord}**, sing its top note, then move to **{second_chord}** and identify whether the top note moved up, down, or stayed common."
         else:
             primary = inversion
         return [primary, shell, comping if not advanced else reharm]
@@ -1648,15 +1882,17 @@ def _instrument_drills(
         scale = (
             f"Scale-to-chord drill: run the scale around **{first_chord}** for one bar, then restrict bar 2 to chord tones only and land on **{next_guide_b}**."
         )
-        if focus == "Rhythm":
+        if focus_area == "Rhythm":
             primary = articulation
-        elif focus in ["Harmony", "Improvisation"]:
+        elif focus_area in ["Harmony", "Improvisation"]:
             primary = guide
-        elif focus == "Melody":
+        elif focus_area == "Melody":
             primary = f"Phrase shaping: play a two-bar question ending softly on **{guide_b}**, then answer louder into **{next_guide_a}** over **{second_chord}**."
+        elif focus_area == "Ear Training":
+            primary = f"Ear drill: sing **{guide_a}** and **{guide_b}** before playing them, then resolve by ear into **{next_guide_a}** over **{second_chord}**."
         else:
             primary = scale
-        return [primary, breath, articulation if focus != "Rhythm" else guide]
+        return [primary, breath, articulation if focus_area != "Rhythm" else guide]
 
     if family == "bass":
         groove = (
@@ -1672,14 +1908,16 @@ def _instrument_drills(
         rhythm = (
             f"Rhythmic consistency: loop the first {span} bars with the backing track, alternating one pass of quarter notes and one pass of eighth-note roots."
         )
-        if focus == "Rhythm":
+        if focus_area == "Rhythm":
             primary = rhythm
-        elif focus == "Harmony":
+        elif focus_area == "Harmony":
             primary = f"Outline drill: play root, 3rd, 5th, approach tone for each bar of **{chord_path}** without adding fills."
-        elif focus == "Improvisation":
+        elif focus_area == "Improvisation":
             primary = walking
-        elif focus == "Melody":
+        elif focus_area == "Melody":
             primary = f"Connecting line: write a simple bass melody from **{root_a}** to **{root_b}** using no more than four notes per bar."
+        elif focus_area == "Ear Training":
+            primary = f"Ear drill: sing each root in **{chord_path}**, then play root-fifth-root on bass and name the interval before moving on."
         else:
             primary = approach
         return [primary, groove, walking if not beginner else approach]
@@ -1698,17 +1936,19 @@ def _instrument_drills(
         vowels = (
             f"Vowel shaping: sustain the main vowel from _{cue}_ over **{first_chord}**, then move to **{second_chord}** while keeping the vowel stable."
         )
-        if focus == "Rhythm":
+        if focus_area == "Rhythm":
             primary = f"Rhythm/phrasing drill: speak _{cue}_ on subdivisions, clap beats 2 and 4, then sing only the rhythm on one pitch."
-        elif focus == "Melody":
+        elif focus_area == "Melody":
             primary = dynamics
-        elif focus == "Harmony":
+        elif focus_area == "Harmony":
             primary = f"Pitch-center drill: hum the root of **{first_chord}**, sing **{chord_tones}** on `mah`, then resolve into **{second_chord}**."
-        elif focus == "Improvisation":
+        elif focus_area == "Improvisation":
             primary = f"Vocal variation: sing _{cue}_ once as written, then improvise a two-note answer on `na` using chord tones from **{first_chord}**."
+        elif focus_area == "Ear Training":
+            primary = f"Ear drill: sing the root, 3rd, and 5th of **{first_chord}** on `loo`, then identify which note feels most stable against **{second_chord}**."
         else:
             primary = breathing
-        return [primary, delivery, vowels if focus != "Technique" else dynamics]
+        return [primary, delivery, vowels if focus_area != "Technique" else dynamics]
 
     return [
         f"Loop **{chord_path}** for {reps} passes and make the change **{first_chord} -> {second_chord}** land cleanly on beat 1.",
@@ -2737,15 +2977,14 @@ level = st.sidebar.selectbox(
     ]
 )
 
+_focus_options = focus_options_for_instrument(instrument)
+if st.session_state.get("focus") not in _focus_options:
+    st.session_state["focus"] = _focus_options[0]
+
 focus = st.sidebar.selectbox(
     "Focus",
-    [
-        "Melody",
-        "Harmony",
-        "Rhythm",
-        "Improvisation",
-        "Technique"
-    ]
+    _focus_options,
+    key="focus",
 )
 
 minutes = st.sidebar.slider(
@@ -2886,6 +3125,17 @@ Focus: **{focus}**
         st.caption(
             "Each new exercise rotates section targets and raises the musical demand gradually."
         )
+
+    if level in ["Intermediate", "Advanced"]:
+        coach_chords = _interesting_chord_names(all_chords_from_sections(sections))
+        if coach_chords:
+            with st.expander("Chord Coach / How to Play", expanded=False):
+                coach_chord = st.selectbox(
+                    "Choose a color chord from this song",
+                    coach_chords,
+                    key=f"chord_coach::{song}::{instrument}::{level}",
+                )
+                st.markdown(chord_coach_markdown(coach_chord, instrument, level))
 
     st.subheader("Metronome")
     render_metronome_widget(
