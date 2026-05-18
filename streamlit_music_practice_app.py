@@ -345,6 +345,23 @@ def chord_blocks_for_selected_sections(sections, selected_names=None):
     return out
 
 
+def chord_events_for_selected_sections(sections, selected_names=None):
+    selected = set(selected_names or [])
+    out = []
+    for section_name, section_chords in section_order(sections):
+        if selected and section_name not in selected:
+            continue
+        section_bars = len(section_chords)
+        for idx, chord in enumerate(section_chords):
+            out.append({
+                "chord": chord,
+                "section": section_name,
+                "bar_in_section": idx,
+                "section_bars": section_bars,
+            })
+    return out
+
+
 def compact_bar_summary(chords):
     if not chords:
         return ""
@@ -1441,7 +1458,10 @@ def infer_groove_style(song_data, selected_style="Auto"):
         safe_text(genre_name),
         safe_text(artist),
         safe_text(composer),
+        safe_text(song_data.get("title", "")),
     ]).lower()
+    if "ballad" in titleish:
+        return "Ballad"
     if "jobim" in titleish or "bossa" in titleish:
         return "Bossa nova"
     if genre_name == "Jazz":
@@ -1494,13 +1514,128 @@ def _add_noise_hit(audio, sr, start_sec, dur_sec, volume, seed=0):
     audio[start:end] += sig * env * volume
 
 
+def _coerce_chord_events(chords_or_events):
+    events = []
+    for idx, item in enumerate(chords_or_events or []):
+        if isinstance(item, dict):
+            chord = item.get("chord", "")
+            section = item.get("section", "Practice Loop")
+            bar_in_section = int(item.get("bar_in_section", idx))
+            section_bars = int(item.get("section_bars", len(chords_or_events) or 1))
+        else:
+            chord = item
+            section = "Practice Loop"
+            bar_in_section = idx
+            section_bars = len(chords_or_events) or 1
+        events.append({
+            "chord": chord,
+            "section": section,
+            "bar_in_section": bar_in_section,
+            "section_bars": max(1, section_bars),
+        })
+    return events
+
+
+def _section_role(section_name):
+    name = str(section_name or "").lower()
+    if "chorus" in name and "pre" not in name:
+        return "chorus"
+    if "verse" in name or "main loop" in name:
+        return "verse"
+    if "pre" in name:
+        return "pre"
+    if "bridge" in name:
+        return "bridge"
+    if "intro" in name:
+        return "intro"
+    if "outro" in name or "ending" in name:
+        return "outro"
+    if "solo" in name:
+        return "solo"
+    return "neutral"
+
+
+def _section_intensity(section_name, style):
+    role = _section_role(section_name)
+    base = {
+        "intro": 0.68,
+        "verse": 0.78,
+        "pre": 0.95,
+        "chorus": 1.18,
+        "bridge": 1.02,
+        "solo": 1.08,
+        "outro": 0.82,
+        "neutral": 0.92,
+    }.get(role, 0.92)
+    if style == "Ballad":
+        base *= 0.78
+    elif style in ["Rock groove", "Funk groove"] and role == "chorus":
+        base *= 1.08
+    return base
+
+
+def _is_section_edge(event, next_event):
+    return bool(next_event and next_event.get("section") != event.get("section"))
+
+
+def _bass_motion_pitch(chord, next_chord, style, slot_index, slot_count):
+    notes = chord_notes(chord)
+    root = bass_note(chord) - 12
+    chord_root = notes[0] - 24
+    third = notes[1] - 24 if len(notes) > 1 else chord_root + 4
+    fifth = notes[2] - 24 if len(notes) > 2 else chord_root + 7
+
+    if next_chord and slot_index == slot_count - 1:
+        target = bass_note(next_chord) - 12
+        return target - 1 if target >= root else target + 1
+
+    if style == "Jazz swing":
+        line = [root, third, fifth, root + 12]
+    elif style == "Bossa nova":
+        line = [root, fifth, root, fifth]
+    elif style == "Funk groove":
+        line = [root, root + 12, fifth, root, third, fifth]
+    elif style == "Rock groove":
+        line = [root, root, fifth, root + 12]
+    elif style == "Ballad":
+        line = [root, fifth]
+    else:
+        line = [root, fifth, root + 12, fifth]
+    return int(line[slot_index % len(line)])
+
+
+def _voicing_for_comp(chord, level, style, beat_index=0):
+    notes = chord_notes(chord)
+    if level == "Advanced" and len(notes) > 4:
+        voicing = [notes[0], notes[2], notes[3], notes[4]]
+    elif level == "Beginner":
+        voicing = notes[:3]
+    else:
+        voicing = notes[:4]
+
+    if beat_index % 2 and len(voicing) >= 3:
+        voicing = voicing[1:] + voicing[:1]
+    octave = 12 if style != "Ballad" else 0
+    return [n + octave for n in voicing]
+
+
+def _groove_time(bar_start, beat, beat_len, style):
+    if style == "Jazz swing" and beat % 1:
+        return bar_start + (beat + 0.08) * beat_len
+    if style == "Funk groove" and beat % 1:
+        return bar_start + (beat - 0.02) * beat_len
+    return bar_start + beat * beat_len
+
+
 def _style_patterns(style):
     if style == "Jazz swing":
         return {
             "bass_beats": [0, 1, 2, 3],
-            "comp_beats": [1.0, 2.65],
+            "comp_beats": [1.0, 2.65, 3.65],
             "hat_beats": [0, 1.65, 2, 3.65],
             "snare_beats": [1.0, 3.0],
+            "kick_beats": [0, 2],
+            "comp_dur": 0.45,
         }
     if style == "Bossa nova":
         return {
@@ -1508,6 +1643,8 @@ def _style_patterns(style):
             "comp_beats": [0.0, 1.5, 2.5, 3.5],
             "hat_beats": [0, 0.5, 1.5, 2, 2.5, 3.5],
             "snare_beats": [1.5, 3.5],
+            "kick_beats": [0, 2],
+            "comp_dur": 0.32,
         }
     if style == "Funk groove":
         return {
@@ -1515,6 +1652,8 @@ def _style_patterns(style):
             "comp_beats": [0.75, 1.75, 2.5, 3.25],
             "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
             "snare_beats": [1.0, 3.0],
+            "kick_beats": [0, 1.5, 2.75],
+            "comp_dur": 0.22,
         }
     if style == "Rock groove":
         return {
@@ -1522,12 +1661,25 @@ def _style_patterns(style):
             "comp_beats": [0, 1, 2, 3],
             "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
             "snare_beats": [1.0, 3.0],
+            "kick_beats": [0, 2],
+            "comp_dur": 0.50,
+        }
+    if style == "Ballad":
+        return {
+            "bass_beats": [0, 2],
+            "comp_beats": [0, 2.5, 3.5],
+            "hat_beats": [0, 1, 2, 3],
+            "snare_beats": [3.0],
+            "kick_beats": [0],
+            "comp_dur": 0.90,
         }
     return {
         "bass_beats": [0, 2],
         "comp_beats": [0, 1.5, 2.5, 3.5],
         "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
         "snare_beats": [1.0, 3.0],
+        "kick_beats": [0, 2.5],
+        "comp_dur": 0.38,
     }
 
 
@@ -1543,41 +1695,97 @@ def synthesize_chords_to_numpy(
 
     beat = 60 / bpm
     bar = beat * 4
-    chord_list = list(chords) * max(1, int(loops))
+    event_cycle = _coerce_chord_events(chords)
+    chord_list = event_cycle * max(1, int(loops))
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
     patterns = _style_patterns(style)
 
-    for idx, chord in enumerate(chord_list):
+    for idx, event in enumerate(chord_list):
 
+        chord = event["chord"]
+        next_event = chord_list[idx + 1] if idx + 1 < len(chord_list) else None
+        next_chord = next_event["chord"] if next_event else None
         bar_start = idx * bar
+        section_name = event.get("section", "Practice Loop")
+        intensity = _section_intensity(section_name, style)
+        role = _section_role(section_name)
+        section_edge = _is_section_edge(event, next_event)
         notes = chord_notes(chord)
-        bass = bass_note(chord) - 12
-        root = notes[0]
-        fifth = root + 7
+        bass_hits = patterns["bass_beats"]
 
-        for n, b in enumerate(patterns["bass_beats"]):
-            bass_pitch = bass if n % 2 == 0 else min(fifth - 12, bass + 12)
-            _add_tone(audio, sr, bar_start + b * beat, beat * 0.55, bass_pitch, 0.12, "bass")
+        for n, b in enumerate(bass_hits):
+            bass_pitch = _bass_motion_pitch(chord, next_chord, style, n, len(bass_hits))
+            bass_dur = beat * (0.72 if style in ["Ballad", "Jazz swing"] else 0.50)
+            if style == "Funk groove":
+                bass_dur = beat * 0.32
+            _add_tone(
+                audio,
+                sr,
+                _groove_time(bar_start, b, beat, style),
+                bass_dur,
+                bass_pitch,
+                0.11 * intensity,
+                "bass",
+            )
 
-        voicing = notes[:4]
-        if level == "Advanced" and len(notes) > 4:
-            voicing = [notes[0], notes[2], notes[3], notes[4]]
-        elif level == "Beginner":
-            voicing = notes[:3]
-
-        for b in patterns["comp_beats"]:
-            dur = beat * (0.45 if style in ["Funk groove", "Bossa nova"] else 0.75)
+        for comp_idx, b in enumerate(patterns["comp_beats"]):
+            if role == "verse" and comp_idx % 3 == 2:
+                continue
+            dur = beat * patterns.get("comp_dur", 0.45)
+            if role == "chorus":
+                dur *= 1.15
+            voicing = _voicing_for_comp(chord, level, style, comp_idx)
             for note in voicing:
-                _add_tone(audio, sr, bar_start + b * beat, dur, note + 12, 0.025, "organ")
+                _add_tone(
+                    audio,
+                    sr,
+                    _groove_time(bar_start, b, beat, style),
+                    dur,
+                    note,
+                    0.022 * intensity,
+                    "organ",
+                )
 
         for b in patterns["hat_beats"]:
-            _add_noise_hit(audio, sr, bar_start + b * beat, 0.035, 0.012, seed=idx * 31 + int(b * 100))
+            hat_vol = 0.007 if style == "Ballad" else 0.011
+            if role == "chorus":
+                hat_vol *= 1.25
+            _add_noise_hit(
+                audio,
+                sr,
+                _groove_time(bar_start, b, beat, style),
+                0.030,
+                hat_vol * intensity,
+                seed=idx * 31 + int(b * 100),
+            )
 
         for b in patterns["snare_beats"]:
-            _add_noise_hit(audio, sr, bar_start + b * beat, 0.06, 0.035, seed=idx * 67 + int(b * 100))
+            _add_noise_hit(
+                audio,
+                sr,
+                _groove_time(bar_start, b, beat, style),
+                0.055,
+                0.030 * intensity,
+                seed=idx * 67 + int(b * 100),
+            )
 
-        for b in [0, 2]:
-            _add_tone(audio, sr, bar_start + b * beat, 0.08, 36, 0.08, "bass")
+        for b in patterns["kick_beats"]:
+            _add_tone(
+                audio,
+                sr,
+                bar_start + b * beat,
+                0.07,
+                36,
+                0.070 * intensity,
+                "bass",
+            )
+
+        if section_edge:
+            approach = _bass_motion_pitch(chord, next_chord, style, len(bass_hits) - 1, len(bass_hits))
+            _add_tone(audio, sr, bar_start + 3.55 * beat, beat * 0.25, approach, 0.075 * intensity, "bass")
+            _add_noise_hit(audio, sr, bar_start + 3.75 * beat, 0.050, 0.018 * intensity, seed=idx * 101)
+            if next_event and _section_role(next_event.get("section")) == "chorus":
+                _add_tone(audio, sr, bar_start + 3.88 * beat, 0.09, 48, 0.055, "bass")
 
     audio = np.tanh(audio)
     audio = audio / (np.max(np.abs(audio)) + 1e-9) * 0.86
@@ -2517,6 +2725,10 @@ with tabs[2]:
         sections,
         selected_section_names,
     )
+    backing_events = chord_events_for_selected_sections(
+        sections,
+        selected_section_names,
+    )
 
     col_bt_1, col_bt_2 = st.columns(2)
 
@@ -2530,6 +2742,7 @@ with tabs[2]:
                 "Jazz swing",
                 "Bossa nova",
                 "Funk groove",
+                "Ballad",
             ],
             key="backing_groove_style",
         )
@@ -2654,7 +2867,7 @@ with tabs[2]:
         )
 
         wav = generate_backing_track(
-            backing_chords,
+            backing_events,
             bpm=bpm,
             loops=form_loops,
             style=resolved_groove,
@@ -2855,7 +3068,7 @@ with tabs[4]:
     if st.button("Generate play-along backing track with count-in"):
 
         backing_y = backing_bytes_to_float(
-            full_song_chords,
+            chord_events_for_selected_sections(sections),
             bpm=mt_bpm,
             style=default_groove_style,
             level=level,
@@ -3004,7 +3217,7 @@ with tabs[4]:
             if include_backing_in_mix:
 
                 backing_y = backing_bytes_to_float(
-                    full_song_chords,
+                    chord_events_for_selected_sections(sections),
                     bpm=mt_bpm,
                     style=default_groove_style,
                     level=level,
