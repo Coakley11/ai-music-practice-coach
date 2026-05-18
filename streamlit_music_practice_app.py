@@ -991,6 +991,152 @@ K:C
 {music}
 """
 
+
+def _chart_section_role(section_name):
+    name = str(section_name or "").lower()
+    if "chorus" in name and "pre" not in name:
+        return "chorus"
+    if "pre" in name:
+        return "pre"
+    if "verse" in name or "main loop" in name:
+        return "verse"
+    if "bridge" in name:
+        return "bridge"
+    if "solo" in name:
+        return "solo"
+    if "intro" in name or "outro" in name or "ending" in name:
+        return "gray"
+    return "neutral"
+
+
+def _chart_feel_label(style):
+    return {
+        "Pop groove": "Pop 8th-note feel",
+        "Rock groove": "Rock 8th-note feel",
+        "Jazz swing": "Swing feel",
+        "Bossa nova": "Bossa feel",
+        "Funk groove": "Funk syncopation",
+        "Ballad": "Ballad feel",
+    }.get(style or "Pop groove", style or "Pop groove")
+
+
+def _chart_lyric_lines(section_name, lyric_cues=None, section_lyrics=None):
+    user_text = (section_lyrics or {}).get(section_name, "")
+    lines = [line.strip() for line in str(user_text).splitlines() if line.strip()]
+    if not lines:
+        lines = [
+            line.strip()
+            for line in (lyric_cues or {}).get(section_name, [])
+            if str(line).strip()
+        ]
+    return lines
+
+
+def _chart_grid_html(chords):
+    if not chords:
+        return "<div class='empty-chart'>No chords entered for this section.</div>"
+    cells = []
+    for idx, chord in enumerate(chords):
+        previous = chords[idx - 1] if idx else None
+        display = "%" if previous and chord == previous else str(chord)
+        repeat_count = 1
+        if display != "%":
+            for nxt in chords[idx + 1:]:
+                if nxt != chord:
+                    break
+                repeat_count += 1
+        duration = f"<span class='duration'>{repeat_count} bars</span>" if repeat_count > 1 else ""
+        cells.append(
+            "<div class='chord-cell'>"
+            f"<div class='bar-num'>Bar {idx + 1}</div>"
+            f"<div class='chord-symbol'>{html.escape(display)}</div>"
+            f"{duration}"
+            "</div>"
+        )
+    return "<div class='lead-grid'>" + "".join(cells) + "</div>"
+
+
+def _roman_for_chord(chord, key_name):
+    key_root, key_suffix = split_chord(str(key_name or "C"))
+    root, suffix = split_chord(_chord_head(chord))
+    minor_key = key_suffix.lower().startswith("m")
+    romans = {
+        0: ("I", "i"), 1: ("bII", "bII"), 2: ("II", "ii"), 3: ("bIII", "III"),
+        4: ("III", "#III"), 5: ("IV", "iv"), 6: ("#IV", "#iv"), 7: ("V", "v"),
+        8: ("bVI", "VI"), 9: ("VI", "#VI"), 10: ("bVII", "VII"), 11: ("VII", "#VII"),
+    }
+    r = NOTE_TO_MIDI.get(root, NOTE_TO_MIDI.get(normalize_root(root), 60)) % 12
+    k = NOTE_TO_MIDI.get(key_root, NOTE_TO_MIDI.get(normalize_root(key_root), 60)) % 12
+    roman = romans.get((r - k) % 12, ("?", "?"))[1 if minor_key else 0]
+    low = str(suffix).lower()
+    if low.startswith("m") and "maj" not in low:
+        roman = roman.lower()
+    if "dim" in low or "m7b5" in low:
+        roman += "o"
+    if "7" in low and "maj" not in low:
+        roman += "7"
+    return roman
+
+
+def _inline_harmonic_analysis(section_name, chords, key_name):
+    if not chords:
+        return "No harmonic movement entered yet."
+    condensed = []
+    for chord in chords:
+        if not condensed or condensed[-1] != chord:
+            condensed.append(chord)
+    roman_text = "-".join(_roman_for_chord(ch, key_name) for ch in condensed[:6])
+    role = _chart_section_role(section_name)
+    if role == "chorus":
+        return f"Chorus harmony centers on <strong>{roman_text}</strong>; play it broader and let the resolution feel earned."
+    if role == "bridge":
+        return f"Bridge color: <strong>{roman_text}</strong> gives contrast before returning to the main form."
+    if role == "verse":
+        return f"Verse loop: <strong>{roman_text}</strong>. Keep the texture lighter so the melody has room."
+    if any("/" in str(ch) for ch in chords):
+        return f"Listen for bass movement inside <strong>{roman_text}</strong>; slash chords help connect the section."
+    return f"Harmonic shape: <strong>{roman_text}</strong> across the main phrase."
+
+
+def _section_overlay(instrument, focus, chords):
+    first = chords[0] if chords else "the first chord"
+    second = chords[1] if len(chords) > 1 else first
+    family = _instrument_family(instrument) if "_instrument_family" in globals() else "general"
+    if family == "guitar":
+        if focus == "Melody":
+            return f"Lead: target chord tones from <strong>{html.escape(str(first))}</strong>, then slide or bend into <strong>{html.escape(str(second))}</strong>."
+        return f"Guitar: muted 8th-note strums; keep compact voicings for <strong>{html.escape(str(first))} to {html.escape(str(second))}</strong>."
+    if family == "piano":
+        return f"Piano: left hand roots/fifths, right hand shell voicings; connect <strong>{html.escape(str(first))} to {html.escape(str(second))}</strong> by nearest motion."
+    if family == "bass":
+        return f"Bass: root on beat 1, fifth on beat 3, then a half-step approach into <strong>{html.escape(str(second))}</strong>."
+    if family == "winds":
+        return f"{html.escape(str(instrument))}: breathe before the section and target guide tones over <strong>{html.escape(str(first))}</strong>."
+    if family == "voice":
+        return f"Voice: mark a breath before bar 1, shape vowels through <strong>{html.escape(str(first))}</strong>, and save stronger dynamics for the hook."
+    return f"Lock the first change <strong>{html.escape(str(first))} to {html.escape(str(second))}</strong> to the groove before adding fills."
+
+
+def _section_lyric_html(section_name, chords, instrument, lyric_cues=None, section_lyrics=None):
+    lines = _chart_lyric_lines(section_name, lyric_cues=lyric_cues, section_lyrics=section_lyrics)
+    family = _instrument_family(instrument) if "_instrument_family" in globals() else "general"
+    if not lines:
+        if family == "voice":
+            return "<div class='lyric-box'>Voice phrase: add a lyric cue for exact alignment. Breathe before bar 1 and shape toward the middle of the section.</div>"
+        return "<div class='lyric-box muted'>No lyric cue added for this section.</div>"
+    safe_lines = [html.escape(line) for line in lines]
+    if family == "voice":
+        peak_bar = max(1, min(len(chords), int(np.ceil(max(1, len(chords)) / 2))))
+        visible = "<br>".join(f"&ldquo;{line}&rdquo;" for line in safe_lines[:4])
+        return (
+            "<div class='lyric-box voice'>"
+            f"<strong>Lyric / phrase cue:</strong><br>{visible}"
+            f"<div class='phrase-note'>Breath before bar 1; phrase start at bar 1; grow toward bar {peak_bar}; chorus/hook sections carry the strongest delivery.</div>"
+            "</div>"
+        )
+    return f"<div class='lyric-box'><strong>Lyric cue:</strong> &ldquo;{safe_lines[0]}&rdquo;</div>"
+
+
 def full_chord_markdown(
     song_name,
     song_data,
@@ -1000,82 +1146,180 @@ def full_chord_markdown(
     level="Intermediate",
     lyric_cues=None,
     section_lyrics=None,
+    groove_style="Pop groove",
+    bpm=100,
+    time_signature="4/4",
+    current_section=None,
+    focus="",
 ):
-
-    out = []
-
-    out.append(
-        f"## Full Song Chords — {song_name}"
-    )
-
-    out.append(
-        f"Artist: **{song_data['artist']}**"
-    )
-
-    comp = song_data.get("composer")
-    if comp:
-        out.append(f"Composer: **{comp}**")
-
-    g = song_data.get("genre")
-    if g:
-        out.append(f"Genre: **{g}**")
-
     dk = display_key or song_data["key"]
-    out.append(
-        f"Original key: **{song_data['key']}**"
-    )
-    if dk != song_data["key"]:
-        out.append(f"Display key: **{dk}** (chords transposed)")
-
-    out.append(f"Player level chart: **{level}**")
     status_text, _status_kind = chart_status_label(song_data)
-    out.append(f"Chart reliability: **{status_text}**")
-    out.append("_One grid cell = one bar. Rows group into four-bar phrases; `%` repeats the previous bar._")
-
     total_bars = sum(len(chords) for chords in sections.values())
-    out.append(f"Total form length: **{total_bars} bars**")
-
+    now_playing = current_section or "Full song"
     ext = song_data.get("extensions") or {}
-    if ext.get("arrangement_notes"):
-        out.append(f"_Chart note:_ {ext['arrangement_notes']}")
 
-    out.append("\n### Form Map")
-    out.append(form_summary_markdown(sections))
+    style = """
+<style>
+.lead-sheet { font-family: system-ui, -apple-system, Segoe UI, sans-serif; }
+.lead-header {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 16px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+.lead-title { font-size: 1.35rem; font-weight: 800; margin-bottom: 4px; }
+.lead-subtitle { color: #475569; margin-bottom: 12px; }
+.meta-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.meta-pill {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: #fff;
+  font-size: 0.82rem;
+  color: #334155;
+}
+.now-playing {
+  border-left: 5px solid #22c55e;
+  background: #f0fdf4;
+  padding: 10px 12px;
+  border-radius: 12px;
+  margin: 12px 0 16px 0;
+  font-weight: 750;
+}
+.section-card {
+  border: 1px solid rgba(15, 23, 42, 0.13);
+  border-left-width: 7px;
+  border-radius: 16px;
+  padding: 14px;
+  margin-bottom: 14px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.section-card.gray { border-left-color: #94a3b8; background: #f5f6f8; }
+.section-card.verse { border-left-color: #60a5fa; background: #eef6ff; }
+.section-card.pre { border-left-color: #2dd4bf; background: #eafaf7; }
+.section-card.chorus { border-left-color: #22c55e; background: #eefaf0; }
+.section-card.bridge { border-left-color: #a78bfa; background: #f5f0ff; }
+.section-card.solo { border-left-color: #fb923c; background: #fff4e6; }
+.section-card.neutral { border-left-color: #cbd5e1; background: #ffffff; }
+.section-card.current {
+  outline: 3px solid rgba(34, 197, 94, 0.28);
+  box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.08);
+}
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.section-title { font-size: 1.12rem; font-weight: 800; color: #0f172a; }
+.section-meta { color: #475569; font-size: 0.88rem; }
+.lead-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(92px, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+.chord-cell {
+  min-height: 62px;
+  border: 1.5px solid rgba(15, 23, 42, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 6px 8px;
+}
+.bar-num { color: #64748b; font-size: 0.68rem; font-weight: 700; margin-bottom: 4px; }
+.chord-symbol {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 1.28rem;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  color: #111827;
+}
+.duration {
+  display: inline-block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.70rem;
+  font-weight: 700;
+}
+.lyric-box, .analysis-box, .overlay-box {
+  border-radius: 10px;
+  padding: 9px 10px;
+  margin-top: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #1f2937;
+}
+.lyric-box { font-style: italic; }
+.lyric-box.voice { font-style: normal; }
+.phrase-note { margin-top: 6px; color: #475569; font-size: 0.86rem; }
+.analysis-box { border-left: 3px solid rgba(15, 23, 42, 0.22); }
+.overlay-box { border-left: 3px solid rgba(37, 99, 235, 0.35); }
+.muted { color: #64748b; }
+@media (max-width: 760px) { .lead-grid { grid-template-columns: repeat(2, minmax(110px, 1fr)); } }
+</style>
+"""
 
+    key_text = f"Key: {html.escape(str(dk))}"
+    if dk != song_data["key"]:
+        key_text += f" (orig. {html.escape(str(song_data['key']))})"
+    meta_bits = [
+        key_text,
+        f"Level: {html.escape(str(level))}",
+        f"Form: {total_bars} bars",
+        f"Tempo: {int(bpm)} BPM",
+        f"Time: {html.escape(str(time_signature))}",
+        f"Feel: {html.escape(_chart_feel_label(groove_style))}",
+        "Drums/Bass/Comping: active",
+        html.escape(status_text),
+    ]
+    meta = "".join(f"<span class='meta-pill'>{bit}</span>" for bit in meta_bits)
+    header_note = (
+        f"<div class='lead-subtitle'>{html.escape(str(ext['arrangement_notes']))}</div>"
+        if ext.get("arrangement_notes")
+        else ""
+    )
+
+    section_cards = []
+    current_parts = {part.strip() for part in str(current_section or "").split(" + ") if part.strip()}
     for section_name, chords in sections.items():
-
-        out.append(f"\n### {section_name} — {len(chords)} bars")
-
-        out.append(f"Compact rhythm: {compact_bar_summary(chords)}")
-        out.append(
-            lyric_aligned_bar_grid_markdown(
-                section_name,
-                chords,
-                lyric_cues=lyric_cues or {},
-                section_lyrics=section_lyrics or {},
+        if not chords:
+            continue
+        role = _chart_section_role(section_name)
+        is_current = section_name in current_parts
+        now_label = "Now Playing" if is_current else ""
+        section_cards.append(
+            f"""
+<section class="section-card {role}{' current' if is_current else ''}">
+  <div class="section-head">
+    <div>
+      <div class="section-title">{html.escape(section_name)} - {len(chords)} bars</div>
+      <div class="section-meta">{html.escape(_chart_feel_label(groove_style))}</div>
+    </div>
+    <div class="section-meta">{now_label}</div>
+  </div>
+  {_chart_grid_html(chords)}
+  {_section_lyric_html(section_name, chords, instrument, lyric_cues=lyric_cues or {}, section_lyrics=section_lyrics or {})}
+  <div class="overlay-box"><strong>{html.escape(str(instrument))}:</strong> {_section_overlay(instrument, focus, chords)}</div>
+  <div class="analysis-box">{_inline_harmonic_analysis(section_name, chords, dk)}</div>
+</section>
+"""
             )
-        )
-        cue_text = lyric_cue_markdown(
-            section_name,
-            chords,
-            lyric_cues or {},
-            instrument,
-            full_section_lyrics=section_lyrics or {},
-        )
-        if cue_text:
-            out.append(cue_text)
 
-    if instrument == "Guitar":
-        out.extend(
-            guitar_voicing_lines(
-                all_chords_from_sections(sections),
-                song_data,
-                dk,
-                level,
-            )
-        )
-
-    return "\n".join(out)
+    return f"""
+{style}
+<div class="lead-sheet">
+  <div class="lead-header">
+    <div class="lead-title">{html.escape(song_name)} - Musician Chart</div>
+    <div class="lead-subtitle">{html.escape(str(song_data.get('artist', '')))} | {html.escape(str(song_data.get('genre', '')))}</div>
+    {header_note}
+    <div class="meta-row">{meta}</div>
+  </div>
+  <div class="now-playing">Now Playing: {html.escape(str(now_playing))}</div>
+  {''.join(section_cards)}
+</div>
+"""
 
 def vocal_practice_text(level, sections):
     longest = max((len(chords) for chords in sections.values()), default=4)
@@ -2986,7 +3230,13 @@ with tabs[2]:
             level=level,
             lyric_cues=lyric_cues,
             section_lyrics=section_lyrics,
-        )
+            groove_style=resolved_groove,
+            bpm=bpm,
+            time_signature=default_time_signature(song, sections),
+            current_section=section_scope_label if selected_section_names else "Full song",
+            focus=focus,
+        ),
+        unsafe_allow_html=True,
     )
 
     with st.expander("Form timeline and selected playback order", expanded=False):
