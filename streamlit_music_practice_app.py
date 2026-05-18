@@ -1201,7 +1201,264 @@ def _difficulty_phrase(level, variation):
     ][variation % 3]
 
 
-def song_practice_plan(song, sections, instrument, level, focus, variation, section_lyrics=None):
+def _practice_time_blocks(minutes):
+    total = max(10, int(minutes or 30))
+    warmup = max(2, int(round(total * 0.18)))
+    section = max(3, int(round(total * 0.36)))
+    focus_block = max(3, int(round(total * 0.30)))
+    review = max(1, total - warmup - section - focus_block)
+    return {
+        "total": total,
+        "warmup": warmup,
+        "section": section,
+        "focus": focus_block,
+        "review": review,
+    }
+
+
+def _exercise_span(level, bars):
+    bars = max(1, bars)
+    if level == "Beginner":
+        return min(4, bars)
+    if level == "Intermediate":
+        return min(8, bars)
+    return bars
+
+
+def _chord_run(chords, limit=4):
+    if not chords:
+        return "the first chord"
+    return " | ".join(chords[:max(1, min(limit, len(chords)))])
+
+
+def _guide_tone_pair(chord):
+    try:
+        tones = chord_notes(chord)
+        if len(tones) >= 4:
+            return midi_note_name(tones[1]), midi_note_name(tones[3])
+        if len(tones) >= 2:
+            return midi_note_name(tones[1]), midi_note_name(tones[-1])
+    except Exception:
+        pass
+    return "3rd", "7th"
+
+
+def _root_and_fifth(chord):
+    try:
+        root = bass_note(chord)
+        return midi_note_name(root), midi_note_name(root + 7)
+    except Exception:
+        return "root", "5th"
+
+
+def _section_character(section_name):
+    role = _section_role(section_name)
+    if role == "chorus":
+        return "play this fuller than the verse, with stronger beat-2/4 energy"
+    if role == "verse":
+        return "keep this lighter and leave space for the melody"
+    if role == "bridge":
+        return "change color here so the form feels like it has moved somewhere new"
+    if role == "intro":
+        return "make the entrance steady and uncluttered"
+    if role == "outro":
+        return "let the final pass relax without losing time"
+    return "make the section shape clear without overplaying"
+
+
+def _instrument_drills(
+    *,
+    family,
+    instrument,
+    level,
+    focus,
+    section_name,
+    section_chords,
+    first_chord,
+    second_chord,
+    chord_tones,
+    span,
+    blocks,
+    variation,
+    lyric_line="",
+):
+    chord_path = _chord_run(section_chords, span)
+    guide_a, guide_b = _guide_tone_pair(first_chord)
+    next_guide_a, next_guide_b = _guide_tone_pair(second_chord)
+    root_a, fifth_a = _root_and_fifth(first_chord)
+    root_b, fifth_b = _root_and_fifth(second_chord)
+    reps = 2 if blocks["total"] <= 20 else 3 if blocks["total"] <= 45 else 4
+    advanced = level == "Advanced"
+    beginner = level == "Beginner"
+
+    if family == "guitar":
+        lead_task = (
+            f"Lead drill: over **{first_chord}**, slide into **{guide_a}** from one fret below, "
+            f"answer over **{second_chord}** by targeting **{next_guide_a}**, then add either a half-step bend or a double-stop on the last two beats."
+        )
+        rhythm_task = (
+            f"Strumming drill: loop **{chord_path}** for {reps} passes. Pass 1 uses downstrokes on beats 1-2-3-4; "
+            f"pass 2 uses `D D U - U D U`; pass 3 mutes beats 2 and 4 before opening up the last bar."
+        )
+        harmony_task = (
+            f"Voicing transition: play **{first_chord} -> {second_chord}** as two compact 3- or 4-string grips, then move the same change to a second neck position. "
+            f"Keep any common tone ringing and shift only the fingers that must move."
+        )
+        technique_task = (
+            f"Picking/fretboard drill: alternate-pick **{chord_tones}** through **{first_chord}**, shift position, then resolve to **{next_guide_a}** on beat 1 of **{second_chord}**."
+        )
+        if focus == "Rhythm":
+            primary = rhythm_task
+        elif focus == "Melody":
+            primary = lead_task
+        elif focus == "Harmony":
+            primary = harmony_task
+        elif focus == "Improvisation":
+            primary = f"Solo cell: make a two-bar phrase from **{guide_a}**, **{guide_b}**, and one bend/slide; repeat it over **{second_chord}** with one rhythmic change."
+        else:
+            primary = technique_task
+        secondary = lead_task if focus == "Rhythm" else rhythm_task
+        return [
+            primary,
+            secondary,
+            harmony_task if focus != "Harmony" else technique_task,
+        ]
+
+    if family == "piano":
+        shell = (
+            f"Shell voicing drill: left hand plays roots **{root_a} -> {root_b}**; right hand plays guide tones "
+            f"**{guide_a}/{guide_b} -> {next_guide_a}/{next_guide_b}** with the smallest possible motion."
+        )
+        inversion = (
+            f"Inversion drill: play **{first_chord} -> {second_chord}** in three right-hand positions, choosing the inversion that keeps the top note moving by step."
+        )
+        comping = (
+            f"Comping rhythm: through **{chord_path}**, play short right-hand stabs on `1-and`, `2-and`, and beat 4; "
+            f"left hand answers with root or fifth on beat 1 only."
+        )
+        reharm = (
+            f"Reharm exercise: on the final bar of the {span}-bar loop, add a passing dominant or diminished approach into **{second_chord}**, then compare it to the plain chart."
+        )
+        if focus == "Rhythm":
+            primary = comping
+        elif focus == "Harmony":
+            primary = shell if beginner else f"{shell} Then try: {reharm}"
+        elif focus == "Melody":
+            primary = f"Top-note melody: keep the right-hand top note singing through **{chord_path}** while the inner notes voice-lead quietly."
+        elif focus == "Improvisation":
+            primary = f"One-hand improv: left hand plays shells through **{chord_path}**; right hand improvises using **{chord_tones}** plus one neighbor tone."
+        else:
+            primary = inversion
+        return [primary, shell, comping if not advanced else reharm]
+
+    if family == "winds":
+        articulation = (
+            f"Articulation drill: play **{chord_tones}** over **{first_chord}** twice - first slurred, then tongued `ta-da ta-da`; "
+            f"resolve to **{next_guide_a}** on beat 1 of **{second_chord}**."
+        )
+        guide = (
+            f"Guide-tone target: make a {span}-bar line through **{chord_path}** where beat 1 of each bar lands on a 3rd or 7th, starting with **{guide_a}** or **{guide_b}**."
+        )
+        breath = (
+            f"Breath/phrase plan: take one silent breath before **{section_name}**, play two-bar phrases, and leave a full eighth-note of space before the next phrase."
+        )
+        scale = (
+            f"Scale-to-chord drill: run the scale around **{first_chord}** for one bar, then restrict bar 2 to chord tones only and land on **{next_guide_b}**."
+        )
+        if focus == "Rhythm":
+            primary = articulation
+        elif focus in ["Harmony", "Improvisation"]:
+            primary = guide
+        elif focus == "Melody":
+            primary = f"Phrase shaping: play a two-bar question ending softly on **{guide_b}**, then answer louder into **{next_guide_a}** over **{second_chord}**."
+        else:
+            primary = scale
+        return [primary, breath, articulation if focus != "Rhythm" else guide]
+
+    if family == "bass":
+        groove = (
+            f"Pocket drill: play **{root_a}** on beat 1 and **{fifth_a}** on beat 3 for **{first_chord}**, "
+            f"then **{root_b}** and **{fifth_b}** for **{second_chord}**. Keep every note the same length."
+        )
+        walking = (
+            f"Walking line: one note per beat over **{first_chord} -> {second_chord}**: root, fifth, octave, chromatic approach into **{root_b}**."
+        )
+        approach = (
+            f"Approach-note drill: on beat 4 before each chord change in **{chord_path}**, approach the next root from a half-step below, then land firmly on beat 1."
+        )
+        rhythm = (
+            f"Rhythmic consistency: loop the first {span} bars with the backing track, alternating one pass of quarter notes and one pass of eighth-note roots."
+        )
+        if focus == "Rhythm":
+            primary = rhythm
+        elif focus == "Harmony":
+            primary = f"Outline drill: play root, 3rd, 5th, approach tone for each bar of **{chord_path}** without adding fills."
+        elif focus == "Improvisation":
+            primary = walking
+        elif focus == "Melody":
+            primary = f"Connecting line: write a simple bass melody from **{root_a}** to **{root_b}** using no more than four notes per bar."
+        else:
+            primary = approach
+        return [primary, groove, walking if not beginner else approach]
+
+    if family == "voice":
+        cue = lyric_line or f"the first phrase of {section_name}"
+        breathing = (
+            f"Breathing drill: inhale silently for 2 counts before **{section_name}**, sing _{cue}_ on `oo`, then repeat on `ah` without changing jaw height."
+        )
+        delivery = (
+            f"Lyric delivery: speak _{cue}_ in time over **{chord_path}**, mark the word that should peak emotionally, then sing it with a softer pickup and stronger release."
+        )
+        dynamics = (
+            f"Dynamic shape: sing bars 1-{span} mezzo-piano, grow into the strongest chord, then taper the final note without dropping pitch."
+        )
+        vowels = (
+            f"Vowel shaping: sustain the main vowel from _{cue}_ over **{first_chord}**, then move to **{second_chord}** while keeping the vowel stable."
+        )
+        if focus == "Rhythm":
+            primary = f"Rhythm/phrasing drill: speak _{cue}_ on subdivisions, clap beats 2 and 4, then sing only the rhythm on one pitch."
+        elif focus == "Melody":
+            primary = dynamics
+        elif focus == "Harmony":
+            primary = f"Pitch-center drill: hum the root of **{first_chord}**, sing **{chord_tones}** on `mah`, then resolve into **{second_chord}**."
+        elif focus == "Improvisation":
+            primary = f"Vocal variation: sing _{cue}_ once as written, then improvise a two-note answer on `na` using chord tones from **{first_chord}**."
+        else:
+            primary = breathing
+        return [primary, delivery, vowels if focus != "Technique" else dynamics]
+
+    return [
+        f"Loop **{chord_path}** for {reps} passes and make the change **{first_chord} -> {second_chord}** land cleanly on beat 1.",
+        f"Name and play/sing the chord tones of **{first_chord}**: {chord_tones}.",
+        f"Record one pass of **{section_name}** and listen only for time, tone, and the section ending.",
+    ]
+
+
+def daily_practice_breakdown_markdown(song, sections, instrument, level, focus, minutes, variation=0):
+    section_name, section_chords = _section_for_exercise(sections, variation)
+    first_chord, second_chord = _transition_pair(section_chords, variation)
+    blocks = _practice_time_blocks(minutes)
+    span = _exercise_span(level, len(section_chords))
+    chord_path = _chord_run(section_chords, span)
+    family = _instrument_family(instrument)
+
+    instrument_focus = {
+        "guitar": f"right-hand groove plus **{first_chord} -> {second_chord}** voicing movement",
+        "piano": f"shells, inversions, and voice leading through **{first_chord} -> {second_chord}**",
+        "winds": f"articulation and guide-tone targets through **{first_chord} -> {second_chord}**",
+        "bass": f"pocket, root/fifth movement, and approach notes into **{second_chord}**",
+        "voice": f"breath, vowel, lyric delivery, and dynamics for **{section_name}**",
+    }.get(family, f"clean time and chord-tone control through **{first_chord} -> {second_chord}**")
+
+    return f"""
+- Warmup ({blocks['warmup']} min): prepare **{instrument}** for {instrument_focus}.
+- Song section ({blocks['section']} min): loop **{section_name}** from **{song}** for {span} bars: **{chord_path}**.
+- {focus} block ({blocks['focus']} min): drill the exact change **{first_chord} -> {second_chord}** until it lands cleanly in time.
+- Review ({blocks['review']} min): record one pass of **{section_name}**, then write one timing fix and one tone/phrasing fix.
+""".strip()
+
+
+def song_practice_plan(song, sections, instrument, level, focus, variation, section_lyrics=None, minutes=30):
     section_name, section_chords = _section_for_exercise(sections, variation)
     first_chord, second_chord = _transition_pair(section_chords, variation)
     family = _instrument_family(instrument)
@@ -1209,153 +1466,72 @@ def song_practice_plan(song, sections, instrument, level, focus, variation, sect
     bars = len(section_chords)
     cycle = max(1, variation + 1)
     chord_tones = _chord_tone_names(first_chord)
-    technical_pattern = _technical_pattern_for_exercise(
-        instrument,
-        focus,
-        first_chord,
-        second_chord,
-    )
+    blocks = _practice_time_blocks(minutes)
+    span = _exercise_span(level, bars)
+    chord_path = _chord_run(section_chords, span)
     section_text = (section_lyrics or {}).get(section_name, "")
+    first_line = next(
+        (line.strip() for line in str(section_text).splitlines() if line.strip()),
+        "",
+    )
     lyric_application = ""
     if section_text and instrument == "Voice":
-        first_line = next(
-            (line.strip() for line in str(section_text).splitlines() if line.strip()),
-            "",
-        )
         lyric_application = (
             f"\n**Lyric application**\n"
             f"- Start with this section text: _{first_line}_\n"
-            f"- Speak it in rhythm over the chord grid, mark breaths, then sing it on vowels before adding consonants.\n"
+            f"- Speak it in rhythm over **{chord_path}**, mark one breath, then sing it on vowels before adding consonants.\n"
         )
     elif section_text:
-        first_line = next(
-            (line.strip() for line in str(section_text).splitlines() if line.strip()),
-            "",
-        )
         lyric_application = (
             f"\n**Form cue**\n"
             f"- Use this cue to locate the section while playing: _{first_line}_\n"
         )
 
-    warmups = {
-        "guitar": [
-            f"Fretboard warmup: find **{first_chord}** and **{second_chord}** in two positions, then switch for 2 minutes.",
-            f"Right-hand warmup: mute the strings and strum the rhythm of **{section_name}** for {min(8, max(4, bars))} bars.",
-            f"Voicing drill: play compact grips for **{first_chord} -> {second_chord}** without breaking time.",
-        ],
-        "piano": [
-            f"Left-hand pattern: play roots for **{section_name}**, one bar per chord, then add fifths.",
-            f"Voicing drill: connect **{first_chord} -> {second_chord}** with the nearest inversion.",
-            f"Comping warmup: play shell voicings through the first {min(8, bars)} bars of **{section_name}**.",
-        ],
-        "winds": [
-            f"Long tones: sustain the root of **{first_chord}**, then resolve into **{second_chord}**.",
-            f"Articulation: tongue quarter notes through the first {min(8, bars)} bars of **{section_name}**.",
-            f"Chord-tone warmup: play **{chord_tones}** over **{first_chord}** with steady air.",
-        ],
-        "voice": [
-            f"Breath setup: inhale silently, hum the pitch center of **{first_chord}**, then release into the phrase.",
-            f"Vowel warmup: sing the first {min(4, bars)} bars of **{section_name}** on 'oo', then 'ah'.",
-            f"Phrase warmup: mark one breath before **{section_name}** and one recovery breath near the midpoint.",
-        ],
-        "bass": [
-            f"Root motion: play one bar each of **{first_chord} -> {second_chord}** with a metronome.",
-            f"Time warmup: outline the roots through **{section_name}**, then add fifths on beat 3.",
-            f"Approach-tone drill: approach **{second_chord}** by half-step from below on beat 4.",
-        ],
-        "general": [
-            f"Sing and clap the harmonic rhythm of **{section_name}** before playing it.",
-            f"Name each chord in the first {min(8, bars)} bars and count the bar aloud.",
-            f"Loop **{first_chord} -> {second_chord}** until the transition feels automatic.",
-        ],
-    }
-
-    focus_templates = {
-        "Rhythm": f"Clap, tap, or comp through **{section_name}** for {bars} bars. Keep the same pulse while changing from **{first_chord}** to **{second_chord}**. Then play it {difficulty}.",
-        "Melody": f"Create a 2-bar phrase using chord tones from **{first_chord}** ({chord_tones}). Repeat it over **{second_chord}** with one note changed.",
-        "Harmony": f"Analyze the movement **{first_chord} -> {second_chord}**. Play/sing the root, 3rd, and 7th where available, then connect them through **{section_name}**.",
-        "Improvisation": f"Improvise only over **{section_name}**. Restrict yourself to chord tones for one pass, then add one passing tone per bar.",
-        "Technique": f"Turn **{first_chord} -> {second_chord}** into a technical drill: slow reps first, then increase tempo by 5 BPM after three clean passes.",
-    }
-
-    instrument_specific = {
-        "guitar": {
-            "Rhythm": "Use two textures: muted eighth-note strums for verse-type sections, then fuller accents for chorus-type sections.",
-            "Melody": "Add one slide into a chord tone, one controlled bend, and one vibrato note at a phrase ending.",
-            "Harmony": "Use smaller 3- or 4-string voicings; avoid moving more fingers than needed between bars.",
-            "Improvisation": "Build a solo from one motif and answer it in the next two bars.",
-            "Technique": "Loop the hardest chord change with strict alternate picking or clean fingerstyle attack.",
-        },
-        "piano": {
-            "Rhythm": "Left hand marks roots; right hand comps short offbeat stabs without rushing.",
-            "Melody": "Play the top note of each voicing as a simple melody and shape it dynamically.",
-            "Harmony": "Use guide tones in the right hand and roots/shells in the left.",
-            "Improvisation": "Improvise a one-hand line while the other hand plays sparse shells.",
-            "Technique": "Practice inversions hands-separately, then together at half tempo.",
-        },
-        "winds": {
-            "Rhythm": "Articulate short-long patterns over the section while keeping breath relaxed.",
-            "Melody": "Shape each phrase with a clear start, peak, and release.",
-            "Harmony": "Target 3rds and 7ths on beats 1 and 3 where possible.",
-            "Improvisation": "Use call-and-response: two bars simple, two bars answer.",
-            "Technique": "Practice the chord-tone pattern slurred, then tongued.",
-        },
-        "voice": {
-            "Rhythm": "Speak the lyric rhythm over the bar grid, then sing lightly on vowels.",
-            "Melody": "Plan breath, vowel, and emotional arc before singing the phrase.",
-            "Harmony": "Find the tonic and strongest resolution note in the section before adding words.",
-            "Improvisation": "Improvise a short melodic answer on a neutral syllable, not full lyrics.",
-            "Technique": "Use semi-occluded warmups (lip trill or hum) before full voice.",
-        },
-        "bass": {
-            "Rhythm": "Lock roots to kick-style accents and keep every note length intentional.",
-            "Melody": "Create a simple connecting line between roots without overcrowding.",
-            "Harmony": "Outline root, fifth, octave, and approach tones through the section.",
-            "Improvisation": "Build a walking or pop bass variation for four bars only.",
-            "Technique": "Practice clean shifts and muting between every chord root.",
-        },
-        "general": {
-            "Rhythm": "Count subdivisions aloud and keep the form steady.",
-            "Melody": "Phrase in two-bar questions and answers.",
-            "Harmony": "Identify stable and tense chords in the section.",
-            "Improvisation": "Limit your idea to three notes and develop it.",
-            "Technique": "Slow the hardest transition until it is relaxed.",
-        },
-    }
-
-    family_specific = instrument_specific.get(family, instrument_specific["general"])
-    warmup_list = warmups.get(family, warmups["general"])
-    warmup = warmup_list[variation % len(warmup_list)]
-    focus_task = focus_templates.get(focus, focus_templates["Technique"])
-    instrument_task = family_specific.get(focus, family_specific["Technique"])
+    drills = _instrument_drills(
+        family=family,
+        instrument=instrument,
+        level=level,
+        focus=focus,
+        section_name=section_name,
+        section_chords=section_chords,
+        first_chord=first_chord,
+        second_chord=second_chord,
+        chord_tones=chord_tones,
+        span=span,
+        blocks=blocks,
+        variation=variation,
+        lyric_line=first_line,
+    )
 
     if level == "Beginner":
-        development = "Keep it short: 4 clean bars, rest, then repeat. Accuracy beats speed."
+        development = f"Keep the loop to {span} bars. Slow down until the change **{first_chord} -> {second_chord}** is clean twice in a row."
     elif level == "Intermediate":
-        development = "Connect the drill to the backing track and record one pass for timing."
+        development = f"Connect the drill to the backing track for {blocks['focus']} minutes, then record one full pass of **{section_name}**."
     else:
-        development = "Add nuance: dynamics, articulation, space, and one intentional variation on the final pass."
+        development = f"After the clean pass, add one controlled variation: displacement, reharm, articulation change, fill, or dynamic contrast based on your instrument."
 
     return f"""
 ### Personalized Exercise {cycle}: {section_name}
 **Song:** {song}  
 **Target section:** {section_name} — {bars} bars  
-**Chord focus:** **{first_chord} -> {second_chord}**
+**Today:** {blocks['total']} minutes on **{instrument}**, **{level}**, **{focus}**  
+**Chord focus:** **{first_chord} -> {second_chord}**  
+**Loop:** **{chord_path}**  
+**Section character:** {_section_character(section_name)}
 
-**Warm-up**
-- {warmup}
+**Warm-up ({blocks['warmup']} min)**
+- Play/sing the chord tones of **{first_chord}**: {chord_tones}. Then resolve into **{second_chord}** {difficulty}.
 
-**Technical pattern**
-- {technical_pattern}
+**Main drill ({blocks['section']} min)**
+- {drills[0]}
 
-**Main exercise**
-- {focus_task}
+**Instrument-specific coaching ({blocks['focus']} min)**
+- {drills[1]}
+- {drills[2]}
 
-**Instrument coaching**
-- {instrument_task}
 {lyric_application}
 
-**Progression**
+**Progression / check ({blocks['review']} min)**
 - {development}
 """
 
@@ -2407,6 +2583,7 @@ Focus: **{focus}**
             focus,
             st.session_state[exercise_key],
             section_lyrics=section_lyrics,
+            minutes=minutes,
         )
     )
 
@@ -2465,20 +2642,16 @@ Focus: **{focus}**
         "Suggested Daily Time Breakdown"
     )
 
-    st.write(
-        f"- Warmup: {max(5, int(minutes * 0.2))} minutes"
-    )
-
-    st.write(
-        f"- Song sections: {max(8, int(minutes * 0.4))} minutes"
-    )
-
-    st.write(
-        f"- {focus}: {max(8, int(minutes * 0.25))} minutes"
-    )
-
-    st.write(
-        f"- Review/recording: {max(5, int(minutes * 0.15))} minutes"
+    st.markdown(
+        daily_practice_breakdown_markdown(
+            song,
+            sections,
+            instrument,
+            level,
+            focus,
+            minutes,
+            variation=st.session_state[exercise_key],
+        )
     )
 
 # -------------------------------------------------
