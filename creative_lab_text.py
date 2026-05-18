@@ -369,7 +369,7 @@ def section_arrangement_idea(section_name, chords, ctx, target_style):
     return out
 
 
-def creativity_arrangement_text(ctx, target_style, selected_section="Full song"):
+def creativity_arrangement_text(ctx, target_style, arrangement_section=None):
     out = []
     out.append(f"# Creative Arrangement Assistant — {ctx['song']}")
     out.append(
@@ -388,9 +388,9 @@ def creativity_arrangement_text(ctx, target_style, selected_section="Full song")
         out.append("- Use advanced colors deliberately: upper extensions, pedal points, reharm, and rhythmic displacement only where the form needs lift.")
 
     sections = ctx["sections"]
-    if selected_section and selected_section != "Full song":
-        sections = {selected_section: ctx["sections"].get(selected_section, [])}
-        out.append(f"\n## Focused Section: {selected_section}")
+    if arrangement_section and arrangement_section != "Full song":
+        sections = {arrangement_section: ctx["sections"].get(arrangement_section, [])}
+        out.append(f"\n## Focused Section: {arrangement_section}")
     else:
         out.append("\n## Section-by-Section Arrangement")
 

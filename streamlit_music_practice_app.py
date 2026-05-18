@@ -2691,6 +2691,11 @@ st.sidebar.caption(
     "That choice is the one source of truth for every tab."
 )
 
+_display_key_song_identity = (song_data.get("title"), song_data.get("artist"), song_data.get("key"))
+if st.session_state.get("_display_key_song_identity") != _display_key_song_identity:
+    st.session_state.display_key = song_data["key"]
+    st.session_state["_display_key_song_identity"] = _display_key_song_identity
+
 if "display_key" not in st.session_state:
 
     st.session_state.display_key = song_data["key"]
@@ -3249,15 +3254,7 @@ with tabs[2]:
     if instrument == "Voice":
         st.caption("Voice lyric and phrasing cues are shown inside each chart section below.")
 
-    st.subheader("2. Song Timeline")
-    st.caption("DAW-style form view: section length, chord color, and the first lyric/phrase cue for the active song.")
-    render_song_timeline(
-        sections,
-        lyric_cues=lyric_cues,
-        section_lyrics=section_lyrics,
-    )
-
-    st.subheader("3. Full Song Chart")
+    st.subheader("2. Full Song Chart")
 
     st.markdown(
         full_chord_markdown(
@@ -3309,7 +3306,7 @@ with tabs[2]:
             hide_index=True,
         )
 
-    st.subheader("4. Generate / Play Backing Track")
+    st.subheader("3. Generate / Play Backing Track")
 
     if st.button(
         "Generate backing track (from active song + settings above)",
