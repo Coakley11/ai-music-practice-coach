@@ -380,6 +380,15 @@ def bar_grid_markdown(chords, bars_per_row=4):
     return "\n".join(rows).strip()
 
 
+def form_summary_markdown(sections):
+    rows = ["| Section | Bars | Harmonic rhythm |", "|---|---:|---|"]
+    for section_name, chords in sections.items():
+        if not chords:
+            continue
+        rows.append(f"| {section_name} | {len(chords)} | {compact_bar_summary(chords)} |")
+    return "\n".join(rows)
+
+
 def parse_user_lyric_cues(raw_text, section_names):
     """User-provided cues only. No lyric scraping or generation."""
     if not raw_text:
@@ -834,7 +843,7 @@ def full_chord_markdown(
     out.append(f"Player level chart: **{level}**")
     status_text, _status_kind = chart_status_label(song_data)
     out.append(f"Chart reliability: **{status_text}**")
-    out.append("_One grid cell = one 4/4 bar. `%` means repeat the previous bar._")
+    out.append("_One grid cell = one bar. Rows group into four-bar phrases; `%` repeats the previous bar._")
 
     total_bars = sum(len(chords) for chords in sections.values())
     out.append(f"Total form length: **{total_bars} bars**")
@@ -842,6 +851,9 @@ def full_chord_markdown(
     ext = song_data.get("extensions") or {}
     if ext.get("arrangement_notes"):
         out.append(f"_Chart note:_ {ext['arrangement_notes']}")
+
+    out.append("\n### Form Map")
+    out.append(form_summary_markdown(sections))
 
     for section_name, chords in sections.items():
 
@@ -1158,6 +1170,8 @@ def default_time_signature(song, sections):
     text = " ".join([song] + list(sections.keys())).lower()
     if "3/4" in text or "piano man" in text:
         return "3/4"
+    if "6/8" in text:
+        return "6/8"
     if "perfect" in text:
         return "6/8"
     return "4/4"
@@ -1255,7 +1269,7 @@ def infer_groove_style(song_data, selected_style="Auto"):
         return "Bossa nova"
     if genre_name == "Jazz":
         return "Jazz swing"
-    if genre_name == "Funk":
+    if genre_name in ["Funk", "Soul"]:
         return "Funk groove"
     if genre_name == "Rock":
         return "Rock groove"
@@ -2038,20 +2052,6 @@ Focus: **{focus}**
         )
     )
 
-    with st.expander("Open chord chart for this practice plan", expanded=False):
-        st.markdown(
-            full_chord_markdown(
-                song,
-                song_data,
-                sections,
-                instrument,
-                display_key=display_key,
-                level=level,
-                lyric_cues=lyric_cues,
-                section_lyrics=section_lyrics,
-            )
-        )
-
     if st.button(
         "Generate Practice Sheet"
     ):
@@ -2400,14 +2400,8 @@ with tabs[2]:
         f"**{chart_status_label(song_data)[0]}**"
     )
 
-    st.markdown(
-        lyric_guide_markdown(
-            sections,
-            lyric_cues,
-            instrument,
-            section_lyrics=section_lyrics,
-        )
-    )
+    if instrument == "Voice":
+        st.caption("Voice lyric and phrasing cues are shown inside each chart section below.")
 
     st.subheader("2. Full Song Chart")
 

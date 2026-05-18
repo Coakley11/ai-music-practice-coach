@@ -635,7 +635,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "Outro": ["Abadd9", "Fm9", "Dbmaj9", "Eb13sus", "Abadd9", "Abadd9"],
             },
             composer="John Legend & Toby Gad",
-            lyric_cues={"Verse": ["intimate piano entry"], "Chorus": ["title-hook declaration"], "Bridge": ["vow-like build"]},
+            lyric_cues={"Intro / Verse": ["intimate piano entry"], "Chorus": ["title-hook declaration"], "Bridge": ["vow-like build"]},
             notes="Piano ballad in Ab; slash bass keeps the verse descent clear while preserving one bar per cell.",
         ),
         v(
@@ -665,7 +665,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "Outro Vamp": ["Ebm9", "Dbadd9", "Bbm9", "Bmaj9"],
             },
             composer="Charlie Puth & Jacob Kasher",
-            lyric_cues={"Verse": ["tight bass-pocket entry"], "Pre-Chorus": ["lift before hook"], "Chorus": ["syncopated title hook"]},
+            lyric_cues={"Bass Intro / Verse": ["tight bass-pocket entry"], "Pre-Chorus": ["lift before hook"], "Chorus": ["syncopated title hook"]},
             notes="Funk-pop loop chart in Eb minor; backing track follows the bass-harmony cycle section by section.",
         ),
         v(
@@ -692,7 +692,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "Outro Solo Vamp": ["Bm9", "F#7/A#", "Aadd9", "E/G#", "Gmaj9", "D/F#", "Em9", "F#7b9"],
             },
             composer="Don Felder, Don Henley & Glenn Frey",
-            lyric_cues={"Verse": ["narrative desert arrival"], "Chorus": ["title-hotel refrain"], "Guitar Solo": ["dual-guitar lead form"]},
+            lyric_cues={"Intro / Verse": ["narrative desert arrival"], "Chorus": ["title-hotel refrain"], "Guitar Solo": ["dual-guitar lead form"]},
             guitar_tabs={"Bm": "x24432", "F#7": "242322", "A": "x02220", "E/G#": "4x245x", "G": "320003", "D/F#": "2x0232", "Em": "022000"},
             notes="Classic 8-bar descending verse cycle; solo uses the same harmonic form for accurate practice looping.",
         ),
@@ -716,7 +716,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "Outro": ["Am", "Fmaj7", "C", "G"],
             },
             composer="Red Hot Chili Peppers",
-            lyric_cues={"Verse": ["low conversational riff entry"], "Chorus": ["wide melodic hook"], "Guitar Solo": ["relative minor solo color"]},
+            lyric_cues={"Intro / Verse Riff": ["low conversational riff entry"], "Chorus": ["wide melodic hook"], "Guitar Solo": ["relative minor solo color"]},
             guitar_tabs={"Am": "x02210", "Fmaj7": "1x2210", "C": "x32010", "G": "320003", "Dm": "xx0231"},
         ),
         v(
@@ -978,7 +978,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "Outro Vamp": ["Abadd9", "Fmadd9", "Dbadd9", "Ebadd9"],
             },
             composer="Sting",
-            lyric_cues={"Verse": ["fingerpicked/arpeggio entry"], "Pre-Chorus": ["minor-to-major tension"], "Chorus": ["title observation hook"]},
+            lyric_cues={"Intro / Verse Arpeggio": ["fingerpicked/arpeggio entry"], "Pre-Chorus": ["minor-to-major tension"], "Chorus": ["title observation hook"]},
             notes="Arpeggio song reduced to harmonic bars; add9 colors preserve the recorded guitar texture.",
         ),
         v(
