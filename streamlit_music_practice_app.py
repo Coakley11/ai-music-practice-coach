@@ -14,6 +14,7 @@ except Exception:
 import json
 import wave
 import tempfile
+import html
 from pathlib import Path
 from datetime import date
 
@@ -361,6 +362,33 @@ def compact_bar_summary(chords):
     return "| " + " | ".join(chunks) + " |"
 
 
+def short_chord_summary(chords, limit=4):
+    if not chords:
+        return "No chords"
+    unique = []
+    for chord in chords:
+        if chord not in unique:
+            unique.append(chord)
+    suffix = " ..." if len(unique) > limit else ""
+    return " - ".join(unique[:limit]) + suffix
+
+
+def _section_lyric_lines(section_name, lyric_cues=None, section_lyrics=None, limit=4):
+    user_text = (section_lyrics or {}).get(section_name, "")
+    lines = [line.strip() for line in str(user_text).splitlines() if line.strip()]
+    if not lines:
+        lines = [
+            line.strip()
+            for line in (lyric_cues or {}).get(section_name, [])
+            if str(line).strip()
+        ]
+    return lines[:limit]
+
+
+def _markdown_table_cell(value):
+    return str(value).replace("|", "\\|").replace("\n", " ").strip()
+
+
 def bar_grid_markdown(chords, bars_per_row=4):
     rows = []
     for i in range(0, len(chords), bars_per_row):
@@ -380,6 +408,39 @@ def bar_grid_markdown(chords, bars_per_row=4):
     return "\n".join(rows).strip()
 
 
+def lyric_aligned_bar_grid_markdown(section_name, chords, lyric_cues=None, section_lyrics=None, bars_per_row=4):
+    lyric_lines = _section_lyric_lines(
+        section_name,
+        lyric_cues=lyric_cues,
+        section_lyrics=section_lyrics,
+        limit=max(1, int(np.ceil(max(1, len(chords)) / bars_per_row))),
+    )
+    if not lyric_lines:
+        return bar_grid_markdown(chords, bars_per_row=bars_per_row)
+
+    rows = []
+    for i in range(0, len(chords), bars_per_row):
+        row = chords[i:i + bars_per_row]
+        display = []
+        for j, ch in enumerate(row):
+            absolute = i + j
+            if absolute > 0 and ch == chords[absolute - 1]:
+                display.append("%")
+            else:
+                display.append(ch)
+        lyric = lyric_lines[min(i // bars_per_row, len(lyric_lines) - 1)]
+        bars = [f"Bar {i + j + 1}" for j in range(len(row))]
+        rows.append("| " + " | ".join(bars) + " | Phrase |")
+        rows.append("| " + " | ".join(["---"] * len(row)) + " |---|")
+        rows.append(
+            "| "
+            + " | ".join(f"**{_markdown_table_cell(cell)}**" for cell in display)
+            + f" | _{_markdown_table_cell(lyric)}_ |"
+        )
+        rows.append("")
+    return "\n".join(rows).strip()
+
+
 def form_summary_markdown(sections):
     rows = ["| Section | Bars | Harmonic rhythm |", "|---|---:|---|"]
     for section_name, chords in sections.items():
@@ -387,6 +448,118 @@ def form_summary_markdown(sections):
             continue
         rows.append(f"| {section_name} | {len(chords)} | {compact_bar_summary(chords)} |")
     return "\n".join(rows)
+
+
+def render_song_timeline(sections, lyric_cues=None, section_lyrics=None):
+    blocks = []
+    total_bars = max(1, sum(len(chords) for chords in sections.values()))
+    for section_name, chords in sections.items():
+        if not chords:
+            continue
+        width = max(14, min(38, round((len(chords) / total_bars) * 100)))
+        lyric_lines = _section_lyric_lines(
+            section_name,
+            lyric_cues=lyric_cues,
+            section_lyrics=section_lyrics,
+            limit=1,
+        )
+        lyric = lyric_lines[0] if lyric_lines else "Add a cue in the sidebar"
+        blocks.append(
+            f"""
+            <div class="song-timeline-block" style="flex: {max(1, len(chords))} 1 {width}%;">
+              <div class="timeline-section-name">{html.escape(section_name)}</div>
+              <div class="timeline-bars">{len(chords)} bars</div>
+              <div class="timeline-chords">{html.escape(short_chord_summary(chords))}</div>
+              <div class="timeline-lyric">{html.escape(lyric)}</div>
+            </div>
+            """
+        )
+
+    if not blocks:
+        st.info("No section data is available for this song yet.")
+        return
+
+    st.markdown(
+        f"""
+        <style>
+        .song-timeline {{
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding: 10px 0 14px 0;
+            margin-bottom: 8px;
+        }}
+        .song-timeline-block {{
+            min-width: 150px;
+            border: 1px solid rgba(49, 51, 63, 0.18);
+            border-radius: 12px;
+            padding: 12px;
+            background: linear-gradient(180deg, rgba(240, 247, 255, 0.95), rgba(255, 255, 255, 0.98));
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }}
+        .timeline-section-name {{
+            font-weight: 750;
+            font-size: 0.98rem;
+            margin-bottom: 4px;
+        }}
+        .timeline-bars {{
+            color: #5f6b7a;
+            font-size: 0.82rem;
+            margin-bottom: 8px;
+        }}
+        .timeline-chords {{
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.84rem;
+            color: #172033;
+            margin-bottom: 8px;
+            white-space: nowrap;
+        }}
+        .timeline-lyric {{
+            color: #475569;
+            font-size: 0.82rem;
+            line-height: 1.25;
+        }}
+        </style>
+        <div class="song-timeline">
+          {''.join(blocks)}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _section_match_score(label, section_name):
+    label_norm = " ".join(label.lower().replace("-", " ").replace("/", " ").split())
+    section_norm = " ".join(section_name.lower().replace("-", " ").replace("/", " ").split())
+    section_base = _section_base_name(section_name).replace("-", " ")
+    if not label_norm or not section_norm:
+        return None
+    if label_norm == section_norm:
+        return 0
+    if label_norm == section_base:
+        return 1
+    section_tokens = set(section_norm.split())
+    label_tokens = set(label_norm.split())
+    if label_tokens and label_tokens.issubset(section_tokens):
+        if label_norm == "chorus" and "pre" in section_tokens:
+            return 8
+        return 2
+    if label_norm in section_norm:
+        if label_norm == "chorus" and "pre chorus" in section_norm:
+            return 8
+        return 4
+    return None
+
+
+def match_lyric_section_label(label, section_names):
+    scored = []
+    for idx, section_name in enumerate(section_names):
+        score = _section_match_score(label, section_name)
+        if score is not None:
+            scored.append((score, len(section_name), idx, section_name))
+    if not scored:
+        return None
+    return sorted(scored)[0][3]
 
 
 def parse_user_lyric_cues(raw_text, section_names):
@@ -404,10 +577,7 @@ def parse_user_lyric_cues(raw_text, section_names):
 
         if ":" in line:
             maybe_section, cue = line.split(":", 1)
-            match = next(
-                (name for name in section_names if name.lower() == maybe_section.strip().lower()),
-                None,
-            )
+            match = match_lyric_section_label(maybe_section.strip(), section_names)
             if match:
                 current = match
                 if cue.strip():
@@ -860,7 +1030,14 @@ def full_chord_markdown(
         out.append(f"\n### {section_name} — {len(chords)} bars")
 
         out.append(f"Compact rhythm: {compact_bar_summary(chords)}")
-        out.append(bar_grid_markdown(chords))
+        out.append(
+            lyric_aligned_bar_grid_markdown(
+                section_name,
+                chords,
+                lyric_cues=lyric_cues or {},
+                section_lyrics=section_lyrics or {},
+            )
+        )
         cue_text = lyric_cue_markdown(
             section_name,
             chords,
@@ -2403,7 +2580,15 @@ with tabs[2]:
     if instrument == "Voice":
         st.caption("Voice lyric and phrasing cues are shown inside each chart section below.")
 
-    st.subheader("2. Full Song Chart")
+    st.subheader("2. Song Timeline")
+    st.caption("DAW-style form view: section length, chord color, and the first lyric/phrase cue for the active song.")
+    render_song_timeline(
+        sections,
+        lyric_cues=lyric_cues,
+        section_lyrics=section_lyrics,
+    )
+
+    st.subheader("3. Full Song Chart")
 
     st.markdown(
         full_chord_markdown(
@@ -2449,7 +2634,7 @@ with tabs[2]:
             hide_index=True,
         )
 
-    st.subheader("3. Generate / Play Backing Track")
+    st.subheader("4. Generate / Play Backing Track")
 
     if st.button(
         "Generate backing track (from active song + settings above)",
