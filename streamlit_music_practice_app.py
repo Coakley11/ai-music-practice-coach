@@ -1843,7 +1843,7 @@ else:
     st.sidebar.info(_chart_status_text)
 
 st.sidebar.caption(
-    "Select or change the piece under **Song Search / Song Picker**. "
+    "Select or change the piece under **Song Picker**. "
     "That choice is the one source of truth for every tab."
 )
 
@@ -1976,22 +1976,22 @@ lyric_cues = {
 # TABS
 
 tabs = st.tabs([
-    "Daily Practice Plan",
-    "Song Search",
+    "Practice",
+    "Song Picker",
     "Backing Track",
-    "Recording Analysis",
     "Creative Lab",
     "Multitrack Recorder",
+    "Upload / Recording Analysis",
     "Practice Log"
 ])
 
 # -------------------------------------------------
-# DAILY PRACTICE PLAN
+# PRACTICE
 # -------------------------------------------------
 
 with tabs[0]:
 
-    st.header("Daily Practice Plan")
+    st.header("Practice")
 
     st.caption("For deeper analysis, use the Creative Lab tab: harmony, improvisation, arranging, weakness detection, and musical development tracking.")
 
@@ -2097,12 +2097,12 @@ Focus: **{focus}**
     )
 
 # -------------------------------------------------
-# SONG SEARCH
+# SONG PICKER
 # -------------------------------------------------
 
 with tabs[1]:
 
-    st.header("Song Search / Song Picker")
+    st.header("Song Picker")
 
     chart_library_mode = st.radio(
         "Chart library",
@@ -2158,7 +2158,7 @@ with tabs[1]:
         f"**{len(visible_song_records)} songs** visible in this chart library mode. "
         "Trusted core is the default; practice approximations are opt-in. "
         "Placeholder charts remain hidden. "
-        "This tab is for browsing and selecting only; charts live in Backing Track and Daily Practice Plan."
+        "This tab is for browsing and selecting only; charts live in Backing Track and Practice."
     )
 
     search_scope = st.radio(
@@ -2245,7 +2245,7 @@ with tabs[1]:
 
             try:
 
-                st.toast("Song selected. Go to Backing Track, Daily Practice Plan, or Multitrack Recorder.", icon="🎵")
+                st.toast("Song selected. Go to Backing Track, Practice, or Multitrack Recorder.", icon="🎵")
 
             except Exception:
 
@@ -2281,7 +2281,7 @@ with tabs[1]:
 
     st.info(
         "Go to **Backing Track** for the full chart and playback. "
-        "Go to **Daily Practice Plan** for exercises. "
+        "Go to **Practice** for exercises. "
         "Go to **Multitrack Recorder** to record."
     )
 
@@ -2294,7 +2294,7 @@ with tabs[2]:
     st.header("Backing Track")
 
     st.write(
-        f"Uses the **active song** (same as Song Search / sidebar): **{song}** — {song_data['artist']}. "
+        f"Uses the **active song** (same as Song Picker / sidebar): **{song}** — {song_data['artist']}. "
         f"Chords are in **{display_key}** (transpose from the sidebar if needed)."
     )
 
@@ -2511,12 +2511,12 @@ with tabs[2]:
         )
 
 # -------------------------------------------------
-# RECORDING ANALYSIS
+# UPLOAD / RECORDING ANALYSIS
 # -------------------------------------------------
 
-with tabs[3]:
+with tabs[5]:
 
-    st.header("Recording Analysis")
+    st.header("Upload / Recording Analysis")
 
     st.write("Upload or record your playing. The app gives intermediate feedback on tempo, pitch center, articulation, dynamics, and song-specific chord tones.")
 
@@ -2553,7 +2553,7 @@ with tabs[3]:
 # CREATIVE LAB
 # -------------------------------------------------
 
-with tabs[4]:
+with tabs[3]:
 
     st.header("AI Musical Development + Creative Lab")
 
@@ -2606,7 +2606,7 @@ with tabs[4]:
 # MULTITRACK
 # -------------------------------------------------
 
-with tabs[5]:
+with tabs[4]:
 
     st.header("Multitrack Recorder")
 
