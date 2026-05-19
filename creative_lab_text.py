@@ -50,6 +50,122 @@ def chord_root(ch):
     return ch[:1]
 
 
+NOTE_TO_PC = {
+    "C": 0,
+    "C#": 1,
+    "Db": 1,
+    "D": 2,
+    "D#": 3,
+    "Eb": 3,
+    "E": 4,
+    "F": 5,
+    "F#": 6,
+    "Gb": 6,
+    "G": 7,
+    "G#": 8,
+    "Ab": 8,
+    "A": 9,
+    "A#": 10,
+    "Bb": 10,
+    "B": 11,
+}
+
+
+ROMAN_MAJOR = {
+    0: "I",
+    1: "bII",
+    2: "ii",
+    3: "bIII",
+    4: "iii",
+    5: "IV",
+    6: "#IV/bV",
+    7: "V",
+    8: "bVI",
+    9: "vi",
+    10: "bVII",
+    11: "vii",
+}
+
+
+def root_pc(ch):
+    return NOTE_TO_PC.get(chord_root(ch))
+
+
+def bass_root(ch):
+    text = str(ch).strip()
+    if "/" in text:
+        return text.split("/", 1)[1].strip()
+    return chord_root(text)
+
+
+def root_path(chords, use_bass=False, limit=6):
+    roots = [bass_root(ch) if use_bass else chord_root(ch) for ch in chords]
+    out = []
+    for root in roots:
+        if root and (not out or out[-1] != root):
+            out.append(root)
+    suffix = " ..." if len(out) > limit else ""
+    return " -> ".join(out[:limit]) + suffix
+
+
+def roman_path(chords, key_name, limit=6):
+    key_pc = NOTE_TO_PC.get(chord_root(key_name))
+    if key_pc is None:
+        return ""
+    romans = []
+    for ch in chords:
+        pc = root_pc(ch)
+        if pc is None:
+            continue
+        roman = ROMAN_MAJOR.get((pc - key_pc) % 12, "?")
+        low = str(ch).lower()
+        if "m" in low and "maj" not in low and roman.isupper():
+            roman = roman.lower()
+        if not romans or romans[-1] != roman:
+            romans.append(roman)
+    suffix = " ..." if len(romans) > limit else ""
+    return " -> ".join(romans[:limit]) + suffix
+
+
+def first_matching_pattern(chords, key_name):
+    roots = [root_pc(ch) for ch in chords]
+    key_pc = NOTE_TO_PC.get(chord_root(key_name))
+    if key_pc is not None and len(roots) >= 4:
+        rel = [None if pc is None else (pc - key_pc) % 12 for pc in roots[:4]]
+        if rel == [9, 5, 0, 7]:
+            return "vi-IV-I-V pop loop"
+        if rel == [0, 5, 9, 7]:
+            return "I-IV-vi-V song-form loop"
+        if rel == [0, 7, 9, 5]:
+            return "I-V-vi-IV pop loop"
+        if rel[:3] == [2, 7, 0]:
+            return "ii-V-I resolution"
+        if set(rel[:3]) == {0, 5, 7}:
+            return "I-IV-V functional movement"
+    qualities = [chord_quality(ch) for ch in chords[:4]]
+    if len(chords) >= 2 and "half-diminished" in qualities and any("dominant" in q for q in qualities):
+        return "minor ii-V tension"
+    return ""
+
+
+def section_tension_label(section_name, chords):
+    role = section_role(section_name)
+    joined = " ".join(str(ch) for ch in chords).lower()
+    if role == "pre":
+        return "sets up the next arrival by increasing expectation"
+    if role == "chorus":
+        return "acts as the main release or emotional arrival"
+    if role == "bridge":
+        return "changes color so the final return feels renewed"
+    if "sus" in joined:
+        return "uses suspended color to delay resolution"
+    if "7" in joined or "dim" in joined:
+        return "uses dominant/passing tension to create forward pull"
+    if role == "verse":
+        return "keeps the story grounded and leaves room for development"
+    return "supports the form without overcomplicating the harmony"
+
+
 def section_patterns(section_name, chords):
     text = []
     roots = [chord_root(ch) for ch in chords]
@@ -74,37 +190,56 @@ def section_patterns(section_name, chords):
     return [f"### {section_name}"] + text
 
 
+def section_analysis_lines(section_name, chords, key_name):
+    if not chords:
+        return [f"### {section_name}", "- No harmony entered for this section yet."]
+    pattern = first_matching_pattern(chords, key_name)
+    bass_path = root_path(chords, use_bass=True, limit=5)
+    chord_path = root_path(chords, limit=5)
+    roman = roman_path(chords, key_name, limit=5)
+    lines = [f"### {section_name}"]
+    if pattern:
+        lines.append(f"- **Harmonic idea:** {pattern}; listen for how the loop creates identity without needing constant new chords.")
+    elif roman:
+        lines.append(f"- **Harmonic idea:** {roman}; the section's shape comes from where the phrase resolves, not from memorizing every bar.")
+    else:
+        lines.append(f"- **Harmonic idea:** root motion {chord_path}; use the direction of the bass line to shape the phrase.")
+    if "/" in " ".join(chords) or bass_path != chord_path:
+        lines.append(f"- **Voice leading:** the bass moves {bass_path}, so keep the low line connected instead of treating every chord as a reset.")
+    elif len(set(chords[:4])) <= 2 and len(chords) >= 4:
+        lines.append("- **Voice leading:** repetition is the point; create movement with dynamics, rhythm, melody, and register.")
+    else:
+        lines.append(f"- **Voice leading:** connect the nearest chord tones across {chord_path} so the harmony feels sung, not blocked.")
+    lines.append(f"- **Tension/release:** this section {section_tension_label(section_name, chords)}.")
+    return lines
+
+
 def instrument_analysis(ctx):
     inst = ctx.get("instrument", "")
     if inst == "Guitar":
         return [
-            "- Use compact voicings on middle strings so changes connect smoothly.",
-            "- For comping, alternate muted groove bars with fuller section accents.",
-            "- For lead playing, target 3rds/7ths and use slides into phrase peaks.",
+            "- **Guitar overlay:** use compact middle-string voicings for analysis passes, then decide where open strings/capo shapes make the chorus wider.",
+            "- **Creative task:** record one pass with muted strums and one pass with higher triads; keep the stronger texture for the bigger section.",
         ]
     if inst == "Piano":
         return [
-            "- Put roots or shells in the left hand; keep 3rds/7ths in the right hand.",
-            "- Practice nearest-voicing motion between adjacent chords before adding rhythm.",
-            "- In chorus/lift sections, widen voicings or add octaves for dynamic shape.",
+            "- **Piano overlay:** left hand roots/fifths, right hand 3rds/7ths first; add 9ths only after the voice leading is smooth.",
+            "- **Creative task:** play the verse with shells, then widen the chorus into octaves or spread voicings.",
         ]
     if inst == "Bass":
         return [
-            "- Outline roots first, then add fifths and chromatic approach tones into section downbeats.",
-            "- Where slash chords appear, treat the written bass note as intentional voice leading.",
-            "- Build groove by varying note length, not by adding too many passing notes.",
+            "- **Bass overlay:** outline roots and fifths first; add chromatic approaches only into strong section arrivals.",
+            "- **Creative task:** write one two-bar groove and keep it consistent before adding fills.",
         ]
-    if inst in ["Saxophone", "Flute", "Trumpet"]:
+    if inst in ["Saxophone", "Flute", "Trumpet", "Clarinet"]:
         return [
-            "- Target chord 3rds on strong beats to make the harmony audible in single-note lines.",
-            "- Use long tones on stable chords and more articulated motion over dominant chords.",
-            "- Shape phrases across section boundaries; do not restart every bar.",
+            "- **Horn/wind overlay:** target 3rds and 7ths on strong beats; use lighter articulation over stable chords and clearer attacks into dominants.",
+            "- **Creative task:** make a two-bar answer phrase that lands on a guide tone instead of running a full scale.",
         ]
     if inst == "Voice":
         return [
-            "- Map breaths to section boundaries and avoid spending all air before the harmonic arrival.",
-            "- Use lighter tone in setup sections and stronger vowels at chorus/hook arrival points.",
-            "- Practice lyric rhythm over the chord grid before singing full pitch.",
+            "- **Voice overlay:** mark breaths before long thoughts and save the widest vowel for the chorus or hook arrival.",
+            "- **Creative task:** speak the lyric rhythm over the chords, then sing it with one planned dynamic swell.",
         ]
     return [
         "- Identify the strongest arrival chord in each section and shape your phrase toward it.",
@@ -120,7 +255,7 @@ def deep_harmonic_analysis_text(ctx, all_chords_from_sections, chord_quality_fn)
     maj7_count = sum(1 for q in qualities if "major seventh" in q)
 
     out = []
-    out.append(f"# Deep Harmonic Analyzer — {ctx['song']}")
+    out.append(f"# Deep Harmonic Analyzer - {ctx['song']}")
     line = f"**Artist:** {ctx['artist']}"
     if ctx.get("composer"):
         line += f" | **Composer:** {ctx['composer']}"
@@ -130,13 +265,11 @@ def deep_harmonic_analysis_text(ctx, all_chords_from_sections, chord_quality_fn)
 
     out.append("\n## Harmonic Character")
     if ctx["genre"] == "Jazz":
-        out.append("- This chart uses extended harmony and functional motion.")
-        out.append("- Dominant seventh chords usually create forward pull into a resolution.")
-        out.append("- Minor seventh and half-diminished chords often prepare ii–V or minor-key motion.")
+        out.append("- Listen for functional motion: ii-V-I, secondary dominants, half-diminished tension, and guide-tone resolution.")
+        out.append("- Treat dominant chords as questions and tonic/maj7 colors as answers.")
     elif ctx["genre"] in ["Pop", "Rock"]:
-        out.append("- The song is built around memorable section loops rather than dense jazz harmony.")
-        out.append("- Repetition creates stability; section contrast creates emotional motion.")
-        out.append("- Verse, chorus, and bridge differences are the main dramatic engine.")
+        out.append("- The song likely gets power from repeated harmonic cells, lyric placement, register, and section contrast.")
+        out.append("- The most important analysis question is where the loop feels settled versus where it wants to lift.")
     elif ctx["genre"] == "Funk":
         out.append("- The harmony is groove-centered; repeated vamps matter more than constant chord changes.")
     elif ctx["genre"] == "Blues":
@@ -144,30 +277,42 @@ def deep_harmonic_analysis_text(ctx, all_chords_from_sections, chord_quality_fn)
     else:
         out.append("- The harmony supports melodic development and formal balance.")
 
-    out.append("\n## Chord Color Summary")
-    out.append(f"- Dominant-type chords: {dominant_count}")
-    out.append(f"- Minor-type chords: {minor_count}")
-    out.append(f"- Major-seventh color chords: {maj7_count}")
+    out.append("\n## Chord Color And Function")
+    color_notes = chord_color_notes(all_chords, ctx.get("instrument", ""))
+    if color_notes:
+        out.extend(f"- {note}" for note in color_notes[:4])
+    else:
+        out.append("- The chord colors are mostly direct triads/sevenths; make the performance interesting through groove, articulation, register, and dynamics.")
+    out.append(f"- Color inventory: {dominant_count} dominant-type, {minor_count} minor-type, {maj7_count} maj7 color chords.")
 
-    out.append("\n## Section Function")
+    out.append("\n## Section Function And Movement")
     for sec, chords in ctx["sections"].items():
-        out.extend(section_patterns(sec, chords))
+        out.extend(section_analysis_lines(sec, chords, ctx.get("display_key") or ctx.get("key") or "C"))
+
+    title = str(ctx.get("song", "")).lower()
+    if "piano man" in title:
+        out.append("\n## Song-Specific Insight")
+        out.append("- **Piano Man** uses descending bass movement like C -> B -> A in key moments, giving the accompaniment a conversational, rolling pull between vocal phrases.")
+    elif "love story" in title:
+        out.append("\n## Song-Specific Insight")
+        out.append("- **Love Story** saves emotional lift for the later modulation/final chorus; practice making the final key change feel brighter without rushing the tempo.")
+    elif any("key change" in sec.lower() or "modulation" in sec.lower() for sec in ctx["sections"]):
+        out.append("\n## Song-Specific Insight")
+        out.append("- A late modulation/key-change section works as an emotional lift; widen the register and simplify the rhythm so the new key feels intentional.")
 
     out.append("\n## Instrument-Specific Lens")
     out.extend(instrument_analysis(ctx))
 
-    out.append("\n## Improvisation Ideas")
+    out.append("\n## Scales, Modes, And Improvisation")
     if ctx["level"] == "Beginner":
-        out.append("- Start with chord roots, then add 3rds and 5ths.")
-        out.append("- Use short phrases, not long scale runs.")
+        out.append("- Start with roots, then add 3rds and 5ths. Make two-bar phrases, not long scale runs.")
     elif ctx["level"] == "Intermediate":
-        out.append("- Target the 3rd of each chord on strong beats.")
-        out.append("- Use one repeated motif and move it through the sections.")
-        out.append("- Practice guide tones between adjacent chords.")
+        out.append("- Target the 3rd of each chord on beat 1 or beat 3; use one repeated motif and move it through the form.")
+        out.append("- Over diatonic pop/rock loops, begin with the parent major/minor scale, then switch to chord tones on strong beats.")
     else:
         out.append("- Use guide-tone lines, chromatic approaches, delayed resolutions, and rhythmic displacement.")
-        out.append("- Try reharmonizing one repeated section with secondary dominants or tritone substitutions.")
-        out.append("- Build solos from motivic development rather than scale patterns.")
+        out.append("- For reharm, change only one repeated section first: add a secondary dominant, passing diminished chord, pedal point, or tritone sub where the melody allows it.")
+        out.append("- Build solos from motivic development rather than scale inventory.")
 
     return "\n".join(out)
 
@@ -205,7 +350,7 @@ def compact_chord_path(chords, limit=6):
 def chord_color_notes(chords, instrument):
     notes = []
     joined = " ".join(str(ch) for ch in chords).lower()
-    family = "winds" if instrument in ["Saxophone", "Flute", "Trumpet"] else str(instrument).lower()
+    family = "winds" if instrument in ["Saxophone", "Flute", "Trumpet", "Clarinet"] else str(instrument).lower()
 
     def add_once(text):
         if text not in notes:
@@ -214,7 +359,7 @@ def chord_color_notes(chords, instrument):
     for ch in chords:
         low = str(ch).lower()
         if "add9" in low:
-            add_once(f"**{ch}** has an open add9 color; let the 9th ring instead of over-strumming it.")
+            add_once(f"**{ch}** has an open add9 color; let the upper extension ring instead of making the attack too heavy.")
         if "maj7" in low:
             if family == "piano":
                 add_once(f"**{ch}** wants a soft maj7 touch: keep the 7th inside the right-hand voicing and use light pedal.")
@@ -354,10 +499,11 @@ def section_arrangement_idea(section_name, chords, ctx, target_style):
         ctx.get("level", "Intermediate"),
     )
     color_notes = chord_color_notes(chords, ctx.get("instrument", ""))
-    path = compact_chord_path(chords)
+    pattern = first_matching_pattern(chords, ctx.get("display_key") or ctx.get("key") or "C")
+    harmonic_behavior = pattern or f"{section_tension_label(section_name, chords)} through {root_path(chords, use_bass=True, limit=4)}"
 
     out = [f"### {section_name} - {len(chords)} bars"]
-    out.append(f"- **Chart focus:** `{path}`")
+    out.append(f"- **Musical job:** {harmonic_behavior}.")
     out.append(f"- **Arrangement move:** {role_text}.")
     out.append(f"- **{ctx.get('instrument', 'Instrument')} part:** {instrument_text}")
     for note in color_notes:
@@ -371,7 +517,7 @@ def section_arrangement_idea(section_name, chords, ctx, target_style):
 
 def creativity_arrangement_text(ctx, target_style, arrangement_section=None):
     out = []
-    out.append(f"# Creative Arrangement Assistant — {ctx['song']}")
+    out.append(f"# Creative Arrangement Assistant - {ctx['song']}")
     out.append(
         f"**Target style:** {target_style} | **Instrument:** {ctx['instrument']} | "
         f"**Level:** {ctx['level']} | **Focus:** {ctx['focus']}"
@@ -380,6 +526,7 @@ def creativity_arrangement_text(ctx, target_style, arrangement_section=None):
     profile = style_arrangement_profile(target_style, ctx.get("genre", ""))
     out.append("\n## Producer Direction")
     out.append(f"- **Overall feel:** {profile['feel']}.")
+    out.append("- Keep the original form recognizable; change density, register, rhythm, and voicing before rewriting the whole harmony.")
     if ctx["level"] == "Beginner":
         out.append("- Keep the reharm light: change texture and register before changing many chords.")
     elif ctx["level"] == "Intermediate":
@@ -392,7 +539,7 @@ def creativity_arrangement_text(ctx, target_style, arrangement_section=None):
         sections = {arrangement_section: ctx["sections"].get(arrangement_section, [])}
         out.append(f"\n## Focused Section: {arrangement_section}")
     else:
-        out.append("\n## Section-by-Section Arrangement")
+        out.append("\n## Section-by-Section Arrangement Concepts")
 
     for sec, chords in sections.items():
         out.extend(section_arrangement_idea(sec, chords, ctx, target_style))
@@ -405,7 +552,7 @@ def creativity_arrangement_text(ctx, target_style, arrangement_section=None):
 
 def improvisation_intelligence_text(ctx):
     out = []
-    out.append(f"# Improvisation Intelligence System — {ctx['song']}")
+    out.append(f"# Improvisation Intelligence System - {ctx['song']}")
     out.append("\n## What the system is tracking")
     out.append("- chord-tone targeting")
     out.append("- repeated rhythmic habits")
@@ -433,7 +580,7 @@ def improvisation_intelligence_text(ctx):
 
 def adaptive_weakness_detection_text(ctx):
     out = []
-    out.append(f"# Adaptive Weakness Detection — {ctx['song']}")
+    out.append(f"# Adaptive Weakness Detection - {ctx['song']}")
     out.append("\n## Current practice targets")
     if ctx["focus"] == "Improvisation":
         out.append("- Target stronger chord-tone resolution and less repetitive phrasing.")

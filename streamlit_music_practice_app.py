@@ -2238,11 +2238,22 @@ def daily_practice_breakdown_markdown(song, sections, instrument, level, focus, 
         "voice": f"breath, vowel, lyric delivery, and dynamics for **{section_name}**",
     }.get(family, f"clean time and chord-tone control through **{first_chord} -> {second_chord}**")
 
+    focus_area = _focus_area(focus)
+    focus_task = {
+        "Rhythm": f"put the metronome/backing track at 70-80% speed and make every entrance in **{chord_path}** land without rushing",
+        "Harmony": f"name the function/color of **{first_chord} -> {second_chord}**, then voice-lead by nearest chord tones",
+        "Melody": f"build a two-bar phrase that peaks once and resolves into **{second_chord}**",
+        "Improvisation": f"improvise only with chord tones for one pass, then add one approach note into **{second_chord}**",
+        "Ear Training": f"sing the root and 3rd of **{first_chord}**, then check it on your instrument before moving to **{second_chord}**",
+    }.get(focus_area, f"make the change **{first_chord} -> {second_chord}** clean, musical, and repeatable")
+
     return f"""
-- Warmup ({blocks['warmup']} min): prepare **{instrument}** for {instrument_focus}.
-- Song section ({blocks['section']} min): loop **{section_name}** from **{song}** for {span} bars: **{chord_path}**.
-- {focus} block ({blocks['focus']} min): drill the exact change **{first_chord} -> {second_chord}** until it lands cleanly in time.
-- Review ({blocks['review']} min): record one pass of **{section_name}**, then write one timing fix and one tone/phrasing fix.
+**Coach assignment for today:** make **{section_name}** feel intentional, not just correct.
+
+- Warmup ({blocks['warmup']} min): prepare **{instrument}** for {instrument_focus}; keep the sound relaxed and even.
+- Song section ({blocks['section']} min): loop **{section_name}** from **{song}** for {span} bars: **{chord_path}**. First pass is accuracy, second pass is musical shape.
+- {focus} block ({blocks['focus']} min): {focus_task}.
+- Review ({blocks['review']} min): record one pass, then write one concrete fix for time, one for tone/phrasing, and one musical idea to keep tomorrow.
 """.strip()
 
 
@@ -2293,13 +2304,16 @@ def song_practice_plan(song, sections, instrument, level, focus, variation, sect
 
     if level == "Beginner":
         development = f"Keep the loop to {span} bars. Slow down until the change **{first_chord} -> {second_chord}** is clean twice in a row."
+        creative_step = f"Change only one thing on the final pass: softer verse touch, stronger chorus touch, or one cleaner breath/entrance."
     elif level == "Intermediate":
         development = f"Connect the drill to the backing track for {blocks['focus']} minutes, then record one full pass of **{section_name}**."
+        creative_step = f"Create one alternate version of the same {span}-bar phrase: new register, new voicing, new articulation, or a small fill into **{second_chord}**."
     else:
         development = f"After the clean pass, add one controlled variation: displacement, reharm, articulation change, fill, or dynamic contrast based on your instrument."
+        creative_step = f"Test one advanced choice in context: substitute a passing color, delay a resolution, displace the rhythm, or reharmonize only the last bar of the loop."
 
     return f"""
-### Personalized Exercise {cycle}: {section_name}
+### Conservatory Coach Plan {cycle}: {section_name}
 **Song:** {song}  
 **Target section:** {section_name} — {bars} bars  
 **Today:** {blocks['total']} minutes on **{instrument}**, **{level}**, **{focus}**  
@@ -2307,20 +2321,24 @@ def song_practice_plan(song, sections, instrument, level, focus, variation, sect
 **Loop:** **{chord_path}**  
 **Section character:** {_section_character(section_name)}
 
-**Warm-up ({blocks['warmup']} min)**
+**1. Technical Warm-up ({blocks['warmup']} min)**
 - Play/sing the chord tones of **{first_chord}**: {chord_tones}. Then resolve into **{second_chord}** {difficulty}.
 
-**Main drill ({blocks['section']} min)**
+**2. Song-Specific Drill ({blocks['section']} min)**
 - {drills[0]}
 
-**Instrument-specific coaching ({blocks['focus']} min)**
+**3. Instrument + Focus Coaching ({blocks['focus']} min)**
 - {drills[1]}
 - {drills[2]}
 
+**4. Creativity / Musicianship**
+- {creative_step}
+
 {lyric_application}
 
-**Progression / check ({blocks['review']} min)**
+**5. Progress Check ({blocks['review']} min)**
 - {development}
+- Success standard: one clean take where time, tone, and section shape are all believable.
 """
 
 
@@ -2336,14 +2354,25 @@ def default_time_signature(song, sections):
 
 
 def practice_text(level, instrument=None, sections=None, focus=None):
+    sections = sections or {}
+    section_name, section_chords = _section_for_exercise(sections, 0)
+    first_chord, second_chord = _transition_pair(section_chords, 0)
+    chord_path = _chord_run(section_chords, _exercise_span(level, len(section_chords)))
+    focus_area = _focus_area(focus)
+    coach_line = {
+        "Rhythm": f"Loop **{section_name}** and make the groove identical for three passes before adding fills.",
+        "Harmony": f"Study **{first_chord} -> {second_chord}**: name common tones, then move to the nearest available voicing.",
+        "Melody": f"Create a two-bar phrase over **{chord_path}** that lands clearly on a chord tone.",
+        "Improvisation": f"Improvise one chorus using only chord tones, then repeat with one chromatic approach into **{second_chord}**.",
+        "Ear Training": f"Sing the root and 3rd of **{first_chord}**, then verify on your instrument before playing the section.",
+    }.get(focus_area, f"Make **{first_chord} -> {second_chord}** clean, in time, and expressive.")
 
     if level == "Beginner":
-        base = """
-### Beginner Focus
-- Practice slowly.
-- Learn one section at a time.
-- Focus on clean rhythm.
-- Say chord names aloud.
+        base = f"""
+### Beginner Practice Sheet
+- Work on **{section_name}** only: **{chord_path}**.
+- Count aloud, name each chord before playing it, and stop if the pulse wobbles.
+- Coach target: {coach_line}
 """
         if instrument == "Voice":
             base += vocal_practice_text(level, sections or {})
@@ -2352,12 +2381,11 @@ def practice_text(level, instrument=None, sections=None, focus=None):
         return base
 
     if level == "Intermediate":
-        base = """
-### Intermediate Focus
-- Connect sections together.
-- Practice rhythm consistency.
-- Add chord-tone improvisation.
-- Record one full section.
+        base = f"""
+### Intermediate Practice Sheet
+- Loop **{section_name}** with a metronome/backing track: **{chord_path}**.
+- First pass: accurate changes. Second pass: dynamic shape. Third pass: one creative variation.
+- Coach target: {coach_line}
 """
         if instrument == "Voice":
             base += vocal_practice_text(level, sections or {})
@@ -2365,12 +2393,11 @@ def practice_text(level, instrument=None, sections=None, focus=None):
             base += guitar_practice_text(focus, level)
         return base
 
-    base = """
-### Advanced Focus
-- Use voice leading.
-- Add substitutions and inversions.
-- Improvise over the full form.
-- Create variations for each section.
+    base = f"""
+### Advanced Practice Sheet
+- Analyze **{section_name}** as a performance problem, not a chord list: **{chord_path}**.
+- Run one clean take, one reharm/variation take, and one final musical take that keeps only the strongest idea.
+- Coach target: {coach_line}
 """
     if instrument == "Voice":
         base += vocal_practice_text(level, sections or {})
