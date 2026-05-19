@@ -1592,7 +1592,7 @@ def render_chord_coach_ui(chords, instrument, level, key_prefix, expanded=True):
         st.info("No chords are available for the current song/section.")
         return
 
-    with st.expander("Chord Coach / How to Play This Chord", expanded=expanded):
+    with st.expander("Chord Finder / How to Play", expanded=expanded):
         st.caption("Pick any chord from the selected song and get instrument-specific playing guidance.")
         selected_chord = st.selectbox(
             "Chord to explain",
@@ -1628,31 +1628,37 @@ def transposed_key_for_instrument(concert_key, instrument_label):
 
 
 def render_transposition_helper(concert_key, instrument, key_prefix):
+    if instrument == "Flute":
+        with st.expander("Instrument Key / Transposition Helper", expanded=True):
+            st.write(f"Concert key: **{concert_key}**")
+            st.write("Flute is a concert-pitch instrument, so no transposition is needed.")
+        return concert_key, False, "Flute (concert pitch)"
+
     options = transposing_instrument_options(instrument)
     if not options:
         return concert_key, False, None
 
-    st.subheader("Instrument Transposition Helper")
-    col_a, col_b, col_c = st.columns([1.2, 1.2, 1])
-    with col_a:
-        instrument_key = st.selectbox(
-            "Transposing instrument",
-            options,
-            key=f"{key_prefix}::transposing_instrument",
+    with st.expander("Instrument Key / Transposition Helper", expanded=True):
+        col_a, col_b, col_c = st.columns([1.2, 1.2, 1])
+        with col_a:
+            instrument_key = st.selectbox(
+                "Transposing instrument",
+                options,
+                key=f"{key_prefix}::transposing_instrument",
+            )
+        written_key = transposed_key_for_instrument(concert_key, instrument_key)
+        with col_b:
+            st.write(f"Concert key: **{concert_key}**")
+            st.write(f"Written key: **{written_key}**")
+        with col_c:
+            show_written = st.checkbox(
+                "Show chart in instrument key",
+                value=False,
+                key=f"{key_prefix}::show_written_key",
+            )
+        st.caption(
+            f"{instrument_key}: read/play in **{written_key}** when the concert chart is **{concert_key}**."
         )
-    written_key = transposed_key_for_instrument(concert_key, instrument_key)
-    with col_b:
-        st.write(f"Concert key: **{concert_key}**")
-        st.write(f"Instrument key: **{written_key}**")
-    with col_c:
-        show_written = st.checkbox(
-            "Show chart in instrument key",
-            value=False,
-            key=f"{key_prefix}::show_written_key",
-        )
-    st.caption(
-        f"{instrument_key}: written notes transpose so the part reads in **{written_key}** when the concert chart is **{concert_key}**."
-    )
     return written_key if show_written else concert_key, show_written, instrument_key
 
 
@@ -1661,55 +1667,95 @@ def capo_fret_for_shape(sounding_key, shape_key):
 
 
 def render_guitar_capo_helper(base_sections, sounding_key, key_prefix):
-    st.subheader("Guitar Capo Helper")
-    col_a, col_b, col_c = st.columns([1.2, 1.2, 1])
-    with col_a:
-        shape_key = st.selectbox(
-            "Play using chord shapes in",
-            COMMON_KEYS,
-            index=COMMON_KEYS.index("G") if "G" in COMMON_KEYS else 0,
-            key=f"{key_prefix}::capo_shape_key",
+    with st.expander("Capo / Guitar Shape Helper", expanded=True):
+        col_a, col_b, col_c = st.columns([1.1, 1.1, 1])
+        with col_a:
+            actual_key = st.selectbox(
+                "Actual sounding key",
+                COMMON_KEYS,
+                index=COMMON_KEYS.index(sounding_key) if sounding_key in COMMON_KEYS else 0,
+                key=f"{key_prefix}::capo_actual_key",
+            )
+            shape_key = st.selectbox(
+                "Desired guitar shape key",
+                COMMON_KEYS,
+                index=COMMON_KEYS.index("G") if "G" in COMMON_KEYS else 0,
+                key=f"{key_prefix}::capo_shape_key",
+            )
+        capo = capo_fret_for_shape(actual_key, shape_key)
+        actual_sections = transpose_sections_dict(base_sections, sounding_key, actual_key)
+        shape_sections = transpose_sections_dict(actual_sections, actual_key, shape_key)
+        shape_chords = chord_blocks_for_selected_sections(shape_sections)[:8]
+        with col_b:
+            st.write(f"Sounding key: **{actual_key}**")
+            st.write(f"Play using: **{shape_key} shapes**")
+            st.write(f"Will sound in: **{actual_key}**")
+        with col_c:
+            st.metric("Capo position", f"{capo} fret" if capo == 1 else f"{capo} frets")
+        st.caption(
+            "Use the capo position so your chosen chord shapes sound in the actual song key."
         )
-    capo = capo_fret_for_shape(sounding_key, shape_key)
-    shape_sections = transpose_sections_dict(base_sections, sounding_key, shape_key)
-    shape_chords = chord_blocks_for_selected_sections(shape_sections)[:8]
-    with col_b:
-        st.write(f"Sounding key: **{sounding_key}**")
-        st.write(f"Shape key: **{shape_key}**")
-    with col_c:
-        st.metric("Suggested capo", f"{capo} fret" if capo == 1 else f"{capo} frets")
-    st.caption(
-        "Capo suggestion assumes standard tuning: play the shape-key chords with the capo placed so they sound in the selected chart key."
-    )
-    if shape_chords:
-        st.write("First playable shapes: `" + " | ".join(shape_chords) + "`")
+        if shape_chords:
+            st.write("Playable chord shapes: `" + " | ".join(shape_chords) + "`")
 
 
-def playback_follow_position(events, bpm, loops, start_time=None, manual_index=0):
+def build_chord_event_timeline(events, bpm, loops, beats_per_bar=4):
+    timeline = []
     if not events:
+        return timeline
+    bar_duration = (60 / max(1, bpm)) * beats_per_bar
+    looped_events = events * max(1, int(loops))
+    for idx, event in enumerate(looped_events):
+        start_time = idx * bar_duration
+        end_time = start_time + bar_duration
+        timeline.append({
+            "event_index": idx,
+            "absolute_bar": idx + 1,
+            "total_bars": len(looped_events),
+            "section": event.get("section", ""),
+            "bar_in_section": int(event.get("bar_in_section", 0)) + 1,
+            "section_bars": int(event.get("section_bars", 1)),
+            "chord": event.get("chord", ""),
+            "start_time": start_time,
+            "duration": bar_duration,
+            "end_time": end_time,
+        })
+    return timeline
+
+
+def playback_follow_position(timeline, playback_start_time=None, manual_index=0):
+    if not timeline:
         return None
-    total_events = events * max(1, int(loops))
-    if start_time:
-        bar_seconds = (60 / max(1, bpm)) * 4
-        idx = int((time.time() - start_time) // bar_seconds) % len(total_events)
+    total_duration = timeline[-1]["end_time"]
+    if playback_start_time:
+        elapsed = max(0, time.time() - playback_start_time)
+        if elapsed >= total_duration:
+            idx = len(timeline) - 1
+            ended = True
+        else:
+            idx = next(
+                (
+                    i for i, event in enumerate(timeline)
+                    if event["start_time"] <= elapsed < event["end_time"]
+                ),
+                0,
+            )
+            ended = False
     else:
-        idx = int(manual_index) % len(total_events)
-    event = total_events[idx]
-    next_event = total_events[(idx + 1) % len(total_events)]
-    return {
-        "absolute_bar": idx + 1,
-        "total_bars": len(total_events),
-        "section": event.get("section", ""),
-        "bar_in_section": int(event.get("bar_in_section", 0)) + 1,
-        "section_bars": int(event.get("section_bars", 1)),
-        "chord": event.get("chord", ""),
-        "next_chord": next_event.get("chord", ""),
-    }
+        idx = int(manual_index) % len(timeline)
+        elapsed = timeline[idx]["start_time"]
+        ended = False
+    event = dict(timeline[idx])
+    next_event = timeline[(idx + 1) % len(timeline)]
+    event["next_chord"] = next_event.get("chord", "")
+    event["elapsed"] = elapsed
+    event["ended"] = ended
+    return event
 
 
-def render_follow_along_controls(events, bpm, loops, key_prefix):
+def render_follow_along_controls(timeline, key_prefix):
     st.subheader("Live Chord Follow-Along")
-    st.caption("Practical follow-along: start the tracker when you press play, or step through bars manually.")
+    st.caption("Uses the same looped chord-event timeline that generated the backing track audio.")
     start_key = f"{key_prefix}::follow_start_time"
     index_key = f"{key_prefix}::follow_manual_index"
     st.session_state.setdefault(index_key, 0)
@@ -1732,10 +1778,8 @@ def render_follow_along_controls(events, bpm, loops, key_prefix):
             st.session_state[index_key] = 0
 
     pos = playback_follow_position(
-        events,
-        bpm,
-        loops,
-        start_time=st.session_state.get(start_key),
+        timeline,
+        playback_start_time=st.session_state.get(start_key),
         manual_index=st.session_state.get(index_key, 0),
     )
     if not pos:
@@ -1747,7 +1791,12 @@ def render_follow_along_controls(events, bpm, loops, key_prefix):
     c2.metric("Current Chord", pos["chord"])
     c3.metric("Current Bar", f"{pos['bar_in_section']} of {pos['section_bars']}")
     c4.metric("Next Chord", pos["next_chord"])
-    st.caption(f"Absolute bar {pos['absolute_bar']} of {pos['total_bars']}. Highlighted in the chart below.")
+    if pos.get("ended"):
+        st.warning("Backing track timeline has reached the end. Press Start follow-along or Generate again to restart.")
+    st.caption(
+        f"Event {pos['event_index'] + 1} | absolute bar {pos['absolute_bar']} of {pos['total_bars']} | "
+        f"{pos['start_time']:.1f}s-{pos['end_time']:.1f}s. Highlighted in the chart below."
+    )
     return pos
 
 
@@ -1797,7 +1846,7 @@ def _technical_pattern_for_exercise(instrument, focus, first_chord, second_chord
 
 
 def _instrument_family(instrument):
-    if instrument in ["Saxophone", "Flute", "Trumpet"]:
+    if instrument in ["Saxophone", "Flute", "Trumpet", "Clarinet"]:
         return "winds"
     if instrument == "Voice":
         return "voice"
@@ -1864,6 +1913,14 @@ FOCUS_OPTIONS_BY_INSTRUMENT = {
         "Articulation",
         "Range",
         "Jazz Phrasing",
+        "Guide Tones",
+        "Ear Training",
+    ],
+    "Clarinet": [
+        "Tone",
+        "Scales",
+        "Articulation",
+        "Breath Support",
         "Guide Tones",
         "Ear Training",
     ],
@@ -3335,14 +3392,14 @@ Focus: **{focus}**
             "Each new exercise rotates section targets and raises the musical demand gradually."
         )
 
-    if level in ["Intermediate", "Advanced"]:
-        render_chord_coach_ui(
-            all_chords_from_sections(sections),
-            instrument,
-            level,
-            key_prefix=f"practice::{song}::{instrument}::{level}",
-            expanded=True,
-        )
+    st.subheader("Chord Finder / How to Play")
+    render_chord_coach_ui(
+        all_chords_from_sections(sections),
+        instrument,
+        level,
+        key_prefix=f"practice::{song}::{instrument}::{level}",
+        expanded=True,
+    )
 
     st.subheader("Metronome")
     render_metronome_widget(
@@ -3711,19 +3768,11 @@ with tabs[2]:
     if instrument == "Voice":
         st.caption("Voice lyric and phrasing cues are shown inside each chart section below.")
 
-    chart_display_key = display_key
-    transposition_label = None
-    if transposing_instrument_options(instrument):
-        chart_display_key, _show_written_key, transposition_label = render_transposition_helper(
-            display_key,
-            instrument,
-            key_prefix=f"backing::{song}",
-        )
-
     chart_level_song_data = {
         **song_data,
         "sections": level_source_sections,
     }
+    chart_display_key = display_key
     chart_sections = transpose_sections(
         chart_level_song_data,
         chart_display_key,
@@ -3737,6 +3786,15 @@ with tabs[2]:
         selected_section_names,
     )
 
+    st.subheader("Chord Finder / How to Play")
+    render_chord_coach_ui(
+        all_chords_from_sections(chart_sections),
+        instrument,
+        level,
+        key_prefix=f"backing::{song}::{instrument}::{level}",
+        expanded=True,
+    )
+
     if instrument == "Guitar":
         render_guitar_capo_helper(
             sections,
@@ -3744,14 +3802,25 @@ with tabs[2]:
             key_prefix=f"backing::{song}",
         )
 
-    st.subheader("Chord Coach / How to Play This Chord")
-    render_chord_coach_ui(
-        chart_backing_chords or all_chords_from_sections(chart_sections),
-        instrument,
-        level,
-        key_prefix=f"backing::{song}::{instrument}::{level}",
-        expanded=True,
-    )
+    transposition_label = None
+    if transposing_instrument_options(instrument) or instrument == "Flute":
+        chart_display_key, _show_written_key, transposition_label = render_transposition_helper(
+            display_key,
+            instrument,
+            key_prefix=f"backing::{song}",
+        )
+        chart_sections = transpose_sections(
+            chart_level_song_data,
+            chart_display_key,
+        )
+        chart_backing_chords = chord_blocks_for_selected_sections(
+            chart_sections,
+            selected_section_names,
+        )
+        chart_backing_events = chord_events_for_selected_sections(
+            chart_sections,
+            selected_section_names,
+        )
 
     coach_section = selected_section_names[0] if selected_section_names else next((name for name, chs in section_order(chart_sections) if chs), "")
     coach_chords = chart_sections.get(coach_section, []) if coach_section else []
@@ -3767,11 +3836,77 @@ with tabs[2]:
             )
         )
 
-    follow_position = render_follow_along_controls(
-        chart_backing_events,
+    _current_backing_signature = (
+        song,
+        display_key,
+        level,
+        resolved_groove,
         bpm,
         form_loops,
-        key_prefix=f"backing::{song}::{tuple(selected_section_names)}::{chart_display_key}",
+        tuple(selected_section_names),
+        tuple(backing_chords),
+    )
+    _follow_key_prefix = f"backing::{song}::{tuple(selected_section_names)}::{display_key}::{bpm}::{form_loops}"
+
+    st.subheader("Generate / Play Backing Track")
+    if st.button(
+        "Generate backing track (from active song + settings above)",
+        key="gen_backing_btn",
+        disabled=not bool(backing_chords),
+    ):
+        wav = generate_backing_track(
+            backing_events,
+            bpm=bpm,
+            loops=form_loops,
+            style=resolved_groove,
+            level=level,
+        )
+
+        st.session_state["_last_backing_wav"] = wav
+        st.session_state["_last_backing_signature"] = _current_backing_signature
+        st.session_state["_last_backing_timeline"] = build_chord_event_timeline(
+            backing_events,
+            bpm,
+            form_loops,
+        )
+        st.session_state[f"{_follow_key_prefix}::follow_start_time"] = time.time()
+        st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
+
+    if (
+        st.session_state.get("_last_backing_wav")
+        and st.session_state.get("_last_backing_signature") == _current_backing_signature
+    ):
+        st.audio(
+            st.session_state["_last_backing_wav"],
+            format="audio/wav",
+        )
+        st.caption(
+            "For exact manual sync, press Start follow-along at the same moment you press play in the audio player."
+        )
+
+        _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
+
+        st.download_button(
+            "Download backing track WAV",
+            st.session_state["_last_backing_wav"],
+            file_name=f"{song.replace(' ', '_')}_{_scope_bit}_{form_loops}loops.wav",
+            mime="audio/wav",
+            key="dl_backing_btn",
+        )
+
+    _stored_timeline = (
+        st.session_state.get("_last_backing_timeline")
+        if st.session_state.get("_last_backing_signature") == _current_backing_signature
+        else None
+    )
+    _follow_timeline = _stored_timeline or build_chord_event_timeline(
+        backing_events,
+        bpm,
+        form_loops,
+    )
+    follow_position = render_follow_along_controls(
+        _follow_timeline,
+        key_prefix=_follow_key_prefix,
     )
     current_chart_section = (
         follow_position["section"]
@@ -3780,7 +3915,7 @@ with tabs[2]:
     )
     current_chart_bar = follow_position["bar_in_section"] if follow_position else None
 
-    st.subheader("2. Full Song Chart")
+    st.subheader("Full Song Chart")
 
     st.markdown(
         full_chord_markdown(
@@ -3831,67 +3966,6 @@ with tabs[2]:
             pd.DataFrame(selected_rows),
             use_container_width=True,
             hide_index=True,
-        )
-
-    st.subheader("3. Generate / Play Backing Track")
-
-    if st.button(
-        "Generate backing track (from active song + settings above)",
-        key="gen_backing_btn",
-        disabled=not bool(backing_chords),
-    ):
-
-        _backing_signature = (
-            song,
-            display_key,
-            level,
-            resolved_groove,
-            bpm,
-            form_loops,
-            tuple(selected_section_names),
-            tuple(backing_chords),
-        )
-
-        wav = generate_backing_track(
-            backing_events,
-            bpm=bpm,
-            loops=form_loops,
-            style=resolved_groove,
-            level=level,
-        )
-
-        st.session_state["_last_backing_wav"] = wav
-        st.session_state["_last_backing_signature"] = _backing_signature
-
-    _current_backing_signature = (
-        song,
-        display_key,
-        level,
-        resolved_groove,
-        bpm,
-        form_loops,
-        tuple(selected_section_names),
-        tuple(backing_chords),
-    )
-
-    if (
-        st.session_state.get("_last_backing_wav")
-        and st.session_state.get("_last_backing_signature") == _current_backing_signature
-    ):
-
-        st.audio(
-            st.session_state["_last_backing_wav"],
-            format="audio/wav",
-        )
-
-        _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
-
-        st.download_button(
-            "Download backing track WAV",
-            st.session_state["_last_backing_wav"],
-            file_name=f"{song.replace(' ', '_')}_{_scope_bit}_{form_loops}loops.wav",
-            mime="audio/wav",
-            key="dl_backing_btn",
         )
 
 # -------------------------------------------------
