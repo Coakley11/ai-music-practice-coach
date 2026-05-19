@@ -1869,14 +1869,19 @@ def live_follow_along_component_html(wav_bytes, timeline, chart_html):
       margin-top: 6px;
     }}
     .live-follow-shell .chord-cell.current-chord {{
-      background: #bbf7d0 !important;
-      border-color: #16a34a !important;
-      box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.24) !important;
+      background: #86efac !important;
+      border-color: #15803d !important;
+      box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.28), 0 0 22px rgba(22, 163, 74, 0.28) !important;
       transform: translateY(-1px);
+      animation: livePulse 1.1s ease-in-out infinite alternate;
     }}
     .live-follow-shell .section-card.current {{
       outline: 3px solid rgba(34, 197, 94, 0.34) !important;
       box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.10) !important;
+    }}
+    @keyframes livePulse {{
+      from {{ box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.22), 0 0 12px rgba(22, 163, 74, 0.20); }}
+      to {{ box-shadow: 0 0 0 5px rgba(22, 163, 74, 0.36), 0 0 26px rgba(22, 163, 74, 0.34); }}
     }}
     @media (max-width: 760px) {{
       .live-status-grid {{ grid-template-columns: repeat(2, minmax(120px, 1fr)); }}
@@ -1922,13 +1927,27 @@ def live_follow_along_component_html(wav_bytes, timeline, chart_html):
     const nextEl = document.getElementById("live-next");
     const detailEl = document.getElementById("live-detail");
     let lastEventIndex = null;
+    let animationFrameId = null;
 
     function eventAt(timeSeconds) {{
       if (!timeline.length) return null;
       if (timeSeconds >= timeline[timeline.length - 1].end_time) {{
         return timeline[timeline.length - 1];
       }}
-      return timeline.find((event) => event.start_time <= timeSeconds && timeSeconds < event.end_time) || timeline[0];
+      let lo = 0;
+      let hi = timeline.length - 1;
+      while (lo <= hi) {{
+        const mid = Math.floor((lo + hi) / 2);
+        const event = timeline[mid];
+        if (timeSeconds < event.start_time) {{
+          hi = mid - 1;
+        }} else if (timeSeconds >= event.end_time) {{
+          lo = mid + 1;
+        }} else {{
+          return event;
+        }}
+      }}
+      return timeline[Math.max(0, Math.min(lo, timeline.length - 1))] || timeline[0];
     }}
 
     function clearHighlight() {{
@@ -1939,10 +1958,15 @@ def live_follow_along_component_html(wav_bytes, timeline, chart_html):
       }});
     }}
 
-    function updateHighlight() {{
-      const event = eventAt(audio.currentTime || 0);
+    function updateHighlight(force = false) {{
+      const audioTime = audio.currentTime || 0;
+      const event = eventAt(audioTime);
       if (!event) return;
-      if (event.event_index === lastEventIndex && !audio.paused) return;
+      const eventChanged = event.event_index !== lastEventIndex;
+      if (!eventChanged && !force) {{
+        detailEl.textContent = `Audio ${{audioTime.toFixed(2)}}s | Event ${{event.event_index + 1}} of ${{timeline.length}} | ${{event.start_time.toFixed(1)}}s-${{event.end_time.toFixed(1)}}s`;
+        return;
+      }}
       lastEventIndex = event.event_index;
 
       const next = timeline[(event.event_index + 1) % timeline.length] || event;
@@ -1950,7 +1974,7 @@ def live_follow_along_component_html(wav_bytes, timeline, chart_html):
       chordEl.textContent = event.chord || "-";
       barEl.textContent = `${{event.bar_in_section}} of ${{event.section_bars}}`;
       nextEl.textContent = next.chord || "-";
-      detailEl.textContent = `Event ${{event.event_index + 1}} of ${{timeline.length}} | ${{event.start_time.toFixed(1)}}s-${{event.end_time.toFixed(1)}}s`;
+      detailEl.textContent = `Audio ${{audioTime.toFixed(2)}}s | Event ${{event.event_index + 1}} of ${{timeline.length}} | ${{event.start_time.toFixed(1)}}s-${{event.end_time.toFixed(1)}}s`;
       const nowPlayingBanner = document.querySelector(".now-playing");
       if (nowPlayingBanner) {{
         nowPlayingBanner.textContent = `Now Playing: ${{event.section}} | Bar ${{event.bar_in_section}} | ${{event.chord}}`;
@@ -1970,18 +1994,41 @@ def live_follow_along_component_html(wav_bytes, timeline, chart_html):
           const label = labels[labels.length - 1];
           if (label) label.textContent = "Now Playing";
         }}
+        if (eventChanged && !audio.paused) {{
+          currentCell.scrollIntoView({{ behavior: "smooth", block: "center", inline: "nearest" }});
+        }}
       }}
     }}
 
-    audio.addEventListener("play", updateHighlight);
-    audio.addEventListener("timeupdate", updateHighlight);
-    audio.addEventListener("seeked", updateHighlight);
-    audio.addEventListener("pause", updateHighlight);
+    function followLoop() {{
+      updateHighlight(false);
+      if (!audio.paused && !audio.ended) {{
+        animationFrameId = window.requestAnimationFrame(followLoop);
+      }}
+    }}
+
+    function startFollowLoop() {{
+      if (animationFrameId) {{
+        window.cancelAnimationFrame(animationFrameId);
+      }}
+      updateHighlight(true);
+      animationFrameId = window.requestAnimationFrame(followLoop);
+    }}
+
+    audio.addEventListener("play", startFollowLoop);
+    audio.addEventListener("playing", startFollowLoop);
+    audio.addEventListener("timeupdate", () => updateHighlight(false));
+    audio.addEventListener("seeked", () => updateHighlight(true));
+    audio.addEventListener("pause", () => updateHighlight(true));
     audio.addEventListener("ended", () => {{
-      updateHighlight();
+      if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+      updateHighlight(true);
       detailEl.textContent = "Track ended. Press play to restart the follow-along.";
     }});
-    updateHighlight();
+    window.setInterval(() => {{
+      if (!audio.paused && !audio.ended) updateHighlight(false);
+    }}, 125);
+    updateHighlight(true);
   </script>
 </div>
 """
