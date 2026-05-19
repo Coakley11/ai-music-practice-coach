@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from music_theory import semitone_distance, transpose_chord
+
 from creative_lab_text import (
     chord_quality,
     chord_root,
@@ -14,6 +16,7 @@ from creative_lab_text import (
 
 CPL_SAVED_KEY = "cpl_saved_progressions"
 CPL_ACTIVE_KEY = "cpl_active_progression"
+CPL_LAST_DISPLAY_KEY = "cpl_last_display_key"
 
 DEFAULT_SECTIONS = {
     "Verse": [
@@ -32,15 +35,137 @@ DEFAULT_SECTIONS = {
 
 
 def default_active_progression():
+    home_key = "C"
+    original = {k: [dict(x) for x in v] for k, v in DEFAULT_SECTIONS.items()}
     return {
         "name": "Untitled progression",
-        "key_center": "C",
+        "original_key_center": home_key,
+        "original_sections": original,
         "time_signature": "4/4",
         "bpm": 100,
         "groove_style": "Auto",
         "loops": 2,
-        "sections": {k: [dict(x) for x in v] for k, v in DEFAULT_SECTIONS.items()},
     }
+
+
+def deep_copy_sections(sections):
+    return {
+        name: [dict(entry) for entry in entries]
+        for name, entries in (sections or {}).items()
+    }
+
+
+def ensure_original_structure(active):
+    """Migrate legacy active dicts to original_sections + original_key_center."""
+    if not active:
+        return default_active_progression()
+    if not active.get("original_sections"):
+        legacy = active.get("sections") or DEFAULT_SECTIONS
+        active["original_sections"] = deep_copy_sections(legacy)
+    if not active.get("original_key_center"):
+        active["original_key_center"] = active.get("key_center", "C")
+    active.pop("sections", None)
+    active.pop("key_center", None)
+    return active
+
+
+def transpose_section_entries(entries, from_key, to_key):
+    steps = semitone_distance(from_key, to_key)
+    if steps == 0:
+        return [dict(entry) for entry in entries or []]
+    out = []
+    for entry in entries or []:
+        chord = normalize_chord_symbol(entry.get("chord", ""))
+        if not chord:
+            continue
+        out.append(
+            {
+                "chord": transpose_chord(chord, steps),
+                "bars": max(1, int(entry.get("bars", 1) or 1)),
+            }
+        )
+    return out
+
+
+def transpose_lab_sections(sections, from_key, to_key):
+    return {
+        name: transpose_section_entries(entries, from_key, to_key)
+        for name, entries in (sections or {}).items()
+    }
+
+
+def display_sections_for_key(active, display_key):
+    active = ensure_original_structure(active)
+    home = active.get("original_key_center", "C")
+    original = active.get("original_sections") or {}
+    return transpose_lab_sections(original, home, display_key)
+
+
+def commit_display_sections_to_original(active, display_sections, display_key):
+    active = ensure_original_structure(active)
+    home = active.get("original_key_center", "C")
+    active["original_sections"] = transpose_lab_sections(
+        display_sections,
+        display_key,
+        home,
+    )
+    return active
+
+
+def anchor_home_key_to_display(active, display_key):
+    """Re-home the progression in the current sidebar display key."""
+    active = ensure_original_structure(active)
+    active["original_sections"] = display_sections_for_key(active, display_key)
+    active["original_key_center"] = display_key
+    return active
+
+
+def invalidate_cpl_derived_outputs(session_state):
+    session_state.pop("cpl_backing_wav", None)
+    session_state.pop("cpl_backing_signature", None)
+    session_state.pop("cpl_analysis_md", None)
+    session_state.pop("cpl_exercises_md", None)
+
+
+def on_global_display_key_change(session_state, display_key):
+    last = session_state.get(CPL_LAST_DISPLAY_KEY)
+    if last is None:
+        session_state[CPL_LAST_DISPLAY_KEY] = display_key
+        return False
+    if last != display_key:
+        session_state[CPL_LAST_DISPLAY_KEY] = display_key
+        invalidate_cpl_derived_outputs(session_state)
+        return True
+    return False
+
+
+def backing_signature(display_key, sections, bpm, loops, groove_style):
+    flat = all_chords_from_lab_sections(sections)
+    return (display_key, tuple(flat), int(bpm), int(loops), str(groove_style))
+
+
+def transpose_debug_lines(active, display_key):
+    """Human-readable transpose state for UI debugging."""
+    active = ensure_original_structure(active)
+    home = active.get("original_key_center", "C")
+    steps = semitone_distance(home, display_key)
+    original_flat = all_chords_from_lab_sections(active.get("original_sections") or {})
+    display_flat = all_chords_from_lab_sections(display_sections_for_key(active, display_key))
+    first_orig = original_flat[0] if original_flat else "(none)"
+    first_disp = display_flat[0] if display_flat else "(none)"
+    lines = [
+        f"**Home key:** {home}",
+        f"**Display key (sidebar):** {display_key}",
+        f"**Transpose:** {'+' if steps else ''}{steps} semitone(s)",
+        f"**First chord (home):** {first_orig}",
+        f"**First chord (display):** {first_disp}",
+    ]
+    if len(original_flat) >= 4:
+        sample_orig = " | ".join(original_flat[:4])
+        sample_disp = " | ".join(display_flat[:4])
+        lines.append(f"**First four (home):** {sample_orig}")
+        lines.append(f"**First four (display):** {sample_disp}")
+    return lines
 
 
 def normalize_chord_symbol(text):
@@ -390,17 +515,15 @@ def lab_context_for_coaching(sections, key_center, instrument, level, focus):
 
 
 def save_progression(store, name, data):
+    data = ensure_original_structure(dict(data))
     store[name] = {
         "name": name,
-        "key_center": data.get("key_center", "C"),
+        "original_key_center": data.get("original_key_center", "C"),
+        "original_sections": deep_copy_sections(data.get("original_sections")),
         "time_signature": data.get("time_signature", "4/4"),
         "bpm": data.get("bpm", 100),
         "groove_style": data.get("groove_style", "Auto"),
         "loops": data.get("loops", 2),
-        "sections": {
-            sec: [dict(e) for e in entries]
-            for sec, entries in (data.get("sections") or {}).items()
-        },
     }
     return store
 

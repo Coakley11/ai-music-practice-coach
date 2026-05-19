@@ -1641,9 +1641,10 @@ def transposed_key_for_instrument(concert_key, instrument_label):
     return transpose_chord(concert_key, steps)
 
 
-def render_transposition_helper(concert_key, instrument, key_prefix):
+def render_transposition_helper(concert_key, instrument, key_prefix, wrap_expander=True):
     if instrument == "Flute":
-        with st.expander("Instrument Key / Transposition Helper", expanded=True):
+        ctx = st.expander("Instrument Key / Transposition Helper", expanded=True) if wrap_expander else _null_expander()
+        with ctx:
             st.write(f"Concert key: **{concert_key}**")
             st.write("Flute is a concert-pitch instrument, so no transposition is needed.")
         return concert_key, False, "Flute (concert pitch)"
@@ -1652,7 +1653,14 @@ def render_transposition_helper(concert_key, instrument, key_prefix):
     if not options:
         return concert_key, False, None
 
-    with st.expander("Instrument Key / Transposition Helper", expanded=True):
+    ctx = (
+        st.expander("Instrument Key / Transposition Helper", expanded=True)
+        if wrap_expander
+        else _null_expander()
+    )
+    with ctx:
+        if not wrap_expander:
+            st.markdown("#### Transposing instrument helper")
         col_a, col_b, col_c = st.columns([1.2, 1.2, 1])
         with col_a:
             instrument_key = st.selectbox(
@@ -1680,8 +1688,39 @@ def capo_fret_for_shape(sounding_key, shape_key):
     return semitone_distance(shape_key, sounding_key)
 
 
-def render_guitar_capo_helper(base_sections, sounding_key, key_prefix):
-    with st.expander("Capo / Guitar Shape Helper", expanded=True):
+def _null_expander():
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _noop():
+        yield
+
+    return _noop()
+
+
+def render_general_transpose_helper(song_key, display_key, sections, key_prefix):
+    steps = semitone_distance(song_key, display_key)
+    sample = all_chords_from_sections(sections)[:6]
+    if not sample:
+        sample = ["C", "Am", "F", "G"]
+    transposed = [transpose_chord(ch, steps) for ch in sample]
+    st.markdown("#### General key transpose")
+    st.write(f"Song / chart key: **{song_key}**")
+    st.write(f"Current display key (sidebar): **{display_key}**")
+    st.write(f"Semitone shift: **{'+' if steps else ''}{steps}**")
+    pairs = [f"{a} → {b}" for a, b in zip(sample, transposed)]
+    st.caption("Example chord shift: " + " | ".join(pairs))
+
+
+def render_guitar_capo_helper(base_sections, sounding_key, key_prefix, wrap_expander=True):
+    ctx = (
+        st.expander("Capo / Guitar Shape Helper", expanded=True)
+        if wrap_expander
+        else _null_expander()
+    )
+    with ctx:
+        if not wrap_expander:
+            st.markdown("#### Guitar capo helper")
         col_a, col_b, col_c = st.columns([1.1, 1.1, 1])
         with col_a:
             actual_key = st.selectbox(
@@ -3940,7 +3979,6 @@ from custom_progression_lab import (
     CPL_SAVED_KEY,
     default_active_progression,
     parse_chord_line,
-    normalize_chord_symbol,
     flatten_sections_to_events,
     sections_to_chord_lists,
     estimate_key_center,
@@ -3949,6 +3987,15 @@ from custom_progression_lab import (
     lab_context_for_coaching,
     save_progression,
     delete_progression,
+    ensure_original_structure,
+    display_sections_for_key,
+    commit_display_sections_to_original,
+    anchor_home_key_to_display,
+    on_global_display_key_change,
+    backing_signature,
+    deep_copy_sections,
+    invalidate_cpl_derived_outputs,
+    transpose_debug_lines,
 )
 
 
@@ -4239,19 +4286,37 @@ Focus: **{focus}**
         expanded=True,
     )
 
-    if instrument == "Guitar":
-        render_guitar_capo_helper(
+    with st.expander("Transpose / Capo / Instrument Key Helper", expanded=True):
+        render_general_transpose_helper(
+            song_data.get("key", "C"),
+            display_key,
             sections,
-            display_key,
             key_prefix=f"practice::{song}",
         )
-
-    if transposing_instrument_options(instrument):
-        render_transposition_helper(
-            display_key,
-            instrument,
-            key_prefix=f"practice::{song}",
-        )
+        if instrument == "Guitar":
+            st.divider()
+            render_guitar_capo_helper(
+                sections,
+                display_key,
+                key_prefix=f"practice::{song}",
+                wrap_expander=False,
+            )
+        if transposing_instrument_options(instrument):
+            st.divider()
+            render_transposition_helper(
+                display_key,
+                instrument,
+                key_prefix=f"practice::{song}",
+                wrap_expander=False,
+            )
+        elif instrument == "Flute":
+            st.divider()
+            render_transposition_helper(
+                display_key,
+                instrument,
+                key_prefix=f"practice::{song}",
+                wrap_expander=False,
+            )
 
     st.subheader("Metronome")
     render_metronome_widget(
@@ -4845,8 +4910,17 @@ with tabs[3]:
     if CPL_SAVED_KEY not in st.session_state:
         st.session_state[CPL_SAVED_KEY] = {}
 
-    active = st.session_state[CPL_ACTIVE_KEY]
+    active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
+    st.session_state[CPL_ACTIVE_KEY] = active
     saved = st.session_state[CPL_SAVED_KEY]
+
+    key_changed = on_global_display_key_change(st.session_state, display_key)
+
+    original_key = active.get("original_key_center", "C")
+    cpl_widget_ns = display_key.replace("#", "s").replace("b", "f")
+    display_sections = deep_copy_sections(
+        display_sections_for_key(active, display_key)
+    )
 
     st.subheader("Saved progressions")
     save_col_a, save_col_b, save_col_c = st.columns([2, 1, 1])
@@ -4871,11 +4945,10 @@ with tabs[3]:
             load_col, del_col = st.columns(2)
             with load_col:
                 if st.button("Load", key="cpl_load_btn", disabled=pick_saved == "—"):
-                    st.session_state[CPL_ACTIVE_KEY] = dict(saved[pick_saved])
-                    st.session_state[CPL_ACTIVE_KEY]["sections"] = {
-                        sec: [dict(e) for e in entries]
-                        for sec, entries in saved[pick_saved].get("sections", {}).items()
-                    }
+                    st.session_state[CPL_ACTIVE_KEY] = ensure_original_structure(
+                        dict(saved[pick_saved])
+                    )
+                    invalidate_cpl_derived_outputs(st.session_state)
                     st.rerun()
             with del_col:
                 if st.button("Delete", key="cpl_del_btn", disabled=pick_saved == "—"):
@@ -4894,16 +4967,37 @@ with tabs[3]:
         key="cpl_title",
     )
 
+    st.info(
+        f"**Display key (sidebar):** {display_key} — same as Practice, Backing Track, and Creative Lab. "
+        f"**Home key (original progression):** {original_key}"
+    )
+    if display_key != original_key:
+        steps = semitone_distance(original_key, display_key)
+        st.caption(
+            f"Chords are transposed +{steps} semitones from home key **{original_key}** for display and playback."
+        )
+    else:
+        st.caption(
+            "Home key matches the sidebar. Enter chords here, then change **Transpose / Display Key** "
+            "in the sidebar to see them move (e.g. G Em C D → A F#m D E in A major)."
+        )
+    key_col_a, key_col_b = st.columns(2)
+    with key_col_a:
+        if st.button("Set home key to current display key", key="cpl_anchor_home"):
+            anchor_home_key_to_display(active, display_key)
+            invalidate_cpl_derived_outputs(st.session_state)
+            st.success(f"Home key is now **{display_key}** (progression stored as written).")
+            st.rerun()
+    with key_col_b:
+        if display_key != original_key and st.button(
+            f"Show home key ({original_key}) in sidebar",
+            key="cpl_jump_home",
+        ):
+            st.session_state.display_key = original_key
+            st.rerun()
+
     set_a, set_b, set_c = st.columns(3)
     with set_a:
-        active["key_center"] = st.selectbox(
-            "Key center",
-            COMMON_KEYS,
-            index=COMMON_KEYS.index(active.get("key_center", "C"))
-            if active.get("key_center", "C") in COMMON_KEYS
-            else 0,
-            key="cpl_key_center",
-        )
         active["time_signature"] = st.selectbox(
             "Time signature",
             ["4/4", "3/4", "6/8", "12/8"],
@@ -4946,16 +5040,16 @@ with tabs[3]:
             index=_groove_opts.index(_gcur) if _gcur in _groove_opts else 0,
             key="cpl_groove",
         )
-        est_key = estimate_key_center(active.get("sections", {}), active.get("key_center", "C"))
-        st.caption(f"Estimated tonal center from chords: **{est_key}**")
+        est_key = estimate_key_center(display_sections, display_key)
+        st.caption(f"Estimated tonal center (display): **{est_key}**")
 
     st.divider()
     st.subheader("Chord progression builder")
 
-    sec_names = list(active.get("sections", {}).keys())
+    sec_names = list(display_sections.keys())
     if not sec_names:
-        active["sections"] = {"Verse": [{"chord": "C", "bars": 1}]}
-        sec_names = list(active["sections"].keys())
+        display_sections = {"Verse": [{"chord": display_key, "bars": 1}]}
+        sec_names = list(display_sections.keys())
 
     sec_tool_a, sec_tool_b = st.columns([2, 1])
     with sec_tool_a:
@@ -4963,13 +5057,19 @@ with tabs[3]:
     with sec_tool_b:
         if st.button("Add section", key="cpl_add_section"):
             label = (new_section or "Section").strip()
-            if label not in active["sections"]:
-                active["sections"][label] = [{"chord": "C", "bars": 1}]
+            if label not in display_sections:
+                display_sections[label] = [{"chord": display_key, "bars": 1}]
+                commit_display_sections_to_original(active, display_sections, display_key)
+                st.session_state[CPL_ACTIVE_KEY] = active
                 st.rerun()
             st.warning("Section already exists.")
 
-    edit_section = st.selectbox("Edit section", sec_names, key="cpl_edit_section")
-    entries = active["sections"].setdefault(edit_section, [])
+    edit_section = st.selectbox(
+        "Edit section",
+        sec_names,
+        key=f"cpl_edit_section_{cpl_widget_ns}",
+    )
+    entries = display_sections.setdefault(edit_section, [])
 
     bulk_line = st.text_input(
         "Paste chords (comma or | separated)",
@@ -4979,10 +5079,14 @@ with tabs[3]:
     if st.button("Add chords from text", key="cpl_bulk_add"):
         for item in parse_chord_line(bulk_line):
             entries.append(item)
+        commit_display_sections_to_original(active, display_sections, display_key)
+        st.session_state[CPL_ACTIVE_KEY] = active
         st.rerun()
 
     if st.button("Add empty chord", key="cpl_add_chord"):
-        entries.append({"chord": "C", "bars": 1})
+        entries.append({"chord": display_key, "bars": 1})
+        commit_display_sections_to_original(active, display_sections, display_key)
+        st.session_state[CPL_ACTIVE_KEY] = active
         st.rerun()
 
     remove_indices = []
@@ -4991,8 +5095,8 @@ with tabs[3]:
         with c1:
             entry["chord"] = st.text_input(
                 f"Chord {idx + 1}",
-                value=entry.get("chord", "C"),
-                key=f"cpl_ch_{edit_section}_{idx}",
+                value=entry.get("chord", display_key),
+                key=f"cpl_ch_{cpl_widget_ns}_{edit_section}_{idx}",
             )
         with c2:
             entry["bars"] = st.number_input(
@@ -5000,42 +5104,73 @@ with tabs[3]:
                 min_value=1,
                 max_value=16,
                 value=int(entry.get("bars", 1)),
-                key=f"cpl_bars_{edit_section}_{idx}",
+                key=f"cpl_bars_{cpl_widget_ns}_{edit_section}_{idx}",
             )
         with c3:
-            if st.button("↑", key=f"cpl_up_{edit_section}_{idx}", disabled=idx == 0):
+            if st.button(
+                "↑",
+                key=f"cpl_up_{cpl_widget_ns}_{edit_section}_{idx}",
+                disabled=idx == 0,
+            ):
                 entries[idx], entries[idx - 1] = entries[idx - 1], entries[idx]
+                commit_display_sections_to_original(active, display_sections, display_key)
+                st.session_state[CPL_ACTIVE_KEY] = active
                 st.rerun()
         with c4:
-            if st.button("↓", key=f"cpl_dn_{edit_section}_{idx}", disabled=idx >= len(entries) - 1):
+            if st.button(
+                "↓",
+                key=f"cpl_dn_{cpl_widget_ns}_{edit_section}_{idx}",
+                disabled=idx >= len(entries) - 1,
+            ):
                 entries[idx], entries[idx + 1] = entries[idx + 1], entries[idx]
+                commit_display_sections_to_original(active, display_sections, display_key)
+                st.session_state[CPL_ACTIVE_KEY] = active
                 st.rerun()
         with c5:
-            if st.button("✕", key=f"cpl_rm_{edit_section}_{idx}"):
+            if st.button("✕", key=f"cpl_rm_{cpl_widget_ns}_{edit_section}_{idx}"):
                 remove_indices.append(idx)
     for ri in sorted(remove_indices, reverse=True):
         entries.pop(ri)
     if remove_indices:
+        commit_display_sections_to_original(active, display_sections, display_key)
+        st.session_state[CPL_ACTIVE_KEY] = active
         st.rerun()
+
+    commit_display_sections_to_original(active, display_sections, display_key)
+    st.session_state[CPL_ACTIVE_KEY] = active
 
     if st.button(f"Remove section «{edit_section}»", key="cpl_rm_section"):
-        active["sections"].pop(edit_section, None)
-        if not active["sections"]:
-            active["sections"] = {"Verse": [{"chord": "C", "bars": 1}]}
+        display_sections.pop(edit_section, None)
+        if not display_sections:
+            display_sections = {"Verse": [{"chord": display_key, "bars": 1}]}
+        commit_display_sections_to_original(active, display_sections, display_key)
+        st.session_state[CPL_ACTIVE_KEY] = active
         st.rerun()
 
-    chord_lists = sections_to_chord_lists(active["sections"])
+    chord_lists = sections_to_chord_lists(display_sections)
     for sec_name, chords in chord_lists.items():
         st.markdown(f"**{sec_name}**")
         st.markdown(bar_grid_markdown(chords, bars_per_row=4))
 
-    st.session_state[CPL_ACTIVE_KEY] = active
-
     st.divider()
     st.subheader("Backing track")
 
-    cpl_events = flatten_sections_to_events(active["sections"])
+    cpl_events = flatten_sections_to_events(display_sections)
     cpl_groove = infer_groove_style({}, active.get("groove_style", "Auto"))
+    cpl_sig = backing_signature(
+        display_key,
+        display_sections,
+        active.get("bpm", 100),
+        active.get("loops", 2),
+        cpl_groove,
+    )
+    if (
+        st.session_state.get("cpl_backing_wav")
+        and st.session_state.get("cpl_backing_signature") != cpl_sig
+    ):
+        st.caption(
+            "Sidebar key or progression changed — regenerate backing to match."
+        )
 
     if not cpl_events:
         st.warning("Add at least one chord to generate a backing track.")
@@ -5056,6 +5191,7 @@ with tabs[3]:
             style=cpl_groove,
             level=level,
         )
+        st.session_state["cpl_backing_signature"] = cpl_sig
         st.success("Backing track generated.")
 
     if st.session_state.get("cpl_backing_wav"):
@@ -5068,8 +5204,8 @@ with tabs[3]:
         )
 
     coach_ctx = lab_context_for_coaching(
-        active["sections"],
-        active.get("key_center", "C"),
+        display_sections,
+        display_key,
         instrument,
         level,
         focus,
@@ -5094,19 +5230,39 @@ with tabs[3]:
     with an_col:
         if st.button("Harmonic analysis", key="cpl_analyze"):
             st.session_state["cpl_analysis_md"] = harmonic_analysis_markdown(
-                active["sections"],
-                active.get("key_center", "C"),
+                display_sections,
+                display_key,
                 active.get("time_signature", "4/4"),
             )
     with ex_col:
         if st.button("Generate exercises", key="cpl_exercises"):
             st.session_state["cpl_exercises_md"] = generate_exercises_markdown(
-                sections=active["sections"],
+                sections=display_sections,
                 instrument=instrument,
                 level=level,
                 focus=focus,
-                key_center=active.get("key_center", "C"),
+                key_center=display_key,
                 groove_style=cpl_groove,
+                time_signature=active.get("time_signature", "4/4"),
+                bpm=int(active.get("bpm", 100)),
+            )
+
+    if key_changed:
+        cpl_groove_live = infer_groove_style({}, active.get("groove_style", "Auto"))
+        if st.session_state.get("cpl_analysis_md") is not None:
+            st.session_state["cpl_analysis_md"] = harmonic_analysis_markdown(
+                display_sections,
+                display_key,
+                active.get("time_signature", "4/4"),
+            )
+        if st.session_state.get("cpl_exercises_md") is not None:
+            st.session_state["cpl_exercises_md"] = generate_exercises_markdown(
+                sections=display_sections,
+                instrument=instrument,
+                level=level,
+                focus=focus,
+                key_center=display_key,
+                groove_style=cpl_groove_live,
                 time_signature=active.get("time_signature", "4/4"),
                 bpm=int(active.get("bpm", 100)),
             )
