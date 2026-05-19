@@ -6,6 +6,13 @@ from typing import Any
 
 from song_catalog import format_pick_key, parse_pick_key
 
+from .key_state import (
+    BACKING_NEEDS_REGEN,
+    IDENTITY_KEY,
+    LAST_DISPLAY_KEY,
+    invalidate_backing_cache,
+)
+
 SELECTED_SONG_STATE_KEY = "selected_song"
 _LAST_PICK_KEY = "_master_song_pick_key"
 
@@ -66,10 +73,13 @@ def apply_pick_key(st: Any, pick_key: str, song_picker_catalog: dict[str, dict[s
     st.session_state["active_song_title"] = data["title"]
     if prev is not None and prev != pick_key:
         st.session_state["display_key"] = data["key"]
+        st.session_state[IDENTITY_KEY] = (data["title"], data["artist"], data["key"])
+        st.session_state[LAST_DISPLAY_KEY] = data["key"]
+        invalidate_backing_cache(st)
+        st.session_state[BACKING_NEEDS_REGEN] = False
         st.session_state.pop("multitrack_backing_wav", None)
         st.session_state.pop("multitrack_backing_music_wav", None)
         st.session_state.pop("mixed_track_wav", None)
-        st.session_state.pop("_last_backing_wav", None)
     elif "display_key" not in st.session_state:
         st.session_state["display_key"] = data["key"]
     return data

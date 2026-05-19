@@ -1,4 +1,4 @@
-# VERSION: v48_metronome_lyrics_practice
+# VERSION: v49_global_transpose_key
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -66,6 +66,7 @@ transpose_chord = _music_theory.transpose_chord
 transpose_sections = _music_theory.transpose_sections
 transpose_sections_dict = _music_theory.transpose_sections_dict
 transpose_guitar_tabs = _music_theory.transpose_guitar_tabs
+display_key_options = _music_theory.display_key_options
 
 from song_catalog import (
     load_song_catalog,
@@ -75,13 +76,19 @@ from song_catalog import (
     record_for_pick_key,
 )
 from songs import (
+    BACKING_NEEDS_REGEN,
     apply_pick_key,
     chord_blocks_for_backing,
+    clear_backing_needs_regen,
     ensure_master_song_initialized,
     form_timeline_rows,
     get_song_context,
+    note_display_key_change,
+    request_display_key,
     section_order,
+    sync_display_key_before_widget,
 )
+from songs.key_state import mark_display_key_changed
 
 SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = load_song_catalog()
 TRUSTED_CORE_RECORDS = [
@@ -1698,17 +1705,29 @@ def _null_expander():
     return _noop()
 
 
-def render_general_transpose_helper(song_key, display_key, sections, key_prefix):
-    steps = semitone_distance(song_key, display_key)
-    sample = all_chords_from_sections(sections)[:6]
-    if not sample:
-        sample = ["C", "Am", "F", "G"]
-    transposed = [transpose_chord(ch, steps) for ch in sample]
+def render_general_transpose_helper(
+    original_key,
+    display_key,
+    display_sections,
+    source_sections,
+    key_prefix,
+):
+    steps = semitone_distance(original_key, display_key)
+    orig_sample = all_chords_from_sections(source_sections)[:6]
+    disp_sample = all_chords_from_sections(display_sections)[:6]
+    if not orig_sample:
+        orig_sample = ["C", "Am", "F", "G"]
+        disp_sample = [
+            transpose_chord(ch, steps) for ch in orig_sample
+        ]
     st.markdown("#### General key transpose")
-    st.write(f"Song / chart key: **{song_key}**")
-    st.write(f"Current display key (sidebar): **{display_key}**")
+    st.write(f"**Original key:** {original_key}")
+    st.write(f"**Display / practice key:** {display_key}")
     st.write(f"Semitone shift: **{'+' if steps else ''}{steps}**")
-    pairs = [f"{a} → {b}" for a, b in zip(sample, transposed)]
+    pairs = [
+        f"{a} → {b}"
+        for a, b in zip(orig_sample, disp_sample)
+    ]
     st.caption("Example chord shift: " + " | ".join(pairs))
 
 
@@ -1722,11 +1741,12 @@ def render_guitar_capo_helper(base_sections, sounding_key, key_prefix, wrap_expa
         if not wrap_expander:
             st.markdown("#### Guitar capo helper")
         col_a, col_b, col_c = st.columns([1.1, 1.1, 1])
+        _capo_keys = display_key_options(sounding_key)
         with col_a:
             actual_key = st.selectbox(
                 "Actual sounding key",
-                COMMON_KEYS,
-                index=COMMON_KEYS.index(sounding_key) if sounding_key in COMMON_KEYS else 0,
+                _capo_keys,
+                index=_capo_keys.index(sounding_key) if sounding_key in _capo_keys else 0,
                 key=f"{key_prefix}::capo_actual_key",
             )
             shape_key = st.selectbox(
@@ -3991,7 +4011,6 @@ from custom_progression_lab import (
     display_sections_for_key,
     commit_display_sections_to_original,
     anchor_home_key_to_display,
-    on_global_display_key_change,
     backing_signature,
     deep_copy_sections,
     invalidate_cpl_derived_outputs,
@@ -4080,28 +4099,26 @@ st.sidebar.caption(
     "That choice is the one source of truth for every tab."
 )
 
-_display_key_song_identity = (song_data.get("title"), song_data.get("artist"), song_data.get("key"))
-if st.session_state.get("_display_key_song_identity") != _display_key_song_identity:
-    st.session_state.display_key = song_data["key"]
-    st.session_state["_display_key_song_identity"] = _display_key_song_identity
+original_key = song_data.get("key", "C")
+_song_identity = (song_data.get("title"), song_data.get("artist"), original_key)
+_display_key_options = sync_display_key_before_widget(
+    st,
+    original_key,
+    _song_identity,
+)
 
-if "display_key" not in st.session_state:
-
-    st.session_state.display_key = song_data["key"]
-
-if st.session_state.display_key not in COMMON_KEYS:
-
-    st.session_state.display_key = (
-        song_data["key"]
-        if song_data["key"] in COMMON_KEYS
-        else COMMON_KEYS[0]
-    )
+st.sidebar.markdown("### Song key")
+st.sidebar.caption(f"**Original key:** {original_key}")
 
 display_key = st.sidebar.selectbox(
-    "Transpose / Display Key",
-    COMMON_KEYS,
+    "Display / practice key",
+    _display_key_options,
     key="display_key",
+    on_change=lambda: mark_display_key_changed(st),
+    help="Transpose chords, charts, exercises, and backing tracks to this key.",
 )
+
+key_changed_this_run = note_display_key_change(st, display_key)
 
 instrument = st.sidebar.selectbox(
     "Instrument",
@@ -4238,11 +4255,18 @@ with tabs[0]:
         f"""
 Genre: **{genre}**  
 Song: **{song}**  
+**Original key:** {original_key}  
+**Display / practice key:** {display_key}  
 Instrument: **{instrument}**  
 Level: **{level}**  
 Focus: **{focus}**
 """
     )
+    if display_key != original_key:
+        _dk_steps = semitone_distance(original_key, display_key)
+        st.caption(
+            f"Chart transposed {'+' if _dk_steps else ''}{_dk_steps} semitone(s) from the song's original key."
+        )
 
     exercise_key = (
         f"exercise_variation::{song}::{instrument}::{level}::{focus}"
@@ -4288,9 +4312,10 @@ Focus: **{focus}**
 
     with st.expander("Transpose / Capo / Instrument Key Helper", expanded=True):
         render_general_transpose_helper(
-            song_data.get("key", "C"),
+            original_key,
             display_key,
             sections,
+            level_source_sections,
             key_prefix=f"practice::{song}",
         )
         if instrument == "Guitar":
@@ -4553,8 +4578,14 @@ with tabs[1]:
         f"**Chart status:** {selected_status}  \n"
         f"**Genre/style:** {selected_data.get('genre', 'Unknown')}  \n"
         f"**Original key:** {selected_data.get('key', 'Unknown')}  \n"
+        f"**Display / practice key:** {display_key}  \n"
         f"**Available chart levels:** {available_levels}"
     )
+    if display_key != selected_data.get("key"):
+        st.caption(
+            f"Chords in Practice and Backing Track are shown in **{display_key}** "
+            f"(+{semitone_distance(selected_data.get('key', 'C'), display_key)} semitones)."
+        )
 
     st.info(
         "Go to **Backing Track** for the full chart and playback. "
@@ -4571,9 +4602,13 @@ with tabs[2]:
     st.header("Backing Track")
 
     st.write(
-        f"Uses the **active song** (same as Song Picker / sidebar): **{song}** — {song_data['artist']}. "
-        f"Chords are in **{display_key}** (transpose from the sidebar if needed)."
+        f"Uses the **active song** (same as Song Picker / sidebar): **{song}** — {song_data['artist']}."
     )
+    st.caption(
+        f"**Original key:** {original_key} · **Display / practice key:** {display_key}"
+    )
+    if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
+        st.warning("Key changed — regenerate backing track")
 
     st.subheader("1. Backing Track Settings")
 
@@ -4758,6 +4793,7 @@ with tabs[2]:
         st.session_state["bpm"] = bpm
         st.session_state["beats_per_bar"] = 4
         st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
+        clear_backing_needs_regen(st)
 
     if (
         st.session_state.get("_last_backing_wav")
@@ -4904,6 +4940,11 @@ with tabs[3]:
         "Build your own chord progression, generate a backing track, and get instrument-specific "
         "practice and improvisation exercises — a songwriting sketchpad and harmony trainer."
     )
+    st.caption(
+        f"Sidebar display key: **{display_key}** — custom progression chords follow the global transpose."
+    )
+    if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
+        st.warning("Key changed — regenerate the Custom Progression Lab backing track if you use one.")
 
     if CPL_ACTIVE_KEY not in st.session_state:
         st.session_state[CPL_ACTIVE_KEY] = default_active_progression()
@@ -4913,8 +4954,6 @@ with tabs[3]:
     active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
     st.session_state[CPL_ACTIVE_KEY] = active
     saved = st.session_state[CPL_SAVED_KEY]
-
-    key_changed = on_global_display_key_change(st.session_state, display_key)
 
     original_key = active.get("original_key_center", "C")
     cpl_widget_ns = display_key.replace("#", "s").replace("b", "f")
@@ -4993,7 +5032,7 @@ with tabs[3]:
             f"Show home key ({original_key}) in sidebar",
             key="cpl_jump_home",
         ):
-            st.session_state.display_key = original_key
+            request_display_key(st, original_key)
             st.rerun()
 
     set_a, set_b, set_c = st.columns(3)
@@ -5247,7 +5286,7 @@ with tabs[3]:
                 bpm=int(active.get("bpm", 100)),
             )
 
-    if key_changed:
+    if key_changed_this_run:
         cpl_groove_live = infer_groove_style({}, active.get("groove_style", "Auto"))
         if st.session_state.get("cpl_analysis_md") is not None:
             st.session_state["cpl_analysis_md"] = harmonic_analysis_markdown(
@@ -5284,6 +5323,10 @@ with tabs[4]:
     st.write(
         "This page starts moving the app beyond ordinary practice into deeper musical development: "
         "harmony, improvisation, arranging, weakness detection, and long-term growth tracking."
+    )
+    st.caption(
+        f"**Original key:** {original_key} · **Display / practice key:** {display_key} "
+        "(sidebar) — harmonic analysis uses the transposed chart."
     )
 
     ctx = current_song_context_lab()

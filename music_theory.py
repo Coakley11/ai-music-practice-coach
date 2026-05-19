@@ -5,6 +5,9 @@ COMMON_KEYS = [
     "Gb", "G", "Ab", "A", "Bb", "B",
 ]
 
+# Major + parallel minor centers for the global practice-key selector.
+PRACTICE_KEYS = [k for pair in zip(COMMON_KEYS, [f"{k}m" for k in COMMON_KEYS]) for k in pair]
+
 CHROMATIC = [
     "C", "C#", "D", "D#", "E", "F",
     "F#", "G", "G#", "A", "A#", "B",
@@ -38,6 +41,18 @@ def split_chord(chord):
     if len(chord) >= 2 and chord[1] in ["b", "#"]:
         return chord[:2], chord[2:]
     return chord[:1], chord[1:]
+
+
+def display_key_options(original_key: str) -> list[str]:
+    """Sidebar key choices: 12 major + 12 minor centers, original key first."""
+    original_key = str(original_key or "C").strip() or "C"
+    options = list(PRACTICE_KEYS)
+    if original_key not in options:
+        options.insert(0, original_key)
+    else:
+        options.remove(original_key)
+        options.insert(0, original_key)
+    return options
 
 
 def semitone_distance(from_key, to_key):
