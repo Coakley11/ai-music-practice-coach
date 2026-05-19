@@ -67,6 +67,7 @@ def apply_pick_key(st: Any, pick_key: str, song_picker_catalog: dict[str, dict[s
     if prev is not None and prev != pick_key:
         st.session_state["display_key"] = data["key"]
         st.session_state.pop("multitrack_backing_wav", None)
+        st.session_state.pop("multitrack_backing_music_wav", None)
         st.session_state.pop("mixed_track_wav", None)
         st.session_state.pop("_last_backing_wav", None)
     elif "display_key" not in st.session_state:

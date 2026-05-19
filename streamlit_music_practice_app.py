@@ -3615,6 +3615,8 @@ def multitrack_studio_html(
           <label><input type="checkbox" data-mute> Mute</label>
           <label><input type="checkbox" data-solo> Solo</label>
         `;
+        row.querySelector("[data-mute]").checked = !!track.mute;
+        row.querySelector("[data-solo]").checked = !!track.solo;
         if (track.mute) row.classList.add("muted");
         if (track.solo) row.classList.add("soloed");
         listEl.appendChild(row);
