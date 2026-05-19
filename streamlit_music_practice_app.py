@@ -4002,8 +4002,12 @@ from custom_progression_lab import (
     parse_chord_line,
     flatten_sections_to_events,
     sections_to_chord_lists,
+    analyze_tonal_center,
     estimate_key_center,
     harmonic_analysis_markdown,
+    maybe_update_inferred_home_key,
+    on_cpl_adopt_detected_home_key,
+    tonal_center_markdown,
     generate_exercises_markdown,
     lab_context_for_coaching,
     save_progression,
@@ -4960,12 +4964,14 @@ with tabs[3]:
         st.session_state[CPL_SAVED_KEY] = {}
 
     active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
+    active = maybe_update_inferred_home_key(active)
     st.session_state[CPL_ACTIVE_KEY] = active
     saved = st.session_state[CPL_SAVED_KEY]
 
     cpl_home_key = active.get("original_key_center", "C")
     cpl_practice_key = display_key
     cpl_original_sections = deep_copy_sections(active.get("original_sections") or {})
+    cpl_tonal = analyze_tonal_center(cpl_original_sections, user_home_key=cpl_home_key)
     cpl_widget_ns = cpl_practice_key.replace("#", "s").replace("b", "f")
     display_sections = deep_copy_sections(
         display_sections_for_key(active, cpl_practice_key)
@@ -5030,15 +5036,29 @@ with tabs[3]:
     kc1, kc2, kc3 = st.columns(3)
     with kc1:
         st.metric("Written / Home Key", cpl_home_key)
-        st.caption("Key you typed the progression in.")
+        if active.get("tonal_center_inferred"):
+            st.caption("Auto-set from chord analysis (was default C).")
+        else:
+            st.caption("Stored key for your written chart.")
     with kc2:
         st.metric("Practice / Display Key", cpl_practice_key)
         st.caption("Change in the sidebar — applies everywhere.")
     with kc3:
-        if cpl_practice_key != cpl_home_key:
-            st.metric("Transpose amount", f"+{semitone_distance(cpl_home_key, cpl_practice_key)} semitones")
-        else:
-            st.metric("Transpose amount", "None (same key)")
+        detected_label = cpl_tonal.get("primary_label", "—")
+        st.metric("Likely tonal center", detected_label)
+        st.caption(f"{cpl_tonal.get('confidence_label', 'low')} confidence")
+
+    st.info(tonal_center_markdown(cpl_original_sections, stored_home_key=cpl_home_key))
+    if (
+        cpl_tonal.get("storage_key") != cpl_home_key
+        and cpl_tonal.get("confidence_score", 0) >= 0.45
+    ):
+        st.button(
+            f"Use detected home key ({cpl_tonal.get('primary_label')})",
+            key="cpl_adopt_detected_home",
+            on_click=on_cpl_adopt_detected_home_key,
+            help="Updates written/home key to match the harmonic analysis of your chords.",
+        )
 
     key_col_a, key_col_b = st.columns(2)
     with key_col_a:
@@ -5113,8 +5133,8 @@ with tabs[3]:
             index=_groove_opts.index(_gcur) if _gcur in _groove_opts else 0,
             key="cpl_groove",
         )
-        est_key = estimate_key_center(display_sections, display_key)
-        st.caption(f"Estimated tonal center (display): **{est_key}**")
+        _display_tonal = analyze_tonal_center(display_sections, user_home_key=display_key)
+        st.caption(_display_tonal.get("summary", estimate_key_center(display_sections, display_key)))
 
     st.divider()
     st.subheader("Chord progression builder")
