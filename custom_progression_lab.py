@@ -127,6 +127,17 @@ def invalidate_cpl_derived_outputs(session_state):
     session_state.pop("cpl_exercises_md", None)
 
 
+def on_cpl_anchor_home_key() -> None:
+    """Button callback: store transposed chart as the new written/home key."""
+    import streamlit as st
+
+    active = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+    practice_key = st.session_state.get("display_key", active.get("original_key_center", "C"))
+    anchor_home_key_to_display(active, practice_key)
+    st.session_state[CPL_ACTIVE_KEY] = active
+    invalidate_cpl_derived_outputs(st.session_state)
+
+
 def on_global_display_key_change(session_state, display_key):
     last = session_state.get(CPL_LAST_DISPLAY_KEY)
     if last is None:
@@ -144,6 +155,90 @@ def backing_signature(display_key, sections, bpm, loops, groove_style):
     return (display_key, tuple(flat), int(bpm), int(loops), str(groove_style))
 
 
+def format_chord_bar_line(sections, max_chords: int = 12) -> str:
+    """Single-line bar chart preview, e.g. | G | Em | C | D |."""
+    chords = all_chords_from_lab_sections(sections)[:max_chords]
+    if not chords:
+        return "| *(add chords below)* |"
+    return "| " + " | ".join(chords) + " |"
+
+
+def cpl_transpose_explanation_markdown(
+    home_key: str,
+    practice_key: str,
+    original_sections,
+    display_sections,
+) -> str:
+    """Beginner-friendly explanation of written vs practice key for the CPL page."""
+    home_key = str(home_key or "C")
+    practice_key = str(practice_key or home_key)
+    steps = semitone_distance(home_key, practice_key)
+    orig_line = format_chord_bar_line(original_sections)
+    trans_line = format_chord_bar_line(display_sections)
+
+    if steps == 0:
+        shift_note = (
+            f"Right now both keys are **{home_key}**, so the chords you see are exactly "
+            "what you typed in the written key."
+        )
+    else:
+        shift_note = (
+            f"The app moved every chord **{'+' if steps else ''}{steps} semitone(s)** "
+            f"from **{home_key}** to **{practice_key}** for display, backing track, and exercises."
+        )
+
+    example_written = format_chord_bar_line(
+        {
+            "Example": [
+                {"chord": "G", "bars": 1},
+                {"chord": "Em", "bars": 1},
+                {"chord": "C", "bars": 1},
+                {"chord": "D", "bars": 1},
+            ]
+        }
+    )
+    example_transposed = format_chord_bar_line(
+        {
+            "Example": [
+                {"chord": "A", "bars": 1},
+                {"chord": "F#m", "bars": 1},
+                {"chord": "D", "bars": 1},
+                {"chord": "E", "bars": 1},
+            ]
+        }
+    )
+
+    return f"""### How keys work in Custom Progression Lab
+
+**Written / Home Key — {home_key}**  
+The key your progression was *written in*. These chords are stored as your original chart.
+
+**Practice / Display Key — {practice_key}**  
+The key you want to *see, hear, and practice in* right now. Change this in the **sidebar** under **Practice / display key** (it applies to the whole app).
+
+#### What happens when you change the sidebar key?
+The app keeps your **written** chords safe, then **transposes** them to the practice key for this page, backing tracks, and exercises.
+
+**Example (not your song — just to show the idea):**
+
+| | |
+|---|---|
+| Written / Home Key **G** | {example_written} |
+| Practice / Display Key **A** | {example_transposed} |
+
+#### Your progression right now
+{shift_note}
+
+**Original (written in {home_key}):**  
+`{orig_line}`
+
+**Transposed (what you see/hear in {practice_key}):**  
+`{trans_line}`
+
+*Tip: Chord boxes below show **practice** chords (what you hear). Change the sidebar **Practice / display key** to move the whole progression up or down. Use **Reset to original key** to match your written chart again.*
+"""
+
+
 def transpose_debug_lines(active, display_key):
     """Human-readable transpose state for UI debugging."""
     active = ensure_original_structure(active)
@@ -154,17 +249,17 @@ def transpose_debug_lines(active, display_key):
     first_orig = original_flat[0] if original_flat else "(none)"
     first_disp = display_flat[0] if display_flat else "(none)"
     lines = [
-        f"**Home key:** {home}",
-        f"**Display key (sidebar):** {display_key}",
+        f"**Written / Home key:** {home}",
+        f"**Practice / Display key:** {display_key}",
         f"**Transpose:** {'+' if steps else ''}{steps} semitone(s)",
-        f"**First chord (home):** {first_orig}",
-        f"**First chord (display):** {first_disp}",
+        f"**First chord (written):** {first_orig}",
+        f"**First chord (practice):** {first_disp}",
     ]
     if len(original_flat) >= 4:
         sample_orig = " | ".join(original_flat[:4])
         sample_disp = " | ".join(display_flat[:4])
-        lines.append(f"**First four (home):** {sample_orig}")
-        lines.append(f"**First four (display):** {sample_disp}")
+        lines.append(f"**First four (written):** {sample_orig}")
+        lines.append(f"**First four (practice):** {sample_disp}")
     return lines
 
 

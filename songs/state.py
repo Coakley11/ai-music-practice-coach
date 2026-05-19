@@ -10,6 +10,7 @@ from .key_state import (
     BACKING_NEEDS_REGEN,
     IDENTITY_KEY,
     LAST_DISPLAY_KEY,
+    PENDING_DISPLAY_KEY,
     invalidate_backing_cache,
 )
 
@@ -72,7 +73,7 @@ def apply_pick_key(st: Any, pick_key: str, song_picker_catalog: dict[str, dict[s
     st.session_state["active_genre"] = genre
     st.session_state["active_song_title"] = data["title"]
     if prev is not None and prev != pick_key:
-        st.session_state["display_key"] = data["key"]
+        st.session_state[PENDING_DISPLAY_KEY] = data["key"]
         st.session_state[IDENTITY_KEY] = (data["title"], data["artist"], data["key"])
         st.session_state[LAST_DISPLAY_KEY] = data["key"]
         invalidate_backing_cache(st)
@@ -81,7 +82,7 @@ def apply_pick_key(st: Any, pick_key: str, song_picker_catalog: dict[str, dict[s
         st.session_state.pop("multitrack_backing_music_wav", None)
         st.session_state.pop("mixed_track_wav", None)
     elif "display_key" not in st.session_state:
-        st.session_state["display_key"] = data["key"]
+        st.session_state[PENDING_DISPLAY_KEY] = data["key"]
     return data
 
 

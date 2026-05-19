@@ -9,6 +9,7 @@ from music_theory import display_key_options
 IDENTITY_KEY = "_display_key_song_identity"
 LAST_DISPLAY_KEY = "_last_app_display_key"
 PENDING_DISPLAY_KEY = "_pending_display_key"
+CPL_JUMP_HOME_TARGET = "_cpl_jump_home_target"
 BACKING_NEEDS_REGEN = "_backing_needs_regen"
 
 _BACKING_CACHE_KEYS = (
@@ -40,6 +41,11 @@ def mark_display_key_changed(st: Any) -> None:
         on_global_display_key_change(st.session_state, dk)
 
 
+def _apply_display_key_before_widget(st: Any, key: str) -> None:
+    """Mutate display_key only before the sidebar selectbox is instantiated."""
+    st.session_state["display_key"] = key
+
+
 def sync_display_key_before_widget(
     st: Any,
     original_key: str,
@@ -47,24 +53,28 @@ def sync_display_key_before_widget(
 ) -> list[str]:
     """Apply pending key / song-change resets before the display_key widget is built."""
     pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
-    if pending is not None:
-        st.session_state["display_key"] = pending
-
     options = display_key_options(original_key)
+    identity_changed = st.session_state.get(IDENTITY_KEY) != song_identity
 
-    if st.session_state.get(IDENTITY_KEY) != song_identity:
+    if identity_changed:
         st.session_state[IDENTITY_KEY] = song_identity
-        st.session_state["display_key"] = original_key
-        st.session_state[LAST_DISPLAY_KEY] = original_key
+        _apply_display_key_before_widget(
+            st,
+            pending if pending is not None else original_key,
+        )
+        st.session_state[LAST_DISPLAY_KEY] = st.session_state["display_key"]
         invalidate_backing_cache(st)
         st.session_state[BACKING_NEEDS_REGEN] = False
+    elif pending is not None:
+        _apply_display_key_before_widget(st, pending)
     elif "display_key" not in st.session_state:
-        st.session_state["display_key"] = original_key
+        _apply_display_key_before_widget(st, original_key)
 
     current = st.session_state.get("display_key", original_key)
     if current not in options:
-        st.session_state["display_key"] = (
-            original_key if original_key in options else options[0]
+        _apply_display_key_before_widget(
+            st,
+            original_key if original_key in options else options[0],
         )
 
     return options
@@ -73,6 +83,22 @@ def sync_display_key_before_widget(
 def request_display_key(st: Any, key: str) -> None:
     """Set display key on the next run without touching the widget after creation."""
     st.session_state[PENDING_DISPLAY_KEY] = key
+
+
+def prepare_cpl_jump_home(st: Any, home_key: str) -> None:
+    """Store CPL home-key target for the sidebar jump button callback."""
+    st.session_state[CPL_JUMP_HOME_TARGET] = home_key
+
+
+def on_cpl_jump_home_key() -> None:
+    """Button callback: runs before widgets on the next rerun."""
+    import streamlit as st
+
+    target = st.session_state.get(CPL_JUMP_HOME_TARGET)
+    if not target:
+        return
+    st.session_state["display_key"] = target
+    mark_display_key_changed(st)
 
 
 def note_display_key_change(st: Any, display_key: str) -> bool:

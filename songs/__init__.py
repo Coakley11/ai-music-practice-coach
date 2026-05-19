@@ -10,6 +10,8 @@ from .key_state import (
     clear_backing_needs_regen,
     invalidate_backing_cache,
     note_display_key_change,
+    on_cpl_jump_home_key,
+    prepare_cpl_jump_home,
     request_display_key,
     sync_display_key_before_widget,
 )
@@ -32,6 +34,8 @@ __all__ = [
     "clear_backing_needs_regen",
     "invalidate_backing_cache",
     "note_display_key_change",
+    "on_cpl_jump_home_key",
+    "prepare_cpl_jump_home",
     "request_display_key",
     "sync_display_key_before_widget",
 ]

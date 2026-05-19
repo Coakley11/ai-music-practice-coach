@@ -84,7 +84,8 @@ from songs import (
     form_timeline_rows,
     get_song_context,
     note_display_key_change,
-    request_display_key,
+    on_cpl_jump_home_key,
+    prepare_cpl_jump_home,
     section_order,
     sync_display_key_before_widget,
 )
@@ -4011,9 +4012,11 @@ from custom_progression_lab import (
     display_sections_for_key,
     commit_display_sections_to_original,
     anchor_home_key_to_display,
+    on_cpl_anchor_home_key,
     backing_signature,
     deep_copy_sections,
     invalidate_cpl_derived_outputs,
+    cpl_transpose_explanation_markdown,
     transpose_debug_lines,
 )
 
@@ -4108,14 +4111,22 @@ _display_key_options = sync_display_key_before_widget(
 )
 
 st.sidebar.markdown("### Song key")
-st.sidebar.caption(f"**Original key:** {original_key}")
+st.sidebar.caption(
+    f"**Written / home key (catalog):** {original_key} — how this song is stored in the library."
+)
+st.sidebar.caption(
+    "**Practice / display key** — what you want to see and hear right now (transpose)."
+)
 
 display_key = st.sidebar.selectbox(
-    "Display / practice key",
+    "Practice / display key",
     _display_key_options,
     key="display_key",
     on_change=lambda: mark_display_key_changed(st),
-    help="Transpose chords, charts, exercises, and backing tracks to this key.",
+    help=(
+        "Moves every chord up or down to this key for practice, charts, backing tracks, "
+        "and Custom Progression Lab. Your written home key stays saved underneath."
+    ),
 )
 
 key_changed_this_run = note_display_key_change(st, display_key)
@@ -4940,9 +4951,6 @@ with tabs[3]:
         "Build your own chord progression, generate a backing track, and get instrument-specific "
         "practice and improvisation exercises — a songwriting sketchpad and harmony trainer."
     )
-    st.caption(
-        f"Sidebar display key: **{display_key}** — custom progression chords follow the global transpose."
-    )
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
         st.warning("Key changed — regenerate the Custom Progression Lab backing track if you use one.")
 
@@ -4955,11 +4963,23 @@ with tabs[3]:
     st.session_state[CPL_ACTIVE_KEY] = active
     saved = st.session_state[CPL_SAVED_KEY]
 
-    original_key = active.get("original_key_center", "C")
-    cpl_widget_ns = display_key.replace("#", "s").replace("b", "f")
+    cpl_home_key = active.get("original_key_center", "C")
+    cpl_practice_key = display_key
+    cpl_original_sections = deep_copy_sections(active.get("original_sections") or {})
+    cpl_widget_ns = cpl_practice_key.replace("#", "s").replace("b", "f")
     display_sections = deep_copy_sections(
-        display_sections_for_key(active, display_key)
+        display_sections_for_key(active, cpl_practice_key)
     )
+
+    with st.expander("How key transpose works (read this first)", expanded=True):
+        st.markdown(
+            cpl_transpose_explanation_markdown(
+                cpl_home_key,
+                cpl_practice_key,
+                cpl_original_sections,
+                display_sections,
+            )
+        )
 
     st.subheader("Saved progressions")
     save_col_a, save_col_b, save_col_c = st.columns([2, 1, 1])
@@ -5006,34 +5026,48 @@ with tabs[3]:
         key="cpl_title",
     )
 
-    st.info(
-        f"**Display key (sidebar):** {display_key} — same as Practice, Backing Track, and Creative Lab. "
-        f"**Home key (original progression):** {original_key}"
-    )
-    if display_key != original_key:
-        steps = semitone_distance(original_key, display_key)
-        st.caption(
-            f"Chords are transposed +{steps} semitones from home key **{original_key}** for display and playback."
-        )
-    else:
-        st.caption(
-            "Home key matches the sidebar. Enter chords here, then change **Transpose / Display Key** "
-            "in the sidebar to see them move (e.g. G Em C D → A F#m D E in A major)."
-        )
+    st.subheader("Key controls for this progression")
+    kc1, kc2, kc3 = st.columns(3)
+    with kc1:
+        st.metric("Written / Home Key", cpl_home_key)
+        st.caption("Key you typed the progression in.")
+    with kc2:
+        st.metric("Practice / Display Key", cpl_practice_key)
+        st.caption("Change in the sidebar — applies everywhere.")
+    with kc3:
+        if cpl_practice_key != cpl_home_key:
+            st.metric("Transpose amount", f"+{semitone_distance(cpl_home_key, cpl_practice_key)} semitones")
+        else:
+            st.metric("Transpose amount", "None (same key)")
+
     key_col_a, key_col_b = st.columns(2)
     with key_col_a:
-        if st.button("Set home key to current display key", key="cpl_anchor_home"):
-            anchor_home_key_to_display(active, display_key)
-            invalidate_cpl_derived_outputs(st.session_state)
-            st.success(f"Home key is now **{display_key}** (progression stored as written).")
-            st.rerun()
+        st.button(
+            "Make current key the new home key",
+            key="cpl_anchor_home",
+            on_click=on_cpl_anchor_home_key,
+            help=(
+                "Use this if you want the current practice key to become the new written key. "
+                "Example: you wrote in G but practiced in A and now want A to be the stored original."
+            ),
+        )
+        st.caption(
+            "Makes the **practice** key the new **written** key and saves the transposed chords as your chart."
+        )
     with key_col_b:
-        if display_key != original_key and st.button(
-            f"Show home key ({original_key}) in sidebar",
-            key="cpl_jump_home",
-        ):
-            request_display_key(st, original_key)
-            st.rerun()
+        if cpl_practice_key != cpl_home_key:
+            prepare_cpl_jump_home(st, cpl_home_key)
+            st.button(
+                f"Reset to original key ({cpl_home_key})",
+                key="cpl_jump_home",
+                on_click=on_cpl_jump_home_key,
+                help=f"Sets the sidebar practice key back to {cpl_home_key} so chords match what you wrote.",
+            )
+            st.caption(
+                f"Sets sidebar **Practice / display key** back to **{cpl_home_key}**."
+            )
+        else:
+            st.caption("Practice key already matches written key — no reset needed.")
 
     set_a, set_b, set_c = st.columns(3)
     with set_a:
@@ -5084,6 +5118,10 @@ with tabs[3]:
 
     st.divider()
     st.subheader("Chord progression builder")
+    st.caption(
+        f"Editing in **practice** view ({cpl_practice_key}). "
+        f"Written chart is stored in **{cpl_home_key}** — use **Reset to original key** to align the sidebar with that key."
+    )
 
     sec_names = list(display_sections.keys())
     if not sec_names:
