@@ -5058,59 +5058,15 @@ with tabs[4]:
         else None
     )
 
-    st.divider()
-    st.subheader("2. Studio transport & track mixer")
-
-    track_items_for_mix = []
-    track_items_for_studio = []
-
-    for slot in MT_SLOTS:
-        saved = st.session_state.mt_tracks.get(slot)
-        if not saved:
-            continue
-        layer_name = st.session_state.get(f"mt_name_{slot}", slot)
-        track_items_for_studio.append(
-            {
-                "name": layer_name,
-                "audio_bytes": saved,
-                "filename": st.session_state.mt_track_filenames.get(slot, f"{slot}.wav"),
-                "volume": st.session_state.get(f"mt_vol_{slot}", 1.0),
-                "delay": st.session_state.get(f"mt_delay_{slot}", 0.0),
-            }
-        )
-
-    layer_names = [item["name"] for item in track_items_for_studio]
-    mt_controls = ensure_multitrack_track_controls(layer_names)
-
-    studio_tracks = multitrack_studio_track_payloads(track_items_for_studio, mt_controls)
-
-    components.html(
-        multitrack_studio_html(
-            backing_b64=backing_b64,
-            tracks=studio_tracks,
-            bpm=mt_bpm,
-            beats_per_bar=mt_beats_per_bar,
-            count_in_bars=mt_count_in_bars,
-            metronome_during_playback=mt_metronome_playback,
-            loop_backing=mt_loop_backing,
-            backing_monitor_enabled=bool(backing_b64),
-            backing_monitor_volume=backing_volume,
-            scope_label=st.session_state.get("mt_backing_scope", mt_scope_label),
-            time_signature=mt_time_sig,
-            backing_duration_sec=float(
-                st.session_state.get("mt_backing_duration", mt_backing_duration)
-            ),
-        ),
-        height=520,
-        scrolling=True,
-    )
-
     if monitor_wav and use_backing_monitor:
         with st.expander("Preview monitor backing WAV"):
             st.audio(monitor_wav, format="audio/wav")
 
     st.divider()
-    st.subheader("3. Record or upload layers")
+    st.subheader("2. Record or upload layers")
+
+    track_items_for_mix = []
+    mt_controls = ensure_multitrack_track_controls([])
 
     for slot in MT_SLOTS:
         with st.expander(slot, expanded=slot in ("Guitar", "Bass", "Vocals")):
@@ -5188,6 +5144,38 @@ with tabs[4]:
                         "solo": mt_controls.get(layer_name, {}).get("solo", False),
                     }
                 )
+
+    track_items_for_studio = list(track_items_for_mix)
+    layer_names = [item["name"] for item in track_items_for_studio]
+    ensure_multitrack_track_controls(layer_names)
+    studio_tracks = multitrack_studio_track_payloads(track_items_for_studio, mt_controls)
+
+    st.divider()
+    st.subheader("3. Studio transport & track mixer")
+    st.caption(
+        "Press **Play with count-in** for a studio-style start on beat 1. "
+        "Mute, solo, and volume here mirror your layer controls above."
+    )
+    components.html(
+        multitrack_studio_html(
+            backing_b64=backing_b64,
+            tracks=studio_tracks,
+            bpm=mt_bpm,
+            beats_per_bar=mt_beats_per_bar,
+            count_in_bars=mt_count_in_bars,
+            metronome_during_playback=mt_metronome_playback,
+            loop_backing=mt_loop_backing,
+            backing_monitor_enabled=bool(backing_b64),
+            backing_monitor_volume=backing_volume,
+            scope_label=st.session_state.get("mt_backing_scope", mt_scope_label),
+            time_signature=mt_time_sig,
+            backing_duration_sec=float(
+                st.session_state.get("mt_backing_duration", mt_backing_duration)
+            ),
+        ),
+        height=520,
+        scrolling=True,
+    )
 
     st.divider()
     st.subheader("4. Export mix")
