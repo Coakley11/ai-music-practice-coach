@@ -110,7 +110,11 @@ from custom_progression_lab import (
     estimate_key_center,
     harmonic_analysis_markdown,
     maybe_update_inferred_home_key,
+    sync_written_home_key,
+    written_home_key,
+    commit_home_sections,
     on_cpl_adopt_detected_home_key,
+    on_cpl_apply_manual_home_key,
     tonal_center_markdown,
     generate_exercises_markdown,
     lab_context_for_coaching,
@@ -125,6 +129,7 @@ from custom_progression_lab import (
     deep_copy_sections,
     invalidate_cpl_derived_outputs,
     cpl_transpose_explanation_markdown,
+    format_chord_bar_line,
     transpose_debug_lines,
 )
 
@@ -4958,15 +4963,15 @@ with tabs[3]:
         st.session_state[CPL_SAVED_KEY] = {}
 
     active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
-    active = maybe_update_inferred_home_key(active)
+    active = sync_written_home_key(active)
     st.session_state[CPL_ACTIVE_KEY] = active
     saved = st.session_state[CPL_SAVED_KEY]
 
-    cpl_home_key = active.get("original_key_center", "C")
+    home_sections = deep_copy_sections(active.get("original_sections") or {})
+    cpl_home_key = written_home_key(active)
     cpl_practice_key = display_key
-    cpl_original_sections = deep_copy_sections(active.get("original_sections") or {})
-    cpl_tonal = analyze_tonal_center(cpl_original_sections, user_home_key=cpl_home_key)
-    cpl_widget_ns = cpl_practice_key.replace("#", "s").replace("b", "f")
+    cpl_tonal = analyze_tonal_center(home_sections)
+    cpl_widget_ns = cpl_home_key.replace("#", "s").replace("b", "f")
     display_sections = deep_copy_sections(
         display_sections_for_key(active, cpl_practice_key)
     )
@@ -4976,7 +4981,7 @@ with tabs[3]:
             cpl_transpose_explanation_markdown(
                 cpl_home_key,
                 cpl_practice_key,
-                cpl_original_sections,
+                home_sections,
                 display_sections,
             )
         )
@@ -5027,32 +5032,60 @@ with tabs[3]:
     )
 
     st.subheader("Key controls for this progression")
-    kc1, kc2, kc3 = st.columns(3)
+    kc1, kc2 = st.columns(2)
     with kc1:
         st.metric("Written / Home Key", cpl_home_key)
-        if active.get("tonal_center_inferred"):
-            st.caption("Auto-set from chord analysis (was default C).")
+        if active.get("user_locked_home_key"):
+            st.caption("Manually set — tonal center locked.")
+        elif active.get("tonal_center_inferred"):
+            st.caption("Tonal center from chord analysis.")
         else:
-            st.caption("Stored key for your written chart.")
+            st.caption("Tonal center of the progression.")
     with kc2:
         st.metric("Practice / Display Key", cpl_practice_key)
-        st.caption("Change in the sidebar — applies everywhere.")
-    with kc3:
-        detected_label = cpl_tonal.get("primary_label", "—")
-        st.metric("Likely tonal center", detected_label)
-        st.caption(f"{cpl_tonal.get('confidence_label', 'low')} confidence")
+        st.caption("Global sidebar key — transposed view for practice.")
 
-    st.info(tonal_center_markdown(cpl_original_sections, stored_home_key=cpl_home_key))
-    if (
-        cpl_tonal.get("storage_key") != cpl_home_key
-        and cpl_tonal.get("confidence_score", 0) >= 0.45
-    ):
-        st.button(
-            f"Use detected home key ({cpl_tonal.get('primary_label')})",
-            key="cpl_adopt_detected_home",
-            on_click=on_cpl_adopt_detected_home_key,
-            help="Updates written/home key to match the harmonic analysis of your chords.",
+    prev_col, trans_col = st.columns(2)
+    with prev_col:
+        st.markdown(f"**Original chords (home {cpl_home_key}):**")
+        st.code(format_chord_bar_line(home_sections), language=None)
+    with trans_col:
+        st.markdown(f"**Practice chords (display {cpl_practice_key}):**")
+        st.code(format_chord_bar_line(display_sections), language=None)
+
+    if active.get("home_key_uncertain"):
+        st.warning(
+            "Tonal center is uncertain — use **Manually set home key** below or keep editing chords."
         )
+    st.info(tonal_center_markdown(home_sections, stored_home_key=cpl_home_key))
+
+    with st.expander("Manually set home key", expanded=active.get("home_key_uncertain", False)):
+        st.caption(
+            "Home key = musical tonal center. Lock it if auto-detection is wrong "
+            "(e.g. you want **G** for `Am | Dm | G`, not F#)."
+        )
+        _home_opts = display_key_options(cpl_tonal.get("storage_key", cpl_home_key))
+        _pick_default = cpl_home_key if cpl_home_key in _home_opts else _home_opts[0]
+        st.selectbox(
+            "Written / home key (tonal center)",
+            _home_opts,
+            index=_home_opts.index(_pick_default) if _pick_default in _home_opts else 0,
+            key="cpl_manual_home_key_picker",
+        )
+        mcol_a, mcol_b = st.columns(2)
+        with mcol_a:
+            st.button(
+                "Apply manual home key",
+                key="cpl_apply_manual_home",
+                on_click=on_cpl_apply_manual_home_key,
+            )
+        with mcol_b:
+            if not active.get("user_locked_home_key") and cpl_tonal.get("confidence_score", 0) >= 0.45:
+                st.button(
+                    f"Use detected ({cpl_tonal.get('primary_label')})",
+                    key="cpl_adopt_detected_home",
+                    on_click=on_cpl_adopt_detected_home_key,
+                )
 
     key_col_a, key_col_b = st.columns(2)
     with key_col_a:
@@ -5133,14 +5166,14 @@ with tabs[3]:
     st.divider()
     st.subheader("Chord progression builder")
     st.caption(
-        f"Editing in **practice** view ({cpl_practice_key}). "
-        f"Written chart is stored in **{cpl_home_key}** — use **Reset to original key** to align the sidebar with that key."
+        f"Type chords in **home key {cpl_home_key}** (e.g. `Am | Dm | G`). "
+        f"Practice view in **{cpl_practice_key}** updates automatically from the sidebar."
     )
 
-    sec_names = list(display_sections.keys())
+    sec_names = list(home_sections.keys())
     if not sec_names:
-        display_sections = {"Verse": [{"chord": display_key, "bars": 1}]}
-        sec_names = list(display_sections.keys())
+        home_sections = {"Verse": [{"chord": cpl_home_key, "bars": 1}]}
+        sec_names = list(home_sections.keys())
 
     sec_tool_a, sec_tool_b = st.columns([2, 1])
     with sec_tool_a:
@@ -5148,9 +5181,9 @@ with tabs[3]:
     with sec_tool_b:
         if st.button("Add section", key="cpl_add_section"):
             label = (new_section or "Section").strip()
-            if label not in display_sections:
-                display_sections[label] = [{"chord": display_key, "bars": 1}]
-                commit_display_sections_to_original(active, display_sections, display_key)
+            if label not in home_sections:
+                home_sections[label] = [{"chord": cpl_home_key, "bars": 1}]
+                active = commit_home_sections(active, home_sections)
                 st.session_state[CPL_ACTIVE_KEY] = active
                 st.rerun()
             st.warning("Section already exists.")
@@ -5160,23 +5193,23 @@ with tabs[3]:
         sec_names,
         key=f"cpl_edit_section_{cpl_widget_ns}",
     )
-    entries = display_sections.setdefault(edit_section, [])
+    entries = home_sections.setdefault(edit_section, [])
 
     bulk_line = st.text_input(
         "Paste chords (comma or | separated)",
-        placeholder="Am, Dm, G7, Cmaj7",
+        placeholder="Am, Dm, G",
         key="cpl_bulk_line",
     )
     if st.button("Add chords from text", key="cpl_bulk_add"):
         for item in parse_chord_line(bulk_line):
             entries.append(item)
-        commit_display_sections_to_original(active, display_sections, display_key)
+        active = commit_home_sections(active, home_sections)
         st.session_state[CPL_ACTIVE_KEY] = active
         st.rerun()
 
     if st.button("Add empty chord", key="cpl_add_chord"):
-        entries.append({"chord": display_key, "bars": 1})
-        commit_display_sections_to_original(active, display_sections, display_key)
+        entries.append({"chord": cpl_home_key, "bars": 1})
+        active = commit_home_sections(active, home_sections)
         st.session_state[CPL_ACTIVE_KEY] = active
         st.rerun()
 
@@ -5186,7 +5219,7 @@ with tabs[3]:
         with c1:
             entry["chord"] = st.text_input(
                 f"Chord {idx + 1}",
-                value=entry.get("chord", display_key),
+                value=entry.get("chord", cpl_home_key),
                 key=f"cpl_ch_{cpl_widget_ns}_{edit_section}_{idx}",
             )
         with c2:
@@ -5204,7 +5237,7 @@ with tabs[3]:
                 disabled=idx == 0,
             ):
                 entries[idx], entries[idx - 1] = entries[idx - 1], entries[idx]
-                commit_display_sections_to_original(active, display_sections, display_key)
+                active = commit_home_sections(active, home_sections)
                 st.session_state[CPL_ACTIVE_KEY] = active
                 st.rerun()
         with c4:
@@ -5214,7 +5247,7 @@ with tabs[3]:
                 disabled=idx >= len(entries) - 1,
             ):
                 entries[idx], entries[idx + 1] = entries[idx + 1], entries[idx]
-                commit_display_sections_to_original(active, display_sections, display_key)
+                active = commit_home_sections(active, home_sections)
                 st.session_state[CPL_ACTIVE_KEY] = active
                 st.rerun()
         with c5:
@@ -5223,18 +5256,21 @@ with tabs[3]:
     for ri in sorted(remove_indices, reverse=True):
         entries.pop(ri)
     if remove_indices:
-        commit_display_sections_to_original(active, display_sections, display_key)
+        active = commit_home_sections(active, home_sections)
         st.session_state[CPL_ACTIVE_KEY] = active
         st.rerun()
 
-    commit_display_sections_to_original(active, display_sections, display_key)
+    active = commit_home_sections(active, home_sections)
     st.session_state[CPL_ACTIVE_KEY] = active
+    display_sections = deep_copy_sections(
+        display_sections_for_key(active, cpl_practice_key)
+    )
 
     if st.button(f"Remove section «{edit_section}»", key="cpl_rm_section"):
-        display_sections.pop(edit_section, None)
-        if not display_sections:
-            display_sections = {"Verse": [{"chord": display_key, "bars": 1}]}
-        commit_display_sections_to_original(active, display_sections, display_key)
+        home_sections.pop(edit_section, None)
+        if not home_sections:
+            home_sections = {"Verse": [{"chord": cpl_home_key, "bars": 1}]}
+        active = commit_home_sections(active, home_sections)
         st.session_state[CPL_ACTIVE_KEY] = active
         st.rerun()
 

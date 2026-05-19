@@ -122,11 +122,51 @@ def transpose_lab_sections(sections, from_key, to_key):
     }
 
 
+def written_home_key(active) -> str:
+    """Written / home key = tonal center of the stored progression (unless manually locked)."""
+    active = ensure_original_structure(active)
+    if active.get("user_locked_home_key") and active.get("original_key_center"):
+        return active.get("original_key_center", "C")
+    sections = active.get("original_sections") or {}
+    analysis = analyze_tonal_center(sections)
+    if analysis.get("chords_count", 0) >= 2 and analysis.get("confidence_score", 0) >= 0.35:
+        return analysis.get("storage_key", active.get("original_key_center", "C"))
+    return active.get("original_key_center", "C")
+
+
+def sync_written_home_key(active, *, min_confidence: float = 0.35) -> dict:
+    """Update stored home key from harmonic analysis unless the user locked it manually."""
+    active = ensure_original_structure(active)
+    if active.get("user_locked_home_key"):
+        active.pop("home_key_uncertain", None)
+        return active
+    sections = active.get("original_sections") or {}
+    analysis = analyze_tonal_center(sections)
+    if analysis.get("chords_count", 0) < 2:
+        return active
+    if analysis.get("confidence_score", 0) < min_confidence:
+        active["home_key_uncertain"] = True
+        return active
+    detected = analysis.get("storage_key")
+    if detected:
+        active["original_key_center"] = detected
+        active["tonal_center_inferred"] = True
+    active.pop("home_key_uncertain", None)
+    return active
+
+
 def display_sections_for_key(active, display_key):
     active = ensure_original_structure(active)
-    home = active.get("original_key_center", "C")
+    home = written_home_key(active)
     original = active.get("original_sections") or {}
     return transpose_lab_sections(original, home, display_key)
+
+
+def commit_home_sections(active, home_sections):
+    """Persist chords in written/home key and refresh tonal-center home key."""
+    active = ensure_original_structure(active)
+    active["original_sections"] = deep_copy_sections(home_sections)
+    return sync_written_home_key(active)
 
 
 def anchor_home_key_to_display(active, display_key):
@@ -158,7 +198,7 @@ def on_cpl_anchor_home_key() -> None:
 
 
 def on_cpl_adopt_detected_home_key() -> None:
-    """Button callback: set written/home key from harmonic analysis."""
+    """Button callback: lock written/home key to the detected tonal center."""
     import streamlit as st
 
     active = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
@@ -166,8 +206,24 @@ def on_cpl_adopt_detected_home_key() -> None:
     active["original_key_center"] = analysis.get("storage_key", active.get("original_key_center", "C"))
     active["user_locked_home_key"] = True
     active.pop("tonal_center_inferred", None)
+    active.pop("home_key_uncertain", None)
     st.session_state[CPL_ACTIVE_KEY] = active
     invalidate_cpl_derived_outputs(st.session_state)
+
+
+def on_cpl_apply_manual_home_key() -> None:
+    """Button callback: lock written/home key from the manual picker."""
+    import streamlit as st
+
+    active = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+    manual = st.session_state.get("cpl_manual_home_key_picker")
+    if manual:
+        active["original_key_center"] = manual
+        active["user_locked_home_key"] = True
+        active.pop("tonal_center_inferred", None)
+        active.pop("home_key_uncertain", None)
+        st.session_state[CPL_ACTIVE_KEY] = active
+        invalidate_cpl_derived_outputs(st.session_state)
 
 
 def on_global_display_key_change(session_state, display_key):
@@ -219,23 +275,21 @@ def cpl_transpose_explanation_markdown(
             f"from **{home_key}** to **{practice_key}** for display, backing track, and exercises."
         )
 
-    example_written = format_chord_bar_line(
+    example_home = format_chord_bar_line(
         {
             "Example": [
+                {"chord": "Am", "bars": 1},
+                {"chord": "Dm", "bars": 1},
                 {"chord": "G", "bars": 1},
-                {"chord": "Em", "bars": 1},
-                {"chord": "C", "bars": 1},
-                {"chord": "D", "bars": 1},
             ]
         }
     )
-    example_transposed = format_chord_bar_line(
+    example_practice = format_chord_bar_line(
         {
             "Example": [
-                {"chord": "A", "bars": 1},
-                {"chord": "F#m", "bars": 1},
-                {"chord": "D", "bars": 1},
-                {"chord": "E", "bars": 1},
+                {"chord": "Gm", "bars": 1},
+                {"chord": "Cm", "bars": 1},
+                {"chord": "F", "bars": 1},
             ]
         }
     )
@@ -243,31 +297,27 @@ def cpl_transpose_explanation_markdown(
     return f"""### How keys work in Custom Progression Lab
 
 **Written / Home Key — {home_key}**  
-The key your progression was *written in*. These chords are stored as your original chart.
+The **tonal center** of your progression (where the harmony belongs). Chords below are stored in this key.
 
 **Practice / Display Key — {practice_key}**  
-The key you want to *see, hear, and practice in* right now. Change this in the **sidebar** under **Practice / display key** (it applies to the whole app).
+From the **sidebar** — the key you want to **practice and hear** right now. The app transposes from home → practice.
 
-#### What happens when you change the sidebar key?
-The app keeps your **written** chords safe, then **transposes** them to the practice key for this page, backing tracks, and exercises.
-
-**Example (not your song — just to show the idea):**
-
+#### Example
 | | |
 |---|---|
-| Written / Home Key **G** | {example_written} |
-| Practice / Display Key **A** | {example_transposed} |
+| Home key **G** (tonal center) | {example_home} |
+| Practice key **F** (sidebar) | {example_practice} |
 
 #### Your progression right now
 {shift_note}
 
-**Original (written in {home_key}):**  
+**Original chords (home key {home_key}):**  
 `{orig_line}`
 
-**Transposed (what you see/hear in {practice_key}):**  
+**Practice chords (display key {practice_key}):**  
 `{trans_line}`
 
-*Tip: Chord boxes below show **practice** chords (what you hear). Change the sidebar **Practice / display key** to move the whole progression up or down. Use **Reset to original key** to match your written chart again.*
+*Edit chord boxes in the **home** key. Change the sidebar practice key to move everything up or down without retyping.*
 """
 
 
@@ -476,11 +526,11 @@ def _score_key_candidate(tonic_pc: int, mode: str, weighted_chords: list[tuple[s
         rel_a = (ra - tonic_pc) % 12
         rel_b = (rb - tonic_pc) % 12
 
-        if _is_dominant(qa) and rel_a == 7 and rel_b == 0:
+        if rel_a == 7 and rel_b == 0:
             bonus = 5.5 * w_b
-            if mode == "major" and _is_major_tonic(qb):
-                score += bonus
-                reasons.append(f"V-I cadence: {ch_a} -> {ch_b}")
+            if mode == "major" and (_is_major_tonic(qb) or _is_minor_tonic(qb)):
+                score += bonus if _is_major_tonic(qb) else bonus * 0.92
+                reasons.append(f"dominant-to-tonic: {ch_a} -> {ch_b}")
             elif mode == "minor" and _is_minor_tonic(qb):
                 score += bonus * 0.85
                 reasons.append(f"V-i cadence: {ch_a} -> {ch_b}")
@@ -636,23 +686,8 @@ def tonal_center_markdown(sections, stored_home_key: str | None = None) -> str:
 
 
 def maybe_update_inferred_home_key(active: dict, *, min_confidence: float = 0.45) -> dict:
-    """If home key is still the generic default, infer it from harmonic function."""
-    active = ensure_original_structure(active)
-    if active.get("user_locked_home_key"):
-        return active
-    sections = active.get("original_sections") or {}
-    analysis = analyze_tonal_center(sections)
-    if analysis.get("chords_count", 0) < 2:
-        return active
-    if analysis.get("confidence_score", 0) < min_confidence:
-        return active
-
-    stored = active.get("original_key_center", "C")
-    detected = analysis.get("storage_key", stored)
-    if stored in ("C",) and detected not in ("C", "Cm"):
-        active["original_key_center"] = detected
-        active["tonal_center_inferred"] = True
-    return active
+    """Backward-compatible alias for sync_written_home_key."""
+    return sync_written_home_key(active, min_confidence=min_confidence)
 
 
 def estimate_key_center(sections, fallback="C"):
@@ -664,14 +699,15 @@ def estimate_key_center(sections, fallback="C"):
 
 
 def commit_display_sections_to_original(active, display_sections, display_key):
+    """Transpose practice-view chords back into written/home key storage."""
     active = ensure_original_structure(active)
-    home = active.get("original_key_center", "C")
+    home = written_home_key(active)
     active["original_sections"] = transpose_lab_sections(
         display_sections,
         display_key,
         home,
     )
-    return maybe_update_inferred_home_key(active)
+    return sync_written_home_key(active)
 
 
 def detect_progression_patterns(chords, key_center):
