@@ -140,6 +140,19 @@ def on_cpl_anchor_home_key() -> None:
     invalidate_cpl_derived_outputs(st.session_state)
 
 
+def on_cpl_adopt_detected_home_key() -> None:
+    """Button callback: set written/home key from harmonic analysis."""
+    import streamlit as st
+
+    active = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+    analysis = analyze_tonal_center(active.get("original_sections") or {})
+    active["original_key_center"] = analysis.get("storage_key", active.get("original_key_center", "C"))
+    active["user_locked_home_key"] = True
+    active.pop("tonal_center_inferred", None)
+    st.session_state[CPL_ACTIVE_KEY] = active
+    invalidate_cpl_derived_outputs(st.session_state)
+
+
 def on_global_display_key_change(session_state, display_key):
     last = session_state.get(CPL_LAST_DISPLAY_KEY)
     if last is None:
@@ -450,10 +463,10 @@ def _score_key_candidate(tonic_pc: int, mode: str, weighted_chords: list[tuple[s
             bonus = 5.5 * w_b
             if mode == "major" and _is_major_tonic(qb):
                 score += bonus
-                reasons.append(f"V→I cadence: {ch_a} → {ch_b}")
+                reasons.append(f"V-I cadence: {ch_a} -> {ch_b}")
             elif mode == "minor" and _is_minor_tonic(qb):
                 score += bonus * 0.85
-                reasons.append(f"V→i cadence: {ch_a} → {ch_b}")
+                reasons.append(f"V-i cadence: {ch_a} -> {ch_b}")
 
         if idx + 2 < n:
             ch_c, w_c = weighted_chords[idx + 2]
@@ -463,7 +476,7 @@ def _score_key_candidate(tonic_pc: int, mode: str, weighted_chords: list[tuple[s
             rel_c = (rc - tonic_pc) % 12
             if mode == "major" and rel_a == 2 and rel_b == 7 and rel_c == 0:
                 score += 6.0 * w_c
-                reasons.append(f"ii–V–I: {ch_a} → {ch_b} → {ch_c}")
+                reasons.append(f"ii-V-I: {ch_a} -> {ch_b} -> {ch_c}")
 
     fifth_moves = 0
     for idx in range(n - 1):
@@ -732,22 +745,27 @@ def harmonic_analysis_markdown(sections, key_center, time_signature="4/4"):
         "",
         "## Progression patterns",
     ]
-    patterns = detect_progression_patterns(all_chords, key_center)
+    analysis_key = analysis.get("storage_key", key_center)
+    patterns = detect_progression_patterns(all_chords, analysis_key)
     if patterns:
         lines.extend(f"- {p}" for p in patterns)
     else:
         lines.append("- No standard pop/jazz cell detected yet — listen for bass direction and dominant arrivals.")
 
     lines.append("\n## Roman numeral sketch")
-    roman = roman_path(all_chords, key_center, limit=12)
+    roman = analysis.get("roman") or roman_path(all_chords, analysis_key, limit=12)
     lines.append(f"- {roman or 'Add more chords to see a Roman numeral path.'}")
 
     lines.append("\n## Tension and resolution")
-    lines.extend(f"- {n}" for n in tension_resolution_notes(all_chords, key_center))
+    lines.extend(f"- {n}" for n in tension_resolution_notes(all_chords, analysis_key))
+
+    if analysis.get("reasons"):
+        lines.append("\n## Tonal center clues")
+        lines.extend(f"- {r}" for r in analysis["reasons"])
 
     lines.append("\n## Section breakdown")
     for sec, chords in chord_lists.items():
-        lines.extend(section_analysis_lines(sec, chords, key_center))
+        lines.extend(section_analysis_lines(sec, chords, analysis_key))
 
     lines.append("\n## Scales / modes (by chord)")
     seen = set()
@@ -755,7 +773,7 @@ def harmonic_analysis_markdown(sections, key_center, time_signature="4/4"):
         if ch in seen:
             continue
         seen.add(ch)
-        scales = suggested_scales_for_chord(ch, key_center)
+        scales = suggested_scales_for_chord(ch, analysis_key)
         lines.append(f"- **{ch}:** {', '.join(scales[:2])}")
 
     return "\n".join(lines)
