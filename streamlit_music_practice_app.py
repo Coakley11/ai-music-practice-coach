@@ -3935,6 +3935,21 @@ from creative_lab_text import (
     adaptive_weakness_detection_text,
     musical_development_tracker_text as lab_musical_dev,
 )
+from custom_progression_lab import (
+    CPL_ACTIVE_KEY,
+    CPL_SAVED_KEY,
+    default_active_progression,
+    parse_chord_line,
+    normalize_chord_symbol,
+    flatten_sections_to_events,
+    sections_to_chord_lists,
+    estimate_key_center,
+    harmonic_analysis_markdown,
+    generate_exercises_markdown,
+    lab_context_for_coaching,
+    save_progression,
+    delete_progression,
+)
 
 
 def current_song_context_lab():
@@ -3971,7 +3986,7 @@ st.title(
 )
 
 st.caption(
-    "Genre-based practice plans, full-song chords, backing tracks, multitrack recording, and practice logs."
+    "Genre-based practice plans, full-song chords, backing tracks, custom progressions, multitrack recording, and practice logs."
 )
 
 # -------------------------------------------------
@@ -4155,10 +4170,11 @@ tabs = st.tabs([
     "Practice",
     "Song Picker",
     "Backing Track",
+    "Custom Progression Lab",
     "Creative Lab",
     "Multitrack Recorder",
     "Upload / Recording Analysis",
-    "Practice Log"
+    "Practice Log",
 ])
 
 # -------------------------------------------------
@@ -4776,7 +4792,7 @@ with tabs[2]:
 # UPLOAD / RECORDING ANALYSIS
 # -------------------------------------------------
 
-with tabs[5]:
+with tabs[6]:
 
     st.header("Upload / Recording Analysis")
 
@@ -4812,10 +4828,300 @@ with tabs[5]:
 
 
 # -------------------------------------------------
-# CREATIVE LAB
+# CUSTOM PROGRESSION LAB
 # -------------------------------------------------
 
 with tabs[3]:
+
+    st.header("Custom Progression Lab")
+
+    st.write(
+        "Build your own chord progression, generate a backing track, and get instrument-specific "
+        "practice and improvisation exercises — a songwriting sketchpad and harmony trainer."
+    )
+
+    if CPL_ACTIVE_KEY not in st.session_state:
+        st.session_state[CPL_ACTIVE_KEY] = default_active_progression()
+    if CPL_SAVED_KEY not in st.session_state:
+        st.session_state[CPL_SAVED_KEY] = {}
+
+    active = st.session_state[CPL_ACTIVE_KEY]
+    saved = st.session_state[CPL_SAVED_KEY]
+
+    st.subheader("Saved progressions")
+    save_col_a, save_col_b, save_col_c = st.columns([2, 1, 1])
+    with save_col_a:
+        save_name = st.text_input(
+            "Save as",
+            value=active.get("name", "Untitled progression"),
+            key="cpl_save_name",
+        )
+    with save_col_b:
+        if st.button("Save progression", key="cpl_save_btn"):
+            save_progression(saved, save_name.strip() or "Untitled", active)
+            st.session_state[CPL_SAVED_KEY] = saved
+            st.success(f"Saved **{save_name}**.")
+    with save_col_c:
+        if saved:
+            pick_saved = st.selectbox(
+                "Load saved",
+                ["—"] + sorted(saved.keys()),
+                key="cpl_pick_saved",
+            )
+            load_col, del_col = st.columns(2)
+            with load_col:
+                if st.button("Load", key="cpl_load_btn", disabled=pick_saved == "—"):
+                    st.session_state[CPL_ACTIVE_KEY] = dict(saved[pick_saved])
+                    st.session_state[CPL_ACTIVE_KEY]["sections"] = {
+                        sec: [dict(e) for e in entries]
+                        for sec, entries in saved[pick_saved].get("sections", {}).items()
+                    }
+                    st.rerun()
+            with del_col:
+                if st.button("Delete", key="cpl_del_btn", disabled=pick_saved == "—"):
+                    delete_progression(saved, pick_saved)
+                    st.session_state[CPL_SAVED_KEY] = saved
+                    st.rerun()
+        else:
+            st.caption("No saved progressions yet.")
+
+    st.divider()
+    st.subheader("Progression settings")
+
+    active["name"] = st.text_input(
+        "Progression title",
+        value=active.get("name", "Untitled progression"),
+        key="cpl_title",
+    )
+
+    set_a, set_b, set_c = st.columns(3)
+    with set_a:
+        active["key_center"] = st.selectbox(
+            "Key center",
+            COMMON_KEYS,
+            index=COMMON_KEYS.index(active.get("key_center", "C"))
+            if active.get("key_center", "C") in COMMON_KEYS
+            else 0,
+            key="cpl_key_center",
+        )
+        active["time_signature"] = st.selectbox(
+            "Time signature",
+            ["4/4", "3/4", "6/8", "12/8"],
+            index=["4/4", "3/4", "6/8", "12/8"].index(active.get("time_signature", "4/4"))
+            if active.get("time_signature", "4/4") in ["4/4", "3/4", "6/8", "12/8"]
+            else 0,
+            key="cpl_time_sig",
+        )
+    with set_b:
+        active["bpm"] = st.slider(
+            "Tempo (BPM)",
+            50,
+            200,
+            int(active.get("bpm", 100)),
+            5,
+            key="cpl_bpm",
+        )
+        active["loops"] = st.slider(
+            "Backing loops",
+            1,
+            12,
+            int(active.get("loops", 2)),
+            1,
+            key="cpl_loops",
+        )
+    with set_c:
+        _groove_opts = [
+            "Auto",
+            "Pop groove",
+            "Rock groove",
+            "Jazz swing",
+            "Bossa nova",
+            "Funk groove",
+            "Ballad",
+        ]
+        _gcur = active.get("groove_style", "Auto")
+        active["groove_style"] = st.selectbox(
+            "Groove / style",
+            _groove_opts,
+            index=_groove_opts.index(_gcur) if _gcur in _groove_opts else 0,
+            key="cpl_groove",
+        )
+        est_key = estimate_key_center(active.get("sections", {}), active.get("key_center", "C"))
+        st.caption(f"Estimated tonal center from chords: **{est_key}**")
+
+    st.divider()
+    st.subheader("Chord progression builder")
+
+    sec_names = list(active.get("sections", {}).keys())
+    if not sec_names:
+        active["sections"] = {"Verse": [{"chord": "C", "bars": 1}]}
+        sec_names = list(active["sections"].keys())
+
+    sec_tool_a, sec_tool_b = st.columns([2, 1])
+    with sec_tool_a:
+        new_section = st.text_input("New section name", value="Bridge", key="cpl_new_section_name")
+    with sec_tool_b:
+        if st.button("Add section", key="cpl_add_section"):
+            label = (new_section or "Section").strip()
+            if label not in active["sections"]:
+                active["sections"][label] = [{"chord": "C", "bars": 1}]
+                st.rerun()
+            st.warning("Section already exists.")
+
+    edit_section = st.selectbox("Edit section", sec_names, key="cpl_edit_section")
+    entries = active["sections"].setdefault(edit_section, [])
+
+    bulk_line = st.text_input(
+        "Paste chords (comma or | separated)",
+        placeholder="Am, Dm, G7, Cmaj7",
+        key="cpl_bulk_line",
+    )
+    if st.button("Add chords from text", key="cpl_bulk_add"):
+        for item in parse_chord_line(bulk_line):
+            entries.append(item)
+        st.rerun()
+
+    if st.button("Add empty chord", key="cpl_add_chord"):
+        entries.append({"chord": "C", "bars": 1})
+        st.rerun()
+
+    remove_indices = []
+    for idx, entry in enumerate(list(entries)):
+        c1, c2, c3, c4, c5 = st.columns([2, 1, 0.5, 0.5, 0.5])
+        with c1:
+            entry["chord"] = st.text_input(
+                f"Chord {idx + 1}",
+                value=entry.get("chord", "C"),
+                key=f"cpl_ch_{edit_section}_{idx}",
+            )
+        with c2:
+            entry["bars"] = st.number_input(
+                "Bars",
+                min_value=1,
+                max_value=16,
+                value=int(entry.get("bars", 1)),
+                key=f"cpl_bars_{edit_section}_{idx}",
+            )
+        with c3:
+            if st.button("↑", key=f"cpl_up_{edit_section}_{idx}", disabled=idx == 0):
+                entries[idx], entries[idx - 1] = entries[idx - 1], entries[idx]
+                st.rerun()
+        with c4:
+            if st.button("↓", key=f"cpl_dn_{edit_section}_{idx}", disabled=idx >= len(entries) - 1):
+                entries[idx], entries[idx + 1] = entries[idx + 1], entries[idx]
+                st.rerun()
+        with c5:
+            if st.button("✕", key=f"cpl_rm_{edit_section}_{idx}"):
+                remove_indices.append(idx)
+    for ri in sorted(remove_indices, reverse=True):
+        entries.pop(ri)
+    if remove_indices:
+        st.rerun()
+
+    if st.button(f"Remove section «{edit_section}»", key="cpl_rm_section"):
+        active["sections"].pop(edit_section, None)
+        if not active["sections"]:
+            active["sections"] = {"Verse": [{"chord": "C", "bars": 1}]}
+        st.rerun()
+
+    chord_lists = sections_to_chord_lists(active["sections"])
+    for sec_name, chords in chord_lists.items():
+        st.markdown(f"**{sec_name}**")
+        st.markdown(bar_grid_markdown(chords, bars_per_row=4))
+
+    st.session_state[CPL_ACTIVE_KEY] = active
+
+    st.divider()
+    st.subheader("Backing track")
+
+    cpl_events = flatten_sections_to_events(active["sections"])
+    cpl_groove = infer_groove_style({}, active.get("groove_style", "Auto"))
+
+    if not cpl_events:
+        st.warning("Add at least one chord to generate a backing track.")
+    else:
+        st.caption(
+            f"{len(cpl_events)} bars | {cpl_groove} | loops: {active.get('loops', 2)}"
+        )
+
+    if st.button(
+        "Generate Backing Track",
+        key="cpl_gen_backing",
+        disabled=not cpl_events,
+    ):
+        st.session_state["cpl_backing_wav"] = generate_backing_track(
+            cpl_events,
+            bpm=int(active.get("bpm", 100)),
+            loops=int(active.get("loops", 2)),
+            style=cpl_groove,
+            level=level,
+        )
+        st.success("Backing track generated.")
+
+    if st.session_state.get("cpl_backing_wav"):
+        st.audio(st.session_state["cpl_backing_wav"], format="audio/wav")
+        st.download_button(
+            "Download backing WAV",
+            st.session_state["cpl_backing_wav"],
+            file_name=f"{active.get('name', 'custom').replace(' ', '_')}_backing.wav",
+            mime="audio/wav",
+        )
+
+    coach_ctx = lab_context_for_coaching(
+        active["sections"],
+        active.get("key_center", "C"),
+        instrument,
+        level,
+        focus,
+    )
+    if coach_ctx["first_chords"]:
+        st.info(
+            _section_overlay(
+                instrument,
+                focus,
+                coach_ctx["first_chords"],
+                section_name=coach_ctx["first_section"],
+                groove_style=cpl_groove,
+                time_signature=active.get("time_signature", "4/4"),
+                bpm=int(active.get("bpm", 100)),
+            )
+        )
+
+    st.divider()
+    st.subheader("Analysis & exercises")
+
+    ex_col, an_col = st.columns(2)
+    with an_col:
+        if st.button("Harmonic analysis", key="cpl_analyze"):
+            st.session_state["cpl_analysis_md"] = harmonic_analysis_markdown(
+                active["sections"],
+                active.get("key_center", "C"),
+                active.get("time_signature", "4/4"),
+            )
+    with ex_col:
+        if st.button("Generate exercises", key="cpl_exercises"):
+            st.session_state["cpl_exercises_md"] = generate_exercises_markdown(
+                sections=active["sections"],
+                instrument=instrument,
+                level=level,
+                focus=focus,
+                key_center=active.get("key_center", "C"),
+                groove_style=cpl_groove,
+                time_signature=active.get("time_signature", "4/4"),
+                bpm=int(active.get("bpm", 100)),
+            )
+
+    if st.session_state.get("cpl_analysis_md"):
+        st.markdown(st.session_state["cpl_analysis_md"])
+    if st.session_state.get("cpl_exercises_md"):
+        st.markdown(st.session_state["cpl_exercises_md"])
+
+
+# -------------------------------------------------
+# CREATIVE LAB
+# -------------------------------------------------
+
+with tabs[4]:
 
     st.header("AI Musical Development + Creative Lab")
 
@@ -4873,7 +5179,7 @@ with tabs[3]:
 # MULTITRACK
 # -------------------------------------------------
 
-with tabs[4]:
+with tabs[5]:
 
     st.header("Multitrack Recorder")
 
@@ -5234,7 +5540,7 @@ with tabs[4]:
 # PRACTICE LOG
 # -------------------------------------------------
 
-with tabs[6]:
+with tabs[7]:
 
     st.header("Practice Log")
 
