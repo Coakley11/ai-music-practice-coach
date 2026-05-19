@@ -76,17 +76,29 @@ from song_catalog import (
     record_for_pick_key,
 )
 from songs import (
+    ACTIVE_MUSIC_SOURCE_KEY,
     BACKING_NEEDS_REGEN,
+    SOURCE_CATALOG,
+    SOURCE_CUSTOM,
+    active_source_banner,
     apply_pick_key,
+    build_active_chart_bundle,
     chord_blocks_for_backing,
     clear_backing_needs_regen,
+    display_key_context,
+    ensure_active_music_source,
     ensure_master_song_initialized,
     form_timeline_rows,
     get_song_context,
+    invalidate_backing_cache,
+    is_custom_progression,
+    note_active_source_change,
     note_display_key_change,
     on_cpl_jump_home_key,
     prepare_cpl_jump_home,
     section_order,
+    set_catalog_source,
+    set_custom_source,
     sync_display_key_before_widget,
 )
 from songs.key_state import mark_display_key_changed
@@ -99,39 +111,49 @@ from creative_lab_text import (
     adaptive_weakness_detection_text,
     musical_development_tracker_text as lab_musical_dev,
 )
-from custom_progression_lab import (
-    CPL_ACTIVE_KEY,
-    CPL_SAVED_KEY,
-    default_active_progression,
-    parse_chord_line,
-    flatten_sections_to_events,
-    sections_to_chord_lists,
-    analyze_tonal_center,
-    estimate_key_center,
-    harmonic_analysis_markdown,
-    maybe_update_inferred_home_key,
-    sync_written_home_key,
-    written_home_key,
-    commit_home_sections,
-    on_cpl_adopt_detected_home_key,
-    on_cpl_apply_manual_home_key,
-    tonal_center_markdown,
-    generate_exercises_markdown,
-    lab_context_for_coaching,
-    save_progression,
-    delete_progression,
-    ensure_original_structure,
-    display_sections_for_key,
-    commit_display_sections_to_original,
-    anchor_home_key_to_display,
-    on_cpl_anchor_home_key,
-    backing_signature,
-    deep_copy_sections,
-    invalidate_cpl_derived_outputs,
-    cpl_transpose_explanation_markdown,
-    format_chord_bar_line,
-    transpose_debug_lines,
-)
+try:
+    from custom_progression_lab import (
+        CPL_ACTIVE_KEY,
+        CPL_SAVED_KEY,
+        default_active_progression,
+        parse_chord_line,
+        flatten_sections_to_events,
+        sections_to_chord_lists,
+        analyze_tonal_center,
+        estimate_key_center,
+        harmonic_analysis_markdown,
+        maybe_update_inferred_home_key,
+        sync_written_home_key,
+        written_home_key,
+        commit_home_sections,
+        on_cpl_adopt_detected_home_key,
+        on_cpl_apply_manual_home_key,
+        tonal_center_markdown,
+        generate_exercises_markdown,
+        lab_context_for_coaching,
+        save_progression,
+        delete_progression,
+        ensure_original_structure,
+        display_sections_for_key,
+        commit_display_sections_to_original,
+        anchor_home_key_to_display,
+        on_cpl_anchor_home_key,
+        backing_signature,
+        deep_copy_sections,
+        invalidate_cpl_derived_outputs,
+        cpl_transpose_explanation_markdown,
+        format_chord_bar_line,
+        transpose_debug_lines,
+    )
+except Exception as _cpl_import_err:
+    import traceback
+
+    traceback.print_exc()
+    st.error(
+        "Custom Progression Lab failed to import. "
+        f"Underlying error: {_cpl_import_err!r}"
+    )
+    raise
 
 SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = load_song_catalog()
 TRUSTED_CORE_RECORDS = [
@@ -147,22 +169,28 @@ ensure_master_song_initialized(
     song_picker_catalog=SONG_PICKER_CATALOG,
 )
 
-genre, song, song_data = get_song_context(
+_catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
     st,
     song_library=SONG_LIBRARY,
     song_picker_catalog=SONG_PICKER_CATALOG,
 )
 
+if CPL_ACTIVE_KEY not in st.session_state:
+    st.session_state[CPL_ACTIVE_KEY] = default_active_progression()
+if CPL_SAVED_KEY not in st.session_state:
+    st.session_state[CPL_SAVED_KEY] = {}
+ensure_active_music_source(st.session_state)
+
 if (
     DEFAULT_SONG_RECORDS
     and st.session_state.get("chart_library_mode", "Trusted core charts only") == "Trusted core charts only"
-    and not song_data.get("trusted_core")
-    and song_data.get("chart_status") not in {"verified", "practice_level_verified"}
+    and not _catalog_song_data.get("trusted_core")
+    and _catalog_song_data.get("chart_status") not in {"verified", "practice_level_verified"}
 ):
     _r0 = DEFAULT_SONG_RECORDS[0]
     _pk0 = format_pick_key(_r0["genre"], f"{_r0['title']} — {_r0['artist']}")
     apply_pick_key(st, _pk0, SONG_PICKER_CATALOG)
-    genre, song, song_data = get_song_context(
+    _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
         st,
         song_library=SONG_LIBRARY,
         song_picker_catalog=SONG_PICKER_CATALOG,
@@ -347,6 +375,7 @@ def chart_status_label(song_data):
         "practice_level_verified": ("Practice-level verified chart", "success"),
         "trusted": ("Practice approximation — trusted core", "info"),
         "practice_simplified": ("Practice approximation", "info"),
+        "custom": ("Custom progression", "info"),
         "placeholder": ("Placeholder chart — needs verification", "warning"),
     }
     return labels.get(status, ("Placeholder chart — needs verification", "warning"))
@@ -4087,26 +4116,44 @@ else:
 
 st.sidebar.header("Setup")
 
+_cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
 st.sidebar.markdown(
-    f"**Active song:** {song} — {song_data['artist']}  \n"
-    f"**Style bin:** {genre}"
+    active_source_banner(
+        st.session_state,
+        catalog_title=_catalog_song_data.get("title", _catalog_song),
+        catalog_artist=_catalog_song_data.get("artist", ""),
+        custom_name=_cpl_for_banner.get("name", "Custom Progression"),
+    )
 )
 
-_chart_status_text, _chart_status_kind = chart_status_label(song_data)
-if _chart_status_kind == "success":
-    st.sidebar.success(_chart_status_text)
-elif _chart_status_kind == "warning":
-    st.sidebar.warning(_chart_status_text)
-else:
+if is_custom_progression(st.session_state):
+    st.sidebar.info(
+        "Custom progression is the active source for Practice, Backing Track, and Creative Lab. "
+        "Edit chords in **Custom Progression Lab**."
+    )
+    _chart_status_text, _chart_status_kind = "Custom progression", "info"
     st.sidebar.info(_chart_status_text)
+else:
+    st.sidebar.markdown(
+        f"**Catalog song:** {_catalog_song} — {_catalog_song_data['artist']}  \n"
+        f"**Style bin:** {_catalog_genre}"
+    )
+    _chart_status_text, _chart_status_kind = chart_status_label(_catalog_song_data)
+    if _chart_status_kind == "success":
+        st.sidebar.success(_chart_status_text)
+    elif _chart_status_kind == "warning":
+        st.sidebar.warning(_chart_status_text)
+    else:
+        st.sidebar.info(_chart_status_text)
+    st.sidebar.caption(
+        "Change the catalog song under **Song Picker**, or switch to **Custom Progression** there."
+    )
 
-st.sidebar.caption(
-    "Select or change the piece under **Song Picker**. "
-    "That choice is the one source of truth for every tab."
+original_key, _song_identity = display_key_context(
+    st.session_state,
+    catalog_song_data=_catalog_song_data,
+    cpl_active_key=CPL_ACTIVE_KEY,
 )
-
-original_key = song_data.get("key", "C")
-_song_identity = (song_data.get("title"), song_data.get("artist"), original_key)
 _display_key_options = sync_display_key_before_widget(
     st,
     original_key,
@@ -4114,9 +4161,14 @@ _display_key_options = sync_display_key_before_widget(
 )
 
 st.sidebar.markdown("### Song key")
-st.sidebar.caption(
-    f"**Written / home key (catalog):** {original_key} — how this song is stored in the library."
-)
+if is_custom_progression(st.session_state):
+    st.sidebar.caption(
+        f"**Written / home key (progression):** {original_key} — tonal center of your stored chords."
+    )
+else:
+    st.sidebar.caption(
+        f"**Written / home key (catalog):** {original_key} — how this song is stored in the library."
+    )
 st.sidebar.caption(
     "**Practice / display key** — what you want to see and hear right now (transpose)."
 )
@@ -4176,21 +4228,37 @@ minutes = st.sidebar.slider(
     5
 )
 
-level_source_sections = sections_for_level(song_data, level)
-level_song_data = {
-    **song_data,
-    "sections": level_source_sections,
-}
+note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
-sections = transpose_sections(
-    level_song_data,
-    display_key
+_chart_bundle = build_active_chart_bundle(
+    st.session_state,
+    catalog_genre=_catalog_genre,
+    catalog_song=_catalog_song,
+    catalog_song_data=_catalog_song_data,
+    level=level,
+    display_key=display_key,
+    cpl_active_key=CPL_ACTIVE_KEY,
+    sections_for_level=sections_for_level,
+    transpose_sections=transpose_sections,
 )
+genre = _chart_bundle["genre"]
+song = _chart_bundle["song"]
+song_data = _chart_bundle["song_data"]
+original_key = _chart_bundle["original_key"]
+level_source_sections = _chart_bundle["level_source_sections"]
+sections = _chart_bundle["sections"]
+_cpl_active = _chart_bundle.get("cpl_active")
 
 full_song_chords = chord_blocks_for_backing(sections)
-default_groove_style = infer_groove_style(song_data, "Auto")
+default_groove_style = infer_groove_style(
+    song_data,
+    _chart_bundle.get("default_groove", "Auto"),
+)
 
-song_lyrics_slug = _song_slug(song, song_data.get("artist", ""))
+song_lyrics_slug = _song_slug(
+    song,
+    song_data.get("artist", ""),
+)
 song_lyrics_key = f"song_lyrics::{song_lyrics_slug}"
 section_lyrics_state_key = f"section_lyrics::{song_lyrics_slug}"
 
@@ -4264,6 +4332,11 @@ with tabs[0]:
     st.header("Practice")
 
     st.caption("For deeper analysis, use the Creative Lab tab: harmony, improvisation, arranging, weakness detection, and musical development tracking.")
+
+    if is_custom_progression(st.session_state):
+        st.info(f"**Active source: Custom Progression** — exercises use your progression **{song}**.")
+    else:
+        st.info(f"**Active source: Song Picker** — **{song}** — {song_data.get('artist', '')}.")
 
     st.write(
         f"""
@@ -4420,6 +4493,40 @@ with tabs[1]:
 
     st.header("Song Picker")
 
+    _picker_source_options = [
+        "Song Picker (catalog song)",
+        "Use Custom Progression / Create Your Own Song",
+    ]
+    _picker_source_index = (
+        1 if is_custom_progression(st.session_state) else 0
+    )
+    picker_source = st.radio(
+        "Active music source",
+        _picker_source_options,
+        index=_picker_source_index,
+        horizontal=True,
+        key="song_picker_active_source",
+    )
+    if picker_source.startswith("Use Custom"):
+        if not is_custom_progression(st.session_state):
+            set_custom_source(st.session_state)
+            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+            st.rerun()
+        _cpl_pick = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+        st.success(
+            f"**Active source: Custom Progression** — {_cpl_pick.get('name', 'Untitled progression')}. "
+            "Practice, Backing Track, and Creative Lab use these chords."
+        )
+        st.info(
+            "Build or edit your progression in the **Custom Progression Lab** tab. "
+            "Use the sidebar **Practice / display key** to transpose for practice."
+        )
+    else:
+        if is_custom_progression(st.session_state):
+            set_catalog_source(st.session_state)
+            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+            st.rerun()
+
     chart_library_mode = st.radio(
         "Chart library",
         ["Trusted core charts only", "Include practice approximations"],
@@ -4537,7 +4644,9 @@ with tabs[1]:
         g, lab = parse_pick_key(opt)
         return f"{lab}  [{g}]"
 
-    if not pick_options:
+    if picker_source.startswith("Use Custom"):
+        st.caption("Catalog search is hidden while Custom Progression is the active source.")
+    elif not pick_options:
 
         st.warning("No songs match this filter. Widen your search.")
 
@@ -4553,6 +4662,7 @@ with tabs[1]:
 
         def _on_song_dropdown_change():
 
+            set_catalog_source(st.session_state)
             apply_pick_key(
                 st,
                 st.session_state["matching_song_dropdown"],
@@ -4577,35 +4687,36 @@ with tabs[1]:
 
         pick_key = st.session_state["matching_song_dropdown"]
 
-    pick_genre, pick_label = parse_pick_key(pick_key)
-    selected_data = SONG_PICKER_CATALOG[pick_genre][pick_label]
+    if not picker_source.startswith("Use Custom"):
+        pick_genre, pick_label = parse_pick_key(pick_key)
+        selected_data = SONG_PICKER_CATALOG[pick_genre][pick_label]
 
-    selected_status, _selected_status_kind = chart_status_label(selected_data)
-    selected_versions = selected_data.get("chart_versions") or {}
-    available_levels = ", ".join(selected_versions.keys()) if selected_versions else "Generated from practice chart"
+        selected_status, _selected_status_kind = chart_status_label(selected_data)
+        selected_versions = selected_data.get("chart_versions") or {}
+        available_levels = ", ".join(selected_versions.keys()) if selected_versions else "Generated from practice chart"
 
-    st.success(
-        f"Song selected: **{selected_data['title']}** — {selected_data['artist']}."
-    )
-
-    st.write(
-        f"**Chart status:** {selected_status}  \n"
-        f"**Genre/style:** {selected_data.get('genre', 'Unknown')}  \n"
-        f"**Original key:** {selected_data.get('key', 'Unknown')}  \n"
-        f"**Display / practice key:** {display_key}  \n"
-        f"**Available chart levels:** {available_levels}"
-    )
-    if display_key != selected_data.get("key"):
-        st.caption(
-            f"Chords in Practice and Backing Track are shown in **{display_key}** "
-            f"(+{semitone_distance(selected_data.get('key', 'C'), display_key)} semitones)."
+        st.success(
+            f"**Active source: Song Picker** — **{selected_data['title']}** — {selected_data['artist']}."
         )
 
-    st.info(
-        "Go to **Backing Track** for the full chart and playback. "
-        "Go to **Practice** for exercises. "
-        "Go to **Multitrack Recorder** to record."
-    )
+        st.write(
+            f"**Chart status:** {selected_status}  \n"
+            f"**Genre/style:** {selected_data.get('genre', 'Unknown')}  \n"
+            f"**Original key:** {selected_data.get('key', 'Unknown')}  \n"
+            f"**Display / practice key:** {display_key}  \n"
+            f"**Available chart levels:** {available_levels}"
+        )
+        if display_key != selected_data.get("key"):
+            st.caption(
+                f"Chords in Practice and Backing Track are shown in **{display_key}** "
+                f"(+{semitone_distance(selected_data.get('key', 'C'), display_key)} semitones)."
+            )
+
+        st.info(
+            "Go to **Backing Track** for the full chart and playback. "
+            "Go to **Practice** for exercises. "
+            "Go to **Multitrack Recorder** to record."
+        )
 
 # -------------------------------------------------
 # BACKING TRACK
@@ -4615,12 +4726,22 @@ with tabs[2]:
 
     st.header("Backing Track")
 
-    st.write(
-        f"Uses the **active song** (same as Song Picker / sidebar): **{song}** — {song_data['artist']}."
-    )
-    st.caption(
-        f"**Original key:** {original_key} · **Display / practice key:** {display_key}"
-    )
+    if is_custom_progression(st.session_state):
+        st.write(
+            f"**Active source: Custom Progression** — **{song}**. "
+            "Chart and backing audio follow your custom sections (same live chord-follow as catalog songs)."
+        )
+        st.caption(
+            f"**Written / home key:** {original_key} · **Display / practice key:** {display_key} · "
+            f"**Tempo hint:** {_chart_bundle.get('default_bpm', 100)} BPM"
+        )
+    else:
+        st.write(
+            f"**Active source: Song Picker** — **{song}** — {song_data['artist']}."
+        )
+        st.caption(
+            f"**Original key:** {original_key} · **Display / practice key:** {display_key}"
+        )
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
         st.warning("Key changed — regenerate backing track")
 
@@ -4954,6 +5075,27 @@ with tabs[3]:
         "Build your own chord progression, generate a backing track, and get instrument-specific "
         "practice and improvisation exercises — a songwriting sketchpad and harmony trainer."
     )
+
+    use_col, status_col = st.columns([1, 2])
+    with use_col:
+        if st.button(
+            "Use as app-wide active source",
+            key="cpl_set_active_source",
+            help="Practice, Backing Track, and Creative Lab will use this progression instead of the catalog song.",
+        ):
+            set_custom_source(st.session_state)
+            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+            st.rerun()
+    with status_col:
+        if is_custom_progression(st.session_state):
+            st.success(
+                "**Active source: Custom Progression** — this progression drives the rest of the app."
+            )
+        else:
+            st.caption(
+                "Catalog song is still the active source. Click **Use as app-wide active source** "
+                "or choose Custom Progression on the **Song Picker** tab."
+            )
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
         st.warning("Key changed — regenerate the Custom Progression Lab backing track if you use one.")
 
@@ -5412,10 +5554,17 @@ with tabs[4]:
         "This page starts moving the app beyond ordinary practice into deeper musical development: "
         "harmony, improvisation, arranging, weakness detection, and long-term growth tracking."
     )
-    st.caption(
-        f"**Original key:** {original_key} · **Display / practice key:** {display_key} "
-        "(sidebar) — harmonic analysis uses the transposed chart."
-    )
+    if is_custom_progression(st.session_state):
+        st.info(
+            f"**Active source: Custom Progression** — **{song}**. "
+            "Harmonic analysis uses your custom chart in the sidebar display key."
+        )
+    else:
+        st.caption(
+            f"**Active source: Song Picker** — **{song}**. "
+            f"**Original key:** {original_key} · **Display / practice key:** {display_key} "
+            "(sidebar) — harmonic analysis uses the transposed chart."
+        )
 
     ctx = current_song_context_lab()
 

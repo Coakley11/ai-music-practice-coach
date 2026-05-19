@@ -15,6 +15,19 @@ from .key_state import (
     request_display_key,
     sync_display_key_before_widget,
 )
+from .music_source import (
+    ACTIVE_MUSIC_SOURCE_KEY,
+    SOURCE_CATALOG,
+    SOURCE_CUSTOM,
+    active_source_banner,
+    build_active_chart_bundle,
+    display_key_context,
+    ensure_active_music_source,
+    is_custom_progression,
+    note_active_source_change,
+    set_catalog_source,
+    set_custom_source,
+)
 from .state import (
     SELECTED_SONG_STATE_KEY,
     apply_pick_key,
@@ -23,6 +36,17 @@ from .state import (
 )
 
 __all__ = [
+    "ACTIVE_MUSIC_SOURCE_KEY",
+    "SOURCE_CATALOG",
+    "SOURCE_CUSTOM",
+    "active_source_banner",
+    "build_active_chart_bundle",
+    "display_key_context",
+    "ensure_active_music_source",
+    "is_custom_progression",
+    "note_active_source_change",
+    "set_catalog_source",
+    "set_custom_source",
     "SELECTED_SONG_STATE_KEY",
     "apply_pick_key",
     "ensure_master_song_initialized",

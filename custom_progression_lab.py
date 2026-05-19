@@ -122,229 +122,6 @@ def transpose_lab_sections(sections, from_key, to_key):
     }
 
 
-def written_home_key(active) -> str:
-    """Written / home key = tonal center of the stored progression (unless manually locked)."""
-    active = ensure_original_structure(active)
-    if active.get("user_locked_home_key") and active.get("original_key_center"):
-        return active.get("original_key_center", "C")
-    sections = active.get("original_sections") or {}
-    analysis = analyze_tonal_center(sections)
-    if analysis.get("chords_count", 0) >= 2 and analysis.get("confidence_score", 0) >= 0.35:
-        return analysis.get("storage_key", active.get("original_key_center", "C"))
-    return active.get("original_key_center", "C")
-
-
-def sync_written_home_key(active, *, min_confidence: float = 0.35) -> dict:
-    """Update stored home key from harmonic analysis unless the user locked it manually."""
-    active = ensure_original_structure(active)
-    if active.get("user_locked_home_key"):
-        active.pop("home_key_uncertain", None)
-        return active
-    sections = active.get("original_sections") or {}
-    analysis = analyze_tonal_center(sections)
-    if analysis.get("chords_count", 0) < 2:
-        return active
-    if analysis.get("confidence_score", 0) < min_confidence:
-        active["home_key_uncertain"] = True
-        return active
-    detected = analysis.get("storage_key")
-    if detected:
-        active["original_key_center"] = detected
-        active["tonal_center_inferred"] = True
-    active.pop("home_key_uncertain", None)
-    return active
-
-
-def display_sections_for_key(active, display_key):
-    active = ensure_original_structure(active)
-    home = written_home_key(active)
-    original = active.get("original_sections") or {}
-    return transpose_lab_sections(original, home, display_key)
-
-
-def commit_home_sections(active, home_sections):
-    """Persist chords in written/home key and refresh tonal-center home key."""
-    active = ensure_original_structure(active)
-    active["original_sections"] = deep_copy_sections(home_sections)
-    return sync_written_home_key(active)
-
-
-def anchor_home_key_to_display(active, display_key):
-    """Re-home the progression in the current sidebar display key."""
-    active = ensure_original_structure(active)
-    active["original_sections"] = display_sections_for_key(active, display_key)
-    active["original_key_center"] = display_key
-    active["user_locked_home_key"] = True
-    active.pop("tonal_center_inferred", None)
-    return active
-
-
-def invalidate_cpl_derived_outputs(session_state):
-    session_state.pop("cpl_backing_wav", None)
-    session_state.pop("cpl_backing_signature", None)
-    session_state.pop("cpl_analysis_md", None)
-    session_state.pop("cpl_exercises_md", None)
-
-
-def on_cpl_anchor_home_key() -> None:
-    """Button callback: store transposed chart as the new written/home key."""
-    import streamlit as st
-
-    active = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
-    practice_key = st.session_state.get("display_key", active.get("original_key_center", "C"))
-    anchor_home_key_to_display(active, practice_key)
-    st.session_state[CPL_ACTIVE_KEY] = active
-    invalidate_cpl_derived_outputs(st.session_state)
-
-
-def on_cpl_adopt_detected_home_key() -> None:
-    """Button callback: lock written/home key to the detected tonal center."""
-    import streamlit as st
-
-    active = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
-    analysis = analyze_tonal_center(active.get("original_sections") or {})
-    active["original_key_center"] = analysis.get("storage_key", active.get("original_key_center", "C"))
-    active["user_locked_home_key"] = True
-    active.pop("tonal_center_inferred", None)
-    active.pop("home_key_uncertain", None)
-    st.session_state[CPL_ACTIVE_KEY] = active
-    invalidate_cpl_derived_outputs(st.session_state)
-
-
-def on_cpl_apply_manual_home_key() -> None:
-    """Button callback: lock written/home key from the manual picker."""
-    import streamlit as st
-
-    active = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
-    manual = st.session_state.get("cpl_manual_home_key_picker")
-    if manual:
-        active["original_key_center"] = manual
-        active["user_locked_home_key"] = True
-        active.pop("tonal_center_inferred", None)
-        active.pop("home_key_uncertain", None)
-        st.session_state[CPL_ACTIVE_KEY] = active
-        invalidate_cpl_derived_outputs(st.session_state)
-
-
-def on_global_display_key_change(session_state, display_key):
-    last = session_state.get(CPL_LAST_DISPLAY_KEY)
-    if last is None:
-        session_state[CPL_LAST_DISPLAY_KEY] = display_key
-        return False
-    if last != display_key:
-        session_state[CPL_LAST_DISPLAY_KEY] = display_key
-        invalidate_cpl_derived_outputs(session_state)
-        return True
-    return False
-
-
-def backing_signature(display_key, sections, bpm, loops, groove_style):
-    flat = all_chords_from_lab_sections(sections)
-    return (display_key, tuple(flat), int(bpm), int(loops), str(groove_style))
-
-
-def format_chord_bar_line(sections, max_chords: int = 12) -> str:
-    """Single-line bar chart preview, e.g. | G | Em | C | D |."""
-    chords = all_chords_from_lab_sections(sections)[:max_chords]
-    if not chords:
-        return "| *(add chords below)* |"
-    return "| " + " | ".join(chords) + " |"
-
-
-def cpl_transpose_explanation_markdown(
-    home_key: str,
-    practice_key: str,
-    original_sections,
-    display_sections,
-) -> str:
-    """Beginner-friendly explanation of written vs practice key for the CPL page."""
-    home_key = str(home_key or "C")
-    practice_key = str(practice_key or home_key)
-    steps = semitone_distance(home_key, practice_key)
-    orig_line = format_chord_bar_line(original_sections)
-    trans_line = format_chord_bar_line(display_sections)
-
-    if steps == 0:
-        shift_note = (
-            f"Right now both keys are **{home_key}**, so the chords you see are exactly "
-            "what you typed in the written key."
-        )
-    else:
-        shift_note = (
-            f"The app moved every chord **{'+' if steps else ''}{steps} semitone(s)** "
-            f"from **{home_key}** to **{practice_key}** for display, backing track, and exercises."
-        )
-
-    example_home = format_chord_bar_line(
-        {
-            "Example": [
-                {"chord": "Am", "bars": 1},
-                {"chord": "Dm", "bars": 1},
-                {"chord": "G", "bars": 1},
-            ]
-        }
-    )
-    example_practice = format_chord_bar_line(
-        {
-            "Example": [
-                {"chord": "Gm", "bars": 1},
-                {"chord": "Cm", "bars": 1},
-                {"chord": "F", "bars": 1},
-            ]
-        }
-    )
-
-    return f"""### How keys work in Custom Progression Lab
-
-**Written / Home Key — {home_key}**  
-The **tonal center** of your progression (where the harmony belongs). Chords below are stored in this key.
-
-**Practice / Display Key — {practice_key}**  
-From the **sidebar** — the key you want to **practice and hear** right now. The app transposes from home → practice.
-
-#### Example
-| | |
-|---|---|
-| Home key **G** (tonal center) | {example_home} |
-| Practice key **F** (sidebar) | {example_practice} |
-
-#### Your progression right now
-{shift_note}
-
-**Original chords (home key {home_key}):**  
-`{orig_line}`
-
-**Practice chords (display key {practice_key}):**  
-`{trans_line}`
-
-*Edit chord boxes in the **home** key. Change the sidebar practice key to move everything up or down without retyping.*
-"""
-
-
-def transpose_debug_lines(active, display_key):
-    """Human-readable transpose state for UI debugging."""
-    active = ensure_original_structure(active)
-    home = active.get("original_key_center", "C")
-    steps = semitone_distance(home, display_key)
-    original_flat = all_chords_from_lab_sections(active.get("original_sections") or {})
-    display_flat = all_chords_from_lab_sections(display_sections_for_key(active, display_key))
-    first_orig = original_flat[0] if original_flat else "(none)"
-    first_disp = display_flat[0] if display_flat else "(none)"
-    lines = [
-        f"**Written / Home key:** {home}",
-        f"**Practice / Display key:** {display_key}",
-        f"**Transpose:** {'+' if steps else ''}{steps} semitone(s)",
-        f"**First chord (written):** {first_orig}",
-        f"**First chord (practice):** {first_disp}",
-    ]
-    if len(original_flat) >= 4:
-        sample_orig = " | ".join(original_flat[:4])
-        sample_disp = " | ".join(display_flat[:4])
-        lines.append(f"**First four (written):** {sample_orig}")
-        lines.append(f"**First four (practice):** {sample_disp}")
-    return lines
-
-
 def normalize_chord_symbol(text):
     raw = str(text or "").strip()
     if not raw:
@@ -353,67 +130,6 @@ def normalize_chord_symbol(text):
     if len(head) < 1:
         return ""
     return raw
-
-
-def parse_chord_line(line):
-    if not line:
-        return []
-    parts = [p.strip() for p in line.replace("|", ",").split(",")]
-    out = []
-    for part in parts:
-        ch = normalize_chord_symbol(part)
-        if ch:
-            out.append({"chord": ch, "bars": 1})
-    return out
-
-
-def flatten_sections_to_events(sections):
-    events = []
-    for section_name, entries in (sections or {}).items():
-        if not entries:
-            continue
-        section_bars = 0
-        expanded = []
-        for entry in entries:
-            chord = normalize_chord_symbol(entry.get("chord", ""))
-            if not chord:
-                continue
-            bars = max(1, int(entry.get("bars", 1) or 1))
-            for _ in range(bars):
-                expanded.append(chord)
-        section_bars = len(expanded)
-        for idx, chord in enumerate(expanded):
-            events.append(
-                {
-                    "chord": chord,
-                    "section": section_name,
-                    "bar_in_section": idx,
-                    "section_bars": max(1, section_bars),
-                }
-            )
-    return events
-
-
-def sections_to_chord_lists(sections):
-    out = {}
-    for name, entries in (sections or {}).items():
-        chords = []
-        for entry in entries or []:
-            ch = normalize_chord_symbol(entry.get("chord", ""))
-            if not ch:
-                continue
-            bars = max(1, int(entry.get("bars", 1) or 1))
-            chords.extend([ch] * bars)
-        if chords:
-            out[name] = chords
-    return out
-
-
-def all_chords_from_lab_sections(sections):
-    chords = []
-    for _name, chs in sections_to_chord_lists(sections).items():
-        chords.extend(chs)
-    return chords
 
 
 def weighted_chords_from_sections(sections):
@@ -667,6 +383,290 @@ def analyze_tonal_center(sections, user_home_key: str | None = None) -> dict:
         "roman": roman,
         "chords_count": len(chords),
     }
+
+
+def written_home_key(active) -> str:
+    """Written / home key = tonal center of the stored progression (unless manually locked)."""
+    active = ensure_original_structure(active)
+    if active.get("user_locked_home_key") and active.get("original_key_center"):
+        return active.get("original_key_center", "C")
+    sections = active.get("original_sections") or {}
+    analysis = analyze_tonal_center(sections)
+    if analysis.get("chords_count", 0) >= 2 and analysis.get("confidence_score", 0) >= 0.35:
+        return analysis.get("storage_key", active.get("original_key_center", "C"))
+    return active.get("original_key_center", "C")
+
+
+def sync_written_home_key(active, *, min_confidence: float = 0.35) -> dict:
+    """Update stored home key from harmonic analysis unless the user locked it manually."""
+    active = ensure_original_structure(active)
+    if active.get("user_locked_home_key"):
+        active.pop("home_key_uncertain", None)
+        return active
+    sections = active.get("original_sections") or {}
+    analysis = analyze_tonal_center(sections)
+    if analysis.get("chords_count", 0) < 2:
+        return active
+    if analysis.get("confidence_score", 0) < min_confidence:
+        active["home_key_uncertain"] = True
+        return active
+    detected = analysis.get("storage_key")
+    if detected:
+        active["original_key_center"] = detected
+        active["tonal_center_inferred"] = True
+    active.pop("home_key_uncertain", None)
+    return active
+
+
+def display_sections_for_key(active, display_key):
+    active = ensure_original_structure(active)
+    home = written_home_key(active)
+    original = active.get("original_sections") or {}
+    return transpose_lab_sections(original, home, display_key)
+
+
+def commit_home_sections(active, home_sections):
+    """Persist chords in written/home key and refresh tonal-center home key."""
+    active = ensure_original_structure(active)
+    active["original_sections"] = deep_copy_sections(home_sections)
+    return sync_written_home_key(active)
+
+
+def anchor_home_key_to_display(active, display_key):
+    """Re-home the progression in the current sidebar display key."""
+    active = ensure_original_structure(active)
+    active["original_sections"] = display_sections_for_key(active, display_key)
+    active["original_key_center"] = display_key
+    active["user_locked_home_key"] = True
+    active.pop("tonal_center_inferred", None)
+    return active
+
+
+def invalidate_cpl_derived_outputs(session_state):
+    session_state.pop("cpl_backing_wav", None)
+    session_state.pop("cpl_backing_signature", None)
+    session_state.pop("cpl_analysis_md", None)
+    session_state.pop("cpl_exercises_md", None)
+
+
+def on_cpl_anchor_home_key() -> None:
+    """Button callback: store transposed chart as the new written/home key."""
+    import streamlit as st
+
+    active = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+    practice_key = st.session_state.get("display_key", active.get("original_key_center", "C"))
+    anchor_home_key_to_display(active, practice_key)
+    st.session_state[CPL_ACTIVE_KEY] = active
+    invalidate_cpl_derived_outputs(st.session_state)
+
+
+def on_cpl_adopt_detected_home_key() -> None:
+    """Button callback: lock written/home key to the detected tonal center."""
+    import streamlit as st
+
+    active = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+    analysis = analyze_tonal_center(active.get("original_sections") or {})
+    active["original_key_center"] = analysis.get("storage_key", active.get("original_key_center", "C"))
+    active["user_locked_home_key"] = True
+    active.pop("tonal_center_inferred", None)
+    active.pop("home_key_uncertain", None)
+    st.session_state[CPL_ACTIVE_KEY] = active
+    invalidate_cpl_derived_outputs(st.session_state)
+
+
+def on_cpl_apply_manual_home_key() -> None:
+    """Button callback: lock written/home key from the manual picker."""
+    import streamlit as st
+
+    active = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+    manual = st.session_state.get("cpl_manual_home_key_picker")
+    if manual:
+        active["original_key_center"] = manual
+        active["user_locked_home_key"] = True
+        active.pop("tonal_center_inferred", None)
+        active.pop("home_key_uncertain", None)
+        st.session_state[CPL_ACTIVE_KEY] = active
+        invalidate_cpl_derived_outputs(st.session_state)
+
+
+def on_global_display_key_change(session_state, display_key):
+    last = session_state.get(CPL_LAST_DISPLAY_KEY)
+    if last is None:
+        session_state[CPL_LAST_DISPLAY_KEY] = display_key
+        return False
+    if last != display_key:
+        session_state[CPL_LAST_DISPLAY_KEY] = display_key
+        invalidate_cpl_derived_outputs(session_state)
+        return True
+    return False
+
+
+def backing_signature(display_key, sections, bpm, loops, groove_style):
+    flat = all_chords_from_lab_sections(sections)
+    return (display_key, tuple(flat), int(bpm), int(loops), str(groove_style))
+
+
+def format_chord_bar_line(sections, max_chords: int = 12) -> str:
+    """Single-line bar chart preview, e.g. | G | Em | C | D |."""
+    chords = all_chords_from_lab_sections(sections)[:max_chords]
+    if not chords:
+        return "| *(add chords below)* |"
+    return "| " + " | ".join(chords) + " |"
+
+
+def cpl_transpose_explanation_markdown(
+    home_key: str,
+    practice_key: str,
+    original_sections,
+    display_sections,
+) -> str:
+    """Beginner-friendly explanation of written vs practice key for the CPL page."""
+    home_key = str(home_key or "C")
+    practice_key = str(practice_key or home_key)
+    steps = semitone_distance(home_key, practice_key)
+    orig_line = format_chord_bar_line(original_sections)
+    trans_line = format_chord_bar_line(display_sections)
+
+    if steps == 0:
+        shift_note = (
+            f"Right now both keys are **{home_key}**, so the chords you see are exactly "
+            "what you typed in the written key."
+        )
+    else:
+        shift_note = (
+            f"The app moved every chord **{'+' if steps else ''}{steps} semitone(s)** "
+            f"from **{home_key}** to **{practice_key}** for display, backing track, and exercises."
+        )
+
+    example_home = format_chord_bar_line(
+        {
+            "Example": [
+                {"chord": "Am", "bars": 1},
+                {"chord": "Dm", "bars": 1},
+                {"chord": "G", "bars": 1},
+            ]
+        }
+    )
+    example_practice = format_chord_bar_line(
+        {
+            "Example": [
+                {"chord": "Gm", "bars": 1},
+                {"chord": "Cm", "bars": 1},
+                {"chord": "F", "bars": 1},
+            ]
+        }
+    )
+
+    return f"""### How keys work in Custom Progression Lab
+
+**Written / Home Key — {home_key}**  
+The **tonal center** of your progression (where the harmony belongs). Chords below are stored in this key.
+
+**Practice / Display Key — {practice_key}**  
+From the **sidebar** — the key you want to **practice and hear** right now. The app transposes from home → practice.
+
+#### Example
+| | |
+|---|---|
+| Home key **G** (tonal center) | {example_home} |
+| Practice key **F** (sidebar) | {example_practice} |
+
+#### Your progression right now
+{shift_note}
+
+**Original chords (home key {home_key}):**  
+`{orig_line}`
+
+**Practice chords (display key {practice_key}):**  
+`{trans_line}`
+
+*Edit chord boxes in the **home** key. Change the sidebar practice key to move everything up or down without retyping.*
+"""
+
+
+def transpose_debug_lines(active, display_key):
+    """Human-readable transpose state for UI debugging."""
+    active = ensure_original_structure(active)
+    home = active.get("original_key_center", "C")
+    steps = semitone_distance(home, display_key)
+    original_flat = all_chords_from_lab_sections(active.get("original_sections") or {})
+    display_flat = all_chords_from_lab_sections(display_sections_for_key(active, display_key))
+    first_orig = original_flat[0] if original_flat else "(none)"
+    first_disp = display_flat[0] if display_flat else "(none)"
+    lines = [
+        f"**Written / Home key:** {home}",
+        f"**Practice / Display key:** {display_key}",
+        f"**Transpose:** {'+' if steps else ''}{steps} semitone(s)",
+        f"**First chord (written):** {first_orig}",
+        f"**First chord (practice):** {first_disp}",
+    ]
+    if len(original_flat) >= 4:
+        sample_orig = " | ".join(original_flat[:4])
+        sample_disp = " | ".join(display_flat[:4])
+        lines.append(f"**First four (written):** {sample_orig}")
+        lines.append(f"**First four (practice):** {sample_disp}")
+    return lines
+
+
+def parse_chord_line(line):
+    if not line:
+        return []
+    parts = [p.strip() for p in line.replace("|", ",").split(",")]
+    out = []
+    for part in parts:
+        ch = normalize_chord_symbol(part)
+        if ch:
+            out.append({"chord": ch, "bars": 1})
+    return out
+
+
+def flatten_sections_to_events(sections):
+    events = []
+    for section_name, entries in (sections or {}).items():
+        if not entries:
+            continue
+        section_bars = 0
+        expanded = []
+        for entry in entries:
+            chord = normalize_chord_symbol(entry.get("chord", ""))
+            if not chord:
+                continue
+            bars = max(1, int(entry.get("bars", 1) or 1))
+            for _ in range(bars):
+                expanded.append(chord)
+        section_bars = len(expanded)
+        for idx, chord in enumerate(expanded):
+            events.append(
+                {
+                    "chord": chord,
+                    "section": section_name,
+                    "bar_in_section": idx,
+                    "section_bars": max(1, section_bars),
+                }
+            )
+    return events
+
+
+def sections_to_chord_lists(sections):
+    out = {}
+    for name, entries in (sections or {}).items():
+        chords = []
+        for entry in entries or []:
+            ch = normalize_chord_symbol(entry.get("chord", ""))
+            if not ch:
+                continue
+            bars = max(1, int(entry.get("bars", 1) or 1))
+            chords.extend([ch] * bars)
+        if chords:
+            out[name] = chords
+    return out
+
+
+def all_chords_from_lab_sections(sections):
+    chords = []
+    for _name, chs in sections_to_chord_lists(sections).items():
+        chords.extend(chs)
+    return chords
 
 
 def tonal_center_markdown(sections, stored_home_key: str | None = None) -> str:
