@@ -102,6 +102,15 @@ from songs import (
     sync_display_key_before_widget,
 )
 from songs.key_state import mark_display_key_changed
+from app_ui import (
+    app_hero,
+    follow_along_status_html,
+    inject_app_theme,
+    page_header,
+    session_badges,
+    sidebar_section,
+    sidebar_source_banner,
+)
 from creative_lab_text import (
     current_song_context_lab as lab_make_ctx,
     chord_quality as lab_chord_quality,
@@ -1359,24 +1368,26 @@ def full_chord_markdown(
   margin: 10px 0;
 }
 .chord-cell {
-  min-height: 62px;
-  border: 1.5px solid rgba(15, 23, 42, 0.28);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 6px 8px;
+  min-height: 68px;
+  border: 1.5px solid rgba(15, 23, 42, 0.22);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  padding: 7px 9px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .chord-cell.current-chord {
-  background: #dcfce7;
-  border-color: #16a34a;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
+  background: linear-gradient(180deg, #bbf7d0, #dcfce7);
+  border-color: #15803d;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.22), 0 8px 18px rgba(22, 163, 74, 0.18);
+  transform: translateY(-1px);
 }
 .bar-num { color: #64748b; font-size: 0.68rem; font-weight: 700; margin-bottom: 4px; }
 .chord-symbol {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 1.28rem;
-  font-weight: 850;
-  letter-spacing: -0.02em;
-  color: #111827;
+  font-size: 1.34rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  color: #0f172a;
 }
 .duration {
   display: inline-block;
@@ -1899,26 +1910,29 @@ def playback_follow_position(timeline, playback_start_time=None, manual_index=0)
 
 
 def render_follow_along_controls(timeline, key_prefix):
-    st.subheader("Live Chord Follow-Along")
-    st.caption("Uses the same looped chord-event timeline that generated the backing track audio.")
+    st.markdown(
+        '<div class="ui-card soft"><div class="ui-card-title">🎯 Live chord follow-along</div>'
+        '<div class="ui-card-sub">Manual controls when not using the synced audio player below.</div></div>',
+        unsafe_allow_html=True,
+    )
     start_key = f"{key_prefix}::follow_start_time"
     index_key = f"{key_prefix}::follow_manual_index"
     st.session_state.setdefault(index_key, 0)
 
     col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
-        if st.button("Start follow-along", key=f"{key_prefix}::follow_start"):
+        if st.button("▶ Start", key=f"{key_prefix}::follow_start", use_container_width=True):
             st.session_state[start_key] = time.time()
             st.session_state[index_key] = 0
     with col_b:
-        if st.button("Refresh position", key=f"{key_prefix}::follow_refresh"):
+        if st.button("↻ Refresh", key=f"{key_prefix}::follow_refresh", use_container_width=True):
             st.rerun()
     with col_c:
-        if st.button("Next bar", key=f"{key_prefix}::follow_next"):
+        if st.button("⏭ Next bar", key=f"{key_prefix}::follow_next", use_container_width=True):
             st.session_state.pop(start_key, None)
             st.session_state[index_key] += 1
     with col_d:
-        if st.button("Stop/reset", key=f"{key_prefix}::follow_stop"):
+        if st.button("■ Stop", key=f"{key_prefix}::follow_stop", use_container_width=True):
             st.session_state.pop(start_key, None)
             st.session_state[index_key] = 0
 
@@ -1931,16 +1945,12 @@ def render_follow_along_controls(timeline, key_prefix):
         st.info("Choose at least one section to use follow-along.")
         return None
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Now Playing Section", pos["section"])
-    c2.metric("Current Chord", pos["chord"])
-    c3.metric("Current Bar", f"{pos['bar_in_section']} of {pos['section_bars']}")
-    c4.metric("Next Chord", pos["next_chord"])
+    st.markdown(follow_along_status_html(pos), unsafe_allow_html=True)
     if pos.get("ended"):
-        st.warning("Backing track timeline has reached the end. Press Start follow-along or Generate again to restart.")
+        st.warning("Timeline ended — press **Start** or regenerate the backing track.")
     st.caption(
-        f"Event {pos['event_index'] + 1} | absolute bar {pos['absolute_bar']} of {pos['total_bars']} | "
-        f"{pos['start_time']:.1f}s-{pos['end_time']:.1f}s. Highlighted in the chart below."
+        f"Bar {pos['absolute_bar']} of {pos['total_bars']} · "
+        f"{pos['start_time']:.1f}s–{pos['end_time']:.1f}s · highlighted on the chart."
     )
     return pos
 
@@ -4082,42 +4092,25 @@ def musical_development_tracker_text():
 # APP UI
 # -------------------------------------------------
 
-st.title(
-    "🎵 Daniel Cohen AI MUSIC PRACTICE COACH"
+inject_app_theme()
+
+app_hero(
+    "Daniel Cohen AI Music Practice Coach",
+    "Your practice studio — songs, backing tracks, custom progressions, multitrack recording, and coaching.",
 )
 
-st.caption(
-    "Genre-based practice plans, full-song chords, backing tracks, custom progressions, multitrack recording, and practice logs."
-)
 
-# -------------------------------------------------
-# OPTIONAL OPENAI API KEY
-# -------------------------------------------------
-
-st.sidebar.divider()
-st.sidebar.subheader("OpenAI API")
-
-user_api_key = st.sidebar.text_input(
-    "Enter OpenAI API Key",
-    type="password",
-    help="Optional. Needed only for AI-powered suggestion features.",
-    key="openai_api_key_box"
-)
-
-if user_api_key:
-    st.sidebar.success("API key loaded.")
-else:
-    st.sidebar.caption(
-        "No API key loaded. Local app features still work."
-    )
+def _ui_source_label() -> str:
+    if is_custom_progression(st.session_state):
+        return "Custom progression"
+    return "Catalog song"
 
 
 # SIDEBAR
 
-st.sidebar.header("Setup")
-
+sidebar_section("Active source", icon="🎼")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
-st.sidebar.markdown(
+sidebar_source_banner(
     active_source_banner(
         st.session_state,
         catalog_title=_catalog_song_data.get("title", _catalog_song),
@@ -4125,67 +4118,19 @@ st.sidebar.markdown(
         custom_name=_cpl_for_banner.get("name", "Custom Progression"),
     )
 )
-
 if is_custom_progression(st.session_state):
-    st.sidebar.info(
-        "Custom progression is the active source for Practice, Backing Track, and Creative Lab. "
-        "Edit chords in **Custom Progression Lab**."
-    )
-    _chart_status_text, _chart_status_kind = "Custom progression", "info"
-    st.sidebar.info(_chart_status_text)
+    st.sidebar.caption("Edit chords in **Custom Progression Lab**.")
 else:
-    st.sidebar.markdown(
-        f"**Catalog song:** {_catalog_song} — {_catalog_song_data['artist']}  \n"
-        f"**Style bin:** {_catalog_genre}"
-    )
+    st.sidebar.caption(f"**{_catalog_song}** · {_catalog_genre}")
     _chart_status_text, _chart_status_kind = chart_status_label(_catalog_song_data)
     if _chart_status_kind == "success":
         st.sidebar.success(_chart_status_text)
     elif _chart_status_kind == "warning":
         st.sidebar.warning(_chart_status_text)
     else:
-        st.sidebar.info(_chart_status_text)
-    st.sidebar.caption(
-        "Change the catalog song under **Song Picker**, or switch to **Custom Progression** there."
-    )
+        st.sidebar.caption(_chart_status_text)
 
-original_key, _song_identity = display_key_context(
-    st.session_state,
-    catalog_song_data=_catalog_song_data,
-    cpl_active_key=CPL_ACTIVE_KEY,
-)
-_display_key_options = sync_display_key_before_widget(
-    st,
-    original_key,
-    _song_identity,
-)
-
-st.sidebar.markdown("### Song key")
-if is_custom_progression(st.session_state):
-    st.sidebar.caption(
-        f"**Written / home key (progression):** {original_key} — tonal center of your stored chords."
-    )
-else:
-    st.sidebar.caption(
-        f"**Written / home key (catalog):** {original_key} — how this song is stored in the library."
-    )
-st.sidebar.caption(
-    "**Practice / display key** — what you want to see and hear right now (transpose)."
-)
-
-display_key = st.sidebar.selectbox(
-    "Practice / display key",
-    _display_key_options,
-    key="display_key",
-    on_change=lambda: mark_display_key_changed(st),
-    help=(
-        "Moves every chord up or down to this key for practice, charts, backing tracks, "
-        "and Custom Progression Lab. Your written home key stays saved underneath."
-    ),
-)
-
-key_changed_this_run = note_display_key_change(st, display_key)
-
+sidebar_section("Practice setup", icon="🎹")
 instrument = st.sidebar.selectbox(
     "Instrument",
     [
@@ -4197,36 +4142,43 @@ instrument = st.sidebar.selectbox(
         "Trumpet",
         "Clarinet",
         "Voice",
-        "Other"
-    ]
+        "Other",
+    ],
 )
 
 level = st.sidebar.selectbox(
     "Level",
-    [
-        "Beginner",
-        "Intermediate",
-        "Advanced"
-    ]
+    ["Beginner", "Intermediate", "Advanced"],
 )
 
 _focus_options = focus_options_for_instrument(instrument)
 if st.session_state.get("focus") not in _focus_options:
     st.session_state["focus"] = _focus_options[0]
 
-focus = st.sidebar.selectbox(
-    "Focus",
-    _focus_options,
-    key="focus",
-)
+focus = st.sidebar.selectbox("Focus", _focus_options, key="focus")
 
-minutes = st.sidebar.slider(
-    "Practice Minutes",
-    10,
-    120,
-    30,
-    5
+minutes = st.sidebar.slider("Practice minutes", 10, 120, 30, 5)
+
+sidebar_section("Key & transpose", icon="🎚️")
+original_key, _song_identity = display_key_context(
+    st.session_state,
+    catalog_song_data=_catalog_song_data,
+    cpl_active_key=CPL_ACTIVE_KEY,
 )
+_display_key_options = sync_display_key_before_widget(
+    st,
+    original_key,
+    _song_identity,
+)
+st.sidebar.caption(f"Home / written: **{original_key}**")
+display_key = st.sidebar.selectbox(
+    "Practice / display key",
+    _display_key_options,
+    key="display_key",
+    on_change=lambda: mark_display_key_changed(st),
+    help="Transpose charts and backing audio for practice.",
+)
+key_changed_this_run = note_display_key_change(st, display_key)
 
 note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
@@ -4249,6 +4201,20 @@ level_source_sections = _chart_bundle["level_source_sections"]
 sections = _chart_bundle["sections"]
 _cpl_active = _chart_bundle.get("cpl_active")
 
+
+def _ui_page_badges() -> list[tuple[str, str]]:
+    return session_badges(
+        source_label=_ui_source_label(),
+        song=song,
+        original_key=original_key,
+        display_key=display_key,
+        instrument=instrument,
+        level=level,
+        focus=focus,
+        genre=genre if genre != "Custom" else "",
+    )
+
+
 full_song_chords = chord_blocks_for_backing(sections)
 default_groove_style = infer_groove_style(
     song_data,
@@ -4262,7 +4228,8 @@ song_lyrics_slug = _song_slug(
 song_lyrics_key = f"song_lyrics::{song_lyrics_slug}"
 section_lyrics_state_key = f"section_lyrics::{song_lyrics_slug}"
 
-with st.sidebar.expander("Lyrics / lyric cues for selected song", expanded=(instrument == "Voice")):
+sidebar_section("Lyrics & cues", icon="📝")
+with st.sidebar.expander("Lyric cues for active chart", expanded=(instrument == "Voice")):
     st.caption(
         "Paste only lyrics or cues you provide. The app does not fetch or generate copyrighted lyrics."
     )
@@ -4303,6 +4270,18 @@ with st.sidebar.expander("Lyrics / lyric cues for selected song", expanded=(inst
             height=90,
         )
 
+sidebar_section("Optional AI", icon="🔑")
+user_api_key = st.sidebar.text_input(
+    "OpenAI API key",
+    type="password",
+    help="Optional — for AI-powered suggestions only.",
+    key="openai_api_key_box",
+)
+if user_api_key:
+    st.sidebar.caption("API key loaded.")
+else:
+    st.sidebar.caption("Local features work without a key.")
+
 section_lyrics = st.session_state.get(section_lyrics_state_key, {})
 catalog_lyric_cues = song_data.get("lyric_cues") or {}
 lyric_cues = {
@@ -4313,14 +4292,14 @@ lyric_cues = {
 # TABS
 
 tabs = st.tabs([
-    "Practice",
-    "Song Picker",
-    "Backing Track",
-    "Custom Progression Lab",
-    "Creative Lab",
-    "Multitrack Recorder",
-    "Upload / Recording Analysis",
-    "Practice Log",
+    "🎯 Practice",
+    "📚 Song Picker",
+    "🎧 Backing Track",
+    "✏️ Custom Lab",
+    "🧠 Creative Lab",
+    "🎚️ Multitrack",
+    "🎙️ Analysis",
+    "📓 Log",
 ])
 
 # -------------------------------------------------
@@ -4329,31 +4308,12 @@ tabs = st.tabs([
 
 with tabs[0]:
 
-    st.header("Practice")
-
-    st.caption("For deeper analysis, use the Creative Lab tab: harmony, improvisation, arranging, weakness detection, and musical development tracking.")
-
-    if is_custom_progression(st.session_state):
-        st.info(f"**Active source: Custom Progression** — exercises use your progression **{song}**.")
-    else:
-        st.info(f"**Active source: Song Picker** — **{song}** — {song_data.get('artist', '')}.")
-
-    st.write(
-        f"""
-Genre: **{genre}**  
-Song: **{song}**  
-**Original key:** {original_key}  
-**Display / practice key:** {display_key}  
-Instrument: **{instrument}**  
-Level: **{level}**  
-Focus: **{focus}**
-"""
+    page_header(
+        "🎯",
+        "Practice",
+        "Coaching, exercises, chord tools, and transpose helpers for your active chart.",
+        badges=_ui_page_badges(),
     )
-    if display_key != original_key:
-        _dk_steps = semitone_distance(original_key, display_key)
-        st.caption(
-            f"Chart transposed {'+' if _dk_steps else ''}{_dk_steps} semitone(s) from the song's original key."
-        )
 
     exercise_key = (
         f"exercise_variation::{song}::{instrument}::{level}::{focus}"
@@ -4361,8 +4321,10 @@ Focus: **{focus}**
     if exercise_key not in st.session_state:
         st.session_state[exercise_key] = 0
 
-    st.subheader("Personalized Coach Exercise")
-
+    st.markdown(
+        '<div class="ui-card soft"><div class="ui-card-title">Personalized coach exercise</div>',
+        unsafe_allow_html=True,
+    )
     st.markdown(
         song_practice_plan(
             song,
@@ -4375,29 +4337,28 @@ Focus: **{focus}**
             minutes=minutes,
         )
     )
+    st.markdown("</div>", unsafe_allow_html=True)
 
     col_ex_a, col_ex_b = st.columns([1, 2])
 
     with col_ex_a:
-        if st.button("Generate New Exercise"):
+        if st.button("🔄 New exercise", use_container_width=True):
             st.session_state[exercise_key] += 1
             st.rerun()
 
     with col_ex_b:
-        st.caption(
-            "Each new exercise rotates section targets and raises the musical demand gradually."
+        st.caption("Rotates section targets and raises demand gradually.")
+
+    with st.expander("🎸 Musician tools — chord coach", expanded=True):
+        render_chord_coach_ui(
+            all_chords_from_sections(sections),
+            instrument,
+            level,
+            key_prefix=f"practice::{song}::{instrument}::{level}",
+            expanded=True,
         )
 
-    st.subheader("Musician Tools")
-    render_chord_coach_ui(
-        all_chords_from_sections(sections),
-        instrument,
-        level,
-        key_prefix=f"practice::{song}::{instrument}::{level}",
-        expanded=True,
-    )
-
-    with st.expander("Transpose / Capo / Instrument Key Helper", expanded=True):
+    with st.expander("🎚️ Transpose / capo / instrument key", expanded=False):
         render_general_transpose_helper(
             original_key,
             display_key,
@@ -4430,24 +4391,23 @@ Focus: **{focus}**
                 wrap_expander=False,
             )
 
-    st.subheader("Metronome")
-    render_metronome_widget(
-        default_bpm=100,
-        default_signature=default_time_signature(song, sections),
-    )
-
-    st.markdown(
-        lyric_guide_markdown(
-            sections,
-            lyric_cues,
-            instrument,
-            section_lyrics=section_lyrics,
+    with st.expander("⏱️ Metronome", expanded=False):
+        render_metronome_widget(
+            default_bpm=100,
+            default_signature=default_time_signature(song, sections),
         )
-    )
 
-    if st.button(
-        "Generate Practice Sheet"
-    ):
+    with st.expander("📝 Lyric / phrasing guide", expanded=(instrument == "Voice")):
+        st.markdown(
+            lyric_guide_markdown(
+                sections,
+                lyric_cues,
+                instrument,
+                section_lyrics=section_lyrics,
+            )
+        )
+
+    if st.button("📄 Generate practice sheet", use_container_width=False):
 
         st.markdown(
             practice_text(
@@ -4469,21 +4429,19 @@ Focus: **{focus}**
 
         render_abc(abc)
 
-    st.subheader(
-        "Suggested Daily Time Breakdown"
-    )
-
-    st.markdown(
-        daily_practice_breakdown_markdown(
-            song,
-            sections,
-            instrument,
-            level,
-            focus,
-            minutes,
-            variation=st.session_state[exercise_key],
+    with st.expander("📆 Suggested daily time breakdown", expanded=False):
+        st.markdown(
+            daily_practice_breakdown_markdown(
+                song,
+                sections,
+                instrument,
+                level,
+                focus,
+                minutes,
+                variation=st.session_state[exercise_key],
+            )
         )
-    )
+    st.caption("Deep harmony & improvisation → **Creative Lab** tab.")
 
 # -------------------------------------------------
 # SONG PICKER
@@ -4491,7 +4449,11 @@ Focus: **{focus}**
 
 with tabs[1]:
 
-    st.header("Song Picker")
+    page_header(
+        "📚",
+        "Song Picker",
+        "Choose a catalog song or switch to your custom progression as the app-wide source.",
+    )
 
     _picker_source_options = [
         "Song Picker (catalog song)",
@@ -4539,29 +4501,26 @@ with tabs[1]:
         chart_library_mode,
     )
 
-    status_filter = st.selectbox(
-        "Chart status",
-        [
-            "Any non-placeholder",
-            "Trusted core",
-            "Verified",
-            "Practice approximation",
-        ],
-        index=1 if chart_library_mode == "Trusted core charts only" else 0,
-        key="song_picker_chart_status",
-    )
-
-    level_filter = st.selectbox(
-        "Chart level available",
-        [
-            "Any level",
-            "Beginner",
-            "Intermediate",
-            "Advanced",
-        ],
-        index=0,
-        key="song_picker_level_filter",
-    )
+    filt_a, filt_b = st.columns(2)
+    with filt_a:
+        status_filter = st.selectbox(
+            "Chart status",
+            [
+                "Any non-placeholder",
+                "Trusted core",
+                "Verified",
+                "Practice approximation",
+            ],
+            index=1 if chart_library_mode == "Trusted core charts only" else 0,
+            key="song_picker_chart_status",
+        )
+    with filt_b:
+        level_filter = st.selectbox(
+            "Chart level available",
+            ["Any level", "Beginner", "Intermediate", "Advanced"],
+            index=0,
+            key="song_picker_level_filter",
+        )
 
     visible_song_records = filter_records_by_chart_status(
         visible_song_records,
@@ -4578,10 +4537,7 @@ with tabs[1]:
     ]
 
     st.caption(
-        f"**{len(visible_song_records)} songs** visible in this chart library mode. "
-        "Trusted core is the default; practice approximations are opt-in. "
-        "Placeholder charts remain hidden. "
-        "This tab is for browsing and selecting only; charts live in Backing Track and Practice."
+        f"**{len(visible_song_records)} songs** visible · charts live in **Backing Track** and **Practice**."
     )
 
     search_scope = st.radio(
@@ -4604,8 +4560,8 @@ with tabs[1]:
             st.warning("No genres match the current chart filters.")
 
     search_text = st.text_input(
-        "Search (autocomplete-style)",
-        placeholder="Search title, artist, composer, genre/style...",
+        "Search songs",
+        placeholder="Title, artist, composer, genre…",
         key="song_search_text",
     )
 
@@ -4724,28 +4680,20 @@ with tabs[1]:
 
 with tabs[2]:
 
-    st.header("Backing Track")
+    _bt_sub = (
+        f"Play, loop, and follow chords for **{song}**."
+        if is_custom_progression(st.session_state)
+        else f"Play, loop, and follow chords — **{song}** · {song_data.get('artist', '')}."
+    )
+    page_header("🎧", "Backing Track", _bt_sub, badges=_ui_page_badges())
 
-    if is_custom_progression(st.session_state):
-        st.write(
-            f"**Active source: Custom Progression** — **{song}**. "
-            "Chart and backing audio follow your custom sections (same live chord-follow as catalog songs)."
-        )
-        st.caption(
-            f"**Written / home key:** {original_key} · **Display / practice key:** {display_key} · "
-            f"**Tempo hint:** {_chart_bundle.get('default_bpm', 100)} BPM"
-        )
-    else:
-        st.write(
-            f"**Active source: Song Picker** — **{song}** — {song_data['artist']}."
-        )
-        st.caption(
-            f"**Original key:** {original_key} · **Display / practice key:** {display_key}"
-        )
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
         st.warning("Key changed — regenerate backing track")
 
-    st.subheader("1. Backing Track Settings")
+    st.markdown(
+        '<div class="ui-card"><div class="ui-card-title">Playback settings</div>',
+        unsafe_allow_html=True,
+    )
 
     _sec_names = [name for name, chs in section_order(sections) if chs]
 
@@ -4828,8 +4776,15 @@ with tabs[2]:
             key="backing_track_loops",
         )
 
-        st.write(f"Display key: **{display_key}**")
-        st.write(f"Chart level: **{level}**")
+        st.markdown(
+            f'<div class="ui-badge-row">'
+            f'<span class="ui-badge green">Key {html.escape(display_key)}</span>'
+            f'<span class="ui-badge">{html.escape(level)}</span>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
     resolved_groove = infer_groove_style(song_data, groove_style)
     section_scope_label = (
@@ -4841,19 +4796,16 @@ with tabs[2]:
     if not backing_chords:
         st.warning("Choose at least one section to generate a backing track.")
 
-    st.caption(
-        f"Playback target: **{section_scope_label}** | "
-        f"Groove: **{resolved_groove}** | "
-        f"{len(backing_chords)} bars per repeat, {len(backing_chords) * form_loops} total bars."
+    st.markdown(
+        f'<div class="ui-badge-row">'
+        f'<span class="ui-badge accent">{html.escape(section_scope_label)}</span>'
+        f'<span class="ui-badge purple">{html.escape(resolved_groove)}</span>'
+        f'<span class="ui-badge amber">{bpm} BPM</span>'
+        f'<span class="ui-badge">{len(backing_chords)} bars × {form_loops}</span>'
+        f'<span class="ui-badge">{html.escape(chart_status_label(song_data)[0])}</span>'
+        f"</div>",
+        unsafe_allow_html=True,
     )
-
-    st.caption(
-        f"Chart version used for audio: **{level}** — "
-        f"**{chart_status_label(song_data)[0]}**"
-    )
-
-    if instrument == "Voice":
-        st.caption("Voice lyric and phrasing cues are shown inside each chart section below.")
 
     chart_level_song_data = {
         **song_data,
@@ -4876,18 +4828,19 @@ with tabs[2]:
     coach_section = selected_section_names[0] if selected_section_names else next((name for name, chs in section_order(chart_sections) if chs), "")
     coach_chords = chart_sections.get(coach_section, []) if coach_section else []
     if coach_chords:
-        st.info(
-            f"Instrument coaching for **{instrument} / {focus}**: "
-            + _section_overlay(
-                instrument,
-                focus,
-                coach_chords,
-                section_name=coach_section,
-                groove_style=resolved_groove,
-                time_signature=default_time_signature(song, chart_sections),
-                bpm=bpm,
+        with st.expander(f"💡 Quick coaching — {coach_section}", expanded=False):
+            st.markdown(
+                _section_overlay(
+                    instrument,
+                    focus,
+                    coach_chords,
+                    section_name=coach_section,
+                    groove_style=resolved_groove,
+                    time_signature=default_time_signature(song, chart_sections),
+                    bpm=bpm,
+                ),
+                unsafe_allow_html=True,
             )
-        )
 
     _current_backing_signature = (
         song,
@@ -4901,11 +4854,16 @@ with tabs[2]:
     )
     _follow_key_prefix = f"backing::{song}::{tuple(selected_section_names)}::{display_key}::{bpm}::{form_loops}"
 
-    st.subheader("Generate / Play Backing Track")
+    st.markdown(
+        '<div class="ui-card soft"><div class="ui-card-title">Generate & play</div>',
+        unsafe_allow_html=True,
+    )
     if st.button(
-        "Generate backing track (from active song + settings above)",
+        "▶ Generate backing track",
         key="gen_backing_btn",
         disabled=not bool(backing_chords),
+        type="primary",
+        use_container_width=True,
     ):
         wav = generate_backing_track(
             backing_events,
@@ -4934,10 +4892,6 @@ with tabs[2]:
         st.session_state.get("_last_backing_wav")
         and st.session_state.get("_last_backing_signature") == _current_backing_signature
     ):
-        st.caption(
-            "The live chart below uses its own audio player so the highlight follows the actual audio current time."
-        )
-
         _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
 
         st.download_button(
@@ -4959,7 +4913,12 @@ with tabs[2]:
         form_loops,
     )
 
-    st.subheader("Full Song Chart")
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown(
+        '<div class="ui-card"><div class="ui-card-title">Lead-sheet chart</div>'
+        '<div class="ui-card-sub">Chord boxes highlight in sync when backing audio is playing.</div>',
+        unsafe_allow_html=True,
+    )
     chart_html = full_chord_markdown(
         song,
         song_data,
@@ -4990,10 +4949,12 @@ with tabs[2]:
             scrolling=True,
         )
     else:
-        st.info("Generate a backing track to enable the live audio-synced chord highlight.")
+        st.caption("Generate backing audio above to enable live chord highlighting.")
         st.markdown(chart_html, unsafe_allow_html=True)
 
-    with st.expander("Form timeline and selected playback order", expanded=False):
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    with st.expander("📋 Form timeline & section order", expanded=False):
         _tl_rows = form_timeline_rows(sections)
 
         st.dataframe(
@@ -5030,11 +4991,13 @@ with tabs[2]:
 
 with tabs[6]:
 
-    st.header("Upload / Recording Analysis")
-
-    st.write("Upload or record your playing. The app gives intermediate feedback on tempo, pitch center, articulation, dynamics, and song-specific chord tones.")
-
-    st.info("This is intermediate analysis, not perfect professional note-by-note grading.")
+    page_header(
+        "🎙️",
+        "Recording Analysis",
+        "Upload or record your playing for tempo, pitch, articulation, and chord-tone feedback.",
+        badges=_ui_page_badges(),
+    )
+    st.caption("Intermediate analysis — not professional note-by-note grading.")
 
     analysis_audio = st.file_uploader(
         "Upload a recording to analyze",
@@ -5069,11 +5032,10 @@ with tabs[6]:
 
 with tabs[3]:
 
-    st.header("Custom Progression Lab")
-
-    st.write(
-        "Build your own chord progression, generate a backing track, and get instrument-specific "
-        "practice and improvisation exercises — a songwriting sketchpad and harmony trainer."
+    page_header(
+        "✏️",
+        "Custom Progression Lab",
+        "Build progressions, set the app-wide source, and preview harmony — full playback is on **Backing Track**.",
     )
 
     use_col, status_col = st.columns([1, 2])
@@ -5118,7 +5080,7 @@ with tabs[3]:
         display_sections_for_key(active, cpl_practice_key)
     )
 
-    with st.expander("How key transpose works (read this first)", expanded=True):
+    with st.expander("How key transpose works", expanded=False):
         st.markdown(
             cpl_transpose_explanation_markdown(
                 cpl_home_key,
@@ -5548,28 +5510,17 @@ with tabs[3]:
 
 with tabs[4]:
 
-    st.header("AI Musical Development + Creative Lab")
-
-    st.write(
-        "This page starts moving the app beyond ordinary practice into deeper musical development: "
-        "harmony, improvisation, arranging, weakness detection, and long-term growth tracking."
+    page_header(
+        "🧠",
+        "Creative Lab",
+        "Harmony, improvisation, arranging, weakness detection, and long-term growth — for your active chart.",
+        badges=_ui_page_badges(),
     )
-    if is_custom_progression(st.session_state):
-        st.info(
-            f"**Active source: Custom Progression** — **{song}**. "
-            "Harmonic analysis uses your custom chart in the sidebar display key."
-        )
-    else:
-        st.caption(
-            f"**Active source: Song Picker** — **{song}**. "
-            f"**Original key:** {original_key} · **Display / practice key:** {display_key} "
-            "(sidebar) — harmonic analysis uses the transposed chart."
-        )
 
     ctx = current_song_context_lab()
 
     lab_mode = st.selectbox(
-        "Choose creative intelligence mode",
+        "Analysis mode",
         [
             "Deep Harmonic Analyzer",
             "Improvisation Intelligence",
@@ -5617,16 +5568,14 @@ with tabs[4]:
 
 with tabs[5]:
 
-    st.header("Multitrack Recorder")
-
-    st.write(
-        "Layer instruments like a lightweight practice studio: count-in, loop sections, mute/solo/volume per track, "
-        "and optional monitor-only backing while you record. For AI feedback and coaching, use **Upload & Recording Analysis**."
+    page_header(
+        "🎚️",
+        "Multitrack Recorder",
+        "Overdub studio — loop sections, mute/solo tracks, and export mixes. AI feedback → **Recording Analysis**.",
+        badges=_ui_page_badges(),
     )
-
     st.caption(
-        "Headphones recommended when monitoring a backing track. Streamlit records your microphone only — "
-        "the backing plays for reference and is excluded from exports unless you choose to include it."
+        "Headphones recommended. Mic input only unless you include backing in the export."
     )
 
     MT_SLOTS = [
@@ -5978,11 +5927,13 @@ with tabs[5]:
 
 with tabs[7]:
 
-    st.header("Practice Log")
+    page_header(
+        "📓",
+        "Practice Log",
+        "Session history and progress over time.",
+    )
 
-    if st.button(
-        "Clear Music Practice / Reset"
-    ):
+    if st.button("Clear practice log", type="secondary"):
 
         save_logs([])
 
