@@ -109,7 +109,7 @@ def commit_display_sections_to_original(active, display_sections, display_key):
         display_key,
         home,
     )
-    return active
+    return maybe_update_inferred_home_key(active)
 
 
 def anchor_home_key_to_display(active, display_key):
@@ -117,6 +117,8 @@ def anchor_home_key_to_display(active, display_key):
     active = ensure_original_structure(active)
     active["original_sections"] = display_sections_for_key(active, display_key)
     active["original_key_center"] = display_key
+    active["user_locked_home_key"] = True
+    active.pop("tonal_center_inferred", None)
     return active
 
 
@@ -721,10 +723,11 @@ def suggested_scales_for_chord(ch, key_center):
 def harmonic_analysis_markdown(sections, key_center, time_signature="4/4"):
     chord_lists = sections_to_chord_lists(sections)
     all_chords = all_chords_from_lab_sections(sections)
-    est_key = estimate_key_center(sections, key_center)
+    analysis = analyze_tonal_center(sections, user_home_key=key_center)
+    est_key = analysis.get("primary_label", key_center)
     lines = [
         "# Harmonic Analysis",
-        f"**Your key center:** {key_center} | **Estimated from chords:** {est_key}",
+        f"**Practice / display key:** {key_center} | **Harmonic analysis:** {analysis.get('summary', est_key)}",
         f"**Time signature:** {time_signature}",
         "",
         "## Progression patterns",
