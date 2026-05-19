@@ -15,6 +15,7 @@ import json
 import wave
 import tempfile
 import html
+import time
 from pathlib import Path
 from datetime import date
 
@@ -62,6 +63,7 @@ split_chord = _music_theory.split_chord
 semitone_distance = _music_theory.semitone_distance
 transpose_chord = _music_theory.transpose_chord
 transpose_sections = _music_theory.transpose_sections
+transpose_sections_dict = _music_theory.transpose_sections_dict
 transpose_guitar_tabs = _music_theory.transpose_guitar_tabs
 
 from song_catalog import (
@@ -1032,13 +1034,14 @@ def _chart_lyric_lines(section_name, lyric_cues=None, section_lyrics=None):
     return lines
 
 
-def _chart_grid_html(chords):
+def _chart_grid_html(chords, current_bar=None):
     if not chords:
         return "<div class='empty-chart'>No chords entered for this section.</div>"
     cells = []
     for idx, chord in enumerate(chords):
         previous = chords[idx - 1] if idx else None
         display = "%" if previous and chord == previous else str(chord)
+        current_class = " current-chord" if current_bar == idx + 1 else ""
         repeat_count = 1
         if display != "%":
             for nxt in chords[idx + 1:]:
@@ -1047,7 +1050,7 @@ def _chart_grid_html(chords):
                 repeat_count += 1
         duration = f"<span class='duration'>{repeat_count} bars</span>" if repeat_count > 1 else ""
         cells.append(
-            "<div class='chord-cell'>"
+            f"<div class='chord-cell{current_class}'>"
             f"<div class='bar-num'>Bar {idx + 1}</div>"
             f"<div class='chord-symbol'>{html.escape(display)}</div>"
             f"{duration}"
@@ -1189,6 +1192,7 @@ def full_chord_markdown(
     bpm=100,
     time_signature="4/4",
     current_section=None,
+    current_bar=None,
     focus="",
 ):
     dk = display_key or song_data["key"]
@@ -1268,6 +1272,11 @@ def full_chord_markdown(
   background: rgba(255, 255, 255, 0.9);
   padding: 6px 8px;
 }
+.chord-cell.current-chord {
+  background: #dcfce7;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
+}
 .bar-num { color: #64748b; font-size: 0.68rem; font-weight: 700; margin-bottom: 4px; }
 .chord-symbol {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -1328,6 +1337,7 @@ def full_chord_markdown(
         role = _chart_section_role(section_name)
         is_current = section_name in current_parts
         now_label = "Now Playing" if is_current else ""
+        current_bar_for_section = current_bar if is_current else None
         section_cards.append(
             f"""
 <section class="section-card {role}{' current' if is_current else ''}">
@@ -1338,7 +1348,7 @@ def full_chord_markdown(
     </div>
     <div class="section-meta">{now_label}</div>
   </div>
-  {_chart_grid_html(chords)}
+  {_chart_grid_html(chords, current_bar=current_bar_for_section)}
   {_section_lyric_html(section_name, chords, instrument, lyric_cues=lyric_cues or {}, section_lyrics=section_lyrics or {})}
   <div class="overlay-box"><strong>{html.escape(str(instrument))}:</strong> {_section_overlay(instrument, focus, chords, section_name=section_name, groove_style=groove_style)}</div>
   <div class="analysis-box">{_inline_harmonic_analysis(section_name, chords, dk)}</div>
@@ -1406,20 +1416,50 @@ def guitar_practice_text(focus, level):
 
 
 GUITAR_FINGERING_OPTIONS = {
+    "Fm9": [
+        ("lower", "131113", "Lower movable color; keep it light because full minor-9 grips can get dense."),
+        ("shell", "1x1113", "Root plus minor shell and 9th color; good for comping."),
+        ("upper", "xx3143", "Upper-register color voicing when bass or piano covers the root."),
+    ],
     "Aadd9": [
         ("open", "x02420", "Open, ringing pop color; let the B string carry the add9."),
         ("triad", "x07600", "Small upper-register color shape; useful for ambient sections."),
         ("barre", "577600", "Moveable A-root color with open top strings if the key allows it."),
+    ],
+    "Bsus4": [
+        ("open-ish", "x24400", "Modern ringing sus color; mute the low E."),
+        ("barre", "x24452", "Clear Bsus4 barre grip resolving easily to B."),
+        ("triad", "xx4452", "Upper-string sus shape for clean rhythm comping."),
+    ],
+    "D/F#": [
+        ("open", "2x0232", "Classic D over F# bass; use thumb or first finger on low F#."),
+        ("compact", "2x023x", "Smaller grip if the top string rings too brightly."),
+        ("no-root-top", "xx4232", "Upper inversion when bass covers F#."),
     ],
     "Dadd9": [
         ("open", "xx0230", "Easy open D color; leave high E open for the 9th."),
         ("triad", "x54255", "Higher D color around 5th position."),
         ("barre", "x57755", "A-shape D with added 9 on top for a fuller chorus."),
     ],
+    "G/B": [
+        ("open", "x20033", "Open G over B; very useful for stepwise bass motion."),
+        ("compact", "x2003x", "Smaller version for clean voice leading."),
+        ("triad", "xx5433", "Upper G inversion if bass handles B."),
+    ],
     "Gadd9": [
         ("open", "320203", "Country-pop open G color; keep top notes clean."),
         ("open-alt", "3x0203", "Lighter grip with less low-end mud."),
         ("triad", "xx5435", "Upper-string G color for tighter comping."),
+    ],
+    "Bbmaj7": [
+        ("barre", "x13231", "Standard A-shape maj7 color."),
+        ("shell", "6x776x", "Moveable shell voicing; good for jazz/pop comping."),
+        ("upper", "xx7765", "Higher color voicing with the maj7 on top."),
+    ],
+    "Am7b5": [
+        ("standard", "x0101x", "Compact half-diminished grip; resolve it clearly."),
+        ("movable", "5x554x", "Moveable root-position shell."),
+        ("upper", "xx7888", "Upper-register color for jazzier sections."),
     ],
     "Eadd9": [
         ("open", "024100", "Open E with F# color; good for the Love Story key-change lift."),
@@ -1541,6 +1581,174 @@ def chord_coach_markdown(chord, instrument, level):
 **How to play / target it on {instrument}:**
 {chord_playing_advice(chord, instrument, level)}
 """.strip()
+
+
+def render_chord_coach_ui(chords, instrument, level, key_prefix, expanded=True):
+    unique_chords = []
+    for chord in chords:
+        if chord not in unique_chords:
+            unique_chords.append(chord)
+    if not unique_chords:
+        st.info("No chords are available for the current song/section.")
+        return
+
+    with st.expander("Chord Coach / How to Play This Chord", expanded=expanded):
+        st.caption("Pick any chord from the selected song and get instrument-specific playing guidance.")
+        selected_chord = st.selectbox(
+            "Chord to explain",
+            unique_chords,
+            key=f"{key_prefix}::chord_coach_select",
+        )
+        st.markdown(chord_coach_markdown(selected_chord, instrument, level))
+
+
+TRANSPOSING_INSTRUMENTS = {
+    "Alto Sax (Eb)": 9,
+    "Tenor Sax (Bb)": 2,
+    "Soprano Sax (Bb)": 2,
+    "Bari Sax (Eb)": 9,
+    "Bb Trumpet": 2,
+    "Bb Clarinet": 2,
+}
+
+
+def transposing_instrument_options(instrument):
+    if instrument == "Saxophone":
+        return ["Alto Sax (Eb)", "Tenor Sax (Bb)", "Soprano Sax (Bb)", "Bari Sax (Eb)"]
+    if instrument == "Trumpet":
+        return ["Bb Trumpet"]
+    if instrument == "Clarinet":
+        return ["Bb Clarinet"]
+    return []
+
+
+def transposed_key_for_instrument(concert_key, instrument_label):
+    steps = TRANSPOSING_INSTRUMENTS.get(instrument_label, 0)
+    return transpose_chord(concert_key, steps)
+
+
+def render_transposition_helper(concert_key, instrument, key_prefix):
+    options = transposing_instrument_options(instrument)
+    if not options:
+        return concert_key, False, None
+
+    st.subheader("Instrument Transposition Helper")
+    col_a, col_b, col_c = st.columns([1.2, 1.2, 1])
+    with col_a:
+        instrument_key = st.selectbox(
+            "Transposing instrument",
+            options,
+            key=f"{key_prefix}::transposing_instrument",
+        )
+    written_key = transposed_key_for_instrument(concert_key, instrument_key)
+    with col_b:
+        st.write(f"Concert key: **{concert_key}**")
+        st.write(f"Instrument key: **{written_key}**")
+    with col_c:
+        show_written = st.checkbox(
+            "Show chart in instrument key",
+            value=False,
+            key=f"{key_prefix}::show_written_key",
+        )
+    st.caption(
+        f"{instrument_key}: written notes transpose so the part reads in **{written_key}** when the concert chart is **{concert_key}**."
+    )
+    return written_key if show_written else concert_key, show_written, instrument_key
+
+
+def capo_fret_for_shape(sounding_key, shape_key):
+    return semitone_distance(shape_key, sounding_key)
+
+
+def render_guitar_capo_helper(base_sections, sounding_key, key_prefix):
+    st.subheader("Guitar Capo Helper")
+    col_a, col_b, col_c = st.columns([1.2, 1.2, 1])
+    with col_a:
+        shape_key = st.selectbox(
+            "Play using chord shapes in",
+            COMMON_KEYS,
+            index=COMMON_KEYS.index("G") if "G" in COMMON_KEYS else 0,
+            key=f"{key_prefix}::capo_shape_key",
+        )
+    capo = capo_fret_for_shape(sounding_key, shape_key)
+    shape_sections = transpose_sections_dict(base_sections, sounding_key, shape_key)
+    shape_chords = chord_blocks_for_selected_sections(shape_sections)[:8]
+    with col_b:
+        st.write(f"Sounding key: **{sounding_key}**")
+        st.write(f"Shape key: **{shape_key}**")
+    with col_c:
+        st.metric("Suggested capo", f"{capo} fret" if capo == 1 else f"{capo} frets")
+    st.caption(
+        "Capo suggestion assumes standard tuning: play the shape-key chords with the capo placed so they sound in the selected chart key."
+    )
+    if shape_chords:
+        st.write("First playable shapes: `" + " | ".join(shape_chords) + "`")
+
+
+def playback_follow_position(events, bpm, loops, start_time=None, manual_index=0):
+    if not events:
+        return None
+    total_events = events * max(1, int(loops))
+    if start_time:
+        bar_seconds = (60 / max(1, bpm)) * 4
+        idx = int((time.time() - start_time) // bar_seconds) % len(total_events)
+    else:
+        idx = int(manual_index) % len(total_events)
+    event = total_events[idx]
+    next_event = total_events[(idx + 1) % len(total_events)]
+    return {
+        "absolute_bar": idx + 1,
+        "total_bars": len(total_events),
+        "section": event.get("section", ""),
+        "bar_in_section": int(event.get("bar_in_section", 0)) + 1,
+        "section_bars": int(event.get("section_bars", 1)),
+        "chord": event.get("chord", ""),
+        "next_chord": next_event.get("chord", ""),
+    }
+
+
+def render_follow_along_controls(events, bpm, loops, key_prefix):
+    st.subheader("Live Chord Follow-Along")
+    st.caption("Practical follow-along: start the tracker when you press play, or step through bars manually.")
+    start_key = f"{key_prefix}::follow_start_time"
+    index_key = f"{key_prefix}::follow_manual_index"
+    st.session_state.setdefault(index_key, 0)
+
+    col_a, col_b, col_c, col_d = st.columns(4)
+    with col_a:
+        if st.button("Start follow-along", key=f"{key_prefix}::follow_start"):
+            st.session_state[start_key] = time.time()
+            st.session_state[index_key] = 0
+    with col_b:
+        if st.button("Refresh position", key=f"{key_prefix}::follow_refresh"):
+            st.rerun()
+    with col_c:
+        if st.button("Next bar", key=f"{key_prefix}::follow_next"):
+            st.session_state.pop(start_key, None)
+            st.session_state[index_key] += 1
+    with col_d:
+        if st.button("Stop/reset", key=f"{key_prefix}::follow_stop"):
+            st.session_state.pop(start_key, None)
+            st.session_state[index_key] = 0
+
+    pos = playback_follow_position(
+        events,
+        bpm,
+        loops,
+        start_time=st.session_state.get(start_key),
+        manual_index=st.session_state.get(index_key, 0),
+    )
+    if not pos:
+        st.info("Choose at least one section to use follow-along.")
+        return None
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Now Playing Section", pos["section"])
+    c2.metric("Current Chord", pos["chord"])
+    c3.metric("Current Bar", f"{pos['bar_in_section']} of {pos['section_bars']}")
+    c4.metric("Next Chord", pos["next_chord"])
+    st.caption(f"Absolute bar {pos['absolute_bar']} of {pos['total_bars']}. Highlighted in the chart below.")
+    return pos
 
 
 def _section_for_exercise(sections, variation):
@@ -2963,6 +3171,7 @@ instrument = st.sidebar.selectbox(
         "Saxophone",
         "Flute",
         "Trumpet",
+        "Clarinet",
         "Voice",
         "Other"
     ]
@@ -3127,15 +3336,13 @@ Focus: **{focus}**
         )
 
     if level in ["Intermediate", "Advanced"]:
-        coach_chords = _interesting_chord_names(all_chords_from_sections(sections))
-        if coach_chords:
-            with st.expander("Chord Coach / How to Play", expanded=False):
-                coach_chord = st.selectbox(
-                    "Choose a color chord from this song",
-                    coach_chords,
-                    key=f"chord_coach::{song}::{instrument}::{level}",
-                )
-                st.markdown(chord_coach_markdown(coach_chord, instrument, level))
+        render_chord_coach_ui(
+            all_chords_from_sections(sections),
+            instrument,
+            level,
+            key_prefix=f"practice::{song}::{instrument}::{level}",
+            expanded=True,
+        )
 
     st.subheader("Metronome")
     render_metronome_widget(
@@ -3504,22 +3711,92 @@ with tabs[2]:
     if instrument == "Voice":
         st.caption("Voice lyric and phrasing cues are shown inside each chart section below.")
 
+    chart_display_key = display_key
+    transposition_label = None
+    if transposing_instrument_options(instrument):
+        chart_display_key, _show_written_key, transposition_label = render_transposition_helper(
+            display_key,
+            instrument,
+            key_prefix=f"backing::{song}",
+        )
+
+    chart_level_song_data = {
+        **song_data,
+        "sections": level_source_sections,
+    }
+    chart_sections = transpose_sections(
+        chart_level_song_data,
+        chart_display_key,
+    )
+    chart_backing_chords = chord_blocks_for_selected_sections(
+        chart_sections,
+        selected_section_names,
+    )
+    chart_backing_events = chord_events_for_selected_sections(
+        chart_sections,
+        selected_section_names,
+    )
+
+    if instrument == "Guitar":
+        render_guitar_capo_helper(
+            sections,
+            display_key,
+            key_prefix=f"backing::{song}",
+        )
+
+    st.subheader("Chord Coach / How to Play This Chord")
+    render_chord_coach_ui(
+        chart_backing_chords or all_chords_from_sections(chart_sections),
+        instrument,
+        level,
+        key_prefix=f"backing::{song}::{instrument}::{level}",
+        expanded=True,
+    )
+
+    coach_section = selected_section_names[0] if selected_section_names else next((name for name, chs in section_order(chart_sections) if chs), "")
+    coach_chords = chart_sections.get(coach_section, []) if coach_section else []
+    if coach_chords:
+        st.info(
+            f"Instrument coaching for **{instrument} / {focus}**: "
+            + _section_overlay(
+                instrument,
+                focus,
+                coach_chords,
+                section_name=coach_section,
+                groove_style=resolved_groove,
+            )
+        )
+
+    follow_position = render_follow_along_controls(
+        chart_backing_events,
+        bpm,
+        form_loops,
+        key_prefix=f"backing::{song}::{tuple(selected_section_names)}::{chart_display_key}",
+    )
+    current_chart_section = (
+        follow_position["section"]
+        if follow_position
+        else (section_scope_label if selected_section_names else "Full song")
+    )
+    current_chart_bar = follow_position["bar_in_section"] if follow_position else None
+
     st.subheader("2. Full Song Chart")
 
     st.markdown(
         full_chord_markdown(
             song,
             song_data,
-            sections,
+            chart_sections,
             instrument,
-            display_key=display_key,
+            display_key=chart_display_key,
             level=level,
             lyric_cues=lyric_cues,
             section_lyrics=section_lyrics,
             groove_style=resolved_groove,
             bpm=bpm,
-            time_signature=default_time_signature(song, sections),
-            current_section=section_scope_label if selected_section_names else "Full song",
+            time_signature=default_time_signature(song, chart_sections),
+            current_section=current_chart_section,
+            current_bar=current_chart_bar,
             focus=focus,
         ),
         unsafe_allow_html=True,
