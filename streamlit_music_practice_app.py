@@ -3381,7 +3381,14 @@ def mix_multitrack(backing_y, track_items, sr=44100):
 
         max_len = len(backing_y)
 
+    solo_active = any(bool(item.get("solo")) for item in track_items)
+
     for item in track_items:
+
+        if item.get("mute"):
+            continue
+        if solo_active and not item.get("solo"):
+            continue
 
         y = _load_audio_mono_bytes(
             item["audio_bytes"],
@@ -3389,9 +3396,9 @@ def mix_multitrack(backing_y, track_items, sr=44100):
             sr,
         )
 
-        y = y * float(item["volume"])
+        y = y * float(item.get("volume", 1.0))
 
-        delay = float(item["delay"])
+        delay = float(item.get("delay", 0.0))
 
         ds = int(delay * sr)
 
@@ -3424,9 +3431,345 @@ def mix_multitrack(backing_y, track_items, sr=44100):
     return mix
 
 
-# -------------------------------------------------
-# INTERMEDIATE RECORDING ANALYSIS
-# -------------------------------------------------
+def beats_per_bar_from_signature(time_signature):
+    try:
+        return max(1, int(str(time_signature).split("/")[0]))
+    except Exception:
+        return 4
+
+
+def ensure_multitrack_track_controls(track_names):
+    controls = st.session_state.setdefault("mt_track_controls", {})
+    for name in track_names:
+        controls.setdefault(
+            name,
+            {"volume": 1.0, "mute": False, "solo": False, "delay": 0.0},
+        )
+    return controls
+
+
+def multitrack_studio_track_payloads(track_items, controls):
+    payloads = []
+    for item in track_items:
+        name = item["name"]
+        track_id = "".join(ch if ch.isalnum() else "_" for ch in name.lower()).strip("_") or "track"
+        ctrl = controls.get(name, {})
+        filename = (item.get("filename") or "").lower()
+        if filename.endswith(".mp3"):
+            mime = "audio/mpeg"
+        elif filename.endswith(".ogg"):
+            mime = "audio/ogg"
+        else:
+            mime = "audio/wav"
+        b64 = base64.b64encode(item["audio_bytes"]).decode("ascii")
+        payloads.append(
+            {
+                "id": track_id,
+                "name": name,
+                "b64": f"data:{mime};base64,{b64}",
+                "volume": float(ctrl.get("volume", item.get("volume", 1.0))),
+                "mute": bool(ctrl.get("mute", item.get("mute", False))),
+                "solo": bool(ctrl.get("solo", item.get("solo", False))),
+                "delay": float(ctrl.get("delay", item.get("delay", 0.0))),
+            }
+        )
+    return payloads
+
+
+def multitrack_monitor_backing_bytes(
+    sections,
+    selected_section_names,
+    *,
+    bpm,
+    loops,
+    style,
+    level,
+):
+    events = chord_events_for_selected_sections(sections, selected_section_names)
+    if not events:
+        return None, events
+    backing_y = backing_bytes_to_float(
+        events,
+        bpm=bpm,
+        style=style,
+        level=level,
+    )
+    if loops > 1:
+        backing_y = np.tile(backing_y, int(loops))
+    return wav_bytes_from_float(backing_y), events
+
+
+def multitrack_studio_html(
+    *,
+    backing_b64,
+    tracks,
+    bpm,
+    beats_per_bar,
+    count_in_bars,
+    metronome_during_playback,
+    loop_backing,
+    backing_monitor_enabled,
+    backing_monitor_volume,
+    scope_label,
+    time_signature="4/4",
+    backing_duration_sec=0,
+):
+    tracks_json = json.dumps(tracks)
+    bar_duration = (60 / max(1, bpm)) * beats_per_bar
+    loop_checked = "checked" if loop_backing else ""
+    metro_checked = "checked" if metronome_during_playback else ""
+    config = json.dumps({
+        "bpm": bpm,
+        "beatsPerBar": beats_per_bar,
+        "barDuration": bar_duration,
+        "countInBars": count_in_bars,
+        "metronomeDuringPlayback": metronome_during_playback,
+        "loopBacking": loop_backing,
+        "backingMonitorEnabled": backing_monitor_enabled,
+        "backingMonitorVolume": backing_monitor_volume,
+        "scopeLabel": scope_label,
+        "hasBacking": bool(backing_b64),
+        "backingDurationSec": backing_duration_sec,
+    })
+    backing_attr = (
+        f'src="data:audio/wav;base64,{backing_b64}"'
+        if backing_b64
+        else ""
+    )
+    return f"""
+<div class="mt-studio">
+  <style>
+    .mt-studio {{ font-family: system-ui, -apple-system, Segoe UI, sans-serif; color: #0f172a; }}
+    .mt-toolbar {{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }}
+    .mt-toolbar button {{ padding:8px 14px; border-radius:10px; border:1px solid #cbd5e1; background:#fff; cursor:pointer; font-weight:700; }}
+    .mt-toolbar button.primary {{ background:#16a34a; color:#fff; border-color:#15803d; }}
+    .mt-status {{ border:1px solid #cbd5e1; border-radius:12px; padding:10px 12px; background:#f8fafc; margin-bottom:12px; }}
+    .mt-timeline {{ height:10px; background:#e2e8f0; border-radius:999px; overflow:hidden; margin:10px 0 14px 0; }}
+    .mt-cursor {{ height:100%; width:0%; background:linear-gradient(90deg,#22c55e,#16a34a); transition: width 0.05s linear; }}
+    .mt-track-list {{ display:grid; gap:8px; }}
+    .mt-track-row {{ border:1px solid #e2e8f0; border-radius:12px; padding:10px; background:#fff; display:grid; grid-template-columns: 1.2fr 1fr 1fr 1fr; gap:8px; align-items:center; }}
+    .mt-track-row.muted {{ opacity:0.45; }}
+    .mt-track-row.soloed {{ outline:2px solid #f59e0b; }}
+    .mt-help {{ color:#475569; font-size:0.86rem; margin-top:8px; }}
+    .mt-beat {{ font-variant-numeric: tabular-nums; }}
+  </style>
+
+  <audio id="mt-backing" preload="auto" {backing_attr}></audio>
+
+  <div class="mt-status">
+    <strong>Multitrack Studio</strong> — {html.escape(scope_label)} @ {bpm} BPM ({html.escape(time_signature)})
+    <div class="mt-help" id="mt-playback-label">Ready. Backing is monitor-only and is not printed into your recorded tracks.</div>
+  </div>
+
+  <div class="mt-toolbar">
+    <button class="primary" id="mt-play">Play with count-in</button>
+    <button id="mt-stop">Stop</button>
+    <label><input type="checkbox" id="mt-loop" {loop_checked}> Loop backing</label>
+    <label><input type="checkbox" id="mt-metronome" {metro_checked}> Metronome during playback</label>
+    <label>Backing monitor <input type="range" id="mt-backing-vol" min="0" max="150" value="{int(backing_monitor_volume * 100)}"></label>
+  </div>
+
+  <div>Transport: <span class="mt-beat" id="mt-time">0.0s</span> | Bar <span class="mt-beat" id="mt-bar">1</span> | Beat <span class="mt-beat" id="mt-beat">1</span></div>
+  <div class="mt-timeline"><div class="mt-cursor" id="mt-cursor"></div></div>
+
+  <div class="mt-track-list" id="mt-track-list"></div>
+  <div class="mt-help">Use headphones when possible. Record each layer below with Streamlit's recorder while this transport plays. For AI coaching, use the Upload &amp; Recording Analysis tab.</div>
+
+  <script>
+    const cfg = {config};
+    const tracks = {tracks_json};
+    const backingEl = document.getElementById("mt-backing");
+    const listEl = document.getElementById("mt-track-list");
+    const playBtn = document.getElementById("mt-play");
+    const stopBtn = document.getElementById("mt-stop");
+    const loopCb = document.getElementById("mt-loop");
+    const metroCb = document.getElementById("mt-metronome");
+    const backingVol = document.getElementById("mt-backing-vol");
+    const timeEl = document.getElementById("mt-time");
+    const barEl = document.getElementById("mt-bar");
+    const beatEl = document.getElementById("mt-beat");
+    const cursorEl = document.getElementById("mt-cursor");
+    const labelEl = document.getElementById("mt-playback-label");
+
+    let audioCtx = null;
+    let startedAt = 0;
+    let rafId = null;
+    let metroTimer = null;
+    let trackNodes = [];
+    let backingGain = null;
+    let masterGain = null;
+    let sessionDuration = 8;
+
+    function barDuration() {{ return cfg.barDuration; }}
+    function beatDuration() {{ return 60 / cfg.bpm; }}
+
+    function renderTracks() {{
+      listEl.innerHTML = "";
+      tracks.forEach((track) => {{
+        const row = document.createElement("div");
+        row.className = "mt-track-row";
+        row.dataset.trackId = track.id;
+        row.innerHTML = `
+          <div><strong>${{track.name}}</strong><div style="font-size:12px;color:#64748b;">delay ${{track.delay}}s</div></div>
+          <label>Vol <input type="range" min="0" max="200" value="${{Math.round((track.volume || 1) * 100)}}" data-vol></label>
+          <label><input type="checkbox" data-mute> Mute</label>
+          <label><input type="checkbox" data-solo> Solo</label>
+        `;
+        if (track.mute) row.classList.add("muted");
+        if (track.solo) row.classList.add("soloed");
+        listEl.appendChild(row);
+      }});
+    }}
+
+    function trackStateFromUI() {{
+      return Array.from(listEl.querySelectorAll(".mt-track-row")).map((row) => {{
+        const id = row.dataset.trackId;
+        const meta = tracks.find((t) => t.id === id) || {{}};
+        return {{
+          id,
+          mute: row.querySelector("[data-mute]").checked,
+          solo: row.querySelector("[data-solo]").checked,
+          volume: Number(row.querySelector("[data-vol]").value) / 100,
+          delay: Number(meta.delay || 0),
+        }};
+      }});
+    }}
+
+    function audibleTracks(state) {{
+      const soloed = state.filter((t) => t.solo);
+      if (soloed.length) return state.filter((t) => t.solo && !t.mute);
+      return state.filter((t) => !t.mute);
+    }}
+
+    async function decodeTrack(track) {{
+      const res = await fetch(track.b64);
+      const buf = await res.arrayBuffer();
+      return await audioCtx.decodeAudioData(buf);
+    }}
+
+    function playClick(when, accent) {{
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.value = accent ? 1180 : 760;
+      gain.gain.setValueAtTime(accent ? 0.35 : 0.18, when);
+      gain.gain.exponentialRampToValueAtTime(0.001, when + 0.07);
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(when);
+      osc.stop(when + 0.08);
+    }}
+
+    function scheduleCountIn(startTime) {{
+      const beats = Math.max(0, cfg.countInBars) * cfg.beatsPerBar;
+      for (let i = 0; i < beats; i++) {{
+        playClick(startTime + i * beatDuration(), i % cfg.beatsPerBar === 0);
+      }}
+      return startTime + beats * beatDuration();
+    }}
+
+    function stopAll() {{
+      if (rafId) cancelAnimationFrame(rafId);
+      if (metroTimer) clearInterval(metroTimer);
+      rafId = null;
+      metroTimer = null;
+      trackNodes.forEach((node) => {{
+        try {{ node.source.stop(); }} catch (e) {{}}
+      }});
+      trackNodes = [];
+      if (audioCtx) audioCtx.close();
+      audioCtx = null;
+      cursorEl.style.width = "0%";
+      timeEl.textContent = "0.0s";
+      labelEl.textContent = "Stopped.";
+    }}
+
+    function updateTransport() {{
+      if (!audioCtx) return;
+      const t = Math.max(0, audioCtx.currentTime - startedAt);
+      const bd = barDuration();
+      const barNum = Math.floor(t / bd) + 1;
+      const beatNum = Math.floor((t % bd) / beatDuration()) + 1;
+      timeEl.textContent = `${{t.toFixed(1)}}s`;
+      barEl.textContent = String(barNum);
+      beatEl.textContent = String(beatNum);
+      const pct = sessionDuration > 0 ? Math.min(100, (t / sessionDuration) * 100) : 0;
+      cursorEl.style.width = `${{pct}}%`;
+      rafId = requestAnimationFrame(updateTransport);
+    }}
+
+    async function playSession() {{
+      stopAll();
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.95;
+      masterGain.connect(audioCtx.destination);
+
+      const state = trackStateFromUI();
+      const playTracks = audibleTracks(state);
+      const countInStart = audioCtx.currentTime;
+      const musicStart = scheduleCountIn(countInStart);
+      startedAt = musicStart;
+
+      let maxEnd = musicStart;
+
+      if (cfg.hasBacking && cfg.backingMonitorEnabled && backingEl.src) {{
+        const backingBuf = await decodeTrack({{ b64: backingEl.src }});
+        const src = audioCtx.createBufferSource();
+        src.buffer = backingBuf;
+        src.loop = loopCb.checked;
+        backingGain = audioCtx.createGain();
+        backingGain.gain.value = Number(backingVol.value) / 100;
+        src.connect(backingGain);
+        backingGain.connect(masterGain);
+        src.start(musicStart);
+        const backingLen = backingBuf.duration * (loopCb.checked ? 4 : 1);
+        maxEnd = Math.max(maxEnd, musicStart + backingLen);
+        trackNodes.push({{ source: src }});
+      }}
+
+      for (const track of playTracks) {{
+        const meta = tracks.find((t) => t.id === track.id);
+        if (!meta || !meta.b64) continue;
+        const buf = await decodeTrack(meta);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        const gain = audioCtx.createGain();
+        gain.gain.value = track.volume;
+        src.connect(gain);
+        gain.connect(masterGain);
+        const when = musicStart + Math.max(0, track.delay);
+        src.start(when);
+        maxEnd = Math.max(maxEnd, when + buf.duration);
+        trackNodes.push({{ source: src }});
+      }}
+
+      sessionDuration = Math.max(
+        4,
+        cfg.backingDurationSec || 0,
+        maxEnd - musicStart
+      );
+      labelEl.textContent = "Playing. Count-in finished — music started on beat 1.";
+      updateTransport();
+
+      if (metroCb.checked) {{
+        let beat = 0;
+        metroTimer = setInterval(() => {{
+          if (!audioCtx) return;
+          beat += 1;
+          playClick(audioCtx.currentTime, beat % cfg.beatsPerBar === 1);
+        }}, beatDuration() * 1000);
+      }}
+    }}
+
+    renderTracks();
+    playBtn.addEventListener("click", playSession);
+    stopBtn.addEventListener("click", stopAll);
+    backingVol.addEventListener("input", () => {{
+      if (backingGain) backingGain.gain.value = Number(backingVol.value) / 100;
+    }});
+  </script>
+</div>
+"""
 
 def analyze_recording_basic(audio_bytes, filename, target_chords, instrument, level):
     if librosa is None:
@@ -4533,283 +4876,369 @@ with tabs[4]:
     st.header("Multitrack Recorder")
 
     st.write(
-        "This upgraded multitrack page supports a play-along backing track, count-in, track alignment, volume controls, and exporting a mixed WAV."
+        "Layer instruments like a lightweight practice studio: count-in, loop sections, mute/solo/volume per track, "
+        "and optional monitor-only backing while you record. For AI feedback and coaching, use **Upload & Recording Analysis**."
     )
 
-    st.info(
-        "Important: browser-based Streamlit recording cannot perfectly lock all tracks like GarageBand yet, but this version gives you practical count-in, playback, alignment sliders, volume controls, and mix export."
+    st.caption(
+        "Headphones recommended when monitoring a backing track. Streamlit records your microphone only — "
+        "the backing plays for reference and is excluded from exports unless you choose to include it."
     )
 
-    if "tracks" not in st.session_state:
+    MT_SLOTS = [
+        "Guitar",
+        "Bass",
+        "Piano / Keys",
+        "Vocals",
+        "Sax / winds",
+        "Extra layer",
+    ]
 
-        st.session_state.tracks = {
-            "Track 1": None,
-            "Track 2": None,
-            "Track 3": None
+    if "mt_tracks" not in st.session_state:
+        st.session_state.mt_tracks = {slot: None for slot in MT_SLOTS}
+    if "mt_track_filenames" not in st.session_state:
+        st.session_state.mt_track_filenames = {
+            slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MT_SLOTS
         }
 
-    if "track_filenames" not in st.session_state:
+    mt_time_sig = default_time_signature(song, sections)
+    mt_beats_per_bar = beats_per_bar_from_signature(mt_time_sig)
+    mt_sec_names = [name for name, chs in section_order(sections) if chs]
 
-        st.session_state.track_filenames = {
-            "Track 1": "track1.wav",
-            "Track 2": "track2.wav",
-            "Track 3": "track3.wav"
-        }
+    st.subheader("1. Session setup")
 
-    st.subheader("1. Play-Along Backing Track")
-
-    mt_bpm = st.slider(
-        "Multitrack backing BPM",
-        50,
-        180,
-        100,
-        5,
-        key="multitrack_bpm"
+    mt_scope = st.radio(
+        "Loop / record range",
+        [
+            "Full song",
+            "Single section (verse, chorus, solo, …)",
+            "Multiple sections",
+            "Free layering (no backing)",
+        ],
+        horizontal=True,
+        key="mt_playback_scope",
     )
 
-    count_in_beats = st.selectbox(
-        "Count-in before recording",
-        [0, 2, 4, 8],
-        index=2,
-        key="multitrack_countin"
+    mt_selected_sections = []
+    if mt_scope == "Single section (verse, chorus, solo, …)" and mt_sec_names:
+        mt_selected_sections = [
+            st.selectbox(
+                "Section",
+                mt_sec_names,
+                key="mt_single_section",
+            )
+        ]
+    elif mt_scope == "Multiple sections" and mt_sec_names:
+        mt_default = [
+            name
+            for name in mt_sec_names
+            if any(token in name.lower() for token in ["verse", "chorus", "solo"])
+        ] or mt_sec_names[:2]
+        mt_selected_sections = st.multiselect(
+            "Sections (song order)",
+            mt_sec_names,
+            default=mt_default,
+            key="mt_multi_sections",
+        )
+    elif mt_scope == "Free layering (no backing)":
+        mt_selected_sections = []
+
+    mt_scope_label = (
+        "free layering"
+        if mt_scope == "Free layering (no backing)"
+        else ("full song" if not mt_selected_sections else " + ".join(mt_selected_sections))
     )
 
-    include_backing_in_mix = st.checkbox(
-        "Include backing track in exported mix",
-        value=True,
-        key="include_backing_mix"
+    col_mt_a, col_mt_b, col_mt_c = st.columns(3)
+
+    with col_mt_a:
+        mt_bpm = st.slider(
+            "Session BPM",
+            50,
+            180,
+            int(st.session_state.get("bpm", 100)),
+            5,
+            key="multitrack_bpm",
+        )
+        mt_loops = st.slider(
+            "Section repeats (loop recording)",
+            1,
+            8,
+            2,
+            1,
+            key="mt_section_loops",
+            disabled=mt_scope == "Free layering (no backing)",
+        )
+        mt_groove = st.selectbox(
+            "Groove style",
+            ["Auto", "Pop groove", "Rock groove", "Jazz swing", "Bossa nova", "Funk groove", "Ballad"],
+            key="mt_groove_style",
+            disabled=mt_scope == "Free layering (no backing)",
+        )
+
+    with col_mt_b:
+        count_in_label = st.selectbox(
+            "Count-in before playback",
+            ["None", "1 bar", "2 bars"],
+            index=1,
+            key="mt_count_in_bars",
+        )
+        mt_count_in_bars = {"None": 0, "1 bar": 1, "2 bars": 2}[count_in_label]
+        mt_metronome_playback = st.checkbox(
+            "Metronome during playback",
+            value=False,
+            key="mt_metronome_playback",
+        )
+        mt_loop_backing = st.checkbox(
+            "Loop backing / section",
+            value=True,
+            key="mt_loop_backing",
+        )
+
+    with col_mt_c:
+        use_backing_monitor = st.checkbox(
+            "Use backing track while recording",
+            value=mt_scope != "Free layering (no backing)",
+            help="Plays in headphones/speakers for timing. Not baked into your recorded layers.",
+            key="mt_use_backing_monitor",
+        )
+        include_backing_in_mix = st.checkbox(
+            "Include backing in exported mix",
+            value=False,
+            key="include_backing_mix",
+        )
+        backing_volume = st.slider(
+            "Backing level (monitor + export)",
+            0.0,
+            1.5,
+            0.75,
+            0.05,
+            key="backing_volume",
+        )
+
+    mt_events = (
+        chord_events_for_selected_sections(sections, mt_selected_sections)
+        if mt_scope != "Free layering (no backing)"
+        else []
     )
+    mt_resolved_groove = infer_groove_style(song_data, mt_groove)
+    mt_bar_duration = (60 / max(1, mt_bpm)) * mt_beats_per_bar
+    mt_backing_duration = len(mt_events) * mt_bar_duration * max(1, mt_loops)
 
-    backing_volume = st.slider(
-        "Backing track volume",
-        0.0,
-        1.5,
-        0.75,
-        0.05,
-        key="backing_volume"
-    )
+    if mt_scope != "Free layering (no backing)" and not mt_events:
+        st.warning("Choose at least one section (or use Free layering).")
+    else:
+        st.caption(
+            f"Target: **{mt_scope_label}** | {mt_time_sig} @ {mt_bpm} BPM | "
+            f"{len(mt_events)} bars per pass × {mt_loops} repeat(s) ≈ {mt_backing_duration:.1f}s"
+        )
 
-    if st.button("Generate play-along backing track with count-in"):
-
-        backing_y = backing_bytes_to_float(
-            chord_events_for_selected_sections(sections),
+    if st.button(
+        "Prepare monitor backing (no count-in in file)",
+        key="mt_prepare_backing",
+        disabled=mt_scope == "Free layering (no backing)" or not mt_events,
+    ):
+        monitor_wav, _ = multitrack_monitor_backing_bytes(
+            sections,
+            mt_selected_sections,
             bpm=mt_bpm,
-            style=default_groove_style,
+            loops=mt_loops,
+            style=mt_resolved_groove,
             level=level,
         )
+        st.session_state.multitrack_backing_music_wav = monitor_wav
+        st.session_state.mt_backing_scope = mt_scope_label
+        st.session_state.mt_backing_duration = mt_backing_duration
+        st.success("Monitor backing ready. Use the studio transport below while recording layers.")
 
-        if count_in_beats > 0:
-            count_y = make_count_in_click(
-                bpm=mt_bpm,
-                beats=count_in_beats
-            )
-            backing_y = np.concatenate([count_y, backing_y])
-
-        backing_y = backing_y * backing_volume
-
-        st.session_state.multitrack_backing_wav = wav_bytes_from_float(backing_y)
-
-    if st.session_state.get("multitrack_backing_wav"):
-
-        st.audio(
-            st.session_state.multitrack_backing_wav,
-            format="audio/wav"
-        )
-
-        st.caption(
-            "Press play on this backing track, then record/upload a track below. Use alignment sliders after recording to line up the timing."
-        )
+    monitor_wav = st.session_state.get("multitrack_backing_music_wav")
+    backing_b64 = (
+        base64.b64encode(monitor_wav).decode("ascii")
+        if monitor_wav and use_backing_monitor
+        else None
+    )
 
     st.divider()
-
-    st.subheader("2. Record or Upload 3 Instrument Tracks")
+    st.subheader("2. Studio transport & track mixer")
 
     track_items_for_mix = []
+    track_items_for_studio = []
 
-    for track_name in [
-        "Track 1",
-        "Track 2",
-        "Track 3"
-    ]:
-
-        st.markdown(f"### {track_name}")
-
-        col_a, col_b = st.columns(2)
-
-        with col_a:
-
-            instrument_name = st.text_input(
-                f"Instrument name — {track_name}",
-                value=track_name,
-                key=f"{track_name}_instrument_name"
-            )
-
-            uploaded = st.file_uploader(
-                f"Upload audio — {track_name}",
-                type=["wav", "mp3", "m4a", "ogg"],
-                key=f"{track_name}_upload"
-            )
-
-            try:
-                recorded = st.audio_input(
-                    f"Record {track_name}",
-                    key=f"{track_name}_record"
-                )
-            except Exception:
-                recorded = None
-                st.caption(
-                    "Direct recording may not be available in this Streamlit version. Uploading audio still works."
-                )
-
-            if st.button(
-                f"Save {track_name}",
-                key=f"{track_name}_save"
-            ):
-
-                audio_obj = recorded if recorded is not None else uploaded
-
-                if audio_obj is not None:
-
-                    st.session_state.tracks[track_name] = audio_obj.getvalue()
-
-                    st.session_state.track_filenames[track_name] = getattr(
-                        audio_obj,
-                        "name",
-                        f"{track_name}.wav"
-                    )
-
-                    st.success(
-                        f"{track_name} saved."
-                    )
-
-                else:
-
-                    st.warning(
-                        "Record or upload audio first."
-                    )
-
-        with col_b:
-
-            volume = st.slider(
-                f"{track_name} volume",
-                0.0,
-                2.0,
-                1.0,
-                0.05,
-                key=f"{track_name}_volume"
-            )
-
-            delay = st.slider(
-                f"{track_name} alignment delay/advance seconds",
-                -3.0,
-                3.0,
-                0.0,
-                0.05,
-                key=f"{track_name}_delay"
-            )
-
-            st.caption(
-                "Positive delay moves the track later. Negative delay moves it earlier."
-            )
-
-        saved_audio = st.session_state.tracks.get(track_name)
-
-        if saved_audio:
-
-            st.write(f"Playback: **{instrument_name}**")
-
-            st.audio(saved_audio)
-
-            track_items_for_mix.append({
-                "name": instrument_name,
-                "audio_bytes": saved_audio,
-                "filename": st.session_state.track_filenames.get(track_name, f"{track_name}.wav"),
-                "volume": volume,
-                "delay": delay
-            })
-
-    st.divider()
-
-    st.subheader("3. Export Mixed Track")
-
-    if st.button("Create mixed track"):
-
-        try:
-
-            backing_y = None
-
-            if include_backing_in_mix:
-
-                backing_y = backing_bytes_to_float(
-                    chord_events_for_selected_sections(sections),
-                    bpm=mt_bpm,
-                    style=default_groove_style,
-                    level=level,
-                )
-
-                if count_in_beats > 0:
-                    count_y = make_count_in_click(
-                        bpm=mt_bpm,
-                        beats=count_in_beats
-                    )
-                    backing_y = np.concatenate([count_y, backing_y])
-
-                backing_y = backing_y * backing_volume
-
-            mixed = mix_multitrack(
-                backing_y,
-                track_items_for_mix
-            )
-
-            mixed_wav = wav_bytes_from_float(mixed)
-
-            st.session_state.mixed_track_wav = mixed_wav
-
-            st.success(
-                "Mixed track created."
-            )
-
-        except Exception as e:
-
-            st.error(
-                f"Could not create mix: {e}"
-            )
-
-    if st.session_state.get("mixed_track_wav"):
-
-        st.audio(
-            st.session_state.mixed_track_wav,
-            format="audio/wav"
+    for slot in MT_SLOTS:
+        saved = st.session_state.mt_tracks.get(slot)
+        if not saved:
+            continue
+        layer_name = st.session_state.get(f"mt_name_{slot}", slot)
+        track_items_for_studio.append(
+            {
+                "name": layer_name,
+                "audio_bytes": saved,
+                "filename": st.session_state.mt_track_filenames.get(slot, f"{slot}.wav"),
+                "volume": st.session_state.get(f"mt_vol_{slot}", 1.0),
+                "delay": st.session_state.get(f"mt_delay_{slot}", 0.0),
+            }
         )
 
+    layer_names = [item["name"] for item in track_items_for_studio]
+    mt_controls = ensure_multitrack_track_controls(layer_names)
+
+    studio_tracks = multitrack_studio_track_payloads(track_items_for_studio, mt_controls)
+
+    components.html(
+        multitrack_studio_html(
+            backing_b64=backing_b64,
+            tracks=studio_tracks,
+            bpm=mt_bpm,
+            beats_per_bar=mt_beats_per_bar,
+            count_in_bars=mt_count_in_bars,
+            metronome_during_playback=mt_metronome_playback,
+            loop_backing=mt_loop_backing,
+            backing_monitor_enabled=bool(backing_b64),
+            backing_monitor_volume=backing_volume,
+            scope_label=st.session_state.get("mt_backing_scope", mt_scope_label),
+            time_signature=mt_time_sig,
+            backing_duration_sec=float(
+                st.session_state.get("mt_backing_duration", mt_backing_duration)
+            ),
+        ),
+        height=520,
+        scrolling=True,
+    )
+
+    if monitor_wav and use_backing_monitor:
+        with st.expander("Preview monitor backing WAV"):
+            st.audio(monitor_wav, format="audio/wav")
+
+    st.divider()
+    st.subheader("3. Record or upload layers")
+
+    for slot in MT_SLOTS:
+        with st.expander(slot, expanded=slot in ("Guitar", "Bass", "Vocals")):
+            c1, c2, c3 = st.columns([1.2, 1, 1])
+
+            with c1:
+                layer_name = st.text_input(
+                    "Layer name",
+                    value=st.session_state.get(f"mt_name_{slot}", slot),
+                    key=f"mt_name_{slot}",
+                )
+                uploaded = st.file_uploader(
+                    f"Upload — {slot}",
+                    type=["wav", "mp3", "m4a", "ogg"],
+                    key=f"mt_upload_{slot}",
+                )
+                try:
+                    recorded = st.audio_input(f"Record — {slot}", key=f"mt_record_{slot}")
+                except Exception:
+                    recorded = None
+                    st.caption("Recording unavailable in this Streamlit build — upload still works.")
+
+                if st.button(f"Save layer — {slot}", key=f"mt_save_{slot}"):
+                    audio_obj = recorded if recorded is not None else uploaded
+                    if audio_obj is not None:
+                        st.session_state.mt_tracks[slot] = audio_obj.getvalue()
+                        st.session_state.mt_track_filenames[slot] = getattr(
+                            audio_obj, "name", f"{slot}.wav"
+                        )
+                        st.session_state[f"mt_name_{slot}"] = layer_name
+                        st.success(f"{layer_name} saved.")
+                        st.rerun()
+                    st.warning("Record or upload audio first.")
+
+            with c2:
+                st.session_state[f"mt_vol_{slot}"] = st.slider(
+                    "Volume",
+                    0.0,
+                    2.0,
+                    float(st.session_state.get(f"mt_vol_{slot}", 1.0)),
+                    0.05,
+                    key=f"mt_vol_slider_{slot}",
+                )
+                st.session_state[f"mt_delay_{slot}"] = st.slider(
+                    "Align (seconds ±)",
+                    -3.0,
+                    3.0,
+                    float(st.session_state.get(f"mt_delay_{slot}", 0.0)),
+                    0.05,
+                    key=f"mt_delay_slider_{slot}",
+                )
+                st.caption("Positive = later. Negative = earlier.")
+
+            with c3:
+                ctrl = mt_controls.setdefault(
+                    layer_name,
+                    {"volume": 1.0, "mute": False, "solo": False, "delay": 0.0},
+                )
+                ctrl["mute"] = st.checkbox("Mute", key=f"mt_mute_{slot}")
+                ctrl["solo"] = st.checkbox("Solo", key=f"mt_solo_{slot}")
+                ctrl["volume"] = st.session_state[f"mt_vol_{slot}"]
+                ctrl["delay"] = st.session_state[f"mt_delay_{slot}"]
+
+            saved_audio = st.session_state.mt_tracks.get(slot)
+            if saved_audio:
+                st.audio(saved_audio)
+                track_items_for_mix.append(
+                    {
+                        "name": layer_name,
+                        "audio_bytes": saved_audio,
+                        "filename": st.session_state.mt_track_filenames.get(slot, f"{slot}.wav"),
+                        "volume": st.session_state[f"mt_vol_{slot}"],
+                        "delay": st.session_state[f"mt_delay_{slot}"],
+                        "mute": mt_controls.get(layer_name, {}).get("mute", False),
+                        "solo": mt_controls.get(layer_name, {}).get("solo", False),
+                    }
+                )
+
+    st.divider()
+    st.subheader("4. Export mix")
+
+    if not track_items_for_mix:
+        st.info("Save at least one layer above to export a mix.")
+
+    if st.button("Create mixed WAV", disabled=not track_items_for_mix):
+        try:
+            backing_y = None
+            if include_backing_in_mix and mt_events:
+                backing_y = backing_bytes_to_float(
+                    mt_events,
+                    bpm=mt_bpm,
+                    style=mt_resolved_groove,
+                    level=level,
+                )
+                if mt_loops > 1:
+                    backing_y = np.tile(backing_y, int(mt_loops))
+                backing_y = backing_y * backing_volume
+
+            mixed = mix_multitrack(backing_y, track_items_for_mix)
+            st.session_state.mixed_track_wav = wav_bytes_from_float(mixed)
+            st.success("Mixed track created.")
+        except Exception as e:
+            st.error(f"Could not create mix: {e}")
+
+    if st.session_state.get("mixed_track_wav"):
+        st.audio(st.session_state.mixed_track_wav, format="audio/wav")
         st.download_button(
             "Download mixed track WAV",
             st.session_state.mixed_track_wav,
             file_name=f"{song.replace(' ', '_')}_multitrack_mix.wav",
-            mime="audio/wav"
+            mime="audio/wav",
+        )
+        st.caption(
+            "Want interpretation, pitch/chord feedback, or practice coaching on this take? "
+            "Open **Upload & Recording Analysis**."
         )
 
     st.divider()
-
-    if st.button("Clear all multitrack recordings"):
-
-        st.session_state.tracks = {
-            "Track 1": None,
-            "Track 2": None,
-            "Track 3": None
+    if st.button("Clear all multitrack layers"):
+        st.session_state.mt_tracks = {slot: None for slot in MT_SLOTS}
+        st.session_state.mt_track_filenames = {
+            slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MT_SLOTS
         }
-
-        st.session_state.track_filenames = {
-            "Track 1": "track1.wav",
-            "Track 2": "track2.wav",
-            "Track 3": "track3.wav"
-        }
-
         st.session_state.mixed_track_wav = None
-
-        st.success(
-            "Tracks cleared."
-        )
+        st.session_state.multitrack_backing_music_wav = None
+        st.session_state.mt_track_controls = {}
+        st.success("Layers cleared.")
+        st.rerun()
 
 # -------------------------------------------------
 # PRACTICE LOG
