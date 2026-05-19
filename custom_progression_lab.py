@@ -334,24 +334,301 @@ def all_chords_from_lab_sections(sections):
     return chords
 
 
+def weighted_chords_from_sections(sections):
+    """Expand section entries to (chord, bar_weight) pairs in form order."""
+    weighted = []
+    for _name, entries in (sections or {}).items():
+        for entry in entries or []:
+            chord = normalize_chord_symbol(entry.get("chord", ""))
+            if not chord:
+                continue
+            weighted.append((chord, max(1, int(entry.get("bars", 1) or 1))))
+    return weighted
+
+
+def _spell_tonic_pc(pc: int, roots_seen: set[str]) -> str:
+    """Pick a spelling seen in the chart when possible."""
+    for name in sorted(roots_seen, key=len, reverse=True):
+        if NOTE_TO_PC.get(chord_root(name)) == pc:
+            return chord_root(name)
+    defaults = {
+        0: "C",
+        1: "Db",
+        2: "D",
+        3: "Eb",
+        4: "E",
+        5: "F",
+        6: "F#",
+        7: "G",
+        8: "Ab",
+        9: "A",
+        10: "Bb",
+        11: "B",
+    }
+    return defaults.get(pc % 12, "C")
+
+
+def _key_label(key_name: str, mode: str) -> str:
+    if mode == "minor":
+        base = chord_root(str(key_name).rstrip("m"))
+        return f"{base} minor"
+    return f"{chord_root(key_name)} major"
+
+
+def _storage_key_name(key_name: str, mode: str) -> str:
+    base = chord_root(str(key_name).rstrip("m"))
+    return f"{base}m" if mode == "minor" else base
+
+
+def _is_dominant(q: str) -> bool:
+    return "dominant" in q
+
+
+def _is_major_tonic(q: str) -> bool:
+    return q in ("major", "major seventh")
+
+
+def _is_minor_tonic(q: str) -> bool:
+    return q in ("minor", "minor seventh")
+
+
+def _score_key_candidate(tonic_pc: int, mode: str, weighted_chords: list[tuple[str, int]]) -> tuple[float, list[str]]:
+    """Score how well chords fit a tonal center using function, cadence, and placement."""
+    score = 0.0
+    reasons: list[str] = []
+    n = len(weighted_chords)
+    if not n:
+        return 0.0, reasons
+
+    for idx, (ch, bars) in enumerate(weighted_chords):
+        root = root_pc(ch)
+        if root is None:
+            continue
+        rel = (root - tonic_pc) % 12
+        q = chord_quality(ch)
+        w = float(bars)
+        if idx == n - 1:
+            w *= 2.8
+        elif idx == n - 2:
+            w *= 1.35
+
+        if mode == "major":
+            role = {
+                0: 3.8 if _is_major_tonic(q) else 2.6,
+                2: 1.6,
+                4: 1.0,
+                5: 2.1,
+                7: 3.2 if _is_dominant(q) else 2.1,
+                9: 2.1,
+                10: 1.2,
+            }.get(rel, 0.25)
+        else:
+            role = {
+                0: 3.8 if _is_minor_tonic(q) else 2.6,
+                2: 0.7,
+                3: 1.8 if _is_major_tonic(q) else 1.0,
+                5: 2.1,
+                7: 3.0 if _is_dominant(q) else 2.0,
+                8: 1.0,
+                10: 2.0,
+            }.get(rel, 0.25)
+        score += role * w
+
+    for idx in range(n - 1):
+        ch_a, w_a = weighted_chords[idx]
+        ch_b, w_b = weighted_chords[idx + 1]
+        ra, rb = root_pc(ch_a), root_pc(ch_b)
+        if ra is None or rb is None:
+            continue
+        qa, qb = chord_quality(ch_a), chord_quality(ch_b)
+        rel_a = (ra - tonic_pc) % 12
+        rel_b = (rb - tonic_pc) % 12
+
+        if _is_dominant(qa) and rel_a == 7 and rel_b == 0:
+            bonus = 5.5 * w_b
+            if mode == "major" and _is_major_tonic(qb):
+                score += bonus
+                reasons.append(f"V→I cadence: {ch_a} → {ch_b}")
+            elif mode == "minor" and _is_minor_tonic(qb):
+                score += bonus * 0.85
+                reasons.append(f"V→i cadence: {ch_a} → {ch_b}")
+
+        if idx + 2 < n:
+            ch_c, w_c = weighted_chords[idx + 2]
+            rc = root_pc(ch_c)
+            if rc is None:
+                continue
+            rel_c = (rc - tonic_pc) % 12
+            if mode == "major" and rel_a == 2 and rel_b == 7 and rel_c == 0:
+                score += 6.0 * w_c
+                reasons.append(f"ii–V–I: {ch_a} → {ch_b} → {ch_c}")
+
+    fifth_moves = 0
+    for idx in range(n - 1):
+        r1 = root_pc(weighted_chords[idx][0])
+        r2 = root_pc(weighted_chords[idx + 1][0])
+        if r1 is not None and r2 is not None and (r1 - r2) % 12 == 7:
+            fifth_moves += 1
+    if fifth_moves >= 2:
+        score += 1.8 * fifth_moves
+        reasons.append("circle-of-fifths root motion")
+
+    last_ch, last_w = weighted_chords[-1]
+    lr = root_pc(last_ch)
+    lq = chord_quality(last_ch)
+    if lr is not None:
+        rel_last = (lr - tonic_pc) % 12
+        if mode == "major" and rel_last == 0 and _is_major_tonic(lq):
+            score += 4.0 * last_w
+            reasons.append(f"final tonic rest on {last_ch}")
+        elif mode == "minor" and rel_last == 0 and _is_minor_tonic(lq):
+            score += 4.0 * last_w
+            reasons.append(f"final tonic rest on {last_ch}")
+
+    return score, reasons
+
+
+def analyze_tonal_center(sections, user_home_key: str | None = None) -> dict:
+    """Harmonic-function key analysis with confidence and relative-key hints."""
+    weighted = weighted_chords_from_sections(sections)
+    chords = [ch for ch, _w in weighted]
+    roots_seen = {chord_root(ch) for ch in chords if chord_root(ch)}
+
+    empty = {
+        "primary_key": user_home_key or "C",
+        "primary_mode": "major",
+        "primary_label": user_home_key or "C major",
+        "storage_key": user_home_key or "C",
+        "confidence_label": "low",
+        "confidence_score": 0.0,
+        "alternate_key": None,
+        "alternate_mode": None,
+        "alternate_label": None,
+        "summary": "Add chords to analyze the tonal center.",
+        "reasons": [],
+        "roman": "",
+    }
+    if not weighted:
+        return empty
+
+    candidates: list[tuple[float, int, str, list[str]]] = []
+    for tonic_pc in range(12):
+        for mode in ("major", "minor"):
+            s, reasons = _score_key_candidate(tonic_pc, mode, weighted)
+            candidates.append((s, tonic_pc, mode, reasons))
+
+    candidates.sort(key=lambda row: row[0], reverse=True)
+    best_score, best_pc, best_mode, best_reasons = candidates[0]
+    second_score = candidates[1][0] if len(candidates) > 1 else 0.0
+
+    primary_name = _spell_tonic_pc(best_pc, roots_seen)
+    storage_key = _storage_key_name(primary_name, best_mode)
+    primary_label = _key_label(primary_name, best_mode)
+
+    gap = best_score - second_score
+    if best_score < 4.0:
+        confidence_label = "low"
+        confidence_score = min(0.35, best_score / 12.0)
+    elif gap < 2.5:
+        confidence_label = "medium"
+        confidence_score = min(0.75, 0.45 + gap / 10.0)
+    else:
+        confidence_label = "high"
+        confidence_score = min(0.98, 0.55 + gap / 12.0)
+
+    alternate_key = None
+    alternate_mode = None
+    alternate_label = None
+    if len(candidates) > 1 and second_score >= best_score * 0.72:
+        _s2, pc2, mode2, _r2 = candidates[1]
+        alt_name = _spell_tonic_pc(pc2, roots_seen)
+        alternate_key = _storage_key_name(alt_name, mode2)
+        alternate_mode = mode2
+        alternate_label = _key_label(alt_name, mode2)
+
+    if best_mode == "major":
+        rel_pc = (best_pc + 9) % 12
+        rel_name = _spell_tonic_pc(rel_pc, roots_seen)
+        rel_label = _key_label(rel_name, "minor")
+        if alternate_label is None or alternate_label != rel_label:
+            alternate_key = alternate_key or _storage_key_name(rel_name, "minor")
+            alternate_mode = alternate_mode or "minor"
+            alternate_label = alternate_label or rel_label
+    else:
+        rel_pc = (best_pc + 3) % 12
+        rel_name = _spell_tonic_pc(rel_pc, roots_seen)
+        rel_label = _key_label(rel_name, "major")
+        if alternate_label is None or alternate_label != rel_label:
+            alternate_key = alternate_key or rel_name
+            alternate_mode = alternate_mode or "major"
+            alternate_label = alternate_label or rel_label
+
+    roman = roman_path(chords, storage_key, limit=12)
+    summary_parts = [f"Likely tonal center: **{primary_label}**"]
+    if confidence_label != "high":
+        summary_parts[0] = f"Likely tonal center ({confidence_label} confidence): **{primary_label}**"
+    if alternate_label and alternate_label != primary_label:
+        summary_parts.append(f"relative / alternate: **{alternate_label}**")
+
+    return {
+        "primary_key": primary_name,
+        "primary_mode": best_mode,
+        "primary_label": primary_label,
+        "storage_key": storage_key,
+        "confidence_label": confidence_label,
+        "confidence_score": round(confidence_score, 3),
+        "alternate_key": alternate_key,
+        "alternate_mode": alternate_mode,
+        "alternate_label": alternate_label,
+        "summary": " · ".join(summary_parts),
+        "reasons": list(dict.fromkeys(best_reasons))[:5],
+        "roman": roman,
+        "chords_count": len(chords),
+    }
+
+
+def tonal_center_markdown(sections, stored_home_key: str | None = None) -> str:
+    analysis = analyze_tonal_center(sections, user_home_key=stored_home_key)
+    lines = [analysis["summary"]]
+    if analysis.get("roman"):
+        lines.append(f"Roman numerals (in {analysis['storage_key']}): {analysis['roman']}")
+    if analysis.get("reasons"):
+        lines.append("Why: " + "; ".join(analysis["reasons"]))
+    stored = stored_home_key or "C"
+    detected = analysis.get("storage_key", "C")
+    if stored != detected and analysis.get("confidence_score", 0) >= 0.45:
+        lines.append(
+            f"Stored written/home key is **{stored}**, but the chord movement suggests **{analysis['primary_label']}**."
+        )
+    return "\n\n".join(lines)
+
+
+def maybe_update_inferred_home_key(active: dict, *, min_confidence: float = 0.45) -> dict:
+    """If home key is still the generic default, infer it from harmonic function."""
+    active = ensure_original_structure(active)
+    if active.get("user_locked_home_key"):
+        return active
+    sections = active.get("original_sections") or {}
+    analysis = analyze_tonal_center(sections)
+    if analysis.get("chords_count", 0) < 2:
+        return active
+    if analysis.get("confidence_score", 0) < min_confidence:
+        return active
+
+    stored = active.get("original_key_center", "C")
+    detected = analysis.get("storage_key", stored)
+    if stored in ("C",) and detected not in ("C", "Cm"):
+        active["original_key_center"] = detected
+        active["tonal_center_inferred"] = True
+    return active
+
+
 def estimate_key_center(sections, fallback="C"):
-    chords = all_chords_from_lab_sections(sections)
-    if not chords:
+    """Backward-compatible: return best tonal-center label (not a blind root count)."""
+    analysis = analyze_tonal_center(sections)
+    if analysis.get("chords_count", 0) < 1:
         return fallback
-    pcs = [root_pc(ch) for ch in chords if root_pc(ch) is not None]
-    if not pcs:
-        return fallback
-    counts = {}
-    for pc in pcs:
-        counts[pc] = counts.get(pc, 0) + 1
-    tonic_pc = max(counts, key=counts.get)
-    for name, pc in NOTE_TO_PC.items():
-        if pc == tonic_pc and "#" not in name and len(name) == 1:
-            return name
-        if pc == tonic_pc and name in ("C", "D", "E", "F", "G", "A", "B"):
-            return name
-    inv = {v: k for k, v in NOTE_TO_PC.items() if "#" not in k and len(k) == 1}
-    return inv.get(tonic_pc, fallback)
+    return analysis.get("primary_label", fallback)
 
 
 def detect_progression_patterns(chords, key_center):
