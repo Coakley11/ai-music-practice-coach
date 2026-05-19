@@ -2,7 +2,35 @@
 
 from __future__ import annotations
 
-from music_theory import semitone_distance, transpose_chord
+import importlib.util
+import sys
+from pathlib import Path
+
+
+def _load_music_theory():
+    """Load music_theory (Streamlit Cloud may not have repo root on sys.path)."""
+    try:
+        from music_theory import semitone_distance as st_dist, transpose_chord as st_chord
+
+        return st_dist, st_chord
+    except ImportError:
+        pass
+    if "music_theory" in sys.modules:
+        _mod = sys.modules["music_theory"]
+        return _mod.semitone_distance, _mod.transpose_chord
+    _path = Path(__file__).resolve().parent / "music_theory.py"
+    if not _path.is_file():
+        raise ImportError(f"music_theory.py not found next to {__file__}")
+    _spec = importlib.util.spec_from_file_location("music_theory", str(_path))
+    if _spec is None or _spec.loader is None:
+        raise ImportError(f"Could not load music_theory from {_path}")
+    _mod = importlib.util.module_from_spec(_spec)
+    sys.modules["music_theory"] = _mod
+    _spec.loader.exec_module(_mod)
+    return _mod.semitone_distance, _mod.transpose_chord
+
+
+semitone_distance, transpose_chord = _load_music_theory()
 
 from creative_lab_text import (
     chord_quality,
@@ -99,17 +127,6 @@ def display_sections_for_key(active, display_key):
     home = active.get("original_key_center", "C")
     original = active.get("original_sections") or {}
     return transpose_lab_sections(original, home, display_key)
-
-
-def commit_display_sections_to_original(active, display_sections, display_key):
-    active = ensure_original_structure(active)
-    home = active.get("original_key_center", "C")
-    active["original_sections"] = transpose_lab_sections(
-        display_sections,
-        display_key,
-        home,
-    )
-    return maybe_update_inferred_home_key(active)
 
 
 def anchor_home_key_to_display(active, display_key):
@@ -644,6 +661,17 @@ def estimate_key_center(sections, fallback="C"):
     if analysis.get("chords_count", 0) < 1:
         return fallback
     return analysis.get("primary_label", fallback)
+
+
+def commit_display_sections_to_original(active, display_sections, display_key):
+    active = ensure_original_structure(active)
+    home = active.get("original_key_center", "C")
+    active["original_sections"] = transpose_lab_sections(
+        display_sections,
+        display_key,
+        home,
+    )
+    return maybe_update_inferred_home_key(active)
 
 
 def detect_progression_patterns(chords, key_center):

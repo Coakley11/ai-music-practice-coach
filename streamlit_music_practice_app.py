@@ -90,6 +90,43 @@ from songs import (
     sync_display_key_before_widget,
 )
 from songs.key_state import mark_display_key_changed
+from creative_lab_text import (
+    current_song_context_lab as lab_make_ctx,
+    chord_quality as lab_chord_quality,
+    deep_harmonic_analysis_text as lab_deep_harmonic,
+    creativity_arrangement_text,
+    improvisation_intelligence_text,
+    adaptive_weakness_detection_text,
+    musical_development_tracker_text as lab_musical_dev,
+)
+from custom_progression_lab import (
+    CPL_ACTIVE_KEY,
+    CPL_SAVED_KEY,
+    default_active_progression,
+    parse_chord_line,
+    flatten_sections_to_events,
+    sections_to_chord_lists,
+    analyze_tonal_center,
+    estimate_key_center,
+    harmonic_analysis_markdown,
+    maybe_update_inferred_home_key,
+    on_cpl_adopt_detected_home_key,
+    tonal_center_markdown,
+    generate_exercises_markdown,
+    lab_context_for_coaching,
+    save_progression,
+    delete_progression,
+    ensure_original_structure,
+    display_sections_for_key,
+    commit_display_sections_to_original,
+    anchor_home_key_to_display,
+    on_cpl_anchor_home_key,
+    backing_signature,
+    deep_copy_sections,
+    invalidate_cpl_derived_outputs,
+    cpl_transpose_explanation_markdown,
+    transpose_debug_lines,
+)
 
 SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = load_song_catalog()
 TRUSTED_CORE_RECORDS = [
@@ -3980,49 +4017,6 @@ def render_recording_analysis_report(result, song, focus):
     st.markdown("### Next Practice Steps")
     for step in result["next_steps"]:
         st.write(f"- {step}")
-
-
-# -------------------------------------------------
-# ACTIVE SONG FROM PICKER
-# -------------------------------------------------
-
-from creative_lab_text import (
-    current_song_context_lab as lab_make_ctx,
-    chord_quality as lab_chord_quality,
-    deep_harmonic_analysis_text as lab_deep_harmonic,
-    creativity_arrangement_text,
-    improvisation_intelligence_text,
-    adaptive_weakness_detection_text,
-    musical_development_tracker_text as lab_musical_dev,
-)
-from custom_progression_lab import (
-    CPL_ACTIVE_KEY,
-    CPL_SAVED_KEY,
-    default_active_progression,
-    parse_chord_line,
-    flatten_sections_to_events,
-    sections_to_chord_lists,
-    analyze_tonal_center,
-    estimate_key_center,
-    harmonic_analysis_markdown,
-    maybe_update_inferred_home_key,
-    on_cpl_adopt_detected_home_key,
-    tonal_center_markdown,
-    generate_exercises_markdown,
-    lab_context_for_coaching,
-    save_progression,
-    delete_progression,
-    ensure_original_structure,
-    display_sections_for_key,
-    commit_display_sections_to_original,
-    anchor_home_key_to_display,
-    on_cpl_anchor_home_key,
-    backing_signature,
-    deep_copy_sections,
-    invalidate_cpl_derived_outputs,
-    cpl_transpose_explanation_markdown,
-    transpose_debug_lines,
-)
 
 
 def current_song_context_lab():
