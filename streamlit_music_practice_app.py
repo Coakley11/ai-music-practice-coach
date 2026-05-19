@@ -16,6 +16,7 @@ import wave
 import tempfile
 import html
 import time
+import base64
 from pathlib import Path
 from datetime import date
 
@@ -1034,10 +1035,11 @@ def _chart_lyric_lines(section_name, lyric_cues=None, section_lyrics=None):
     return lines
 
 
-def _chart_grid_html(chords, current_bar=None):
+def _chart_grid_html(chords, current_bar=None, section_name=""):
     if not chords:
         return "<div class='empty-chart'>No chords entered for this section.</div>"
     cells = []
+    safe_section_attr = html.escape(str(section_name), quote=True)
     for idx, chord in enumerate(chords):
         previous = chords[idx - 1] if idx else None
         display = "%" if previous and chord == previous else str(chord)
@@ -1050,7 +1052,7 @@ def _chart_grid_html(chords, current_bar=None):
                 repeat_count += 1
         duration = f"<span class='duration'>{repeat_count} bars</span>" if repeat_count > 1 else ""
         cells.append(
-            f"<div class='chord-cell{current_class}'>"
+            f"<div class='chord-cell live-chart-cell{current_class}' data-section='{safe_section_attr}' data-bar='{idx + 1}'>"
             f"<div class='bar-num'>Bar {idx + 1}</div>"
             f"<div class='chord-symbol'>{html.escape(display)}</div>"
             f"{duration}"
@@ -1125,13 +1127,14 @@ def _backing_chord_color_tip(chords, instrument):
     return ""
 
 
-def _section_overlay(instrument, focus, chords, section_name="", groove_style=""):
+def _section_overlay(instrument, focus, chords, section_name="", groove_style="", time_signature="4/4", bpm=100):
     first = chords[0] if chords else "the first chord"
     second = chords[1] if len(chords) > 1 else first
     family = _instrument_family(instrument) if "_instrument_family" in globals() else "general"
     role = _chart_section_role(section_name)
     feel = _chart_feel_label(groove_style)
     color_tip = _backing_chord_color_tip(chords, instrument)
+    focus_area = _focus_area(focus) if "_focus_area" in globals() else ""
     role_action = {
         "verse": "keep the part sparse and leave air around the melody",
         "pre": "increase motion so the chorus feels pulled forward",
@@ -1140,6 +1143,17 @@ def _section_overlay(instrument, focus, chords, section_name="", groove_style=""
         "solo": "answer the groove with short phrases, not constant notes",
         "gray": "set up or release the form without overcrowding it",
     }.get(role, "make the section function clear")
+    if focus_area == "Rhythm":
+        rhythm = _rhythm_guidance(
+            instrument,
+            section_name=section_name,
+            groove_style=groove_style,
+            time_signature=time_signature,
+            bpm=bpm,
+        )
+        return rhythm["overlay"]
+    if focus_area == "Dynamics":
+        return _dynamics_guidance(instrument, section_name, first, second)["overlay"]
 
     if family == "guitar":
         if focus == "Melody":
@@ -1348,9 +1362,9 @@ def full_chord_markdown(
     </div>
     <div class="section-meta">{now_label}</div>
   </div>
-  {_chart_grid_html(chords, current_bar=current_bar_for_section)}
+  {_chart_grid_html(chords, current_bar=current_bar_for_section, section_name=section_name)}
   {_section_lyric_html(section_name, chords, instrument, lyric_cues=lyric_cues or {}, section_lyrics=section_lyrics or {})}
-  <div class="overlay-box"><strong>{html.escape(str(instrument))}:</strong> {_section_overlay(instrument, focus, chords, section_name=section_name, groove_style=groove_style)}</div>
+  <div class="overlay-box"><strong>{html.escape(str(instrument))}:</strong> {_section_overlay(instrument, focus, chords, section_name=section_name, groove_style=groove_style, time_signature=time_signature, bpm=bpm)}</div>
   <div class="analysis-box">{_inline_harmonic_analysis(section_name, chords, dk)}</div>
 </section>
 """
@@ -1800,6 +1814,179 @@ def render_follow_along_controls(timeline, key_prefix):
     return pos
 
 
+def live_follow_along_component_html(wav_bytes, timeline, chart_html):
+    audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
+    timeline_json = json.dumps(timeline)
+    return f"""
+<div class="live-follow-shell">
+  <style>
+    .live-follow-shell {{
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      color: #0f172a;
+    }}
+    .live-player {{
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border: 1px solid rgba(15, 23, 42, 0.14);
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 14px;
+      background: linear-gradient(180deg, #f8fff9, #ffffff);
+      box-shadow: 0 4px 18px rgba(15, 23, 42, 0.10);
+    }}
+    .live-player audio {{
+      width: 100%;
+      margin: 8px 0 10px 0;
+    }}
+    .live-status-grid {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }}
+    .live-status-card {{
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      border-radius: 12px;
+      padding: 9px 10px;
+      background: #ffffff;
+    }}
+    .live-label {{
+      color: #64748b;
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }}
+    .live-value {{
+      margin-top: 4px;
+      font-size: 1.02rem;
+      font-weight: 850;
+    }}
+    .live-help {{
+      color: #475569;
+      font-size: 0.86rem;
+      margin-top: 6px;
+    }}
+    .live-follow-shell .chord-cell.current-chord {{
+      background: #bbf7d0 !important;
+      border-color: #16a34a !important;
+      box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.24) !important;
+      transform: translateY(-1px);
+    }}
+    .live-follow-shell .section-card.current {{
+      outline: 3px solid rgba(34, 197, 94, 0.34) !important;
+      box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.10) !important;
+    }}
+    @media (max-width: 760px) {{
+      .live-status-grid {{ grid-template-columns: repeat(2, minmax(120px, 1fr)); }}
+    }}
+  </style>
+
+  <div class="live-player">
+    <strong>Live Follow-Along Player</strong>
+    <audio id="live-audio" controls autoplay preload="auto" src="data:audio/wav;base64,{audio_b64}"></audio>
+    <div class="live-status-grid">
+      <div class="live-status-card">
+        <div class="live-label">Now Playing</div>
+        <div class="live-value" id="live-section">Ready</div>
+      </div>
+      <div class="live-status-card">
+        <div class="live-label">Current Chord</div>
+        <div class="live-value" id="live-chord">-</div>
+      </div>
+      <div class="live-status-card">
+        <div class="live-label">Bar</div>
+        <div class="live-value" id="live-bar">-</div>
+      </div>
+      <div class="live-status-card">
+        <div class="live-label">Next Chord</div>
+        <div class="live-value" id="live-next">-</div>
+      </div>
+    </div>
+    <div class="live-help" id="live-detail">
+      Press play. The chart highlight follows this audio player's current time using the same generated chord timeline.
+    </div>
+  </div>
+
+  <div id="live-chart-root">
+    {chart_html}
+  </div>
+
+  <script>
+    const timeline = {timeline_json};
+    const audio = document.getElementById("live-audio");
+    const sectionEl = document.getElementById("live-section");
+    const chordEl = document.getElementById("live-chord");
+    const barEl = document.getElementById("live-bar");
+    const nextEl = document.getElementById("live-next");
+    const detailEl = document.getElementById("live-detail");
+    let lastEventIndex = null;
+
+    function eventAt(timeSeconds) {{
+      if (!timeline.length) return null;
+      if (timeSeconds >= timeline[timeline.length - 1].end_time) {{
+        return timeline[timeline.length - 1];
+      }}
+      return timeline.find((event) => event.start_time <= timeSeconds && timeSeconds < event.end_time) || timeline[0];
+    }}
+
+    function clearHighlight() {{
+      document.querySelectorAll(".live-chart-cell.current-chord").forEach((el) => el.classList.remove("current-chord"));
+      document.querySelectorAll(".section-card.current").forEach((el) => el.classList.remove("current"));
+      document.querySelectorAll(".section-card .section-head .section-meta:last-child").forEach((el) => {{
+        if (el.textContent.trim() === "Now Playing") el.textContent = "";
+      }});
+    }}
+
+    function updateHighlight() {{
+      const event = eventAt(audio.currentTime || 0);
+      if (!event) return;
+      if (event.event_index === lastEventIndex && !audio.paused) return;
+      lastEventIndex = event.event_index;
+
+      const next = timeline[(event.event_index + 1) % timeline.length] || event;
+      sectionEl.textContent = event.section || "Section";
+      chordEl.textContent = event.chord || "-";
+      barEl.textContent = `${{event.bar_in_section}} of ${{event.section_bars}}`;
+      nextEl.textContent = next.chord || "-";
+      detailEl.textContent = `Event ${{event.event_index + 1}} of ${{timeline.length}} | ${{event.start_time.toFixed(1)}}s-${{event.end_time.toFixed(1)}}s`;
+      const nowPlayingBanner = document.querySelector(".now-playing");
+      if (nowPlayingBanner) {{
+        nowPlayingBanner.textContent = `Now Playing: ${{event.section}} | Bar ${{event.bar_in_section}} | ${{event.chord}}`;
+      }}
+
+      clearHighlight();
+      const cells = Array.from(document.querySelectorAll(".live-chart-cell"));
+      const currentCell = cells.find((cell) =>
+        cell.dataset.section === event.section && Number(cell.dataset.bar) === Number(event.bar_in_section)
+      );
+      if (currentCell) {{
+        currentCell.classList.add("current-chord");
+        const card = currentCell.closest(".section-card");
+        if (card) {{
+          card.classList.add("current");
+          const labels = card.querySelectorAll(".section-head .section-meta");
+          const label = labels[labels.length - 1];
+          if (label) label.textContent = "Now Playing";
+        }}
+      }}
+    }}
+
+    audio.addEventListener("play", updateHighlight);
+    audio.addEventListener("timeupdate", updateHighlight);
+    audio.addEventListener("seeked", updateHighlight);
+    audio.addEventListener("pause", updateHighlight);
+    audio.addEventListener("ended", () => {{
+      updateHighlight();
+      detailEl.textContent = "Track ended. Press play to restart the follow-along.";
+    }});
+    updateHighlight();
+  </script>
+</div>
+"""
+
+
 def _section_for_exercise(sections, variation):
     items = [(name, chords) for name, chords in sections.items() if chords]
     if not items:
@@ -1870,6 +2057,7 @@ FOCUS_OPTIONS_BY_INSTRUMENT = {
         "Double Stops",
         "Lead Guitar",
         "Soloing",
+        "Dynamics",
         "Ear Training",
     ],
     "Piano": [
@@ -1879,6 +2067,7 @@ FOCUS_OPTIONS_BY_INSTRUMENT = {
         "Voice Leading",
         "Inversions",
         "Reharmonization",
+        "Dynamics",
         "Ear Training",
     ],
     "Bass": [
@@ -1887,6 +2076,7 @@ FOCUS_OPTIONS_BY_INSTRUMENT = {
         "Root Motion",
         "Walking Bass",
         "Syncopation",
+        "Dynamics",
         "Ear Training",
     ],
     "Saxophone": [
@@ -1896,6 +2086,7 @@ FOCUS_OPTIONS_BY_INSTRUMENT = {
         "Bebop Phrasing",
         "Breath Support",
         "Guide Tones",
+        "Dynamics",
         "Ear Training",
     ],
     "Flute": [
@@ -1905,6 +2096,7 @@ FOCUS_OPTIONS_BY_INSTRUMENT = {
         "Breath Support",
         "Guide Tones",
         "Phrasing",
+        "Dynamics",
         "Ear Training",
     ],
     "Trumpet": [
@@ -1914,6 +2106,7 @@ FOCUS_OPTIONS_BY_INSTRUMENT = {
         "Range",
         "Jazz Phrasing",
         "Guide Tones",
+        "Dynamics",
         "Ear Training",
     ],
     "Clarinet": [
@@ -1922,6 +2115,7 @@ FOCUS_OPTIONS_BY_INSTRUMENT = {
         "Articulation",
         "Breath Support",
         "Guide Tones",
+        "Dynamics",
         "Ear Training",
     ],
     "Voice": [
@@ -1931,6 +2125,7 @@ FOCUS_OPTIONS_BY_INSTRUMENT = {
         "Emotional Delivery",
         "Harmony Singing",
         "Vibrato",
+        "Dynamics",
         "Ear Training",
     ],
 }
@@ -1939,12 +2134,14 @@ FOCUS_OPTIONS_BY_INSTRUMENT = {
 def focus_options_for_instrument(instrument):
     return FOCUS_OPTIONS_BY_INSTRUMENT.get(
         instrument,
-        ["Melody", "Harmony", "Rhythm", "Improvisation", "Technique", "Ear Training"],
+        ["Melody", "Harmony", "Rhythm", "Dynamics", "Improvisation", "Technique", "Ear Training"],
     )
 
 
 def _focus_area(focus):
     text = str(focus or "").lower()
+    if any(token in text for token in ["dynamic", "crescendo", "decrescendo", "loud", "soft", "intensity", "touch"]):
+        return "Dynamics"
     if any(token in text for token in ["strum", "rhythm", "comp", "groove", "pocket", "syncopation", "left-hand", "left hand"]):
         return "Rhythm"
     if any(token in text for token in ["voicing", "voice leading", "inversion", "reharm", "harmony", "triad", "barre", "transition", "root motion"]):
@@ -2043,6 +2240,155 @@ def _section_character(section_name):
     return "make the section shape clear without overplaying"
 
 
+def _section_dynamic_shape(section_name):
+    role = _section_role(section_name)
+    if role == "chorus":
+        return "build into a stronger, more projected chorus sound without rushing"
+    if role == "verse":
+        return "stay softer and more restrained so the lyric/melody can lead"
+    if role == "bridge":
+        return "create contrast: either pull back dramatically or swell into the return"
+    if role == "intro":
+        return "start controlled and leave headroom for the first main section"
+    if role == "outro":
+        return "release intensity gradually while keeping time steady"
+    if role == "pre":
+        return "crescendo through the section so the next arrival feels earned"
+    return "shape the phrase with a clear beginning, lift, and release"
+
+
+def _rhythm_profile(time_signature="4/4", groove_style="", section_name="", bpm=100):
+    text = f"{time_signature} {groove_style} {section_name}".lower()
+    role = _section_role(section_name)
+    if "6/8" in text:
+        profile = {
+            "feel": "6/8 pulse",
+            "count": "Count `1-2-3 4-5-6`; feel two big beats per bar.",
+            "accent": "Accent beat 1 and beat 4; keep the inner eighths flowing.",
+            "guitar": "`D - U D - U` or arpeggiate bass-treble-treble twice per bar.",
+            "piano": "Left hand lands on 1 and 4; right hand rolls broken chords across the six eighths with light pedal.",
+            "bass": "Place roots on 1 and 4, then add a pickup into the next bar only after the pulse is steady.",
+            "winds": "Phrase in two groups of three; breathe before beat 1 and avoid clipping beat 4.",
+            "voice": "Speak the lyric in two large pulses, then sing with breath support through beat 4.",
+        }
+    elif "bossa" in text:
+        profile = {
+            "feel": "bossa syncopation",
+            "count": "Count straight eighths but keep the accent light and off the heavy downbeat.",
+            "accent": "Let syncopated upbeats answer the bass; do not over-accent every beat.",
+            "guitar": "Use a soft bass note on 1/3 with upper-string upbeats: `Bass - up - up | Bass - up - up`.",
+            "piano": "Left hand plays a light root/fifth pulse; right hand comps short offbeat shells with minimal pedal.",
+            "bass": "Keep a gentle root-fifth pulse and make note length even.",
+            "winds": "Use airy, connected phrases with light articulation on syncopated answers.",
+            "voice": "Keep consonants light and float over the syncopation rather than punching it.",
+        }
+    elif "swing" in text or "shuffle" in text:
+        profile = {
+            "feel": "swing/shuffle feel",
+            "count": "Count triplet-based eighths: `1-trip-let 2-trip-let`; long-short, not straight.",
+            "accent": "Lean into 2 and 4, with relaxed offbeats.",
+            "guitar": "Use a light shuffle: `D - dU D - dU`, muting lightly on 2 and 4.",
+            "piano": "Comp short shells behind the beat; left hand can walk or play sparse roots.",
+            "bass": "Walk quarter notes with clean approach tones into chord changes.",
+            "winds": "Tongue lightly on offbeats and place guide tones on strong beats.",
+            "voice": "Let the phrase sit behind the beat; avoid straightening the swing.",
+        }
+    elif "funk" in text:
+        profile = {
+            "feel": "funk syncopation",
+            "count": "Count sixteenths: `1 e & a 2 e & a`; keep the hand moving constantly.",
+            "accent": "Strong pocket on 1, crisp muted ghosts, and tight 2/4 backbeat awareness.",
+            "guitar": "`x x U x | x U x U` muted sixteenths first, then open only the target accents.",
+            "piano": "Use short stabs on syncopated sixteenths; leave space for bass and drums.",
+            "bass": "Lock the first note to the kick, then keep ghost-note fills short and repeatable.",
+            "winds": "Use short falls/stabs as answers, not continuous lines.",
+            "voice": "Keep rhythmic diction tight and make consonants part of the groove.",
+        }
+    elif "rock" in text:
+        profile = {
+            "feel": "rock 8th-note drive",
+            "count": "Count straight eighths: `1 & 2 & 3 & 4 &`.",
+            "accent": "Accent 2 and 4; make chorus downbeats bigger than verse downbeats.",
+            "guitar": "Verse: palm-muted downstrokes. Chorus: `D D U U D U` with stronger 2/4 accents.",
+            "piano": "Left hand plays steady octaves or root-fifths; right hand hits chord accents on 2/4 or anticipation upbeats.",
+            "bass": "Use eighth-note roots/fifths with consistent attack and longer chorus notes.",
+            "winds": "Use concise riff answers and save sustained notes for section arrivals.",
+            "voice": "Use clearer consonants in the verse and stronger projection into the chorus.",
+        }
+    elif "ballad" in text or bpm <= 76:
+        profile = {
+            "feel": "ballad pulse",
+            "count": "Count subdivisions quietly so slow bars do not sag.",
+            "accent": "Keep beat 1 grounded and let the phrase breathe toward beat 4.",
+            "guitar": "Use arpeggiated bass-to-treble picking or soft `D - D U` strums with wide dynamic space.",
+            "piano": "Left hand plays sparse roots/5ths; right hand places voicings after the beat with tasteful sustain.",
+            "bass": "Use long, even notes and avoid fills until phrase endings.",
+            "winds": "Use supported long tones and leave real silence between phrases.",
+            "voice": "Keep the verse intimate; crescendo only into emotional arrivals.",
+        }
+    else:
+        profile = {
+            "feel": "straight 8th-note pop groove",
+            "count": "Count `1 & 2 & 3 & 4 &` with steady subdivisions.",
+            "accent": "Keep 2 and 4 alive; make section endings slightly more intentional.",
+            "guitar": "`D D U - U D U`; mute one practice pass before adding chord changes.",
+            "piano": "Left hand roots on 1/3; right hand light offbeat chord stabs or broken-chord eighths.",
+            "bass": "Root on 1, fifth/octave on 3, then one approach into the next chord.",
+            "winds": "Use two-bar phrases and land chord tones on strong beats.",
+            "voice": "Speak rhythm first, then sing with clean pickups into each phrase.",
+        }
+    if role == "verse":
+        profile["section_note"] = "Verse approach: play it lighter and simpler than the chorus."
+    elif role == "chorus":
+        profile["section_note"] = "Chorus approach: increase accent weight and rhythmic confidence."
+    elif role == "bridge":
+        profile["section_note"] = "Bridge approach: leave more space or change the pattern for contrast."
+    elif role == "pre":
+        profile["section_note"] = "Pre-chorus approach: add motion gradually so the chorus lands."
+    else:
+        profile["section_note"] = "Keep the groove consistent and make phrase endings clear."
+    return profile
+
+
+def _rhythm_guidance(instrument, *, section_name, groove_style, time_signature, bpm):
+    family = _instrument_family(instrument)
+    profile = _rhythm_profile(time_signature, groove_style, section_name, bpm)
+    instrument_line = profile.get(family, profile["guitar"] if family == "guitar" else profile["piano"])
+    overlay = (
+        f"Rhythm: {html.escape(profile['feel'])}. {html.escape(profile['count'])} "
+        f"{html.escape(profile['accent'])} {html.escape(instrument_line)} "
+        f"{html.escape(profile['section_note'])}"
+    )
+    practice = (
+        f"{profile['feel']}: {profile['count']} {profile['accent']} "
+        f"For {instrument}, {instrument_line} {profile['section_note']}"
+    )
+    return {
+        "feel": profile["feel"],
+        "count": profile["count"],
+        "accent": profile["accent"],
+        "instrument": instrument_line,
+        "section_note": profile["section_note"],
+        "practice": practice,
+        "overlay": overlay,
+    }
+
+
+def _dynamics_guidance(instrument, section_name, first_chord, second_chord):
+    family = _instrument_family(instrument)
+    shape = _section_dynamic_shape(section_name)
+    lines = {
+        "guitar": f"strum **{first_chord} -> {second_chord}** at p, mp, mf, then f; keep the same tempo while changing pick attack and accent weight",
+        "piano": f"balance left-hand roots softer than right-hand color tones, then crescendo through **{first_chord} -> {second_chord}** without speeding up",
+        "bass": f"play the same groove at three intensities; keep note length and attack consistent while changing volume",
+        "winds": f"hold a supported crescendo into **{second_chord}**, then repeat with a clean decrescendo and identical pitch center",
+        "voice": f"sing the phrase softly first, then crescendo into the emotional word while keeping breath support stable",
+    }
+    line = lines.get(family, f"shape **{first_chord} -> {second_chord}** from soft to strong, then back down without changing tempo")
+    overlay = f"Dynamics: {html.escape(shape)}. {html.escape(line)}."
+    return {"shape": shape, "practice": line, "overlay": overlay}
+
+
 def _instrument_drills(
     *,
     family,
@@ -2058,6 +2404,9 @@ def _instrument_drills(
     blocks,
     variation,
     lyric_line="",
+    time_signature="4/4",
+    groove_style="Pop groove",
+    bpm=100,
 ):
     chord_path = _chord_run(section_chords, span)
     guide_a, guide_b = _guide_tone_pair(first_chord)
@@ -2068,6 +2417,14 @@ def _instrument_drills(
     advanced = level == "Advanced"
     beginner = level == "Beginner"
     focus_area = _focus_area(focus)
+    rhythm = _rhythm_guidance(
+        instrument,
+        section_name=section_name,
+        groove_style=groove_style,
+        time_signature=time_signature,
+        bpm=bpm,
+    )
+    dynamics = _dynamics_guidance(instrument, section_name, first_chord, second_chord)
 
     if family == "guitar":
         lead_task = (
@@ -2075,9 +2432,11 @@ def _instrument_drills(
             f"answer over **{second_chord}** by targeting **{next_guide_a}**, then add either a half-step bend or a double-stop on the last two beats."
         )
         rhythm_task = (
-            f"Strumming drill: loop **{chord_path}** for {reps} passes. Pass 1 uses downstrokes on beats 1-2-3-4; "
-            f"pass 2 uses `D D U - U D U`; pass 3 mutes beats 2 and 4 before opening up the last bar."
+            f"Strumming drill ({rhythm['feel']}): loop **{chord_path}** for {reps} passes. "
+            f"{rhythm['count']} {rhythm['accent']} Pattern: {rhythm['instrument']} "
+            f"Pass 1 is muted strings only; pass 2 adds chord changes; pass 3 follows the section note: {rhythm['section_note']}"
         )
+        dynamic_task = f"Dynamics drill: {dynamics['practice']}."
         harmony_task = (
             f"Voicing transition: play **{first_chord} -> {second_chord}** as two compact 3- or 4-string grips, then move the same change to a second neck position. "
             f"Keep any common tone ringing and shift only the fingers that must move."
@@ -2095,13 +2454,15 @@ def _instrument_drills(
             primary = f"Solo cell: make a two-bar phrase from **{guide_a}**, **{guide_b}**, and one bend/slide; repeat it over **{second_chord}** with one rhythmic change."
         elif focus_area == "Ear Training":
             primary = f"Ear drill: sing the roots of **{chord_path}**, then find them on one string before playing the chords. Check each change by ear before looking down."
+        elif focus_area == "Dynamics":
+            primary = dynamic_task
         else:
             primary = technique_task
         secondary = lead_task if focus_area == "Rhythm" else rhythm_task
         return [
             primary,
             secondary,
-            harmony_task if focus_area != "Harmony" else technique_task,
+            dynamic_task if focus_area != "Dynamics" else harmony_task,
         ]
 
     if family == "piano":
@@ -2113,9 +2474,10 @@ def _instrument_drills(
             f"Inversion drill: play **{first_chord} -> {second_chord}** in three right-hand positions, choosing the inversion that keeps the top note moving by step."
         )
         comping = (
-            f"Comping rhythm: through **{chord_path}**, play short right-hand stabs on `1-and`, `2-and`, and beat 4; "
-            f"left hand answers with root or fifth on beat 1 only."
+            f"Comping rhythm ({rhythm['feel']}): through **{chord_path}**, {rhythm['count']} "
+            f"{rhythm['accent']} For piano, {rhythm['instrument']}"
         )
+        dynamic_task = f"Dynamics drill: {dynamics['practice']}."
         reharm = (
             f"Reharm exercise: on the final bar of the {span}-bar loop, add a passing dominant or diminished approach into **{second_chord}**, then compare it to the plain chart."
         )
@@ -2129,14 +2491,16 @@ def _instrument_drills(
             primary = f"One-hand improv: left hand plays shells through **{chord_path}**; right hand improvises using **{chord_tones}** plus one neighbor tone."
         elif focus_area == "Ear Training":
             primary = f"Ear drill: play **{first_chord}**, sing its top note, then move to **{second_chord}** and identify whether the top note moved up, down, or stayed common."
+        elif focus_area == "Dynamics":
+            primary = dynamic_task
         else:
             primary = inversion
-        return [primary, shell, comping if not advanced else reharm]
+        return [primary, shell if focus_area != "Dynamics" else comping, dynamic_task if not advanced else reharm]
 
     if family == "winds":
         articulation = (
-            f"Articulation drill: play **{chord_tones}** over **{first_chord}** twice - first slurred, then tongued `ta-da ta-da`; "
-            f"resolve to **{next_guide_a}** on beat 1 of **{second_chord}**."
+            f"Articulation/rhythm drill ({rhythm['feel']}): play **{chord_tones}** over **{first_chord}** twice. "
+            f"{rhythm['count']} {rhythm['accent']} Then resolve to **{next_guide_a}** on beat 1 of **{second_chord}**."
         )
         guide = (
             f"Guide-tone target: make a {span}-bar line through **{chord_path}** where beat 1 of each bar lands on a 3rd or 7th, starting with **{guide_a}** or **{guide_b}**."
@@ -2147,6 +2511,7 @@ def _instrument_drills(
         scale = (
             f"Scale-to-chord drill: run the scale around **{first_chord}** for one bar, then restrict bar 2 to chord tones only and land on **{next_guide_b}**."
         )
+        dynamic_task = f"Dynamics drill: {dynamics['practice']}."
         if focus_area == "Rhythm":
             primary = articulation
         elif focus_area in ["Harmony", "Improvisation"]:
@@ -2155,9 +2520,11 @@ def _instrument_drills(
             primary = f"Phrase shaping: play a two-bar question ending softly on **{guide_b}**, then answer louder into **{next_guide_a}** over **{second_chord}**."
         elif focus_area == "Ear Training":
             primary = f"Ear drill: sing **{guide_a}** and **{guide_b}** before playing them, then resolve by ear into **{next_guide_a}** over **{second_chord}**."
+        elif focus_area == "Dynamics":
+            primary = dynamic_task
         else:
             primary = scale
-        return [primary, breath, articulation if focus_area != "Rhythm" else guide]
+        return [primary, breath, dynamic_task if focus_area != "Dynamics" else guide]
 
     if family == "bass":
         groove = (
@@ -2171,8 +2538,10 @@ def _instrument_drills(
             f"Approach-note drill: on beat 4 before each chord change in **{chord_path}**, approach the next root from a half-step below, then land firmly on beat 1."
         )
         rhythm = (
-            f"Rhythmic consistency: loop the first {span} bars with the backing track, alternating one pass of quarter notes and one pass of eighth-note roots."
+            f"Rhythmic consistency ({rhythm['feel']}): loop the first {span} bars with the backing track. "
+            f"{rhythm['count']} {rhythm['accent']} For bass, {rhythm['instrument']}"
         )
+        dynamic_task = f"Dynamics drill: {dynamics['practice']}."
         if focus_area == "Rhythm":
             primary = rhythm
         elif focus_area == "Harmony":
@@ -2183,9 +2552,11 @@ def _instrument_drills(
             primary = f"Connecting line: write a simple bass melody from **{root_a}** to **{root_b}** using no more than four notes per bar."
         elif focus_area == "Ear Training":
             primary = f"Ear drill: sing each root in **{chord_path}**, then play root-fifth-root on bass and name the interval before moving on."
+        elif focus_area == "Dynamics":
+            primary = dynamic_task
         else:
             primary = approach
-        return [primary, groove, walking if not beginner else approach]
+        return [primary, groove, dynamic_task if focus_area != "Dynamics" else walking if not beginner else approach]
 
     if family == "voice":
         cue = lyric_line or f"the first phrase of {section_name}"
@@ -2196,13 +2567,13 @@ def _instrument_drills(
             f"Lyric delivery: speak _{cue}_ in time over **{chord_path}**, mark the word that should peak emotionally, then sing it with a softer pickup and stronger release."
         )
         dynamics = (
-            f"Dynamic shape: sing bars 1-{span} mezzo-piano, grow into the strongest chord, then taper the final note without dropping pitch."
+            f"Dynamic shape: {dynamics['practice']}; sing bars 1-{span} mezzo-piano, grow into the strongest chord, then taper the final note without dropping pitch."
         )
         vowels = (
             f"Vowel shaping: sustain the main vowel from _{cue}_ over **{first_chord}**, then move to **{second_chord}** while keeping the vowel stable."
         )
         if focus_area == "Rhythm":
-            primary = f"Rhythm/phrasing drill: speak _{cue}_ on subdivisions, clap beats 2 and 4, then sing only the rhythm on one pitch."
+            primary = f"Rhythm/phrasing drill ({rhythm['feel']}): speak _{cue}_ with this pulse. {rhythm['count']} {rhythm['accent']} Then sing only the rhythm on one pitch."
         elif focus_area == "Melody":
             primary = dynamics
         elif focus_area == "Harmony":
@@ -2211,6 +2582,8 @@ def _instrument_drills(
             primary = f"Vocal variation: sing _{cue}_ once as written, then improvise a two-note answer on `na` using chord tones from **{first_chord}**."
         elif focus_area == "Ear Training":
             primary = f"Ear drill: sing the root, 3rd, and 5th of **{first_chord}** on `loo`, then identify which note feels most stable against **{second_chord}**."
+        elif focus_area == "Dynamics":
+            primary = dynamics
         else:
             primary = breathing
         return [primary, delivery, vowels if focus_area != "Technique" else dynamics]
@@ -2229,6 +2602,17 @@ def daily_practice_breakdown_markdown(song, sections, instrument, level, focus, 
     span = _exercise_span(level, len(section_chords))
     chord_path = _chord_run(section_chords, span)
     family = _instrument_family(instrument)
+    time_signature = default_time_signature(song, sections)
+    groove_style = infer_groove_style(globals().get("song_data", {}), "Auto")
+    bpm = int(st.session_state.get("backing_track_bpm", 100))
+    rhythm = _rhythm_guidance(
+        instrument,
+        section_name=section_name,
+        groove_style=groove_style,
+        time_signature=time_signature,
+        bpm=bpm,
+    )
+    dynamics = _dynamics_guidance(instrument, section_name, first_chord, second_chord)
 
     instrument_focus = {
         "guitar": f"right-hand groove plus **{first_chord} -> {second_chord}** voicing movement",
@@ -2240,7 +2624,8 @@ def daily_practice_breakdown_markdown(song, sections, instrument, level, focus, 
 
     focus_area = _focus_area(focus)
     focus_task = {
-        "Rhythm": f"put the metronome/backing track at 70-80% speed and make every entrance in **{chord_path}** land without rushing",
+        "Rhythm": f"{rhythm['practice']} Loop at about 70-80% tempo first; mute or simplify the part before adding full chord changes.",
+        "Dynamics": f"{dynamics['practice']}. Record two passes: restrained verse-level intensity, then fuller chorus-level intensity.",
         "Harmony": f"name the function/color of **{first_chord} -> {second_chord}**, then voice-lead by nearest chord tones",
         "Melody": f"build a two-bar phrase that peaks once and resolves into **{second_chord}**",
         "Improvisation": f"improvise only with chord tones for one pass, then add one approach note into **{second_chord}**",
@@ -2268,6 +2653,9 @@ def song_practice_plan(song, sections, instrument, level, focus, variation, sect
     blocks = _practice_time_blocks(minutes)
     span = _exercise_span(level, bars)
     chord_path = _chord_run(section_chords, span)
+    time_signature = default_time_signature(song, sections)
+    groove_style = infer_groove_style(globals().get("song_data", {}), "Auto")
+    bpm = int(st.session_state.get("backing_track_bpm", 100))
     section_text = (section_lyrics or {}).get(section_name, "")
     first_line = next(
         (line.strip() for line in str(section_text).splitlines() if line.strip()),
@@ -2300,6 +2688,9 @@ def song_practice_plan(song, sections, instrument, level, focus, variation, sect
         blocks=blocks,
         variation=variation,
         lyric_line=first_line,
+        time_signature=time_signature,
+        groove_style=groove_style,
+        bpm=bpm,
     )
 
     if level == "Beginner":
@@ -2359,8 +2750,20 @@ def practice_text(level, instrument=None, sections=None, focus=None):
     first_chord, second_chord = _transition_pair(section_chords, 0)
     chord_path = _chord_run(section_chords, _exercise_span(level, len(section_chords)))
     focus_area = _focus_area(focus)
+    time_signature = default_time_signature(globals().get("song", ""), sections)
+    groove_style = infer_groove_style(globals().get("song_data", {}), "Auto")
+    bpm = int(st.session_state.get("backing_track_bpm", 100))
+    rhythm = _rhythm_guidance(
+        instrument or "",
+        section_name=section_name,
+        groove_style=groove_style,
+        time_signature=time_signature,
+        bpm=bpm,
+    )
+    dynamics = _dynamics_guidance(instrument or "", section_name, first_chord, second_chord)
     coach_line = {
-        "Rhythm": f"Loop **{section_name}** and make the groove identical for three passes before adding fills.",
+        "Rhythm": f"{rhythm['practice']} Mute/simplify first, then add the chord changes.",
+        "Dynamics": f"{dynamics['practice']}. Keep tempo steady while changing volume and intensity.",
         "Harmony": f"Study **{first_chord} -> {second_chord}**: name common tones, then move to the nearest available voicing.",
         "Melody": f"Create a two-bar phrase over **{chord_path}** that lands clearly on a chord tone.",
         "Improvisation": f"Improvise one chorus using only chord tones, then repeat with one chromatic approach into **{second_chord}**.",
@@ -3419,7 +3822,7 @@ Focus: **{focus}**
             "Each new exercise rotates section targets and raises the musical demand gradually."
         )
 
-    st.subheader("Chord Finder / How to Play")
+    st.subheader("Musician Tools")
     render_chord_coach_ui(
         all_chords_from_sections(sections),
         instrument,
@@ -3427,6 +3830,20 @@ Focus: **{focus}**
         key_prefix=f"practice::{song}::{instrument}::{level}",
         expanded=True,
     )
+
+    if instrument == "Guitar":
+        render_guitar_capo_helper(
+            sections,
+            display_key,
+            key_prefix=f"practice::{song}",
+        )
+
+    if transposing_instrument_options(instrument):
+        render_transposition_helper(
+            display_key,
+            instrument,
+            key_prefix=f"practice::{song}",
+        )
 
     st.subheader("Metronome")
     render_metronome_widget(
@@ -3813,42 +4230,6 @@ with tabs[2]:
         selected_section_names,
     )
 
-    st.subheader("Chord Finder / How to Play")
-    render_chord_coach_ui(
-        all_chords_from_sections(chart_sections),
-        instrument,
-        level,
-        key_prefix=f"backing::{song}::{instrument}::{level}",
-        expanded=True,
-    )
-
-    if instrument == "Guitar":
-        render_guitar_capo_helper(
-            sections,
-            display_key,
-            key_prefix=f"backing::{song}",
-        )
-
-    transposition_label = None
-    if transposing_instrument_options(instrument) or instrument == "Flute":
-        chart_display_key, _show_written_key, transposition_label = render_transposition_helper(
-            display_key,
-            instrument,
-            key_prefix=f"backing::{song}",
-        )
-        chart_sections = transpose_sections(
-            chart_level_song_data,
-            chart_display_key,
-        )
-        chart_backing_chords = chord_blocks_for_selected_sections(
-            chart_sections,
-            selected_section_names,
-        )
-        chart_backing_events = chord_events_for_selected_sections(
-            chart_sections,
-            selected_section_names,
-        )
-
     coach_section = selected_section_names[0] if selected_section_names else next((name for name, chs in section_order(chart_sections) if chs), "")
     coach_chords = chart_sections.get(coach_section, []) if coach_section else []
     if coach_chords:
@@ -3860,6 +4241,8 @@ with tabs[2]:
                 coach_chords,
                 section_name=coach_section,
                 groove_style=resolved_groove,
+                time_signature=default_time_signature(song, chart_sections),
+                bpm=bpm,
             )
         )
 
@@ -3896,19 +4279,19 @@ with tabs[2]:
             bpm,
             form_loops,
         )
-        st.session_state[f"{_follow_key_prefix}::follow_start_time"] = time.time()
+        st.session_state["playback_start_time"] = time.time()
+        st.session_state["current_chord_timeline"] = st.session_state["_last_backing_timeline"]
+        st.session_state["selected_sections"] = list(selected_section_names)
+        st.session_state["bpm"] = bpm
+        st.session_state["beats_per_bar"] = 4
         st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
 
     if (
         st.session_state.get("_last_backing_wav")
         and st.session_state.get("_last_backing_signature") == _current_backing_signature
     ):
-        st.audio(
-            st.session_state["_last_backing_wav"],
-            format="audio/wav",
-        )
         st.caption(
-            "For exact manual sync, press Start follow-along at the same moment you press play in the audio player."
+            "The live chart below uses its own audio player so the highlight follows the actual audio current time."
         )
 
         _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
@@ -3931,38 +4314,40 @@ with tabs[2]:
         bpm,
         form_loops,
     )
-    follow_position = render_follow_along_controls(
-        _follow_timeline,
-        key_prefix=_follow_key_prefix,
-    )
-    current_chart_section = (
-        follow_position["section"]
-        if follow_position
-        else (section_scope_label if selected_section_names else "Full song")
-    )
-    current_chart_bar = follow_position["bar_in_section"] if follow_position else None
 
     st.subheader("Full Song Chart")
-
-    st.markdown(
-        full_chord_markdown(
-            song,
-            song_data,
-            chart_sections,
-            instrument,
-            display_key=chart_display_key,
-            level=level,
-            lyric_cues=lyric_cues,
-            section_lyrics=section_lyrics,
-            groove_style=resolved_groove,
-            bpm=bpm,
-            time_signature=default_time_signature(song, chart_sections),
-            current_section=current_chart_section,
-            current_bar=current_chart_bar,
-            focus=focus,
-        ),
-        unsafe_allow_html=True,
+    chart_html = full_chord_markdown(
+        song,
+        song_data,
+        chart_sections,
+        instrument,
+        display_key=chart_display_key,
+        level=level,
+        lyric_cues=lyric_cues,
+        section_lyrics=section_lyrics,
+        groove_style=resolved_groove,
+        bpm=bpm,
+        time_signature=default_time_signature(song, chart_sections),
+        current_section=None,
+        current_bar=None,
+        focus=focus,
     )
+    if (
+        st.session_state.get("_last_backing_wav")
+        and st.session_state.get("_last_backing_signature") == _current_backing_signature
+    ):
+        components.html(
+            live_follow_along_component_html(
+                st.session_state["_last_backing_wav"],
+                _follow_timeline,
+                chart_html,
+            ),
+            height=1200,
+            scrolling=True,
+        )
+    else:
+        st.info("Generate a backing track to enable the live audio-synced chord highlight.")
+        st.markdown(chart_html, unsafe_allow_html=True)
 
     with st.expander("Form timeline and selected playback order", expanded=False):
         _tl_rows = form_timeline_rows(sections)
