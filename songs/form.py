@@ -5,9 +5,31 @@ from __future__ import annotations
 from typing import Any
 
 
-def section_order(sections: dict[str, list[str]]) -> list[tuple[str, list[str]]]:
-    """Iterate sections in definition order (insertion-ordered dicts, Py 3.7+)."""
-    return list(sections.items())
+def section_order(
+    sections: dict[str, list[str]],
+    *,
+    section_names: list[str] | None = None,
+) -> list[tuple[str, list[str]]]:
+    """Iterate sections in chart order (explicit list or dict insertion order)."""
+    if not section_names:
+        return list(sections.items())
+    out: list[tuple[str, list[str]]] = []
+    seen: set[str] = set()
+    for name in section_names:
+        if name in sections and name not in seen:
+            out.append((name, sections[name]))
+            seen.add(name)
+    for name, chords in sections.items():
+        if name not in seen:
+            out.append((name, chords))
+    return out
+
+
+def ordered_sections_dict(
+    sections: dict[str, list[str]],
+    section_names: list[str] | None = None,
+) -> dict[str, list[str]]:
+    return dict(section_order(sections, section_names=section_names))
 
 
 def chord_blocks_for_backing(

@@ -102,6 +102,7 @@ from songs import (
     sync_display_key_before_widget,
 )
 from songs.key_state import mark_display_key_changed
+from song_chart_editor import render_chart_editor_panel
 from app_ui import (
     app_hero,
     follow_along_status_html,
@@ -378,6 +379,11 @@ def sections_for_level(song_data, level):
 
 
 def chart_status_label(song_data):
+    user_ov = song_data.get("user_override") or {}
+    if user_ov.get("status") == "user_verified":
+        return ("User verified chart", "success")
+    if user_ov.get("status") == "user_corrected":
+        return ("User corrected chart", "success")
     status = (song_data.get("chart_status") or "placeholder").strip()
     labels = {
         "verified": ("Verified chart", "success"),
@@ -385,16 +391,29 @@ def chart_status_label(song_data):
         "trusted": ("Practice approximation — trusted core", "info"),
         "practice_simplified": ("Practice approximation", "info"),
         "practice_needs_review": ("Practice approximation — needs review", "warning"),
+        "user_corrected": ("User corrected chart", "success"),
+        "user_verified": ("User verified chart", "success"),
         "custom": ("Custom progression", "info"),
         "placeholder": ("Placeholder chart — needs verification", "warning"),
     }
     return labels.get(status, ("Placeholder chart — needs verification", "warning"))
 
 
+def chart_source_caption(song_data) -> str:
+    """Catalog vs user override line for Song Picker / sidebar."""
+    user_ov = song_data.get("user_override") or {}
+    if user_ov:
+        cat = user_ov.get("catalog_chart_status", "catalog")
+        label = chart_status_label(song_data)[0]
+        return f"**Active chart:** {label} · **Catalog was:** {cat}"
+    return f"**Active chart:** Catalog ({chart_status_label(song_data)[0]})"
+
+
 def trusted_core_records(records):
     return [
         r for r in records
-        if r.get("trusted_core") or r.get("chart_status") in {"verified", "practice_level_verified"}
+        if r.get("trusted_core")
+        or r.get("chart_status") in {"verified", "practice_level_verified", "user_verified"}
     ]
 
 
@@ -4137,6 +4156,8 @@ else:
         st.sidebar.warning(_chart_status_text)
     else:
         st.sidebar.caption(_chart_status_text)
+    if not is_custom_progression(st.session_state):
+        st.sidebar.caption(chart_source_caption(_catalog_song_data))
 
 sidebar_section("Practice setup", icon="🎹")
 instrument = st.sidebar.selectbox(
@@ -4669,6 +4690,17 @@ with tabs[1]:
             f"**Original key:** {selected_data.get('key', 'Unknown')}  \n"
             f"**Display / practice key:** {display_key}  \n"
             f"**Available chart levels:** {available_levels}"
+        )
+        st.caption(chart_source_caption(selected_data))
+        render_chart_editor_panel(
+            st,
+            module_globals=globals(),
+            all_records=ALL_SONG_RECORDS,
+            song_data=selected_data,
+            genre=pick_genre,
+            level=level,
+            sections_for_level=sections_for_level,
+            invalidate_backing=invalidate_backing_cache,
         )
         if display_key != selected_data.get("key"):
             st.caption(

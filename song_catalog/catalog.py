@@ -16,6 +16,7 @@ from typing import Any
 
 from .bulk_songs import bulk_song_records
 from .curated_songs import curated_song_records
+from .user_overrides import apply_user_overrides_to_records
 
 INCLUDE_PLACEHOLDER_CHARTS = False
 
@@ -107,7 +108,18 @@ def _merge_records() -> list[dict[str, Any]]:
         seen_ta.add(ta)
         seen_gt.add(gt)
         out.append(row)
-    return out
+    return apply_user_overrides_to_records(out)
+
+
+def clear_catalog_cache() -> None:
+    global _CACHE
+    _CACHE = None
+
+
+def reload_song_catalog():
+    """Drop in-memory cache and rebuild libraries (after user override save)."""
+    clear_catalog_cache()
+    return load_song_catalog()
 
 
 def build_libraries(records: list[dict[str, Any]]):
@@ -120,7 +132,7 @@ def build_libraries(records: list[dict[str, Any]]):
         artist = r["artist"]
         label = f"{title} — {artist}"
 
-        picker.setdefault(g, {})[label] = {
+        _row_common = {
             "title": title,
             "artist": artist,
             "genre": g,
@@ -133,21 +145,12 @@ def build_libraries(records: list[dict[str, Any]]):
             "composer": r.get("composer"),
             "lyric_cues": r.get("lyric_cues") or {},
             "extensions": r.get("extensions") or {},
+            "user_override": r.get("user_override"),
+            "section_order": r.get("section_order"),
         }
+        picker.setdefault(g, {})[label] = dict(_row_common)
 
-        library.setdefault(g, {})[title] = {
-            "artist": artist,
-            "key": r["key"],
-            "sections": r["sections"],
-            "chart_versions": r.get("chart_versions") or {},
-            "chart_status": r.get("chart_status", "practice_simplified"),
-            "trusted_core": bool(r.get("trusted_core")),
-            "guitar_tabs": r.get("guitar_tabs") or {},
-            "composer": r.get("composer"),
-            "lyric_cues": r.get("lyric_cues") or {},
-            "genre": g,
-            "extensions": r.get("extensions") or {},
-        }
+        library.setdefault(g, {})[title] = dict(_row_common)
 
     genres_preferred = ["Jazz", "Pop", "Rock", "Funk", "Blues", "Classical"]
     genres = [g for g in genres_preferred if g in library]

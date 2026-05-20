@@ -2,6 +2,8 @@
 
 from .catalog import (
     load_song_catalog,
+    reload_song_catalog,
+    clear_catalog_cache,
     search_records,
     format_pick_key,
     parse_pick_key,
@@ -11,6 +13,8 @@ from .catalog import (
 
 __all__ = [
     "load_song_catalog",
+    "reload_song_catalog",
+    "clear_catalog_cache",
     "search_records",
     "format_pick_key",
     "parse_pick_key",
