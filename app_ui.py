@@ -3,7 +3,22 @@
 from __future__ import annotations
 
 import html
-from typing import Any
+from typing import Any, Optional
+
+__all__ = [
+    "STUDIO_PAGES",
+    "app_hero",
+    "compact_page_title",
+    "ensure_studio_page",
+    "follow_along_status_html",
+    "inject_app_theme",
+    "page_header",
+    "render_global_studio_bar",
+    "render_studio_nav",
+    "session_badges",
+    "sidebar_section",
+    "sidebar_source_banner",
+]
 
 
 def inject_app_theme() -> None:
@@ -241,7 +256,7 @@ def app_hero(title: str, subtitle: str) -> None:
     )
 
 
-def page_header(icon: str, title: str, subtitle: str = "", badges: list[tuple[str, str]] | None = None) -> None:
+def page_header(icon: str, title: str, subtitle: str = "", badges: Optional[list[tuple[str, str]]] = None) -> None:
     import streamlit as st
 
     badge_html = ""
@@ -356,18 +371,18 @@ def render_global_studio_bar(
     show_bpm: bool = False,
     bpm_key: str = "backing_track_bpm",
     backing_ready: bool = False,
-    on_display_key_change: Any | None = None,
+    on_display_key_change: Optional[Any] = None,
     is_custom_source: bool = False,
     custom_progression_name: str = "",
     genre_options: list[str] | None = None,
     current_genre: str = "",
     song_pick_options: list[str] | None = None,
-    format_pick_label: Any | None = None,
-    on_source_change: Any | None = None,
-    on_genre_change: Any | None = None,
-    on_song_change: Any | None = None,
-    session_state: Any | None = None,
-    rerun_fn: Any | None = None,
+    format_pick_label: Optional[Any] = None,
+    on_source_change: Optional[Any] = None,
+    on_genre_change: Optional[Any] = None,
+    on_song_change: Optional[Any] = None,
+    session_state: Optional[Any] = None,
+    rerun_fn: Optional[Any] = None,
 ) -> None:
     """Primary controls — visible above every page (song, key, level, instrument)."""
     import streamlit as st

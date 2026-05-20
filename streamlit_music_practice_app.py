@@ -103,18 +103,148 @@ from songs import (
 )
 from songs.key_state import mark_display_key_changed
 from song_chart_editor import render_chart_editor_panel
-from app_ui import (
-    app_hero,
-    compact_page_title,
-    follow_along_status_html,
-    inject_app_theme,
-    page_header,
-    render_global_studio_bar,
-    render_studio_nav,
-    session_badges,
-    sidebar_section,
-    sidebar_source_banner,
-)
+
+_APP_UI_LOADED = False
+_APP_UI_IMPORT_ERROR = None
+
+try:
+    from app_ui import (
+        app_hero,
+        compact_page_title,
+        follow_along_status_html,
+        inject_app_theme,
+        page_header,
+        render_global_studio_bar,
+        render_studio_nav,
+        session_badges,
+        sidebar_section,
+        sidebar_source_banner,
+    )
+    _APP_UI_LOADED = True
+except Exception as _app_ui_first_err:
+    import traceback
+
+    traceback.print_exc()
+    _APP_UI_IMPORT_ERROR = _app_ui_first_err
+    _app_ui_path = Path(__file__).resolve().parent / "app_ui.py"
+    if _app_ui_path.is_file():
+        try:
+            import importlib.util
+
+            _app_ui_spec = importlib.util.spec_from_file_location("app_ui", str(_app_ui_path))
+            if _app_ui_spec and _app_ui_spec.loader:
+                _app_ui_mod = importlib.util.module_from_spec(_app_ui_spec)
+                _app_ui_spec.loader.exec_module(_app_ui_mod)
+                app_hero = _app_ui_mod.app_hero
+                compact_page_title = _app_ui_mod.compact_page_title
+                follow_along_status_html = _app_ui_mod.follow_along_status_html
+                inject_app_theme = _app_ui_mod.inject_app_theme
+                page_header = _app_ui_mod.page_header
+                render_global_studio_bar = _app_ui_mod.render_global_studio_bar
+                render_studio_nav = _app_ui_mod.render_studio_nav
+                session_badges = _app_ui_mod.session_badges
+                sidebar_section = _app_ui_mod.sidebar_section
+                sidebar_source_banner = _app_ui_mod.sidebar_source_banner
+                _APP_UI_LOADED = True
+                _APP_UI_IMPORT_ERROR = None
+        except Exception as _app_ui_path_err:
+            traceback.print_exc()
+            _APP_UI_IMPORT_ERROR = _app_ui_path_err
+
+if not _APP_UI_LOADED:
+    st.error(
+        "app_ui import failed: "
+        f"{_APP_UI_IMPORT_ERROR!r}. "
+        "Ensure **app_ui.py** is in the repository root next to this file, then redeploy. "
+        "Using basic layout fallbacks so the app can still run."
+    )
+
+    def inject_app_theme() -> None:
+        st.markdown(
+            "<style>.block-container{padding-top:0.75rem;max-width:1180px;}</style>",
+            unsafe_allow_html=True,
+        )
+
+    def app_hero(title: str, subtitle: str) -> None:
+        st.markdown(f"### {title}")
+        st.caption(subtitle)
+
+    def page_header(icon: str, title: str, subtitle: str = "", badges=None) -> None:
+        st.subheader(f"{icon} {title}".strip())
+        if subtitle:
+            st.caption(subtitle)
+
+    def compact_page_title(icon: str, title: str, subtitle: str = "") -> None:
+        st.markdown(f"#### {icon} {title}".strip())
+        if subtitle:
+            st.caption(subtitle)
+
+    def session_badges(**kwargs) -> list[tuple[str, str]]:
+        return [
+            (kwargs.get("source_label", "Source"), "accent"),
+            (f"🎵 {kwargs.get('song', '')}", ""),
+            (f"Key {kwargs.get('display_key', '')}", "green"),
+        ]
+
+    def sidebar_section(title: str, *, icon: str = "") -> None:
+        label = f"{icon} {title}".strip() if icon else title
+        st.sidebar.markdown(f"**{label}**")
+
+    def sidebar_source_banner(markdown_text: str) -> None:
+        st.sidebar.markdown(markdown_text)
+
+    def render_studio_nav(session_state, *, rerun_fn) -> str:
+        pages = [
+            ("practice", "Practice"),
+            ("picker", "Songs"),
+            ("backing", "Backing"),
+            ("custom", "Custom"),
+            ("creative", "Creative"),
+            ("multitrack", "Multitrack"),
+            ("analysis", "Analysis"),
+            ("log", "Log"),
+        ]
+        session_state.setdefault("studio_page", "practice")
+        labels = [p[1] for p in pages]
+        ids = [p[0] for p in pages]
+        cur = session_state.get("studio_page", "practice")
+        idx = ids.index(cur) if cur in ids else 0
+        pick = st.selectbox("Page", labels, index=idx, key="studio_page_fallback_select")
+        session_state["studio_page"] = ids[labels.index(pick)]
+        return session_state["studio_page"]
+
+    def render_global_studio_bar(**kwargs) -> None:
+        display_key_options = kwargs.get("display_key_options") or ["C"]
+        instrument_options = kwargs.get("instrument_options") or ["Piano"]
+        focus_options = kwargs.get("focus_options") or ["General"]
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1:
+            st.markdown(f"**{kwargs.get('song', 'Song')}**")
+            st.caption(kwargs.get("source_label", ""))
+        with c2:
+            st.selectbox(
+                "Display / practice key",
+                display_key_options,
+                key="display_key",
+                on_change=kwargs.get("on_display_key_change"),
+            )
+        with c3:
+            st.selectbox("Level", ["Beginner", "Intermediate", "Advanced"], key="level")
+        with c4:
+            st.selectbox("Instrument", instrument_options, key="instrument")
+        with c5:
+            st.selectbox("Focus", focus_options, key="focus")
+        if kwargs.get("show_bpm"):
+            st.slider("BPM", 50, 180, 100, 5, key=kwargs.get("bpm_key", "backing_track_bpm"))
+
+    def follow_along_status_html(pos: dict) -> str:
+        if not pos:
+            return ""
+        return (
+            f"**{pos.get('section', '')}** · {pos.get('chord', '')} · "
+            f"bar {pos.get('bar_in_section', '')}/{pos.get('section_bars', '')} · "
+            f"next {pos.get('next_chord', '—')}"
+        )
 from creative_lab_text import (
     current_song_context_lab as lab_make_ctx,
     chord_quality as lab_chord_quality,
