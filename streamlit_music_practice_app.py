@@ -384,6 +384,7 @@ def chart_status_label(song_data):
         "practice_level_verified": ("Practice-level verified chart", "success"),
         "trusted": ("Practice approximation — trusted core", "info"),
         "practice_simplified": ("Practice approximation", "info"),
+        "practice_needs_review": ("Practice approximation — needs review", "warning"),
         "custom": ("Custom progression", "info"),
         "placeholder": ("Placeholder chart — needs verification", "warning"),
     }
@@ -411,7 +412,14 @@ def filter_records_by_chart_status(records, status_filter):
     if status_filter == "Verified":
         return [r for r in records if r.get("chart_status") in {"verified", "practice_level_verified"}]
     if status_filter == "Practice approximation":
-        return [r for r in records if r.get("chart_status") in {"practice_simplified", "practice_level_verified"}]
+        return [
+            r for r in records
+            if r.get("chart_status") in {
+                "practice_simplified",
+                "practice_level_verified",
+                "practice_needs_review",
+            }
+        ]
     return records
 
 

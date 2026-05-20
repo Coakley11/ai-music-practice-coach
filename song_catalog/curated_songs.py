@@ -227,42 +227,138 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Piano Man", "Billy Joel"): pack(
             "C",
             {
-                "Intro (Harmonica)": ["C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G"],
-                "Verse": ["C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G"] * 2,
-                "Bridge": ["Am", "Am/G", "D7/F#", "F", "Am", "Am/G", "D7/F#", "G"],
+                "Intro (Harmonica)": [
+                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G",
+                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G",
+                    "C", "C/B", "Am", "C/G", "F", "G", "C",
+                    "C", "F/C", "C", "G",
+                    "C", "F/C", "C", "G",
+                ],
+                "Verse": [
+                    "C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G",
+                    "C", "G/B", "F/A", "C/G", "F", "G", "C",
+                ],
+                "Verse (Memory)": [
+                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G",
+                    "C", "Em/B", "Am", "C/G", "F", "G", "C",
+                ],
+                "Verse (Extended Tag)": [
+                    "C", "G/B", "F/A", "C/G", "F", "G", "C",
+                    "F/C", "C", "G",
+                ],
+                "Harmonica Interlude": [
+                    "C", "C/B", "Am", "C/G", "F", "G", "C",
+                    "C", "F/C", "C", "G",
+                ],
+                "Bridge": [
+                    "Am", "Am/G", "D7/F#", "F",
+                    "Am", "Am/G", "D7/F#", "D7", "G", "G/F", "C/E", "G/D",
+                ],
                 "Chorus": [
                     "C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G",
-                    "C", "G/B", "F/A", "C/G", "F", "G", "C", "G",
+                    "C", "G/B", "F/A", "C/G", "F", "G", "C",
                 ],
-                "Instrumental Break": ["Am", "Am/G", "D7/F#", "F", "Am", "Am/G", "D7/F#", "F"],
-                "Outro": ["C", "G/B", "F/A", "C/G", "F", "G", "C", "C"],
+                "Instrumental": [
+                    "Am", "Am/G", "D7/F#", "F",
+                    "Am", "Am/G", "D7/F#", "F",
+                    "Am", "Am/G", "D7/F#", "D7", "G", "G/F", "C/E", "G/D",
+                ],
+                "Outro": [
+                    "C", "G/B", "F/A", "C/G", "F", "G", "C",
+                    "C", "F/C", "C", "G",
+                    "C", "F/C", "C", "G",
+                    "G/F", "C/E", "G/D", "C",
+                ],
             },
             {
-                "Intro (Harmonica)": ["C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G7"],
-                "Verse": ["C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G7"] * 2,
-                "Bridge": ["Am", "Am/G", "D7/F#", "F", "Am", "Am/G", "D7/F#", "G7"],
+                "Intro (Harmonica)": [
+                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G7",
+                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G7",
+                    "C", "C/B", "Am", "C/G", "F", "G11", "C",
+                    "C", "F/C", "Cmaj7", "G11",
+                    "C", "F/C", "Cmaj7", "G11",
+                ],
+                "Verse": [
+                    "C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G7",
+                    "C", "G/B", "F/A", "C/G", "F", "G11", "C",
+                ],
+                "Verse (Memory)": [
+                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G7",
+                    "C", "Em/B", "Am", "C/G", "F", "G11", "C",
+                ],
+                "Verse (Extended Tag)": [
+                    "C", "G/B", "F/A", "C/G", "F", "G11", "C",
+                    "F/C", "Cmaj7", "G11",
+                ],
+                "Harmonica Interlude": [
+                    "C", "Em/B", "Am", "C/G", "F", "G11", "C",
+                    "C", "F/C", "Cmaj7", "G11",
+                ],
+                "Bridge": [
+                    "Am", "Am/G", "D7/F#", "F",
+                    "Am", "Am/G", "D7/F#", "D7", "G", "G/F", "C/E", "G7/D",
+                ],
                 "Chorus": [
                     "C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G7",
-                    "C", "G/B", "F/A", "C/G", "F", "G11", "C", "G7",
+                    "C", "G/B", "F/A", "C/G", "F", "G11", "C",
                 ],
-                "Instrumental Break": ["Am", "Am/G", "D7/F#", "F", "Am", "Am/G", "D7/F#", "F"],
-                "Outro": ["C", "G/B", "F/A", "C/G", "F", "G11", "C", "C"],
+                "Instrumental": [
+                    "Am", "Am/G", "D7/F#", "F",
+                    "Am", "Am/G", "D7/F#", "F",
+                    "Am", "Am/G", "D7/F#", "D7", "G", "G/F", "C/E", "G/D",
+                ],
+                "Outro": [
+                    "C", "G/B", "F/A", "C/G", "F", "G11", "C",
+                    "C", "F/C", "Cmaj7", "G11",
+                    "C", "F/C", "Cmaj7", "G11",
+                    "G/F", "C/E", "G/D", "C",
+                ],
             },
             {
-                "Intro (Harmonica)": ["C", "C/B", "Am7", "C/G", "Fmaj7", "C/E", "D7", "G7"],
-                "Verse": ["C", "G/B", "F/A", "C/G", "Fmaj7", "C/E", "D7", "G7"] * 2,
-                "Bridge": ["Am7", "Am7/G", "D7/F#", "Fmaj7", "Am7", "Am7/G", "D7/F#", "G7/D"],
-                "Chorus": [
-                    "C", "G/B", "F/A", "C/G", "Fmaj7", "C/E", "D7", "G7",
-                    "C", "G/B", "F/A", "C/G", "Fmaj7", "G11", "Cmaj7", "G7",
+                "Intro (Harmonica)": [
+                    "C", "C/B", "Am7", "C/G", "Fmaj7", "C/E", "D7", "G7",
+                    "C", "C/B", "Am7", "C/G", "Fmaj7", "C/E", "D7", "G7",
+                    "C", "C/B", "Am7", "C/G", "Fmaj7", "G11", "Cmaj7",
+                    "C", "F/C", "Cmaj7", "G11",
+                    "C", "F/C", "Cmaj7", "G11",
                 ],
-                "Instrumental Break": [
-                    "Am7", "Am7/G", "D7/F#", "Fmaj7", "Am7", "Am7/G", "D7/F#", "Fmaj7",
+                "Verse": [
+                    "C", "G/B", "F/A", "C/G", "Fmaj7", "C/E", "D7", "G7",
+                    "C", "G/B", "F/A", "C/G", "Fmaj7", "G11", "Cmaj7",
+                ],
+                "Verse (Memory)": [
+                    "C", "C/B", "Am7", "C/G", "Fmaj7", "C/E", "D7", "G7",
+                    "C", "Em/B", "Am7", "C/G", "Fmaj7", "G11", "Cmaj7",
+                ],
+                "Verse (Extended Tag)": [
+                    "C", "G/B", "F/A", "C/G", "Fmaj7", "G11", "Cmaj7",
+                    "F/C", "Cmaj7", "G11",
+                ],
+                "Harmonica Interlude": [
+                    "C", "Em/B", "Am7", "C/G", "Fmaj7", "G11", "Cmaj7",
+                    "C", "F/C", "Cmaj7", "G11",
+                ],
+                "Bridge": [
+                    "Am7", "Am7/G", "D7/F#", "Fmaj7",
                     "Am7", "Am7/G", "D7/F#", "D7", "G7", "G7/F", "C/E", "G7/D",
                 ],
-                "Outro": ["C", "G/B", "F/A", "C/G", "Fmaj7", "G11", "Cmaj7", "Cmaj7"],
+                "Chorus": [
+                    "C", "G/B", "F/A", "C/G", "Fmaj7", "C/E", "D7", "G7",
+                    "C", "G/B", "F/A", "C/G", "Fmaj7", "G11", "Cmaj7",
+                ],
+                "Instrumental": [
+                    "Am7", "Am7/G", "D7/F#", "Fmaj7",
+                    "Am7", "Am7/G", "D7/F#", "Fmaj7",
+                    "Am7", "Am7/G", "D7/F#", "D7", "G7", "G7/F", "C/E", "G7/D",
+                ],
+                "Outro": [
+                    "C", "G/B", "F/A", "C/G", "Fmaj7", "G11", "Cmaj7",
+                    "C", "F/C", "Cmaj7", "G11",
+                    "C", "F/C", "Cmaj7", "G11",
+                    "G7/F", "C/E", "G7/D", "Cmaj7",
+                ],
             },
-            status="practice_level_verified",
+            status="practice_needs_review",
         ),
         ("Turn the Lights Back On", "Billy Joel"): pack("C",
             {
@@ -564,6 +660,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
         lyric_cues: dict[str, list[str]] | None = None,
         guitar_tabs: dict[str, str] | None = None,
         notes: str | None = None,
+        chart_status: str | None = None,
     ) -> dict[str, Any]:
         return _s(
             title,
@@ -574,7 +671,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             composer=composer,
             lyric_cues=lyric_cues,
             guitar_tabs=guitar_tabs,
-            chart_status=status,
+            chart_status=chart_status or status,
             chart_versions=_levels(
                 beginner=beginner,
                 intermediate=intermediate,
@@ -934,6 +1031,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "Key Bb. Verse: Gm7–C–F–Bb then Eb–Bb/D–Cm7–F/A. "
                 "Chorus is 14 bars on the record (Bb↔Eb with Bb/D–C7–Eb–Bb tag); padded to 16 for practice loops."
             ),
+            chart_status="practice_needs_review",
         ),
         v(
             "In My Life",
@@ -1155,6 +1253,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "One cell = one bar in 4/4; verse is two 8-bar lines plus Bm turn. "
                 "Bridge alternates D and F#m before C#7."
             ),
+            chart_status="practice_needs_review",
         ),
         v(
             "Love Story",
@@ -1412,38 +1511,90 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Pop",
             "C",
             {
-                "Intro (Harmonica)": ["C", "C/B", "Am", "C/G", "Fmaj7", "C/E", "D7", "G7"],
-                "Verse": ["C", "G/B", "F/A", "C/G", "Fmaj7", "C/E", "D7", "G7"] * 2,
-                "Bridge": ["Am", "Am/G", "D7/F#", "F", "Am", "Am/G", "D7/F#", "G7"],
-                "Chorus": [
-                    "C", "G/B", "F/A", "C/G", "Fmaj7", "C/E", "D7", "G7",
-                    "C", "G/B", "F/A", "C/G", "Fmaj7", "G11", "C", "G7",
+                "Intro (Harmonica)": [
+                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G7",
+                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G7",
+                    "C", "C/B", "Am", "C/G", "F", "G11", "C",
+                    "C", "F/C", "Cmaj7", "G11",
+                    "C", "F/C", "Cmaj7", "G11",
                 ],
-                "Instrumental Break": ["Am", "Am/G", "D7/F#", "F", "Am", "Am/G", "D7/F#", "F"],
-                "Outro": ["C", "G/B", "F/A", "C/G", "Fmaj7", "G11", "C", "C"],
-            },
-            composer="Billy Joel",
-            lyric_cues={
-                "Intro (Harmonica)": ["harmonica pickup — C C/B Am C/G pattern"],
                 "Verse": [
-                    "It's nine o'clock on a Saturday",
-                    "the regular crowd shuffles in",
+                    "C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G7",
+                    "C", "G/B", "F/A", "C/G", "F", "G11", "C",
+                ],
+                "Verse (Memory)": [
+                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G7",
+                    "C", "Em/B", "Am", "C/G", "F", "G11", "C",
+                ],
+                "Verse (Extended Tag)": [
+                    "C", "G/B", "F/A", "C/G", "F", "G11", "C",
+                    "F/C", "Cmaj7", "G11",
+                ],
+                "Harmonica Interlude": [
+                    "C", "Em/B", "Am", "C/G", "F", "G11", "C",
+                    "C", "F/C", "Cmaj7", "G11",
                 ],
                 "Bridge": [
-                    "He says son can you play me a memory",
-                    "And the piano sounds like a carnival",
+                    "Am", "Am/G", "D7/F#", "F",
+                    "Am", "Am/G", "D7/F#", "D7", "G", "G/F", "C/E", "G7/D",
                 ],
                 "Chorus": [
-                    "Sing us a song you're the piano man",
-                    "We're all in the mood for a melody",
+                    "C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G7",
+                    "C", "G/B", "F/A", "C/G", "F", "G11", "C",
                 ],
-                "Instrumental Break": ["harmonica solo / waltz interlude"],
-                "Outro": ["final sing-along tag and C major ending"],
+                "Instrumental": [
+                    "Am", "Am/G", "D7/F#", "F",
+                    "Am", "Am/G", "D7/F#", "F",
+                    "Am", "Am/G", "D7/F#", "D7", "G", "G/F", "C/E", "G/D",
+                ],
+                "Outro": [
+                    "C", "G/B", "F/A", "C/G", "F", "G11", "C",
+                    "C", "F/C", "Cmaj7", "G11",
+                    "C", "F/C", "Cmaj7", "G11",
+                    "G/F", "C/E", "G/D", "C",
+                ],
+            },
+            composer="Billy Joel",
+            chart_status="practice_needs_review",
+            lyric_cues={
+                "Intro (Harmonica)": [
+                    "harmonica pickup (no vocal) — C C/B Am C/G; played twice, then G11 tag",
+                ],
+                "Verse": [
+                    "It's nine o'clock on a Saturday / The regular crowd shuffles in",
+                    "line 2 ends F → G11 → C (not a full D7–G turnaround)",
+                ],
+                "Verse (Memory)": [
+                    "He says, Son, can you play me a memory — uses Am (not F/A) on bar 3",
+                    "second line: Em/B Am C/G → F → G11 → C",
+                ],
+                "Verse (Extended Tag)": [
+                    "used after verses like John at the bar — adds F/C Cmaj7 G11 tag",
+                ],
+                "Harmonica Interlude": [
+                    "between vocal sections — often Em/B Am C/G then F/C Cmaj7 G11",
+                ],
+                "Bridge": [
+                    "la la, di dee da / la la, di dee da, da dum",
+                    "12-bar walkdown: Am → … → G7/D",
+                ],
+                "Chorus": [
+                    "Sing us a song, you're the piano man / Sing us a song tonight",
+                    "We're all in the mood for a melody … feeling alright",
+                ],
+                "Instrumental": [
+                    "harmonica solo — bridge figure twice, then D7 G walkdown to G/D",
+                ],
+                "Outro": [
+                    "final harmonica reprise + F/C Cmaj7 G11 tags + G/F C/E G/D → C",
+                ],
             },
             extensions=_ext(
                 arrangement_notes=(
-                    "3/4 waltz; one cell = one bar. Verse & chorus use descending bass "
-                    "C→G/B→F/A→C/G (not Am). Bridge uses Am→Am/G→D7/F#→F."
+                    "Key C, 3/4 waltz; one chord = one bar. Manually checked against "
+                    "pianochordcharts.net (2020). Status: practice approximation — needs review. "
+                    "Standard verse/chorus: 8-bar walkdown (C G/B F/A C/G F C/E D7 G) + "
+                    "7-bar lyric close (… F G11 C). Memory verse swaps F/A for Am and uses Em/B."
                 ),
             ),
         ),
