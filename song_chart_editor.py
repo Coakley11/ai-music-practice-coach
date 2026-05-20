@@ -139,6 +139,15 @@ def refresh_app_catalog_globals(module_globals: dict[str, Any]) -> None:
     module_globals["DEFAULT_SONG_RECORDS"] = (
         module_globals["TRUSTED_CORE_RECORDS"] or records
     )
+    try:
+        st_obj = module_globals.get("st")
+        if st_obj is not None and hasattr(st_obj, "session_state"):
+            st_obj.session_state["_catalog_backup_records"] = records
+            st_obj.session_state["_catalog_backup_library"] = library
+            st_obj.session_state["_catalog_backup_picker"] = picker
+            st_obj.session_state["_catalog_backup_genres"] = list(genres)
+    except Exception:
+        pass
 
 
 def render_chart_editor_panel(

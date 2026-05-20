@@ -17,6 +17,7 @@ import tempfile
 import html
 import time
 import base64
+import traceback
 from pathlib import Path
 from datetime import date
 
@@ -115,9 +116,10 @@ try:
         follow_along_status_html,
         inject_app_theme,
         page_header,
-        render_global_studio_bar,
-        render_studio_nav,
-        session_badges,
+    render_global_studio_bar,
+    render_section_jump_bar,
+    render_studio_nav,
+    session_badges,
         sidebar_section,
         sidebar_source_banner,
     )
@@ -238,6 +240,14 @@ if not _APP_UI_LOADED:
         if kwargs.get("show_bpm"):
             st.slider("BPM", 50, 180, 100, 5, key=kwargs.get("bpm_key", "backing_track_bpm"))
 
+    def render_section_jump_bar(section_names, session_state, *, state_key="practice_focus_section", rerun_fn=None):
+        names = [n for n in section_names if n]
+        if not names:
+            return None
+        pick = st.radio("Section", names, horizontal=True, key=state_key)
+        session_state[state_key] = pick
+        return pick
+
     def follow_along_status_html(pos: dict) -> str:
         if not pos:
             return ""
@@ -299,7 +309,36 @@ except Exception as _cpl_import_err:
     )
     raise
 
-SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = load_song_catalog()
+CATALOG_LOAD_ERROR = None
+_ALL_GENRE_FILTER = "All genres"
+DEFAULT_CHART_LIBRARY_MODE = "Include practice approximations"
+DEFAULT_CHART_STATUS_FILTER = "Any non-placeholder"
+CATALOG_DEFAULTS_VERSION = 3
+
+try:
+    SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = load_song_catalog()
+except Exception as _catalog_load_err:
+    CATALOG_LOAD_ERROR = _catalog_load_err
+    traceback.print_exc()
+    _cached = st.session_state.get("_catalog_backup_records") if hasattr(st, "session_state") else None
+    if _cached and len(_cached) > 10:
+        ALL_SONG_RECORDS = _cached
+        SONG_LIBRARY = st.session_state.get("_catalog_backup_library") or {}
+        SONG_PICKER_CATALOG = st.session_state.get("_catalog_backup_picker") or {}
+        GENRES = st.session_state.get("_catalog_backup_genres") or []
+    else:
+        st.error(
+            f"Song catalog failed to load: {_catalog_load_err!r}. "
+            "Redeploy with song_catalog/ intact or reload the app."
+        )
+        st.stop()
+
+if hasattr(st, "session_state"):
+    st.session_state["_catalog_backup_records"] = ALL_SONG_RECORDS
+    st.session_state["_catalog_backup_library"] = SONG_LIBRARY
+    st.session_state["_catalog_backup_picker"] = SONG_PICKER_CATALOG
+    st.session_state["_catalog_backup_genres"] = list(GENRES)
+
 TRUSTED_CORE_RECORDS = [
     r for r in ALL_SONG_RECORDS
     if r.get("trusted_core") or r.get("chart_status") in {"verified", "practice_level_verified"}
@@ -327,7 +366,7 @@ ensure_active_music_source(st.session_state)
 
 if (
     DEFAULT_SONG_RECORDS
-    and st.session_state.get("chart_library_mode", "Trusted core charts only") == "Trusted core charts only"
+    and st.session_state.get("chart_library_mode", DEFAULT_CHART_LIBRARY_MODE) == "Trusted core charts only"
     and not _catalog_song_data.get("trusted_core")
     and _catalog_song_data.get("chart_status") not in {"verified", "practice_level_verified"}
 ):
@@ -1526,11 +1565,11 @@ def full_chord_markdown(
 .lead-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(92px, 1fr));
-  gap: 8px;
-  margin: 10px 0;
+  gap: 10px 12px;
+  margin: 12px 0 14px 0;
 }
 .chord-cell {
-  min-height: 68px;
+  min-height: 72px;
   border: 1.5px solid rgba(15, 23, 42, 0.22);
   border-radius: 12px;
   background: linear-gradient(180deg, #ffffff, #f8fafc);
@@ -3096,6 +3135,27 @@ def default_time_signature(song, sections):
     return "4/4"
 
 
+def default_song_bpm(song_title: str, song_data: dict | None = None) -> int:
+    title = (song_title or "").lower()
+    if "shape of you" in title:
+        return 96
+    if song_data and (song_data.get("extensions") or {}).get("default_bpm"):
+        try:
+            return int(song_data["extensions"]["default_bpm"])
+        except (TypeError, ValueError):
+            pass
+    return 100
+
+
+def _ensure_song_bpm_defaults(song_title: str, song_data: dict | None = None) -> None:
+    bpm = default_song_bpm(song_title, song_data)
+    if "backing_track_bpm" not in st.session_state:
+        st.session_state["backing_track_bpm"] = bpm
+    elif st.session_state.get("_last_bpm_song") != song_title:
+        st.session_state["backing_track_bpm"] = bpm
+    st.session_state["_last_bpm_song"] = song_title
+
+
 def practice_text(level, instrument=None, sections=None, focus=None):
     sections = sections or {}
     section_name, section_chords = _section_for_exercise(sections, 0)
@@ -4264,9 +4324,52 @@ def musical_development_tracker_text():
     return lab_musical_dev(load_logs)
 
 
+def _apply_catalog_filter_defaults() -> None:
+    """One-time migration: show full library, not trusted-only / single-genre traps."""
+    if st.session_state.get("_catalog_defaults_version") == CATALOG_DEFAULTS_VERSION:
+        return
+    st.session_state["chart_library_mode"] = DEFAULT_CHART_LIBRARY_MODE
+    st.session_state["song_picker_chart_status"] = DEFAULT_CHART_STATUS_FILTER
+    st.session_state["song_search_scope"] = "Entire library"
+    st.session_state["song_picker_level_filter"] = "Any level"
+    st.session_state["_catalog_defaults_version"] = CATALOG_DEFAULTS_VERSION
+
+
+def _pick_keys_from_records(
+    records: list[dict],
+    *,
+    genre: str | None = None,
+) -> list[str]:
+    rows = records
+    if genre and genre != _ALL_GENRE_FILTER:
+        rows = [r for r in rows if r.get("genre") == genre]
+    return [
+        format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
+        for r in rows
+    ]
+
+
 def _global_quick_songs_for_genre(genre: str) -> list[str]:
-    cat = SONG_PICKER_CATALOG.get(genre, {})
-    return [format_pick_key(genre, label) for label in cat.keys()]
+    """Legacy helper — prefer _pick_keys_from_records with visible catalog rows."""
+    return _pick_keys_from_records(_picker_visible_records(), genre=genre)
+
+
+def _render_catalog_health_debug() -> None:
+    """Sidebar / debug counts so a shrunken catalog is obvious."""
+    total = len(ALL_SONG_RECORDS)
+    visible = len(_picker_visible_records())
+    st.sidebar.caption(f"**Songs loaded:** {total} in catalog · **{visible}** match current filters")
+    if CATALOG_LOAD_ERROR:
+        st.sidebar.error(f"Last catalog load error: {CATALOG_LOAD_ERROR!r}")
+    if total < 20:
+        st.sidebar.warning(
+            f"Only **{total}** songs loaded — expected 80+. Check song_catalog/ on deploy."
+        )
+    elif visible < total:
+        st.sidebar.info(
+            f"Filters hide {total - visible} songs. Open **Refine library** and choose "
+            "**Include practice approximations** + **Any non-placeholder** for the full list."
+        )
 
 
 def _fmt_global_pick(opt: str) -> str:
@@ -4288,21 +4391,212 @@ def _on_global_source_change() -> None:
 
 
 def _on_global_genre_change() -> None:
-    g = st.session_state["global_quick_genre"]
-    opts = _global_quick_songs_for_genre(g)
+    g = st.session_state.get("global_quick_genre", _ALL_GENRE_FILTER)
+    opts = _pick_keys_from_records(_picker_visible_records(), genre=g)
     if not opts:
         return
-    st.session_state["global_quick_song"] = opts[0]
-    set_catalog_source(st.session_state)
-    apply_pick_key(st, opts[0], SONG_PICKER_CATALOG)
-    note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-    st.rerun()
+    current = st.session_state.get("global_quick_song")
+    if current not in opts:
+        st.session_state["global_quick_song"] = opts[0]
+        set_catalog_source(st.session_state)
+        apply_pick_key(st, opts[0], SONG_PICKER_CATALOG)
+        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        st.rerun()
 
 
 def _on_global_song_change() -> None:
     set_catalog_source(st.session_state)
     apply_pick_key(st, st.session_state["global_quick_song"], SONG_PICKER_CATALOG)
     note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+
+
+def _picker_visible_records() -> list[dict]:
+    _apply_catalog_filter_defaults()
+    st.session_state.setdefault("chart_library_mode", DEFAULT_CHART_LIBRARY_MODE)
+    st.session_state.setdefault("song_picker_chart_status", DEFAULT_CHART_STATUS_FILTER)
+    st.session_state.setdefault("song_search_scope", "Entire library")
+    st.session_state.setdefault("song_picker_level_filter", "Any level")
+    mode = st.session_state.get("chart_library_mode", DEFAULT_CHART_LIBRARY_MODE)
+    visible = visible_records_for_mode(ALL_SONG_RECORDS, mode)
+    status_filter = st.session_state.get("song_picker_chart_status", DEFAULT_CHART_STATUS_FILTER)
+    level_filter = st.session_state.get("song_picker_level_filter", "Any level")
+    visible = filter_records_by_chart_status(visible, status_filter)
+    visible = filter_records_by_level(visible, level_filter)
+    return visible
+
+
+def _render_catalog_song_picker_block(
+    *,
+    show_source_toggle: bool = True,
+    filters_in_expander: bool = False,
+) -> None:
+    """Song selector at top of Practice / Picker — search, then pick."""
+    st.markdown(
+        '<div class="ui-practice-top"><p class="ui-practice-top-title">Choose a song</p></div>',
+        unsafe_allow_html=True,
+    )
+
+    if show_source_toggle:
+        _picker_source_options = [
+            "Song Picker (catalog song)",
+            "Use Custom Progression / Create Your Own Song",
+        ]
+        _picker_source_index = 1 if is_custom_progression(st.session_state) else 0
+        picker_source = st.radio(
+            "Active music source",
+            _picker_source_options,
+            index=_picker_source_index,
+            horizontal=True,
+            key="song_picker_active_source",
+        )
+        if picker_source.startswith("Use Custom"):
+            if not is_custom_progression(st.session_state):
+                set_custom_source(st.session_state)
+                note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+                st.rerun()
+            _cpl_pick = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+            st.info(
+                f"**Custom Progression** — {_cpl_pick.get('name', 'Untitled')}. "
+                "Edit in **Custom** · transpose in the control strip above."
+            )
+            return
+        if is_custom_progression(st.session_state):
+            set_catalog_source(st.session_state)
+            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+            st.rerun()
+
+    visible_song_records = _picker_visible_records()
+    filter_genre = None
+    if st.session_state.get("song_search_scope") == "Single genre":
+        visible_genres = [g for g in GENRES if any(r.get("genre") == g for r in visible_song_records)]
+        if visible_genres:
+            filter_genre = st.selectbox(
+                "Genre",
+                visible_genres,
+                key="picker_genre",
+            )
+
+    search_text = st.session_state.get("song_search_text", "")
+    filtered = search_records(
+        visible_song_records,
+        search_text,
+        genre=filter_genre,
+        limit=max(500, len(ALL_SONG_RECORDS)),
+    )
+    if not filtered:
+        filtered = list(visible_song_records)
+
+    master_sel = st.session_state.get("selected_song") or {}
+    master_pk = master_sel.get("pick_key")
+    master_rec = record_for_pick_key(visible_song_records, master_pk) if master_pk else None
+    if master_rec:
+        mk = format_pick_key(master_rec["genre"], f"{master_rec['title']} — {master_rec['artist']}")
+        if mk not in {format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered}:
+            filtered = [master_rec] + filtered
+
+    pick_options = [format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered]
+
+    if not pick_options:
+        st.warning("No songs match — widen filters in **Refine library** below.")
+        return
+
+    if st.session_state.get("matching_song_dropdown") not in pick_options:
+        st.session_state.matching_song_dropdown = (
+            master_pk if master_pk in pick_options else pick_options[0]
+        )
+
+    def _on_song_dropdown_change():
+        set_catalog_source(st.session_state)
+        apply_pick_key(st, st.session_state["matching_song_dropdown"], SONG_PICKER_CATALOG)
+        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        try:
+            st.toast("Song updated — chart and backing track follow this selection.", icon="🎵")
+        except Exception:
+            pass
+
+    st.selectbox(
+        "Active song",
+        pick_options,
+        format_func=lambda opt: f"{parse_pick_key(opt)[1]}  [{parse_pick_key(opt)[0]}]",
+        key="matching_song_dropdown",
+        on_change=_on_song_dropdown_change,
+    )
+
+    st.text_input(
+        "Search songs",
+        placeholder="Title, artist, genre…",
+        key="song_search_text",
+    )
+    st.caption(
+        f"**{len(filtered)}** of **{len(ALL_SONG_RECORDS)}** songs shown "
+        f"(library mode: {st.session_state.get('chart_library_mode', DEFAULT_CHART_LIBRARY_MODE)}). "
+        "Key & level: control strip above."
+    )
+
+    if filters_in_expander:
+        with st.expander("Refine library (status, level, chart mode)", expanded=False):
+            st.radio(
+                "Chart library",
+                ["Trusted core charts only", "Include practice approximations"],
+                horizontal=True,
+                key="chart_library_mode",
+            )
+            st.radio(
+                "Search scope",
+                ["Entire library", "Single genre"],
+                horizontal=True,
+                key="song_search_scope",
+            )
+            c1, c2 = st.columns(2)
+            with c1:
+                st.selectbox(
+                    "Chart status",
+                    [
+                        "Any non-placeholder",
+                        "Trusted core",
+                        "Verified",
+                        "Practice approximation",
+                    ],
+                    key="song_picker_chart_status",
+                )
+            with c2:
+                st.selectbox(
+                    "Chart level available",
+                    ["Any level", "Beginner", "Intermediate", "Advanced"],
+                    key="song_picker_level_filter",
+                )
+    else:
+        with st.expander("Refine search & filters", expanded=False):
+            st.radio(
+                "Chart library",
+                ["Trusted core charts only", "Include practice approximations"],
+                horizontal=True,
+                key="chart_library_mode",
+            )
+            st.radio(
+                "Search scope",
+                ["Entire library", "Single genre"],
+                horizontal=True,
+                key="song_search_scope",
+            )
+            c1, c2 = st.columns(2)
+            with c1:
+                st.selectbox(
+                    "Chart status",
+                    [
+                        "Any non-placeholder",
+                        "Trusted core",
+                        "Verified",
+                        "Practice approximation",
+                    ],
+                    key="song_picker_chart_status",
+                )
+            with c2:
+                st.selectbox(
+                    "Chart level available",
+                    ["Any level", "Beginner", "Intermediate", "Advanced"],
+                    key="song_picker_level_filter",
+                )
 
 
 # -------------------------------------------------
@@ -4372,6 +4666,15 @@ _focus_options = focus_options_for_instrument(st.session_state.get("instrument",
 if st.session_state.get("focus") not in _focus_options:
     st.session_state["focus"] = _focus_options[0]
 
+sidebar_section("Library", icon="📚")
+_render_catalog_health_debug()
+with st.sidebar.expander("Catalog debug", expanded=False):
+    st.write("Songs loaded:", len(ALL_SONG_RECORDS))
+    st.write("Songs visible (filters):", len(_picker_visible_records()))
+    st.write("Genres:", len(GENRES))
+    if CATALOG_LOAD_ERROR:
+        st.write("Load error:", repr(CATALOG_LOAD_ERROR))
+
 sidebar_section("Session", icon="⏱️")
 minutes = st.sidebar.slider("Practice minutes", 10, 120, 30, 5)
 
@@ -4388,9 +4691,17 @@ else:
     if _fallback_opts:
         st.session_state.setdefault("global_quick_song", _fallback_opts[0])
 
-_global_genres = [g for g in GENRES if g in SONG_PICKER_CATALOG and SONG_PICKER_CATALOG[g]]
-_global_song_opts = _global_quick_songs_for_genre(
-    st.session_state.get("global_quick_genre", _catalog_genre)
+_apply_catalog_filter_defaults()
+_visible_catalog_records = _picker_visible_records()
+_global_genres = [_ALL_GENRE_FILTER] + [
+    g for g in GENRES if g in SONG_PICKER_CATALOG and SONG_PICKER_CATALOG[g]
+]
+_gg = st.session_state.get("global_quick_genre", _catalog_genre)
+if _gg not in _global_genres:
+    st.session_state["global_quick_genre"] = _catalog_genre if _catalog_genre in _global_genres else _ALL_GENRE_FILTER
+_global_song_opts = _pick_keys_from_records(
+    _visible_catalog_records,
+    genre=st.session_state.get("global_quick_genre", _ALL_GENRE_FILTER),
 )
 if _master_pk and _master_pk not in _global_song_opts:
     _global_song_opts = [_master_pk] + _global_song_opts
@@ -4543,47 +4854,118 @@ lyric_cues = {
     **lyric_cues_from_section_lyrics(section_lyrics),
 }
 
+_ensure_song_bpm_defaults(song, song_data)
+_practice_bpm = int(st.session_state.get("backing_track_bpm", default_song_bpm(song, song_data)))
+_practice_groove = infer_groove_style(song_data, st.session_state.get("backing_groove_style", "Auto"))
+
 # -------------------------------------------------
 # PRACTICE
 # -------------------------------------------------
 
 if _studio_page == "practice":
 
-    compact_page_title("🎯", "Practice", "Coach exercises, chord tools, and transpose helpers.")
+    compact_page_title("🎯", "Song Practice", "Pick a song, set key & level above, then practice with chart and backing.")
 
-    exercise_key = (
-        f"exercise_variation::{song}::{instrument}::{level}::{focus}"
+    # 1–2. Song selector + search (top)
+    _render_catalog_song_picker_block(show_source_toggle=True, filters_in_expander=True)
+
+    # 3–4. Key / level / focus recap (control strip is above; local quick row)
+    st.markdown(
+        f'<div class="ui-badge-row">'
+        f'<span class="ui-badge accent">{html.escape(_ui_source_label())}</span>'
+        f'<span class="ui-badge green">Key {html.escape(display_key)}</span>'
+        f'<span class="ui-badge">{html.escape(level)}</span>'
+        f'<span class="ui-badge">{html.escape(instrument)}</span>'
+        f'<span class="ui-badge purple">{html.escape(focus)}</span>'
+        f"</div>",
+        unsafe_allow_html=True,
     )
+
+    _sec_order = [name for name, chs in section_order(sections) if chs]
+    _focus_section = render_section_jump_bar(
+        _sec_order,
+        st.session_state,
+        state_key="practice_focus_section",
+        rerun_fn=st.rerun,
+    )
+
+    # 5. Backing track quick controls
+    with st.expander("🎧 Backing track (quick)", expanded=False):
+        bc1, bc2, bc3 = st.columns(3)
+        with bc1:
+            st.slider(
+                "BPM",
+                50,
+                180,
+                _practice_bpm,
+                1,
+                key="practice_page_bpm",
+            )
+            st.session_state["backing_track_bpm"] = st.session_state["practice_page_bpm"]
+        with bc2:
+            st.selectbox(
+                "Groove",
+                ["Auto", "Pop groove", "Rock groove", "Jazz swing", "Bossa nova", "Funk groove", "Ballad"],
+                key="backing_groove_style",
+            )
+        with bc3:
+            if st.button("Open full Backing Track page", use_container_width=True, type="primary"):
+                st.session_state["studio_page"] = "backing"
+                st.rerun()
+        if st.button("▶ Generate backing (full page has chart follow)", key="practice_gen_backing_hint"):
+            st.session_state["studio_page"] = "backing"
+            st.rerun()
+
+    # 7. Chord chart (lead sheet)
+    _chart_html = full_chord_markdown(
+        song,
+        song_data,
+        sections,
+        instrument,
+        display_key=display_key,
+        level=level,
+        lyric_cues=lyric_cues,
+        section_lyrics=section_lyrics,
+        groove_style=_practice_groove,
+        bpm=_practice_bpm,
+        time_signature=default_time_signature(song, sections),
+        current_section=_focus_section,
+        focus=focus,
+    )
+    with st.expander("📋 Chord chart & sections", expanded=True):
+        st.markdown(_chart_html, unsafe_allow_html=True)
+
+    # 6. Practice coach & settings
+    exercise_key = f"exercise_variation::{song}::{instrument}::{level}::{focus}"
     if exercise_key not in st.session_state:
         st.session_state[exercise_key] = 0
 
-    st.markdown(
-        '<div class="ui-card soft"><div class="ui-card-title">Personalized coach exercise</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        song_practice_plan(
-            song,
-            sections,
-            instrument,
-            level,
-            focus,
-            st.session_state[exercise_key],
-            section_lyrics=section_lyrics,
-            minutes=minutes,
+    with st.expander("🎯 Practice coach & session settings", expanded=True):
+        st.caption(f"Session length: **{minutes} min** (sidebar) · key & level in control strip above.")
+        st.markdown(
+            '<div class="ui-card soft"><div class="ui-card-title">Personalized coach exercise</div>',
+            unsafe_allow_html=True,
         )
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    col_ex_a, col_ex_b = st.columns([1, 2])
-
-    with col_ex_a:
-        if st.button("🔄 New exercise", use_container_width=True):
-            st.session_state[exercise_key] += 1
-            st.rerun()
-
-    with col_ex_b:
-        st.caption("Rotates section targets and raises demand gradually.")
+        st.markdown(
+            song_practice_plan(
+                song,
+                sections,
+                instrument,
+                level,
+                focus,
+                st.session_state[exercise_key],
+                section_lyrics=section_lyrics,
+                minutes=minutes,
+            )
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        col_ex_a, col_ex_b = st.columns([1, 2])
+        with col_ex_a:
+            if st.button("🔄 New exercise", use_container_width=True):
+                st.session_state[exercise_key] += 1
+                st.rerun()
+        with col_ex_b:
+            st.caption("Rotates section targets and raises demand gradually.")
 
     with st.expander("🎸 Musician tools — chord coach", expanded=False):
         render_chord_coach_ui(
@@ -4687,199 +5069,16 @@ elif _studio_page == "picker":
 
     compact_page_title(
         "📚",
-        "Song Picker",
-        "Choose a catalog song or switch to your custom progression.",
+        "Song Library",
+        "Choose a song — then open **Practice** or **Backing** for charts and playback.",
     )
 
-    _picker_source_options = [
-        "Song Picker (catalog song)",
-        "Use Custom Progression / Create Your Own Song",
-    ]
-    _picker_source_index = (
-        1 if is_custom_progression(st.session_state) else 0
-    )
-    picker_source = st.radio(
-        "Active music source",
-        _picker_source_options,
-        index=_picker_source_index,
-        horizontal=True,
-        key="song_picker_active_source",
-    )
-    if picker_source.startswith("Use Custom"):
-        if not is_custom_progression(st.session_state):
-            set_custom_source(st.session_state)
-            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-            st.rerun()
-        _cpl_pick = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
-        st.success(
-            f"**Active source: Custom Progression** — {_cpl_pick.get('name', 'Untitled progression')}. "
-            "Practice, Backing Track, and Creative Lab use these chords."
-        )
-        st.info(
-            "Build or edit your progression in the **Custom Progression Lab** tab. "
-            "Use **Display / practice key** in the control strip above to transpose for practice."
-        )
-    else:
-        if is_custom_progression(st.session_state):
-            set_catalog_source(st.session_state)
-            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-            st.rerun()
+    _render_catalog_song_picker_block(show_source_toggle=True, filters_in_expander=False)
 
-    chart_library_mode = st.radio(
-        "Chart library",
-        ["Trusted core charts only", "Include practice approximations"],
-        horizontal=True,
-        key="chart_library_mode",
-    )
-
-    visible_song_records = visible_records_for_mode(
-        ALL_SONG_RECORDS,
-        chart_library_mode,
-    )
-
-    filt_a, filt_b = st.columns(2)
-    with filt_a:
-        status_filter = st.selectbox(
-            "Chart status",
-            [
-                "Any non-placeholder",
-                "Trusted core",
-                "Verified",
-                "Practice approximation",
-            ],
-            index=1 if chart_library_mode == "Trusted core charts only" else 0,
-            key="song_picker_chart_status",
-        )
-    with filt_b:
-        level_filter = st.selectbox(
-            "Chart level available",
-            ["Any level", "Beginner", "Intermediate", "Advanced"],
-            index=0,
-            key="song_picker_level_filter",
-        )
-
-    visible_song_records = filter_records_by_chart_status(
-        visible_song_records,
-        status_filter,
-    )
-    visible_song_records = filter_records_by_level(
-        visible_song_records,
-        level_filter,
-    )
-
-    visible_genres = [
-        g for g in GENRES
-        if any(r.get("genre") == g for r in visible_song_records)
-    ]
-
-    st.caption(
-        f"**{len(visible_song_records)} songs** visible · charts live in **Backing Track** and **Practice**."
-    )
-
-    search_scope = st.radio(
-        "Search scope",
-        ["Entire library", "Single genre"],
-        horizontal=True,
-        key="song_search_scope",
-    )
-
-    filter_genre = None
-    if search_scope == "Single genre":
-        if visible_genres:
-            filter_genre = st.selectbox(
-                "Genre filter",
-                visible_genres,
-                index=visible_genres.index(genre) if genre in visible_genres else 0,
-                key="picker_genre",
-            )
-        else:
-            st.warning("No genres match the current chart filters.")
-
-    search_text = st.text_input(
-        "Search songs",
-        placeholder="Title, artist, composer, genre…",
-        key="song_search_text",
-    )
-
-    filtered = search_records(
-        visible_song_records,
-        search_text,
-        genre=filter_genre,
-        limit=150,
-    )
-
-    if not filtered:
-        st.info("No matches — clear the box or try a shorter fragment to see more songs.")
-        filtered = visible_song_records[:80]
-
-    master_sel = st.session_state.get("selected_song") or {}
-    master_pk = master_sel.get("pick_key")
-    master_rec = record_for_pick_key(visible_song_records, master_pk) if master_pk else None
-    if master_rec:
-        row_keys = {
-            format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
-            for r in filtered
-        }
-        mk = format_pick_key(
-            master_rec["genre"],
-            f"{master_rec['title']} — {master_rec['artist']}",
-        )
-        if mk not in row_keys:
-            filtered = [master_rec] + filtered
-
-    pick_options = [
-        format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
-        for r in filtered
-    ]
-
-    def _fmt_pick(opt: str) -> str:
-        g, lab = parse_pick_key(opt)
-        return f"{lab}  [{g}]"
-
-    if picker_source.startswith("Use Custom"):
-        st.caption("Catalog search is hidden while Custom Progression is the active source.")
-    elif not pick_options:
-
-        st.warning("No songs match this filter. Widen your search.")
-
-        pick_key = master_pk
-
-    else:
-
-        if st.session_state.get("matching_song_dropdown") not in pick_options:
-
-            st.session_state.matching_song_dropdown = (
-                master_pk if master_pk in pick_options else pick_options[0]
-            )
-
-        def _on_song_dropdown_change():
-
-            set_catalog_source(st.session_state)
-            apply_pick_key(
-                st,
-                st.session_state["matching_song_dropdown"],
-                SONG_PICKER_CATALOG,
-            )
-
-            try:
-
-                st.toast("Song selected. Go to Backing Track, Practice, or Multitrack Recorder.", icon="🎵")
-
-            except Exception:
-
-                pass
-
-        st.selectbox(
-            "Matching songs (pick one — this becomes the app-wide active song)",
-            pick_options,
-            format_func=_fmt_pick,
-            key="matching_song_dropdown",
-            on_change=_on_song_dropdown_change,
-        )
-
-        pick_key = st.session_state["matching_song_dropdown"]
-
-    if not picker_source.startswith("Use Custom"):
+    if not is_custom_progression(st.session_state):
+        pick_key = st.session_state.get("matching_song_dropdown")
+        if not pick_key:
+            st.stop()
         pick_genre, pick_label = parse_pick_key(pick_key)
         selected_data = SONG_PICKER_CATALOG[pick_genre][pick_label]
 

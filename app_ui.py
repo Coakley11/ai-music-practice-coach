@@ -14,6 +14,7 @@ __all__ = [
     "inject_app_theme",
     "page_header",
     "render_global_studio_bar",
+    "render_section_jump_bar",
     "render_studio_nav",
     "session_badges",
     "sidebar_section",
@@ -232,8 +233,40 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   font-size: 0.84rem;
   margin: -0.25rem 0 0.65rem 0;
 }
+.ui-section-jump {
+  border: 1px solid var(--studio-line);
+  border-radius: var(--studio-radius);
+  padding: 0.45rem 0.5rem;
+  margin: 0 0 0.65rem 0;
+  background: #fff;
+  position: sticky;
+  top: 2.85rem;
+  z-index: 88;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+.ui-section-jump .jump-btn button {
+  font-size: 0.76rem !important;
+  padding: 0.32rem 0.45rem !important;
+  min-height: 1.85rem !important;
+}
+.ui-practice-top {
+  border: 1px solid #bfdbfe;
+  border-radius: var(--studio-radius);
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.65rem;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+.ui-practice-top-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 0.45rem 0;
+}
 @media (max-width: 900px) {
   .ui-global-bar { position: relative; top: 0; }
+  .ui-section-jump { top: 0.25rem; }
   .lead-grid { grid-template-columns: repeat(2, minmax(88px, 1fr)) !important; }
 }
 </style>
@@ -486,6 +519,60 @@ def compact_page_title(icon: str, title: str, subtitle: str = "") -> None:
         f'<p class="ui-compact-title">{html.escape(icon)} {html.escape(title)}</p>{sub}',
         unsafe_allow_html=True,
     )
+
+
+def _short_section_label(name: str) -> str:
+    low = name.lower()
+    if "verse" in low:
+        return "Verse"
+    if "pre" in low and "chorus" in low:
+        return "Pre"
+    if "chorus" in low:
+        return "Chorus"
+    if "bridge" in low:
+        return "Bridge"
+    if "outro" in low:
+        return "Outro"
+    if "intro" in low:
+        return "Intro"
+    return name.split("/")[0].split("(")[0].strip()[:12] or name
+
+
+def render_section_jump_bar(
+    section_names: list[str],
+    session_state: Any,
+    *,
+    state_key: str = "practice_focus_section",
+    rerun_fn: Optional[Any] = None,
+) -> Optional[str]:
+    """Sticky quick-jump chips for verse / chorus / bridge / outro."""
+    import streamlit as st
+
+    names = [n for n in section_names if n]
+    if not names:
+        return None
+    current = session_state.get(state_key)
+    if current not in names:
+        session_state[state_key] = names[0]
+        current = names[0]
+    st.markdown('<div class="ui-section-jump">', unsafe_allow_html=True)
+    cols = st.columns(min(len(names), 6))
+    for col, name in zip(cols, names[:6]):
+        with col:
+            st.markdown('<div class="jump-btn">', unsafe_allow_html=True)
+            if st.button(
+                _short_section_label(name),
+                key=f"sec_jump_{state_key}_{name}",
+                use_container_width=True,
+                type="primary" if name == current else "secondary",
+                help=name,
+            ):
+                session_state[state_key] = name
+                if rerun_fn:
+                    rerun_fn()
+            st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    return session_state.get(state_key)
 
 
 def follow_along_status_html(pos: dict[str, Any]) -> str:

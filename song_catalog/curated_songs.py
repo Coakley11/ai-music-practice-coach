@@ -67,8 +67,17 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
     harmonic rhythm.
     """
 
-    def pack(key, beginner, intermediate, advanced=None, status="practice_simplified"):
-        return {
+    def pack(
+        key,
+        beginner,
+        intermediate,
+        advanced=None,
+        status="practice_simplified",
+        *,
+        lyric_cues: dict[str, list[str]] | None = None,
+        extensions: dict[str, Any] | None = None,
+    ):
+        row = {
             "key": key,
             "sections": intermediate,
             "chart_versions": _levels(
@@ -78,6 +87,11 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
             ),
             "chart_status": status,
         }
+        if lyric_cues:
+            row["lyric_cues"] = lyric_cues
+        if extensions:
+            row["extensions"] = extensions
+        return row
 
     return {
         ("Say", "John Mayer"): pack("Bb",
@@ -129,28 +143,50 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Outro": ["G6", "Cmaj9/G", "G6", "Cmaj9/G"],
             },
         ),
-        ("Shape of You", "Ed Sheeran"): pack("C#m",
+        ("Shape of You", "Ed Sheeran"): pack(
+            "Bm",
             {
-                "Main Loop": ["C#m", "F#m", "A", "B"],
-                "Verse": ["C#m", "F#m", "A", "B", "C#m", "F#m", "A", "B"],
-                "Pre-Chorus": ["C#m", "F#m", "A", "B", "C#m", "F#m", "A", "B"],
-                "Chorus": ["C#m", "F#m", "A", "B", "C#m", "F#m", "A", "B"],
-                "Bridge / Breakdown": ["C#m", "F#m", "A", "B"],
+                "Intro": ["Bm", "Em", "G", "A"],
+                "Verse": ["Bm", "Em", "G", "A"],
+                "Pre-Chorus": ["Bm", "Em", "G", "A"],
+                "Chorus": ["Bm", "Em", "G", "A"],
+                "Bridge": ["Bm", "Em", "G", "A"],
+                "Outro": ["Bm", "Em", "G", "A"],
             },
             {
-                "Main Loop": ["C#m7", "F#m7", "Aadd9", "B"],
-                "Verse": ["C#m7", "F#m7", "Aadd9", "B", "C#m7", "F#m7", "Aadd9", "B"],
-                "Pre-Chorus": ["C#m7", "F#m7", "Aadd9", "B", "C#m7", "F#m7", "Aadd9", "B"],
-                "Chorus": ["C#m7", "F#m7", "Aadd9", "B", "C#m7", "F#m7", "Aadd9", "B"],
-                "Bridge / Breakdown": ["C#m7", "F#m7", "Aadd9", "B"],
+                "Intro": ["Bm", "Em", "G", "A"],
+                "Verse": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
+                "Pre-Chorus": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
+                "Chorus": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
+                "Bridge": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
+                "Outro": ["Bm", "Em", "G", "A"],
             },
             {
-                "Main Loop": ["C#m9", "F#m9", "Amaj9", "B13sus"],
-                "Verse": ["C#m9", "F#m9", "Amaj9", "B13sus", "C#m9", "F#m9", "Amaj9", "B13sus"],
-                "Pre-Chorus": ["C#m9", "F#m9", "Amaj9", "B13sus", "C#m9", "F#m9", "Amaj9", "B13sus"],
-                "Chorus": ["C#m9", "F#m9", "Amaj9", "B13sus", "C#m9", "F#m9", "Amaj9", "B13sus"],
-                "Bridge / Breakdown": ["C#m9", "F#m9", "Amaj9", "B13sus"],
+                "Intro": ["Bm7", "Em7", "Gmaj7", "Asus2"],
+                "Verse": ["Bm7", "Em7", "Gmaj7", "Asus2", "Bm7", "Em7", "Gmaj7", "Asus2"],
+                "Pre-Chorus": ["Bm7", "Em7", "Gmaj7", "Asus2", "Bm7", "Em7", "Gmaj7", "Asus2"],
+                "Chorus": ["Bm7", "Em7", "Gmaj7", "Aadd9", "Bm7", "Em7", "Gmaj7", "Aadd9"],
+                "Bridge": ["Bm7", "Em7", "Gmaj7", "Aadd9", "N.C.", "N.C.", "Bm7", "Em7"],
+                "Outro": ["Bm7", "Em7", "Gmaj7", "Aadd9"],
             },
+            status="practice_level_verified",
+            lyric_cues={
+                "Intro": ["percussion / marimba loop enters"],
+                "Verse": ["syncopated vocal pickup over loop"],
+                "Pre-Chorus": ["lift before hook — keep groove steady"],
+                "Chorus": ["title-hook rhythm — lock the loop"],
+                "Bridge": ["breakdown / vocal-only bars then loop returns"],
+                "Outro": ["fade on main loop vamp"],
+            },
+            extensions=_ext(
+                arrangement_notes=(
+                    "Radio-accurate **Bm–Em–G–A** loop (one chord per bar, 4/4). "
+                    "Recording key is C#m; transpose with Display Key as needed. "
+                    "Default groove: pop syncopation ~96 BPM — keep the loop even."
+                ),
+                default_bpm=96,
+                default_groove="Pop groove",
+            ),
         ),
         ("Perfect", "Ed Sheeran"): pack("Ab",
             {
@@ -1436,12 +1472,13 @@ def curated_song_records() -> list[dict[str, Any]]:
         }),
 
         # --- Ed Sheeran ---
-        _s("Shape of You", "Ed Sheeran", "Pop", "C#m", {
-            "Intro / Main Loop": ["C#m7", "F#m7", "A", "B"],
-            "Verse": ["C#m7", "F#m7", "A", "B", "C#m7", "F#m7", "A", "B"],
-            "Pre-Chorus": ["C#m7", "F#m7", "A", "B", "C#m7", "F#m7", "A", "B"],
-            "Chorus": ["C#m7", "F#m7", "A", "B", "C#m7", "F#m7", "A", "B"],
-            "Bridge": ["C#m7", "F#m7", "A", "B"],
+        _s("Shape of You", "Ed Sheeran", "Pop", "Bm", {
+            "Intro": ["Bm", "Em", "G", "A"],
+            "Verse": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
+            "Pre-Chorus": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
+            "Chorus": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
+            "Bridge": ["Bm", "Em", "G", "A"],
+            "Outro": ["Bm", "Em", "G", "A"],
         }),
         _s("Perfect", "Ed Sheeran", "Pop", "G", {
             "Intro": ["G", "G", "Em7", "Cadd9"],

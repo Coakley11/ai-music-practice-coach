@@ -304,6 +304,17 @@ def deep_harmonic_analysis_text(ctx, all_chords_from_sections, chord_quality_fn)
                 "- Comping: spread dominants (C9, C13sus4) in the right hand; let slash bass notes "
                 "anchor the left hand on beat 1. Chorus Bbmaj7↔Ebmaj9 should still feel like a simple lift."
             )
+    elif "shape of you" in title:
+        out.append("\n## Song-Specific Insight")
+        out.append(
+            "- **Shape of You** is a repeating **Bm→Em→G→A** pop loop (recording in C#m). "
+            "Keep the groove even at ~96 BPM; Advanced adds **Bm7, Em7, Gmaj7, Asus2/Aadd9** only as color."
+        )
+        if ctx["level"] == "Advanced":
+            out.append(
+                "- Do not reharmonize the loop—syncopation and pocket matter more than extra changes. "
+                "Bridge **N.C.** bars are breakdown space; return to the same loop energy."
+            )
     elif "billie jean" in title:
         out.append("\n## Song-Specific Insight")
         out.append(
