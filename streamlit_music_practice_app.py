@@ -96,6 +96,7 @@ from songs import (
     note_display_key_change,
     on_cpl_jump_home_key,
     prepare_cpl_jump_home,
+    request_display_key,
     section_order,
     set_catalog_source,
     set_custom_source,
@@ -4362,8 +4363,6 @@ _display_key_options = sync_display_key_before_widget(
     original_key,
     _song_identity,
 )
-if "display_key" not in st.session_state:
-    st.session_state["display_key"] = original_key
 
 _instrument_options = [
     "Piano", "Guitar", "Bass", "Saxophone", "Flute",
@@ -4428,10 +4427,13 @@ instrument = st.session_state.get("instrument", "Piano")
 level = st.session_state.get("level", "Intermediate")
 focus = st.session_state.get("focus", _focus_options[0])
 display_key = st.session_state.get("display_key", original_key)
-st.session_state["display_key"] = display_key
-if st.session_state.get("display_key") not in _display_key_options:
-    st.session_state["display_key"] = original_key
-    display_key = original_key
+if display_key not in _display_key_options:
+    display_key = (
+        original_key
+        if original_key in _display_key_options
+        else _display_key_options[0]
+    )
+    request_display_key(st, display_key)
 key_changed_this_run = note_display_key_change(st, display_key)
 
 _chart_bundle = build_active_chart_bundle(

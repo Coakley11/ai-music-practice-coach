@@ -91,14 +91,15 @@ def prepare_cpl_jump_home(st: Any, home_key: str) -> None:
 
 
 def on_cpl_jump_home_key() -> None:
-    """Button callback: runs before widgets on the next rerun."""
+    """Button callback: queue display-key change before the widget is built on rerun."""
     import streamlit as st
 
-    target = st.session_state.get(CPL_JUMP_HOME_TARGET)
+    target = st.session_state.pop(CPL_JUMP_HOME_TARGET, None)
     if not target:
         return
-    st.session_state["display_key"] = target
-    mark_display_key_changed(st)
+    request_display_key(st, target)
+    invalidate_backing_cache(st)
+    st.session_state[BACKING_NEEDS_REGEN] = True
 
 
 def note_display_key_change(st: Any, display_key: str) -> bool:
