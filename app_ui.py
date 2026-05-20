@@ -21,7 +21,8 @@ def inject_app_theme() -> None:
   --studio-soft: #f8fafc;
   --studio-radius: 14px;
 }
-.block-container { padding-top: 1.25rem; max-width: 1180px; }
+.block-container { padding-top: 0.65rem; max-width: 1180px; }
+[data-testid="stVerticalBlock"] > div:empty { display: none; }
 header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-filter: blur(8px); }
 [data-testid="stSidebar"] {
   background: linear-gradient(180deg, #0f172a 0%, #111827 42%, #1e293b 100%);
@@ -178,6 +179,48 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   .ui-hero-title { font-size: 1.28rem; }
 }
 div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25rem; }
+.ui-studio-nav {
+  border: 1px solid var(--studio-line);
+  border-radius: var(--studio-radius);
+  padding: 0.45rem 0.5rem;
+  margin-bottom: 0.55rem;
+  background: #fff;
+}
+.ui-studio-nav .nav-btn button {
+  font-size: 0.78rem !important;
+  padding: 0.35rem 0.5rem !important;
+  min-height: 2rem !important;
+}
+.ui-global-bar {
+  border: 1px solid #bfdbfe;
+  border-radius: var(--studio-radius);
+  padding: 0.55rem 0.65rem 0.45rem 0.65rem;
+  margin-bottom: 0.65rem;
+  background: linear-gradient(180deg, #eff6ff, #ffffff);
+  position: sticky;
+  top: 0.35rem;
+  z-index: 99;
+}
+.ui-global-bar .stSelectbox label, .ui-global-bar .stSlider label {
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+}
+.ui-compact-title {
+  font-size: 1.12rem;
+  font-weight: 850;
+  color: var(--studio-ink);
+  margin: 0 0 0.5rem 0;
+  line-height: 1.25;
+}
+.ui-compact-sub {
+  color: var(--studio-muted);
+  font-size: 0.84rem;
+  margin: -0.25rem 0 0.65rem 0;
+}
+@media (max-width: 900px) {
+  .ui-global-bar { position: relative; top: 0; }
+  .lead-grid { grid-template-columns: repeat(2, minmax(88px, 1fr)) !important; }
+}
 </style>
         """,
         unsafe_allow_html=True,
@@ -257,6 +300,175 @@ def sidebar_source_banner(markdown_text: str) -> None:
 
     st.sidebar.markdown(
         f'<div class="ui-source-banner">{markdown_text}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+STUDIO_PAGES: list[tuple[str, str]] = [
+    ("practice", "🎯 Practice"),
+    ("picker", "📚 Songs"),
+    ("backing", "🎧 Backing"),
+    ("custom", "✏️ Custom"),
+    ("creative", "🧠 Creative"),
+    ("multitrack", "🎚️ Multi"),
+    ("analysis", "🎙️ Analysis"),
+    ("log", "📓 Log"),
+]
+
+
+def ensure_studio_page(session_state: dict[str, Any], default: str = "practice") -> str:
+    return session_state.setdefault("studio_page", default)
+
+
+def render_studio_nav(session_state: Any, *, rerun_fn: Any) -> str:
+    """Horizontal workspace navigation (replaces tall tab strip)."""
+    import streamlit as st
+
+    current = ensure_studio_page(session_state)
+    st.markdown('<div class="ui-studio-nav">', unsafe_allow_html=True)
+    cols = st.columns(len(STUDIO_PAGES))
+    for col, (page_id, label) in zip(cols, STUDIO_PAGES):
+        with col:
+            st.markdown('<div class="nav-btn">', unsafe_allow_html=True)
+            if st.button(
+                label,
+                key=f"nav_{page_id}",
+                use_container_width=True,
+                type="primary" if page_id == current else "secondary",
+            ):
+                if page_id != current:
+                    session_state["studio_page"] = page_id
+                    rerun_fn()
+            st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    return session_state.get("studio_page", current)
+
+
+def render_global_studio_bar(
+    *,
+    song: str,
+    genre: str,
+    source_label: str,
+    original_key: str,
+    display_key_options: list[str],
+    instrument_options: list[str],
+    focus_options: list[str],
+    show_bpm: bool = False,
+    bpm_key: str = "backing_track_bpm",
+    backing_ready: bool = False,
+    on_display_key_change: Any | None = None,
+    is_custom_source: bool = False,
+    custom_progression_name: str = "",
+    genre_options: list[str] | None = None,
+    current_genre: str = "",
+    song_pick_options: list[str] | None = None,
+    format_pick_label: Any | None = None,
+    on_source_change: Any | None = None,
+    on_genre_change: Any | None = None,
+    on_song_change: Any | None = None,
+    session_state: Any | None = None,
+    rerun_fn: Any | None = None,
+) -> None:
+    """Primary controls — visible above every page (song, key, level, instrument)."""
+    import streamlit as st
+
+    ss = session_state if session_state is not None else st.session_state
+    st.markdown('<div class="ui-global-bar">', unsafe_allow_html=True)
+    row1 = st.columns([2.0, 1.35, 1.0, 1.0, 1.0, 0.9])
+    with row1[0]:
+        genre_bit = f" · {genre}" if genre else ""
+        st.markdown(f"**{html.escape(song)}**{html.escape(genre_bit)}")
+        st.caption(f"{source_label} · home **{original_key}**")
+    with row1[1]:
+        st.selectbox(
+            "Display / practice key",
+            display_key_options,
+            key="display_key",
+            help="Transpose charts and backing audio.",
+            on_change=on_display_key_change,
+        )
+    with row1[2]:
+        st.selectbox("Level", ["Beginner", "Intermediate", "Advanced"], key="level")
+    with row1[3]:
+        st.selectbox("Instrument", instrument_options, key="instrument")
+    with row1[4]:
+        st.selectbox("Focus", focus_options, key="focus")
+    with row1[5]:
+        if show_bpm:
+            st.slider("BPM", 50, 180, 100, 5, key=bpm_key)
+        elif backing_ready:
+            st.caption("🟢 Backing ready")
+        else:
+            st.caption("Backing idle")
+
+    row2 = st.columns([1.05, 1.0, 2.35, 0.55, 0.55, 0.55])
+    with row2[0]:
+        st.selectbox(
+            "Active source",
+            ["Catalog song", "Custom progression"],
+            index=1 if is_custom_source else 0,
+            key="global_source_mode",
+            on_change=on_source_change,
+        )
+    with row2[1]:
+        if is_custom_source:
+            st.caption("Custom")
+            st.markdown(f"**{html.escape(custom_progression_name or 'Progression')}**")
+        elif genre_options:
+            _gopts = genre_options
+            _gidx = _gopts.index(current_genre) if current_genre in _gopts else 0
+            if ss.get("global_quick_genre") not in _gopts:
+                ss["global_quick_genre"] = current_genre if current_genre in _gopts else _gopts[0]
+            st.selectbox(
+                "Genre",
+                _gopts,
+                index=_gopts.index(ss["global_quick_genre"])
+                if ss.get("global_quick_genre") in _gopts
+                else _gidx,
+                key="global_quick_genre",
+                on_change=on_genre_change,
+            )
+        else:
+            st.caption("Genre")
+            st.markdown(f"**{html.escape(genre)}**")
+    with row2[2]:
+        if is_custom_source:
+            st.caption("Edit chords in **Custom** page · transpose with **Display / practice key** above.")
+        elif song_pick_options and format_pick_label:
+            _sopts = song_pick_options
+            if ss.get("global_quick_song") not in _sopts:
+                ss["global_quick_song"] = _sopts[0]
+            st.selectbox(
+                "Song",
+                _sopts,
+                format_func=format_pick_label,
+                key="global_quick_song",
+                on_change=on_song_change,
+            )
+        else:
+            st.caption("Song")
+            st.markdown(f"**{html.escape(song)}**")
+    with row2[3]:
+        if rerun_fn and st.button("📚", key="global_nav_picker", help="Song Picker"):
+            ss["studio_page"] = "picker"
+            rerun_fn()
+    with row2[4]:
+        if rerun_fn and st.button("🎯", key="global_nav_practice", help="Practice"):
+            ss["studio_page"] = "practice"
+            rerun_fn()
+    with row2[5]:
+        if rerun_fn and st.button("🎧", key="global_nav_backing", help="Backing Track"):
+            ss["studio_page"] = "backing"
+            rerun_fn()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def compact_page_title(icon: str, title: str, subtitle: str = "") -> None:
+    import streamlit as st
+
+    sub = f'<p class="ui-compact-sub">{html.escape(subtitle)}</p>' if subtitle else ""
+    st.markdown(
+        f'<p class="ui-compact-title">{html.escape(icon)} {html.escape(title)}</p>{sub}',
         unsafe_allow_html=True,
     )
 

@@ -105,9 +105,12 @@ from songs.key_state import mark_display_key_changed
 from song_chart_editor import render_chart_editor_panel
 from app_ui import (
     app_hero,
+    compact_page_title,
     follow_along_status_html,
     inject_app_theme,
     page_header,
+    render_global_studio_bar,
+    render_studio_nav,
     session_badges,
     sidebar_section,
     sidebar_source_banner,
@@ -4130,16 +4133,58 @@ def musical_development_tracker_text():
     return lab_musical_dev(load_logs)
 
 
+def _global_quick_songs_for_genre(genre: str) -> list[str]:
+    cat = SONG_PICKER_CATALOG.get(genre, {})
+    return [format_pick_key(genre, label) for label in cat.keys()]
+
+
+def _fmt_global_pick(opt: str) -> str:
+    g, lab = parse_pick_key(opt)
+    return f"{lab}  [{g}]"
+
+
+def _on_global_source_change() -> None:
+    mode = st.session_state.get("global_source_mode", "Catalog song")
+    if mode == "Custom progression":
+        if not is_custom_progression(st.session_state):
+            set_custom_source(st.session_state)
+            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+            st.rerun()
+    elif is_custom_progression(st.session_state):
+        set_catalog_source(st.session_state)
+        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        st.rerun()
+
+
+def _on_global_genre_change() -> None:
+    g = st.session_state["global_quick_genre"]
+    opts = _global_quick_songs_for_genre(g)
+    if not opts:
+        return
+    st.session_state["global_quick_song"] = opts[0]
+    set_catalog_source(st.session_state)
+    apply_pick_key(st, opts[0], SONG_PICKER_CATALOG)
+    note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+    st.rerun()
+
+
+def _on_global_song_change() -> None:
+    set_catalog_source(st.session_state)
+    apply_pick_key(st, st.session_state["global_quick_song"], SONG_PICKER_CATALOG)
+    note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+
+
 # -------------------------------------------------
 # APP UI
 # -------------------------------------------------
 
 inject_app_theme()
 
-app_hero(
-    "Daniel Cohen AI Music Practice Coach",
-    "Your practice studio — songs, backing tracks, custom progressions, multitrack recording, and coaching.",
-)
+with st.expander("Daniel Cohen AI Music Practice Coach — studio overview", expanded=False):
+    st.markdown(
+        "Songs, backing tracks, custom progressions, multitrack recording, and coaching in one workspace. "
+        "Use the **navigation bar** and **control strip** below for song, key, level, and focus."
+    )
 
 
 def _ui_source_label() -> str:
@@ -4174,36 +4219,9 @@ else:
     if not is_custom_progression(st.session_state):
         st.sidebar.caption(chart_source_caption(_catalog_song_data))
 
-sidebar_section("Practice setup", icon="🎹")
-instrument = st.sidebar.selectbox(
-    "Instrument",
-    [
-        "Piano",
-        "Guitar",
-        "Bass",
-        "Saxophone",
-        "Flute",
-        "Trumpet",
-        "Clarinet",
-        "Voice",
-        "Other",
-    ],
-)
+st.session_state.setdefault("instrument", "Piano")
+st.session_state.setdefault("level", "Intermediate")
 
-level = st.sidebar.selectbox(
-    "Level",
-    ["Beginner", "Intermediate", "Advanced"],
-)
-
-_focus_options = focus_options_for_instrument(instrument)
-if st.session_state.get("focus") not in _focus_options:
-    st.session_state["focus"] = _focus_options[0]
-
-focus = st.sidebar.selectbox("Focus", _focus_options, key="focus")
-
-minutes = st.sidebar.slider("Practice minutes", 10, 120, 30, 5)
-
-sidebar_section("Key & transpose", icon="🎚️")
 original_key, _song_identity = display_key_context(
     st.session_state,
     catalog_song_data=_catalog_song_data,
@@ -4214,17 +4232,77 @@ _display_key_options = sync_display_key_before_widget(
     original_key,
     _song_identity,
 )
-st.sidebar.caption(f"Home / written: **{original_key}**")
-display_key = st.sidebar.selectbox(
-    "Practice / display key",
-    _display_key_options,
-    key="display_key",
-    on_change=lambda: mark_display_key_changed(st),
-    help="Transpose charts and backing audio for practice.",
-)
-key_changed_this_run = note_display_key_change(st, display_key)
+if "display_key" not in st.session_state:
+    st.session_state["display_key"] = original_key
+
+_instrument_options = [
+    "Piano", "Guitar", "Bass", "Saxophone", "Flute",
+    "Trumpet", "Clarinet", "Voice", "Other",
+]
+_focus_options = focus_options_for_instrument(st.session_state.get("instrument", "Piano"))
+if st.session_state.get("focus") not in _focus_options:
+    st.session_state["focus"] = _focus_options[0]
+
+sidebar_section("Session", icon="⏱️")
+minutes = st.sidebar.slider("Practice minutes", 10, 120, 30, 5)
 
 note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+
+_master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
+if _master_pk:
+    _mg, _ = parse_pick_key(_master_pk)
+    st.session_state.setdefault("global_quick_genre", _mg)
+    st.session_state.setdefault("global_quick_song", _master_pk)
+else:
+    st.session_state.setdefault("global_quick_genre", _catalog_genre)
+    _fallback_opts = _global_quick_songs_for_genre(_catalog_genre)
+    if _fallback_opts:
+        st.session_state.setdefault("global_quick_song", _fallback_opts[0])
+
+_global_genres = [g for g in GENRES if g in SONG_PICKER_CATALOG and SONG_PICKER_CATALOG[g]]
+_global_song_opts = _global_quick_songs_for_genre(
+    st.session_state.get("global_quick_genre", _catalog_genre)
+)
+if _master_pk and _master_pk not in _global_song_opts:
+    _global_song_opts = [_master_pk] + _global_song_opts
+
+_studio_page = render_studio_nav(st.session_state, rerun_fn=st.rerun)
+_cpl_bar_name = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {}).get(
+    "name", "Custom Progression"
+)
+render_global_studio_bar(
+    song=_catalog_song_data.get("title", _catalog_song) if not is_custom_progression(st.session_state) else _cpl_bar_name,
+    genre=_catalog_genre if not is_custom_progression(st.session_state) else "Custom",
+    source_label=_ui_source_label(),
+    original_key=original_key,
+    display_key_options=_display_key_options,
+    instrument_options=_instrument_options,
+    focus_options=_focus_options,
+    show_bpm=(_studio_page == "backing"),
+    backing_ready=bool(st.session_state.get("_last_backing_wav")),
+    on_display_key_change=lambda: mark_display_key_changed(st),
+    is_custom_source=is_custom_progression(st.session_state),
+    custom_progression_name=_cpl_bar_name,
+    genre_options=_global_genres,
+    current_genre=_catalog_genre,
+    song_pick_options=_global_song_opts,
+    format_pick_label=_fmt_global_pick,
+    on_source_change=_on_global_source_change,
+    on_genre_change=_on_global_genre_change,
+    on_song_change=_on_global_song_change,
+    session_state=st.session_state,
+    rerun_fn=st.rerun,
+)
+
+instrument = st.session_state.get("instrument", "Piano")
+level = st.session_state.get("level", "Intermediate")
+focus = st.session_state.get("focus", _focus_options[0])
+display_key = st.session_state.get("display_key", original_key)
+st.session_state["display_key"] = display_key
+if st.session_state.get("display_key") not in _display_key_options:
+    st.session_state["display_key"] = original_key
+    display_key = original_key
+key_changed_this_run = note_display_key_change(st, display_key)
 
 _chart_bundle = build_active_chart_bundle(
     st.session_state,
@@ -4333,31 +4411,13 @@ lyric_cues = {
     **lyric_cues_from_section_lyrics(section_lyrics),
 }
 
-# TABS
-
-tabs = st.tabs([
-    "🎯 Practice",
-    "📚 Song Picker",
-    "🎧 Backing Track",
-    "✏️ Custom Lab",
-    "🧠 Creative Lab",
-    "🎚️ Multitrack",
-    "🎙️ Analysis",
-    "📓 Log",
-])
-
 # -------------------------------------------------
 # PRACTICE
 # -------------------------------------------------
 
-with tabs[0]:
+if _studio_page == "practice":
 
-    page_header(
-        "🎯",
-        "Practice",
-        "Coaching, exercises, chord tools, and transpose helpers for your active chart.",
-        badges=_ui_page_badges(),
-    )
+    compact_page_title("🎯", "Practice", "Coach exercises, chord tools, and transpose helpers.")
 
     exercise_key = (
         f"exercise_variation::{song}::{instrument}::{level}::{focus}"
@@ -4393,7 +4453,7 @@ with tabs[0]:
     with col_ex_b:
         st.caption("Rotates section targets and raises demand gradually.")
 
-    with st.expander("🎸 Musician tools — chord coach", expanded=True):
+    with st.expander("🎸 Musician tools — chord coach", expanded=False):
         render_chord_coach_ui(
             all_chords_from_sections(sections),
             instrument,
@@ -4485,18 +4545,18 @@ with tabs[0]:
                 variation=st.session_state[exercise_key],
             )
         )
-    st.caption("Deep harmony & improvisation → **Creative Lab** tab.")
+    st.caption("Deep harmony & improvisation → **Creative Lab** page.")
 
 # -------------------------------------------------
 # SONG PICKER
 # -------------------------------------------------
 
-with tabs[1]:
+elif _studio_page == "picker":
 
-    page_header(
+    compact_page_title(
         "📚",
         "Song Picker",
-        "Choose a catalog song or switch to your custom progression as the app-wide source.",
+        "Choose a catalog song or switch to your custom progression.",
     )
 
     _picker_source_options = [
@@ -4525,7 +4585,7 @@ with tabs[1]:
         )
         st.info(
             "Build or edit your progression in the **Custom Progression Lab** tab. "
-            "Use the sidebar **Practice / display key** to transpose for practice."
+            "Use **Display / practice key** in the control strip above to transpose for practice."
         )
     else:
         if is_custom_progression(st.session_state):
@@ -4733,113 +4793,55 @@ with tabs[1]:
 # BACKING TRACK
 # -------------------------------------------------
 
-with tabs[2]:
+elif _studio_page == "backing":
 
-    _bt_sub = (
-        f"Play, loop, and follow chords for **{song}**."
-        if is_custom_progression(st.session_state)
-        else f"Play, loop, and follow chords — **{song}** · {song_data.get('artist', '')}."
+    compact_page_title(
+        "🎧",
+        "Backing Track",
+        f"Play & follow — **{song}**" + ("" if is_custom_progression(st.session_state) else f" · {song_data.get('artist', '')}"),
     )
-    page_header("🎧", "Backing Track", _bt_sub, badges=_ui_page_badges())
 
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
         st.warning("Key changed — regenerate backing track")
 
-    st.markdown(
-        '<div class="ui-card"><div class="ui-card-title">Playback settings</div>',
-        unsafe_allow_html=True,
-    )
-
-    _sec_names = [name for name, chs in section_order(sections) if chs]
-
-    playback_scope = st.radio(
-        "Playback range",
-        [
-            "Full song",
-            "Single section",
-            "Multiple selected sections",
-        ],
-        horizontal=True,
-        key="backing_track_scope",
-    )
-
-    selected_section_names = []
-
-    if playback_scope == "Single section" and _sec_names:
-        one_section = st.selectbox(
-            "Section to loop",
-            _sec_names,
-            key="backing_track_single_section",
+    with st.expander("Playback settings (scope, groove, loops)", expanded=False):
+        _sec_names = [name for name, chs in section_order(sections) if chs]
+        playback_scope = st.radio(
+            "Playback range",
+            ["Full song", "Single section", "Multiple selected sections"],
+            horizontal=True,
+            key="backing_track_scope",
         )
-        selected_section_names = [one_section]
-
-    elif playback_scope == "Multiple selected sections" and _sec_names:
-        default_sections = [
-            name for name in _sec_names
-            if any(token in name.lower() for token in ["verse", "chorus"])
-        ] or _sec_names[:2]
-        selected_section_names = st.multiselect(
-            "Sections to play (keeps original song order)",
-            _sec_names,
-            default=default_sections,
-            key="backing_track_multi_sections",
-        )
+        selected_section_names = []
+        if playback_scope == "Single section" and _sec_names:
+            selected_section_names = [
+                st.selectbox("Section to loop", _sec_names, key="backing_track_single_section")
+            ]
+        elif playback_scope == "Multiple selected sections" and _sec_names:
+            default_sections = [
+                name for name in _sec_names
+                if any(token in name.lower() for token in ["verse", "chorus"])
+            ] or _sec_names[:2]
+            selected_section_names = st.multiselect(
+                "Sections to play (keeps original song order)",
+                _sec_names,
+                default=default_sections,
+                key="backing_track_multi_sections",
+            )
+        col_bt_1, col_bt_2 = st.columns(2)
+        with col_bt_1:
+            groove_style = st.selectbox(
+                "Groove / accompaniment style",
+                ["Auto", "Pop groove", "Rock groove", "Jazz swing", "Bossa nova", "Funk groove", "Ballad"],
+                key="backing_groove_style",
+            )
+        with col_bt_2:
+            form_loops = st.slider("Number of repeats", 1, 10, 2, 1, key="backing_track_loops")
 
     selected_section_names = selected_section_names or []
-    backing_chords = chord_blocks_for_selected_sections(
-        sections,
-        selected_section_names,
-    )
-    backing_events = chord_events_for_selected_sections(
-        sections,
-        selected_section_names,
-    )
-
-    col_bt_1, col_bt_2 = st.columns(2)
-
-    with col_bt_1:
-        groove_style = st.selectbox(
-            "Groove / accompaniment style",
-            [
-                "Auto",
-                "Pop groove",
-                "Rock groove",
-                "Jazz swing",
-                "Bossa nova",
-                "Funk groove",
-                "Ballad",
-            ],
-            key="backing_groove_style",
-        )
-
-        bpm = st.slider(
-            "Tempo (BPM)",
-            50,
-            180,
-            100,
-            5,
-            key="backing_track_bpm",
-        )
-
-    with col_bt_2:
-        form_loops = st.slider(
-            "Number of repeats",
-            1,
-            10,
-            2,
-            1,
-            key="backing_track_loops",
-        )
-
-        st.markdown(
-            f'<div class="ui-badge-row">'
-            f'<span class="ui-badge green">Key {html.escape(display_key)}</span>'
-            f'<span class="ui-badge">{html.escape(level)}</span>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("</div>", unsafe_allow_html=True)
+    bpm = int(st.session_state.get("backing_track_bpm", 100))
+    backing_chords = chord_blocks_for_selected_sections(sections, selected_section_names)
+    backing_events = chord_events_for_selected_sections(sections, selected_section_names)
 
     resolved_groove = infer_groove_style(song_data, groove_style)
     section_scope_label = (
@@ -4968,46 +4970,44 @@ with tabs[2]:
         form_loops,
     )
 
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown(
-        '<div class="ui-card"><div class="ui-card-title">Lead-sheet chart</div>'
-        '<div class="ui-card-sub">Chord boxes highlight in sync when backing audio is playing.</div>',
-        unsafe_allow_html=True,
-    )
-    chart_html = full_chord_markdown(
-        song,
-        song_data,
-        chart_sections,
-        instrument,
-        display_key=chart_display_key,
-        level=level,
-        lyric_cues=lyric_cues,
-        section_lyrics=section_lyrics,
-        groove_style=resolved_groove,
-        bpm=bpm,
-        time_signature=default_time_signature(song, chart_sections),
-        current_section=None,
-        current_bar=None,
-        focus=focus,
-    )
-    if (
+    _chart_expanded = bool(
         st.session_state.get("_last_backing_wav")
         and st.session_state.get("_last_backing_signature") == _current_backing_signature
-    ):
-        components.html(
-            live_follow_along_component_html(
-                st.session_state["_last_backing_wav"],
-                _follow_timeline,
-                chart_html,
-            ),
-            height=1200,
-            scrolling=True,
+    )
+    with st.expander("Lead-sheet chart & chord follow", expanded=_chart_expanded):
+        st.caption("Chord boxes highlight when backing audio is playing.")
+        chart_html = full_chord_markdown(
+            song,
+            song_data,
+            chart_sections,
+            instrument,
+            display_key=chart_display_key,
+            level=level,
+            lyric_cues=lyric_cues,
+            section_lyrics=section_lyrics,
+            groove_style=resolved_groove,
+            bpm=bpm,
+            time_signature=default_time_signature(song, chart_sections),
+            current_section=None,
+            current_bar=None,
+            focus=focus,
         )
-    else:
-        st.caption("Generate backing audio above to enable live chord highlighting.")
-        st.markdown(chart_html, unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
+        if (
+            st.session_state.get("_last_backing_wav")
+            and st.session_state.get("_last_backing_signature") == _current_backing_signature
+        ):
+            components.html(
+                live_follow_along_component_html(
+                    st.session_state["_last_backing_wav"],
+                    _follow_timeline,
+                    chart_html,
+                ),
+                height=720,
+                scrolling=True,
+            )
+        else:
+            st.caption("Generate backing audio above to enable live chord highlighting.")
+            st.markdown(chart_html, unsafe_allow_html=True)
 
     with st.expander("📋 Form timeline & section order", expanded=False):
         _tl_rows = form_timeline_rows(sections)
@@ -5044,13 +5044,12 @@ with tabs[2]:
 # UPLOAD / RECORDING ANALYSIS
 # -------------------------------------------------
 
-with tabs[6]:
+elif _studio_page == "analysis":
 
-    page_header(
+    compact_page_title(
         "🎙️",
         "Recording Analysis",
-        "Upload or record your playing for tempo, pitch, articulation, and chord-tone feedback.",
-        badges=_ui_page_badges(),
+        "Upload or record for tempo, pitch, and chord-tone feedback.",
     )
     st.caption("Intermediate analysis — not professional note-by-note grading.")
 
@@ -5085,12 +5084,12 @@ with tabs[6]:
 # CUSTOM PROGRESSION LAB
 # -------------------------------------------------
 
-with tabs[3]:
+elif _studio_page == "custom":
 
-    page_header(
+    compact_page_title(
         "✏️",
         "Custom Progression Lab",
-        "Build progressions, set the app-wide source, and preview harmony — full playback is on **Backing Track**.",
+        "Build progressions — playback on **Backing Track** page.",
     )
 
     use_col, status_col = st.columns([1, 2])
@@ -5145,52 +5144,49 @@ with tabs[3]:
             )
         )
 
-    st.subheader("Saved progressions")
-    save_col_a, save_col_b, save_col_c = st.columns([2, 1, 1])
-    with save_col_a:
-        save_name = st.text_input(
-            "Save as",
-            value=active.get("name", "Untitled progression"),
-            key="cpl_save_name",
-        )
-    with save_col_b:
-        if st.button("Save progression", key="cpl_save_btn"):
-            save_progression(saved, save_name.strip() or "Untitled", active)
-            st.session_state[CPL_SAVED_KEY] = saved
-            st.success(f"Saved **{save_name}**.")
-    with save_col_c:
-        if saved:
-            pick_saved = st.selectbox(
-                "Load saved",
-                ["—"] + sorted(saved.keys()),
-                key="cpl_pick_saved",
+    with st.expander("Saved progressions", expanded=False):
+        save_col_a, save_col_b, save_col_c = st.columns([2, 1, 1])
+        with save_col_a:
+            save_name = st.text_input(
+                "Save as",
+                value=active.get("name", "Untitled progression"),
+                key="cpl_save_name",
             )
-            load_col, del_col = st.columns(2)
-            with load_col:
-                if st.button("Load", key="cpl_load_btn", disabled=pick_saved == "—"):
-                    st.session_state[CPL_ACTIVE_KEY] = ensure_original_structure(
-                        dict(saved[pick_saved])
-                    )
-                    invalidate_cpl_derived_outputs(st.session_state)
-                    st.rerun()
-            with del_col:
-                if st.button("Delete", key="cpl_del_btn", disabled=pick_saved == "—"):
-                    delete_progression(saved, pick_saved)
-                    st.session_state[CPL_SAVED_KEY] = saved
-                    st.rerun()
-        else:
-            st.caption("No saved progressions yet.")
+        with save_col_b:
+            if st.button("Save progression", key="cpl_save_btn"):
+                save_progression(saved, save_name.strip() or "Untitled", active)
+                st.session_state[CPL_SAVED_KEY] = saved
+                st.success(f"Saved **{save_name}**.")
+        with save_col_c:
+            if saved:
+                pick_saved = st.selectbox(
+                    "Load saved",
+                    ["—"] + sorted(saved.keys()),
+                    key="cpl_pick_saved",
+                )
+                load_col, del_col = st.columns(2)
+                with load_col:
+                    if st.button("Load", key="cpl_load_btn", disabled=pick_saved == "—"):
+                        st.session_state[CPL_ACTIVE_KEY] = ensure_original_structure(
+                            dict(saved[pick_saved])
+                        )
+                        invalidate_cpl_derived_outputs(st.session_state)
+                        st.rerun()
+                with del_col:
+                    if st.button("Delete", key="cpl_del_btn", disabled=pick_saved == "—"):
+                        delete_progression(saved, pick_saved)
+                        st.session_state[CPL_SAVED_KEY] = saved
+                        st.rerun()
+            else:
+                st.caption("No saved progressions yet.")
 
-    st.divider()
     st.subheader("Progression settings")
-
     active["name"] = st.text_input(
         "Progression title",
         value=active.get("name", "Untitled progression"),
         key="cpl_title",
     )
 
-    st.subheader("Key controls for this progression")
     kc1, kc2 = st.columns(2)
     with kc1:
         st.metric("Written / Home Key", cpl_home_key)
@@ -5202,7 +5198,7 @@ with tabs[3]:
             st.caption("Tonal center of the progression.")
     with kc2:
         st.metric("Practice / Display Key", cpl_practice_key)
-        st.caption("Global sidebar key — transposed view for practice.")
+        st.caption("Top control strip — transposed view for practice.")
 
     prev_col, trans_col = st.columns(2)
     with prev_col:
@@ -5267,10 +5263,10 @@ with tabs[3]:
                 f"Reset to original key ({cpl_home_key})",
                 key="cpl_jump_home",
                 on_click=on_cpl_jump_home_key,
-                help=f"Sets the sidebar practice key back to {cpl_home_key} so chords match what you wrote.",
+                help=f"Sets display / practice key back to {cpl_home_key} so chords match what you wrote.",
             )
             st.caption(
-                f"Sets sidebar **Practice / display key** back to **{cpl_home_key}**."
+                f"Sets **Display / practice key** (control strip) back to **{cpl_home_key}**."
             )
         else:
             st.caption("Practice key already matches written key — no reset needed.")
@@ -5326,7 +5322,7 @@ with tabs[3]:
     st.subheader("Chord progression builder")
     st.caption(
         f"Type chords in **home key {cpl_home_key}** (e.g. `Am | Dm | G`). "
-        f"Practice view in **{cpl_practice_key}** updates automatically from the sidebar."
+        f"Practice view in **{cpl_practice_key}** updates automatically from the control strip."
     )
 
     sec_names = list(home_sections.keys())
@@ -5563,14 +5559,9 @@ with tabs[3]:
 # CREATIVE LAB
 # -------------------------------------------------
 
-with tabs[4]:
+elif _studio_page == "creative":
 
-    page_header(
-        "🧠",
-        "Creative Lab",
-        "Harmony, improvisation, arranging, weakness detection, and long-term growth — for your active chart.",
-        badges=_ui_page_badges(),
-    )
+    compact_page_title("🧠", "Creative Lab", "Harmony, improvisation, and growth tools.")
 
     ctx = current_song_context_lab()
 
@@ -5585,53 +5576,40 @@ with tabs[4]:
         ]
     )
 
-    if lab_mode == "Deep Harmonic Analyzer":
-        st.markdown(deep_harmonic_analysis_text(ctx))
-
-    elif lab_mode == "Improvisation Intelligence":
-        st.markdown(improvisation_intelligence_text(ctx))
-
-    elif lab_mode == "Creative Arrangement Assistant":
-        target_style = st.selectbox(
-            "Transform toward style",
-            [
-                "Jobim / Bossa",
-                "Jazz Fusion",
-                "Neo-Soul",
-                "Rock Ballad",
-                "Funk",
-                "Cinematic"
-            ]
-        )
-        arrangement_section = st.selectbox(
-            "Arrangement focus",
-            ["Full song"] + [name for name, chords in sections.items() if chords],
-            key="creative_arrangement_section_focus",
-        )
-        st.markdown(creativity_arrangement_text(ctx, target_style, arrangement_section))
-
-    elif lab_mode == "Adaptive Weakness Detection":
-        st.markdown(adaptive_weakness_detection_text(ctx))
-
-    else:
-        st.markdown(musical_development_tracker_text())
+    with st.expander(lab_mode, expanded=False):
+        if lab_mode == "Deep Harmonic Analyzer":
+            st.markdown(deep_harmonic_analysis_text(ctx))
+        elif lab_mode == "Improvisation Intelligence":
+            st.markdown(improvisation_intelligence_text(ctx))
+        elif lab_mode == "Creative Arrangement Assistant":
+            target_style = st.selectbox(
+                "Transform toward style",
+                ["Jobim / Bossa", "Jazz Fusion", "Neo-Soul", "Rock Ballad", "Funk", "Cinematic"],
+            )
+            arrangement_section = st.selectbox(
+                "Arrangement focus",
+                ["Full song"] + [name for name, chords in sections.items() if chords],
+                key="creative_arrangement_section_focus",
+            )
+            st.markdown(creativity_arrangement_text(ctx, target_style, arrangement_section))
+        elif lab_mode == "Adaptive Weakness Detection":
+            st.markdown(adaptive_weakness_detection_text(ctx))
+        else:
+            st.markdown(musical_development_tracker_text())
 
 
 # -------------------------------------------------
 # MULTITRACK
 # -------------------------------------------------
 
-with tabs[5]:
+elif _studio_page == "multitrack":
 
-    page_header(
+    compact_page_title(
         "🎚️",
         "Multitrack Recorder",
-        "Overdub studio — loop sections, mute/solo tracks, and export mixes. AI feedback → **Recording Analysis**.",
-        badges=_ui_page_badges(),
+        "Overdub studio — AI feedback on **Analysis** page.",
     )
-    st.caption(
-        "Headphones recommended. Mic input only unless you include backing in the export."
-    )
+    st.caption("Headphones recommended. Mic input only unless you include backing in the export.")
 
     MT_SLOTS = [
         "Guitar",
@@ -5653,151 +5631,150 @@ with tabs[5]:
     mt_beats_per_bar = beats_per_bar_from_signature(mt_time_sig)
     mt_sec_names = [name for name, chs in section_order(sections) if chs]
 
-    st.subheader("1. Session setup")
-
-    mt_scope = st.radio(
-        "Loop / record range",
-        [
-            "Full song",
-            "Single section (verse, chorus, solo, …)",
-            "Multiple sections",
-            "Free layering (no backing)",
-        ],
-        horizontal=True,
-        key="mt_playback_scope",
-    )
-
-    mt_selected_sections = []
-    if mt_scope == "Single section (verse, chorus, solo, …)" and mt_sec_names:
-        mt_selected_sections = [
-            st.selectbox(
-                "Section",
-                mt_sec_names,
-                key="mt_single_section",
-            )
-        ]
-    elif mt_scope == "Multiple sections" and mt_sec_names:
-        mt_default = [
-            name
-            for name in mt_sec_names
-            if any(token in name.lower() for token in ["verse", "chorus", "solo"])
-        ] or mt_sec_names[:2]
-        mt_selected_sections = st.multiselect(
-            "Sections (song order)",
-            mt_sec_names,
-            default=mt_default,
-            key="mt_multi_sections",
+    with st.expander("1. Session setup (scope, BPM, monitor backing)", expanded=True):
+        mt_scope = st.radio(
+            "Loop / record range",
+            [
+                "Full song",
+                "Single section (verse, chorus, solo, …)",
+                "Multiple sections",
+                "Free layering (no backing)",
+            ],
+            horizontal=True,
+            key="mt_playback_scope",
         )
-    elif mt_scope == "Free layering (no backing)":
+
         mt_selected_sections = []
+        if mt_scope == "Single section (verse, chorus, solo, …)" and mt_sec_names:
+            mt_selected_sections = [
+                st.selectbox(
+                    "Section",
+                    mt_sec_names,
+                    key="mt_single_section",
+                )
+            ]
+        elif mt_scope == "Multiple sections" and mt_sec_names:
+            mt_default = [
+                name
+                for name in mt_sec_names
+                if any(token in name.lower() for token in ["verse", "chorus", "solo"])
+            ] or mt_sec_names[:2]
+            mt_selected_sections = st.multiselect(
+                "Sections (song order)",
+                mt_sec_names,
+                default=mt_default,
+                key="mt_multi_sections",
+            )
+        elif mt_scope == "Free layering (no backing)":
+            mt_selected_sections = []
 
-    mt_scope_label = (
-        "free layering"
-        if mt_scope == "Free layering (no backing)"
-        else ("full song" if not mt_selected_sections else " + ".join(mt_selected_sections))
-    )
-
-    col_mt_a, col_mt_b, col_mt_c = st.columns(3)
-
-    with col_mt_a:
-        mt_bpm = st.slider(
-            "Session BPM",
-            50,
-            180,
-            int(st.session_state.get("bpm", 100)),
-            5,
-            key="multitrack_bpm",
-        )
-        mt_loops = st.slider(
-            "Section repeats (loop recording)",
-            1,
-            8,
-            2,
-            1,
-            key="mt_section_loops",
-            disabled=mt_scope == "Free layering (no backing)",
-        )
-        mt_groove = st.selectbox(
-            "Groove style",
-            ["Auto", "Pop groove", "Rock groove", "Jazz swing", "Bossa nova", "Funk groove", "Ballad"],
-            key="mt_groove_style",
-            disabled=mt_scope == "Free layering (no backing)",
+        mt_scope_label = (
+            "free layering"
+            if mt_scope == "Free layering (no backing)"
+            else ("full song" if not mt_selected_sections else " + ".join(mt_selected_sections))
         )
 
-    with col_mt_b:
-        count_in_label = st.selectbox(
-            "Count-in before playback",
-            ["None", "1 bar", "2 bars"],
-            index=1,
-            key="mt_count_in_bars",
-        )
-        mt_count_in_bars = {"None": 0, "1 bar": 1, "2 bars": 2}[count_in_label]
-        mt_metronome_playback = st.checkbox(
-            "Metronome during playback",
-            value=False,
-            key="mt_metronome_playback",
-        )
-        mt_loop_backing = st.checkbox(
-            "Loop backing / section",
-            value=True,
-            key="mt_loop_backing",
-        )
+        col_mt_a, col_mt_b, col_mt_c = st.columns(3)
 
-    with col_mt_c:
-        use_backing_monitor = st.checkbox(
-            "Use backing track while recording",
-            value=mt_scope != "Free layering (no backing)",
-            help="Plays in headphones/speakers for timing. Not baked into your recorded layers.",
-            key="mt_use_backing_monitor",
-        )
-        include_backing_in_mix = st.checkbox(
-            "Include backing in exported mix",
-            value=False,
-            key="include_backing_mix",
-        )
-        backing_volume = st.slider(
-            "Backing level (monitor + export)",
-            0.0,
-            1.5,
-            0.75,
-            0.05,
-            key="backing_volume",
-        )
+        with col_mt_a:
+            mt_bpm = st.slider(
+                "Session BPM",
+                50,
+                180,
+                int(st.session_state.get("bpm", 100)),
+                5,
+                key="multitrack_bpm",
+            )
+            mt_loops = st.slider(
+                "Section repeats (loop recording)",
+                1,
+                8,
+                2,
+                1,
+                key="mt_section_loops",
+                disabled=mt_scope == "Free layering (no backing)",
+            )
+            mt_groove = st.selectbox(
+                "Groove style",
+                ["Auto", "Pop groove", "Rock groove", "Jazz swing", "Bossa nova", "Funk groove", "Ballad"],
+                key="mt_groove_style",
+                disabled=mt_scope == "Free layering (no backing)",
+            )
 
-    mt_events = (
-        chord_events_for_selected_sections(sections, mt_selected_sections)
-        if mt_scope != "Free layering (no backing)"
-        else []
-    )
-    mt_resolved_groove = infer_groove_style(song_data, mt_groove)
-    mt_bar_duration = (60 / max(1, mt_bpm)) * mt_beats_per_bar
-    mt_backing_duration = len(mt_events) * mt_bar_duration * max(1, mt_loops)
+        with col_mt_b:
+            count_in_label = st.selectbox(
+                "Count-in before playback",
+                ["None", "1 bar", "2 bars"],
+                index=1,
+                key="mt_count_in_bars",
+            )
+            mt_count_in_bars = {"None": 0, "1 bar": 1, "2 bars": 2}[count_in_label]
+            mt_metronome_playback = st.checkbox(
+                "Metronome during playback",
+                value=False,
+                key="mt_metronome_playback",
+            )
+            mt_loop_backing = st.checkbox(
+                "Loop backing / section",
+                value=True,
+                key="mt_loop_backing",
+            )
 
-    if mt_scope != "Free layering (no backing)" and not mt_events:
-        st.warning("Choose at least one section (or use Free layering).")
-    else:
-        st.caption(
-            f"Target: **{mt_scope_label}** | {mt_time_sig} @ {mt_bpm} BPM | "
-            f"{len(mt_events)} bars per pass × {mt_loops} repeat(s) ≈ {mt_backing_duration:.1f}s"
-        )
+        with col_mt_c:
+            use_backing_monitor = st.checkbox(
+                "Use backing track while recording",
+                value=mt_scope != "Free layering (no backing)",
+                help="Plays in headphones/speakers for timing. Not baked into your recorded layers.",
+                key="mt_use_backing_monitor",
+            )
+            include_backing_in_mix = st.checkbox(
+                "Include backing in exported mix",
+                value=False,
+                key="include_backing_mix",
+            )
+            backing_volume = st.slider(
+                "Backing level (monitor + export)",
+                0.0,
+                1.5,
+                0.75,
+                0.05,
+                key="backing_volume",
+            )
 
-    if st.button(
-        "Prepare monitor backing (no count-in in file)",
-        key="mt_prepare_backing",
-        disabled=mt_scope == "Free layering (no backing)" or not mt_events,
-    ):
-        monitor_wav, _ = multitrack_monitor_backing_bytes(
-            sections,
-            mt_selected_sections,
-            bpm=mt_bpm,
-            loops=mt_loops,
-            style=mt_resolved_groove,
-            level=level,
+        mt_events = (
+            chord_events_for_selected_sections(sections, mt_selected_sections)
+            if mt_scope != "Free layering (no backing)"
+            else []
         )
-        st.session_state.multitrack_backing_music_wav = monitor_wav
-        st.session_state.mt_backing_scope = mt_scope_label
-        st.session_state.mt_backing_duration = mt_backing_duration
-        st.success("Monitor backing ready. Use the studio transport below while recording layers.")
+        mt_resolved_groove = infer_groove_style(song_data, mt_groove)
+        mt_bar_duration = (60 / max(1, mt_bpm)) * mt_beats_per_bar
+        mt_backing_duration = len(mt_events) * mt_bar_duration * max(1, mt_loops)
+
+        if mt_scope != "Free layering (no backing)" and not mt_events:
+            st.warning("Choose at least one section (or use Free layering).")
+        else:
+            st.caption(
+                f"Target: **{mt_scope_label}** | {mt_time_sig} @ {mt_bpm} BPM | "
+                f"{len(mt_events)} bars per pass × {mt_loops} repeat(s) ≈ {mt_backing_duration:.1f}s"
+            )
+
+        if st.button(
+            "Prepare monitor backing (no count-in in file)",
+            key="mt_prepare_backing",
+            disabled=mt_scope == "Free layering (no backing)" or not mt_events,
+        ):
+            monitor_wav, _ = multitrack_monitor_backing_bytes(
+                sections,
+                mt_selected_sections,
+                bpm=mt_bpm,
+                loops=mt_loops,
+                style=mt_resolved_groove,
+                level=level,
+            )
+            st.session_state.multitrack_backing_music_wav = monitor_wav
+            st.session_state.mt_backing_scope = mt_scope_label
+            st.session_state.mt_backing_duration = mt_backing_duration
+            st.success("Monitor backing ready. Use the studio transport below while recording layers.")
 
     monitor_wav = st.session_state.get("multitrack_backing_music_wav")
     backing_b64 = (
@@ -5811,13 +5788,13 @@ with tabs[5]:
             st.audio(monitor_wav, format="audio/wav")
 
     st.divider()
-    st.subheader("2. Record or upload layers")
-
+    st.markdown("**2. Record or upload layers**")
+    st.caption("Expand a slot to record or upload that instrument.")
     track_items_for_mix = []
     mt_controls = ensure_multitrack_track_controls([])
 
     for slot in MT_SLOTS:
-        with st.expander(slot, expanded=slot in ("Guitar", "Bass", "Vocals")):
+        with st.expander(slot, expanded=False):
             c1, c2, c3 = st.columns([1.2, 1, 1])
 
             with c1:
@@ -5980,13 +5957,9 @@ with tabs[5]:
 # PRACTICE LOG
 # -------------------------------------------------
 
-with tabs[7]:
+elif _studio_page == "log":
 
-    page_header(
-        "📓",
-        "Practice Log",
-        "Session history and progress over time.",
-    )
+    compact_page_title("📓", "Practice Log", "Session history and progress over time.")
 
     if st.button("Clear practice log", type="secondary"):
 
