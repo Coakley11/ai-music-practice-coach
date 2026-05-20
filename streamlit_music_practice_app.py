@@ -393,6 +393,7 @@ def chart_status_label(song_data):
         "practice_needs_review": ("Practice approximation — needs review", "warning"),
         "user_corrected": ("User corrected chart", "success"),
         "user_verified": ("User verified chart", "success"),
+        "user_corrected_reference": ("User corrected reference chart", "info"),
         "custom": ("Custom progression", "info"),
         "placeholder": ("Placeholder chart — needs verification", "warning"),
     }

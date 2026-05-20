@@ -982,56 +982,75 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "Bb",
             {
                 "Intro": ["Gm", "C", "F", "Bb"] * 2,
-                "Verse 1": ["Gm", "C", "F", "Bb", "Eb", "Bb/D", "Cm", "F"],
-                "Chorus": [
-                    "Bb", "Eb", "Bb", "Eb", "Bb", "Eb", "Bb", "Eb",
-                    "Bb", "Eb", "Bb/D", "C", "Eb", "Bb", "Eb", "Bb",
+                "Verse": [
+                    "Gm", "C", "Gm", "C",
+                    "Eb", "Bb/D", "Cm", "Cm/Bb", "F/A", "F/C", "F",
                 ],
-                "Verse 2": ["Gm", "C", "F", "Bb", "Eb", "Bb/D", "Cm", "F"],
-                "Interlude": ["Eb", "Bb/D", "Cm", "F", "Gm", "F", "Bb", "Bb"],
-                "Outro": ["Bb", "Eb", "Bb", "Eb", "Bb", "Eb", "Bb", "Bb"],
+                "Chorus": [
+                    "Bb", "Eb", "Bb", "Eb", "Bb/D", "C", "Eb", "Bb", "Eb",
+                ],
+                "Verse 2": [
+                    "Gm", "C11", "Gm", "C11",
+                    "Eb", "Bb/D", "Cm", "Cm/Bb", "F/A", "F/C", "F",
+                ],
+                "Outro": ["Eb", "Bb", "Eb", "Bb", "Eb", "Bb", "Eb", "Bb"],
             },
             {
                 "Intro": ["Gm7", "C9", "F", "Bb"] * 2,
-                "Verse 1": ["Gm7", "C9", "F", "Bb", "Eb", "Bb/D", "Cm7", "F/A"],
-                "Chorus": [
-                    "Bb", "Eb", "Bb", "Eb", "Bb", "Eb", "Bb", "Eb",
-                    "Bb", "Eb", "Bb/D", "C7", "Eb", "Bb", "Eb", "Bb",
+                "Verse": [
+                    "Gm7", "C9", "Gm7", "C9",
+                    "Eb", "Bb/D", "Cm7", "Cm7/Bb", "F/A", "F/C", "F",
                 ],
-                "Verse 2": ["Gm7", "C11", "F", "Bb", "Eb", "Bb/D", "Cm7/Bb", "F/A"],
-                "Interlude": ["Eb", "Bb/D", "Cm7", "Cm7/Bb", "F/A", "G", "F", "Bb"],
-                "Outro": ["Bb", "Ebadd9", "Bb", "Ebadd9", "Bb", "Ebadd9", "Bb", "Bb"],
+                "Chorus": [
+                    "Bb", "Eb", "Bb", "Eb", "Bb/D", "C9", "Eb", "Bb", "Eb",
+                ],
+                "Verse 2": [
+                    "Gm7", "C11", "Gm7", "C11",
+                    "Eb", "Bb/D", "Cm7", "Cm7/Bb", "F/A", "F/C", "F",
+                ],
+                "Outro": ["Eb", "Bb", "Eb", "Bb", "Eb", "Bb", "Eb", "Bb"],
             },
             advanced={
                 "Intro": ["Gm9", "C13", "Fadd9", "Bbadd9"] * 2,
-                "Verse 1": ["Gm9", "C9", "Fadd9", "Bbadd9", "Ebmaj9", "Bb/D", "Cm9", "F/A"],
-                "Chorus": [
-                    "Bbadd9", "Ebmaj9", "Bbadd9", "Ebmaj9", "Bbadd9", "Ebmaj9", "Bbadd9", "Ebmaj9",
-                    "Bbadd9", "Ebmaj9", "Bb/D", "C13", "Ebmaj9", "Bbadd9", "Ebmaj9", "Bbadd9",
+                "Verse": [
+                    "Gm9", "C9", "Gm9", "C9",
+                    "Ebmaj9", "Bb/D", "Cm9", "Cm7/Bb", "F/A", "F/C", "Fadd9",
                 ],
-                "Verse 2": ["Gm9", "C11", "Fadd9", "Bbadd9", "Ebmaj9", "Bb/D", "Cm7/Bb", "F/A"],
-                "Interlude": ["Ebmaj9", "Bb/D", "Cm9", "Cm7/Bb", "F/A", "G", "F", "Ebsus2/F"],
-                "Outro": ["Bbadd9", "Ebmaj9", "Bbadd9", "Ebmaj9", "Bbadd9", "Ebmaj9", "Bbadd9", "Bbadd9"],
+                "Chorus": [
+                    "Bbadd9", "Ebmaj9", "Bbadd9", "Ebmaj9", "Bb/D", "C13", "Ebmaj9", "Bbadd9", "Ebmaj9",
+                ],
+                "Verse 2": [
+                    "Gm9", "C11", "Gm9", "C11",
+                    "Ebmaj9", "Bb/D", "Cm9", "Cm7/Bb", "F/A", "F/C", "Fadd9",
+                ],
+                "Outro": ["Ebmaj9", "Bbadd9", "Ebmaj9", "Bbadd9", "Ebmaj9", "Bbadd9", "Ebmaj9", "Bbadd9"],
             },
             composer="Elton John & Bernie Taupin",
             lyric_cues={
-                "Intro": ["piano intro — Gm–C–F–Bb (no vocal)"],
-                "Verse 1": ["She packed my bags last night pre-flight", "And I'm gonna be high as a kite by then"],
+                "Intro": ["piano intro — no vocal"],
+                "Verse": [
+                    "She packed my bags last night pre-flight",
+                    "Gm7–C9 then Eb–Bb/D–Cm–Cm/Bb–F/A–F/C–F walkdown",
+                ],
                 "Chorus": [
                     "And I think it's gonna be a long long time",
                     "Till touchdown brings me 'round again to find",
                     "I'm not the man they think I am at home",
-                    "Rocket man burning out his fuse up here alone",
+                    "Oh no no no I'm a rocket man",
+                    "Rocket man burnin' out his fuse up here alone",
                 ],
-                "Verse 2": ["Mars ain't the kind of place to raise your kids", "And there's no one there to raise them if you did"],
-                "Interlude": ["Rocket man — mellotron / band reprise tag"],
-                "Outro": ["repeat chorus — fade on Bb–Eb"],
+                "Verse 2": [
+                    "Mars ain't the kind of place to raise your kids",
+                    "same verse shape — C11 color on second Gm–C pass",
+                ],
+                "Outro": ["fade — Eb and Bb alternating"],
             },
             notes=(
-                "Key Bb. Verse: Gm7–C–F–Bb then Eb–Bb/D–Cm7–F/A. "
-                "Chorus is 14 bars on the record (Bb↔Eb with Bb/D–C7–Eb–Bb tag); padded to 16 for practice loops."
+                "Key Bb (concert). Reference chart: verse opens Gm7–C9 twice, then "
+                "Eb–Bb/D–Cm–Cm/Bb–F/A–F/C–F bass walkdown (slash chords retained). "
+                "Chorus: Bb↔Eb with Bb/D–C9 tag. Not AI-verified."
             ),
-            chart_status="practice_needs_review",
+            chart_status="user_corrected_reference",
         ),
         v(
             "In My Life",
@@ -1192,68 +1211,84 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "F#m",
             {
                 "Intro": ["F#m", "G#m", "A", "G#m"] * 2,
-                "Verse": ["F#m", "G#m", "A", "G#m", "F#m", "G#m", "A", "G#m", "Bm", "Bm", "F#m", "G#m", "A", "G#m", "Bm", "Bm"],
+                "Verse": [
+                    "F#m", "G#m", "A", "G#m",
+                    "F#m", "G#m", "A", "G#m", "Bm",
+                    "Bm", "F#m", "G#m", "A", "G#m", "Bm",
+                    "Bm", "F#m", "G#m", "A", "G#m",
+                ],
                 "Bridge": ["D", "F#m", "D", "F#m", "D", "F#m", "D", "C#"],
                 "Chorus": [
-                    "F#m", "G#m", "A", "G#m", "F#m", "G#m", "A", "G#m",
-                    "B", "B", "F#m", "G#m", "A", "G#m", "Bm", "Bm",
+                    "F#m", "G#m", "A", "G#m", "F#m", "G#m", "A", "G#m", "B5",
+                    "B5", "F#m", "G#m", "A", "G#m",
                 ],
-                "Instrumental": ["F#m", "G#m", "A", "G#m"] * 2,
+                "Chorus (Extension)": ["Bm", "Bm", "F#m", "G#m", "A", "G#m"],
+                "Instrumental": ["F#m", "G#m", "A", "G#m"] * 4
+                + ["Bm", "Bm", "F#m", "G#m", "A", "G#m"],
                 "Outro": ["F#m", "G#m", "A", "G#m"] * 2,
             },
             {
                 "Intro": ["F#m7", "G#m7", "A", "G#m7"] * 2,
                 "Verse": [
-                    "F#m7", "G#m7", "A", "G#m7", "F#m7", "G#m7", "A", "G#m7",
-                    "Bm7", "Bm7", "F#m7", "G#m7", "A", "G#m7", "Bm7", "Bm7",
+                    "F#m7", "G#m7", "A", "G#m7",
+                    "F#m7", "G#m7", "A", "G#m7", "Bm7",
+                    "Bm7", "F#m7", "G#m7", "A", "G#m7", "Bm7",
+                    "Bm7", "F#m7", "G#m7", "A", "G#m7",
                 ],
                 "Bridge": ["D", "F#m7", "D", "F#m7", "D", "F#m7", "D", "C#7"],
                 "Chorus": [
-                    "F#m7", "G#m7", "A", "G#m7", "F#m7", "G#m7", "A", "G#m7",
-                    "B", "B", "F#m7", "G#m7", "A", "G#m7", "Bm7", "Bm7",
+                    "F#m7", "G#m7", "A", "G#m7", "F#m7", "G#m7", "A", "G#m7", "B5",
+                    "B5", "F#m7", "G#m7", "A", "G#m7",
                 ],
-                "Instrumental": ["F#m7", "G#m7", "A", "G#m7"] * 4,
+                "Chorus (Extension)": ["Bm7", "Bm7", "F#m7", "G#m7", "A", "G#m7"],
+                "Instrumental": ["F#m7", "G#m7", "A", "G#m7"] * 4
+                + ["Bm7", "Bm7", "F#m7", "G#m7", "A", "G#m7"],
                 "Outro": ["F#m7", "G#m7", "A", "G#m7"] * 2,
             },
             advanced={
                 "Intro": ["F#m9", "G#m9", "Amaj7", "G#m9"] * 2,
                 "Verse": [
-                    "F#m9", "G#m9", "Amaj7", "G#m9", "F#m9", "G#m9", "Amaj7", "G#m9",
-                    "Bm9", "Bm9", "F#m9", "G#m9", "Amaj7", "G#m9", "Bm9", "Bm9",
+                    "F#m9", "G#m9", "Amaj7", "G#m9",
+                    "F#m9", "G#m9", "Amaj7", "G#m9", "Bm9",
+                    "Bm9", "F#m9", "G#m9", "Amaj7", "G#m9", "Bm9",
+                    "Bm9", "F#m9", "G#m9", "Amaj7", "G#m9",
                 ],
                 "Bridge": ["Dmaj7", "F#m9", "Dmaj7", "F#m9", "Dmaj7", "F#m9", "Dmaj7", "C#7#9"],
                 "Chorus": [
-                    "F#m9", "G#m9", "Amaj7", "G#m9", "F#m9", "G#m9", "Amaj7", "G#m9",
-                    "B", "B", "F#m9", "G#m9", "Amaj7", "G#m9", "Bm9", "Bm9",
+                    "F#m9", "G#m9", "Amaj7", "G#m9", "F#m9", "G#m9", "Amaj7", "G#m9", "B5",
+                    "B5", "F#m9", "G#m9", "Amaj7", "G#m9",
                 ],
-                "Instrumental": ["F#m9", "G#m9", "Amaj7", "G#m9"] * 4,
+                "Chorus (Extension)": ["Bm9", "Bm9", "F#m9", "G#m9", "Amaj7", "G#m9"],
+                "Instrumental": ["F#m9", "G#m9", "Amaj7", "G#m9"] * 4
+                + ["Bm9", "Bm9", "F#m9", "G#m9", "Amaj7", "G#m9"],
                 "Outro": ["F#m9", "G#m9", "Amaj7", "G#m9"] * 2,
             },
             composer="Michael Jackson",
             lyric_cues={
-                "Intro": ["bass riff vamp — F#m–G#m–A–G#m (no vocal)"],
+                "Intro": ["bass riff — ||: F#m G#m | A G#m :|| groove (no vocal)"],
                 "Verse": [
                     "She was more like a beauty queen from a movie scene",
-                    "I am the one who will dance on the floor in the round",
+                    "verse cells: F#m G#m | A G#m, then Bm turns — not a flat F#m loop",
                 ],
                 "Bridge": [
                     "People always told me be careful of what you do",
-                    "And be careful of what you do 'cause the lie becomes the truth",
+                    "||: D | F#m :|| then D | C#7",
                 ],
                 "Chorus": [
                     "Billie Jean is not my lover",
-                    "She's just a girl who claims that I am the one",
-                    "But the kid is not my son",
+                    "F#m G#m | A G#m … B5 power — She's just a girl who claims that I am the one",
                 ],
-                "Instrumental": ["dance break — same F# Dorian vamp"],
-                "Outro": ["Billie Jean is not my lover — fade on vamp"],
+                "Chorus (Extension)": ["Bm | Bm | F#m G#m | A G#m — later chorus tag"],
+                "Instrumental": [
+                    "dance break — F#m G#m | A G#m ×4, then Bm | Bm | F#m G#m | A G#m",
+                ],
+                "Outro": ["fade on main groove vamp"],
             },
             notes=(
-                "Key F#m (F# Dorian color via F#m–G#m–A–G#m). "
-                "One cell = one bar in 4/4; verse is two 8-bar lines plus Bm turn. "
-                "Bridge alternates D and F#m before C#7."
+                "Key F#m; 4/4 groove — one chord = one bar. F#m→G#m→A→G#m vamp is the "
+                "core feel. Verse uses phased Bm bars; chorus adds B5. Not AI-verified."
             ),
-            chart_status="practice_needs_review",
+            chart_status="user_corrected_reference",
         ),
         v(
             "Love Story",
