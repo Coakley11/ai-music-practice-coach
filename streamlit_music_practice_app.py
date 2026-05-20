@@ -116,9 +116,11 @@ try:
         follow_along_status_html,
         inject_app_theme,
         page_header,
-    render_global_studio_bar,
-    render_section_jump_bar,
-    render_studio_nav,
+        begin_studio_control_deck,
+        end_studio_control_deck,
+        render_global_studio_bar,
+        render_section_jump_bar,
+        render_studio_nav,
     session_badges,
         sidebar_section,
         sidebar_source_banner,
@@ -143,7 +145,10 @@ except Exception as _app_ui_first_err:
                 follow_along_status_html = _app_ui_mod.follow_along_status_html
                 inject_app_theme = _app_ui_mod.inject_app_theme
                 page_header = _app_ui_mod.page_header
+                begin_studio_control_deck = _app_ui_mod.begin_studio_control_deck
+                end_studio_control_deck = _app_ui_mod.end_studio_control_deck
                 render_global_studio_bar = _app_ui_mod.render_global_studio_bar
+                render_section_jump_bar = getattr(_app_ui_mod, "render_section_jump_bar", None)
                 render_studio_nav = _app_ui_mod.render_studio_nav
                 session_badges = _app_ui_mod.session_badges
                 sidebar_section = _app_ui_mod.sidebar_section
@@ -195,6 +200,12 @@ if not _APP_UI_LOADED:
 
     def sidebar_source_banner(markdown_text: str) -> None:
         st.sidebar.markdown(markdown_text)
+
+    def begin_studio_control_deck() -> None:
+        pass
+
+    def end_studio_control_deck() -> None:
+        pass
 
     def render_studio_nav(session_state, *, rerun_fn) -> str:
         pages = [
@@ -4431,10 +4442,8 @@ def _render_catalog_song_picker_block(
     filters_in_expander: bool = False,
 ) -> None:
     """Song selector at top of Practice / Picker — search, then pick."""
-    st.markdown(
-        '<div class="ui-practice-top"><p class="ui-practice-top-title">Choose a song</p></div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="ui-practice-top">', unsafe_allow_html=True)
+    st.markdown('<p class="ui-practice-top-title">🎵 Song library</p>', unsafe_allow_html=True)
 
     if show_source_toggle:
         _picker_source_options = [
@@ -4459,6 +4468,7 @@ def _render_catalog_song_picker_block(
                 f"**Custom Progression** — {_cpl_pick.get('name', 'Untitled')}. "
                 "Edit in **Custom** · transpose in the control strip above."
             )
+            st.markdown("</div>", unsafe_allow_html=True)
             return
         if is_custom_progression(st.session_state):
             set_catalog_source(st.session_state)
@@ -4498,6 +4508,7 @@ def _render_catalog_song_picker_block(
 
     if not pick_options:
         st.warning("No songs match — widen filters in **Refine library** below.")
+        st.markdown("</div>", unsafe_allow_html=True)
         return
 
     if st.session_state.get("matching_song_dropdown") not in pick_options:
@@ -4598,6 +4609,8 @@ def _render_catalog_song_picker_block(
                     key="song_picker_level_filter",
                 )
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # -------------------------------------------------
 # APP UI
@@ -4608,7 +4621,7 @@ inject_app_theme()
 with st.expander("Daniel Cohen AI Music Practice Coach — studio overview", expanded=False):
     st.markdown(
         "Songs, backing tracks, custom progressions, multitrack recording, and coaching in one workspace. "
-        "Use the **navigation bar** and **control strip** below for song, key, level, and focus."
+        "Use the **studio controls** at the top for workspace, song, key, level, and backing."
     )
 
 
@@ -4706,6 +4719,7 @@ _global_song_opts = _pick_keys_from_records(
 if _master_pk and _master_pk not in _global_song_opts:
     _global_song_opts = [_master_pk] + _global_song_opts
 
+begin_studio_control_deck()
 _studio_page = render_studio_nav(st.session_state, rerun_fn=st.rerun)
 _cpl_bar_name = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {}).get(
     "name", "Custom Progression"
@@ -4733,6 +4747,7 @@ render_global_studio_bar(
     session_state=st.session_state,
     rerun_fn=st.rerun,
 )
+end_studio_control_deck()
 
 instrument = st.session_state.get("instrument", "Piano")
 level = st.session_state.get("level", "Intermediate")

@@ -13,6 +13,8 @@ __all__ = [
     "follow_along_status_html",
     "inject_app_theme",
     "page_header",
+    "begin_studio_control_deck",
+    "end_studio_control_deck",
     "render_global_studio_bar",
     "render_section_jump_bar",
     "render_studio_nav",
@@ -195,31 +197,116 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   .ui-hero-title { font-size: 1.28rem; }
 }
 div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25rem; }
+.ui-studio-deck {
+  border: 1px solid rgba(15, 23, 42, 0.11);
+  border-radius: 16px;
+  margin-bottom: 0.75rem;
+  background: linear-gradient(168deg, #ffffff 0%, #f8fafc 55%, #f1f5f9 100%);
+  box-shadow: 0 2px 14px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
 .ui-studio-nav {
-  border: 1px solid var(--studio-line);
-  border-radius: var(--studio-radius);
-  padding: 0.45rem 0.5rem;
-  margin-bottom: 0.55rem;
-  background: #fff;
+  border: none;
+  border-radius: 0;
+  padding: 0.5rem 0.7rem 0.45rem 0.7rem;
+  margin-bottom: 0;
+  background: linear-gradient(90deg, rgba(15, 23, 42, 0.04) 0%, rgba(30, 58, 95, 0.06) 100%);
+  border-bottom: 1px solid var(--studio-line);
 }
 .ui-studio-nav .nav-btn button {
-  font-size: 0.78rem !important;
-  padding: 0.35rem 0.5rem !important;
-  min-height: 2rem !important;
+  font-size: 0.74rem !important;
+  font-weight: 650 !important;
+  padding: 0.38rem 0.35rem !important;
+  min-height: 2.05rem !important;
+  border-radius: 10px !important;
+}
+.ui-studio-nav .nav-btn button[kind="primary"] {
+  box-shadow: 0 1px 6px rgba(37, 99, 235, 0.22) !important;
 }
 .ui-global-bar {
-  border: 1px solid #bfdbfe;
-  border-radius: var(--studio-radius);
-  padding: 0.55rem 0.65rem 0.45rem 0.65rem;
-  margin-bottom: 0.65rem;
-  background: linear-gradient(180deg, #eff6ff, #ffffff);
+  border: none;
+  border-radius: 0;
+  padding: 0.65rem 0.75rem 0.6rem 0.75rem;
+  margin-bottom: 0;
+  background: transparent;
   position: sticky;
   top: 0.35rem;
   z-index: 99;
 }
-.ui-global-bar .stSelectbox label, .ui-global-bar .stSlider label {
-  font-size: 0.78rem !important;
+.ui-global-bar .stSelectbox label,
+.ui-global-bar .stSlider label,
+.ui-global-bar .stRadio label {
+  font-size: 0.7rem !important;
+  font-weight: 750 !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b !important;
+  margin-bottom: 0.15rem !important;
+}
+.ui-global-bar [data-baseweb="select"] > div,
+.ui-global-bar .stSlider > div {
+  min-height: 2.15rem;
+}
+.ui-bar-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 0.4rem 0;
+  line-height: 1.2;
+}
+.ui-bar-label.session { color: #1d4ed8; }
+.ui-bar-label.library { color: #6d28d9; margin-top: 0.55rem; }
+.ui-bar-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(15,23,42,0.12), transparent);
+  margin: 0.5rem 0 0.45rem 0;
+}
+.ui-now-playing {
+  border: 1px solid rgba(29, 78, 216, 0.15);
+  border-radius: 12px;
+  padding: 0.5rem 0.65rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+  min-height: 3.1rem;
+}
+.ui-now-playing .np-title {
+  font-size: 0.98rem;
+  font-weight: 850;
+  color: #0f172a;
+  line-height: 1.25;
+  margin: 0;
+}
+.ui-now-playing .np-meta {
+  font-size: 0.76rem;
+  color: #64748b;
+  margin: 0.2rem 0 0 0;
+  line-height: 1.35;
+}
+.ui-backing-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 750;
+  border: 1px solid var(--studio-line);
+  background: #f8fafc;
+  color: #64748b;
+  margin-top: 0.35rem;
+}
+.ui-backing-pill.ready {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #15803d;
+}
+.ui-quick-nav .stButton > button {
+  font-size: 0.72rem !important;
   font-weight: 700 !important;
+  padding: 0.4rem 0.35rem !important;
+  min-height: 2.1rem !important;
+  border-radius: 10px !important;
 }
 .ui-compact-title {
   font-size: 1.12rem;
@@ -236,36 +323,49 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 .ui-section-jump {
   border: 1px solid var(--studio-line);
   border-radius: var(--studio-radius);
-  padding: 0.45rem 0.5rem;
+  padding: 0.5rem 0.6rem;
   margin: 0 0 0.65rem 0;
-  background: #fff;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
   position: sticky;
-  top: 2.85rem;
+  top: 5.5rem;
   z-index: 88;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.05);
 }
+.ui-section-jump .ui-bar-label { margin-bottom: 0.35rem; color: #15803d; }
 .ui-section-jump .jump-btn button {
   font-size: 0.76rem !important;
   padding: 0.32rem 0.45rem !important;
   min-height: 1.85rem !important;
 }
 .ui-practice-top {
-  border: 1px solid #bfdbfe;
+  border: 1px solid rgba(109, 40, 217, 0.12);
   border-radius: var(--studio-radius);
-  padding: 0.65rem 0.75rem;
-  margin-bottom: 0.65rem;
-  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  padding: 0.7rem 0.8rem 0.75rem 0.8rem;
+  margin-bottom: 0.7rem;
+  background: linear-gradient(180deg, #ffffff 0%, #faf5ff 100%);
+  box-shadow: 0 1px 8px rgba(109, 40, 217, 0.06);
 }
 .ui-practice-top-title {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 800;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: #64748b;
-  margin: 0 0 0.45rem 0;
+  color: #6d28d9;
+  margin: 0 0 0.55rem 0;
+}
+.ui-practice-top .stCaption, .ui-practice-top p[data-testid="stCaptionContainer"] {
+  font-size: 0.8rem !important;
+  color: #64748b !important;
+}
+.ui-practice-top [data-baseweb="select"] > div {
+  border-radius: 10px !important;
 }
 @media (max-width: 900px) {
-  .ui-global-bar { position: relative; top: 0; }
+  .ui-studio-deck { border-radius: 12px; }
+  .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
+  .ui-studio-nav { padding: 0.4rem 0.45rem; }
+  .ui-studio-nav .nav-btn button { font-size: 0.68rem !important; padding: 0.32rem 0.2rem !important; }
+  .ui-now-playing .np-title { font-size: 0.9rem; }
   .ui-section-jump { top: 0.25rem; }
   .lead-grid { grid-template-columns: repeat(2, minmax(88px, 1fr)) !important; }
 }
@@ -368,12 +468,29 @@ def ensure_studio_page(session_state: dict[str, Any], default: str = "practice")
     return session_state.setdefault("studio_page", default)
 
 
+def begin_studio_control_deck() -> None:
+    """Open unified top control card (nav + session bar)."""
+    import streamlit as st
+
+    st.markdown('<div class="ui-studio-deck">', unsafe_allow_html=True)
+
+
+def end_studio_control_deck() -> None:
+    import streamlit as st
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def render_studio_nav(session_state: Any, *, rerun_fn: Any) -> str:
     """Horizontal workspace navigation (replaces tall tab strip)."""
     import streamlit as st
 
     current = ensure_studio_page(session_state)
-    st.markdown('<div class="ui-studio-nav">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="ui-studio-nav">'
+        '<p class="ui-bar-label">Workspace</p>',
+        unsafe_allow_html=True,
+    )
     cols = st.columns(len(STUDIO_PAGES))
     for col, (page_id, label) in zip(cols, STUDIO_PAGES):
         with col:
@@ -422,14 +539,22 @@ def render_global_studio_bar(
 
     ss = session_state if session_state is not None else st.session_state
     st.markdown('<div class="ui-global-bar">', unsafe_allow_html=True)
-    row1 = st.columns([2.0, 1.35, 1.0, 1.0, 1.0, 0.9])
+    st.markdown('<p class="ui-bar-label session">Practice session</p>', unsafe_allow_html=True)
+
+    row1 = st.columns([1.55, 1.15, 0.95, 1.05, 1.0, 0.85])
     with row1[0]:
-        genre_bit = f" · {genre}" if genre else ""
-        st.markdown(f"**{html.escape(song)}**{html.escape(genre_bit)}")
-        st.caption(f"{source_label} · home **{original_key}**")
+        genre_bit = f'<span style="color:#6d28d9;font-weight:700;">{html.escape(genre)}</span>' if genre else ""
+        st.markdown(
+            f'<div class="ui-now-playing">'
+            f'<p class="np-title">{html.escape(song)}</p>'
+            f'<p class="np-meta">{html.escape(source_label)} · written key <strong>{html.escape(original_key)}</strong>'
+            f"{(' · ' + genre_bit) if genre else ''}</p>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
     with row1[1]:
         st.selectbox(
-            "Display / practice key",
+            "Practice key",
             display_key_options,
             key="display_key",
             help="Transpose charts and backing audio.",
@@ -443,16 +568,25 @@ def render_global_studio_bar(
         st.selectbox("Focus", focus_options, key="focus")
     with row1[5]:
         if show_bpm:
-            st.slider("BPM", 50, 180, 100, 5, key=bpm_key)
+            st.slider("Tempo", 50, 180, 100, 5, key=bpm_key, help="Backing track BPM")
         elif backing_ready:
-            st.caption("🟢 Backing ready")
+            st.markdown(
+                '<span class="ui-backing-pill ready">● Backing ready</span>',
+                unsafe_allow_html=True,
+            )
         else:
-            st.caption("Backing idle")
+            st.markdown(
+                '<span class="ui-backing-pill">○ Backing idle</span>',
+                unsafe_allow_html=True,
+            )
 
-    row2 = st.columns([1.05, 1.0, 2.35, 0.55, 0.55, 0.55])
+    st.markdown('<div class="ui-bar-divider"></div>', unsafe_allow_html=True)
+    st.markdown('<p class="ui-bar-label library">Song & quick navigation</p>', unsafe_allow_html=True)
+
+    row2 = st.columns([1.0, 0.95, 2.5, 0.72, 0.72, 0.72])
     with row2[0]:
         st.selectbox(
-            "Active source",
+            "Source",
             ["Catalog song", "Custom progression"],
             index=1 if is_custom_source else 0,
             key="global_source_mode",
@@ -460,15 +594,18 @@ def render_global_studio_bar(
         )
     with row2[1]:
         if is_custom_source:
-            st.caption("Custom")
-            st.markdown(f"**{html.escape(custom_progression_name or 'Progression')}**")
+            st.markdown(
+                f'<p class="ui-bar-label" style="margin-top:1.4rem;">Custom</p>'
+                f'<p style="font-weight:800;font-size:0.88rem;margin:0;">{html.escape(custom_progression_name or "Progression")}</p>',
+                unsafe_allow_html=True,
+            )
         elif genre_options:
             _gopts = genre_options
             _gidx = _gopts.index(current_genre) if current_genre in _gopts else 0
             if ss.get("global_quick_genre") not in _gopts:
                 ss["global_quick_genre"] = current_genre if current_genre in _gopts else _gopts[0]
             st.selectbox(
-                "Genre",
+                "Genre filter",
                 _gopts,
                 index=_gopts.index(ss["global_quick_genre"])
                 if ss.get("global_quick_genre") in _gopts
@@ -481,7 +618,7 @@ def render_global_studio_bar(
             st.markdown(f"**{html.escape(genre)}**")
     with row2[2]:
         if is_custom_source:
-            st.caption("Edit chords in **Custom** page · transpose with **Display / practice key** above.")
+            st.caption("Edit in **Custom** tab · transpose with **Practice key** above.")
         elif song_pick_options and format_pick_label:
             _sopts = song_pick_options
             if ss.get("global_quick_song") not in _sopts:
@@ -492,22 +629,29 @@ def render_global_studio_bar(
                 format_func=format_pick_label,
                 key="global_quick_song",
                 on_change=on_song_change,
+                help="Changes the active chart everywhere in the app.",
             )
         else:
             st.caption("Song")
             st.markdown(f"**{html.escape(song)}**")
     with row2[3]:
-        if rerun_fn and st.button("📚", key="global_nav_picker", help="Song Picker"):
+        st.markdown('<div class="ui-quick-nav">', unsafe_allow_html=True)
+        if rerun_fn and st.button("Songs", key="global_nav_picker", use_container_width=True, help="Song library"):
             ss["studio_page"] = "picker"
             rerun_fn()
+        st.markdown("</div>", unsafe_allow_html=True)
     with row2[4]:
-        if rerun_fn and st.button("🎯", key="global_nav_practice", help="Practice"):
+        st.markdown('<div class="ui-quick-nav">', unsafe_allow_html=True)
+        if rerun_fn and st.button("Practice", key="global_nav_practice", use_container_width=True, help="Practice page"):
             ss["studio_page"] = "practice"
             rerun_fn()
+        st.markdown("</div>", unsafe_allow_html=True)
     with row2[5]:
-        if rerun_fn and st.button("🎧", key="global_nav_backing", help="Backing Track"):
+        st.markdown('<div class="ui-quick-nav">', unsafe_allow_html=True)
+        if rerun_fn and st.button("Backing", key="global_nav_backing", use_container_width=True, help="Backing track"):
             ss["studio_page"] = "backing"
             rerun_fn()
+        st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -555,7 +699,10 @@ def render_section_jump_bar(
     if current not in names:
         session_state[state_key] = names[0]
         current = names[0]
-    st.markdown('<div class="ui-section-jump">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="ui-section-jump"><p class="ui-bar-label">Form sections</p>',
+        unsafe_allow_html=True,
+    )
     cols = st.columns(min(len(names), 6))
     for col, name in zip(cols, names[:6]):
         with col:
