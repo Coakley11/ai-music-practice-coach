@@ -7,7 +7,6 @@ from typing import Any, Callable
 
 import streamlit as st
 
-from song_catalog.catalog import reload_song_catalog
 from song_catalog.user_overrides import (
     USER_CORRECTED,
     USER_VERIFIED,
@@ -113,8 +112,21 @@ def init_draft(
     return st.session_state[key]
 
 
+def _reload_catalog_libraries():
+    """Re-read catalog + user overrides (imported only when saving/reverting)."""
+    from song_catalog.catalog import load_song_catalog
+
+    try:
+        from song_catalog.catalog import clear_catalog_cache
+
+        clear_catalog_cache()
+    except (ImportError, AttributeError):
+        pass
+    return load_song_catalog()
+
+
 def refresh_app_catalog_globals(module_globals: dict[str, Any]) -> None:
-    library, picker, genres, records = reload_song_catalog()
+    library, picker, genres, records = _reload_catalog_libraries()
     module_globals["SONG_LIBRARY"] = library
     module_globals["SONG_PICKER_CATALOG"] = picker
     module_globals["GENRES"] = genres
