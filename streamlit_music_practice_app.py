@@ -1653,6 +1653,8 @@ def chord_function_summary(chord):
         return "Minor 7 chord: warmer and more relaxed than a plain minor triad."
     if "9" in low or "11" in low:
         return "Extended chord: upper chord tones add color while the 3rd and 7th define the harmony."
+    if low.endswith("6") or "/6" in low or "6/" in low:
+        return "Sixth chord: adds a warm color tone without the full maj7 sweetness—common in pop piano comping."
     return "Chord-tone target: identify root, 3rd, and 5th first, then add color tones."
 
 
@@ -3015,9 +3017,21 @@ def practice_text(level, instrument=None, sections=None, focus=None):
     base = f"""
 ### Advanced Practice Sheet
 - Analyze **{section_name}** as a performance problem, not a chord list: **{chord_path}**.
-- Run one clean take, one reharm/variation take, and one final musical take that keeps only the strongest idea.
+- Run one clean take, one color/voicing take (extensions & voice leading), and one final musical take.
+- Name the 3rd and 7th of each chord, then add one upper color (9, 11, or 6) without changing the groove.
 - Coach target: {coach_line}
 """
+    _song_lc = str(globals().get("song", "")).lower()
+    if "rocket man" in _song_lc:
+        base += (
+            "\n- **Rocket Man:** Slash bass (**Bb/D, Cm7/Bb, F/A, F/C**) stays on beat 1; "
+            "richness lives in **Gm9/Gm11** and **C13sus4→C9**. Chorus comp: smooth Bbmaj7↔Ebmaj9, not jazz reharm."
+        )
+    elif "billie jean" in _song_lc:
+        base += (
+            "\n- **Billie Jean:** Same pocket as Intermediate—**F#m9→G#m7→Amaj7→G#m7** with tight rhythm. "
+            "**B5** stays power; bridge **Dmaj9/F#m9** is color only before **C#9**."
+        )
     if instrument == "Voice":
         base += vocal_practice_text(level, sections or {})
     if instrument == "Guitar":

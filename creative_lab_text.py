@@ -293,6 +293,28 @@ def deep_harmonic_analysis_text(ctx, all_chords_from_sections, chord_quality_fn)
     if "piano man" in title:
         out.append("\n## Song-Specific Insight")
         out.append("- **Piano Man** uses descending bass movement like C -> B -> A in key moments, giving the accompaniment a conversational, rolling pull between vocal phrases.")
+    elif "rocket man" in title:
+        out.append("\n## Song-Specific Insight")
+        out.append(
+            "- **Rocket Man** (Advanced) keeps the Bb walkdown **Bb/D, Cm7/Bb, F/A, F/C** intact; "
+            "color comes from **Gm9/Gm11**, **C13sus4→C9**, and **Ebmaj7/Bbmaj7** pads—not reharmonization."
+        )
+        if ctx["level"] == "Advanced":
+            out.append(
+                "- Comping: spread dominants (C9, C13sus4) in the right hand; let slash bass notes "
+                "anchor the left hand on beat 1. Chorus Bbmaj7↔Ebmaj9 should still feel like a simple lift."
+            )
+    elif "billie jean" in title:
+        out.append("\n## Song-Specific Insight")
+        out.append(
+            "- **Billie Jean** is a **F#m→G#m→A→G#m** groove; Advanced adds **F#m9, G#m7, Amaj7, Bm9** "
+            "without breaking the pocket. Keep rhythm identical to Intermediate."
+        )
+        if ctx["level"] == "Advanced":
+            out.append(
+                "- Voice leading: move the top note G#m7→Amaj7→G#m7 by step; **B5** stays a power chord. "
+                "Bridge **Dmaj9/F#m9** is color only—resolve **C#9** briefly, not a jazz turnaround."
+            )
     elif "love story" in title:
         out.append("\n## Song-Specific Insight")
         out.append("- **Love Story** saves emotional lift for the later modulation/final chorus; practice making the final key change feel brighter without rushing the tempo.")

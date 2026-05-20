@@ -1011,19 +1011,20 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "Outro": ["Eb", "Bb", "Eb", "Bb", "Eb", "Bb", "Eb", "Bb"],
             },
             advanced={
-                "Intro": ["Gm9", "C13", "Fadd9", "Bbadd9"] * 2,
+                "Intro": ["Gm9", "C13sus4", "Fadd9", "Bbmaj7"] * 2,
                 "Verse": [
-                    "Gm9", "C9", "Gm9", "C9",
-                    "Ebmaj9", "Bb/D", "Cm9", "Cm7/Bb", "F/A", "F/C", "Fadd9",
+                    "Gm9", "C13sus4", "Gm11", "C9",
+                    "Ebmaj7", "Bb/D", "Cm9", "Cm7/Bb", "F/A", "F/C", "Fmaj7",
                 ],
                 "Chorus": [
-                    "Bbadd9", "Ebmaj9", "Bbadd9", "Ebmaj9", "Bb/D", "C13", "Ebmaj9", "Bbadd9", "Ebmaj9",
+                    "Bbmaj7", "Ebmaj9", "Bb6", "Ebadd9",
+                    "Bb/D", "C13sus4", "C9", "Ebmaj9", "Bbadd9",
                 ],
                 "Verse 2": [
-                    "Gm9", "C11", "Gm9", "C11",
-                    "Ebmaj9", "Bb/D", "Cm9", "Cm7/Bb", "F/A", "F/C", "Fadd9",
+                    "Gm9", "C11", "Gm11", "C9",
+                    "Ebmaj7", "Bb/D", "Cm9", "Cm7/Bb", "F/A", "F/C", "F6",
                 ],
-                "Outro": ["Ebmaj9", "Bbadd9", "Ebmaj9", "Bbadd9", "Ebmaj9", "Bbadd9", "Ebmaj9", "Bbadd9"],
+                "Outro": ["Ebmaj9", "Bbadd9", "Eb6", "Bbmaj7", "Ebmaj9", "Bbadd9", "Ebmaj9", "Bbmaj7"],
             },
             composer="Elton John & Bernie Taupin",
             lyric_cues={
@@ -1048,7 +1049,8 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             notes=(
                 "Key Bb (concert). Reference chart: verse opens Gm7–C9 twice, then "
                 "Eb–Bb/D–Cm–Cm/Bb–F/A–F/C–F bass walkdown (slash chords retained). "
-                "Chorus: Bb↔Eb with Bb/D–C9 tag. Not AI-verified."
+                "Chorus: Bb↔Eb with Bb/D–C9 tag. Advanced adds 9/11/13 colors and "
+                "C13sus4→C9 while keeping all slash bass motion. Not AI-verified."
             ),
             chart_status="user_corrected_reference",
         ),
@@ -1246,22 +1248,22 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "Outro": ["F#m7", "G#m7", "A", "G#m7"] * 2,
             },
             advanced={
-                "Intro": ["F#m9", "G#m9", "Amaj7", "G#m9"] * 2,
+                "Intro": ["F#m9", "G#m7", "Amaj7", "G#m7"] * 2,
                 "Verse": [
-                    "F#m9", "G#m9", "Amaj7", "G#m9",
-                    "F#m9", "G#m9", "Amaj7", "G#m9", "Bm9",
-                    "Bm9", "F#m9", "G#m9", "Amaj7", "G#m9", "Bm9",
-                    "Bm9", "F#m9", "G#m9", "Amaj7", "G#m9",
+                    "F#m9", "G#m7", "Amaj7", "G#m7",
+                    "F#m9", "G#m7", "Amaj7", "G#m7", "Bm9",
+                    "Bm9", "F#m9", "G#m7", "Amaj7", "G#m7", "Bm9",
+                    "Bm9", "F#m9", "G#m7", "A6", "G#m7",
                 ],
-                "Bridge": ["Dmaj7", "F#m9", "Dmaj7", "F#m9", "Dmaj7", "F#m9", "Dmaj7", "C#7#9"],
+                "Bridge": ["Dmaj9", "F#m9", "D6", "F#m9", "Dmaj7", "F#m9", "Dmaj9", "C#9"],
                 "Chorus": [
-                    "F#m9", "G#m9", "Amaj7", "G#m9", "F#m9", "G#m9", "Amaj7", "G#m9", "B5",
-                    "B5", "F#m9", "G#m9", "Amaj7", "G#m9",
+                    "F#m9", "G#m7", "Amaj7", "G#m7", "F#m9", "G#m7", "A6", "G#m7", "B5",
+                    "B5", "F#m9", "G#m7", "Amaj7", "G#m7",
                 ],
-                "Chorus (Extension)": ["Bm9", "Bm9", "F#m9", "G#m9", "Amaj7", "G#m9"],
-                "Instrumental": ["F#m9", "G#m9", "Amaj7", "G#m9"] * 4
-                + ["Bm9", "Bm9", "F#m9", "G#m9", "Amaj7", "G#m9"],
-                "Outro": ["F#m9", "G#m9", "Amaj7", "G#m9"] * 2,
+                "Chorus (Extension)": ["Bm9", "Bm11", "F#m9", "G#m7", "Amaj7", "G#m7"],
+                "Instrumental": ["F#m9", "G#m7", "Amaj7", "G#m7"] * 4
+                + ["Bm9", "Bm9", "F#m9", "G#m7", "Amaj7", "G#m7"],
+                "Outro": ["F#m9", "G#m7", "Amaj7", "G#m7"] * 2,
             },
             composer="Michael Jackson",
             lyric_cues={
@@ -1286,7 +1288,8 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             },
             notes=(
                 "Key F#m; 4/4 groove — one chord = one bar. F#m→G#m→A→G#m vamp is the "
-                "core feel. Verse uses phased Bm bars; chorus adds B5. Not AI-verified."
+                "core feel. Verse uses phased Bm bars; chorus adds B5. Advanced uses "
+                "F#m9/G#m7/Amaj7/Bm9 colors without changing the tight loop. Not AI-verified."
             ),
             chart_status="user_corrected_reference",
         ),
