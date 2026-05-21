@@ -75,6 +75,228 @@ def song_card_meta(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def sections_for_record(record: dict[str, Any], level: str = "Intermediate") -> dict[str, list[str]]:
+    versions = record.get("chart_versions") or {}
+    if level in versions and versions[level]:
+        return versions[level]
+    return record.get("sections") or {}
+
+
+def _ordered_section_labels(sections: dict[str, list[str]]) -> list[str]:
+    return practice_ordered_section_names(sections)
+
+
+def _default_bpm_for_record(record: dict[str, Any]) -> int:
+    ext = record.get("extensions") or {}
+    if ext.get("default_bpm"):
+        try:
+            return int(ext["default_bpm"])
+        except (TypeError, ValueError):
+            pass
+    title = (record.get("title") or "").lower()
+    if "how deep" in title:
+        return 105
+    if "shape of you" in title:
+        return 96
+    return 100
+
+
+def _default_time_signature_for_record(record: dict[str, Any], sections: dict[str, list[str]]) -> str:
+    title = (record.get("title") or "").lower()
+    keys = " ".join(sections.keys()).lower()
+    if "3/4" in keys or "piano man" in title:
+        return "3/4"
+    if "6/8" in keys or "perfect" in title:
+        return "6/8"
+    return "4/4"
+
+
+def genre_visual_style(genre: str) -> dict[str, str]:
+    g = (genre or "Pop").lower()
+    styles = {
+        "jazz": ("Jazz", "🎷", "linear-gradient(145deg, #1e3a5f 0%, #312e81 55%, #4c1d95 100%)"),
+        "blues": ("Blues", "🎸", "linear-gradient(145deg, #1c1917 0%, #44403c 50%, #78350f 100%)"),
+        "rock": ("Rock", "🤘", "linear-gradient(145deg, #450a0a 0%, #7f1d1d 55%, #1e293b 100%)"),
+        "funk": ("Funk", "🕺", "linear-gradient(145deg, #422006 0%, #a16207 45%, #713f12 100%)"),
+        "soul": ("Soul", "💜", "linear-gradient(145deg, #3b0764 0%, #6b21a8 55%, #831843 100%)"),
+        "bossa": ("Bossa", "🌴", "linear-gradient(145deg, #064e3b 0%, #047857 50%, #0f766e 100%)"),
+    }
+    for token, payload in styles.items():
+        if token in g:
+            return {"label": payload[0], "emoji": payload[1], "gradient": payload[2]}
+    if "pop" in g:
+        return {
+            "label": "Pop",
+            "emoji": "🎤",
+            "gradient": "linear-gradient(145deg, #1d4ed8 0%, #6366f1 50%, #ec4899 100%)",
+        }
+    return {
+        "label": genre or "Song",
+        "emoji": "🎵",
+        "gradient": "linear-gradient(145deg, #0f172a 0%, #334155 55%, #475569 100%)",
+    }
+
+
+def chord_concepts_from_sections(sections: dict[str, list[str]], *, genre: str = "") -> list[str]:
+    chords = [str(c).strip() for chs in sections.values() for c in (chs or []) if str(c).strip()]
+    if not chords:
+        return ["form reading", "steady pulse"]
+
+    concepts: list[str] = []
+    if any("maj7" in c or "maj9" in c for c in chords):
+        concepts.append("major 7th color")
+    if any("/" in c for c in chords):
+        concepts.append("slash chords / bass motion")
+    if any(
+        re.search(r"(?<![a-z])7(?!#|b|\d)", c, re.I) and "maj7" not in c.lower() and "m7" not in c.lower()
+        for c in chords
+    ):
+        concepts.append("dominant 7th tension")
+    if any("m7b5" in c.lower() or "ø" in c for c in chords):
+        concepts.append("half-diminished color")
+    if any("sus" in c.lower() for c in chords):
+        concepts.append("suspended voicings")
+
+    roots: list[int] = []
+    for ch in chords:
+        head = ch.split("/")[0]
+        root, _ = split_chord(head)
+        midi = NOTE_TO_MIDI.get(normalize_root(root))
+        if midi is not None:
+            roots.append(midi)
+
+    for i in range(len(roots) - 1):
+        a, b = roots[i], roots[i + 1]
+        if (b - a) % 12 in (1, 2, 11):
+            concepts.append("chromatic passing motion")
+            break
+
+    for i in range(len(chords) - 1):
+        c1, c2 = chords[i], chords[i + 1]
+        if "m7" in c1.lower() and re.search(r"7(?!#|b|\d)", c2, re.I) and "maj" not in c2.lower():
+            concepts.append("ii–V movement")
+            break
+
+    g = (genre or "").lower()
+    if "bossa" in g:
+        concepts.append("bossa rhythm")
+    elif "jazz" in g:
+        concepts.append("swing feel & extensions")
+    elif "pop" in g or "ballad" in " ".join(sections.keys()).lower():
+        concepts.append("pop ballad comping")
+    elif "funk" in g or "soul" in g:
+        concepts.append("pocket & syncopation")
+
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in concepts:
+        low = item.lower()
+        if low not in seen:
+            seen.add(low)
+            ordered.append(item)
+    return ordered[:6]
+
+
+def practice_focus_hints(record: dict[str, Any], sections: dict[str, list[str]]) -> str:
+    ext = record.get("extensions") or {}
+    if ext.get("arrangement_notes"):
+        return str(ext["arrangement_notes"])
+    genre = (record.get("genre") or "Pop").lower()
+    concepts = chord_concepts_from_sections(sections, genre=record.get("genre", ""))
+    bits = []
+    if "maj7" in " ".join(concepts):
+        bits.append("smooth voice leading")
+    if "slash" in " ".join(concepts):
+        bits.append("bass-line clarity")
+    if "ii–V" in " ".join(concepts):
+        bits.append("cadence resolution")
+    if "pop" in genre:
+        bits.append("pop ballad rhythm")
+    if "jazz" in genre:
+        bits.append("swing time & chord extensions")
+    if "funk" in genre or "soul" in genre:
+        bits.append("tight groove pocket")
+    if not bits:
+        bits = ["steady tempo", "clean chord changes", "section awareness"]
+    return ", ".join(bits[:4])
+
+
+def practice_goals_for_record(record: dict[str, Any], sections: dict[str, list[str]]) -> list[str]:
+    title = record.get("title", "this song")
+    section_names = _ordered_section_labels(sections)
+    goals = [
+        f"Lock the form: {' → '.join(section_names[:5])}" if section_names else "Map the full form once slowly",
+        "Play each section 4× with metronome before adding backing",
+    ]
+    concepts = chord_concepts_from_sections(sections, genre=record.get("genre", ""))
+    if concepts:
+        goals.append(f"Study harmonic color: {', '.join(concepts[:3])}")
+    if any("chorus" in n.lower() for n in section_names):
+        goals.append("Save strongest dynamics for the chorus arrival")
+    if record.get("trusted_core"):
+        goals.append(f"Use verified chart moves in **{title}** for ear-training, not just muscle memory")
+    return goals[:4]
+
+
+def active_song_card_details(record: dict[str, Any], level: str = "Intermediate") -> dict[str, Any]:
+    """Rich metadata for the highlighted Active Song card."""
+    base = song_card_meta(record)
+    sections = sections_for_record(record, level)
+    ext = record.get("extensions") or {}
+    genre = record.get("genre", "Pop")
+    visual = genre_visual_style(genre)
+    section_labels = _ordered_section_labels(sections)
+    concepts = chord_concepts_from_sections(sections, genre=genre)
+    bpm = base.get("bpm") or _default_bpm_for_record(record)
+    key = base.get("key") or "C"
+    style_label = genre
+    g = genre.lower()
+    notes = (ext.get("arrangement_notes") or "").lower()
+    title_low = (record.get("title") or "").lower()
+    if "pop" in g and ("ballad" in notes or "deep" in title_low):
+        style_label = "Pop / Soft Rock Ballad"
+
+    return {
+        **base,
+        "bpm": bpm,
+        "time_signature": _default_time_signature_for_record(record, sections),
+        "key_display": f"{key} major" if "m" not in str(key).lower() else f"{key} minor",
+        "style_label": style_label,
+        "sections": section_labels,
+        "section_summary": ", ".join(_short_section_label(n) for n in section_labels[:6]),
+        "practice_focus": practice_focus_hints(record, sections),
+        "chord_concepts": concepts,
+        "practice_goals": practice_goals_for_record(record, sections),
+        "why_practice": (
+            ext.get("arrangement_notes")
+            or (
+                f"Trusted practice chart for {base['title']} — "
+                "work section-by-section with backing and coach tools."
+            )
+        ),
+        "visual_emoji": visual["emoji"],
+        "visual_gradient": visual["gradient"],
+        "visual_genre": visual["label"],
+    }
+
+
+def _short_section_label(name: str) -> str:
+    low = name.lower()
+    if "pre" in low and "chorus" in low:
+        return "Pre-Chorus"
+    if "verse" in low:
+        return "Verse"
+    if "chorus" in low:
+        return "Chorus"
+    if "bridge" in low:
+        return "Bridge"
+    if "outro" in low:
+        return "Outro"
+    if "intro" in low:
+        return "Intro"
+    return name.split("/")[0].split("(")[0].strip()
+
+
 def _instruments_for_genre(genre: str) -> str:
     g = (genre or "").lower()
     if g == "jazz":

@@ -128,6 +128,7 @@ try:
         rhythm_guide_markdown,
         scale_suggestions_for_chord,
         section_deep_practice_markdown,
+        active_song_card_details,
         song_card_meta,
         song_groove_seed,
     )
@@ -2374,9 +2375,10 @@ def render_follow_along_controls(timeline, key_prefix):
     return pos
 
 
-def live_follow_along_component_html(wav_bytes, timeline, chart_html):
+def live_follow_along_component_html(wav_bytes, timeline, chart_html, *, autoplay: bool = True):
     audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
     timeline_json = json.dumps(timeline)
+    autoplay_attr = "autoplay" if autoplay else ""
     return f"""
 <div class="live-follow-shell">
   <style>
@@ -2450,7 +2452,11 @@ def live_follow_along_component_html(wav_bytes, timeline, chart_html):
 
   <div class="live-player">
     <strong>Live Follow-Along Player</strong>
-    <audio id="live-audio" controls autoplay preload="auto" src="data:audio/wav;base64,{audio_b64}"></audio>
+    <audio id="live-audio" controls {autoplay_attr} preload="auto" src="data:audio/wav;base64,{audio_b64}"></audio>
+    <div class="live-player-toolbar">
+      <button type="button" class="live-stop-btn" id="live-stop-btn">■ Stop playback</button>
+      <span class="live-help" id="live-stop-hint">Stops audio immediately — use **Stop backing track** above to reset follow-along.</span>
+    </div>
     <div class="live-status-grid">
       <div class="live-status-card">
         <div class="live-label">Now Playing</div>
@@ -2574,6 +2580,18 @@ def live_follow_along_component_html(wav_bytes, timeline, chart_html):
       updateHighlight(true);
       animationFrameId = window.requestAnimationFrame(followLoop);
     }}
+
+    document.getElementById("live-stop-btn").addEventListener("click", () => {{
+      audio.pause();
+      audio.currentTime = 0;
+      if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+      clearHighlight();
+      sectionEl.textContent = "Stopped";
+      chordEl.textContent = "-";
+      barEl.textContent = "-";
+      nextEl.textContent = "-";
+      detailEl.textContent = "Playback stopped. Press play on the audio bar to resume, or regenerate the backing track.";
+    }});
 
     audio.addEventListener("play", startFollowLoop);
     audio.addEventListener("playing", startFollowLoop);
@@ -4711,16 +4729,52 @@ def _on_global_song_change() -> None:
 
 
 PENDING_BACKING_SINGLE_SECTION = "_pending_backing_single_section"
+PENDING_BACKING_SCOPE = "_pending_backing_scope"
+PENDING_BACKING_LOOPS = "_pending_backing_loops"
+BACKING_AUTOPLAY = "_backing_autoplay"
 
 
 def _prepare_backing_from_practice(focus: str | None) -> None:
-    """Carry Practice section focus into Backing Track (safe for widget keys)."""
+    """Carry Practice section focus into Backing Track (pending keys — safe for widgets)."""
     if practice_is_full_song(focus):
-        st.session_state["backing_track_scope"] = "Full song"
+        st.session_state[PENDING_BACKING_SCOPE] = "Full song"
         st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
     else:
-        st.session_state["backing_track_scope"] = "Single section"
+        st.session_state[PENDING_BACKING_SCOPE] = "Single section"
         st.session_state[PENDING_BACKING_SINGLE_SECTION] = focus
+        st.session_state[PENDING_BACKING_LOOPS] = 4
+    st.session_state[BACKING_AUTOPLAY] = True
+
+
+def _apply_pending_backing_scope(session_state, section_names: list[str]) -> bool:
+    """Apply Practice → Backing handoff before scope/section widgets are built."""
+    opened_section = False
+    pending_scope = session_state.pop(PENDING_BACKING_SCOPE, None)
+    if pending_scope in ("Full song", "Single section", "Multiple selected sections"):
+        session_state["backing_track_scope"] = pending_scope
+        opened_section = pending_scope == "Single section"
+    pending_sec = session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
+    if pending_sec and pending_sec in section_names:
+        session_state["backing_track_single_section"] = pending_sec
+        opened_section = True
+    pending_loops = session_state.pop(PENDING_BACKING_LOOPS, None)
+    if pending_loops is not None:
+        try:
+            session_state["backing_track_loops"] = int(pending_loops)
+        except (TypeError, ValueError):
+            pass
+    return opened_section
+
+
+def _stop_backing_playback() -> None:
+    """Stop follow-along playback without clearing the generated WAV."""
+    st.session_state[BACKING_AUTOPLAY] = False
+    st.session_state.pop("playback_start_time", None)
+    for key in list(st.session_state.keys()):
+        if str(key).endswith("::follow_start_time"):
+            st.session_state.pop(key, None)
+        if str(key).endswith("::follow_manual_index"):
+            st.session_state[key] = 0
 
 
 def _picker_navigate(page: str, *, open_chord_coach: bool = False) -> None:
@@ -4732,26 +4786,41 @@ def _picker_navigate(page: str, *, open_chord_coach: bool = False) -> None:
 
 
 def _render_active_song_card(rec: dict) -> None:
-    """Single card for the active catalog song — navigation only."""
-    meta = song_card_meta(rec)
-    trusted_cls = " trusted" if meta["trusted"] else ""
-    st.markdown(
-        f'<div class="ui-song-card active{trusted_cls}">'
-        f'<p class="ui-song-card-title">{html.escape(meta["title"])}</p>'
-        f'<p class="ui-song-card-artist">{html.escape(meta["artist"])}</p>'
-        f'<div class="ui-song-card-meta">'
-        f'<span class="ui-song-pill key">Key {html.escape(meta["key"])}</span>'
-        f'<span class="ui-song-pill genre">{html.escape(meta["genre"])}</span>'
-        + (
-            f'<span class="ui-song-pill bpm">{int(meta["bpm"])} BPM</span>'
-            if meta.get("bpm")
-            else ""
-        )
-        + f'<span class="ui-song-pill">{html.escape(meta["difficulty"])}</span>'
-        f"</div></div>",
-        unsafe_allow_html=True,
+    """Rich active-song summary with navigation shortcuts."""
+    level = st.session_state.get("level", "Intermediate")
+    try:
+        details = active_song_card_details(rec, level=level)
+    except Exception:
+        details = {**song_card_meta(rec), "time_signature": "4/4", "key_display": rec.get("key", "C"), "style_label": rec.get("genre", ""), "sections": list((rec.get("sections") or {}).keys()), "section_summary": "", "practice_focus": "", "chord_concepts": [], "practice_goals": [], "why_practice": "", "visual_emoji": "🎵", "visual_gradient": "linear-gradient(145deg,#334155,#64748b)", "visual_genre": rec.get("genre", "Song"), "bpm": 100}
+    trusted_cls = " trusted" if details.get("trusted") else ""
+    concepts = ", ".join(html.escape(c) for c in details.get("chord_concepts") or [])
+    goals_html = "".join(
+        f"<li>{html.escape(g)}</li>" for g in (details.get("practice_goals") or [])
     )
-    st.caption(f"Best for: {meta['instruments']}")
+    card_html = (
+        f'<div class="ui-active-song-card{trusted_cls}">'
+        f'<div class="ui-active-song-art" style="background:{html.escape(details["visual_gradient"])};">'
+        f'{html.escape(details["visual_emoji"])}<small>{html.escape(details["visual_genre"])}</small></div>'
+        f'<div class="ui-active-song-body">'
+        f'<p class="ui-active-song-kicker">Active Song</p>'
+        f'<p class="ui-active-song-title">{html.escape(details["title"])}</p>'
+        f'<p class="ui-active-song-artist">{html.escape(details["artist"])}</p>'
+        f'<dl class="ui-active-song-facts">'
+        f'<dt>Key</dt><dd>{html.escape(details.get("key_display", details.get("key", "")))}</dd>'
+        f'<dt>Style</dt><dd>{html.escape(details.get("style_label", details.get("genre", "")))}</dd>'
+        f'<dt>Level</dt><dd>{html.escape(details.get("difficulty", ""))}</dd>'
+        f'<dt>BPM</dt><dd>{int(details.get("bpm") or 100)}</dd>'
+        f'<dt>Time</dt><dd>{html.escape(details.get("time_signature", "4/4"))}</dd>'
+        f'<dt>Sections</dt><dd>{html.escape(details.get("section_summary") or "—")}</dd>'
+        f'<dt>Instruments</dt><dd>{html.escape(details.get("instruments", ""))}</dd>'
+        f'<dt>Practice focus</dt><dd>{html.escape(details.get("practice_focus", ""))}</dd>'
+        f"</dl>"
+        + (f'<p class="ui-active-song-blurb"><strong>Harmony:</strong> {concepts}</p>' if concepts else "")
+        + f'<p class="ui-active-song-blurb">{html.escape(str(details.get("why_practice", "")))}</p>'
+        + (f'<ul class="ui-active-song-goals">{goals_html}</ul>' if goals_html else "")
+        + "</div></div>"
+    )
+    st.markdown(card_html, unsafe_allow_html=True)
     st.markdown('<div class="ui-song-card-actions">', unsafe_allow_html=True)
     b1, b2, b3, b4 = st.columns(4)
     with b1:
@@ -5404,6 +5473,20 @@ if _studio_page == "practice":
         state_key="practice_focus_section",
         rerun_fn=st.rerun,
     )
+    _send_label = (
+        "Send to Backing Track (full song)"
+        if practice_is_full_song(_focus_pick)
+        else f"Send to Backing Track — loop {practice_active_section_name(_focus_pick, sections) or _focus_pick}"
+    )
+    if st.button(
+        _send_label,
+        key="practice_send_to_backing",
+        type="primary",
+        use_container_width=True,
+    ):
+        _prepare_backing_from_practice(_focus_pick)
+        st.session_state["studio_page"] = "backing"
+        st.rerun()
     _is_full_song = practice_is_full_song(_focus_pick)
     _active_section = practice_active_section_name(_focus_pick, sections)
     _view_sections = practice_display_sections(sections, _focus_pick)
@@ -5484,25 +5567,6 @@ if _studio_page == "practice":
                 section_label=_active_section,
                 loop_section=True,
             )
-
-    if st.button(
-        "▶ Go to Backing Track (tempo, loops, generate & play)",
-        key="practice_go_backing",
-        use_container_width=True,
-    ):
-        _prepare_backing_from_practice(_focus_pick)
-        st.session_state["studio_page"] = "backing"
-        st.rerun()
-
-    if _active_section:
-        if st.button(
-            f"▶ Backing Track — loop {_active_section}",
-            key=f"practice_backing_loop_{_song_slug(_active_section)}",
-            use_container_width=True,
-        ):
-            _prepare_backing_from_practice(_focus_pick)
-            st.session_state["studio_page"] = "backing"
-            st.rerun()
 
     _chart_current = None if _is_full_song else _active_section
     _chart_html = full_chord_markdown(
@@ -5748,11 +5812,12 @@ elif _studio_page == "backing":
     selected_section_names: list[str] = []
     form_loops = int(st.session_state.get("backing_track_loops", 2))
 
-    with st.expander("Playback settings (scope & loops)", expanded=False):
-        _sec_names = [name for name, chs in section_order(sections) if chs]
-        _pending_backing_sec = st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
-        if _pending_backing_sec and _pending_backing_sec in _sec_names:
-            st.session_state["backing_track_single_section"] = _pending_backing_sec
+    _sec_names = [name for name, chs in section_order(sections) if chs]
+    _from_practice_section = _apply_pending_backing_scope(st.session_state, _sec_names)
+    with st.expander(
+        "Playback settings (scope & loops)",
+        expanded=_from_practice_section,
+    ):
         playback_scope = st.radio(
             "Playback range",
             ["Full song", "Single section", "Multiple selected sections"],
@@ -5776,6 +5841,13 @@ elif _studio_page == "backing":
                 key="backing_track_multi_sections",
             )
         form_loops = st.slider("Number of repeats", 1, 10, 2, 1, key="backing_track_loops")
+
+    if _from_practice_section:
+        _handoff_sec = st.session_state.get("backing_track_single_section", "")
+        st.info(
+            f"Opened from **Practice** — playback defaults to "
+            f"**{_handoff_sec or 'the selected section'}** (full song or other sections still available below)."
+        )
 
     selected_section_names = selected_section_names or []
     groove_style = st.session_state.get("backing_groove_style", "Auto")
@@ -5853,13 +5925,29 @@ elif _studio_page == "backing":
         '<div class="ui-card soft"><div class="ui-card-title">Generate & play</div>',
         unsafe_allow_html=True,
     )
-    if st.button(
-        "▶ Generate backing track",
-        key="gen_backing_btn",
-        disabled=not bool(backing_chords),
-        type="primary",
-        use_container_width=True,
-    ):
+    _backing_audio_ready = bool(
+        st.session_state.get("_last_backing_wav")
+        and st.session_state.get("_last_backing_signature") == _current_backing_signature
+    )
+    _gen_col, _stop_col = st.columns([2, 1])
+    with _gen_col:
+        _gen_clicked = st.button(
+            "▶ Generate backing track",
+            key="gen_backing_btn",
+            disabled=not bool(backing_chords),
+            type="primary",
+            use_container_width=True,
+        )
+    with _stop_col:
+        if st.button(
+            "■ Stop backing track",
+            key="stop_backing_btn",
+            disabled=not _backing_audio_ready,
+            use_container_width=True,
+        ):
+            _stop_backing_playback()
+            st.rerun()
+    if _gen_clicked:
         wav = generate_backing_track(
             backing_events,
             bpm=bpm,
@@ -5883,12 +5971,10 @@ elif _studio_page == "backing":
         st.session_state["bpm"] = bpm
         st.session_state["beats_per_bar"] = 4
         st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
+        st.session_state[BACKING_AUTOPLAY] = True
         clear_backing_needs_regen(st)
 
-    if (
-        st.session_state.get("_last_backing_wav")
-        and st.session_state.get("_last_backing_signature") == _current_backing_signature
-    ):
+    if _backing_audio_ready:
         _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
 
         st.download_button(
@@ -5910,10 +5996,7 @@ elif _studio_page == "backing":
         form_loops,
     )
 
-    _chart_expanded = bool(
-        st.session_state.get("_last_backing_wav")
-        and st.session_state.get("_last_backing_signature") == _current_backing_signature
-    )
+    _chart_expanded = _backing_audio_ready
     with st.expander("Lead-sheet chart & chord follow", expanded=_chart_expanded):
         st.caption("Chord boxes highlight when backing audio is playing.")
         chart_html = full_chord_markdown(
@@ -5932,15 +6015,15 @@ elif _studio_page == "backing":
             current_bar=None,
             focus=focus,
         )
-        if (
-            st.session_state.get("_last_backing_wav")
-            and st.session_state.get("_last_backing_signature") == _current_backing_signature
-        ):
+        if _backing_audio_ready:
+            if not st.session_state.get(BACKING_AUTOPLAY, True):
+                st.info("Backing playback stopped — press **Generate backing track** or use the player **Play** button to resume.")
             components.html(
                 live_follow_along_component_html(
                     st.session_state["_last_backing_wav"],
                     _follow_timeline,
                     chart_html,
+                    autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, True)),
                 ),
                 height=720,
                 scrolling=True,
