@@ -130,7 +130,6 @@ try:
         render_cross_page_links,
         render_global_studio_bar,
         render_page_quick_nav,
-        render_sidebar_studio_nav,
         render_section_jump_bar,
         render_studio_brand_header,
         render_studio_nav,
@@ -166,7 +165,6 @@ except Exception as _app_ui_first_err:
                 render_cross_page_links = getattr(_app_ui_mod, "render_cross_page_links", None)
                 render_global_studio_bar = _app_ui_mod.render_global_studio_bar
                 render_page_quick_nav = getattr(_app_ui_mod, "render_page_quick_nav", None)
-                render_sidebar_studio_nav = getattr(_app_ui_mod, "render_sidebar_studio_nav", None)
                 render_section_jump_bar = getattr(_app_ui_mod, "render_section_jump_bar", None)
                 render_studio_brand_header = _app_ui_mod.render_studio_brand_header
                 render_studio_nav = _app_ui_mod.render_studio_nav
@@ -245,9 +243,6 @@ if not _APP_UI_LOADED:
 
     def end_studio_control_deck() -> None:
         pass
-
-    def render_sidebar_studio_nav(session_state, *, current_page, rerun_fn):
-        return render_studio_nav(session_state, rerun_fn=rerun_fn)
 
     def render_studio_nav(session_state, *, rerun_fn) -> str:
         pages = [
@@ -4884,14 +4879,6 @@ def _ui_source_label() -> str:
 # SIDEBAR
 
 _studio_page = ensure_studio_page(st.session_state)
-
-sidebar_section("Studio", icon="🎛️", tone="nav")
-if render_sidebar_studio_nav:
-    render_sidebar_studio_nav(
-        st.session_state,
-        current_page=_studio_page,
-        rerun_fn=st.rerun,
-    )
 
 sidebar_section("Active source", icon="🎼", tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
