@@ -441,6 +441,72 @@ def build_practice_session_from_logs(
     }
 
 
+PRACTICE_FOCUS_FULL = "Full Song"
+
+_SECTION_SORT_HINTS = (
+    "intro",
+    "verse",
+    "pre-chorus",
+    "pre chorus",
+    "chorus",
+    "bridge",
+    "solo",
+    "outro",
+    "ending",
+    "tag",
+    "final",
+)
+
+
+def practice_ordered_section_names(sections: dict[str, list[str]]) -> list[str]:
+    """Section names in musician-friendly order (chart keys, not normalized labels)."""
+    from songs.form import section_order
+
+    names = [name for name, chords in section_order(sections) if chords]
+    ordered: list[str] = []
+    for hint in _SECTION_SORT_HINTS:
+        for name in names:
+            if hint in name.lower() and name not in ordered:
+                ordered.append(name)
+    for name in names:
+        if name not in ordered:
+            ordered.append(name)
+    return ordered
+
+
+def practice_section_options(sections: dict[str, list[str]]) -> list[str]:
+    """Dropdown/radio choices: Full Song plus each chart section."""
+    return [PRACTICE_FOCUS_FULL] + practice_ordered_section_names(sections)
+
+
+def practice_is_full_song(focus: str | None) -> bool:
+    return not focus or focus == PRACTICE_FOCUS_FULL
+
+
+def practice_display_sections(
+    sections: dict[str, list[str]],
+    focus: str | None,
+) -> dict[str, list[str]]:
+    """Lead sheet / coach view: one section or the full form."""
+    if practice_is_full_song(focus):
+        return sections
+    if focus and focus in sections and sections.get(focus):
+        return {focus: sections[focus]}
+    return sections
+
+
+def practice_active_section_name(
+    focus: str | None,
+    sections: dict[str, list[str]],
+) -> str | None:
+    """Resolved chart section key, or None when Full Song is selected."""
+    if practice_is_full_song(focus):
+        return None
+    if focus and focus in sections:
+        return focus
+    return None
+
+
 def song_groove_seed(title: str, artist: str = "") -> int:
     """Stable per-song variation for backing synthesis."""
     blob = f"{title}|{artist}".encode("utf-8")

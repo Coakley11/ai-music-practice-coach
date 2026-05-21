@@ -117,9 +117,14 @@ from songs.sheet_format import (
 
 try:
     from practice_studio import (
+        PRACTICE_FOCUS_FULL,
         beginner_transpose_suggestions,
         build_practice_session_from_logs,
         fretboard_ascii,
+        practice_active_section_name,
+        practice_display_sections,
+        practice_is_full_song,
+        practice_section_options,
         rhythm_guide_markdown,
         scale_suggestions_for_chord,
         section_deep_practice_markdown,
@@ -127,6 +132,23 @@ try:
         song_groove_seed,
     )
 except Exception:
+    PRACTICE_FOCUS_FULL = "Full Song"
+
+    def practice_section_options(sections):
+        return [PRACTICE_FOCUS_FULL] + list(sections.keys())
+
+    def practice_is_full_song(focus):
+        return not focus or focus == PRACTICE_FOCUS_FULL
+
+    def practice_display_sections(sections, focus):
+        if practice_is_full_song(focus):
+            return sections
+        if focus in sections:
+            return {focus: sections[focus]}
+        return sections
+
+    def practice_active_section_name(focus, sections):
+        return None if practice_is_full_song(focus) else focus
     def song_card_meta(record):
         return {"title": record.get("title", ""), "artist": record.get("artist", ""), "genre": "", "key": "C", "bpm": None, "difficulty": "", "instruments": "", "trusted": False}
 
@@ -327,10 +349,18 @@ if not _APP_UI_LOADED:
             st.slider("BPM", 50, 180, 100, 5, key=kwargs.get("bpm_key", "backing_track_bpm"))
 
     def render_section_jump_bar(section_names, session_state, *, state_key="practice_focus_section", rerun_fn=None):
-        names = [n for n in section_names if n]
-        if not names:
+        options = [n for n in section_names if n]
+        if not options:
             return None
-        pick = st.radio("Section", names, horizontal=True, key=state_key)
+        if session_state.get(state_key) not in options:
+            session_state[state_key] = options[0]
+        pick = st.radio(
+            "Section focus",
+            options,
+            horizontal=True,
+            key=state_key,
+            label_visibility="collapsed",
+        )
         session_state[state_key] = pick
         return pick
 
@@ -1239,14 +1269,31 @@ def render_abc(abc_text):
     )
 
 
-def render_metronome_widget(default_bpm=100, default_signature="4/4"):
+def render_metronome_widget(
+    default_bpm=100,
+    default_signature="4/4",
+    *,
+    section_bars: int = 0,
+    section_label: str = "",
+    loop_section: bool = False,
+):
     config = json.dumps({
         "bpm": int(default_bpm),
         "signature": default_signature,
+        "sectionBars": int(section_bars) if loop_section and section_bars > 0 else 0,
+        "sectionLabel": section_label or "",
     })
+    loop_note = ""
+    if loop_section and section_bars > 0 and section_label:
+        loop_note = (
+            f"<p style='margin:0 0 8px 0;color:#166534;font-weight:650;'>"
+            f"Section loop: <strong>{html.escape(section_label)}</strong> "
+            f"({section_bars} bar{'s' if section_bars != 1 else ''}) — metronome resets after each pass.</p>"
+        )
     html = f"""
     <div id="metro-root" style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; border:1px solid #ddd; border-radius:12px; padding:14px; max-width:760px;">
       <h4 style="margin:0 0 10px 0;">Practice Metronome</h4>
+      {loop_note}
       <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:end;">
         <label>BPM<br><input id="metro-bpm" type="range" min="40" max="240" value="{default_bpm}" style="width:220px;"></label>
         <div><strong id="metro-bpm-label">{default_bpm}</strong> BPM</div>
@@ -1328,6 +1375,9 @@ def render_metronome_widget(default_bpm=100, default_signature="4/4"):
         if (beat > beats) {{
           beat = 1;
           measure += 1;
+          if (cfg.sectionBars > 0 && measure > cfg.sectionBars) {{
+            measure = 1;
+          }}
         }}
         click(beat === 1);
         beatEl.textContent = beat;
@@ -1625,7 +1675,12 @@ def full_chord_markdown(
     merged_lyric_cues = merge_lyric_cues_for_song(song_data, lyric_cues)
     sheet_class = lead_sheet_body_class(song_data)
     total_bars = sum(len(chords) for chords in sections.values())
-    now_playing = current_section or "Full song"
+    show_full = not current_section or str(current_section).strip().lower() in (
+        "full song",
+        "full form",
+        "",
+    )
+    now_playing = "Full song" if show_full else str(current_section)
     ext = song_data.get("extensions") or {}
 
     style = """
@@ -1778,9 +1833,13 @@ def full_chord_markdown(
     )
 
     section_cards = []
-    current_parts = {part.strip() for part in str(current_section or "").split(" + ") if part.strip()}
+    current_parts = set()
+    if not show_full:
+        current_parts = {str(current_section).strip()}
     for section_name, chords in sections.items():
         if not chords:
+            continue
+        if not show_full and section_name not in current_parts:
             continue
         role = _chart_section_role(section_name)
         is_current = section_name in current_parts
@@ -4653,6 +4712,19 @@ def _on_global_song_change() -> None:
     note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
 
+PENDING_BACKING_SINGLE_SECTION = "_pending_backing_single_section"
+
+
+def _prepare_backing_from_practice(focus: str | None) -> None:
+    """Carry Practice section focus into Backing Track (safe for widget keys)."""
+    if practice_is_full_song(focus):
+        st.session_state["backing_track_scope"] = "Full song"
+        st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
+    else:
+        st.session_state["backing_track_scope"] = "Single section"
+        st.session_state[PENDING_BACKING_SINGLE_SECTION] = focus
+
+
 def _picker_navigate(page: str, *, open_chord_coach: bool = False) -> None:
     """Open a studio page for the already-selected catalog song (no re-selection)."""
     st.session_state["studio_page"] = page
@@ -5327,13 +5399,23 @@ if _studio_page == "practice":
         unsafe_allow_html=True,
     )
 
-    _sec_order = [name for name, chs in section_order(sections) if chs]
-    _focus_section = render_section_jump_bar(
-        _sec_order,
+    _section_choices = practice_section_options(sections)
+    _focus_pick = render_section_jump_bar(
+        _section_choices,
         st.session_state,
         state_key="practice_focus_section",
         rerun_fn=st.rerun,
     )
+    _is_full_song = practice_is_full_song(_focus_pick)
+    _active_section = practice_active_section_name(_focus_pick, sections)
+    _view_sections = practice_display_sections(sections, _focus_pick)
+    _view_chords = (
+        all_chords_from_sections(_view_sections)
+        if _is_full_song
+        else list((_view_sections.get(_active_section) or []) if _active_section else [])
+    )
+    _time_sig = default_time_signature(song, sections)
+    _section_bar_count = len(_view_chords) if _active_section else 0
 
     if level == "Beginner":
         _beginner_tips = beginner_transpose_suggestions(
@@ -5346,12 +5428,26 @@ if _studio_page == "practice":
                 for tip in _beginner_tips:
                     st.markdown(tip)
 
-    if _focus_section and _focus_section in sections:
-        _focus_chords = sections.get(_focus_section) or []
-        with st.expander(f"🔬 Section deep practice — {_focus_section}", expanded=True):
+    if _is_full_song:
+        st.info(
+            "Select a **section** above (Verse, Chorus, Bridge, etc.) to isolate chords, "
+            "lyrics, metronome loop, deep focus, scales, and rhythm tools for that part only."
+        )
+    elif _active_section:
+        _focus_chords = sections.get(_active_section) or []
+        st.markdown(
+            f'<div class="ui-badge-row">'
+            f'<span class="ui-badge accent">Section focus</span>'
+            f'<span class="ui-badge green">{html.escape(_active_section)}</span>'
+            f'<span class="ui-badge">{_section_bar_count} bars</span>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        with st.expander(f"🔬 Section deep focus — {_active_section}", expanded=True):
             st.markdown(
                 section_deep_practice_markdown(
-                    section_name=_focus_section,
+                    section_name=_active_section,
                     section_chords=_focus_chords,
                     instrument=instrument,
                     level=level,
@@ -5361,57 +5457,60 @@ if _studio_page == "practice":
                     groove_style=_practice_groove,
                 )
             )
-            _loop_key = f"practice_section_loop::{song}::{_song_slug(_focus_section)}"
-            _loop_on = st.checkbox(
-                f"Loop **{_focus_section}** with metronome ({_practice_bpm} BPM)",
-                key=_loop_key,
-            )
-            if _loop_on:
-                render_metronome_widget(
-                    default_bpm=_practice_bpm,
-                    default_signature=default_time_signature(song, sections),
-                )
-            if st.button(
-                f"Open Backing Track — loop {_focus_section}",
-                key=f"practice_backing_loop_{_song_slug(_focus_section)}",
-                use_container_width=True,
-            ):
-                st.session_state["backing_track_scope"] = "Single section"
-                st.session_state["backing_track_single_section"] = _focus_section
-                st.session_state["studio_page"] = "backing"
-                st.rerun()
 
-    if instrument in ("Guitar", "Piano"):
-        with st.expander("🥁 Rhythm guide", expanded=False):
-            st.markdown(
-                rhythm_guide_markdown(
-                    instrument,
-                    _practice_groove,
-                    default_time_signature(song, sections),
+        if instrument in ("Guitar", "Piano"):
+            with st.expander("🥁 Rhythm guide (this section)", expanded=False):
+                st.markdown(
+                    rhythm_guide_markdown(
+                        instrument,
+                        _practice_groove,
+                        _time_sig,
+                    )
                 )
-            )
 
-    _section_chords_for_scales = (
-        sections.get(_focus_section) or all_chords_from_sections(sections)[:8]
-    )
-    if _section_chords_for_scales:
-        with st.expander("🎼 Scales & approaches (current section)", expanded=False):
-            for ch in _section_chords_for_scales[:10]:
-                st.markdown(scale_suggestions_for_chord(ch, display_key, level, instrument))
+        if _focus_chords:
+            with st.expander("🎼 Scales & approaches (this section)", expanded=False):
+                for ch in _focus_chords[:12]:
+                    st.markdown(
+                        scale_suggestions_for_chord(ch, display_key, level, instrument)
+                    )
+
+        with st.expander(
+            f"⏱️ Metronome — {_active_section} only ({_section_bar_count} bars)",
+            expanded=False,
+        ):
+            render_metronome_widget(
+                default_bpm=_practice_bpm,
+                default_signature=_time_sig,
+                section_bars=_section_bar_count,
+                section_label=_active_section,
+                loop_section=True,
+            )
 
     if st.button(
         "▶ Go to Backing Track (tempo, loops, generate & play)",
         key="practice_go_backing",
         use_container_width=True,
     ):
+        _prepare_backing_from_practice(_focus_pick)
         st.session_state["studio_page"] = "backing"
         st.rerun()
 
-    # Chord chart (lead sheet)
+    if _active_section:
+        if st.button(
+            f"▶ Backing Track — loop {_active_section}",
+            key=f"practice_backing_loop_{_song_slug(_active_section)}",
+            use_container_width=True,
+        ):
+            _prepare_backing_from_practice(_focus_pick)
+            st.session_state["studio_page"] = "backing"
+            st.rerun()
+
+    _chart_current = None if _is_full_song else _active_section
     _chart_html = full_chord_markdown(
         song,
         song_data,
-        sections,
+        _view_sections,
         instrument,
         display_key=display_key,
         level=level,
@@ -5419,11 +5518,12 @@ if _studio_page == "practice":
         section_lyrics=section_lyrics,
         groove_style=_practice_groove,
         bpm=_practice_bpm,
-        time_signature=default_time_signature(song, sections),
-        current_section=_focus_section,
+        time_signature=_time_sig,
+        current_section=_chart_current,
         focus=focus,
     )
-    with st.expander("📋 Chord chart & sections", expanded=True):
+    _chart_title = "📋 Chord chart — full song" if _is_full_song else f"📋 Chord chart — {_active_section}"
+    with st.expander(_chart_title, expanded=True):
         st.markdown(_chart_html, unsafe_allow_html=True)
 
     # 6. Practice coach & settings
@@ -5442,7 +5542,7 @@ if _studio_page == "practice":
         st.markdown(
             song_practice_plan(
                 song,
-                sections,
+                _view_sections,
                 instrument,
                 level,
                 focus,
@@ -5461,9 +5561,12 @@ if _studio_page == "practice":
             st.caption("Rotates section targets and raises demand gradually.")
 
     _coach_from_picker = st.session_state.pop("picker_open_chord_coach", False)
+    _coach_chords = _view_chords or all_chords_from_sections(sections)
     with st.expander("🎸 Musician tools — chord coach", expanded=_coach_from_picker):
+        if _active_section:
+            st.caption(f"Chords from **{_active_section}** only.")
         render_chord_coach_ui(
-            all_chords_from_sections(sections),
+            _coach_chords,
             instrument,
             level,
             key_prefix=f"practice::{song}::{instrument}::{level}",
@@ -5504,16 +5607,17 @@ if _studio_page == "practice":
                 wrap_expander=False,
             )
 
-    with st.expander("⏱️ Metronome", expanded=False):
-        render_metronome_widget(
-            default_bpm=100,
-            default_signature=default_time_signature(song, sections),
-        )
+    if _is_full_song:
+        with st.expander("⏱️ Metronome (full song)", expanded=False):
+            render_metronome_widget(
+                default_bpm=_practice_bpm,
+                default_signature=_time_sig,
+            )
 
     with st.expander("📝 Lyric / phrasing guide", expanded=(instrument == "Voice")):
         st.markdown(
             lyric_guide_markdown(
-                sections,
+                _view_sections,
                 lyric_cues,
                 instrument,
                 section_lyrics=section_lyrics,
@@ -5648,6 +5752,9 @@ elif _studio_page == "backing":
 
     with st.expander("Playback settings (scope & loops)", expanded=False):
         _sec_names = [name for name, chs in section_order(sections) if chs]
+        _pending_backing_sec = st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
+        if _pending_backing_sec and _pending_backing_sec in _sec_names:
+            st.session_state["backing_track_single_section"] = _pending_backing_sec
         playback_scope = st.radio(
             "Playback range",
             ["Full song", "Single section", "Multiple selected sections"],

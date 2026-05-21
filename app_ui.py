@@ -1188,37 +1188,38 @@ def render_section_jump_bar(
     state_key: str = "practice_focus_section",
     rerun_fn: Optional[Any] = None,
 ) -> Optional[str]:
-    """Sticky quick-jump chips for verse / chorus / bridge / outro."""
+    """Section focus selector — first option should be Full Song when provided."""
     import streamlit as st
 
-    names = [n for n in section_names if n]
-    if not names:
+    options = [n for n in section_names if n]
+    if not options:
         return None
     current = session_state.get(state_key)
-    if current not in names:
-        session_state[state_key] = names[0]
-        current = names[0]
+    if current not in options:
+        session_state[state_key] = options[0]
+        current = options[0]
+
+    def _label(name: str) -> str:
+        if name.strip().lower() in ("full song", "full form"):
+            return "Full Song"
+        short = _short_section_label(name)
+        return short if short != name[:12] else name
+
     st.markdown(
-        '<div class="ui-section-jump"><p class="ui-bar-label">Form sections</p>',
+        '<div class="ui-section-jump"><p class="ui-bar-label">Section focus</p>',
         unsafe_allow_html=True,
     )
-    cols = st.columns(min(len(names), 6))
-    for col, name in zip(cols, names[:6]):
-        with col:
-            st.markdown('<div class="jump-btn">', unsafe_allow_html=True)
-            if st.button(
-                _short_section_label(name),
-                key=f"sec_jump_{state_key}_{name}",
-                use_container_width=True,
-                type="primary" if name == current else "secondary",
-                help=name,
-            ):
-                session_state[state_key] = name
-                if rerun_fn:
-                    rerun_fn()
-            st.markdown("</div>", unsafe_allow_html=True)
+    picked = st.radio(
+        "Section focus",
+        options,
+        horizontal=True,
+        key=state_key,
+        format_func=_label,
+        label_visibility="collapsed",
+    )
+    session_state[state_key] = picked
     st.markdown("</div>", unsafe_allow_html=True)
-    return session_state.get(state_key)
+    return picked
 
 
 def follow_along_status_html(pos: dict[str, Any]) -> str:
