@@ -77,6 +77,7 @@ from song_catalog import (
     record_for_pick_key,
 )
 from songs import (
+    ACTIVE_CATALOG_PICK_KEY,
     ACTIVE_MUSIC_SOURCE_KEY,
     BACKING_NEEDS_REGEN,
     SOURCE_CATALOG,
@@ -100,6 +101,7 @@ from songs import (
     request_backing_bpm,
     request_display_key,
     section_order,
+    sync_matching_song_dropdown_before_widget,
     sync_backing_bpm_before_widget,
     set_catalog_source,
     set_custom_source,
@@ -4651,75 +4653,49 @@ def _on_global_song_change() -> None:
     note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
 
-def _activate_catalog_pick_key(pick_key: str) -> None:
-    """Set master catalog song and keep the picker dropdown in sync."""
-    set_catalog_source(st.session_state)
-    apply_pick_key(st, pick_key, SONG_PICKER_CATALOG)
-    st.session_state["matching_song_dropdown"] = pick_key
-    note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-
-
-def _card_open_studio_page(pick_key: str, page: str) -> None:
-    _activate_catalog_pick_key(pick_key)
+def _picker_navigate(page: str, *, open_chord_coach: bool = False) -> None:
+    """Open a studio page for the already-selected catalog song (no re-selection)."""
     st.session_state["studio_page"] = page
+    if open_chord_coach:
+        st.session_state["picker_open_chord_coach"] = True
     st.rerun()
 
 
-def _render_song_selection_cards(
-    visible_records: list[dict],
-    *,
-    active_pick_key: str | None = None,
-) -> None:
-    """Browse-only song cards — selection is via the main dropdown above."""
-    if not visible_records:
-        st.info("No songs match your filters.")
-        return
-
-    st.markdown('<div class="ui-song-card-grid">', unsafe_allow_html=True)
-    rows = [visible_records[i : i + 2] for i in range(0, len(visible_records), 2)]
-    for row_records in rows[:40]:
-        cols = st.columns(len(row_records))
-        for col, rec in zip(cols, row_records):
-            meta = song_card_meta(rec)
-            pk = format_pick_key(rec["genre"], f"{rec['title']} — {rec['artist']}")
-            trusted_cls = " trusted" if meta["trusted"] else ""
-            active_cls = " active" if active_pick_key and pk == active_pick_key else ""
-            with col:
-                st.markdown(
-                    f'<div class="ui-song-card{trusted_cls}{active_cls}">'
-                    f'<p class="ui-song-card-title">{html.escape(meta["title"])}</p>'
-                    f'<p class="ui-song-card-artist">{html.escape(meta["artist"])}</p>'
-                    f'<div class="ui-song-card-meta">'
-                    f'<span class="ui-song-pill key">Key {html.escape(meta["key"])}</span>'
-                    f'<span class="ui-song-pill genre">{html.escape(meta["genre"])}</span>'
-                    + (
-                        f'<span class="ui-song-pill bpm">{int(meta["bpm"])} BPM</span>'
-                        if meta.get("bpm")
-                        else ""
-                    )
-                    + f'<span class="ui-song-pill">{html.escape(meta["difficulty"])}</span>'
-                    f"</div></div>",
-                    unsafe_allow_html=True,
-                )
-                st.caption(f"Best for: {meta['instruments']}")
-                st.markdown('<div class="ui-song-card-actions">', unsafe_allow_html=True)
-                b1, b2, b3 = st.columns(3)
-                with b1:
-                    if st.button("Practice", key=f"card_practice_{pk}", use_container_width=True):
-                        _card_open_studio_page(pk, "practice")
-                with b2:
-                    if st.button(
-                        "Backing Track",
-                        key=f"card_backing_{pk}",
-                        use_container_width=True,
-                    ):
-                        _card_open_studio_page(pk, "backing")
-                with b3:
-                    if st.button("Creative", key=f"card_creative_{pk}", use_container_width=True):
-                        _card_open_studio_page(pk, "creative")
-                st.markdown("</div>", unsafe_allow_html=True)
-    if len(visible_records) > 80:
-        st.caption(f"Showing first **80** of **{len(visible_records)}** songs — narrow filters to see more.")
+def _render_active_song_card(rec: dict) -> None:
+    """Single card for the active catalog song — navigation only."""
+    meta = song_card_meta(rec)
+    trusted_cls = " trusted" if meta["trusted"] else ""
+    st.markdown(
+        f'<div class="ui-song-card active{trusted_cls}">'
+        f'<p class="ui-song-card-title">{html.escape(meta["title"])}</p>'
+        f'<p class="ui-song-card-artist">{html.escape(meta["artist"])}</p>'
+        f'<div class="ui-song-card-meta">'
+        f'<span class="ui-song-pill key">Key {html.escape(meta["key"])}</span>'
+        f'<span class="ui-song-pill genre">{html.escape(meta["genre"])}</span>'
+        + (
+            f'<span class="ui-song-pill bpm">{int(meta["bpm"])} BPM</span>'
+            if meta.get("bpm")
+            else ""
+        )
+        + f'<span class="ui-song-pill">{html.escape(meta["difficulty"])}</span>'
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(f"Best for: {meta['instruments']}")
+    st.markdown('<div class="ui-song-card-actions">', unsafe_allow_html=True)
+    b1, b2, b3, b4 = st.columns(4)
+    with b1:
+        if st.button("Practice", key="picker_card_practice", use_container_width=True):
+            _picker_navigate("practice")
+    with b2:
+        if st.button("Backing Track", key="picker_card_backing", use_container_width=True):
+            _picker_navigate("backing")
+    with b3:
+        if st.button("Creative", key="picker_card_creative", use_container_width=True):
+            _picker_navigate("creative")
+    with b4:
+        if st.button("Chord Coach", key="picker_card_chord_coach", use_container_width=True):
+            _picker_navigate("practice", open_chord_coach=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -4834,19 +4810,30 @@ def _render_catalog_song_picker_block(
             close_control_section()
         return
 
-    if st.session_state.get("matching_song_dropdown") not in pick_options:
-        st.session_state.matching_song_dropdown = (
-            master_pk if master_pk in pick_options else pick_options[0]
-        )
+    default_pk = master_pk if master_pk in pick_options else pick_options[0]
+    if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
+        set_catalog_source(st.session_state)
+        apply_pick_key(st, default_pk, SONG_PICKER_CATALOG)
+        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
     def _on_song_dropdown_change():
-        _activate_catalog_pick_key(st.session_state["matching_song_dropdown"])
+        set_catalog_source(st.session_state)
+        apply_pick_key(
+            st,
+            st.session_state["matching_song_dropdown"],
+            SONG_PICKER_CATALOG,
+        )
+        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         try:
             st.toast("Song updated — chart and backing track follow this selection.", icon="🎵")
         except Exception:
             pass
 
-    active_pick_key = st.session_state.get("matching_song_dropdown")
+    active_pick_key = sync_matching_song_dropdown_before_widget(
+        st,
+        pick_options,
+        default_pk,
+    )
     if show_song_cards:
         st.markdown("### Choose active song")
     st.selectbox(
@@ -4858,27 +4845,22 @@ def _render_catalog_song_picker_block(
         help="Primary selector — updates Practice, Backing Track, Creative Lab, and all coach tools.",
     )
 
-    if show_song_cards and active_pick_key and active_pick_key in pick_options:
-        _ag, _al = parse_pick_key(active_pick_key)
+    if show_song_cards:
         st.caption(
-            f"**Active:** {_al} · **{len(filtered)}** of **{len(ALL_SONG_RECORDS)}** songs in view "
+            f"**{len(filtered)}** of **{len(ALL_SONG_RECORDS)}** songs match your filters "
             f"(library: {st.session_state.get('chart_library_mode', DEFAULT_CHART_LIBRARY_MODE)})."
         )
+        st.markdown("#### Active song")
+        active_rec = record_for_pick_key(visible_song_records, active_pick_key)
+        if active_rec:
+            _render_active_song_card(active_rec)
+        else:
+            st.info("Select a song from the menu above.")
     else:
         st.caption(
             f"**{len(filtered)}** of **{len(ALL_SONG_RECORDS)}** songs shown "
             f"(library: {st.session_state.get('chart_library_mode', DEFAULT_CHART_LIBRARY_MODE)}). "
             "Practice setup on **Practice** · key in sidebar · tempo on **Backing Track**."
-        )
-
-    if show_song_cards:
-        st.markdown("#### Browse catalog")
-        st.caption(
-            "Cards are for preview and quick jumps. Use the **Select song** menu above to change the active chart."
-        )
-        _render_song_selection_cards(
-            filtered[:80],
-            active_pick_key=active_pick_key,
         )
 
     _library_options = [LIBRARY_MODE_FULL, LIBRARY_MODE_CORE]
@@ -5478,7 +5460,8 @@ if _studio_page == "practice":
         with col_ex_b:
             st.caption("Rotates section targets and raises demand gradually.")
 
-    with st.expander("🎸 Musician tools — chord coach", expanded=False):
+    _coach_from_picker = st.session_state.pop("picker_open_chord_coach", False)
+    with st.expander("🎸 Musician tools — chord coach", expanded=_coach_from_picker):
         render_chord_coach_ui(
             all_chords_from_sections(sections),
             instrument,
@@ -5584,7 +5567,7 @@ elif _studio_page == "picker":
     compact_page_title(
         "📚",
         "Song Selection",
-        "Pick your active song from the menu at the top — browse cards below for details and quick page jumps.",
+        "Pick your active song from the menu — the card below opens Practice, Backing Track, Creative, or Chord Coach.",
     )
 
     _render_catalog_song_picker_block(
@@ -5595,7 +5578,7 @@ elif _studio_page == "picker":
     )
 
     if not is_custom_progression(st.session_state):
-        pick_key = st.session_state.get("matching_song_dropdown")
+        pick_key = st.session_state.get(ACTIVE_CATALOG_PICK_KEY)
         if not pick_key:
             st.stop()
         pick_genre, pick_label = parse_pick_key(pick_key)

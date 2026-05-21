@@ -34,10 +34,12 @@ from .music_source import (
     set_custom_source,
 )
 from .state import (
+    ACTIVE_CATALOG_PICK_KEY,
     SELECTED_SONG_STATE_KEY,
     apply_pick_key,
     ensure_master_song_initialized,
     get_song_context,
+    sync_matching_song_dropdown_before_widget,
 )
 
 __all__ = [
@@ -52,10 +54,12 @@ __all__ = [
     "note_active_source_change",
     "set_catalog_source",
     "set_custom_source",
+    "ACTIVE_CATALOG_PICK_KEY",
     "SELECTED_SONG_STATE_KEY",
     "apply_pick_key",
     "ensure_master_song_initialized",
     "get_song_context",
+    "sync_matching_song_dropdown_before_widget",
     "chord_blocks_for_backing",
     "form_timeline_rows",
     "section_order",

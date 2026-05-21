@@ -15,7 +15,37 @@ from .key_state import (
 )
 
 SELECTED_SONG_STATE_KEY = "selected_song"
+ACTIVE_CATALOG_PICK_KEY = "active_catalog_pick_key"
+PENDING_MATCHING_SONG_DROPDOWN = "_pending_matching_song_dropdown"
 _LAST_PICK_KEY = "_master_song_pick_key"
+
+
+def sync_matching_song_dropdown_before_widget(
+    st: Any,
+    pick_options: list[str],
+    fallback_pk: str,
+) -> str:
+    """Align the dropdown widget with ``ACTIVE_CATALOG_PICK_KEY`` before it is drawn.
+
+    Never assign ``matching_song_dropdown`` after the selectbox exists — use pending
+    values applied on the next run only.
+    """
+    if not pick_options:
+        return fallback_pk
+
+    fallback = fallback_pk if fallback_pk in pick_options else pick_options[0]
+    active = st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or fallback
+    if active not in pick_options:
+        active = fallback
+        st.session_state[ACTIVE_CATALOG_PICK_KEY] = active
+
+    pending = st.session_state.pop(PENDING_MATCHING_SONG_DROPDOWN, None)
+    if pending in pick_options:
+        st.session_state["matching_song_dropdown"] = pending
+    elif st.session_state.get("matching_song_dropdown") not in pick_options:
+        st.session_state["matching_song_dropdown"] = active
+
+    return active
 
 
 def _label_for_library_entry(genre: str, title: str, song_library: dict) -> str:
@@ -83,6 +113,8 @@ def apply_pick_key(st: Any, pick_key: str, song_picker_catalog: dict[str, dict[s
         st.session_state.pop("mixed_track_wav", None)
     elif "display_key" not in st.session_state:
         st.session_state[PENDING_DISPLAY_KEY] = data["key"]
+    st.session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
+    st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = pick_key
     return data
 
 
