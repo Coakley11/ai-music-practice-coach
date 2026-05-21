@@ -97,8 +97,10 @@ from songs import (
     note_display_key_change,
     on_cpl_jump_home_key,
     prepare_cpl_jump_home,
+    request_backing_bpm,
     request_display_key,
     section_order,
+    sync_backing_bpm_before_widget,
     set_catalog_source,
     set_custom_source,
     sync_display_key_before_widget,
@@ -120,10 +122,13 @@ try:
         close_control_section,
         end_studio_control_deck,
         open_control_section,
+        render_cross_page_links,
         render_global_studio_bar,
+        render_page_quick_nav,
         render_section_jump_bar,
         render_studio_brand_header,
         render_studio_nav,
+        ensure_studio_page,
         session_badges,
         sidebar_section,
         sidebar_source_banner,
@@ -152,10 +157,13 @@ except Exception as _app_ui_first_err:
                 close_control_section = _app_ui_mod.close_control_section
                 end_studio_control_deck = _app_ui_mod.end_studio_control_deck
                 open_control_section = _app_ui_mod.open_control_section
+                render_cross_page_links = getattr(_app_ui_mod, "render_cross_page_links", None)
                 render_global_studio_bar = _app_ui_mod.render_global_studio_bar
+                render_page_quick_nav = getattr(_app_ui_mod, "render_page_quick_nav", None)
                 render_section_jump_bar = getattr(_app_ui_mod, "render_section_jump_bar", None)
                 render_studio_brand_header = _app_ui_mod.render_studio_brand_header
                 render_studio_nav = _app_ui_mod.render_studio_nav
+                ensure_studio_page = getattr(_app_ui_mod, "ensure_studio_page", None)
                 session_badges = _app_ui_mod.session_badges
                 sidebar_section = _app_ui_mod.sidebar_section
                 sidebar_source_banner = _app_ui_mod.sidebar_source_banner
@@ -609,7 +617,7 @@ def chart_status_label(song_data):
 
 
 def chart_source_caption(song_data) -> str:
-    """Catalog vs user override line for Song Picker / sidebar."""
+    """Catalog vs user override line for Song Selection / sidebar."""
     user_ov = song_data.get("user_override") or {}
     if user_ov:
         cat = user_ov.get("catalog_chart_status", "catalog")
@@ -3182,13 +3190,13 @@ def default_song_bpm(song_title: str, song_data: dict | None = None) -> int:
     return 100
 
 
-def _ensure_song_bpm_defaults(song_title: str, song_data: dict | None = None) -> None:
-    bpm = default_song_bpm(song_title, song_data)
-    if "backing_track_bpm" not in st.session_state:
-        st.session_state["backing_track_bpm"] = bpm
-    elif st.session_state.get("_last_bpm_song") != song_title:
-        st.session_state["backing_track_bpm"] = bpm
-    st.session_state["_last_bpm_song"] = song_title
+def _ensure_song_bpm_defaults(song_title: str, song_data: dict | None = None) -> int:
+    """Sync BPM session state before any ``backing_track_bpm`` widget is rendered."""
+    return sync_backing_bpm_before_widget(
+        st,
+        song_title,
+        default_song_bpm(song_title, song_data),
+    )
 
 
 def practice_text(level, instrument=None, sections=None, focus=None):
@@ -4476,7 +4484,7 @@ def _render_catalog_song_picker_block(
 
     if show_source_toggle:
         _picker_source_options = [
-            "Song Picker (catalog song)",
+            "Song Selection (catalog song)",
             "Use Custom Progression / Create Your Own Song",
         ]
         _picker_source_index = 1 if is_custom_progression(st.session_state) else 0
@@ -4495,7 +4503,7 @@ def _render_catalog_song_picker_block(
             _cpl_pick = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
             st.info(
                 f"**Custom Progression** — {_cpl_pick.get('name', 'Untitled')}. "
-                "Edit in **Custom Progression** · transpose in section **C** above."
+                "Edit in **Custom Progression** · transpose with **Practice / Display Key** in the sidebar."
             )
             if wrap_section:
                 close_control_section()
@@ -4577,7 +4585,7 @@ def _render_catalog_song_picker_block(
     st.caption(
         f"**{len(filtered)}** of **{len(ALL_SONG_RECORDS)}** songs shown "
         f"(library: {st.session_state.get('chart_library_mode', DEFAULT_CHART_LIBRARY_MODE)}). "
-        "Practice setup, key, and tempo: sections **B–D** below."
+        "Practice setup on **Practice** · key in sidebar · tempo on **Backing Track**."
     )
 
     if filters_in_expander:
@@ -4649,33 +4657,46 @@ def _render_catalog_song_picker_block(
         close_control_section()
 
 
-def _render_workspace_sections_bcd(
-    *,
-    studio_page: str,
-    original_key: str,
-    display_key_options: list[str],
-    instrument_options: list[str],
-    focus_options: list[str],
-    on_display_key_change,
-    practice_bpm: int,
-    backing_ready: bool,
-    is_custom: bool,
-    custom_name: str,
-) -> None:
-    """Practice setup, global key transpose, and backing/tempo (sections B–D)."""
-    open_control_section(
-        "B",
-        "Practice Setup",
-        "Your instrument, chart level, focus area, and planned session length.",
+def _render_page_quick_nav(current_page: str) -> str:
+    """Top-of-page navigation bar."""
+    return render_page_quick_nav(
+        st.session_state,
+        current_page=current_page,
+        rerun_fn=st.rerun,
+        key_prefix=current_page,
     )
-    b1, b2, b3, b4 = st.columns(4)
-    with b1:
+
+
+def _sync_focus_options_before_widget(instrument: str) -> list[str]:
+    opts = focus_options_for_instrument(instrument)
+    if st.session_state.get("focus") not in opts:
+        st.session_state["focus"] = opts[0]
+    return opts
+
+
+def _render_practice_setup_panel(
+    *,
+    instrument_options: list[str],
+    default_groove: str,
+) -> None:
+    """Practice-only setup controls (instrument, level, focus, session length, groove)."""
+    st.markdown(
+        '<p class="ui-page-nav-label">Practice setup</p>',
+        unsafe_allow_html=True,
+    )
+    instrument = st.session_state.get("instrument", "Piano")
+    focus_options = _sync_focus_options_before_widget(instrument)
+    p1, p2, p3, p4 = st.columns(4)
+    with p1:
         st.selectbox("Instrument", instrument_options, key="instrument")
-    with b2:
+    with p2:
         st.selectbox("Level", ["Beginner", "Intermediate", "Advanced"], key="level")
-    with b3:
+    with p3:
+        focus_options = _sync_focus_options_before_widget(
+            st.session_state.get("instrument", "Piano")
+        )
         st.selectbox("Practice focus", focus_options, key="focus")
-    with b4:
+    with p4:
         st.session_state.setdefault("practice_minutes", 30)
         st.slider(
             "Practice length (minutes)",
@@ -4685,57 +4706,58 @@ def _render_workspace_sections_bcd(
             5,
             key="practice_minutes",
         )
-    close_control_section()
-
-    open_control_section(
-        "C",
-        "Key / Transpose",
-        "Global practice key — affects the entire song everywhere in the app.",
+    st.session_state.setdefault("backing_groove_style", default_groove)
+    g1, g2 = st.columns(2)
+    with g1:
+        st.selectbox(
+            "Rhythm / groove feel (for coach & chart)",
+            [
+                "Auto",
+                "Pop groove",
+                "Rock groove",
+                "Jazz swing",
+                "Bossa nova",
+                "Funk groove",
+                "Ballad",
+            ],
+            key="practice_groove_style",
+        )
+    with g2:
+        st.caption(
+            "Dynamics and rhythm coaching adapt to instrument, focus, and groove. "
+            "Tempo and backing playback are on **Backing Track**."
+        )
+    render_cross_page_links(
+        st.session_state,
+        current_page="practice",
+        rerun_fn=st.rerun,
+        key_prefix="practice_x",
     )
+
+
+def _render_backing_tempo_panel(
+    *,
+    song_title: str,
+    default_bpm: int,
+    backing_ready: bool,
+) -> int:
+    """Backing Track page — BPM and groove (widget created once per run)."""
+    sync_backing_bpm_before_widget(st, song_title, default_bpm)
     st.markdown(
-        '<p class="ui-key-global-hint">Change the practice key here. The whole chart, backing track, '
-        "exercises, and analysis will transpose.</p>",
+        '<p class="ui-page-nav-label">Backing / tempo</p>',
         unsafe_allow_html=True,
     )
-    c1, c2, c3 = st.columns([1, 1.35, 1])
-    with c1:
-        st.caption("Original / written key")
-        st.markdown(f"**{original_key}**")
-    with c2:
-        st.selectbox(
-            "Practice / display key",
-            display_key_options,
-            key="display_key",
-            help="Transposes charts, backing audio, and coach content together.",
-            on_change=on_display_key_change,
-        )
-    with c3:
-        if is_custom:
-            st.caption("Custom progression")
-            st.markdown(f"**{custom_name or 'Untitled'}**")
-        else:
-            st.caption("Capo & instrument key")
-            st.markdown(
-                "Open **Practice** for capo and transposing-instrument helpers."
-            )
-    close_control_section()
-
-    open_control_section(
-        "D",
-        "Backing / Tempo",
-        "Tempo and groove for backing playback — open **Backing Track** for loops and chart follow.",
-    )
-    d1, d2, d3 = st.columns(3)
-    with d1:
-        st.slider(
+    b1, b2, b3 = st.columns(3)
+    with b1:
+        bpm = st.slider(
             "BPM (tempo)",
             50,
             180,
-            int(st.session_state.get("backing_track_bpm", practice_bpm)),
+            int(st.session_state.get("backing_track_bpm", default_bpm)),
             5,
             key="backing_track_bpm",
         )
-    with d2:
+    with b2:
         st.selectbox(
             "Groove / style",
             [
@@ -4749,7 +4771,7 @@ def _render_workspace_sections_bcd(
             ],
             key="backing_groove_style",
         )
-    with d3:
+    with b3:
         if backing_ready:
             st.markdown(
                 '<span class="ui-backing-pill ready">● Backing audio ready</span>',
@@ -4757,18 +4779,16 @@ def _render_workspace_sections_bcd(
             )
         else:
             st.markdown(
-                '<span class="ui-backing-pill">○ Backing not generated yet</span>',
+                '<span class="ui-backing-pill">○ Generate backing below</span>',
                 unsafe_allow_html=True,
             )
-        if st.button(
-            "Open Backing Track page",
-            key="workspace_open_backing",
-            use_container_width=True,
-        ):
-            st.session_state["studio_page"] = "backing"
-            st.rerun()
-        st.caption("Loop, metronome, and chart-follow live on the Backing Track page.")
-    close_control_section()
+    render_cross_page_links(
+        st.session_state,
+        current_page="backing",
+        rerun_fn=st.rerun,
+        key_prefix="backing_x",
+    )
+    return int(bpm)
 
 
 # -------------------------------------------------
@@ -4826,13 +4846,25 @@ _display_key_options = sync_display_key_before_widget(
     _song_identity,
 )
 
+sidebar_section("Practice key", icon="🎹")
+st.sidebar.caption(
+    "**Practice / Display Key** — changes the whole song globally "
+    "(chart, backing, exercises, analysis)."
+)
+st.sidebar.caption(f"Written key: **{original_key}**")
+st.sidebar.selectbox(
+    "Practice / Display Key",
+    _display_key_options,
+    key="display_key",
+    help="Transposes charts, backing audio, and coach content together.",
+    on_change=lambda: mark_display_key_changed(st),
+)
+
 _instrument_options = [
     "Piano", "Guitar", "Bass", "Saxophone", "Flute",
     "Trumpet", "Clarinet", "Voice", "Other",
 ]
 _focus_options = focus_options_for_instrument(st.session_state.get("instrument", "Piano"))
-if st.session_state.get("focus") not in _focus_options:
-    st.session_state["focus"] = _focus_options[0]
 
 sidebar_section("Library", icon="📚")
 _render_catalog_health_debug()
@@ -4847,8 +4879,10 @@ sidebar_section("Session", icon="⏱️")
 st.session_state.setdefault("practice_minutes", 30)
 st.sidebar.caption(
     f"**Practice length:** {int(st.session_state.get('practice_minutes', 30))} min "
-    "(adjust in **Practice Setup** at top)"
+    "(adjust on the **Practice** page)"
 )
+
+_studio_page = ensure_studio_page(st.session_state)
 
 note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
@@ -4864,30 +4898,6 @@ else:
         st.session_state.setdefault("global_quick_song", _fallback_opts[0])
 
 _apply_catalog_filter_defaults()
-_ensure_song_bpm_defaults(_catalog_song, _catalog_song_data)
-_practice_bpm_top = int(
-    st.session_state.get("backing_track_bpm", default_song_bpm(_catalog_song, _catalog_song_data))
-)
-_cpl_bar_name = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {}).get(
-    "name", "Custom Progression"
-)
-
-begin_studio_control_deck()
-_render_catalog_song_picker_block(show_source_toggle=True, filters_in_expander=True)
-_render_workspace_sections_bcd(
-    studio_page=st.session_state.get("studio_page", "practice"),
-    original_key=original_key,
-    display_key_options=_display_key_options,
-    instrument_options=_instrument_options,
-    focus_options=_focus_options,
-    on_display_key_change=lambda: mark_display_key_changed(st),
-    practice_bpm=_practice_bpm_top,
-    backing_ready=bool(st.session_state.get("_last_backing_wav")),
-    is_custom=is_custom_progression(st.session_state),
-    custom_name=_cpl_bar_name,
-)
-_studio_page = render_studio_nav(st.session_state, rerun_fn=st.rerun)
-end_studio_control_deck()
 
 minutes = int(st.session_state.get("practice_minutes", 30))
 
@@ -4942,6 +4952,8 @@ default_groove_style = infer_groove_style(
     song_data,
     _chart_bundle.get("default_groove", "Auto"),
 )
+st.session_state.setdefault("practice_groove_style", default_groove_style)
+st.session_state.setdefault("backing_groove_style", default_groove_style)
 
 song_lyrics_slug = _song_slug(
     song,
@@ -5011,9 +5023,13 @@ lyric_cues = {
     **lyric_cues_from_section_lyrics(section_lyrics),
 }
 
+_default_song_bpm = default_song_bpm(song, song_data)
 _ensure_song_bpm_defaults(song, song_data)
-_practice_bpm = int(st.session_state.get("backing_track_bpm", default_song_bpm(song, song_data)))
-_practice_groove = infer_groove_style(song_data, st.session_state.get("backing_groove_style", "Auto"))
+_practice_bpm = int(st.session_state.get("backing_track_bpm", _default_song_bpm))
+_practice_groove = infer_groove_style(
+    song_data,
+    st.session_state.get("practice_groove_style", default_groove_style),
+)
 
 # -------------------------------------------------
 # PRACTICE
@@ -5021,10 +5037,17 @@ _practice_groove = infer_groove_style(song_data, st.session_state.get("backing_g
 
 if _studio_page == "practice":
 
+    _render_page_quick_nav("practice")
+
     compact_page_title(
         "🎯",
         "Song Practice",
-        "Song, setup, and key are in the workspace panel above — practice with chart and backing below.",
+        "Set up your session below — change key in the sidebar; pick songs on **Song Selection**.",
+    )
+
+    _render_practice_setup_panel(
+        instrument_options=_instrument_options,
+        default_groove=default_groove_style,
     )
 
     # Key / level / focus recap
@@ -5047,34 +5070,15 @@ if _studio_page == "practice":
         rerun_fn=st.rerun,
     )
 
-    # 5. Backing track quick controls
-    with st.expander("🎧 Backing track (quick)", expanded=False):
-        bc1, bc2, bc3 = st.columns(3)
-        with bc1:
-            st.slider(
-                "BPM",
-                50,
-                180,
-                _practice_bpm,
-                1,
-                key="practice_page_bpm",
-            )
-            st.session_state["backing_track_bpm"] = st.session_state["practice_page_bpm"]
-        with bc2:
-            st.selectbox(
-                "Groove",
-                ["Auto", "Pop groove", "Rock groove", "Jazz swing", "Bossa nova", "Funk groove", "Ballad"],
-                key="backing_groove_style",
-            )
-        with bc3:
-            if st.button("Open full Backing Track page", use_container_width=True, type="primary"):
-                st.session_state["studio_page"] = "backing"
-                st.rerun()
-        if st.button("▶ Generate backing (full page has chart follow)", key="practice_gen_backing_hint"):
-            st.session_state["studio_page"] = "backing"
-            st.rerun()
+    if st.button(
+        "▶ Go to Backing Track (tempo, loops, generate & play)",
+        key="practice_go_backing",
+        use_container_width=True,
+    ):
+        st.session_state["studio_page"] = "backing"
+        st.rerun()
 
-    # 7. Chord chart (lead sheet)
+    # Chord chart (lead sheet)
     _chart_html = full_chord_markdown(
         song,
         song_data,
@@ -5100,8 +5104,7 @@ if _studio_page == "practice":
 
     with st.expander("🎯 Practice coach & session settings", expanded=True):
         st.caption(
-            f"Session length: **{minutes} min** (section **B** above) · "
-            f"practice key in section **C**."
+            f"Session length: **{minutes} min** · practice key: **{display_key}** (sidebar)."
         )
         st.markdown(
             '<div class="ui-card soft"><div class="ui-card-title">Personalized coach exercise</div>',
@@ -5228,10 +5231,18 @@ if _studio_page == "practice":
 
 elif _studio_page == "picker":
 
+    _render_page_quick_nav("picker")
+
     compact_page_title(
         "📚",
-        "Song Library",
-        "Use section **A** above to pick a song — details and chart editor below.",
+        "Song Selection",
+        "Choose catalog songs or switch to a custom progression — then open **Practice** or **Backing Track**.",
+    )
+
+    _render_catalog_song_picker_block(
+        show_source_toggle=True,
+        filters_in_expander=False,
+        wrap_section=False,
     )
 
     if not is_custom_progression(st.session_state):
@@ -5246,7 +5257,7 @@ elif _studio_page == "picker":
         available_levels = ", ".join(selected_versions.keys()) if selected_versions else "Generated from practice chart"
 
         st.success(
-            f"**Active source: Song Picker** — **{selected_data['title']}** — {selected_data['artist']}."
+            f"**Active source: Song Selection** — **{selected_data['title']}** — {selected_data['artist']}."
         )
 
         st.write(
@@ -5285,6 +5296,8 @@ elif _studio_page == "picker":
 
 elif _studio_page == "backing":
 
+    _render_page_quick_nav("backing")
+
     compact_page_title(
         "🎧",
         "Backing Track",
@@ -5294,7 +5307,16 @@ elif _studio_page == "backing":
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
         st.warning("Key changed — regenerate backing track")
 
-    with st.expander("Playback settings (scope, groove, loops)", expanded=False):
+    bpm = _render_backing_tempo_panel(
+        song_title=song,
+        default_bpm=_default_song_bpm,
+        backing_ready=bool(st.session_state.get("_last_backing_wav")),
+    )
+
+    selected_section_names: list[str] = []
+    form_loops = int(st.session_state.get("backing_track_loops", 2))
+
+    with st.expander("Playback settings (scope & loops)", expanded=False):
         _sec_names = [name for name, chs in section_order(sections) if chs]
         playback_scope = st.radio(
             "Playback range",
@@ -5318,18 +5340,10 @@ elif _studio_page == "backing":
                 default=default_sections,
                 key="backing_track_multi_sections",
             )
-        col_bt_1, col_bt_2 = st.columns(2)
-        with col_bt_1:
-            groove_style = st.selectbox(
-                "Groove / accompaniment style",
-                ["Auto", "Pop groove", "Rock groove", "Jazz swing", "Bossa nova", "Funk groove", "Ballad"],
-                key="backing_groove_style",
-            )
-        with col_bt_2:
-            form_loops = st.slider("Number of repeats", 1, 10, 2, 1, key="backing_track_loops")
+        form_loops = st.slider("Number of repeats", 1, 10, 2, 1, key="backing_track_loops")
 
     selected_section_names = selected_section_names or []
-    bpm = int(st.session_state.get("backing_track_bpm", 100))
+    groove_style = st.session_state.get("backing_groove_style", "Auto")
     backing_chords = chord_blocks_for_selected_sections(sections, selected_section_names)
     backing_events = chord_events_for_selected_sections(sections, selected_section_names)
 
@@ -5536,6 +5550,8 @@ elif _studio_page == "backing":
 
 elif _studio_page == "analysis":
 
+    _render_page_quick_nav("analysis")
+
     compact_page_title(
         "🎙️",
         "Recording Analysis",
@@ -5576,6 +5592,8 @@ elif _studio_page == "analysis":
 
 elif _studio_page == "custom":
 
+    _render_page_quick_nav("custom")
+
     compact_page_title(
         "✏️",
         "Custom Progression Lab",
@@ -5600,7 +5618,7 @@ elif _studio_page == "custom":
         else:
             st.caption(
                 "Catalog song is still the active source. Click **Use as app-wide active source** "
-                "or choose Custom Progression on the **Song Picker** tab."
+                "or choose Custom Progression on the **Song Selection** page."
             )
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
         st.warning("Key changed — regenerate the Custom Progression Lab backing track if you use one.")
@@ -6051,6 +6069,8 @@ elif _studio_page == "custom":
 
 elif _studio_page == "creative":
 
+    _render_page_quick_nav("creative")
+
     compact_page_title("🧠", "Creative Lab", "Harmony, improvisation, and growth tools.")
 
     ctx = current_song_context_lab()
@@ -6093,6 +6113,8 @@ elif _studio_page == "creative":
 # -------------------------------------------------
 
 elif _studio_page == "multitrack":
+
+    _render_page_quick_nav("multitrack")
 
     compact_page_title(
         "🎚️",
@@ -6448,6 +6470,8 @@ elif _studio_page == "multitrack":
 # -------------------------------------------------
 
 elif _studio_page == "log":
+
+    _render_page_quick_nav("log")
 
     compact_page_title("📓", "Practice Log", "Session history and progress over time.")
 

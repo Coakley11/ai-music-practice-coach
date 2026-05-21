@@ -20,6 +20,8 @@ __all__ = [
     "open_control_section",
     "render_global_studio_bar",
     "render_section_jump_bar",
+    "render_cross_page_links",
+    "render_page_quick_nav",
     "render_studio_nav",
     "session_badges",
     "sidebar_section",
@@ -496,7 +498,30 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   .ui-brand-features li { font-size: 0.64rem; }
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
-  .ui-studio-nav { padding: 0.4rem 0.45rem; }
+  .ui-page-nav-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 0.35rem 0;
+}
+.ui-studio-nav.ui-page-nav {
+  border: 1px solid var(--studio-line);
+  border-radius: 12px;
+  padding: 0.45rem 0.5rem;
+  margin-bottom: 0.75rem;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+.ui-cross-links {
+  margin: 0.35rem 0 0.75rem 0;
+}
+.ui-cross-links .stButton > button {
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  min-height: 2rem !important;
+}
+.ui-studio-nav { padding: 0.4rem 0.45rem; }
   .ui-studio-nav .nav-btn button { font-size: 0.68rem !important; padding: 0.32rem 0.2rem !important; }
   .ui-now-playing .np-title { font-size: 0.9rem; }
   .ui-section-jump { top: 0.25rem; }
@@ -646,13 +671,22 @@ def sidebar_source_banner(markdown_text: str) -> None:
 
 STUDIO_PAGES: list[tuple[str, str]] = [
     ("practice", "Practice"),
-    ("picker", "Song Picker"),
+    ("picker", "Song Selection"),
     ("backing", "Backing Track"),
     ("custom", "Custom Progression"),
     ("creative", "Creative Lab"),
     ("multitrack", "Multitrack"),
     ("analysis", "Upload Analysis"),
     ("log", "Practice Log"),
+]
+
+# Compact cross-page shortcuts (subset for inline link rows).
+CROSS_PAGE_LINKS: list[tuple[str, str]] = [
+    ("practice", "Go to Practice"),
+    ("picker", "Go to Song Selection"),
+    ("backing", "Go to Backing Track"),
+    ("creative", "Go to Creative Lab"),
+    ("custom", "Go to Custom Progression"),
 ]
 
 
@@ -676,24 +710,29 @@ def end_studio_control_deck() -> None:
     st.markdown("</div></div>", unsafe_allow_html=True)
 
 
-def render_studio_nav(session_state: Any, *, rerun_fn: Any) -> str:
-    """Horizontal workspace navigation bar."""
+def render_page_quick_nav(
+    session_state: Any,
+    *,
+    current_page: str,
+    rerun_fn: Any,
+    key_prefix: str = "page",
+) -> str:
+    """Compact navigation bar at the top of each major page."""
     import streamlit as st
 
-    current = ensure_studio_page(session_state)
-    open_control_section(
-        "E",
-        "Quick Navigation",
-        "Jump to any workspace page — charts, backing, recording, and analysis.",
+    current = ensure_studio_page(session_state, default=current_page)
+    st.markdown(
+        '<p class="ui-page-nav-label">Quick navigation</p>',
+        unsafe_allow_html=True,
     )
-    st.markdown('<div class="ui-studio-nav">', unsafe_allow_html=True)
+    st.markdown('<div class="ui-studio-nav ui-page-nav">', unsafe_allow_html=True)
     cols = st.columns(len(STUDIO_PAGES))
     for col, (page_id, label) in zip(cols, STUDIO_PAGES):
         with col:
             st.markdown('<div class="nav-btn">', unsafe_allow_html=True)
             if st.button(
                 label,
-                key=f"nav_{page_id}",
+                key=f"{key_prefix}_nav_{page_id}",
                 use_container_width=True,
                 type="primary" if page_id == current else "secondary",
             ):
@@ -702,8 +741,46 @@ def render_studio_nav(session_state: Any, *, rerun_fn: Any) -> str:
                     rerun_fn()
             st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
-    close_control_section()
     return session_state.get("studio_page", current)
+
+
+def render_cross_page_links(
+    session_state: Any,
+    *,
+    current_page: str,
+    rerun_fn: Any,
+    key_prefix: str = "cross",
+    pages: Optional[list[tuple[str, str]]] = None,
+) -> None:
+    """Small shortcut buttons to other workspaces (excludes current page)."""
+    import streamlit as st
+
+    link_pages = pages if pages is not None else CROSS_PAGE_LINKS
+    targets = [(pid, label) for pid, label in link_pages if pid != current_page]
+    if not targets:
+        return
+    st.markdown('<div class="ui-cross-links">', unsafe_allow_html=True)
+    cols = st.columns(len(targets))
+    for col, (page_id, label) in zip(cols, targets):
+        with col:
+            if st.button(
+                label,
+                key=f"{key_prefix}_to_{page_id}",
+                use_container_width=True,
+            ):
+                session_state["studio_page"] = page_id
+                rerun_fn()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_studio_nav(session_state: Any, *, rerun_fn: Any) -> str:
+    """Legacy full-deck nav — delegates to per-page quick nav."""
+    return render_page_quick_nav(
+        session_state,
+        current_page=ensure_studio_page(session_state),
+        rerun_fn=rerun_fn,
+        key_prefix="legacy",
+    )
 
 
 def render_global_studio_bar(

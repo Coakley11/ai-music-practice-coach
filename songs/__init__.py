@@ -5,6 +5,11 @@ from .form import (
     form_timeline_rows,
     section_order,
 )
+from .bpm_state import (
+    BPM_WIDGET_KEY,
+    request_backing_bpm,
+    sync_backing_bpm_before_widget,
+)
 from .key_state import (
     BACKING_NEEDS_REGEN,
     clear_backing_needs_regen,
@@ -54,6 +59,9 @@ __all__ = [
     "chord_blocks_for_backing",
     "form_timeline_rows",
     "section_order",
+    "BPM_WIDGET_KEY",
+    "request_backing_bpm",
+    "sync_backing_bpm_before_widget",
     "BACKING_NEEDS_REGEN",
     "clear_backing_needs_regen",
     "invalidate_backing_cache",
