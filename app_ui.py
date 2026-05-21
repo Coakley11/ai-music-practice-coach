@@ -410,52 +410,96 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   margin-bottom: 0.55rem;
   background: transparent;
 }
+/* Shared top-nav button shell — identical box model for active + inactive */
+.ui-studio-nav.ui-page-nav [data-testid="column"] {
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0 !important;
+}
+.ui-studio-nav .nav-btn.studio-nav-item {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+.ui-studio-nav .studio-nav-item [data-testid="stButton"],
+.ui-studio-nav .studio-nav-item div.stButton {
+  flex: 1 1 auto;
+  width: 100%;
+  margin: 0 !important;
+}
+.ui-studio-nav .studio-nav-item button,
 .ui-studio-nav .nav-btn button {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 2.35rem !important;
+  height: 2.35rem !important;
+  max-height: 2.35rem !important;
+  padding: 0.32rem 0.28rem !important;
   font-size: 0.72rem !important;
   font-weight: 700 !important;
-  padding: 0.42rem 0.4rem !important;
-  min-height: 2.15rem !important;
+  line-height: 1.12 !important;
   border-radius: 10px !important;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  white-space: normal !important;
+  transform: none !important;
+  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease !important;
 }
+.ui-studio-nav .studio-nav-item button:hover,
 .ui-studio-nav .nav-btn button:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.04);
+  transform: none !important;
 }
-/* Page-colored navigation (inactive = soft tint, active = gradient) */
-.nav-practice button { background: linear-gradient(180deg,#f0f9ff,#e0f2fe)!important; color:#0369a1!important; border:1px solid rgba(14,165,233,.35)!important; }
-.nav-practice button[kind="primary"] { background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(14,165,233,.35)!important; }
-.nav-picker button { background:linear-gradient(180deg,#faf5ff,#f3e8ff)!important; color:#6d28d9!important; border:1px solid rgba(139,92,246,.35)!important; }
-.nav-picker button[kind="primary"] { background:linear-gradient(135deg,#8b5cf6,#a855f7)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(139,92,246,.35)!important; }
-.nav-backing button { background:linear-gradient(180deg,#f0fdf4,#dcfce7)!important; color:#15803d!important; border:1px solid rgba(34,197,94,.35)!important; }
-.nav-backing button[kind="primary"] { background:linear-gradient(135deg,#22c55e,#10b981)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(34,197,94,.35)!important; }
-.nav-creative button { background:linear-gradient(180deg,#fffbeb,#fef3c7)!important; color:#b45309!important; border:1px solid rgba(245,158,11,.4)!important; }
-.nav-creative button[kind="primary"] { background:linear-gradient(135deg,#f59e0b,#fbbf24)!important; color:#422006!important; border:none!important; box-shadow:0 4px 14px rgba(245,158,11,.35)!important; }
-.nav-custom button { background:linear-gradient(180deg,#eef2ff,#e0e7ff)!important; color:#4338ca!important; border:1px solid rgba(99,102,241,.35)!important; }
-.nav-custom button[kind="primary"] { background:linear-gradient(135deg,#6366f1,#4f46e5)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(99,102,241,.35)!important; }
-.nav-multitrack button { background:linear-gradient(180deg,#fff1f2,#ffe4e6)!important; color:#be123c!important; border:1px solid rgba(244,63,94,.35)!important; }
-.nav-multitrack button[kind="primary"] { background:linear-gradient(135deg,#f43f5e,#fb7185)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(244,63,94,.35)!important; }
-.nav-analysis button { background:linear-gradient(180deg,#ecfeff,#cffafe)!important; color:#0e7490!important; border:1px solid rgba(6,182,212,.35)!important; }
-.nav-analysis button[kind="primary"] { background:linear-gradient(135deg,#06b6d4,#22d3ee)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(6,182,212,.35)!important; }
-.nav-log button { background:linear-gradient(180deg,#f8fafc,#f1f5f9)!important; color:#475569!important; border:1px solid rgba(100,116,139,.35)!important; }
-.nav-log button[kind="primary"] { background:linear-gradient(135deg,#64748b,#475569)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(71,85,105,.3)!important; }
-/* Sidebar nav mirrors page colors */
-.ui-sb-nav-wrap .sb-nav-practice button { background:linear-gradient(180deg,rgba(14,165,233,.22),rgba(20,184,166,.14))!important; color:#e0f2fe!important; border:1px solid rgba(56,189,248,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-practice button[kind="primary"] { background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important; color:#fff!important; border:none!important; }
-.ui-sb-nav-wrap .sb-nav-picker button { background:linear-gradient(180deg,rgba(139,92,246,.22),rgba(168,85,247,.12))!important; color:#ede9fe!important; border:1px solid rgba(167,139,250,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-picker button[kind="primary"] { background:linear-gradient(135deg,#8b5cf6,#a855f7)!important; color:#fff!important; border:none!important; }
-.ui-sb-nav-wrap .sb-nav-backing button { background:linear-gradient(180deg,rgba(34,197,94,.2),rgba(16,185,129,.12))!important; color:#dcfce7!important; border:1px solid rgba(74,222,128,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-backing button[kind="primary"] { background:linear-gradient(135deg,#22c55e,#10b981)!important; color:#fff!important; border:none!important; }
-.ui-sb-nav-wrap .sb-nav-creative button { background:linear-gradient(180deg,rgba(245,158,11,.2),rgba(251,191,36,.12))!important; color:#fef3c7!important; border:1px solid rgba(251,191,36,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-creative button[kind="primary"] { background:linear-gradient(135deg,#f59e0b,#fbbf24)!important; color:#422006!important; border:none!important; }
-.ui-sb-nav-wrap .sb-nav-custom button { background:linear-gradient(180deg,rgba(99,102,241,.22),rgba(79,70,229,.12))!important; color:#e0e7ff!important; border:1px solid rgba(129,140,248,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-custom button[kind="primary"] { background:linear-gradient(135deg,#6366f1,#4f46e5)!important; color:#fff!important; border:none!important; }
-.ui-sb-nav-wrap .sb-nav-multitrack button { background:linear-gradient(180deg,rgba(244,63,94,.2),rgba(251,113,133,.12))!important; color:#ffe4e6!important; border:1px solid rgba(251,113,133,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-multitrack button[kind="primary"] { background:linear-gradient(135deg,#f43f5e,#fb7185)!important; color:#fff!important; border:none!important; }
-.ui-sb-nav-wrap .sb-nav-analysis button { background:linear-gradient(180deg,rgba(6,182,212,.2),rgba(34,211,238,.12))!important; color:#cffafe!important; border:1px solid rgba(34,211,238,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-analysis button[kind="primary"] { background:linear-gradient(135deg,#06b6d4,#22d3ee)!important; color:#fff!important; border:none!important; }
-.ui-sb-nav-wrap .sb-nav-log button { background:linear-gradient(180deg,rgba(100,116,139,.18),rgba(71,85,105,.1))!important; color:#e2e8f0!important; border:1px solid rgba(148,163,184,.3)!important; }
-.ui-sb-nav-wrap .sb-nav-log button[kind="primary"] { background:linear-gradient(135deg,#64748b,#475569)!important; color:#fff!important; border:none!important; }
+/* Page-colored navigation (inactive = soft tint; active = stronger fill, same size) */
+.nav-practice button { background: linear-gradient(180deg,#f0f9ff,#e0f2fe)!important; color:#0369a1!important; border-color:rgba(14,165,233,.35)!important; }
+.nav-practice.nav-btn-active button { background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important; color:#fff!important; border-color:rgba(3,105,161,.55)!important; box-shadow:0 2px 8px rgba(14,165,233,.28)!important; }
+.nav-picker button { background:linear-gradient(180deg,#faf5ff,#f3e8ff)!important; color:#6d28d9!important; border-color:rgba(139,92,246,.35)!important; }
+.nav-picker.nav-btn-active button { background:linear-gradient(135deg,#8b5cf6,#a855f7)!important; color:#fff!important; border-color:rgba(109,40,217,.55)!important; box-shadow:0 2px 8px rgba(139,92,246,.28)!important; }
+.nav-backing button { background:linear-gradient(180deg,#f0fdf4,#dcfce7)!important; color:#15803d!important; border-color:rgba(34,197,94,.35)!important; }
+.nav-backing.nav-btn-active button { background:linear-gradient(135deg,#22c55e,#10b981)!important; color:#fff!important; border-color:rgba(21,128,61,.55)!important; box-shadow:0 2px 8px rgba(34,197,94,.28)!important; }
+.nav-creative button { background:linear-gradient(180deg,#fffbeb,#fef3c7)!important; color:#b45309!important; border-color:rgba(245,158,11,.4)!important; }
+.nav-creative.nav-btn-active button { background:linear-gradient(135deg,#f59e0b,#fbbf24)!important; color:#422006!important; border-color:rgba(180,83,9,.55)!important; box-shadow:0 2px 8px rgba(245,158,11,.28)!important; }
+.nav-custom button { background:linear-gradient(180deg,#eef2ff,#e0e7ff)!important; color:#4338ca!important; border-color:rgba(99,102,241,.35)!important; }
+.nav-custom.nav-btn-active button { background:linear-gradient(135deg,#6366f1,#4f46e5)!important; color:#fff!important; border-color:rgba(67,56,202,.55)!important; box-shadow:0 2px 8px rgba(99,102,241,.28)!important; }
+.nav-multitrack button { background:linear-gradient(180deg,#fff1f2,#ffe4e6)!important; color:#be123c!important; border-color:rgba(244,63,94,.35)!important; }
+.nav-multitrack.nav-btn-active button { background:linear-gradient(135deg,#f43f5e,#fb7185)!important; color:#fff!important; border-color:rgba(190,18,60,.55)!important; box-shadow:0 2px 8px rgba(244,63,94,.28)!important; }
+.nav-analysis button { background:linear-gradient(180deg,#ecfeff,#cffafe)!important; color:#0e7490!important; border-color:rgba(6,182,212,.35)!important; }
+.nav-analysis.nav-btn-active button { background:linear-gradient(135deg,#06b6d4,#22d3ee)!important; color:#fff!important; border-color:rgba(14,116,144,.55)!important; box-shadow:0 2px 8px rgba(6,182,212,.28)!important; }
+.nav-log button { background:linear-gradient(180deg,#f8fafc,#f1f5f9)!important; color:#475569!important; border-color:rgba(100,116,139,.35)!important; }
+.nav-log.nav-btn-active button { background:linear-gradient(135deg,#64748b,#475569)!important; color:#fff!important; border-color:rgba(71,85,105,.55)!important; box-shadow:0 2px 8px rgba(71,85,105,.26)!important; }
+/* Sidebar nav mirrors page colors (same active sizing as top bar) */
+.ui-sb-nav-wrap .studio-nav-item button {
+  box-sizing: border-box !important;
+  min-height: 2.1rem !important;
+  height: 2.1rem !important;
+  max-height: 2.1rem !important;
+  font-weight: 700 !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+}
+.ui-sb-nav-wrap .sb-nav-practice button { background:linear-gradient(180deg,rgba(14,165,233,.22),rgba(20,184,166,.14))!important; color:#e0f2fe!important; border-color:rgba(56,189,248,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-practice.nav-btn-active button { background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important; color:#fff!important; border-color:rgba(56,189,248,.55)!important; }
+.ui-sb-nav-wrap .sb-nav-picker button { background:linear-gradient(180deg,rgba(139,92,246,.22),rgba(168,85,247,.12))!important; color:#ede9fe!important; border-color:rgba(167,139,250,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-picker.nav-btn-active button { background:linear-gradient(135deg,#8b5cf6,#a855f7)!important; color:#fff!important; border-color:rgba(167,139,250,.55)!important; }
+.ui-sb-nav-wrap .sb-nav-backing button { background:linear-gradient(180deg,rgba(34,197,94,.2),rgba(16,185,129,.12))!important; color:#dcfce7!important; border-color:rgba(74,222,128,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-backing.nav-btn-active button { background:linear-gradient(135deg,#22c55e,#10b981)!important; color:#fff!important; border-color:rgba(74,222,128,.55)!important; }
+.ui-sb-nav-wrap .sb-nav-creative button { background:linear-gradient(180deg,rgba(245,158,11,.2),rgba(251,191,36,.12))!important; color:#fef3c7!important; border-color:rgba(251,191,36,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-creative.nav-btn-active button { background:linear-gradient(135deg,#f59e0b,#fbbf24)!important; color:#422006!important; border-color:rgba(251,191,36,.55)!important; }
+.ui-sb-nav-wrap .sb-nav-custom button { background:linear-gradient(180deg,rgba(99,102,241,.22),rgba(79,70,229,.12))!important; color:#e0e7ff!important; border-color:rgba(129,140,248,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-custom.nav-btn-active button { background:linear-gradient(135deg,#6366f1,#4f46e5)!important; color:#fff!important; border-color:rgba(129,140,248,.55)!important; }
+.ui-sb-nav-wrap .sb-nav-multitrack button { background:linear-gradient(180deg,rgba(244,63,94,.2),rgba(251,113,133,.12))!important; color:#ffe4e6!important; border-color:rgba(251,113,133,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-multitrack.nav-btn-active button { background:linear-gradient(135deg,#f43f5e,#fb7185)!important; color:#fff!important; border-color:rgba(251,113,133,.55)!important; }
+.ui-sb-nav-wrap .sb-nav-analysis button { background:linear-gradient(180deg,rgba(6,182,212,.2),rgba(34,211,238,.12))!important; color:#cffafe!important; border-color:rgba(34,211,238,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-analysis.nav-btn-active button { background:linear-gradient(135deg,#06b6d4,#22d3ee)!important; color:#fff!important; border-color:rgba(34,211,238,.55)!important; }
+.ui-sb-nav-wrap .sb-nav-log button { background:linear-gradient(180deg,rgba(100,116,139,.18),rgba(71,85,105,.1))!important; color:#e2e8f0!important; border-color:rgba(148,163,184,.3)!important; }
+.ui-sb-nav-wrap .sb-nav-log.nav-btn-active button { background:linear-gradient(135deg,#64748b,#475569)!important; color:#fff!important; border-color:rgba(148,163,184,.55)!important; }
 .cross-practice button { background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important; color:#fff!important; border:none!important; }
 .cross-picker button { background:linear-gradient(135deg,#8b5cf6,#a855f7)!important; color:#fff!important; border:none!important; }
 .cross-backing button { background:linear-gradient(135deg,#22c55e,#10b981)!important; color:#fff!important; border:none!important; }
@@ -801,7 +845,14 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
   .ui-studio-nav { padding: 0.4rem 0.45rem; }
-  .ui-studio-nav .nav-btn button { font-size: 0.68rem !important; padding: 0.32rem 0.2rem !important; }
+  .ui-studio-nav .studio-nav-item button,
+  .ui-studio-nav .nav-btn button {
+    font-size: 0.68rem !important;
+    padding: 0.3rem 0.2rem !important;
+    min-height: 2.35rem !important;
+    height: 2.35rem !important;
+    max-height: 2.35rem !important;
+  }
   .ui-now-playing .np-title { font-size: 0.9rem; }
   .ui-section-jump { top: 0.25rem; }
   .lead-grid { grid-template-columns: repeat(2, minmax(88px, 1fr)) !important; }
@@ -1028,13 +1079,17 @@ def render_page_quick_nav(
     cols = st.columns(len(STUDIO_PAGES))
     for col, (page_id, label) in zip(cols, STUDIO_PAGES):
         nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
+        active_cls = " nav-btn-active" if page_id == current else ""
         with col:
-            st.markdown(f'<div class="nav-btn nav-{nav_class}">', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="nav-btn studio-nav-item nav-{nav_class}{active_cls}">',
+                unsafe_allow_html=True,
+            )
             if st.button(
                 label,
                 key=f"{key_prefix}_nav_{page_id}",
                 use_container_width=True,
-                type="primary" if page_id == current else "secondary",
+                type="secondary",
             ):
                 if page_id != current:
                     session_state["studio_page"] = page_id
@@ -1057,15 +1112,16 @@ def render_sidebar_studio_nav(
     st.sidebar.markdown('<div class="ui-sb-nav-wrap">', unsafe_allow_html=True)
     for page_id, label in STUDIO_PAGES:
         nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
+        active_cls = " nav-btn-active" if page_id == current else ""
         st.sidebar.markdown(
-            f'<div class="sb-nav-btn sb-nav-{nav_class}">',
+            f'<div class="sb-nav-btn studio-nav-item sb-nav-{nav_class}{active_cls}">',
             unsafe_allow_html=True,
         )
         if st.sidebar.button(
             label,
             key=f"sb_nav_{page_id}",
             use_container_width=True,
-            type="primary" if page_id == current else "secondary",
+            type="secondary",
         ):
             if page_id != current:
                 session_state["studio_page"] = page_id
