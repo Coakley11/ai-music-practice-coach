@@ -4826,6 +4826,8 @@ def _ui_source_label() -> str:
 
 # SIDEBAR
 
+_studio_page = ensure_studio_page(st.session_state)
+
 sidebar_section("Studio", icon="🎛️", tone="nav")
 if render_sidebar_studio_nav:
     render_sidebar_studio_nav(
