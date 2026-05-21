@@ -639,6 +639,16 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border-color: rgba(34, 197, 94, 0.35);
   background: linear-gradient(145deg, #f0fdf4 0%, #ffffff 60%, #f8fafc 100%);
 }
+.ui-song-card.active {
+  border-color: rgba(29, 78, 216, 0.45);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
+}
+.ui-song-card.active .ui-song-card-title::after {
+  content: " · Active";
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #2563eb;
+}
 .ui-song-card-title {
   font-size: 1.05rem;
   font-weight: 850;
