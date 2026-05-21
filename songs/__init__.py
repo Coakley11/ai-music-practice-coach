@@ -1,14 +1,14 @@
 """Central song system: session state, form ordering, database bridge."""
 
-from .form import (
-    chord_blocks_for_backing,
-    form_timeline_rows,
-    section_order,
-)
 from .bpm_state import (
     BPM_WIDGET_KEY,
     request_backing_bpm,
     sync_backing_bpm_before_widget,
+)
+from .form import (
+    chord_blocks_for_backing,
+    form_timeline_rows,
+    section_order,
 )
 from .key_state import (
     BACKING_NEEDS_REGEN,
@@ -35,6 +35,7 @@ from .music_source import (
 )
 from .state import (
     ACTIVE_CATALOG_PICK_KEY,
+    PENDING_MATCHING_SONG_DROPDOWN,
     SELECTED_SONG_STATE_KEY,
     apply_pick_key,
     ensure_master_song_initialized,
@@ -43,6 +44,15 @@ from .state import (
 )
 
 __all__ = [
+    # Catalog pick / master song (songs/state.py)
+    "ACTIVE_CATALOG_PICK_KEY",
+    "PENDING_MATCHING_SONG_DROPDOWN",
+    "SELECTED_SONG_STATE_KEY",
+    "apply_pick_key",
+    "ensure_master_song_initialized",
+    "get_song_context",
+    "sync_matching_song_dropdown_before_widget",
+    # Music source
     "ACTIVE_MUSIC_SOURCE_KEY",
     "SOURCE_CATALOG",
     "SOURCE_CUSTOM",
@@ -54,18 +64,15 @@ __all__ = [
     "note_active_source_change",
     "set_catalog_source",
     "set_custom_source",
-    "ACTIVE_CATALOG_PICK_KEY",
-    "SELECTED_SONG_STATE_KEY",
-    "apply_pick_key",
-    "ensure_master_song_initialized",
-    "get_song_context",
-    "sync_matching_song_dropdown_before_widget",
+    # Form / timeline
     "chord_blocks_for_backing",
     "form_timeline_rows",
     "section_order",
+    # BPM
     "BPM_WIDGET_KEY",
     "request_backing_bpm",
     "sync_backing_bpm_before_widget",
+    # Display key / backing cache
     "BACKING_NEEDS_REGEN",
     "clear_backing_needs_regen",
     "invalidate_backing_cache",
