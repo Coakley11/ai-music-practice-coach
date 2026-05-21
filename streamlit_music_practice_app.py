@@ -1290,7 +1290,7 @@ def render_metronome_widget(
             f"Section loop: <strong>{html.escape(section_label)}</strong> "
             f"({section_bars} bar{'s' if section_bars != 1 else ''}) — metronome resets after each pass.</p>"
         )
-    html = f"""
+    widget_html = f"""
     <div id="metro-root" style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; border:1px solid #ddd; border-radius:12px; padding:14px; max-width:760px;">
       <h4 style="margin:0 0 10px 0;">Practice Metronome</h4>
       {loop_note}
@@ -1419,7 +1419,7 @@ def render_metronome_widget(
     }})();
     </script>
     """
-    components.html(html, height=230)
+    components.html(widget_html, height=230)
 
 def build_abc(song_name, sections):
 
