@@ -113,6 +113,42 @@ from songs.sheet_format import (
     merge_lyric_cues_for_song,
 )
 
+try:
+    from practice_studio import (
+        beginner_transpose_suggestions,
+        build_practice_session_from_logs,
+        fretboard_ascii,
+        rhythm_guide_markdown,
+        scale_suggestions_for_chord,
+        section_deep_practice_markdown,
+        song_card_meta,
+        song_groove_seed,
+    )
+except Exception:
+    def song_card_meta(record):
+        return {"title": record.get("title", ""), "artist": record.get("artist", ""), "genre": "", "key": "C", "bpm": None, "difficulty": "", "instruments": "", "trusted": False}
+
+    def beginner_transpose_suggestions(**kwargs):
+        return []
+
+    def section_deep_practice_markdown(**kwargs):
+        return ""
+
+    def scale_suggestions_for_chord(*args, **kwargs):
+        return ""
+
+    def rhythm_guide_markdown(*args, **kwargs):
+        return ""
+
+    def build_practice_session_from_logs(*args, **kwargs):
+        return {}
+
+    def fretboard_ascii(*args, **kwargs):
+        return ""
+
+    def song_groove_seed(*args, **kwargs):
+        return 0
+
 _APP_UI_LOADED = False
 _APP_UI_IMPORT_ERROR = None
 
@@ -1995,7 +2031,15 @@ def chord_coach_markdown(chord, instrument, level):
 """.strip()
 
 
-def render_chord_coach_ui(chords, instrument, level, key_prefix, expanded=True):
+def render_chord_coach_ui(
+    chords,
+    instrument,
+    level,
+    key_prefix,
+    expanded=True,
+    *,
+    display_key: str = "C",
+):
     unique_chords = []
     for chord in chords:
         if chord not in unique_chords:
@@ -2004,14 +2048,22 @@ def render_chord_coach_ui(chords, instrument, level, key_prefix, expanded=True):
         st.info("No chords are available for the current song/section.")
         return
 
+    coach_options = list(unique_chords)
+    if any("–" in c or "-" in c for c in coach_options) is False:
+        coach_options = coach_options + ["ii–V–I (in key)"]
+
     with st.expander("Chord Finder / How to Play", expanded=expanded):
         st.caption("Pick any chord from the selected song and get instrument-specific playing guidance.")
         selected_chord = st.selectbox(
             "Chord to explain",
-            unique_chords,
+            coach_options,
             key=f"{key_prefix}::chord_coach_select",
         )
-        st.markdown(chord_coach_markdown(selected_chord, instrument, level))
+        coach_target = "ii–V–I" if selected_chord == "ii–V–I (in key)" else selected_chord
+        st.markdown(chord_coach_markdown(coach_target, instrument, level))
+        st.markdown(scale_suggestions_for_chord(coach_target, display_key, level, instrument))
+        if instrument == "Guitar":
+            st.markdown(fretboard_ascii(coach_target if coach_target != "ii–V–I" else "G", level))
 
 
 TRANSPOSING_INSTRUMENTS = {
@@ -3559,6 +3611,48 @@ def _groove_time(bar_start, beat, beat_len, style):
     return bar_start + beat * beat_len
 
 
+def _add_section_transition_fill(
+    audio,
+    sr,
+    bar_start,
+    beat,
+    bar_len,
+    style,
+    role,
+    next_event,
+    intensity,
+    *,
+    seed_base: int,
+):
+    """Drum fill and lift between sections."""
+    fill_start = bar_start + 3.2 * beat
+    next_role = _section_role(next_event.get("section")) if next_event else "neutral"
+    for i, off in enumerate([0.0, 0.5, 1.0, 1.5, 2.0, 2.5]):
+        _add_noise_hit(
+            audio,
+            sr,
+            fill_start + off * beat * 0.15,
+            0.04,
+            0.022 * intensity,
+            seed=seed_base * 17 + i,
+        )
+    if next_role == "chorus":
+        for t, freq in [(3.5, 200), (3.65, 260), (3.8, 330)]:
+            _add_tone(audio, sr, bar_start + t * beat, 0.06, freq, 0.04 * intensity, "bass")
+    elif next_role == "bridge":
+        _add_tone(audio, sr, bar_start + 3.4 * beat, 0.12, 90, 0.05 * intensity, "organ")
+    if role == "intro":
+        _add_noise_hit(audio, sr, bar_start + 0.1 * beat, 0.08, 0.012 * intensity, seed=seed_base * 3)
+
+
+def _comp_wave_for_style(style: str, role: str) -> str:
+    if style == "Ballad":
+        return "organ"
+    if style == "Rock groove" and role == "chorus":
+        return "sine"
+    return "organ"
+
+
 def _style_patterns(style):
     if style == "Jazz swing":
         return {
@@ -3623,6 +3717,8 @@ def synthesize_chords_to_numpy(
     *,
     style="Pop groove",
     level="Intermediate",
+    song_title: str = "",
+    song_artist: str = "",
 ):
 
     beat = 60 / bpm
@@ -3631,6 +3727,7 @@ def synthesize_chords_to_numpy(
     chord_list = event_cycle * max(1, int(loops))
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
     patterns = _style_patterns(style)
+    groove_seed = song_groove_seed(song_title, song_artist) if song_title else 0
 
     for idx, event in enumerate(chord_list):
 
@@ -3644,6 +3741,9 @@ def synthesize_chords_to_numpy(
         section_edge = _is_section_edge(event, next_event)
         notes = chord_notes(chord)
         bass_hits = patterns["bass_beats"]
+        if groove_seed % 3 == 0 and role == "verse":
+            bass_hits = bass_hits[: max(2, len(bass_hits) - 1)]
+        comp_wave = _comp_wave_for_style(style, role)
 
         for n, b in enumerate(bass_hits):
             bass_pitch = _bass_motion_pitch(chord, next_chord, style, n, len(bass_hits))
@@ -3663,10 +3763,19 @@ def synthesize_chords_to_numpy(
         for comp_idx, b in enumerate(patterns["comp_beats"]):
             if role == "verse" and comp_idx % 3 == 2:
                 continue
+            if role == "intro" and comp_idx > 1:
+                continue
             dur = beat * patterns.get("comp_dur", 0.45)
             if role == "chorus":
                 dur *= 1.15
+            elif role == "bridge":
+                dur *= 0.95
             voicing = _voicing_for_comp(chord, level, style, comp_idx)
+            comp_vol = 0.022 * intensity
+            if role == "verse":
+                comp_vol *= 0.72
+            elif role == "chorus":
+                comp_vol *= 1.12
             for note in voicing:
                 _add_tone(
                     audio,
@@ -3674,8 +3783,8 @@ def synthesize_chords_to_numpy(
                     _groove_time(bar_start, b, beat, style),
                     dur,
                     note,
-                    0.022 * intensity,
-                    "organ",
+                    comp_vol,
+                    comp_wave,
                 )
 
         for b in patterns["hat_beats"]:
@@ -3688,7 +3797,7 @@ def synthesize_chords_to_numpy(
                 _groove_time(bar_start, b, beat, style),
                 0.030,
                 hat_vol * intensity,
-                seed=idx * 31 + int(b * 100),
+                seed=idx * 31 + int(b * 100) + (groove_seed % 997),
             )
 
         for b in patterns["snare_beats"]:
@@ -3713,6 +3822,18 @@ def synthesize_chords_to_numpy(
             )
 
         if section_edge:
+            _add_section_transition_fill(
+                audio,
+                sr,
+                bar_start,
+                beat,
+                bar,
+                style,
+                role,
+                next_event,
+                intensity,
+                seed_base=idx,
+            )
             approach = _bass_motion_pitch(chord, next_chord, style, len(bass_hits) - 1, len(bass_hits))
             _add_tone(audio, sr, bar_start + 3.55 * beat, beat * 0.25, approach, 0.075 * intensity, "bass")
             _add_noise_hit(audio, sr, bar_start + 3.75 * beat, 0.050, 0.018 * intensity, seed=idx * 101)
@@ -3751,6 +3872,8 @@ def generate_backing_track(
     loops=1,
     style="Pop groove",
     level="Intermediate",
+    song_title: str = "",
+    song_artist: str = "",
 ):
 
     audio, sr = synthesize_chords_to_numpy(
@@ -3759,6 +3882,8 @@ def generate_backing_track(
         loops=loops,
         style=style,
         level=level,
+        song_title=song_title,
+        song_artist=song_artist,
     )
     return pcm16_wav_bytes_from_float(audio, sr)
 
@@ -4526,6 +4651,73 @@ def _on_global_song_change() -> None:
     note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
 
+def _render_song_selection_cards(visible_records: list[dict]) -> None:
+    """Polished song cards with quick navigation."""
+    if not visible_records:
+        st.info("No songs match your filters.")
+        return
+
+    st.markdown('<div class="ui-song-card-grid">', unsafe_allow_html=True)
+    rows = [visible_records[i : i + 2] for i in range(0, len(visible_records), 2)]
+    for row_records in rows[:40]:
+        cols = st.columns(len(row_records))
+        for col, rec in zip(cols, row_records):
+            meta = song_card_meta(rec)
+            pk = format_pick_key(rec["genre"], f"{rec['title']} — {rec['artist']}")
+            trusted_cls = " trusted" if meta["trusted"] else ""
+            with col:
+                st.markdown(
+                    f'<div class="ui-song-card{trusted_cls}">'
+                    f'<p class="ui-song-card-title">{html.escape(meta["title"])}</p>'
+                    f'<p class="ui-song-card-artist">{html.escape(meta["artist"])}</p>'
+                    f'<div class="ui-song-card-meta">'
+                    f'<span class="ui-song-pill key">Key {html.escape(meta["key"])}</span>'
+                    f'<span class="ui-song-pill genre">{html.escape(meta["genre"])}</span>'
+                    + (
+                        f'<span class="ui-song-pill bpm">{int(meta["bpm"])} BPM</span>'
+                        if meta.get("bpm")
+                        else ""
+                    )
+                    + f'<span class="ui-song-pill">{html.escape(meta["difficulty"])}</span>'
+                    f"</div></div>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(f"Best for: {meta['instruments']}")
+                st.markdown('<div class="ui-song-card-actions">', unsafe_allow_html=True)
+                b1, b2, b3 = st.columns(3)
+                with b1:
+                    if st.button("Practice", key=f"card_practice_{pk}", use_container_width=True):
+                        set_catalog_source(st.session_state)
+                        apply_pick_key(st, pk, SONG_PICKER_CATALOG)
+                        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+                        st.session_state["studio_page"] = "practice"
+                        st.rerun()
+                with b2:
+                    if st.button("Backing", key=f"card_backing_{pk}", use_container_width=True):
+                        set_catalog_source(st.session_state)
+                        apply_pick_key(st, pk, SONG_PICKER_CATALOG)
+                        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+                        st.session_state["studio_page"] = "backing"
+                        st.rerun()
+                with b3:
+                    if st.button("Creative", key=f"card_creative_{pk}", use_container_width=True):
+                        set_catalog_source(st.session_state)
+                        apply_pick_key(st, pk, SONG_PICKER_CATALOG)
+                        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+                        st.session_state["studio_page"] = "creative"
+                        st.rerun()
+                if st.button("Select song", key=f"card_select_{pk}", use_container_width=True, type="primary"):
+                    set_catalog_source(st.session_state)
+                    apply_pick_key(st, pk, SONG_PICKER_CATALOG)
+                    note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+                    st.session_state["matching_song_dropdown"] = pk
+                    st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+    if len(visible_records) > 80:
+        st.caption(f"Showing first **80** of **{len(visible_records)}** songs — narrow filters to see more.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def _picker_visible_records() -> list[dict]:
     _apply_catalog_filter_defaults()
     st.session_state.setdefault("chart_library_mode", DEFAULT_CHART_LIBRARY_MODE)
@@ -4546,6 +4738,7 @@ def _render_catalog_song_picker_block(
     show_source_toggle: bool = True,
     filters_in_expander: bool = False,
     wrap_section: bool = True,
+    show_song_cards: bool = False,
 ) -> None:
     """Song / source controls — used in workspace panel section A."""
     if wrap_section:
@@ -4632,6 +4825,17 @@ def _render_catalog_song_picker_block(
             master_pk if master_pk in pick_options else pick_options[0]
         )
 
+    st.text_input(
+        "Search / filter songs",
+        placeholder="Title, artist, genre…",
+        key="song_search_text",
+    )
+
+    if show_song_cards:
+        st.markdown("#### Browse songs")
+        _render_song_selection_cards(filtered[:80])
+        st.markdown("#### Quick list pick")
+
     def _on_song_dropdown_change():
         set_catalog_source(st.session_state)
         apply_pick_key(st, st.session_state["matching_song_dropdown"], SONG_PICKER_CATALOG)
@@ -4650,11 +4854,6 @@ def _render_catalog_song_picker_block(
         help="Sets the active chart for Practice, Backing Track, and analysis.",
     )
 
-    st.text_input(
-        "Search / filter songs",
-        placeholder="Title, artist, genre…",
-        key="song_search_text",
-    )
     st.caption(
         f"**{len(filtered)}** of **{len(ALL_SONG_RECORDS)}** songs shown "
         f"(library: {st.session_state.get('chart_library_mode', DEFAULT_CHART_LIBRARY_MODE)}). "
@@ -5132,6 +5331,70 @@ if _studio_page == "practice":
         rerun_fn=st.rerun,
     )
 
+    if level == "Beginner":
+        _beginner_tips = beginner_transpose_suggestions(
+            concert_key=display_key,
+            instrument=instrument,
+            level=level,
+        )
+        if _beginner_tips:
+            with st.expander("🎹 Beginner-friendly key ideas", expanded=True):
+                for tip in _beginner_tips:
+                    st.markdown(tip)
+
+    if _focus_section and _focus_section in sections:
+        _focus_chords = sections.get(_focus_section) or []
+        with st.expander(f"🔬 Section deep practice — {_focus_section}", expanded=True):
+            st.markdown(
+                section_deep_practice_markdown(
+                    section_name=_focus_section,
+                    section_chords=_focus_chords,
+                    instrument=instrument,
+                    level=level,
+                    focus=focus,
+                    display_key=display_key,
+                    bpm=_practice_bpm,
+                    groove_style=_practice_groove,
+                )
+            )
+            _loop_key = f"practice_section_loop::{song}::{_song_slug(_focus_section)}"
+            _loop_on = st.checkbox(
+                f"Loop **{_focus_section}** with metronome ({_practice_bpm} BPM)",
+                key=_loop_key,
+            )
+            if _loop_on:
+                render_metronome_widget(
+                    default_bpm=_practice_bpm,
+                    default_signature=default_time_signature(song, sections),
+                )
+            if st.button(
+                f"Open Backing Track — loop {_focus_section}",
+                key=f"practice_backing_loop_{_song_slug(_focus_section)}",
+                use_container_width=True,
+            ):
+                st.session_state["backing_track_scope"] = "Single section"
+                st.session_state["backing_track_single_section"] = _focus_section
+                st.session_state["studio_page"] = "backing"
+                st.rerun()
+
+    if instrument in ("Guitar", "Piano"):
+        with st.expander("🥁 Rhythm guide", expanded=False):
+            st.markdown(
+                rhythm_guide_markdown(
+                    instrument,
+                    _practice_groove,
+                    default_time_signature(song, sections),
+                )
+            )
+
+    _section_chords_for_scales = (
+        sections.get(_focus_section) or all_chords_from_sections(sections)[:8]
+    )
+    if _section_chords_for_scales:
+        with st.expander("🎼 Scales & approaches (current section)", expanded=False):
+            for ch in _section_chords_for_scales[:10]:
+                st.markdown(scale_suggestions_for_chord(ch, display_key, level, instrument))
+
     if st.button(
         "▶ Go to Backing Track (tempo, loops, generate & play)",
         key="practice_go_backing",
@@ -5200,6 +5463,7 @@ if _studio_page == "practice":
             level,
             key_prefix=f"practice::{song}::{instrument}::{level}",
             expanded=True,
+            display_key=display_key,
         )
 
     with st.expander("🎚️ Transpose / capo / instrument key", expanded=False):
@@ -5305,6 +5569,7 @@ elif _studio_page == "picker":
         show_source_toggle=True,
         filters_in_expander=False,
         wrap_section=False,
+        show_song_cards=True,
     )
 
     if not is_custom_progression(st.session_state):
@@ -5491,6 +5756,8 @@ elif _studio_page == "backing":
             loops=form_loops,
             style=resolved_groove,
             level=level,
+            song_title=song_data.get("title", song),
+            song_artist=song_data.get("artist", ""),
         )
 
         st.session_state["_last_backing_wav"] = wav
@@ -6039,6 +6306,8 @@ elif _studio_page == "custom":
             loops=int(active.get("loops", 2)),
             style=cpl_groove,
             level=level,
+            song_title=active.get("name", "Custom"),
+            song_artist="",
         )
         st.session_state["cpl_backing_signature"] = cpl_sig
         st.success("Backing track generated.")
@@ -6533,6 +6802,41 @@ elif _studio_page == "log":
     _render_page_quick_nav("log")
 
     compact_page_title("📓", "Practice Log", "Session history and progress over time.")
+
+    _session_mins = st.slider(
+        "Target session length (minutes)",
+        20,
+        90,
+        45,
+        5,
+        key="ai_session_builder_minutes",
+    )
+    if st.button("Build practice session from log history", key="build_session_from_logs"):
+        st.session_state["_ai_practice_session_plan"] = build_practice_session_from_logs(
+            load_logs(),
+            ALL_SONG_RECORDS,
+            minutes=int(_session_mins),
+        )
+    _plan = st.session_state.get("_ai_practice_session_plan")
+    if _plan:
+        st.markdown(
+            '<div class="ui-card soft"><div class="ui-card-title">Suggested session</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(_plan.get("summary", ""))
+        for label, icon in (
+            ("warmup", "🌅"),
+            ("technique", "⚙️"),
+            ("main", "🎯"),
+            ("challenge", "🔥"),
+            ("cooldown", "🌙"),
+        ):
+            if _plan.get(label):
+                st.markdown(f"{icon} **{label.title()}** — {_plan[label]}")
+        st.markdown("</div>", unsafe_allow_html=True)
+        if st.button("Start warmup on Practice page", key="session_go_practice"):
+            st.session_state["studio_page"] = "practice"
+            st.rerun()
 
     if st.button("Clear practice log", type="secondary"):
 
