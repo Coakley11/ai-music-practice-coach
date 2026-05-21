@@ -107,6 +107,11 @@ from songs import (
 )
 from songs.key_state import mark_display_key_changed
 from song_chart_editor import render_chart_editor_panel
+from songs.sheet_format import (
+    bars_per_row_for_song,
+    lead_sheet_body_class,
+    merge_lyric_cues_for_song,
+)
 
 _APP_UI_LOADED = False
 _APP_UI_IMPORT_ERROR = None
@@ -241,16 +246,19 @@ if not _APP_UI_LOADED:
     def end_studio_control_deck() -> None:
         pass
 
+    def render_sidebar_studio_nav(session_state, *, current_page, rerun_fn):
+        return render_studio_nav(session_state, rerun_fn=rerun_fn)
+
     def render_studio_nav(session_state, *, rerun_fn) -> str:
         pages = [
-            ("practice", "Practice"),
-            ("picker", "Songs"),
-            ("backing", "Backing"),
-            ("custom", "Custom"),
-            ("creative", "Creative"),
-            ("multitrack", "Multitrack"),
-            ("analysis", "Analysis"),
-            ("log", "Log"),
+            ("practice", "🎯 Practice"),
+            ("picker", "🎼 Song Selection"),
+            ("backing", "🎧 Backing Track"),
+            ("custom", "✏️ Custom Progression"),
+            ("creative", "🧠 Creative Lab"),
+            ("multitrack", "🎚️ Multitrack"),
+            ("analysis", "🎙️ Upload Analysis"),
+            ("log", "📓 Practice Log"),
         ]
         session_state.setdefault("studio_page", "practice")
         labels = [p[1] for p in pages]
@@ -375,6 +383,29 @@ _LEGACY_CHART_FILTERS = {
     "Verified": CHART_FILTER_FULL_CHARTS,
     "Practice approximation": CHART_FILTER_EXTENDED,
 }
+
+_VALID_LIBRARY_MODES = {LIBRARY_MODE_FULL, LIBRARY_MODE_CORE}
+_VALID_CHART_FILTERS = {
+    CHART_FILTER_ALL,
+    CHART_FILTER_CURATED,
+    CHART_FILTER_FULL_CHARTS,
+    CHART_FILTER_EXTENDED,
+}
+
+
+def _normalize_library_mode(mode: str) -> str:
+    mapped = _LEGACY_LIBRARY_MODES.get(mode, mode)
+    if mapped in _VALID_LIBRARY_MODES:
+        return mapped
+    return DEFAULT_CHART_LIBRARY_MODE
+
+
+def _normalize_chart_filter(mode: str) -> str:
+    mapped = _LEGACY_CHART_FILTERS.get(mode, mode)
+    if mapped in _VALID_CHART_FILTERS:
+        return mapped
+    return DEFAULT_CHART_STATUS_FILTER
+
 
 try:
     SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = load_song_catalog()
@@ -614,35 +645,20 @@ def sections_for_level(song_data, level):
 
 
 def chart_status_label(song_data):
+    """Internal catalog quality flag — not shown in the UI."""
     user_ov = song_data.get("user_override") or {}
-    if user_ov.get("status") == "user_verified":
-        return ("User verified chart", "success")
-    if user_ov.get("status") == "user_corrected":
-        return ("User corrected chart", "success")
+    if user_ov:
+        return ("saved_edits", "success")
     status = (song_data.get("chart_status") or "placeholder").strip()
-    labels = {
-        "verified": ("Verified chart", "success"),
-        "practice_level_verified": ("Practice-level verified chart", "success"),
-        "trusted": ("Practice approximation — trusted core", "info"),
-        "practice_simplified": ("Practice approximation", "info"),
-        "practice_needs_review": ("Practice approximation — needs review", "warning"),
-        "user_corrected": ("User corrected chart", "success"),
-        "user_verified": ("User verified chart", "success"),
-        "user_corrected_reference": ("User corrected reference chart", "info"),
-        "custom": ("Custom progression", "info"),
-        "placeholder": ("Placeholder chart — needs verification", "warning"),
-    }
-    return labels.get(status, ("Placeholder chart — needs verification", "warning"))
+    return (status, "info")
 
 
 def chart_source_caption(song_data) -> str:
-    """Catalog vs user override line for Song Selection / sidebar."""
+    """User-facing chord chart line (no catalog quality labels)."""
     user_ov = song_data.get("user_override") or {}
     if user_ov:
-        cat = user_ov.get("catalog_chart_status", "catalog")
-        label = chart_status_label(song_data)[0]
-        return f"**Active chart:** {label} · **Catalog was:** {cat}"
-    return f"**Active chart:** Catalog ({chart_status_label(song_data)[0]})"
+        return "**Chord chart:** Your saved edits apply everywhere in the studio."
+    return "**Chord chart:** Open **Edit Song Chart** below to refine chords if needed."
 
 
 def trusted_core_records(records):
@@ -781,7 +797,17 @@ def bar_grid_markdown(chords, bars_per_row=4):
     return "\n".join(rows).strip()
 
 
-def lyric_aligned_bar_grid_markdown(section_name, chords, lyric_cues=None, section_lyrics=None, bars_per_row=4):
+def lyric_aligned_bar_grid_markdown(
+    section_name,
+    chords,
+    lyric_cues=None,
+    section_lyrics=None,
+    bars_per_row=4,
+    song_data=None,
+):
+    if song_data is not None:
+        lyric_cues = merge_lyric_cues_for_song(song_data, lyric_cues)
+        bars_per_row = bars_per_row_for_song(song_data, mobile=False)
     lyric_lines = _section_lyric_lines(
         section_name,
         lyric_cues=lyric_cues,
@@ -1563,6 +1589,8 @@ def full_chord_markdown(
     focus="",
 ):
     dk = display_key or song_data["key"]
+    merged_lyric_cues = merge_lyric_cues_for_song(song_data, lyric_cues)
+    sheet_class = lead_sheet_body_class(song_data)
     total_bars = sum(len(chords) for chords in sections.values())
     now_playing = current_section or "Full song"
     ext = song_data.get("extensions") or {}
@@ -1630,6 +1658,26 @@ def full_chord_markdown(
   grid-template-columns: repeat(4, minmax(92px, 1fr));
   gap: 10px 12px;
   margin: 12px 0 14px 0;
+}
+.verified-core-sheet .lead-grid {
+  grid-template-columns: repeat(4, minmax(96px, 1fr));
+  gap: 12px 14px;
+}
+.verified-core-sheet .chord-symbol {
+  font-size: 1.22rem;
+  letter-spacing: -0.02em;
+}
+.verified-core-sheet .chord-cell {
+  min-height: 76px;
+  border-color: rgba(30, 64, 175, 0.2);
+}
+.verified-core-sheet .section-card {
+  scroll-margin-top: 4.5rem;
+}
+@media (max-width: 760px) {
+  .verified-core-sheet .lead-grid {
+    grid-template-columns: repeat(2, minmax(100px, 1fr)) !important;
+  }
 }
 .chord-cell {
   min-height: 72px;
@@ -1716,7 +1764,7 @@ def full_chord_markdown(
     <div class="section-meta">{now_label}</div>
   </div>
   {_chart_grid_html(chords, current_bar=current_bar_for_section, section_name=section_name)}
-  {_section_lyric_html(section_name, chords, instrument, lyric_cues=lyric_cues or {}, section_lyrics=section_lyrics or {})}
+  {_section_lyric_html(section_name, chords, instrument, lyric_cues=merged_lyric_cues, section_lyrics=section_lyrics or {})}
   <div class="overlay-box"><strong>{html.escape(str(instrument))}:</strong> {_section_overlay(instrument, focus, chords, section_name=section_name, groove_style=groove_style, time_signature=time_signature, bpm=bpm)}</div>
   <div class="analysis-box">{_inline_harmonic_analysis(section_name, chords, dk)}</div>
 </section>
@@ -1725,7 +1773,7 @@ def full_chord_markdown(
 
     return f"""
 {style}
-<div class="lead-sheet">
+<div class="{sheet_class}">
   <div class="lead-header">
     <div class="lead-title">{html.escape(song_name)} - Musician Chart</div>
     <div class="lead-subtitle">{html.escape(str(song_data.get('artist', '')))} | {html.escape(str(song_data.get('genre', '')))}</div>
@@ -3199,6 +3247,15 @@ def default_time_signature(song, sections):
 
 def default_song_bpm(song_title: str, song_data: dict | None = None) -> int:
     title = (song_title or "").lower()
+    if song_data:
+        try:
+            from song_catalog.verified_core_refs import reference_for
+
+            ref = reference_for(song_data.get("title", ""), song_data.get("artist", ""))
+            if ref and ref.get("default_bpm"):
+                return int(ref["default_bpm"])
+        except Exception:
+            pass
     if "shape of you" in title:
         return 96
     if song_data and (song_data.get("extensions") or {}).get("default_bpm"):
@@ -4850,15 +4907,7 @@ if is_custom_progression(st.session_state):
     st.sidebar.caption("Edit chords in **Custom Progression Lab**.")
 else:
     st.sidebar.caption(f"**{_catalog_song}** · {_catalog_genre}")
-    _chart_status_text, _chart_status_kind = chart_status_label(_catalog_song_data)
-    if _chart_status_kind == "success":
-        st.sidebar.success(_chart_status_text)
-    elif _chart_status_kind == "warning":
-        st.sidebar.warning(_chart_status_text)
-    else:
-        st.sidebar.caption(_chart_status_text)
-    if not is_custom_progression(st.session_state):
-        st.sidebar.caption(chart_source_caption(_catalog_song_data))
+    st.sidebar.caption(chart_source_caption(_catalog_song_data))
 
 st.session_state.setdefault("instrument", "Piano")
 st.session_state.setdefault("level", "Intermediate")
@@ -4874,10 +4923,10 @@ _display_key_options = sync_display_key_before_widget(
     _song_identity,
 )
 
-sidebar_section("Practice key", icon="🎹")
-st.sidebar.caption(
-    "**Practice / Display Key** — changes the whole song globally "
-    "(chart, backing, exercises, analysis)."
+sidebar_section("Practice key", icon="🎹", tone="key")
+st.sidebar.markdown(
+    '<p class="ui-key-global-hint">Practice / Display Key — changes the whole song globally.</p>',
+    unsafe_allow_html=True,
 )
 st.sidebar.caption(f"Written key: **{original_key}**")
 st.sidebar.selectbox(
@@ -4909,8 +4958,6 @@ st.sidebar.caption(
     f"**Practice length:** {int(st.session_state.get('practice_minutes', 30))} min "
     "(adjust on the **Practice** page)"
 )
-
-_studio_page = ensure_studio_page(st.session_state)
 
 note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 

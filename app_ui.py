@@ -46,7 +46,11 @@ def inject_app_theme() -> None:
   --studio-soft: #f8fafc;
   --studio-radius: 14px;
 }
-.block-container { padding-top: 0.65rem; max-width: 1180px; }
+.block-container {
+  padding-top: 0.65rem;
+  max-width: 1180px;
+  background: linear-gradient(180deg, #fafbff 0%, #ffffff 120px);
+}
 [data-testid="stVerticalBlock"] > div:empty { display: none; }
 header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-filter: blur(8px); }
 [data-testid="stSidebar"] {

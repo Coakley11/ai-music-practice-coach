@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from .verified_core_refs import (
+    chart_versions_for_reference,
+    lyric_cues_for_reference,
+    reference_for,
+)
+
 
 def _ext(**kwargs) -> dict[str, Any]:
     """Reserved slots for MIDI / MusicXML / analysis / improvisation metadata."""
@@ -716,6 +722,38 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             extensions=note(notes or "Practice-level verified form; one chord cell equals one bar."),
         )
 
+    def core_ref(
+        title: str,
+        artist: str,
+        *,
+        composer: str | None = None,
+    ) -> dict[str, Any]:
+        ref = reference_for(title, artist)
+        if not ref:
+            raise ValueError(f"Missing verified core reference: {title} — {artist}")
+        inter = ref["sections"]
+        beg = ref.get("beginner") or inter
+        row = v(
+            title,
+            artist,
+            ref["genre"],
+            ref["key"],
+            beg,
+            inter,
+            advanced=inter,
+            composer=composer,
+            lyric_cues=lyric_cues_for_reference(title, artist),
+            guitar_tabs=ref.get("guitar_tabs"),
+            notes=ref.get("arrangement_notes"),
+            chart_status=status,
+        )
+        if ref.get("default_bpm"):
+            row["extensions"] = {
+                **(row.get("extensions") or {}),
+                "default_bpm": int(ref["default_bpm"]),
+            }
+        return row
+
     return [
         v(
             "Shallow",
@@ -1113,28 +1151,15 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             lyric_cues={"Intro": ["guitar arpeggio setup"], "Verse": ["memory list phrase"], "Chorus": ["affection reflection"], "Piano Solo": ["baroque keyboard break"], "Outro": ["gentle final cadence"]},
             notes="Beatles practice chart in A; verse keeps the A7-to-D and Dm6 modal-mixture color before resolving.",
         ),
-        v(
+        core_ref(
             "Across the Universe",
             "The Beatles",
-            "Rock",
-            "D",
-            {
-                "Intro": ["D", "D", "Bm", "Bm"],
-                "Verse": ["D", "Bm", "F#m", "F#m", "Em", "A7", "D", "D"],
-                "Chorus": ["G", "Gm", "D", "A7", "D", "D"],
-                "Bridge": ["D", "F#m", "Bm", "A", "G", "A7", "D", "D"],
-                "Outro": ["D", "Bm", "G", "D"],
-            },
-            {
-                "Intro": ["Dadd9", "Dadd9", "Bm7", "Bm7"],
-                "Verse": ["Dadd9", "Bm7", "F#m7", "F#m7", "Em7", "A7sus4", "Dadd9", "Dadd9"],
-                "Chorus": ["G", "Gm6", "D/F#", "A7sus4", "Dadd9", "Dadd9"],
-                "Bridge": ["Dadd9", "F#m7", "Bm7", "A", "G", "A7sus4", "Dadd9", "Dadd9"],
-                "Outro": ["Dadd9", "Bm7", "G", "Dadd9"],
-            },
             composer="Lennon-McCartney",
-            lyric_cues={"Intro": ["drone-like acoustic opening"], "Verse": ["flowing imagery line"], "Chorus": ["mantra-like refrain"], "Bridge": ["gentle lift and release"], "Outro": ["settle on mantra color"]},
-            notes="Original-key D practice chart; add9/sus colors preserve the droning acoustic texture without overcomplicating playback.",
+        ),
+        core_ref(
+            "Uptown Girl",
+            "Billy Joel",
+            composer="Billy Joel",
         ),
         v(
             "Girls Just Want to Have Fun",
@@ -1703,10 +1728,13 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Groove Section": ["F7", "Bb7", "Eb7", "Ab7"],
             "Outro Vamp": ["F", "Bb", "F", "C7"],
         }, composer="Billy Joel"),
-        _s("Uptown Girl", "Billy Joel", "Pop", "E", {
-            "Verse": ["E", "A", "E", "B", "E", "A", "E", "B"],
-            "Chorus": ["E", "B", "A", "B", "E", "B", "A", "B"],
-            "Bridge": ["C#m", "G#m", "A", "B", "E", "B", "A", "B"],
+        _s("Uptown Girl", "Billy Joel", "Pop", "D", {
+            "Intro": ["D", "Em", "D/F#", "G", "A"],
+            "Verse": ["D", "Em", "D/F#", "G", "A", "D", "Em", "D/F#", "G", "A"],
+            "Chorus": ["D", "Em", "D/F#", "G", "A", "D", "Em", "D/F#", "G", "A"],
+            "Interlude": ["F", "G", "E", "Am", "G"],
+            "Bridge": ["Bb", "Gm", "Cm", "F", "Bb", "Gm", "Am7b5", "D7", "G", "Em", "Am", "A"],
+            "Outro": ["D", "Em", "D/F#", "G", "A", "D"],
         }, composer="Billy Joel"),
         _s("She's Always a Woman", "Billy Joel", "Pop", "Eb", {
             "Verse": ["Eb", "Gm7", "Cm7", "Ab", "Eb", "Gm7", "Cm7", "Bb"],
