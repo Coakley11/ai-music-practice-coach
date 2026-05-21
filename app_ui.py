@@ -22,7 +22,8 @@ __all__ = [
     "render_section_jump_bar",
     "render_cross_page_links",
     "render_page_quick_nav",
-    "render_top_nav_button",
+    "render_nav_button",
+    "TOP_NAV_ITEMS",
     "render_sidebar_studio_nav",
     "render_studio_nav",
     "STUDIO_PAGE_META",
@@ -411,102 +412,79 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   margin-bottom: 0.55rem;
   background: transparent;
 }
-/* Top nav — fixed identical button box for every page (Practice included) */
-.ui-studio-nav.ui-page-nav [data-testid="column"] {
+/* Top nav row — columns sit in the HorizontalBlock after #studio-top-nav-anchor */
+#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] {
+  align-items: stretch !important;
+  gap: 0.35rem !important;
+  border: 1px solid var(--studio-line) !important;
+  border-radius: 12px !important;
+  padding: 0.45rem 0.5rem !important;
+  margin-bottom: 0.75rem !important;
+  background: linear-gradient(180deg, #ffffff, #f8fafc) !important;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04) !important;
+}
+#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] {
+  height: 72px !important;
+  min-height: 72px !important;
+  max-height: 72px !important;
   display: flex !important;
   flex-direction: column !important;
   align-items: stretch !important;
-  min-width: 106px !important;
+  justify-content: stretch !important;
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  padding: 0 !important;
 }
-.ui-studio-nav.ui-page-nav .nav-button {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  width: 100%;
-  min-width: 106px;
-  margin: 0;
-  padding: 0;
+#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] > div {
+  height: 100% !important;
+  min-height: 72px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
 }
-.ui-studio-nav.ui-page-nav .nav-button [data-testid="stButton"],
-.ui-studio-nav.ui-page-nav .nav-button div.stButton {
+#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] [data-testid="stButton"],
+#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] div.stButton {
   width: 100% !important;
-  min-width: 106px !important;
+  flex: 1 1 auto !important;
   margin: 0 !important;
-  flex: 1 1 auto;
+  min-height: 64px !important;
+  height: 64px !important;
+  max-height: 64px !important;
 }
-.ui-studio-nav.ui-page-nav .nav-button [data-testid="stButton"] > button,
-.ui-studio-nav.ui-page-nav .nav-button button {
+#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] [data-testid="stButton"] > button,
+#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] button {
+  width: 100% !important;
+  height: 64px !important;
+  min-height: 64px !important;
+  max-height: 64px !important;
+  padding: 8px 10px !important;
   box-sizing: border-box !important;
-  min-height: 62px !important;
-  height: 62px !important;
-  max-height: 62px !important;
-  min-width: 106px !important;
-  width: 100% !important;
-  padding: 8px 12px !important;
-  font-size: 0.72rem !important;
-  font-weight: 700 !important;
-  line-height: 1.25 !important;
-  border-radius: 10px !important;
-  border-width: 1px !important;
-  border-style: solid !important;
-  margin: 0 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   text-align: center !important;
+  line-height: 1.2 !important;
   white-space: normal !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  margin: 0 !important;
   transform: none !important;
   transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease !important;
 }
-.ui-studio-nav.ui-page-nav .nav-button [data-testid="stButton"] > button:hover,
-.ui-studio-nav.ui-page-nav .nav-button button:hover {
+#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] [data-testid="stButton"] > button:hover,
+#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] button:hover {
   transform: none !important;
 }
-/* Page-colored navigation (inactive = soft tint; active = stronger fill, same size) */
-.nav-practice button { background: linear-gradient(180deg,#f0f9ff,#e0f2fe)!important; color:#0369a1!important; border-color:rgba(14,165,233,.35)!important; }
-.nav-practice.nav-btn-active button { background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important; color:#fff!important; border-color:rgba(3,105,161,.55)!important; box-shadow:0 2px 8px rgba(14,165,233,.28)!important; }
-.nav-picker button { background:linear-gradient(180deg,#faf5ff,#f3e8ff)!important; color:#6d28d9!important; border-color:rgba(139,92,246,.35)!important; }
-.nav-picker.nav-btn-active button { background:linear-gradient(135deg,#8b5cf6,#a855f7)!important; color:#fff!important; border-color:rgba(109,40,217,.55)!important; box-shadow:0 2px 8px rgba(139,92,246,.28)!important; }
-.nav-backing button { background:linear-gradient(180deg,#f0fdf4,#dcfce7)!important; color:#15803d!important; border-color:rgba(34,197,94,.35)!important; }
-.nav-backing.nav-btn-active button { background:linear-gradient(135deg,#22c55e,#10b981)!important; color:#fff!important; border-color:rgba(21,128,61,.55)!important; box-shadow:0 2px 8px rgba(34,197,94,.28)!important; }
-.nav-creative button { background:linear-gradient(180deg,#fffbeb,#fef3c7)!important; color:#b45309!important; border-color:rgba(245,158,11,.4)!important; }
-.nav-creative.nav-btn-active button { background:linear-gradient(135deg,#f59e0b,#fbbf24)!important; color:#422006!important; border-color:rgba(180,83,9,.55)!important; box-shadow:0 2px 8px rgba(245,158,11,.28)!important; }
-.nav-custom button { background:linear-gradient(180deg,#eef2ff,#e0e7ff)!important; color:#4338ca!important; border-color:rgba(99,102,241,.35)!important; }
-.nav-custom.nav-btn-active button { background:linear-gradient(135deg,#6366f1,#4f46e5)!important; color:#fff!important; border-color:rgba(67,56,202,.55)!important; box-shadow:0 2px 8px rgba(99,102,241,.28)!important; }
-.nav-multitrack button { background:linear-gradient(180deg,#fff1f2,#ffe4e6)!important; color:#be123c!important; border-color:rgba(244,63,94,.35)!important; }
-.nav-multitrack.nav-btn-active button { background:linear-gradient(135deg,#f43f5e,#fb7185)!important; color:#fff!important; border-color:rgba(190,18,60,.55)!important; box-shadow:0 2px 8px rgba(244,63,94,.28)!important; }
-.nav-analysis button { background:linear-gradient(180deg,#ecfeff,#cffafe)!important; color:#0e7490!important; border-color:rgba(6,182,212,.35)!important; }
-.nav-analysis.nav-btn-active button { background:linear-gradient(135deg,#06b6d4,#22d3ee)!important; color:#fff!important; border-color:rgba(14,116,144,.55)!important; box-shadow:0 2px 8px rgba(6,182,212,.28)!important; }
-.nav-log button { background:linear-gradient(180deg,#f8fafc,#f1f5f9)!important; color:#475569!important; border-color:rgba(100,116,139,.35)!important; }
-.nav-log.nav-btn-active button { background:linear-gradient(135deg,#64748b,#475569)!important; color:#fff!important; border-color:rgba(71,85,105,.55)!important; box-shadow:0 2px 8px rgba(71,85,105,.26)!important; }
-/* Size lock — active page + Practice use same dimensions (color only differs) */
-.ui-studio-nav.ui-page-nav .nav-button button[kind="primary"],
-.ui-studio-nav.ui-page-nav .nav-button button[kind="secondary"],
-.ui-studio-nav.ui-page-nav .nav-practice button,
-.ui-studio-nav.ui-page-nav .nav-practice.nav-btn-active button,
-.ui-studio-nav.ui-page-nav .nav-picker button,
-.ui-studio-nav.ui-page-nav .nav-picker.nav-btn-active button,
-.ui-studio-nav.ui-page-nav .nav-backing button,
-.ui-studio-nav.ui-page-nav .nav-backing.nav-btn-active button,
-.ui-studio-nav.ui-page-nav .nav-creative button,
-.ui-studio-nav.ui-page-nav .nav-creative.nav-btn-active button,
-.ui-studio-nav.ui-page-nav .nav-custom button,
-.ui-studio-nav.ui-page-nav .nav-custom.nav-btn-active button,
-.ui-studio-nav.ui-page-nav .nav-multitrack button,
-.ui-studio-nav.ui-page-nav .nav-multitrack.nav-btn-active button,
-.ui-studio-nav.ui-page-nav .nav-analysis button,
-.ui-studio-nav.ui-page-nav .nav-analysis.nav-btn-active button,
-.ui-studio-nav.ui-page-nav .nav-log button,
-.ui-studio-nav.ui-page-nav .nav-log.nav-btn-active button {
-  min-height: 62px !important;
-  height: 62px !important;
-  max-height: 62px !important;
-  min-width: 106px !important;
-  padding: 8px 12px !important;
-  font-size: 0.72rem !important;
-  font-weight: 700 !important;
-  line-height: 1.25 !important;
+#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] button[kind="primary"],
+#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] button[kind="secondary"] {
+  height: 64px !important;
+  min-height: 64px !important;
+  max-height: 64px !important;
+  padding: 8px 10px !important;
 }
 /* Sidebar nav mirrors page colors (same active sizing as top bar) */
 .ui-sb-nav-wrap .studio-nav-item button {
@@ -879,14 +857,18 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
   .ui-studio-nav { padding: 0.4rem 0.45rem; }
-  .ui-studio-nav.ui-page-nav .nav-button [data-testid="stButton"] > button,
-  .ui-studio-nav.ui-page-nav .nav-button button {
+  #studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] [data-testid="stButton"] > button,
+  #studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] button {
     font-size: 0.66rem !important;
     padding: 6px 8px !important;
-    min-height: 58px !important;
-    height: 58px !important;
-    max-height: 58px !important;
-    min-width: 96px !important;
+    height: 60px !important;
+    min-height: 60px !important;
+    max-height: 60px !important;
+  }
+  #studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] {
+    height: 68px !important;
+    min-height: 68px !important;
+    max-height: 68px !important;
   }
   .ui-now-playing .np-title { font-size: 0.9rem; }
   .ui-section-jump { top: 0.25rem; }
@@ -1065,6 +1047,81 @@ STUDIO_PAGES: list[tuple[str, str]] = [
     for page_id, meta in STUDIO_PAGE_META.items()
 ]
 
+# Single source for top navigation — Practice is item 0, same loop as all others.
+TOP_NAV_ITEMS: list[tuple[str, str]] = list(STUDIO_PAGES)
+
+_TOP_NAV_PALETTE: dict[str, dict[str, str]] = {
+    "practice": {
+        "idle": "background:linear-gradient(180deg,#f0f9ff,#e0f2fe)!important;color:#0369a1!important;border-color:rgba(14,165,233,.35)!important;box-shadow:none!important;",
+        "active": "background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important;color:#fff!important;border-color:rgba(3,105,161,.55)!important;box-shadow:0 2px 8px rgba(14,165,233,.28)!important;",
+    },
+    "picker": {
+        "idle": "background:linear-gradient(180deg,#faf5ff,#f3e8ff)!important;color:#6d28d9!important;border-color:rgba(139,92,246,.35)!important;box-shadow:none!important;",
+        "active": "background:linear-gradient(135deg,#8b5cf6,#a855f7)!important;color:#fff!important;border-color:rgba(109,40,217,.55)!important;box-shadow:0 2px 8px rgba(139,92,246,.28)!important;",
+    },
+    "backing": {
+        "idle": "background:linear-gradient(180deg,#f0fdf4,#dcfce7)!important;color:#15803d!important;border-color:rgba(34,197,94,.35)!important;box-shadow:none!important;",
+        "active": "background:linear-gradient(135deg,#22c55e,#10b981)!important;color:#fff!important;border-color:rgba(21,128,61,.55)!important;box-shadow:0 2px 8px rgba(34,197,94,.28)!important;",
+    },
+    "custom": {
+        "idle": "background:linear-gradient(180deg,#eef2ff,#e0e7ff)!important;color:#4338ca!important;border-color:rgba(99,102,241,.35)!important;box-shadow:none!important;",
+        "active": "background:linear-gradient(135deg,#6366f1,#4f46e5)!important;color:#fff!important;border-color:rgba(67,56,202,.55)!important;box-shadow:0 2px 8px rgba(99,102,241,.28)!important;",
+    },
+    "creative": {
+        "idle": "background:linear-gradient(180deg,#fffbeb,#fef3c7)!important;color:#b45309!important;border-color:rgba(245,158,11,.4)!important;box-shadow:none!important;",
+        "active": "background:linear-gradient(135deg,#f59e0b,#fbbf24)!important;color:#422006!important;border-color:rgba(180,83,9,.55)!important;box-shadow:0 2px 8px rgba(245,158,11,.28)!important;",
+    },
+    "multitrack": {
+        "idle": "background:linear-gradient(180deg,#fff1f2,#ffe4e6)!important;color:#be123c!important;border-color:rgba(244,63,94,.35)!important;box-shadow:none!important;",
+        "active": "background:linear-gradient(135deg,#f43f5e,#fb7185)!important;color:#fff!important;border-color:rgba(190,18,60,.55)!important;box-shadow:0 2px 8px rgba(244,63,94,.28)!important;",
+    },
+    "analysis": {
+        "idle": "background:linear-gradient(180deg,#ecfeff,#cffafe)!important;color:#0e7490!important;border-color:rgba(6,182,212,.35)!important;box-shadow:none!important;",
+        "active": "background:linear-gradient(135deg,#06b6d4,#22d3ee)!important;color:#fff!important;border-color:rgba(14,116,144,.55)!important;box-shadow:0 2px 8px rgba(6,182,212,.28)!important;",
+    },
+    "log": {
+        "idle": "background:linear-gradient(180deg,#f8fafc,#f1f5f9)!important;color:#475569!important;border-color:rgba(100,116,139,.35)!important;box-shadow:none!important;",
+        "active": "background:linear-gradient(135deg,#64748b,#475569)!important;color:#fff!important;border-color:rgba(71,85,105,.55)!important;box-shadow:0 2px 8px rgba(71,85,105,.26)!important;",
+    },
+}
+
+_TOP_NAV_SIZE_LOCK = (
+    "height:64px!important;min-height:64px!important;max-height:64px!important;"
+    "padding:8px 10px!important;font-size:0.72rem!important;font-weight:700!important;"
+    "line-height:1.2!important;"
+)
+
+
+def _top_nav_dynamic_css(current_page: str) -> str:
+    """Per-column colors via nth-child (works with Streamlit's real DOM)."""
+    rules: list[str] = []
+    for idx, (page_id, _label) in enumerate(TOP_NAV_ITEMS, start=1):
+        palette = _TOP_NAV_PALETTE.get(page_id, _TOP_NAV_PALETTE["log"])
+        look = palette["active"] if page_id == current_page else palette["idle"]
+        sel = (
+            "#studio-top-nav-anchor ~ div[data-testid='stHorizontalBlock'] "
+            f"[data-testid='column']:nth-child({idx}) [data-testid='stButton'] > button"
+        )
+        rules.append(f"{sel} {{{_TOP_NAV_SIZE_LOCK}{look}}}")
+    return "<style>\n" + "\n".join(rules) + "\n</style>"
+
+
+def render_nav_button(
+    st_module: Any,
+    *,
+    page_key: str,
+    label: str,
+    is_active: bool,
+) -> bool:
+    """Render one top-nav control — identical Streamlit button API for every page."""
+    del is_active  # colors come from _top_nav_dynamic_css (size stays constant)
+    return st_module.button(
+        label,
+        key=f"top_nav_{page_key}",
+        use_container_width=True,
+        type="secondary",
+    )
+
 # Compact cross-page shortcuts (subset for inline link rows).
 CROSS_PAGE_LINKS: list[tuple[str, str]] = [
     ("practice", "Go to Practice"),
@@ -1095,31 +1152,6 @@ def end_studio_control_deck() -> None:
     st.markdown("</div></div>", unsafe_allow_html=True)
 
 
-def render_top_nav_button(
-    st_module: Any,
-    *,
-    label: str,
-    page_id: str,
-    nav_class: str,
-    is_active: bool,
-    button_key: str,
-) -> bool:
-    """One top-nav control — same markup and Streamlit API for every page."""
-    active_cls = " nav-btn-active" if is_active else ""
-    st_module.markdown(
-        f'<div class="nav-button nav-btn nav-{nav_class}{active_cls}">',
-        unsafe_allow_html=True,
-    )
-    clicked = st_module.button(
-        label,
-        key=button_key,
-        use_container_width=True,
-        type="secondary",
-    )
-    st_module.markdown("</div>", unsafe_allow_html=True)
-    return clicked
-
-
 def render_page_quick_nav(
     session_state: Any,
     *,
@@ -1130,28 +1162,30 @@ def render_page_quick_nav(
     """Compact navigation bar at the top of each major page."""
     import streamlit as st
 
+    del key_prefix  # stable widget keys: top_nav_{page_key} for every page
     current = ensure_studio_page(session_state, default=current_page)
     st.markdown(
         '<p class="ui-page-nav-label">Quick navigation</p>',
         unsafe_allow_html=True,
     )
-    st.markdown('<div class="ui-studio-nav ui-page-nav">', unsafe_allow_html=True)
-    cols = st.columns(len(STUDIO_PAGES), gap="small")
-    for col, (page_id, label) in zip(cols, STUDIO_PAGES):
-        nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
+    st.markdown(_top_nav_dynamic_css(current), unsafe_allow_html=True)
+    st.markdown(
+        '<div id="studio-top-nav-anchor" class="ui-studio-nav ui-page-nav" aria-hidden="true"></div>',
+        unsafe_allow_html=True,
+    )
+    n = len(TOP_NAV_ITEMS)
+    cols = st.columns([1] * n, gap="small")
+    for col, (page_key, label) in zip(cols, TOP_NAV_ITEMS):
         with col:
-            if render_top_nav_button(
+            if render_nav_button(
                 st,
+                page_key=page_key,
                 label=label,
-                page_id=page_id,
-                nav_class=nav_class,
-                is_active=page_id == current,
-                button_key=f"{key_prefix}_nav_{page_id}",
+                is_active=page_key == current,
             ):
-                if page_id != current:
-                    session_state["studio_page"] = page_id
+                if page_key != current:
+                    session_state["studio_page"] = page_key
                     rerun_fn()
-    st.markdown("</div>", unsafe_allow_html=True)
     return session_state.get("studio_page", current)
 
 

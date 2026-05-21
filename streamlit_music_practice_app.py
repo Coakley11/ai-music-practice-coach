@@ -5074,7 +5074,6 @@ def _render_page_quick_nav(current_page: str) -> str:
         st.session_state,
         current_page=current_page,
         rerun_fn=st.rerun,
-        key_prefix=current_page,
     )
 
 
