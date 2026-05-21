@@ -120,8 +120,9 @@ try:
         end_studio_control_deck,
         render_global_studio_bar,
         render_section_jump_bar,
+        render_studio_brand_header,
         render_studio_nav,
-    session_badges,
+        session_badges,
         sidebar_section,
         sidebar_source_banner,
     )
@@ -149,6 +150,7 @@ except Exception as _app_ui_first_err:
                 end_studio_control_deck = _app_ui_mod.end_studio_control_deck
                 render_global_studio_bar = _app_ui_mod.render_global_studio_bar
                 render_section_jump_bar = getattr(_app_ui_mod, "render_section_jump_bar", None)
+                render_studio_brand_header = _app_ui_mod.render_studio_brand_header
                 render_studio_nav = _app_ui_mod.render_studio_nav
                 session_badges = _app_ui_mod.session_badges
                 sidebar_section = _app_ui_mod.sidebar_section
@@ -176,6 +178,13 @@ if not _APP_UI_LOADED:
     def app_hero(title: str, subtitle: str) -> None:
         st.markdown(f"### {title}")
         st.caption(subtitle)
+
+    def render_studio_brand_header(**kwargs) -> None:
+        st.markdown(
+            f"### {kwargs.get('owner_name', 'Daniel Cohen')} — "
+            f"{kwargs.get('app_name', 'AI Music Practice Coach')}"
+        )
+        st.caption(kwargs.get("tagline", "AI-powered musician practice studio for:"))
 
     def page_header(icon: str, title: str, subtitle: str = "", badges=None) -> None:
         st.subheader(f"{icon} {title}".strip())
@@ -4618,11 +4627,11 @@ def _render_catalog_song_picker_block(
 
 inject_app_theme()
 
-with st.expander("Daniel Cohen AI Music Practice Coach — studio overview", expanded=False):
-    st.markdown(
-        "Songs, backing tracks, custom progressions, multitrack recording, and coaching in one workspace. "
-        "Use the **studio controls** at the top for workspace, song, key, level, and backing."
-    )
+render_studio_brand_header(
+    owner_name="Daniel Cohen",
+    app_name="AI Music Practice Coach",
+    tagline="AI-powered musician practice studio for:",
+)
 
 
 def _ui_source_label() -> str:

@@ -8,6 +8,7 @@ from typing import Any, Optional
 __all__ = [
     "STUDIO_PAGES",
     "app_hero",
+    "render_studio_brand_header",
     "compact_page_title",
     "ensure_studio_page",
     "follow_along_status_html",
@@ -87,6 +88,74 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   font-size: 0.95rem;
   margin: 0;
   line-height: 1.45;
+}
+.ui-brand-header {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px 16px 0 0;
+  padding: 0.7rem 1rem 0.65rem 1rem;
+  margin-bottom: 0;
+  background: linear-gradient(128deg, #0f172a 0%, #1e3a5f 42%, #312e81 88%);
+  color: #f8fafc;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.12);
+}
+.ui-brand-header + .ui-studio-deck {
+  border-radius: 0 0 16px 16px;
+  margin-top: 0;
+  border-top: none;
+}
+.ui-brand-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+.ui-brand-icon {
+  font-size: 1.45rem;
+  line-height: 1;
+  margin-top: 0.1rem;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+}
+.ui-brand-byline {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #93c5fd;
+  margin: 0 0 0.12rem 0;
+  line-height: 1.2;
+}
+.ui-brand-title {
+  font-size: 1.22rem;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  color: #f8fafc;
+  margin: 0;
+  line-height: 1.2;
+}
+.ui-brand-tagline {
+  font-size: 0.82rem;
+  color: #cbd5e1;
+  margin: 0.45rem 0 0.4rem 0;
+  line-height: 1.35;
+}
+.ui-brand-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ui-brand-features li {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 650;
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.07);
+  white-space: nowrap;
 }
 .ui-page-head {
   border: 1px solid var(--studio-line);
@@ -361,6 +430,9 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border-radius: 10px !important;
 }
 @media (max-width: 900px) {
+  .ui-brand-header { border-radius: 12px 12px 0 0; padding: 0.6rem 0.75rem; }
+  .ui-brand-title { font-size: 1.08rem; }
+  .ui-brand-features li { font-size: 0.64rem; }
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
   .ui-studio-nav { padding: 0.4rem 0.45rem; }
@@ -375,9 +447,59 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
     )
 
 
-def app_hero(title: str, subtitle: str) -> None:
+STUDIO_BRAND_FEATURES: list[str] = [
+    "Backing tracks",
+    "Harmonic analysis",
+    "Improvisation",
+    "Multitrack recording",
+    "Transposition",
+    "Creative arrangement",
+    "Instrument coaching",
+]
+
+
+def render_studio_brand_header(
+    *,
+    owner_name: str = "Daniel Cohen",
+    app_name: str = "AI Music Practice Coach",
+    tagline: str = "AI-powered musician practice studio for:",
+    features: Optional[list[str]] = None,
+) -> None:
+    """Compact branded title block — visible above workspace controls."""
     import streamlit as st
 
+    feats = features if features is not None else STUDIO_BRAND_FEATURES
+    feat_html = "".join(
+        f"<li>{html.escape(item)}</li>" for item in feats
+    )
+    st.markdown(
+        f"""
+<div class="ui-brand-header">
+  <div class="ui-brand-row">
+    <span class="ui-brand-icon" aria-hidden="true">🎵</span>
+    <div>
+      <p class="ui-brand-byline">{html.escape(owner_name)}</p>
+      <p class="ui-brand-title">{html.escape(app_name)}</p>
+    </div>
+  </div>
+  <p class="ui-brand-tagline">{html.escape(tagline)}</p>
+  <ul class="ui-brand-features">{feat_html}</ul>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def app_hero(title: str, subtitle: str) -> None:
+    """Legacy hero — delegates to compact brand header when title matches studio app."""
+    import streamlit as st
+
+    if "Daniel Cohen" in title and "Music Practice Coach" in title:
+        render_studio_brand_header(
+            app_name=title.replace("Daniel Cohen ", "").strip() or "AI Music Practice Coach",
+            tagline=subtitle.split("\n")[0] if subtitle else "AI-powered musician practice studio for:",
+        )
+        return
     st.markdown(
         f"""
 <div class="ui-hero">
