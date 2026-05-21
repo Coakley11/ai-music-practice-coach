@@ -22,6 +22,7 @@ __all__ = [
     "render_section_jump_bar",
     "render_cross_page_links",
     "render_page_quick_nav",
+    "render_top_nav_button",
     "render_sidebar_studio_nav",
     "render_studio_nav",
     "STUDIO_PAGE_META",
@@ -410,42 +411,47 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   margin-bottom: 0.55rem;
   background: transparent;
 }
-/* Shared top-nav button shell — identical box model for active + inactive */
+/* Top nav — fixed identical button box for every page (Practice included) */
 .ui-studio-nav.ui-page-nav [data-testid="column"] {
   display: flex !important;
   flex-direction: column !important;
-  min-width: 0 !important;
+  align-items: stretch !important;
+  min-width: 106px !important;
 }
-.ui-studio-nav .nav-btn.studio-nav-item {
+.ui-studio-nav.ui-page-nav .nav-button {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  align-items: stretch;
+  width: 100%;
+  min-width: 106px;
   margin: 0;
   padding: 0;
 }
-.ui-studio-nav .studio-nav-item [data-testid="stButton"],
-.ui-studio-nav .studio-nav-item div.stButton {
-  flex: 1 1 auto;
-  width: 100%;
-  margin: 0 !important;
-}
-.ui-studio-nav .studio-nav-item button,
-.ui-studio-nav .nav-btn button {
-  box-sizing: border-box !important;
+.ui-studio-nav.ui-page-nav .nav-button [data-testid="stButton"],
+.ui-studio-nav.ui-page-nav .nav-button div.stButton {
   width: 100% !important;
-  min-height: 2.35rem !important;
-  height: 2.35rem !important;
-  max-height: 2.35rem !important;
-  padding: 0.32rem 0.28rem !important;
+  min-width: 106px !important;
+  margin: 0 !important;
+  flex: 1 1 auto;
+}
+.ui-studio-nav.ui-page-nav .nav-button [data-testid="stButton"] > button,
+.ui-studio-nav.ui-page-nav .nav-button button {
+  box-sizing: border-box !important;
+  min-height: 62px !important;
+  height: 62px !important;
+  max-height: 62px !important;
+  min-width: 106px !important;
+  width: 100% !important;
+  padding: 8px 12px !important;
   font-size: 0.72rem !important;
   font-weight: 700 !important;
-  line-height: 1.12 !important;
+  line-height: 1.25 !important;
   border-radius: 10px !important;
   border-width: 1px !important;
   border-style: solid !important;
   margin: 0 !important;
-  display: inline-flex !important;
+  display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   text-align: center !important;
@@ -453,8 +459,8 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   transform: none !important;
   transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease !important;
 }
-.ui-studio-nav .studio-nav-item button:hover,
-.ui-studio-nav .nav-btn button:hover {
+.ui-studio-nav.ui-page-nav .nav-button [data-testid="stButton"] > button:hover,
+.ui-studio-nav.ui-page-nav .nav-button button:hover {
   transform: none !important;
 }
 /* Page-colored navigation (inactive = soft tint; active = stronger fill, same size) */
@@ -474,6 +480,34 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 .nav-analysis.nav-btn-active button { background:linear-gradient(135deg,#06b6d4,#22d3ee)!important; color:#fff!important; border-color:rgba(14,116,144,.55)!important; box-shadow:0 2px 8px rgba(6,182,212,.28)!important; }
 .nav-log button { background:linear-gradient(180deg,#f8fafc,#f1f5f9)!important; color:#475569!important; border-color:rgba(100,116,139,.35)!important; }
 .nav-log.nav-btn-active button { background:linear-gradient(135deg,#64748b,#475569)!important; color:#fff!important; border-color:rgba(71,85,105,.55)!important; box-shadow:0 2px 8px rgba(71,85,105,.26)!important; }
+/* Size lock — active page + Practice use same dimensions (color only differs) */
+.ui-studio-nav.ui-page-nav .nav-button button[kind="primary"],
+.ui-studio-nav.ui-page-nav .nav-button button[kind="secondary"],
+.ui-studio-nav.ui-page-nav .nav-practice button,
+.ui-studio-nav.ui-page-nav .nav-practice.nav-btn-active button,
+.ui-studio-nav.ui-page-nav .nav-picker button,
+.ui-studio-nav.ui-page-nav .nav-picker.nav-btn-active button,
+.ui-studio-nav.ui-page-nav .nav-backing button,
+.ui-studio-nav.ui-page-nav .nav-backing.nav-btn-active button,
+.ui-studio-nav.ui-page-nav .nav-creative button,
+.ui-studio-nav.ui-page-nav .nav-creative.nav-btn-active button,
+.ui-studio-nav.ui-page-nav .nav-custom button,
+.ui-studio-nav.ui-page-nav .nav-custom.nav-btn-active button,
+.ui-studio-nav.ui-page-nav .nav-multitrack button,
+.ui-studio-nav.ui-page-nav .nav-multitrack.nav-btn-active button,
+.ui-studio-nav.ui-page-nav .nav-analysis button,
+.ui-studio-nav.ui-page-nav .nav-analysis.nav-btn-active button,
+.ui-studio-nav.ui-page-nav .nav-log button,
+.ui-studio-nav.ui-page-nav .nav-log.nav-btn-active button {
+  min-height: 62px !important;
+  height: 62px !important;
+  max-height: 62px !important;
+  min-width: 106px !important;
+  padding: 8px 12px !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+}
 /* Sidebar nav mirrors page colors (same active sizing as top bar) */
 .ui-sb-nav-wrap .studio-nav-item button {
   box-sizing: border-box !important;
@@ -845,13 +879,14 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
   .ui-studio-nav { padding: 0.4rem 0.45rem; }
-  .ui-studio-nav .studio-nav-item button,
-  .ui-studio-nav .nav-btn button {
-    font-size: 0.68rem !important;
-    padding: 0.3rem 0.2rem !important;
-    min-height: 2.35rem !important;
-    height: 2.35rem !important;
-    max-height: 2.35rem !important;
+  .ui-studio-nav.ui-page-nav .nav-button [data-testid="stButton"] > button,
+  .ui-studio-nav.ui-page-nav .nav-button button {
+    font-size: 0.66rem !important;
+    padding: 6px 8px !important;
+    min-height: 58px !important;
+    height: 58px !important;
+    max-height: 58px !important;
+    min-width: 96px !important;
   }
   .ui-now-playing .np-title { font-size: 0.9rem; }
   .ui-section-jump { top: 0.25rem; }
@@ -1060,6 +1095,31 @@ def end_studio_control_deck() -> None:
     st.markdown("</div></div>", unsafe_allow_html=True)
 
 
+def render_top_nav_button(
+    st_module: Any,
+    *,
+    label: str,
+    page_id: str,
+    nav_class: str,
+    is_active: bool,
+    button_key: str,
+) -> bool:
+    """One top-nav control — same markup and Streamlit API for every page."""
+    active_cls = " nav-btn-active" if is_active else ""
+    st_module.markdown(
+        f'<div class="nav-button nav-btn nav-{nav_class}{active_cls}">',
+        unsafe_allow_html=True,
+    )
+    clicked = st_module.button(
+        label,
+        key=button_key,
+        use_container_width=True,
+        type="secondary",
+    )
+    st_module.markdown("</div>", unsafe_allow_html=True)
+    return clicked
+
+
 def render_page_quick_nav(
     session_state: Any,
     *,
@@ -1076,25 +1136,21 @@ def render_page_quick_nav(
         unsafe_allow_html=True,
     )
     st.markdown('<div class="ui-studio-nav ui-page-nav">', unsafe_allow_html=True)
-    cols = st.columns(len(STUDIO_PAGES))
+    cols = st.columns(len(STUDIO_PAGES), gap="small")
     for col, (page_id, label) in zip(cols, STUDIO_PAGES):
         nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
-        active_cls = " nav-btn-active" if page_id == current else ""
         with col:
-            st.markdown(
-                f'<div class="nav-btn studio-nav-item nav-{nav_class}{active_cls}">',
-                unsafe_allow_html=True,
-            )
-            if st.button(
-                label,
-                key=f"{key_prefix}_nav_{page_id}",
-                use_container_width=True,
-                type="secondary",
+            if render_top_nav_button(
+                st,
+                label=label,
+                page_id=page_id,
+                nav_class=nav_class,
+                is_active=page_id == current,
+                button_key=f"{key_prefix}_nav_{page_id}",
             ):
                 if page_id != current:
                     session_state["studio_page"] = page_id
                     rerun_fn()
-            st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
     return session_state.get("studio_page", current)
 
