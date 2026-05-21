@@ -41,6 +41,8 @@ TRUSTED_CORE_KEYS = {
     ("Blue Bossa", "Kenny Dorham"),
     ("Autumn Leaves", "Jazz Standard"),
     ("Fly Me to the Moon", "Bart Howard"),
+    ("So Nice (Summer Samba)", "Marcos Valle"),
+    ("One Note Samba", "Antonio Carlos Jobim"),
     ("Shallow", "Lady Gaga / Bradley Cooper"),
     ("All of Me", "John Legend"),
     ("Attention", "Charlie Puth"),

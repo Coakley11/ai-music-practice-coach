@@ -3446,7 +3446,7 @@ def infer_groove_style(song_data, selected_style="Auto"):
     ]).lower()
     if "ballad" in titleish:
         return "Ballad"
-    if "jobim" in titleish or "bossa" in titleish:
+    if "jobim" in titleish or "bossa" in titleish or "samba" in titleish:
         return "Bossa nova"
     if genre_name == "Jazz":
         return "Jazz swing"
@@ -5209,9 +5209,10 @@ def _ui_page_badges() -> list[tuple[str, str]]:
 
 
 full_song_chords = chord_blocks_for_backing(sections)
+_ext_groove = (song_data.get("extensions") or {}).get("default_groove")
 default_groove_style = infer_groove_style(
     song_data,
-    _chart_bundle.get("default_groove", "Auto"),
+    _ext_groove or _chart_bundle.get("default_groove", "Auto"),
 )
 st.session_state.setdefault("practice_groove_style", default_groove_style)
 st.session_state.setdefault("backing_groove_style", default_groove_style)

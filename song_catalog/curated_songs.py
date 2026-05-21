@@ -674,6 +674,115 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Final A / Tag": ["Am9", "Dm9", "G13", "Cmaj9", "Fmaj9", "Bm7b5", "E7b9", "Am9"],
             },
         ),
+        ("So Nice (Summer Samba)", "Marcos Valle"): pack(
+            "F",
+            {
+                "Intro": ["F", "F", "F", "F", "F", "F", "F", "F"],
+                "Verse": [
+                    "F", "F", "F", "F",
+                    "Bm", "E7", "Bm", "E7",
+                    "Bb", "Bb", "Bb", "Bb",
+                    "Bbm", "Bbm", "Bbm", "Bbm",
+                ],
+                "Chorus": [
+                    "Am", "D7", "Gm", "C7",
+                    "Em", "A7", "Dm",
+                    "G7", "Gm", "C7", "C7",
+                ],
+                "Chorus (alternate)": [
+                    "Am", "D7", "Gm", "C7",
+                    "F", "Bb", "F",
+                ],
+            },
+            {
+                "Intro": ["Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6"],
+                "Verse": [
+                    "Fmaj7", "F6", "Fmaj7", "F6",
+                    "Bm7", "E9", "Bm7", "E9",
+                    "Bbmaj7", "Bb6", "Bbmaj7", "Bb6",
+                    "Bbm7", "Bbm6", "Bbm7", "Bbm6",
+                ],
+                "Chorus": [
+                    "Am7", "D7b9", "Gm7", "C7b9",
+                    "Em7b5", "A7#5", "Dm9",
+                    "G13", "Gm7", "C#9", "C9",
+                ],
+                "Chorus (alternate)": [
+                    "Am7", "D7b9", "Gm7", "C7b9",
+                    "Fmaj7", "Bb7", "Fmaj7",
+                ],
+            },
+            status="practice_level_verified",
+            lyric_cues={
+                "Intro": ["samba pickup — keep Fmaj7/F6 bounce light"],
+                "Verse": ["lyric entrance over I–VI–bVII–iv color"],
+                "Chorus": ["lift into ii–V–I minor then back to F"],
+                "Chorus (alternate)": ["shorter tag — resolve on Fmaj7"],
+            },
+            extensions=_ext(
+                default_bpm=135,
+                default_groove="Bossa nova",
+                arrangement_notes=(
+                    "Bossa/samba form in **F** — one chord per bar. "
+                    "Use **Chorus (alternate)** for later passes; default groove ~135 BPM."
+                ),
+            ),
+        ),
+        ("One Note Samba", "Antonio Carlos Jobim"): pack(
+            "Db",
+            {
+                "Verse": [
+                    "Dbm", "C7", "B7", "Bb7",
+                    "Dbm", "C7", "B7", "Bb7",
+                    "Em", "A7", "D", "Dm", "G7",
+                    "Dbm", "C7", "B7", "Bb7", "A",
+                ],
+                "Chorus": [
+                    "Dm", "G7", "C",
+                    "Cm", "F7", "Bb",
+                    "Bdim", "Bb7",
+                ],
+                "Ending / Tag": [
+                    "Dbm", "C7", "B7", "Bb7",
+                    "Dbm", "C7", "B7", "Bb7",
+                    "Em", "A7", "D", "Dm", "G7",
+                    "C6", "B7", "Bb", "A7",
+                ],
+            },
+            {
+                "Verse": [
+                    "Dbm7", "C7", "B7sus4", "Bb7b5",
+                    "Dbm7", "C7", "B7sus4", "Bb7b5",
+                    "Em9", "A7#5", "Dmaj7", "Dm7", "G7",
+                    "Dbm7", "C7", "B7sus4", "Bb7b5", "A6/9",
+                ],
+                "Chorus": [
+                    "Dm7", "G7", "Cmaj7",
+                    "Cm7", "F7", "Bbmaj7",
+                    "Bdim", "Bb7b5",
+                ],
+                "Ending / Tag": [
+                    "Dbm7", "C7", "B7sus4", "Bb7b5",
+                    "Dbm7", "C7", "B7sus4", "Bb7b5",
+                    "Em9", "A7#5", "Dmaj7", "Dm7", "G7",
+                    "C6", "B7", "Bbmaj7", "A7",
+                ],
+            },
+            status="practice_level_verified",
+            lyric_cues={
+                "Verse": ["single-note melody over shifting dominants"],
+                "Chorus": ["opens in C major — sing the guide tone through Dm7–G7–Cmaj7"],
+                "Ending / Tag": ["repeat verse colors then tag on C6–B7–Bbmaj7–A7"],
+            },
+            extensions=_ext(
+                default_bpm=130,
+                default_groove="Bossa nova",
+                arrangement_notes=(
+                    "Classic Jobim bossa — verse in **Db** minor area, chorus in **C** major. "
+                    "One chord cell = one bar for backing and section practice."
+                ),
+            ),
+        ),
     }
 
 
@@ -703,7 +812,14 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
         guitar_tabs: dict[str, str] | None = None,
         notes: str | None = None,
         chart_status: str | None = None,
+        default_bpm: int | None = None,
+        default_groove: str | None = None,
     ) -> dict[str, Any]:
+        ext = note(notes or "Practice-level verified form; one chord cell equals one bar.")
+        if default_bpm:
+            ext["default_bpm"] = int(default_bpm)
+        if default_groove:
+            ext["default_groove"] = default_groove
         return _s(
             title,
             artist,
@@ -719,7 +835,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 intermediate=intermediate,
                 advanced=advanced or intermediate,
             ),
-            extensions=note(notes or "Practice-level verified form; one chord cell equals one bar."),
+            extensions=ext,
         )
 
     def core_ref(
@@ -1422,6 +1538,113 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             guitar_tabs={"C": "x32010", "E7": "020100", "Am7": "x02010", "C7": "x32310", "F": "133211", "G7": "320001", "Dm7": "xx0211"},
             notes="Swing-pop/jazz practice chart with secondary dominants and diminished passing harmony retained.",
         ),
+        v(
+            "So Nice (Summer Samba)",
+            "Marcos Valle",
+            "Jazz",
+            "F",
+            {
+                "Intro": ["F", "F", "F", "F", "F", "F", "F", "F"],
+                "Verse": [
+                    "F", "F", "F", "F",
+                    "Bm", "E7", "Bm", "E7",
+                    "Bb", "Bb", "Bb", "Bb",
+                    "Bbm", "Bbm", "Bbm", "Bbm",
+                ],
+                "Chorus": [
+                    "Am", "D7", "Gm", "C7",
+                    "Em", "A7", "Dm",
+                    "G7", "Gm", "C7", "C7",
+                ],
+                "Chorus (alternate)": [
+                    "Am", "D7", "Gm", "C7",
+                    "F", "Bb", "F",
+                ],
+            },
+            {
+                "Intro": ["Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6"],
+                "Verse": [
+                    "Fmaj7", "F6", "Fmaj7", "F6",
+                    "Bm7", "E9", "Bm7", "E9",
+                    "Bbmaj7", "Bb6", "Bbmaj7", "Bb6",
+                    "Bbm7", "Bbm6", "Bbm7", "Bbm6",
+                ],
+                "Chorus": [
+                    "Am7", "D7b9", "Gm7", "C7b9",
+                    "Em7b5", "A7#5", "Dm9",
+                    "G13", "Gm7", "C#9", "C9",
+                ],
+                "Chorus (alternate)": [
+                    "Am7", "D7b9", "Gm7", "C7b9",
+                    "Fmaj7", "Bb7", "Fmaj7",
+                ],
+            },
+            composer="Marcos Valle · Norman Gimbel",
+            lyric_cues={
+                "Intro": ["samba bounce on Fmaj7/F6"],
+                "Verse": ["Brazilian pop-jazz verse — watch Bbm6 color"],
+                "Chorus": ["full turnarounds — build energy on G13–C9"],
+                "Chorus (alternate)": ["shorter ending chorus on Fmaj7"],
+            },
+            notes="So Nice (Summer Samba) — F major bossa/samba; alternate chorus for later form.",
+            chart_status=status,
+            default_bpm=135,
+            default_groove="Bossa nova",
+        ),
+        v(
+            "One Note Samba",
+            "Antonio Carlos Jobim",
+            "Jazz",
+            "Db",
+            {
+                "Verse": [
+                    "Dbm", "C7", "B7", "Bb7",
+                    "Dbm", "C7", "B7", "Bb7",
+                    "Em", "A7", "D", "Dm", "G7",
+                    "Dbm", "C7", "B7", "Bb7", "A",
+                ],
+                "Chorus": [
+                    "Dm", "G7", "C",
+                    "Cm", "F7", "Bb",
+                    "Bdim", "Bb7",
+                ],
+                "Ending / Tag": [
+                    "Dbm", "C7", "B7", "Bb7",
+                    "Dbm", "C7", "B7", "Bb7",
+                    "Em", "A7", "D", "Dm", "G7",
+                    "C6", "B7", "Bb", "A7",
+                ],
+            },
+            {
+                "Verse": [
+                    "Dbm7", "C7", "B7sus4", "Bb7b5",
+                    "Dbm7", "C7", "B7sus4", "Bb7b5",
+                    "Em9", "A7#5", "Dmaj7", "Dm7", "G7",
+                    "Dbm7", "C7", "B7sus4", "Bb7b5", "A6/9",
+                ],
+                "Chorus": [
+                    "Dm7", "G7", "Cmaj7",
+                    "Cm7", "F7", "Bbmaj7",
+                    "Bdim", "Bb7b5",
+                ],
+                "Ending / Tag": [
+                    "Dbm7", "C7", "B7sus4", "Bb7b5",
+                    "Dbm7", "C7", "B7sus4", "Bb7b5",
+                    "Em9", "A7#5", "Dmaj7", "Dm7", "G7",
+                    "C6", "B7", "Bbmaj7", "A7",
+                ],
+            },
+            composer="Antonio Carlos Jobim · Newton Mendonça",
+            lyric_cues={
+                "Verse": ["melodic focus on one pitch — hear the bass roots move"],
+                "Chorus": ["modulates to C major center"],
+                "Ending / Tag": ["full reprise then C6–B7–Bbmaj7–A7 tag"],
+            },
+            notes="One Note Samba — advanced bossa harmony; Db verse area resolving through C major chorus.",
+            chart_status=status,
+            default_bpm=130,
+            default_groove="Bossa nova",
+        ),
     ]
 
 
@@ -1840,11 +2063,27 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Bridge / B Section": ["Em9", "A13", "Dmaj9", "Dmaj9", "Fm9", "Bb13", "Ebmaj9", "A7b13"],
             "Final A / Outro": ["Dmaj9", "Bbdim7", "Am9", "D13", "Gmaj9", "Gm6", "Dmaj9", "A13"],
         }, composer="Antonio Carlos Jobim"),
-        _s("One Note Samba", "Antonio Carlos Jobim", "Jazz", "Bb", {
-            "A Section": ["Bbmaj7", "Bdim7", "Cm7", "F7", "Cm7", "F7", "Bbmaj7", "F7"],
-            "B Section": ["Dm7", "G7", "Cm7", "F7", "Dm7", "G7", "Cm7", "F7"],
-            "Final A": ["Bbmaj7", "Bdim7", "Cm7", "F7", "Bbmaj7", "Bbmaj7"],
-        }, composer="Antonio Carlos Jobim"),
+        _s("One Note Samba", "Antonio Carlos Jobim", "Jazz", "Db", {
+            "Verse": [
+                "Dbm7", "C7", "B7sus4", "Bb7b5",
+                "Dbm7", "C7", "B7sus4", "Bb7b5",
+                "Em9", "A7#5", "Dmaj7", "Dm7", "G7",
+                "Dbm7", "C7", "B7sus4", "Bb7b5", "A6/9",
+            ],
+            "Chorus": [
+                "Dm7", "G7", "Cmaj7",
+                "Cm7", "F7", "Bbmaj7",
+                "Bdim", "Bb7b5",
+            ],
+            "Ending / Tag": [
+                "Dbm7", "C7", "B7sus4", "Bb7b5",
+                "Dbm7", "C7", "B7sus4", "Bb7b5",
+                "Em9", "A7#5", "Dmaj7", "Dm7", "G7",
+                "C6", "B7", "Bbmaj7", "A7",
+            ],
+        }, composer="Antonio Carlos Jobim · Newton Mendonça",
+          extensions=_ext(default_bpm=130, default_groove="Bossa nova"),
+          chart_status="practice_level_verified"),
         _s("Desafinado", "Antonio Carlos Jobim", "Jazz", "F", {
             "A Section": ["Fmaj7", "G7", "Gm7", "C7", "Am7", "D7", "Gm7", "C7"],
             "B Section": ["Fmaj7", "F#dim7", "Gm7", "C7", "Fmaj7", "D7", "Gm7", "C7"],
@@ -1866,10 +2105,26 @@ def curated_song_records() -> list[dict[str, Any]]:
             "A Section": ["Dm9", "Dm9/C", "Bdim7", "Bbmaj7", "A7", "A7", "Dm", "Dm"],
             "B Section": ["Gm7", "C7", "Fmaj7", "Bbmaj7", "Em7b5", "A7", "Dm", "A7"],
         }, composer="Antonio Carlos Jobim"),
-        _s("Summer Samba", "Marcos Valle", "Jazz", "F", {
-            "A Section": ["Fmaj7", "Gm7", "Am7", "Gm7", "Fmaj7", "Gm7", "Am7", "D7"],
-            "B Section": ["Gm7", "C7", "Fmaj7", "Dm7", "Gm7", "C7", "Fmaj7", "C7"],
-        }, composer="Marcos Valle"),
+        _s("So Nice (Summer Samba)", "Marcos Valle", "Jazz", "F", {
+            "Intro": ["Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6"],
+            "Verse": [
+                "Fmaj7", "F6", "Fmaj7", "F6",
+                "Bm7", "E9", "Bm7", "E9",
+                "Bbmaj7", "Bb6", "Bbmaj7", "Bb6",
+                "Bbm7", "Bbm6", "Bbm7", "Bbm6",
+            ],
+            "Chorus": [
+                "Am7", "D7b9", "Gm7", "C7b9",
+                "Em7b5", "A7#5", "Dm9",
+                "G13", "Gm7", "C#9", "C9",
+            ],
+            "Chorus (alternate)": [
+                "Am7", "D7b9", "Gm7", "C7b9",
+                "Fmaj7", "Bb7", "Fmaj7",
+            ],
+        }, composer="Marcos Valle · Norman Gimbel",
+          extensions=_ext(default_bpm=135, default_groove="Bossa nova"),
+          chart_status="practice_level_verified"),
 
         # --- Jazz standards (practice forms) ---
         _s("Autumn Leaves", "Jazz Standard", "Jazz", "Gm", {
