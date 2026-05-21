@@ -15,7 +15,9 @@ __all__ = [
     "inject_app_theme",
     "page_header",
     "begin_studio_control_deck",
+    "close_control_section",
     "end_studio_control_deck",
+    "open_control_section",
     "render_global_studio_bar",
     "render_section_jump_bar",
     "render_studio_nav",
@@ -123,39 +125,98 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   margin: 0 0 0.12rem 0;
   line-height: 1.2;
 }
-.ui-brand-title {
-  font-size: 1.22rem;
-  font-weight: 850;
-  letter-spacing: -0.02em;
+.ui-brand-main-title {
+  font-size: 1.48rem;
+  font-weight: 900;
+  letter-spacing: -0.025em;
   color: #f8fafc;
   margin: 0;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 .ui-brand-tagline {
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   color: #cbd5e1;
-  margin: 0.45rem 0 0.4rem 0;
-  line-height: 1.35;
+  margin: 0.4rem 0 0 0;
+  line-height: 1.45;
+  max-width: 52rem;
 }
-.ui-brand-features {
+.ui-ctrl-section {
+  border: 1px solid var(--studio-line);
+  border-radius: 12px;
+  margin-bottom: 0.55rem;
+  background: #fff;
+  overflow: hidden;
+}
+.ui-ctrl-section-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.4rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.45rem 0.7rem;
+  background: linear-gradient(180deg, #f8fafc, #ffffff);
+  border-bottom: 1px solid var(--studio-line);
 }
-.ui-brand-features li {
+.ui-ctrl-letter {
   display: inline-flex;
   align-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  padding: 0.2rem 0.5rem;
-  font-size: 0.68rem;
-  font-weight: 650;
-  color: #e2e8f0;
-  background: rgba(255, 255, 255, 0.07);
-  white-space: nowrap;
+  justify-content: center;
+  min-width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 8px;
+  background: #1e3a5f;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 850;
+  flex-shrink: 0;
+}
+.ui-ctrl-section-title {
+  font-size: 0.82rem;
+  font-weight: 850;
+  color: var(--studio-ink);
+  margin: 0;
+  line-height: 1.25;
+}
+.ui-ctrl-section-sub {
+  font-size: 0.74rem;
+  color: var(--studio-muted);
+  margin: 0.12rem 0 0 0;
+  line-height: 1.35;
+}
+.ui-ctrl-section-body {
+  padding: 0.55rem 0.7rem 0.6rem 0.7rem;
+}
+.ui-key-global-hint {
+  font-size: 0.78rem;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid rgba(29, 78, 216, 0.2);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  margin: 0 0 0.45rem 0;
+  line-height: 1.4;
+}
+.ui-ctrl-section-body .stSelectbox label,
+.ui-ctrl-section-body .stSlider label,
+.ui-ctrl-section-body .stRadio label {
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  color: #475569 !important;
+}
+.ui-ctrl-hint {
+  font-size: 0.78rem;
+  color: #475569;
+  line-height: 1.4;
+  margin: 0 0 0.45rem 0;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+}
+.ui-ctrl-hint.key {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.ui-workspace-panel {
+  padding: 0.55rem 0.65rem 0.65rem 0.65rem;
 }
 .ui-page-head {
   border: 1px solid var(--studio-line);
@@ -277,16 +338,15 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 .ui-studio-nav {
   border: none;
   border-radius: 0;
-  padding: 0.5rem 0.7rem 0.45rem 0.7rem;
-  margin-bottom: 0;
-  background: linear-gradient(90deg, rgba(15, 23, 42, 0.04) 0%, rgba(30, 58, 95, 0.06) 100%);
-  border-bottom: 1px solid var(--studio-line);
+  padding: 0;
+  margin-bottom: 0.55rem;
+  background: transparent;
 }
 .ui-studio-nav .nav-btn button {
-  font-size: 0.74rem !important;
-  font-weight: 650 !important;
-  padding: 0.38rem 0.35rem !important;
-  min-height: 2.05rem !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  padding: 0.42rem 0.4rem !important;
+  min-height: 2.15rem !important;
   border-radius: 10px !important;
 }
 .ui-studio-nav .nav-btn button[kind="primary"] {
@@ -431,7 +491,8 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 }
 @media (max-width: 900px) {
   .ui-brand-header { border-radius: 12px 12px 0 0; padding: 0.6rem 0.75rem; }
-  .ui-brand-title { font-size: 1.08rem; }
+  .ui-brand-main-title { font-size: 1.12rem; }
+  .ui-brand-tagline { font-size: 0.78rem; }
   .ui-brand-features li { font-size: 0.64rem; }
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
@@ -447,47 +508,56 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
     )
 
 
-STUDIO_BRAND_FEATURES: list[str] = [
-    "Backing tracks",
-    "Harmonic analysis",
-    "Improvisation",
-    "Multitrack recording",
-    "Transposition",
-    "Creative arrangement",
-    "Instrument coaching",
-]
-
-
 def render_studio_brand_header(
     *,
-    owner_name: str = "Daniel Cohen",
-    app_name: str = "AI Music Practice Coach",
-    tagline: str = "AI-powered musician practice studio for:",
-    features: Optional[list[str]] = None,
+    title: str = "Daniel Cohen Music Practice Coach AI",
+    tagline: str = (
+        "AI-powered practice studio for songs, backing tracks, harmony, "
+        "improvisation, recording, and instrument-specific coaching."
+    ),
 ) -> None:
     """Compact branded title block — visible above workspace controls."""
     import streamlit as st
 
-    feats = features if features is not None else STUDIO_BRAND_FEATURES
-    feat_html = "".join(
-        f"<li>{html.escape(item)}</li>" for item in feats
-    )
     st.markdown(
         f"""
 <div class="ui-brand-header">
   <div class="ui-brand-row">
     <span class="ui-brand-icon" aria-hidden="true">🎵</span>
     <div>
-      <p class="ui-brand-byline">{html.escape(owner_name)}</p>
-      <p class="ui-brand-title">{html.escape(app_name)}</p>
+      <h1 class="ui-brand-main-title">{html.escape(title)}</h1>
+      <p class="ui-brand-tagline">{html.escape(tagline)}</p>
     </div>
   </div>
-  <p class="ui-brand-tagline">{html.escape(tagline)}</p>
-  <ul class="ui-brand-features">{feat_html}</ul>
 </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+def open_control_section(letter: str, title: str, subtitle: str = "") -> None:
+    """Open a labeled control group card (call close_control_section after widgets)."""
+    import streamlit as st
+
+    sub = (
+        f'<p class="ui-ctrl-section-sub">{html.escape(subtitle)}</p>'
+        if subtitle
+        else ""
+    )
+    st.markdown(
+        f'<div class="ui-ctrl-section">'
+        f'<div class="ui-ctrl-section-head">'
+        f'<span class="ui-ctrl-letter">{html.escape(letter)}</span>'
+        f"<div><p class=\"ui-ctrl-section-title\">{html.escape(title)}</p>{sub}</div>"
+        f"</div><div class=\"ui-ctrl-section-body\">",
+        unsafe_allow_html=True,
+    )
+
+
+def close_control_section() -> None:
+    import streamlit as st
+
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
 
 def app_hero(title: str, subtitle: str) -> None:
@@ -496,8 +566,8 @@ def app_hero(title: str, subtitle: str) -> None:
 
     if "Daniel Cohen" in title and "Music Practice Coach" in title:
         render_studio_brand_header(
-            app_name=title.replace("Daniel Cohen ", "").strip() or "AI Music Practice Coach",
-            tagline=subtitle.split("\n")[0] if subtitle else "AI-powered musician practice studio for:",
+            title=title.strip(),
+            tagline=subtitle.split("\n")[0] if subtitle else "",
         )
         return
     st.markdown(
@@ -575,14 +645,14 @@ def sidebar_source_banner(markdown_text: str) -> None:
 
 
 STUDIO_PAGES: list[tuple[str, str]] = [
-    ("practice", "🎯 Practice"),
-    ("picker", "📚 Songs"),
-    ("backing", "🎧 Backing"),
-    ("custom", "✏️ Custom"),
-    ("creative", "🧠 Creative"),
-    ("multitrack", "🎚️ Multi"),
-    ("analysis", "🎙️ Analysis"),
-    ("log", "📓 Log"),
+    ("practice", "Practice"),
+    ("picker", "Song Picker"),
+    ("backing", "Backing Track"),
+    ("custom", "Custom Progression"),
+    ("creative", "Creative Lab"),
+    ("multitrack", "Multitrack"),
+    ("analysis", "Upload Analysis"),
+    ("log", "Practice Log"),
 ]
 
 
@@ -591,28 +661,32 @@ def ensure_studio_page(session_state: dict[str, Any], default: str = "practice")
 
 
 def begin_studio_control_deck() -> None:
-    """Open unified top control card (nav + session bar)."""
+    """Open unified top control card (nav + grouped sections)."""
     import streamlit as st
 
-    st.markdown('<div class="ui-studio-deck">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="ui-studio-deck"><div class="ui-workspace-panel">',
+        unsafe_allow_html=True,
+    )
 
 
 def end_studio_control_deck() -> None:
     import streamlit as st
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
 
 def render_studio_nav(session_state: Any, *, rerun_fn: Any) -> str:
-    """Horizontal workspace navigation (replaces tall tab strip)."""
+    """Horizontal workspace navigation bar."""
     import streamlit as st
 
     current = ensure_studio_page(session_state)
-    st.markdown(
-        '<div class="ui-studio-nav">'
-        '<p class="ui-bar-label">Workspace</p>',
-        unsafe_allow_html=True,
+    open_control_section(
+        "E",
+        "Quick Navigation",
+        "Jump to any workspace page — charts, backing, recording, and analysis.",
     )
+    st.markdown('<div class="ui-studio-nav">', unsafe_allow_html=True)
     cols = st.columns(len(STUDIO_PAGES))
     for col, (page_id, label) in zip(cols, STUDIO_PAGES):
         with col:
@@ -628,6 +702,7 @@ def render_studio_nav(session_state: Any, *, rerun_fn: Any) -> str:
                     rerun_fn()
             st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
+    close_control_section()
     return session_state.get("studio_page", current)
 
 
