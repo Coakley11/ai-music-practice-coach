@@ -354,15 +354,13 @@ if not _APP_UI_LOADED:
             return None
         if session_state.get(state_key) not in options:
             session_state[state_key] = options[0]
-        pick = st.radio(
+        return st.radio(
             "Section focus",
             options,
             horizontal=True,
             key=state_key,
             label_visibility="collapsed",
         )
-        session_state[state_key] = pick
-        return pick
 
     def follow_along_status_html(pos: dict) -> str:
         if not pos:

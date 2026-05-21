@@ -1217,7 +1217,6 @@ def render_section_jump_bar(
         format_func=_label,
         label_visibility="collapsed",
     )
-    session_state[state_key] = picked
     st.markdown("</div>", unsafe_allow_html=True)
     return picked
 
