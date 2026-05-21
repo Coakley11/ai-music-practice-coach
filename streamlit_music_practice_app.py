@@ -125,6 +125,7 @@ try:
         render_cross_page_links,
         render_global_studio_bar,
         render_page_quick_nav,
+        render_sidebar_studio_nav,
         render_section_jump_bar,
         render_studio_brand_header,
         render_studio_nav,
@@ -160,6 +161,7 @@ except Exception as _app_ui_first_err:
                 render_cross_page_links = getattr(_app_ui_mod, "render_cross_page_links", None)
                 render_global_studio_bar = _app_ui_mod.render_global_studio_bar
                 render_page_quick_nav = getattr(_app_ui_mod, "render_page_quick_nav", None)
+                render_sidebar_studio_nav = getattr(_app_ui_mod, "render_sidebar_studio_nav", None)
                 render_section_jump_bar = getattr(_app_ui_mod, "render_section_jump_bar", None)
                 render_studio_brand_header = _app_ui_mod.render_studio_brand_header
                 render_studio_nav = _app_ui_mod.render_studio_nav
@@ -218,7 +220,7 @@ if not _APP_UI_LOADED:
             (f"Key {kwargs.get('display_key', '')}", "green"),
         ]
 
-    def sidebar_section(title: str, *, icon: str = "") -> None:
+    def sidebar_section(title: str, *, icon: str = "", tone: str = "") -> None:
         label = f"{icon} {title}".strip() if icon else title
         st.sidebar.markdown(f"**{label}**")
 
@@ -354,9 +356,25 @@ except Exception as _cpl_import_err:
 
 CATALOG_LOAD_ERROR = None
 _ALL_GENRE_FILTER = "All genres"
-DEFAULT_CHART_LIBRARY_MODE = "Include practice approximations"
-DEFAULT_CHART_STATUS_FILTER = "Any non-placeholder"
-CATALOG_DEFAULTS_VERSION = 3
+LIBRARY_MODE_FULL = "Full library"
+LIBRARY_MODE_CORE = "Core library"
+CHART_FILTER_ALL = "All songs"
+CHART_FILTER_CURATED = "Curated highlights"
+CHART_FILTER_FULL_CHARTS = "Full chord charts"
+CHART_FILTER_EXTENDED = "Extended library"
+DEFAULT_CHART_LIBRARY_MODE = LIBRARY_MODE_FULL
+DEFAULT_CHART_STATUS_FILTER = CHART_FILTER_ALL
+CATALOG_DEFAULTS_VERSION = 4
+_LEGACY_LIBRARY_MODES = {
+    "Include practice approximations": LIBRARY_MODE_FULL,
+    "Trusted core charts only": LIBRARY_MODE_CORE,
+}
+_LEGACY_CHART_FILTERS = {
+    "Any non-placeholder": CHART_FILTER_ALL,
+    "Trusted core": CHART_FILTER_CURATED,
+    "Verified": CHART_FILTER_FULL_CHARTS,
+    "Practice approximation": CHART_FILTER_EXTENDED,
+}
 
 try:
     SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = load_song_catalog()
@@ -409,7 +427,8 @@ ensure_active_music_source(st.session_state)
 
 if (
     DEFAULT_SONG_RECORDS
-    and st.session_state.get("chart_library_mode", DEFAULT_CHART_LIBRARY_MODE) == "Trusted core charts only"
+    and _normalize_library_mode(st.session_state.get("chart_library_mode", DEFAULT_CHART_LIBRARY_MODE))
+    == LIBRARY_MODE_CORE
     and not _catalog_song_data.get("trusted_core")
     and _catalog_song_data.get("chart_status") not in {"verified", "practice_level_verified"}
 ):
@@ -635,19 +654,21 @@ def trusted_core_records(records):
 
 
 def visible_records_for_mode(records, mode):
-    if mode == "Trusted core charts only":
+    mode = _normalize_library_mode(mode)
+    if mode == LIBRARY_MODE_CORE:
         return trusted_core_records(records)
     return [r for r in records if r.get("chart_status") != "placeholder"]
 
 
 def filter_records_by_chart_status(records, status_filter):
-    if status_filter == "Any non-placeholder":
+    status_filter = _normalize_chart_filter(status_filter)
+    if status_filter == CHART_FILTER_ALL:
         return [r for r in records if r.get("chart_status") != "placeholder"]
-    if status_filter == "Trusted core":
+    if status_filter == CHART_FILTER_CURATED:
         return trusted_core_records(records)
-    if status_filter == "Verified":
+    if status_filter == CHART_FILTER_FULL_CHARTS:
         return [r for r in records if r.get("chart_status") in {"verified", "practice_level_verified"}]
-    if status_filter == "Practice approximation":
+    if status_filter == CHART_FILTER_EXTENDED:
         return [
             r for r in records
             if r.get("chart_status") in {
@@ -1542,7 +1563,6 @@ def full_chord_markdown(
     focus="",
 ):
     dk = display_key or song_data["key"]
-    status_text, _status_kind = chart_status_label(song_data)
     total_bars = sum(len(chords) for chords in sections.values())
     now_playing = current_section or "Full song"
     ext = song_data.get("extensions") or {}
@@ -1668,7 +1688,6 @@ def full_chord_markdown(
         f"Time: {html.escape(str(time_signature))}",
         f"Feel: {html.escape(_chart_feel_label(groove_style))}",
         "Drums/Bass/Comping: active",
-        html.escape(status_text),
     ]
     meta = "".join(f"<span class='meta-pill'>{bit}</span>" for bit in meta_bits)
     header_note = (
@@ -4371,8 +4390,10 @@ def _apply_catalog_filter_defaults() -> None:
     """One-time migration: show full library, not trusted-only / single-genre traps."""
     if st.session_state.get("_catalog_defaults_version") == CATALOG_DEFAULTS_VERSION:
         return
-    st.session_state["chart_library_mode"] = DEFAULT_CHART_LIBRARY_MODE
-    st.session_state["song_picker_chart_status"] = DEFAULT_CHART_STATUS_FILTER
+    lib = st.session_state.get("chart_library_mode", DEFAULT_CHART_LIBRARY_MODE)
+    filt = st.session_state.get("song_picker_chart_status", DEFAULT_CHART_STATUS_FILTER)
+    st.session_state["chart_library_mode"] = _normalize_library_mode(lib)
+    st.session_state["song_picker_chart_status"] = _normalize_chart_filter(filt)
     st.session_state["song_search_scope"] = "Entire library"
     st.session_state["song_picker_level_filter"] = "Any level"
     st.session_state["_catalog_defaults_version"] = CATALOG_DEFAULTS_VERSION
@@ -4410,8 +4431,8 @@ def _render_catalog_health_debug() -> None:
         )
     elif visible < total:
         st.sidebar.info(
-            f"Filters hide {total - visible} songs. Open **Refine library** and choose "
-            "**Include practice approximations** + **Any non-placeholder** for the full list."
+            f"Filters hide {total - visible} songs. Open **Refine library** on **Song Selection** "
+            f"and choose **{LIBRARY_MODE_FULL}** + **{CHART_FILTER_ALL}** for the full list."
         )
 
 
@@ -4588,11 +4609,18 @@ def _render_catalog_song_picker_block(
         "Practice setup on **Practice** · key in sidebar · tempo on **Backing Track**."
     )
 
+    _library_options = [LIBRARY_MODE_FULL, LIBRARY_MODE_CORE]
+    _chart_filter_options = [
+        CHART_FILTER_ALL,
+        CHART_FILTER_CURATED,
+        CHART_FILTER_FULL_CHARTS,
+        CHART_FILTER_EXTENDED,
+    ]
     if filters_in_expander:
-        with st.expander("Refine library (status, level, chart mode)", expanded=False):
+        with st.expander("Refine library (browse filters)", expanded=False):
             st.radio(
-                "Chart library",
-                ["Trusted core charts only", "Include practice approximations"],
+                "Song library",
+                _library_options,
                 horizontal=True,
                 key="chart_library_mode",
             )
@@ -4605,13 +4633,8 @@ def _render_catalog_song_picker_block(
             c1, c2 = st.columns(2)
             with c1:
                 st.selectbox(
-                    "Chart status",
-                    [
-                        "Any non-placeholder",
-                        "Trusted core",
-                        "Verified",
-                        "Practice approximation",
-                    ],
+                    "Show songs",
+                    _chart_filter_options,
                     key="song_picker_chart_status",
                 )
             with c2:
@@ -4623,8 +4646,8 @@ def _render_catalog_song_picker_block(
     else:
         with st.expander("Refine search & filters", expanded=False):
             st.radio(
-                "Chart library",
-                ["Trusted core charts only", "Include practice approximations"],
+                "Song library",
+                _library_options,
                 horizontal=True,
                 key="chart_library_mode",
             )
@@ -4637,13 +4660,8 @@ def _render_catalog_song_picker_block(
             c1, c2 = st.columns(2)
             with c1:
                 st.selectbox(
-                    "Chart status",
-                    [
-                        "Any non-placeholder",
-                        "Trusted core",
-                        "Verified",
-                        "Practice approximation",
-                    ],
+                    "Show songs",
+                    _chart_filter_options,
                     key="song_picker_chart_status",
                 )
             with c2:
@@ -4808,7 +4826,15 @@ def _ui_source_label() -> str:
 
 # SIDEBAR
 
-sidebar_section("Active source", icon="🎼")
+sidebar_section("Studio", icon="🎛️", tone="nav")
+if render_sidebar_studio_nav:
+    render_sidebar_studio_nav(
+        st.session_state,
+        current_page=_studio_page,
+        rerun_fn=st.rerun,
+    )
+
+sidebar_section("Active source", icon="🎼", tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
 sidebar_source_banner(
     active_source_banner(
@@ -4866,7 +4892,7 @@ _instrument_options = [
 ]
 _focus_options = focus_options_for_instrument(st.session_state.get("instrument", "Piano"))
 
-sidebar_section("Library", icon="📚")
+sidebar_section("Library", icon="📚", tone="library")
 _render_catalog_health_debug()
 with st.sidebar.expander("Catalog debug", expanded=False):
     st.write("Songs loaded:", len(ALL_SONG_RECORDS))
@@ -4875,7 +4901,7 @@ with st.sidebar.expander("Catalog debug", expanded=False):
     if CATALOG_LOAD_ERROR:
         st.write("Load error:", repr(CATALOG_LOAD_ERROR))
 
-sidebar_section("Session", icon="⏱️")
+sidebar_section("Session", icon="⏱️", tone="session")
 st.session_state.setdefault("practice_minutes", 30)
 st.sidebar.caption(
     f"**Practice length:** {int(st.session_state.get('practice_minutes', 30))} min "
@@ -4962,7 +4988,7 @@ song_lyrics_slug = _song_slug(
 song_lyrics_key = f"song_lyrics::{song_lyrics_slug}"
 section_lyrics_state_key = f"section_lyrics::{song_lyrics_slug}"
 
-sidebar_section("Lyrics & cues", icon="📝")
+sidebar_section("Lyrics & cues", icon="📝", tone="lyrics")
 with st.sidebar.expander("Lyric cues for active chart", expanded=(instrument == "Voice")):
     st.caption(
         "Paste only lyrics or cues you provide. The app does not fetch or generate copyrighted lyrics."
@@ -5004,7 +5030,7 @@ with st.sidebar.expander("Lyric cues for active chart", expanded=(instrument == 
             height=90,
         )
 
-sidebar_section("Optional AI", icon="🔑")
+sidebar_section("Optional AI", icon="🔑", tone="ai")
 user_api_key = st.sidebar.text_input(
     "OpenAI API key",
     type="password",
@@ -5252,20 +5278,18 @@ elif _studio_page == "picker":
         pick_genre, pick_label = parse_pick_key(pick_key)
         selected_data = SONG_PICKER_CATALOG[pick_genre][pick_label]
 
-        selected_status, _selected_status_kind = chart_status_label(selected_data)
         selected_versions = selected_data.get("chart_versions") or {}
-        available_levels = ", ".join(selected_versions.keys()) if selected_versions else "Generated from practice chart"
+        available_levels = ", ".join(selected_versions.keys()) if selected_versions else "Beginner · Intermediate · Advanced"
 
         st.success(
             f"**Active source: Song Selection** — **{selected_data['title']}** — {selected_data['artist']}."
         )
 
         st.write(
-            f"**Chart status:** {selected_status}  \n"
             f"**Genre/style:** {selected_data.get('genre', 'Unknown')}  \n"
             f"**Original key:** {selected_data.get('key', 'Unknown')}  \n"
             f"**Display / practice key:** {display_key}  \n"
-            f"**Available chart levels:** {available_levels}"
+            f"**Chart levels:** {available_levels}"
         )
         st.caption(chart_source_caption(selected_data))
         render_chart_editor_panel(
@@ -5363,7 +5387,6 @@ elif _studio_page == "backing":
         f'<span class="ui-badge purple">{html.escape(resolved_groove)}</span>'
         f'<span class="ui-badge amber">{bpm} BPM</span>'
         f'<span class="ui-badge">{len(backing_chords)} bars × {form_loops}</span>'
-        f'<span class="ui-badge">{html.escape(chart_status_label(song_data)[0])}</span>'
         f"</div>",
         unsafe_allow_html=True,
     )

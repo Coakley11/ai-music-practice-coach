@@ -176,15 +176,14 @@ def render_chart_editor_panel(
     st.session_state["chart_edit_mode"] = edit_on
 
     if user_ov:
-        cat_status = user_ov.get("catalog_chart_status", "catalog")
         st.info(
-            f"**Chart source:** User {'verified' if user_ov.get('status') == USER_VERIFIED else 'corrected'} "
-            f"(saved {user_ov.get('saved_at', '?')}) · **Catalog was:** {cat_status}"
+            f"**Your chord chart** is active (saved {user_ov.get('saved_at', '?')}). "
+            "Changes apply across Practice, Backing Track, and analysis."
         )
     else:
         st.caption(
-            f"**Chart source:** Catalog ({song_data.get('chart_status', 'unknown')}). "
-            f"Edits are saved to `data/user_chart_overrides.json`."
+            "Edit chords below and **Save** to store your chart in "
+            "`data/user_chart_overrides.json`."
         )
 
     if not edit_on:

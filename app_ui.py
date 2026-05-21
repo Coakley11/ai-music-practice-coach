@@ -22,7 +22,9 @@ __all__ = [
     "render_section_jump_bar",
     "render_cross_page_links",
     "render_page_quick_nav",
+    "render_sidebar_studio_nav",
     "render_studio_nav",
+    "STUDIO_PAGE_META",
     "session_badges",
     "sidebar_section",
     "sidebar_source_banner",
@@ -71,6 +73,57 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   border-top: 1px solid rgba(255,255,255,0.10);
 }
 .ui-sb-section:first-of-type { border-top: none; padding-top: 0; margin-top: 0.2rem; }
+.ui-sb-section.tone-source { color: #c4b5fd !important; }
+.ui-sb-section.tone-key { color: #7dd3fc !important; }
+.ui-sb-section.tone-library { color: #a5b4fc !important; }
+.ui-sb-section.tone-session { color: #fcd34d !important; }
+.ui-sb-section.tone-lyrics { color: #f9a8d4 !important; }
+.ui-sb-section.tone-ai { color: #67e8f9 !important; }
+.ui-sb-section.tone-nav { color: #e2e8f0 !important; }
+.ui-source-banner {
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.35rem;
+  background: rgba(167, 139, 250, 0.12);
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+.ui-sb-nav-wrap {
+  margin: 0.25rem 0 0.85rem 0;
+  padding: 0.45rem 0.4rem;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.ui-sb-nav-wrap .sb-nav-btn { margin-bottom: 0.28rem; }
+.ui-sb-nav-wrap .sb-nav-btn:last-child { margin-bottom: 0; }
+.ui-sb-nav-wrap .stButton > button {
+  width: 100% !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  padding: 0.42rem 0.55rem !important;
+  min-height: 2.05rem !important;
+  border-radius: 10px !important;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease !important;
+}
+.ui-sb-nav-wrap .stButton > button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.18) !important;
+}
+.ui-key-global-hint {
+  font-size: 0.76rem;
+  color: #bae6fd !important;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  margin: 0 0 0.5rem 0;
+  line-height: 1.4;
+}
 .ui-hero {
   border: 1px solid var(--studio-line);
   border-radius: 18px;
@@ -113,10 +166,19 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   gap: 0.65rem;
 }
 .ui-brand-icon {
-  font-size: 1.45rem;
+  font-size: 1.55rem;
   line-height: 1;
-  margin-top: 0.1rem;
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+  margin-top: 0.12rem;
+  filter: drop-shadow(0 2px 8px rgba(147, 197, 253, 0.45));
+}
+.ui-brand-note {
+  font-size: 1.05em;
+  margin-right: 0.2rem;
+  filter: drop-shadow(0 1px 4px rgba(147, 197, 253, 0.5));
+}
+.ui-brand-name {
+  color: #fef08a;
+  font-weight: 900;
 }
 .ui-brand-byline {
   font-size: 0.68rem;
@@ -350,10 +412,51 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   padding: 0.42rem 0.4rem !important;
   min-height: 2.15rem !important;
   border-radius: 10px !important;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease !important;
 }
-.ui-studio-nav .nav-btn button[kind="primary"] {
-  box-shadow: 0 1px 6px rgba(37, 99, 235, 0.22) !important;
+.ui-studio-nav .nav-btn button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
 }
+/* Page-colored navigation (inactive = soft tint, active = gradient) */
+.nav-practice button { background: linear-gradient(180deg,#f0f9ff,#e0f2fe)!important; color:#0369a1!important; border:1px solid rgba(14,165,233,.35)!important; }
+.nav-practice button[kind="primary"] { background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(14,165,233,.35)!important; }
+.nav-picker button { background:linear-gradient(180deg,#faf5ff,#f3e8ff)!important; color:#6d28d9!important; border:1px solid rgba(139,92,246,.35)!important; }
+.nav-picker button[kind="primary"] { background:linear-gradient(135deg,#8b5cf6,#a855f7)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(139,92,246,.35)!important; }
+.nav-backing button { background:linear-gradient(180deg,#f0fdf4,#dcfce7)!important; color:#15803d!important; border:1px solid rgba(34,197,94,.35)!important; }
+.nav-backing button[kind="primary"] { background:linear-gradient(135deg,#22c55e,#10b981)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(34,197,94,.35)!important; }
+.nav-creative button { background:linear-gradient(180deg,#fffbeb,#fef3c7)!important; color:#b45309!important; border:1px solid rgba(245,158,11,.4)!important; }
+.nav-creative button[kind="primary"] { background:linear-gradient(135deg,#f59e0b,#fbbf24)!important; color:#422006!important; border:none!important; box-shadow:0 4px 14px rgba(245,158,11,.35)!important; }
+.nav-custom button { background:linear-gradient(180deg,#eef2ff,#e0e7ff)!important; color:#4338ca!important; border:1px solid rgba(99,102,241,.35)!important; }
+.nav-custom button[kind="primary"] { background:linear-gradient(135deg,#6366f1,#4f46e5)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(99,102,241,.35)!important; }
+.nav-multitrack button { background:linear-gradient(180deg,#fff1f2,#ffe4e6)!important; color:#be123c!important; border:1px solid rgba(244,63,94,.35)!important; }
+.nav-multitrack button[kind="primary"] { background:linear-gradient(135deg,#f43f5e,#fb7185)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(244,63,94,.35)!important; }
+.nav-analysis button { background:linear-gradient(180deg,#ecfeff,#cffafe)!important; color:#0e7490!important; border:1px solid rgba(6,182,212,.35)!important; }
+.nav-analysis button[kind="primary"] { background:linear-gradient(135deg,#06b6d4,#22d3ee)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(6,182,212,.35)!important; }
+.nav-log button { background:linear-gradient(180deg,#f8fafc,#f1f5f9)!important; color:#475569!important; border:1px solid rgba(100,116,139,.35)!important; }
+.nav-log button[kind="primary"] { background:linear-gradient(135deg,#64748b,#475569)!important; color:#fff!important; border:none!important; box-shadow:0 4px 14px rgba(71,85,105,.3)!important; }
+/* Sidebar nav mirrors page colors */
+.ui-sb-nav-wrap .sb-nav-practice button { background:linear-gradient(180deg,rgba(14,165,233,.22),rgba(20,184,166,.14))!important; color:#e0f2fe!important; border:1px solid rgba(56,189,248,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-practice button[kind="primary"] { background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important; color:#fff!important; border:none!important; }
+.ui-sb-nav-wrap .sb-nav-picker button { background:linear-gradient(180deg,rgba(139,92,246,.22),rgba(168,85,247,.12))!important; color:#ede9fe!important; border:1px solid rgba(167,139,250,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-picker button[kind="primary"] { background:linear-gradient(135deg,#8b5cf6,#a855f7)!important; color:#fff!important; border:none!important; }
+.ui-sb-nav-wrap .sb-nav-backing button { background:linear-gradient(180deg,rgba(34,197,94,.2),rgba(16,185,129,.12))!important; color:#dcfce7!important; border:1px solid rgba(74,222,128,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-backing button[kind="primary"] { background:linear-gradient(135deg,#22c55e,#10b981)!important; color:#fff!important; border:none!important; }
+.ui-sb-nav-wrap .sb-nav-creative button { background:linear-gradient(180deg,rgba(245,158,11,.2),rgba(251,191,36,.12))!important; color:#fef3c7!important; border:1px solid rgba(251,191,36,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-creative button[kind="primary"] { background:linear-gradient(135deg,#f59e0b,#fbbf24)!important; color:#422006!important; border:none!important; }
+.ui-sb-nav-wrap .sb-nav-custom button { background:linear-gradient(180deg,rgba(99,102,241,.22),rgba(79,70,229,.12))!important; color:#e0e7ff!important; border:1px solid rgba(129,140,248,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-custom button[kind="primary"] { background:linear-gradient(135deg,#6366f1,#4f46e5)!important; color:#fff!important; border:none!important; }
+.ui-sb-nav-wrap .sb-nav-multitrack button { background:linear-gradient(180deg,rgba(244,63,94,.2),rgba(251,113,133,.12))!important; color:#ffe4e6!important; border:1px solid rgba(251,113,133,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-multitrack button[kind="primary"] { background:linear-gradient(135deg,#f43f5e,#fb7185)!important; color:#fff!important; border:none!important; }
+.ui-sb-nav-wrap .sb-nav-analysis button { background:linear-gradient(180deg,rgba(6,182,212,.2),rgba(34,211,238,.12))!important; color:#cffafe!important; border:1px solid rgba(34,211,238,.35)!important; }
+.ui-sb-nav-wrap .sb-nav-analysis button[kind="primary"] { background:linear-gradient(135deg,#06b6d4,#22d3ee)!important; color:#fff!important; border:none!important; }
+.ui-sb-nav-wrap .sb-nav-log button { background:linear-gradient(180deg,rgba(100,116,139,.18),rgba(71,85,105,.1))!important; color:#e2e8f0!important; border:1px solid rgba(148,163,184,.3)!important; }
+.ui-sb-nav-wrap .sb-nav-log button[kind="primary"] { background:linear-gradient(135deg,#64748b,#475569)!important; color:#fff!important; border:none!important; }
+.cross-practice button { background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important; color:#fff!important; border:none!important; }
+.cross-picker button { background:linear-gradient(135deg,#8b5cf6,#a855f7)!important; color:#fff!important; border:none!important; }
+.cross-backing button { background:linear-gradient(135deg,#22c55e,#10b981)!important; color:#fff!important; border:none!important; }
+.cross-creative button { background:linear-gradient(135deg,#f59e0b,#fbbf24)!important; color:#422006!important; border:none!important; }
+.cross-custom button { background:linear-gradient(135deg,#6366f1,#4f46e5)!important; color:#fff!important; border:none!important; }
 .ui-global-bar {
   border: none;
   border-radius: 0;
@@ -491,14 +594,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 .ui-practice-top [data-baseweb="select"] > div {
   border-radius: 10px !important;
 }
-@media (max-width: 900px) {
-  .ui-brand-header { border-radius: 12px 12px 0 0; padding: 0.6rem 0.75rem; }
-  .ui-brand-main-title { font-size: 1.12rem; }
-  .ui-brand-tagline { font-size: 0.78rem; }
-  .ui-brand-features li { font-size: 0.64rem; }
-  .ui-studio-deck { border-radius: 12px; }
-  .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
-  .ui-page-nav-label {
+.ui-page-nav-label {
   font-size: 0.65rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -512,6 +608,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   padding: 0.45rem 0.5rem;
   margin-bottom: 0.75rem;
   background: linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
 }
 .ui-cross-links {
   margin: 0.35rem 0 0.75rem 0;
@@ -520,8 +617,15 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   font-size: 0.72rem !important;
   font-weight: 700 !important;
   min-height: 2rem !important;
+  border-radius: 10px !important;
 }
-.ui-studio-nav { padding: 0.4rem 0.45rem; }
+@media (max-width: 900px) {
+  .ui-brand-header { border-radius: 12px 12px 0 0; padding: 0.6rem 0.75rem; }
+  .ui-brand-main-title { font-size: 1.12rem; }
+  .ui-brand-tagline { font-size: 0.78rem; }
+  .ui-studio-deck { border-radius: 12px; }
+  .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
+  .ui-studio-nav { padding: 0.4rem 0.45rem; }
   .ui-studio-nav .nav-btn button { font-size: 0.68rem !important; padding: 0.32rem 0.2rem !important; }
   .ui-now-playing .np-title { font-size: 0.9rem; }
   .ui-section-jump { top: 0.25rem; }
@@ -531,6 +635,17 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
         """,
         unsafe_allow_html=True,
     )
+
+
+def _brand_title_html(title: str) -> str:
+    if title.startswith("Daniel Cohen"):
+        rest = title[len("Daniel Cohen") :].strip()
+        return (
+            '<span class="ui-brand-note" aria-hidden="true">🎵</span> '
+            f'<span class="ui-brand-name">Daniel Cohen</span>'
+            f"{html.escape(' ' + rest if rest else '')}"
+        )
+    return html.escape(title)
 
 
 def render_studio_brand_header(
@@ -548,9 +663,9 @@ def render_studio_brand_header(
         f"""
 <div class="ui-brand-header">
   <div class="ui-brand-row">
-    <span class="ui-brand-icon" aria-hidden="true">🎵</span>
+    <span class="ui-brand-icon" aria-hidden="true">♪</span>
     <div>
-      <h1 class="ui-brand-main-title">{html.escape(title)}</h1>
+      <h1 class="ui-brand-main-title">{_brand_title_html(title)}</h1>
       <p class="ui-brand-tagline">{html.escape(tagline)}</p>
     </div>
   </div>
@@ -653,11 +768,15 @@ def session_badges(
     return badges
 
 
-def sidebar_section(title: str, *, icon: str = "") -> None:
+def sidebar_section(title: str, *, icon: str = "", tone: str = "") -> None:
     import streamlit as st
 
     label = f"{icon} {title}".strip() if icon else title
-    st.sidebar.markdown(f'<p class="ui-sb-section">{html.escape(label)}</p>', unsafe_allow_html=True)
+    tone_cls = f" tone-{tone}" if tone else ""
+    st.sidebar.markdown(
+        f'<p class="ui-sb-section{tone_cls}">{html.escape(label)}</p>',
+        unsafe_allow_html=True,
+    )
 
 
 def sidebar_source_banner(markdown_text: str) -> None:
@@ -669,15 +788,20 @@ def sidebar_source_banner(markdown_text: str) -> None:
     )
 
 
+STUDIO_PAGE_META: dict[str, dict[str, str]] = {
+    "practice": {"label": "Practice", "icon": "🎯", "nav_class": "practice"},
+    "picker": {"label": "Song Selection", "icon": "🎼", "nav_class": "picker"},
+    "backing": {"label": "Backing Track", "icon": "🎧", "nav_class": "backing"},
+    "custom": {"label": "Custom Progression", "icon": "✏️", "nav_class": "custom"},
+    "creative": {"label": "Creative Lab", "icon": "🧠", "nav_class": "creative"},
+    "multitrack": {"label": "Multitrack", "icon": "🎚️", "nav_class": "multitrack"},
+    "analysis": {"label": "Upload Analysis", "icon": "🎙️", "nav_class": "analysis"},
+    "log": {"label": "Practice Log", "icon": "📓", "nav_class": "log"},
+}
+
 STUDIO_PAGES: list[tuple[str, str]] = [
-    ("practice", "Practice"),
-    ("picker", "Song Selection"),
-    ("backing", "Backing Track"),
-    ("custom", "Custom Progression"),
-    ("creative", "Creative Lab"),
-    ("multitrack", "Multitrack"),
-    ("analysis", "Upload Analysis"),
-    ("log", "Practice Log"),
+    (page_id, f"{meta['icon']} {meta['label']}")
+    for page_id, meta in STUDIO_PAGE_META.items()
 ]
 
 # Compact cross-page shortcuts (subset for inline link rows).
@@ -728,8 +852,9 @@ def render_page_quick_nav(
     st.markdown('<div class="ui-studio-nav ui-page-nav">', unsafe_allow_html=True)
     cols = st.columns(len(STUDIO_PAGES))
     for col, (page_id, label) in zip(cols, STUDIO_PAGES):
+        nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
         with col:
-            st.markdown('<div class="nav-btn">', unsafe_allow_html=True)
+            st.markdown(f'<div class="nav-btn nav-{nav_class}">', unsafe_allow_html=True)
             if st.button(
                 label,
                 key=f"{key_prefix}_nav_{page_id}",
@@ -741,6 +866,37 @@ def render_page_quick_nav(
                     rerun_fn()
             st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
+    return session_state.get("studio_page", current)
+
+
+def render_sidebar_studio_nav(
+    session_state: Any,
+    *,
+    current_page: str,
+    rerun_fn: Any,
+) -> str:
+    """Colorful vertical studio navigation in the sidebar."""
+    import streamlit as st
+
+    current = ensure_studio_page(session_state, default=current_page)
+    st.sidebar.markdown('<div class="ui-sb-nav-wrap">', unsafe_allow_html=True)
+    for page_id, label in STUDIO_PAGES:
+        nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
+        st.sidebar.markdown(
+            f'<div class="sb-nav-btn sb-nav-{nav_class}">',
+            unsafe_allow_html=True,
+        )
+        if st.sidebar.button(
+            label,
+            key=f"sb_nav_{page_id}",
+            use_container_width=True,
+            type="primary" if page_id == current else "secondary",
+        ):
+            if page_id != current:
+                session_state["studio_page"] = page_id
+                rerun_fn()
+        st.sidebar.markdown("</div>", unsafe_allow_html=True)
+    st.sidebar.markdown("</div>", unsafe_allow_html=True)
     return session_state.get("studio_page", current)
 
 
@@ -762,7 +918,9 @@ def render_cross_page_links(
     st.markdown('<div class="ui-cross-links">', unsafe_allow_html=True)
     cols = st.columns(len(targets))
     for col, (page_id, label) in zip(cols, targets):
+        nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
         with col:
+            st.markdown(f'<div class="cross-{nav_class}">', unsafe_allow_html=True)
             if st.button(
                 label,
                 key=f"{key_prefix}_to_{page_id}",
@@ -770,6 +928,7 @@ def render_cross_page_links(
             ):
                 session_state["studio_page"] = page_id
                 rerun_fn()
+            st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 
