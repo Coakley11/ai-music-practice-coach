@@ -2767,8 +2767,35 @@ def _root_and_fifth(chord):
         return "root", "5th"
 
 
+def _section_role(section_name: str) -> str:
+    """Classify a song section for rhythm/practice guidance."""
+    name = str(section_name or "").strip().lower()
+
+    if not name or name in {"full song", "full", "all"}:
+        return "full"
+    if "intro" in name:
+        return "intro"
+    if "verse" in name or "a section" in name or name == "a":
+        return "verse"
+    if "pre" in name:
+        return "pre"
+    if "chorus" in name or "refrain" in name or "b section" in name or name == "b":
+        return "chorus"
+    if "bridge" in name or "middle" in name:
+        return "bridge"
+    if "solo" in name or "improv" in name:
+        return "solo"
+    if "outro" in name or "ending" in name or "tag" in name:
+        return "outro"
+
+    return "section"
+
+
 def _section_character(section_name):
-    role = _section_role(section_name)
+    try:
+        role = _section_role(section_name)
+    except Exception:
+        role = "section"
     if role == "chorus":
         return "play this fuller than the verse, with stronger beat-2/4 energy"
     if role == "verse":
@@ -2783,7 +2810,10 @@ def _section_character(section_name):
 
 
 def _section_dynamic_shape(section_name):
-    role = _section_role(section_name)
+    try:
+        role = _section_role(section_name)
+    except Exception:
+        role = "section"
     if role == "chorus":
         return "build into a stronger, more projected chorus sound without rushing"
     if role == "verse":
@@ -2800,8 +2830,11 @@ def _section_dynamic_shape(section_name):
 
 
 def _rhythm_profile(time_signature="4/4", groove_style="", section_name="", bpm=100):
+    try:
+        role = _section_role(section_name)
+    except Exception:
+        role = "section"
     text = f"{time_signature} {groove_style} {section_name}".lower()
-    role = _section_role(section_name)
     if "6/8" in text:
         profile = {
             "feel": "6/8 pulse",
