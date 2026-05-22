@@ -18,6 +18,8 @@ except ImportError:
 
 
 __all__ = [
+    "_chord_head",
+    "_chord_bass",
     "chord_notes",
     "bass_note",
     "infer_groove_style",
@@ -29,8 +31,14 @@ __all__ = [
 ]
 
 
-def _chord_head(chord):
-    return str(chord).strip().split("/", 1)[0]
+def _chord_head(chord: str) -> str:
+    """First usable chord token (strip bars, slash bass, light annotations)."""
+    if not chord:
+        return ""
+    token = str(chord).strip()
+    token = token.replace("|", " ").split()[0] if token else ""
+    token = token.split("/")[0]
+    return token.replace("(", "").replace(")", "")
 
 
 def _chord_bass(chord):

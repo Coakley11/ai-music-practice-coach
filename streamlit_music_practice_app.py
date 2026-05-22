@@ -110,6 +110,7 @@ from songs import (
 from songs.key_state import mark_display_key_changed
 
 from backing_audio import (
+    _chord_head,
     backing_bytes_to_float,
     bass_note,
     chord_notes,
@@ -1478,25 +1479,30 @@ def _chart_grid_html(chords, current_bar=None, section_name=""):
 
 
 def _roman_for_chord(chord, key_name):
-    key_root, key_suffix = split_chord(str(key_name or "C"))
-    root, suffix = split_chord(_chord_head(chord))
-    minor_key = key_suffix.lower().startswith("m")
-    romans = {
-        0: ("I", "i"), 1: ("bII", "bII"), 2: ("II", "ii"), 3: ("bIII", "III"),
-        4: ("III", "#III"), 5: ("IV", "iv"), 6: ("#IV", "#iv"), 7: ("V", "v"),
-        8: ("bVI", "VI"), 9: ("VI", "#VI"), 10: ("bVII", "VII"), 11: ("VII", "#VII"),
-    }
-    r = NOTE_TO_MIDI.get(root, NOTE_TO_MIDI.get(normalize_root(root), 60)) % 12
-    k = NOTE_TO_MIDI.get(key_root, NOTE_TO_MIDI.get(normalize_root(key_root), 60)) % 12
-    roman = romans.get((r - k) % 12, ("?", "?"))[1 if minor_key else 0]
-    low = str(suffix).lower()
-    if low.startswith("m") and "maj" not in low:
-        roman = roman.lower()
-    if "dim" in low or "m7b5" in low:
-        roman += "o"
-    if "7" in low and "maj" not in low:
-        roman += "7"
-    return roman
+    try:
+        key_root, key_suffix = split_chord(str(key_name or "C"))
+        root, suffix = split_chord(_chord_head(chord))
+        if not root:
+            return "?"
+        minor_key = key_suffix.lower().startswith("m")
+        romans = {
+            0: ("I", "i"), 1: ("bII", "bII"), 2: ("II", "ii"), 3: ("bIII", "III"),
+            4: ("III", "#III"), 5: ("IV", "iv"), 6: ("#IV", "#iv"), 7: ("V", "v"),
+            8: ("bVI", "VI"), 9: ("VI", "#VI"), 10: ("bVII", "VII"), 11: ("VII", "#VII"),
+        }
+        r = NOTE_TO_MIDI.get(root, NOTE_TO_MIDI.get(normalize_root(root), 60)) % 12
+        k = NOTE_TO_MIDI.get(key_root, NOTE_TO_MIDI.get(normalize_root(key_root), 60)) % 12
+        roman = romans.get((r - k) % 12, ("?", "?"))[1 if minor_key else 0]
+        low = str(suffix).lower()
+        if low.startswith("m") and "maj" not in low:
+            roman = roman.lower()
+        if "dim" in low or "m7b5" in low:
+            roman += "o"
+        if "7" in low and "maj" not in low:
+            roman += "7"
+        return roman
+    except Exception:
+        return "?"
 
 
 def _inline_harmonic_analysis(section_name, chords, key_name):
