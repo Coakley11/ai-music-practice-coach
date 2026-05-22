@@ -849,7 +849,30 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   margin: 0 0 0.25rem 0;
 }
 .practice-worksheet .pw-title { margin: 0; font-size: 1.45rem; font-weight: 900; }
-.practice-worksheet .pw-artist { margin: 0.1rem 0 0.65rem 0; color: #64748b; font-weight: 650; }
+.practice-worksheet .pw-artist { margin: 0.1rem 0 0.35rem 0; color: #64748b; font-weight: 650; }
+.practice-worksheet .pw-variant-badge {
+  font-size: 0.82rem;
+  font-weight: 750;
+  color: #1d4ed8;
+  margin: 0 0 0.55rem 0;
+}
+.practice-worksheet .pw-panel.pw-primary {
+  border-color: #93c5fd;
+  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+}
+.practice-worksheet .pw-beat-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin: 0.35rem 0;
+}
+.practice-worksheet .pw-beat-grid th,
+.practice-worksheet .pw-beat-grid td {
+  border: 1px solid #cbd5e1;
+  padding: 0.35rem 0.5rem;
+  text-align: center;
+}
+.practice-worksheet .pw-grid-legend { font-size: 0.75rem; color: #64748b; margin: 0.25rem 0 0 0; }
 .practice-worksheet .pw-meta-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

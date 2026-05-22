@@ -175,6 +175,18 @@ except Exception:
     def song_groove_seed(*args, **kwargs):
         return 0
 
+    def build_custom_practice_sheet(**kwargs):
+        title = kwargs.get("song_title", "Song")
+        return {
+            "html": f"<p>Practice sheet unavailable — {title}</p>",
+            "plain": f"# {title}\n\n(Generator module not loaded.)",
+            "section_label": kwargs.get("section_focus") or "Section",
+            "category": "Technique",
+            "variant_id": "stub",
+            "variant_label": title,
+            "inputs_echo": {},
+        }
+
 _APP_UI_LOADED = False
 _APP_UI_IMPORT_ERROR = None
 
@@ -5499,17 +5511,27 @@ if _studio_page == "practice":
     _section_bar_count = len(_view_chords) if _active_section else 0
 
     _CUSTOM_SHEET_KEY = "custom_practice_sheet_payload"
-    _custom_sheet_sig = (
-        song,
-        song_data.get("artist", ""),
-        _focus_pick,
-        instrument,
-        level,
-        focus,
-        display_key,
-        _practice_bpm,
-        _practice_groove,
-    )
+    _backing_scope = st.session_state.get("backing_track_scope", "")
+    _backing_section = st.session_state.get("backing_track_single_section", "")
+    _backing_loops = int(st.session_state.get("backing_track_loops", 4) or 4)
+    _metronome_loop_bars = _section_bar_count if _active_section else 0
+    _sheet_inputs_debug = {
+        "song": song,
+        "artist": song_data.get("artist", ""),
+        "section": _focus_pick,
+        "instrument": instrument,
+        "level": level,
+        "focus": focus,
+        "display_key": display_key,
+        "bpm": _practice_bpm,
+        "groove_style": _practice_groove,
+        "time_signature": _time_sig,
+        "backing_scope": _backing_scope or "(not set)",
+        "backing_section": _backing_section,
+        "backing_loops": _backing_loops,
+        "metronome_loop_bars": _metronome_loop_bars,
+    }
+    _custom_sheet_sig = tuple(_sheet_inputs_debug.values())
     if st.session_state.get("custom_practice_sheet_sig") != _custom_sheet_sig:
         st.session_state.pop(_CUSTOM_SHEET_KEY, None)
     st.session_state["custom_practice_sheet_sig"] = _custom_sheet_sig
@@ -5543,19 +5565,32 @@ if _studio_page == "practice":
                 sections=sections,
                 section_lyrics=section_lyrics,
                 lyric_cues=lyric_cues,
+                backing_scope=_backing_scope,
+                backing_section=_backing_section,
+                backing_loops=_backing_loops,
+                metronome_loop_bars=_metronome_loop_bars,
             )
     with _sheet_col:
         st.caption(
-            "Uses **Section focus**, **Instrument**, **Level**, and **Practice focus** above. "
-            "Regenerate after you change any of those."
+            "Reads **song**, **section focus**, **instrument**, **level**, **focus**, "
+            "**metronome BPM**, and **backing loop** settings. Regenerate after any change."
         )
+
+    with st.expander("Sheet generator inputs (debug)", expanded=False):
+        st.json(_sheet_inputs_debug)
+        _cached = st.session_state.get(_CUSTOM_SHEET_KEY)
+        if _cached and _cached.get("inputs_echo"):
+            st.caption("Last generated sheet used:")
+            st.json(_cached["inputs_echo"])
 
     _sheet_payload = st.session_state.get(_CUSTOM_SHEET_KEY)
     if _sheet_payload:
         with st.expander(
-            f"📄 Custom Practice Sheet — {_sheet_payload.get('section_label', 'Section')}",
+            f"📄 {_sheet_payload.get('variant_label', 'Custom Practice Sheet')} — "
+            f"{_sheet_payload.get('section_label', 'Section')}",
             expanded=True,
         ):
+            st.caption(f"Sheet variant `{_sheet_payload.get('variant_id', '')}`")
             st.markdown(_sheet_payload["html"], unsafe_allow_html=True)
             _dl_col, _copy_col = st.columns(2)
             with _dl_col:
