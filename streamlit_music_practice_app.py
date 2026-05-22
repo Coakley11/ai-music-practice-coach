@@ -132,6 +132,7 @@ try:
         song_card_meta,
         song_groove_seed,
     )
+    from practice_sheet import build_custom_practice_sheet
 except Exception:
     PRACTICE_FOCUS_FULL = "Full Song"
 
@@ -5496,6 +5497,84 @@ if _studio_page == "practice":
     )
     _time_sig = default_time_signature(song, sections)
     _section_bar_count = len(_view_chords) if _active_section else 0
+
+    _CUSTOM_SHEET_KEY = "custom_practice_sheet_payload"
+    _custom_sheet_sig = (
+        song,
+        song_data.get("artist", ""),
+        _focus_pick,
+        instrument,
+        level,
+        focus,
+        display_key,
+        _practice_bpm,
+        _practice_groove,
+    )
+    if st.session_state.get("custom_practice_sheet_sig") != _custom_sheet_sig:
+        st.session_state.pop(_CUSTOM_SHEET_KEY, None)
+    st.session_state["custom_practice_sheet_sig"] = _custom_sheet_sig
+
+    st.markdown(
+        '<div class="ui-card soft"><div class="ui-card-title">Custom practice sheet</div>'
+        '<div class="ui-card-sub">Worksheet for this song, section, instrument, and focus — not a generic chart.</div></div>',
+        unsafe_allow_html=True,
+    )
+    _gen_col, _sheet_col = st.columns([1, 2])
+    with _gen_col:
+        if st.button(
+            "Generate Custom Practice Sheet",
+            key="practice_generate_sheet",
+            type="primary",
+            use_container_width=True,
+        ):
+            st.session_state[_CUSTOM_SHEET_KEY] = build_custom_practice_sheet(
+                song_title=song,
+                artist=song_data.get("artist", ""),
+                genre=song_data.get("genre", ""),
+                display_key=display_key,
+                original_key=original_key,
+                bpm=_practice_bpm,
+                time_signature=_time_sig,
+                groove_style=_practice_groove,
+                level=level,
+                instrument=instrument,
+                focus=focus,
+                section_focus=_focus_pick,
+                sections=sections,
+                section_lyrics=section_lyrics,
+                lyric_cues=lyric_cues,
+            )
+    with _sheet_col:
+        st.caption(
+            "Uses **Section focus**, **Instrument**, **Level**, and **Practice focus** above. "
+            "Regenerate after you change any of those."
+        )
+
+    _sheet_payload = st.session_state.get(_CUSTOM_SHEET_KEY)
+    if _sheet_payload:
+        with st.expander(
+            f"📄 Custom Practice Sheet — {_sheet_payload.get('section_label', 'Section')}",
+            expanded=True,
+        ):
+            st.markdown(_sheet_payload["html"], unsafe_allow_html=True)
+            _dl_col, _copy_col = st.columns(2)
+            with _dl_col:
+                st.download_button(
+                    "Download sheet (.md)",
+                    data=_sheet_payload.get("plain", ""),
+                    file_name=f"{_song_slug(song)}_practice_sheet.md",
+                    mime="text/markdown",
+                    key="practice_download_sheet",
+                    use_container_width=True,
+                )
+            with _copy_col:
+                st.text_area(
+                    "Copy practice sheet",
+                    value=_sheet_payload.get("plain", ""),
+                    height=140,
+                    key="practice_copy_sheet",
+                    label_visibility="collapsed",
+                )
 
     if level == "Beginner":
         _beginner_tips = beginner_transpose_suggestions(
