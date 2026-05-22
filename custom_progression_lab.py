@@ -97,10 +97,11 @@ def progression_is_empty(sections: dict | None) -> bool:
 
 def default_active_progression():
     return {
-        "name": "Untitled progression",
+        "name": "My Progression",
         "original_key_center": "C",
         "original_sections": empty_cpl_sections(),
         "progression_style": "Pop",
+        "user_locked_home_key": False,
         "time_signature": "4/4",
         "bpm": 100,
         "groove_style": "Auto",
@@ -462,10 +463,26 @@ def display_sections_for_key(active, display_key):
 
 
 def commit_home_sections(active, home_sections):
-    """Persist chords in written/home key and refresh tonal-center home key."""
+    """Persist chords in written/home key (respect user-chosen original key)."""
     active = ensure_original_structure(active)
     active["original_sections"] = deep_copy_sections(home_sections)
+    if active.get("user_locked_home_key"):
+        return active
     return sync_written_home_key(active)
+
+
+def set_original_key_center(active: dict, new_key: str) -> dict:
+    """Set the progression's original key; transpose stored chords if key changes."""
+    active = ensure_original_structure(active)
+    new_key = str(new_key or "C").strip() or "C"
+    old_key = str(active.get("original_key_center") or "C").strip() or "C"
+    sections = ensure_all_cpl_sections(active.get("original_sections"))
+    if old_key != new_key and not progression_is_empty(sections):
+        active["original_sections"] = transpose_lab_sections(sections, old_key, new_key)
+    active["original_key_center"] = new_key
+    active["user_locked_home_key"] = True
+    active.pop("tonal_center_inferred", None)
+    return active
 
 
 def anchor_home_key_to_display(active, display_key):
@@ -744,7 +761,13 @@ def load_saved_progression(store: dict, name: str) -> dict:
         return default_active_progression()
     out = ensure_original_structure(dict(raw))
     out["name"] = str(raw.get("name") or name)
+    out["user_locked_home_key"] = True
+    out["original_sections"] = ensure_all_cpl_sections(out.get("original_sections"))
     return out
+
+
+def list_saved_progression_names(store: dict) -> list[str]:
+    return sorted(str(k) for k in (store or {}).keys())
 
 
 def apply_quick_chord_edit(chord: str, edit_key: str) -> str:
@@ -1271,6 +1294,7 @@ def save_progression(store, name, data):
         "groove_style": data.get("groove_style", "Auto"),
         "loops": data.get("loops", 2),
         "progression_style": data.get("progression_style", "Pop"),
+        "user_locked_home_key": bool(data.get("user_locked_home_key", True)),
     }
     return store
 
@@ -1463,18 +1487,10 @@ def format_key_label(home_key: str) -> str:
 
 
 def ensure_cpl_editing_in_display_key(st, active: dict, display_key: str) -> dict:
-    """Sync sidebar key; only transpose stored chords when the user already added some."""
+    """Track sidebar display key — stored chords stay in original_key_center."""
     display_key = str(display_key or "C").strip() or "C"
     prev = st.session_state.get("_cpl_editing_display_key")
     if prev != display_key:
-        sections = ensure_all_cpl_sections(active.get("original_sections"))
-        if progression_is_empty(sections):
-            active["original_key_center"] = display_key
-            active["original_sections"] = sections
-            active["user_locked_home_key"] = True
-        else:
-            active = anchor_home_key_to_display(active, display_key)
-        st.session_state[CPL_ACTIVE_KEY] = active
         st.session_state["_cpl_editing_display_key"] = display_key
         invalidate_cpl_derived_outputs(st.session_state)
     return active

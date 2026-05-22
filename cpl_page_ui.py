@@ -29,9 +29,13 @@ def render_custom_progression_lab_page() -> None:
         filled_section_names,
         flatten_sections_to_events,
         format_key_label,
+        CPL_KEY_OPTIONS,
         invalidate_cpl_derived_outputs,
+        list_saved_progression_names,
         load_saved_progression,
         normalize_chord_symbol,
+        set_original_key_center,
+        written_home_key,
         preset_button_label,
         prepare_cpl_backing_handoff,
         presets_for_style,
@@ -70,8 +74,11 @@ def render_custom_progression_lab_page() -> None:
     active = ensure_cpl_editing_in_display_key(st, active, display_key)
     st.session_state[CPL_ACTIVE_KEY] = active
 
-    key_label = format_key_label(display_key)
+    original_key = written_home_key(active)
+    display_label = format_key_label(display_key)
+    original_label = format_key_label(original_key)
     ns = display_key.replace("#", "s").replace("b", "f")
+    home_ns = original_key.replace("#", "s").replace("b", "f")
     finished = bool(st.session_state.get("cpl_finished"))
     saved = st.session_state[CPL_SAVED_KEY]
 
@@ -110,30 +117,53 @@ def render_custom_progression_lab_page() -> None:
             active["name"] = title
             _save()
 
-        s1, s2, s3 = st.columns([1, 1, 1])
-        with s1:
-            if st.button("Save Progression", key="cpl_save_prog", use_container_width=True, type="primary"):
-                save_progression(saved, active["name"], active)
-                st.success(f"Saved **{active['name']}**.")
-        with s2:
-            saved_names = sorted(saved.keys())
+        orig_ix = (
+            CPL_KEY_OPTIONS.index(original_key)
+            if original_key in CPL_KEY_OPTIONS
+            else 0
+        )
+        picked_orig = st.selectbox(
+            "Original key of this progression",
+            CPL_KEY_OPTIONS,
+            index=orig_ix,
+            format_func=format_key_label,
+            key="cpl_original_key",
+            help="Original key tells the app how to transpose your custom progression later.",
+        )
+        st.caption(
+            "Original key tells the app how to transpose your custom progression later."
+        )
+        if picked_orig != original_key:
+            active = set_original_key_center(active, picked_orig)
+            home_sections = ensure_all_cpl_sections(active.get("original_sections"))
+            _save()
+            st.rerun()
+
+        if st.button("Save Progression", key="cpl_save_prog", use_container_width=True, type="primary"):
+            save_progression(saved, active["name"], active)
+            st.success(f"Saved **{active['name']}**.")
+
+        st.markdown("**Load Saved Progression**")
+        saved_names = list_saved_progression_names(saved)
+        if not saved_names:
+            st.info("No saved progressions yet.")
+        else:
             load_pick = st.selectbox(
-                "Load saved progression",
-                ["—"] + saved_names if saved_names else ["—"],
+                "Choose a saved progression",
+                saved_names,
                 key="cpl_load_pick",
-                label_visibility="collapsed",
             )
-        with s3:
             if st.button(
-                "Load Saved Progression",
+                "Load selected progression",
                 key="cpl_load_btn",
                 use_container_width=True,
-                disabled=not saved_names or load_pick == "—",
             ):
                 loaded = load_saved_progression(saved, load_pick)
                 st.session_state[CPL_ACTIVE_KEY] = loaded
                 st.session_state.pop("cpl_finished", None)
-                st.session_state.pop("_cpl_editing_display_key", None)
+                st.session_state["_cpl_editing_display_key"] = st.session_state.get(
+                    "display_key", loaded.get("original_key_center", "C")
+                )
                 invalidate_cpl_derived_outputs(st.session_state)
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -193,7 +223,7 @@ def render_custom_progression_lab_page() -> None:
     edit_section = st.selectbox("Section", CPL_UI_SECTION_ORDER, key="cpl_edit_section")
     home_entries = home_sections[edit_section]
     section_display = display_entries_for_section(active, display_key, edit_section)
-    simple = simple_chords_for_key(display_key)
+    simple = simple_chords_for_key(original_key)
     style_presets = presets_for_style(style)
     section_has_chords = not section_is_empty(home_entries)
 
@@ -209,10 +239,18 @@ def render_custom_progression_lab_page() -> None:
 
     st.markdown('<div class="cpl-builder-panel">', unsafe_allow_html=True)
     st.markdown(f'<p class="cpl-section-heading">{edit_section}</p>', unsafe_allow_html=True)
-    st.markdown(
-        f'<p class="cpl-key-line">Key: <strong>{key_label}</strong> — change key in the sidebar</p>',
-        unsafe_allow_html=True,
-    )
+    if original_key != display_key:
+        st.markdown(
+            f'<p class="cpl-key-line">Written in <strong>{original_label}</strong> · '
+            f"Showing in <strong>{display_label}</strong> (change practice key in the sidebar)</p>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f'<p class="cpl-key-line">Key: <strong>{original_label}</strong> · '
+            f"change practice key in the sidebar to transpose</p>",
+            unsafe_allow_html=True,
+        )
 
     if section_has_chords:
         st.markdown(entries_chord_tiles_html(section_display), unsafe_allow_html=True)
@@ -231,7 +269,7 @@ def render_custom_progression_lab_page() -> None:
     cols = st.columns(min(6, max(1, len(simple))))
     for i, ch in enumerate(simple):
         with cols[i % len(cols)]:
-            if st.button(ch, key=f"cpl_add_{ns}_{edit_section}_{ch}", use_container_width=True):
+            if st.button(ch, key=f"cpl_add_{home_ns}_{edit_section}_{ch}", use_container_width=True):
                 home_entries.append({"chord": ch, "bars": int(add_bars)})
                 _save()
                 st.rerun()
@@ -261,13 +299,13 @@ def render_custom_progression_lab_page() -> None:
         rcols = st.columns(min(6, max(1, len(simple))))
         for i, ch in enumerate(simple):
             with rcols[i % len(rcols)]:
-                if st.button(ch, key=f"cpl_ext_root_{ns}_{edit_section}_{ch}"):
+                if st.button(ch, key=f"cpl_ext_root_{home_ns}_{edit_section}_{ch}"):
                     st.session_state["cpl_ext_root"] = ch
                     st.rerun()
         ext_cols = st.columns(len(CHORD_QUICK_EDIT_KEYS))
         for i, ek in enumerate(CHORD_QUICK_EDIT_KEYS):
             with ext_cols[i]:
-                if st.button(ek, key=f"cpl_ext_{ns}_{edit_section}_{ek}"):
+                if st.button(ek, key=f"cpl_ext_{home_ns}_{edit_section}_{ek}"):
                     staged = apply_quick_chord_edit(st.session_state["cpl_ext_root"], ek)
                     home_entries.append({"chord": staged, "bars": int(add_bars)})
                     _save()
@@ -275,15 +313,17 @@ def render_custom_progression_lab_page() -> None:
 
     if style_presets:
         st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
-        st.markdown(f"**{style} presets** ({key_label})")
+        st.markdown(f"**{style} presets** ({original_label})")
         for preset_id, spec in style_presets.items():
-            label = preset_button_label(preset_id, display_key, spec)
+            label = preset_button_label(preset_id, original_key, spec)
             if st.button(
                 label,
-                key=f"cpl_pre_{ns}_{style}_{edit_section}_{preset_id}",
+                key=f"cpl_pre_{home_ns}_{style}_{edit_section}_{preset_id}",
                 use_container_width=True,
             ):
-                home_sections[edit_section] = build_style_preset_entries(style, preset_id, display_key)
+                home_sections[edit_section] = build_style_preset_entries(
+                    style, preset_id, original_key
+                )
                 _save()
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -304,12 +344,12 @@ def render_custom_progression_lab_page() -> None:
                         "Bars",
                         [1, 2, 4],
                         index=bar_ix,
-                        key=f"cpl_bar_{ns}_{edit_section}_{idx}",
+                        key=f"cpl_bar_{home_ns}_{edit_section}_{idx}",
                         label_visibility="collapsed",
                     )
                     entry["bars"] = int(new_bars)
                 with e3:
-                    if st.button("Remove", key=f"cpl_rm_{ns}_{edit_section}_{idx}"):
+                    if st.button("Remove", key=f"cpl_rm_{home_ns}_{edit_section}_{idx}"):
                         home_entries.pop(idx)
                         _save()
                         st.rerun()
@@ -369,7 +409,7 @@ def render_custom_progression_lab_page() -> None:
             st.session_state.pop("cpl_finished", None)
             invalidate_cpl_derived_outputs(st.session_state)
             st.rerun()
-        if saved_names := sorted(saved.keys()):
+        if saved_names := list_saved_progression_names(saved):
             del_pick = st.selectbox("Delete saved", ["—"] + saved_names, key="cpl_del_pick")
             if st.button("Delete saved progression", disabled=del_pick == "—"):
                 delete_progression(saved, del_pick)
