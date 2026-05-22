@@ -642,6 +642,8 @@ CHORD_QUICK_EDIT_KEYS: list[str] = ["7", "maj7", "m7", "sus4", "dim", "add9"]
 
 CPL_BUILDER_VERSION = 5
 
+CPL_TIME_SIGNATURES: list[str] = ["4/4", "3/4", "6/8", "2/4"]
+
 CPL_PROGRESSION_STYLES: list[str] = [
     "Pop",
     "Soul/R&B",
@@ -722,7 +724,10 @@ def song_structure_overview_html(
         blocks.append(f'<p class="cpl-song-title">{_html.escape(prog_name)}</p>')
     for name in names:
         entries = display_entries_for_section(active, display_key, name)
-        tiles = entries_chord_tiles_html(entries)
+        tiles = entries_chord_tiles_html(
+            entries,
+            time_signature=active.get("time_signature", "4/4"),
+        )
         if not tiles:
             continue
         active_cls = " cpl-section-active" if name == highlight_section else ""
@@ -799,6 +804,9 @@ def clear_cpl_widget_state(session_state: dict) -> None:
             session_state.pop(key, None)
     for key in ("_cpl_editing_display_key", "cpl_finished", "_cpl_last_bar_apply"):
         session_state.pop(key, None)
+    for key in list(session_state.keys()):
+        if key.startswith("cpl_pending_chord_") or key.startswith("cpl_last_bars_"):
+            session_state.pop(key, None)
 
 
 def apply_cpl_session_progression(session_state: dict, active: dict) -> None:
@@ -1739,8 +1747,19 @@ def suggest_next_chords(
     return out[:limit]
 
 
-def entries_chord_tiles_html(entries: list[dict] | None, *, max_tiles: int = 48) -> str:
-    """Backing-track-style chord cells — one box per bar."""
+def chords_per_measure(time_signature: str) -> int:
+    """How many chord slots fit in one notated measure row."""
+    ts = str(time_signature or "4/4").strip()
+    return {"3/4": 3, "2/4": 2, "6/8": 3}.get(ts, 4)
+
+
+def entries_chord_tiles_html(
+    entries: list[dict] | None,
+    *,
+    time_signature: str = "4/4",
+    max_tiles: int = 48,
+) -> str:
+    """Chord cells grouped by time signature (measure rows with | dividers)."""
     if not entries:
         return ""
     cells: list[str] = []
@@ -1761,7 +1780,18 @@ def entries_chord_tiles_html(entries: list[dict] | None, *, max_tiles: int = 48)
             break
     if not cells:
         return ""
-    return f'<div class="lead-grid cpl-lead-grid">{"".join(cells)}</div>'
+    per_measure = max(1, chords_per_measure(time_signature))
+    rows: list[str] = []
+    for i in range(0, len(cells), per_measure):
+        chunk = cells[i : i + per_measure]
+        rows.append(
+            '<div class="cpl-measure-row">'
+            '<span class="cpl-measure-bar">|</span>'
+            + "".join(chunk)
+            + '<span class="cpl-measure-bar">|</span>'
+            "</div>"
+        )
+    return f'<div class="cpl-measures">{"".join(rows)}</div>'
 
 
 def chord_tiles_html(chords: list[str], *, max_tiles: int = 16) -> str:

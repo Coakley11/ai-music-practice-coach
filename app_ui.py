@@ -1234,6 +1234,40 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   gap: 10px 12px;
   margin: 0.35rem 0 0.15rem 0;
 }
+.cpl-measures {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0.15rem 0;
+}
+.cpl-measure-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0;
+}
+.cpl-measure-bar {
+  font-size: 1.35rem;
+  font-weight: 300;
+  color: #94a3b8;
+  line-height: 1;
+  user-select: none;
+}
+.cpl-live-progression {
+  min-height: 3.5rem;
+  padding: 0.65rem 0.75rem;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  margin: 0.5rem 0 0.85rem 0;
+}
+.cpl-pending-hint {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #2563eb;
+  margin: 0 0 0.65rem 0;
+}
 .cpl-chord-cell,
 .chord-cell.cpl-chord-cell {
   min-height: 64px;

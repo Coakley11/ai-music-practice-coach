@@ -3,28 +3,12 @@
 from __future__ import annotations
 
 
-def _bars_prev_key(section: str) -> str:
-    return f"_cpl_prev_bars_{section}"
+def _pending_chord_key(section: str) -> str:
+    return f"cpl_pending_chord_{section}"
 
 
-def _apply_bar_count_change(
-    st,
-    *,
-    section: str,
-    home_entries: list,
-    add_bars: int,
-    on_change,
-) -> None:
-    """When bar buttons change, update the last chord in this section immediately."""
-    prev_key = _bars_prev_key(section)
-    bars = int(add_bars)
-    prev = st.session_state.get(prev_key)
-    if home_entries and prev is not None and int(prev) != bars:
-        home_entries[-1]["bars"] = bars
-        on_change()
-        st.session_state[prev_key] = bars
-        st.rerun()
-    st.session_state[prev_key] = bars
+def _last_bars_key(section: str) -> str:
+    return f"cpl_last_bars_{section}"
 
 
 def render_custom_progression_lab_page() -> None:
@@ -38,6 +22,7 @@ def render_custom_progression_lab_page() -> None:
         CPL_BUILDER_VERSION,
         CPL_PROGRESSION_STYLES,
         CPL_SAVED_KEY,
+        CPL_TIME_SIGNATURES,
         CPL_UI_SECTION_ORDER,
         apply_cpl_session_progression,
         apply_quick_chord_edit,
@@ -107,15 +92,19 @@ def render_custom_progression_lab_page() -> None:
     if st.session_state.get("cpl_edit_section") not in CPL_UI_SECTION_ORDER:
         st.session_state["cpl_edit_section"] = "Verse"
 
-    def _save() -> None:
+    def _save(sections: dict | None = None) -> None:
         nonlocal active
-        home = ensure_all_cpl_sections(active.get("original_sections"))
+        home = (
+            sections
+            if sections is not None
+            else ensure_all_cpl_sections(active.get("original_sections"))
+        )
         active = commit_home_sections(active, home)
         active["user_locked_home_key"] = True
         st.session_state[CPL_ACTIVE_KEY] = active
 
     def _open_backing() -> None:
-        _save()
+        _save(_home_sections())
         set_custom_source(st.session_state)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         prepare_cpl_backing_handoff(st.session_state, active, section=None)
@@ -138,6 +127,19 @@ def render_custom_progression_lab_page() -> None:
         if active.get("name") != title:
             active["name"] = title
             prog_title = title
+            _save()
+
+        cur_ts = str(active.get("time_signature") or "4/4")
+        ts_ix = CPL_TIME_SIGNATURES.index(cur_ts) if cur_ts in CPL_TIME_SIGNATURES else 0
+        picked_ts = st.radio(
+            "Time signature",
+            CPL_TIME_SIGNATURES,
+            index=ts_ix,
+            horizontal=True,
+            key="cpl_time_signature",
+        )
+        if picked_ts != cur_ts:
+            active["time_signature"] = picked_ts
             _save()
 
         st.markdown(
@@ -260,22 +262,26 @@ def render_custom_progression_lab_page() -> None:
         index=style_ix,
         key="cpl_style",
     )
-    if active.get("progression_style") != style:
-        active["progression_style"] = style
-        _save()
-
     edit_section = st.selectbox("Section", CPL_UI_SECTION_ORDER, key="cpl_edit_section")
     home_sections = _home_sections()
+
+    if active.get("progression_style") != style:
+        active["progression_style"] = style
+        _save(home_sections)
     home_entries = home_sections[edit_section]
     simple = simple_chords_for_key(original_key)
     style_presets = presets_for_style(style)
-    section_has_chords = not section_is_empty(home_entries)
+    time_sig = str(active.get("time_signature") or "4/4")
+    pending_key = _pending_chord_key(edit_section)
+    last_bars_key = _last_bars_key(edit_section)
+    st.session_state.setdefault(last_bars_key, 1)
+    pending_chord = st.session_state.get(pending_key)
 
     st.markdown(
         cpl_steps_strip_html(
             style=bool(style),
             key_set=True,
-            has_section_chords=section_has_chords,
+            has_section_chords=not progression_is_empty(home_sections),
             finished=False,
         ),
         unsafe_allow_html=True,
@@ -296,56 +302,91 @@ def render_custom_progression_lab_page() -> None:
             unsafe_allow_html=True,
         )
 
-    st.markdown("**Bars**")
-    add_bars = st.radio(
-        "Bars",
-        [1, 2, 4],
-        format_func=lambda n: "1 bar" if n == 1 else f"{n} bars",
-        horizontal=True,
-        key=f"cpl_add_bars_{edit_section}",
-        label_visibility="collapsed",
-    )
-    _apply_bar_count_change(
-        st,
-        section=edit_section,
-        home_entries=home_entries,
-        add_bars=add_bars,
-        on_change=_save,
-    )
-
+    active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
     section_display = display_entries_for_section(active, display_key, edit_section)
-    if section_has_chords:
-        st.markdown(entries_chord_tiles_html(section_display), unsafe_allow_html=True)
+    section_has_chords = not section_is_empty(home_entries)
 
-    st.markdown("**Click a chord to add it**")
+    st.markdown("**Progression in this section**")
+    st.markdown('<div class="cpl-live-progression">', unsafe_allow_html=True)
+    if section_has_chords:
+        st.markdown(
+            entries_chord_tiles_html(section_display, time_signature=time_sig),
+            unsafe_allow_html=True,
+        )
+    if pending_chord:
+        st.markdown(
+            f'<p class="cpl-pending-hint">Selected: <strong>{html.escape(pending_chord)}</strong> '
+            f"— click 1, 2, or 4 bars below to add it</p>",
+            unsafe_allow_html=True,
+        )
+    elif not section_has_chords:
+        st.caption("Click a chord, then choose how many bars.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("**1. Click a chord**")
     cols = st.columns(min(6, max(1, len(simple))))
     for i, ch in enumerate(simple):
         with cols[i % len(cols)]:
-            if st.button(ch, key=f"cpl_add_{home_ns}_{edit_section}_{ch}", use_container_width=True):
-                home_entries.append({"chord": ch, "bars": int(add_bars)})
-                st.session_state[_bars_prev_key(edit_section)] = int(add_bars)
-                _save()
+            if st.button(ch, key=f"cpl_pick_{home_ns}_{edit_section}_{ch}", use_container_width=True):
+                st.session_state[pending_key] = ch
                 st.rerun()
 
+    st.markdown("**2. Choose bars** (adds selected chord, or changes the last chord)")
+    b1, b2, b4 = st.columns(3)
+
+    def _apply_bars(bars: int) -> None:
+        nonlocal active, pending_chord
+        bars = int(bars)
+        st.session_state[last_bars_key] = bars
+        pending = st.session_state.get(pending_key)
+        if pending:
+            home_entries.append({"chord": pending, "bars": bars})
+            st.session_state.pop(pending_key, None)
+            pending_chord = None
+        elif home_entries:
+            home_entries[-1]["bars"] = bars
+        else:
+            return
+        _save(home_sections)
+        active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
+        st.rerun()
+
+    with b1:
+        if st.button("1 bar", key=f"cpl_b1_{edit_section}", use_container_width=True):
+            _apply_bars(1)
+    with b2:
+        if st.button("2 bars", key=f"cpl_b2_{edit_section}", use_container_width=True):
+            _apply_bars(2)
+    with b4:
+        if st.button("4 bars", key=f"cpl_b4_{edit_section}", use_container_width=True):
+            _apply_bars(4)
+
     st.markdown("**Type any chord**")
-    tc1, tc2 = st.columns([4, 1])
+    tc1, tc2, tc3 = st.columns([3, 1, 1])
     with tc1:
         custom_ch = st.text_input(
             "Type any chord",
-            placeholder="Bb, B7, Eb, F#dim, G7, Cmaj7…",
+            placeholder="Bb, B7, Eb, F#dim…",
             key=f"cpl_custom_{edit_section}",
             label_visibility="collapsed",
         )
     with tc2:
-        if st.button("Add", key=f"cpl_custom_add_{edit_section}", use_container_width=True):
+        if st.button("Select", key=f"cpl_custom_sel_{edit_section}", use_container_width=True):
             ch = normalize_chord_symbol(custom_ch)
             if ch:
-                home_entries.append({"chord": ch, "bars": int(add_bars)})
-                st.session_state[_bars_prev_key(edit_section)] = int(add_bars)
-                _save()
+                st.session_state[pending_key] = ch
                 st.rerun()
-            else:
-                st.warning("Enter a chord symbol, e.g. B7 or F#dim.")
+    with tc3:
+        if st.button("Add now", key=f"cpl_custom_add_{edit_section}", use_container_width=True):
+            ch = normalize_chord_symbol(custom_ch)
+            if ch:
+                home_entries.append({
+                    "chord": ch,
+                    "bars": int(st.session_state.get(last_bars_key, 1)),
+                })
+                st.session_state.pop(pending_key, None)
+                _save(home_sections)
+                st.rerun()
 
     with st.expander("Chord extensions — optional", expanded=False):
         st.caption("Pick a chord, then tap an extension (e.g. G + 7 → G7).")
@@ -361,9 +402,7 @@ def render_custom_progression_lab_page() -> None:
             with ext_cols[i]:
                 if st.button(ek, key=f"cpl_ext_{home_ns}_{edit_section}_{ek}"):
                     staged = apply_quick_chord_edit(st.session_state["cpl_ext_root"], ek)
-                    home_entries.append({"chord": staged, "bars": int(add_bars)})
-                    st.session_state[_bars_prev_key(edit_section)] = int(add_bars)
-                    _save()
+                    st.session_state[pending_key] = staged
                     st.rerun()
 
     if style_presets:
@@ -379,11 +418,12 @@ def render_custom_progression_lab_page() -> None:
                 home_sections[edit_section] = build_style_preset_entries(
                     style, preset_id, original_key
                 )
+                st.session_state.pop(pending_key, None)
                 if home_sections[edit_section]:
-                    st.session_state[_bars_prev_key(edit_section)] = int(
+                    st.session_state[last_bars_key] = int(
                         home_sections[edit_section][-1].get("bars", 1) or 1
                     )
-                _save()
+                _save(home_sections)
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -394,7 +434,10 @@ def render_custom_progression_lab_page() -> None:
                 e1, e2, e3 = st.columns([2, 2, 1])
                 with e1:
                     st.markdown(
-                        entries_chord_tiles_html([section_display[idx]]),
+                        entries_chord_tiles_html(
+                            [section_display[idx]],
+                            time_signature=time_sig,
+                        ),
                         unsafe_allow_html=True,
                     )
                 with e2:
@@ -409,12 +452,12 @@ def render_custom_progression_lab_page() -> None:
                     )
                     if int(new_bars) != cur_bars:
                         entry["bars"] = int(new_bars)
-                        _save()
+                        _save(home_sections)
                         st.rerun()
                 with e3:
                     if st.button("Remove", key=f"cpl_rm_{home_ns}_{edit_section}_{idx}"):
                         home_entries.pop(idx)
-                        _save()
+                        _save(home_sections)
                         st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
@@ -429,21 +472,19 @@ def render_custom_progression_lab_page() -> None:
             disabled=not home_entries,
         ):
             home_entries.pop()
-            if home_entries:
-                st.session_state[_bars_prev_key(edit_section)] = int(
-                    home_entries[-1].get("bars", 1) or 1
-                )
-            _save()
+            st.session_state.pop(pending_key, None)
+            _save(home_sections)
             st.rerun()
     with u2:
         if st.button(
             "Clear section",
             key=f"cpl_clear_{edit_section}",
             use_container_width=True,
-            disabled=not section_has_chords,
+            disabled=not section_has_chords and not pending_chord,
         ):
             home_sections[edit_section] = []
-            _save()
+            st.session_state.pop(pending_key, None)
+            _save(home_sections)
             st.rerun()
     with u3:
         if st.button(
@@ -454,7 +495,7 @@ def render_custom_progression_lab_page() -> None:
             disabled=not filled_section_names(home_sections),
         ):
             st.session_state["cpl_finished"] = True
-            _save()
+            _save(home_sections)
             st.rerun()
 
     active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
@@ -475,4 +516,4 @@ def render_custom_progression_lab_page() -> None:
                 delete_progression(saved, del_pick)
                 st.rerun()
 
-    _save()
+    _save(home_sections)
