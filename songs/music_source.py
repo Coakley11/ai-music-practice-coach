@@ -95,16 +95,16 @@ def build_active_chart_bundle(
     if is_custom_progression(session_state):
         from custom_progression_lab import (
             default_active_progression,
+            ensure_all_cpl_sections,
             ensure_original_structure,
             sections_to_chord_lists,
-            sync_written_home_key,
             written_home_key,
         )
 
         active = ensure_original_structure(
             session_state.get(cpl_active_key) or default_active_progression()
         )
-        active = sync_written_home_key(active)
+        active["original_sections"] = ensure_all_cpl_sections(active.get("original_sections"))
         session_state[cpl_active_key] = active
         home_key = written_home_key(active)
         home_sections = active.get("original_sections") or {}

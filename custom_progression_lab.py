@@ -549,6 +549,50 @@ def format_chord_bar_line(sections, max_chords: int = 12) -> str:
     return "| " + " | ".join(chords) + " |"
 
 
+def format_entries_friendly_line(entries: list[dict] | None) -> str:
+    """Human-readable section line, e.g. G — 2 bars · C · Am."""
+    if not entries:
+        return ""
+    parts: list[str] = []
+    for entry in entries:
+        ch = normalize_chord_symbol(entry.get("chord", ""))
+        if not ch:
+            continue
+        bars = max(1, int(entry.get("bars", 1) or 1))
+        if bars == 1:
+            parts.append(ch)
+        else:
+            parts.append(f"{ch} — {bars} bars")
+    return " · ".join(parts)
+
+
+def clear_all_cpl_sections(home_sections: dict[str, list]) -> None:
+    for name in CPL_EDITABLE_SECTIONS:
+        home_sections[name] = []
+
+
+def prepare_cpl_backing_handoff(
+    session_state: dict,
+    active: dict,
+    *,
+    section: str | None = None,
+) -> None:
+    """Sync CPL tempo/groove into Backing Track session keys and queue scope."""
+    from songs.key_state import BACKING_NEEDS_REGEN
+
+    session_state["backing_track_bpm"] = int(active.get("bpm", 100) or 100)
+    session_state["backing_track_loops"] = int(active.get("loops", 2) or 2)
+    session_state["backing_groove_style"] = str(active.get("groove_style", "Auto") or "Auto")
+    session_state[BACKING_NEEDS_REGEN] = True
+    if section:
+        session_state[PENDING_BACKING_SCOPE] = "Single section"
+        session_state[PENDING_BACKING_SINGLE_SECTION] = section
+    else:
+        session_state[PENDING_BACKING_SCOPE] = "Full song"
+        session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
+    session_state[BACKING_AUTOPLAY] = True
+
+
 def format_entries_bar_line(entries: list[dict] | None, *, max_chords: int = 24) -> str:
     """Bar line for one section's chord entries."""
     if not entries:
@@ -576,7 +620,24 @@ DEFAULT_SONG_ARRANGEMENT: list[str] = [
     "Outro",
 ]
 
-CHORD_QUICK_EDIT_KEYS: list[str] = ["7", "maj7", "m7", "m9", "9", "sus4", "6", "dim7"]
+CHORD_QUICK_EDIT_KEYS: list[str] = ["7", "maj7", "m7", "sus4", "dim", "aug", "9", "add9"]
+
+CPL_BUILDER_VERSION = 4
+
+CPL_UI_SECTION_ORDER: list[str] = [
+    "Verse",
+    "Chorus",
+    "Bridge",
+    "Intro",
+    "Pre-Chorus",
+    "Solo",
+    "Outro",
+]
+
+PENDING_BACKING_SCOPE = "_pending_backing_scope"
+PENDING_BACKING_SINGLE_SECTION = "_pending_backing_single_section"
+PENDING_BACKING_LOOPS = "_pending_backing_loops"
+BACKING_AUTOPLAY = "_backing_autoplay"
 
 
 def sections_with_chords(active: dict, display_key: str) -> list[str]:
@@ -616,14 +677,21 @@ def song_structure_overview_html(
         '<div class="cpl-song-map">',
         f'<p class="cpl-song-flow"><strong>Song structure</strong><br>{_html.escape(flow)}</p>',
     ]
+    home_sections = active.get("original_sections") or {}
     for name in CPL_EDITABLE_SECTIONS:
-        entries = display_entries_for_section(active, display_key, name)
-        bar = format_entries_bar_line(entries)
+        home_entries = home_sections.get(name, [])
+        if section_is_empty(home_entries):
+            line = "Empty — click a chord or preset to start."
+        else:
+            entries = display_entries_for_section(active, display_key, name)
+            friendly = format_entries_friendly_line(entries)
+            bar = format_entries_bar_line(entries)
+            line = f"{friendly}  ({bar})" if friendly else format_entries_bar_line(entries)
         active_cls = " cpl-section-active" if name == highlight_section else ""
         blocks.append(
             f'<div class="cpl-section-block{active_cls}">'
             f'<div class="cpl-section-label">{_html.escape(name)}</div>'
-            f'<div class="cpl-section-bars">{_html.escape(bar)}</div>'
+            f'<div class="cpl-section-bars">{_html.escape(line)}</div>'
             "</div>"
         )
     blocks.append("</div>")
