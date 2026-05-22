@@ -865,6 +865,197 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   margin-top: 0.5rem;
   color: #475569;
 }
+/* Guitar TAB lesson layout */
+.notation-output.notation-tab .tab-lesson {
+  font-family: "Consolas", "Courier New", "Liberation Mono", monospace;
+  font-size: 1.05rem;
+  line-height: 1.45;
+  color: #0f172a;
+}
+.tab-legend {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.78rem;
+}
+.tab-legend-title {
+  display: block;
+  font-weight: 800;
+  font-size: 0.82rem;
+  margin-bottom: 0.25rem;
+  color: #1e3a8a;
+}
+.tab-legend-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  columns: 2;
+  column-gap: 1.25rem;
+}
+.tab-legend-list li { margin: 0.12rem 0; }
+.tab-section-badge {
+  display: inline-block;
+  font-weight: 800;
+  font-size: 0.88rem;
+  color: #1e40af;
+  background: #dbeafe;
+  border-radius: 6px;
+  padding: 0.15rem 0.55rem;
+  margin-bottom: 0.35rem;
+}
+.tab-progression {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+  font-size: 0.92rem;
+}
+.tab-prog-chord {
+  font-weight: 800;
+  padding: 0.2rem 0.55rem;
+  border: 2px solid #1e40af;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+.tab-cues {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 0.82rem;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  padding: 0.45rem 0.7rem;
+  margin-bottom: 0.75rem;
+}
+.tab-cues ul { margin: 0.25rem 0 0 1rem; padding: 0; }
+.tab-cues li { margin: 0.15rem 0; }
+.tab-scroll-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.35rem;
+  margin: 0 -0.25rem;
+}
+.tab-measures-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 1.25rem;
+  min-width: min-content;
+  padding: 0.25rem 0.15rem 0.5rem 0.15rem;
+}
+.tab-measure {
+  flex: 0 0 auto;
+  min-width: 11.5rem;
+  padding: 0.65rem 0.75rem 0.55rem 0.75rem;
+  border: 2px solid #334155;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+.tab-measure-transition {
+  border-color: #ea580c;
+  background: linear-gradient(180deg, #fff7ed 0%, #ffffff 40%);
+  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.15);
+}
+.tab-measure-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+.tab-chord-name {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #0f172a;
+  letter-spacing: 0.02em;
+}
+.tab-bar-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+}
+.tab-transition-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #c2410c;
+  background: #ffedd5;
+  border-radius: 6px;
+  padding: 0.1rem 0.4rem;
+}
+.tab-count-row,
+.tab-strum-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.15rem;
+  margin-left: 1.35rem;
+  margin-bottom: 0.12rem;
+  font-size: 0.78rem;
+}
+.tab-strum-row { margin-bottom: 0.35rem; color: #475569; }
+.tab-count-cell,
+.tab-strum-cell {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 1.65rem;
+  font-weight: 700;
+}
+.tab-strum-accent { color: #1d4ed8; font-size: 1rem; }
+.tab-string-line {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  margin: 0.06rem 0;
+}
+.tab-str-label {
+  display: inline-block;
+  width: 1.1rem;
+  font-weight: 800;
+  color: #64748b;
+  flex-shrink: 0;
+}
+.tab-str-track {
+  display: inline-flex;
+  gap: 0.1rem;
+  letter-spacing: 0.02em;
+}
+.tab-str-low .tab-str-label { color: #0f172a; font-weight: 900; }
+.tab-beat {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 1.65rem;
+  height: 1.55rem;
+  border-bottom: 2px solid #cbd5e1;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+.tab-beat-fret {
+  color: #0f172a;
+  font-weight: 900;
+  font-size: 1.05rem;
+  border-bottom-color: #1e40af;
+}
+.tab-beat-hi .tab-beat-fret,
+.tab-beat-hi {
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 4px;
+  border-bottom-color: #f59e0b;
+}
+.tab-beat-muted { color: #cbd5e1; }
+@media (max-width: 768px) {
+  .notation-output.notation-tab .tab-lesson { font-size: 1.15rem; }
+  .tab-measure { min-width: 13rem; padding: 0.75rem 0.85rem; }
+  .tab-measures-row { gap: 1.5rem; }
+  .tab-chord-name { font-size: 1.5rem; }
+  .tab-beat { min-width: 1.85rem; height: 1.75rem; font-size: 0.95rem; }
+  .tab-beat-fret { font-size: 1.15rem; }
+  .tab-count-cell, .tab-strum-cell { min-width: 1.85rem; }
+  .tab-legend-list { columns: 1; }
+}
 /* Practice setup pills */
 .practice-setup-card {
   background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);

@@ -5121,7 +5121,6 @@ def _render_practice_setup_panel(
         INSTRUMENT_ICONS,
         LEVEL_ICONS,
         icon_for_focus,
-        option_label,
         setup_pill_html,
     )
 
@@ -5141,35 +5140,22 @@ def _render_practice_setup_panel(
         "Ballad",
     ]
 
-    def _fmt_inst(name: str) -> str:
-        return option_label(name, INSTRUMENT_ICONS.get(name, "🎵"))
-
-    def _fmt_lvl(name: str) -> str:
-        return option_label(name, LEVEL_ICONS.get(name, "🌱"))
-
-    def _fmt_groove(name: str) -> str:
-        return option_label(name, GROOVE_ICONS.get(name, "✨"))
-
     p1, p2, p3, p4 = st.columns(4)
     with p1:
-        st.selectbox("Instrument", instrument_options, format_func=_fmt_inst, key="instrument")
+        st.selectbox("Instrument", instrument_options, key="instrument")
         st.markdown(
             setup_pill_html(st.session_state["instrument"], INSTRUMENT_ICONS.get(st.session_state["instrument"], "🎵")),
             unsafe_allow_html=True,
         )
     with p2:
-        st.selectbox("Level", levels, format_func=_fmt_lvl, key="level")
+        st.selectbox("Level", levels, key="level")
         st.markdown(
             setup_pill_html(st.session_state["level"], LEVEL_ICONS.get(st.session_state["level"], "🌱")),
             unsafe_allow_html=True,
         )
     with p3:
         focus_options = _sync_focus_options_before_widget(st.session_state.get("instrument", "Piano"))
-
-        def _fmt_focus(name: str) -> str:
-            return option_label(name, icon_for_focus(name))
-
-        st.selectbox("Practice focus", focus_options, format_func=_fmt_focus, key="focus")
+        st.selectbox("Practice focus", focus_options, key="focus")
         st.markdown(
             setup_pill_html(st.session_state["focus"], icon_for_focus(st.session_state["focus"])),
             unsafe_allow_html=True,
@@ -5191,7 +5177,6 @@ def _render_practice_setup_panel(
         st.selectbox(
             "Rhythm / groove feel",
             grooves,
-            format_func=_fmt_groove,
             key="practice_groove_style",
         )
         st.markdown(
