@@ -1,9 +1,4 @@
-"""Custom Progression page — simplified step-by-step UI.
-
-Do NOT import streamlit_music_practice_app here (Streamlit runs that file as __main__;
-re-importing it duplicates sidebar widgets and causes StreamlitDuplicateElementKey).
-Use progression_helpers, backing_audio, and coach_overlay instead.
-"""
+"""Custom Progression page — key from sidebar, clear build flow."""
 
 from __future__ import annotations
 
@@ -22,24 +17,21 @@ def render_custom_progression_lab_page() -> None:
         commit_home_sections,
         deep_copy_sections,
         display_sections_for_key,
+        ensure_cpl_editing_in_display_key,
         ensure_original_structure,
         flatten_sections_to_events,
         format_chord_bar_line,
+        format_key_label,
         invalidate_cpl_derived_outputs,
-        on_cpl_apply_manual_home_key,
-        on_cpl_anchor_home_key,
         parse_chord_line,
         save_progression,
         sections_to_chord_lists,
-        CPL_KEY_OPTIONS,
         diatonic_chords_for_key,
-        suggest_next_chords,
         sync_written_home_key,
         written_home_key,
         harmonic_analysis_markdown,
         lab_context_for_coaching,
     )
-    from music_theory import display_key_options
     from progression_helpers import (
         default_active_progression,
         generate_backing_track,
@@ -72,19 +64,19 @@ def render_custom_progression_lab_page() -> None:
     if CPL_SAVED_KEY not in st.session_state:
         st.session_state[CPL_SAVED_KEY] = {}
 
+    display_key = session_display_key(st.session_state)
     active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
+    active = ensure_cpl_editing_in_display_key(st, active, display_key)
     active = sync_written_home_key(active)
     st.session_state[CPL_ACTIVE_KEY] = active
     saved = st.session_state[CPL_SAVED_KEY]
 
+    home_key = written_home_key(active)
+    key_label = format_key_label(display_key)
+    cpl_widget_ns = display_key.replace("#", "s").replace("b", "f")
+
     home_sections = deep_copy_sections(active.get("original_sections") or {})
-    cpl_home_key = written_home_key(active)
-    cpl_practice_key = session_display_key(st.session_state)
-    cpl_widget_ns = cpl_home_key.replace("#", "s").replace("b", "f")
-    display_sections = deep_copy_sections(display_sections_for_key(active, cpl_practice_key))
-    flat_chords = []
-    for _n, chs in sections_to_chord_lists(display_sections).items():
-        flat_chords.extend(chs)
+    display_sections = deep_copy_sections(display_sections_for_key(active, display_key))
 
     active["name"] = st.text_input(
         "Progression name",
@@ -92,164 +84,88 @@ def render_custom_progression_lab_page() -> None:
         key="cpl_title",
     )
 
-    # --- Step 1: Style ---
     st.markdown(
-        '<div class="cpl-step-card"><span class="cpl-step-num">1</span>'
-        '<span class="cpl-step-title">Choose style</span></div>',
-        unsafe_allow_html=True,
-    )
-    style_cols = st.columns(9)
-    for i, style_name in enumerate(CPL_STYLE_CHOICES):
-        with style_cols[i % 9]:
-            if st.button(style_name, key=f"cpl_style_{style_name}", use_container_width=True):
-                st.session_state["cpl_style_pick"] = style_name
-                preset = apply_style_preset(style_name, cpl_home_key)
-                if preset:
-                    active["groove_style"] = preset["groove_style"]
-                    home_sections = deep_copy_sections(preset["sections"])
-                    active = commit_home_sections(active, home_sections)
-                    st.session_state[CPL_ACTIVE_KEY] = active
-                st.rerun()
-    st.caption(f"Style: **{st.session_state.get('cpl_style_pick', 'Custom')}**")
-
-    # --- Step 2: Key ---
-    st.markdown(
-        '<div class="cpl-step-card"><span class="cpl-step-num">2</span>'
-        '<span class="cpl-step-title">Choose key</span></div>',
+        """
+<div class="cpl-flow-hint">
+<strong>How to use this page</strong><br>
+1. Set your key in the <strong>left sidebar</strong> (Practice / Display Key).<br>
+2. Click suggested chords to add them.<br>
+3. Edit your progression below.<br>
+4. Generate backing and practice.
+</div>
+""",
         unsafe_allow_html=True,
     )
 
-    def _cpl_key_changed() -> None:
-        pick = st.session_state.get("cpl_key")
-        if pick:
-            st.session_state["cpl_manual_home_key_picker"] = pick
-            on_cpl_apply_manual_home_key()
-
-    _key_default = cpl_home_key if cpl_home_key in CPL_KEY_OPTIONS else "C"
-    _key_index = CPL_KEY_OPTIONS.index(_key_default)
-    st.selectbox(
-        "Choose key",
-        CPL_KEY_OPTIONS,
-        index=_key_index,
-        key="cpl_key",
-        on_change=_cpl_key_changed,
+    st.markdown(f"### Current key: **{key_label}**")
+    st.info(
+        "To change the key of the whole progression, use the **Practice / Display Key** "
+        "selector on the **left** sidebar. Chord suggestions update automatically."
     )
-    active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
-    active = sync_written_home_key(active)
-    st.session_state[CPL_ACTIVE_KEY] = active
-    cpl_home_key = written_home_key(active)
-    cpl_widget_ns = cpl_home_key.replace("#", "s").replace("b", "f")
-    home_sections = deep_copy_sections(active.get("original_sections") or {})
 
-    _key_chords = diatonic_chords_for_key(cpl_home_key)
-    st.caption(f"Chords in **{cpl_home_key}** — click to add to your progression")
-    if _key_chords:
-        _kc_cols = st.columns(min(len(_key_chords), 4))
-        for i, ch in enumerate(_key_chords):
-            with _kc_cols[i % len(_kc_cols)]:
-                if st.button(ch, key=f"cpl_key_chord_{cpl_widget_ns}_{ch}", use_container_width=True):
-                    _sec = st.session_state.get("cpl_edit_section", "Verse")
-                    if _sec not in home_sections:
-                        home_sections[_sec] = []
-                    home_sections[_sec].append({"chord": ch, "bars": 1})
+    suggested = diatonic_chords_for_key(display_key)
+    st.markdown(f"#### Suggested chords in {key_label}")
+    st.caption("Click a chord to add it to your progression")
+    if suggested:
+        ncols = min(len(suggested), 4)
+        sug_cols = st.columns(ncols)
+        for i, ch in enumerate(suggested):
+            with sug_cols[i % ncols]:
+                if st.button(ch, key=f"cpl_sug_{cpl_widget_ns}_{ch}", use_container_width=True):
+                    sec = st.session_state.get("cpl_edit_section", "Verse")
+                    if sec not in home_sections:
+                        home_sections[sec] = []
+                    home_sections[sec].append({"chord": ch, "bars": 1})
                     active = commit_home_sections(active, home_sections)
                     st.session_state[CPL_ACTIVE_KEY] = active
                     st.rerun()
     else:
-        st.caption("Pick a key to see chord suggestions.")
+        st.caption("Set a key in the sidebar to see chord suggestions.")
 
-    st.caption(f"Written key **{cpl_home_key}** · Practice key **{cpl_practice_key}** (sidebar)")
-
-    display_sections = deep_copy_sections(display_sections_for_key(active, cpl_practice_key))
+    st.markdown("#### Your progression")
+    prog_line = format_chord_bar_line(display_sections)
+    st.markdown(f'<p class="cpl-progression-line">{prog_line}</p>', unsafe_allow_html=True)
     flat_chords = []
     for _n, chs in sections_to_chord_lists(display_sections).items():
         flat_chords.extend(chs)
+    if flat_chords:
+        st.markdown(chord_tiles_html(flat_chords), unsafe_allow_html=True)
+    else:
+        st.caption("No chords yet — click suggestions above to start.")
 
-    # --- Step 3: Build progression ---
-    st.markdown(
-        '<div class="cpl-step-card"><span class="cpl-step-num">3</span>'
-        '<span class="cpl-step-title">Build progression</span></div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("**Progression**")
-    st.markdown(chord_tiles_html(flat_chords), unsafe_allow_html=True)
-
-    st.caption("Quick presets")
-    preset_cols = st.columns(3)
-    preset_names = list(
-        {
-            "ii–V–I": None,
-            "I–V–vi–IV": None,
-            "Jazz turnaround": None,
-            "Bossa cadence": None,
-            "Blues (8 bars)": None,
-            "Neo soul": None,
-        }.keys()
-    )
-    for i, pname in enumerate(preset_names):
-        with preset_cols[i % 3]:
-            if st.button(pname, key=f"cpl_preset_{pname}", use_container_width=True):
-                entries = build_preset_entries(pname, cpl_home_key)
-                sec = st.session_state.get("cpl_edit_section", "Verse")
-                if sec not in home_sections:
-                    home_sections[sec] = []
-                home_sections[sec] = entries
-                active = commit_home_sections(active, home_sections)
-                st.session_state[CPL_ACTIVE_KEY] = active
-                st.rerun()
+    st.markdown("#### Edit progression")
+    st.caption("Add chords from suggestions above, then remove, reorder, or change duration here.")
 
     sec_names = list(home_sections.keys()) or ["Verse"]
-    edit_section = st.selectbox("Edit section", sec_names, key=f"cpl_edit_section_{cpl_widget_ns}")
+    edit_section = st.selectbox(
+        "Section to edit",
+        sec_names,
+        key=f"cpl_edit_section_{cpl_widget_ns}",
+    )
     entries = home_sections.setdefault(edit_section, [])
 
-    tool_a, tool_b, tool_c, tool_d = st.columns(4)
-    with tool_a:
-        if st.button("➕ Add chord", key="cpl_add_chord", use_container_width=True):
-            entries.append({"chord": cpl_home_key, "bars": 1})
-            active = commit_home_sections(active, home_sections)
-            st.session_state[CPL_ACTIVE_KEY] = active
-            st.rerun()
-    with tool_b:
-        bulk = st.text_input(
-            "Paste chords",
-            placeholder="Dm7 | G7 | Cmaj7",
-            key="cpl_progression_editor",
-            label_visibility="collapsed",
-        )
-    with tool_c:
-        if st.button("Add from text", key="cpl_bulk_add", use_container_width=True):
-            for item in parse_chord_line(bulk):
-                entries.append(item)
-            active = commit_home_sections(active, home_sections)
-            st.session_state[CPL_ACTIVE_KEY] = active
-            st.rerun()
-    with tool_d:
-        if st.button("🔁 Variation", key="cpl_variation", use_container_width=True):
-            if entries:
-                entries.append(dict(entries[-1]))
-            active = commit_home_sections(active, home_sections)
-            st.session_state[CPL_ACTIVE_KEY] = active
-            st.rerun()
-
-    suggestions = suggest_next_chords(home_sections, cpl_home_key, limit=4)
-    st.markdown("**Next chord ideas**")
-    sug_cols = st.columns(len(suggestions))
-    for i, sug in enumerate(suggestions):
-        with sug_cols[i]:
-            if st.button(sug, key=f"cpl_sug_{cpl_widget_ns}_{sug}", use_container_width=True):
-                entries.append({"chord": sug, "bars": 1})
-                active = commit_home_sections(active, home_sections)
-                st.session_state[CPL_ACTIVE_KEY] = active
-                st.rerun()
+    bulk = st.text_input(
+        "Or paste chords (e.g. Dm7 | G7 | Cmaj7)",
+        placeholder="Dm7 | G7 | Cmaj7",
+        key="cpl_progression_editor",
+    )
+    if st.button("Add pasted chords", key="cpl_bulk_add", use_container_width=False):
+        for item in parse_chord_line(bulk):
+            entries.append(item)
+        active = commit_home_sections(active, home_sections)
+        st.session_state[CPL_ACTIVE_KEY] = active
+        st.rerun()
 
     remove_indices = []
+    if not entries:
+        st.caption("This section is empty — click a suggested chord to add one.")
     for idx, entry in enumerate(list(entries)):
-        c1, c2, c3, c4 = st.columns([3, 1, 0.4, 0.4])
+        st.markdown(f"**Chord {idx + 1}**")
+        c1, c2, c3, c4 = st.columns([3, 1, 0.5, 0.5])
         with c1:
             entry["chord"] = st.text_input(
-                f"Chord {idx + 1}",
-                value=entry.get("chord", cpl_home_key),
+                "Chord name",
+                value=entry.get("chord", display_key),
                 key=f"cpl_ch_{cpl_widget_ns}_{edit_section}_{idx}",
                 label_visibility="collapsed",
             )
@@ -261,17 +177,18 @@ def render_custom_progression_lab_page() -> None:
                     max_value=16,
                     value=int(entry.get("bars", 1)),
                     key=f"cpl_bars_{cpl_widget_ns}_{edit_section}_{idx}",
-                    label_visibility="collapsed",
+                    label_visibility="visible",
                 )
             )
         with c3:
-            if st.button("↑", key=f"cpl_up_{cpl_widget_ns}_{edit_section}_{idx}", disabled=idx == 0):
-                entries[idx], entries[idx - 1] = entries[idx - 1], entries[idx]
-                active = commit_home_sections(active, home_sections)
-                st.session_state[CPL_ACTIVE_KEY] = active
-                st.rerun()
+            if st.button("↑", key=f"cpl_up_{cpl_widget_ns}_{edit_section}_{idx}", help="Move up"):
+                if idx > 0:
+                    entries[idx], entries[idx - 1] = entries[idx - 1], entries[idx]
+                    active = commit_home_sections(active, home_sections)
+                    st.session_state[CPL_ACTIVE_KEY] = active
+                    st.rerun()
         with c4:
-            if st.button("✕", key=f"cpl_rm_{cpl_widget_ns}_{edit_section}_{idx}"):
+            if st.button("✕", key=f"cpl_rm_{cpl_widget_ns}_{edit_section}_{idx}", help="Remove"):
                 remove_indices.append(idx)
     for ri in sorted(remove_indices, reverse=True):
         entries.pop(ri)
@@ -282,26 +199,40 @@ def render_custom_progression_lab_page() -> None:
 
     active = commit_home_sections(active, home_sections)
     st.session_state[CPL_ACTIVE_KEY] = active
-    display_sections = deep_copy_sections(display_sections_for_key(active, cpl_practice_key))
-    flat_chords = []
-    for _n, chs in sections_to_chord_lists(display_sections).items():
-        flat_chords.extend(chs)
-    st.markdown(chord_tiles_html(flat_chords), unsafe_allow_html=True)
+    display_sections = deep_copy_sections(display_sections_for_key(active, display_key))
 
-    with st.expander("Advanced: key & harmony tools", expanded=False):
-        st.markdown(f"Home `{cpl_home_key}` → Practice `{cpl_practice_key}`")
-        st.code(format_chord_bar_line(home_sections), language=None)
-        st.code(format_chord_bar_line(display_sections), language=None)
-        _home_opts = display_key_options(cpl_home_key)
-        st.selectbox("Set home key", _home_opts, key="cpl_manual_home_key_picker")
-        ac1, ac2 = st.columns(2)
-        with ac1:
-            st.button("Apply home key", key="cpl_apply_manual_home", on_click=on_cpl_apply_manual_home_key)
-        with ac2:
-            st.button("Anchor practice key as home", key="cpl_anchor_home", on_click=on_cpl_anchor_home_key)
+    st.markdown(f"#### Presets in {key_label}")
+    st.caption("Replace the current section with a common pattern in this key")
+    preset_names = ["ii–V–I", "I–V–vi–IV", "Jazz turnaround", "Bossa cadence"]
+    pcols = st.columns(2)
+    for i, pname in enumerate(preset_names):
+        with pcols[i % 2]:
+            label = f"{pname} in {display_key}"
+            if st.button(label, key=f"cpl_preset_{cpl_widget_ns}_{pname}", use_container_width=True):
+                entries = build_preset_entries(pname, display_key)
+                home_sections[edit_section] = entries
+                active = commit_home_sections(active, home_sections)
+                st.session_state[CPL_ACTIVE_KEY] = active
+                st.rerun()
+
+    with st.expander("Optional: groove style", expanded=False):
+        cur_style = st.session_state.get("cpl_style_pick", "Custom")
+        style_pick = st.selectbox("Style template", CPL_STYLE_CHOICES, index=CPL_STYLE_CHOICES.index(cur_style) if cur_style in CPL_STYLE_CHOICES else 0, key="cpl_style_select")
+        if st.button("Apply style template", key="cpl_apply_style"):
+            preset = apply_style_preset(style_pick, display_key)
+            if preset:
+                active["groove_style"] = preset["groove_style"]
+                home_sections = deep_copy_sections(preset["sections"])
+                active = commit_home_sections(active, home_sections)
+                st.session_state[CPL_ACTIVE_KEY] = active
+                st.session_state["cpl_style_pick"] = style_pick
+                st.rerun()
+            st.caption("Custom keeps your chords; other styles load a starter progression in the current key.")
+
+    with st.expander("Advanced tools", expanded=False):
         if st.button("Harmonic analysis", key="cpl_analyze"):
             st.session_state["cpl_analysis_md"] = harmonic_analysis_markdown(
-                display_sections, cpl_practice_key, active.get("time_signature", "4/4")
+                display_sections, display_key, active.get("time_signature", "4/4")
             )
         if st.session_state.get("cpl_analysis_md"):
             st.markdown(st.session_state["cpl_analysis_md"])
@@ -316,17 +247,14 @@ def render_custom_progression_lab_page() -> None:
             pick_saved = st.selectbox("Load", ["—"] + sorted(saved.keys()), key="cpl_pick_saved")
             if st.button("Load", key="cpl_load_btn", disabled=pick_saved == "—"):
                 st.session_state[CPL_ACTIVE_KEY] = ensure_original_structure(dict(saved[pick_saved]))
+                st.session_state.pop("_cpl_editing_display_key", None)
                 invalidate_cpl_derived_outputs(st.session_state)
                 st.rerun()
 
-    # --- Step 4: Playback ---
-    st.markdown(
-        '<div class="cpl-step-card"><span class="cpl-step-num">4</span>'
-        '<span class="cpl-step-title">Practice & playback</span></div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown("---")
+    st.markdown("### Practice & playback")
     active["time_signature"] = st.selectbox(
-        "Time",
+        "Time signature",
         ["4/4", "3/4", "6/8"],
         index=["4/4", "3/4", "6/8"].index(active.get("time_signature", "4/4"))
         if active.get("time_signature", "4/4") in ["4/4", "3/4", "6/8"]
@@ -352,25 +280,24 @@ def render_custom_progression_lab_page() -> None:
     cpl_events = flatten_sections_to_events(display_sections)
     cpl_groove = infer_groove_style({}, active.get("groove_style", "Auto"))
     cpl_sig = backing_signature(
-        cpl_practice_key,
+        display_key,
         display_sections,
         active.get("bpm", 100),
         active.get("loops", 2),
         cpl_groove,
     )
 
-    play_c1, play_c2, play_c3 = st.columns(3)
+    play_c1, play_c2 = st.columns(2)
     with play_c1:
         gen = st.button(
-            "▶ Generate backing",
+            "Generate backing track",
             key="cpl_play_button",
             disabled=not cpl_events,
+            type="primary",
             use_container_width=True,
         )
     with play_c2:
-        stop = st.button("⏹ Stop / clear", key="cpl_stop_backing", use_container_width=True)
-    with play_c3:
-        st.caption(f"🔁 {active.get('loops', 2)}× loop · {len(cpl_events)} bars")
+        stop = st.button("Stop / clear backing", key="cpl_stop_backing", use_container_width=True)
 
     if stop:
         st.session_state.pop("cpl_backing_wav", None)
@@ -392,24 +319,21 @@ def render_custom_progression_lab_page() -> None:
     if st.session_state.get("cpl_backing_wav"):
         st.audio(st.session_state["cpl_backing_wav"], format="audio/wav")
 
-    st.markdown("**Practice tools**")
-    pt1, pt2, pt3 = st.columns(3)
+    pt1, pt2 = st.columns(2)
     with pt1:
-        if st.button("Send to Practice", key="cpl_to_practice", use_container_width=True):
+        if st.button("Send to Practice page", key="cpl_to_practice", use_container_width=True):
             set_custom_source(st.session_state)
             st.session_state["studio_page"] = "practice"
             st.rerun()
     with pt2:
-        if st.button("Open Backing Track", key="cpl_to_backing", use_container_width=True):
+        if st.button("Open Backing Track page", key="cpl_to_backing", use_container_width=True):
             st.session_state["studio_page"] = "backing"
             st.rerun()
-    with pt3:
-        st.caption("Notation on **Practice** page")
 
     _inst = session_instrument(st.session_state)
     _lvl = session_level(st.session_state)
     _foc = session_focus(st.session_state)
-    coach_ctx = lab_context_for_coaching(display_sections, cpl_practice_key, _inst, _lvl, _foc)
+    coach_ctx = lab_context_for_coaching(display_sections, display_key, _inst, _lvl, _foc)
     if coach_ctx["first_chords"]:
         st.info(
             section_overlay_html(

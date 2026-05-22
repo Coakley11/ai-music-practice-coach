@@ -1161,6 +1161,27 @@ def _is_minor_home_key(home_key: str) -> bool:
     return suffix.startswith("m") and "maj" not in suffix
 
 
+def format_key_label(home_key: str) -> str:
+    """Human label for sidebar/display key, e.g. 'C major' or 'A minor'."""
+    k = str(home_key or "C").strip() or "C"
+    root = chord_root(k)
+    if _is_minor_home_key(k):
+        return f"{root} minor"
+    return f"{root} major"
+
+
+def ensure_cpl_editing_in_display_key(st, active: dict, display_key: str) -> dict:
+    """When the global sidebar key changes, re-home the progression in that key."""
+    display_key = str(display_key or "C").strip() or "C"
+    prev = st.session_state.get("_cpl_editing_display_key")
+    if prev != display_key:
+        active = anchor_home_key_to_display(active, display_key)
+        st.session_state[CPL_ACTIVE_KEY] = active
+        st.session_state["_cpl_editing_display_key"] = display_key
+        invalidate_cpl_derived_outputs(st.session_state)
+    return active
+
+
 def diatonic_chords_for_key(home_key: str) -> list[str]:
     """Useful jazz/pop chords in the chosen key (click-to-add on CPL page)."""
     k = str(home_key or "C").strip() or "C"

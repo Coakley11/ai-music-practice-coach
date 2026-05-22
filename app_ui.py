@@ -1129,6 +1129,27 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   color: #1e3a8a;
   letter-spacing: 0.02em;
 }
+.cpl-flow-hint {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0 1rem 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: #0f172a;
+}
+.cpl-progression-line {
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1e3a8a;
+  background: #f8fafc;
+  border: 2px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  margin: 0.35rem 0 0.75rem 0;
+}
 .practice-worksheet-removed {
   display: none;
 }
