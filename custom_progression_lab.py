@@ -551,6 +551,96 @@ def format_entries_bar_line(entries: list[dict] | None, *, max_chords: int = 24)
     return "| " + " | ".join(chords) + " |"
 
 
+DEFAULT_SONG_ARRANGEMENT: list[str] = [
+    "Intro",
+    "Verse",
+    "Chorus",
+    "Verse",
+    "Chorus",
+    "Bridge",
+    "Chorus",
+    "Outro",
+]
+
+CHORD_QUICK_EDIT_KEYS: list[str] = ["7", "maj7", "m7", "m9", "9", "sus4", "6", "dim7"]
+
+
+def sections_with_chords(active: dict, display_key: str) -> list[str]:
+    return [
+        name
+        for name in CPL_EDITABLE_SECTIONS
+        if display_entries_for_section(active, display_key, name)
+    ]
+
+
+def song_arrangement_flow_text(active: dict, display_key: str) -> str:
+    filled = set(sections_with_chords(active, display_key))
+    if not filled:
+        return (
+            " → ".join(DEFAULT_SONG_ARRANGEMENT)
+            + "  (sections with chords will show here)"
+        )
+    flow: list[str] = []
+    for name in DEFAULT_SONG_ARRANGEMENT:
+        if name in filled:
+            flow.append(name)
+    for name in CPL_EDITABLE_SECTIONS:
+        if name in filled and name not in flow:
+            flow.append(name)
+    return " → ".join(flow)
+
+
+def song_structure_overview_html(
+    active: dict,
+    display_key: str,
+    *,
+    highlight_section: str | None = None,
+) -> str:
+    """Full song map: flow line + each section's bar line."""
+    flow = song_arrangement_flow_text(active, display_key)
+    blocks = [
+        '<div class="cpl-song-map">',
+        f'<p class="cpl-song-flow"><strong>Song structure</strong><br>{_html.escape(flow)}</p>',
+    ]
+    for name in CPL_EDITABLE_SECTIONS:
+        entries = display_entries_for_section(active, display_key, name)
+        bar = format_entries_bar_line(entries)
+        active_cls = " cpl-section-active" if name == highlight_section else ""
+        blocks.append(
+            f'<div class="cpl-section-block{active_cls}">'
+            f'<div class="cpl-section-label">{_html.escape(name)}</div>'
+            f'<div class="cpl-section-bars">{_html.escape(bar)}</div>'
+            "</div>"
+        )
+    blocks.append("</div>")
+    return "".join(blocks)
+
+
+def apply_quick_chord_edit(chord: str, edit_key: str) -> str:
+    """Replace extensions on the chord root (keeps slash bass if present)."""
+    raw = normalize_chord_symbol(chord)
+    if not raw:
+        return ""
+    if "/" in raw:
+        head, bass = raw.split("/", 1)
+        root = chord_root(head)
+        return f"{root}{edit_key}/{bass.strip()}"
+    root = chord_root(raw)
+    return root + edit_key
+
+
+def chord_with_bass(chord: str, bass_note: str) -> str:
+    raw = normalize_chord_symbol(chord)
+    bass = str(bass_note or "").strip()
+    if not raw or not bass:
+        return raw
+    head = raw.split("/", 1)[0]
+    root = chord_root(head)
+    suffix = head[len(root) :]
+    bass_root = chord_root(bass.split("/", 1)[0])
+    return f"{root}{suffix}/{bass_root}"
+
+
 def display_entries_for_section(active: dict, display_key: str, section_name: str) -> list[dict]:
     """Chord entries for one section, transposed to the sidebar display key."""
     home = written_home_key(active)

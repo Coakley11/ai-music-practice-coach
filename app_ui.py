@@ -1163,6 +1163,62 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border-radius: 8px;
   padding: 0.25rem 0.65rem;
 }
+.cpl-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  margin: 0.75rem 0;
+}
+.cpl-panel-muted {
+  background: #f8fafc;
+}
+.cpl-song-map {
+  margin: 0.5rem 0;
+}
+.cpl-song-flow {
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: #334155;
+  margin: 0 0 0.85rem 0;
+  padding: 0.55rem 0.75rem;
+  background: #f1f5f9;
+  border-radius: 10px;
+  border-left: 4px solid #2563eb;
+}
+.cpl-section-block {
+  margin: 0.45rem 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #fafafa;
+}
+.cpl-section-block.cpl-section-active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+.cpl-section-label {
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+  margin-bottom: 0.2rem;
+}
+.cpl-section-bars {
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1e3a8a;
+}
+.cpl-edit-slot {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  margin: 0.5rem 0;
+  background: #fff;
+}
 .practice-worksheet-removed {
   display: none;
 }
