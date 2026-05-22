@@ -83,6 +83,7 @@ from songs import (
     SOURCE_CATALOG,
     SOURCE_CUSTOM,
     active_source_banner,
+    unpack_active_source_banner,
     apply_pick_key,
     build_active_chart_bundle,
     chord_blocks_for_backing,
@@ -4741,11 +4742,13 @@ _studio_page = ensure_studio_page(st.session_state)
 
 sidebar_section("Active source", icon="🎼", tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
-_src_kind, _src_detail = active_source_banner(
-    st.session_state,
-    catalog_title=_catalog_song_data.get("title", _catalog_song),
-    catalog_artist=_catalog_song_data.get("artist", ""),
-    custom_name=_cpl_for_banner.get("name", "Custom Progression"),
+_src_kind, _src_detail = unpack_active_source_banner(
+    active_source_banner(
+        st.session_state,
+        catalog_title=_catalog_song_data.get("title", _catalog_song),
+        catalog_artist=_catalog_song_data.get("artist", ""),
+        custom_name=_cpl_for_banner.get("name", "Custom Progression"),
+    )
 )
 sidebar_source_banner(_src_kind, _src_detail)
 if is_custom_progression(st.session_state):

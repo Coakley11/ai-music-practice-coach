@@ -38,6 +38,50 @@ def note_active_source_change(st: Any, *, invalidate_backing) -> bool:
     return False
 
 
+def active_source_labels(
+    session_state: dict[str, Any],
+    *,
+    catalog_title: str,
+    catalog_artist: str,
+    custom_name: str,
+) -> tuple[str, str]:
+    """Return ``(source_kind, source_detail)`` for the sidebar active-source banner."""
+    if is_custom_progression(session_state):
+        return "Custom Progression", str(custom_name or "Custom Progression")
+    title = str(catalog_title or "").strip()
+    artist = str(catalog_artist or "").strip()
+    detail = f"{title} — {artist}".strip(" —") if title or artist else ""
+    return "Song", detail
+
+
+def _parse_legacy_active_source_markdown(text: str) -> tuple[str, str]:
+    """Older builds returned one markdown string (``Song Picker — title — artist``)."""
+    raw = str(text or "").replace("**", "").strip()
+    if raw.lower().startswith("active source:"):
+        raw = raw.split(":", 1)[1].strip()
+    parts = [p.strip() for p in raw.split("—") if p.strip()]
+    if not parts:
+        return "Song", ""
+    kind = parts[0].replace("Song Picker", "Song").strip() or "Song"
+    detail = " — ".join(parts[1:]) if len(parts) > 1 else ""
+    return kind, detail
+
+
+def unpack_active_source_banner(result: Any) -> tuple[str, str]:
+    """Normalize banner return value to exactly ``(kind, detail)``."""
+    if isinstance(result, tuple):
+        if len(result) >= 2:
+            return str(result[0]), str(result[1])
+        if len(result) == 1:
+            return str(result[0]), ""
+        return "Song", ""
+    if isinstance(result, str):
+        return _parse_legacy_active_source_markdown(result)
+    if result is None:
+        return "Song", ""
+    return "Song", str(result)
+
+
 def active_source_banner(
     session_state: dict[str, Any],
     *,
@@ -45,10 +89,14 @@ def active_source_banner(
     catalog_artist: str,
     custom_name: str,
 ) -> tuple[str, str]:
-    """Return (source kind label, detail line) for the sidebar source banner."""
-    if is_custom_progression(session_state):
-        return "Custom Progression", str(custom_name)
-    return "Song", f"{catalog_title} — {catalog_artist}"
+    """Return ``(source_kind, source_detail)`` — always a 2-tuple (never markdown)."""
+    kind, detail = active_source_labels(
+        session_state,
+        catalog_title=catalog_title,
+        catalog_artist=catalog_artist,
+        custom_name=custom_name,
+    )
+    return (str(kind), str(detail))
 
 
 def display_key_context(
