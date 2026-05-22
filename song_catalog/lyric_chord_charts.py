@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from song_catalog.we_are_the_champions import (
+    CHAMPIONS_ARRANGEMENT_NOTES,
+    CHAMPIONS_GUITAR_TABS,
+    CHAMPIONS_LYRIC_CHART,
+    CHAMPIONS_SECTIONS,
+)
 from songs.lyric_chord_renderer import sections_from_lyric_chart
 
 LyricSection = dict[str, Any]
@@ -151,6 +157,15 @@ LYRIC_CHORD_CHARTS: dict[tuple[str, str], dict[str, Any]] = {
             "Em7": "022030",
             "Dm7": "xx0211",
         },
+    },
+    ("We Are the Champions", "Queen"): {
+        "key": "Cm",
+        "chart": CHAMPIONS_LYRIC_CHART,
+        "sections": sections_from_lyric_chart(CHAMPIONS_LYRIC_CHART),
+        "arrangement_notes": CHAMPIONS_ARRANGEMENT_NOTES,
+        "default_bpm": 107,
+        "default_groove": "Rock groove",
+        "guitar_tabs": CHAMPIONS_GUITAR_TABS,
     },
     ("Say", "John Mayer"): {
         "key": "G",

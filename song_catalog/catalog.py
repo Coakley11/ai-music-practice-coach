@@ -60,6 +60,7 @@ TRUSTED_CORE_KEYS = {
     ("Girls Just Want to Have Fun", "Cyndi Lauper"),
     ("Every Breath You Take", "The Police"),
     ("Careless Whisper", "George Michael"),
+    ("We Are the Champions", "Queen"),
     ("Take On Me", "a-ha"),
     ("Billie Jean", "Michael Jackson"),
     ("Love Story", "Taylor Swift"),

@@ -65,6 +65,32 @@ def _levels(
     }
 
 
+def _champions_chart_pack() -> dict[str, Any]:
+    from song_catalog.we_are_the_champions import (
+        CHAMPIONS_ARRANGEMENT_NOTES,
+        CHAMPIONS_BEGINNER,
+        CHAMPIONS_GUITAR_TABS,
+        CHAMPIONS_LYRIC_CHART,
+        CHAMPIONS_SECTIONS,
+    )
+
+    inter = dict(CHAMPIONS_SECTIONS)
+    beg = dict(CHAMPIONS_BEGINNER)
+    return {
+        "key": "Cm",
+        "sections": inter,
+        "chart_versions": _levels(beginner=beg, intermediate=inter, advanced=inter),
+        "chart_status": "practice_level_verified",
+        "guitar_tabs": CHAMPIONS_GUITAR_TABS,
+        "extensions": _ext(
+            arrangement_notes=CHAMPIONS_ARRANGEMENT_NOTES,
+            default_bpm=107,
+            default_groove="Rock groove",
+            lyric_chord_chart=CHAMPIONS_LYRIC_CHART,
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -128,6 +154,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Waiting on the World to Change", "John Mayer"): _say_waiting_lyric_pack(
             "Waiting on the World to Change"
         ),
+        ("We Are the Champions", "Queen"): _champions_chart_pack(),
         ("Gravity", "John Mayer"): pack("G",
             {
                 "Intro / Verse Groove": ["G", "C", "G", "C"],
@@ -2011,6 +2038,28 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Verse": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
             "Chorus": ["F#m", "D", "E", "A", "F#m", "B7", "E", "E"],
         }, composer="Lennon–McCartney"),
+        _s("We Are the Champions", "Queen", "Rock", "Cm", {
+            "Verse": [
+                "Cm", "Gm7/C", "Cm", "Gm7/C", "Cm", "Gm7/C", "Cm", "Gm7/C",
+                "Eb", "Ab/Eb", "Eb", "Ab/Eb", "Eb", "Bb/D", "Cm", "F7", "Bb",
+                "Ab/Bb", "Bbm7b5", "Bb7", "C7",
+            ],
+            "Chorus": [
+                "F", "Am", "Dm", "Bb", "C7", "F", "Am", "Bb", "F#dim7",
+                "Gm7", "C7/G", "Bbm6", "Bbm6/Db", "Edim7", "Gdim7",
+                "F", "Ebadd9/G", "Ab6", "Bb", "Cm7add4",
+                "Fm", "Gm7", "Fm", "Gm7/F", "Fm", "Gm7/C",
+            ],
+            "Outro": [
+                "F", "Am", "Dm", "Bb", "C7", "F", "Am", "Bb", "F#dim7",
+                "Gm7", "C7/G", "Bbm6", "Bbm6/Db", "Edim7", "Gdim7",
+                "F", "Ebadd9/G", "Ab6", "Bb", "Cm7add4",
+                "Fm", "Gm7", "Fm", "Gm7/F", "Fm", "Gm7/C",
+                "Cm", "Gm7/C", "Cm", "Gm7/C",
+            ],
+        }, composer="Freddie Mercury", guitar_tabs={
+            "Cm": "x35543", "Gm7/C": "x30303", "F": "133211", "Bb": "x13331",
+        }),
         _s("Come Together", "The Beatles", "Rock", "Dm", {
             "Verse Vamp": ["Dm7", "Dm7", "Dm7", "Dm7"],
             "Chorus": ["A7", "G7", "D7", "A7"],
