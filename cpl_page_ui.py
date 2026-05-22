@@ -51,8 +51,7 @@ def render_custom_progression_lab_page() -> None:
         session_instrument,
         session_level,
     )
-    from songs.music_source import set_custom_source
-    from songs.state import note_active_source_change
+    from songs.music_source import note_active_source_change, set_custom_source
 
     render_cpl_page_header()
 
