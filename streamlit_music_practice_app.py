@@ -2778,7 +2778,7 @@ def _section_role(section_name: str) -> str:
     if "verse" in name or "a section" in name or name == "a":
         return "verse"
     if "pre" in name:
-        return "pre"
+        return "pre_chorus"
     if "chorus" in name or "refrain" in name or "b section" in name or name == "b":
         return "chorus"
     if "bridge" in name or "middle" in name:
@@ -2824,7 +2824,7 @@ def _section_dynamic_shape(section_name):
         return "start controlled and leave headroom for the first main section"
     if role == "outro":
         return "release intensity gradually while keeping time steady"
-    if role == "pre":
+    if role in ("pre", "pre_chorus"):
         return "crescendo through the section so the next arrival feels earned"
     return "shape the phrase with a clear beginning, lift, and release"
 
@@ -2918,7 +2918,7 @@ def _rhythm_profile(time_signature="4/4", groove_style="", section_name="", bpm=
         profile["section_note"] = "Chorus approach: increase accent weight and rhythmic confidence."
     elif role == "bridge":
         profile["section_note"] = "Bridge approach: leave more space or change the pattern for contrast."
-    elif role == "pre":
+    elif role in ("pre", "pre_chorus"):
         profile["section_note"] = "Pre-chorus approach: add motion gradually so the chorus lands."
     else:
         profile["section_note"] = "Keep the groove consistent and make phrase endings clear."

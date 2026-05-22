@@ -1119,7 +1119,7 @@ def _chord_at_degree(home_key: str, degree: int, quality: str) -> str:
         root_pc = (key_pc + degree) % 12
         root = _spell_tonic_pc(root_pc, {chord_root(home_key)})
     q = quality or ""
-    if q in ("maj7", "m7", "m9", "7"):
+    if q in ("maj7", "m7", "m9", "7", "m7b5"):
         return f"{root}{q}"
     if q == "m":
         return f"{root}m"
@@ -1144,6 +1144,55 @@ def apply_style_preset(style: str, home_key: str) -> dict | None:
     for name, entries in sections.items():
         sections[name] = transpose_section_entries(entries, ref_key, home_key)
     return {"sections": sections, "groove_style": data["groove_style"]}
+
+
+CPL_KEY_OPTIONS: list[str] = [
+    "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B",
+    "Cm", "C#m", "Dm", "Ebm", "Em", "Fm", "F#m", "Gm", "Abm", "Am", "Bbm", "Bm",
+]
+
+
+def _is_minor_home_key(home_key: str) -> bool:
+    k = str(home_key or "").strip()
+    if not k:
+        return False
+    root = chord_root(k)
+    suffix = k[len(root) :].lower()
+    return suffix.startswith("m") and "maj" not in suffix
+
+
+def diatonic_chords_for_key(home_key: str) -> list[str]:
+    """Useful jazz/pop chords in the chosen key (click-to-add on CPL page)."""
+    k = str(home_key or "C").strip() or "C"
+    if _is_minor_home_key(k):
+        specs = [
+            (0, "m7"),
+            (2, "m7b5"),
+            (3, "maj7"),
+            (5, "m7"),
+            (7, "m7"),
+            (8, "maj7"),
+            (10, "7"),
+            (7, "7"),
+        ]
+    else:
+        specs = [
+            (0, "maj7"),
+            (2, "m7"),
+            (4, "m7"),
+            (5, "maj7"),
+            (7, "7"),
+            (9, "m7"),
+            (11, "m7b5"),
+        ]
+    out: list[str] = []
+    seen: set[str] = set()
+    for deg, qual in specs:
+        ch = _chord_at_degree(k, deg, qual)
+        if ch not in seen:
+            seen.add(ch)
+            out.append(ch)
+    return out
 
 
 def build_preset_entries(preset_name: str, home_key: str) -> list[dict]:

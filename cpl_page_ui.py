@@ -31,6 +31,8 @@ def render_custom_progression_lab_page() -> None:
         parse_chord_line,
         save_progression,
         sections_to_chord_lists,
+        CPL_KEY_OPTIONS,
+        diatonic_chords_for_key,
         suggest_next_chords,
         sync_written_home_key,
         written_home_key,
@@ -116,15 +118,52 @@ def render_custom_progression_lab_page() -> None:
         '<span class="cpl-step-title">Choose key</span></div>',
         unsafe_allow_html=True,
     )
-    key_buttons = ["C", "F", "Bb", "Eb", "G", "D", "Am", "Em"]
-    kcols = st.columns(len(key_buttons))
-    for i, k in enumerate(key_buttons):
-        with kcols[i]:
-            if st.button(k, key=f"cpl_key_{k}", use_container_width=True):
-                st.session_state["cpl_manual_home_key_picker"] = k
-                on_cpl_apply_manual_home_key()
-                st.rerun()
+
+    def _cpl_key_changed() -> None:
+        pick = st.session_state.get("cpl_key")
+        if pick:
+            st.session_state["cpl_manual_home_key_picker"] = pick
+            on_cpl_apply_manual_home_key()
+
+    _key_default = cpl_home_key if cpl_home_key in CPL_KEY_OPTIONS else "C"
+    _key_index = CPL_KEY_OPTIONS.index(_key_default)
+    st.selectbox(
+        "Choose key",
+        CPL_KEY_OPTIONS,
+        index=_key_index,
+        key="cpl_key",
+        on_change=_cpl_key_changed,
+    )
+    active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
+    active = sync_written_home_key(active)
+    st.session_state[CPL_ACTIVE_KEY] = active
+    cpl_home_key = written_home_key(active)
+    cpl_widget_ns = cpl_home_key.replace("#", "s").replace("b", "f")
+    home_sections = deep_copy_sections(active.get("original_sections") or {})
+
+    _key_chords = diatonic_chords_for_key(cpl_home_key)
+    st.caption(f"Chords in **{cpl_home_key}** — click to add to your progression")
+    if _key_chords:
+        _kc_cols = st.columns(min(len(_key_chords), 4))
+        for i, ch in enumerate(_key_chords):
+            with _kc_cols[i % len(_kc_cols)]:
+                if st.button(ch, key=f"cpl_key_chord_{cpl_widget_ns}_{ch}", use_container_width=True):
+                    _sec = st.session_state.get("cpl_edit_section", "Verse")
+                    if _sec not in home_sections:
+                        home_sections[_sec] = []
+                    home_sections[_sec].append({"chord": ch, "bars": 1})
+                    active = commit_home_sections(active, home_sections)
+                    st.session_state[CPL_ACTIVE_KEY] = active
+                    st.rerun()
+    else:
+        st.caption("Pick a key to see chord suggestions.")
+
     st.caption(f"Written key **{cpl_home_key}** · Practice key **{cpl_practice_key}** (sidebar)")
+
+    display_sections = deep_copy_sections(display_sections_for_key(active, cpl_practice_key))
+    flat_chords = []
+    for _n, chs in sections_to_chord_lists(display_sections).items():
+        flat_chords.extend(chs)
 
     # --- Step 3: Build progression ---
     st.markdown(
@@ -194,7 +233,7 @@ def render_custom_progression_lab_page() -> None:
             st.rerun()
 
     suggestions = suggest_next_chords(home_sections, cpl_home_key, limit=4)
-    st.markdown("**You may also like**")
+    st.markdown("**Next chord ideas**")
     sug_cols = st.columns(len(suggestions))
     for i, sug in enumerate(suggestions):
         with sug_cols[i]:
