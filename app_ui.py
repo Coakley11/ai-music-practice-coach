@@ -1172,6 +1172,109 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 .cpl-custom-chord-row {
   margin: 0.5rem 0 1rem 0;
 }
+.cpl-title-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1rem 1.15rem;
+  margin: 0.5rem 0 1rem 0;
+}
+.cpl-steps-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.75rem 0 1.1rem 0;
+}
+.cpl-step-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #64748b;
+}
+.cpl-step-pill.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.cpl-step-pill.done {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+.cpl-step-pill .cpl-step-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+.cpl-step-pill.active .cpl-step-n {
+  background: #2563eb;
+  color: #fff;
+}
+.cpl-step-pill.done .cpl-step-n {
+  background: #22c55e;
+  color: #fff;
+}
+.cpl-lead-grid,
+.lead-grid.cpl-lead-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 10px 12px;
+  margin: 0.35rem 0 0.15rem 0;
+}
+.cpl-chord-cell,
+.chord-cell.cpl-chord-cell {
+  min-height: 64px;
+  border: 1.5px solid rgba(15, 23, 42, 0.18);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+.cpl-chord-cell .chord-symbol,
+.chord-cell.cpl-chord-cell .chord-symbol {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: #1e3a8a;
+  letter-spacing: -0.02em;
+}
+.cpl-builder-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1rem 1.15rem;
+  margin: 0.65rem 0;
+}
+.cpl-section-heading {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 0.35rem 0;
+}
+.cpl-key-line {
+  font-size: 0.9rem;
+  color: #64748b;
+  margin: 0 0 0.75rem 0;
+}
+.cpl-preset-block {
+  margin: 0.75rem 0 0.25rem 0;
+}
 .cpl-flow-hint {
   background: #f0f9ff;
   border: 1px solid #bae6fd;

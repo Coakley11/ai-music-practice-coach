@@ -621,7 +621,7 @@ DEFAULT_SONG_ARRANGEMENT: list[str] = [
     "Outro",
 ]
 
-CHORD_QUICK_EDIT_KEYS: list[str] = ["7", "maj7", "m7", "sus4", "dim", "add9", "9"]
+CHORD_QUICK_EDIT_KEYS: list[str] = ["7", "maj7", "m7", "sus4", "dim", "add9"]
 
 CPL_BUILDER_VERSION = 5
 
@@ -693,20 +693,18 @@ def song_structure_overview_html(
     highlight_section: str | None = None,
     only_filled: bool = True,
 ) -> str:
-    """Song map with chord tiles — only sections that contain chords."""
+    """Song map with backing-track-style chord cells — filled sections only."""
     home_sections = active.get("original_sections") or {}
     names = filled_section_names(home_sections)
+    if not names:
+        return ""
 
-    flow = song_arrangement_flow_text(active, display_key) if names else ""
     blocks = ['<div class="cpl-song-map">']
-    if flow and names:
-        blocks.append(
-            f'<p class="cpl-song-flow"><strong>Song structure</strong><br>{_html.escape(flow)}</p>'
-        )
-
     for name in names:
         entries = display_entries_for_section(active, display_key, name)
         tiles = entries_chord_tiles_html(entries)
+        if not tiles:
+            continue
         active_cls = " cpl-section-active" if name == highlight_section else ""
         blocks.append(
             f'<div class="cpl-section-card{active_cls}">'
@@ -716,6 +714,37 @@ def song_structure_overview_html(
         )
     blocks.append("</div>")
     return "".join(blocks)
+
+
+def cpl_steps_strip_html(*, style: bool, key_set: bool, has_section_chords: bool, finished: bool) -> str:
+    """Visual 5-step guide for the builder."""
+    def _step(n: int, label: str, done: bool, active: bool) -> str:
+        cls = "cpl-step-pill"
+        if done:
+            cls += " done"
+        if active:
+            cls += " active"
+        return f'<span class="{cls}"><span class="cpl-step-n">{n}</span>{_html.escape(label)}</span>'
+
+    return (
+        '<div class="cpl-steps-strip">'
+        + _step(1, "Style", style, not style)
+        + _step(2, "Key", key_set, style and not key_set)
+        + _step(3, "Chords", has_section_chords, key_set and not has_section_chords)
+        + _step(4, "Finish", finished, has_section_chords and not finished)
+        + _step(5, "Backing track", False, finished)
+        + "</div>"
+    )
+
+
+def load_saved_progression(store: dict, name: str) -> dict:
+    """Restore a named progression from the saved store."""
+    raw = store.get(name)
+    if not raw:
+        return default_active_progression()
+    out = ensure_original_structure(dict(raw))
+    out["name"] = str(raw.get("name") or name)
+    return out
 
 
 def apply_quick_chord_edit(chord: str, edit_key: str) -> str:
@@ -1644,32 +1673,29 @@ def suggest_next_chords(
     return out[:limit]
 
 
-def entries_chord_tiles_html(entries: list[dict] | None, *, max_tiles: int = 32) -> str:
-    """Professional chord boxes from section entries (×2 for multi-bar holds)."""
+def entries_chord_tiles_html(entries: list[dict] | None, *, max_tiles: int = 48) -> str:
+    """Backing-track-style chord cells — one box per bar."""
     if not entries:
         return ""
-    tiles: list[str] = []
+    cells: list[str] = []
     for entry in entries:
-        if len(tiles) >= max_tiles:
-            break
         ch = normalize_chord_symbol(entry.get("chord", ""))
         if not ch:
             continue
         bars = max(1, int(entry.get("bars", 1) or 1))
-        if bars > 1:
-            tiles.append(
-                f'<div class="cpl-chord-tile cpl-chord-tile-hold">'
-                f'<span class="cpl-chord-name">{_html.escape(ch)}</span>'
-                f'<span class="cpl-chord-mult">×{bars}</span></div>'
+        for _ in range(bars):
+            if len(cells) >= max_tiles:
+                break
+            cells.append(
+                f'<div class="chord-cell cpl-chord-cell">'
+                f'<div class="chord-symbol">{_html.escape(ch)}</div>'
+                f"</div>"
             )
-        else:
-            tiles.append(
-                f'<div class="cpl-chord-tile">'
-                f'<span class="cpl-chord-name">{_html.escape(ch)}</span></div>'
-            )
-    if not tiles:
+        if len(cells) >= max_tiles:
+            break
+    if not cells:
         return ""
-    return f'<div class="cpl-chord-row">{"".join(tiles)}</div>'
+    return f'<div class="lead-grid cpl-lead-grid">{"".join(cells)}</div>'
 
 
 def chord_tiles_html(chords: list[str], *, max_tiles: int = 16) -> str:
