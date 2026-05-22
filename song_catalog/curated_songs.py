@@ -65,6 +65,30 @@ def _levels(
     }
 
 
+def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
+    """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
+    from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
+
+    row = LYRIC_CHORD_CHARTS.get((title, "John Mayer"))
+    if not row:
+        raise ValueError(f"Missing lyric chord chart: {title}")
+    inter = dict(row["sections"])
+    beg = {k: [c.replace("Em7", "Em").replace("Dm7", "Dm") for c in v] for k, v in inter.items()}
+    return {
+        "key": row["key"],
+        "sections": inter,
+        "chart_versions": _levels(beginner=beg, intermediate=inter, advanced=inter),
+        "chart_status": "practice_level_verified",
+        "guitar_tabs": row.get("guitar_tabs"),
+        "extensions": _ext(
+            arrangement_notes=row.get("arrangement_notes"),
+            default_bpm=row.get("default_bpm"),
+            default_groove=row.get("default_groove"),
+            lyric_chord_chart=row["chart"],
+        ),
+    }
+
+
 def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
     """Explicit musician-practice charts for the trusted core library.
 
@@ -100,31 +124,9 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         return row
 
     return {
-        ("Say", "John Mayer"): pack("Bb",
-            {
-                "Intro / Main Loop": ["Bb", "Eb", "Gm", "F"],
-                "Verse": ["Bb", "Eb", "Gm", "F", "Bb", "Eb", "Gm", "F"],
-                "Pre-Chorus": ["Bb", "Eb", "Gm", "F", "Bb", "Eb", "Gm", "F"],
-                "Chorus": ["Bb", "Eb", "Gm", "F", "Bb", "Eb", "Gm", "F"],
-                "Bridge": ["Gm", "F", "Eb", "Bb", "Gm", "F", "Eb", "F"],
-                "Outro": ["Bb", "Eb", "Gm", "F"],
-            },
-            {
-                "Intro / Main Loop": ["Bb", "Ebadd9", "Gm7", "F"],
-                "Verse": ["Bb", "Ebadd9", "Gm7", "F", "Bb", "Ebadd9", "Gm7", "F"],
-                "Pre-Chorus": ["Bb/D", "Ebadd9", "Gm7", "F", "Bb/D", "Ebadd9", "Gm7", "F"],
-                "Chorus": ["Bb", "Ebadd9", "Gm7", "F", "Bb", "Ebadd9", "Gm7", "F"],
-                "Bridge": ["Gm7", "F/A", "Ebadd9", "Bb/D", "Gm7", "F/A", "Ebadd9", "F"],
-                "Outro": ["Bb", "Ebadd9", "Gm7", "F"],
-            },
-            {
-                "Intro": ["Bbadd9", "F/A", "Gm9", "Ebmaj9"],
-                "Verse": ["Bbadd9", "F/A", "Gm9", "Ebmaj9", "Bb/D", "F/A", "Ebmaj9", "Ebmaj9"],
-                "Pre-Chorus": ["Cm9", "Ebmaj7", "Bb/D", "F13sus"],
-                "Chorus": ["Bbadd9", "F/A", "Ebmaj9", "Bb/D", "Cm9", "Ebmaj7", "F13sus", "Bbadd9"],
-                "Bridge": ["Gm9", "F/A", "Ebmaj9", "Bb/D", "Cm9", "Ebmaj7", "F13sus", "F13"],
-                "Outro": ["Bbadd9", "F/A", "Ebmaj9", "Bbadd9"],
-            },
+        ("Say", "John Mayer"): _say_waiting_lyric_pack("Say"),
+        ("Waiting on the World to Change", "John Mayer"): _say_waiting_lyric_pack(
+            "Waiting on the World to Change"
         ),
         ("Gravity", "John Mayer"): pack("G",
             {
@@ -1688,14 +1690,12 @@ def _apply_core_chart_overrides(records: list[dict[str, Any]]) -> list[dict[str,
 def curated_song_records() -> list[dict[str, Any]]:
     records = [
         # --- John Mayer / Pop foundations ---
-        _s("Say", "John Mayer", "Pop", "Bb", {
-            "Intro": ["Bb", "F/A", "Gm7", "Ebadd9"],
-            "Verse": ["Bb", "F/A", "Gm7", "Ebadd9", "Bb", "F/A", "Ebadd9", "Ebadd9"],
-            "Pre-Chorus": ["Cm7", "Eb", "Bb/D", "F"],
-            "Chorus": ["Bb", "F/A", "Ebadd9", "Bb/D", "Cm7", "Eb", "F", "Bb"],
-            "Bridge": ["Gm7", "F/A", "Ebadd9", "Bb/D", "Cm7", "Eb", "F", "F"],
-            "Outro / Final Chorus": ["Bb", "F/A", "Ebadd9", "Bb"],
-        }, guitar_tabs={"Bb": "x13331", "F": "133211", "Gm": "355333", "Eb": "x68886", "Gm7": "353333"}),
+        _s("Say", "John Mayer", "Pop", "G", {
+            "Verse": ["G", "C", "Em", "D"] * 4,
+            "Chorus": ["G", "C", "Em", "D", "G", "C", "Em", "D"],
+            "Bridge": ["Am", "C", "D"] * 4,
+            "Final Chorus": ["Em", "G", "C7", "C7", "Em", "G", "C7", "C7"],
+        }, guitar_tabs={"G": "320003", "C": "x32010", "Em": "022000", "D": "xx0232", "Am": "x02210", "C7": "x32310"}),
         _s("Gravity", "John Mayer", "Pop", "G", {
             "Intro / Verse Groove": ["G", "C/G", "G", "C/G"],
             "Verse": ["G", "C/G", "G", "C/G", "G", "C/G", "G", "C/G"],
@@ -1704,9 +1704,11 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Outro Vamp": ["G", "C/G", "G", "C/G"],
         }, guitar_tabs={"G": "320003", "C": "x32010", "Em": "022000", "D": "xx0232", "G7": "320001", "C7": "x32310", "D7": "xx0212"}),
         _s("Waiting on the World to Change", "John Mayer", "Pop", "D", {
-            "Verse": ["D", "Bm", "G", "A"],
-            "Chorus": ["D", "Bm", "G", "A"],
-            "Bridge": ["Em", "G", "D", "A"],
+            "Verse 1": ["D", "Bm", "G", "D", "A", "Bm", "G", "D"] * 4,
+            "Chorus": ["D", "Bm", "G", "D", "A", "Bm", "G", "D", "D", "Em", "Bm", "Em7", "A", "Bm", "G", "D"],
+            "Verse 2": ["D", "Bm", "G", "D", "A", "Bm", "G", "D"] * 4,
+            "Bridge": ["Dm7"] * 4 + ["D", "Bm", "G", "D", "A", "Bm", "G", "D"],
+            "Final Chorus": ["D", "Bm", "G", "D", "A", "Bm", "G", "D", "D", "Em", "Bm", "Em7", "A", "Bm", "G", "D"],
         }),
         _s("Daughters", "John Mayer", "Pop", "D", {
             "Verse": ["D", "G", "D", "A"],

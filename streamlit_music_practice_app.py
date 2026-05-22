@@ -125,9 +125,12 @@ from coach_overlay import section_overlay_html as _section_overlay
 from song_chart_editor import render_chart_editor_panel
 from songs.sheet_format import (
     bars_per_row_for_song,
+    has_lyric_chord_sheet,
     lead_sheet_body_class,
+    lyric_chord_chart_sections,
     merge_lyric_cues_for_song,
 )
+from songs.lyric_chord_renderer import render_lyric_chord_sheet
 
 try:
     from practice_studio import (
@@ -1588,6 +1591,34 @@ def full_chord_markdown(
     focus="",
 ):
     dk = display_key or song_data["key"]
+    if has_lyric_chord_sheet(song_data):
+        chart_sections = lyric_chord_chart_sections(song_data)
+        if chart_sections:
+            show_full = not current_section or str(current_section).strip().lower() in (
+                "full song",
+                "full form",
+                "",
+            )
+            now_playing = "Full song" if show_full else str(current_section)
+            ext = song_data.get("extensions") or {}
+            meta_bits = [
+                f"Level: {level}",
+                f"Tempo: {int(bpm)} BPM",
+                f"Time: {time_signature}",
+                f"Feel: {_chart_feel_label(groove_style)}",
+            ]
+            return render_lyric_chord_sheet(
+                chart_sections,
+                song_name=song_name,
+                artist=str(song_data.get("artist", "")),
+                original_key=song_data["key"],
+                display_key=dk,
+                current_section=current_section,
+                meta_bits=meta_bits,
+                header_note=str(ext.get("arrangement_notes") or ""),
+                now_playing=now_playing,
+                show_full=show_full,
+            )
     merged_lyric_cues = merge_lyric_cues_for_song(song_data, lyric_cues)
     sheet_class = lead_sheet_body_class(song_data)
     total_bars = sum(len(chords) for chords in sections.values())

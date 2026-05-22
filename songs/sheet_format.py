@@ -124,3 +124,40 @@ def wrap_width_for_chord(chord: str) -> int:
     if "/" in str(chord):
         base += 2
     return max(4, min(10, base + 2))
+
+
+def has_lyric_chord_sheet(song_data: dict[str, Any] | None) -> bool:
+    if not song_data:
+        return False
+    ext = song_data.get("extensions") or {}
+    if ext.get("lyric_chord_chart"):
+        return True
+    try:
+        from song_catalog.lyric_chord_charts import has_lyric_chord_chart
+
+        return has_lyric_chord_chart(
+            song_data.get("title", ""),
+            song_data.get("artist", ""),
+        )
+    except ImportError:
+        return False
+
+
+def lyric_chord_chart_sections(song_data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Resolved lyric/chord sections for rendering (catalog or extensions)."""
+    ext = song_data.get("extensions") or {}
+    custom = ext.get("lyric_chord_chart")
+    if custom:
+        return list(custom)
+    try:
+        from song_catalog.lyric_chord_charts import lyric_chord_chart_for_song
+
+        row = lyric_chord_chart_for_song(
+            song_data.get("title", ""),
+            song_data.get("artist", ""),
+        )
+        if row:
+            return list(row.get("chart") or [])
+    except ImportError:
+        pass
+    return []
