@@ -850,11 +850,82 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 }
 .practice-worksheet .pw-title { margin: 0; font-size: 1.45rem; font-weight: 900; }
 .practice-worksheet .pw-artist { margin: 0.1rem 0 0.35rem 0; color: #64748b; font-weight: 650; }
-.practice-worksheet .pw-variant-badge {
-  font-size: 0.82rem;
-  font-weight: 750;
-  color: #1d4ed8;
-  margin: 0 0 0.55rem 0;
+.practice-worksheet .pw-variant-banner {
+  background: linear-gradient(90deg, #1d4ed8 0%, #7c3aed 100%);
+  color: #ffffff;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.75rem;
+}
+.practice-worksheet .pw-variant-banner-label {
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.92;
+}
+.practice-worksheet .pw-variant-banner-value {
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin-top: 0.25rem;
+  line-height: 1.35;
+}
+.practice-worksheet .pw-generated-meta {
+  font-size: 0.78rem;
+  color: #475569;
+  margin: 0 0 0.65rem 0;
+}
+.practice-worksheet .pw-sheet-title {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #0f172a;
+  margin: 0 0 0.35rem 0;
+  border-bottom: 3px solid #2563eb;
+  padding-bottom: 0.35rem;
+}
+.practice-worksheet .pw-mode-panel {
+  border: 3px solid #2563eb;
+  border-radius: 14px;
+  padding: 1rem 1.05rem;
+  margin: 0.85rem 0;
+  background: #eff6ff;
+}
+.practice-worksheet .pw-mode-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: #1e3a8a;
+}
+.practice-worksheet .pw-mode-lead { margin: 0 0 0.65rem 0; font-size: 0.9rem; }
+.practice-worksheet .pw-mode-guitar-rhythm { border-color: #ea580c; background: #fff7ed; }
+.practice-worksheet .pw-mode-guitar-rhythm .pw-mode-title { color: #9a3412; }
+.practice-worksheet .pw-mode-piano-chords { border-color: #7c3aed; background: #f5f3ff; }
+.practice-worksheet .pw-mode-piano-chords .pw-mode-title { color: #5b21b6; }
+.practice-worksheet .pw-mode-sax-improv { border-color: #059669; background: #ecfdf5; }
+.practice-worksheet .pw-mode-sax-improv .pw-mode-title { color: #047857; }
+.practice-worksheet .pw-strum-code {
+  font-size: 1.1rem;
+  font-weight: 800;
+  background: #fef3c7;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+}
+.practice-worksheet .pw-timing-list { font-size: 0.86rem; line-height: 1.55; }
+.practice-worksheet .pw-sax-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+.practice-worksheet .pw-sax-table th,
+.practice-worksheet .pw-sax-table td {
+  border: 1px solid #a7f3d0;
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+}
+.practice-worksheet .pw-chords-only {
+  border-color: #94a3b8;
+  background: #f8fafc;
 }
 .practice-worksheet .pw-panel.pw-primary {
   border-color: #93c5fd;

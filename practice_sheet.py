@@ -6,6 +6,7 @@ import hashlib
 import html
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from music_theory import NOTE_TO_MIDI, normalize_root, semitone_distance, split_chord
@@ -512,6 +513,173 @@ def _build_voice_panel(ctx: SheetContext) -> tuple[str, str]:
     return title, body
 
 
+def _sheet_main_title(ctx: SheetContext) -> str:
+    if ctx.is_full:
+        return "Full Song Practice Sheet"
+    name = ctx.active or ctx.section_label
+    low = (name or "").lower()
+    if "verse" in low:
+        return "Verse Only Practice Sheet"
+    if "chorus" in low:
+        return "Chorus Only Practice Sheet"
+    if "bridge" in low:
+        return "Bridge Only Practice Sheet"
+    if "intro" in low:
+        return "Intro Only Practice Sheet"
+    if "outro" in low:
+        return "Outro Only Practice Sheet"
+    return f"{name} Only Practice Sheet"
+
+
+def _variant_header_line(ctx: SheetContext) -> str:
+    inp = ctx.inputs
+    return (
+        f"{inp.instrument} · {inp.focus} · {ctx.section_label} · "
+        f"{inp.song_title} · {inp.bpm} BPM"
+    )
+
+
+def _lh_bass_note(chord: str) -> str:
+    root = split_chord(chord.split("/")[0])[0]
+    bass = chord.split("/")[1] if "/" in chord else root
+    return f"<strong>{html.escape(chord)}</strong> — LH bass: <code>{html.escape(bass)}</code> on beat 1"
+
+
+def _build_guitar_rhythm_sheet(ctx: SheetContext) -> str:
+    inp = ctx.inputs
+    chords = ctx.section_chords
+    pattern = STRUM_PATTERNS.get(inp.groove_style, STRUM_PATTERNS["Pop groove"])
+    strum = " ".join(pattern)
+    shape, capo = _best_guitar_shape_key(inp.display_key)
+    changes = "<br/>".join(
+        f"<strong>Bar {i + 1}</strong> — change to <strong>{html.escape(c)}</strong> on beat 1"
+        for i, c in enumerate(chords[:12])
+    )
+    muted = (
+        "<ul class='pw-list'>"
+        "<li><strong>Muted strums:</strong> palm-mute on every <strong>D</strong> stroke; let chord ring on beat 1</li>"
+        "<li><strong>Upstrokes:</strong> light, brush upward — do not dig in</li>"
+        "<li><strong>Rests (—):</strong> lift hand slightly; keep time with foot</li>"
+        "</ul>"
+    )
+    capo_txt = (
+        f"Capo <strong>{capo}</strong> — {shape} shapes"
+        if capo
+        else f"Open <strong>{shape}</strong> shapes"
+    )
+    return f"""
+<div class="pw-mode-panel pw-mode-guitar-rhythm">
+  <h2 class="pw-mode-title">Guitar Rhythm Sheet</h2>
+  <p class="pw-mode-lead">{html.escape(inp.groove_style)} · {html.escape(inp.time_signature)} · <strong>{inp.bpm} BPM</strong> · {capo_txt}</p>
+  <p><strong>Strum pattern:</strong> <code class="pw-strum-code">{html.escape(strum)}</code></p>
+  <p><strong>Beat grid:</strong></p>
+  {_beat_grid_html(inp.groove_style)}
+  {muted}
+  <p><strong>Chord-change timing ({html.escape(ctx.section_label)}):</strong></p>
+  <div class="pw-timing-list">{changes or '<em>One chord per bar on beat 1</em>'}</div>
+  <p><strong>Count-in:</strong> 1 – 2 – 3 – 4 → strum enters on beat 1 of bar 1</p>
+</div>
+""".strip()
+
+
+def _build_piano_voicing_sheet(ctx: SheetContext) -> str:
+    inp = ctx.inputs
+    chords = ctx.section_chords
+    hard = _hardest_transitions(chords)
+    lh_lines = "".join(f"<li>{_lh_bass_note(ch)}</li>" for ch in chords[:8])
+    rh_lines = "".join(_piano_voicing_line(ch) for ch in chords[:8])
+    vl = _voice_leading_tips(hard)
+    inv = (
+        "<ul class='pw-list'>"
+        "<li><strong>Inversions:</strong> prefer root position on strong bars; 1st inversion when bass moves by step</li>"
+        "<li><strong>RH:</strong> keep 3rd+7th shell; move only one note between adjacent maj7 chords</li>"
+        "</ul>"
+    )
+    return f"""
+<div class="pw-mode-panel pw-mode-piano-chords">
+  <h2 class="pw-mode-title">Piano Voicing Sheet</h2>
+  <p class="pw-mode-lead">Voice-leading &amp; comping for <strong>{html.escape(ctx.section_label)}</strong> in <strong>{html.escape(inp.display_key)}</strong></p>
+  <p><strong>LH bass notes (beat 1 each bar):</strong></p>
+  <ul class="pw-list">{lh_lines}</ul>
+  <p><strong>RH chord tones / shells:</strong></p>
+  <ul class="pw-list">{rh_lines}</ul>
+  {inv}
+  <p><strong>Voice-leading between changes:</strong></p>
+  {vl}
+</div>
+""".strip()
+
+
+def _build_sax_improv_sheet(ctx: SheetContext) -> str:
+    inp = ctx.inputs
+    labels = transposing_instrument_labels(inp.instrument) or ["Concert pitch"]
+    written = transpose_for_label(inp.display_key, labels[0])
+    rows = []
+    for i, ch in enumerate(ctx.section_chords[:10]):
+        hint = scale_suggestions_for_chord(ch, inp.display_key, inp.level, inp.instrument)
+        rows.append(
+            f"<tr><td>Bar {i + 1}</td><td><strong>{html.escape(ch)}</strong></td>"
+            f"<td>3rd + 7th on beat 1</td><td>{hint}</td></tr>"
+        )
+    table = (
+        "<table class='pw-sax-table'><thead><tr><th>Bar</th><th>Chord</th>"
+        "<th>Target notes</th><th>Scale / arpeggio</th></tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+    )
+    return f"""
+<div class="pw-mode-panel pw-mode-sax-improv">
+  <h2 class="pw-mode-title">Saxophone Improv Sheet</h2>
+  <p class="pw-mode-lead">
+    Concert <strong>{html.escape(inp.display_key)}</strong> ·
+    Written <strong>{html.escape(written)}</strong> ({html.escape(labels[0])}) ·
+    <strong>{html.escape(ctx.section_label)}</strong>
+  </p>
+  <ul class="pw-list">
+    <li><strong>Chord tones:</strong> land 3rd or 7th on beat 1 of each bar</li>
+    <li><strong>Arpeggios:</strong> root–3rd–5th–7th up, resolve to next chord&apos;s 3rd</li>
+    <li><strong>Breath:</strong> 2-bar phrases through {html.escape(ctx.section_label)}</li>
+  </ul>
+  {table}
+</div>
+""".strip()
+
+
+def _build_mode_sheet(ctx: SheetContext) -> tuple[str, str]:
+    """Return (mode_key, html) for the dominant visible panel."""
+    kind = ctx.inputs.instrument_kind()
+    cat = ctx.category
+    if kind == "guitar" and cat == "Rhythm":
+        return "guitar_rhythm", _build_guitar_rhythm_sheet(ctx)
+    if kind == "piano" and cat == "Chords":
+        return "piano_chords", _build_piano_voicing_sheet(ctx)
+    if kind == "sax" and cat == "Scales & Improvisation":
+        return "sax_improv", _build_sax_improv_sheet(ctx)
+    if kind == "guitar" and cat == "Chords":
+        t, b = _build_guitar_panel(ctx)
+        return "guitar_chords", f'<div class="pw-mode-panel"><h2 class="pw-mode-title">Guitar Chord Sheet</h2>{b}</div>'
+    if kind == "piano" and cat == "Rhythm":
+        comp = PIANO_COMP_PATTERNS.get(ctx.inputs.groove_style, PIANO_COMP_PATTERNS["Pop groove"])
+        return (
+            "piano_rhythm",
+            f'<div class="pw-mode-panel pw-mode-piano-rhythm"><h2 class="pw-mode-title">Piano Rhythm Sheet</h2>'
+            f"<p><strong>Comping:</strong> {html.escape(comp)}</p>{_beat_grid_html(ctx.inputs.groove_style)}</div>",
+        )
+    if cat == "Transitions":
+        _, body = _build_focus_primary(ctx)
+        return "transitions", f'<div class="pw-mode-panel pw-mode-transitions"><h2 class="pw-mode-title">Transition Drill Sheet</h2>{body}</div>'
+    if cat == "Timing":
+        _, body = _build_focus_primary(ctx)
+        return "timing", f'<div class="pw-mode-panel pw-mode-timing"><h2 class="pw-mode-title">Timing Practice Sheet</h2>{body}</div>'
+    focus_title, focus_html = _build_focus_primary(ctx)
+    inst_title, inst_html = _build_instrument_secondary(ctx)
+    return (
+        "combined",
+        f'<div class="pw-mode-panel"><h2 class="pw-mode-title">{html.escape(focus_title)}</h2>{focus_html}</div>'
+        f'<div class="pw-mode-panel pw-mode-secondary"><h2 class="pw-mode-title">{html.escape(inst_title)}</h2>{inst_html}</div>',
+    )
+
+
 def _build_focus_primary(ctx: SheetContext) -> tuple[str, str]:
     """Dominant panel — content changes completely by focus category."""
     inp = ctx.inputs
@@ -789,24 +957,9 @@ def build_custom_practice_sheet(
     )
     ctx = _resolve_context(inputs)
 
-    focus_title, focus_html = _build_focus_primary(ctx)
-    inst_title, inst_html = _build_instrument_secondary(ctx)
     goal = _practice_goal(ctx)
     plan_html = _ten_minute_plan(ctx)
     backing_tip = _backing_line(ctx)
-
-    deep = ""
-    if ctx.active and ctx.section_chords:
-        deep = section_deep_practice_markdown(
-            section_name=ctx.active,
-            section_chords=ctx.section_chords,
-            instrument=instrument,
-            level=level,
-            focus=focus,
-            display_key=display_key,
-            bpm=bpm,
-            groove_style=groove_style,
-        )
 
     if ctx.is_full:
         lyric_parts = []
@@ -820,79 +973,63 @@ def build_custom_practice_sheet(
             for name, chs in ctx.view_sections.items()
             if chs
         )
-        section_drill = "<p>Full song overview — drill one section at a time from the chart below.</p>"
     else:
         lyric_html = _lyrics_block(ctx.active or "", inputs.section_lyrics, inputs.lyric_cues)
         chord_html = _chord_bar_grid(ctx.section_chords)
-        section_drill = ctx.combo_note or (ctx.profile.get("sections") or {}).get(
-            _section_key(ctx.active or ""), {}
-        ).get("drill", f"Isolate <strong>{html.escape(ctx.section_label)}</strong> only — {ctx.bar_count} bars.")
 
     variant_label = f"{instrument} · {ctx.category} · {ctx.section_label}"
+    variant_header = _variant_header_line(ctx)
+    sheet_title = _sheet_main_title(ctx)
     style = ctx.profile.get("style") or genre
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    mode_key, mode_html = _build_mode_sheet(ctx)
+
+    chord_panel_title = (
+        f"{html.escape(ctx.section_label)} chords — full song"
+        if ctx.is_full
+        else f"{html.escape(ctx.active or ctx.section_label)} chords ONLY — other sections hidden"
+    )
 
     html_doc = f"""
-<div class="practice-worksheet" data-variant="{html.escape(ctx.variant_id)}">
-  <div class="pw-header">
-    <p class="pw-kicker">Custom Practice Sheet · <code>{html.escape(ctx.variant_id)}</code></p>
-    <h2 class="pw-title">{html.escape(song_title)}</h2>
-    <p class="pw-artist">{html.escape(artist)}</p>
-    <p class="pw-variant-badge">{html.escape(variant_label)} @ <strong>{bpm} BPM</strong></p>
-    <div class="pw-meta-grid">
-      <span><b>Key</b> {html.escape(display_key)}</span>
-      <span><b>BPM</b> {bpm}</span>
-      <span><b>Time</b> {html.escape(time_signature)}</span>
-      <span><b>Style</b> {html.escape(style)}</span>
-      <span><b>Section</b> {html.escape(ctx.section_label)}</span>
-      <span><b>Instrument</b> {html.escape(instrument)}</span>
-      <span><b>Level</b> {html.escape(level)}</span>
-      <span><b>Focus</b> {html.escape(focus)}</span>
-    </div>
-    <p class="pw-goal-line"><strong>Today&apos;s goal:</strong> {goal}</p>
-    {f'<p class="pw-concepts"><strong>Harmony:</strong> {html.escape(", ".join(ctx.concepts[:5]))}</p>' if ctx.concepts else ''}
+<div class="practice-worksheet pw-mode-{html.escape(mode_key)}" data-variant="{html.escape(ctx.variant_id)}" data-generated="{html.escape(generated_at)}">
+  <div class="pw-variant-banner">
+    <div class="pw-variant-banner-label">CUSTOM SHEET VARIANT:</div>
+    <div class="pw-variant-banner-value">{html.escape(variant_header)}</div>
   </div>
+  <p class="pw-generated-meta">
+    <strong>Generated:</strong> {html.escape(generated_at)}
+    · <strong>variant_id:</strong> <code>{html.escape(ctx.variant_id)}</code>
+    · <strong>mode:</strong> <code>{html.escape(mode_key)}</code>
+  </p>
+  <h1 class="pw-sheet-title">{html.escape(sheet_title)}</h1>
+  <h2 class="pw-title">{html.escape(song_title)}</h2>
+  <p class="pw-artist">{html.escape(artist)}</p>
+  <p class="pw-goal-line"><strong>Today&apos;s goal:</strong> {goal}</p>
 
-  <div class="pw-panel pw-primary">
-    <h3>{html.escape(focus_title)}</h3>
-    {focus_html}
-  </div>
+  {mode_html}
 
-  <div class="pw-panel">
-    <h3>{html.escape(inst_title)}</h3>
-    {inst_html}
-  </div>
-
-  <div class="pw-panel">
-    <h3>Section drill — {html.escape(ctx.section_label)}</h3>
-    <p>{section_drill}</p>
-  </div>
-
-  <div class="pw-panel">
-    <h3>Chord chart — {html.escape(ctx.section_label)} only</h3>
+  <div class="pw-panel pw-chords-only">
+    <h3>{chord_panel_title}</h3>
     {chord_html}
   </div>
 
   <div class="pw-panel">
-    <h3>Lyrics &amp; cues — {html.escape(ctx.section_label)}</h3>
+    <h3>Lyrics &amp; cues — {html.escape(ctx.section_label)} only</h3>
     {lyric_html}
-  </div>
-
-  {f'<div class="pw-panel"><h3>Section coach</h3><div class="pw-md">{_md_to_html_block(deep)}</div></div>' if deep and not ctx.is_full else ''}
-
-  <div class="pw-panel pw-tools">
-    <h3>Studio tools (matched to your settings)</h3>
-    <ul class="pw-checklist-tools">
-      <li>Metronome — <strong>{ctx.loop_bars} bars</strong> · <strong>{bpm} BPM</strong> · {html.escape(time_signature)}</li>
-      <li>Section Deep Focus — <strong>{html.escape(ctx.section_label)}</strong></li>
-      <li>Chord coach — chords from this sheet only</li>
-      <li>{backing_tip}</li>
-    </ul>
   </div>
 
   <div class="pw-panel pw-plan">
     <h3>Today&apos;s 10-minute plan ({html.escape(level)})</h3>
     {plan_html}
-    <p class="pw-repeat"><strong>Repeat this loop 5 times</strong> before raising tempo or changing section.</p>
+    <p class="pw-repeat"><strong>Repeat this loop 5 times</strong> @ <strong>{bpm} BPM</strong></p>
+  </div>
+
+  <div class="pw-panel pw-tools">
+    <h3>Studio tools</h3>
+    <ul class="pw-checklist-tools">
+      <li>Metronome — <strong>{ctx.loop_bars} bars</strong> · <strong>{bpm} BPM</strong></li>
+      <li>{backing_tip}</li>
+    </ul>
   </div>
 </div>
 """.strip()
@@ -916,19 +1053,34 @@ def build_custom_practice_sheet(
         "metronome_loop_bars": ctx.loop_bars,
         "variant_id": ctx.variant_id,
         "variant_label": variant_label,
+        "variant_header": variant_header,
+        "sheet_title": sheet_title,
+        "generated_at": generated_at,
+        "mode_key": mode_key,
         "bar_count": ctx.bar_count,
         "chords_preview": ctx.section_chords[:8],
     }
 
-    plain = _plain_export(ctx=ctx, goal=goal, focus_title=focus_title, inst_title=inst_title, backing_tip=backing_tip, plan_html=plan_html, inputs_echo=inputs_echo)
+    plain = _plain_export(
+        ctx=ctx,
+        goal=goal,
+        mode_key=mode_key,
+        backing_tip=backing_tip,
+        plan_html=plan_html,
+        inputs_echo=inputs_echo,
+    )
 
     return {
         "html": html_doc,
         "plain": plain,
         "section_label": ctx.section_label,
+        "sheet_title": sheet_title,
         "category": ctx.category,
+        "mode_key": mode_key,
         "variant_id": ctx.variant_id,
         "variant_label": variant_label,
+        "variant_header": variant_header,
+        "generated_at": generated_at,
         "inputs_echo": inputs_echo,
     }
 
@@ -937,16 +1089,16 @@ def _plain_export(
     *,
     ctx: SheetContext,
     goal: str,
-    focus_title: str,
-    inst_title: str,
+    mode_key: str,
     backing_tip: str,
     plan_html: str,
     inputs_echo: dict[str, Any],
 ) -> str:
     inp = ctx.inputs
     lines = [
-        f"# {inp.song_title} — {inputs_echo['variant_label']}",
-        f"Variant: {ctx.variant_id}",
+        f"# {inputs_echo.get('sheet_title', inp.song_title)}",
+        f"CUSTOM SHEET VARIANT: {inputs_echo.get('variant_header', '')}",
+        f"Generated: {inputs_echo.get('generated_at', '')} · variant_id: {ctx.variant_id}",
         "",
         "## Generator inputs",
         f"- Song: {inp.song_title} ({inp.artist})",
@@ -960,8 +1112,7 @@ def _plain_export(
         f"## Goal",
         re.sub(r"<[^>]+>", "", goal),
         "",
-        f"## {focus_title}",
-        f"## {inst_title}",
+        f"## Mode: {mode_key}",
         "",
         "## Chords",
     ]

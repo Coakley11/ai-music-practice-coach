@@ -5511,6 +5511,17 @@ if _studio_page == "practice":
     _section_bar_count = len(_view_chords) if _active_section else 0
 
     _CUSTOM_SHEET_KEY = "custom_practice_sheet_payload"
+    _LEGACY_SHEET_KEYS = (
+        "custom_practice_sheet",
+        _CUSTOM_SHEET_KEY,
+        "practice_copy_sheet",
+        "practice_download_sheet",
+    )
+
+    def _clear_custom_practice_sheets() -> None:
+        for _k in _LEGACY_SHEET_KEYS:
+            st.session_state.pop(_k, None)
+
     _backing_scope = st.session_state.get("backing_track_scope", "")
     _backing_section = st.session_state.get("backing_track_single_section", "")
     _backing_loops = int(st.session_state.get("backing_track_loops", 4) or 4)
@@ -5533,83 +5544,92 @@ if _studio_page == "practice":
     }
     _custom_sheet_sig = tuple(_sheet_inputs_debug.values())
     if st.session_state.get("custom_practice_sheet_sig") != _custom_sheet_sig:
-        st.session_state.pop(_CUSTOM_SHEET_KEY, None)
+        _clear_custom_practice_sheets()
     st.session_state["custom_practice_sheet_sig"] = _custom_sheet_sig
 
     st.markdown(
         '<div class="ui-card soft"><div class="ui-card-title">Custom practice sheet</div>'
-        '<div class="ui-card-sub">Worksheet for this song, section, instrument, and focus — not a generic chart.</div></div>',
+        '<div class="ui-card-sub">Conditional worksheet — changes with instrument, focus, and section. '
+        'Use the button below (not the legacy ABC sheet further down).</div></div>',
         unsafe_allow_html=True,
     )
-    _gen_col, _sheet_col = st.columns([1, 2])
-    with _gen_col:
-        if st.button(
-            "Generate Custom Practice Sheet",
-            key="practice_generate_sheet",
-            type="primary",
-            use_container_width=True,
-        ):
-            st.session_state[_CUSTOM_SHEET_KEY] = build_custom_practice_sheet(
-                song_title=song,
-                artist=song_data.get("artist", ""),
-                genre=song_data.get("genre", ""),
-                display_key=display_key,
-                original_key=original_key,
-                bpm=_practice_bpm,
-                time_signature=_time_sig,
-                groove_style=_practice_groove,
-                level=level,
-                instrument=instrument,
-                focus=focus,
-                section_focus=_focus_pick,
-                sections=sections,
-                section_lyrics=section_lyrics,
-                lyric_cues=lyric_cues,
-                backing_scope=_backing_scope,
-                backing_section=_backing_section,
-                backing_loops=_backing_loops,
-                metronome_loop_bars=_metronome_loop_bars,
-            )
-    with _sheet_col:
-        st.caption(
-            "Reads **song**, **section focus**, **instrument**, **level**, **focus**, "
-            "**metronome BPM**, and **backing loop** settings. Regenerate after any change."
+    if st.button(
+        "Generate Custom Practice Sheet",
+        key="practice_generate_sheet",
+        type="primary",
+        use_container_width=True,
+    ):
+        _clear_custom_practice_sheets()
+        _payload = build_custom_practice_sheet(
+            song_title=song,
+            artist=song_data.get("artist", ""),
+            genre=song_data.get("genre", ""),
+            display_key=display_key,
+            original_key=original_key,
+            bpm=_practice_bpm,
+            time_signature=_time_sig,
+            groove_style=_practice_groove,
+            level=level,
+            instrument=instrument,
+            focus=focus,
+            section_focus=_focus_pick,
+            sections=sections,
+            section_lyrics=section_lyrics,
+            lyric_cues=lyric_cues,
+            backing_scope=_backing_scope,
+            backing_section=_backing_section,
+            backing_loops=_backing_loops,
+            metronome_loop_bars=_metronome_loop_bars,
         )
+        st.session_state[_CUSTOM_SHEET_KEY] = _payload
+        st.session_state["custom_practice_sheet"] = _payload
+        st.rerun()
 
-    with st.expander("Sheet generator inputs (debug)", expanded=False):
-        st.json(_sheet_inputs_debug)
-        _cached = st.session_state.get(_CUSTOM_SHEET_KEY)
-        if _cached and _cached.get("inputs_echo"):
-            st.caption("Last generated sheet used:")
-            st.json(_cached["inputs_echo"])
-
-    _sheet_payload = st.session_state.get(_CUSTOM_SHEET_KEY)
+    _sheet_payload = st.session_state.get(_CUSTOM_SHEET_KEY) or st.session_state.get(
+        "custom_practice_sheet"
+    )
     if _sheet_payload:
-        with st.expander(
-            f"📄 {_sheet_payload.get('variant_label', 'Custom Practice Sheet')} — "
-            f"{_sheet_payload.get('section_label', 'Section')}",
-            expanded=True,
-        ):
-            st.caption(f"Sheet variant `{_sheet_payload.get('variant_id', '')}`")
-            st.markdown(_sheet_payload["html"], unsafe_allow_html=True)
-            _dl_col, _copy_col = st.columns(2)
-            with _dl_col:
-                st.download_button(
-                    "Download sheet (.md)",
-                    data=_sheet_payload.get("plain", ""),
-                    file_name=f"{_song_slug(song)}_practice_sheet.md",
-                    mime="text/markdown",
-                    key="practice_download_sheet",
-                    use_container_width=True,
-                )
-            with _copy_col:
-                st.text_area(
-                    "Copy practice sheet",
-                    value=_sheet_payload.get("plain", ""),
-                    height=140,
-                    key="practice_copy_sheet",
-                    label_visibility="collapsed",
-                )
+        st.markdown("---")
+        st.markdown("#### Generator inputs (live)")
+        st.json(_sheet_inputs_debug)
+        if _sheet_payload.get("inputs_echo"):
+            st.caption("Payload used for the sheet below:")
+            st.json(_sheet_payload["inputs_echo"])
+
+        st.success(
+            f"**{_sheet_payload.get('sheet_title', 'Practice Sheet')}** · "
+            f"generated **{_sheet_payload.get('generated_at', '')}** · "
+            f"`{_sheet_payload.get('variant_id', '')}` · mode `{_sheet_payload.get('mode_key', '')}`"
+        )
+        st.markdown(
+            f"**CUSTOM SHEET VARIANT:** {_sheet_payload.get('variant_header', '')}"
+        )
+        st.markdown(_sheet_payload["html"], unsafe_allow_html=True)
+
+        _dl_col, _copy_col = st.columns(2)
+        with _dl_col:
+            st.download_button(
+                "Download sheet (.md)",
+                data=_sheet_payload.get("plain", ""),
+                file_name=f"{_song_slug(song)}_{_sheet_payload.get('variant_id', 'sheet')}.md",
+                mime="text/markdown",
+                key=f"practice_download_sheet::{_sheet_payload.get('variant_id', 'x')}",
+                use_container_width=True,
+            )
+        with _copy_col:
+            st.text_area(
+                "Copy practice sheet",
+                value=_sheet_payload.get("plain", ""),
+                height=140,
+                key=f"practice_copy_sheet::{_sheet_payload.get('variant_id', 'x')}",
+                label_visibility="collapsed",
+            )
+        st.markdown("---")
+    else:
+        st.info(
+            "Click **Generate Custom Practice Sheet** to build a variant for your current "
+            "song, section, instrument, and focus. The sheet clears automatically when you change any of those."
+        )
 
     if level == "Beginner":
         _beginner_tips = beginner_transpose_suggestions(
@@ -5799,27 +5819,22 @@ if _studio_page == "practice":
             )
         )
 
-    if st.button("📄 Generate practice sheet", use_container_width=False):
-
-        st.markdown(
-            practice_text(
-                level,
-                instrument=instrument,
-                sections=sections,
-                focus=focus,
+    with st.expander("Legacy ABC notation (optional)", expanded=False):
+        st.caption(
+            "This is separate from **Generate Custom Practice Sheet** above. "
+            "Use the custom sheet for instrument/focus-specific worksheets."
+        )
+        if st.button("Generate legacy ABC notation", key="practice_legacy_abc"):
+            st.markdown(
+                practice_text(
+                    level,
+                    instrument=instrument,
+                    sections=sections,
+                    focus=focus,
+                )
             )
-        )
-
-        st.subheader(
-            "Practice Notation"
-        )
-
-        abc = build_abc(
-            song,
-            sections
-        )
-
-        render_abc(abc)
+            st.subheader("Practice Notation")
+            render_abc(build_abc(song, sections))
 
     with st.expander("📆 Suggested daily time breakdown", expanded=False):
         st.markdown(
