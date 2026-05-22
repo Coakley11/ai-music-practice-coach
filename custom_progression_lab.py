@@ -716,7 +716,10 @@ def song_structure_overview_html(
     if not names:
         return ""
 
+    prog_name = str(active.get("name") or "").strip()
     blocks = ['<div class="cpl-song-map">']
+    if prog_name:
+        blocks.append(f'<p class="cpl-song-title">{_html.escape(prog_name)}</p>')
     for name in names:
         entries = display_entries_for_section(active, display_key, name)
         tiles = entries_chord_tiles_html(entries)
@@ -755,15 +758,59 @@ def cpl_steps_strip_html(*, style: bool, key_set: bool, has_section_chords: bool
 
 
 def load_saved_progression(store: dict, name: str) -> dict:
-    """Restore a named progression from the saved store."""
+    """Restore a named progression from the saved store (full deep copy)."""
     raw = store.get(name)
     if not raw:
         return default_active_progression()
     out = ensure_original_structure(dict(raw))
     out["name"] = str(raw.get("name") or name)
     out["user_locked_home_key"] = True
-    out["original_sections"] = ensure_all_cpl_sections(out.get("original_sections"))
+    out["original_key_center"] = str(raw.get("original_key_center") or out.get("original_key_center") or "C")
+    out["progression_style"] = str(raw.get("progression_style") or out.get("progression_style") or "Pop")
+    out["bpm"] = int(raw.get("bpm", out.get("bpm", 100)) or 100)
+    out["loops"] = int(raw.get("loops", out.get("loops", 2)) or 2)
+    out["groove_style"] = str(raw.get("groove_style") or out.get("groove_style") or "Auto")
+    out["time_signature"] = str(raw.get("time_signature") or out.get("time_signature") or "4/4")
+    out["original_sections"] = deep_copy_sections(
+        ensure_all_cpl_sections(out.get("original_sections"))
+    )
     return out
+
+
+def start_new_progression() -> dict:
+    """Blank progression — no chords, default settings."""
+    return default_active_progression()
+
+
+def clear_cpl_widget_state(session_state: dict) -> None:
+    """Drop Streamlit widget keys so load/new picks up fresh progression data."""
+    keep = {
+        CPL_SAVED_KEY,
+        CPL_ACTIVE_KEY,
+        "cpl_builder_version",
+        "display_key",
+        "studio_page",
+        "active_music_source",
+    }
+    for key in list(session_state.keys()):
+        if key.startswith("cpl_") and key not in keep:
+            session_state.pop(key, None)
+        if key.startswith("_cpl_prev_bars_"):
+            session_state.pop(key, None)
+    for key in ("_cpl_editing_display_key", "cpl_finished", "_cpl_last_bar_apply"):
+        session_state.pop(key, None)
+
+
+def apply_cpl_session_progression(session_state: dict, active: dict) -> None:
+    """Install progression as active and reset CPL UI widget cache."""
+    session_state[CPL_ACTIVE_KEY] = ensure_original_structure(active)
+    session_state.pop("cpl_finished", None)
+    session_state["_cpl_editing_display_key"] = session_state.get(
+        "display_key",
+        written_home_key(session_state[CPL_ACTIVE_KEY]),
+    )
+    clear_cpl_widget_state(session_state)
+    invalidate_cpl_derived_outputs(session_state)
 
 
 def list_saved_progression_names(store: dict) -> list[str]:
@@ -1285,15 +1332,18 @@ def lab_context_for_coaching(sections, key_center, instrument, level, focus):
 
 def save_progression(store, name, data):
     data = ensure_original_structure(dict(data))
-    store[name] = {
-        "name": name,
+    save_name = str(data.get("name") or name).strip() or name
+    store[save_name] = {
+        "name": save_name,
         "original_key_center": data.get("original_key_center", "C"),
-        "original_sections": deep_copy_sections(data.get("original_sections")),
+        "original_sections": deep_copy_sections(
+            ensure_all_cpl_sections(data.get("original_sections"))
+        ),
         "time_signature": data.get("time_signature", "4/4"),
-        "bpm": data.get("bpm", 100),
-        "groove_style": data.get("groove_style", "Auto"),
-        "loops": data.get("loops", 2),
-        "progression_style": data.get("progression_style", "Pop"),
+        "bpm": int(data.get("bpm", 100) or 100),
+        "groove_style": str(data.get("groove_style", "Auto") or "Auto"),
+        "loops": int(data.get("loops", 2) or 2),
+        "progression_style": str(data.get("progression_style", "Pop") or "Pop"),
         "user_locked_home_key": bool(data.get("user_locked_home_key", True)),
     }
     return store

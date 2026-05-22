@@ -1261,6 +1261,19 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   padding: 1rem 1.15rem;
   margin: 0.65rem 0;
 }
+.cpl-now-editing {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0.35rem 0 0.85rem 0;
+  letter-spacing: -0.02em;
+}
+.cpl-song-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #1e3a8a;
+  margin: 0 0 0.65rem 0;
+}
 .cpl-section-heading {
   font-size: 1.05rem;
   font-weight: 800;
