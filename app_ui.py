@@ -829,175 +829,44 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   cursor: pointer;
 }
 .live-stop-btn:hover { background: #fee2e2; }
-/* Custom practice worksheet */
-.practice-worksheet {
-  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-  color: #0f172a;
-  border: 1px solid #cbd5e1;
-  border-radius: 14px;
-  background: linear-gradient(180deg, #fffef8 0%, #ffffff 40%, #f8fafc 100%);
-  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.08);
-  padding: 1rem 1.1rem 1.15rem 1.1rem;
+/* Practice notation / TAB output */
+.notation-output {
+  border: 2px solid #0f172a;
+  border-radius: 12px;
+  background: #fffef5;
+  padding: 0.85rem 1rem;
   margin: 0.5rem 0 1rem 0;
 }
-.practice-worksheet .pw-kicker {
-  font-size: 0.68rem;
+.notation-output .notation-title {
+  font-size: 1rem;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #2563eb;
-  margin: 0 0 0.25rem 0;
-}
-.practice-worksheet .pw-title { margin: 0; font-size: 1.45rem; font-weight: 900; }
-.practice-worksheet .pw-artist { margin: 0.1rem 0 0.35rem 0; color: #64748b; font-weight: 650; }
-.practice-worksheet .pw-variant-banner {
-  background: linear-gradient(90deg, #1d4ed8 0%, #7c3aed 100%);
-  color: #ffffff;
-  border-radius: 12px;
-  padding: 0.85rem 1rem;
-  margin-bottom: 0.75rem;
-}
-.practice-worksheet .pw-variant-banner-label {
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  opacity: 0.92;
-}
-.practice-worksheet .pw-variant-banner-value {
-  font-size: 1.05rem;
-  font-weight: 800;
-  margin-top: 0.25rem;
-  line-height: 1.35;
-}
-.practice-worksheet .pw-generated-meta {
-  font-size: 0.78rem;
-  color: #475569;
-  margin: 0 0 0.65rem 0;
-}
-.practice-worksheet .pw-sheet-title {
-  font-size: 1.35rem;
-  font-weight: 900;
   color: #0f172a;
-  margin: 0 0 0.35rem 0;
-  border-bottom: 3px solid #2563eb;
-  padding-bottom: 0.35rem;
+  margin-bottom: 0.35rem;
 }
-.practice-worksheet .pw-mode-panel {
-  border: 3px solid #2563eb;
-  border-radius: 14px;
-  padding: 1rem 1.05rem;
-  margin: 0.85rem 0;
-  background: #eff6ff;
+.notation-output .notation-chords {
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: #1e40af;
 }
-.practice-worksheet .pw-mode-title {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.2rem;
-  font-weight: 900;
-  color: #1e3a8a;
+.notation-output .notation-tab-pre {
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0;
+  white-space: pre;
 }
-.practice-worksheet .pw-mode-lead { margin: 0 0 0.65rem 0; font-size: 0.9rem; }
-.practice-worksheet .pw-mode-guitar-rhythm { border-color: #ea580c; background: #fff7ed; }
-.practice-worksheet .pw-mode-guitar-rhythm .pw-mode-title { color: #9a3412; }
-.practice-worksheet .pw-mode-piano-chords { border-color: #7c3aed; background: #f5f3ff; }
-.practice-worksheet .pw-mode-piano-chords .pw-mode-title { color: #5b21b6; }
-.practice-worksheet .pw-mode-sax-improv { border-color: #059669; background: #ecfdf5; }
-.practice-worksheet .pw-mode-sax-improv .pw-mode-title { color: #047857; }
-.practice-worksheet .pw-strum-code {
-  font-size: 1.1rem;
-  font-weight: 800;
-  background: #fef3c7;
-  padding: 0.2rem 0.5rem;
-  border-radius: 6px;
-}
-.practice-worksheet .pw-timing-list { font-size: 0.86rem; line-height: 1.55; }
-.practice-worksheet .pw-sax-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.8rem;
+.notation-output .notation-rhythm {
+  font-size: 0.82rem;
   margin-top: 0.5rem;
+  color: #475569;
 }
-.practice-worksheet .pw-sax-table th,
-.practice-worksheet .pw-sax-table td {
-  border: 1px solid #a7f3d0;
-  padding: 0.4rem 0.5rem;
-  text-align: left;
-}
-.practice-worksheet .pw-chords-only {
-  border-color: #94a3b8;
-  background: #f8fafc;
-}
-.practice-worksheet .pw-panel.pw-primary {
-  border-color: #93c5fd;
-  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
-}
-.practice-worksheet .pw-beat-grid {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.8rem;
-  margin: 0.35rem 0;
-}
-.practice-worksheet .pw-beat-grid th,
-.practice-worksheet .pw-beat-grid td {
-  border: 1px solid #cbd5e1;
-  padding: 0.35rem 0.5rem;
-  text-align: center;
-}
-.practice-worksheet .pw-grid-legend { font-size: 0.75rem; color: #64748b; margin: 0.25rem 0 0 0; }
-.practice-worksheet .pw-meta-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.35rem 0.65rem;
-  font-size: 0.78rem;
-  margin-bottom: 0.65rem;
-}
-.practice-worksheet .pw-goal-line { font-size: 0.88rem; margin: 0.35rem 0 0.5rem 0; line-height: 1.45; }
-.practice-worksheet .pw-concepts { font-size: 0.8rem; color: #475569; margin: 0; }
-.practice-worksheet .pw-panel {
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 0.75rem 0.85rem;
-  margin-top: 0.75rem;
-  background: #ffffff;
-}
-.practice-worksheet .pw-panel h3 {
-  margin: 0 0 0.55rem 0;
-  font-size: 0.92rem;
-  font-weight: 850;
-  color: #1e3a5f;
-}
-.practice-worksheet .pw-chord-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin-bottom: 0.45rem;
-}
-.practice-worksheet .pw-chord-cell {
-  flex: 1 1 5.5rem;
-  min-width: 5rem;
-  border: 2px solid #94a3b8;
-  border-radius: 10px;
-  padding: 0.45rem 0.35rem;
-  text-align: center;
-  background: #f8fafc;
-}
-.practice-worksheet .pw-bar { display: block; font-size: 0.62rem; color: #64748b; font-weight: 700; }
-.practice-worksheet .pw-chord { display: block; font-size: 1rem; font-weight: 900; color: #0f172a; }
-.practice-worksheet .pw-list { margin: 0.25rem 0 0 1.1rem; padding: 0; font-size: 0.84rem; line-height: 1.45; }
-.practice-worksheet .pw-list li { margin-bottom: 0.35rem; }
-.practice-worksheet .pw-split {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
-.practice-worksheet .pw-checklist,
-.practice-worksheet .pw-checklist-tools { margin: 0.25rem 0 0 1.1rem; font-size: 0.84rem; }
-.practice-worksheet .pw-goal,
-.practice-worksheet .pw-repeat { font-size: 0.84rem; margin: 0.65rem 0 0 0; color: #334155; }
-.practice-worksheet .pw-sub { margin-top: 0.5rem; font-size: 0.82rem; }
-@media (max-width: 900px) {
-  .practice-worksheet .pw-meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .practice-worksheet .pw-split { grid-template-columns: 1fr; }
+.practice-worksheet-removed {
+  display: none;
 }
 @media (max-width: 900px) {
   .ui-brand-header { border-radius: 12px 12px 0 0; padding: 0.6rem 0.75rem; }
