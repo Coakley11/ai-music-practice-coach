@@ -140,8 +140,16 @@ def transpose_section_entries(entries, from_key, to_key):
         return [dict(entry) for entry in entries or []]
     out = []
     for entry in entries or []:
+        if is_repeat_entry(entry):
+            out.append(
+                {
+                    "repeat": True,
+                    "bars": max(1, int(entry.get("bars", 1) or 1)),
+                }
+            )
+            continue
         chord = normalize_chord_symbol(entry.get("chord", ""))
-        if not chord:
+        if not chord or chord == "%":
             continue
         out.append(
             {
@@ -163,21 +171,54 @@ def normalize_chord_symbol(text):
     raw = str(text or "").strip()
     if not raw:
         return ""
+    if raw == "%":
+        return "%"
     head = raw.split("/", 1)[0].strip()
     if len(head) < 1:
         return ""
     return raw
 
 
+def is_repeat_entry(entry: dict | None) -> bool:
+    if not entry:
+        return False
+    if entry.get("repeat"):
+        return True
+    return str(entry.get("chord", "")).strip() == "%"
+
+
+def expand_entries_to_display_slots(entries: list[dict] | None) -> list[tuple[str, str]]:
+    """Per bar: (display_symbol, sounding_chord). Display may be % for repeats."""
+    slots: list[tuple[str, str]] = []
+    last = ""
+    for entry in entries or []:
+        if is_repeat_entry(entry):
+            display = "%"
+            sound = last
+        else:
+            sound = normalize_chord_symbol(entry.get("chord", ""))
+            if sound and sound != "%":
+                last = sound
+            display = sound
+        if not sound:
+            continue
+        bars = max(1, int(entry.get("bars", 1) or 1))
+        for _ in range(bars):
+            slots.append((display, sound))
+    return slots
+
+
+def expand_entries_to_chords(entries: list[dict] | None) -> list[str]:
+    """Resolved chords for backing track (repeat → previous chord)."""
+    return [s for _d, s in expand_entries_to_display_slots(entries) if s]
+
+
 def weighted_chords_from_sections(sections):
     """Expand section entries to (chord, bar_weight) pairs in form order."""
     weighted = []
     for _name, entries in (sections or {}).items():
-        for entry in entries or []:
-            chord = normalize_chord_symbol(entry.get("chord", ""))
-            if not chord:
-                continue
-            weighted.append((chord, max(1, int(entry.get("bars", 1) or 1))))
+        for chord in expand_entries_to_chords(entries):
+            weighted.append((chord, 1))
     return weighted
 
 
@@ -712,27 +753,39 @@ def song_structure_overview_html(
     highlight_section: str | None = None,
     only_filled: bool = True,
 ) -> str:
-    """Song map with backing-track-style chord cells — filled sections only."""
+    """Song map with chord cells; jazz form labels (A/B) when present."""
     home_sections = active.get("original_sections") or {}
     names = filled_section_names(home_sections)
     if not names:
         return ""
 
+    labels: dict[str, str] = dict(active.get("section_labels") or {})
+    time_sig = str(active.get("time_signature") or "4/4")
+    use_lead = bool(labels) or bool(active.get("demo_chart_id"))
     prog_name = str(active.get("name") or "").strip()
-    blocks = ['<div class="cpl-song-map">']
+    wrap_cls = "cpl-song-map cpl-lead-sheet-form" if use_lead else "cpl-song-map"
+    blocks = [f'<div class="{wrap_cls}">']
     if prog_name:
         blocks.append(f'<p class="cpl-song-title">{_html.escape(prog_name)}</p>')
     for name in names:
         entries = display_entries_for_section(active, display_key, name)
         tiles = entries_chord_tiles_html(
             entries,
-            time_signature=active.get("time_signature", "4/4"),
+            time_signature=time_sig,
+            lead_sheet=use_lead,
         )
         if not tiles:
             continue
         active_cls = " cpl-section-active" if name == highlight_section else ""
+        letter = labels.get(name, "")
+        letter_html = (
+            f'<span class="cpl-form-label">Section {_html.escape(letter)}</span>'
+            if letter
+            else ""
+        )
         blocks.append(
-            f'<div class="cpl-section-card{active_cls}">'
+            f'<div class="cpl-section-card cpl-lead-section{active_cls}">'
+            f"{letter_html}"
             f'<div class="cpl-section-label">{_html.escape(name)}</div>'
             f"{tiles}"
             "</div>"
@@ -779,6 +832,8 @@ def load_saved_progression(store: dict, name: str) -> dict:
     out["original_sections"] = deep_copy_sections(
         ensure_all_cpl_sections(out.get("original_sections"))
     )
+    out["section_labels"] = dict(raw.get("section_labels") or {})
+    out["demo_chart_id"] = raw.get("demo_chart_id")
     return out
 
 
@@ -866,8 +921,16 @@ def display_entries_for_section(active: dict, display_key: str, section_name: st
     steps = semitone_distance(home, display_key)
     out = []
     for entry in home_entries:
+        if is_repeat_entry(entry):
+            out.append(
+                {
+                    "repeat": True,
+                    "bars": max(1, int(entry.get("bars", 1) or 1)),
+                }
+            )
+            continue
         ch = normalize_chord_symbol(entry.get("chord", ""))
-        if not ch:
+        if not ch or ch == "%":
             continue
         out.append({
             "chord": transpose_chord(ch, steps),
@@ -993,14 +1056,7 @@ def flatten_sections_to_events(sections):
         if not entries:
             continue
         section_bars = 0
-        expanded = []
-        for entry in entries:
-            chord = normalize_chord_symbol(entry.get("chord", ""))
-            if not chord:
-                continue
-            bars = max(1, int(entry.get("bars", 1) or 1))
-            for _ in range(bars):
-                expanded.append(chord)
+        expanded = expand_entries_to_chords(entries)
         section_bars = len(expanded)
         for idx, chord in enumerate(expanded):
             events.append(
@@ -1017,13 +1073,7 @@ def flatten_sections_to_events(sections):
 def sections_to_chord_lists(sections):
     out = {}
     for name, entries in (sections or {}).items():
-        chords = []
-        for entry in entries or []:
-            ch = normalize_chord_symbol(entry.get("chord", ""))
-            if not ch:
-                continue
-            bars = max(1, int(entry.get("bars", 1) or 1))
-            chords.extend([ch] * bars)
+        chords = expand_entries_to_chords(entries)
         if chords:
             out[name] = chords
     return out
@@ -1353,6 +1403,8 @@ def save_progression(store, name, data):
         "loops": int(data.get("loops", 2) or 2),
         "progression_style": str(data.get("progression_style", "Pop") or "Pop"),
         "user_locked_home_key": bool(data.get("user_locked_home_key", True)),
+        "section_labels": dict(data.get("section_labels") or {}),
+        "demo_chart_id": data.get("demo_chart_id"),
     }
     return store
 
@@ -1758,40 +1810,36 @@ def entries_chord_tiles_html(
     *,
     time_signature: str = "4/4",
     max_tiles: int = 48,
+    lead_sheet: bool = False,
 ) -> str:
-    """Chord cells grouped by time signature (measure rows with | dividers)."""
-    if not entries:
+    """Chord cells grouped by time signature; % for repeat notation (lead-sheet style)."""
+    slots = expand_entries_to_display_slots(entries)[:max_tiles]
+    if not slots:
         return ""
     cells: list[str] = []
-    for entry in entries:
-        ch = normalize_chord_symbol(entry.get("chord", ""))
-        if not ch:
-            continue
-        bars = max(1, int(entry.get("bars", 1) or 1))
-        for _ in range(bars):
-            if len(cells) >= max_tiles:
-                break
-            cells.append(
-                f'<div class="chord-cell cpl-chord-cell">'
-                f'<div class="chord-symbol">{_html.escape(ch)}</div>'
-                f"</div>"
-            )
-        if len(cells) >= max_tiles:
-            break
-    if not cells:
-        return ""
+    for display, _sound in slots:
+        cls = "chord-cell cpl-chord-cell"
+        if display == "%":
+            cls += " cpl-repeat-cell"
+        cells.append(
+            f'<div class="{cls}">'
+            f'<div class="chord-symbol">{_html.escape(display)}</div>'
+            f"</div>"
+        )
     per_measure = max(1, chords_per_measure(time_signature))
+    row_cls = "cpl-measure-row cpl-lead-measure-row" if lead_sheet else "cpl-measure-row"
+    wrap_cls = "cpl-measures cpl-lead-sheet" if lead_sheet else "cpl-measures"
     rows: list[str] = []
     for i in range(0, len(cells), per_measure):
         chunk = cells[i : i + per_measure]
         rows.append(
-            '<div class="cpl-measure-row">'
+            f'<div class="{row_cls}">'
             '<span class="cpl-measure-bar">|</span>'
             + "".join(chunk)
             + '<span class="cpl-measure-bar">|</span>'
             "</div>"
         )
-    return f'<div class="cpl-measures">{"".join(rows)}</div>'
+    return f'<div class="{wrap_cls}">{"".join(rows)}</div>'
 
 
 def chord_tiles_html(chords: list[str], *, max_tiles: int = 16) -> str:

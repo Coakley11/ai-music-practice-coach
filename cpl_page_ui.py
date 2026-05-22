@@ -64,6 +64,7 @@ def render_custom_progression_lab_page() -> None:
         render_cpl_page_header,
         session_display_key,
     )
+    from jazz_demo_charts import build_demo_progression, demo_presets_for_style
     from songs.music_source import note_active_source_change, set_custom_source
 
     render_cpl_page_header()
@@ -202,6 +203,21 @@ def render_custom_progression_lab_page() -> None:
                 loaded = load_saved_progression(saved, load_pick)
                 apply_cpl_session_progression(st.session_state, loaded)
                 st.rerun()
+        with st.expander("Jazz chart demos (test charts)", expanded=False):
+            st.caption("Load a full jazz-standard chart with measure bars and repeat (%) notation.")
+            d1, d2 = st.columns(2)
+            with d1:
+                if st.button("Load Blue Bossa", key="cpl_demo_blue_bossa", use_container_width=True):
+                    apply_cpl_session_progression(
+                        st.session_state, build_demo_progression("blue_bossa")
+                    )
+                    st.rerun()
+            with d2:
+                if st.button("Load Take The A Train", key="cpl_demo_att", use_container_width=True):
+                    apply_cpl_session_progression(
+                        st.session_state, build_demo_progression("take_the_a_train")
+                    )
+                    st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
     active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
@@ -272,6 +288,7 @@ def render_custom_progression_lab_page() -> None:
     simple = simple_chords_for_key(original_key)
     style_presets = presets_for_style(style)
     time_sig = str(active.get("time_signature") or "4/4")
+    use_lead_sheet = bool(active.get("section_labels")) or bool(active.get("demo_chart_id"))
     pending_key = _pending_chord_key(edit_section)
     last_bars_key = _last_bars_key(edit_section)
     st.session_state.setdefault(last_bars_key, 1)
@@ -310,7 +327,11 @@ def render_custom_progression_lab_page() -> None:
     st.markdown('<div class="cpl-live-progression">', unsafe_allow_html=True)
     if section_has_chords:
         st.markdown(
-            entries_chord_tiles_html(section_display, time_signature=time_sig),
+            entries_chord_tiles_html(
+                section_display,
+                time_signature=time_sig,
+                lead_sheet=use_lead_sheet,
+            ),
             unsafe_allow_html=True,
         )
     if pending_chord:
@@ -405,9 +426,26 @@ def render_custom_progression_lab_page() -> None:
                     st.session_state[pending_key] = staged
                     st.rerun()
 
+    demo_presets = demo_presets_for_style(style)
+    if demo_presets:
+        st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
+        st.markdown(f"**{style} chart demos** ({original_label})")
+        for demo_label, demo_id in demo_presets.items():
+            if st.button(
+                demo_label,
+                key=f"cpl_demo_{demo_id}_{edit_section}",
+                use_container_width=True,
+                type="primary",
+            ):
+                apply_cpl_session_progression(
+                    st.session_state, build_demo_progression(demo_id)
+                )
+                st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
     if style_presets:
         st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
-        st.markdown(f"**{style} presets** ({original_label})")
+        st.markdown(f"**{style} presets** ({original_label}) — fills {edit_section} only")
         for preset_id, spec in style_presets.items():
             label = preset_button_label(preset_id, original_key, spec)
             if st.button(

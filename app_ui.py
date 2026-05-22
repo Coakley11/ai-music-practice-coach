@@ -1268,6 +1268,40 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   color: #2563eb;
   margin: 0 0 0.65rem 0;
 }
+.cpl-lead-sheet-form {
+  margin: 0.25rem 0;
+}
+.cpl-form-label {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0.15rem 0.45rem;
+  margin-bottom: 0.35rem;
+}
+.cpl-lead-section {
+  border-left: 4px solid #6366f1;
+}
+.cpl-repeat-cell {
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%) !important;
+  border-style: dashed !important;
+  border-color: #94a3b8 !important;
+}
+.cpl-repeat-cell .chord-symbol {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #64748b;
+}
+.cpl-lead-measure-row {
+  background: #fafbfc;
+  border-radius: 8px;
+  padding: 0.25rem 0.15rem;
+}
 .cpl-chord-cell,
 .chord-cell.cpl-chord-cell {
   min-height: 64px;
