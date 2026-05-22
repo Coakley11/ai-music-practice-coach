@@ -44,10 +44,11 @@ def active_source_banner(
     catalog_title: str,
     catalog_artist: str,
     custom_name: str,
-) -> str:
+) -> tuple[str, str]:
+    """Return (source kind label, detail line) for the sidebar source banner."""
     if is_custom_progression(session_state):
-        return f"**Active source:** Custom Progression — {custom_name}"
-    return f"**Active source:** Song Picker — {catalog_title} — {catalog_artist}"
+        return "Custom Progression", str(custom_name)
+    return "Song", f"{catalog_title} — {catalog_artist}"
 
 
 def display_key_context(

@@ -123,6 +123,7 @@ from backing_audio import (
 from coach_overlay import section_overlay_html as _section_overlay
 
 from song_chart_editor import render_chart_editor_panel
+from songs.backing_chart import render_backing_chord_chart
 from songs.sheet_format import (
     bars_per_row_for_song,
     has_lyric_chord_sheet,
@@ -326,8 +327,8 @@ if not _APP_UI_LOADED:
         label = f"{icon} {title}".strip() if icon else title
         st.sidebar.markdown(f"**{label}**")
 
-    def sidebar_source_banner(markdown_text: str) -> None:
-        st.sidebar.markdown(markdown_text)
+    def sidebar_source_banner(source_kind: str, detail: str) -> None:
+        st.sidebar.markdown(f"**{source_kind}**  \n{detail}")
 
     def open_control_section(letter: str, title: str, subtitle: str = "") -> None:
         st.markdown(f"**{letter}. {title}**")
@@ -1589,36 +1590,28 @@ def full_chord_markdown(
     current_section=None,
     current_bar=None,
     focus="",
+    *,
+    chart_mode: str = "practice",
+    selected_section_names: list[str] | None = None,
 ):
+    """Practice musician chart. Use ``chart_mode='backing'`` for backing follow-along."""
     dk = display_key or song_data["key"]
-    if has_lyric_chord_sheet(song_data):
-        chart_sections = lyric_chord_chart_sections(song_data)
-        if chart_sections:
-            show_full = not current_section or str(current_section).strip().lower() in (
-                "full song",
-                "full form",
-                "",
-            )
-            now_playing = "Full song" if show_full else str(current_section)
-            ext = song_data.get("extensions") or {}
-            meta_bits = [
-                f"Level: {level}",
-                f"Tempo: {int(bpm)} BPM",
-                f"Time: {time_signature}",
-                f"Feel: {_chart_feel_label(groove_style)}",
-            ]
-            return render_lyric_chord_sheet(
-                chart_sections,
-                song_name=song_name,
-                artist=str(song_data.get("artist", "")),
-                original_key=song_data["key"],
-                display_key=dk,
-                current_section=current_section,
-                meta_bits=meta_bits,
-                header_note=str(ext.get("arrangement_notes") or ""),
-                now_playing=now_playing,
-                show_full=show_full,
-            )
+    if chart_mode == "backing":
+        return render_backing_chord_chart(
+            song_name,
+            song_data,
+            sections,
+            display_key=dk,
+            level=level,
+            groove_style=groove_style,
+            bpm=bpm,
+            time_signature=time_signature,
+            current_section=current_section,
+            current_bar=current_bar,
+            section_lyrics=section_lyrics,
+            selected_section_names=selected_section_names,
+            show_user_lyric_preview=bool(section_lyrics),
+        )
     merged_lyric_cues = merge_lyric_cues_for_song(song_data, lyric_cues)
     sheet_class = lead_sheet_body_class(song_data)
     total_bars = sum(len(chords) for chords in sections.values())
@@ -4748,14 +4741,13 @@ _studio_page = ensure_studio_page(st.session_state)
 
 sidebar_section("Active source", icon="🎼", tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
-sidebar_source_banner(
-    active_source_banner(
-        st.session_state,
-        catalog_title=_catalog_song_data.get("title", _catalog_song),
-        catalog_artist=_catalog_song_data.get("artist", ""),
-        custom_name=_cpl_for_banner.get("name", "Custom Progression"),
-    )
+_src_kind, _src_detail = active_source_banner(
+    st.session_state,
+    catalog_title=_catalog_song_data.get("title", _catalog_song),
+    catalog_artist=_catalog_song_data.get("artist", ""),
+    custom_name=_cpl_for_banner.get("name", "Custom Progression"),
 )
+sidebar_source_banner(_src_kind, _src_detail)
 if is_custom_progression(st.session_state):
     st.sidebar.caption("Edit chords in **Custom Progression Lab**.")
 else:
@@ -5202,10 +5194,35 @@ if _studio_page == "practice":
         time_signature=_time_sig,
         current_section=_chart_current,
         focus=focus,
+        chart_mode="practice",
     )
     _chart_title = "📋 Chord chart — full song" if _is_full_song else f"📋 Chord chart — {_active_section}"
     with st.expander(_chart_title, expanded=True):
         st.markdown(_chart_html, unsafe_allow_html=True)
+    if has_lyric_chord_sheet(song_data):
+        _ug_sections = lyric_chord_chart_sections(song_data)
+        if _ug_sections:
+            with st.expander("🎤 Lyric & chord sheet (Ultimate Guitar style)", expanded=False):
+                st.caption("Separate from the practice grid — aligned chord pills above lyrics.")
+                st.markdown(
+                    render_lyric_chord_sheet(
+                        _ug_sections,
+                        song_name=song,
+                        artist=str(song_data.get("artist", "")),
+                        original_key=song_data["key"],
+                        display_key=display_key,
+                        current_section=_chart_current,
+                        meta_bits=[
+                            f"Level: {level}",
+                            f"Tempo: {int(_practice_bpm)} BPM",
+                            f"Time: {_time_sig}",
+                        ],
+                        header_note=str((song_data.get("extensions") or {}).get("arrangement_notes") or ""),
+                        now_playing=_active_section if not _is_full_song else "Full song",
+                        show_full=_is_full_song,
+                    ),
+                    unsafe_allow_html=True,
+                )
 
     # 6. Practice coach & settings
     exercise_key = f"exercise_variation::{song}::{instrument}::{level}::{focus}"
@@ -5355,7 +5372,7 @@ elif _studio_page == "picker":
         available_levels = ", ".join(selected_versions.keys()) if selected_versions else "Beginner · Intermediate · Advanced"
 
         st.success(
-            f"**Active source: Song Selection** — **{selected_data['title']}** — {selected_data['artist']}."
+            f"**Active source: Song** — **{selected_data['title']}** — {selected_data['artist']}."
         )
 
         st.write(
@@ -5607,7 +5624,6 @@ elif _studio_page == "backing":
             instrument,
             display_key=chart_display_key,
             level=level,
-            lyric_cues=lyric_cues,
             section_lyrics=section_lyrics,
             groove_style=resolved_groove,
             bpm=bpm,
@@ -5615,6 +5631,8 @@ elif _studio_page == "backing":
             current_section=None,
             current_bar=None,
             focus=focus,
+            chart_mode="backing",
+            selected_section_names=selected_section_names,
         )
         if _backing_audio_ready:
             if not st.session_state.get(BACKING_AUTOPLAY, True):

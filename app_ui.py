@@ -360,6 +360,20 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   line-height: 1.4;
 }
 .ui-source-banner strong { color: #f8fafc; }
+.ui-source-kind {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin-bottom: 0.2rem;
+}
+.ui-source-detail {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #f8fafc;
+  line-height: 1.35;
+}
 .ui-follow-strip {
   border: 1px solid var(--studio-line);
   border-radius: var(--studio-radius);
@@ -1621,11 +1635,14 @@ def sidebar_section(title: str, *, icon: str = "", tone: str = "") -> None:
     )
 
 
-def sidebar_source_banner(markdown_text: str) -> None:
+def sidebar_source_banner(source_kind: str, detail: str) -> None:
     import streamlit as st
 
     st.sidebar.markdown(
-        f'<div class="ui-source-banner">{markdown_text}</div>',
+        f'<div class="ui-source-banner">'
+        f'<div class="ui-source-kind">{html.escape(source_kind)}</div>'
+        f'<div class="ui-source-detail">{html.escape(detail)}</div>'
+        f"</div>",
         unsafe_allow_html=True,
     )
 
