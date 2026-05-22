@@ -100,6 +100,7 @@ def default_active_progression():
         "name": "Untitled progression",
         "original_key_center": "C",
         "original_sections": empty_cpl_sections(),
+        "progression_style": "Pop",
         "time_signature": "4/4",
         "bpm": 100,
         "groove_style": "Auto",
@@ -620,9 +621,19 @@ DEFAULT_SONG_ARRANGEMENT: list[str] = [
     "Outro",
 ]
 
-CHORD_QUICK_EDIT_KEYS: list[str] = ["7", "maj7", "m7", "sus4", "dim", "aug", "9", "add9"]
+CHORD_QUICK_EDIT_KEYS: list[str] = ["7", "maj7", "m7", "sus4", "dim", "add9", "9"]
 
-CPL_BUILDER_VERSION = 4
+CPL_BUILDER_VERSION = 5
+
+CPL_PROGRESSION_STYLES: list[str] = [
+    "Pop",
+    "Soul/R&B",
+    "Jazz",
+    "Bossa",
+    "Blues",
+    "Funk",
+    "Rock",
+]
 
 CPL_UI_SECTION_ORDER: list[str] = [
     "Verse",
@@ -648,6 +659,16 @@ def sections_with_chords(active: dict, display_key: str) -> list[str]:
     ]
 
 
+def filled_section_names(home_sections: dict | None) -> list[str]:
+    """Sections that have at least one chord, in UI order."""
+    sections = home_sections or {}
+    return [
+        name
+        for name in CPL_UI_SECTION_ORDER
+        if name in CPL_EDITABLE_SECTIONS and not section_is_empty(sections.get(name))
+    ]
+
+
 def song_arrangement_flow_text(active: dict, display_key: str) -> str:
     filled = set(sections_with_chords(active, display_key))
     if not filled:
@@ -670,28 +691,27 @@ def song_structure_overview_html(
     display_key: str,
     *,
     highlight_section: str | None = None,
+    only_filled: bool = True,
 ) -> str:
-    """Full song map: flow line + each section's bar line."""
-    flow = song_arrangement_flow_text(active, display_key)
-    blocks = [
-        '<div class="cpl-song-map">',
-        f'<p class="cpl-song-flow"><strong>Song structure</strong><br>{_html.escape(flow)}</p>',
-    ]
+    """Song map with chord tiles — only sections that contain chords."""
     home_sections = active.get("original_sections") or {}
-    for name in CPL_EDITABLE_SECTIONS:
-        home_entries = home_sections.get(name, [])
-        if section_is_empty(home_entries):
-            line = "Empty — click a chord or preset to start."
-        else:
-            entries = display_entries_for_section(active, display_key, name)
-            friendly = format_entries_friendly_line(entries)
-            bar = format_entries_bar_line(entries)
-            line = f"{friendly}  ({bar})" if friendly else format_entries_bar_line(entries)
+    names = filled_section_names(home_sections)
+
+    flow = song_arrangement_flow_text(active, display_key) if names else ""
+    blocks = ['<div class="cpl-song-map">']
+    if flow and names:
+        blocks.append(
+            f'<p class="cpl-song-flow"><strong>Song structure</strong><br>{_html.escape(flow)}</p>'
+        )
+
+    for name in names:
+        entries = display_entries_for_section(active, display_key, name)
+        tiles = entries_chord_tiles_html(entries)
         active_cls = " cpl-section-active" if name == highlight_section else ""
         blocks.append(
-            f'<div class="cpl-section-block{active_cls}">'
+            f'<div class="cpl-section-card{active_cls}">'
             f'<div class="cpl-section-label">{_html.escape(name)}</div>'
-            f'<div class="cpl-section-bars">{_html.escape(line)}</div>'
+            f"{tiles}"
             "</div>"
         )
     blocks.append("</div>")
@@ -1221,6 +1241,7 @@ def save_progression(store, name, data):
         "bpm": data.get("bpm", 100),
         "groove_style": data.get("groove_style", "Auto"),
         "loops": data.get("loops", 2),
+        "progression_style": data.get("progression_style", "Pop"),
     }
     return store
 
@@ -1447,17 +1468,86 @@ def simple_chords_for_key(home_key: str) -> list[str]:
     return out
 
 
-SIMPLE_PRESET_SPECS: dict[str, list[tuple[int, str]]] = {
-    "Pop (I–V–vi–IV)": [(0, ""), (7, ""), (9, "m"), (5, "")],
-    "Ballad (I–vi–IV–V)": [(0, ""), (9, "m"), (5, ""), (7, "")],
+STYLE_PRESET_SPECS: dict[str, dict[str, list[tuple[int, str]]]] = {
+    "Pop": {
+        "I–V–vi–IV": [(0, ""), (7, ""), (9, "m"), (5, "")],
+        "vi–IV–I–V": [(9, "m"), (5, ""), (0, ""), (7, "")],
+        "I–vi–IV–V": [(0, ""), (9, "m"), (5, ""), (7, "")],
+    },
+    "Soul/R&B": {
+        "I–vi–IV–V": [(0, "maj7"), (9, "m7"), (5, "maj7"), (7, "7")],
+        "vi–IV–I–V": [(9, "m7"), (5, "maj7"), (0, "maj7"), (7, "7")],
+        "ii–V–I": [(2, "m7"), (5, "7"), (0, "maj7")],
+        "I–IV–vi–V": [(0, "maj7"), (5, "maj7"), (9, "m7"), (7, "7")],
+    },
+    "Jazz": {
+        "ii–V–I": [(2, "m7"), (5, "7"), (0, "maj7")],
+        "I–vi–ii–V": [(0, "maj7"), (9, "m7"), (2, "m7"), (5, "7")],
+        "Jazz turnaround": [(0, "maj7"), (9, "7"), (2, "m7"), (7, "7")],
+        "Neo soul": [(2, "m9"), (5, "7"), (0, "maj7"), (9, "m7")],
+    },
+    "Bossa": {
+        "Bossa ii–V": [(2, "m7"), (5, "7"), (0, "maj7")],
+        "Minor bossa": [(9, "m7"), (7, "7"), (2, "m7"), (5, "7")],
+        "Bossa cadence": [(0, "maj7"), (7, "7"), (9, "m7"), (7, "7")],
+        "I–V–vi–IV": [(0, "maj7"), (7, "7"), (9, "m7"), (5, "maj7")],
+    },
+    "Blues": {
+        "Blues (8 bars)": [
+            (0, "7"),
+            (0, "7"),
+            (0, "7"),
+            (0, "7"),
+            (5, "7"),
+            (0, "7"),
+            (0, "7"),
+            (7, "7"),
+        ],
+        "Quick change": [(0, "7"), (5, "7"), (0, "7"), (7, "7")],
+        "ii–V–I": [(2, "m7"), (5, "7"), (0, "maj7")],
+    },
+    "Funk": {
+        "I7 vamp": [(0, "7"), (0, "7"), (0, "7"), (0, "7")],
+        "i7–IV7": [(0, "m7"), (5, "7"), (0, "m7"), (5, "7")],
+        "I–IV–I": [(0, "7"), (5, "7"), (0, "7"), (7, "7")],
+    },
+    "Rock": {
+        "I–V–vi–IV": [(0, ""), (7, ""), (9, "m"), (5, "")],
+        "I–IV–V": [(0, ""), (5, ""), (7, "")],
+        "vi–IV–I–V": [(9, "m"), (5, ""), (0, ""), (7, "")],
+        "I–V–IV–V": [(0, ""), (7, ""), (5, ""), (7, "")],
+    },
 }
 
+# Backward-compatible alias
+SIMPLE_PRESET_SPECS = STYLE_PRESET_SPECS.get("Pop", {})
 
-def build_simple_preset_entries(preset_name: str, home_key: str) -> list[dict]:
-    spec = SIMPLE_PRESET_SPECS.get(preset_name)
+
+def preset_chords_for_key(spec: list[tuple[int, str]], home_key: str) -> list[str]:
+    return [_chord_at_degree(home_key, deg, qual) for deg, qual in spec]
+
+
+def preset_button_label(preset_id: str, home_key: str, spec: list[tuple[int, str]]) -> str:
+    chords = preset_chords_for_key(spec, home_key)
+    return f"{preset_id}: {' '.join(chords)}"
+
+
+def presets_for_style(style: str) -> dict[str, list[tuple[int, str]]]:
+    return STYLE_PRESET_SPECS.get(style, STYLE_PRESET_SPECS["Pop"])
+
+
+def build_style_preset_entries(style: str, preset_id: str, home_key: str) -> list[dict]:
+    spec = presets_for_style(style).get(preset_id)
     if not spec:
         return []
     return [{"chord": _chord_at_degree(home_key, deg, qual), "bars": 1} for deg, qual in spec]
+
+
+def build_simple_preset_entries(preset_name: str, home_key: str) -> list[dict]:
+    for style, presets in STYLE_PRESET_SPECS.items():
+        if preset_name in presets:
+            return build_style_preset_entries(style, preset_name, home_key)
+    return []
 
 
 def diatonic_chords_for_key(home_key: str) -> list[str]:
@@ -1554,12 +1644,36 @@ def suggest_next_chords(
     return out[:limit]
 
 
+def entries_chord_tiles_html(entries: list[dict] | None, *, max_tiles: int = 32) -> str:
+    """Professional chord boxes from section entries (×2 for multi-bar holds)."""
+    if not entries:
+        return ""
+    tiles: list[str] = []
+    for entry in entries:
+        if len(tiles) >= max_tiles:
+            break
+        ch = normalize_chord_symbol(entry.get("chord", ""))
+        if not ch:
+            continue
+        bars = max(1, int(entry.get("bars", 1) or 1))
+        if bars > 1:
+            tiles.append(
+                f'<div class="cpl-chord-tile cpl-chord-tile-hold">'
+                f'<span class="cpl-chord-name">{_html.escape(ch)}</span>'
+                f'<span class="cpl-chord-mult">×{bars}</span></div>'
+            )
+        else:
+            tiles.append(
+                f'<div class="cpl-chord-tile">'
+                f'<span class="cpl-chord-name">{_html.escape(ch)}</span></div>'
+            )
+    if not tiles:
+        return ""
+    return f'<div class="cpl-chord-row">{"".join(tiles)}</div>'
+
+
 def chord_tiles_html(chords: list[str], *, max_tiles: int = 16) -> str:
     if not chords:
-        return '<div class="cpl-chord-row empty">Add chords below</div>'
-    tiles = []
-    for ch in chords[:max_tiles]:
-        tiles.append(
-            f'<div class="cpl-chord-tile"><span class="cpl-chord-name">{_html.escape(ch)}</span></div>'
-        )
-    return f'<div class="cpl-chord-row">{"".join(tiles)}</div>'
+        return ""
+    entries = [{"chord": ch, "bars": 1} for ch in chords[:max_tiles]]
+    return entries_chord_tiles_html(entries, max_tiles=max_tiles)

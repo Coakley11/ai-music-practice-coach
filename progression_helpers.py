@@ -50,5 +50,5 @@ def render_cpl_page_header() -> None:
     compact_page_title(
         "✏️",
         "Custom Progression",
-        "Create your own chord progression — build, loop, and practice.",
+        "Create your own chord progression and play it with a backing track.",
     )

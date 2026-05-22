@@ -1115,19 +1115,62 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   padding: 0.5rem;
 }
 .cpl-chord-tile {
-  min-width: 4.5rem;
-  padding: 0.65rem 0.85rem;
+  min-width: 4.75rem;
+  padding: 0.7rem 0.9rem;
   border-radius: 12px;
   border: 2px solid #93c5fd;
   background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
   box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
   text-align: center;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+}
+.cpl-chord-tile-hold {
+  border-color: #6366f1;
+  background: linear-gradient(180deg, #ffffff 0%, #eef2ff 100%);
+}
+.cpl-chord-mult {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #4338ca;
+  letter-spacing: 0.03em;
 }
 .cpl-chord-name {
   font-size: 1.05rem;
   font-weight: 900;
   color: #1e3a8a;
   letter-spacing: 0.02em;
+}
+.cpl-section-card {
+  margin: 0.65rem 0;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+}
+.cpl-section-card.cpl-section-active {
+  border-color: #2563eb;
+  background: #f8fbff;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.14);
+}
+.cpl-finish-panel {
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.25rem 1.35rem;
+  margin: 1rem 0;
+}
+.cpl-style-hint {
+  font-size: 0.88rem;
+  color: #64748b;
+  margin: 0.25rem 0 0.75rem 0;
+}
+.cpl-custom-chord-row {
+  margin: 0.5rem 0 1rem 0;
 }
 .cpl-flow-hint {
   background: #f0f9ff;
