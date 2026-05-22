@@ -22,8 +22,8 @@ __all__ = [
     "render_section_jump_bar",
     "render_cross_page_links",
     "render_page_quick_nav",
-    "render_nav_button",
     "TOP_NAV_ITEMS",
+    "STUDIO_PAGE_NAV_KEY",
     "render_sidebar_studio_nav",
     "render_studio_nav",
     "STUDIO_PAGE_META",
@@ -412,79 +412,58 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   margin-bottom: 0.55rem;
   background: transparent;
 }
-/* Top nav row — columns sit in the HorizontalBlock after #studio-top-nav-anchor */
-#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] {
-  align-items: stretch !important;
-  gap: 0.35rem !important;
-  border: 1px solid var(--studio-line) !important;
-  border-radius: 12px !important;
-  padding: 0.45rem 0.5rem !important;
-  margin-bottom: 0.75rem !important;
-  background: linear-gradient(180deg, #ffffff, #f8fafc) !important;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04) !important;
+/* Top nav — st.segmented_control (equal segments; no column/button grid) */
+.ui-studio-nav-segmented {
+  border: 1px solid var(--studio-line);
+  border-radius: 12px;
+  padding: 0.45rem 0.5rem 0.55rem 0.5rem;
+  margin-bottom: 0.75rem;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
 }
-#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] {
-  height: 72px !important;
-  min-height: 72px !important;
-  max-height: 72px !important;
+.ui-studio-nav-segmented [data-testid="stButtonGroup"],
+.ui-studio-nav-segmented [data-baseweb="button-group"] {
+  width: 100% !important;
+  min-height: 64px !important;
   display: flex !important;
-  flex-direction: column !important;
-  align-items: stretch !important;
-  justify-content: stretch !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+}
+.ui-studio-nav-segmented [data-testid="stButtonGroup"] > div {
   flex: 1 1 0 !important;
   min-width: 0 !important;
-  padding: 0 !important;
 }
-#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] > div {
-  height: 100% !important;
-  min-height: 72px !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: stretch !important;
-  justify-content: stretch !important;
-}
-#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] [data-testid="stButton"],
-#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] div.stButton {
-  width: 100% !important;
-  flex: 1 1 auto !important;
-  margin: 0 !important;
+.ui-studio-nav-segmented [data-testid="stBaseButton-segmented_control"],
+.ui-studio-nav-segmented [data-testid="stBaseButton-segmented_controlActive"] {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
   min-height: 64px !important;
   height: 64px !important;
   max-height: 64px !important;
-}
-#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] [data-testid="stButton"] > button,
-#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] button {
-  width: 100% !important;
-  height: 64px !important;
-  min-height: 64px !important;
-  max-height: 64px !important;
-  padding: 8px 10px !important;
+  padding: 8px 6px !important;
   box-sizing: border-box !important;
-  display: flex !important;
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+  white-space: pre-line !important;
+  display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   text-align: center !important;
-  line-height: 1.2 !important;
-  white-space: normal !important;
-  font-size: 0.72rem !important;
-  font-weight: 700 !important;
-  border-radius: 10px !important;
-  border-width: 1px !important;
-  border-style: solid !important;
-  margin: 0 !important;
-  transform: none !important;
-  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease !important;
 }
-#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] [data-testid="stButton"] > button:hover,
-#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] button:hover {
-  transform: none !important;
+.ui-studio-nav-segmented [data-testid="stRadio"] {
+  width: 100% !important;
 }
-#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] button[kind="primary"],
-#studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] button[kind="secondary"] {
-  height: 64px !important;
+.ui-studio-nav-segmented [data-testid="stRadio"] label {
   min-height: 64px !important;
-  max-height: 64px !important;
   padding: 8px 10px !important;
+  white-space: pre-line !important;
+  line-height: 1.2 !important;
+  font-weight: 700 !important;
+  font-size: 0.72rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 /* Sidebar nav mirrors page colors (same active sizing as top bar) */
 .ui-sb-nav-wrap .studio-nav-item button {
@@ -857,18 +836,12 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
   .ui-studio-nav { padding: 0.4rem 0.45rem; }
-  #studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] [data-testid="stButton"] > button,
-  #studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] button {
+  .ui-studio-nav-segmented [data-testid="stBaseButton-segmented_control"],
+  .ui-studio-nav-segmented [data-testid="stBaseButton-segmented_controlActive"] {
     font-size: 0.66rem !important;
-    padding: 6px 8px !important;
-    height: 60px !important;
-    min-height: 60px !important;
-    max-height: 60px !important;
-  }
-  #studio-top-nav-anchor ~ div[data-testid="stHorizontalBlock"] [data-testid="column"] {
-    height: 68px !important;
-    min-height: 68px !important;
-    max-height: 68px !important;
+    min-height: 58px !important;
+    height: 58px !important;
+    max-height: 58px !important;
   }
   .ui-now-playing .np-title { font-size: 0.9rem; }
   .ui-section-jump { top: 0.25rem; }
@@ -1047,80 +1020,40 @@ STUDIO_PAGES: list[tuple[str, str]] = [
     for page_id, meta in STUDIO_PAGE_META.items()
 ]
 
-# Single source for top navigation — Practice is item 0, same loop as all others.
+# Single source for top navigation — Practice is first, same widget as all others.
 TOP_NAV_ITEMS: list[tuple[str, str]] = list(STUDIO_PAGES)
+TOP_NAV_PAGE_IDS: list[str] = [page_id for page_id, _label in TOP_NAV_ITEMS]
+STUDIO_PAGE_NAV_KEY = "studio_page_nav"
 
-_TOP_NAV_PALETTE: dict[str, dict[str, str]] = {
-    "practice": {
-        "idle": "background:linear-gradient(180deg,#f0f9ff,#e0f2fe)!important;color:#0369a1!important;border-color:rgba(14,165,233,.35)!important;box-shadow:none!important;",
-        "active": "background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important;color:#fff!important;border-color:rgba(3,105,161,.55)!important;box-shadow:0 2px 8px rgba(14,165,233,.28)!important;",
-    },
-    "picker": {
-        "idle": "background:linear-gradient(180deg,#faf5ff,#f3e8ff)!important;color:#6d28d9!important;border-color:rgba(139,92,246,.35)!important;box-shadow:none!important;",
-        "active": "background:linear-gradient(135deg,#8b5cf6,#a855f7)!important;color:#fff!important;border-color:rgba(109,40,217,.55)!important;box-shadow:0 2px 8px rgba(139,92,246,.28)!important;",
-    },
-    "backing": {
-        "idle": "background:linear-gradient(180deg,#f0fdf4,#dcfce7)!important;color:#15803d!important;border-color:rgba(34,197,94,.35)!important;box-shadow:none!important;",
-        "active": "background:linear-gradient(135deg,#22c55e,#10b981)!important;color:#fff!important;border-color:rgba(21,128,61,.55)!important;box-shadow:0 2px 8px rgba(34,197,94,.28)!important;",
-    },
-    "custom": {
-        "idle": "background:linear-gradient(180deg,#eef2ff,#e0e7ff)!important;color:#4338ca!important;border-color:rgba(99,102,241,.35)!important;box-shadow:none!important;",
-        "active": "background:linear-gradient(135deg,#6366f1,#4f46e5)!important;color:#fff!important;border-color:rgba(67,56,202,.55)!important;box-shadow:0 2px 8px rgba(99,102,241,.28)!important;",
-    },
-    "creative": {
-        "idle": "background:linear-gradient(180deg,#fffbeb,#fef3c7)!important;color:#b45309!important;border-color:rgba(245,158,11,.4)!important;box-shadow:none!important;",
-        "active": "background:linear-gradient(135deg,#f59e0b,#fbbf24)!important;color:#422006!important;border-color:rgba(180,83,9,.55)!important;box-shadow:0 2px 8px rgba(245,158,11,.28)!important;",
-    },
-    "multitrack": {
-        "idle": "background:linear-gradient(180deg,#fff1f2,#ffe4e6)!important;color:#be123c!important;border-color:rgba(244,63,94,.35)!important;box-shadow:none!important;",
-        "active": "background:linear-gradient(135deg,#f43f5e,#fb7185)!important;color:#fff!important;border-color:rgba(190,18,60,.55)!important;box-shadow:0 2px 8px rgba(244,63,94,.28)!important;",
-    },
-    "analysis": {
-        "idle": "background:linear-gradient(180deg,#ecfeff,#cffafe)!important;color:#0e7490!important;border-color:rgba(6,182,212,.35)!important;box-shadow:none!important;",
-        "active": "background:linear-gradient(135deg,#06b6d4,#22d3ee)!important;color:#fff!important;border-color:rgba(14,116,144,.55)!important;box-shadow:0 2px 8px rgba(6,182,212,.28)!important;",
-    },
-    "log": {
-        "idle": "background:linear-gradient(180deg,#f8fafc,#f1f5f9)!important;color:#475569!important;border-color:rgba(100,116,139,.35)!important;box-shadow:none!important;",
-        "active": "background:linear-gradient(135deg,#64748b,#475569)!important;color:#fff!important;border-color:rgba(71,85,105,.55)!important;box-shadow:0 2px 8px rgba(71,85,105,.26)!important;",
-    },
+
+_NAV_COMPACT_TITLE: dict[str, str] = {
+    "practice": "Practice",
+    "picker": "Songs",
+    "backing": "Backing",
+    "custom": "Custom",
+    "creative": "Creative",
+    "multitrack": "Multi",
+    "analysis": "Upload",
+    "log": "Log",
 }
 
-_TOP_NAV_SIZE_LOCK = (
-    "height:64px!important;min-height:64px!important;max-height:64px!important;"
-    "padding:8px 10px!important;font-size:0.72rem!important;font-weight:700!important;"
-    "line-height:1.2!important;"
-)
+
+def nav_two_line_label(page_id: str) -> str:
+    """Two-line labels — same structure on every segment (icon + title)."""
+    meta = STUDIO_PAGE_META.get(page_id, {})
+    icon = meta.get("icon", "")
+    title = _NAV_COMPACT_TITLE.get(page_id, meta.get("label", page_id))
+    return f"{icon}\n{title}" if icon else title
 
 
-def _top_nav_dynamic_css(current_page: str) -> str:
-    """Per-column colors via nth-child (works with Streamlit's real DOM)."""
-    rules: list[str] = []
-    for idx, (page_id, _label) in enumerate(TOP_NAV_ITEMS, start=1):
-        palette = _TOP_NAV_PALETTE.get(page_id, _TOP_NAV_PALETTE["log"])
-        look = palette["active"] if page_id == current_page else palette["idle"]
-        sel = (
-            "#studio-top-nav-anchor ~ div[data-testid='stHorizontalBlock'] "
-            f"[data-testid='column']:nth-child({idx}) [data-testid='stButton'] > button"
-        )
-        rules.append(f"{sel} {{{_TOP_NAV_SIZE_LOCK}{look}}}")
-    return "<style>\n" + "\n".join(rules) + "\n</style>"
+def _sync_studio_page_nav_widget(session_state: Any, current_page: str) -> None:
+    """Keep segmented_control value aligned with studio_page (before widget builds)."""
+    if session_state.get(STUDIO_PAGE_NAV_KEY) not in TOP_NAV_PAGE_IDS:
+        session_state[STUDIO_PAGE_NAV_KEY] = current_page
+    studio = session_state.get("studio_page", current_page)
+    if studio in TOP_NAV_PAGE_IDS and studio != session_state.get(STUDIO_PAGE_NAV_KEY):
+        session_state[STUDIO_PAGE_NAV_KEY] = studio
 
-
-def render_nav_button(
-    st_module: Any,
-    *,
-    page_key: str,
-    label: str,
-    is_active: bool,
-) -> bool:
-    """Render one top-nav control — identical Streamlit button API for every page."""
-    del is_active  # colors come from _top_nav_dynamic_css (size stays constant)
-    return st_module.button(
-        label,
-        key=f"top_nav_{page_key}",
-        use_container_width=True,
-        type="secondary",
-    )
 
 # Compact cross-page shortcuts (subset for inline link rows).
 CROSS_PAGE_LINKS: list[tuple[str, str]] = [
@@ -1159,33 +1092,49 @@ def render_page_quick_nav(
     rerun_fn: Any,
     key_prefix: str = "page",
 ) -> str:
-    """Compact navigation bar at the top of each major page."""
+    """Top navigation — one segmented_control row (equal segments, including Practice)."""
     import streamlit as st
 
-    del key_prefix  # stable widget keys: top_nav_{page_key} for every page
+    del key_prefix
     current = ensure_studio_page(session_state, default=current_page)
+    _sync_studio_page_nav_widget(session_state, current)
+
+    def _on_nav_change() -> None:
+        picked = session_state.get(STUDIO_PAGE_NAV_KEY)
+        if picked in TOP_NAV_PAGE_IDS and picked != session_state.get("studio_page"):
+            session_state["studio_page"] = picked
+            rerun_fn()
+
     st.markdown(
         '<p class="ui-page-nav-label">Quick navigation</p>',
         unsafe_allow_html=True,
     )
-    st.markdown(_top_nav_dynamic_css(current), unsafe_allow_html=True)
-    st.markdown(
-        '<div id="studio-top-nav-anchor" class="ui-studio-nav ui-page-nav" aria-hidden="true"></div>',
-        unsafe_allow_html=True,
-    )
-    n = len(TOP_NAV_ITEMS)
-    cols = st.columns([1] * n, gap="small")
-    for col, (page_key, label) in zip(cols, TOP_NAV_ITEMS):
-        with col:
-            if render_nav_button(
-                st,
-                page_key=page_key,
-                label=label,
-                is_active=page_key == current,
-            ):
-                if page_key != current:
-                    session_state["studio_page"] = page_key
-                    rerun_fn()
+    st.markdown('<div class="ui-studio-nav-segmented">', unsafe_allow_html=True)
+    if hasattr(st, "segmented_control"):
+        st.segmented_control(
+            "Quick navigation",
+            options=TOP_NAV_PAGE_IDS,
+            format_func=nav_two_line_label,
+            key=STUDIO_PAGE_NAV_KEY,
+            label_visibility="collapsed",
+            on_change=_on_nav_change,
+            width="stretch",
+        )
+    else:
+        st.radio(
+            "Quick navigation",
+            TOP_NAV_PAGE_IDS,
+            format_func=nav_two_line_label,
+            key=STUDIO_PAGE_NAV_KEY,
+            horizontal=True,
+            label_visibility="collapsed",
+            on_change=_on_nav_change,
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    picked = session_state.get(STUDIO_PAGE_NAV_KEY, current)
+    if picked in TOP_NAV_PAGE_IDS and picked != session_state.get("studio_page"):
+        session_state["studio_page"] = picked
     return session_state.get("studio_page", current)
 
 

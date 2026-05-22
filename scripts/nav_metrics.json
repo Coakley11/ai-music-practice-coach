@@ -1,0 +1,22 @@
+{
+  "segment_count": 8,
+  "heights_px": [
+    32,
+    32,
+    32,
+    32,
+    32,
+    32,
+    32,
+    32
+  ],
+  "max_delta_px": 0,
+  "testids_sample": [
+    "stAppDeployButton",
+    "stBaseButton-header",
+    "stBaseButton-headerNoPadding",
+    "stBaseButton-segmented_control",
+    "stBaseButton-segmented_controlActive",
+    "stButtonGroup"
+  ]
+}
