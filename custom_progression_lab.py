@@ -988,3 +988,230 @@ def save_progression(store, name, data):
 def delete_progression(store, name):
     store.pop(name, None)
     return store
+
+
+# --- UI presets & suggestions ---
+
+import html as _html
+
+CPL_STYLE_CHOICES = [
+    "Jazz",
+    "Pop",
+    "Bossa Nova",
+    "Blues",
+    "Neo Soul",
+    "Ballad",
+    "Funk",
+    "Rock",
+    "Custom",
+]
+
+_STYLE_DEFAULTS: dict[str, dict] = {
+    "Jazz": {
+        "groove_style": "Jazz swing",
+        "sections": {
+            "Verse": [
+                {"chord": "Dm7", "bars": 1},
+                {"chord": "G7", "bars": 1},
+                {"chord": "Cmaj7", "bars": 1},
+                {"chord": "Am7", "bars": 1},
+            ],
+        },
+    },
+    "Pop": {
+        "groove_style": "Pop groove",
+        "sections": {
+            "Verse": [
+                {"chord": "C", "bars": 1},
+                {"chord": "G", "bars": 1},
+                {"chord": "Am", "bars": 1},
+                {"chord": "F", "bars": 1},
+            ],
+        },
+    },
+    "Bossa Nova": {
+        "groove_style": "Bossa nova",
+        "sections": {
+            "Verse": [
+                {"chord": "Fmaj7", "bars": 1},
+                {"chord": "G7", "bars": 1},
+                {"chord": "Gm7", "bars": 1},
+                {"chord": "C7", "bars": 1},
+            ],
+        },
+    },
+    "Blues": {
+        "groove_style": "Rock groove",
+        "sections": {
+            "Verse": [
+                {"chord": "C7", "bars": 1},
+                {"chord": "C7", "bars": 1},
+                {"chord": "C7", "bars": 1},
+                {"chord": "C7", "bars": 1},
+                {"chord": "F7", "bars": 1},
+                {"chord": "C7", "bars": 1},
+                {"chord": "C7", "bars": 1},
+                {"chord": "G7", "bars": 1},
+            ],
+        },
+    },
+    "Neo Soul": {
+        "groove_style": "Funk groove",
+        "sections": {
+            "Verse": [
+                {"chord": "Dm9", "bars": 1},
+                {"chord": "G7", "bars": 1},
+                {"chord": "Cmaj7", "bars": 1},
+                {"chord": "Am7", "bars": 1},
+            ],
+        },
+    },
+    "Ballad": {
+        "groove_style": "Ballad",
+        "sections": {
+            "Verse": [
+                {"chord": "Cmaj7", "bars": 1},
+                {"chord": "Am7", "bars": 1},
+                {"chord": "Dm7", "bars": 1},
+                {"chord": "G7", "bars": 1},
+            ],
+        },
+    },
+    "Funk": {
+        "groove_style": "Funk groove",
+        "sections": {
+            "Verse": [
+                {"chord": "E9", "bars": 1},
+                {"chord": "E9", "bars": 1},
+                {"chord": "A9", "bars": 1},
+                {"chord": "E9", "bars": 1},
+            ],
+        },
+    },
+    "Rock": {
+        "groove_style": "Rock groove",
+        "sections": {
+            "Verse": [
+                {"chord": "G", "bars": 1},
+                {"chord": "D", "bars": 1},
+                {"chord": "Em", "bars": 1},
+                {"chord": "C", "bars": 1},
+            ],
+        },
+    },
+}
+
+_CHORD_PRESETS: dict[str, list[tuple[int, str]]] = {
+    "ii–V–I": [(2, "m7"), (5, "7"), (0, "maj7")],
+    "I–V–vi–IV": [(0, "maj7"), (7, "7"), (9, "m7"), (5, "maj7")],
+    "Jazz turnaround": [(0, "maj7"), (9, "7"), (2, "m7"), (7, "7")],
+    "Bossa cadence": [(0, "maj7"), (7, "7"), (9, "m7"), (7, "7")],
+    "Blues (8 bars)": [(0, "7"), (0, "7"), (0, "7"), (0, "7"), (5, "7"), (0, "7"), (0, "7"), (7, "7")],
+    "Neo soul": [(2, "m9"), (5, "7"), (0, "maj7"), (9, "m7")],
+}
+
+
+def _chord_at_degree(home_key: str, degree: int, quality: str) -> str:
+    key_pc = NOTE_TO_PC.get(chord_root(home_key))
+    if key_pc is None:
+        root = "C"
+    else:
+        root_pc = (key_pc + degree) % 12
+        root = _spell_tonic_pc(root_pc, {chord_root(home_key)})
+    q = quality or ""
+    if q in ("maj7", "m7", "m9", "7"):
+        return f"{root}{q}"
+    if q == "m":
+        return f"{root}m"
+    return root
+
+
+def transpose_preset_entries(entries: list[dict], from_key: str, to_key: str) -> list[dict]:
+    return transpose_section_entries(entries, from_key, to_key)
+
+
+def apply_style_preset(style: str, home_key: str) -> dict | None:
+    """Return {sections, groove_style} transposed to home_key, or None for Custom."""
+    if style == "Custom" or style not in _STYLE_DEFAULTS:
+        return None
+    data = _STYLE_DEFAULTS[style]
+    ref_key = "C"
+    if style == "Bossa Nova":
+        ref_key = "F"
+    elif style == "Blues":
+        ref_key = "C"
+    sections = deep_copy_sections(data["sections"])
+    for name, entries in sections.items():
+        sections[name] = transpose_section_entries(entries, ref_key, home_key)
+    return {"sections": sections, "groove_style": data["groove_style"]}
+
+
+def build_preset_entries(preset_name: str, home_key: str) -> list[dict]:
+    spec = _CHORD_PRESETS.get(preset_name)
+    if not spec:
+        return []
+    return [
+        {"chord": _chord_at_degree(home_key, deg, qual), "bars": 1}
+        for deg, qual in spec
+    ]
+
+
+def suggest_next_chords(
+    sections: dict,
+    home_key: str,
+    *,
+    limit: int = 4,
+) -> list[str]:
+    """Harmony-aware next-chord ideas from the last chord in the progression."""
+    weighted = weighted_chords_from_sections(sections)
+    if not weighted:
+        return [
+            _chord_at_degree(home_key, 0, "maj7"),
+            _chord_at_degree(home_key, 2, "m7"),
+            _chord_at_degree(home_key, 5, "7"),
+        ][:limit]
+
+    last = weighted[-1][0]
+    q = chord_quality(last)
+    key_pc = NOTE_TO_PC.get(chord_root(home_key))
+    last_pc = root_pc(last)
+    out: list[str] = []
+
+    if key_pc is not None and last_pc is not None:
+        rel = (last_pc - key_pc) % 12
+        if "dominant" in q:
+            out.append(_chord_at_degree(home_key, 0, "maj7"))
+            out.append(_chord_at_degree(home_key, 9, "m7"))
+            out.append(_chord_at_degree(home_key, 2, "m7"))
+        elif "minor" in q and "half" not in q:
+            out.append(_chord_at_degree(home_key, 5, "7"))
+            out.append(_chord_at_degree(home_key, 0, "maj7"))
+            out.append(_chord_at_degree(home_key, 7, "7"))
+        elif "major" in q:
+            out.append(_chord_at_degree(home_key, 2, "m7"))
+            out.append(_chord_at_degree(home_key, 5, "7"))
+            out.append(_chord_at_degree(home_key, 9, "m7"))
+        else:
+            out.append(_chord_at_degree(home_key, 5, "7"))
+            out.append(_chord_at_degree(home_key, 0, "maj7"))
+
+    for deg, qual in [(2, "m7"), (5, "7"), (0, "maj7"), (9, "m7"), (5, "maj7"), (7, "7")]:
+        cand = _chord_at_degree(home_key, deg, qual)
+        if cand != last and cand not in out:
+            out.append(cand)
+
+    if "maj7" in last.lower() and _chord_at_degree(home_key, 5, "7") not in out:
+        out.insert(0, _chord_at_degree(home_key, 5, "7"))
+
+    return out[:limit]
+
+
+def chord_tiles_html(chords: list[str], *, max_tiles: int = 16) -> str:
+    if not chords:
+        return '<div class="cpl-chord-row empty">Add chords below</div>'
+    tiles = []
+    for ch in chords[:max_tiles]:
+        tiles.append(
+            f'<div class="cpl-chord-tile"><span class="cpl-chord-name">{_html.escape(ch)}</span></div>'
+        )
+    return f'<div class="cpl-chord-row">{"".join(tiles)}</div>'
