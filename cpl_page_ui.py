@@ -87,7 +87,7 @@ def render_custom_progression_lab_page() -> None:
     def _open_backing() -> None:
         _save()
         set_custom_source(st.session_state)
-        note_active_source_change(st, invalidate_backing=invalid_backing_cache)
+        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         prepare_cpl_backing_handoff(st.session_state, active, section=None)
         st.session_state["studio_page"] = "backing"
         st.rerun()
