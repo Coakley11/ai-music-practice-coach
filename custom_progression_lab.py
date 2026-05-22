@@ -46,29 +46,46 @@ CPL_SAVED_KEY = "cpl_saved_progressions"
 CPL_ACTIVE_KEY = "cpl_active_progression"
 CPL_LAST_DISPLAY_KEY = "cpl_last_display_key"
 
-DEFAULT_SECTIONS = {
-    "Verse": [
-        {"chord": "Am", "bars": 1},
-        {"chord": "Dm", "bars": 1},
-        {"chord": "G7", "bars": 1},
-        {"chord": "Cmaj7", "bars": 1},
-    ],
-    "Chorus": [
-        {"chord": "Fmaj7", "bars": 1},
-        {"chord": "Bm7b5", "bars": 1},
-        {"chord": "E7", "bars": 1},
-        {"chord": "Am", "bars": 1},
-    ],
-}
+CPL_SECTION_NAMES: list[str] = [
+    "Intro",
+    "Verse",
+    "Pre-Chorus",
+    "Chorus",
+    "Bridge",
+    "Solo",
+    "Outro",
+    "Full Song",
+]
+
+CPL_EDITABLE_SECTIONS: list[str] = [n for n in CPL_SECTION_NAMES if n != "Full Song"]
+
+CPL_PRESET_NAMES: list[str] = [
+    "ii–V–I",
+    "I–V–vi–IV",
+    "Bossa cadence",
+    "Jazz turnaround",
+    "Neo soul",
+]
+
+
+def empty_cpl_sections() -> dict[str, list]:
+    """All form sections, each starting with no chords."""
+    return {name: [] for name in CPL_EDITABLE_SECTIONS}
+
+
+def ensure_all_cpl_sections(sections: dict | None) -> dict[str, list]:
+    """Guarantee every form section exists (empty list if missing)."""
+    base = deep_copy_sections(sections or {})
+    for name in CPL_EDITABLE_SECTIONS:
+        base.setdefault(name, [])
+    return base
 
 
 def default_active_progression():
-    home_key = "C"
-    original = {k: [dict(x) for x in v] for k, v in DEFAULT_SECTIONS.items()}
     return {
         "name": "Untitled progression",
-        "original_key_center": home_key,
-        "original_sections": original,
+        "original_key_center": "C",
+        "original_sections": empty_cpl_sections(),
         "time_signature": "4/4",
         "bpm": 100,
         "groove_style": "Auto",
@@ -88,8 +105,12 @@ def ensure_original_structure(active):
     if not active:
         return default_active_progression()
     if not active.get("original_sections"):
-        legacy = active.get("sections") or DEFAULT_SECTIONS
-        active["original_sections"] = deep_copy_sections(legacy)
+        legacy = active.get("sections")
+        active["original_sections"] = (
+            ensure_all_cpl_sections(legacy) if legacy else empty_cpl_sections()
+        )
+    else:
+        active["original_sections"] = ensure_all_cpl_sections(active["original_sections"])
     if not active.get("original_key_center"):
         active["original_key_center"] = active.get("key_center", "C")
     active.pop("sections", None)
@@ -510,8 +531,50 @@ def format_chord_bar_line(sections, max_chords: int = 12) -> str:
     """Single-line bar chart preview, e.g. | G | Em | C | D |."""
     chords = all_chords_from_lab_sections(sections)[:max_chords]
     if not chords:
-        return "| *(add chords below)* |"
+        return "(empty)"
     return "| " + " | ".join(chords) + " |"
+
+
+def format_entries_bar_line(entries: list[dict] | None, *, max_chords: int = 24) -> str:
+    """Bar line for one section's chord entries."""
+    if not entries:
+        return "(empty)"
+    chords: list[str] = []
+    for entry in entries[:max_chords]:
+        ch = normalize_chord_symbol(entry.get("chord", ""))
+        if not ch:
+            continue
+        bars = max(1, int(entry.get("bars", 1) or 1))
+        chords.extend([ch] * bars)
+    if not chords:
+        return "(empty)"
+    return "| " + " | ".join(chords) + " |"
+
+
+def display_entries_for_section(active: dict, display_key: str, section_name: str) -> list[dict]:
+    """Chord entries for one section, transposed to the sidebar display key."""
+    home = written_home_key(active)
+    home_sections = active.get("original_sections") or {}
+    if section_name == "Full Song":
+        merged: list[dict] = []
+        for name in CPL_EDITABLE_SECTIONS:
+            merged.extend(home_sections.get(name) or [])
+        home_entries = merged
+    else:
+        home_entries = list(home_sections.get(section_name) or [])
+    if display_key == home:
+        return [dict(e) for e in home_entries]
+    steps = semitone_distance(home, display_key)
+    out = []
+    for entry in home_entries:
+        ch = normalize_chord_symbol(entry.get("chord", ""))
+        if not ch:
+            continue
+        out.append({
+            "chord": transpose_chord(ch, steps),
+            "bars": max(1, int(entry.get("bars", 1) or 1)),
+        })
+    return out
 
 
 def cpl_transpose_explanation_markdown(
@@ -622,7 +685,12 @@ def parse_chord_line(line):
 
 def flatten_sections_to_events(sections):
     events = []
-    for section_name, entries in (sections or {}).items():
+    ordered_names = [n for n in CPL_EDITABLE_SECTIONS if (sections or {}).get(n)]
+    for section_name in (sections or {}):
+        if section_name not in ordered_names and section_name != "Full Song":
+            ordered_names.append(section_name)
+    for section_name in ordered_names:
+        entries = (sections or {}).get(section_name) or []
         if not entries:
             continue
         section_bars = 0

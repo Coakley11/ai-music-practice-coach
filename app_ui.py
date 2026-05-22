@@ -1150,6 +1150,19 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   padding: 0.65rem 1rem;
   margin: 0.35rem 0 0.75rem 0;
 }
+.cpl-slot-row {
+  margin: 0.15rem 0 0.25rem 0;
+}
+.cpl-slot-chord {
+  display: inline-block;
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: #1e40af;
+  background: #eff6ff;
+  border: 2px solid #93c5fd;
+  border-radius: 8px;
+  padding: 0.25rem 0.65rem;
+}
 .practice-worksheet-removed {
   display: none;
 }
