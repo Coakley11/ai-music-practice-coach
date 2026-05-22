@@ -1141,14 +1141,20 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 }
 .cpl-progression-line {
   font-family: "Consolas", "Courier New", monospace;
-  font-size: 1.15rem;
+  font-size: 1.35rem;
   font-weight: 700;
   color: #1e3a8a;
   background: #f8fafc;
   border: 2px solid #cbd5e1;
   border-radius: 10px;
-  padding: 0.65rem 1rem;
+  padding: 0.75rem 1rem;
   margin: 0.35rem 0 0.75rem 0;
+}
+.cpl-progression-line.cpl-empty {
+  color: #94a3b8;
+  font-weight: 600;
+  font-style: italic;
+  font-size: 1.1rem;
 }
 .cpl-slot-row {
   margin: 0.15rem 0 0.25rem 0;

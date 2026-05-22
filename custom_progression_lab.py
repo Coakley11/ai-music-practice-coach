@@ -74,11 +74,25 @@ def empty_cpl_sections() -> dict[str, list]:
 
 
 def ensure_all_cpl_sections(sections: dict | None) -> dict[str, list]:
-    """Guarantee every form section exists (empty list if missing)."""
-    base = deep_copy_sections(sections or {})
+    """Guarantee every form section exists (empty list if missing). Drop stray keys."""
+    raw = sections or {}
+    base: dict[str, list] = {}
     for name in CPL_EDITABLE_SECTIONS:
-        base.setdefault(name, [])
+        base[name] = [dict(entry) for entry in (raw.get(name) or [])]
     return base
+
+
+def section_is_empty(entries: list | None) -> bool:
+    if not entries:
+        return True
+    for entry in entries:
+        if normalize_chord_symbol(entry.get("chord", "")):
+            return False
+    return True
+
+
+def progression_is_empty(sections: dict | None) -> bool:
+    return all(section_is_empty((sections or {}).get(name)) for name in CPL_EDITABLE_SECTIONS)
 
 
 def default_active_progression():
@@ -1281,6 +1295,8 @@ def _chord_at_degree(home_key: str, degree: int, quality: str) -> str:
         return f"{root}{q}"
     if q == "m":
         return f"{root}m"
+    if q == "":
+        return root
     return root
 
 
@@ -1329,15 +1345,51 @@ def format_key_label(home_key: str) -> str:
 
 
 def ensure_cpl_editing_in_display_key(st, active: dict, display_key: str) -> dict:
-    """When the global sidebar key changes, re-home the progression in that key."""
+    """Sync sidebar key; only transpose stored chords when the user already added some."""
     display_key = str(display_key or "C").strip() or "C"
     prev = st.session_state.get("_cpl_editing_display_key")
     if prev != display_key:
-        active = anchor_home_key_to_display(active, display_key)
+        sections = ensure_all_cpl_sections(active.get("original_sections"))
+        if progression_is_empty(sections):
+            active["original_key_center"] = display_key
+            active["original_sections"] = sections
+            active["user_locked_home_key"] = True
+        else:
+            active = anchor_home_key_to_display(active, display_key)
         st.session_state[CPL_ACTIVE_KEY] = active
         st.session_state["_cpl_editing_display_key"] = display_key
         invalidate_cpl_derived_outputs(st.session_state)
     return active
+
+
+def simple_chords_for_key(home_key: str) -> list[str]:
+    """Beginner triads in the key — C, Dm, Em, F, G, Am (no jazz extensions)."""
+    k = str(home_key or "C").strip() or "C"
+    if _is_minor_home_key(k):
+        specs = [(0, "m"), (2, "m"), (3, ""), (5, "m"), (7, "m"), (8, ""), (10, "")]
+    else:
+        specs = [(0, ""), (2, "m"), (4, "m"), (5, ""), (7, ""), (9, "m")]
+    out: list[str] = []
+    seen: set[str] = set()
+    for deg, qual in specs:
+        ch = _chord_at_degree(k, deg, qual)
+        if ch not in seen:
+            seen.add(ch)
+            out.append(ch)
+    return out
+
+
+SIMPLE_PRESET_SPECS: dict[str, list[tuple[int, str]]] = {
+    "Pop (I–V–vi–IV)": [(0, ""), (7, ""), (9, "m"), (5, "")],
+    "Ballad (I–vi–IV–V)": [(0, ""), (9, "m"), (5, ""), (7, "")],
+}
+
+
+def build_simple_preset_entries(preset_name: str, home_key: str) -> list[dict]:
+    spec = SIMPLE_PRESET_SPECS.get(preset_name)
+    if not spec:
+        return []
+    return [{"chord": _chord_at_degree(home_key, deg, qual), "bars": 1} for deg, qual in spec]
 
 
 def diatonic_chords_for_key(home_key: str) -> list[str]:
