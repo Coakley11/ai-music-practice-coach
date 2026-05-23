@@ -5603,11 +5603,8 @@ elif _studio_page == "backing":
         '<div class="ui-card soft"><div class="ui-card-title">Generate & play</div>',
         unsafe_allow_html=True,
     )
-    bpm = _render_backing_quick_playback_controls(
-        song_id=_playback_id,
-        default_bpm=_default_bpm,
-        section_names=_sec_names,
-    )
+    _render_backing_quick_playback_controls(section_names=_sec_names)
+    bpm = int(st.session_state.get("backing_track_bpm", _default_bpm))
     if st.session_state.get("backing_track_scope") == "Single section":
         _q_sec = st.session_state.get("backing_track_single_section", "")
         if _q_sec in _sec_names:
