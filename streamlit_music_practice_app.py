@@ -117,7 +117,6 @@ from songs.playback_defaults import (
     sync_playback_defaults_for_active_song,
 )
 from tuner_tone_ui import render_tuner_tone_section
-from page_guidance import render_sidebar_context_hint
 from guitar_capo import (
     build_capo_context,
     capo_status_banner_html,
@@ -4914,13 +4913,6 @@ else:
 
 st.session_state.setdefault("instrument", "Piano")
 st.session_state.setdefault("level", "Intermediate")
-
-render_sidebar_context_hint(
-    st,
-    studio_page=_studio_page,
-    session_state=st.session_state,
-    instrument=st.session_state.get("instrument", "Piano"),
-)
 
 original_key, _song_identity = display_key_context(
     st.session_state,

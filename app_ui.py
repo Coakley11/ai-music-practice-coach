@@ -350,27 +350,6 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   font-size: 0.86rem;
   margin: 0 0 0.55rem 0;
 }
-.ui-sidebar-hint {
-  border: 1px solid var(--studio-line);
-  border-radius: 10px;
-  padding: 0.5rem 0.65rem;
-  margin: 0.35rem 0 0.65rem 0;
-  background: #f8fafc;
-}
-.ui-sidebar-hint-title {
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #64748b;
-  margin: 0 0 0.25rem 0;
-}
-.ui-sidebar-hint-body {
-  font-size: 0.8rem;
-  line-height: 1.4;
-  color: var(--studio-ink);
-  margin: 0;
-}
 .ui-source-banner {
   border-radius: 12px;
   padding: 0.65rem 0.75rem;
