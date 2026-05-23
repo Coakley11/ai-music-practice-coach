@@ -6,7 +6,6 @@ import html
 from typing import Any, Callable
 
 from improvisation_intelligence import (
-    CATALOG_IMPROV_PRESETS,
     DIFFICULTY_LEVELS,
     GROOVE_INTENSITY,
     MOOD_OPTIONS,
@@ -24,6 +23,13 @@ from improvisation_intelligence import (
     harmony_flow_map,
     level_coaching_summary,
 )
+from studio_page_state import (
+    IMPROV_ENTRY_MODES,
+    IMPROV_SONG_SOURCES,
+    IMPROV_TAB_NAMES,
+    apply_improv_song_source,
+    init_improvisation_state,
+)
 
 
 def render_improvisation_intelligence_lab(
@@ -40,8 +46,12 @@ def render_improvisation_intelligence_lab(
     on_open_backing: Callable[[], None] | None = None,
     on_open_practice: Callable[[], None] | None = None,
     on_open_analysis: Callable[[], None] | None = None,
+    on_song_source_change: Callable[[str], None] | None = None,
+    apply_style_to_playback: Callable[[], None] | None = None,
 ) -> None:
     """Full Improvisation Intelligence workspace under Creative Lab."""
+    init_improvisation_state(session_state, is_custom_active=is_custom)
+
     instrument = str(ctx.get("instrument") or "Guitar")
     level = str(ctx.get("level") or "Intermediate")
     song_title = str(ctx.get("song") or "Song")
@@ -51,7 +61,7 @@ def render_improvisation_intelligence_lab(
         '<div class="ui-card soft" style="margin-bottom:1rem;border-left:4px solid #8b5cf6;">'
         '<p class="ui-card-title">🎷 Improvisation Intelligence</p>'
         '<p class="ui-card-sub">Interactive improvisation coach + creative laboratory — '
-        "song-based jams, style generators, live harmony coach, motifs, and missions.</p></div>",
+        "connected to your active song, custom progression, backing track, and practice.</p></div>",
         unsafe_allow_html=True,
     )
 
@@ -69,18 +79,15 @@ def render_improvisation_intelligence_lab(
         progression_flat=flatten_sections(sections),
     )
 
-    tabs = st.tabs(
-        [
-            "Entry & Jam",
-            "Live Coach",
-            "Phrase / Motif",
-            "Missions",
-            "Harmony Map",
-            "Metrics & AI",
-        ]
+    active_tab = st.radio(
+        "Improvisation section",
+        list(IMPROV_TAB_NAMES),
+        horizontal=True,
+        key="improv_intelligence_tab",
+        label_visibility="collapsed",
     )
 
-    with tabs[0]:
+    if active_tab == "Entry & Jam":
         _tab_entry_modes(
             st,
             session_state=session_state,
@@ -88,16 +95,18 @@ def render_improvisation_intelligence_lab(
             is_custom=is_custom,
             on_open_backing=on_open_backing,
             on_open_practice=on_open_practice,
+            on_song_source_change=on_song_source_change,
+            apply_style_to_playback=apply_style_to_playback,
         )
-    with tabs[1]:
+    elif active_tab == "Live Coach":
         _tab_live_coach(st, session_state=session_state, improv_ctx=improv_ctx)
-    with tabs[2]:
+    elif active_tab == "Phrase / Motif":
         _tab_motif(st, session_state=session_state, level=level)
-    with tabs[3]:
+    elif active_tab == "Missions":
         _tab_missions(st, session_state=session_state, level=level)
-    with tabs[4]:
+    elif active_tab == "Harmony Map":
         _tab_harmony_map(st, improv_ctx=improv_ctx)
-    with tabs[5]:
+    elif active_tab == "Metrics & AI":
         _tab_metrics_ai(st, session_state=session_state, on_open_analysis=on_open_analysis)
 
 
@@ -109,50 +118,64 @@ def _tab_entry_modes(
     is_custom: bool,
     on_open_backing: Callable[[], None] | None,
     on_open_practice: Callable[[], None] | None,
+    on_song_source_change: Callable[[str], None] | None,
+    apply_style_to_playback: Callable[[], None] | None,
 ) -> None:
     entry = st.radio(
         "Improvisation entry mode",
-        ["Song-Based Improvisation", "Style Jam Mode", "Jam Session Generator"],
+        list(IMPROV_ENTRY_MODES),
         horizontal=True,
         key="improv_entry_mode",
     )
 
     if entry == "Song-Based Improvisation":
         st.markdown("#### 🎼 Song-based improvisation")
-        preset = st.selectbox(
-            "Song source",
-            list(CATALOG_IMPROV_PRESETS),
-            index=0,
-            key="improv_song_preset",
-        )
-        if preset == "Use active studio song":
-            st.info(
-                f"**Active:** {improv_ctx.song_title} — {improv_ctx.artist} · "
-                f"Key **{improv_ctx.display_key}** · {len(improv_ctx.progression_flat)} chords in chart."
-            )
-            active_sections = improv_ctx.sections
-        elif preset == "Custom progression (CPL)":
-            if is_custom:
-                st.success("Using your **Custom Progression** from the studio.")
-                active_sections = improv_ctx.sections
-            else:
-                st.warning("Switch source to Custom Progression Lab or pick a catalog song.")
-                active_sections = improv_ctx.sections
-        else:
-            st.caption(
-                f"Preset **{preset}** — using active chart if it matches; otherwise use Song Selection."
-            )
-            active_sections = improv_ctx.sections
+        def _sync_song_source() -> None:
+            if on_song_source_change:
+                on_song_source_change(
+                    str(session_state.get("improv_song_source", "Active song"))
+                )
 
-        if active_sections:
-            st.caption("Progression preview: " + " | ".join(flatten_sections(active_sections)[:12]))
-        c1, c2 = st.columns(2)
-        with c1:
-            if on_open_backing and st.button("Open in Backing Track", key="improv_to_backing", type="primary"):
-                on_open_backing()
-        with c2:
-            if on_open_practice and st.button("Open Practice", key="improv_to_practice"):
-                on_open_practice()
+        source = st.radio(
+            "Song source",
+            list(IMPROV_SONG_SOURCES),
+            horizontal=True,
+            key="improv_song_source",
+            on_change=_sync_song_source,
+        )
+
+        if source == "Active song":
+            st.info(
+                f"**Active song:** {improv_ctx.song_title} — {improv_ctx.artist} · "
+                f"Key **{improv_ctx.display_key}** · "
+                f"{len(improv_ctx.progression_flat)} chords in chart."
+            )
+            st.caption("Uses the song selected in **Song Selection** (global studio source).")
+            preview_sections = improv_ctx.sections
+        else:
+            if is_custom:
+                st.success(
+                    "**Custom progression** is the active studio source "
+                    f"({improv_ctx.song_title or 'Custom Progression'})."
+                )
+            else:
+                st.warning(
+                    "Custom progression is not the active source yet — "
+                    "selecting it will switch the studio to your saved CPL progression."
+                )
+            preview_sections = improv_ctx.sections
+
+        if preview_sections:
+            st.caption(
+                "Progression preview: "
+                + " | ".join(flatten_sections(preview_sections)[:14])
+            )
+
+        _render_open_practice_backing_row(
+            st,
+            on_open_backing=on_open_backing,
+            on_open_practice=on_open_practice,
+        )
 
     elif entry == "Style Jam Mode":
         st.markdown("#### 🎹 Style Jam Mode")
@@ -162,15 +185,20 @@ def _tab_entry_modes(
             key_center = st.selectbox(
                 "Key",
                 ["C", "D", "Eb", "E", "F", "G", "A", "Bb", "Dm", "Em", "Am"],
-                index=5,
                 key="improv_style_key",
             )
         with c2:
-            difficulty = st.selectbox("Difficulty", list(DIFFICULTY_LEVELS), key="improv_difficulty")
+            difficulty = st.selectbox(
+                "Difficulty", list(DIFFICULTY_LEVELS), key="improv_difficulty"
+            )
             mood = st.selectbox("Mood", list(MOOD_OPTIONS), key="improv_mood")
         with c3:
-            tempo = st.slider("Tempo (BPM)", 60, 200, 110, 5, key="improv_style_bpm")
-            groove = st.selectbox("Groove intensity", list(GROOVE_INTENSITY), key="improv_groove")
+            tempo = st.slider(
+                "Tempo (BPM)", 60, 200, key="improv_style_bpm", step=5
+            )
+            groove = st.selectbox(
+                "Groove intensity", list(GROOVE_INTENSITY), key="improv_groove"
+            )
 
         prompt = st.text_input(
             "Describe your jam (optional)",
@@ -178,7 +206,7 @@ def _tab_entry_modes(
             key="improv_style_prompt",
         )
         if st.button("Generate progression", type="primary", key="improv_gen_style"):
-            k = key_center.replace("m", "") if "minor" in (prompt or "").lower() and "Dm" in prompt else key_center
+            k = key_center
             if "d minor" in (prompt or "").lower():
                 k = "Dm"
             session_state["improv_generated_sections"] = generate_style_progression(
@@ -189,7 +217,7 @@ def _tab_entry_modes(
             )
             session_state["improv_style_meta"] = {
                 "style": style,
-                "bpm": tempo,
+                "bpm": int(session_state.get("improv_style_bpm", tempo)),
                 "groove": groove,
                 "prompt": prompt,
             }
@@ -197,12 +225,19 @@ def _tab_entry_modes(
 
         gen = session_state.get("improv_generated_sections")
         if gen:
-            st.success(f"Generated **{style}** progression in **{key_center}** · {mood} · {tempo} BPM")
+            st.success(
+                f"Generated **{style}** in **{key_center}** · {mood} · "
+                f"{int(session_state.get('improv_style_bpm', 110))} BPM"
+            )
             for sec, chs in gen.items():
                 st.markdown(f"**{sec}:** " + " | ".join(chs))
-            if on_open_backing and st.button("Send to Backing Track", key="improv_style_to_backing"):
-                session_state["improv_use_generated"] = True
-                on_open_backing()
+            if apply_style_to_playback:
+                apply_style_to_playback()
+            _render_open_practice_backing_row(
+                st,
+                on_open_backing=on_open_backing,
+                on_open_practice=on_open_practice,
+            )
 
     else:
         st.markdown("#### 🌙 Jam Session Generator")
@@ -210,13 +245,26 @@ def _tab_entry_modes(
         with e1:
             ensemble = st.selectbox(
                 "Ensemble",
-                ["Jazz trio", "Jazz quartet", "Neo-soul band", "Rock trio", "Latin quartet", "Lo-fi duo"],
+                [
+                    "Jazz trio",
+                    "Jazz quartet",
+                    "Neo-soul band",
+                    "Rock trio",
+                    "Latin quartet",
+                    "Lo-fi duo",
+                ],
                 key="improv_ensemble",
             )
-            style = st.selectbox("Groove style", list(STYLE_JAM_STYLES), key="improv_jam_style")
+            style = st.selectbox(
+                "Groove style", list(STYLE_JAM_STYLES), key="improv_jam_style"
+            )
         with e2:
-            key_c = st.selectbox("Key", ["Eb", "C", "D", "F", "G", "Am", "Dm", "Bbm"], key="improv_jam_key")
-            tempo = st.slider("Tempo", 70, 180, 120, 5, key="improv_jam_bpm")
+            key_c = st.selectbox(
+                "Key",
+                ["Eb", "C", "D", "F", "G", "Am", "Dm", "Bbm"],
+                key="improv_jam_key",
+            )
+            tempo = st.slider("Tempo", 70, 180, key="improv_jam_bpm", step=5)
             mood = st.selectbox("Atmosphere", list(MOOD_OPTIONS), key="improv_jam_mood")
 
         if st.button("Generate jam session", type="primary", key="improv_gen_jam"):
@@ -224,7 +272,7 @@ def _tab_entry_modes(
                 ensemble=ensemble,
                 style=style,
                 key_center=key_c,
-                tempo=tempo,
+                tempo=int(session_state.get("improv_jam_bpm", tempo)),
                 mood=mood,
             )
             st.rerun()
@@ -235,6 +283,36 @@ def _tab_entry_modes(
             st.caption(jam.get("prompt", ""))
             for sec, chs in (jam.get("sections") or {}).items():
                 st.write(f"**{sec}:** " + " | ".join(chs))
+            _render_open_practice_backing_row(
+                st,
+                on_open_backing=on_open_backing,
+                on_open_practice=on_open_practice,
+            )
+
+
+def _render_open_practice_backing_row(
+    st: Any,
+    *,
+    on_open_backing: Callable[[], None] | None,
+    on_open_practice: Callable[[], None] | None,
+) -> None:
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    with c1:
+        if on_open_backing and st.button(
+            "Open Backing Track",
+            key="improv_to_backing",
+            type="primary",
+            use_container_width=True,
+        ):
+            on_open_backing()
+    with c2:
+        if on_open_practice and st.button(
+            "Open Practice",
+            key="improv_to_practice",
+            use_container_width=True,
+        ):
+            on_open_practice()
 
 
 def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionContext) -> None:
@@ -254,7 +332,6 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
         "Current chord in form",
         0,
         max(0, len(chords) - 1),
-        int(session_state.get("improv_chord_idx", 0)),
         key="improv_chord_idx_slider",
     )
     session_state["improv_chord_idx"] = idx
@@ -276,7 +353,7 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
 
     if session_state.get("_last_backing_timeline"):
         st.caption(
-            "Tip: play your backing track and step through chords with the slider to mirror the form."
+            "Tip: play your backing track and step through chords with the slider."
         )
 
 
@@ -308,11 +385,12 @@ def _render_chord_coach_card(st: Any, insight: ChordCoachInsight) -> None:
 
 def _tab_motif(st: Any, *, session_state: dict, level: str) -> None:
     st.markdown("#### Phrase / motif training")
+    if "improv_motif" not in session_state:
+        session_state["improv_motif"] = generate_motif()
     if st.button("Generate new motif", key="improv_gen_motif"):
         session_state["improv_motif"] = generate_motif()
         st.rerun()
-    motif = session_state.get("improv_motif") or generate_motif()
-    session_state.setdefault("improv_motif", motif)
+    motif = session_state["improv_motif"]
     st.markdown(f"### Motif: **{motif['display']}**")
     st.caption(f"Rhythm idea: {motif['rhythm']}")
     st.markdown(motif["variation_prompt"])
@@ -333,7 +411,9 @@ def _tab_motif(st: Any, *, session_state: dict, level: str) -> None:
 
 def _tab_missions(st: Any, *, session_state: dict, level: str) -> None:
     st.markdown("#### Practice missions")
-    mission = st.selectbox("Choose a mission", list(PRACTICE_MISSIONS), key="improv_mission_pick")
+    mission = st.selectbox(
+        "Choose a mission", list(PRACTICE_MISSIONS), key="improv_mission_pick"
+    )
     if st.button("Set active mission", key="improv_set_mission"):
         session_state["improv_active_mission"] = mission
         st.rerun()
@@ -375,10 +455,11 @@ def _tab_metrics_ai(
     on_open_analysis: Callable[[], None] | None,
 ) -> None:
     st.markdown("#### Creativity metrics (non-judgmental)")
-    st.caption("Exploratory indices — not good/bad scores. Full analysis coming with recorded takes.")
+    st.caption(
+        "Exploratory indices — not good/bad scores. Full analysis with recorded takes."
+    )
     metrics = creativity_metrics_placeholder()
     cols = st.columns(3)
-    labels = list(metrics.keys())
     for i, (label, val) in enumerate(metrics.items()):
         with cols[i % 3]:
             st.metric(label.replace("_", " ").title(), f"{int(val * 100)}%")
@@ -388,5 +469,7 @@ def _tab_metrics_ai(
     st.markdown("#### AI improvisation feedback (preview)")
     for line in ai_feedback_preview_lines():
         st.markdown(f"- {line}")
-    if on_open_analysis and st.button("Upload take for AI coach", key="improv_to_analysis"):
+    if on_open_analysis and st.button(
+        "Upload take for AI coach", key="improv_to_analysis"
+    ):
         on_open_analysis()

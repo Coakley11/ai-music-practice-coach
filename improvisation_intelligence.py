@@ -71,15 +71,6 @@ STYLE_PROGRESSIONS: dict[str, list[tuple[str, list[str]]]] = {
     ],
 }
 
-CATALOG_IMPROV_PRESETS: tuple[str, ...] = (
-    "Blue Bossa",
-    "Autumn Leaves",
-    "Hotel California",
-    "All of Me",
-    "Use active studio song",
-    "Custom progression (CPL)",
-)
-
 PRACTICE_MISSIONS: tuple[str, ...] = (
     "Improvise using only chord tones",
     "Use only 5 notes in one register",

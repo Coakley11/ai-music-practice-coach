@@ -64,7 +64,12 @@ def sidebar_context_hints(
     if page == "picker":
         return [
             "Choose a song, then open Practice or Backing Track.",
-            "You can add lyrics or performance cues below the song card.",
+            "Add lyrics or performance cues below the song card.",
+        ]
+    if page == "creative":
+        return [
+            "Improvisation Intelligence keeps your tab and settings when you return.",
+            "Use Active song or Custom progression, then open Practice.",
         ]
 
     if page == "custom":

@@ -118,6 +118,15 @@ from songs.playback_defaults import (
 )
 from tuner_tone_ui import render_tuner_tone_section
 from page_guidance import render_sidebar_context_hint
+from studio_page_state import (
+    apply_improv_song_source,
+    init_analysis_page_state,
+    init_backing_page_state,
+    init_creative_lab_state,
+    init_practice_page_state,
+    migrate_legacy_session_keys,
+    note_page_visit,
+)
 from instrument_transposition import (
     CHART_IN_INSTRUMENT_KEY_KEY,
     TRANSPOSING_INSTRUMENTS,
@@ -4892,6 +4901,13 @@ def _ui_source_label() -> str:
 
 _studio_page = ensure_studio_page(st.session_state)
 
+migrate_legacy_session_keys(st.session_state)
+init_creative_lab_state(st.session_state)
+init_practice_page_state(st.session_state)
+init_backing_page_state(st.session_state)
+init_analysis_page_state(st.session_state)
+note_page_visit(st.session_state, _studio_page)
+
 sidebar_section("Active source", icon="🎼", tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
 _src_kind, _src_detail = unpack_active_source_banner(
@@ -5139,6 +5155,7 @@ _practice_groove = str(
 
 if _studio_page == "practice":
 
+    note_page_visit(st.session_state, "practice")
     _render_page_quick_nav("practice")
 
     compact_page_title(
@@ -5547,6 +5564,7 @@ if _studio_page == "practice":
 
 elif _studio_page == "picker":
 
+    note_page_visit(st.session_state, "picker")
     _render_page_quick_nav("picker")
 
     compact_page_title(
@@ -5935,6 +5953,7 @@ elif _studio_page == "backing":
 
 elif _studio_page == "analysis":
 
+    note_page_visit(st.session_state, "analysis")
     from recording_analysis import analyze_multitrack, analyze_recording
     from recording_analysis_ui import render_analysis_dashboard
 
@@ -6046,6 +6065,7 @@ elif _studio_page == "analysis":
 
 elif _studio_page == "custom":
 
+    note_page_visit(st.session_state, "custom")
     from cpl_page_ui import render_custom_progression_lab_page
 
     render_custom_progression_lab_page()
@@ -6057,6 +6077,7 @@ elif _studio_page == "custom":
 
 elif _studio_page == "creative":
 
+    note_page_visit(st.session_state, "creative")
     _render_page_quick_nav("creative")
 
     compact_page_title("🧠", "Creative Lab", "Harmony, improvisation, and growth tools.")
@@ -6074,21 +6095,57 @@ elif _studio_page == "creative":
         ],
         key="creative_lab_analysis_mode",
     )
+    st.session_state["creative_lab_last_mode"] = lab_mode
+
+    def _improv_apply_playback_from_style() -> None:
+        meta = st.session_state.get("improv_style_meta") or {}
+        if meta.get("bpm"):
+            request_backing_bpm(st, int(meta["bpm"]))
+        groove = str(meta.get("groove") or "")
+        if groove and groove != "Auto":
+            from songs.playback_defaults import request_backing_groove
+
+            request_backing_groove(st, groove)
+
+    def _improv_on_song_source(source: str) -> None:
+        apply_improv_song_source(
+            st.session_state,
+            source,
+            set_catalog_source=set_catalog_source,
+            set_custom_source=set_custom_source,
+        )
+
+    def _improv_open_backing() -> None:
+        source = st.session_state.get("improv_song_source", "Active song")
+        apply_improv_song_source(
+            st.session_state,
+            source,
+            set_catalog_source=set_catalog_source,
+            set_custom_source=set_custom_source,
+        )
+        _improv_apply_playback_from_style()
+        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        st.session_state["studio_page"] = "backing"
+        st.rerun()
+
+    def _improv_open_practice() -> None:
+        source = st.session_state.get("improv_song_source", "Active song")
+        apply_improv_song_source(
+            st.session_state,
+            source,
+            set_catalog_source=set_catalog_source,
+            set_custom_source=set_custom_source,
+        )
+        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        st.session_state["studio_page"] = "practice"
+        st.rerun()
+
+    def _improv_open_analysis() -> None:
+        st.session_state["studio_page"] = "analysis"
+        st.rerun()
 
     if lab_mode == "Improvisation Intelligence":
         from improvisation_intelligence_ui import render_improvisation_intelligence_lab
-
-        def _improv_open_backing() -> None:
-            st.session_state["studio_page"] = "backing"
-            st.rerun()
-
-        def _improv_open_practice() -> None:
-            st.session_state["studio_page"] = "practice"
-            st.rerun()
-
-        def _improv_open_analysis() -> None:
-            st.session_state["studio_page"] = "analysis"
-            st.rerun()
 
         render_improvisation_intelligence_lab(
             st,
@@ -6103,19 +6160,38 @@ elif _studio_page == "creative":
             on_open_backing=_improv_open_backing,
             on_open_practice=_improv_open_practice,
             on_open_analysis=_improv_open_analysis,
+            on_song_source_change=_improv_on_song_source,
+            apply_style_to_playback=_improv_apply_playback_from_style,
         )
     else:
-        with st.expander(lab_mode, expanded=False):
+        with st.expander(lab_mode, expanded=True):
             if lab_mode == "Deep Harmonic Analyzer":
                 st.markdown(deep_harmonic_analysis_text(ctx))
             elif lab_mode == "Creative Arrangement Assistant":
+                _style_opts = [
+                    "Jobim / Bossa",
+                    "Jazz Fusion",
+                    "Neo-Soul",
+                    "Rock Ballad",
+                    "Funk",
+                    "Cinematic",
+                ]
                 target_style = st.selectbox(
                     "Transform toward style",
-                    ["Jobim / Bossa", "Jazz Fusion", "Neo-Soul", "Rock Ballad", "Funk", "Cinematic"],
+                    _style_opts,
+                    key="creative_arrangement_target_style",
                 )
+                _sec_opts = ["Full song"] + [
+                    name for name, chords in sections.items() if chords
+                ]
+                if (
+                    st.session_state.get("creative_arrangement_section_focus")
+                    not in _sec_opts
+                ):
+                    st.session_state["creative_arrangement_section_focus"] = _sec_opts[0]
                 arrangement_section = st.selectbox(
                     "Arrangement focus",
-                    ["Full song"] + [name for name, chords in sections.items() if chords],
+                    _sec_opts,
                     key="creative_arrangement_section_focus",
                 )
                 st.markdown(creativity_arrangement_text(ctx, target_style, arrangement_section))
@@ -6131,6 +6207,7 @@ elif _studio_page == "creative":
 
 elif _studio_page == "multitrack":
 
+    note_page_visit(st.session_state, "multitrack")
     _render_page_quick_nav("multitrack")
 
     compact_page_title(
@@ -6488,6 +6565,7 @@ elif _studio_page == "multitrack":
 
 elif _studio_page == "log":
 
+    note_page_visit(st.session_state, "log")
     _render_page_quick_nav("log")
 
     compact_page_title("📓", "Practice Log", "Session history and progress over time.")
