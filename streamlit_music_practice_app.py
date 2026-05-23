@@ -4130,6 +4130,7 @@ def _on_global_song_change() -> None:
 PENDING_BACKING_SINGLE_SECTION = "_pending_backing_single_section"
 PENDING_BACKING_SCOPE = "_pending_backing_scope"
 PENDING_BACKING_LOOPS = "_pending_backing_loops"
+BACKING_QUICK_SECTION_KEY = "backing_quick_section"
 BACKING_AUTOPLAY = "_backing_autoplay"
 
 
@@ -4146,7 +4147,7 @@ def _prepare_backing_from_practice(focus: str | None) -> None:
 
 
 def _apply_pending_backing_scope(session_state, section_names: list[str]) -> bool:
-    """Apply Practice → Backing handoff before scope/section widgets are built."""
+    """Apply pending scope/section/loops before backing widgets are built."""
     opened_section = False
     pending_scope = session_state.pop(PENDING_BACKING_SCOPE, None)
     if pending_scope in ("Full song", "Single section", "Multiple selected sections"):
@@ -4162,7 +4163,35 @@ def _apply_pending_backing_scope(session_state, section_names: list[str]) -> boo
             session_state["backing_track_loops"] = int(pending_loops)
         except (TypeError, ValueError):
             pass
+    _prime_backing_quick_section_from_scope(session_state, section_names)
     return opened_section
+
+
+def _prime_backing_quick_section_from_scope(
+    session_state: dict,
+    section_names: list[str],
+) -> None:
+    """Sync quick-section picker from scope — only call before that widget exists."""
+    scope = session_state.get("backing_track_scope", "Full song")
+    if scope == "Single section":
+        sec = session_state.get("backing_track_single_section")
+        if sec in section_names:
+            session_state[BACKING_QUICK_SECTION_KEY] = sec
+            return
+    session_state[BACKING_QUICK_SECTION_KEY] = "Full song"
+
+
+def request_backing_quick_section_change(
+    choice: str,
+    section_names: list[str],
+) -> None:
+    """Queue scope/section updates for the next rerun (safe after widgets exist)."""
+    if choice == "Full song":
+        st.session_state[PENDING_BACKING_SCOPE] = "Full song"
+        st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
+    elif choice in section_names:
+        st.session_state[PENDING_BACKING_SCOPE] = "Single section"
+        st.session_state[PENDING_BACKING_SINGLE_SECTION] = choice
 
 
 def _stop_backing_playback() -> None:
@@ -4543,28 +4572,6 @@ def _render_practice_setup_panel(
     )
 
 
-BACKING_QUICK_SECTION_KEY = "backing_quick_section"
-
-
-def _sync_backing_quick_section_from_scope(section_names: list[str]) -> None:
-    """Keep quick section picker aligned with main playback scope widgets."""
-    scope = st.session_state.get("backing_track_scope", "Full song")
-    if scope == "Single section":
-        sec = st.session_state.get("backing_track_single_section")
-        if sec in section_names:
-            st.session_state[BACKING_QUICK_SECTION_KEY] = sec
-            return
-    st.session_state[BACKING_QUICK_SECTION_KEY] = "Full song"
-
-
-def _apply_backing_quick_section_choice(choice: str, section_names: list[str]) -> None:
-    if choice == "Full song":
-        st.session_state["backing_track_scope"] = "Full song"
-    elif choice in section_names:
-        st.session_state["backing_track_scope"] = "Single section"
-        st.session_state["backing_track_single_section"] = choice
-
-
 def _render_backing_quick_playback_controls(
     *,
     song_id: str,
@@ -4573,7 +4580,7 @@ def _render_backing_quick_playback_controls(
 ) -> int:
     """Compact BPM + section controls next to Generate / Stop (single BPM widget)."""
     sync_backing_bpm_before_widget(st, song_id, default_bpm)
-    _sync_backing_quick_section_from_scope(section_names)
+    _prime_backing_quick_section_from_scope(st.session_state, section_names)
     quick_opts = ["Full song"] + list(section_names)
 
     st.markdown(
@@ -4598,7 +4605,7 @@ def _render_backing_quick_playback_controls(
         idx = quick_opts.index(cur_quick)
 
         def _on_quick_section() -> None:
-            _apply_backing_quick_section_choice(
+            request_backing_quick_section_change(
                 st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song"),
                 section_names,
             )
@@ -4611,10 +4618,6 @@ def _render_backing_quick_playback_controls(
             key=BACKING_QUICK_SECTION_KEY,
             on_change=_on_quick_section,
             help="Jump to a section without scrolling to Playback settings.",
-        )
-        _apply_backing_quick_section_choice(
-            st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song"),
-            section_names,
         )
     return int(bpm)
 
@@ -5556,7 +5559,6 @@ elif _studio_page == "backing":
         default_bpm=_default_bpm,
         section_names=_sec_names,
     )
-    _sync_backing_quick_section_from_scope(_sec_names)
     if st.session_state.get("backing_track_scope") == "Single section":
         _q_sec = st.session_state.get("backing_track_single_section", "")
         if _q_sec in _sec_names:
