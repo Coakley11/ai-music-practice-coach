@@ -6070,30 +6070,59 @@ elif _studio_page == "creative":
             "Improvisation Intelligence",
             "Creative Arrangement Assistant",
             "Adaptive Weakness Detection",
-            "AI-Guided Musical Development Tracking"
-        ]
+            "AI-Guided Musical Development Tracking",
+        ],
+        key="creative_lab_analysis_mode",
     )
 
-    with st.expander(lab_mode, expanded=False):
-        if lab_mode == "Deep Harmonic Analyzer":
-            st.markdown(deep_harmonic_analysis_text(ctx))
-        elif lab_mode == "Improvisation Intelligence":
-            st.markdown(improvisation_intelligence_text(ctx))
-        elif lab_mode == "Creative Arrangement Assistant":
-            target_style = st.selectbox(
-                "Transform toward style",
-                ["Jobim / Bossa", "Jazz Fusion", "Neo-Soul", "Rock Ballad", "Funk", "Cinematic"],
-            )
-            arrangement_section = st.selectbox(
-                "Arrangement focus",
-                ["Full song"] + [name for name, chords in sections.items() if chords],
-                key="creative_arrangement_section_focus",
-            )
-            st.markdown(creativity_arrangement_text(ctx, target_style, arrangement_section))
-        elif lab_mode == "Adaptive Weakness Detection":
-            st.markdown(adaptive_weakness_detection_text(ctx))
-        else:
-            st.markdown(musical_development_tracker_text())
+    if lab_mode == "Improvisation Intelligence":
+        from improvisation_intelligence_ui import render_improvisation_intelligence_lab
+
+        def _improv_open_backing() -> None:
+            st.session_state["studio_page"] = "backing"
+            st.rerun()
+
+        def _improv_open_practice() -> None:
+            st.session_state["studio_page"] = "practice"
+            st.rerun()
+
+        def _improv_open_analysis() -> None:
+            st.session_state["studio_page"] = "analysis"
+            st.rerun()
+
+        render_improvisation_intelligence_lab(
+            st,
+            ctx=ctx,
+            session_state=st.session_state,
+            chart_key=chart_key,
+            sections=sections,
+            song_data=song_data,
+            bpm=int(st.session_state.get("backing_track_bpm", _default_song_bpm)),
+            genre=genre,
+            is_custom=is_custom_progression(st.session_state),
+            on_open_backing=_improv_open_backing,
+            on_open_practice=_improv_open_practice,
+            on_open_analysis=_improv_open_analysis,
+        )
+    else:
+        with st.expander(lab_mode, expanded=False):
+            if lab_mode == "Deep Harmonic Analyzer":
+                st.markdown(deep_harmonic_analysis_text(ctx))
+            elif lab_mode == "Creative Arrangement Assistant":
+                target_style = st.selectbox(
+                    "Transform toward style",
+                    ["Jobim / Bossa", "Jazz Fusion", "Neo-Soul", "Rock Ballad", "Funk", "Cinematic"],
+                )
+                arrangement_section = st.selectbox(
+                    "Arrangement focus",
+                    ["Full song"] + [name for name, chords in sections.items() if chords],
+                    key="creative_arrangement_section_focus",
+                )
+                st.markdown(creativity_arrangement_text(ctx, target_style, arrangement_section))
+            elif lab_mode == "Adaptive Weakness Detection":
+                st.markdown(adaptive_weakness_detection_text(ctx))
+            else:
+                st.markdown(musical_development_tracker_text())
 
 
 # -------------------------------------------------

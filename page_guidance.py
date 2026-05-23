@@ -79,7 +79,10 @@ def sidebar_context_hints(
         return ["Upload a recording and run AI coach analysis."]
 
     if page == "creative":
-        return ["Explore ideas here, then try them on the Practice page."]
+        return [
+            "Open **Improvisation Intelligence** for live chord coaching and style jams.",
+            "Generate a progression, then send it to Backing Track.",
+        ]
 
     if page == "multitrack":
         return ["Record a layer, then review on Upload Analysis."]
