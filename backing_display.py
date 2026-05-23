@@ -1,16 +1,14 @@
-"""Backing Track page — active song card and defaults debug."""
+"""Backing Track page — active song card, meter selector, and defaults debug."""
 
 from __future__ import annotations
 
 import html
 from typing import Any
 
-from practice_studio import active_song_card_details, genre_visual_style
-from songs.meter import BACKING_TIME_SIGNATURES, normalize_time_signature
-from songs.meter_state import (
-    BACKING_METER_KEY,
-    BACKING_METER_OVERRIDE_KEY,
-    note_backing_meter_override,
+__all__ = (
+    "render_backing_active_song_card",
+    "render_backing_defaults_debug",
+    "render_backing_meter_selector",
 )
 
 
@@ -24,6 +22,8 @@ def render_backing_active_song_card(
     applied_meter: str | None = None,
 ) -> None:
     """Premium active-song card (Song Selection style) for Backing Track."""
+    from practice_studio import active_song_card_details, genre_visual_style
+
     try:
         details = active_song_card_details(record, level=level)
     except Exception:
@@ -73,6 +73,13 @@ def render_backing_meter_selector(
     user_override: bool,
 ) -> str:
     """Time signature control for backing playback."""
+    from songs.meter import BACKING_TIME_SIGNATURES, normalize_time_signature
+    from songs.meter_state import (
+        BACKING_METER_KEY,
+        BACKING_METER_OVERRIDE_KEY,
+        note_backing_meter_override,
+    )
+
     options = list(BACKING_TIME_SIGNATURES)
     current = applied_meter if applied_meter in options else song_default_meter
     if current not in options:
