@@ -106,8 +106,14 @@ def sync_playback_defaults_for_active_song(
     default_groove: str,
 ) -> tuple[int, str]:
     """Sync BPM + groove when the active song changes; preserve manual tweaks otherwise."""
+    song_changed = (
+        st.session_state.get(LAST_BPM_SONG) != song_id
+        or st.session_state.get(LAST_PLAYBACK_GROOVE_SONG) != song_id
+    )
     bpm = sync_backing_bpm_before_widget(st, song_id, int(default_bpm))
     groove = sync_backing_groove_before_widget(st, song_id, default_groove)
-    if st.session_state.get(LAST_PLAYBACK_GROOVE_SONG) == song_id:
+    if song_changed:
+        st.session_state[PRACTICE_GROOVE_KEY] = groove
+    elif PRACTICE_GROOVE_KEY not in st.session_state:
         st.session_state[PRACTICE_GROOVE_KEY] = groove
     return bpm, groove

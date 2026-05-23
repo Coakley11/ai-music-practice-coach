@@ -267,40 +267,42 @@ def sax_transposition_blurb(
     return " ".join(lines)
 
 
+def render_sidebar_transposing_recap(
+    st: Any,
+    *,
+    concert_key: str,
+    instrument: str,
+) -> None:
+    """Read-only transposing summary in sidebar (widgets live on Practice page)."""
+    import html
+
+    if not is_transposing_instrument(instrument):
+        return
+    written = written_key_for_instrument(concert_key, instrument, st.session_state)
+    t_type = selected_transposing_type(st.session_state, instrument)
+    show_written = chart_in_instrument_key(st.session_state)
+    chart_k, _ = effective_chart_key(concert_key, instrument, st.session_state)
+    st.sidebar.markdown(
+        f'<div class="ui-card soft" style="margin:0.5rem 0;padding:0.65rem;">'
+        f"<strong>Concert key:</strong> {html.escape(concert_key)}<br>"
+        f"<strong>Written key:</strong> {html.escape(written)}<br>"
+        f"<strong>Charts show:</strong> {html.escape(chart_k)}<br>"
+        f"<small>{html.escape(instrument_display_name(t_type, instrument))}</small>"
+        f"{' · written charts on' if show_written else ' · concert charts'}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    st.sidebar.caption("Change type & chart key on the **Practice** page.")
+
+
 def render_sidebar_transposing_controls(
     st: Any,
     *,
     concert_key: str,
     instrument: str,
 ) -> None:
-    """Global transposing controls (sidebar) — all pages."""
-    import html
-
-    if not is_transposing_instrument(instrument):
-        return
-
-    ensure_transposing_defaults(st.session_state, instrument)
-    opts = options_for_instrument(instrument)
-    st.sidebar.selectbox(
-        "Transposing instrument type",
-        opts,
-        key=SELECTED_TRANSPOSING_INSTRUMENT_KEY,
-    )
-    written = written_key_for_instrument(concert_key, instrument, st.session_state)
-    st.sidebar.checkbox(
-        "Show charts in instrument key",
-        key=CHART_IN_INSTRUMENT_KEY_KEY,
-        help="When on, chord charts, coach, notation, and backing chord view use your written key everywhere.",
-    )
-    t_type = selected_transposing_type(st.session_state, instrument)
-    st.sidebar.markdown(
-        f'<div class="ui-card soft" style="margin:0.5rem 0;padding:0.65rem;">'
-        f"<strong>Concert key:</strong> {html.escape(concert_key)}<br>"
-        f"<strong>Written key:</strong> {html.escape(written)}<br>"
-        f"<small>{html.escape(t_type)}</small>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
+    """Alias — sidebar stays read-only so Practice owns the widgets."""
+    render_sidebar_transposing_recap(st, concert_key=concert_key, instrument=instrument)
 
 
 def render_transposing_info_card(
@@ -327,14 +329,81 @@ def render_transposing_info_card(
     return effective_chart_key(concert_key, instrument, st.session_state)
 
 
+def render_practice_transposing_panel(
+    st: Any,
+    *,
+    concert_key: str,
+    instrument: str,
+) -> dict[str, str]:
+    """Practice-page transposing controls (single widget source for type + checkbox)."""
+    import html
+
+    if not is_transposing_instrument(instrument):
+        return resolve_practice_keys(st.session_state, concert_key, instrument)
+
+    apply_pending_transposing_instrument(st.session_state, instrument)
+
+    with st.expander("🎷 Transposing instrument", expanded=True):
+        if instrument == "Saxophone":
+            st.markdown("**Which saxophone are you playing?**")
+            st.selectbox(
+                "Saxophone type",
+                list(SAXOPHONE_TYPES),
+                format_func=lambda t: instrument_display_name(str(t), "Saxophone"),
+                key=SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+                label_visibility="collapsed",
+            )
+        elif instrument == "Trumpet":
+            st.markdown("**Trumpet** — **Bb instrument** (reads in written key above concert pitch).")
+        elif instrument == "Clarinet":
+            st.markdown("**Clarinet** — **Bb instrument** (reads in written key above concert pitch).")
+
+        t_type = selected_transposing_type(st.session_state, instrument)
+        written = written_key_for_type(concert_key, t_type)
+        inst_label = "Eb instrument" if is_eb_instrument(t_type) else "Bb instrument"
+
+        k1, k2, k3 = st.columns(3)
+        with k1:
+            st.markdown(f"**Concert key**  \n{concert_key}")
+        with k2:
+            st.markdown(f"**Written key**  \n{written}")
+        with k3:
+            st.markdown(
+                f"**Instrument**  \n{html.escape(instrument_display_name(t_type, instrument))} "
+                f"({inst_label})"
+            )
+
+        st.checkbox(
+            "Show all charts in my instrument key",
+            key=CHART_IN_INSTRUMENT_KEY_KEY,
+            help=(
+                "When on: practice chart, notation, coach, scales, exercises, and backing "
+                "chord view use your written key. When off: charts stay in concert key."
+            ),
+        )
+
+        show_written = chart_in_instrument_key(st.session_state)
+        if show_written:
+            st.caption(
+                f"Charts and coach material are in **{written}** (your written key)."
+            )
+        else:
+            st.caption(
+                f"Charts stay in **concert {concert_key}**. Finger/read in **{written}** on your instrument."
+            )
+
+    return resolve_practice_keys(st.session_state, concert_key, instrument)
+
+
 def render_practice_transposing_helper(
     st: Any,
     *,
     concert_key: str,
     instrument: str,
 ) -> tuple[str, str]:
-    """Practice page — uses global sidebar settings (no duplicate checkbox)."""
-    return render_transposing_info_card(st, concert_key=concert_key, instrument=instrument)
+    """Backward-compatible wrapper."""
+    ctx = render_practice_transposing_panel(st, concert_key=concert_key, instrument=instrument)
+    return ctx["chart_key"], ctx["chart_key_mode"]
 
 
 # --- Public aliases (documented API / legacy names) ---
@@ -443,7 +512,9 @@ __all__ = [
     "is_transposing_instrument",
     "options_for_instrument",
     "render_practice_transposing_helper",
+    "render_practice_transposing_panel",
     "render_sidebar_transposing_controls",
+    "render_sidebar_transposing_recap",
     "render_transposing_info_card",
     "resolve_practice_keys",
     "sax_display_name",
