@@ -41,6 +41,17 @@ def migrate_legacy_session_keys(session_state: dict) -> None:
             "Active song",
         )
     session_state.pop("improv_song_preset", None)
+    if "ii_selected_chord_index" not in session_state:
+        if "improv_chord_idx" in session_state:
+            session_state["ii_selected_chord_index"] = int(
+                session_state.get("improv_chord_idx", 0)
+            )
+        legacy_ch = session_state.get("improv_selected_chord")
+        if legacy_ch:
+            session_state.setdefault("ii_selected_chord", legacy_ch)
+            session_state.setdefault("ii_selected_chord_label", legacy_ch)
+    session_state.pop("improv_chord_idx", None)
+    session_state.pop("improv_selected_chord", None)
 
 
 def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> None:
@@ -52,8 +63,10 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
         session_state["improv_song_source"] = (
             "Custom progression" if is_custom_active else "Active song"
         )
-    session_state.setdefault("improv_chord_idx", 0)
-    session_state.setdefault("improv_selected_chord", "")
+    session_state.setdefault("ii_selected_chord_index", 0)
+    session_state.setdefault("ii_selected_chord", "")
+    session_state.setdefault("ii_selected_section", "")
+    session_state.setdefault("ii_selected_chord_label", "")
     session_state.setdefault("improv_motif_output_mode", "none")
     session_state.setdefault("improv_style", "Jazz Swing")
     session_state.setdefault("improv_style_key", "G")

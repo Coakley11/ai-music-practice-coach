@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 import html
+import re
 from typing import Any, Callable
+
+II_SELECTED_CHORD = "ii_selected_chord"
+II_SELECTED_SECTION = "ii_selected_section"
+II_SELECTED_CHORD_INDEX = "ii_selected_chord_index"
+II_SELECTED_CHORD_LABEL = "ii_selected_chord_label"
+
+_LEGACY_CHORD_TILE_KEY = re.compile(r"^improv_(live|motif)_s\d+_c\d+$")
 
 import streamlit.components.v1 as components
 
@@ -402,6 +410,7 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
         section_map,
         session_state,
         key_prefix="improv_live",
+        source_id=_improv_source_id(session_state, improv_ctx),
         key_center=improv_ctx.display_key,
     )
 
@@ -473,6 +482,7 @@ def _tab_motif(
         section_map,
         session_state,
         key_prefix="improv_motif",
+        source_id=_improv_source_id(session_state, improv_ctx),
         key_center=improv_ctx.display_key,
         generate_motif_on_select=True,
     )
@@ -574,20 +584,52 @@ def _tab_motif(
         st.caption("Advanced: chain transforms, then regenerate notation to check the new shape.")
 
 
+def _safe_widget_key_part(text: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(text).strip())
+    return (slug[:48] or "x").strip("_")
+
+
+def _improv_source_id(session_state: dict, improv_ctx: ImprovSessionContext) -> str:
+    if str(session_state.get("improv_song_source") or "") == "Custom progression":
+        return "custom"
+    return _safe_widget_key_part(improv_ctx.song_title or "song")
+
+
+def _migrate_ii_chord_selection(session_state: dict) -> None:
+    """Move legacy selection keys; drop stale chord-tile button widget keys."""
+    if II_SELECTED_CHORD_INDEX not in session_state:
+        if "improv_chord_idx" in session_state or "improv_selected_chord" in session_state:
+            session_state[II_SELECTED_CHORD_INDEX] = int(
+                session_state.get("improv_chord_idx", 0)
+            )
+            legacy_ch = str(session_state.get("improv_selected_chord") or "")
+            session_state[II_SELECTED_CHORD] = legacy_ch
+            session_state[II_SELECTED_CHORD_LABEL] = legacy_ch
+        session_state.pop("improv_chord_idx", None)
+        session_state.pop("improv_selected_chord", None)
+    for key in list(session_state.keys()):
+        if _LEGACY_CHORD_TILE_KEY.match(key):
+            session_state.pop(key, None)
+
+
 def _ensure_chord_selection(session_state: dict, chords: list[str]) -> None:
-    idx = int(session_state.get("improv_chord_idx", 0))
+    _migrate_ii_chord_selection(session_state)
+    if not chords:
+        return
+    idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
     if idx < 0 or idx >= len(chords):
         idx = 0
-        session_state["improv_chord_idx"] = 0
-    sel = session_state.get("improv_selected_chord")
+        session_state[II_SELECTED_CHORD_INDEX] = 0
+    sel = session_state.get(II_SELECTED_CHORD)
     if sel not in chords:
-        session_state["improv_selected_chord"] = chords[idx]
+        session_state[II_SELECTED_CHORD] = chords[idx]
+        session_state[II_SELECTED_CHORD_LABEL] = chords[idx]
     else:
-        session_state["improv_chord_idx"] = chords.index(sel)
+        session_state[II_SELECTED_CHORD_INDEX] = chords.index(sel)
 
 
 def _selected_chord(session_state: dict, chords: list[str]) -> tuple[str, int]:
-    idx = int(session_state.get("improv_chord_idx", 0))
+    idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
     idx = max(0, min(idx, len(chords) - 1))
     return chords[idx], idx
 
@@ -622,29 +664,39 @@ def _render_section_chord_map(
     session_state: dict,
     *,
     key_prefix: str,
+    source_id: str,
     key_center: str = "C",
     generate_motif_on_select: bool = False,
 ) -> None:
     st.markdown("**Chord map by section**")
-    sel_idx = int(session_state.get("improv_chord_idx", 0))
+    _migrate_ii_chord_selection(session_state)
+    sel_idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
+    src = _safe_widget_key_part(source_id)
     for sec_i, (label, chords) in enumerate(section_map):
         st.markdown(f"**{html.escape(label)}**")
+        section_slug = _safe_widget_key_part(label)
         cols_per_row = 8
         for row_start in range(0, len(chords), cols_per_row):
             row = chords[row_start : row_start + cols_per_row]
             cols = st.columns(len(row))
             for ci, ch in enumerate(row):
                 gidx = global_chord_index(section_map, sec_i, row_start + ci)
+                safe_ch = _safe_widget_key_part(ch)
+                button_key = (
+                    f"ii_chord_tile_{src}_{key_prefix}_{section_slug}_{gidx}_{safe_ch}"
+                )
                 with cols[ci]:
                     is_sel = gidx == sel_idx
                     if st.button(
                         ch,
-                        key=f"{key_prefix}_s{sec_i}_c{gidx}",
+                        key=button_key,
                         type="primary" if is_sel else "secondary",
                         use_container_width=True,
                     ):
-                        session_state["improv_selected_chord"] = ch
-                        session_state["improv_chord_idx"] = gidx
+                        session_state[II_SELECTED_CHORD] = ch
+                        session_state[II_SELECTED_SECTION] = label
+                        session_state[II_SELECTED_CHORD_INDEX] = gidx
+                        session_state[II_SELECTED_CHORD_LABEL] = f"{label} · {ch}"
                         if generate_motif_on_select:
                             session_state["improv_motif"] = generate_motif_for_chord(
                                 ch, key_center=key_center

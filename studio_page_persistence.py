@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import copy
+import re
 from typing import Any
+
+_LEGACY_IMPROV_CHORD_TILE_KEY = re.compile(r"^improv_(live|motif)_s\d+_c\d+$")
 
 from studio_page_state import (
     init_analysis_page_state,
@@ -166,6 +169,10 @@ def _skip_snapshot_key(key: str) -> bool:
     if key in _NON_RESTORABLE_WIDGET_KEYS:
         return True
     if "_x_to_" in key:
+        return True
+    if key.startswith("ii_chord_tile_"):
+        return True
+    if _LEGACY_IMPROV_CHORD_TILE_KEY.match(key):
         return True
     if key.endswith("_btn"):
         return True
