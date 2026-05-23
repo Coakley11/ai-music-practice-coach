@@ -47,6 +47,8 @@ def default_bpm_for_song_data(song_data: dict[str, Any] | None) -> int:
         return 105
     if "shape of you" in title:
         return 96
+    if "perfect" in title and "sheeran" in (song_data.get("artist") or "").lower():
+        return 95
     if genre == "jazz":
         return 110
     return 100

@@ -36,8 +36,9 @@ def _s(
     extensions: dict[str, Any] | None = None,
     chart_status: str = "practice_simplified",
     chart_versions: dict[str, dict[str, list[str]]] | None = None,
+    section_order: list[str] | None = None,
 ) -> dict[str, Any]:
-    return {
+    row: dict[str, Any] = {
         "title": title,
         "artist": artist,
         "genre": genre,
@@ -50,6 +51,9 @@ def _s(
         "lyric_cues": lyric_cues or {},
         "extensions": extensions or _ext(),
     }
+    if section_order:
+        row["section_order"] = list(section_order)
+    return row
 
 
 def _levels(
@@ -132,6 +136,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         *,
         lyric_cues: dict[str, list[str]] | None = None,
         extensions: dict[str, Any] | None = None,
+        section_order: list[str] | None = None,
     ):
         row = {
             "key": key,
@@ -147,6 +152,8 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
             row["lyric_cues"] = lyric_cues
         if extensions:
             row["extensions"] = extensions
+        if section_order:
+            row["section_order"] = list(section_order)
         return row
 
     return {
@@ -223,31 +230,95 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 default_groove="Pop groove",
             ),
         ),
-        ("Perfect", "Ed Sheeran"): pack("Ab",
+        ("Perfect", "Ed Sheeran"): pack(
+            "G",
             {
-                "Intro": ["Ab", "Ab", "Fm", "Db"],
-                "Verse": ["Ab", "Fm", "Db", "Eb", "Ab", "Fm", "Db", "Eb"],
-                "Pre-Chorus": ["Fm", "Db", "Ab", "Eb", "Fm", "Db", "Ab", "Eb"],
-                "Chorus": ["Ab", "Eb", "Fm", "Db", "Ab", "Eb", "Db", "Eb"],
-                "Bridge": ["Fm", "Db", "Ab", "Eb", "Fm", "Db", "Ab", "Eb"],
-                "Outro": ["Ab", "Eb", "Fm", "Db", "Ab"],
+                "Verse": ["G", "Em", "C", "D"],
+                "Pre-Chorus": ["G", "Em", "C", "D"],
+                "Chorus": ["Em", "C", "G", "D"],
+                "Interlude": ["G", "Em", "C", "D"],
+                "Outro": [
+                    "G/B",
+                    "C",
+                    "Dsus4",
+                    "D",
+                    "G",
+                    "D/F#",
+                    "Em",
+                    "D",
+                    "C",
+                    "D",
+                    "G",
+                ],
             },
             {
-                "Intro": ["Ab", "Ab", "Fm7", "Dbadd9"],
-                "Verse": ["Ab", "Fm7", "Dbadd9", "Eb", "Ab", "Fm7", "Dbadd9", "Eb"],
-                "Pre-Chorus": ["Fm7", "Dbadd9", "Ab", "Eb/G", "Fm7", "Dbadd9", "Ab", "Eb"],
-                "Chorus": ["Ab", "Eb/G", "Fm7", "Dbadd9", "Ab", "Eb/G", "Dbadd9", "Eb"],
-                "Bridge": ["Fm7", "Dbadd9", "Ab", "Eb", "Fm7", "Dbadd9", "Ab", "Eb"],
-                "Outro": ["Ab", "Eb/G", "Fm7", "Dbadd9", "Ab"],
+                "Verse": ["Gmaj7", "Em7", "Cadd9", "D/F#"],
+                "Pre-Chorus": ["Gadd9", "Em7", "Cmaj7", "Dsus4"],
+                "Chorus": ["Em7", "Cadd9", "G", "D/F#"],
+                "Interlude": ["G", "Em7", "Cadd9", "Dsus4"],
+                "Outro": [
+                    "G/B",
+                    "Cadd9",
+                    "Dsus4",
+                    "D",
+                    "G",
+                    "D/F#",
+                    "Em7",
+                    "D",
+                    "Cadd9",
+                    "D",
+                    "G",
+                ],
             },
             {
-                "Intro": ["Gadd9", "Gadd9", "Em9", "Cmaj9"],
-                "Verse": ["Gadd9", "Em9", "Cmaj9", "D13sus", "Gadd9", "Em9", "Cmaj9", "D13sus"],
-                "Pre-Chorus": ["Em9", "Cmaj9", "G/B", "D/A", "Em9", "Cmaj9", "G", "D13sus"],
-                "Chorus": ["Gadd9", "D/F#", "Em9", "Cmaj9", "G/B", "D/A", "Cmaj9", "D13sus"],
-                "Bridge": ["Em9", "Cmaj9", "G/B", "D13sus", "Em9", "Cmaj9", "G", "D13sus"],
-                "Outro": ["Gadd9", "D/F#", "Em9", "Cmaj9", "Gadd9"],
+                "Verse": ["G6", "Em9", "Cmaj7", "Dadd9"],
+                "Pre-Chorus": ["Gmaj9/B", "Em11", "C6/9", "D13sus4"],
+                "Chorus": ["Em9", "C6/9", "Gmaj9/B", "D13sus4"],
+                "Interlude": ["Gadd9", "Em11", "Cmaj9", "Dsus2"],
+                "Outro": [
+                    "G/B",
+                    "Cmaj9",
+                    "Dsus4",
+                    "D7",
+                    "Gadd9",
+                    "D/F#",
+                    "Em9",
+                    "D13sus4",
+                    "C6/9",
+                    "D7sus4",
+                    "Gmaj9",
+                ],
             },
+            status="practice_level_verified",
+            section_order=["Verse", "Pre-Chorus", "Chorus", "Interlude", "Outro"],
+            lyric_cues={
+                "Verse": [
+                    "I found a love for me…",
+                    "Darling just dive right in…",
+                ],
+                "Pre-Chorus": [
+                    "Cause we were just kids when we fell in love…",
+                ],
+                "Chorus": [
+                    "Baby I'm dancing in the dark…",
+                ],
+                "Interlude": ["Instrumental — G · Em · C · D"],
+                "Outro": [
+                    "Tag — G/B · C · Dsus4 · D",
+                    "Final cadence — G · D/F# · Em · D · C · D · G",
+                ],
+            },
+            extensions=_ext(
+                arrangement_notes=(
+                    "Beginner baseline in **G major**: Verse/Pre-Chorus **G–Em–C–D**, "
+                    "Chorus **Em–C–G–D**, Interlude **G–Em–C–D**, Outro with slash/sus "
+                    "passing tones. Intermediate adds maj7/add9/sus color; Advanced adds "
+                    "extensions, slash chords, and neo-soul/jazz reharm options. "
+                    "Recording is often heard around **Ab** — use Display Key to transpose."
+                ),
+                default_bpm=95,
+                default_groove="Ballad",
+            ),
         ),
         ("Thinking Out Loud", "Ed Sheeran"): pack("D",
             {
@@ -1755,6 +1826,33 @@ def curated_song_records() -> list[dict[str, Any]]:
         }),
 
         # --- Ed Sheeran ---
+        _s(
+            "Perfect",
+            "Ed Sheeran",
+            "Pop",
+            "G",
+            {
+                "Verse": ["G", "Em", "C", "D"],
+                "Pre-Chorus": ["G", "Em", "C", "D"],
+                "Chorus": ["Em", "C", "G", "D"],
+                "Interlude": ["G", "Em", "C", "D"],
+                "Outro": [
+                    "G/B",
+                    "C",
+                    "Dsus4",
+                    "D",
+                    "G",
+                    "D/F#",
+                    "Em",
+                    "D",
+                    "C",
+                    "D",
+                    "G",
+                ],
+            },
+            chart_status="practice_level_verified",
+            section_order=["Verse", "Pre-Chorus", "Chorus", "Interlude", "Outro"],
+        ),
         _s("Shape of You", "Ed Sheeran", "Pop", "Bm", {
             "Intro": ["Bm", "Em", "G", "A"],
             "Verse": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
@@ -1762,13 +1860,6 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
             "Bridge": ["Bm", "Em", "G", "A"],
             "Outro": ["Bm", "Em", "G", "A"],
-        }),
-        _s("Perfect", "Ed Sheeran", "Pop", "G", {
-            "Intro": ["G", "G", "Em7", "Cadd9"],
-            "Verse": ["G", "Em7", "Cadd9", "D", "G", "Em7", "Cadd9", "D"],
-            "Pre-Chorus": ["Em7", "Cadd9", "G", "D/F#", "Em7", "Cadd9", "G", "D"],
-            "Chorus": ["G", "D/F#", "Em7", "Cadd9", "G", "D/F#", "Cadd9", "D"],
-            "Bridge": ["Em7", "Cadd9", "G", "D", "Em7", "Cadd9", "G", "D"],
         }),
         _s("Thinking Out Loud", "Ed Sheeran", "Pop", "D", {
             "Intro": ["D", "D/F#", "G", "A7"],

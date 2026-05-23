@@ -1153,17 +1153,37 @@ def _render_lyrics_and_cues_panel(
     song_title: str,
     song_artist: str,
     section_names: list[str],
+    song_data: dict | None = None,
+    chart_sections: dict | None = None,
     expanded: bool | None = None,
     prominent: bool = False,
 ) -> None:
     """Lyrics & cues editor — Song Selection; persists for Practice and Backing Track."""
     import html as _html
 
+    from songs.lyrics_editor import (
+        add_lyrics_section,
+        move_lyrics_section,
+        optional_sections_to_add,
+        remove_lyrics_section,
+        rename_lyrics_section,
+        reset_lyrics_section_layout,
+        resolve_lyrics_editor_sections,
+    )
+
     slug, song_lyrics_key, section_lyrics_state_key = _lyrics_cues_session_keys(
         song_title,
         song_artist,
     )
-    ordered = _ordered_section_names_for_lyrics(section_names)
+    if song_data is not None and chart_sections is not None:
+        ordered = resolve_lyrics_editor_sections(
+            st.session_state,
+            slug,
+            song_data,
+            chart_sections,
+        )
+    else:
+        ordered = _ordered_section_names_for_lyrics(section_names)
     if not ordered:
         ordered = ["Full song"]
 
@@ -1199,6 +1219,101 @@ def _render_lyrics_and_cues_panel(
         )
         section_lyrics_state = st.session_state.setdefault(section_lyrics_state_key, {})
 
+        if song_data is not None and chart_sections is not None:
+            st.caption(
+                "Sections match **this song's chart** — only "
+                + ", ".join(ordered)
+                + ". Add or reorder optional sections below."
+            )
+            with st.expander("Manage song sections", expanded=False):
+                add_opts = optional_sections_to_add(ordered)
+                if add_opts:
+                    ac1, ac2 = st.columns([2, 1])
+                    with ac1:
+                        pick_add = st.selectbox(
+                            "Add optional section",
+                            add_opts,
+                            key=f"lyrics_add_pick::{slug}",
+                            label_visibility="collapsed",
+                        )
+                    with ac2:
+                        if st.button(
+                            "Add section",
+                            key=f"lyrics_add_btn::{slug}",
+                            use_container_width=True,
+                        ):
+                            ordered = add_lyrics_section(
+                                st.session_state, slug, pick_add
+                            )
+                            st.rerun()
+                else:
+                    st.caption("All standard section types are already in the list.")
+
+                custom_name = st.text_input(
+                    "Custom section name",
+                    placeholder="e.g. Verse 3, Tag, Breakdown",
+                    key=f"lyrics_custom_name::{slug}",
+                )
+                if st.button(
+                    "Add custom section",
+                    key=f"lyrics_add_custom::{slug}",
+                    use_container_width=True,
+                ) and custom_name.strip():
+                    ordered = add_lyrics_section(
+                        st.session_state, slug, custom_name.strip()
+                    )
+                    st.rerun()
+
+                if st.button(
+                    "Reset sections to song chart",
+                    key=f"lyrics_reset_layout::{slug}",
+                    use_container_width=True,
+                ):
+                    ordered = reset_lyrics_section_layout(
+                        st.session_state, slug, song_data, chart_sections
+                    )
+                    st.rerun()
+
+                for sec in list(ordered):
+                    st.markdown(f"**{_html.escape(sec)}**")
+                    rc1, rc2, rc3, rc4 = st.columns([1, 1, 1, 2])
+                    with rc1:
+                        if st.button("↑", key=f"lyrics_up::{slug}::{_song_slug(sec)}"):
+                            move_lyrics_section(st.session_state, slug, sec, -1)
+                            st.rerun()
+                    with rc2:
+                        if st.button("↓", key=f"lyrics_dn::{slug}::{_song_slug(sec)}"):
+                            move_lyrics_section(st.session_state, slug, sec, 1)
+                            st.rerun()
+                    with rc3:
+                        if st.button("Remove", key=f"lyrics_rm::{slug}::{_song_slug(sec)}"):
+                            remove_lyrics_section(st.session_state, slug, sec)
+                            section_lyrics_state.pop(sec, None)
+                            st.rerun()
+                    with rc4:
+                        new_label = st.text_input(
+                            "Rename",
+                            value=sec,
+                            key=f"lyrics_rename::{slug}::{_song_slug(sec)}",
+                            label_visibility="collapsed",
+                        )
+                        if new_label.strip() and new_label.strip() != sec:
+                            if st.button(
+                                "Apply rename",
+                                key=f"lyrics_rename_go::{slug}::{_song_slug(sec)}",
+                            ):
+                                ordered, section_lyrics_state = rename_lyrics_section(
+                                    st.session_state,
+                                    slug,
+                                    sec,
+                                    new_label.strip(),
+                                    section_lyrics_state,
+                                )
+                                st.session_state[section_lyrics_state_key] = (
+                                    section_lyrics_state
+                                )
+                                st.rerun()
+
         if st.button(
             "Auto-assign to sections",
             key=f"auto_assign_lyrics::{slug}",
@@ -1208,6 +1323,9 @@ def _render_lyrics_and_cues_panel(
             st.rerun()
 
         st.markdown("---")
+        layout_key = f"lyrics_section_layout::{slug}"
+        if song_data is not None and chart_sections is not None:
+            ordered = list(st.session_state.get(layout_key) or ordered)
         for section_name in ordered:
             default_text = section_lyrics_state.get(
                 section_name,
@@ -5609,6 +5727,8 @@ elif _studio_page == "picker":
             song_title=str(selected_data.get("title", "")),
             song_artist=str(selected_data.get("artist", "")),
             section_names=list(_picker_level_sections.keys()),
+            song_data=selected_data,
+            chart_sections=_picker_level_sections,
             prominent=True,
         )
 
