@@ -109,6 +109,20 @@ from songs import (
     sync_display_key_before_widget,
 )
 from songs.key_state import mark_display_key_changed
+from songs.playback_defaults import (
+    default_groove_for_song,
+    playback_song_id,
+    sync_backing_groove_before_widget,
+    sync_playback_defaults_for_active_song,
+)
+from instrument_transposition import (
+    SAX_TYPE_SESSION_KEY,
+    SAXOPHONE_TYPES,
+    effective_chart_key,
+    is_transposing_instrument,
+    sax_transposition_blurb,
+    written_key_for_saxophone,
+)
 
 from backing_audio import (
     _chord_head,
@@ -3367,9 +3381,16 @@ def default_song_bpm(song_title: str, song_data: dict | None = None) -> int:
 
 def _ensure_song_bpm_defaults(song_title: str, song_data: dict | None = None) -> int:
     """Sync BPM session state before any ``backing_track_bpm`` widget is rendered."""
+    sid = playback_song_id(
+        is_custom=is_custom_progression(st.session_state),
+        song_title=song_title,
+        song_artist=str((song_data or {}).get("artist", "")),
+        custom_name=str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("name", "")),
+        custom_revision=str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("id", "")),
+    )
     return sync_backing_bpm_before_widget(
         st,
-        song_title,
+        sid,
         default_song_bpm(song_title, song_data),
     )
 
@@ -4012,6 +4033,10 @@ def musical_development_tracker_text():
     return lab_musical_dev(load_logs)
 
 
+def _developer_mode_enabled() -> bool:
+    return bool(st.session_state.get("developer_mode", False))
+
+
 def _apply_catalog_filter_defaults() -> None:
     """One-time migration: show full library, not trusted-only / single-genre traps."""
     if st.session_state.get("_catalog_defaults_version") == CATALOG_DEFAULTS_VERSION:
@@ -4057,8 +4082,8 @@ def _render_catalog_health_debug() -> None:
         )
     elif visible < total:
         st.sidebar.info(
-            f"Filters hide {total - visible} songs. Open **Refine library** on **Song Selection** "
-            f"and choose **{LIBRARY_MODE_FULL}** + **{CHART_FILTER_ALL}** for the full list."
+            f"Filters hide {total - visible} songs. Enable **Developer Mode** in Catalog debug "
+            f"to adjust library scope on **Song Selection**."
         )
 
 
@@ -4316,7 +4341,7 @@ def _render_catalog_song_picker_block(
     pick_options = [format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered]
 
     if not pick_options:
-        st.warning("No songs match — widen filters in **Refine library** below.")
+        st.warning("No songs match your search — try another genre or clear the search box.")
         if wrap_section:
             close_control_section()
         return
@@ -4357,59 +4382,33 @@ def _render_catalog_song_picker_block(
     )
 
     if show_song_cards:
-        st.caption(
-            f"**{len(filtered)}** of **{len(ALL_SONG_RECORDS)}** songs match your filters "
-            f"(library: {st.session_state.get('chart_library_mode', DEFAULT_CHART_LIBRARY_MODE)})."
-        )
+        st.caption(f"**{len(filtered)}** songs available in this list.")
         st.markdown("#### Active song")
         active_rec = record_for_pick_key(visible_song_records, active_pick_key)
         if active_rec:
             _render_active_song_card(active_rec)
         else:
             st.info("Select a song from the menu above.")
-    else:
+    elif not _developer_mode_enabled():
         st.caption(
-            f"**{len(filtered)}** of **{len(ALL_SONG_RECORDS)}** songs shown "
-            f"(library: {st.session_state.get('chart_library_mode', DEFAULT_CHART_LIBRARY_MODE)}). "
-            "Practice setup on **Practice** · key in sidebar · tempo on **Backing Track**."
+            f"**{len(filtered)}** songs in list · open **Practice** or **Backing Track** after you pick one."
         )
 
-    _library_options = [LIBRARY_MODE_FULL, LIBRARY_MODE_CORE]
-    _chart_filter_options = [
-        CHART_FILTER_ALL,
-        CHART_FILTER_CURATED,
-        CHART_FILTER_FULL_CHARTS,
-        CHART_FILTER_EXTENDED,
-    ]
-    if filters_in_expander:
-        with st.expander("Refine library (browse filters)", expanded=False):
-            st.radio(
-                "Song library",
-                _library_options,
-                horizontal=True,
-                key="chart_library_mode",
-            )
-            st.radio(
-                "Search scope",
-                ["Entire library", "Single genre"],
-                horizontal=True,
-                key="song_search_scope",
-            )
-            c1, c2 = st.columns(2)
-            with c1:
-                st.selectbox(
-                    "Show songs",
-                    _chart_filter_options,
-                    key="song_picker_chart_status",
-                )
-            with c2:
-                st.selectbox(
-                    "Chart level available",
-                    ["Any level", "Beginner", "Intermediate", "Advanced"],
-                    key="song_picker_level_filter",
-                )
-    else:
-        with st.expander("Refine search & filters", expanded=False):
+    if _developer_mode_enabled():
+        _library_options = [LIBRARY_MODE_FULL, LIBRARY_MODE_CORE]
+        _chart_filter_options = [
+            CHART_FILTER_ALL,
+            CHART_FILTER_CURATED,
+            CHART_FILTER_FULL_CHARTS,
+            CHART_FILTER_EXTENDED,
+        ]
+        _dev_label = (
+            "Refine library (browse filters)"
+            if filters_in_expander
+            else "Refine search & filters (developer)"
+        )
+        with st.expander(_dev_label, expanded=False):
+            st.caption("Developer Mode — library scope and chart filters.")
             st.radio(
                 "Song library",
                 _library_options,
@@ -4545,11 +4544,14 @@ def _render_practice_setup_panel(
 def _render_backing_tempo_panel(
     *,
     song_title: str,
+    song_id: str,
     default_bpm: int,
+    default_groove: str,
     backing_ready: bool,
 ) -> int:
     """Backing Track page — BPM and groove (widget created once per run)."""
-    sync_backing_bpm_before_widget(st, song_title, default_bpm)
+    sync_backing_bpm_before_widget(st, song_id, default_bpm)
+    sync_backing_groove_before_widget(st, song_id, default_groove)
     st.markdown(
         '<p class="ui-page-nav-label">Backing / tempo</p>',
         unsafe_allow_html=True,
@@ -4650,12 +4652,12 @@ _display_key_options = sync_display_key_before_widget(
 
 sidebar_section("Practice key", icon="🎹", tone="key")
 st.sidebar.markdown(
-    '<p class="ui-key-global-hint">Practice / Display Key — changes the whole song globally.</p>',
+    '<p class="ui-key-global-hint">Practice / Display Key — concert pitch for the song (global transpose).</p>',
     unsafe_allow_html=True,
 )
-st.sidebar.caption(f"Written key: **{original_key}**")
+st.sidebar.caption(f"Song original key: **{original_key}**")
 st.sidebar.selectbox(
-    "Practice / Display Key",
+    "Practice / Display Key (concert)",
     _display_key_options,
     key="display_key",
     help="Transposes charts, backing audio, and coach content together.",
@@ -4671,6 +4673,12 @@ _focus_options = focus_options_for_instrument(st.session_state.get("instrument",
 sidebar_section("Library", icon="📚", tone="library")
 _render_catalog_health_debug()
 with st.sidebar.expander("Catalog debug", expanded=False):
+    st.checkbox(
+        "Developer Mode",
+        value=bool(st.session_state.get("developer_mode", False)),
+        key="developer_mode",
+        help="Shows advanced library filters on Song Selection (hidden for normal users).",
+    )
     st.write("Songs loaded:", len(ALL_SONG_RECORDS))
     st.write("Songs visible (filters):", len(_picker_visible_records()))
     st.write("Genres:", len(GENRES))
@@ -4714,6 +4722,26 @@ if display_key not in _display_key_options:
     request_display_key(st, display_key)
 key_changed_this_run = note_display_key_change(st, display_key)
 
+if is_transposing_instrument(instrument):
+    st.session_state.setdefault(SAX_TYPE_SESSION_KEY, SAXOPHONE_TYPES[0])
+    _sax_pick = st.sidebar.selectbox(
+        "Saxophone type",
+        SAXOPHONE_TYPES,
+        key=SAX_TYPE_SESSION_KEY,
+    )
+    _written = written_key_for_saxophone(display_key, _sax_pick)
+    st.sidebar.markdown(
+        f'<div class="ui-card soft" style="margin:0.5rem 0;padding:0.65rem;">'
+        f"<strong>Concert key:</strong> {html.escape(display_key)}<br>"
+        f"<strong>Your instrument:</strong> {html.escape(_sax_pick)}<br>"
+        f"<strong>Written key for you:</strong> {html.escape(_written)}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    st.sidebar.caption(
+        "Practice charts can show your written key. Backing track uses concert pitch."
+    )
+
 _chart_bundle = build_active_chart_bundle(
     st.session_state,
     catalog_genre=_catalog_genre,
@@ -4748,13 +4776,30 @@ def _ui_page_badges() -> list[tuple[str, str]]:
 
 
 full_song_chords = chord_blocks_for_backing(sections)
-_ext_groove = (song_data.get("extensions") or {}).get("default_groove")
-default_groove_style = infer_groove_style(
-    song_data,
-    _ext_groove or _chart_bundle.get("default_groove", "Auto"),
+_default_bpm = default_song_bpm(song, song_data)
+_default_groove = default_groove_for_song(song_data, infer_fn=infer_groove_style)
+if is_custom_progression(st.session_state) and _cpl_active:
+    _default_bpm = int(_cpl_active.get("bpm", _default_bpm) or _default_bpm)
+    _cpl_groove = str(_cpl_active.get("groove_style") or "Auto")
+    _default_groove = (
+        infer_groove_style(song_data, _cpl_groove)
+        if _cpl_groove == "Auto"
+        else _cpl_groove
+    )
+_playback_id = playback_song_id(
+    is_custom=is_custom_progression(st.session_state),
+    song_title=song,
+    song_artist=str(song_data.get("artist", "")),
+    custom_name=str(_cpl_active.get("name", "") if _cpl_active else ""),
+    custom_revision=str(_cpl_active.get("id", "") if _cpl_active else ""),
 )
-st.session_state.setdefault("practice_groove_style", default_groove_style)
-st.session_state.setdefault("backing_groove_style", default_groove_style)
+_synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
+    st,
+    song_id=_playback_id,
+    default_bpm=_default_bpm,
+    default_groove=_default_groove,
+)
+_default_song_bpm = _synced_bpm
 
 song_lyrics_slug = _song_slug(
     song,
@@ -4824,12 +4869,9 @@ lyric_cues = {
     **lyric_cues_from_section_lyrics(section_lyrics),
 }
 
-_default_song_bpm = default_song_bpm(song, song_data)
-_ensure_song_bpm_defaults(song, song_data)
 _practice_bpm = int(st.session_state.get("backing_track_bpm", _default_song_bpm))
-_practice_groove = infer_groove_style(
-    song_data,
-    st.session_state.get("practice_groove_style", default_groove_style),
+_practice_groove = str(
+    st.session_state.get("practice_groove_style", default_groove_style)
 )
 
 # -------------------------------------------------
@@ -4905,89 +4947,18 @@ if _studio_page == "practice":
     ):
         st.session_state.pop(_old_key, None)
 
-    _notation_sig = (
-        song,
-        _focus_pick,
-        instrument,
-        focus,
+    _practice_chart_key, _chart_key_mode = effective_chart_key(
         display_key,
-        _practice_bpm,
-        _practice_groove,
+        instrument,
+        st.session_state,
     )
-    if st.session_state.get("practice_notation_sig") != _notation_sig:
-        st.session_state.pop(_NOTATION_KEY, None)
-    st.session_state["practice_notation_sig"] = _notation_sig
-
-    st.markdown("### Generated Music Notation / TAB")
-    st.caption(
-        f"Song **{song}** · section **{_focus_pick}** · "
-        f"instrument **{instrument}** · focus **{focus}** · {_practice_bpm} BPM"
-    )
-    _n_col1, _n_col2, _n_col3 = st.columns([1, 1, 1])
-    with _n_col1:
-        _notation_lines = st.slider(
-            "Number of lines",
-            min_value=1,
-            max_value=4,
-            value=int(st.session_state.get("practice_notation_lines", 2)),
-            key="practice_notation_lines",
+    if is_transposing_instrument(instrument):
+        st.markdown(
+            '<div class="ui-card soft"><div class="ui-card-sub">'
+            + sax_transposition_blurb(display_key, st.session_state.get(SAX_TYPE_SESSION_KEY, SAXOPHONE_TYPES[0]))
+            + "</div></div>",
+            unsafe_allow_html=True,
         )
-    with _n_col2:
-        _diff_opts = ["easy", "medium", "advanced"]
-        _diff_default = st.session_state.get("practice_notation_difficulty", "medium")
-        _notation_difficulty = st.selectbox(
-            "Difficulty",
-            options=_diff_opts,
-            index=_diff_opts.index(_diff_default) if _diff_default in _diff_opts else 1,
-            key="practice_notation_difficulty",
-        )
-    with _n_col3:
-        st.write("")
-        _gen_notation = st.button(
-            "Generate notation / TAB",
-            key="practice_generate_notation",
-            type="primary",
-            use_container_width=True,
-        )
-
-    if _gen_notation:
-        st.session_state[_NOTATION_KEY] = generate_practice_notation(
-            song_title=song,
-            artist=song_data.get("artist", ""),
-            display_key=display_key,
-            original_key=original_key,
-            bpm=_practice_bpm,
-            groove_style=_practice_groove,
-            instrument=instrument,
-            focus=focus,
-            section_focus=_focus_pick,
-            sections=sections,
-            guitar_tabs=song_data.get("guitar_tabs") or {},
-            num_lines=_notation_lines,
-            difficulty=_notation_difficulty,
-        )
-        st.rerun()
-
-    _notation = st.session_state.get(_NOTATION_KEY)
-    if _notation:
-        st.markdown(f"**{getattr(_notation, 'title', 'Practice notation')}**")
-        st.caption(
-            f"Chords: **{getattr(_notation, 'chord_labels', '')}** · "
-            f"{getattr(_notation, 'rhythm_counts', '')}"
-        )
-        if getattr(_notation, "format", "") == "tab":
-            st.markdown(notation_tab_html(_notation), unsafe_allow_html=True)
-            with st.expander("Copy TAB text", expanded=False):
-                st.code(getattr(_notation, "body", ""), language=None)
-        else:
-            if getattr(_notation, "body", ""):
-                st.markdown("**Note guide**")
-                st.code(getattr(_notation, "body", ""), language=None)
-            if getattr(_notation, "abc", ""):
-                st.markdown("**Standard notation (ABC)**")
-                render_abc(getattr(_notation, "abc", ""))
-            with st.expander("ABC source", expanded=False):
-                st.code(getattr(_notation, "abc", ""), language=None)
 
     if level == "Beginner":
         _beginner_tips = beginner_transpose_suggestions(
@@ -5065,7 +5036,7 @@ if _studio_page == "practice":
         song_data,
         _view_sections,
         instrument,
-        display_key=display_key,
+        display_key=_practice_chart_key,
         level=level,
         lyric_cues=lyric_cues,
         section_lyrics=section_lyrics,
@@ -5076,8 +5047,13 @@ if _studio_page == "practice":
         focus=focus,
         chart_mode="practice",
     )
-    _chart_title = "📋 Chord chart — full song" if _is_full_song else f"📋 Chord chart — {_active_section}"
-    with st.expander(_chart_title, expanded=True):
+    _chart_scope = "full song" if _is_full_song else str(_active_section)
+    _chart_key_note = (
+        f" · written key **{_practice_chart_key}**"
+        if _chart_key_mode == "written"
+        else ""
+    )
+    with st.expander(f"Chord Chart — {_chart_scope}{_chart_key_note}", expanded=False):
         st.markdown(_chart_html, unsafe_allow_html=True)
     if has_lyric_chord_sheet(song_data):
         _ug_sections = lyric_chord_chart_sections(song_data)
@@ -5090,7 +5066,7 @@ if _studio_page == "practice":
                         song_name=song,
                         artist=str(song_data.get("artist", "")),
                         original_key=song_data["key"],
-                        display_key=display_key,
+                        display_key=_practice_chart_key,
                         current_section=_chart_current,
                         meta_bits=[
                             f"Level: {level}",
@@ -5104,12 +5080,100 @@ if _studio_page == "practice":
                     unsafe_allow_html=True,
                 )
 
-    # 6. Practice coach & settings
+    _notation_sig = (
+        song,
+        _focus_pick,
+        instrument,
+        focus,
+        _practice_chart_key,
+        _practice_bpm,
+        _practice_groove,
+    )
+    if st.session_state.get("practice_notation_sig") != _notation_sig:
+        st.session_state.pop(_NOTATION_KEY, None)
+    st.session_state["practice_notation_sig"] = _notation_sig
+
+    with st.expander("Generated Music Notation / TAB", expanded=False):
+        st.caption(
+            f"Song **{song}** · section **{_focus_pick}** · "
+            f"instrument **{instrument}** · focus **{focus}** · {_practice_bpm} BPM"
+            + (
+                f" · chart key **{_practice_chart_key}** (concert {display_key})"
+                if _chart_key_mode == "written"
+                else ""
+            )
+        )
+        _n_col1, _n_col2, _n_col3 = st.columns([1, 1, 1])
+        with _n_col1:
+            _notation_lines = st.slider(
+                "Number of lines",
+                min_value=1,
+                max_value=4,
+                value=int(st.session_state.get("practice_notation_lines", 2)),
+                key="practice_notation_lines",
+            )
+        with _n_col2:
+            _diff_opts = ["easy", "medium", "advanced"]
+            _diff_default = st.session_state.get("practice_notation_difficulty", "medium")
+            _notation_difficulty = st.selectbox(
+                "Difficulty",
+                options=_diff_opts,
+                index=_diff_opts.index(_diff_default) if _diff_default in _diff_opts else 1,
+                key="practice_notation_difficulty",
+            )
+        with _n_col3:
+            st.write("")
+            _gen_notation = st.button(
+                "Generate notation / TAB",
+                key="practice_generate_notation",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if _gen_notation:
+            st.session_state[_NOTATION_KEY] = generate_practice_notation(
+                song_title=song,
+                artist=song_data.get("artist", ""),
+                display_key=_practice_chart_key,
+                original_key=original_key,
+                bpm=_practice_bpm,
+                groove_style=_practice_groove,
+                instrument=instrument,
+                focus=focus,
+                section_focus=_focus_pick,
+                sections=sections,
+                guitar_tabs=song_data.get("guitar_tabs") or {},
+                num_lines=_notation_lines,
+                difficulty=_notation_difficulty,
+            )
+            st.rerun()
+
+        _notation = st.session_state.get(_NOTATION_KEY)
+        if _notation:
+            st.markdown(f"**{getattr(_notation, 'title', 'Practice notation')}**")
+            st.caption(
+                f"Chords: **{getattr(_notation, 'chord_labels', '')}** · "
+                f"{getattr(_notation, 'rhythm_counts', '')}"
+            )
+            if getattr(_notation, "format", "") == "tab":
+                st.markdown(notation_tab_html(_notation), unsafe_allow_html=True)
+                with st.expander("Copy TAB text", expanded=False):
+                    st.code(getattr(_notation, "body", ""), language=None)
+            else:
+                if getattr(_notation, "body", ""):
+                    st.markdown("**Note guide**")
+                    st.code(getattr(_notation, "body", ""), language=None)
+                if getattr(_notation, "abc", ""):
+                    st.markdown("**Standard notation (ABC)**")
+                    render_abc(getattr(_notation, "abc", ""))
+                with st.expander("ABC source", expanded=False):
+                    st.code(getattr(_notation, "abc", ""), language=None)
+
     exercise_key = f"exercise_variation::{song}::{instrument}::{level}::{focus}"
     if exercise_key not in st.session_state:
         st.session_state[exercise_key] = 0
 
-    with st.expander("🎯 Practice coach & session settings", expanded=True):
+    with st.expander("🎯 Practice coach & session settings", expanded=False):
         st.caption(
             f"Session length: **{minutes} min** · practice key: **{display_key}** (sidebar)."
         )
@@ -5301,9 +5365,15 @@ elif _studio_page == "backing":
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
         st.warning("Key changed — regenerate backing track")
 
+    st.caption(
+        f"Song defaults: **{_default_song_bpm} BPM** · **{default_groove_style}** "
+        f"(from active song metadata — change anytime below)."
+    )
     bpm = _render_backing_tempo_panel(
         song_title=song,
-        default_bpm=_default_song_bpm,
+        song_id=_playback_id,
+        default_bpm=_default_bpm,
+        default_groove=default_groove_style,
         backing_ready=bool(st.session_state.get("_last_backing_wav")),
     )
 
