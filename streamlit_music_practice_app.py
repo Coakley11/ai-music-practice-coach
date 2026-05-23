@@ -1123,8 +1123,11 @@ def _render_lyrics_and_cues_panel(
     song_artist: str,
     section_names: list[str],
     expanded: bool | None = None,
+    prominent: bool = False,
 ) -> None:
-    """Lyrics & cues editor on Song Selection — persists for Practice and Backing Track."""
+    """Lyrics & cues editor — Song Selection; persists for Practice and Backing Track."""
+    import html as _html
+
     slug, song_lyrics_key, section_lyrics_state_key = _lyrics_cues_session_keys(
         song_title,
         song_artist,
@@ -1138,30 +1141,25 @@ def _render_lyrics_and_cues_panel(
         or st.session_state.get(section_lyrics_state_key)
     )
     if expanded is None:
-        expanded = has_saved
+        expanded = True if prominent else has_saved
 
-    with st.expander("📝 Lyrics & Cues", expanded=expanded):
+    def _body() -> None:
         st.caption(
-            "Paste lyrics, performance cues, and reminders you provide. "
-            "Saved cues appear on **Practice** and **Backing Track** (not fetched from the web)."
+            "Paste lyrics and performance cues you provide — saved per song, "
+            "used on **Practice** and **Backing Track**."
         )
         st.markdown("**Paste all lyrics or cues (optional)**")
         st.text_area(
             "Paste all lyrics or cues (optional)",
             value=st.session_state.get(song_lyrics_key, ""),
             placeholder=(
-                "Optional — paste everything here, then auto-assign to sections.\n"
-                "Verse: first line of lyric\n"
+                "Verse: first lyric line\n"
                 "Chorus: hook / breath cue\n"
-                "Bridge: harmony reminder"
+                "Bridge: harmony or breath reminder"
             ),
             key=song_lyrics_key,
-            height=120,
+            height=100,
             label_visibility="collapsed",
-        )
-        st.caption(
-            "Examples: first lyric line, breath cue, harmony note, chord reminder, "
-            "saxophone articulation, entry cue."
         )
 
         suggested = split_lyrics_by_sections(
@@ -1178,18 +1176,20 @@ def _render_lyrics_and_cues_panel(
             st.session_state[section_lyrics_state_key] = dict(suggested)
             st.rerun()
 
-        st.markdown("##### By section")
+        st.markdown("---")
         for section_name in ordered:
             default_text = section_lyrics_state.get(
                 section_name,
                 suggested.get(section_name, ""),
             )
+            st.markdown(f"**{_html.escape(section_name)}**")
             section_lyrics_state[section_name] = st.text_area(
-                section_name,
+                f"{section_name} lyrics / cues",
                 value=default_text,
                 key=f"section_lyrics::{slug}::{_song_slug(section_name)}",
                 height=88,
                 placeholder="Lyrics, cue, or note for this section…",
+                label_visibility="collapsed",
             )
 
         st.session_state[section_lyrics_state_key] = dict(section_lyrics_state)
@@ -1202,7 +1202,7 @@ def _render_lyrics_and_cues_panel(
         ):
             st.session_state[f"_lyrics_saved::{slug}"] = True
             try:
-                st.toast("Lyrics & cues saved for this song.", icon="📝")
+                st.toast("Lyrics & cues saved for this song.", icon="🎤")
             except Exception:
                 pass
             st.success(
@@ -1210,9 +1210,23 @@ def _render_lyrics_and_cues_panel(
             )
 
         if st.session_state.get(f"_lyrics_saved::{slug}") or has_saved:
-            st.caption(
-                "Saved for this song — section focus, charts, and coach tools can reference these cues."
-            )
+            st.caption("Saved for this song — charts, section focus, and coach tools use these cues.")
+
+    if prominent:
+        st.markdown(
+            '<div class="ui-card soft" style="margin:1rem 0 1.25rem 0;border:2px solid #c7d2fe;">',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<p class="ui-card-title" style="font-size:1.05rem;">🎤 Lyrics & Cues'
+            f' — {_html.escape(song_title)}</p>',
+            unsafe_allow_html=True,
+        )
+        _body()
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        with st.expander("🎤 Lyrics & Cues", expanded=bool(expanded)):
+            _body()
 
 
 def lyric_cue_markdown(section_name, chords, lyric_cues, instrument, full_section_lyrics=None):
@@ -4595,21 +4609,6 @@ def _render_catalog_song_picker_block(
         active_rec = record_for_pick_key(visible_song_records, active_pick_key)
         if active_rec:
             _render_active_song_card(active_rec)
-            _picker_sections = sections_for_level(
-                active_rec,
-                st.session_state.get("level", "Intermediate"),
-            )
-            _lyrics_expanded = (
-                True
-                if st.session_state.get("instrument") == "Voice"
-                else None
-            )
-            _render_lyrics_and_cues_panel(
-                song_title=str(active_rec.get("title", "")),
-                song_artist=str(active_rec.get("artist", "")),
-                section_names=list(_picker_sections.keys()),
-                expanded=_lyrics_expanded,
-            )
         else:
             st.info("Select a song from the menu above.")
     elif not _developer_mode_enabled():
@@ -5569,6 +5568,14 @@ elif _studio_page == "picker":
             st.stop()
         pick_genre, pick_label = parse_pick_key(pick_key)
         selected_data = SONG_PICKER_CATALOG[pick_genre][pick_label]
+
+        _picker_level_sections = sections_for_level(selected_data, level)
+        _render_lyrics_and_cues_panel(
+            song_title=str(selected_data.get("title", "")),
+            song_artist=str(selected_data.get("artist", "")),
+            section_names=list(_picker_level_sections.keys()),
+            prominent=True,
+        )
 
         selected_versions = selected_data.get("chart_versions") or {}
         available_levels = ", ".join(selected_versions.keys()) if selected_versions else "Beginner · Intermediate · Advanced"

@@ -64,7 +64,7 @@ def sidebar_context_hints(
     if page == "picker":
         return [
             "Choose a song, then open Practice or Backing Track.",
-            "Add lyrics or cues below — they carry into Practice and Backing Track.",
+            "You can add lyrics or performance cues below the song card.",
         ]
 
     if page == "custom":
