@@ -4842,6 +4842,7 @@ def _ui_source_label() -> str:
 _studio_page = ensure_studio_page(st.session_state)
 
 migrate_legacy_session_keys(st.session_state)
+sanitize_persisted_snapshots(st.session_state)
 handle_studio_page_transition(st.session_state)
 note_page_visit(st.session_state, _studio_page)
 

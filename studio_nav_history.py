@@ -74,11 +74,9 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
             if not back or _normalize_stack_entry(back[-1]).get("page") != current:
                 back.append(entry)
         session_state[NAV_FORWARD_STACK] = []
+    # Only change the page id here; ``handle_studio_page_transition`` restores
+    # page-local state on the next run while global settings stay untouched.
     session_state["studio_page"] = page_id
-    from studio_page_persistence import restore_page_snapshot
-
-    restore_page_snapshot(session_state, page_id)
-    session_state["_studio_active_page_id"] = page_id
     return True
 
 
