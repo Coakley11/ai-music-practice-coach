@@ -8,6 +8,7 @@ from typing import Any, Callable
 TUTORIAL_DISMISSED_KEY = "tutorial_dismissed"
 TUTORIAL_OPEN_KEY = "tutorial_open"
 TUTORIAL_STEP_KEY = "tutorial_step"
+TUTORIAL_DISMISS_CHECKBOX_KEY = "tutorial_dismiss_checkbox"
 TOTAL_STEPS = 8
 
 TUTORIAL_STEPS: list[dict[str, Any]] = [
@@ -155,7 +156,6 @@ def complete_tutorial(session_state: dict) -> None:
     """Finish or opt out — no auto-start, hide top Tutorial button."""
     session_state[TUTORIAL_DISMISSED_KEY] = True
     session_state[TUTORIAL_OPEN_KEY] = False
-    session_state["tutorial_dismiss_checkbox"] = True
 
 
 def _clamp_step(step: int) -> int:
@@ -280,18 +280,14 @@ def render_tutorial_walkthrough(
     st_module.divider()
     c1, c2, c3 = st_module.columns([2, 1, 1])
     with c1:
-        dismiss_key = "tutorial_dismiss_checkbox"
-        if dismiss_key not in session_state:
-            session_state[dismiss_key] = bool(session_state.get(TUTORIAL_DISMISSED_KEY))
-
         def _on_dismiss_toggle() -> None:
-            if session_state.get(dismiss_key):
+            if session_state.get(TUTORIAL_DISMISS_CHECKBOX_KEY):
                 complete_tutorial(session_state)
                 rerun_fn()
 
         st_module.checkbox(
             "Don't show again on startup",
-            key=dismiss_key,
+            key=TUTORIAL_DISMISS_CHECKBOX_KEY,
             on_change=_on_dismiss_toggle,
         )
     with c2:
