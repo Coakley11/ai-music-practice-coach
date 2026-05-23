@@ -6137,6 +6137,10 @@ elif _studio_page == "analysis":
                     )
                 st.session_state["last_analysis_result"] = result
                 st.session_state["last_analysis_audio"] = audio_obj.getvalue()
+                if result.get("ok"):
+                    from practice_log_insights import append_analysis_snapshot
+
+                    append_analysis_snapshot(result, ctx=ctx)
 
         if st.session_state.get("last_analysis_result"):
             st.divider()
@@ -6171,6 +6175,10 @@ elif _studio_page == "analysis":
             with st.spinner("Comparing layers…"):
                 mt_result = analyze_multitrack(tracks, ctx)
             st.session_state["last_analysis_result"] = mt_result
+            if mt_result.get("ok"):
+                from practice_log_insights import append_analysis_snapshot
+
+                append_analysis_snapshot(mt_result, ctx=ctx)
         if st.session_state.get("last_analysis_result", {}).get("multitrack"):
             st.markdown(
                 render_analysis_dashboard(st.session_state["last_analysis_result"]),
@@ -6701,6 +6709,24 @@ elif _studio_page == "log":
 
     _studio_page_header("📓", "Practice Log", "Session history and progress over time.")
 
+    from practice_log_insights import (
+        generate_practice_log_insights,
+        load_analysis_history,
+        maybe_enhance_insights_with_openai,
+        render_practice_log_insights_ui,
+    )
+
+    _analysis_history = load_analysis_history()
+    if st.session_state.get("last_analysis_result", {}).get("ok") and not _analysis_history:
+        st.caption(
+            "Tip: run **Upload Analysis** on a take — results are saved for future insights."
+        )
+    elif _analysis_history:
+        st.caption(
+            f"Connected to **{len(_analysis_history)}** saved recording analysis snapshot(s) "
+            "from Upload Analysis."
+        )
+
     _session_mins = st.slider(
         "Target session length (minutes)",
         20,
@@ -6735,6 +6761,36 @@ elif _studio_page == "log":
         if st.button("Start warmup on Practice page", key="session_go_practice"):
             navigate_studio_page(st.session_state, "practice")
             st.rerun()
+
+    if st.button(
+        "Analyze My Practice History",
+        type="primary",
+        key="practice_log_insights_btn",
+        use_container_width=True,
+    ):
+        _logs_for_insights = load_logs()
+        with st.spinner("Your AI coach is reviewing logs, patterns, and recordings…"):
+            _insights = generate_practice_log_insights(
+                _logs_for_insights,
+                analysis_history=_analysis_history,
+                session_analysis=st.session_state.get("last_analysis_result"),
+                all_song_records=ALL_SONG_RECORDS,
+                session_minutes=int(_session_mins),
+            )
+            _api_key = str(st.session_state.get("openai_api_key_box") or user_api_key or "")
+            if _api_key.strip():
+                _insights = maybe_enhance_insights_with_openai(
+                    _insights,
+                    api_key=_api_key,
+                    logs=_logs_for_insights,
+                    analysis_history=_analysis_history,
+                )
+            st.session_state["practice_log_insights"] = _insights
+
+    _stored_insights = st.session_state.get("practice_log_insights")
+    if _stored_insights is not None:
+        st.divider()
+        render_practice_log_insights_ui(st, _stored_insights)
 
     if st.button("Clear practice log", type="secondary"):
 
