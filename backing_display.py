@@ -135,8 +135,7 @@ def render_backing_defaults_debug(
         f"- Applied backing meter: **{html.escape(applied_meter)}**"
         + (" (override)" if meter_override else ""),
     ]
-    if developer_mode:
-        with st.expander("Developer — backing meter", expanded=False):
-            st.markdown("\n".join(lines))
-    with st.expander("Playback defaults (debug)", expanded=False):
+    if not developer_mode:
+        return
+    with st.expander("Developer Debug: Playback Defaults", expanded=False):
         st.markdown("\n".join(lines))
