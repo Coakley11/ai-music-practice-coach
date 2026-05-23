@@ -2151,11 +2151,12 @@ def render_cross_page_links(
     cols = st.columns(len(targets))
     for col, (page_id, label) in zip(cols, targets):
         nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
+        button_key = f"{key_prefix}_to_{page_id}"
         with col:
             st.markdown(f'<div class="cross-{nav_class}">', unsafe_allow_html=True)
             if st.button(
                 label,
-                key=f"{key_prefix}_to_{page_id}",
+                key=button_key,
                 use_container_width=True,
             ):
                 if navigate_studio_page(session_state, page_id):

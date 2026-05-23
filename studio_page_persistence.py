@@ -23,7 +23,6 @@ _PAGE_EXPLICIT_KEYS: dict[str, tuple[str, ...]] = {
         "practice_notation_difficulty",
         "practice_notation_sig",
         "practice_notation_result",
-        "practice_generate_notation",
         "picker_open_chord_coach",
     ),
     "picker": (
@@ -134,6 +133,44 @@ _PAGE_INIT_FLAG = "_page_initialized::{page_id}"
 _PAGE_SNAPSHOTS_KEY = "_studio_page_snapshots"
 _ACTIVE_PAGE_TRACKER = "_studio_active_page_id"
 
+# st.button / st.download_button keys — never snapshot or restore (Streamlit-owned).
+_NON_RESTORABLE_WIDGET_KEYS = frozenset(
+    {
+        "practice_generate_notation",
+        "practice_send_to_backing",
+        "practice_full_abc_sketch",
+        "practice_log_insights_btn",
+        "build_session_from_logs",
+        "session_go_practice",
+        "improv_to_backing",
+        "improv_to_practice",
+        "cpl_to_backing_finish",
+        "picker_card_practice",
+        "picker_card_backing",
+        "picker_card_creative",
+        "picker_card_chord_coach",
+        "analysis_run_btn",
+        "analysis_mt_btn",
+        "studio_nav_back_btn",
+        "studio_nav_forward_btn",
+        "tutorial_header_btn",
+        "global_nav_picker",
+        "global_nav_practice",
+        "global_nav_backing",
+    }
+)
+
+
+def _skip_snapshot_key(key: str) -> bool:
+    """Exclude Streamlit button keys and cross-page link widgets from persistence."""
+    if key in _NON_RESTORABLE_WIDGET_KEYS:
+        return True
+    if "_x_to_" in key:
+        return True
+    if key.endswith("_btn"):
+        return True
+    return False
+
 
 def _page_init_flag(page_id: str) -> str:
     return _PAGE_INIT_FLAG.format(page_id=page_id)
@@ -157,6 +194,8 @@ def capture_page_snapshot(session_state: dict, page_id: str) -> dict[str, Any]:
     """Shallow copy of page-local session keys."""
     out: dict[str, Any] = {}
     for key in _collect_keys_for_page(session_state, page_id):
+        if _skip_snapshot_key(key):
+            continue
         val = session_state.get(key)
         try:
             copy.deepcopy(val)
@@ -171,7 +210,7 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
     if not snapshot:
         return
     for key, val in snapshot.items():
-        if key in _SNAPSHOT_BLOCKLIST:
+        if key in _SNAPSHOT_BLOCKLIST or _skip_snapshot_key(key):
             continue
         session_state[key] = copy.deepcopy(val)
 
