@@ -56,11 +56,14 @@ def default_bpm_for_song_data(song_data: dict[str, Any] | None) -> int:
 
 def reset_playback_song_tracking(st: Any) -> None:
     """Force BPM/groove widgets to pick up the next active song's defaults."""
+    from .meter_state import reset_backing_meter_tracking
+
     st.session_state.pop(LAST_BPM_SONG, None)
     st.session_state.pop(LAST_PLAYBACK_GROOVE_SONG, None)
     st.session_state.pop(LAST_BACKING_DEFAULTS_SONG_ID, None)
     st.session_state.pop(PENDING_BACKING_TRACK_BPM, None)
     st.session_state.pop(PENDING_BACKING_GROOVE, None)
+    reset_backing_meter_tracking(st)
 
 
 def default_groove_for_song(

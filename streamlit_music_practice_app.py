@@ -120,7 +120,15 @@ from songs.playback_defaults import (
 from backing_display import (
     render_backing_active_song_card,
     render_backing_defaults_debug,
+    render_backing_meter_selector,
 )
+from songs.meter import (
+    beats_per_bar_from_signature,
+    default_time_signature_for_record,
+    meter_timing,
+    metronome_accents,
+)
+from songs.meter_state import apply_backing_meter_for_song
 from tuner_tone_ui import render_tuner_tone_section, tuner_key_prefix_for_song
 from practice_setup_controls import (
     DEFAULT_INSTRUMENT_OPTIONS,
@@ -1505,9 +1513,13 @@ def render_metronome_widget(
     section_label: str = "",
     loop_section: bool = False,
 ):
+    _timing = meter_timing(int(default_bpm), default_signature)
     config = json.dumps({
         "bpm": int(default_bpm),
         "signature": default_signature,
+        "pulseIntervalMs": int(_timing.pulse_sec * 1000),
+        "beatsPerMeasure": _timing.pulses_per_bar,
+        "accentBeats": metronome_accents(default_signature),
         "sectionBars": int(section_bars) if loop_section and section_bars > 0 else 0,
         "sectionLabel": section_label or "",
     })
@@ -1560,7 +1572,18 @@ def render_metronome_widget(
       sigSelect.value = cfg.signature;
 
       function beatsPerMeasure() {{
+        if (cfg.beatsPerMeasure) return cfg.beatsPerMeasure;
         return parseInt(sigSelect.value.split("/")[0], 10);
+      }}
+
+      function tickIntervalMs() {{
+        if (cfg.pulseIntervalMs) return cfg.pulseIntervalMs;
+        return 60000 / parseInt(bpmInput.value, 10);
+      }}
+
+      function isAccentBeat(n) {{
+        const accents = cfg.accentBeats || [1];
+        return accents.includes(n);
       }}
 
       function drawDots(activeBeat) {{
@@ -1607,7 +1630,7 @@ def render_metronome_widget(
             measure = 1;
           }}
         }}
-        click(beat === 1);
+        click(isAccentBeat(beat));
         beatEl.textContent = beat;
         measureEl.textContent = measure;
         drawDots(beat);
@@ -1619,7 +1642,7 @@ def render_metronome_widget(
         beat = 0;
         measure = 1;
         tick();
-        const intervalMs = 60000 / parseInt(bpmInput.value, 10);
+        const intervalMs = tickIntervalMs();
         timer = setInterval(tick, intervalMs);
       }}
 
@@ -1638,6 +1661,19 @@ def render_metronome_widget(
         if (timer) start();
       }});
       sigSelect.addEventListener("change", () => {{
+        const sig = sigSelect.value;
+        const num = parseInt(sig.split("/")[0], 10) || 4;
+        const den = parseInt(sig.split("/")[1], 10) || 4;
+        const bpmVal = parseInt(bpmInput.value, 10) || 100;
+        if (den === 8 && num % 3 === 0 && num >= 6) {{
+          cfg.pulseIntervalMs = Math.round((2 * (60000 / bpmVal)) / num);
+          cfg.beatsPerMeasure = num;
+          cfg.accentBeats = num === 6 ? [1, 4] : [1, 4, 7, 10];
+        }} else {{
+          cfg.pulseIntervalMs = Math.round((60000 / bpmVal) * (4 / den));
+          cfg.beatsPerMeasure = num;
+          cfg.accentBeats = [1];
+        }}
         if (timer) start();
         else drawDots(0);
       }});
@@ -2482,11 +2518,14 @@ def render_guitar_capo_helper(
         )
 
 
-def build_chord_event_timeline(events, bpm, loops, beats_per_bar=4):
+def build_chord_event_timeline(events, bpm, loops, time_signature="4/4", beats_per_bar=None):
     timeline = []
     if not events:
         return timeline
-    bar_duration = (60 / max(1, bpm)) * beats_per_bar
+    if beats_per_bar is not None:
+        bar_duration = (60 / max(1, bpm)) * beats_per_bar
+    else:
+        bar_duration = meter_timing(bpm, time_signature).bar_sec
     looped_events = events * max(1, int(loops))
     for idx, event in enumerate(looped_events):
         start_time = idx * bar_duration
@@ -3507,14 +3546,11 @@ def song_practice_plan(song, sections, instrument, level, focus, variation, sect
 
 
 def default_time_signature(song, sections):
-    text = " ".join([song] + list(sections.keys())).lower()
-    if "3/4" in text or "piano man" in text:
-        return "3/4"
-    if "6/8" in text:
-        return "6/8"
-    if "perfect" in text:
-        return "6/8"
-    return "4/4"
+    return default_time_signature_for_record(
+        {"title": song},
+        sections,
+        song_title=song,
+    )
 
 
 def default_song_bpm(song_title: str, song_data: dict | None = None) -> int:
@@ -3799,11 +3835,6 @@ def mix_multitrack(backing_y, track_items, sr=44100):
     return mix
 
 
-def beats_per_bar_from_signature(time_signature):
-    try:
-        return max(1, int(str(time_signature).split("/")[0]))
-    except Exception:
-        return 4
 
 
 def ensure_multitrack_track_controls(track_names):
@@ -3852,6 +3883,7 @@ def multitrack_monitor_backing_bytes(
     loops,
     style,
     level,
+    time_signature: str = "4/4",
 ):
     events = chord_events_for_selected_sections(sections, selected_section_names)
     if not events:
@@ -3861,6 +3893,7 @@ def multitrack_monitor_backing_bytes(
         bpm=bpm,
         style=style,
         level=level,
+        time_signature=time_signature,
     )
     if loops > 1:
         backing_y = np.tile(backing_y, int(loops))
@@ -3883,7 +3916,7 @@ def multitrack_studio_html(
     backing_duration_sec=0,
 ):
     tracks_json = json.dumps(tracks)
-    bar_duration = (60 / max(1, bpm)) * beats_per_bar
+    bar_duration = meter_timing(bpm, time_signature).bar_sec
     loop_checked = "checked" if loop_backing else ""
     metro_checked = "checked" if metronome_during_playback else ""
     config = json.dumps({
@@ -4811,10 +4844,11 @@ def _render_backing_tempo_panel(
     song_id: str,
     default_bpm: int,
     default_groove: str,
+    default_meter: str,
     song_data: dict | None,
     backing_ready: bool,
-) -> int:
-    """Backing Track — Playback Setup (BPM readout + groove + status)."""
+) -> tuple[int, str]:
+    """Backing Track — Playback Setup (BPM readout + groove + meter + status)."""
     bpm, _groove_val = apply_backing_defaults_for_song(
         st,
         song_id=song_id,
@@ -4823,14 +4857,19 @@ def _render_backing_tempo_panel(
         song_data=song_data,
         infer_fn=infer_groove_style,
     )
+    applied_meter, meter_override, _song_meter = apply_backing_meter_for_song(
+        st,
+        song_id=song_id,
+        default_time_signature=default_meter,
+    )
 
     st.markdown('<p class="ui-page-nav-label">Playback setup</p>', unsafe_allow_html=True)
     st.caption(
-        f"Song default: **{int(default_bpm)} BPM** · **{default_groove}**. "
-        "Adjust tempo or groove before generating."
+        f"Song default: **{int(default_bpm)} BPM** · **{default_groove}** · **{default_meter}**. "
+        "Adjust tempo, groove, or meter before generating."
     )
 
-    col_tempo, col_groove, col_status = st.columns([1.35, 1.2, 0.95])
+    col_tempo, col_groove, col_meter, col_status = st.columns([1.1, 1.05, 1.35, 0.85])
     with col_tempo:
         st.markdown('<p class="ui-playback-setup-label">Tempo</p>', unsafe_allow_html=True)
         st.markdown(
@@ -4845,6 +4884,13 @@ def _render_backing_tempo_panel(
             list(GROOVE_STYLE_CHOICES),
             key="backing_groove_style",
             label_visibility="collapsed",
+        )
+    with col_meter:
+        applied_meter = render_backing_meter_selector(
+            st,
+            song_default_meter=default_meter,
+            applied_meter=applied_meter,
+            user_override=meter_override,
         )
     with col_status:
         st.markdown('<p class="ui-playback-setup-label">Status</p>', unsafe_allow_html=True)
@@ -4865,7 +4911,7 @@ def _render_backing_tempo_panel(
         rerun_fn=st.rerun,
         key_prefix="backing_x",
     )
-    return int(bpm)
+    return int(bpm), str(applied_meter)
 
 
 # -------------------------------------------------
@@ -5120,6 +5166,13 @@ if is_custom_progression(st.session_state) and _cpl_active:
             song_data=song_data,
             infer_fn=infer_groove_style,
         )
+_default_meter = default_time_signature_for_record(
+    song_data,
+    sections_for_backing,
+    song_title=song,
+)
+if is_custom_progression(st.session_state) and _cpl_active:
+    _default_meter = str(_cpl_active.get("time_signature") or _default_meter)
 _playback_id = playback_song_id(
     is_custom=is_custom_progression(st.session_state),
     song_title=song,
@@ -5746,12 +5799,18 @@ elif _studio_page == "backing":
             "artist": "Custom progression",
             "genre": genre or "Custom",
         }
+    _applied_meter_pre, _meter_override_pre, _ = apply_backing_meter_for_song(
+        st,
+        song_id=_playback_id,
+        default_time_signature=_default_meter,
+    )
     render_backing_active_song_card(
         st,
         _backing_card_record,
         level=level,
         applied_bpm=_synced_bpm,
         applied_groove=default_groove_style,
+        applied_meter=_applied_meter_pre,
     )
     render_backing_defaults_debug(
         st,
@@ -5759,21 +5818,27 @@ elif _studio_page == "backing":
         applied_bpm=_synced_bpm,
         song_groove=_default_groove,
         applied_groove=default_groove_style,
+        song_meter=_default_meter,
+        applied_meter=_applied_meter_pre,
+        meter_override=_meter_override_pre,
+        developer_mode=_developer_mode_enabled(),
     )
 
     if _capo_ctx.enabled and instrument == "Guitar":
         st.markdown(capo_status_banner_html(_capo_ctx), unsafe_allow_html=True)
 
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
-        st.warning("Key changed — regenerate backing track")
+        st.warning("Playback settings changed — regenerate backing track")
 
-    bpm = _render_backing_tempo_panel(
+    bpm, backing_time_signature = _render_backing_tempo_panel(
         song_id=_playback_id,
         default_bpm=_default_bpm,
         default_groove=default_groove_style,
+        default_meter=_default_meter,
         song_data=song_data,
         backing_ready=bool(st.session_state.get("_last_backing_wav")),
     )
+    _meter_override = bool(st.session_state.get("backing_time_signature_override", False))
     if is_transposing_instrument(instrument):
         render_transposing_info_card(st, concert_key=concert_key, instrument=instrument)
 
@@ -5856,6 +5921,7 @@ elif _studio_page == "backing":
         f'<span class="ui-badge accent">{html.escape(section_scope_label)}</span>'
         f'<span class="ui-badge purple">{html.escape(resolved_groove)}</span>'
         f'<span class="ui-badge amber">{bpm} BPM</span>'
+        f'<span class="ui-badge">{html.escape(backing_time_signature)}</span>'
         f'<span class="ui-badge">{len(backing_chords)} bars × {form_loops}</span>'
         f"</div>",
         unsafe_allow_html=True,
@@ -5923,12 +5989,16 @@ elif _studio_page == "backing":
         if not selected_section_names
         else " + ".join(selected_section_names)
     )
+    backing_time_signature = str(
+        st.session_state.get("backing_time_signature", backing_time_signature)
+    )
     _current_backing_signature = (
         song,
         chart_key,
         level,
         resolved_groove,
         bpm,
+        backing_time_signature,
         form_loops,
         tuple(selected_section_names),
         tuple(backing_chords),
@@ -5973,8 +6043,8 @@ elif _studio_page == "backing":
 
     if not _backing_audio_ready:
         st.caption(
-            f"Song default: **{_default_bpm} BPM** · **{_default_groove}**. "
-            "You can change the BPM, choose which section to play, or change the groove style. "
+            f"Song default: **{_default_bpm} BPM** · **{_default_groove}** · **{_default_meter}**. "
+            "You can change tempo, groove, meter, or section scope. "
             "After making any optional changes, press **Generate**."
         )
     else:
@@ -5989,6 +6059,7 @@ elif _studio_page == "backing":
             level=level,
             song_title=song_data.get("title", song),
             song_artist=song_data.get("artist", ""),
+            time_signature=backing_time_signature,
         )
 
         st.session_state["_last_backing_wav"] = wav
@@ -5997,12 +6068,14 @@ elif _studio_page == "backing":
             backing_events,
             bpm,
             form_loops,
+            time_signature=backing_time_signature,
         )
         st.session_state["playback_start_time"] = time.time()
         st.session_state["current_chord_timeline"] = st.session_state["_last_backing_timeline"]
         st.session_state["selected_sections"] = list(selected_section_names)
         st.session_state["bpm"] = bpm
-        st.session_state["beats_per_bar"] = 4
+        st.session_state["beats_per_bar"] = beats_per_bar_from_signature(backing_time_signature)
+        st.session_state["backing_time_signature_applied"] = backing_time_signature
         st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
         st.session_state[BACKING_AUTOPLAY] = False
         clear_backing_needs_regen(st)
@@ -6032,6 +6105,7 @@ elif _studio_page == "backing":
         backing_events,
         bpm,
         form_loops,
+        time_signature=backing_time_signature,
     )
 
     _chart_expanded = _backing_audio_ready
@@ -6047,7 +6121,7 @@ elif _studio_page == "backing":
             section_lyrics=section_lyrics,
             groove_style=resolved_groove,
             bpm=bpm,
-            time_signature=default_time_signature(song, chart_sections),
+            time_signature=backing_time_signature,
             current_section=None,
             current_bar=None,
             focus=focus,
@@ -6533,7 +6607,7 @@ elif _studio_page == "multitrack":
             else []
         )
         mt_resolved_groove = infer_groove_style(song_data, mt_groove)
-        mt_bar_duration = (60 / max(1, mt_bpm)) * mt_beats_per_bar
+        mt_bar_duration = meter_timing(mt_bpm, mt_time_sig).bar_sec
         mt_backing_duration = len(mt_events) * mt_bar_duration * max(1, mt_loops)
 
         if mt_scope != "Free layering (no backing)" and not mt_events:
@@ -6556,6 +6630,7 @@ elif _studio_page == "multitrack":
                 loops=mt_loops,
                 style=mt_resolved_groove,
                 level=level,
+                time_signature=mt_time_sig,
             )
             st.session_state.multitrack_backing_music_wav = monitor_wav
             st.session_state.mt_backing_scope = mt_scope_label

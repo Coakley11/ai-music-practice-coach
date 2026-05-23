@@ -17,6 +17,24 @@ except ImportError:
     def song_groove_seed(title: str, artist: str = "") -> int:
         return 0
 
+try:
+    from songs.meter import meter_timing, normalize_time_signature
+except ImportError:
+
+    def normalize_time_signature(time_signature: str) -> str:
+        return str(time_signature or "4/4").strip() or "4/4"
+
+    def meter_timing(bpm: int, time_signature: str):
+        ts = normalize_time_signature(time_signature)
+        num = int(ts.split("/")[0]) if "/" in ts else 4
+        bpm = max(1, int(bpm))
+        if ts == "6/8":
+            bar_sec = 2 * (60.0 / bpm)
+            pulse_sec = bar_sec / 6
+            return type("T", (), {"pulses_per_bar": 6, "pulse_sec": pulse_sec, "bar_sec": bar_sec})()
+        bar_sec = num * (60.0 / bpm)
+        return type("T", (), {"pulses_per_bar": num, "pulse_sec": bar_sec / num, "bar_sec": bar_sec})()
+
 
 __all__ = [
     "_chord_head",
@@ -316,12 +334,19 @@ def _groove_time(bar_start, beat, beat_len, style, *, swing: float = 0.0):
     return t
 
 
+def _scale_pattern_beats(beats: list[float], *, from_pulses: int, to_pulses: int) -> list[float]:
+    if from_pulses <= 0 or to_pulses <= 0 or from_pulses == to_pulses:
+        return list(beats)
+    factor = to_pulses / from_pulses
+    return [round(b * factor, 4) for b in beats]
+
+
 def _add_section_transition_fill(
     audio,
     sr,
     bar_start,
-    beat,
-    bar_len,
+    pulse_sec,
+    pulses_per_bar,
     style,
     role,
     next_event,
@@ -330,24 +355,34 @@ def _add_section_transition_fill(
     seed_base: int,
 ):
     """Drum fill and lift between sections."""
-    fill_start = bar_start + 3.2 * beat
+    fill_anchor = max(0.0, pulses_per_bar - 0.8)
+    fill_start = bar_start + fill_anchor * pulse_sec
     next_role = _section_role(next_event.get("section")) if next_event else "neutral"
     for i, off in enumerate([0.0, 0.5, 1.0, 1.5, 2.0, 2.5]):
         _add_noise_hit(
             audio,
             sr,
-            fill_start + off * beat * 0.15,
+            fill_start + off * pulse_sec * 0.15,
             0.04,
             0.022 * intensity,
             seed=seed_base * 17 + i,
         )
     if next_role == "chorus":
         for t, freq in [(3.5, 200), (3.65, 260), (3.8, 330)]:
-            _add_tone(audio, sr, bar_start + t * beat, 0.06, freq, 0.04 * intensity, "bass")
+            pulse = min(float(pulses_per_bar) - 0.5, t)
+            _add_tone(audio, sr, bar_start + pulse * pulse_sec, 0.06, freq, 0.04 * intensity, "bass")
     elif next_role == "bridge":
-        _add_tone(audio, sr, bar_start + 3.4 * beat, 0.12, 90, 0.05 * intensity, "organ")
+        _add_tone(
+            audio,
+            sr,
+            bar_start + min(float(pulses_per_bar) - 0.6, 3.4) * pulse_sec,
+            0.12,
+            90,
+            0.05 * intensity,
+            "organ",
+        )
     if role == "intro":
-        _add_noise_hit(audio, sr, bar_start + 0.1 * beat, 0.08, 0.012 * intensity, seed=seed_base * 3)
+        _add_noise_hit(audio, sr, bar_start + 0.1 * pulse_sec, 0.08, 0.012 * intensity, seed=seed_base * 3)
 
 
 def _comp_wave_for_style(style: str, role: str) -> str:
@@ -439,11 +474,58 @@ def _humanize_volume(base: float, seed: int) -> float:
     return base * float(rng.uniform(0.88, 1.12))
 
 
-def _style_patterns(style, profile: dict | None = None):
+def _style_patterns(style, profile: dict | None = None, *, time_signature: str = "4/4"):
     profile = profile or {}
+    timing = meter_timing(100, time_signature)
+    pulses = timing.pulses_per_bar
+    base_pulses = 4
+
+    def _fit(pattern: dict[str, Any]) -> dict[str, Any]:
+        out = dict(pattern)
+        for key in (
+            "bass_beats",
+            "comp_beats",
+            "hat_beats",
+            "snare_beats",
+            "kick_beats",
+            "ghost_snare",
+            "cross_stick",
+        ):
+            if key in out:
+                out[key] = _scale_pattern_beats(out[key], from_pulses=base_pulses, to_pulses=pulses)
+        return out
+
+    if time_signature == "6/8" and style == "Ballad":
+        return {
+            "bass_beats": [0, 3],
+            "comp_beats": [0, 2, 3, 5],
+            "hat_beats": [0, 1, 2, 3, 4, 5],
+            "snare_beats": [3],
+            "kick_beats": [0],
+            "comp_dur": 0.55,
+        }
+    if time_signature == "6/8":
+        return {
+            "bass_beats": [0, 3],
+            "comp_beats": [0, 1.5, 3, 4.5],
+            "hat_beats": [0, 1, 2, 3, 4, 5],
+            "snare_beats": [3],
+            "kick_beats": [0, 3],
+            "comp_dur": 0.38,
+        }
+    if time_signature == "12/8":
+        return {
+            "bass_beats": [0, 3, 6, 9],
+            "comp_beats": [0, 2, 3, 5, 6, 8, 9, 11],
+            "hat_beats": list(range(12)),
+            "snare_beats": [3, 9],
+            "kick_beats": [0, 6],
+            "comp_dur": 0.34,
+        }
+
     if style == "Jazz swing":
         hat = [0, 1.5, 2, 3.5] if profile.get("ride_jazz") else [0, 1.65, 2, 3.65]
-        return {
+        return _fit({
             "bass_beats": [0, 1, 2, 3],
             "comp_beats": [1.0, 2.5, 3.5],
             "hat_beats": hat,
@@ -451,9 +533,9 @@ def _style_patterns(style, profile: dict | None = None):
             "kick_beats": [0, 2],
             "ghost_snare": [1.5, 2.5],
             "comp_dur": 0.42,
-        }
+        })
     if style == "Bossa nova":
-        return {
+        return _fit({
             "bass_beats": [0, 1.5, 2, 3.5],
             "comp_beats": [0.0, 1.25, 2.5, 3.25],
             "hat_beats": [0, 0.5, 1.5, 2, 2.5, 3.5],
@@ -461,9 +543,9 @@ def _style_patterns(style, profile: dict | None = None):
             "kick_beats": [0, 2],
             "cross_stick": [1.0, 3.0],
             "comp_dur": 0.30,
-        }
+        })
     if style == "Funk groove":
-        return {
+        return _fit({
             "bass_beats": [0, 0.75, 1.5, 2, 2.75, 3.5],
             "comp_beats": [0.5, 1.75, 2.5, 3.25],
             "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
@@ -471,9 +553,9 @@ def _style_patterns(style, profile: dict | None = None):
             "ghost_snare": [0.5, 1.5, 2.5, 3.5],
             "kick_beats": [0, 1.5, 2.75],
             "comp_dur": 0.20,
-        }
+        })
     if style == "Rock groove":
-        return {
+        return _fit({
             "bass_beats": [0, 1, 2, 3],
             "comp_beats": [0, 1, 2, 3],
             "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
@@ -481,33 +563,33 @@ def _style_patterns(style, profile: dict | None = None):
             "kick_beats": [0, 1.5, 2, 3.5],
             "ghost_snare": [2.5],
             "comp_dur": 0.48,
-        }
+        })
     if style == "Ballad":
-        return {
+        return _fit({
             "bass_beats": [0, 2],
             "comp_beats": [0, 2.5, 3.5],
             "hat_beats": [0, 1, 2, 3],
             "snare_beats": [3.0],
             "kick_beats": [0],
             "comp_dur": 0.95,
-        }
+        })
     if profile.get("pop_soul"):
-        return {
+        return _fit({
             "bass_beats": [0, 1.5, 2.5, 3.5],
             "comp_beats": [0, 1.5, 2.5, 3.5],
             "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
             "snare_beats": [1.0, 3.0],
             "kick_beats": [0, 2.5],
             "comp_dur": 0.40,
-        }
-    return {
+        })
+    return _fit({
         "bass_beats": [0, 2],
         "comp_beats": [0, 1.5, 2.5, 3.5],
         "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
         "snare_beats": [1.0, 3.0],
         "kick_beats": [0, 2.5],
         "comp_dur": 0.36,
-    }
+    })
 
 
 def synthesize_chords_to_numpy(
@@ -520,15 +602,18 @@ def synthesize_chords_to_numpy(
     level="Intermediate",
     song_title: str = "",
     song_artist: str = "",
+    time_signature: str = "4/4",
 ):
 
-    beat = 60 / bpm
-    bar = beat * 4
+    timing = meter_timing(bpm, time_signature)
+    pulse = timing.pulse_sec
+    bar = timing.bar_sec
+    pulses_per_bar = timing.pulses_per_bar
     event_cycle = _coerce_chord_events(chords)
     chord_list = event_cycle * max(1, int(loops))
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
     song_profile = _song_backing_profile(song_title, song_artist, style, bpm=bpm)
-    patterns = _style_patterns(style, song_profile)
+    patterns = _style_patterns(style, song_profile, time_signature=timing.time_signature)
     groove_seed = song_groove_seed(song_title, song_artist) if song_title else 0
     swing_amt = float(song_profile.get("swing", 0.0))
     humanize = float(song_profile.get("humanize_ms", 0.012))
@@ -553,16 +638,16 @@ def synthesize_chords_to_numpy(
 
         for n, b in enumerate(bass_hits):
             bass_pitch = _bass_motion_pitch(chord, next_chord, style, n, len(bass_hits))
-            bass_dur = beat * (0.72 if style in ["Ballad", "Jazz swing"] else 0.50)
+            bass_dur = pulse * (0.72 if style in ["Ballad", "Jazz swing"] else 0.50)
             if style == "Funk groove":
-                bass_dur = beat * 0.32
+                bass_dur = pulse * 0.32
             elif song_profile.get("pop_soul"):
-                bass_dur = beat * 0.55
+                bass_dur = pulse * 0.55
             t_hit = _humanize_time(
-                _groove_time(bar_start, b, beat, style, swing=swing_amt),
+                _groove_time(bar_start, b, pulse, style, swing=swing_amt),
                 seed=idx * 41 + n + groove_seed,
                 amount=humanize,
-                beat_len=beat,
+                beat_len=pulse,
             )
             _add_tone(
                 audio,
@@ -579,7 +664,7 @@ def synthesize_chords_to_numpy(
                 continue
             if role == "intro" and comp_idx > 1:
                 continue
-            dur = beat * patterns.get("comp_dur", 0.45)
+            dur = pulse * patterns.get("comp_dur", 0.45)
             if role == "chorus":
                 dur *= 1.18 if song_profile.get("anthem_rock") else 1.15
             elif role == "bridge":
@@ -596,10 +681,10 @@ def synthesize_chords_to_numpy(
                 dur *= 0.55
                 comp_vol *= 1.2
             t_comp = _humanize_time(
-                _groove_time(bar_start, b, beat, style, swing=swing_amt),
+                _groove_time(bar_start, b, pulse, style, swing=swing_amt),
                 seed=idx * 53 + comp_idx,
                 amount=humanize * 0.7,
-                beat_len=beat,
+                beat_len=pulse,
             )
             for note in voicing:
                 _add_tone(
@@ -620,10 +705,10 @@ def synthesize_chords_to_numpy(
                 audio,
                 sr,
                 _humanize_time(
-                    _groove_time(bar_start, b, beat, style, swing=swing_amt),
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt),
                     seed=idx * 31 + int(b * 100),
                     amount=humanize * 0.5,
-                    beat_len=beat,
+                    beat_len=pulse,
                 ),
                 0.028,
                 hat_vol * intensity,
@@ -637,7 +722,7 @@ def synthesize_chords_to_numpy(
             _add_noise_hit(
                 audio,
                 sr,
-                _groove_time(bar_start, b, beat, style, swing=swing_amt),
+                _groove_time(bar_start, b, pulse, style, swing=swing_amt),
                 0.055,
                 _humanize_volume(snare_vol, idx * 67 + int(b * 100)),
                 seed=idx * 67 + int(b * 100),
@@ -647,7 +732,7 @@ def synthesize_chords_to_numpy(
             _add_noise_hit(
                 audio,
                 sr,
-                _groove_time(bar_start, b, beat, style, swing=swing_amt),
+                _groove_time(bar_start, b, pulse, style, swing=swing_amt),
                 0.025,
                 0.010 * intensity,
                 seed=idx * 71 + int(b * 50),
@@ -657,7 +742,7 @@ def synthesize_chords_to_numpy(
             _add_noise_hit(
                 audio,
                 sr,
-                _groove_time(bar_start, b, beat, style),
+                _groove_time(bar_start, b, pulse, style),
                 0.040,
                 0.014 * intensity,
                 seed=idx * 73 + int(b * 40),
@@ -668,10 +753,10 @@ def synthesize_chords_to_numpy(
                 audio,
                 sr,
                 _humanize_time(
-                    bar_start + b * beat,
+                    bar_start + b * pulse,
                     seed=idx * 83 + int(b * 10),
                     amount=humanize * 0.35,
-                    beat_len=beat,
+                    beat_len=pulse,
                 ),
                 0.07,
                 36,
@@ -684,19 +769,27 @@ def synthesize_chords_to_numpy(
                 audio,
                 sr,
                 bar_start,
-                beat,
-                bar,
+                pulse,
+                pulses_per_bar,
                 style,
                 role,
                 next_event,
                 intensity,
                 seed_base=idx,
             )
+            tail = max(0.0, pulses_per_bar - 0.45)
             approach = _bass_motion_pitch(chord, next_chord, style, len(bass_hits) - 1, len(bass_hits))
-            _add_tone(audio, sr, bar_start + 3.55 * beat, beat * 0.25, approach, 0.075 * intensity, "bass")
-            _add_noise_hit(audio, sr, bar_start + 3.75 * beat, 0.050, 0.018 * intensity, seed=idx * 101)
+            _add_tone(audio, sr, bar_start + tail * pulse, pulse * 0.25, approach, 0.075 * intensity, "bass")
+            _add_noise_hit(
+                audio,
+                sr,
+                bar_start + (tail + 0.2) * pulse,
+                0.050,
+                0.018 * intensity,
+                seed=idx * 101,
+            )
             if next_event and _section_role(next_event.get("section")) == "chorus":
-                _add_tone(audio, sr, bar_start + 3.88 * beat, 0.09, 48, 0.055, "bass")
+                _add_tone(audio, sr, bar_start + (tail + 0.33) * pulse, 0.09, 48, 0.055, "bass")
 
     audio = np.tanh(audio)
     audio = audio / (np.max(np.abs(audio)) + 1e-9) * 0.86
@@ -732,6 +825,7 @@ def generate_backing_track(
     level="Intermediate",
     song_title: str = "",
     song_artist: str = "",
+    time_signature: str = "4/4",
 ):
 
     audio, sr = synthesize_chords_to_numpy(
@@ -742,11 +836,18 @@ def generate_backing_track(
         level=level,
         song_title=song_title,
         song_artist=song_artist,
+        time_signature=time_signature,
     )
     return pcm16_wav_bytes_from_float(audio, sr)
 
 
-def backing_bytes_to_float(chords, bpm=100, style="Pop groove", level="Intermediate"):
+def backing_bytes_to_float(
+    chords,
+    bpm=100,
+    style="Pop groove",
+    level="Intermediate",
+    time_signature: str = "4/4",
+):
 
     y, _sr = synthesize_chords_to_numpy(
         chords,
@@ -754,6 +855,7 @@ def backing_bytes_to_float(chords, bpm=100, style="Pop groove", level="Intermedi
         loops=1,
         style=style,
         level=level,
+        time_signature=time_signature,
     )
     return y
 

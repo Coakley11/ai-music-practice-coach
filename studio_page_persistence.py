@@ -63,6 +63,8 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
         {
             "backing_track_bpm",
             "backing_groove_style",
+            "backing_time_signature",
+            "backing_time_signature_override",
             "backing_track_scope",
             "backing_track_loops",
             "backing_track_single_section",

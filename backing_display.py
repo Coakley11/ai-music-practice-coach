@@ -6,6 +6,12 @@ import html
 from typing import Any
 
 from practice_studio import active_song_card_details, genre_visual_style
+from songs.meter import BACKING_TIME_SIGNATURES, normalize_time_signature
+from songs.meter_state import (
+    BACKING_METER_KEY,
+    BACKING_METER_OVERRIDE_KEY,
+    note_backing_meter_override,
+)
 
 
 def render_backing_active_song_card(
@@ -15,6 +21,7 @@ def render_backing_active_song_card(
     level: str = "Intermediate",
     applied_bpm: int | None = None,
     applied_groove: str | None = None,
+    applied_meter: str | None = None,
 ) -> None:
     """Premium active-song card (Song Selection style) for Backing Track."""
     try:
@@ -26,6 +33,7 @@ def render_backing_active_song_card(
             "genre": record.get("genre", "Song"),
             "bpm": applied_bpm or 100,
             "style_label": record.get("genre", ""),
+            "time_signature": applied_meter or "4/4",
             "visual_emoji": "🎵",
             "visual_gradient": "linear-gradient(145deg,#1e3a8a,#312e81)",
             "visual_genre": record.get("genre", "Song"),
@@ -33,6 +41,7 @@ def render_backing_active_song_card(
     genre = html.escape(str(details.get("genre") or details.get("visual_genre") or "Song"))
     bpm = int(applied_bpm if applied_bpm is not None else details.get("bpm") or 100)
     groove = html.escape(str(applied_groove or details.get("style_label") or "Auto"))
+    meter = html.escape(str(applied_meter or details.get("time_signature") or "4/4"))
     visual = genre_visual_style(str(record.get("genre") or "Song"))
     gradient = visual.get("gradient") or "linear-gradient(145deg,#1e3a8a,#312e81)"
     emoji = html.escape(visual.get("emoji") or details.get("visual_emoji") or "🎵")
@@ -50,9 +59,52 @@ def render_backing_active_song_card(
         f'<span class="ui-backing-badge genre">{genre}</span>'
         f'<span class="ui-backing-badge bpm">{bpm} BPM</span>'
         f'<span class="ui-backing-badge groove">{groove}</span>'
+        f'<span class="ui-backing-badge meter">{meter}</span>'
         f"</div></div></div>",
         unsafe_allow_html=True,
     )
+
+
+def render_backing_meter_selector(
+    st: Any,
+    *,
+    song_default_meter: str,
+    applied_meter: str,
+    user_override: bool,
+) -> str:
+    """Time signature control for backing playback."""
+    options = list(BACKING_TIME_SIGNATURES)
+    current = applied_meter if applied_meter in options else song_default_meter
+    if current not in options:
+        current = "4/4"
+    idx = options.index(current)
+
+    def _on_meter_change() -> None:
+        choice = normalize_time_signature(st.session_state.get(BACKING_METER_KEY, current))
+        if choice == normalize_time_signature(song_default_meter):
+            st.session_state[BACKING_METER_OVERRIDE_KEY] = False
+            from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+
+            st.session_state[BACKING_METER_KEY] = choice
+            invalidate_backing_cache(st)
+            st.session_state[BACKING_NEEDS_REGEN] = True
+        else:
+            note_backing_meter_override(st, choice)
+
+    st.markdown('<p class="ui-playback-setup-label">Meter</p>', unsafe_allow_html=True)
+    choice = st.radio(
+        "Time signature",
+        options,
+        index=idx,
+        horizontal=True,
+        key=BACKING_METER_KEY,
+        on_change=_on_meter_change,
+        label_visibility="collapsed",
+        help="Defaults from the active song. Change to override — regenerate backing audio after.",
+    )
+    override_note = " · user override" if user_override else ""
+    st.caption(f"**{choice}**{override_note}")
+    return str(choice)
 
 
 def render_backing_defaults_debug(
@@ -62,11 +114,22 @@ def render_backing_defaults_debug(
     applied_bpm: int,
     song_groove: str,
     applied_groove: str,
+    song_meter: str = "4/4",
+    applied_meter: str = "4/4",
+    meter_override: bool = False,
+    developer_mode: bool = False,
 ) -> None:
+    lines = [
+        f"- Active song BPM: **{int(song_bpm)}**",
+        f"- Applied backing BPM: **{int(applied_bpm)}**",
+        f"- Active song groove: **{html.escape(song_groove)}**",
+        f"- Applied groove: **{html.escape(applied_groove)}**",
+        f"- Active song meter: **{html.escape(song_meter)}**",
+        f"- Applied backing meter: **{html.escape(applied_meter)}**"
+        + (" (override)" if meter_override else ""),
+    ]
+    if developer_mode:
+        with st.expander("Developer — backing meter", expanded=False):
+            st.markdown("\n".join(lines))
     with st.expander("Playback defaults (debug)", expanded=False):
-        st.markdown(
-            f"- Active song BPM: **{int(song_bpm)}**\n"
-            f"- Applied backing BPM: **{int(applied_bpm)}**\n"
-            f"- Active song groove: **{html.escape(song_groove)}**\n"
-            f"- Applied groove: **{html.escape(applied_groove)}**"
-        )
+        st.markdown("\n".join(lines))

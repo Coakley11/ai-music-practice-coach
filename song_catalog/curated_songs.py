@@ -131,6 +131,7 @@ def _perfect_chart_pack() -> dict[str, Any]:
             ),
             default_bpm=95,
             default_groove="Ballad",
+            time_signature="6/8",
         ),
     }
 

@@ -102,13 +102,9 @@ def _default_bpm_for_record(record: dict[str, Any]) -> int:
 
 
 def _default_time_signature_for_record(record: dict[str, Any], sections: dict[str, list[str]]) -> str:
-    title = (record.get("title") or "").lower()
-    keys = " ".join(sections.keys()).lower()
-    if "3/4" in keys or "piano man" in title:
-        return "3/4"
-    if "6/8" in keys or "perfect" in title:
-        return "6/8"
-    return "4/4"
+    from songs.meter import default_time_signature_for_record
+
+    return default_time_signature_for_record(record, sections)
 
 
 def genre_visual_style(genre: str) -> dict[str, str]:
