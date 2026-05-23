@@ -5,6 +5,8 @@ from __future__ import annotations
 import html
 from typing import Any, Callable
 
+import streamlit.components.v1 as components
+
 from improvisation_intelligence import (
     DIFFICULTY_LEVELS,
     GROOVE_INTENSITY,
@@ -18,10 +20,16 @@ from improvisation_intelligence import (
     creativity_metrics_placeholder,
     flatten_sections,
     generate_jam_session,
-    generate_motif,
     generate_style_progression,
     harmony_flow_map,
     level_coaching_summary,
+)
+from improvisation_motif import (
+    build_motif_guitar_tab,
+    generate_motif_for_chord,
+    motif_notation_result,
+    resolve_improv_chords,
+    transform_motif,
 )
 from studio_page_state import (
     IMPROV_ENTRY_MODES,
@@ -101,7 +109,14 @@ def render_improvisation_intelligence_lab(
     elif active_tab == "Live Coach":
         _tab_live_coach(st, session_state=session_state, improv_ctx=improv_ctx)
     elif active_tab == "Phrase / Motif":
-        _tab_motif(st, session_state=session_state, level=level)
+        _tab_motif(
+            st,
+            session_state=session_state,
+            improv_ctx=improv_ctx,
+            level=level,
+            instrument=instrument,
+            bpm=bpm,
+        )
     elif active_tab == "Missions":
         _tab_missions(st, session_state=session_state, level=level)
     elif active_tab == "Harmony Map":
@@ -322,22 +337,25 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
         f"**{improv_ctx.level}:** {summary['focus']} · {summary['harmony']}"
     )
 
-    prog = session_state.get("improv_generated_sections")
-    chords = flatten_sections(prog) if prog else improv_ctx.progression_flat
+    chords = resolve_improv_chords(session_state, improv_ctx)
     if not chords:
-        st.warning("No chords in the active chart — pick a song or generate a style progression.")
+        st.warning(
+            "No chords in the active chart — pick a song on **Song Selection**, "
+            "open **Custom progression**, or generate a style jam in **Entry & Jam**."
+        )
         return
 
-    idx = st.slider(
-        "Current chord in form",
-        0,
-        max(0, len(chords) - 1),
-        key="improv_chord_idx_slider",
+    _ensure_chord_selection(session_state, chords)
+    cur, idx = _selected_chord(session_state, chords)
+    _render_chord_tiles(
+        st,
+        chords,
+        session_state,
+        key_prefix="improv_live",
+        key_center=improv_ctx.display_key,
     )
-    session_state["improv_chord_idx"] = idx
-    cur = chords[idx]
-    nxt = chords[idx + 1] if idx + 1 < len(chords) else ""
 
+    nxt = chords[idx + 1] if idx + 1 < len(chords) else ""
     insight = chord_coach_insight(
         cur,
         key_center=improv_ctx.display_key,
@@ -352,9 +370,7 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
         st.markdown(f"- {line}")
 
     if session_state.get("_last_backing_timeline"):
-        st.caption(
-            "Tip: play your backing track and step through chords with the slider."
-        )
+        st.caption("Tip: play your backing track and tap each chord as it passes.")
 
 
 def _render_chord_coach_card(st: Any, insight: ChordCoachInsight) -> None:
@@ -383,30 +399,203 @@ def _render_chord_coach_card(st: Any, insight: ChordCoachInsight) -> None:
         st.success(insight.resolve_hint)
 
 
-def _tab_motif(st: Any, *, session_state: dict, level: str) -> None:
+def _tab_motif(
+    st: Any,
+    *,
+    session_state: dict,
+    improv_ctx: ImprovSessionContext,
+    level: str,
+    instrument: str,
+    bpm: int,
+) -> None:
     st.markdown("#### Phrase / motif training")
-    if "improv_motif" not in session_state:
-        session_state["improv_motif"] = generate_motif()
-    if st.button("Generate new motif", key="improv_gen_motif"):
-        session_state["improv_motif"] = generate_motif()
-        st.rerun()
-    motif = session_state["improv_motif"]
-    st.markdown(f"### Motif: **{motif['display']}**")
-    st.caption(f"Rhythm idea: {motif['rhythm']}")
-    st.markdown(motif["variation_prompt"])
-    st.markdown(
-        """
-**Training steps:**
-1. Play the motif exactly as written (any octave).
-2. Imitate — same rhythm, different notes in the scale.
-3. Develop — sequence up or down; rhythmic transformation.
-4. Inversion — flip the interval direction on repetition.
-        """
+    st.caption("Tap a chord → get a short phrase → transform it → view notation or TAB.")
+
+    chords = resolve_improv_chords(session_state, improv_ctx)
+    if not chords:
+        st.warning("No chords available — select a song or custom progression first.")
+        return
+
+    _ensure_chord_selection(session_state, chords)
+    _render_chord_tiles(
+        st,
+        chords,
+        session_state,
+        key_prefix="improv_motif",
+        key_center=improv_ctx.display_key,
+        generate_motif_on_select=True,
     )
+
+    cur, _idx = _selected_chord(session_state, chords)
+
+    if st.button(
+        f"Generate motif for {cur}",
+        type="primary",
+        key="improv_gen_motif_chord",
+        use_container_width=True,
+    ):
+        session_state["improv_motif"] = generate_motif_for_chord(
+            cur, key_center=improv_ctx.display_key
+        )
+        session_state.pop("improv_motif_abc", None)
+        session_state.pop("improv_motif_tab", None)
+        st.rerun()
+
+    motif = session_state.get("improv_motif")
+    if not motif:
+        st.info(f"Click **Generate motif for {cur}** or tap another chord tile.")
+        return
+
+    st.markdown(
+        f'<div class="ui-card soft" style="border-left:4px solid #a855f7;">'
+        f'<p class="ui-card-title">Motif on {html.escape(str(motif.get("chord", cur)))}</p>'
+        f'<p style="font-size:1.35rem;font-weight:700;margin:0.25rem 0;">'
+        f'{html.escape(motif.get("display", ""))}</p>'
+        f'<p class="ui-card-sub">Rhythm: {html.escape(motif.get("rhythm", ""))}</p></div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("**Transform**")
+    t1, t2, t3, t4 = st.columns(4)
+    transforms = [
+        (t1, "sequence_up", "Sequence Up ↑", "improv_xform_up"),
+        (t2, "sequence_down", "Sequence Down ↓", "improv_xform_down"),
+        (t3, "invert", "Invert ↓↑", "improv_xform_invert"),
+        (t4, "rhythmic", "Rhythmic Variation", "improv_xform_rhythm"),
+    ]
+    for col, op, label, key in transforms:
+        with col:
+            if st.button(label, key=key, use_container_width=True):
+                session_state["improv_motif"] = transform_motif(
+                    motif,
+                    op,
+                    key_center=improv_ctx.display_key,
+                )
+                session_state.pop("improv_motif_abc", None)
+                session_state.pop("improv_motif_tab", None)
+                st.rerun()
+
+    st.markdown("---")
+    n1, n2 = st.columns(2)
+    with n1:
+        if st.button(
+            "Generate Sheet Music",
+            key="improv_motif_sheet",
+            type="primary",
+            use_container_width=True,
+        ):
+            pack = motif_notation_result(
+                session_state["improv_motif"],
+                key_center=improv_ctx.display_key,
+                bpm=bpm,
+                instrument=instrument,
+            )
+            session_state["improv_motif_abc"] = pack["abc"]
+            session_state["improv_motif_tab"] = pack.get("tab") or ""
+    with n2:
+        if instrument == "Guitar" and st.button(
+            "Generate Guitar TAB",
+            key="improv_motif_tab_btn",
+            use_container_width=True,
+        ):
+            session_state["improv_motif_tab"] = build_motif_guitar_tab(
+                session_state["improv_motif"]
+            )
+
+    if session_state.get("improv_motif_abc"):
+        st.markdown("**Sheet music**")
+        _render_abc(st, session_state["improv_motif_abc"])
+        with st.expander("ABC source", expanded=False):
+            st.code(session_state["improv_motif_abc"], language=None)
+
+    if session_state.get("improv_motif_tab"):
+        st.markdown("**Guitar TAB**")
+        st.code(session_state["improv_motif_tab"], language=None)
+
     if level == "Beginner":
-        st.caption("Beginner: repeat the motif 4× with identical rhythm before changing notes.")
+        st.caption("Beginner: play the motif 4×, then try one transformation.")
     elif level == "Advanced":
-        st.caption("Advanced: displace rhythm by 8th note; superimpose over next chord.")
+        st.caption("Advanced: chain transforms, then regenerate notation to check the new shape.")
+
+
+def _ensure_chord_selection(session_state: dict, chords: list[str]) -> None:
+    idx = int(session_state.get("improv_chord_idx", 0))
+    if idx < 0 or idx >= len(chords):
+        idx = 0
+        session_state["improv_chord_idx"] = 0
+    sel = session_state.get("improv_selected_chord")
+    if sel not in chords:
+        session_state["improv_selected_chord"] = chords[idx]
+    else:
+        session_state["improv_chord_idx"] = chords.index(sel)
+
+
+def _selected_chord(session_state: dict, chords: list[str]) -> tuple[str, int]:
+    idx = int(session_state.get("improv_chord_idx", 0))
+    idx = max(0, min(idx, len(chords) - 1))
+    return chords[idx], idx
+
+
+def _render_chord_tiles(
+    st: Any,
+    chords: list[str],
+    session_state: dict,
+    *,
+    key_prefix: str,
+    key_center: str = "C",
+    generate_motif_on_select: bool = False,
+) -> None:
+    st.markdown("**Active song chords**")
+    sel_idx = int(session_state.get("improv_chord_idx", 0))
+    cols_per_row = 8
+    for row_start in range(0, len(chords), cols_per_row):
+        row = chords[row_start : row_start + cols_per_row]
+        cols = st.columns(len(row))
+        for i, ch in enumerate(row):
+            idx = row_start + i
+            with cols[i]:
+                is_sel = idx == sel_idx
+                if st.button(
+                    ch,
+                    key=f"{key_prefix}_ch_{idx}",
+                    type="primary" if is_sel else "secondary",
+                    use_container_width=True,
+                ):
+                    session_state["improv_selected_chord"] = ch
+                    session_state["improv_chord_idx"] = idx
+                    if generate_motif_on_select:
+                        session_state["improv_motif"] = generate_motif_for_chord(
+                            ch, key_center=key_center
+                        )
+                        session_state.pop("improv_motif_abc", None)
+                        session_state.pop("improv_motif_tab", None)
+                    st.rerun()
+    cap = "Highlighted = current chord · tap to select."
+    if generate_motif_on_select:
+        cap += " Motif updates when you tap a chord."
+    st.caption(cap)
+
+
+def _render_abc(st: Any, abc_text: str) -> None:
+    escaped = (
+        abc_text.replace("\\", "\\\\")
+        .replace("`", "\\`")
+        .replace("${", "\\${")
+    )
+    doc = f"""
+    <html>
+    <head>
+    <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
+    </head>
+    <body>
+    <div id="paper"></div>
+    <script>
+    ABCJS.renderAbc("paper", `{escaped}`, {{ responsive: "resize", staffwidth: 520 }});
+    </script>
+    </body>
+    </html>
+    """
+    components.html(doc, height=220, scrolling=False)
 
 
 def _tab_missions(st: Any, *, session_state: dict, level: str) -> None:

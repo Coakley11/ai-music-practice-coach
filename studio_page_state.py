@@ -53,6 +53,7 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
             "Custom progression" if is_custom_active else "Active song"
         )
     session_state.setdefault("improv_chord_idx", 0)
+    session_state.setdefault("improv_selected_chord", "")
     session_state.setdefault("improv_style", "Jazz Swing")
     session_state.setdefault("improv_style_key", "G")
     session_state.setdefault("improv_difficulty", "Intermediate")
