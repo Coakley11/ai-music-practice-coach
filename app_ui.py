@@ -11,6 +11,7 @@ __all__ = [
     "render_studio_brand_header",
     "compact_page_title",
     "ensure_studio_page",
+    "navigate_studio_page",
     "follow_along_status_html",
     "inject_app_theme",
     "page_header",
@@ -1729,6 +1730,12 @@ TOP_NAV_PAGE_IDS: list[str] = [page_id for page_id, _label in TOP_NAV_ITEMS]
 STUDIO_PAGE_NAV_KEY = "studio_page_nav"
 
 
+def navigate_studio_page(session_state: Any, page_id: str) -> bool:
+    from studio_nav_history import navigate_studio_page as _nav
+
+    return _nav(session_state, page_id)
+
+
 _NAV_COMPACT_TITLE: dict[str, str] = {
     "practice": "Practice",
     "picker": "Songs",
@@ -1808,8 +1815,7 @@ def render_page_quick_nav(
 
     def _on_nav_change() -> None:
         picked = session_state.get(nav_widget_key)
-        if picked in TOP_NAV_PAGE_IDS and picked != session_state.get("studio_page"):
-            session_state["studio_page"] = picked
+        if picked in TOP_NAV_PAGE_IDS and navigate_studio_page(session_state, picked):
             rerun_fn()
 
     st.markdown(
@@ -1840,8 +1846,8 @@ def render_page_quick_nav(
     st.markdown("</div>", unsafe_allow_html=True)
 
     picked = session_state.get(nav_widget_key, current)
-    if picked in TOP_NAV_PAGE_IDS and picked != session_state.get("studio_page"):
-        session_state["studio_page"] = picked
+    if picked in TOP_NAV_PAGE_IDS:
+        navigate_studio_page(session_state, picked)
     return session_state.get("studio_page", current)
 
 
@@ -1869,8 +1875,7 @@ def render_sidebar_studio_nav(
             use_container_width=True,
             type="secondary",
         ):
-            if page_id != current:
-                session_state["studio_page"] = page_id
+            if page_id != current and navigate_studio_page(session_state, page_id):
                 rerun_fn()
         st.sidebar.markdown("</div>", unsafe_allow_html=True)
     st.sidebar.markdown("</div>", unsafe_allow_html=True)
@@ -1903,8 +1908,8 @@ def render_cross_page_links(
                 key=f"{key_prefix}_to_{page_id}",
                 use_container_width=True,
             ):
-                session_state["studio_page"] = page_id
-                rerun_fn()
+                if navigate_studio_page(session_state, page_id):
+                    rerun_fn()
             st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -2047,19 +2052,19 @@ def render_global_studio_bar(
     with row2[3]:
         st.markdown('<div class="ui-quick-nav">', unsafe_allow_html=True)
         if rerun_fn and st.button("Songs", key="global_nav_picker", use_container_width=True, help="Song library"):
-            ss["studio_page"] = "picker"
+            navigate_studio_page(ss, "picker")
             rerun_fn()
         st.markdown("</div>", unsafe_allow_html=True)
     with row2[4]:
         st.markdown('<div class="ui-quick-nav">', unsafe_allow_html=True)
         if rerun_fn and st.button("Practice", key="global_nav_practice", use_container_width=True, help="Practice page"):
-            ss["studio_page"] = "practice"
+            navigate_studio_page(ss, "practice")
             rerun_fn()
         st.markdown("</div>", unsafe_allow_html=True)
     with row2[5]:
         st.markdown('<div class="ui-quick-nav">', unsafe_allow_html=True)
         if rerun_fn and st.button("Backing", key="global_nav_backing", use_container_width=True, help="Backing track"):
-            ss["studio_page"] = "backing"
+            navigate_studio_page(ss, "backing")
             rerun_fn()
         st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)

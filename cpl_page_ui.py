@@ -109,7 +109,9 @@ def render_custom_progression_lab_page() -> None:
         set_custom_source(st.session_state)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         prepare_cpl_backing_handoff(st.session_state, active, section=None)
-        st.session_state["studio_page"] = "backing"
+        from studio_nav_history import navigate_studio_page
+
+        navigate_studio_page(st.session_state, "backing")
         st.rerun()
 
     def _home_sections() -> dict:

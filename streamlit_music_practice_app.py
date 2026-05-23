@@ -123,6 +123,11 @@ from guitar_capo import (
     render_guitar_capo_practice_panel,
     render_guitar_capo_sidebar,
 )
+from studio_nav_history import (
+    init_nav_history,
+    navigate_studio_page,
+    render_sidebar_nav_history,
+)
 from studio_page_state import (
     apply_improv_song_source,
     init_analysis_page_state,
@@ -405,7 +410,7 @@ if not _APP_UI_LOADED:
         cur = session_state.get("studio_page", "practice")
         idx = ids.index(cur) if cur in ids else 0
         pick = st.selectbox("Page", labels, index=idx, key="studio_page_fallback_select")
-        session_state["studio_page"] = ids[labels.index(pick)]
+        navigate_studio_page(session_state, ids[labels.index(pick)])
         return session_state["studio_page"]
 
     def render_global_studio_bar(**kwargs) -> None:
@@ -4394,7 +4399,7 @@ def _stop_backing_playback() -> None:
 
 def _picker_navigate(page: str, *, open_chord_coach: bool = False) -> None:
     """Open a studio page for the already-selected catalog song (no re-selection)."""
-    st.session_state["studio_page"] = page
+    navigate_studio_page(st.session_state, page)
     if open_chord_coach:
         st.session_state["picker_open_chord_coach"] = True
     st.rerun()
@@ -4877,6 +4882,9 @@ inject_app_theme()
 
 render_studio_brand_header()
 
+init_nav_history(st.session_state)
+render_sidebar_nav_history(st.sidebar, st.session_state, rerun_fn=st.rerun)
+
 
 def _ui_source_label() -> str:
     if is_custom_progression(st.session_state):
@@ -5187,7 +5195,7 @@ if _studio_page == "practice":
         use_container_width=True,
     ):
         _prepare_backing_from_practice(_focus_pick)
-        st.session_state["studio_page"] = "backing"
+        navigate_studio_page(st.session_state, "backing")
         st.rerun()
     _is_full_song = practice_is_full_song(_focus_pick)
     _active_section = practice_active_section_name(_focus_pick, sections_for_practice)
@@ -6166,7 +6174,7 @@ elif _studio_page == "creative":
         )
         _improv_apply_playback_from_style()
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-        st.session_state["studio_page"] = "backing"
+        navigate_studio_page(st.session_state, "backing")
         st.rerun()
 
     def _improv_open_practice() -> None:
@@ -6178,19 +6186,19 @@ elif _studio_page == "creative":
             set_custom_source=set_custom_source,
         )
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-        st.session_state["studio_page"] = "practice"
+        navigate_studio_page(st.session_state, "practice")
         st.rerun()
 
     def _improv_open_analysis() -> None:
-        st.session_state["studio_page"] = "analysis"
+        navigate_studio_page(st.session_state, "analysis")
         st.rerun()
 
     def _improv_go_song_selection() -> None:
-        st.session_state["studio_page"] = "picker"
+        navigate_studio_page(st.session_state, "picker")
         st.rerun()
 
     def _improv_go_custom_progression() -> None:
-        st.session_state["studio_page"] = "custom"
+        navigate_studio_page(st.session_state, "custom")
         st.rerun()
 
     if lab_mode == "Improvisation Intelligence":
@@ -6653,7 +6661,7 @@ elif _studio_page == "log":
                 st.markdown(f"{icon} **{label.title()}** — {_plan[label]}")
         st.markdown("</div>", unsafe_allow_html=True)
         if st.button("Start warmup on Practice page", key="session_go_practice"):
-            st.session_state["studio_page"] = "practice"
+            navigate_studio_page(st.session_state, "practice")
             st.rerun()
 
     if st.button("Clear practice log", type="secondary"):
