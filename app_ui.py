@@ -1314,6 +1314,97 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   font-size: 0.78rem;
   font-weight: 600;
 }
+/* Guided tutorial */
+.tutorial-sidebar-entry {
+  margin: 0 0 0.65rem 0;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+.tutorial-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 45%, #312e81 100%);
+  color: #f8fafc;
+  border-radius: 16px;
+  padding: 1.25rem 1.35rem 1rem 1.35rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+}
+.tutorial-hero-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.tutorial-hero-icon {
+  font-size: 2.4rem;
+  line-height: 1;
+}
+.tutorial-kicker {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #93c5fd;
+}
+.tutorial-title {
+  margin: 0.15rem 0 0.25rem 0;
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #fff;
+}
+.tutorial-sub {
+  margin: 0;
+  font-size: 0.92rem;
+  color: #cbd5e1;
+}
+.tutorial-progress-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  margin-top: 1rem;
+  overflow: hidden;
+}
+.tutorial-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #22c55e);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+.tutorial-quick-card {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+}
+.tutorial-quick-title {
+  margin: 0 0 0.45rem 0;
+  font-weight: 800;
+  color: #92400e;
+  font-size: 0.95rem;
+}
+.tutorial-quick-start {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: #78350f;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+.tutorial-step-card {
+  margin-bottom: 0.35rem;
+}
+.tutorial-step-label {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tutorial-step-title {
+  margin: 0.2rem 0 0.5rem 0;
+  font-size: 1.25rem;
+  color: #0f172a;
+}
 /* Custom progression steps */
 .cpl-step-card {
   display: flex;

@@ -4812,8 +4812,24 @@ inject_app_theme()
 
 render_studio_brand_header()
 
+from app_tutorial import (
+    init_tutorial_state,
+    maybe_auto_open_tutorial,
+    open_tutorial,
+    render_tutorial_sidebar_entry,
+    render_tutorial_walkthrough,
+)
+
+init_tutorial_state(st.session_state)
 init_nav_history(st.session_state)
+render_tutorial_sidebar_entry(st.sidebar, st.session_state, rerun_fn=st.rerun)
 render_sidebar_nav_history(st.sidebar, st.session_state, rerun_fn=st.rerun)
+
+_brand_t1, _brand_t2 = st.columns([5, 1])
+with _brand_t2:
+    if st.button("📖 Tutorial", key="tutorial_header_btn", use_container_width=True):
+        open_tutorial(st.session_state, step=0)
+        st.rerun()
 
 
 def _ui_source_label() -> str:
@@ -5092,6 +5108,22 @@ _practice_bpm = int(st.session_state.get("backing_track_bpm", _default_song_bpm)
 _practice_groove = str(
     st.session_state.get("practice_groove_style", default_groove_style)
 )
+
+maybe_auto_open_tutorial(st.session_state)
+
+if st.session_state.get("tutorial_open"):
+
+    def _tutorial_navigate(page_id: str) -> None:
+        navigate_studio_page(st.session_state, page_id)
+        st.rerun()
+
+    render_tutorial_walkthrough(
+        st,
+        st.session_state,
+        rerun_fn=st.rerun,
+        navigate_fn=_tutorial_navigate,
+    )
+    st.stop()
 
 # -------------------------------------------------
 # PRACTICE
