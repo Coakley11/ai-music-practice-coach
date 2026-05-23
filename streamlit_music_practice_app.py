@@ -118,6 +118,12 @@ from songs.playback_defaults import (
 )
 from tuner_tone_ui import render_tuner_tone_section
 from page_guidance import render_sidebar_context_hint
+from guitar_capo import (
+    build_capo_context,
+    capo_status_banner_html,
+    render_guitar_capo_practice_panel,
+    render_guitar_capo_sidebar,
+)
 from studio_page_state import (
     apply_improv_song_source,
     init_analysis_page_state,
@@ -1777,6 +1783,9 @@ def full_chord_markdown(
     *,
     chart_mode: str = "practice",
     selected_section_names: list[str] | None = None,
+    shape_sections: dict[str, list[str]] | None = None,
+    capo_fret: int = 0,
+    capo_shape_key: str = "",
 ):
     """Practice musician chart. Use ``chart_mode='backing'`` for backing follow-along."""
     dk = display_key or song_data["key"]
@@ -1795,6 +1804,9 @@ def full_chord_markdown(
             section_lyrics=section_lyrics,
             selected_section_names=selected_section_names,
             show_user_lyric_preview=bool(section_lyrics),
+            shape_sections=shape_sections,
+            capo_fret=capo_fret,
+            capo_shape_key=capo_shape_key,
         )
     merged_lyric_cues = merge_lyric_cues_for_song(song_data, lyric_cues)
     sheet_class = lead_sheet_body_class(song_data)
@@ -2326,10 +2338,6 @@ def render_transposition_helper(concert_key, instrument, key_prefix, wrap_expand
     return written_key if show_written else concert_key, show_written, instrument_key
 
 
-def capo_fret_for_shape(sounding_key, shape_key):
-    return semitone_distance(shape_key, sounding_key)
-
-
 def _null_expander():
     from contextlib import contextmanager
 
@@ -2366,45 +2374,25 @@ def render_general_transpose_helper(
     st.caption("Example chord shift: " + " | ".join(pairs))
 
 
-def render_guitar_capo_helper(base_sections, sounding_key, key_prefix, wrap_expander=True):
-    ctx = (
+def render_guitar_capo_helper(
+    base_sections,
+    sounding_key,
+    key_prefix,
+    wrap_expander=True,
+):
+    ctx_manager = (
         st.expander("Capo / Guitar Shape Helper", expanded=True)
         if wrap_expander
         else _null_expander()
     )
-    with ctx:
-        if not wrap_expander:
-            st.markdown("#### Guitar capo helper")
-        col_a, col_b, col_c = st.columns([1.1, 1.1, 1])
-        _capo_keys = display_key_options(sounding_key)
-        with col_a:
-            actual_key = st.selectbox(
-                "Actual sounding key",
-                _capo_keys,
-                index=_capo_keys.index(sounding_key) if sounding_key in _capo_keys else 0,
-                key=f"{key_prefix}::capo_actual_key",
-            )
-            shape_key = st.selectbox(
-                "Desired guitar shape key",
-                COMMON_KEYS,
-                index=COMMON_KEYS.index("G") if "G" in COMMON_KEYS else 0,
-                key=f"{key_prefix}::capo_shape_key",
-            )
-        capo = capo_fret_for_shape(actual_key, shape_key)
-        actual_sections = transpose_sections_dict(base_sections, sounding_key, actual_key)
-        shape_sections = transpose_sections_dict(actual_sections, actual_key, shape_key)
-        shape_chords = chord_blocks_for_selected_sections(shape_sections)[:8]
-        with col_b:
-            st.write(f"Sounding key: **{actual_key}**")
-            st.write(f"Play using: **{shape_key} shapes**")
-            st.write(f"Will sound in: **{actual_key}**")
-        with col_c:
-            st.metric("Capo position", f"{capo} fret" if capo == 1 else f"{capo} frets")
-        st.caption(
-            "Use the capo position so your chosen chord shapes sound in the actual song key."
+    with ctx_manager:
+        render_guitar_capo_practice_panel(
+            st,
+            st.session_state,
+            concert_key=sounding_key,
+            sections=base_sections,
+            key_prefix=key_prefix,
         )
-        if shape_chords:
-            st.write("Playable chord shapes: `" + " | ".join(shape_chords) + "`")
 
 
 def build_chord_event_timeline(events, bpm, loops, beats_per_bar=4):
@@ -5054,6 +5042,10 @@ if is_transposing_instrument(instrument):
         f"**Charts shown in:** {_charts_sidebar}"
     )
 
+if instrument == "Guitar":
+    sidebar_section("Guitar capo", icon="🎸", tone="session")
+    render_guitar_capo_sidebar(st.sidebar, st.session_state, concert_key=concert_key)
+
 _chart_bundle = build_active_chart_bundle(
     st.session_state,
     catalog_genre=_catalog_genre,
@@ -5073,6 +5065,21 @@ level_source_sections = _chart_bundle["level_source_sections"]
 sections = _chart_bundle["sections"]
 _cpl_active = _chart_bundle.get("cpl_active")
 
+_capo_ctx = build_capo_context(
+    st.session_state,
+    sections,
+    concert_key=concert_key,
+    instrument=instrument,
+)
+if _capo_ctx.enabled and instrument == "Guitar":
+    sections_for_practice = _capo_ctx.shape_sections
+    sections_for_backing = _capo_ctx.sounding_sections
+    guitar_shape_chart_key = _capo_ctx.shape_key
+else:
+    sections_for_practice = sections
+    sections_for_backing = sections
+    guitar_shape_chart_key = chart_key
+
 
 def _ui_page_badges() -> list[tuple[str, str]]:
     badges = session_badges(
@@ -5090,7 +5097,7 @@ def _ui_page_badges() -> list[tuple[str, str]]:
     return badges
 
 
-full_song_chords = chord_blocks_for_backing(sections)
+full_song_chords = chord_blocks_for_backing(sections_for_backing)
 _default_bpm = default_bpm_for_song_data(song_data)
 _default_groove = default_groove_for_song(song_data, infer_fn=infer_groove_style)
 if is_custom_progression(st.session_state) and _cpl_active:
@@ -5191,14 +5198,14 @@ if _studio_page == "practice":
         st.session_state["studio_page"] = "backing"
         st.rerun()
     _is_full_song = practice_is_full_song(_focus_pick)
-    _active_section = practice_active_section_name(_focus_pick, sections)
-    _view_sections = practice_display_sections(sections, _focus_pick)
+    _active_section = practice_active_section_name(_focus_pick, sections_for_practice)
+    _view_sections = practice_display_sections(sections_for_practice, _focus_pick)
     _view_chords = (
         all_chords_from_sections(_view_sections)
         if _is_full_song
         else list((_view_sections.get(_active_section) or []) if _active_section else [])
     )
-    _time_sig = default_time_signature(song, sections)
+    _time_sig = default_time_signature(song, sections_for_practice)
     _section_bar_count = len(_view_chords) if _active_section else 0
 
     _NOTATION_KEY = "practice_notation_result"
@@ -5220,6 +5227,11 @@ if _studio_page == "practice":
     _chart_key_mode = _key_ctx_practice["chart_key_mode"]
     global_display_key = _key_ctx_practice["global_display_key"]
     written_key = _key_ctx_practice["written_key"]
+    if _capo_ctx.enabled and instrument == "Guitar":
+        _practice_chart_key = guitar_shape_chart_key
+
+    if _capo_ctx.enabled and instrument == "Guitar":
+        st.markdown(capo_status_banner_html(_capo_ctx), unsafe_allow_html=True)
 
     st.markdown(
         f'<div class="ui-badge-row">'
@@ -5245,7 +5257,7 @@ if _studio_page == "practice":
             "lyrics, metronome loop, deep focus, scales, and rhythm tools for that part only."
         )
     elif _active_section:
-        _focus_chords = sections.get(_active_section) or []
+        _focus_chords = sections_for_practice.get(_active_section) or []
         st.markdown(
             f'<div class="ui-badge-row">'
             f'<span class="ui-badge accent">Section focus</span>'
@@ -5360,6 +5372,9 @@ if _studio_page == "practice":
         _practice_groove,
         selected_saxophone_type(st.session_state) if is_transposing_instrument(instrument) else "",
         st.session_state.get(CHART_IN_INSTRUMENT_KEY_KEY, False),
+        _capo_ctx.enabled,
+        _capo_ctx.shape_key if _capo_ctx.enabled else "",
+        _capo_ctx.capo_fret if _capo_ctx.enabled else 0,
     )
     if st.session_state.get("practice_notation_sig") != _notation_sig:
         st.session_state.pop(_NOTATION_KEY, None)
@@ -5413,7 +5428,7 @@ if _studio_page == "practice":
                 instrument=instrument,
                 focus=focus,
                 section_focus=_focus_pick,
-                sections=sections,
+                sections=sections_for_practice,
                 guitar_tabs=song_data.get("guitar_tabs") or {},
                 num_lines=_notation_lines,
                 difficulty=_notation_difficulty,
@@ -5505,7 +5520,7 @@ if _studio_page == "practice":
             st.divider()
             render_guitar_capo_helper(
                 sections,
-                chart_key,
+                concert_key,
                 key_prefix=f"practice::{song}",
                 wrap_expander=False,
             )
@@ -5639,6 +5654,9 @@ elif _studio_page == "backing":
 
     _render_page_quick_nav("backing")
 
+    if _capo_ctx.enabled and instrument == "Guitar":
+        st.markdown(capo_status_banner_html(_capo_ctx), unsafe_allow_html=True)
+
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
         st.warning("Key changed — regenerate backing track")
 
@@ -5656,7 +5674,7 @@ elif _studio_page == "backing":
     selected_section_names: list[str] = []
     form_loops = int(st.session_state.get("backing_track_loops", 2))
 
-    _sec_names = [name for name, chs in section_order(sections) if chs]
+    _sec_names = [name for name, chs in section_order(sections_for_backing) if chs]
     _from_practice_section = _apply_pending_backing_scope(st.session_state, _sec_names)
     with st.expander(
         "Playback settings (scope & loops)",
@@ -5710,8 +5728,12 @@ elif _studio_page == "backing":
 
     selected_section_names = selected_section_names or []
     groove_style = st.session_state.get("backing_groove_style", "Auto")
-    backing_chords = chord_blocks_for_selected_sections(sections, selected_section_names)
-    backing_events = chord_events_for_selected_sections(sections, selected_section_names)
+    backing_chords = chord_blocks_for_selected_sections(
+        sections_for_backing, selected_section_names
+    )
+    backing_events = chord_events_for_selected_sections(
+        sections_for_backing, selected_section_names
+    )
 
     resolved_groove = infer_groove_style(song_data, groove_style)
     section_scope_label = (
@@ -5733,15 +5755,10 @@ elif _studio_page == "backing":
         unsafe_allow_html=True,
     )
 
-    chart_level_song_data = {
-        **song_data,
-        "sections": level_source_sections,
-    }
-    chart_display_key = chart_key
-    chart_sections = transpose_sections(
-        chart_level_song_data,
-        chart_display_key,
+    chart_display_key = (
+        _capo_ctx.sounding_key if _capo_ctx.enabled else chart_key
     )
+    chart_sections = sections_for_backing
     chart_backing_chords = chord_blocks_for_selected_sections(
         chart_sections,
         selected_section_names,
@@ -5785,8 +5802,12 @@ elif _studio_page == "backing":
             selected_section_names = [_q_sec]
     elif st.session_state.get("backing_track_scope") == "Full song":
         selected_section_names = []
-    backing_chords = chord_blocks_for_selected_sections(sections, selected_section_names)
-    backing_events = chord_events_for_selected_sections(sections, selected_section_names)
+    backing_chords = chord_blocks_for_selected_sections(
+        sections_for_backing, selected_section_names
+    )
+    backing_events = chord_events_for_selected_sections(
+        sections_for_backing, selected_section_names
+    )
     groove_style = st.session_state.get("backing_groove_style", "Auto")
     resolved_groove = infer_groove_style(song_data, groove_style)
     section_scope_label = (
@@ -5923,6 +5944,9 @@ elif _studio_page == "backing":
             focus=focus,
             chart_mode="backing",
             selected_section_names=selected_section_names,
+            shape_sections=_capo_ctx.shape_sections if _capo_ctx.enabled else None,
+            capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
+            capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
         )
         if _backing_audio_ready:
             if not st.session_state.get(BACKING_AUTOPLAY, False):

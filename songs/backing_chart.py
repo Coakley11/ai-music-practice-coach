@@ -150,6 +150,7 @@ def chart_grid_html(
     *,
     section_name: str = "",
     current_bar: int | None = None,
+    shape_chords: list[str] | None = None,
 ) -> str:
     """Block chord cells with ``live-chart-cell`` markers for JS follow-along."""
     if not chords:
@@ -169,12 +170,23 @@ def chart_grid_html(
         duration = (
             f"<span class='duration'>{repeat_count} bars</span>" if repeat_count > 1 else ""
         )
+        shape_hint = ""
+        if (
+            shape_chords
+            and idx < len(shape_chords)
+            and display != "%"
+            and shape_chords[idx] != display
+        ):
+            shape_hint = (
+                f"<div class='chord-shape-hint' style='font-size:0.72rem;color:#64748b;"
+                f"margin-top:2px;'>{html.escape(str(shape_chords[idx]))} shape</div>"
+            )
         cells.append(
             f"<div class='chord-cell live-chart-cell{current_class}' "
             f"data-section='{safe_section_attr}' data-bar='{idx + 1}'>"
             f"<div class='bar-num'>Bar {idx + 1}</div>"
             f"<div class='chord-symbol'>{html.escape(display)}</div>"
-            f"{duration}</div>"
+            f"{shape_hint}{duration}</div>"
         )
     return "<div class='lead-grid'>" + "".join(cells) + "</div>"
 
@@ -206,6 +218,9 @@ def render_backing_chord_chart(
     section_lyrics: dict[str, str] | None = None,
     selected_section_names: list[str] | None = None,
     show_user_lyric_preview: bool = False,
+    shape_sections: dict[str, list[str]] | None = None,
+    capo_fret: int = 0,
+    capo_shape_key: str = "",
 ) -> str:
     """Section-based block chart for backing playback (no auto lyric dump)."""
     dk = display_key or song_data.get("key", "C")
@@ -224,13 +239,20 @@ def render_backing_chord_chart(
         key_text += f" (orig. {html.escape(str(song_data.get('key', '')))})"
     meta_bits = [
         key_text,
+    ]
+    if shape_sections and capo_shape_key:
+        meta_bits.append(
+            f"Guitar shape: {html.escape(capo_shape_key)}"
+            + (f" · capo {capo_fret}" if capo_fret else "")
+        )
+    meta_bits.extend([
         f"Level: {html.escape(str(level))}",
         f"Form: {total_bars} bars",
         f"Tempo: {int(bpm)} BPM",
         f"Time: {html.escape(str(time_signature))}",
         f"Feel: {html.escape(chart_feel_label(groove_style))}",
         "Drums/Bass/Comping: active",
-    ]
+    ])
     meta = "".join(f"<span class='meta-pill'>{bit}</span>" for bit in meta_bits)
     header_note = (
         f"<div class='lead-subtitle'>{html.escape(str(ext['arrangement_notes']))}</div>"
@@ -256,6 +278,7 @@ def render_backing_chord_chart(
             if show_user_lyric_preview
             else ""
         )
+        shape_row = (shape_sections or {}).get(section_name) if shape_sections else None
         section_cards.append(
             f"""
 <section class="section-card {role}{' current' if is_current else ''}">
@@ -266,7 +289,7 @@ def render_backing_chord_chart(
     </div>
     <div class="section-meta">{now_label}</div>
   </div>
-  {chart_grid_html(chords, section_name=section_name, current_bar=current_bar_for_section)}
+  {chart_grid_html(chords, section_name=section_name, current_bar=current_bar_for_section, shape_chords=shape_row)}
   {preview}
 </section>
 """
