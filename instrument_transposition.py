@@ -38,6 +38,39 @@ TRANSPOSING_SEMITONE_STEPS: dict[str, int] = {
     "Bb Clarinet": 2,
 }
 
+# Instrument-family metadata (display / education)
+TRANSPOSING_INSTRUMENT_METADATA: dict[str, dict[str, str | int]] = {
+    "Trumpet": {"family": "Bb", "semitones_up": 2},
+    "Tenor saxophone": {"family": "Bb", "semitones_up": 2},
+    "Soprano saxophone": {"family": "Bb", "semitones_up": 2},
+    "Alto saxophone": {"family": "Eb", "semitones_up": 9},
+    "Baritone saxophone": {"family": "Eb", "semitones_up": 9},
+    "Clarinet": {"family": "Bb", "semitones_up": 2},
+    "Saxophone": {"family": "varies", "semitones_up": 0},
+}
+
+# Chord-symbol transpose steps (matches music_theory.transpose_chord labels)
+TRANSPOSING_INSTRUMENTS: dict[str, int] = {
+    "Alto saxophone (Eb)": 9,
+    "Tenor saxophone (Bb)": 2,
+    "Soprano saxophone (Bb)": 2,
+    "Baritone saxophone (Eb)": 9,
+    "Alto Sax (Eb)": 9,
+    "Tenor Sax (Bb)": 2,
+    "Soprano Sax (Bb)": 2,
+    "Bari Sax (Eb)": 9,
+    "Bb Trumpet": 2,
+    "Bb Clarinet": 2,
+    "Trumpet": 2,
+    "Clarinet": 2,
+    "Tenor saxophone": 2,
+    "Soprano saxophone": 2,
+    "Alto saxophone": 9,
+    "Baritone saxophone": 9,
+}
+
+USER_TRANSPOSING_INSTRUMENTS: tuple[str, ...] = ("Saxophone", "Trumpet", "Clarinet")
+
 
 def _transpose_key_center(key: str, steps: int) -> str:
     root, suffix = split_chord(str(key or "C"))
@@ -49,11 +82,23 @@ def _transpose_key_center(key: str, steps: int) -> str:
 
 
 def transposing_instrument_names() -> tuple[str, ...]:
-    return ("Saxophone", "Trumpet", "Clarinet")
+    return USER_TRANSPOSING_INSTRUMENTS
 
 
 def is_transposing_instrument(instrument: str) -> bool:
-    return str(instrument or "").strip() in transposing_instrument_names()
+    inst = str(instrument or "").strip()
+    return inst in USER_TRANSPOSING_INSTRUMENTS or inst in TRANSPOSING_INSTRUMENT_METADATA
+
+
+def semitone_steps_for_label(label: str) -> int:
+    """Semitone steps for chord-symbol transposition (type label or instrument name)."""
+    key = str(label or "").strip()
+    if key in TRANSPOSING_INSTRUMENTS:
+        return int(TRANSPOSING_INSTRUMENTS[key])
+    meta = TRANSPOSING_INSTRUMENT_METADATA.get(key)
+    if meta:
+        return int(meta.get("semitones_up", 0))
+    return int(TRANSPOSING_SEMITONE_STEPS.get(key, 0))
 
 
 def options_for_instrument(instrument: str) -> list[str]:
@@ -134,6 +179,18 @@ def written_key_for_type(concert_key: str, transposing_type: str) -> str:
     return _transpose_key_center(concert_key, steps)
 
 
+def transpose_key_for_instrument(
+    concert_key: str,
+    instrument: str,
+    session_state: dict | None = None,
+) -> str:
+    """Return written key for the user's instrument (concert → written)."""
+    session_state = session_state if session_state is not None else {}
+    if not is_transposing_instrument(instrument):
+        return str(concert_key or "C")
+    return written_key_for_instrument(concert_key, instrument, session_state)
+
+
 def written_key_for_instrument(
     concert_key: str,
     instrument: str,
@@ -165,6 +222,25 @@ def instrument_display_name(transposing_type: str, instrument: str = "") -> str:
 def is_eb_instrument(transposing_type: str) -> bool:
     low = str(transposing_type or "").lower()
     return "alto" in low or "baritone" in low or "bari" in low or "(eb)" in low
+
+
+def get_instrument_transposition_simple(instrument: str) -> dict[str, str | int]:
+    """Metadata for a transposing instrument name (no session state)."""
+    inst = str(instrument or "").strip()
+    meta = TRANSPOSING_INSTRUMENT_METADATA.get(inst)
+    if meta:
+        return {
+            "family": str(meta.get("family", "Concert")),
+            "semitones_up": int(meta.get("semitones_up", 0)),
+        }
+    if inst in USER_TRANSPOSING_INSTRUMENTS:
+        default_type = default_transposing_type(inst)
+        return {
+            "family": "Eb" if is_eb_instrument(default_type) else "Bb",
+            "semitones_up": semitone_steps_for_label(default_type),
+            "default_type": default_type,
+        }
+    return {"family": "Concert", "semitones_up": 0}
 
 
 def transposition_blurb(
@@ -406,23 +482,6 @@ def render_practice_transposing_helper(
     return ctx["chart_key"], ctx["chart_key_mode"]
 
 
-# --- Public aliases (documented API / legacy names) ---
-
-# For transpose_chord()-style shifts (matches streamlit TRANSPOSING_INSTRUMENTS labels)
-TRANSPOSING_INSTRUMENTS: dict[str, int] = {
-    "Alto saxophone (Eb)": 9,
-    "Tenor saxophone (Bb)": 2,
-    "Soprano saxophone (Bb)": 2,
-    "Baritone saxophone (Eb)": 9,
-    "Alto Sax (Eb)": 9,
-    "Tenor Sax (Bb)": 2,
-    "Soprano Sax (Bb)": 2,
-    "Bari Sax (Eb)": 9,
-    "Bb Trumpet": 2,
-    "Bb Clarinet": 2,
-}
-
-
 def get_written_key_for_instrument(
     concert_key: str,
     instrument: str,
@@ -433,12 +492,27 @@ def get_written_key_for_instrument(
 
 def get_instrument_transposition(
     instrument: str,
-    session_state: dict,
+    session_state: dict | None = None,
     *,
     concert_key: str = "C",
 ) -> dict[str, str | int | bool]:
     """Metadata for the active transposing instrument (type, steps, written key)."""
-    t_type = selected_transposing_type(session_state, instrument) if is_transposing_instrument(instrument) else ""
+    session_state = session_state if session_state is not None else {}
+    if not is_transposing_instrument(instrument):
+        base = get_instrument_transposition_simple(instrument)
+        return {
+            "instrument": instrument,
+            "transposing_type": "",
+            "concert_key": concert_key,
+            "written_key": concert_key,
+            "chart_key": concert_key,
+            "chart_key_mode": "concert",
+            "semitone_steps": int(base.get("semitones_up", 0)),
+            "show_charts_in_instrument_key": False,
+            "is_eb": False,
+            "family": str(base.get("family", "Concert")),
+        }
+    t_type = selected_transposing_type(session_state, instrument)
     steps = TRANSPOSING_SEMITONE_STEPS.get(t_type, 0)
     written = written_key_for_instrument(concert_key, instrument, session_state)
     chart_key, mode = effective_chart_key(concert_key, instrument, session_state)
@@ -466,7 +540,7 @@ def transpose_chord_for_instrument(
     if not is_transposing_instrument(instrument):
         return chord
     t_type = selected_transposing_type(session_state, instrument)
-    steps = TRANSPOSING_INSTRUMENTS.get(t_type, 0)
+    steps = semitone_steps_for_label(t_type)
     return transpose_chord(chord, steps)
 
 
@@ -492,20 +566,22 @@ __all__ = [
     "BB_INSTRUMENT_TYPES",
     "CHART_IN_INSTRUMENT_KEY_KEY",
     "CONCERT_KEY_SESSION_KEY",
+    "PENDING_SELECTED_TRANSPOSING_INSTRUMENT",
     "SAXOPHONE_TYPES",
     "SAX_TYPE_SESSION_KEY",
     "SELECTED_TRANSPOSING_INSTRUMENT_KEY",
     "TRANSPOSING_INSTRUMENTS",
+    "TRANSPOSING_INSTRUMENT_METADATA",
     "TRANSPOSING_SEMITONE_STEPS",
+    "USER_TRANSPOSING_INSTRUMENTS",
     "apply_instrument_key_display",
+    "apply_pending_transposing_instrument",
     "chart_in_instrument_key",
     "default_transposing_type",
     "effective_chart_key",
-    "apply_pending_transposing_instrument",
     "ensure_transposing_defaults",
-    "request_transposing_instrument_sync",
-    "PENDING_SELECTED_TRANSPOSING_INSTRUMENT",
     "get_instrument_transposition",
+    "get_instrument_transposition_simple",
     "get_written_key_for_instrument",
     "instrument_display_name",
     "is_eb_instrument",
@@ -516,14 +592,17 @@ __all__ = [
     "render_sidebar_transposing_controls",
     "render_sidebar_transposing_recap",
     "render_transposing_info_card",
+    "request_transposing_instrument_sync",
     "resolve_practice_keys",
     "sax_display_name",
     "sax_transposition_blurb",
     "sax_written_key_steps",
     "selected_saxophone_type",
     "selected_transposing_type",
+    "semitone_steps_for_label",
     "transposing_instrument_names",
     "transpose_chord_for_instrument",
+    "transpose_key_for_instrument",
     "transpose_song_for_instrument",
     "transposition_blurb",
     "written_key_for_instrument",

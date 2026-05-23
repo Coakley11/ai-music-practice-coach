@@ -120,18 +120,21 @@ from tuner_tone_ui import render_tuner_tone_section
 from instrument_transposition import (
     CHART_IN_INSTRUMENT_KEY_KEY,
     TRANSPOSING_INSTRUMENTS,
+    apply_pending_transposing_instrument,
     chart_in_instrument_key,
     effective_chart_key,
-    apply_pending_transposing_instrument,
-    request_transposing_instrument_sync,
+    instrument_display_name,
     is_transposing_instrument,
     options_for_instrument,
     render_practice_transposing_panel,
     render_sidebar_transposing_recap,
     render_transposing_info_card,
+    request_transposing_instrument_sync,
     resolve_practice_keys,
     selected_saxophone_type,
     selected_transposing_type,
+    semitone_steps_for_label,
+    transpose_key_for_instrument,
     written_key_for_instrument,
 )
 
@@ -2099,7 +2102,7 @@ def transposing_instrument_options(instrument):
 
 
 def transposed_key_for_instrument(concert_key, instrument_label):
-    steps = TRANSPOSING_INSTRUMENTS.get(instrument_label, 0)
+    steps = semitone_steps_for_label(instrument_label)
     return transpose_chord(concert_key, steps)
 
 
@@ -5179,8 +5182,6 @@ if _studio_page == "practice":
     _chart_scope = "full song" if _is_full_song else str(_active_section)
     _chart_key_note = ""
     if _chart_key_mode == "written" and is_transposing_instrument(instrument):
-        from instrument_transposition import instrument_display_name
-
         _t_type = selected_transposing_type(st.session_state, instrument)
         _chart_key_note = (
             f" · {instrument_display_name(_t_type, instrument)}"
