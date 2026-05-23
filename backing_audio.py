@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import wave
+from typing import Any
 
 import numpy as np
 
@@ -304,12 +305,15 @@ def _voicing_for_comp(chord, level, style, beat_index=0):
     return [n + octave for n in voicing]
 
 
-def _groove_time(bar_start, beat, beat_len, style):
-    if style == "Jazz swing" and beat % 1:
-        return bar_start + (beat + 0.08) * beat_len
-    if style == "Funk groove" and beat % 1:
-        return bar_start + (beat - 0.02) * beat_len
-    return bar_start + beat * beat_len
+def _groove_time(bar_start, beat, beat_len, style, *, swing: float = 0.0):
+    t = bar_start + beat * beat_len
+    if swing and beat % 1:
+        t = bar_start + (beat + swing) * beat_len
+    elif style == "Jazz swing" and beat % 1:
+        t = bar_start + (beat + 0.08) * beat_len
+    elif style == "Funk groove" and beat % 1:
+        t = bar_start + (beat - 0.02) * beat_len
+    return t
 
 
 def _add_section_transition_fill(
@@ -354,33 +358,119 @@ def _comp_wave_for_style(style: str, role: str) -> str:
     return "organ"
 
 
-def _style_patterns(style):
+def _song_backing_profile(
+    song_title: str,
+    song_artist: str,
+    style: str,
+    *,
+    bpm: int = 100,
+) -> dict[str, Any]:
+    """Song-aware groove character (energy, swing, anthem, soul-pop, etc.)."""
+    title = f"{song_title} {song_artist}".lower()
+    profile: dict[str, Any] = {
+        "swing": 0.0,
+        "humanize_ms": 0.012,
+        "ghost_snare": False,
+        "cross_stick": False,
+        "ride_jazz": False,
+        "pop_soul": False,
+        "anthem_rock": False,
+        "latin_relaxed": False,
+        "kick_push": 1.0,
+        "hat_soft": 1.0,
+        "comp_stab": False,
+    }
     if style == "Jazz swing":
+        profile["swing"] = 0.11
+        profile["ride_jazz"] = True
+        profile["humanize_ms"] = 0.018
+    elif style == "Bossa nova":
+        profile["cross_stick"] = True
+        profile["latin_relaxed"] = True
+        profile["swing"] = 0.04
+        profile["hat_soft"] = 0.72
+        profile["humanize_ms"] = 0.015
+    elif style == "Funk groove":
+        profile["ghost_snare"] = True
+        profile["comp_stab"] = True
+        profile["kick_push"] = 1.12
+    elif style == "Rock groove":
+        profile["kick_push"] = 1.2
+        profile["hat_soft"] = 0.9
+    elif style == "Ballad":
+        profile["hat_soft"] = 0.55
+        profile["humanize_ms"] = 0.008
+
+    if any(k in title for k in ("waiting on the world", "say", "john mayer")):
+        profile["pop_soul"] = True
+        profile["swing"] = max(profile["swing"], 0.03)
+        profile["hat_soft"] = 0.82
+        profile["humanize_ms"] = 0.014
+    if "champions" in title or "queen" in title:
+        profile["anthem_rock"] = True
+        profile["kick_push"] = 1.28
+    if "blue bossa" in title or "bossa" in title:
+        profile["latin_relaxed"] = True
+        profile["cross_stick"] = True
+    if "take the a train" in title or "ellington" in title:
+        profile["ride_jazz"] = True
+        profile["swing"] = 0.12
+    if bpm >= 120 and profile["anthem_rock"]:
+        profile["kick_push"] *= 1.05
+    return profile
+
+
+def _humanize_time(
+    t_sec: float,
+    *,
+    seed: int,
+    amount: float,
+    beat_len: float,
+) -> float:
+    if amount <= 0:
+        return t_sec
+    rng = np.random.default_rng(seed)
+    jitter = float(rng.uniform(-amount, amount)) * beat_len
+    return max(0.0, t_sec + jitter)
+
+
+def _humanize_volume(base: float, seed: int) -> float:
+    rng = np.random.default_rng(seed % 999983)
+    return base * float(rng.uniform(0.88, 1.12))
+
+
+def _style_patterns(style, profile: dict | None = None):
+    profile = profile or {}
+    if style == "Jazz swing":
+        hat = [0, 1.5, 2, 3.5] if profile.get("ride_jazz") else [0, 1.65, 2, 3.65]
         return {
             "bass_beats": [0, 1, 2, 3],
-            "comp_beats": [1.0, 2.65, 3.65],
-            "hat_beats": [0, 1.65, 2, 3.65],
-            "snare_beats": [1.0, 3.0],
+            "comp_beats": [1.0, 2.5, 3.5],
+            "hat_beats": hat,
+            "snare_beats": [1.0, 2.0, 3.0],
             "kick_beats": [0, 2],
-            "comp_dur": 0.45,
+            "ghost_snare": [1.5, 2.5],
+            "comp_dur": 0.42,
         }
     if style == "Bossa nova":
         return {
             "bass_beats": [0, 1.5, 2, 3.5],
-            "comp_beats": [0.0, 1.5, 2.5, 3.5],
+            "comp_beats": [0.0, 1.25, 2.5, 3.25],
             "hat_beats": [0, 0.5, 1.5, 2, 2.5, 3.5],
             "snare_beats": [1.5, 3.5],
             "kick_beats": [0, 2],
-            "comp_dur": 0.32,
+            "cross_stick": [1.0, 3.0],
+            "comp_dur": 0.30,
         }
     if style == "Funk groove":
         return {
             "bass_beats": [0, 0.75, 1.5, 2, 2.75, 3.5],
-            "comp_beats": [0.75, 1.75, 2.5, 3.25],
+            "comp_beats": [0.5, 1.75, 2.5, 3.25],
             "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
             "snare_beats": [1.0, 3.0],
+            "ghost_snare": [0.5, 1.5, 2.5, 3.5],
             "kick_beats": [0, 1.5, 2.75],
-            "comp_dur": 0.22,
+            "comp_dur": 0.20,
         }
     if style == "Rock groove":
         return {
@@ -388,8 +478,9 @@ def _style_patterns(style):
             "comp_beats": [0, 1, 2, 3],
             "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
             "snare_beats": [1.0, 3.0],
-            "kick_beats": [0, 2],
-            "comp_dur": 0.50,
+            "kick_beats": [0, 1.5, 2, 3.5],
+            "ghost_snare": [2.5],
+            "comp_dur": 0.48,
         }
     if style == "Ballad":
         return {
@@ -398,7 +489,16 @@ def _style_patterns(style):
             "hat_beats": [0, 1, 2, 3],
             "snare_beats": [3.0],
             "kick_beats": [0],
-            "comp_dur": 0.90,
+            "comp_dur": 0.95,
+        }
+    if profile.get("pop_soul"):
+        return {
+            "bass_beats": [0, 1.5, 2.5, 3.5],
+            "comp_beats": [0, 1.5, 2.5, 3.5],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 3.0],
+            "kick_beats": [0, 2.5],
+            "comp_dur": 0.40,
         }
     return {
         "bass_beats": [0, 2],
@@ -406,7 +506,7 @@ def _style_patterns(style):
         "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
         "snare_beats": [1.0, 3.0],
         "kick_beats": [0, 2.5],
-        "comp_dur": 0.38,
+        "comp_dur": 0.36,
     }
 
 
@@ -427,8 +527,13 @@ def synthesize_chords_to_numpy(
     event_cycle = _coerce_chord_events(chords)
     chord_list = event_cycle * max(1, int(loops))
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
-    patterns = _style_patterns(style)
+    song_profile = _song_backing_profile(song_title, song_artist, style, bpm=bpm)
+    patterns = _style_patterns(style, song_profile)
     groove_seed = song_groove_seed(song_title, song_artist) if song_title else 0
+    swing_amt = float(song_profile.get("swing", 0.0))
+    humanize = float(song_profile.get("humanize_ms", 0.012))
+    kick_mul = float(song_profile.get("kick_push", 1.0))
+    hat_mul = float(song_profile.get("hat_soft", 1.0))
 
     for idx, event in enumerate(chord_list):
 
@@ -451,74 +556,126 @@ def synthesize_chords_to_numpy(
             bass_dur = beat * (0.72 if style in ["Ballad", "Jazz swing"] else 0.50)
             if style == "Funk groove":
                 bass_dur = beat * 0.32
+            elif song_profile.get("pop_soul"):
+                bass_dur = beat * 0.55
+            t_hit = _humanize_time(
+                _groove_time(bar_start, b, beat, style, swing=swing_amt),
+                seed=idx * 41 + n + groove_seed,
+                amount=humanize,
+                beat_len=beat,
+            )
             _add_tone(
                 audio,
                 sr,
-                _groove_time(bar_start, b, beat, style),
+                t_hit,
                 bass_dur,
                 bass_pitch,
-                0.11 * intensity,
+                _humanize_volume(0.11 * intensity, idx * 41 + n),
                 "bass",
             )
 
         for comp_idx, b in enumerate(patterns["comp_beats"]):
-            if role == "verse" and comp_idx % 3 == 2:
+            if role == "verse" and comp_idx % 3 == 2 and not song_profile.get("anthem_rock"):
                 continue
             if role == "intro" and comp_idx > 1:
                 continue
             dur = beat * patterns.get("comp_dur", 0.45)
             if role == "chorus":
-                dur *= 1.15
+                dur *= 1.18 if song_profile.get("anthem_rock") else 1.15
             elif role == "bridge":
                 dur *= 0.95
+            elif song_profile.get("latin_relaxed"):
+                dur *= 0.88
             voicing = _voicing_for_comp(chord, level, style, comp_idx)
             comp_vol = 0.022 * intensity
             if role == "verse":
                 comp_vol *= 0.72
             elif role == "chorus":
-                comp_vol *= 1.12
+                comp_vol *= 1.14 if song_profile.get("anthem_rock") else 1.12
+            if song_profile.get("comp_stab"):
+                dur *= 0.55
+                comp_vol *= 1.2
+            t_comp = _humanize_time(
+                _groove_time(bar_start, b, beat, style, swing=swing_amt),
+                seed=idx * 53 + comp_idx,
+                amount=humanize * 0.7,
+                beat_len=beat,
+            )
             for note in voicing:
                 _add_tone(
                     audio,
                     sr,
-                    _groove_time(bar_start, b, beat, style),
+                    t_comp,
                     dur,
                     note,
-                    comp_vol,
+                    _humanize_volume(comp_vol, idx + comp_idx + note),
                     comp_wave,
                 )
 
         for b in patterns["hat_beats"]:
-            hat_vol = 0.007 if style == "Ballad" else 0.011
+            hat_vol = (0.006 if style == "Ballad" else 0.010) * hat_mul
             if role == "chorus":
-                hat_vol *= 1.25
+                hat_vol *= 1.28
             _add_noise_hit(
                 audio,
                 sr,
-                _groove_time(bar_start, b, beat, style),
-                0.030,
+                _humanize_time(
+                    _groove_time(bar_start, b, beat, style, swing=swing_amt),
+                    seed=idx * 31 + int(b * 100),
+                    amount=humanize * 0.5,
+                    beat_len=beat,
+                ),
+                0.028,
                 hat_vol * intensity,
                 seed=idx * 31 + int(b * 100) + (groove_seed % 997),
             )
 
         for b in patterns["snare_beats"]:
+            snare_vol = 0.032 * intensity
+            if song_profile.get("cross_stick"):
+                snare_vol *= 0.65
+            _add_noise_hit(
+                audio,
+                sr,
+                _groove_time(bar_start, b, beat, style, swing=swing_amt),
+                0.055,
+                _humanize_volume(snare_vol, idx * 67 + int(b * 100)),
+                seed=idx * 67 + int(b * 100),
+            )
+
+        for b in patterns.get("ghost_snare", []):
+            _add_noise_hit(
+                audio,
+                sr,
+                _groove_time(bar_start, b, beat, style, swing=swing_amt),
+                0.025,
+                0.010 * intensity,
+                seed=idx * 71 + int(b * 50),
+            )
+
+        for b in patterns.get("cross_stick", []):
             _add_noise_hit(
                 audio,
                 sr,
                 _groove_time(bar_start, b, beat, style),
-                0.055,
-                0.030 * intensity,
-                seed=idx * 67 + int(b * 100),
+                0.040,
+                0.014 * intensity,
+                seed=idx * 73 + int(b * 40),
             )
 
         for b in patterns["kick_beats"]:
             _add_tone(
                 audio,
                 sr,
-                bar_start + b * beat,
+                _humanize_time(
+                    bar_start + b * beat,
+                    seed=idx * 83 + int(b * 10),
+                    amount=humanize * 0.35,
+                    beat_len=beat,
+                ),
                 0.07,
                 36,
-                0.070 * intensity,
+                _humanize_volume(0.070 * intensity * kick_mul, idx * 83),
                 "bass",
             )
 

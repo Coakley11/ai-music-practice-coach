@@ -116,6 +116,7 @@ from songs.playback_defaults import (
     sync_backing_groove_before_widget,
     sync_playback_defaults_for_active_song,
 )
+from tuner_tone_ui import render_tuner_tone_section
 from instrument_transposition import (
     CHART_IN_INSTRUMENT_KEY_KEY,
     SELECTED_TRANSPOSING_INSTRUMENT_KEY,
@@ -4542,6 +4543,82 @@ def _render_practice_setup_panel(
     )
 
 
+BACKING_QUICK_SECTION_KEY = "backing_quick_section"
+
+
+def _sync_backing_quick_section_from_scope(section_names: list[str]) -> None:
+    """Keep quick section picker aligned with main playback scope widgets."""
+    scope = st.session_state.get("backing_track_scope", "Full song")
+    if scope == "Single section":
+        sec = st.session_state.get("backing_track_single_section")
+        if sec in section_names:
+            st.session_state[BACKING_QUICK_SECTION_KEY] = sec
+            return
+    st.session_state[BACKING_QUICK_SECTION_KEY] = "Full song"
+
+
+def _apply_backing_quick_section_choice(choice: str, section_names: list[str]) -> None:
+    if choice == "Full song":
+        st.session_state["backing_track_scope"] = "Full song"
+    elif choice in section_names:
+        st.session_state["backing_track_scope"] = "Single section"
+        st.session_state["backing_track_single_section"] = choice
+
+
+def _render_backing_quick_playback_controls(
+    *,
+    song_id: str,
+    default_bpm: int,
+    section_names: list[str],
+) -> int:
+    """Compact BPM + section controls next to Generate / Stop (single BPM widget)."""
+    sync_backing_bpm_before_widget(st, song_id, default_bpm)
+    _sync_backing_quick_section_from_scope(section_names)
+    quick_opts = ["Full song"] + list(section_names)
+
+    st.markdown(
+        '<p class="ui-page-nav-label" style="margin-top:0.75rem;">Quick playback controls</p>',
+        unsafe_allow_html=True,
+    )
+    row1, row2 = st.columns([1.35, 1.65])
+    with row1:
+        bpm = st.slider(
+            "BPM",
+            50,
+            180,
+            int(st.session_state.get("backing_track_bpm", default_bpm)),
+            5,
+            key="backing_track_bpm",
+            help="Synced with Backing / tempo above — change here while you practice.",
+        )
+    with row2:
+        cur_quick = st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song")
+        if cur_quick not in quick_opts:
+            cur_quick = "Full song"
+        idx = quick_opts.index(cur_quick)
+
+        def _on_quick_section() -> None:
+            _apply_backing_quick_section_choice(
+                st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song"),
+                section_names,
+            )
+            st.rerun()
+
+        st.selectbox(
+            "Section",
+            quick_opts,
+            index=idx,
+            key=BACKING_QUICK_SECTION_KEY,
+            on_change=_on_quick_section,
+            help="Jump to a section without scrolling to Playback settings.",
+        )
+        _apply_backing_quick_section_choice(
+            st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song"),
+            section_names,
+        )
+    return int(bpm)
+
+
 def _render_backing_tempo_panel(
     *,
     song_title: str,
@@ -4550,23 +4627,18 @@ def _render_backing_tempo_panel(
     default_groove: str,
     backing_ready: bool,
 ) -> int:
-    """Backing Track page — BPM and groove (widget created once per run)."""
+    """Backing Track page — groove + BPM display (slider lives in quick controls)."""
     sync_backing_bpm_before_widget(st, song_id, default_bpm)
     sync_backing_groove_before_widget(st, song_id, default_groove)
+    bpm = int(st.session_state.get("backing_track_bpm", default_bpm))
     st.markdown(
         '<p class="ui-page-nav-label">Backing / tempo</p>',
         unsafe_allow_html=True,
     )
     b1, b2, b3 = st.columns(3)
     with b1:
-        bpm = st.slider(
-            "BPM (tempo)",
-            50,
-            180,
-            int(st.session_state.get("backing_track_bpm", default_bpm)),
-            5,
-            key="backing_track_bpm",
-        )
+        st.metric("BPM", bpm)
+        st.caption("Adjust below **Generate** — quick slider stays in sync.")
     with b2:
         st.selectbox(
             "Groove / style",
@@ -4938,6 +5010,13 @@ if _studio_page == "practice":
         st,
         concert_key=display_key,
         instrument=instrument,
+    )
+
+    render_tuner_tone_section(
+        st,
+        instrument=instrument,
+        display_key=display_key,
+        key_prefix=f"practice_tuner::{song}",
     )
 
     if _is_full_song:
@@ -5391,6 +5470,21 @@ elif _studio_page == "backing":
             f"**{_handoff_sec or 'the selected section'}** (full song or other sections still available below)."
         )
 
+    sync_backing_bpm_before_widget(st, _playback_id, _default_bpm)
+    bpm = int(st.session_state.get("backing_track_bpm", _default_bpm))
+    playback_scope = st.session_state.get("backing_track_scope", "Full song")
+    if playback_scope == "Single section":
+        selected_section_names = [
+            st.session_state.get("backing_track_single_section", "")
+        ]
+        selected_section_names = [n for n in selected_section_names if n in _sec_names]
+    elif playback_scope == "Multiple selected sections":
+        selected_section_names = list(
+            st.session_state.get("backing_track_multi_sections") or []
+        )
+    else:
+        selected_section_names = []
+
     selected_section_names = selected_section_names or []
     groove_style = st.session_state.get("backing_groove_style", "Auto")
     backing_chords = chord_blocks_for_selected_sections(sections, selected_section_names)
@@ -5451,6 +5545,31 @@ elif _studio_page == "backing":
                 unsafe_allow_html=True,
             )
 
+    _follow_key_prefix = f"backing::{song}::{tuple(selected_section_names)}::{display_key}::{bpm}::{form_loops}"
+
+    st.markdown(
+        '<div class="ui-card soft"><div class="ui-card-title">Generate & play</div>',
+        unsafe_allow_html=True,
+    )
+    bpm = _render_backing_quick_playback_controls(
+        song_id=_playback_id,
+        default_bpm=_default_bpm,
+        section_names=_sec_names,
+    )
+    _sync_backing_quick_section_from_scope(_sec_names)
+    if st.session_state.get("backing_track_scope") == "Single section":
+        _q_sec = st.session_state.get("backing_track_single_section", "")
+        if _q_sec in _sec_names:
+            selected_section_names = [_q_sec]
+    elif st.session_state.get("backing_track_scope") == "Full song":
+        selected_section_names = []
+    backing_chords = chord_blocks_for_selected_sections(sections, selected_section_names)
+    backing_events = chord_events_for_selected_sections(sections, selected_section_names)
+    section_scope_label = (
+        "full form"
+        if not selected_section_names
+        else " + ".join(selected_section_names)
+    )
     _current_backing_signature = (
         song,
         display_key,
@@ -5461,16 +5580,14 @@ elif _studio_page == "backing":
         tuple(selected_section_names),
         tuple(backing_chords),
     )
-    _follow_key_prefix = f"backing::{song}::{tuple(selected_section_names)}::{display_key}::{bpm}::{form_loops}"
-
-    st.markdown(
-        '<div class="ui-card soft"><div class="ui-card-title">Generate & play</div>',
-        unsafe_allow_html=True,
-    )
     _backing_audio_ready = bool(
         st.session_state.get("_last_backing_wav")
         and st.session_state.get("_last_backing_signature") == _current_backing_signature
     )
+    if bpm != _default_bpm or selected_section_names:
+        st.caption(
+            "Tip: after changing BPM or section, press **Generate backing track** again to refresh audio."
+        )
     _gen_col, _stop_col = st.columns([2, 1])
     with _gen_col:
         _gen_clicked = st.button(
@@ -5489,6 +5606,7 @@ elif _studio_page == "backing":
         ):
             _stop_backing_playback()
             st.rerun()
+
     if _gen_clicked:
         wav = generate_backing_track(
             backing_events,
