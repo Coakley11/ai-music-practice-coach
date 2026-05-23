@@ -214,8 +214,18 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     plan_items = "".join(f"<li>{_esc(p)}</li>" for p in result.get("practice_plan", []))
 
     tempo_line = ""
-    if result.get("tempo"):
-        tempo_line = f"<span class='ra-pill'>~{result['tempo']:.0f} BPM detected</span>"
+    tempo_val = result.get("tempo")
+    if tempo_val is not None:
+        try:
+            tempo_line = (
+                f"<span class='ra-pill'>~{_esc(f'{float(tempo_val):.0f}')} BPM detected</span>"
+            )
+        except (TypeError, ValueError):
+            pass
+
+    duration = float(result.get("duration", 0) or 0)
+    duration_text = _esc(f"{duration:.1f}s")
+    instrument_text = _esc(result.get("instrument", ""))
 
     return f"""
 {ANALYSIS_CSS}
@@ -225,7 +235,7 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     <p>{_esc(result.get('coach_summary', ''))}</p>
     <div class="ra-pills">
       {tempo_line}
-      <span class="ra-pill">{_esc(result.get('duration', 0)):.1f}s · {_esc(result.get('instrument', ''))}</span>
+      <span class="ra-pill">{duration_text} · {instrument_text}</span>
       <span class="ra-pill issue">⚠ {_esc(result.get('biggest_issue', ''))}</span>
       <span class="ra-pill focus">→ {_esc(result.get('next_focus', ''))}</span>
     </div>
