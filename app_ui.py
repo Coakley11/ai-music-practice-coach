@@ -350,6 +350,27 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   font-size: 0.86rem;
   margin: 0 0 0.55rem 0;
 }
+.ui-guidance-card {
+  border: 1px solid var(--studio-line);
+  border-radius: var(--studio-radius);
+  padding: 0.7rem 0.95rem;
+  margin: 0.35rem 0 1rem 0;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+.ui-guidance-title {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--studio-ink);
+  margin: 0 0 0.4rem 0;
+}
+.ui-guidance-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--studio-muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+.ui-guidance-list li { margin-bottom: 0.25rem; }
 .ui-source-banner {
   border-radius: 12px;
   padding: 0.65rem 0.75rem;

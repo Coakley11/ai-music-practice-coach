@@ -270,6 +270,16 @@ def transposition_blurb(
     return " ".join(lines)
 
 
+def charts_shown_in_key(
+    concert_key: str,
+    written_key: str,
+    *,
+    show_in_instrument_key: bool,
+) -> str:
+    """Key label for charts — written when instrument-key mode is on, else concert."""
+    return written_key if show_in_instrument_key else concert_key
+
+
 def effective_chart_key(
     concert_key: str,
     instrument: str,
@@ -357,12 +367,16 @@ def render_sidebar_transposing_recap(
     written = written_key_for_instrument(concert_key, instrument, st.session_state)
     t_type = selected_transposing_type(st.session_state, instrument)
     show_written = chart_in_instrument_key(st.session_state)
-    chart_k, _ = effective_chart_key(concert_key, instrument, st.session_state)
+    charts_in = charts_shown_in_key(
+        concert_key,
+        written,
+        show_in_instrument_key=show_written,
+    )
     st.sidebar.markdown(
         f'<div class="ui-card soft" style="margin:0.5rem 0;padding:0.65rem;">'
         f"<strong>Concert key:</strong> {html.escape(concert_key)}<br>"
         f"<strong>Written key:</strong> {html.escape(written)}<br>"
-        f"<strong>Charts show:</strong> {html.escape(chart_k)}<br>"
+        f"<strong>Charts shown in:</strong> {html.escape(charts_in)}<br>"
         f"<small>{html.escape(instrument_display_name(t_type, instrument))}</small>"
         f"{' · written charts on' if show_written else ' · concert charts'}"
         f"</div>",
@@ -405,6 +419,42 @@ def render_transposing_info_card(
     return effective_chart_key(concert_key, instrument, st.session_state)
 
 
+def render_transposing_key_summary_card(
+    st: Any,
+    *,
+    concert_key: str,
+    instrument: str,
+    session_state: dict,
+) -> None:
+    """White summary card — concert, instrument, written, and charts-shown keys."""
+    import html
+
+    if not is_transposing_instrument(instrument):
+        return
+    t_type = selected_transposing_type(session_state, instrument)
+    written = written_key_for_type(concert_key, t_type)
+    inst_name = instrument_display_name(t_type, instrument)
+    show_written = chart_in_instrument_key(session_state)
+    charts_in = charts_shown_in_key(
+        concert_key,
+        written,
+        show_in_instrument_key=show_written,
+    )
+    mode_label = "ON" if show_written else "OFF"
+    st.markdown(
+        f'<div class="ui-card soft" style="margin:0.65rem 0;">'
+        f'<p class="ui-card-title">Chart key / transposition</p>'
+        f'<p class="ui-card-sub" style="margin:0;line-height:1.55;">'
+        f"<strong>Concert key:</strong> {html.escape(concert_key)}<br>"
+        f"<strong>Instrument:</strong> {html.escape(inst_name)}<br>"
+        f"<strong>Written key:</strong> {html.escape(written)}<br>"
+        f"<strong>Show charts in instrument key:</strong> {mode_label}<br>"
+        f"<strong>Charts shown in:</strong> {html.escape(charts_in)}"
+        f"</p></div>",
+        unsafe_allow_html=True,
+    )
+
+
 def render_practice_transposing_panel(
     st: Any,
     *,
@@ -412,8 +462,6 @@ def render_practice_transposing_panel(
     instrument: str,
 ) -> dict[str, str]:
     """Practice-page transposing controls (single widget source for type + checkbox)."""
-    import html
-
     if not is_transposing_instrument(instrument):
         return resolve_practice_keys(st.session_state, concert_key, instrument)
 
@@ -434,21 +482,6 @@ def render_practice_transposing_panel(
         elif instrument == "Clarinet":
             st.markdown("**Clarinet** — **Bb instrument** (reads in written key above concert pitch).")
 
-        t_type = selected_transposing_type(st.session_state, instrument)
-        written = written_key_for_type(concert_key, t_type)
-        inst_label = "Eb instrument" if is_eb_instrument(t_type) else "Bb instrument"
-
-        k1, k2, k3 = st.columns(3)
-        with k1:
-            st.markdown(f"**Concert key**  \n{concert_key}")
-        with k2:
-            st.markdown(f"**Written key**  \n{written}")
-        with k3:
-            st.markdown(
-                f"**Instrument**  \n{html.escape(instrument_display_name(t_type, instrument))} "
-                f"({inst_label})"
-            )
-
         st.checkbox(
             "Show all charts in my instrument key",
             key=CHART_IN_INSTRUMENT_KEY_KEY,
@@ -458,15 +491,12 @@ def render_practice_transposing_panel(
             ),
         )
 
-        show_written = chart_in_instrument_key(st.session_state)
-        if show_written:
-            st.caption(
-                f"Charts and coach material are in **{written}** (your written key)."
-            )
-        else:
-            st.caption(
-                f"Charts stay in **concert {concert_key}**. Finger/read in **{written}** on your instrument."
-            )
+    render_transposing_key_summary_card(
+        st,
+        concert_key=concert_key,
+        instrument=instrument,
+        session_state=st.session_state,
+    )
 
     return resolve_practice_keys(st.session_state, concert_key, instrument)
 
@@ -577,6 +607,7 @@ __all__ = [
     "apply_instrument_key_display",
     "apply_pending_transposing_instrument",
     "chart_in_instrument_key",
+    "charts_shown_in_key",
     "default_transposing_type",
     "effective_chart_key",
     "ensure_transposing_defaults",
@@ -589,6 +620,7 @@ __all__ = [
     "options_for_instrument",
     "render_practice_transposing_helper",
     "render_practice_transposing_panel",
+    "render_transposing_key_summary_card",
     "render_sidebar_transposing_controls",
     "render_sidebar_transposing_recap",
     "render_transposing_info_card",

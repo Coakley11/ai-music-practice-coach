@@ -117,6 +117,17 @@ from songs.playback_defaults import (
     sync_playback_defaults_for_active_song,
 )
 from tuner_tone_ui import render_tuner_tone_section
+from page_guidance import (
+    guidance_for_analysis,
+    guidance_for_backing,
+    guidance_for_custom,
+    guidance_for_creative,
+    guidance_for_log,
+    guidance_for_multitrack,
+    guidance_for_picker,
+    guidance_for_practice,
+    render_guidance_card,
+)
 from instrument_transposition import (
     CHART_IN_INSTRUMENT_KEY_KEY,
     TRANSPOSING_INSTRUMENTS,
@@ -4090,22 +4101,39 @@ def _global_quick_songs_for_genre(genre: str) -> list[str]:
     return _pick_keys_from_records(_picker_visible_records(), genre=genre)
 
 
-def _render_catalog_health_debug() -> None:
-    """Sidebar / debug counts so a shrunken catalog is obvious."""
+def _render_catalog_health_debug(*, in_sidebar: bool = True) -> None:
+    """Library diagnostics — intended for the bottom Developer / Library expander."""
     total = len(ALL_SONG_RECORDS)
     visible = len(_picker_visible_records())
-    st.sidebar.caption(f"**Songs loaded:** {total} in catalog · **{visible}** match current filters")
+    writer = st.sidebar if in_sidebar else st
+    writer.caption(f"**Songs loaded:** {total} in catalog")
+    writer.caption(f"**Visible songs:** {visible} match current filters")
+    writer.caption(f"**Genres:** {len(GENRES)}")
     if CATALOG_LOAD_ERROR:
-        st.sidebar.error(f"Last catalog load error: {CATALOG_LOAD_ERROR!r}")
+        writer.error(f"Last catalog load error: {CATALOG_LOAD_ERROR!r}")
     if total < 20:
-        st.sidebar.warning(
+        writer.warning(
             f"Only **{total}** songs loaded — expected 80+. Check song_catalog/ on deploy."
         )
     elif visible < total:
-        st.sidebar.info(
-            f"Filters hide {total - visible} songs. Enable **Developer Mode** in Catalog debug "
+        writer.info(
+            f"Filters hide {total - visible} songs. Enable **Developer Mode** below "
             f"to adjust library scope on **Song Selection**."
         )
+
+
+def _render_sidebar_developer_library_panel() -> None:
+    """Collapsed footer — catalog stats and developer mode (normal users can ignore)."""
+    with st.sidebar.expander("Developer / Library Info", expanded=False):
+        _render_catalog_health_debug(in_sidebar=False)
+        st.checkbox(
+            "Developer Mode",
+            value=bool(st.session_state.get("developer_mode", False)),
+            key="developer_mode",
+            help="Shows advanced library filters on Song Selection (hidden for normal users).",
+        )
+        if CATALOG_LOAD_ERROR:
+            st.caption(f"Load error: {CATALOG_LOAD_ERROR!r}")
 
 
 def _fmt_global_pick(opt: str) -> str:
@@ -4743,7 +4771,6 @@ if is_custom_progression(st.session_state):
     st.sidebar.caption("Edit chords in **Custom Progression Lab**.")
 else:
     st.sidebar.caption(f"**{_catalog_song}** · {_catalog_genre}")
-    st.sidebar.caption(chart_source_caption(_catalog_song_data))
 
 st.session_state.setdefault("instrument", "Piano")
 st.session_state.setdefault("level", "Intermediate")
@@ -4806,21 +4833,6 @@ st.sidebar.selectbox(
     key="focus",
 )
 
-sidebar_section("Library", icon="📚", tone="library")
-_render_catalog_health_debug()
-with st.sidebar.expander("Catalog debug", expanded=False):
-    st.checkbox(
-        "Developer Mode",
-        value=bool(st.session_state.get("developer_mode", False)),
-        key="developer_mode",
-        help="Shows advanced library filters on Song Selection (hidden for normal users).",
-    )
-    st.write("Songs loaded:", len(ALL_SONG_RECORDS))
-    st.write("Songs visible (filters):", len(_picker_visible_records()))
-    st.write("Genres:", len(GENRES))
-    if CATALOG_LOAD_ERROR:
-        st.write("Load error:", repr(CATALOG_LOAD_ERROR))
-
 sidebar_section("Session", icon="⏱️", tone="session")
 st.session_state.setdefault("practice_minutes", 30)
 st.sidebar.caption(
@@ -4873,9 +4885,14 @@ chart_key_mode = _key_ctx["chart_key_mode"]
 written_key = _key_ctx["written_key"]
 
 if is_transposing_instrument(instrument):
+    _charts_sidebar = (
+        written_key
+        if chart_key_mode == "written"
+        else concert_key
+    )
     st.sidebar.caption(
         f"**Concert:** {concert_key} · **Written:** {written_key} · "
-        f"**Charts show:** {global_display_key}"
+        f"**Charts shown in:** {_charts_sidebar}"
     )
 
 _chart_bundle = build_active_chart_bundle(
@@ -5001,6 +5018,8 @@ if user_api_key:
 else:
     st.sidebar.caption("Local features work without a key.")
 
+_render_sidebar_developer_library_panel()
+
 section_lyrics = st.session_state.get(section_lyrics_state_key, {})
 catalog_lyric_cues = song_data.get("lyric_cues") or {}
 lyric_cues = {
@@ -5030,18 +5049,6 @@ if _studio_page == "practice":
     _render_practice_setup_panel(
         instrument_options=_instrument_options,
         default_groove=default_groove_style,
-    )
-
-    # Key / level / focus recap
-    st.markdown(
-        f'<div class="ui-badge-row">'
-        f'<span class="ui-badge accent">{html.escape(_ui_source_label())}</span>'
-        f'<span class="ui-badge green">Key {html.escape(global_display_key)}</span>'
-        f'<span class="ui-badge">{html.escape(level)}</span>'
-        f'<span class="ui-badge">{html.escape(instrument)}</span>'
-        f'<span class="ui-badge purple">{html.escape(focus)}</span>'
-        f"</div>",
-        unsafe_allow_html=True,
     )
 
     _section_choices = practice_section_options(sections)
@@ -5095,6 +5102,27 @@ if _studio_page == "practice":
     _chart_key_mode = _key_ctx_practice["chart_key_mode"]
     global_display_key = _key_ctx_practice["global_display_key"]
     written_key = _key_ctx_practice["written_key"]
+
+    st.markdown(
+        f'<div class="ui-badge-row">'
+        f'<span class="ui-badge accent">{html.escape(_ui_source_label())}</span>'
+        f'<span class="ui-badge green">Key {html.escape(global_display_key)}</span>'
+        f'<span class="ui-badge">{html.escape(level)}</span>'
+        f'<span class="ui-badge">{html.escape(instrument)}</span>'
+        f'<span class="ui-badge purple">{html.escape(focus)}</span>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    render_guidance_card(
+        st,
+        guidance_for_practice(
+            instrument=instrument,
+            session_state=st.session_state,
+            full_song=_is_full_song,
+            active_section=_active_section,
+        ),
+    )
 
     render_tuner_tone_section(
         st,
@@ -5436,6 +5464,8 @@ elif _studio_page == "picker":
         "Pick your active song from the menu — the card below opens Practice, Backing Track, Creative, or Chord Coach.",
     )
 
+    render_guidance_card(st, guidance_for_picker())
+
     _render_catalog_song_picker_block(
         show_source_toggle=True,
         filters_in_expander=False,
@@ -5496,6 +5526,11 @@ elif _studio_page == "backing":
 
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
         st.warning("Key changed — regenerate backing track")
+
+    render_guidance_card(
+        st,
+        guidance_for_backing(has_audio=bool(st.session_state.get("_last_backing_wav"))),
+    )
 
     bpm = _render_backing_tempo_panel(
         song_title=song,
@@ -5819,13 +5854,9 @@ elif _studio_page == "analysis":
         "Deep timing, pitch, technique, and musicality feedback — personalized practice plans.",
     )
 
-    st.markdown(
-        '<div class="ui-card soft"><div class="ui-card-sub">'
-        "Coach reads rhythm, intonation, groove, dynamics, and ensemble balance from your audio. "
-        "Scores are encouraging estimates — not exam grades. "
-        "Future-ready for live mic, chord ID, and DAW-style markers."
-        "</div></div>",
-        unsafe_allow_html=True,
+    render_guidance_card(
+        st,
+        guidance_for_analysis(has_result=bool(st.session_state.get("last_analysis_result"))),
     )
 
     col_mode, col_type = st.columns([1, 1])
@@ -5930,6 +5961,8 @@ elif _studio_page == "custom":
 
     from cpl_page_ui import render_custom_progression_lab_page
 
+    _render_page_quick_nav("custom")
+    render_guidance_card(st, guidance_for_custom())
     render_custom_progression_lab_page()
 
 
@@ -5942,6 +5975,8 @@ elif _studio_page == "creative":
     _render_page_quick_nav("creative")
 
     compact_page_title("🧠", "Creative Lab", "Harmony, improvisation, and growth tools.")
+
+    render_guidance_card(st, guidance_for_creative())
 
     ctx = current_song_context_lab()
 
@@ -5991,6 +6026,7 @@ elif _studio_page == "multitrack":
         "Multitrack Recorder",
         "Overdub studio — AI feedback on **Analysis** page.",
     )
+    render_guidance_card(st, guidance_for_multitrack())
     st.caption("Headphones recommended. Mic input only unless you include backing in the export.")
 
     MT_SLOTS = [
@@ -6344,6 +6380,8 @@ elif _studio_page == "log":
     _render_page_quick_nav("log")
 
     compact_page_title("📓", "Practice Log", "Session history and progress over time.")
+
+    render_guidance_card(st, guidance_for_log())
 
     _session_mins = st.slider(
         "Target session length (minutes)",
