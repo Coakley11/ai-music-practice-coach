@@ -3961,153 +3961,30 @@ def multitrack_studio_html(
 </div>
 """
 
-def analyze_recording_basic(audio_bytes, filename, target_chords, instrument, level):
-    if librosa is None:
-        return {"ok": False, "message": "Recording analysis requires librosa. Add librosa and soundfile to requirements.txt."}
+def _recording_analysis_context(recording_type: str = "practice") -> dict:
+    from recording_analysis import analysis_context_from_app
 
-    suffix = "." + filename.split(".")[-1].lower() if "." in filename else ".wav"
-
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(audio_bytes)
-            tmp_path = tmp.name
-
-        y, sr = librosa.load(tmp_path, sr=None, mono=True)
-        duration = librosa.get_duration(y=y, sr=sr)
-
-        try:
-            tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
-            tempo = float(np.asarray(tempo).flatten()[0])
-            beat_count = int(len(beats))
-        except Exception:
-            tempo = None
-            beat_count = 0
-
-        pitch_summary = "Pitch tracking was not clear enough."
-        pitch_stability = "Unknown"
-
-        try:
-            f0, voiced_flag, voiced_prob = librosa.pyin(
-                y,
-                fmin=librosa.note_to_hz("C2"),
-                fmax=librosa.note_to_hz("C7")
-            )
-            voiced = f0[~np.isnan(f0)]
-            if len(voiced) > 10:
-                median_hz = float(np.median(voiced))
-                pitch_note = librosa.hz_to_note(median_hz)
-                cents_spread = float(np.std(1200 * np.log2(voiced / median_hz)))
-                if cents_spread < 25:
-                    pitch_stability = "fairly stable"
-                elif cents_spread < 55:
-                    pitch_stability = "moderately stable"
-                else:
-                    pitch_stability = "unstable / drifting"
-                pitch_summary = f"Estimated center pitch: {pitch_note}. Pitch stability: {pitch_stability}."
-        except Exception:
-            pass
-
-        rms = librosa.feature.rms(y=y)[0]
-        dyn_range = float(np.percentile(rms, 90) - np.percentile(rms, 10))
-        if dyn_range < 0.01:
-            dynamics_comment = "Your dynamics look fairly flat. Try adding more shape and phrase direction."
-        elif dyn_range < 0.04:
-            dynamics_comment = "Your dynamics have some shape. Try making phrase peaks and endings more intentional."
-        else:
-            dynamics_comment = "Your dynamics show noticeable contrast. Focus on controlling it musically."
-
-        try:
-            onsets = librosa.onset.onset_detect(y=y, sr=sr)
-            onset_rate = len(onsets) / max(duration, 1)
-        except Exception:
-            onset_rate = 0
-
-        if onset_rate < 0.5:
-            articulation_comment = "Few note attacks detected. This may mean long sustained notes, soft articulation, or unclear attacks."
-        elif onset_rate < 2.5:
-            articulation_comment = "Moderate note activity detected. Good for slow melody or chord work."
-        else:
-            articulation_comment = "Many note attacks detected. Focus on rhythmic cleanliness and not rushing."
-
-        chord_tone_lines = []
-        for ch in target_chords[:8]:
-            try:
-                note_names = [midi_note_name(m) for m in chord_notes(ch)[:4]]
-                chord_tone_lines.append(f"- {ch}: " + " – ".join(note_names))
-            except Exception:
-                chord_tone_lines.append(f"- {ch}: root – 3rd – 5th")
-
-        if level == "Beginner":
-            next_steps = [
-                "Play shorter sections.",
-                "Focus on steady rhythm before speed.",
-                "Match the first note/pitch center clearly.",
-                "Record one clean 20–30 second take."
-            ]
-        elif level == "Intermediate":
-            next_steps = [
-                "Loop the weakest section with the backing track.",
-                "Practice chord tones over the first 4 chords.",
-                "Listen for rushing or dragging against the pulse.",
-                "Record two takes and compare the second to the first."
-            ]
-        else:
-            next_steps = [
-                "Practice guide-tone lines through the form.",
-                "Use rhythmic motifs, not random notes.",
-                "Add intentional dynamics to each phrase.",
-                "Record a full take and evaluate phrasing, time, and harmonic clarity."
-            ]
-
-        return {
-            "ok": True,
-            "duration": duration,
-            "tempo": tempo,
-            "beat_count": beat_count,
-            "pitch_summary": pitch_summary,
-            "dynamics_comment": dynamics_comment,
-            "articulation_comment": articulation_comment,
-            "chord_tones": "\n".join(chord_tone_lines),
-            "next_steps": next_steps,
-            "instrument": instrument,
-            "level": level
-        }
-
-    except Exception as e:
-        return {"ok": False, "message": f"Could not analyze recording: {e}"}
+    return analysis_context_from_app(
+        song=song,
+        song_data=song_data,
+        display_key=display_key,
+        sections=sections,
+        target_chords=full_song_chords,
+        instrument=instrument,
+        level=level,
+        focus=focus,
+        recording_type=recording_type,
+    )
 
 
 def render_recording_analysis_report(result, song, focus):
+    """Legacy wrapper — premium dashboard is rendered by the analysis page."""
+    from recording_analysis_ui import render_analysis_dashboard
+
     if not result.get("ok"):
         st.error(result.get("message", "Analysis failed."))
         return
-
-    st.subheader("Recording Analysis Report")
-    st.write(f"**Song:** {song}")
-    st.write(f"**Instrument:** {result.get('instrument')}")
-    st.write(f"**Level:** {result.get('level')}")
-    st.write(f"**Focus:** {focus}")
-    st.write(f"**Recording length:** {result['duration']:.1f} seconds")
-
-    if result.get("tempo"):
-        st.write(f"**Estimated tempo:** {result['tempo']:.1f} BPM")
-        st.write(f"**Detected beat count:** {result['beat_count']}")
-
-    st.markdown("### Pitch / Intonation")
-    st.write(result["pitch_summary"])
-
-    st.markdown("### Rhythm / Articulation")
-    st.write(result["articulation_comment"])
-
-    st.markdown("### Dynamics")
-    st.write(result["dynamics_comment"])
-
-    st.markdown("### Chord Tones to Practice for This Song")
-    st.markdown(result["chord_tones"])
-
-    st.markdown("### Next Practice Steps")
-    for step in result["next_steps"]:
-        st.write(f"- {step}")
+    st.markdown(render_analysis_dashboard(result), unsafe_allow_html=True)
 
 
 def current_song_context_lab():
@@ -5691,38 +5568,116 @@ elif _studio_page == "backing":
 
 elif _studio_page == "analysis":
 
+    from recording_analysis import analyze_multitrack, analyze_recording
+    from recording_analysis_ui import render_analysis_dashboard
+
     _render_page_quick_nav("analysis")
 
     compact_page_title(
         "🎙️",
-        "Recording Analysis",
-        "Upload or record for tempo, pitch, and chord-tone feedback.",
-    )
-    st.caption("Intermediate analysis — not professional note-by-note grading.")
-
-    analysis_audio = st.file_uploader(
-        "Upload a recording to analyze",
-        type=["wav", "mp3", "m4a", "ogg"],
-        key="analysis_audio_upload"
+        "AI Recording Coach",
+        "Deep timing, pitch, technique, and musicality feedback — personalized practice plans.",
     )
 
-    try:
-        mic_audio = st.audio_input("Or record directly", key="analysis_audio_record")
-    except Exception:
-        mic_audio = None
-        st.caption("Direct microphone recording may not be available in this Streamlit version. Uploading audio will still work.")
+    st.markdown(
+        '<div class="ui-card soft"><div class="ui-card-sub">'
+        "Coach reads rhythm, intonation, groove, dynamics, and ensemble balance from your audio. "
+        "Scores are encouraging estimates — not exam grades. "
+        "Future-ready for live mic, chord ID, and DAW-style markers."
+        "</div></div>",
+        unsafe_allow_html=True,
+    )
 
-    audio_obj = mic_audio if mic_audio is not None else analysis_audio
+    col_mode, col_type = st.columns([1, 1])
+    with col_mode:
+        analysis_mode = st.radio(
+            "Analysis mode",
+            ["Single recording", "Multitrack comparison"],
+            horizontal=True,
+            key="analysis_mode",
+        )
+    with col_type:
+        recording_type = st.selectbox(
+            "Recording type",
+            [
+                "Practice take",
+                "Solo performance",
+                "Over backing track",
+                "Multitrack layer",
+            ],
+            key="analysis_recording_type",
+        )
 
-    if st.button("Analyze my recording"):
+    if analysis_mode == "Single recording":
+        analysis_audio = st.file_uploader(
+            "Upload a recording",
+            type=["wav", "mp3", "m4a", "ogg", "flac"],
+            key="analysis_audio_upload",
+        )
+        try:
+            mic_audio = st.audio_input("Or record live", key="analysis_audio_record")
+        except Exception:
+            mic_audio = None
+            st.caption("Live mic may be unavailable in this Streamlit build — upload still works.")
 
-        if audio_obj is None:
-            st.warning("Upload or record audio first.")
-        else:
-            audio_bytes = audio_obj.getvalue()
-            filename = getattr(audio_obj, "name", "recording.wav")
-            result = analyze_recording_basic(audio_bytes, filename, full_song_chords, instrument, level)
-            render_recording_analysis_report(result, song, focus)
+        audio_obj = mic_audio if mic_audio is not None else analysis_audio
+        if audio_obj is not None:
+            st.audio(audio_obj.getvalue(), format="audio/wav")
+
+        if st.button("Run AI coach analysis", type="primary", key="analysis_run_btn"):
+            if audio_obj is None:
+                st.warning("Upload or record audio first.")
+            else:
+                ctx = _recording_analysis_context(
+                    recording_type=recording_type.lower().replace(" ", "_"),
+                )
+                with st.spinner("Analyzing timing, pitch, groove, and musicality…"):
+                    result = analyze_recording(
+                        audio_obj.getvalue(),
+                        getattr(audio_obj, "name", "recording.wav"),
+                        ctx,
+                    )
+                st.session_state["last_analysis_result"] = result
+                st.session_state["last_analysis_audio"] = audio_obj.getvalue()
+
+        if st.session_state.get("last_analysis_result"):
+            st.divider()
+            st.markdown(
+                render_analysis_dashboard(st.session_state["last_analysis_result"]),
+                unsafe_allow_html=True,
+            )
+            if st.session_state.get("last_analysis_audio"):
+                with st.expander("Playback — analyzed take", expanded=False):
+                    st.audio(st.session_state["last_analysis_audio"], format="audio/wav")
+
+    else:
+        st.caption("Upload 2–6 stems (e.g. guitar, vocal, keys) to compare timing and mix balance.")
+        mt_files = st.file_uploader(
+            "Multitrack layers",
+            type=["wav", "mp3", "m4a", "ogg"],
+            accept_multiple_files=True,
+            key="analysis_multitrack_upload",
+        )
+        if mt_files and st.button("Analyze ensemble", type="primary", key="analysis_mt_btn"):
+            tracks = []
+            for f in mt_files[:6]:
+                tracks.append(
+                    {
+                        "name": f.name,
+                        "filename": f.name,
+                        "bytes": f.getvalue(),
+                        "instrument": "",
+                    }
+                )
+            ctx = _recording_analysis_context(recording_type="multitrack")
+            with st.spinner("Comparing layers…"):
+                mt_result = analyze_multitrack(tracks, ctx)
+            st.session_state["last_analysis_result"] = mt_result
+        if st.session_state.get("last_analysis_result", {}).get("multitrack"):
+            st.markdown(
+                render_analysis_dashboard(st.session_state["last_analysis_result"]),
+                unsafe_allow_html=True,
+            )
 
 
 
