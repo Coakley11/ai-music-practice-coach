@@ -147,6 +147,7 @@ from studio_page_persistence import (
     ensure_creative_improv_initialized,
     ensure_page_initialized,
     handle_studio_page_transition,
+    sanitize_persisted_snapshots,
 )
 from instrument_transposition import (
     CHART_IN_INSTRUMENT_KEY_KEY,
