@@ -190,12 +190,16 @@ def build_active_chart_bundle(
             "time_signature": active.get("time_signature", "4/4") or "4/4",
         }
 
+    from backing_audio import infer_groove_style
+    from .playback_defaults import default_bpm_for_song_data, default_groove_for_song
+
     level_source_sections = sections_for_level(catalog_song_data, level)
     level_song_data = {
         **catalog_song_data,
         "sections": level_source_sections,
     }
     sections = transpose_sections(level_song_data, display_key)
+    ext = catalog_song_data.get("extensions") or {}
     return {
         "source": SOURCE_CATALOG,
         "genre": catalog_genre,
@@ -205,8 +209,11 @@ def build_active_chart_bundle(
         "level_source_sections": level_source_sections,
         "sections": sections,
         "cpl_active": None,
-        "default_bpm": 100,
-        "default_loops": 2,
-        "default_groove": "Auto",
-        "time_signature": "4/4",
+        "default_bpm": default_bpm_for_song_data(catalog_song_data),
+        "default_loops": int(ext.get("default_loops", 2) or 2),
+        "default_groove": default_groove_for_song(
+            catalog_song_data,
+            infer_fn=infer_groove_style,
+        ),
+        "time_signature": ext.get("time_signature", "4/4") or "4/4",
     }

@@ -57,3 +57,13 @@ def render_cpl_page_header() -> None:
         "Custom Progression",
         "Create your own chord progression and play it with a backing track.",
     )
+    try:
+        from instrument_aware import render_instrument_context_strip
+
+        render_instrument_context_strip(
+            st,
+            str(st.session_state.get("instrument") or "Guitar"),
+            "custom",
+        )
+    except Exception:
+        pass

@@ -100,27 +100,27 @@ def render_sidebar_nav_history(
     back_ok = can_go_back(session_state)
     fwd_ok = can_go_forward(session_state)
     sidebar.markdown(
-        '<p class="ui-sb-section tone-nav" style="margin-top:0.15rem;">Navigate</p>',
+        '<p class="ui-sb-nav-label">Navigate</p>',
         unsafe_allow_html=True,
     )
-    c1, c2 = sidebar.columns(2)
+    c1, c2 = sidebar.columns(2, gap="small")
     with c1:
         if st.button(
-            "← Back",
+            "←",
             key="studio_nav_back_btn",
             disabled=not back_ok,
             use_container_width=True,
-            help="Return to the previous page",
+            help="Previous page",
         ):
             if go_back(session_state):
                 rerun_fn()
     with c2:
         if st.button(
-            "Forward →",
+            "→",
             key="studio_nav_forward_btn",
             disabled=not fwd_ok,
             use_container_width=True,
-            help="Go forward again",
+            help="Forward",
         ):
             if go_forward(session_state):
                 rerun_fn()

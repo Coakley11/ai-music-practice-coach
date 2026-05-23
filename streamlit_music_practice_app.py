@@ -110,11 +110,16 @@ from songs import (
 )
 from songs.key_state import mark_display_key_changed
 from songs.playback_defaults import (
+    GROOVE_STYLE_CHOICES,
+    apply_backing_defaults_for_song,
     default_bpm_for_song_data,
     default_groove_for_song,
     playback_song_id,
-    sync_backing_groove_before_widget,
     sync_playback_defaults_for_active_song,
+)
+from backing_display import (
+    render_backing_active_song_card,
+    render_backing_defaults_debug,
 )
 from tuner_tone_ui import render_tuner_tone_section
 from guitar_capo import (
@@ -4315,17 +4320,6 @@ PENDING_BACKING_SCOPE = "_pending_backing_scope"
 PENDING_BACKING_LOOPS = "_pending_backing_loops"
 BACKING_QUICK_SECTION_KEY = "backing_quick_section"
 BACKING_AUTOPLAY = "_backing_autoplay"
-GROOVE_STYLE_CHOICES: tuple[str, ...] = (
-    "Auto",
-    "Pop groove",
-    "Rock groove",
-    "Jazz swing",
-    "Bossa nova",
-    "Funk groove",
-    "Ballad",
-)
-
-
 def _prepare_backing_from_practice(focus: str | None) -> None:
     """Carry Practice section focus into Backing Track (pending keys — safe for widgets)."""
     if practice_is_full_song(focus):
@@ -4754,14 +4748,34 @@ def _render_practice_setup_panel(
     )
 
 
+def _studio_page_header(icon: str, title: str, subtitle: str = "") -> None:
+    """Page title plus subtle instrument-aware context strip."""
+    compact_page_title(icon, title, subtitle)
+    try:
+        from instrument_aware import render_instrument_context_strip
+
+        render_instrument_context_strip(st, instrument, _studio_page)
+    except Exception:
+        pass
+
+
 def _render_backing_quick_playback_controls(
     *,
     song_id: str,
     default_bpm: int,
+    default_groove: str,
+    song_data: dict | None,
     section_names: list[str],
 ) -> int:
     """Quick BPM + section controls next to Generate / Stop (single backing_track_bpm widget)."""
-    sync_backing_bpm_before_widget(st, song_id, default_bpm)
+    apply_backing_defaults_for_song(
+        st,
+        song_id=song_id,
+        default_bpm=default_bpm,
+        default_groove=default_groove,
+        song_data=song_data,
+        infer_fn=infer_groove_style,
+    )
     _prime_backing_quick_section_from_scope(st.session_state, section_names)
     quick_opts = ["Full song"] + list(section_names)
 
@@ -4806,35 +4820,27 @@ def _render_backing_quick_playback_controls(
 
 def _render_backing_tempo_panel(
     *,
-    song_title: str,
-    song_artist: str,
     song_id: str,
     default_bpm: int,
     default_groove: str,
+    song_data: dict | None,
     backing_ready: bool,
 ) -> int:
-    """Backing Track — polished Playback Setup card (BPM + groove + status)."""
-    sync_backing_bpm_before_widget(st, song_id, default_bpm)
-    sync_backing_groove_before_widget(st, song_id, default_groove)
-    bpm = int(st.session_state.get("backing_track_bpm", default_bpm))
-    groove_val = str(st.session_state.get("backing_groove_style", default_groove))
-    if groove_val == "Auto" and default_groove != "Auto":
-        st.session_state["backing_groove_style"] = default_groove
-        groove_val = default_groove
-
-    artist_line = html.escape(song_artist) if song_artist else ""
-    st.markdown(
-        f'<div class="ui-playback-setup">'
-        f'<div class="ui-playback-setup-header">'
-        f'<p class="ui-playback-setup-title">🎧 {html.escape(song_title)}</p>'
-        + (f'<p class="ui-playback-setup-artist">{artist_line}</p>' if artist_line else "")
-        + f'<p class="ui-playback-setup-defaults">Song default: {int(default_bpm)} BPM · {html.escape(default_groove)}</p>'
-        f"</div></div>",
-        unsafe_allow_html=True,
+    """Backing Track — Playback Setup (BPM readout + groove + status)."""
+    bpm, _groove_val = apply_backing_defaults_for_song(
+        st,
+        song_id=song_id,
+        default_bpm=default_bpm,
+        default_groove=default_groove,
+        song_data=song_data,
+        infer_fn=infer_groove_style,
     )
 
     st.markdown('<p class="ui-page-nav-label">Playback setup</p>', unsafe_allow_html=True)
-    st.caption("Change tempo or groove before playing.")
+    st.caption(
+        f"Song default: **{int(default_bpm)} BPM** · **{default_groove}**. "
+        "Adjust tempo or groove before generating."
+    )
 
     col_tempo, col_groove, col_status = st.columns([1.35, 1.2, 0.95])
     with col_tempo:
@@ -5098,16 +5104,24 @@ def _ui_page_badges() -> list[tuple[str, str]]:
 
 
 full_song_chords = chord_blocks_for_backing(sections_for_backing)
-_default_bpm = default_bpm_for_song_data(song_data)
-_default_groove = default_groove_for_song(song_data, infer_fn=infer_groove_style)
+_default_bpm = int(_chart_bundle.get("default_bpm") or default_bpm_for_song_data(song_data))
+_default_groove = str(
+    _chart_bundle.get("default_groove")
+    or default_groove_for_song(song_data, infer_fn=infer_groove_style)
+)
 if is_custom_progression(st.session_state) and _cpl_active:
     _default_bpm = int(_cpl_active.get("bpm", _default_bpm) or _default_bpm)
     _cpl_groove = str(_cpl_active.get("groove_style") or "Auto")
-    _default_groove = (
-        infer_groove_style(song_data, _cpl_groove)
-        if _cpl_groove == "Auto"
-        else _cpl_groove
-    )
+    if _cpl_groove == "Auto":
+        _default_groove = default_groove_for_song(song_data, infer_fn=infer_groove_style)
+    else:
+        from songs.playback_defaults import normalize_groove_label
+
+        _default_groove = normalize_groove_label(
+            _cpl_groove,
+            song_data=song_data,
+            infer_fn=infer_groove_style,
+        )
 _playback_id = playback_song_id(
     is_custom=is_custom_progression(st.session_state),
     song_title=song,
@@ -5120,6 +5134,8 @@ _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     song_id=_playback_id,
     default_bpm=_default_bpm,
     default_groove=_default_groove,
+    song_data=song_data,
+    infer_fn=infer_groove_style,
 )
 _default_song_bpm = _synced_bpm
 
@@ -5165,7 +5181,7 @@ if _studio_page == "practice":
     note_page_visit(st.session_state, "practice")
     _render_page_quick_nav("practice")
 
-    compact_page_title(
+    _studio_page_header(
         "🎯",
         "Song Practice",
         "Set up your session below — change key in the sidebar; pick songs on **Song Selection**.",
@@ -5582,7 +5598,7 @@ elif _studio_page == "picker":
     note_page_visit(st.session_state, "picker")
     _render_page_quick_nav("picker")
 
-    compact_page_title(
+    _studio_page_header(
         "📚",
         "Song Selection",
         "Pick a song, add **Lyrics & Cues** below the active song card, then open Practice or Backing Track.",
@@ -5652,7 +5668,46 @@ elif _studio_page == "picker":
 
 elif _studio_page == "backing":
 
+    note_page_visit(st.session_state, "backing")
     _render_page_quick_nav("backing")
+
+    _studio_page_header(
+        "🎧",
+        "Backing Track",
+        "Generate accompaniment matched to your active song — then play along.",
+    )
+
+    _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
+        st,
+        song_id=_playback_id,
+        default_bpm=_default_bpm,
+        default_groove=_default_groove,
+        song_data=song_data,
+        infer_fn=infer_groove_style,
+    )
+
+    _backing_card_record = dict(_catalog_song_data or song_data)
+    if is_custom_progression(st.session_state) and _cpl_active:
+        _backing_card_record = {
+            **_backing_card_record,
+            "title": str(_cpl_active.get("name") or song),
+            "artist": "Custom progression",
+            "genre": genre or "Custom",
+        }
+    render_backing_active_song_card(
+        st,
+        _backing_card_record,
+        level=level,
+        applied_bpm=_synced_bpm,
+        applied_groove=default_groove_style,
+    )
+    render_backing_defaults_debug(
+        st,
+        song_bpm=_default_bpm,
+        applied_bpm=_synced_bpm,
+        song_groove=_default_groove,
+        applied_groove=default_groove_style,
+    )
 
     if _capo_ctx.enabled and instrument == "Guitar":
         st.markdown(capo_status_banner_html(_capo_ctx), unsafe_allow_html=True)
@@ -5661,11 +5716,10 @@ elif _studio_page == "backing":
         st.warning("Key changed — regenerate backing track")
 
     bpm = _render_backing_tempo_panel(
-        song_title=song,
-        song_artist=str(song_data.get("artist", "")),
         song_id=_playback_id,
         default_bpm=_default_bpm,
         default_groove=default_groove_style,
+        song_data=song_data,
         backing_ready=bool(st.session_state.get("_last_backing_wav")),
     )
     if is_transposing_instrument(instrument):
@@ -5711,8 +5765,7 @@ elif _studio_page == "backing":
             f"**{_handoff_sec or 'the selected section'}** (full song or other sections still available below)."
         )
 
-    sync_backing_bpm_before_widget(st, _playback_id, _default_bpm)
-    bpm = int(st.session_state.get("backing_track_bpm", _default_bpm))
+    bpm = int(st.session_state.get("backing_track_bpm", _synced_bpm))
     playback_scope = st.session_state.get("backing_track_scope", "Full song")
     if playback_scope == "Single section":
         selected_section_names = [
@@ -5794,6 +5847,8 @@ elif _studio_page == "backing":
     bpm = _render_backing_quick_playback_controls(
         song_id=_playback_id,
         default_bpm=_default_bpm,
+        default_groove=default_groove_style,
+        song_data=song_data,
         section_names=_sec_names,
     )
     if st.session_state.get("backing_track_scope") == "Single section":
@@ -5865,11 +5920,12 @@ elif _studio_page == "backing":
 
     if not _backing_audio_ready:
         st.caption(
-            f"Song defaults: **{_default_bpm} BPM** · **{_default_groove}**. "
-            "After changing song, tempo, groove, key, or section, press **Generate** again."
+            f"Song default: **{_default_bpm} BPM** · **{_default_groove}**. "
+            "You can change the BPM, choose which section to play, or change the groove style. "
+            "After making any optional changes, press **Generate**."
         )
     else:
-        st.caption("Audio is ready — press **Play** or use the player below.")
+        st.caption("Audio is ready — press Play or use the player below.")
 
     if _gen_clicked:
         wav = generate_backing_track(
@@ -6008,7 +6064,7 @@ elif _studio_page == "analysis":
 
     _render_page_quick_nav("analysis")
 
-    compact_page_title(
+    _studio_page_header(
         "🎙️",
         "AI Recording Coach",
         "Deep timing, pitch, technique, and musicality feedback — personalized practice plans.",
@@ -6129,7 +6185,7 @@ elif _studio_page == "creative":
     note_page_visit(st.session_state, "creative")
     _render_page_quick_nav("creative")
 
-    compact_page_title("🧠", "Creative Lab", "Harmony, improvisation, and growth tools.")
+    _studio_page_header("🧠", "Creative Lab", "Harmony, improvisation, and growth tools.")
 
     ctx = current_song_context_lab()
 
@@ -6269,7 +6325,7 @@ elif _studio_page == "multitrack":
     note_page_visit(st.session_state, "multitrack")
     _render_page_quick_nav("multitrack")
 
-    compact_page_title(
+    _studio_page_header(
         "🎚️",
         "Multitrack Recorder",
         "Overdub studio — AI feedback on **Analysis** page.",
@@ -6627,7 +6683,7 @@ elif _studio_page == "log":
     note_page_visit(st.session_state, "log")
     _render_page_quick_nav("log")
 
-    compact_page_title("📓", "Practice Log", "Session history and progress over time.")
+    _studio_page_header("📓", "Practice Log", "Session history and progress over time.")
 
     _session_mins = st.slider(
         "Target session length (minutes)",

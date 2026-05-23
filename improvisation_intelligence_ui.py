@@ -74,6 +74,13 @@ def render_improvisation_intelligence_lab(
     song_title = str(ctx.get("song") or "Song")
     artist = str(ctx.get("artist") or "")
 
+    try:
+        from instrument_aware import render_instrument_context_strip
+
+        render_instrument_context_strip(st, instrument, "creative")
+    except Exception:
+        pass
+
     st.markdown(
         '<div class="ui-card soft" style="margin-bottom:1rem;border-left:4px solid #8b5cf6;">'
         '<p class="ui-card-title">🎷 Improvisation Intelligence</p>'
