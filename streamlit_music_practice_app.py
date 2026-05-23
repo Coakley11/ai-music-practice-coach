@@ -1175,17 +1175,6 @@ def _render_lyrics_and_cues_panel(
         song_title,
         song_artist,
     )
-    if song_data is not None and chart_sections is not None:
-        ordered = resolve_lyrics_editor_sections(
-            st.session_state,
-            slug,
-            song_data,
-            chart_sections,
-        )
-    else:
-        ordered = _ordered_section_names_for_lyrics(section_names)
-    if not ordered:
-        ordered = ["Full song"]
 
     has_saved = bool(
         st.session_state.get(song_lyrics_key)
@@ -1195,6 +1184,18 @@ def _render_lyrics_and_cues_panel(
         expanded = True if prominent else has_saved
 
     def _body() -> None:
+        if song_data is not None and chart_sections is not None:
+            ordered = resolve_lyrics_editor_sections(
+                st.session_state,
+                slug,
+                song_data,
+                chart_sections,
+            )
+        else:
+            ordered = _ordered_section_names_for_lyrics(section_names)
+        if not ordered:
+            ordered = ["Full song"]
+
         st.caption(
             "Paste lyrics and performance cues you provide — saved per song, "
             "used on **Practice** and **Backing Track**."
@@ -1323,9 +1324,6 @@ def _render_lyrics_and_cues_panel(
             st.rerun()
 
         st.markdown("---")
-        layout_key = f"lyrics_section_layout::{slug}"
-        if song_data is not None and chart_sections is not None:
-            ordered = list(st.session_state.get(layout_key) or ordered)
         for section_name in ordered:
             default_text = section_lyrics_state.get(
                 section_name,
