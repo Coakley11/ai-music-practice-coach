@@ -5108,6 +5108,12 @@ _practice_groove = str(
 if st.session_state.get("tutorial_open"):
 
     def _tutorial_navigate(page_id: str) -> None:
+        from app_tutorial import TUTORIAL_STEP_KEY, close_tutorial, step_index_for_page
+
+        idx = step_index_for_page(page_id)
+        if idx is not None:
+            st.session_state[TUTORIAL_STEP_KEY] = idx
+        close_tutorial(st.session_state)
         navigate_studio_page(st.session_state, page_id)
         st.rerun()
 
@@ -5117,7 +5123,7 @@ if st.session_state.get("tutorial_open"):
         rerun_fn=st.rerun,
         navigate_fn=_tutorial_navigate,
     )
-    st.divider()
+    st.stop()
 
 # -------------------------------------------------
 # PRACTICE
