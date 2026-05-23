@@ -366,9 +366,22 @@ def _render_open_practice_backing_row(
 
 def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionContext) -> None:
     st.markdown("#### Real-time improvisation coach")
-    summary = level_coaching_summary(improv_ctx.level)
+    from practice_setup_controls import (
+        DEFAULT_INSTRUMENT_OPTIONS,
+        render_setup_quick_controls,
+    )
+
+    live_inst, live_level, live_focus = render_setup_quick_controls(
+        st,
+        session_state=session_state,
+        key_prefix="improv_live_coach",
+        instrument_options=DEFAULT_INSTRUMENT_OPTIONS,
+        label="Instrument · level · focus",
+        show_sync_caption=False,
+    )
+    summary = level_coaching_summary(live_level)
     st.caption(
-        f"**{improv_ctx.level}:** {summary['focus']} · {summary['harmony']}"
+        f"**{live_level}** · focus **{live_focus}** — {summary['focus']} · {summary['harmony']}"
     )
 
     section_map = resolve_improv_sections(session_state, improv_ctx)
@@ -395,8 +408,8 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
         cur,
         key_center=improv_ctx.display_key,
         next_chord=nxt,
-        instrument=improv_ctx.instrument,
-        level=improv_ctx.level,
+        instrument=live_inst,
+        level=live_level,
     )
     _render_chord_coach_card(st, insight)
 

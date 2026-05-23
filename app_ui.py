@@ -1299,6 +1299,21 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   padding: 0.2rem 0.65rem;
   margin-top: 0.15rem;
 }
+.setup-quick-row {
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.35rem 0.5rem 0.15rem 0.5rem;
+  margin: 0.35rem 0 0.65rem 0;
+}
+.setup-quick-row [data-testid="stCaptionContainer"] p {
+  font-size: 0.78rem;
+  margin-bottom: 0.2rem;
+}
+.setup-quick-row [data-testid="column"] .stSelectbox label {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
 /* Custom progression steps */
 .cpl-step-card {
   display: flex;

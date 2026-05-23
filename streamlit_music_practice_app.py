@@ -122,6 +122,11 @@ from backing_display import (
     render_backing_defaults_debug,
 )
 from tuner_tone_ui import render_tuner_tone_section
+from practice_setup_controls import (
+    DEFAULT_INSTRUMENT_OPTIONS,
+    focus_options_for_instrument,
+    render_setup_quick_controls,
+)
 from guitar_capo import (
     build_capo_context,
     capo_status_banner_html,
@@ -2259,6 +2264,14 @@ def render_chord_coach_ui(
         coach_options = coach_options + ["ii–V–I (in key)"]
 
     with st.expander("Chord Finder / How to Play", expanded=expanded):
+        instrument, level, _focus = render_setup_quick_controls(
+            st,
+            session_state=st.session_state,
+            key_prefix=f"{key_prefix}::chord_finder",
+            instrument_options=DEFAULT_INSTRUMENT_OPTIONS,
+            label="Instrument · level · focus",
+            show_sync_caption=False,
+        )
         st.caption("Pick any chord from the selected song and get instrument-specific playing guidance.")
         selected_chord = st.selectbox(
             "Chord to explain",
@@ -2798,98 +2811,6 @@ def _instrument_family(instrument):
     if instrument == "Bass":
         return "bass"
     return "general"
-
-
-FOCUS_OPTIONS_BY_INSTRUMENT = {
-    "Guitar": [
-        "Strumming",
-        "Rhythm Guitar",
-        "Chord Transitions",
-        "Barre Chords",
-        "Fingerstyle",
-        "Triads",
-        "Double Stops",
-        "Lead Guitar",
-        "Soloing",
-        "Dynamics",
-        "Ear Training",
-    ],
-    "Piano": [
-        "Voicings",
-        "Left-Hand Patterns",
-        "Comping",
-        "Voice Leading",
-        "Inversions",
-        "Reharmonization",
-        "Dynamics",
-        "Ear Training",
-    ],
-    "Bass": [
-        "Groove",
-        "Pocket",
-        "Root Motion",
-        "Walking Bass",
-        "Syncopation",
-        "Dynamics",
-        "Ear Training",
-    ],
-    "Saxophone": [
-        "Tone",
-        "Scales",
-        "Articulation",
-        "Bebop Phrasing",
-        "Breath Support",
-        "Guide Tones",
-        "Dynamics",
-        "Ear Training",
-    ],
-    "Flute": [
-        "Tone",
-        "Scales",
-        "Articulation",
-        "Breath Support",
-        "Guide Tones",
-        "Phrasing",
-        "Dynamics",
-        "Ear Training",
-    ],
-    "Trumpet": [
-        "Tone",
-        "Endurance",
-        "Articulation",
-        "Range",
-        "Jazz Phrasing",
-        "Guide Tones",
-        "Dynamics",
-        "Ear Training",
-    ],
-    "Clarinet": [
-        "Tone",
-        "Scales",
-        "Articulation",
-        "Breath Support",
-        "Guide Tones",
-        "Dynamics",
-        "Ear Training",
-    ],
-    "Voice": [
-        "Breath Control",
-        "Phrasing",
-        "Pitch Accuracy",
-        "Emotional Delivery",
-        "Harmony Singing",
-        "Vibrato",
-        "Dynamics",
-        "Ear Training",
-    ],
-}
-
-
-def focus_options_for_instrument(instrument):
-    return FOCUS_OPTIONS_BY_INSTRUMENT.get(
-        instrument,
-        ["Melody", "Harmony", "Rhythm", "Dynamics", "Improvisation", "Technique", "Ear Training"],
-    )
 
 
 def _focus_area(focus):
@@ -4711,7 +4632,10 @@ def _render_practice_setup_panel(
         + setup_pill_html(st.session_state.get("focus", "General"), icon_for_focus(st.session_state.get("focus", "General"))),
         unsafe_allow_html=True,
     )
-    st.caption("Instrument, level, and focus are in the **sidebar** — they stay set as you change pages.")
+    st.caption(
+        "Instrument, level, and focus sync with the **sidebar** and the quick controls inside "
+        "Practice Coach and Chord Finder."
+    )
 
     if "practice_groove_style" not in st.session_state:
         st.session_state["practice_groove_style"] = default_groove
@@ -4953,10 +4877,7 @@ st.sidebar.selectbox(
     on_change=lambda: mark_display_key_changed(st),
 )
 
-_instrument_options = [
-    "Piano", "Guitar", "Bass", "Saxophone", "Flute",
-    "Trumpet", "Clarinet", "Voice", "Other",
-]
+_instrument_options = DEFAULT_INSTRUMENT_OPTIONS
 
 
 def _on_global_instrument_change() -> None:
@@ -5389,6 +5310,14 @@ if _studio_page == "practice":
         st.session_state[exercise_key] = 0
 
     with st.expander("🎯 Practice coach & session settings", expanded=False):
+        _coach_inst, _coach_lvl, _coach_focus = render_setup_quick_controls(
+            st,
+            session_state=st.session_state,
+            key_prefix="practice_coach",
+            instrument_options=_instrument_options,
+            label="Instrument · level · focus",
+            show_sync_caption=False,
+        )
         st.caption(
             f"Session length: **{minutes} min** · chart key: **{global_display_key}**"
             + (
@@ -5397,6 +5326,11 @@ if _studio_page == "practice":
                 else " (concert key from sidebar)."
             )
         )
+        _coach_exercise_key = (
+            f"exercise_variation::{song}::{_coach_inst}::{_coach_lvl}::{_coach_focus}"
+        )
+        if _coach_exercise_key not in st.session_state:
+            st.session_state[_coach_exercise_key] = st.session_state.get(exercise_key, 0)
         st.markdown(
             '<div class="ui-card soft"><div class="ui-card-title">Personalized coach exercise</div>',
             unsafe_allow_html=True,
@@ -5405,10 +5339,10 @@ if _studio_page == "practice":
             song_practice_plan(
                 song,
                 _view_sections,
-                instrument,
-                level,
-                focus,
-                st.session_state[exercise_key],
+                _coach_inst,
+                _coach_lvl,
+                _coach_focus,
+                st.session_state[_coach_exercise_key],
                 section_lyrics=section_lyrics,
                 minutes=minutes,
             )
@@ -5417,7 +5351,7 @@ if _studio_page == "practice":
         col_ex_a, col_ex_b = st.columns([1, 2])
         with col_ex_a:
             if st.button("🔄 New exercise", use_container_width=True):
-                st.session_state[exercise_key] += 1
+                st.session_state[_coach_exercise_key] += 1
                 st.rerun()
         with col_ex_b:
             st.caption("Rotates section targets and raises demand gradually.")
