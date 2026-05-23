@@ -63,6 +63,8 @@ def render_improvisation_intelligence_lab(
     on_open_analysis: Callable[[], None] | None = None,
     on_song_source_change: Callable[[str], None] | None = None,
     apply_style_to_playback: Callable[[], None] | None = None,
+    on_go_song_selection: Callable[[], None] | None = None,
+    on_go_custom_progression: Callable[[], None] | None = None,
 ) -> None:
     """Full Improvisation Intelligence workspace under Creative Lab."""
     init_improvisation_state(session_state, is_custom_active=is_custom)
@@ -112,6 +114,8 @@ def render_improvisation_intelligence_lab(
             on_open_practice=on_open_practice,
             on_song_source_change=on_song_source_change,
             apply_style_to_playback=apply_style_to_playback,
+            on_go_song_selection=on_go_song_selection,
+            on_go_custom_progression=on_go_custom_progression,
         )
     elif active_tab == "Live Coach":
         _tab_live_coach(st, session_state=session_state, improv_ctx=improv_ctx)
@@ -142,6 +146,8 @@ def _tab_entry_modes(
     on_open_practice: Callable[[], None] | None,
     on_song_source_change: Callable[[str], None] | None,
     apply_style_to_playback: Callable[[], None] | None,
+    on_go_song_selection: Callable[[], None] | None = None,
+    on_go_custom_progression: Callable[[], None] | None = None,
 ) -> None:
     entry = st.radio(
         "Improvisation entry mode",
@@ -173,6 +179,13 @@ def _tab_entry_modes(
                 f"{len(improv_ctx.progression_flat)} chords in chart."
             )
             st.caption("Uses the song selected in **Song Selection** (global studio source).")
+            if on_go_song_selection and st.button(
+                "Go to Song Selection",
+                key="improv_go_picker",
+                type="secondary",
+                use_container_width=True,
+            ):
+                on_go_song_selection()
             preview_sections = improv_ctx.sections
         else:
             if is_custom:
@@ -185,6 +198,13 @@ def _tab_entry_modes(
                     "Custom progression is not the active source yet — "
                     "selecting it will switch the studio to your saved CPL progression."
                 )
+            if on_go_custom_progression and st.button(
+                "Go to Custom Progression",
+                key="improv_go_custom",
+                type="secondary",
+                use_container_width=True,
+            ):
+                on_go_custom_progression()
             preview_sections = improv_ctx.sections
 
         if preview_sections:
@@ -615,7 +635,15 @@ def _render_section_chord_map(
     st.caption(cap)
 
 
-def _render_abc(st: Any, abc_text: str) -> None:
+def _render_motif_sheet_music(st: Any, abc_text: str) -> None:
+    """Staff notation first; ABC source in a collapsed expander below (no overlap)."""
+    with st.container():
+        _render_abc(st, abc_text, height=360)
+    with st.expander("ABC source (optional)", expanded=False):
+        st.code(abc_text, language=None)
+
+
+def _render_abc(st: Any, abc_text: str, *, height: int = 360) -> None:
     escaped = (
         abc_text.replace("\\", "\\\\")
         .replace("`", "\\`")
@@ -624,17 +652,21 @@ def _render_abc(st: Any, abc_text: str) -> None:
     doc = f"""
     <html>
     <head>
+    <style>
+      body {{ margin: 0; padding: 8px 4px 16px 4px; overflow: visible; }}
+      #paper {{ min-height: 200px; }}
+    </style>
     <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
     </head>
     <body>
     <div id="paper"></div>
     <script>
-    ABCJS.renderAbc("paper", `{escaped}`, {{ responsive: "resize", staffwidth: 520 }});
+    ABCJS.renderAbc("paper", `{escaped}`, {{ responsive: "resize", staffwidth: 520, paddingbottom: 12 }});
     </script>
     </body>
     </html>
     """
-    components.html(doc, height=220, scrolling=False)
+    components.html(doc, height=height, scrolling=True)
 
 
 def _tab_missions(st: Any, *, session_state: dict, level: str) -> None:

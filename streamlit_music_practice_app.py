@@ -6193,6 +6193,14 @@ elif _studio_page == "creative":
         st.session_state["studio_page"] = "analysis"
         st.rerun()
 
+    def _improv_go_song_selection() -> None:
+        st.session_state["studio_page"] = "picker"
+        st.rerun()
+
+    def _improv_go_custom_progression() -> None:
+        st.session_state["studio_page"] = "custom"
+        st.rerun()
+
     if lab_mode == "Improvisation Intelligence":
         from improvisation_intelligence_ui import render_improvisation_intelligence_lab
 
@@ -6211,6 +6219,8 @@ elif _studio_page == "creative":
             on_open_analysis=_improv_open_analysis,
             on_song_source_change=_improv_on_song_source,
             apply_style_to_playback=_improv_apply_playback_from_style,
+            on_go_song_selection=_improv_go_song_selection,
+            on_go_custom_progression=_improv_go_custom_progression,
         )
     else:
         with st.expander(lab_mode, expanded=True):
