@@ -914,7 +914,7 @@ def render_song_timeline(sections, lyric_cues=None, section_lyrics=None):
             section_lyrics=section_lyrics,
             limit=1,
         )
-        lyric = lyric_lines[0] if lyric_lines else "Add a cue in the sidebar"
+        lyric = lyric_lines[0] if lyric_lines else "Add lyrics or cues on Song Selection"
         blocks.append(
             f"""
             <div class="song-timeline-block" style="flex: {max(1, len(chords))} 1 {width}%;">
@@ -1084,6 +1084,137 @@ def lyric_cues_from_section_lyrics(section_lyrics):
     return cues
 
 
+def _lyrics_cues_session_keys(song_title: str, song_artist: str) -> tuple[str, str, str]:
+    """Return (slug, full_song_key, per_section_state_key) for session persistence."""
+    slug = _song_slug(song_title, song_artist)
+    return slug, f"song_lyrics::{slug}", f"section_lyrics::{slug}"
+
+
+def _ordered_section_names_for_lyrics(section_names: list[str]) -> list[str]:
+    """Stable section order for lyric/cue text areas (Intro → Verse → …)."""
+    names = [str(n).strip() for n in section_names if str(n).strip()]
+    if not names:
+        return []
+
+    def _rank(name: str) -> tuple[int, str]:
+        low = name.lower()
+        if "intro" in low:
+            return (0, name)
+        if "verse" in low:
+            return (1, name)
+        if "pre" in low and "chorus" in low:
+            return (2, name)
+        if "chorus" in low:
+            return (3, name)
+        if "bridge" in low:
+            return (4, name)
+        if "solo" in low:
+            return (5, name)
+        if "outro" in low:
+            return (6, name)
+        return (7, name)
+
+    return sorted(names, key=_rank)
+
+
+def _render_lyrics_and_cues_panel(
+    *,
+    song_title: str,
+    song_artist: str,
+    section_names: list[str],
+    expanded: bool | None = None,
+) -> None:
+    """Lyrics & cues editor on Song Selection — persists for Practice and Backing Track."""
+    slug, song_lyrics_key, section_lyrics_state_key = _lyrics_cues_session_keys(
+        song_title,
+        song_artist,
+    )
+    ordered = _ordered_section_names_for_lyrics(section_names)
+    if not ordered:
+        ordered = ["Full song"]
+
+    has_saved = bool(
+        st.session_state.get(song_lyrics_key)
+        or st.session_state.get(section_lyrics_state_key)
+    )
+    if expanded is None:
+        expanded = has_saved
+
+    with st.expander("📝 Lyrics & Cues", expanded=expanded):
+        st.caption(
+            "Paste lyrics, performance cues, and reminders you provide. "
+            "Saved cues appear on **Practice** and **Backing Track** (not fetched from the web)."
+        )
+        st.markdown("**Paste all lyrics or cues (optional)**")
+        st.text_area(
+            "Paste all lyrics or cues (optional)",
+            value=st.session_state.get(song_lyrics_key, ""),
+            placeholder=(
+                "Optional — paste everything here, then auto-assign to sections.\n"
+                "Verse: first line of lyric\n"
+                "Chorus: hook / breath cue\n"
+                "Bridge: harmony reminder"
+            ),
+            key=song_lyrics_key,
+            height=120,
+            label_visibility="collapsed",
+        )
+        st.caption(
+            "Examples: first lyric line, breath cue, harmony note, chord reminder, "
+            "saxophone articulation, entry cue."
+        )
+
+        suggested = split_lyrics_by_sections(
+            st.session_state.get(song_lyrics_key, ""),
+            ordered,
+        )
+        section_lyrics_state = st.session_state.setdefault(section_lyrics_state_key, {})
+
+        if st.button(
+            "Auto-assign to sections",
+            key=f"auto_assign_lyrics::{slug}",
+            use_container_width=True,
+        ):
+            st.session_state[section_lyrics_state_key] = dict(suggested)
+            st.rerun()
+
+        st.markdown("##### By section")
+        for section_name in ordered:
+            default_text = section_lyrics_state.get(
+                section_name,
+                suggested.get(section_name, ""),
+            )
+            section_lyrics_state[section_name] = st.text_area(
+                section_name,
+                value=default_text,
+                key=f"section_lyrics::{slug}::{_song_slug(section_name)}",
+                height=88,
+                placeholder="Lyrics, cue, or note for this section…",
+            )
+
+        st.session_state[section_lyrics_state_key] = dict(section_lyrics_state)
+
+        if st.button(
+            "Save Lyrics & Cues",
+            key=f"save_lyrics_cues::{slug}",
+            type="primary",
+            use_container_width=True,
+        ):
+            st.session_state[f"_lyrics_saved::{slug}"] = True
+            try:
+                st.toast("Lyrics & cues saved for this song.", icon="📝")
+            except Exception:
+                pass
+            st.success(
+                "Lyrics & cues saved — available on **Practice** and **Backing Track**."
+            )
+
+        if st.session_state.get(f"_lyrics_saved::{slug}") or has_saved:
+            st.caption(
+                "Saved for this song — section focus, charts, and coach tools can reference these cues."
+            )
+
+
 def lyric_cue_markdown(section_name, chords, lyric_cues, instrument, full_section_lyrics=None):
     cues = lyric_cues.get(section_name, []) if lyric_cues else []
     section_text = (full_section_lyrics or {}).get(section_name, "")
@@ -1112,7 +1243,7 @@ def lyric_cue_markdown(section_name, chords, lyric_cues, instrument, full_sectio
     else:
         entry = chords[0] if chords else "the first chord"
         out.append("**Section locator cue:**")
-        out.append(f"- {section_name}: phrase/section entry starts around **{entry}**. Add your own lyric cue in the sidebar for tighter alignment.")
+        out.append(f"- {section_name}: phrase/section entry starts around **{entry}**. Add your own lyric cue on **Song Selection** for tighter alignment.")
 
     return "\n".join(out)
 
@@ -1120,7 +1251,7 @@ def lyric_cue_markdown(section_name, chords, lyric_cues, instrument, full_sectio
 def lyric_guide_markdown(sections, lyric_cues, instrument, section_lyrics=None):
     out = ["### Lyric / Section Cue Guide"]
     if instrument == "Voice":
-        out.append("_Use this to map entrances, breaths, vowels, phrase peaks, and delivery. Paste your own lyrics/cues in the sidebar for exact alignment._")
+        out.append("_Use this to map entrances, breaths, vowels, phrase peaks, and delivery. Add lyrics/cues on **Song Selection** for exact alignment._")
     else:
         out.append("_Short locator cues help you know where you are in the form. The app does not fetch or generate full copyrighted lyrics._")
 
@@ -4464,6 +4595,21 @@ def _render_catalog_song_picker_block(
         active_rec = record_for_pick_key(visible_song_records, active_pick_key)
         if active_rec:
             _render_active_song_card(active_rec)
+            _picker_sections = sections_for_level(
+                active_rec,
+                st.session_state.get("level", "Intermediate"),
+            )
+            _lyrics_expanded = (
+                True
+                if st.session_state.get("instrument") == "Voice"
+                else None
+            )
+            _render_lyrics_and_cues_panel(
+                song_title=str(active_rec.get("title", "")),
+                song_artist=str(active_rec.get("artist", "")),
+                section_names=list(_picker_sections.keys()),
+                expanded=_lyrics_expanded,
+            )
         else:
             st.info("Select a song from the menu above.")
     elif not _developer_mode_enabled():
@@ -4962,48 +5108,6 @@ song_lyrics_slug = _song_slug(
 song_lyrics_key = f"song_lyrics::{song_lyrics_slug}"
 section_lyrics_state_key = f"section_lyrics::{song_lyrics_slug}"
 
-sidebar_section("Lyrics & cues", icon="📝", tone="lyrics")
-with st.sidebar.expander("Lyric cues for active chart", expanded=(instrument == "Voice")):
-    st.caption(
-        "Paste only lyrics or cues you provide. The app does not fetch or generate copyrighted lyrics."
-    )
-    full_song_lyrics = st.text_area(
-        "Paste lyrics for this song",
-        value=st.session_state.get(song_lyrics_key, ""),
-        placeholder=(
-            "Paste user-provided lyrics or short cues here.\n"
-            "Optional format:\n"
-            "Verse: lyric/cue line\n"
-            "Chorus: hook cue\n"
-            "Bridge: delivery cue"
-        ),
-        key=song_lyrics_key,
-        height=150,
-    )
-
-    suggested_section_lyrics = split_lyrics_by_sections(
-        full_song_lyrics,
-        list(sections.keys()),
-    )
-    section_lyrics_state = st.session_state.setdefault(section_lyrics_state_key, {})
-
-    if st.button("Auto-assign lyrics to sections", key=f"auto_assign_lyrics::{song_lyrics_slug}"):
-        st.session_state[section_lyrics_state_key] = dict(suggested_section_lyrics)
-        st.rerun()
-
-    st.caption("Adjust section lyric boxes below if automatic assignment is uncertain.")
-    for section_name in sections.keys():
-        default_text = section_lyrics_state.get(
-            section_name,
-            suggested_section_lyrics.get(section_name, ""),
-        )
-        section_lyrics_state[section_name] = st.text_area(
-            f"{section_name} lyrics / cues",
-            value=default_text,
-            key=f"section_lyrics::{song_lyrics_slug}::{_song_slug(section_name)}",
-            height=90,
-        )
-
 sidebar_section("Optional AI", icon="🔑", tone="ai")
 user_api_key = st.sidebar.text_input(
     "OpenAI API key",
@@ -5449,7 +5553,7 @@ elif _studio_page == "picker":
     compact_page_title(
         "📚",
         "Song Selection",
-        "Pick your active song from the menu — the card below opens Practice, Backing Track, Creative, or Chord Coach.",
+        "Pick a song, add **Lyrics & Cues** below the active song card, then open Practice or Backing Track.",
     )
 
     _render_catalog_song_picker_block(
