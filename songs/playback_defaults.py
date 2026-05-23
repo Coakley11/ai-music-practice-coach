@@ -17,6 +17,31 @@ PENDING_BACKING_GROOVE = "_pending_backing_groove"
 PRACTICE_GROOVE_KEY = "practice_groove_style"
 
 
+def default_bpm_for_song_data(song_data: dict[str, Any] | None) -> int:
+    """BPM from song extensions — matches Active Song card metadata."""
+    song_data = song_data or {}
+    ext = song_data.get("extensions") or {}
+    if ext.get("default_bpm"):
+        try:
+            return int(ext["default_bpm"])
+        except (TypeError, ValueError):
+            pass
+    title = (song_data.get("title") or "").lower()
+    if "how deep" in title:
+        return 105
+    if "shape of you" in title:
+        return 96
+    return 100
+
+
+def reset_playback_song_tracking(st: Any) -> None:
+    """Force BPM/groove widgets to pick up the next active song's defaults."""
+    st.session_state.pop(LAST_BPM_SONG, None)
+    st.session_state.pop(LAST_PLAYBACK_GROOVE_SONG, None)
+    st.session_state.pop(PENDING_BACKING_TRACK_BPM, None)
+    st.session_state.pop(PENDING_BACKING_GROOVE, None)
+
+
 def default_groove_for_song(song_data: dict[str, Any] | None, *, infer_fn) -> str:
     """Resolve groove label from song metadata (extensions + genre)."""
     song_data = song_data or {}

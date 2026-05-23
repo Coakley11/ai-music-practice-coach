@@ -13,6 +13,7 @@ from .key_state import (
     PENDING_DISPLAY_KEY,
     invalidate_backing_cache,
 )
+from .playback_defaults import reset_playback_song_tracking
 
 SELECTED_SONG_STATE_KEY = "selected_song"
 ACTIVE_CATALOG_PICK_KEY = "active_catalog_pick_key"
