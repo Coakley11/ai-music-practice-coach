@@ -4816,20 +4816,20 @@ from app_tutorial import (
     init_tutorial_state,
     maybe_auto_open_tutorial,
     open_tutorial,
-    render_tutorial_sidebar_entry,
     render_tutorial_walkthrough,
+    tutorial_entry_visible,
 )
 
 init_tutorial_state(st.session_state)
 init_nav_history(st.session_state)
-render_tutorial_sidebar_entry(st.sidebar, st.session_state, rerun_fn=st.rerun)
 render_sidebar_nav_history(st.sidebar, st.session_state, rerun_fn=st.rerun)
 
 _brand_t1, _brand_t2 = st.columns([5, 1])
 with _brand_t2:
-    if st.button("📖 Tutorial", key="tutorial_header_btn", use_container_width=True):
-        open_tutorial(st.session_state, step=0)
-        st.rerun()
+    if tutorial_entry_visible(st.session_state):
+        if st.button("📖 Tutorial", key="tutorial_header_btn", use_container_width=True):
+            open_tutorial(st.session_state)
+            st.rerun()
 
 
 def _ui_source_label() -> str:
@@ -5123,7 +5123,7 @@ if st.session_state.get("tutorial_open"):
         rerun_fn=st.rerun,
         navigate_fn=_tutorial_navigate,
     )
-    st.stop()
+    st.divider()
 
 # -------------------------------------------------
 # PRACTICE

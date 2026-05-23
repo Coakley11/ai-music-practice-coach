@@ -125,14 +125,6 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
     },
 ]
 
-QUICK_START_STEPS: list[str] = [
-    "Pick a song on **Song Selection**.",
-    "Open **Practice** and set instrument, level, and focus.",
-    "Open **Backing Track**.",
-    "**Generate** the track, then **Play**.",
-    "**Record** yourself and run **Upload Analysis** for feedback.",
-]
-
 
 def init_tutorial_state(session_state: dict) -> None:
     session_state.setdefault(TUTORIAL_DISMISSED_KEY, False)
@@ -141,8 +133,13 @@ def init_tutorial_state(session_state: dict) -> None:
     session_state.setdefault(TUTORIAL_AUTO_PROMPTED_KEY, False)
 
 
+def tutorial_entry_visible(session_state: dict) -> bool:
+    """Top Tutorial button — hidden after finish or opt-out."""
+    return not bool(session_state.get(TUTORIAL_DISMISSED_KEY))
+
+
 def maybe_auto_open_tutorial(session_state: dict) -> None:
-    """Open the tour once for new users unless they dismissed it."""
+    """Open the tour once for new users unless they dismissed or finished it."""
     if session_state.get(TUTORIAL_DISMISSED_KEY):
         return
     if session_state.get(TUTORIAL_AUTO_PROMPTED_KEY):
@@ -152,56 +149,38 @@ def maybe_auto_open_tutorial(session_state: dict) -> None:
     session_state[TUTORIAL_STEP_KEY] = 0
 
 
-def open_tutorial(session_state: dict, *, step: int = 0) -> None:
+def open_tutorial(session_state: dict, *, reset_step: bool = False) -> None:
+    """Open tutorial; by default resumes the last step."""
     session_state[TUTORIAL_OPEN_KEY] = True
-    session_state[TUTORIAL_STEP_KEY] = max(0, min(step, TOTAL_STEPS - 1))
+    if reset_step:
+        session_state[TUTORIAL_STEP_KEY] = 0
+    else:
+        session_state[TUTORIAL_STEP_KEY] = _clamp_step(
+            session_state.get(TUTORIAL_STEP_KEY, 0)
+        )
 
 
 def close_tutorial(session_state: dict) -> None:
+    """Close panel but keep the top Tutorial button available."""
     session_state[TUTORIAL_OPEN_KEY] = False
 
 
-def dismiss_tutorial(session_state: dict) -> None:
+def complete_tutorial(session_state: dict) -> None:
+    """Finish or opt out — no auto-start, hide top Tutorial button."""
     session_state[TUTORIAL_DISMISSED_KEY] = True
     session_state[TUTORIAL_OPEN_KEY] = False
+    session_state["tutorial_dismiss_checkbox"] = True
 
 
 def _clamp_step(step: int) -> int:
     return max(0, min(int(step), TOTAL_STEPS - 1))
 
 
-def render_tutorial_sidebar_entry(
-    sidebar: Any,
-    session_state: dict,
-    *,
-    rerun_fn: Callable[[], None],
-) -> None:
-    """Tutorial entry at the top of the sidebar."""
-    import streamlit as st
-
-    init_tutorial_state(session_state)
-    sidebar.markdown(
-        '<div class="tutorial-sidebar-entry">'
-        '<p class="ui-sb-section tone-session">📖 Help</p></div>',
-        unsafe_allow_html=True,
-    )
-    if sidebar.button(
-        "First time here? Start Tutorial",
-        key="tutorial_sidebar_start",
-        use_container_width=True,
-        type="primary",
-    ):
-        open_tutorial(session_state, step=0)
-        rerun_fn()
-    if sidebar.button(
-        "Tutorial",
-        key="tutorial_sidebar_open",
-        use_container_width=True,
-    ):
-        open_tutorial(session_state, step=session_state.get(TUTORIAL_STEP_KEY, 0))
-        rerun_fn()
-    if not session_state.get(TUTORIAL_DISMISSED_KEY) and not session_state.get(TUTORIAL_OPEN_KEY):
-        sidebar.caption("New here? The guided tour takes about 3 minutes.")
+def step_index_for_page(page_id: str) -> int | None:
+    for i, step in enumerate(TUTORIAL_STEPS):
+        if step.get("page_id") == page_id:
+            return i
+    return None
 
 
 def _quick_start_html() -> str:
@@ -223,7 +202,7 @@ def render_tutorial_walkthrough(
     rerun_fn: Callable[[], None],
     navigate_fn: Callable[[str], None] | None = None,
 ) -> None:
-    """Full-page guided tour (call when tutorial_open is True)."""
+    """Guided tour panel (shown above page content when tutorial_open is True)."""
     step = _clamp_step(session_state.get(TUTORIAL_STEP_KEY, 0))
     data = TUTORIAL_STEPS[step]
     progress_pct = int((step + 1) / TOTAL_STEPS * 100)
@@ -236,7 +215,7 @@ def render_tutorial_walkthrough(
     <div>
       <p class="tutorial-kicker">Guided tour</p>
       <h2 class="tutorial-title">Welcome to your practice studio</h2>
-      <p class="tutorial-sub">A friendly walkthrough — Step {step + 1} of {TOTAL_STEPS}</p>
+      <p class="tutorial-sub">Step {step + 1} of {TOTAL_STEPS}</p>
     </div>
   </div>
   <div class="tutorial-progress-track" aria-hidden="true">
@@ -279,7 +258,7 @@ def render_tutorial_walkthrough(
             session_state[TUTORIAL_STEP_KEY] = step - 1
             rerun_fn()
     with nav2:
-        _next_label = "Finish ✓" if step >= TOTAL_STEPS - 1 else "Next →"
+        _next_label = "Finish tour ✓" if step >= TOTAL_STEPS - 1 else "Next →"
         if st_module.button(
             _next_label,
             key="tutorial_next",
@@ -287,7 +266,7 @@ def render_tutorial_walkthrough(
             use_container_width=True,
         ):
             if step >= TOTAL_STEPS - 1:
-                close_tutorial(session_state)
+                complete_tutorial(session_state)
             else:
                 session_state[TUTORIAL_STEP_KEY] = step + 1
             rerun_fn()
@@ -298,6 +277,10 @@ def render_tutorial_walkthrough(
             key="tutorial_go_page",
             use_container_width=True,
         ):
+            idx = step_index_for_page(page_id)
+            if idx is not None:
+                session_state[TUTORIAL_STEP_KEY] = idx
+            session_state[TUTORIAL_OPEN_KEY] = False
             navigate_fn(page_id)
     with nav4:
         if st_module.button(
@@ -309,14 +292,16 @@ def render_tutorial_walkthrough(
             rerun_fn()
 
     st_module.divider()
-    c1, c2 = st_module.columns(2)
+    c1, c2, c3 = st_module.columns([2, 1, 1])
     with c1:
         dismiss_key = "tutorial_dismiss_checkbox"
         if dismiss_key not in session_state:
             session_state[dismiss_key] = bool(session_state.get(TUTORIAL_DISMISSED_KEY))
 
         def _on_dismiss_toggle() -> None:
-            session_state[TUTORIAL_DISMISSED_KEY] = bool(session_state.get(dismiss_key))
+            if session_state.get(dismiss_key):
+                complete_tutorial(session_state)
+                rerun_fn()
 
         st_module.checkbox(
             "Don't show again on startup",
@@ -325,9 +310,14 @@ def render_tutorial_walkthrough(
         )
     with c2:
         if st_module.button("Finish tour", key="tutorial_finish", use_container_width=True):
-            close_tutorial(session_state)
+            complete_tutorial(session_state)
+            rerun_fn()
+    with c3:
+        if st_module.button("Start over", key="tutorial_restart", use_container_width=True):
+            session_state[TUTORIAL_STEP_KEY] = 0
             rerun_fn()
 
     st_module.caption(
-        "Reopen anytime from the sidebar: **First time here? Start Tutorial** or **Tutorial**."
+        "Use **Open …** to jump to a page, or **Close** to keep working — "
+        "your place in the tour is saved."
     )
