@@ -24,6 +24,23 @@ def lyrics_section_layout_key(song_slug: str) -> str:
     return f"lyrics_section_layout::{song_slug}"
 
 
+def section_lyrics_widget_key(song_slug: str, section_name: str) -> str:
+    """Must match ``streamlit_music_practice_app._song_slug`` section suffix."""
+    slug_part = re.sub(r"[^a-zA-Z0-9]+", "_", str(section_name).lower()).strip("_")
+    return f"section_lyrics::{song_slug}::{slug_part}"
+
+
+def detect_lyric_text_blocks(raw_text: str) -> list[str]:
+    """Split on blank lines (two or more newlines, optional whitespace)."""
+    text = str(raw_text or "").replace("\r\n", "\n").strip()
+    if not text:
+        return []
+    blocks = [b.strip() for b in re.split(r"\n\s*\n+", text) if b.strip()]
+    if len(blocks) > 1:
+        return blocks
+    return [text]
+
+
 def _section_sort_rank(name: str) -> tuple[int, int, str]:
     low = name.lower()
     num = _section_number(name) or 0
@@ -136,6 +153,7 @@ def remove_lyrics_section(
     layout_key = lyrics_section_layout_key(song_slug)
     layout = [s for s in (session_state.get(layout_key) or []) if s != section_name]
     session_state[layout_key] = layout
+    session_state.pop(section_lyrics_widget_key(song_slug, section_name), None)
     return layout
 
 
@@ -176,6 +194,10 @@ def rename_lyrics_section(
     session_state[layout_key] = layout
     if old_name in section_lyrics:
         section_lyrics[new_name] = section_lyrics.pop(old_name)
+    old_wkey = section_lyrics_widget_key(song_slug, old_name)
+    new_wkey = section_lyrics_widget_key(song_slug, new_name)
+    if old_wkey in session_state:
+        session_state[new_wkey] = session_state.pop(old_wkey)
     return layout, section_lyrics
 
 
@@ -315,7 +337,7 @@ def split_lyrics_by_paragraphs(raw_text: str, section_names: list[str]) -> dict[
     """Assign blank-line-separated paragraphs to sections in chart order."""
     if not raw_text.strip() or not section_names:
         return {}
-    blocks = [b.strip() for b in re.split(r"\n\s*\n+", raw_text.strip()) if b.strip()]
+    blocks = detect_lyric_text_blocks(raw_text)
     if not blocks:
         return {}
     out: dict[str, str] = {}
@@ -323,6 +345,38 @@ def split_lyrics_by_paragraphs(raw_text: str, section_names: list[str]) -> dict[
         if idx < len(blocks):
             out[section_name] = blocks[idx]
     return out
+
+
+def apply_auto_assign_lyrics(
+    session_state: dict,
+    *,
+    song_slug: str,
+    section_lyrics_store_key: str,
+    section_names: list[str],
+    raw_paste: str,
+) -> tuple[dict[str, str], list[str], dict[str, str]]:
+    """
+    Parse paste text and write to both the aggregate store and each widget key.
+
+    Returns (assigned_map, text_blocks, debug_info).
+    """
+    assigned = split_lyrics_by_sections(raw_paste, section_names)
+    blocks = detect_lyric_text_blocks(raw_paste)
+    store = dict(session_state.get(section_lyrics_store_key) or {})
+    store.update(assigned)
+    session_state[section_lyrics_store_key] = store
+    widget_keys: dict[str, str] = {}
+    for section_name, text in assigned.items():
+        wkey = section_lyrics_widget_key(song_slug, section_name)
+        session_state[wkey] = text
+        widget_keys[wkey] = text
+    debug = {
+        "sections": list(section_names),
+        "blocks": blocks,
+        "widget_keys": widget_keys,
+        "assigned": dict(assigned),
+    }
+    return assigned, blocks, debug
 
 
 def split_lyrics_by_sections(raw_text: str, section_names: list[str]) -> dict[str, str]:

@@ -1081,9 +1081,10 @@ def _render_lyrics_and_cues_panel(
         remove_lyrics_section,
         rename_lyrics_section,
         reset_lyrics_section_layout,
+        apply_auto_assign_lyrics,
         lyrics_paste_placeholder,
         resolve_lyrics_editor_sections,
-        split_lyrics_by_sections,
+        section_lyrics_widget_key,
     )
 
     slug, song_lyrics_key, section_lyrics_state_key = _lyrics_cues_session_keys(
@@ -1130,11 +1131,21 @@ def _render_lyrics_and_cues_panel(
             label_visibility="collapsed",
         )
 
-        suggested = split_lyrics_by_sections(
-            st.session_state.get(song_lyrics_key, ""),
-            ordered,
-        )
         section_lyrics_state = st.session_state.setdefault(section_lyrics_state_key, {})
+
+        assign_notice = st.session_state.pop(f"_lyrics_assign_notice::{slug}", None)
+        if assign_notice:
+            st.success(assign_notice)
+
+        if st.session_state.pop(f"_lyrics_assign_warn::{slug}", None):
+            st.warning(
+                "Use blank lines (empty line between sections) or **[Section]** headers "
+                "to split the text."
+            )
+
+        if _developer_mode_enabled() and st.session_state.get(f"_lyrics_assign_debug::{slug}"):
+            with st.expander("Lyrics auto-assign debug", expanded=True):
+                st.json(st.session_state[f"_lyrics_assign_debug::{slug}"])
 
         if song_data is not None and chart_sections is not None:
             st.caption(
@@ -1236,25 +1247,43 @@ def _render_lyrics_and_cues_panel(
             key=f"auto_assign_lyrics::{slug}",
             use_container_width=True,
         ):
-            merged = dict(section_lyrics_state)
-            merged.update(suggested)
-            st.session_state[section_lyrics_state_key] = merged
+            raw_paste = str(st.session_state.get(song_lyrics_key) or "")
+            assigned, blocks, debug = apply_auto_assign_lyrics(
+                st.session_state,
+                song_slug=slug,
+                section_lyrics_store_key=section_lyrics_state_key,
+                section_names=ordered,
+                raw_paste=raw_paste,
+            )
+            st.session_state[f"_lyrics_assign_debug::{slug}"] = debug
+            if len(blocks) <= 1 and len(assigned) <= 1:
+                st.session_state[f"_lyrics_assign_warn::{slug}"] = True
+            elif assigned:
+                st.session_state[f"_lyrics_assign_notice::{slug}"] = (
+                    f"Assigned {len(assigned)} section(s)."
+                )
+            else:
+                st.session_state[f"_lyrics_assign_warn::{slug}"] = True
             st.rerun()
 
         st.markdown("---")
         for section_name in ordered:
-            default_text = section_lyrics_state.get(
-                section_name,
-                suggested.get(section_name, ""),
-            )
+            widget_key = section_lyrics_widget_key(slug, section_name)
+            if widget_key not in st.session_state:
+                st.session_state[widget_key] = str(
+                    section_lyrics_state.get(section_name, "")
+                )
             st.markdown(f"**{_html.escape(section_name)}**")
-            section_lyrics_state[section_name] = st.text_area(
+            st.text_area(
                 f"{section_name} lyrics / cues",
-                value=default_text,
-                key=f"section_lyrics::{slug}::{_song_slug(section_name)}",
+                key=widget_key,
                 height=88,
                 placeholder="Lyrics, cue, or note for this section…",
                 label_visibility="collapsed",
+            )
+            section_lyrics_state[section_name] = st.session_state.get(
+                widget_key,
+                section_lyrics_state.get(section_name, ""),
             )
 
         st.session_state[section_lyrics_state_key] = dict(section_lyrics_state)
