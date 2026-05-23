@@ -1081,6 +1081,7 @@ def _render_lyrics_and_cues_panel(
         remove_lyrics_section,
         rename_lyrics_section,
         reset_lyrics_section_layout,
+        lyrics_paste_placeholder,
         resolve_lyrics_editor_sections,
         split_lyrics_by_sections,
     )
@@ -1123,16 +1124,9 @@ def _render_lyrics_and_cues_panel(
         st.text_area(
             "Paste all lyrics or cues (optional)",
             value=st.session_state.get(song_lyrics_key, ""),
-            placeholder=(
-                "[Intro]\n"
-                "optional intro cue\n\n"
-                "[Verse 1]\n"
-                "I found a love for me…\n\n"
-                "[Chorus 1]\n"
-                "Baby, I'm dancing in the dark…"
-            ),
+            placeholder=lyrics_paste_placeholder(ordered),
             key=song_lyrics_key,
-            height=120,
+            height=min(120 + max(0, len(ordered) - 4) * 18, 320),
             label_visibility="collapsed",
         )
 

@@ -183,6 +183,30 @@ def optional_sections_to_add(layout: list[str]) -> list[str]:
     return [s for s in STANDARD_SECTION_NAMES if s not in layout]
 
 
+def lyrics_paste_placeholder(section_names: list[str]) -> str:
+    """Example paste format using [Section] headers for the active song."""
+    names = [str(n).strip() for n in section_names if str(n).strip()]
+    if not names:
+        return "[Verse]\nyour lyrics or cues"
+    blocks: list[str] = []
+    for name in names:
+        low = name.lower()
+        if "intro" in low:
+            hint = "your intro lyrics or cues"
+        elif "outro" in low:
+            hint = "your outro lyrics or cues"
+        elif "chorus" in low:
+            hint = f"your {name.lower()} lyrics or cues"
+        elif "verse" in low:
+            hint = f"your {name.lower()} lyrics or cues"
+        elif "bridge" in low:
+            hint = f"your {name.lower()} lyrics or cues"
+        else:
+            hint = f"your {name.lower()} lyrics or cues"
+        blocks.append(f"[{name}]\n{hint}")
+    return "\n\n".join(blocks)
+
+
 def _section_base_name(section_name: str) -> str:
     return section_name.split("(", 1)[0].split("/", 1)[0].strip().lower()
 
