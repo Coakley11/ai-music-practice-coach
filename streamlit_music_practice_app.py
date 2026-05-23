@@ -119,10 +119,12 @@ from songs.playback_defaults import (
 from tuner_tone_ui import render_tuner_tone_section
 from instrument_transposition import (
     CHART_IN_INSTRUMENT_KEY_KEY,
+    TRANSPOSING_INSTRUMENTS,
     chart_in_instrument_key,
     effective_chart_key,
     ensure_transposing_defaults,
     is_transposing_instrument,
+    options_for_instrument,
     render_practice_transposing_helper,
     render_sidebar_transposing_controls,
     render_transposing_info_card,
@@ -2090,24 +2092,9 @@ def render_chord_coach_ui(
             st.markdown(fretboard_ascii(coach_target if coach_target != "ii–V–I" else "G", level))
 
 
-TRANSPOSING_INSTRUMENTS = {
-    "Alto Sax (Eb)": 9,
-    "Tenor Sax (Bb)": 2,
-    "Soprano Sax (Bb)": 2,
-    "Bari Sax (Eb)": 9,
-    "Bb Trumpet": 2,
-    "Bb Clarinet": 2,
-}
-
-
 def transposing_instrument_options(instrument):
-    if instrument == "Saxophone":
-        return ["Alto Sax (Eb)", "Tenor Sax (Bb)", "Soprano Sax (Bb)", "Bari Sax (Eb)"]
-    if instrument == "Trumpet":
-        return ["Bb Trumpet"]
-    if instrument == "Clarinet":
-        return ["Bb Clarinet"]
-    return []
+    """Transposing type labels for the active instrument (from instrument_transposition)."""
+    return options_for_instrument(instrument)
 
 
 def transposed_key_for_instrument(concert_key, instrument_label):

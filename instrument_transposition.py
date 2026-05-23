@@ -313,3 +313,125 @@ def render_practice_transposing_helper(
 ) -> tuple[str, str]:
     """Practice page — uses global sidebar settings (no duplicate checkbox)."""
     return render_transposing_info_card(st, concert_key=concert_key, instrument=instrument)
+
+
+# --- Public aliases (documented API / legacy names) ---
+
+# For transpose_chord()-style shifts (matches streamlit TRANSPOSING_INSTRUMENTS labels)
+TRANSPOSING_INSTRUMENTS: dict[str, int] = {
+    "Alto saxophone (Eb)": 9,
+    "Tenor saxophone (Bb)": 2,
+    "Soprano saxophone (Bb)": 2,
+    "Baritone saxophone (Eb)": 9,
+    "Alto Sax (Eb)": 9,
+    "Tenor Sax (Bb)": 2,
+    "Soprano Sax (Bb)": 2,
+    "Bari Sax (Eb)": 9,
+    "Bb Trumpet": 2,
+    "Bb Clarinet": 2,
+}
+
+
+def get_written_key_for_instrument(
+    concert_key: str,
+    instrument: str,
+    session_state: dict,
+) -> str:
+    return written_key_for_instrument(concert_key, instrument, session_state)
+
+
+def get_instrument_transposition(
+    instrument: str,
+    session_state: dict,
+    *,
+    concert_key: str = "C",
+) -> dict[str, str | int | bool]:
+    """Metadata for the active transposing instrument (type, steps, written key)."""
+    ensure_transposing_defaults(session_state, instrument)
+    t_type = selected_transposing_type(session_state, instrument) if is_transposing_instrument(instrument) else ""
+    steps = TRANSPOSING_SEMITONE_STEPS.get(t_type, 0)
+    written = written_key_for_instrument(concert_key, instrument, session_state)
+    chart_key, mode = effective_chart_key(concert_key, instrument, session_state)
+    return {
+        "instrument": instrument,
+        "transposing_type": t_type,
+        "concert_key": concert_key,
+        "written_key": written,
+        "chart_key": chart_key,
+        "chart_key_mode": mode,
+        "semitone_steps": steps,
+        "show_charts_in_instrument_key": chart_in_instrument_key(session_state),
+        "is_eb": is_eb_instrument(t_type) if t_type else False,
+    }
+
+
+def transpose_chord_for_instrument(
+    chord: str,
+    instrument: str,
+    session_state: dict,
+) -> str:
+    """Transpose a chord symbol into written key for the selected transposing type."""
+    from music_theory import transpose_chord
+
+    if not is_transposing_instrument(instrument):
+        return chord
+    t_type = selected_transposing_type(session_state, instrument)
+    steps = TRANSPOSING_INSTRUMENTS.get(t_type, 0)
+    return transpose_chord(chord, steps)
+
+
+def transpose_song_for_instrument(
+    session_state: dict,
+    concert_key: str,
+    instrument: str,
+) -> dict[str, str]:
+    """Resolve keys for transposing a song chart (alias for resolve_practice_keys)."""
+    return resolve_practice_keys(session_state, concert_key, instrument)
+
+
+def apply_instrument_key_display(
+    session_state: dict,
+    concert_key: str,
+    instrument: str,
+) -> dict[str, str]:
+    """Apply global instrument-key display rules; returns key context dict."""
+    return resolve_practice_keys(session_state, concert_key, instrument)
+
+
+__all__ = [
+    "BB_INSTRUMENT_TYPES",
+    "CHART_IN_INSTRUMENT_KEY_KEY",
+    "CONCERT_KEY_SESSION_KEY",
+    "SAXOPHONE_TYPES",
+    "SAX_TYPE_SESSION_KEY",
+    "SELECTED_TRANSPOSING_INSTRUMENT_KEY",
+    "TRANSPOSING_INSTRUMENTS",
+    "TRANSPOSING_SEMITONE_STEPS",
+    "apply_instrument_key_display",
+    "chart_in_instrument_key",
+    "default_transposing_type",
+    "effective_chart_key",
+    "ensure_transposing_defaults",
+    "get_instrument_transposition",
+    "get_written_key_for_instrument",
+    "instrument_display_name",
+    "is_eb_instrument",
+    "is_transposing_instrument",
+    "options_for_instrument",
+    "render_practice_transposing_helper",
+    "render_sidebar_transposing_controls",
+    "render_transposing_info_card",
+    "resolve_practice_keys",
+    "sax_display_name",
+    "sax_transposition_blurb",
+    "sax_written_key_steps",
+    "selected_saxophone_type",
+    "selected_transposing_type",
+    "transposing_instrument_names",
+    "transpose_chord_for_instrument",
+    "transpose_song_for_instrument",
+    "transposition_blurb",
+    "written_key_for_instrument",
+    "written_key_for_saxophone",
+    "written_key_for_type",
+]
