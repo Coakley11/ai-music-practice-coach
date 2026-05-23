@@ -121,7 +121,7 @@ from backing_display import (
     render_backing_active_song_card,
     render_backing_defaults_debug,
 )
-from tuner_tone_ui import render_tuner_tone_section
+from tuner_tone_ui import render_tuner_tone_section, tuner_key_prefix_for_song
 from practice_setup_controls import (
     DEFAULT_INSTRUMENT_OPTIONS,
     focus_options_for_instrument,
@@ -5231,7 +5231,7 @@ if _studio_page == "practice":
         st,
         instrument=instrument,
         display_key=chart_key,
-        key_prefix=f"practice_tuner::{song}",
+        key_prefix=tuner_key_prefix_for_song(song),
     )
 
     if _is_full_song:

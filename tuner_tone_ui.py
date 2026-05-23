@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import re
 from typing import Any
 
 import streamlit as st
@@ -24,6 +25,21 @@ from tuner_tone import (
     pitch_trace_svg,
 )
 
+def _safe_key_part(text: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(text).strip())
+    return (slug[:48] or "song").strip("_")
+
+
+def tuner_key_prefix_for_song(song_title: str) -> str:
+    """Stable Streamlit key prefix (no spaces or punctuation)."""
+    return f"practice_tuner_{_safe_key_part(song_title)}"
+
+
+def _clear_stale_tuner_audio_widget(session_state: dict, key_prefix: str) -> None:
+    """Drop restored snapshot values — Streamlit owns audio_input widget keys."""
+    audio_key = f"{key_prefix}::audio_in"
+    session_state.pop(audio_key, None)
+
 
 def render_tuner_tone_section(
     st_module: Any,
@@ -33,6 +49,13 @@ def render_tuner_tone_section(
     key_prefix: str = "practice_tuner",
 ) -> None:
     """Collapsible Tuner & Tone Development block for the Practice page."""
+    if "::" in key_prefix:
+        # Legacy prefix practice_tuner::{song} — normalize to a safe widget namespace.
+        parts = key_prefix.split("::", 1)
+        key_prefix = tuner_key_prefix_for_song(parts[-1] if len(parts) > 1 else "song")
+    elif not key_prefix.startswith("practice_tuner_"):
+        key_prefix = tuner_key_prefix_for_song(key_prefix)
+
     transposing_type = ""
     if is_transposing_instrument(instrument):
         transposing_type = selected_transposing_type(
@@ -108,12 +131,16 @@ def render_tuner_tone_section(
             "Record a short clip (pluck, long tone, or hum). "
             "Works best in a quiet room with the mic close to the instrument."
         )
+        audio_widget_key = f"{key_prefix}::audio_in"
+        analysis_key = f"{key_prefix}::analysis_result"
+        _clear_stale_tuner_audio_widget(st_module.session_state, key_prefix)
         audio_clip = st_module.audio_input(
             "Listen & analyze",
-            key=f"{key_prefix}::audio_in",
+            key=audio_widget_key,
         )
 
         if audio_clip is None:
+            st_module.session_state.pop(analysis_key, None)
             st_module.markdown(
                 '<div style="text-align:center;padding:1.5rem;color:#64748b;">'
                 "🎤 Waiting for audio — record above to tune or check tone."
@@ -125,6 +152,12 @@ def render_tuner_tone_section(
         raw = audio_clip.getvalue() if hasattr(audio_clip, "getvalue") else audio_clip.read()
         if not raw:
             return
+
+        st_module.session_state[analysis_key] = {
+            "mode": mode,
+            "target_note": target_note,
+            "byte_len": len(raw),
+        }
 
         if mode.startswith("Tune"):
             _render_tune_result(st_module, raw, target_note=target_note, profile=profile)

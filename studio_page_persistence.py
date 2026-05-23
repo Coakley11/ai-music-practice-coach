@@ -269,6 +269,12 @@ def _skip_snapshot_key(key: str) -> bool:
         return True
     if key.endswith("_btn"):
         return True
+    if key.startswith("practice_tuner"):
+        return True
+    if "::audio_in" in key or key.startswith("mt_record_"):
+        return True
+    if key in ("analysis_audio_upload", "analysis_audio_record"):
+        return True
     return False
 
 
