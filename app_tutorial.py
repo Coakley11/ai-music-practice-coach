@@ -8,8 +8,6 @@ from typing import Any, Callable
 TUTORIAL_DISMISSED_KEY = "tutorial_dismissed"
 TUTORIAL_OPEN_KEY = "tutorial_open"
 TUTORIAL_STEP_KEY = "tutorial_step"
-TUTORIAL_AUTO_PROMPTED_KEY = "tutorial_auto_prompted"
-
 TOTAL_STEPS = 8
 
 TUTORIAL_STEPS: list[dict[str, Any]] = [
@@ -130,23 +128,11 @@ def init_tutorial_state(session_state: dict) -> None:
     session_state.setdefault(TUTORIAL_DISMISSED_KEY, False)
     session_state.setdefault(TUTORIAL_OPEN_KEY, False)
     session_state.setdefault(TUTORIAL_STEP_KEY, 0)
-    session_state.setdefault(TUTORIAL_AUTO_PROMPTED_KEY, False)
 
 
 def tutorial_entry_visible(session_state: dict) -> bool:
     """Top Tutorial button — hidden after finish or opt-out."""
     return not bool(session_state.get(TUTORIAL_DISMISSED_KEY))
-
-
-def maybe_auto_open_tutorial(session_state: dict) -> None:
-    """Open the tour once for new users unless they dismissed or finished it."""
-    if session_state.get(TUTORIAL_DISMISSED_KEY):
-        return
-    if session_state.get(TUTORIAL_AUTO_PROMPTED_KEY):
-        return
-    session_state[TUTORIAL_AUTO_PROMPTED_KEY] = True
-    session_state[TUTORIAL_OPEN_KEY] = True
-    session_state[TUTORIAL_STEP_KEY] = 0
 
 
 def open_tutorial(session_state: dict, *, reset_step: bool = False) -> None:

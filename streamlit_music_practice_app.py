@@ -140,12 +140,13 @@ from studio_nav_history import (
 )
 from studio_page_state import (
     apply_improv_song_source,
-    init_analysis_page_state,
-    init_backing_page_state,
-    init_creative_lab_state,
-    init_practice_page_state,
     migrate_legacy_session_keys,
     note_page_visit,
+)
+from studio_page_persistence import (
+    ensure_creative_improv_initialized,
+    ensure_page_initialized,
+    handle_studio_page_transition,
 )
 from instrument_transposition import (
     CHART_IN_INSTRUMENT_KEY_KEY,
@@ -452,7 +453,7 @@ if not _APP_UI_LOADED:
         if not options:
             return None
         if session_state.get(state_key) not in options:
-            session_state[state_key] = options[0]
+            session_state.setdefault(state_key, options[0])
         return st.radio(
             "Section focus",
             options,
@@ -4590,7 +4591,7 @@ def _render_page_quick_nav(current_page: str) -> str:
 def _sync_focus_options_before_widget(instrument: str) -> list[str]:
     opts = focus_options_for_instrument(instrument)
     if st.session_state.get("focus") not in opts:
-        st.session_state["focus"] = opts[0]
+        st.session_state.setdefault("focus", opts[0])
     return opts
 
 
@@ -4637,8 +4638,7 @@ def _render_practice_setup_panel(
         "Practice Coach and Chord Finder."
     )
 
-    if "practice_groove_style" not in st.session_state:
-        st.session_state["practice_groove_style"] = default_groove
+    st.session_state.setdefault("practice_groove_style", default_groove)
     g1, g2 = st.columns([1, 1])
     with g1:
         st.selectbox(
@@ -4814,7 +4814,6 @@ render_studio_brand_header()
 
 from app_tutorial import (
     init_tutorial_state,
-    maybe_auto_open_tutorial,
     open_tutorial,
     render_tutorial_walkthrough,
     tutorial_entry_visible,
@@ -4843,10 +4842,7 @@ def _ui_source_label() -> str:
 _studio_page = ensure_studio_page(st.session_state)
 
 migrate_legacy_session_keys(st.session_state)
-init_creative_lab_state(st.session_state)
-init_practice_page_state(st.session_state)
-init_backing_page_state(st.session_state)
-init_analysis_page_state(st.session_state)
+handle_studio_page_transition(st.session_state)
 note_page_visit(st.session_state, _studio_page)
 
 sidebar_section("Active source", icon="🎼", tone="source")
@@ -5109,8 +5105,6 @@ _practice_groove = str(
     st.session_state.get("practice_groove_style", default_groove_style)
 )
 
-maybe_auto_open_tutorial(st.session_state)
-
 if st.session_state.get("tutorial_open"):
 
     def _tutorial_navigate(page_id: str) -> None:
@@ -5131,6 +5125,7 @@ if st.session_state.get("tutorial_open"):
 
 if _studio_page == "practice":
 
+    ensure_page_initialized(st.session_state, "practice")
     note_page_visit(st.session_state, "practice")
     _render_page_quick_nav("practice")
 
@@ -5577,6 +5572,7 @@ if _studio_page == "practice":
 
 elif _studio_page == "picker":
 
+    ensure_page_initialized(st.session_state, "picker")
     note_page_visit(st.session_state, "picker")
     _render_page_quick_nav("picker")
 
@@ -5650,6 +5646,7 @@ elif _studio_page == "picker":
 
 elif _studio_page == "backing":
 
+    ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
     _render_page_quick_nav("backing")
 
@@ -5728,14 +5725,15 @@ elif _studio_page == "backing":
                 st.selectbox("Section to loop", _sec_names, key="backing_track_single_section")
             ]
         elif playback_scope == "Multiple selected sections" and _sec_names:
-            default_sections = [
-                name for name in _sec_names
-                if any(token in name.lower() for token in ["verse", "chorus"])
-            ] or _sec_names[:2]
+            if "backing_track_multi_sections" not in st.session_state:
+                st.session_state["backing_track_multi_sections"] = [
+                    name
+                    for name in _sec_names
+                    if any(token in name.lower() for token in ["verse", "chorus"])
+                ] or _sec_names[:2]
             selected_section_names = st.multiselect(
                 "Sections to play (keeps original song order)",
                 _sec_names,
-                default=default_sections,
                 key="backing_track_multi_sections",
             )
         form_loops = st.slider("Number of repeats", 1, 10, 2, 1, key="backing_track_loops")
@@ -6040,6 +6038,7 @@ elif _studio_page == "backing":
 
 elif _studio_page == "analysis":
 
+    ensure_page_initialized(st.session_state, "analysis")
     note_page_visit(st.session_state, "analysis")
     from recording_analysis import analyze_multitrack, analyze_recording
     from recording_analysis_ui import render_analysis_dashboard
@@ -6160,6 +6159,7 @@ elif _studio_page == "analysis":
 
 elif _studio_page == "custom":
 
+    ensure_page_initialized(st.session_state, "custom")
     note_page_visit(st.session_state, "custom")
     from cpl_page_ui import render_custom_progression_lab_page
 
@@ -6172,6 +6172,7 @@ elif _studio_page == "custom":
 
 elif _studio_page == "creative":
 
+    ensure_page_initialized(st.session_state, "creative")
     note_page_visit(st.session_state, "creative")
     _render_page_quick_nav("creative")
 
@@ -6312,6 +6313,7 @@ elif _studio_page == "creative":
 
 elif _studio_page == "multitrack":
 
+    ensure_page_initialized(st.session_state, "multitrack")
     note_page_visit(st.session_state, "multitrack")
     _render_page_quick_nav("multitrack")
 
@@ -6670,6 +6672,7 @@ elif _studio_page == "multitrack":
 
 elif _studio_page == "log":
 
+    ensure_page_initialized(st.session_state, "log")
     note_page_visit(st.session_state, "log")
     _render_page_quick_nav("log")
 

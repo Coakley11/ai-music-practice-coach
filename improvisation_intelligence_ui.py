@@ -67,7 +67,9 @@ def render_improvisation_intelligence_lab(
     on_go_custom_progression: Callable[[], None] | None = None,
 ) -> None:
     """Full Improvisation Intelligence workspace under Creative Lab."""
-    init_improvisation_state(session_state, is_custom_active=is_custom)
+    from studio_page_persistence import ensure_creative_improv_initialized
+
+    ensure_creative_improv_initialized(session_state, is_custom_active=is_custom)
 
     instrument = str(ctx.get("instrument") or "Guitar")
     level = str(ctx.get("level") or "Intermediate")

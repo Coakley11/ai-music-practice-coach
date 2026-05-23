@@ -2098,9 +2098,6 @@ def render_page_quick_nav(
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
-    picked = session_state.get(nav_widget_key, current)
-    if picked in TOP_NAV_PAGE_IDS:
-        navigate_studio_page(session_state, picked)
     return session_state.get("studio_page", current)
 
 

@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from studio_page_persistence import (
+    make_history_entry,
+    restore_history_entry,
+    save_page_snapshot,
+)
+
 STUDIO_PAGE_IDS: frozenset[str] = frozenset(
     {
         "practice",
@@ -27,6 +33,15 @@ def init_nav_history(session_state: dict) -> None:
     session_state.setdefault(NAV_FORWARD_STACK, [])
 
 
+def _normalize_stack_entry(entry: Any) -> dict[str, Any]:
+    """Support legacy stacks that stored only a page id string."""
+    if isinstance(entry, dict) and entry.get("page"):
+        return entry
+    if isinstance(entry, str) and entry in STUDIO_PAGE_IDS:
+        return {"page": entry, "snapshot": {}}
+    return {"page": "practice", "snapshot": {}}
+
+
 def can_go_back(session_state: dict) -> bool:
     return bool(session_state.get(NAV_BACK_STACK))
 
@@ -38,7 +53,7 @@ def can_go_forward(session_state: dict) -> bool:
 def navigate_studio_page(session_state: dict, page_id: str) -> bool:
     """
     Set ``studio_page`` and record history (clears forward stack).
-    Returns True if the page actually changed.
+    Snapshots page state when leaving. Returns True if the page changed.
     """
     page_id = str(page_id).strip()
     if page_id not in STUDIO_PAGE_IDS:
@@ -48,41 +63,53 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
         return False
     if not session_state.pop(_NAV_FROM_HISTORY, False):
         if current in STUDIO_PAGE_IDS:
-            back: list[str] = session_state.setdefault(NAV_BACK_STACK, [])
-            if not back or back[-1] != current:
-                back.append(current)
+            save_page_snapshot(session_state, current)
+            back: list[Any] = session_state.setdefault(NAV_BACK_STACK, [])
+            entry = make_history_entry(session_state, current)
+            if not back or _normalize_stack_entry(back[-1]).get("page") != current:
+                back.append(entry)
         session_state[NAV_FORWARD_STACK] = []
     session_state["studio_page"] = page_id
+    from studio_page_persistence import restore_page_snapshot
+
+    restore_page_snapshot(session_state, page_id)
+    session_state["_studio_active_page_id"] = page_id
     return True
 
 
 def go_back(session_state: dict) -> bool:
-    back: list[str] = list(session_state.get(NAV_BACK_STACK) or [])
+    back: list[Any] = list(session_state.get(NAV_BACK_STACK) or [])
     if not back:
         return False
-    target = back.pop()
+    entry = _normalize_stack_entry(back.pop())
     current = str(session_state.get("studio_page", "practice"))
-    forward: list[str] = session_state.setdefault(NAV_FORWARD_STACK, [])
+    forward: list[Any] = session_state.setdefault(NAV_FORWARD_STACK, [])
     if current in STUDIO_PAGE_IDS:
-        forward.append(current)
+        save_page_snapshot(session_state, current)
+        fwd_entry = make_history_entry(session_state, current)
+        forward.append(fwd_entry)
     session_state[NAV_BACK_STACK] = back
     session_state[_NAV_FROM_HISTORY] = True
+    target = restore_history_entry(session_state, entry)
     session_state["studio_page"] = target
     return True
 
 
 def go_forward(session_state: dict) -> bool:
-    forward: list[str] = list(session_state.get(NAV_FORWARD_STACK) or [])
+    forward: list[Any] = list(session_state.get(NAV_FORWARD_STACK) or [])
     if not forward:
         return False
-    target = forward.pop()
+    entry = _normalize_stack_entry(forward.pop())
     current = str(session_state.get("studio_page", "practice"))
-    back: list[str] = session_state.setdefault(NAV_BACK_STACK, [])
+    back: list[Any] = session_state.setdefault(NAV_BACK_STACK, [])
     if current in STUDIO_PAGE_IDS:
-        if not back or back[-1] != current:
-            back.append(current)
+        save_page_snapshot(session_state, current)
+        back_entry = make_history_entry(session_state, current)
+        if not back or _normalize_stack_entry(back[-1]).get("page") != current:
+            back.append(back_entry)
     session_state[NAV_FORWARD_STACK] = forward
     session_state[_NAV_FROM_HISTORY] = True
+    target = restore_history_entry(session_state, entry)
     session_state["studio_page"] = target
     return True
 
