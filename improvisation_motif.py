@@ -8,6 +8,7 @@ from typing import Any
 from music_theory import CHROMATIC, NOTE_TO_MIDI, normalize_root, split_chord
 
 from improvisation_intelligence import flatten_sections
+from songs.form import section_order
 
 # Open-string MIDI (high e → low E)
 _GUITAR_OPEN = (64, 59, 55, 50, 45, 40)
@@ -27,14 +28,96 @@ _RHYTHM_TO_ABC_LEN: dict[str, str] = {
 }
 
 
-def resolve_improv_chords(session_state: dict, improv_ctx: Any) -> list[str]:
-    """Chord list from style-jam generation or active studio progression."""
+def _section_base_key(name: str) -> str:
+    """Normalize section labels for deduplication (Verse 2 → verse, etc.)."""
+    n = str(name or "").strip()
+    n = re.sub(r"\s*\(repeat\)\s*$", "", n, flags=re.I)
+    n = re.sub(r"\s*\(alternate\)\s*$", "", n, flags=re.I)
+    n = re.sub(r"\s*\(\d+\)\s*$", "", n)
+    n = re.sub(r"\s+\d+$", "", n)
+    return n.lower()
+
+
+def _display_section_label(name: str) -> str:
+    """Short, readable section heading for the chord map."""
+    n = str(name or "").strip()
+    aliases = {
+        "a section": "A",
+        "b section": "B",
+        "final a / outro": "Outro",
+        "final a / tag": "Outro",
+        "coda": "Outro",
+    }
+    return aliases.get(n.lower(), n)
+
+
+def dedupe_sections_for_display(
+    sections: dict[str, list[str]],
+) -> list[tuple[str, list[str]]]:
+    """
+    One row per unique section identity — skip repeated Verse/Chorus blocks
+  with identical chords; keep alternates when harmony differs.
+    """
+    seen: dict[str, tuple[str, ...]] = {}
+    out: list[tuple[str, list[str]]] = []
+    for name, chords in section_order(sections):
+        clean = [str(c).strip() for c in (chords or []) if c and str(c).strip()]
+        if not clean:
+            continue
+        base = _section_base_key(name)
+        sig = tuple(clean)
+        if base in seen:
+            if seen[base] == sig:
+                continue
+            label = name
+        else:
+            seen[base] = sig
+            label = _display_section_label(name)
+        out.append((label, clean))
+    return out
+
+
+def resolve_improv_sections(
+    session_state: dict,
+    improv_ctx: Any,
+) -> list[tuple[str, list[str]]]:
+    """Section-based chord map (deduped) for Live Coach / Phrase Motif."""
     gen = session_state.get("improv_generated_sections")
     if gen:
-        flat = flatten_sections(gen)
-        if flat:
-            return flat
-    return list(improv_ctx.progression_flat or [])
+        mapped = dedupe_sections_for_display(gen)
+        if mapped:
+            return mapped
+    if improv_ctx.sections:
+        mapped = dedupe_sections_for_display(improv_ctx.sections)
+        if mapped:
+            return mapped
+    flat = list(improv_ctx.progression_flat or [])
+    if flat:
+        return [("Progression", flat)]
+    return []
+
+
+def flatten_section_map(section_map: list[tuple[str, list[str]]]) -> list[str]:
+    return [ch for _label, chords in section_map for ch in chords]
+
+
+def global_chord_index(
+    section_map: list[tuple[str, list[str]]],
+    section_idx: int,
+    chord_idx: int,
+) -> int:
+    idx = 0
+    for si, (_label, chords) in enumerate(section_map):
+        if si < section_idx:
+            idx += len(chords)
+        elif si == section_idx:
+            return idx + chord_idx
+    return 0
+
+
+def resolve_improv_chords(session_state: dict, improv_ctx: Any) -> list[str]:
+    """Flat chord list (deduped sections) for next-chord / legacy helpers."""
+    return flatten_section_map(resolve_improv_sections(session_state, improv_ctx))
 
 
 def chord_tone_names(chord: str) -> list[str]:
@@ -263,22 +346,11 @@ def build_motif_guitar_tab(motif: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def motif_notation_result(
+def build_motif_notation_abc(
     motif: dict[str, Any],
     *,
-    key_center: str,
-    bpm: int,
-    instrument: str,
-) -> dict[str, Any]:
-    """Package ABC and optional TAB for UI."""
+    key_center: str = "C",
+    bpm: int = 100,
+) -> str:
     title = f"Motif — {motif.get('chord', '')}"
-    abc = build_motif_abc(motif, key_center=key_center, bpm=bpm, title=title)
-    tab = ""
-    if (instrument or "").strip() == "Guitar":
-        tab = build_motif_guitar_tab(motif)
-    return {
-        "abc": abc,
-        "tab": tab,
-        "notes_display": motif.get("display", ""),
-        "chord": motif.get("chord", ""),
-    }
+    return build_motif_abc(motif, key_center=key_center, bpm=bpm, title=title)

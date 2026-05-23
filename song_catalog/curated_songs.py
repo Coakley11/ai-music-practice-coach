@@ -649,7 +649,8 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Final A / Outro": ["Dmaj9", "Bbdim7", "Am9", "D13", "Gmaj9", "Gm6", "Dmaj9", "A13"],
             },
         ),
-        ("Blue Bossa", "Kenny Dorham"): pack("Cm",
+        ("Blue Bossa", "Kenny Dorham"): pack(
+            "Cm",
             {
                 "A Section": ["Cm", "Cm", "Fm", "Fm", "Dm7b5", "G7", "Cm", "Cm"],
                 "B Section": ["Ebm", "Ab7", "Db", "Db", "Dm7b5", "G7", "Cm", "G7"],
@@ -662,6 +663,11 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "A Section": ["Cm9", "Cm9", "Fm9", "Fm9", "Dm7b5", "G7b9", "Cm9", "Cm9"],
                 "B Section": ["Ebm9", "Ab13", "Dbmaj9", "Dbmaj9", "Dm7b5", "G7b9", "Cm9", "G7b9"],
             },
+            extensions=_ext(
+                default_bpm=100,
+                default_groove="Bossa nova",
+                arrangement_notes="Latin jazz bossa — ~100 BPM; A/B sections, one chord per bar.",
+            ),
         ),
         ("Autumn Leaves", "Jazz Standard"): pack("Gm",
             {

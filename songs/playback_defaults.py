@@ -27,10 +27,17 @@ def default_bpm_for_song_data(song_data: dict[str, Any] | None) -> int:
         except (TypeError, ValueError):
             pass
     title = (song_data.get("title") or "").lower()
+    genre = str(song_data.get("genre") or "").lower()
+    if "blue bossa" in title:
+        return 100
+    if "bossa" in title or "samba" in title:
+        return 120
     if "how deep" in title:
         return 105
     if "shape of you" in title:
         return 96
+    if genre == "jazz":
+        return 110
     return 100
 
 
@@ -110,6 +117,10 @@ def sync_playback_defaults_for_active_song(
         st.session_state.get(LAST_BPM_SONG) != song_id
         or st.session_state.get(LAST_PLAYBACK_GROOVE_SONG) != song_id
     )
+    if song_changed:
+        from .key_state import invalidate_backing_cache
+
+        invalidate_backing_cache(st)
     bpm = sync_backing_bpm_before_widget(st, song_id, int(default_bpm))
     groove = sync_backing_groove_before_widget(st, song_id, default_groove)
     if song_changed:

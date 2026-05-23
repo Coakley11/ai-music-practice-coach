@@ -5771,28 +5771,9 @@ elif _studio_page == "backing":
     _follow_key_prefix = f"backing::{song}::{tuple(selected_section_names)}::{chart_key}::{bpm}::{form_loops}"
 
     st.markdown(
-        '<div class="ui-card soft"><div class="ui-card-title">Generate & play</div>',
+        '<div class="ui-card soft"><div class="ui-card-title">Quick playback</div>',
         unsafe_allow_html=True,
     )
-    _gen_col, _stop_col = st.columns([2, 1])
-    with _gen_col:
-        _gen_clicked = st.button(
-            "▶ Generate and play",
-            key="gen_backing_btn",
-            disabled=not bool(backing_chords),
-            type="primary",
-            use_container_width=True,
-        )
-    with _stop_col:
-        if st.button(
-            "■ Stop Backing Track",
-            key="stop_backing_btn",
-            disabled=not bool(st.session_state.get("_last_backing_wav")),
-            use_container_width=True,
-        ):
-            _stop_backing_playback()
-            st.rerun()
-
     bpm = _render_backing_quick_playback_controls(
         song_id=_playback_id,
         default_bpm=_default_bpm,
@@ -5806,6 +5787,8 @@ elif _studio_page == "backing":
         selected_section_names = []
     backing_chords = chord_blocks_for_selected_sections(sections, selected_section_names)
     backing_events = chord_events_for_selected_sections(sections, selected_section_names)
+    groove_style = st.session_state.get("backing_groove_style", "Auto")
+    resolved_groove = infer_groove_style(song_data, groove_style)
     section_scope_label = (
         "full form"
         if not selected_section_names
@@ -5825,10 +5808,47 @@ elif _studio_page == "backing":
         st.session_state.get("_last_backing_wav")
         and st.session_state.get("_last_backing_signature") == _current_backing_signature
     )
-    if bpm != _default_bpm or selected_section_names:
+
+    st.markdown(
+        '<div class="ui-card soft"><div class="ui-card-title">Generate & play</div>',
+        unsafe_allow_html=True,
+    )
+    _gen_col, _stop_col = st.columns([2, 1])
+    with _gen_col:
+        if _backing_audio_ready:
+            _play_clicked = st.button(
+                "▶ Play",
+                key="play_backing_btn",
+                type="primary",
+                use_container_width=True,
+            )
+            _gen_clicked = False
+        else:
+            _gen_clicked = st.button(
+                "Generate",
+                key="gen_backing_btn",
+                disabled=not bool(backing_chords),
+                type="primary",
+                use_container_width=True,
+            )
+            _play_clicked = False
+    with _stop_col:
+        if st.button(
+            "■ Stop Backing Track",
+            key="stop_backing_btn",
+            disabled=not bool(st.session_state.get("_last_backing_wav")),
+            use_container_width=True,
+        ):
+            _stop_backing_playback()
+            st.rerun()
+
+    if not _backing_audio_ready:
         st.caption(
-            "Tip: after changing BPM or section, press **Generate and play** again to refresh audio."
+            f"Song defaults: **{_default_bpm} BPM** · **{_default_groove}**. "
+            "After changing song, tempo, groove, key, or section, press **Generate** again."
         )
+    else:
+        st.caption("Audio is ready — press **Play** or use the player below.")
 
     if _gen_clicked:
         wav = generate_backing_track(
@@ -5854,8 +5874,13 @@ elif _studio_page == "backing":
         st.session_state["bpm"] = bpm
         st.session_state["beats_per_bar"] = 4
         st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
-        st.session_state[BACKING_AUTOPLAY] = True
+        st.session_state[BACKING_AUTOPLAY] = False
         clear_backing_needs_regen(st)
+        st.rerun()
+
+    if _play_clicked:
+        st.session_state[BACKING_AUTOPLAY] = True
+        st.rerun()
 
     if _backing_audio_ready:
         _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
@@ -5900,8 +5925,8 @@ elif _studio_page == "backing":
             selected_section_names=selected_section_names,
         )
         if _backing_audio_ready:
-            if not st.session_state.get(BACKING_AUTOPLAY, True):
-                st.info("Backing playback stopped — press **Generate backing track** or use the player **Play** button to resume.")
+            if not st.session_state.get(BACKING_AUTOPLAY, False):
+                st.info("Backing playback stopped — press **Play** above or use the player **Play** button to resume.")
             components.html(
                 live_follow_along_component_html(
                     st.session_state["_last_backing_wav"],
