@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+_BRACKET_HEADER_RE = re.compile(r"^\[(.+?)\]\s*(.*)$")
 
 STANDARD_SECTION_NAMES: tuple[str, ...] = (
     "Intro",
@@ -21,25 +24,26 @@ def lyrics_section_layout_key(song_slug: str) -> str:
     return f"lyrics_section_layout::{song_slug}"
 
 
-def _section_sort_rank(name: str) -> tuple[int, str]:
+def _section_sort_rank(name: str) -> tuple[int, int, str]:
     low = name.lower()
+    num = _section_number(name) or 0
     if "intro" in low:
-        return (0, name)
+        return (0, num, name)
     if "verse" in low:
-        return (1, name)
+        return (1, num, name)
     if "pre" in low and "chorus" in low:
-        return (2, name)
+        return (2, num, name)
     if "chorus" in low:
-        return (3, name)
+        return (3, num, name)
     if "bridge" in low:
-        return (4, name)
+        return (4, num, name)
     if "interlude" in low:
-        return (5, name)
+        return (5, num, name)
     if "solo" in low:
-        return (6, name)
+        return (6, num, name)
     if "outro" in low:
-        return (7, name)
-    return (8, name)
+        return (7, num, name)
+    return (8, num, name)
 
 
 def sort_section_names(section_names: list[str]) -> list[str]:
@@ -81,12 +85,19 @@ def resolve_lyrics_editor_sections(
     """Editable section list for Lyrics & Cues (persisted per song in session)."""
     layout_key = lyrics_section_layout_key(song_slug)
     default = default_lyrics_section_layout(song_data, sections)
+    chart_keys = set(sections.keys())
     layout = session_state.get(layout_key)
     if not isinstance(layout, list) or not layout:
         session_state[layout_key] = list(default)
         return list(default)
     cleaned = [str(s).strip() for s in layout if str(s).strip()]
     if not cleaned:
+        session_state[layout_key] = list(default)
+        return list(default)
+    cleaned_set = set(cleaned)
+    if cleaned_set != set(default) and (
+        cleaned_set - chart_keys or set(default) - cleaned_set
+    ):
         session_state[layout_key] = list(default)
         return list(default)
     return cleaned
@@ -170,3 +181,159 @@ def rename_lyrics_section(
 
 def optional_sections_to_add(layout: list[str]) -> list[str]:
     return [s for s in STANDARD_SECTION_NAMES if s not in layout]
+
+
+def _section_base_name(section_name: str) -> str:
+    return section_name.split("(", 1)[0].split("/", 1)[0].strip().lower()
+
+
+def _section_number(name: str) -> int | None:
+    match = re.search(r"\d+", str(name))
+    return int(match.group()) if match else None
+
+
+def _section_match_score(label: str, section_name: str) -> int | None:
+    label_norm = " ".join(label.lower().replace("-", " ").replace("/", " ").split())
+    section_norm = " ".join(section_name.lower().replace("-", " ").replace("/", " ").split())
+    section_base = _section_base_name(section_name).replace("-", " ")
+    if not label_norm or not section_norm:
+        return None
+    if label_norm == section_norm:
+        return 0
+    label_num = _section_number(label_norm)
+    section_num = _section_number(section_norm)
+    if label_num is not None and section_num is not None and label_num != section_num:
+        return None
+    if label_norm == section_base:
+        return 1
+    section_tokens = set(section_norm.split())
+    label_tokens = set(label_norm.split())
+    if label_tokens and label_tokens.issubset(section_tokens):
+        if label_norm == "chorus" and "pre" in section_tokens:
+            return 8
+        return 2
+    if label_norm in section_norm:
+        if label_norm == "chorus" and "pre chorus" in section_norm:
+            return 8
+        return 4
+    return None
+
+
+def match_lyric_section_label(label: str, section_names: list[str]) -> str | None:
+    scored: list[tuple[int, int, int, str]] = []
+    for idx, section_name in enumerate(section_names):
+        score = _section_match_score(label, section_name)
+        if score is not None:
+            scored.append((score, len(section_name), idx, section_name))
+    if not scored:
+        return None
+    return sorted(scored)[0][3]
+
+
+def _try_header_line(line: str, section_names: list[str]) -> str | None:
+    """Bracket [Verse 1], bracket+text, or Section: header."""
+    bracket = _BRACKET_HEADER_RE.match(line)
+    if bracket:
+        header = bracket.group(1).strip()
+        match = match_lyric_section_label(header, section_names)
+        if match:
+            return match
+    if ":" in line:
+        maybe_section, _cue = line.split(":", 1)
+        match = match_lyric_section_label(maybe_section.strip(), section_names)
+        if match:
+            return match
+    return None
+
+
+def parse_user_lyric_cues(
+    raw_text: str, section_names: list[str]
+) -> tuple[dict[str, list[str]], bool]:
+    """Parse [Section] headers or ``Section:`` lines. Returns (cues, saw_header)."""
+    if not raw_text or not section_names:
+        return {}, False
+
+    cues: dict[str, list[str]] = {name: [] for name in section_names}
+    current: str | None = None
+    saw_header = False
+
+    for raw_line in raw_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        header_match = _try_header_line(line, section_names)
+        if header_match:
+            saw_header = True
+            current = header_match
+            bracket = _BRACKET_HEADER_RE.match(line)
+            if bracket and bracket.group(2).strip():
+                cues[current].append(bracket.group(2).strip())
+            elif ":" in line:
+                _, cue = line.split(":", 1)
+                if cue.strip():
+                    cues[current].append(cue.strip())
+            continue
+
+        if not saw_header:
+            continue
+
+        if current is None:
+            current = section_names[0]
+
+        cues[current].append(line)
+
+    filtered = {name: lines for name, lines in cues.items() if lines}
+    return filtered, saw_header
+
+
+def split_lyrics_by_paragraphs(raw_text: str, section_names: list[str]) -> dict[str, str]:
+    """Assign blank-line-separated paragraphs to sections in chart order."""
+    if not raw_text.strip() or not section_names:
+        return {}
+    blocks = [b.strip() for b in re.split(r"\n\s*\n+", raw_text.strip()) if b.strip()]
+    if not blocks:
+        return {}
+    out: dict[str, str] = {}
+    for idx, section_name in enumerate(section_names):
+        if idx < len(blocks):
+            out[section_name] = blocks[idx]
+    return out
+
+
+def split_lyrics_by_sections(raw_text: str, section_names: list[str]) -> dict[str, str]:
+    """
+    Assign pasted lyrics/cues to the song's section list.
+
+    1. [Section] or ``Section:`` headers
+    2. Blank-line-separated paragraphs in section_order
+    3. Even line split fallback
+    """
+    if not raw_text or not section_names:
+        return {}
+
+    parsed, saw_header = parse_user_lyric_cues(raw_text, section_names)
+    if saw_header and parsed:
+        return {
+            name: "\n".join(parsed.get(name, []))
+            for name in section_names
+            if parsed.get(name)
+        }
+
+    by_para = split_lyrics_by_paragraphs(raw_text, section_names)
+    if by_para:
+        return by_para
+
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    if not lines:
+        return {}
+
+    import math
+
+    out: dict[str, str] = {}
+    chunk_size = max(1, math.ceil(len(lines) / len(section_names)))
+    for idx, section_name in enumerate(section_names):
+        chunk = lines[idx * chunk_size : (idx + 1) * chunk_size]
+        if chunk:
+            out[section_name] = "\n".join(chunk)
+    return out

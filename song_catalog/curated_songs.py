@@ -69,6 +69,72 @@ def _levels(
     }
 
 
+def _perfect_chart_pack() -> dict[str, Any]:
+    """Perfect — Ed Sheeran (G major, acoustic pop ballad)."""
+    walk = ["G", "D/F#", "Em7", "D", "Cadd9", "D", "G"]
+    verse = ["G", "Em7", "Cadd9", "D/F#", "G", "Em7", "Cadd9", "D/F#"]
+    chorus = ["Em7", "Cadd9", "G", "D/F#", "Em7", "Cadd9", "G", "D/F#"]
+    base = {
+        "Intro": list(walk),
+        "Verse 1": list(verse),
+        "Verse 2": list(verse),
+        "Chorus 1": list(chorus),
+        "Verse 3": list(verse),
+        "Verse 4": list(verse),
+        "Chorus 2": list(chorus),
+        "Outro": list(walk),
+    }
+    intermediate = dict(base)
+    advanced = {
+        "Intro": ["Gmaj9", "D/F#", "Em9", "D13sus4", "C6/9", "Dadd9", "Gmaj9"],
+        "Verse 1": ["G6", "Em9", "Cmaj9", "D13sus4"] * 2,
+        "Verse 2": ["G6", "Em9", "Cmaj9", "D13sus4"] * 2,
+        "Chorus 1": ["Em9", "C6/9", "Gmaj9/B", "D13sus4"] * 2,
+        "Verse 3": ["G6", "Em9", "Cmaj9", "D13sus4"] * 2,
+        "Verse 4": ["G6", "Em9", "Cmaj9", "D13sus4"] * 2,
+        "Chorus 2": ["Em9", "C6/9", "Gmaj9/B", "D13sus4"] * 2,
+        "Outro": ["Gmaj9", "D/F#", "Em9", "D13sus4", "C6/9", "Dadd9", "Gmaj9"],
+    }
+    section_order = [
+        "Intro",
+        "Verse 1",
+        "Verse 2",
+        "Chorus 1",
+        "Verse 3",
+        "Verse 4",
+        "Chorus 2",
+        "Outro",
+    ]
+    return {
+        "key": "G",
+        "sections": intermediate,
+        "chart_versions": _levels(beginner=base, intermediate=intermediate, advanced=advanced),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "lyric_cues": {
+            "Intro": ["Instrumental — G · D/F# · Em7 · D · Cadd9 · D · G"],
+            "Verse 1": ["I found a love for me…", "Darling just dive right in…"],
+            "Verse 2": ["Well I found a girl, beautiful and sweet…"],
+            "Chorus 1": ["Baby, I'm dancing in the dark…"],
+            "Verse 3": ["Cause we were just kids when we fell in love…"],
+            "Verse 4": ["Barefoot on the grass, listening to our favourite song…"],
+            "Chorus 2": ["Baby, I'm dancing in the dark…"],
+            "Outro": ["Tag — walkdown G · D/F# · Em7 · D · Cadd9 · D · G"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**G major** acoustic ballad (~95 BPM). Intro/Outro walk: "
+                "**G–D/F#–Em7–D–Cadd9–D–G**. Verses **G–Em7–Cadd9–D/F#**; "
+                "choruses **Em7–Cadd9–G–D/F#**. Intermediate matches this shape; "
+                "Advanced adds maj9, 6/9, and sus extensions. Transpose with Display Key "
+                "if you prefer the concert recording in Ab."
+            ),
+            default_bpm=95,
+            default_groove="Ballad",
+        ),
+    }
+
+
 def _champions_chart_pack() -> dict[str, Any]:
     from song_catalog.we_are_the_champions import (
         CHAMPIONS_ARRANGEMENT_NOTES,
@@ -230,96 +296,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 default_groove="Pop groove",
             ),
         ),
-        ("Perfect", "Ed Sheeran"): pack(
-            "G",
-            {
-                "Verse": ["G", "Em", "C", "D"],
-                "Pre-Chorus": ["G", "Em", "C", "D"],
-                "Chorus": ["Em", "C", "G", "D"],
-                "Interlude": ["G", "Em", "C", "D"],
-                "Outro": [
-                    "G/B",
-                    "C",
-                    "Dsus4",
-                    "D",
-                    "G",
-                    "D/F#",
-                    "Em",
-                    "D",
-                    "C",
-                    "D",
-                    "G",
-                ],
-            },
-            {
-                "Verse": ["Gmaj7", "Em7", "Cadd9", "D/F#"],
-                "Pre-Chorus": ["Gadd9", "Em7", "Cmaj7", "Dsus4"],
-                "Chorus": ["Em7", "Cadd9", "G", "D/F#"],
-                "Interlude": ["G", "Em7", "Cadd9", "Dsus4"],
-                "Outro": [
-                    "G/B",
-                    "Cadd9",
-                    "Dsus4",
-                    "D",
-                    "G",
-                    "D/F#",
-                    "Em7",
-                    "D",
-                    "Cadd9",
-                    "D",
-                    "G",
-                ],
-            },
-            {
-                "Verse": ["G6", "Em9", "Cmaj7", "Dadd9"],
-                "Pre-Chorus": ["Gmaj9/B", "Em11", "C6/9", "D13sus4"],
-                "Chorus": ["Em9", "C6/9", "Gmaj9/B", "D13sus4"],
-                "Interlude": ["Gadd9", "Em11", "Cmaj9", "Dsus2"],
-                "Outro": [
-                    "G/B",
-                    "Cmaj9",
-                    "Dsus4",
-                    "D7",
-                    "Gadd9",
-                    "D/F#",
-                    "Em9",
-                    "D13sus4",
-                    "C6/9",
-                    "D7sus4",
-                    "Gmaj9",
-                ],
-            },
-            status="practice_level_verified",
-            section_order=["Verse", "Pre-Chorus", "Chorus", "Interlude", "Outro"],
-            lyric_cues={
-                "Verse": [
-                    "I found a love for me…",
-                    "Darling just dive right in…",
-                ],
-                "Pre-Chorus": [
-                    "Cause we were just kids when we fell in love…",
-                ],
-                "Chorus": [
-                    "Baby I'm dancing in the dark…",
-                ],
-                "Interlude": ["Instrumental — G · Em · C · D"],
-                "Outro": [
-                    "Tag — G/B · C · Dsus4 · D",
-                    "Final cadence — G · D/F# · Em · D · C · D · G",
-                ],
-            },
-            extensions=_ext(
-                arrangement_notes=(
-                    "Beginner baseline in **G major**: Verse/Pre-Chorus **G–Em–C–D**, "
-                    "Chorus **Em–C–G–D**, Interlude **G–Em–C–D**, Outro with slash/sus "
-                    "passing tones. Intermediate adds maj7/add9/sus color; Advanced adds "
-                    "extensions, slash chords, and neo-soul/jazz reharm options. "
-                    "Recording is often heard around **Ab** — use Display Key to transpose."
-                ),
-                default_bpm=95,
-                default_groove="Ballad",
-            ),
-        ),
+        ("Perfect", "Ed Sheeran"): _perfect_chart_pack(),
         ("Thinking Out Loud", "Ed Sheeran"): pack("D",
             {
                 "Intro": ["D", "D/F#", "G", "A"],
@@ -1832,26 +1809,26 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Pop",
             "G",
             {
-                "Verse": ["G", "Em", "C", "D"],
-                "Pre-Chorus": ["G", "Em", "C", "D"],
-                "Chorus": ["Em", "C", "G", "D"],
-                "Interlude": ["G", "Em", "C", "D"],
-                "Outro": [
-                    "G/B",
-                    "C",
-                    "Dsus4",
-                    "D",
-                    "G",
-                    "D/F#",
-                    "Em",
-                    "D",
-                    "C",
-                    "D",
-                    "G",
-                ],
+                "Intro": ["G", "D/F#", "Em7", "D", "Cadd9", "D", "G"],
+                "Verse 1": ["G", "Em7", "Cadd9", "D/F#"] * 2,
+                "Verse 2": ["G", "Em7", "Cadd9", "D/F#"] * 2,
+                "Chorus 1": ["Em7", "Cadd9", "G", "D/F#"] * 2,
+                "Verse 3": ["G", "Em7", "Cadd9", "D/F#"] * 2,
+                "Verse 4": ["G", "Em7", "Cadd9", "D/F#"] * 2,
+                "Chorus 2": ["Em7", "Cadd9", "G", "D/F#"] * 2,
+                "Outro": ["G", "D/F#", "Em7", "D", "Cadd9", "D", "G"],
             },
             chart_status="practice_level_verified",
-            section_order=["Verse", "Pre-Chorus", "Chorus", "Interlude", "Outro"],
+            section_order=[
+                "Intro",
+                "Verse 1",
+                "Verse 2",
+                "Chorus 1",
+                "Verse 3",
+                "Verse 4",
+                "Chorus 2",
+                "Outro",
+            ],
         ),
         _s("Shape of You", "Ed Sheeran", "Pop", "Bm", {
             "Intro": ["Bm", "Em", "G", "A"],

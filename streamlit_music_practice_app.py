@@ -1010,71 +1010,6 @@ def render_song_timeline(sections, lyric_cues=None, section_lyrics=None):
     )
 
 
-def _section_match_score(label, section_name):
-    label_norm = " ".join(label.lower().replace("-", " ").replace("/", " ").split())
-    section_norm = " ".join(section_name.lower().replace("-", " ").replace("/", " ").split())
-    section_base = _section_base_name(section_name).replace("-", " ")
-    if not label_norm or not section_norm:
-        return None
-    if label_norm == section_norm:
-        return 0
-    if label_norm == section_base:
-        return 1
-    section_tokens = set(section_norm.split())
-    label_tokens = set(label_norm.split())
-    if label_tokens and label_tokens.issubset(section_tokens):
-        if label_norm == "chorus" and "pre" in section_tokens:
-            return 8
-        return 2
-    if label_norm in section_norm:
-        if label_norm == "chorus" and "pre chorus" in section_norm:
-            return 8
-        return 4
-    return None
-
-
-def match_lyric_section_label(label, section_names):
-    scored = []
-    for idx, section_name in enumerate(section_names):
-        score = _section_match_score(label, section_name)
-        if score is not None:
-            scored.append((score, len(section_name), idx, section_name))
-    if not scored:
-        return None
-    return sorted(scored)[0][3]
-
-
-def parse_user_lyric_cues(raw_text, section_names):
-    """User-provided cues only. No lyric scraping or generation."""
-    if not raw_text:
-        return {}
-
-    cues = {name: [] for name in section_names}
-    current = None
-
-    for raw_line in raw_text.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-
-        if ":" in line:
-            maybe_section, cue = line.split(":", 1)
-            match = match_lyric_section_label(maybe_section.strip(), section_names)
-            if match:
-                current = match
-                if cue.strip():
-                    cues[current].append(cue.strip())
-                continue
-
-        if current is None:
-            current = section_names[0] if section_names else None
-
-        if current:
-            cues[current].append(line)
-
-    return {name: lines for name, lines in cues.items() if lines}
-
-
 def _song_slug(song_name, artist_name=""):
     raw = f"{song_name}_{artist_name}".lower()
     return "".join(c if c.isalnum() else "_" for c in raw).strip("_")
@@ -1082,28 +1017,6 @@ def _song_slug(song_name, artist_name=""):
 
 def _section_base_name(section_name):
     return section_name.split("(", 1)[0].split("/", 1)[0].strip().lower()
-
-
-def split_lyrics_by_sections(raw_text, section_names):
-    """Best-effort assignment from user-provided lyrics/cues to chart sections."""
-    if not raw_text:
-        return {}
-
-    parsed = parse_user_lyric_cues(raw_text, section_names)
-    if parsed:
-        return {name: "\n".join(lines) for name, lines in parsed.items()}
-
-    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
-    if not lines or not section_names:
-        return {}
-
-    out = {name: "" for name in section_names}
-    chunk_size = max(1, int(np.ceil(len(lines) / max(1, len(section_names)))))
-    for idx, section_name in enumerate(section_names):
-        chunk = lines[idx * chunk_size:(idx + 1) * chunk_size]
-        if chunk:
-            out[section_name] = "\n".join(chunk)
-    return {name: text for name, text in out.items() if text.strip()}
 
 
 def lyric_cues_from_section_lyrics(section_lyrics):
@@ -1169,6 +1082,7 @@ def _render_lyrics_and_cues_panel(
         rename_lyrics_section,
         reset_lyrics_section_layout,
         resolve_lyrics_editor_sections,
+        split_lyrics_by_sections,
     )
 
     slug, song_lyrics_key, section_lyrics_state_key = _lyrics_cues_session_keys(
@@ -1201,16 +1115,24 @@ def _render_lyrics_and_cues_panel(
             "used on **Practice** and **Backing Track**."
         )
         st.markdown("**Paste all lyrics or cues (optional)**")
+        st.caption(
+            "Paste lyrics/cues with section headers like **[Verse 1]**, **[Chorus 1]**, "
+            "or **Verse 1:** line — or separate each section with a **blank line**. "
+            "Then press **Auto-assign to sections**."
+        )
         st.text_area(
             "Paste all lyrics or cues (optional)",
             value=st.session_state.get(song_lyrics_key, ""),
             placeholder=(
-                "Verse: first lyric line\n"
-                "Chorus: hook / breath cue\n"
-                "Bridge: harmony or breath reminder"
+                "[Intro]\n"
+                "optional intro cue\n\n"
+                "[Verse 1]\n"
+                "I found a love for me…\n\n"
+                "[Chorus 1]\n"
+                "Baby, I'm dancing in the dark…"
             ),
             key=song_lyrics_key,
-            height=100,
+            height=120,
             label_visibility="collapsed",
         )
 
@@ -1320,7 +1242,9 @@ def _render_lyrics_and_cues_panel(
             key=f"auto_assign_lyrics::{slug}",
             use_container_width=True,
         ):
-            st.session_state[section_lyrics_state_key] = dict(suggested)
+            merged = dict(section_lyrics_state)
+            merged.update(suggested)
+            st.session_state[section_lyrics_state_key] = merged
             st.rerun()
 
         st.markdown("---")
