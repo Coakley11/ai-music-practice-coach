@@ -588,6 +588,66 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border-color: #86efac;
   color: #15803d;
 }
+.ui-playback-setup {
+  background: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid var(--studio-line);
+  border-radius: 14px;
+  padding: 1rem 1.15rem 1.1rem;
+  margin: 0.65rem 0 1rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+.ui-playback-setup-header {
+  margin-bottom: 0.85rem;
+}
+.ui-playback-setup-title {
+  font-size: 1.35rem;
+  font-weight: 850;
+  color: var(--studio-ink);
+  margin: 0;
+  line-height: 1.2;
+}
+.ui-playback-setup-artist {
+  font-size: 0.92rem;
+  color: var(--studio-muted);
+  margin: 0.15rem 0 0;
+}
+.ui-playback-setup-defaults {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin: 0.35rem 0 0;
+}
+.ui-playback-setup-label {
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  margin: 0 0 0.25rem;
+}
+.ui-playback-setup-bpm {
+  font-size: 2rem;
+  font-weight: 850;
+  color: var(--studio-ink);
+  line-height: 1;
+  margin: 0 0 0.35rem;
+}
+.ui-playback-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 750;
+  border: 1px solid var(--studio-line);
+  background: #fff;
+  color: #64748b;
+}
+.ui-playback-status-badge.ready {
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+  color: #047857;
+}
 .ui-quick-nav .stButton > button {
   font-size: 0.72rem !important;
   font-weight: 700 !important;

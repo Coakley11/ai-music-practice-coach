@@ -1,10 +1,10 @@
-"""Concert pitch vs written key for transposing instruments (saxophone focus)."""
+"""Concert vs written key — single source of truth for all studio pages."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from music_theory import CHROMATIC, normalize_root, split_chord, transpose_chord
+from music_theory import CHROMATIC, normalize_root, split_chord
 
 SAXOPHONE_TYPES: tuple[str, ...] = (
     "Alto saxophone (Eb)",
@@ -13,10 +13,62 @@ SAXOPHONE_TYPES: tuple[str, ...] = (
     "Baritone saxophone (Eb)",
 )
 
+BB_INSTRUMENT_TYPES: tuple[str, ...] = (
+    "Bb Trumpet",
+    "Bb Clarinet",
+)
+
 SELECTED_TRANSPOSING_INSTRUMENT_KEY = "selected_transposing_instrument"
 CHART_IN_INSTRUMENT_KEY_KEY = "show_chart_in_instrument_key"
-# Legacy alias — kept for migration only
+CONCERT_KEY_SESSION_KEY = "concert_practice_key"
 SAX_TYPE_SESSION_KEY = "saxophone_type"
+
+# Semitone shift: concert key center → written key center
+TRANSPOSING_SEMITONE_STEPS: dict[str, int] = {
+    "Alto saxophone (Eb)": -3,
+    "Tenor saxophone (Bb)": 2,
+    "Soprano saxophone (Bb)": 2,
+    "Baritone saxophone (Eb)": -3,
+    "Alto Sax (Eb)": -3,
+    "Tenor Sax (Bb)": 2,
+    "Soprano Sax (Bb)": 2,
+    "Bari Sax (Eb)": -3,
+    "Bb Trumpet": 2,
+    "Bb Clarinet": 2,
+}
+
+
+def _transpose_key_center(key: str, steps: int) -> str:
+    root, suffix = split_chord(str(key or "C"))
+    nr = normalize_root(root)
+    if nr not in CHROMATIC:
+        return str(key)
+    new_root = CHROMATIC[(CHROMATIC.index(nr) + steps) % 12]
+    return new_root + suffix
+
+
+def transposing_instrument_names() -> tuple[str, ...]:
+    return ("Saxophone", "Trumpet", "Clarinet")
+
+
+def is_transposing_instrument(instrument: str) -> bool:
+    return str(instrument or "").strip() in transposing_instrument_names()
+
+
+def options_for_instrument(instrument: str) -> list[str]:
+    inst = str(instrument or "").strip()
+    if inst == "Saxophone":
+        return list(SAXOPHONE_TYPES)
+    if inst == "Trumpet":
+        return ["Bb Trumpet"]
+    if inst == "Clarinet":
+        return ["Bb Clarinet"]
+    return []
+
+
+def default_transposing_type(instrument: str) -> str:
+    opts = options_for_instrument(instrument)
+    return opts[0] if opts else ""
 
 
 def _migrate_transposing_instrument_state(session_state: dict) -> None:
@@ -29,35 +81,48 @@ def _migrate_transposing_instrument_state(session_state: dict) -> None:
         session_state[SAX_TYPE_SESSION_KEY] = selected
 
 
-def _transpose_key_center(key: str, steps: int) -> str:
-    root, suffix = split_chord(str(key or "C"))
-    nr = normalize_root(root)
-    if nr not in CHROMATIC:
-        return str(key)
-    new_root = CHROMATIC[(CHROMATIC.index(nr) + steps) % 12]
-    return new_root + suffix
+def ensure_transposing_defaults(session_state: dict, instrument: str) -> None:
+    """Keep selected transposing type valid when instrument changes."""
+    if not is_transposing_instrument(instrument):
+        return
+    _migrate_transposing_instrument_state(session_state)
+    opts = options_for_instrument(instrument)
+    current = session_state.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY)
+    if current not in opts:
+        session_state[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = default_transposing_type(instrument)
 
 
-def sax_written_key_steps(sax_type: str) -> int:
-    """Semitone shift from concert key to written key on the chart."""
-    low = str(sax_type or "").lower()
-    if "tenor" in low or "soprano" in low:
-        return 2
-    if "alto" in low or "baritone" in low or "bari" in low:
-        return -3
-    return -3
+def selected_transposing_type(session_state: dict, instrument: str) -> str:
+    ensure_transposing_defaults(session_state, instrument)
+    pick = session_state.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY, "")
+    opts = options_for_instrument(instrument)
+    if pick in opts:
+        return str(pick)
+    return default_transposing_type(instrument)
 
 
-def written_key_for_saxophone(concert_key: str, sax_type: str) -> str:
-    return _transpose_key_center(concert_key, sax_written_key_steps(sax_type))
+def chart_in_instrument_key(session_state: dict) -> bool:
+    return bool(session_state.get(CHART_IN_INSTRUMENT_KEY_KEY, False))
 
 
-def is_transposing_instrument(instrument: str) -> bool:
-    return str(instrument or "").strip() == "Saxophone"
+def written_key_for_type(concert_key: str, transposing_type: str) -> str:
+    steps = TRANSPOSING_SEMITONE_STEPS.get(transposing_type, 0)
+    return _transpose_key_center(concert_key, steps)
 
 
-def sax_display_name(sax_type: str) -> str:
-    low = str(sax_type or "").lower()
+def written_key_for_instrument(
+    concert_key: str,
+    instrument: str,
+    session_state: dict,
+) -> str:
+    if not is_transposing_instrument(instrument):
+        return concert_key
+    t_type = selected_transposing_type(session_state, instrument)
+    return written_key_for_type(concert_key, t_type)
+
+
+def instrument_display_name(transposing_type: str, instrument: str = "") -> str:
+    low = str(transposing_type or "").lower()
     if "tenor" in low:
         return "Tenor Saxophone"
     if "soprano" in low:
@@ -66,46 +131,41 @@ def sax_display_name(sax_type: str) -> str:
         return "Baritone Saxophone"
     if "alto" in low:
         return "Alto Saxophone"
-    return str(sax_type or "Saxophone")
+    if "trumpet" in low:
+        return "Trumpet"
+    if "clarinet" in low:
+        return "Clarinet"
+    return str(instrument or transposing_type or "Instrument")
 
 
-def selected_saxophone_type(session_state: dict) -> str:
-    _migrate_transposing_instrument_state(session_state)
-    pick = session_state.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY)
-    if pick in SAXOPHONE_TYPES:
-        return str(pick)
-    return SAXOPHONE_TYPES[0]
+def is_eb_instrument(transposing_type: str) -> bool:
+    low = str(transposing_type or "").lower()
+    return "alto" in low or "baritone" in low or "bari" in low or "(eb)" in low
 
 
-def chart_in_instrument_key(session_state: dict) -> bool:
-    return bool(session_state.get(CHART_IN_INSTRUMENT_KEY_KEY, False))
-
-
-def sax_transposition_blurb(
+def transposition_blurb(
     concert_key: str,
-    sax_type: str,
+    instrument: str,
+    session_state: dict,
     *,
     chart_in_instrument_key: bool,
 ) -> str:
-    written = written_key_for_saxophone(concert_key, sax_type)
-    display = sax_display_name(sax_type)
-    low = sax_type.lower()
-    if "alto" in low or "baritone" in low or "bari" in low:
-        inst = "Eb instrument"
-    else:
-        inst = "Bb instrument"
+    t_type = selected_transposing_type(session_state, instrument)
+    written = written_key_for_type(concert_key, t_type)
+    display = instrument_display_name(t_type, instrument)
+    inst_label = "Eb instrument" if is_eb_instrument(t_type) else "Bb instrument"
     lines = [
-        f"You selected **{display}**. This is a **{inst}**.",
+        f"**{display}** ({inst_label}).",
         f"**Concert key:** {concert_key}",
         f"**Written key for you:** {written}",
     ]
     if chart_in_instrument_key:
         lines.append(
-            "Charts and notation below are transposed into your **written instrument key**."
+            "Charts, exercises, notation, and backing chord view use your **written key** app-wide."
         )
     else:
         lines.append(
-            "Charts stay in **concert key**; use the written key above when you read from a chart."
+            "Charts stay in **concert key**; use the written key above when reading or fingering."
         )
     return " ".join(lines)
 
@@ -117,9 +177,72 @@ def effective_chart_key(
 ) -> tuple[str, str]:
     """Return (chart_key, mode_label) where mode_label is 'concert' or 'written'."""
     if is_transposing_instrument(instrument) and chart_in_instrument_key(session_state):
-        sax_type = selected_saxophone_type(session_state)
-        return written_key_for_saxophone(concert_key, sax_type), "written"
+        t_type = selected_transposing_type(session_state, instrument)
+        return written_key_for_type(concert_key, t_type), "written"
     return concert_key, "concert"
+
+
+def resolve_practice_keys(
+    session_state: dict,
+    concert_key: str,
+    instrument: str,
+) -> dict[str, str]:
+    """Single source of truth for concert, written, chart, and UI display keys."""
+    concert_key = str(concert_key or "C")
+    session_state[CONCERT_KEY_SESSION_KEY] = concert_key
+    ensure_transposing_defaults(session_state, instrument)
+    written = written_key_for_instrument(concert_key, instrument, session_state)
+    chart_key, mode = effective_chart_key(concert_key, instrument, session_state)
+    global_display = chart_key if mode == "written" else concert_key
+    return {
+        "concert_key": concert_key,
+        "written_key": written,
+        "chart_key": chart_key,
+        "global_display_key": global_display,
+        "chart_key_mode": mode,
+        "transposing_type": selected_transposing_type(session_state, instrument)
+        if is_transposing_instrument(instrument)
+        else "",
+    }
+
+
+# Backward-compatible aliases
+def sax_written_key_steps(sax_type: str) -> int:
+    return TRANSPOSING_SEMITONE_STEPS.get(sax_type, -3)
+
+
+def written_key_for_saxophone(concert_key: str, sax_type: str) -> str:
+    return written_key_for_type(concert_key, sax_type)
+
+
+def selected_saxophone_type(session_state: dict) -> str:
+    ensure_transposing_defaults(session_state, "Saxophone")
+    return selected_transposing_type(session_state, "Saxophone")
+
+
+def sax_display_name(sax_type: str) -> str:
+    return instrument_display_name(sax_type, "Saxophone")
+
+
+def sax_transposition_blurb(
+    concert_key: str,
+    sax_type: str,
+    *,
+    chart_in_instrument_key: bool,
+) -> str:
+    written = written_key_for_type(concert_key, sax_type)
+    display = instrument_display_name(sax_type, "Saxophone")
+    inst_label = "Eb instrument" if is_eb_instrument(sax_type) else "Bb instrument"
+    lines = [
+        f"You selected **{display}**. This is a **{inst_label}**.",
+        f"**Concert key:** {concert_key}",
+        f"**Written key for you:** {written}",
+    ]
+    if chart_in_instrument_key:
+        lines.append("Charts and notation use your **written instrument key**.")
+    else:
+        lines.append("Charts stay in **concert key**; finger in your written key.")
+    return " ".join(lines)
 
 
 def render_sidebar_transposing_controls(
@@ -128,31 +251,58 @@ def render_sidebar_transposing_controls(
     concert_key: str,
     instrument: str,
 ) -> None:
-    """Saxophone type + concert/written key recap (sidebar)."""
+    """Global transposing controls (sidebar) — all pages."""
     import html
 
     if not is_transposing_instrument(instrument):
         return
-    _migrate_transposing_instrument_state(st.session_state)
-    st.session_state.setdefault(SELECTED_TRANSPOSING_INSTRUMENT_KEY, SAXOPHONE_TYPES[0])
-    sax_type = st.sidebar.selectbox(
-        "Saxophone type",
-        SAXOPHONE_TYPES,
+
+    ensure_transposing_defaults(st.session_state, instrument)
+    opts = options_for_instrument(instrument)
+    st.sidebar.selectbox(
+        "Transposing instrument type",
+        opts,
         key=SELECTED_TRANSPOSING_INSTRUMENT_KEY,
     )
-    _migrate_transposing_instrument_state(st.session_state)
-    written = written_key_for_saxophone(concert_key, sax_type)
+    written = written_key_for_instrument(concert_key, instrument, st.session_state)
+    st.sidebar.checkbox(
+        "Show charts in instrument key",
+        key=CHART_IN_INSTRUMENT_KEY_KEY,
+        help="When on, chord charts, coach, notation, and backing chord view use your written key everywhere.",
+    )
+    t_type = selected_transposing_type(st.session_state, instrument)
     st.sidebar.markdown(
         f'<div class="ui-card soft" style="margin:0.5rem 0;padding:0.65rem;">'
         f"<strong>Concert key:</strong> {html.escape(concert_key)}<br>"
-        f"<strong>Written key for you:</strong> {html.escape(written)}"
+        f"<strong>Written key:</strong> {html.escape(written)}<br>"
+        f"<small>{html.escape(t_type)}</small>"
         f"</div>",
         unsafe_allow_html=True,
     )
-    st.sidebar.caption(
-        "Use **Show chart in instrument key** on Practice to transpose charts; "
-        "backing track stays in concert pitch."
+
+
+def render_transposing_info_card(
+    st: Any,
+    *,
+    concert_key: str,
+    instrument: str,
+) -> tuple[str, str]:
+    """Compact transposing recap (any page); returns (chart_key, mode)."""
+    if not is_transposing_instrument(instrument):
+        return concert_key, "concert"
+    show_written = chart_in_instrument_key(st.session_state)
+    st.markdown(
+        '<div class="ui-card soft"><div class="ui-card-sub">'
+        + transposition_blurb(
+            concert_key,
+            instrument,
+            st.session_state,
+            chart_in_instrument_key=show_written,
+        )
+        + "</div></div>",
+        unsafe_allow_html=True,
     )
+    return effective_chart_key(concert_key, instrument, st.session_state)
 
 
 def render_practice_transposing_helper(
@@ -161,22 +311,5 @@ def render_practice_transposing_helper(
     concert_key: str,
     instrument: str,
 ) -> tuple[str, str]:
-    """Practice-page helper card; returns (chart_key, mode_label)."""
-    if not is_transposing_instrument(instrument):
-        return concert_key, "concert"
-    sax_type = selected_saxophone_type(st.session_state)
-    show_written = st.checkbox(
-        "Show chart in instrument key",
-        key=CHART_IN_INSTRUMENT_KEY_KEY,
-    )
-    st.markdown(
-        '<div class="ui-card soft"><div class="ui-card-sub">'
-        + sax_transposition_blurb(
-            concert_key,
-            sax_type,
-            chart_in_instrument_key=show_written,
-        )
-        + "</div></div>",
-        unsafe_allow_html=True,
-    )
-    return effective_chart_key(concert_key, instrument, st.session_state)
+    """Practice page — uses global sidebar settings (no duplicate checkbox)."""
+    return render_transposing_info_card(st, concert_key=concert_key, instrument=instrument)

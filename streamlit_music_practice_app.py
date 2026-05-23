@@ -119,11 +119,17 @@ from songs.playback_defaults import (
 from tuner_tone_ui import render_tuner_tone_section
 from instrument_transposition import (
     CHART_IN_INSTRUMENT_KEY_KEY,
-    SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+    chart_in_instrument_key,
+    effective_chart_key,
+    ensure_transposing_defaults,
     is_transposing_instrument,
     render_practice_transposing_helper,
     render_sidebar_transposing_controls,
+    render_transposing_info_card,
+    resolve_practice_keys,
     selected_saxophone_type,
+    selected_transposing_type,
+    written_key_for_instrument,
 )
 
 from backing_audio import (
@@ -2117,6 +2123,28 @@ def render_transposition_helper(concert_key, instrument, key_prefix, wrap_expand
             st.write("Flute is a concert-pitch instrument, so no transposition is needed.")
         return concert_key, False, "Flute (concert pitch)"
 
+    if is_transposing_instrument(instrument):
+        ctx = (
+            st.expander("Instrument Key / Transposition Helper", expanded=True)
+            if wrap_expander
+            else _null_expander()
+        )
+        with ctx:
+            if not wrap_expander:
+                st.markdown("#### Transposing instrument helper")
+            st.caption(
+                "Use the **sidebar** for instrument type and “Show charts in instrument key” (app-wide)."
+            )
+            written_key = written_key_for_instrument(concert_key, instrument, st.session_state)
+            st.write(f"Concert key: **{concert_key}**")
+            st.write(f"Written key: **{written_key}**")
+            chart_k, mode = effective_chart_key(concert_key, instrument, st.session_state)
+            st.write(f"Charts showing: **{chart_k}** ({mode})")
+        t_type = selected_transposing_type(st.session_state, instrument)
+        show_written = chart_in_instrument_key(st.session_state)
+        chart_k, _ = effective_chart_key(concert_key, instrument, st.session_state)
+        return chart_k, show_written, t_type
+
     options = transposing_instrument_options(instrument)
     if not options:
         return concert_key, False, None
@@ -3990,7 +4018,7 @@ def _recording_analysis_context(recording_type: str = "practice") -> dict:
     return analysis_context_from_app(
         song=song,
         song_data=song_data,
-        display_key=display_key,
+        display_key=chart_key,
         sections=sections,
         target_chords=full_song_chords,
         instrument=instrument,
@@ -4015,7 +4043,7 @@ def current_song_context_lab():
         genre=genre,
         song=song,
         song_data=song_data,
-        display_key=display_key,
+        display_key=chart_key,
         sections=sections,
         instrument=instrument,
         level=level,
@@ -4132,6 +4160,15 @@ PENDING_BACKING_SCOPE = "_pending_backing_scope"
 PENDING_BACKING_LOOPS = "_pending_backing_loops"
 BACKING_QUICK_SECTION_KEY = "backing_quick_section"
 BACKING_AUTOPLAY = "_backing_autoplay"
+GROOVE_STYLE_CHOICES: tuple[str, ...] = (
+    "Auto",
+    "Pop groove",
+    "Rock groove",
+    "Jazz swing",
+    "Bossa nova",
+    "Funk groove",
+    "Ballad",
+)
 
 
 def _prepare_backing_from_practice(focus: str | None) -> None:
@@ -4518,7 +4555,15 @@ def _render_practice_setup_panel(
 
     p1, p2, p3, p4 = st.columns(4)
     with p1:
-        st.selectbox("Instrument", instrument_options, key="instrument")
+        st.selectbox(
+            "Instrument",
+            instrument_options,
+            key="instrument",
+            on_change=lambda: ensure_transposing_defaults(
+                st.session_state,
+                st.session_state.get("instrument", "Piano"),
+            ),
+        )
         st.markdown(
             setup_pill_html(st.session_state["instrument"], INSTRUMENT_ICONS.get(st.session_state["instrument"], "🎵")),
             unsafe_allow_html=True,
@@ -4574,99 +4619,107 @@ def _render_practice_setup_panel(
 
 def _render_backing_quick_playback_controls(
     *,
-    song_id: str,
-    default_bpm: int,
     section_names: list[str],
-) -> int:
-    """Compact BPM + section controls next to Generate / Stop (single BPM widget)."""
-    sync_backing_bpm_before_widget(st, song_id, default_bpm)
+) -> None:
+    """Section jumper next to Generate / Stop (BPM lives in Playback Setup card)."""
     _prime_backing_quick_section_from_scope(st.session_state, section_names)
     quick_opts = ["Full song"] + list(section_names)
 
     st.markdown(
-        '<p class="ui-page-nav-label" style="margin-top:0.75rem;">Quick playback controls</p>',
+        '<p class="ui-page-nav-label" style="margin-top:0.5rem;">Quick section</p>',
         unsafe_allow_html=True,
     )
-    row1, row2 = st.columns([1.35, 1.65])
-    with row1:
-        bpm = st.slider(
-            "BPM",
-            50,
-            180,
-            int(st.session_state.get("backing_track_bpm", default_bpm)),
-            5,
-            key="backing_track_bpm",
-            help="Synced with Backing / tempo above — change here while you practice.",
-        )
-    with row2:
-        cur_quick = st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song")
-        if cur_quick not in quick_opts:
-            cur_quick = "Full song"
-        idx = quick_opts.index(cur_quick)
+    cur_quick = st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song")
+    if cur_quick not in quick_opts:
+        cur_quick = "Full song"
+    idx = quick_opts.index(cur_quick)
 
-        def _on_quick_section() -> None:
-            request_backing_quick_section_change(
-                st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song"),
-                section_names,
-            )
-            st.rerun()
-
-        st.selectbox(
-            "Section",
-            quick_opts,
-            index=idx,
-            key=BACKING_QUICK_SECTION_KEY,
-            on_change=_on_quick_section,
-            help="Jump to a section without scrolling to Playback settings.",
+    def _on_quick_section() -> None:
+        request_backing_quick_section_change(
+            st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song"),
+            section_names,
         )
-    return int(bpm)
+        st.rerun()
+
+    st.selectbox(
+        "Section",
+        quick_opts,
+        index=idx,
+        key=BACKING_QUICK_SECTION_KEY,
+        on_change=_on_quick_section,
+        help="Jump to a section without scrolling to Playback settings.",
+    )
 
 
 def _render_backing_tempo_panel(
     *,
     song_title: str,
+    song_artist: str,
     song_id: str,
     default_bpm: int,
     default_groove: str,
     backing_ready: bool,
 ) -> int:
-    """Backing Track page — groove + BPM display (slider lives in quick controls)."""
+    """Backing Track — polished Playback Setup card (BPM + groove + status)."""
     sync_backing_bpm_before_widget(st, song_id, default_bpm)
     sync_backing_groove_before_widget(st, song_id, default_groove)
     bpm = int(st.session_state.get("backing_track_bpm", default_bpm))
+    groove_val = str(st.session_state.get("backing_groove_style", default_groove))
+    if groove_val == "Auto" and default_groove != "Auto":
+        st.session_state["backing_groove_style"] = default_groove
+        groove_val = default_groove
+
+    artist_line = html.escape(song_artist) if song_artist else ""
     st.markdown(
-        '<p class="ui-page-nav-label">Backing / tempo</p>',
+        f'<div class="ui-playback-setup">'
+        f'<div class="ui-playback-setup-header">'
+        f'<p class="ui-playback-setup-title">🎧 {html.escape(song_title)}</p>'
+        + (f'<p class="ui-playback-setup-artist">{artist_line}</p>' if artist_line else "")
+        + f'<p class="ui-playback-setup-defaults">Song default: {int(default_bpm)} BPM · {html.escape(default_groove)}</p>'
+        f"</div></div>",
         unsafe_allow_html=True,
     )
-    b1, b2, b3 = st.columns(3)
-    with b1:
-        st.metric("BPM", bpm)
-        st.caption("Adjust below **Generate** — quick slider stays in sync.")
-    with b2:
-        st.selectbox(
-            "Groove / style",
-            [
-                "Auto",
-                "Pop groove",
-                "Rock groove",
-                "Jazz swing",
-                "Bossa nova",
-                "Funk groove",
-                "Ballad",
-            ],
-            key="backing_groove_style",
+
+    st.markdown('<p class="ui-page-nav-label">Playback setup</p>', unsafe_allow_html=True)
+    st.caption("Change tempo or groove before playing.")
+
+    col_tempo, col_groove, col_status = st.columns([1.35, 1.2, 0.95])
+    with col_tempo:
+        st.markdown('<p class="ui-playback-setup-label">Tempo</p>', unsafe_allow_html=True)
+        st.markdown(
+            f'<p class="ui-playback-setup-bpm">{bpm} <span style="font-size:0.95rem;font-weight:600;color:#64748b;">BPM</span></p>',
+            unsafe_allow_html=True,
         )
-    with b3:
+        bpm = st.slider(
+            "BPM slider",
+            50,
+            180,
+            bpm,
+            5,
+            key="backing_track_bpm",
+            label_visibility="collapsed",
+        )
+    with col_groove:
+        st.markdown('<p class="ui-playback-setup-label">Groove / style</p>', unsafe_allow_html=True)
+        st.selectbox(
+            "Groove style",
+            list(GROOVE_STYLE_CHOICES),
+            key="backing_groove_style",
+            label_visibility="collapsed",
+        )
+    with col_status:
+        st.markdown('<p class="ui-playback-setup-label">Status</p>', unsafe_allow_html=True)
         if backing_ready:
             st.markdown(
-                '<span class="ui-backing-pill ready">● Backing audio ready</span>',
+                '<span class="ui-playback-status-badge ready">✅ Backing audio ready</span>',
                 unsafe_allow_html=True,
             )
         else:
             st.markdown(
-                '<span class="ui-backing-pill">○ Generate backing below</span>',
+                '<span class="ui-playback-status-badge">Generate below to hear audio</span>',
                 unsafe_allow_html=True,
             )
+
     render_cross_page_links(
         st.session_state,
         current_page="backing",
@@ -4728,7 +4781,7 @@ _display_key_options = sync_display_key_before_widget(
 
 sidebar_section("Practice key", icon="🎹", tone="key")
 st.sidebar.markdown(
-    '<p class="ui-key-global-hint">Practice / Display Key — concert pitch for the song (global transpose).</p>',
+    '<p class="ui-key-global-hint">Practice / Display Key — concert pitch for the active song.</p>',
     unsafe_allow_html=True,
 )
 st.sidebar.caption(f"Song original key: **{original_key}**")
@@ -4736,7 +4789,7 @@ st.sidebar.selectbox(
     "Practice / Display Key (concert)",
     _display_key_options,
     key="display_key",
-    help="Transposes charts, backing audio, and coach content together.",
+    help="Concert-pitch center; charts may show your written key when transposing is enabled.",
     on_change=lambda: mark_display_key_changed(st),
 )
 
@@ -4804,13 +4857,27 @@ render_sidebar_transposing_controls(
     instrument=instrument,
 )
 
+ensure_transposing_defaults(st.session_state, instrument)
+_key_ctx = resolve_practice_keys(st.session_state, display_key, instrument)
+concert_key = _key_ctx["concert_key"]
+chart_key = _key_ctx["chart_key"]
+global_display_key = _key_ctx["global_display_key"]
+chart_key_mode = _key_ctx["chart_key_mode"]
+written_key = _key_ctx["written_key"]
+
+if is_transposing_instrument(instrument):
+    st.sidebar.caption(
+        f"**Concert:** {concert_key} · **Written:** {written_key} · "
+        f"**Charts show:** {global_display_key}"
+    )
+
 _chart_bundle = build_active_chart_bundle(
     st.session_state,
     catalog_genre=_catalog_genre,
     catalog_song=_catalog_song,
     catalog_song_data=_catalog_song_data,
     level=level,
-    display_key=display_key,
+    display_key=chart_key,
     cpl_active_key=CPL_ACTIVE_KEY,
     sections_for_level=sections_for_level,
     transpose_sections=transpose_sections,
@@ -4825,16 +4892,19 @@ _cpl_active = _chart_bundle.get("cpl_active")
 
 
 def _ui_page_badges() -> list[tuple[str, str]]:
-    return session_badges(
+    badges = session_badges(
         source_label=_ui_source_label(),
         song=song,
         original_key=original_key,
-        display_key=display_key,
+        display_key=global_display_key,
         instrument=instrument,
         level=level,
         focus=focus,
         genre=genre if genre != "Custom" else "",
     )
+    if chart_key_mode == "written" and is_transposing_instrument(instrument):
+        badges.append((f"Concert {concert_key}", ""))
+    return badges
 
 
 full_song_chords = chord_blocks_for_backing(sections)
@@ -4959,7 +5029,7 @@ if _studio_page == "practice":
     st.markdown(
         f'<div class="ui-badge-row">'
         f'<span class="ui-badge accent">{html.escape(_ui_source_label())}</span>'
-        f'<span class="ui-badge green">Key {html.escape(display_key)}</span>'
+        f'<span class="ui-badge green">Key {html.escape(global_display_key)}</span>'
         f'<span class="ui-badge">{html.escape(level)}</span>'
         f'<span class="ui-badge">{html.escape(instrument)}</span>'
         f'<span class="ui-badge purple">{html.escape(focus)}</span>'
@@ -5009,16 +5079,16 @@ if _studio_page == "practice":
     ):
         st.session_state.pop(_old_key, None)
 
-    _practice_chart_key, _chart_key_mode = render_practice_transposing_helper(
-        st,
-        concert_key=display_key,
-        instrument=instrument,
-    )
+    render_transposing_info_card(st, concert_key=concert_key, instrument=instrument)
+    _practice_chart_key = chart_key
+    _chart_key_mode = chart_key_mode
+    if _chart_key_mode == "written":
+        st.caption(f"Charts in **{chart_key}** (concert **{concert_key}**).")
 
     render_tuner_tone_section(
         st,
         instrument=instrument,
-        display_key=display_key,
+        display_key=chart_key,
         key_prefix=f"practice_tuner::{song}",
     )
 
@@ -5046,7 +5116,7 @@ if _studio_page == "practice":
                     instrument=instrument,
                     level=level,
                     focus=focus,
-                    display_key=display_key,
+                    display_key=chart_key,
                     bpm=_practice_bpm,
                     groove_style=_practice_groove,
                 )
@@ -5231,7 +5301,8 @@ if _studio_page == "practice":
 
     with st.expander("🎯 Practice coach & session settings", expanded=False):
         st.caption(
-            f"Session length: **{minutes} min** · practice key: **{display_key}** (sidebar)."
+            f"Session length: **{minutes} min** · chart key: **{global_display_key}**"
+            + (f" (concert **{concert_key}**)" if chart_key_mode == "written" else " (sidebar).")
         )
         st.markdown(
             '<div class="ui-card soft"><div class="ui-card-title">Personalized coach exercise</div>',
@@ -5269,13 +5340,13 @@ if _studio_page == "practice":
             level,
             key_prefix=f"practice::{song}::{instrument}::{level}",
             expanded=True,
-            display_key=display_key,
+            display_key=chart_key,
         )
 
     with st.expander("🎚️ Transpose / capo / instrument key", expanded=False):
         render_general_transpose_helper(
             original_key,
-            display_key,
+            concert_key,
             sections,
             level_source_sections,
             key_prefix=f"practice::{song}",
@@ -5284,22 +5355,19 @@ if _studio_page == "practice":
             st.divider()
             render_guitar_capo_helper(
                 sections,
-                display_key,
+                chart_key,
                 key_prefix=f"practice::{song}",
                 wrap_expander=False,
             )
         if transposing_instrument_options(instrument) and instrument != "Saxophone":
             st.divider()
-            render_transposition_helper(
-                display_key,
-                instrument,
-                key_prefix=f"practice::{song}",
-                wrap_expander=False,
+            st.caption(
+                "Transposing settings are in the **sidebar** (instrument type + show charts in instrument key)."
             )
         elif instrument == "Flute":
             st.divider()
             render_transposition_helper(
-                display_key,
+                concert_key,
                 instrument,
                 key_prefix=f"practice::{song}",
                 wrap_expander=False,
@@ -5392,10 +5460,10 @@ elif _studio_page == "picker":
             sections_for_level=sections_for_level,
             invalidate_backing=invalidate_backing_cache,
         )
-        if display_key != selected_data.get("key"):
+        if chart_key != selected_data.get("key"):
             st.caption(
-                f"Chords in Practice and Backing Track are shown in **{display_key}** "
-                f"(+{semitone_distance(selected_data.get('key', 'C'), display_key)} semitones)."
+                f"Chords in Practice and Backing Track are shown in **{global_display_key}** "
+                f"(+{semitone_distance(selected_data.get('key', 'C'), chart_key)} semitones from catalog key)."
             )
 
         st.info(
@@ -5412,26 +5480,19 @@ elif _studio_page == "backing":
 
     _render_page_quick_nav("backing")
 
-    compact_page_title(
-        "🎧",
-        "Backing Track",
-        f"Play & follow — **{song}**" + ("" if is_custom_progression(st.session_state) else f" · {song_data.get('artist', '')}"),
-    )
-
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
         st.warning("Key changed — regenerate backing track")
 
-    st.caption(
-        f"Song defaults: **{_default_song_bpm} BPM** · **{default_groove_style}** "
-        f"(from active song metadata — change anytime below)."
-    )
     bpm = _render_backing_tempo_panel(
         song_title=song,
+        song_artist=str(song_data.get("artist", "")),
         song_id=_playback_id,
         default_bpm=_default_bpm,
         default_groove=default_groove_style,
         backing_ready=bool(st.session_state.get("_last_backing_wav")),
     )
+    if is_transposing_instrument(instrument):
+        render_transposing_info_card(st, concert_key=concert_key, instrument=instrument)
 
     selected_section_names: list[str] = []
     form_loops = int(st.session_state.get("backing_track_loops", 2))
@@ -5517,7 +5578,7 @@ elif _studio_page == "backing":
         **song_data,
         "sections": level_source_sections,
     }
-    chart_display_key = display_key
+    chart_display_key = chart_key
     chart_sections = transpose_sections(
         chart_level_song_data,
         chart_display_key,
@@ -5548,7 +5609,7 @@ elif _studio_page == "backing":
                 unsafe_allow_html=True,
             )
 
-    _follow_key_prefix = f"backing::{song}::{tuple(selected_section_names)}::{display_key}::{bpm}::{form_loops}"
+    _follow_key_prefix = f"backing::{song}::{tuple(selected_section_names)}::{chart_key}::{bpm}::{form_loops}"
 
     st.markdown(
         '<div class="ui-card soft"><div class="ui-card-title">Generate & play</div>',
@@ -5574,7 +5635,7 @@ elif _studio_page == "backing":
     )
     _current_backing_signature = (
         song,
-        display_key,
+        chart_key,
         level,
         resolved_groove,
         bpm,
