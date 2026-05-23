@@ -16,7 +16,7 @@ def sync_backing_bpm_before_widget(st: Any, song_title: str, default_bpm: int) -
 
     if song_changed:
         st.session_state[LAST_BPM_SONG] = song_title
-        st.session_state[BPM_WIDGET_KEY] = pending if pending is not None else default_bpm
+        st.session_state[BPM_WIDGET_KEY] = int(default_bpm)
     elif pending is not None:
         st.session_state[BPM_WIDGET_KEY] = pending
     elif BPM_WIDGET_KEY not in st.session_state:

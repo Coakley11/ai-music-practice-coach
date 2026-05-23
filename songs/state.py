@@ -106,6 +106,7 @@ def apply_pick_key(st: Any, pick_key: str, song_picker_catalog: dict[str, dict[s
         st.session_state[PENDING_DISPLAY_KEY] = data["key"]
         st.session_state[IDENTITY_KEY] = (data["title"], data["artist"], data["key"])
         st.session_state[LAST_DISPLAY_KEY] = data["key"]
+        reset_playback_song_tracking(st)
         invalidate_backing_cache(st)
         st.session_state[BACKING_NEEDS_REGEN] = False
         st.session_state.pop("multitrack_backing_wav", None)

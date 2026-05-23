@@ -110,18 +110,19 @@ from songs import (
 )
 from songs.key_state import mark_display_key_changed
 from songs.playback_defaults import (
+    default_bpm_for_song_data,
     default_groove_for_song,
     playback_song_id,
     sync_backing_groove_before_widget,
     sync_playback_defaults_for_active_song,
 )
 from instrument_transposition import (
-    SAX_TYPE_SESSION_KEY,
-    SAXOPHONE_TYPES,
-    effective_chart_key,
+    CHART_IN_INSTRUMENT_KEY_KEY,
+    SELECTED_TRANSPOSING_INSTRUMENT_KEY,
     is_transposing_instrument,
-    sax_transposition_blurb,
-    written_key_for_saxophone,
+    render_practice_transposing_helper,
+    render_sidebar_transposing_controls,
+    selected_saxophone_type,
 )
 
 from backing_audio import (
@@ -4722,25 +4723,11 @@ if display_key not in _display_key_options:
     request_display_key(st, display_key)
 key_changed_this_run = note_display_key_change(st, display_key)
 
-if is_transposing_instrument(instrument):
-    st.session_state.setdefault(SAX_TYPE_SESSION_KEY, SAXOPHONE_TYPES[0])
-    _sax_pick = st.sidebar.selectbox(
-        "Saxophone type",
-        SAXOPHONE_TYPES,
-        key=SAX_TYPE_SESSION_KEY,
-    )
-    _written = written_key_for_saxophone(display_key, _sax_pick)
-    st.sidebar.markdown(
-        f'<div class="ui-card soft" style="margin:0.5rem 0;padding:0.65rem;">'
-        f"<strong>Concert key:</strong> {html.escape(display_key)}<br>"
-        f"<strong>Your instrument:</strong> {html.escape(_sax_pick)}<br>"
-        f"<strong>Written key for you:</strong> {html.escape(_written)}"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-    st.sidebar.caption(
-        "Practice charts can show your written key. Backing track uses concert pitch."
-    )
+render_sidebar_transposing_controls(
+    st,
+    concert_key=display_key,
+    instrument=instrument,
+)
 
 _chart_bundle = build_active_chart_bundle(
     st.session_state,
@@ -4776,7 +4763,7 @@ def _ui_page_badges() -> list[tuple[str, str]]:
 
 
 full_song_chords = chord_blocks_for_backing(sections)
-_default_bpm = default_song_bpm(song, song_data)
+_default_bpm = default_bpm_for_song_data(song_data)
 _default_groove = default_groove_for_song(song_data, infer_fn=infer_groove_style)
 if is_custom_progression(st.session_state) and _cpl_active:
     _default_bpm = int(_cpl_active.get("bpm", _default_bpm) or _default_bpm)
@@ -4947,29 +4934,11 @@ if _studio_page == "practice":
     ):
         st.session_state.pop(_old_key, None)
 
-    _practice_chart_key, _chart_key_mode = effective_chart_key(
-        display_key,
-        instrument,
-        st.session_state,
+    _practice_chart_key, _chart_key_mode = render_practice_transposing_helper(
+        st,
+        concert_key=display_key,
+        instrument=instrument,
     )
-    if is_transposing_instrument(instrument):
-        st.markdown(
-            '<div class="ui-card soft"><div class="ui-card-sub">'
-            + sax_transposition_blurb(display_key, st.session_state.get(SAX_TYPE_SESSION_KEY, SAXOPHONE_TYPES[0]))
-            + "</div></div>",
-            unsafe_allow_html=True,
-        )
-
-    if level == "Beginner":
-        _beginner_tips = beginner_transpose_suggestions(
-            concert_key=display_key,
-            instrument=instrument,
-            level=level,
-        )
-        if _beginner_tips:
-            with st.expander("🎹 Beginner-friendly key ideas", expanded=True):
-                for tip in _beginner_tips:
-                    st.markdown(tip)
 
     if _is_full_song:
         st.info(
@@ -5015,7 +4984,7 @@ if _studio_page == "practice":
             with st.expander("🎼 Scales & approaches (this section)", expanded=False):
                 for ch in _focus_chords[:12]:
                     st.markdown(
-                        scale_suggestions_for_chord(ch, display_key, level, instrument)
+                        scale_suggestions_for_chord(ch, _practice_chart_key, level, instrument)
                     )
 
         with st.expander(
@@ -5048,11 +5017,14 @@ if _studio_page == "practice":
         chart_mode="practice",
     )
     _chart_scope = "full song" if _is_full_song else str(_active_section)
-    _chart_key_note = (
-        f" · written key **{_practice_chart_key}**"
-        if _chart_key_mode == "written"
-        else ""
-    )
+    _chart_key_note = ""
+    if _chart_key_mode == "written" and is_transposing_instrument(instrument):
+        from instrument_transposition import sax_display_name
+
+        _chart_key_note = (
+            f" · {sax_display_name(selected_saxophone_type(st.session_state))}"
+            f" · written key **{_practice_chart_key}**"
+        )
     with st.expander(f"Chord Chart — {_chart_scope}{_chart_key_note}", expanded=False):
         st.markdown(_chart_html, unsafe_allow_html=True)
     if has_lyric_chord_sheet(song_data):
@@ -5088,6 +5060,8 @@ if _studio_page == "practice":
         _practice_chart_key,
         _practice_bpm,
         _practice_groove,
+        selected_saxophone_type(st.session_state) if is_transposing_instrument(instrument) else "",
+        st.session_state.get(CHART_IN_INSTRUMENT_KEY_KEY, False),
     )
     if st.session_state.get("practice_notation_sig") != _notation_sig:
         st.session_state.pop(_NOTATION_KEY, None)
@@ -5232,7 +5206,7 @@ if _studio_page == "practice":
                 key_prefix=f"practice::{song}",
                 wrap_expander=False,
             )
-        if transposing_instrument_options(instrument):
+        if transposing_instrument_options(instrument) and instrument != "Saxophone":
             st.divider()
             render_transposition_helper(
                 display_key,

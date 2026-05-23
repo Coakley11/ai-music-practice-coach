@@ -28,11 +28,14 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
 
 def note_active_source_change(st: Any, *, invalidate_backing) -> bool:
     """Invalidate backing cache when the user switches catalog ↔ custom."""
+    from .playback_defaults import reset_playback_song_tracking
+
     session_state = st.session_state
     current = session_state.get(ACTIVE_MUSIC_SOURCE_KEY, SOURCE_CATALOG)
     previous = session_state.get(_LAST_SOURCE_KEY)
     session_state[_LAST_SOURCE_KEY] = current
     if previous is not None and previous != current:
+        reset_playback_song_tracking(st)
         invalidate_backing(st)
         return True
     return False

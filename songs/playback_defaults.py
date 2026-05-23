@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from .bpm_state import BPM_WIDGET_KEY, LAST_BPM_SONG, PENDING_BACKING_TRACK_BPM, sync_backing_bpm_before_widget
+from .bpm_state import (
+    BPM_WIDGET_KEY,
+    LAST_BPM_SONG,
+    PENDING_BACKING_TRACK_BPM,
+    sync_backing_bpm_before_widget,
+)
 
 BACKING_GROOVE_KEY = "backing_groove_style"
 LAST_PLAYBACK_GROOVE_SONG = "_last_playback_groove_song"
@@ -41,9 +46,7 @@ def sync_backing_groove_before_widget(
 
     if song_changed:
         st.session_state[LAST_PLAYBACK_GROOVE_SONG] = song_id
-        st.session_state[BACKING_GROOVE_KEY] = (
-            pending if pending is not None else default_groove
-        )
+        st.session_state[BACKING_GROOVE_KEY] = str(default_groove)
     elif pending is not None:
         st.session_state[BACKING_GROOVE_KEY] = pending
     elif BACKING_GROOVE_KEY not in st.session_state:

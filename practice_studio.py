@@ -353,10 +353,6 @@ def beginner_transpose_suggestions(
                 f"(chart transpose: +{semitone_distance(concert_key, alt)} semitones)."
             )
 
-    for label in transposing_instrument_labels(instrument):
-        written = transpose_for_label(concert_key, label)
-        tips.append(f"**{label}:** read/play in **{written}** when the concert chart is **{concert_key}**.")
-
     if not tips:
         tips.append(
             f"**Tip:** Use the sidebar **Practice / Display Key** to try a simpler center "
