@@ -9,8 +9,8 @@ import streamlit as st
 
 from instrument_transposition import (
     is_transposing_instrument,
-    selected_saxophone_type,
-    written_key_for_saxophone,
+    selected_transposing_type,
+    written_key_for_instrument,
 )
 from tuner_tone import (
     InstrumentTunerProfile,
@@ -33,11 +33,14 @@ def render_tuner_tone_section(
     key_prefix: str = "practice_tuner",
 ) -> None:
     """Collapsible Tuner & Tone Development block for the Practice page."""
-    sax_type = ""
+    transposing_type = ""
     if is_transposing_instrument(instrument):
-        sax_type = selected_saxophone_type(st_module.session_state)
+        transposing_type = selected_transposing_type(
+            st_module.session_state,
+            instrument,
+        )
 
-    profile = _profile_for_instrument(instrument, sax_type=sax_type)
+    profile = _profile_for_instrument(instrument, sax_type=transposing_type)
 
     with st_module.expander("🎵 Tuner & Tone Development", expanded=False):
         if not librosa_available():
@@ -54,7 +57,11 @@ def render_tuner_tone_section(
             )
 
         if is_transposing_instrument(instrument):
-            written = written_key_for_saxophone(display_key, sax_type)
+            written = written_key_for_instrument(
+                display_key,
+                instrument,
+                st_module.session_state,
+            )
             st_module.info(
                 f"Song practice key (concert): **{display_key}** · "
                 f"Your written key: **{written}** — long tones in written key help intonation."

@@ -122,7 +122,8 @@ from instrument_transposition import (
     TRANSPOSING_INSTRUMENTS,
     chart_in_instrument_key,
     effective_chart_key,
-    ensure_transposing_defaults,
+    apply_pending_transposing_instrument,
+    request_transposing_instrument_sync,
     is_transposing_instrument,
     options_for_instrument,
     render_practice_transposing_helper,
@@ -4546,7 +4547,7 @@ def _render_practice_setup_panel(
             "Instrument",
             instrument_options,
             key="instrument",
-            on_change=lambda: ensure_transposing_defaults(
+            on_change=lambda: request_transposing_instrument_sync(
                 st.session_state,
                 st.session_state.get("instrument", "Piano"),
             ),
@@ -4838,13 +4839,13 @@ if display_key not in _display_key_options:
     request_display_key(st, display_key)
 key_changed_this_run = note_display_key_change(st, display_key)
 
+apply_pending_transposing_instrument(st.session_state, instrument)
 render_sidebar_transposing_controls(
     st,
     concert_key=display_key,
     instrument=instrument,
 )
 
-ensure_transposing_defaults(st.session_state, instrument)
 _key_ctx = resolve_practice_keys(st.session_state, display_key, instrument)
 concert_key = _key_ctx["concert_key"]
 chart_key = _key_ctx["chart_key"]

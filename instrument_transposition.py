@@ -19,6 +19,7 @@ BB_INSTRUMENT_TYPES: tuple[str, ...] = (
 )
 
 SELECTED_TRANSPOSING_INSTRUMENT_KEY = "selected_transposing_instrument"
+PENDING_SELECTED_TRANSPOSING_INSTRUMENT = "_pending_selected_transposing_instrument"
 CHART_IN_INSTRUMENT_KEY_KEY = "show_chart_in_instrument_key"
 CONCERT_KEY_SESSION_KEY = "concert_practice_key"
 SAX_TYPE_SESSION_KEY = "saxophone_type"
@@ -72,30 +73,53 @@ def default_transposing_type(instrument: str) -> str:
 
 
 def _migrate_transposing_instrument_state(session_state: dict) -> None:
-    if SELECTED_TRANSPOSING_INSTRUMENT_KEY not in session_state:
-        legacy = session_state.get(SAX_TYPE_SESSION_KEY)
-        if legacy in SAXOPHONE_TYPES:
-            session_state[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = legacy
-    selected = session_state.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY)
-    if selected in SAXOPHONE_TYPES:
-        session_state[SAX_TYPE_SESSION_KEY] = selected
+    """One-time legacy migration — only when the widget key is not yet set."""
+    if SELECTED_TRANSPOSING_INSTRUMENT_KEY in session_state:
+        selected = session_state.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY)
+        if selected in SAXOPHONE_TYPES:
+            session_state[SAX_TYPE_SESSION_KEY] = selected
+        return
+    legacy = session_state.get(SAX_TYPE_SESSION_KEY)
+    if legacy in SAXOPHONE_TYPES:
+        session_state[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = legacy
 
 
-def ensure_transposing_defaults(session_state: dict, instrument: str) -> None:
-    """Keep selected transposing type valid when instrument changes."""
+def apply_pending_transposing_instrument(session_state: dict, instrument: str) -> None:
+    """Apply pending type or fix invalid value — call only BEFORE the type selectbox."""
     if not is_transposing_instrument(instrument):
         return
     _migrate_transposing_instrument_state(session_state)
     opts = options_for_instrument(instrument)
+    pending = session_state.pop(PENDING_SELECTED_TRANSPOSING_INSTRUMENT, None)
+    if pending in opts:
+        session_state[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = pending
+        return
     current = session_state.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY)
     if current not in opts:
         session_state[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = default_transposing_type(instrument)
 
 
-def selected_transposing_type(session_state: dict, instrument: str) -> str:
-    ensure_transposing_defaults(session_state, instrument)
-    pick = session_state.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY, "")
+def request_transposing_instrument_sync(session_state: dict, instrument: str) -> None:
+    """Queue type reset when instrument changes (safe after widgets exist)."""
+    if not is_transposing_instrument(instrument):
+        return
     opts = options_for_instrument(instrument)
+    current = session_state.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY)
+    if current not in opts:
+        session_state[PENDING_SELECTED_TRANSPOSING_INSTRUMENT] = default_transposing_type(instrument)
+
+
+def ensure_transposing_defaults(session_state: dict, instrument: str) -> None:
+    """Backward-compatible alias — queues sync, never mutates widget keys mid-run."""
+    request_transposing_instrument_sync(session_state, instrument)
+
+
+def selected_transposing_type(session_state: dict, instrument: str) -> str:
+    """Read selected type without writing widget session keys."""
+    if not is_transposing_instrument(instrument):
+        return ""
+    opts = options_for_instrument(instrument)
+    pick = session_state.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY, "")
     if pick in opts:
         return str(pick)
     return default_transposing_type(instrument)
@@ -190,7 +214,6 @@ def resolve_practice_keys(
     """Single source of truth for concert, written, chart, and UI display keys."""
     concert_key = str(concert_key or "C")
     session_state[CONCERT_KEY_SESSION_KEY] = concert_key
-    ensure_transposing_defaults(session_state, instrument)
     written = written_key_for_instrument(concert_key, instrument, session_state)
     chart_key, mode = effective_chart_key(concert_key, instrument, session_state)
     global_display = chart_key if mode == "written" else concert_key
@@ -216,7 +239,6 @@ def written_key_for_saxophone(concert_key: str, sax_type: str) -> str:
 
 
 def selected_saxophone_type(session_state: dict) -> str:
-    ensure_transposing_defaults(session_state, "Saxophone")
     return selected_transposing_type(session_state, "Saxophone")
 
 
@@ -347,7 +369,6 @@ def get_instrument_transposition(
     concert_key: str = "C",
 ) -> dict[str, str | int | bool]:
     """Metadata for the active transposing instrument (type, steps, written key)."""
-    ensure_transposing_defaults(session_state, instrument)
     t_type = selected_transposing_type(session_state, instrument) if is_transposing_instrument(instrument) else ""
     steps = TRANSPOSING_SEMITONE_STEPS.get(t_type, 0)
     written = written_key_for_instrument(concert_key, instrument, session_state)
@@ -411,7 +432,10 @@ __all__ = [
     "chart_in_instrument_key",
     "default_transposing_type",
     "effective_chart_key",
+    "apply_pending_transposing_instrument",
     "ensure_transposing_defaults",
+    "request_transposing_instrument_sync",
+    "PENDING_SELECTED_TRANSPOSING_INSTRUMENT",
     "get_instrument_transposition",
     "get_written_key_for_instrument",
     "instrument_display_name",
