@@ -72,8 +72,19 @@ def _levels(
 def _perfect_chart_pack() -> dict[str, Any]:
     """Perfect — Ed Sheeran (G major, acoustic pop ballad)."""
     walk = ["G", "D/F#", "Em7", "D", "Cadd9", "D", "G"]
-    verse = ["G", "Em7", "Cadd9", "D/F#", "G", "Em7", "Cadd9", "D/F#"]
     chorus = ["Em7", "Cadd9", "G", "D/F#", "Em7", "Cadd9", "G", "D/F#"]
+
+    def _hold_two_bars(chords: list[str]) -> list[str]:
+        out: list[str] = []
+        for ch in chords:
+            out.extend([ch, ch])
+        return out
+
+    def _verse_bars(cycle: list[str]) -> list[str]:
+        return _hold_two_bars(cycle) * 2
+
+    verse_cycle = ["G", "Em7", "Cadd9", "D/F#"]
+    verse = _verse_bars(verse_cycle)
     base = {
         "Intro": list(walk),
         "Verse 1": list(verse),
@@ -82,17 +93,21 @@ def _perfect_chart_pack() -> dict[str, Any]:
         "Verse 3": list(verse),
         "Verse 4": list(verse),
         "Chorus 2": list(chorus),
+        "Chorus 3": list(chorus),
         "Outro": list(walk),
     }
     intermediate = dict(base)
+    verse_adv_cycle = ["G6", "Em9", "Cmaj9", "D13sus4"]
+    chorus_adv = ["Em9", "C6/9", "Gmaj9/B", "D13sus4"] * 2
     advanced = {
         "Intro": ["Gmaj9", "D/F#", "Em9", "D13sus4", "C6/9", "Dadd9", "Gmaj9"],
-        "Verse 1": ["G6", "Em9", "Cmaj9", "D13sus4"] * 2,
-        "Verse 2": ["G6", "Em9", "Cmaj9", "D13sus4"] * 2,
-        "Chorus 1": ["Em9", "C6/9", "Gmaj9/B", "D13sus4"] * 2,
-        "Verse 3": ["G6", "Em9", "Cmaj9", "D13sus4"] * 2,
-        "Verse 4": ["G6", "Em9", "Cmaj9", "D13sus4"] * 2,
-        "Chorus 2": ["Em9", "C6/9", "Gmaj9/B", "D13sus4"] * 2,
+        "Verse 1": _verse_bars(verse_adv_cycle),
+        "Verse 2": _verse_bars(verse_adv_cycle),
+        "Chorus 1": list(chorus_adv),
+        "Verse 3": _verse_bars(verse_adv_cycle),
+        "Verse 4": _verse_bars(verse_adv_cycle),
+        "Chorus 2": list(chorus_adv),
+        "Chorus 3": list(chorus_adv),
         "Outro": ["Gmaj9", "D/F#", "Em9", "D13sus4", "C6/9", "Dadd9", "Gmaj9"],
     }
     section_order = [
@@ -103,6 +118,7 @@ def _perfect_chart_pack() -> dict[str, Any]:
         "Verse 3",
         "Verse 4",
         "Chorus 2",
+        "Chorus 3",
         "Outro",
     ]
     return {
@@ -119,15 +135,16 @@ def _perfect_chart_pack() -> dict[str, Any]:
             "Verse 3": ["Cause we were just kids when we fell in love…"],
             "Verse 4": ["Barefoot on the grass, listening to our favourite song…"],
             "Chorus 2": ["Baby, I'm dancing in the dark…"],
+            "Chorus 3": ["Final chorus — same lift as Chorus 2"],
             "Outro": ["Tag — walkdown G · D/F# · Em7 · D · Cadd9 · D · G"],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**G major** acoustic ballad (~95 BPM). Intro/Outro walk: "
-                "**G–D/F#–Em7–D–Cadd9–D–G**. Verses **G–Em7–Cadd9–D/F#**; "
-                "choruses **Em7–Cadd9–G–D/F#**. Intermediate matches this shape; "
-                "Advanced adds maj9, 6/9, and sus extensions. Transpose with Display Key "
-                "if you prefer the concert recording in Ab."
+                "**G major** acoustic ballad (~95 BPM, **6/8**). Intro/Outro walk: "
+                "**G–D/F#–Em7–D–Cadd9–D–G**. Verses hold each chord **two full 6/8 bars** "
+                "(**G–Em7–Cadd9–D/F#**, twice per verse). Choruses **Em7–Cadd9–G–D/F#** "
+                "one bar each (×2 per chorus). Form adds **Chorus 3** before the outro. "
+                "Advanced adds maj9, 6/9, and sus extensions."
             ),
             default_bpm=95,
             default_groove="Ballad",
@@ -1811,12 +1828,13 @@ def curated_song_records() -> list[dict[str, Any]]:
             "G",
             {
                 "Intro": ["G", "D/F#", "Em7", "D", "Cadd9", "D", "G"],
-                "Verse 1": ["G", "Em7", "Cadd9", "D/F#"] * 2,
-                "Verse 2": ["G", "Em7", "Cadd9", "D/F#"] * 2,
+                "Verse 1": ["G", "G", "Em7", "Em7", "Cadd9", "Cadd9", "D/F#", "D/F#"] * 2,
+                "Verse 2": ["G", "G", "Em7", "Em7", "Cadd9", "Cadd9", "D/F#", "D/F#"] * 2,
                 "Chorus 1": ["Em7", "Cadd9", "G", "D/F#"] * 2,
-                "Verse 3": ["G", "Em7", "Cadd9", "D/F#"] * 2,
-                "Verse 4": ["G", "Em7", "Cadd9", "D/F#"] * 2,
+                "Verse 3": ["G", "G", "Em7", "Em7", "Cadd9", "Cadd9", "D/F#", "D/F#"] * 2,
+                "Verse 4": ["G", "G", "Em7", "Em7", "Cadd9", "Cadd9", "D/F#", "D/F#"] * 2,
                 "Chorus 2": ["Em7", "Cadd9", "G", "D/F#"] * 2,
+                "Chorus 3": ["Em7", "Cadd9", "G", "D/F#"] * 2,
                 "Outro": ["G", "D/F#", "Em7", "D", "Cadd9", "D", "G"],
             },
             chart_status="practice_level_verified",
@@ -1828,6 +1846,7 @@ def curated_song_records() -> list[dict[str, Any]]:
                 "Verse 3",
                 "Verse 4",
                 "Chorus 2",
+                "Chorus 3",
                 "Outro",
             ],
         ),

@@ -306,6 +306,7 @@ try:
         session_badges,
         sidebar_section,
         sidebar_source_banner,
+        sidebar_goto_song_selection,
     )
     _APP_UI_LOADED = True
 except Exception as _app_ui_first_err:
@@ -341,6 +342,9 @@ except Exception as _app_ui_first_err:
                 session_badges = _app_ui_mod.session_badges
                 sidebar_section = _app_ui_mod.sidebar_section
                 sidebar_source_banner = _app_ui_mod.sidebar_source_banner
+                sidebar_goto_song_selection = getattr(
+                    _app_ui_mod, "sidebar_goto_song_selection", None
+                )
                 _APP_UI_LOADED = True
                 _APP_UI_IMPORT_ERROR = None
         except Exception as _app_ui_path_err:
@@ -398,6 +402,14 @@ if not _APP_UI_LOADED:
 
     def sidebar_source_banner(source_kind: str, detail: str) -> None:
         st.sidebar.markdown(f"**{source_kind}**  \n{detail}")
+
+    def sidebar_goto_song_selection(*, on_navigate) -> None:
+        st.sidebar.button(
+            "🎼 Song Selection",
+            key="sidebar_goto_song_selection",
+            use_container_width=True,
+            on_click=on_navigate,
+        )
 
     def open_control_section(letter: str, title: str, subtitle: str = "") -> None:
         st.markdown(f"**{letter}. {title}**")
@@ -4967,6 +4979,13 @@ _src_kind, _src_detail = unpack_active_source_banner(
     )
 )
 sidebar_source_banner(_src_kind, _src_detail)
+
+
+def _sidebar_open_song_selection() -> None:
+    navigate_studio_page(st.session_state, "picker")
+
+
+sidebar_goto_song_selection(on_navigate=_sidebar_open_song_selection)
 if is_custom_progression(st.session_state):
     st.sidebar.caption("Edit chords in **Custom Progression Lab**.")
 else:

@@ -31,6 +31,7 @@ __all__ = [
     "session_badges",
     "sidebar_section",
     "sidebar_source_banner",
+    "sidebar_goto_song_selection",
 ]
 
 
@@ -1958,6 +1959,19 @@ def sidebar_source_banner(source_kind: str, detail: str) -> None:
         f'<div class="ui-source-detail">{html.escape(detail)}</div>'
         f"</div>",
         unsafe_allow_html=True,
+    )
+
+
+def sidebar_goto_song_selection(*, on_navigate: Any) -> None:
+    """Small sidebar shortcut to Song Selection (preserves global session state)."""
+    import streamlit as st
+
+    st.sidebar.button(
+        "🎼 Song Selection",
+        key="sidebar_goto_song_selection",
+        use_container_width=True,
+        help="Jump to Song Selection — keeps instrument, level, key, and active song settings.",
+        on_click=on_navigate,
     )
 
 
