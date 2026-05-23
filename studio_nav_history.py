@@ -1,4 +1,9 @@
-"""Back / forward navigation history for studio pages (session_state stacks)."""
+"""Back / forward navigation history for studio pages (session_state stacks).
+
+Each stack entry stores ``page`` + **page-local** snapshot only (see
+``studio_page_persistence``). Global instrument, level, focus, display key,
+song, and transposition are never reverted by back/forward.
+"""
 
 from __future__ import annotations
 
