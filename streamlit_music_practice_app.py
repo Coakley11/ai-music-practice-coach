@@ -6693,6 +6693,37 @@ elif _studio_page == "log":
             "from Upload Analysis."
         )
 
+    st.session_state.setdefault("ai_session_builder_minutes", 45)
+    if st.button(
+        "Analyze My Practice History",
+        type="primary",
+        key="practice_log_insights_btn",
+        use_container_width=True,
+    ):
+        _logs_for_insights = load_logs()
+        with st.spinner("Your AI coach is reviewing logs, patterns, and recordings…"):
+            _insights = generate_practice_log_insights(
+                _logs_for_insights,
+                analysis_history=_analysis_history,
+                session_analysis=st.session_state.get("last_analysis_result"),
+                all_song_records=ALL_SONG_RECORDS,
+                session_minutes=int(st.session_state.get("ai_session_builder_minutes", 45)),
+            )
+            _api_key = str(st.session_state.get("openai_api_key_box") or user_api_key or "")
+            if _api_key.strip():
+                _insights = maybe_enhance_insights_with_openai(
+                    _insights,
+                    api_key=_api_key,
+                    logs=_logs_for_insights,
+                    analysis_history=_analysis_history,
+                )
+            st.session_state["practice_log_insights"] = _insights
+
+    _stored_insights = st.session_state.get("practice_log_insights")
+    if _stored_insights is not None:
+        render_practice_log_insights_ui(st, _stored_insights)
+        st.divider()
+
     _session_mins = st.slider(
         "Target session length (minutes)",
         20,
@@ -6728,39 +6759,10 @@ elif _studio_page == "log":
             navigate_studio_page(st.session_state, "practice")
             st.rerun()
 
-    if st.button(
-        "Analyze My Practice History",
-        type="primary",
-        key="practice_log_insights_btn",
-        use_container_width=True,
-    ):
-        _logs_for_insights = load_logs()
-        with st.spinner("Your AI coach is reviewing logs, patterns, and recordings…"):
-            _insights = generate_practice_log_insights(
-                _logs_for_insights,
-                analysis_history=_analysis_history,
-                session_analysis=st.session_state.get("last_analysis_result"),
-                all_song_records=ALL_SONG_RECORDS,
-                session_minutes=int(_session_mins),
-            )
-            _api_key = str(st.session_state.get("openai_api_key_box") or user_api_key or "")
-            if _api_key.strip():
-                _insights = maybe_enhance_insights_with_openai(
-                    _insights,
-                    api_key=_api_key,
-                    logs=_logs_for_insights,
-                    analysis_history=_analysis_history,
-                )
-            st.session_state["practice_log_insights"] = _insights
-
-    _stored_insights = st.session_state.get("practice_log_insights")
-    if _stored_insights is not None:
-        st.divider()
-        render_practice_log_insights_ui(st, _stored_insights)
-
     if st.button("Clear practice log", type="secondary"):
 
         save_logs([])
+        st.session_state.pop("practice_log_insights", None)
 
         st.success(
             "Practice log cleared."
