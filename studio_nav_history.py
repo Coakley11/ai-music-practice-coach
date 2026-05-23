@@ -93,23 +93,26 @@ def render_sidebar_nav_history(
     *,
     rerun_fn: Callable[[], None],
 ) -> None:
-    """Back / Forward buttons at the top of the sidebar."""
+    """Compact browser-style back / forward arrows at the top of the sidebar."""
     import streamlit as st
 
     init_nav_history(session_state)
     back_ok = can_go_back(session_state)
     fwd_ok = can_go_forward(session_state)
     sidebar.markdown(
-        '<p class="ui-sb-nav-label">Navigate</p>',
+        '<div class="ui-studio-history-nav">'
+        '<span class="ui-sb-nav-label">Navigate</span>'
+        "</div>",
         unsafe_allow_html=True,
     )
-    c1, c2 = sidebar.columns(2, gap="small")
+    c1, c2 = sidebar.columns([1, 1], gap="small")
     with c1:
         if st.button(
             "←",
             key="studio_nav_back_btn",
             disabled=not back_ok,
-            use_container_width=True,
+            use_container_width=False,
+            type="secondary",
             help="Previous page",
         ):
             if go_back(session_state):
@@ -119,7 +122,8 @@ def render_sidebar_nav_history(
             "→",
             key="studio_nav_forward_btn",
             disabled=not fwd_ok,
-            use_container_width=True,
+            use_container_width=False,
+            type="secondary",
             help="Forward",
         ):
             if go_forward(session_state):

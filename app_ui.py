@@ -962,20 +962,77 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 .ui-instrument-strip-icon { font-size: 1.05rem; line-height: 1.2; }
 .ui-instrument-strip-body strong { color: #0f172a; font-weight: 800; }
 .ui-instrument-strip-muted { color: #64748b; }
+.ui-studio-history-nav {
+  margin: 0.05rem 0 0.15rem 0;
+  padding: 0;
+  line-height: 1;
+}
 .ui-sb-nav-label {
-  font-size: 0.62rem !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.1em !important;
+  display: block;
+  font-size: 0.58rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.09em !important;
   text-transform: uppercase !important;
   color: #94a3b8 !important;
-  margin: 0.1rem 0 0.2rem 0 !important;
-  opacity: 0.95;
+  margin: 0 0 0.18rem 0 !important;
+  padding: 0 !important;
+  opacity: 0.9;
 }
-[data-testid="stSidebar"] div[data-testid="column"] .stButton > button {
-  min-height: 1.55rem !important;
-  padding: 0.1rem 0.25rem !important;
-  font-size: 1rem !important;
-  font-weight: 800 !important;
+/* Compact [←] [→] row directly under the Navigate label */
+[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] {
+  margin-top: -0.1rem !important;
+  margin-bottom: 0.35rem !important;
+}
+[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"] {
+  gap: 0.28rem !important;
+  width: auto !important;
+  max-width: 4.6rem !important;
+}
+[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] div[data-testid="column"] {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] .stButton {
+  margin: 0 !important;
+}
+[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] .stButton > button {
+  min-height: 1.28rem !important;
+  height: 1.28rem !important;
+  width: 2.05rem !important;
+  min-width: 2.05rem !important;
+  max-width: 2.05rem !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 0.88rem !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  border-radius: 6px !important;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+  background: rgba(30, 41, 59, 0.55) !important;
+  color: #e2e8f0 !important;
+  box-shadow: none !important;
+}
+[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] .stButton > button:hover:not(:disabled) {
+  background: rgba(51, 65, 85, 0.85) !important;
+  border-color: rgba(148, 163, 184, 0.55) !important;
+  color: #f8fafc !important;
+}
+[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] .stButton > button:disabled {
+  opacity: 0.35 !important;
+  cursor: default !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
+[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+  min-height: 1.28rem !important;
+  height: 1.28rem !important;
+  width: 2.05rem !important;
+  min-width: 2.05rem !important;
+  max-width: 2.05rem !important;
+  padding: 0 !important;
+  font-size: 0.88rem !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
 }
 .live-player-toolbar {
   display: flex;
