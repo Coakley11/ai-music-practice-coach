@@ -117,17 +117,7 @@ from songs.playback_defaults import (
     sync_playback_defaults_for_active_song,
 )
 from tuner_tone_ui import render_tuner_tone_section
-from page_guidance import (
-    guidance_for_analysis,
-    guidance_for_backing,
-    guidance_for_custom,
-    guidance_for_creative,
-    guidance_for_log,
-    guidance_for_multitrack,
-    guidance_for_picker,
-    guidance_for_practice,
-    render_guidance_card,
-)
+from page_guidance import render_sidebar_context_hint
 from instrument_transposition import (
     CHART_IN_INSTRUMENT_KEY_KEY,
     TRANSPOSING_INSTRUMENTS,
@@ -4531,6 +4521,7 @@ def _render_page_quick_nav(current_page: str) -> str:
     return render_page_quick_nav(
         st.session_state,
         current_page=current_page,
+        key_prefix=f"main_{current_page}_quick_nav",
         rerun_fn=st.rerun,
     )
 
@@ -4774,6 +4765,13 @@ else:
 
 st.session_state.setdefault("instrument", "Piano")
 st.session_state.setdefault("level", "Intermediate")
+
+render_sidebar_context_hint(
+    st,
+    studio_page=_studio_page,
+    session_state=st.session_state,
+    instrument=st.session_state.get("instrument", "Piano"),
+)
 
 original_key, _song_identity = display_key_context(
     st.session_state,
@@ -5112,16 +5110,6 @@ if _studio_page == "practice":
         f'<span class="ui-badge purple">{html.escape(focus)}</span>'
         f"</div>",
         unsafe_allow_html=True,
-    )
-
-    render_guidance_card(
-        st,
-        guidance_for_practice(
-            instrument=instrument,
-            session_state=st.session_state,
-            full_song=_is_full_song,
-            active_section=_active_section,
-        ),
     )
 
     render_tuner_tone_section(
@@ -5464,8 +5452,6 @@ elif _studio_page == "picker":
         "Pick your active song from the menu — the card below opens Practice, Backing Track, Creative, or Chord Coach.",
     )
 
-    render_guidance_card(st, guidance_for_picker())
-
     _render_catalog_song_picker_block(
         show_source_toggle=True,
         filters_in_expander=False,
@@ -5526,11 +5512,6 @@ elif _studio_page == "backing":
 
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
         st.warning("Key changed — regenerate backing track")
-
-    render_guidance_card(
-        st,
-        guidance_for_backing(has_audio=bool(st.session_state.get("_last_backing_wav"))),
-    )
 
     bpm = _render_backing_tempo_panel(
         song_title=song,
@@ -5854,11 +5835,6 @@ elif _studio_page == "analysis":
         "Deep timing, pitch, technique, and musicality feedback — personalized practice plans.",
     )
 
-    render_guidance_card(
-        st,
-        guidance_for_analysis(has_result=bool(st.session_state.get("last_analysis_result"))),
-    )
-
     col_mode, col_type = st.columns([1, 1])
     with col_mode:
         analysis_mode = st.radio(
@@ -5961,8 +5937,6 @@ elif _studio_page == "custom":
 
     from cpl_page_ui import render_custom_progression_lab_page
 
-    _render_page_quick_nav("custom")
-    render_guidance_card(st, guidance_for_custom())
     render_custom_progression_lab_page()
 
 
@@ -5975,8 +5949,6 @@ elif _studio_page == "creative":
     _render_page_quick_nav("creative")
 
     compact_page_title("🧠", "Creative Lab", "Harmony, improvisation, and growth tools.")
-
-    render_guidance_card(st, guidance_for_creative())
 
     ctx = current_song_context_lab()
 
@@ -6026,7 +5998,6 @@ elif _studio_page == "multitrack":
         "Multitrack Recorder",
         "Overdub studio — AI feedback on **Analysis** page.",
     )
-    render_guidance_card(st, guidance_for_multitrack())
     st.caption("Headphones recommended. Mic input only unless you include backing in the export.")
 
     MT_SLOTS = [
@@ -6380,8 +6351,6 @@ elif _studio_page == "log":
     _render_page_quick_nav("log")
 
     compact_page_title("📓", "Practice Log", "Session history and progress over time.")
-
-    render_guidance_card(st, guidance_for_log())
 
     _session_mins = st.slider(
         "Target session length (minutes)",

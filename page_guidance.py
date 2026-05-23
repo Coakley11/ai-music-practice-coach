@@ -1,4 +1,4 @@
-"""Context-aware “What to do next” hints for studio pages."""
+"""Compact sidebar hints — short contextual tips only (not in-page tutorials)."""
 
 from __future__ import annotations
 
@@ -9,119 +9,106 @@ def _tuner_in_use(session_state: dict, key_prefix: str) -> bool:
     return any(str(k).startswith(key_prefix) for k in session_state)
 
 
-def guidance_for_practice(
+def _practice_focus_is_section(session_state: dict) -> bool:
+    focus = str(session_state.get("practice_focus_section") or "").strip().lower()
+    return bool(focus) and focus not in ("full song", "full form")
+
+
+def sidebar_context_hints(
     *,
-    instrument: str,
+    studio_page: str,
     session_state: dict,
-    full_song: bool,
-    active_section: str | None,
-    tuner_key_prefix: str = "practice_tuner",
+    instrument: str,
 ) -> list[str]:
-    if _tuner_in_use(session_state, tuner_key_prefix):
-        lines = [
-            "Play a long note and watch the tuner to keep the pitch centered.",
-        ]
-        if instrument == "Saxophone":
-            lines.append(
-                "For saxophone, hold one note for 5–10 seconds and keep the pitch steady."
+    """Return up to two short hint lines for the left sidebar."""
+    page = str(studio_page or "practice").strip()
+
+    if page == "practice":
+        if _tuner_in_use(session_state, "practice_tuner"):
+            return ["Play a sustained note and keep the pitch centered."]
+        try:
+            from instrument_transposition import (
+                CHART_IN_INSTRUMENT_KEY_KEY,
+                is_transposing_instrument,
             )
-        elif instrument in ("Trumpet", "Clarinet"):
-            lines.append(
-                "For brass/reed, sustain one comfortable pitch and aim for steady center."
-            )
-        return lines[:3]
 
-    lines = [
-        "Open the **Chord Chart** expander to review the song.",
-        "Use **Generated Music Notation / TAB** for a short practice exercise.",
-        "Use **Tuner & Tone** to check pitch and tone before practicing.",
-    ]
-    if full_song:
-        lines.append(
-            "Select a **section** above to focus metronome, scales, and section tools."
-        )
-    else:
-        lines.insert(2, "Use the **metronome** to lock in timing on the selected section.")
-        lines.append(
-            "Start slow and keep rhythm steady before increasing tempo."
-        )
-    return lines[:4]
-
-
-def guidance_for_backing(*, has_audio: bool) -> list[str]:
-    lines = [
-        "Choose **Full Song** or a section, then press **Generate and Play**.",
-        "Use **Quick BPM** to slow down or speed up without scrolling.",
-        "Press **Stop Backing Track** when you want to stop playback.",
-    ]
-    if has_audio:
-        lines.insert(0, "Audio is ready — adjust **Quick BPM** or section, then regenerate if needed.")
-    return lines[:4]
-
-
-def guidance_for_picker() -> list[str]:
-    return [
-        "Choose a song from the dropdown, then open **Practice** or **Backing Track**.",
-        "Use **Practice** for charts, notation, metronome, and coach tools.",
-        "Use **Backing Track** to hear a loop at your chosen tempo.",
-    ]
-
-
-def guidance_for_custom() -> list[str]:
-    return [
-        "Choose a style and key, click chords to build a section, then press **Finish Song**.",
-        "Use **Open in Backing Track** when you are ready to practice your progression.",
-        "Set BPM and groove on the backing page after you finish the form.",
-    ]
-
-
-def guidance_for_analysis(*, has_result: bool) -> list[str]:
-    if has_result:
+            if is_transposing_instrument(instrument):
+                if session_state.get(CHART_IN_INSTRUMENT_KEY_KEY):
+                    return ["Charts use your written instrument key."]
+                return [
+                    "Enable “Show charts in my instrument key” to transpose all charts.",
+                ]
+        except ImportError:
+            pass
+        if _practice_focus_is_section(session_state):
+            return [
+                "Loop the section with Metronome at a slow tempo first.",
+                "Use Tuner & Tone to warm up pitch and tone.",
+            ]
         return [
-            "Review timing, pitch, and tone scores in the dashboard below.",
-            "Try the practice plan suggestions on your next take.",
-            "Upload another recording to compare progress.",
+            "Open Chord Chart to review the song.",
+            "Use Tuner & Tone to warm up pitch and tone.",
         ]
-    return [
-        "Upload a recording and run **AI coach analysis** for timing, pitch, tone, and feedback.",
-        "Use a quiet room and one instrument at a time for clearer results.",
-        "Solo practice takes work best; multitrack mode compares layers.",
-    ]
+
+    if page == "backing":
+        if session_state.get("_last_backing_wav"):
+            return [
+                "Use Quick BPM to adjust speed while practicing.",
+                "Press Stop Backing Track to stop playback.",
+            ]
+        return [
+            "Press Generate and Play to start playback.",
+            "Use Quick BPM to adjust speed while practicing.",
+        ]
+
+    if page == "picker":
+        return ["Choose a song, then open Practice or Backing Track."]
+
+    if page == "custom":
+        return [
+            "Add chords to build your progression.",
+            "Press Finish Song when sections are ready.",
+        ]
+
+    if page == "analysis":
+        if session_state.get("last_analysis_result"):
+            return ["Review scores below and try the suggested practice plan."]
+        return ["Upload a recording and run AI coach analysis."]
+
+    if page == "creative":
+        return ["Explore ideas here, then try them on the Practice page."]
+
+    if page == "multitrack":
+        return ["Record a layer, then review on Upload Analysis."]
+
+    if page == "log":
+        return ["Log sessions to track progress over time."]
+
+    return []
 
 
-def guidance_for_creative() -> list[str]:
-    return [
-        "Explore harmony and improvisation ideas for your active song key.",
-        "Take one idea into **Practice** and loop it with the metronome.",
-    ]
-
-
-def guidance_for_multitrack() -> list[str]:
-    return [
-        "Record a take over your backing track or practice without playback.",
-        "Enable the metronome during playback if you want a steady click.",
-    ]
-
-
-def guidance_for_log() -> list[str]:
-    return [
-        "Log sessions to track practice time and focus areas over weeks.",
-    ]
-
-
-def render_guidance_card(
+def render_sidebar_context_hint(
     st: Any,
-    lines: list[str],
     *,
-    title: str = "What to do next",
+    studio_page: str,
+    session_state: dict,
+    instrument: str,
 ) -> None:
-    """Compact guidance card (markdown bullets inside styled wrapper)."""
+    """Small sidebar tip box — below Active Source, above Practice key."""
     import html
 
-    if not lines:
+    hints = sidebar_context_hints(
+        studio_page=studio_page,
+        session_state=session_state,
+        instrument=instrument,
+    )
+    if not hints:
         return
-    st.markdown('<div class="ui-guidance-card">', unsafe_allow_html=True)
-    st.markdown(f'<p class="ui-guidance-title">{html.escape(title)}</p>', unsafe_allow_html=True)
-    for line in lines:
-        st.markdown(f"- {line}")
-    st.markdown("</div>", unsafe_allow_html=True)
+    body = "<br>".join(html.escape(line) for line in hints[:2])
+    st.sidebar.markdown(
+        f'<div class="ui-sidebar-hint">'
+        f'<p class="ui-sidebar-hint-title">Tip</p>'
+        f'<p class="ui-sidebar-hint-body">{body}</p>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )

@@ -46,7 +46,12 @@ def render_cpl_page_header() -> None:
 
     from app_ui import compact_page_title, render_page_quick_nav
 
-    render_page_quick_nav(st.session_state, current_page="custom", rerun_fn=st.rerun)
+    render_page_quick_nav(
+        st.session_state,
+        current_page="custom",
+        key_prefix="cpl_header_quick_nav",
+        rerun_fn=st.rerun,
+    )
     compact_page_title(
         "✏️",
         "Custom Progression",

@@ -350,27 +350,27 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   font-size: 0.86rem;
   margin: 0 0 0.55rem 0;
 }
-.ui-guidance-card {
+.ui-sidebar-hint {
   border: 1px solid var(--studio-line);
-  border-radius: var(--studio-radius);
-  padding: 0.7rem 0.95rem;
-  margin: 0.35rem 0 1rem 0;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  margin: 0.35rem 0 0.65rem 0;
+  background: #f8fafc;
 }
-.ui-guidance-title {
-  font-size: 0.9rem;
+.ui-sidebar-hint-title {
+  font-size: 0.72rem;
   font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  margin: 0 0 0.25rem 0;
+}
+.ui-sidebar-hint-body {
+  font-size: 0.8rem;
+  line-height: 1.4;
   color: var(--studio-ink);
-  margin: 0 0 0.4rem 0;
-}
-.ui-guidance-list {
   margin: 0;
-  padding-left: 1.15rem;
-  color: var(--studio-muted);
-  font-size: 0.86rem;
-  line-height: 1.45;
 }
-.ui-guidance-list li { margin-bottom: 0.25rem; }
 .ui-source-banner {
   border-radius: 12px;
   padding: 0.65rem 0.75rem;
@@ -1770,13 +1770,17 @@ def nav_two_line_label(page_id: str) -> str:
     return f"{icon}\n{title}" if icon else title
 
 
-def _sync_studio_page_nav_widget(session_state: Any, current_page: str) -> None:
+def _sync_studio_page_nav_widget(
+    session_state: Any,
+    current_page: str,
+    nav_widget_key: str,
+) -> None:
     """Keep segmented_control value aligned with studio_page (before widget builds)."""
-    if session_state.get(STUDIO_PAGE_NAV_KEY) not in TOP_NAV_PAGE_IDS:
-        session_state[STUDIO_PAGE_NAV_KEY] = current_page
+    if session_state.get(nav_widget_key) not in TOP_NAV_PAGE_IDS:
+        session_state[nav_widget_key] = current_page
     studio = session_state.get("studio_page", current_page)
-    if studio in TOP_NAV_PAGE_IDS and studio != session_state.get(STUDIO_PAGE_NAV_KEY):
-        session_state[STUDIO_PAGE_NAV_KEY] = studio
+    if studio in TOP_NAV_PAGE_IDS and studio != session_state.get(nav_widget_key):
+        session_state[nav_widget_key] = studio
 
 
 # Compact cross-page shortcuts (subset for inline link rows).
@@ -1814,17 +1818,17 @@ def render_page_quick_nav(
     *,
     current_page: str,
     rerun_fn: Any,
-    key_prefix: str = "page",
+    key_prefix: str = "main_quick_nav",
 ) -> str:
     """Top navigation — one segmented_control row (equal segments, including Practice)."""
     import streamlit as st
 
-    del key_prefix
+    nav_widget_key = f"{key_prefix}_{current_page}_segmented_nav"
     current = ensure_studio_page(session_state, default=current_page)
-    _sync_studio_page_nav_widget(session_state, current)
+    _sync_studio_page_nav_widget(session_state, current, nav_widget_key)
 
     def _on_nav_change() -> None:
-        picked = session_state.get(STUDIO_PAGE_NAV_KEY)
+        picked = session_state.get(nav_widget_key)
         if picked in TOP_NAV_PAGE_IDS and picked != session_state.get("studio_page"):
             session_state["studio_page"] = picked
             rerun_fn()
@@ -1839,7 +1843,7 @@ def render_page_quick_nav(
             "Quick navigation",
             options=TOP_NAV_PAGE_IDS,
             format_func=nav_two_line_label,
-            key=STUDIO_PAGE_NAV_KEY,
+            key=nav_widget_key,
             label_visibility="collapsed",
             on_change=_on_nav_change,
             width="stretch",
@@ -1849,14 +1853,14 @@ def render_page_quick_nav(
             "Quick navigation",
             TOP_NAV_PAGE_IDS,
             format_func=nav_two_line_label,
-            key=STUDIO_PAGE_NAV_KEY,
+            key=nav_widget_key,
             horizontal=True,
             label_visibility="collapsed",
             on_change=_on_nav_change,
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
-    picked = session_state.get(STUDIO_PAGE_NAV_KEY, current)
+    picked = session_state.get(nav_widget_key, current)
     if picked in TOP_NAV_PAGE_IDS and picked != session_state.get("studio_page"):
         session_state["studio_page"] = picked
     return session_state.get("studio_page", current)
