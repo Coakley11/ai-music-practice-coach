@@ -151,7 +151,7 @@ from instrument_transposition import (
     instrument_display_name,
     is_transposing_instrument,
     options_for_instrument,
-    render_practice_transposing_panel,
+    render_practice_transposing_controls,
     render_sidebar_transposing_recap,
     render_transposing_info_card,
     request_transposing_instrument_sync,
@@ -5234,15 +5234,8 @@ if _studio_page == "practice":
     ):
         st.session_state.pop(_old_key, None)
 
-    _key_ctx_practice = render_practice_transposing_panel(
-        st,
-        concert_key=concert_key,
-        instrument=instrument,
-    )
-    _practice_chart_key = _key_ctx_practice["chart_key"]
-    _chart_key_mode = _key_ctx_practice["chart_key_mode"]
-    global_display_key = _key_ctx_practice["global_display_key"]
-    written_key = _key_ctx_practice["written_key"]
+    _practice_chart_key = _key_ctx["chart_key"]
+    _chart_key_mode = _key_ctx["chart_key_mode"]
     if _capo_ctx.enabled and instrument == "Guitar":
         _practice_chart_key = guitar_shape_chart_key
 
@@ -5260,13 +5253,6 @@ if _studio_page == "practice":
         unsafe_allow_html=True,
     )
 
-    render_tuner_tone_section(
-        st,
-        instrument=instrument,
-        display_key=chart_key,
-        key_prefix=f"practice_tuner::{song}",
-    )
-
     if _is_full_song:
         st.info(
             "Select a **section** above (Verse, Chorus, Bridge, etc.) to isolate chords, "
@@ -5282,7 +5268,42 @@ if _studio_page == "practice":
             f"</div>",
             unsafe_allow_html=True,
         )
+    else:
+        _focus_chords = []
 
+    render_tuner_tone_section(
+        st,
+        instrument=instrument,
+        display_key=chart_key,
+        key_prefix=f"practice_tuner::{song}",
+    )
+
+    if _is_full_song:
+        with st.expander("⏱️ Metronome", expanded=False):
+            render_metronome_widget(
+                default_bpm=_practice_bpm,
+                default_signature=_time_sig,
+            )
+    elif _active_section:
+        with st.expander(
+            f"⏱️ Metronome — {_active_section} only ({_section_bar_count} bars)",
+            expanded=False,
+        ):
+            render_metronome_widget(
+                default_bpm=_practice_bpm,
+                default_signature=_time_sig,
+                section_bars=_section_bar_count,
+                section_label=_active_section,
+                loop_section=True,
+            )
+
+    render_practice_transposing_controls(
+        st,
+        concert_key=concert_key,
+        instrument=instrument,
+    )
+
+    if not _is_full_song and _active_section:
         with st.expander(f"🔬 Section deep focus — {_active_section}", expanded=True):
             st.markdown(
                 section_deep_practice_markdown(
@@ -5314,18 +5335,6 @@ if _studio_page == "practice":
                         scale_suggestions_for_chord(ch, _practice_chart_key, level, instrument)
                     )
 
-        with st.expander(
-            f"⏱️ Metronome — {_active_section} only ({_section_bar_count} bars)",
-            expanded=False,
-        ):
-            render_metronome_widget(
-                default_bpm=_practice_bpm,
-                default_signature=_time_sig,
-                section_bars=_section_bar_count,
-                section_label=_active_section,
-                loop_section=True,
-            )
-
     _chart_current = None if _is_full_song else _active_section
     _chart_html = full_chord_markdown(
         song,
@@ -5351,32 +5360,11 @@ if _studio_page == "practice":
             f" · {instrument_display_name(_t_type, instrument)}"
             f" · written key **{_practice_chart_key}**"
         )
-    with st.expander(f"Chord Chart — {_chart_scope}{_chart_key_note}", expanded=False):
+    with st.expander(
+        f"📋 Full chord chart — {_chart_scope}{_chart_key_note}",
+        expanded=False,
+    ):
         st.markdown(_chart_html, unsafe_allow_html=True)
-    if has_lyric_chord_sheet(song_data):
-        _ug_sections = lyric_chord_chart_sections(song_data)
-        if _ug_sections:
-            with st.expander("🎤 Lyric & chord sheet (Ultimate Guitar style)", expanded=False):
-                st.caption("Separate from the practice grid — aligned chord pills above lyrics.")
-                st.markdown(
-                    render_lyric_chord_sheet(
-                        _ug_sections,
-                        song_name=song,
-                        artist=str(song_data.get("artist", "")),
-                        original_key=song_data["key"],
-                        display_key=_practice_chart_key,
-                        current_section=_chart_current,
-                        meta_bits=[
-                            f"Level: {level}",
-                            f"Tempo: {int(_practice_bpm)} BPM",
-                            f"Time: {_time_sig}",
-                        ],
-                        header_note=str((song_data.get("extensions") or {}).get("arrangement_notes") or ""),
-                        now_playing=_active_section if not _is_full_song else "Full song",
-                        show_full=_is_full_song,
-                    ),
-                    unsafe_allow_html=True,
-                )
 
     _notation_sig = (
         song,
@@ -5396,7 +5384,48 @@ if _studio_page == "practice":
         st.session_state.pop(_NOTATION_KEY, None)
     st.session_state["practice_notation_sig"] = _notation_sig
 
-    with st.expander("Generated Music Notation / TAB", expanded=False):
+    exercise_key = f"exercise_variation::{song}::{instrument}::{level}::{focus}"
+    if exercise_key not in st.session_state:
+        st.session_state[exercise_key] = 0
+
+    with st.expander("🎯 Practice coach & session settings", expanded=False):
+        st.caption(
+            f"Session length: **{minutes} min** · chart key: **{global_display_key}**"
+            + (
+                f" (concert **{concert_key}**)"
+                if _chart_key_mode == "written"
+                else " (concert key from sidebar)."
+            )
+        )
+        st.markdown(
+            '<div class="ui-card soft"><div class="ui-card-title">Personalized coach exercise</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            song_practice_plan(
+                song,
+                _view_sections,
+                instrument,
+                level,
+                focus,
+                st.session_state[exercise_key],
+                section_lyrics=section_lyrics,
+                minutes=minutes,
+            )
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        col_ex_a, col_ex_b = st.columns([1, 2])
+        with col_ex_a:
+            if st.button("🔄 New exercise", use_container_width=True):
+                st.session_state[exercise_key] += 1
+                st.rerun()
+        with col_ex_b:
+            st.caption("Rotates section targets and raises demand gradually.")
+
+    with st.expander(
+        "Generated Music Notation / TAB",
+        expanded=bool(st.session_state.get(_NOTATION_KEY)),
+    ):
         st.caption(
             f"Song **{song}** · section **{_focus_pick}** · "
             f"instrument **{instrument}** · focus **{focus}** · {_practice_bpm} BPM"
@@ -5472,44 +5501,6 @@ if _studio_page == "practice":
                 with st.expander("ABC source", expanded=False):
                     st.code(getattr(_notation, "abc", ""), language=None)
 
-    exercise_key = f"exercise_variation::{song}::{instrument}::{level}::{focus}"
-    if exercise_key not in st.session_state:
-        st.session_state[exercise_key] = 0
-
-    with st.expander("🎯 Practice coach & session settings", expanded=False):
-        st.caption(
-            f"Session length: **{minutes} min** · chart key: **{_key_ctx_practice['global_display_key']}**"
-            + (
-                f" (concert **{concert_key}**)"
-                if _chart_key_mode == "written"
-                else " (concert key from sidebar)."
-            )
-        )
-        st.markdown(
-            '<div class="ui-card soft"><div class="ui-card-title">Personalized coach exercise</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            song_practice_plan(
-                song,
-                _view_sections,
-                instrument,
-                level,
-                focus,
-                st.session_state[exercise_key],
-                section_lyrics=section_lyrics,
-                minutes=minutes,
-            )
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-        col_ex_a, col_ex_b = st.columns([1, 2])
-        with col_ex_a:
-            if st.button("🔄 New exercise", use_container_width=True):
-                st.session_state[exercise_key] += 1
-                st.rerun()
-        with col_ex_b:
-            st.caption("Rotates section targets and raises demand gradually.")
-
     _coach_from_picker = st.session_state.pop("picker_open_chord_coach", False)
     _coach_chords = _view_chords or all_chords_from_sections(sections)
     with st.expander("🎸 Musician tools — chord coach", expanded=_coach_from_picker):
@@ -5554,14 +5545,37 @@ if _studio_page == "practice":
                 wrap_expander=False,
             )
 
-    if _is_full_song:
-        with st.expander("⏱️ Metronome (full song)", expanded=False):
-            render_metronome_widget(
-                default_bpm=_practice_bpm,
-                default_signature=_time_sig,
-            )
+    if has_lyric_chord_sheet(song_data):
+        _ug_sections = lyric_chord_chart_sections(song_data)
+        if _ug_sections:
+            with st.expander(
+                "🎤 Lyric & chord sheet (Ultimate Guitar style)",
+                expanded=False,
+            ):
+                st.caption("Separate from the practice grid — aligned chord pills above lyrics.")
+                st.markdown(
+                    render_lyric_chord_sheet(
+                        _ug_sections,
+                        song_name=song,
+                        artist=str(song_data.get("artist", "")),
+                        original_key=song_data["key"],
+                        display_key=_practice_chart_key,
+                        current_section=_chart_current,
+                        meta_bits=[
+                            f"Level: {level}",
+                            f"Tempo: {int(_practice_bpm)} BPM",
+                            f"Time: {_time_sig}",
+                        ],
+                        header_note=str(
+                            (song_data.get("extensions") or {}).get("arrangement_notes") or ""
+                        ),
+                        now_playing=_active_section if not _is_full_song else "Full song",
+                        show_full=_is_full_song,
+                    ),
+                    unsafe_allow_html=True,
+                )
 
-    with st.expander("📝 Lyric / phrasing guide", expanded=(instrument == "Voice")):
+    with st.expander("📝 Lyric phrasing guide", expanded=(instrument == "Voice")):
         st.markdown(
             lyric_guide_markdown(
                 _view_sections,
@@ -5570,10 +5584,6 @@ if _studio_page == "practice":
                 section_lyrics=section_lyrics,
             )
         )
-
-    with st.expander("Full-song ABC sketch (optional)", expanded=False):
-        if st.button("Render full-song ABC sketch", key="practice_full_abc_sketch"):
-            render_abc(build_abc(song, sections))
 
     with st.expander("📆 Suggested daily time breakdown", expanded=False):
         st.markdown(
@@ -5587,6 +5597,12 @@ if _studio_page == "practice":
                 variation=st.session_state[exercise_key],
             )
         )
+
+    with st.expander("Full song ABC sketch (optional)", expanded=False):
+        st.caption("Optional overview — not required for daily practice.")
+        if st.button("Render full-song ABC sketch", key="practice_full_abc_sketch"):
+            render_abc(build_abc(song, sections))
+
     st.caption("Deep harmony & improvisation → **Creative Lab** page.")
 
 # -------------------------------------------------

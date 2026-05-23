@@ -455,19 +455,20 @@ def render_transposing_key_summary_card(
     )
 
 
-def render_practice_transposing_panel(
+def render_practice_transposing_controls(
     st: Any,
     *,
     concert_key: str,
     instrument: str,
-) -> dict[str, str]:
-    """Practice-page transposing controls (single widget source for type + checkbox)."""
+) -> None:
+    """Practice-page transposing UI only (type + instrument-key charts toggle)."""
     if not is_transposing_instrument(instrument):
-        return resolve_practice_keys(st.session_state, concert_key, instrument)
+        return
 
-    apply_pending_transposing_instrument(st.session_state, instrument)
-
-    with st.expander("🎷 Transposing instrument", expanded=True):
+    with st.expander(
+        "🎷 Transposing instrument / instrument key helper",
+        expanded=True,
+    ):
         if instrument == "Saxophone":
             st.markdown("**Which saxophone are you playing?**")
             st.selectbox(
@@ -498,6 +499,21 @@ def render_practice_transposing_panel(
         session_state=st.session_state,
     )
 
+
+def render_practice_transposing_panel(
+    st: Any,
+    *,
+    concert_key: str,
+    instrument: str,
+) -> dict[str, str]:
+    """Practice-page transposing controls (single widget source for type + checkbox)."""
+    if is_transposing_instrument(instrument):
+        apply_pending_transposing_instrument(st.session_state, instrument)
+        render_practice_transposing_controls(
+            st,
+            concert_key=concert_key,
+            instrument=instrument,
+        )
     return resolve_practice_keys(st.session_state, concert_key, instrument)
 
 
@@ -618,6 +634,7 @@ __all__ = [
     "is_eb_instrument",
     "is_transposing_instrument",
     "options_for_instrument",
+    "render_practice_transposing_controls",
     "render_practice_transposing_helper",
     "render_practice_transposing_panel",
     "render_transposing_key_summary_card",
