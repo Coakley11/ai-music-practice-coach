@@ -18,7 +18,9 @@ from improvisation_motif import (
     build_motif_guitar_tab,
     build_motif_notation_abc,
     chord_tone_names,
+    cycle_motif_rhythm,
     generate_motif_for_chord,
+    sync_motif_midi,
     transform_motif,
 )
 
@@ -251,38 +253,162 @@ def _practice_steps(mission: str, level: str, instrument: str) -> list[str]:
 
 
 def _piano_keyboard_html(highlight_notes: list[str], chord_tones: list[str]) -> str:
+    from music_theory import normalize_root, split_chord
+
+    def _root(n: str) -> str:
+        r, _ = split_chord(str(n))
+        return normalize_root(r)
+
+    motif_roots = {_root(n) for n in highlight_notes}
+    chord_roots = {_root(n) for n in chord_tones}
     white = ["C", "D", "E", "F", "G", "A", "B"]
-    hi = set(highlight_notes) | set(chord_tones)
     cells = []
     for n in white:
         cls = "pk white"
-        if n in hi:
+        if n in motif_roots:
             cls += " hi"
-        if n in chord_tones:
+        elif n in chord_roots:
             cls += " chord"
         cells.append(f'<div class="{cls}"><span>{html.escape(n)}</span></div>')
+    chips = "".join(
+        f'<span class="pk-chip">{html.escape(n)}</span>' for n in highlight_notes
+    )
+    voicing = " · ".join(html.escape(n) for n in chord_tones[:4])
     return (
+        f'<p class="pk-motif-notes"><strong>Motif notes:</strong> {chips}</p>'
+        f'<p class="pk-voicing-hint"><strong>Chord tones:</strong> {voicing}</p>'
         '<div class="improv-piano-kb">'
         + "".join(cells)
         + "</div>"
-        '<style>.improv-piano-kb{display:flex;gap:4px;margin:8px 0;}'
+        '<style>'
+        ".pk-motif-notes{margin:0 0 6px 0;font-size:0.9rem;}"
+        ".pk-chip{display:inline-block;background:#bbf7d0;border:1px solid #16a34a;"
+        "border-radius:6px;padding:2px 8px;margin:2px 4px 2px 0;font-weight:800;}"
+        ".pk-voicing-hint{margin:0 0 8px 0;font-size:0.85rem;color:#475569;}"
+        ".improv-piano-kb{display:flex;gap:4px;margin:8px 0;}"
         ".improv-piano-kb .pk{min-width:36px;height:72px;border-radius:6px;"
         "border:1px solid #cbd5e1;display:flex;align-items:flex-end;justify-content:center;"
         "font-size:0.72rem;font-weight:700;padding-bottom:6px;background:#fff;}"
         ".improv-piano-kb .pk.hi{background:#bbf7d0;border-color:#16a34a;}"
-        ".improv-piano-kb .pk.chord{box-shadow:0 0 0 2px #15803d;}</style>"
+        ".improv-piano-kb .pk.chord{box-shadow:0 0 0 2px #94a3b8;}</style>"
     )
 
 
-def _instrument_family(instrument: str) -> str:
+def wind_phrasing_lines(instrument: str, motif: dict[str, Any]) -> list[str]:
+    inst = (instrument or "").lower()
+    rhythm = str(motif.get("rhythm") or "")
+    lines = [
+        f"**Notes to play:** {' – '.join(motif.get('notes') or [])}",
+        f"**Rhythm:** {rhythm} — tongue lighter on faster subdivisions.",
+    ]
+    if "sax" in inst:
+        lines.append("Keep the throat open; land chord tones on downbeats with a supported tone.")
+    elif "trumpet" in inst:
+        lines.append("Use steady air; accent the first note of each rhythmic group.")
+    elif "flute" in inst:
+        lines.append("Breathe before the phrase; let the long note at the end ring.")
+    elif "clarinet" in inst:
+        lines.append("Alternate light tongue / slur where the rhythm repeats.")
+    else:
+        lines.append("Phrase in 2-bar questions and answers; breathe at the rests.")
+    return lines
+
+
+def rebuild_mission_outputs(
+    motif: dict[str, Any],
+    *,
+    chord: str,
+    instrument: str,
+    key_center: str,
+    bpm: int,
+) -> dict[str, Any]:
+    """Rebuild ABC, TAB, and piano HTML from the current motif (no stale displays)."""
+    motif = sync_motif_midi(dict(motif))
+    family = _instrument_family(instrument)
+    abc = build_motif_notation_abc(motif, key_center=key_center, bpm=bpm)
+    tab = build_motif_guitar_tab(motif) if family == "guitar" else ""
+    piano_html = ""
+    if family == "piano":
+        piano_html = _piano_keyboard_html(
+            list(motif.get("notes") or []),
+            chord_tone_names(chord),
+        )
+    return {
+        "motif": motif,
+        "abc": abc,
+        "tab": tab,
+        "piano_html": piano_html,
+        "show_tab": family == "guitar",
+        "show_piano": family == "piano",
+        "show_wind": family == "wind",
+    }
+
+
+def refresh_mission_example(
+    example: MissionExample,
+    *,
+    instrument: str | None = None,
+    bpm: int | None = None,
+) -> MissionExample:
+    """Sync all instrument outputs to the current motif."""
+    inst = instrument or example.instrument
+    tempo = bpm if bpm is not None else 100
+    out = rebuild_mission_outputs(
+        example.motif,
+        chord=example.chord,
+        instrument=inst,
+        key_center=example.display_key,
+        bpm=tempo,
+    )
+    example.instrument = inst
+    example.motif = out["motif"]
+    example.abc = out["abc"]
+    example.tab = out["tab"]
+    example.piano_html = out["piano_html"]
+    example.show_tab = out["show_tab"]
+    example.show_piano = out["show_piano"]
+    return example
+
+
+def apply_mission_motif_transform(
+    session_state: dict,
+    improv_ctx: ImprovSessionContext,
+    operation: str,
+    *,
+    bpm: int = 100,
+) -> MissionExample | None:
+    """Transform stored mission motif and refresh every output."""
+    example = load_mission_example(session_state, improv_ctx)
+    if not example:
+        return None
+    if operation == "change_rhythm":
+        motif = cycle_motif_rhythm(dict(example.motif))
+    else:
+        motif = transform_motif(
+            dict(example.motif),
+            operation,
+            key_center=improv_ctx.display_key,
+        )
+        motif = sync_motif_midi(motif)
+    example.motif = motif
+    example = refresh_mission_example(example, instrument=example.instrument, bpm=bpm)
+    store_mission_example(session_state, example)
+    return example
+
+
+def instrument_family(instrument: str) -> str:
     inst = (instrument or "").lower()
     if "guitar" in inst or "bass" in inst:
         return "guitar"
     if "piano" in inst or "keys" in inst:
         return "piano"
-    if any(x in inst for x in ("sax", "trumpet", "flute", "clarinet")):
+    if any(x in inst for x in ("sax", "trumpet", "flute", "clarinet", "voice")):
         return "wind"
     return "other"
+
+
+def _instrument_family(instrument: str) -> str:
+    return instrument_family(instrument)
 
 
 def generate_mission_example(
@@ -309,24 +435,15 @@ def generate_mission_example(
         variant=variant,
         rng=rng,
     )
-    if not motif.get("midi"):
-        from improvisation_motif import _midi_from_note
-
-        motif["midi"] = [_midi_from_note(n, 4) for n in motif.get("notes", [])]
-
-    abc = build_motif_notation_abc(
+    motif = sync_motif_midi(motif)
+    out = rebuild_mission_outputs(
         motif,
+        chord=chord,
+        instrument=instrument,
         key_center=improv_ctx.display_key,
         bpm=bpm,
     )
-    family = _instrument_family(instrument)
-    tab = build_motif_guitar_tab(motif) if family == "guitar" else ""
-    piano_html = ""
-    if family == "piano":
-        piano_html = _piano_keyboard_html(
-            list(motif.get("notes") or []),
-            chord_tone_names(chord),
-        )
+    motif = out["motif"]
 
     insight = chord_coach_insight(
         chord,
@@ -408,3 +525,13 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
         show_tab=bool(raw.get("show_tab")),
         show_piano=bool(raw.get("show_piano")),
     )
+
+
+def mission_example_for_display(
+    example: MissionExample,
+    *,
+    instrument: str,
+    bpm: int,
+) -> MissionExample:
+    """Always rebuild outputs so sheet music / TAB / piano match the current motif."""
+    return refresh_mission_example(example, instrument=instrument, bpm=bpm)

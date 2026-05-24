@@ -38,9 +38,13 @@ from improvisation_harmony import (
 )
 from improvisation_missions import (
     PRACTICE_MISSIONS,
+    apply_mission_motif_transform,
     generate_mission_example,
     load_mission_example,
+    mission_example_for_display,
     store_mission_example,
+    instrument_family,
+    wind_phrasing_lines,
 )
 from improvisation_motif import (
     build_motif_guitar_tab,
@@ -907,29 +911,23 @@ def _tab_missions(
     if example and example.mission != mission:
         example = None
 
-    nav1, nav2, nav3 = st.columns(3)
-    with nav1:
-        if on_open_practice and st.button(
-            "Open Practice page",
-            key="improv_mission_practice",
-            use_container_width=True,
-        ):
-            on_open_practice()
-    with nav2:
-        if on_open_backing and st.button(
-            "Open Backing Track",
-            key="improv_mission_backing",
-            use_container_width=True,
-        ):
-            on_open_backing()
-    with nav3:
-        if on_open_backing and st.button(
-            "Practice over backing",
-            key="improv_mission_over_backing",
-            type="primary",
-            use_container_width=True,
-        ):
-            on_open_backing()
+    if not example:
+        nav1, nav2 = st.columns(2)
+        with nav1:
+            if on_open_practice and st.button(
+                "Open Practice page",
+                key="improv_mission_practice",
+                use_container_width=True,
+            ):
+                on_open_practice()
+        with nav2:
+            if on_open_backing and st.button(
+                "Practice over backing",
+                key="improv_mission_over_backing",
+                type="primary",
+                use_container_width=True,
+            ):
+                on_open_backing()
 
     if on_open_analysis:
         st.markdown("---")
@@ -956,33 +954,106 @@ def _tab_missions(
         )
         return
 
+    example = mission_example_for_display(example, instrument=live_inst, bpm=bpm)
+    store_mission_example(session_state, example)
+    family = instrument_family(live_inst)
+
     st.markdown("##### Example")
-    st.markdown(f"**Notes:** `{example.motif.get('display', '')}` · **Rhythm:** {example.motif.get('rhythm', '')}")
+    st.markdown(
+        f"**Notes:** `{example.motif.get('display', '')}` · "
+        f"**Rhythm:** `{example.motif.get('rhythm', '')}`"
+    )
     st.markdown(f"**Why it works:** {example.why}")
     for step in example.practice_steps:
         st.markdown(f"- {step}")
 
+    st.markdown("**Transform idea**")
+    t1, t2, t3, t4 = st.columns(4)
+    transform_clicked = False
+    with t1:
+        if st.button("Sequence Up ↑", key="improv_mission_seq_up", use_container_width=True):
+            apply_mission_motif_transform(
+                session_state, improv_ctx, "sequence_up", bpm=bpm
+            )
+            transform_clicked = True
+    with t2:
+        if st.button("Sequence Down ↓", key="improv_mission_seq_down", use_container_width=True):
+            apply_mission_motif_transform(
+                session_state, improv_ctx, "sequence_down", bpm=bpm
+            )
+            transform_clicked = True
+    with t3:
+        if st.button("Invert ↓↑", key="improv_mission_invert", use_container_width=True):
+            apply_mission_motif_transform(
+                session_state, improv_ctx, "invert", bpm=bpm
+            )
+            transform_clicked = True
+    with t4:
+        if st.button(
+            "Change Rhythm",
+            key="improv_mission_change_rhythm",
+            use_container_width=True,
+        ):
+            apply_mission_motif_transform(
+                session_state, improv_ctx, "change_rhythm", bpm=bpm
+            )
+            transform_clicked = True
+    if transform_clicked:
+        st.rerun()
+
+    example = load_mission_example(session_state, improv_ctx)
+    if example:
+        example = mission_example_for_display(example, instrument=live_inst, bpm=bpm)
+        store_mission_example(session_state, example)
+
     st.markdown("**Chord tones**")
     st.markdown("`" + " · ".join(example.insight.chord_tones) + "`")
-    st.markdown("**Suggested scales**")
-    suggestions = example.insight.scale_suggestions or [
-        build_scale_suggestion(label) for label in example.insight.scales
-    ]
-    for suggestion in suggestions:
-        st.markdown(format_scale_line(suggestion, example.insight.chord_tones))
+    if family != "wind":
+        st.markdown("**Suggested scales**")
+        suggestions = example.insight.scale_suggestions or [
+            build_scale_suggestion(label) for label in example.insight.scales
+        ]
+        for suggestion in suggestions:
+            st.markdown(format_scale_line(suggestion, example.insight.chord_tones))
 
     if example.abc:
         st.markdown("**Sheet music**")
         _render_motif_sheet_music(st, example.abc)
-    if example.show_tab and example.tab:
+
+    if family == "guitar" and example.tab:
         st.markdown("**Guitar TAB**")
         st.code(example.tab, language=None)
-    if example.show_piano and example.piano_html:
+
+    if family == "piano" and example.piano_html:
         st.markdown("**Piano guide**")
         st.markdown(example.piano_html, unsafe_allow_html=True)
 
+    if family == "wind":
+        st.markdown("**Phrasing & articulation**")
+        for line in wind_phrasing_lines(live_inst, example.motif):
+            st.markdown(f"- {line}")
+
+    st.markdown("---")
+    nav1, nav2 = st.columns(2)
+    with nav1:
+        if on_open_practice and st.button(
+            "Open Practice page",
+            key="improv_mission_practice_bottom",
+            use_container_width=True,
+        ):
+            on_open_practice()
+    with nav2:
+        if on_open_backing and st.button(
+            "Practice over backing",
+            key="improv_mission_over_backing_bottom",
+            type="primary",
+            use_container_width=True,
+        ):
+            on_open_backing()
+
     st.caption(
-        f"Example variant: **{example.variant}** · saved while you explore Backing Track or other pages."
+        f"Example variant: **{example.variant}** · "
+        f"outputs follow **{html.escape(live_inst)}** and the current notes/rhythm."
     )
 
 

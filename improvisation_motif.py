@@ -19,13 +19,18 @@ _RHYTHM_PATTERNS: dict[str, list[str]] = {
     "eighth-eighth-quarter": ["♪", "♪", "♩"],
     "quarter-eighth-eighth": ["♩", "♪", "♪"],
     "quarter-dotted-eighth": ["♩", "♩.", "♪"],
+    "quarter-quarter-half": ["♩", "♩", "𝅗"],
+    "eighth-eighth-half": ["♪", "♪", "𝅗"],
 }
 
 _RHYTHM_TO_ABC_LEN: dict[str, str] = {
     "♩": "2",
     "♪": "/2",
     "♩.": "3",
+    "𝅗": "4",
 }
+
+RHYTHM_PATTERN_KEYS: tuple[str, ...] = tuple(_RHYTHM_PATTERNS.keys())
 
 
 def _section_base_key(name: str) -> str:
@@ -291,22 +296,8 @@ def transform_motif(
             out_notes.append(_note_from_midi(new_pc + 60))
     elif operation == "invert":
         out_notes = list(reversed(notes))
-    elif operation == "rhythmic":
-        rk = motif.get("rhythm_key", "quarter-quarter-quarter")
-        order = list(_RHYTHM_PATTERNS.keys())
-        try:
-            idx = order.index(rk)
-        except ValueError:
-            idx = 0
-        new_rk = order[(idx + 1) % len(order)]
-        updated = dict(motif)
-        updated["rhythm_key"] = new_rk
-        updated["rhythm"] = " ".join(_RHYTHM_PATTERNS[new_rk])
-        updated["variation_prompt"] = (
-            f"Rhythmic variation on **{motif.get('chord', '')}**: "
-            f"{' – '.join(notes)} · {updated['rhythm']}"
-        )
-        return updated
+    elif operation in ("rhythmic", "change_rhythm"):
+        return cycle_motif_rhythm(motif)
 
     op_labels = {
         "sequence_up": "Sequence up",
@@ -314,16 +305,48 @@ def transform_motif(
         "invert": "Inversion",
     }
     label = op_labels.get(operation, operation)
-    return {
+    return sync_motif_midi({
         "chord": motif.get("chord", ""),
         "notes": out_notes,
         "display": " – ".join(out_notes),
         "rhythm": motif.get("rhythm", "♩ ♩ ♩"),
         "rhythm_key": motif.get("rhythm_key", "quarter-quarter-quarter"),
-        "midi": [_midi_from_note(n, 4) for n in out_notes],
         "variation_prompt": f"{label}: {' – '.join(out_notes)}",
         "last_transform": operation,
-    }
+    })
+
+
+def cycle_motif_rhythm(motif: dict[str, Any]) -> dict[str, Any]:
+    """Keep the same pitches; change only rhythm (sheet music / display update)."""
+    notes = list(motif.get("notes") or [])
+    rk = str(motif.get("rhythm_key") or "quarter-quarter-quarter")
+    order = list(RHYTHM_PATTERN_KEYS)
+    try:
+        idx = order.index(rk)
+    except ValueError:
+        idx = 0
+    new_rk = order[(idx + 1) % len(order)]
+    syms = _RHYTHM_PATTERNS[new_rk]
+    updated = dict(motif)
+    updated["notes"] = notes
+    updated["display"] = " – ".join(notes)
+    updated["rhythm_key"] = new_rk
+    updated["rhythm"] = " ".join(syms)
+    updated["midi"] = [_midi_from_note(n, 4) for n in notes]
+    updated["variation_prompt"] = (
+        f"Rhythm on **{motif.get('chord', '')}**: {' – '.join(notes)} · {updated['rhythm']}"
+    )
+    updated["last_transform"] = "change_rhythm"
+    return updated
+
+
+def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:
+    """Ensure midi[] matches notes[] after any edit."""
+    notes = list(motif.get("notes") or [])
+    motif["notes"] = notes
+    motif["display"] = " – ".join(notes)
+    motif["midi"] = [_midi_from_note(n, 4) for n in notes]
+    return motif
 
 
 def build_motif_abc(
