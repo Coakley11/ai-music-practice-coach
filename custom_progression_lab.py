@@ -638,7 +638,11 @@ def prepare_cpl_backing_handoff(
 ) -> None:
     """Sync CPL tempo/groove into Backing Track session keys and queue scope."""
     from songs.key_state import BACKING_NEEDS_REGEN
-    from songs.playback_defaults import apply_backing_defaults_for_song, playback_song_id
+    from songs.playback_defaults import (
+        apply_backing_defaults_for_song,
+        playback_song_id,
+        prime_active_song_bpm,
+    )
 
     class _SessionAdapter:
         session_state = session_state
@@ -653,6 +657,7 @@ def prepare_cpl_backing_handoff(
         custom_revision=str(active.get("id", "") or ""),
     )
     session_state.pop("last_backing_defaults_song_id", None)
+    prime_active_song_bpm(_SessionAdapter(), sync_id=song_id, active_song_bpm=default_bpm)
     apply_backing_defaults_for_song(
         _SessionAdapter(),
         song_id=song_id,

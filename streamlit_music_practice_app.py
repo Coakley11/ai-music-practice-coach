@@ -111,7 +111,10 @@ from songs import (
 from songs.key_state import mark_display_key_changed
 from songs.playback_defaults import (
     GROOVE_STYLE_CHOICES,
+    active_song_sync_id,
     apply_backing_defaults_for_song,
+    backing_bpm_slider_widget_key,
+    canonical_active_song_bpm,
     default_bpm_for_song_data,
     default_groove_for_song,
     playback_song_id,
@@ -652,7 +655,7 @@ if (
 ):
     _r0 = DEFAULT_SONG_RECORDS[0]
     _pk0 = format_pick_key(_r0["genre"], f"{_r0['title']} — {_r0['artist']}")
-    apply_pick_key(st, _pk0, SONG_PICKER_CATALOG)
+    apply_pick_key(st, _pk0, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
     _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
         st,
         song_library=SONG_LIBRARY,
@@ -4341,14 +4344,19 @@ def _on_global_genre_change() -> None:
     if current not in opts:
         st.session_state["global_quick_song"] = opts[0]
         set_catalog_source(st.session_state)
-        apply_pick_key(st, opts[0], SONG_PICKER_CATALOG)
+        apply_pick_key(st, opts[0], SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         st.rerun()
 
 
 def _on_global_song_change() -> None:
     set_catalog_source(st.session_state)
-    apply_pick_key(st, st.session_state["global_quick_song"], SONG_PICKER_CATALOG)
+    apply_pick_key(
+        st,
+        st.session_state["global_quick_song"],
+        SONG_PICKER_CATALOG,
+        song_library=SONG_LIBRARY,
+    )
     note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
 
@@ -4603,7 +4611,7 @@ def _render_catalog_song_picker_block(
     default_pk = master_pk if master_pk in pick_options else pick_options[0]
     if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
         set_catalog_source(st.session_state)
-        apply_pick_key(st, default_pk, SONG_PICKER_CATALOG)
+        apply_pick_key(st, default_pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
     def _on_song_dropdown_change():
@@ -4612,6 +4620,7 @@ def _render_catalog_song_picker_block(
             st,
             st.session_state["matching_song_dropdown"],
             SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
         )
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         try:
@@ -4817,6 +4826,10 @@ def _render_backing_quick_playback_controls(
     )
     _prime_backing_quick_section_from_scope(st.session_state, section_names)
     quick_opts = ["Full song"] + list(section_names)
+    slider_key = backing_bpm_slider_widget_key(song_id)
+    canonical_bpm = int(st.session_state.get("active_song_bpm", default_bpm))
+    widget_bpm = int(st.session_state.get("backing_track_bpm", canonical_bpm))
+    st.session_state[slider_key] = widget_bpm
 
     q1, q2 = st.columns([1, 1.35])
     with q1:
@@ -4825,12 +4838,13 @@ def _render_backing_quick_playback_controls(
             "Quick BPM",
             50,
             180,
-            int(st.session_state.get("backing_track_bpm", default_bpm)),
+            widget_bpm,
             5,
-            key="backing_track_bpm",
+            key=slider_key,
             label_visibility="collapsed",
             help="Synced with Playback setup above — regenerate audio after changing tempo.",
         )
+        st.session_state["backing_track_bpm"] = int(bpm)
     with q2:
         st.markdown("**Quick section**")
         cur_quick = st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song")
@@ -5173,7 +5187,9 @@ def _ui_page_badges() -> list[tuple[str, str]]:
 
 
 full_song_chords = chord_blocks_for_backing(sections_for_backing)
-_default_bpm = int(_chart_bundle.get("default_bpm") or default_bpm_for_song_data(song_data))
+_default_bpm = int(
+    _chart_bundle.get("default_bpm") or canonical_active_song_bpm(song_data)
+)
 _default_groove = str(
     _chart_bundle.get("default_groove")
     or default_groove_for_song(song_data, infer_fn=infer_groove_style)
@@ -5205,6 +5221,12 @@ _playback_id = playback_song_id(
     custom_name=str(_cpl_active.get("name", "") if _cpl_active else ""),
     custom_revision=str(_cpl_active.get("id", "") if _cpl_active else ""),
 )
+_active_pick_key = str((st.session_state.get("selected_song") or {}).get("pick_key") or "")
+_bpm_sync_id = active_song_sync_id(
+    pick_key=_active_pick_key,
+    playback_song_id=_playback_id,
+    is_custom=is_custom_progression(st.session_state),
+)
 _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     st,
     song_id=_playback_id,
@@ -5212,6 +5234,8 @@ _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     default_groove=_default_groove,
     song_data=song_data,
     infer_fn=infer_groove_style,
+    pick_key=_active_pick_key,
+    is_custom=is_custom_progression(st.session_state),
 )
 _default_song_bpm = _synced_bpm
 
@@ -5801,12 +5825,6 @@ elif _studio_page == "backing":
     note_page_visit(st.session_state, "backing")
     _render_page_quick_nav("backing")
 
-    _studio_page_header(
-        "🎧",
-        "Backing Track",
-        "Generate accompaniment matched to your active song — then play along.",
-    )
-
     _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
         st,
         song_id=_playback_id,
@@ -5814,6 +5832,14 @@ elif _studio_page == "backing":
         default_groove=_default_groove,
         song_data=song_data,
         infer_fn=infer_groove_style,
+        pick_key=_active_pick_key,
+        is_custom=is_custom_progression(st.session_state),
+    )
+
+    _studio_page_header(
+        "🎧",
+        "Backing Track",
+        "Generate accompaniment matched to your active song — then play along.",
     )
 
     _backing_card_record = dict(_catalog_song_data or song_data)
@@ -5856,7 +5882,7 @@ elif _studio_page == "backing":
         st.warning("Playback settings changed — regenerate backing track")
 
     bpm, backing_time_signature = _render_backing_tempo_panel(
-        song_id=_playback_id,
+        song_id=_bpm_sync_id,
         default_bpm=_default_bpm,
         default_groove=default_groove_style,
         default_meter=_default_meter,
@@ -5972,7 +5998,7 @@ elif _studio_page == "backing":
         unsafe_allow_html=True,
     )
     bpm = _render_backing_quick_playback_controls(
-        song_id=_playback_id,
+        song_id=_bpm_sync_id,
         default_bpm=_default_bpm,
         default_groove=default_groove_style,
         song_data=song_data,

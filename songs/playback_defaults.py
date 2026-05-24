@@ -8,7 +8,6 @@ from .bpm_state import (
     BPM_WIDGET_KEY,
     LAST_BPM_SONG,
     PENDING_BACKING_TRACK_BPM,
-    sync_backing_bpm_before_widget,
 )
 
 BACKING_GROOVE_KEY = "backing_groove_style"
@@ -16,6 +15,7 @@ LAST_PLAYBACK_GROOVE_SONG = "_last_playback_groove_song"
 PENDING_BACKING_GROOVE = "_pending_backing_groove"
 PRACTICE_GROOVE_KEY = "practice_groove_style"
 LAST_BACKING_DEFAULTS_SONG_ID = "last_backing_defaults_song_id"
+LAST_BPM_DEFAULTS_SONG_ID = LAST_BACKING_DEFAULTS_SONG_ID
 ACTIVE_SONG_BPM_KEY = "active_song_bpm"
 ACTIVE_PLAYBACK_SONG_ID_KEY = "active_playback_song_id"
 _STUDIO_PAGE_SNAPSHOTS_KEY = "_studio_page_snapshots"
@@ -31,8 +31,8 @@ GROOVE_STYLE_CHOICES: tuple[str, ...] = (
 )
 
 
-def default_bpm_for_song_data(song_data: dict[str, Any] | None) -> int:
-    """BPM from song extensions — matches Active Song card metadata."""
+def _heuristic_bpm_for_song_data(song_data: dict[str, Any] | None) -> int:
+    """Fallback BPM when card metadata is unavailable."""
     song_data = song_data or {}
     ext = song_data.get("extensions") or {}
     if ext.get("default_bpm"):
@@ -57,6 +57,44 @@ def default_bpm_for_song_data(song_data: dict[str, Any] | None) -> int:
     return 100
 
 
+def canonical_active_song_bpm(song_data: dict[str, Any] | None) -> int:
+    """BPM shown on Active Song cards — extensions + catalog metadata."""
+    song_data = song_data or {}
+    try:
+        from practice_studio import active_song_card_details
+
+        details = active_song_card_details(song_data)
+        bpm = details.get("bpm")
+        if bpm is not None:
+            return int(bpm)
+    except Exception:
+        pass
+    return _heuristic_bpm_for_song_data(song_data)
+
+
+def default_bpm_for_song_data(song_data: dict[str, Any] | None) -> int:
+    """BPM from song metadata — matches Active Song card."""
+    return canonical_active_song_bpm(song_data)
+
+
+def active_song_sync_id(
+    *,
+    pick_key: str = "",
+    playback_song_id: str,
+    is_custom: bool = False,
+) -> str:
+    """Stable id for BPM default tracking — prefer catalog pick_key when available."""
+    if pick_key and not is_custom:
+        return f"pk::{pick_key}"
+    return playback_song_id
+
+
+def backing_bpm_slider_widget_key(sync_id: str) -> str:
+    """Per-song slider key so Streamlit recreates the widget when the active song changes."""
+    safe = str(sync_id).replace(":", "_").replace("/", "_").replace(" ", "_")
+    return f"backing_track_bpm::{safe}"
+
+
 def invalidate_backing_page_snapshots(st: Any) -> None:
     """Drop stored Backing Track page state so navigation cannot restore stale tempo."""
     store = st.session_state.get(_STUDIO_PAGE_SNAPSHOTS_KEY)
@@ -71,10 +109,36 @@ def reset_playback_song_tracking(st: Any) -> None:
     st.session_state.pop(LAST_BPM_SONG, None)
     st.session_state.pop(LAST_PLAYBACK_GROOVE_SONG, None)
     st.session_state.pop(LAST_BACKING_DEFAULTS_SONG_ID, None)
+    st.session_state.pop("last_backing_bpm_song_id", None)
     st.session_state.pop(PENDING_BACKING_TRACK_BPM, None)
     st.session_state.pop(PENDING_BACKING_GROOVE, None)
     invalidate_backing_page_snapshots(st)
     reset_backing_meter_tracking(st)
+
+
+def _set_bpm_tracking_ids(st: Any, sync_id: str, active_bpm: int) -> None:
+    st.session_state[LAST_BACKING_DEFAULTS_SONG_ID] = sync_id
+    st.session_state["last_backing_bpm_song_id"] = sync_id
+    st.session_state[LAST_BPM_SONG] = sync_id
+    st.session_state[ACTIVE_PLAYBACK_SONG_ID_KEY] = sync_id
+    st.session_state[ACTIVE_SONG_BPM_KEY] = int(active_bpm)
+    st.session_state[BPM_WIDGET_KEY] = int(active_bpm)
+    st.session_state["bpm"] = int(active_bpm)
+    st.session_state[backing_bpm_slider_widget_key(sync_id)] = int(active_bpm)
+
+
+def prime_active_song_bpm(
+    st: Any,
+    *,
+    sync_id: str,
+    active_song_bpm: int,
+) -> None:
+    """Apply song BPM immediately on selection (before any BPM widgets render)."""
+    from .key_state import invalidate_backing_cache
+
+    invalidate_backing_cache(st)
+    invalidate_backing_page_snapshots(st)
+    _set_bpm_tracking_ids(st, sync_id, active_song_bpm)
 
 
 def default_groove_for_song(
@@ -146,6 +210,7 @@ def apply_backing_defaults_for_song(
     When the active song changes, force backing BPM + groove to song defaults.
     Preserves manual tweaks when the song id is unchanged.
     """
+    active_bpm = int(default_bpm)
     norm_groove = normalize_groove_label(
         default_groove,
         song_data=song_data,
@@ -160,18 +225,14 @@ def apply_backing_defaults_for_song(
 
         invalidate_backing_cache(st)
         invalidate_backing_page_snapshots(st)
-        st.session_state[LAST_BACKING_DEFAULTS_SONG_ID] = song_id
-        st.session_state[LAST_BPM_SONG] = song_id
+        _set_bpm_tracking_ids(st, song_id, active_bpm)
         st.session_state[LAST_PLAYBACK_GROOVE_SONG] = song_id
-        st.session_state[ACTIVE_PLAYBACK_SONG_ID_KEY] = song_id
-        st.session_state[ACTIVE_SONG_BPM_KEY] = int(default_bpm)
-        st.session_state[BPM_WIDGET_KEY] = int(default_bpm)
-        st.session_state["bpm"] = int(default_bpm)
         st.session_state[BACKING_GROOVE_KEY] = norm_groove
     elif pending_bpm is not None:
         st.session_state[BPM_WIDGET_KEY] = int(pending_bpm)
+        st.session_state[backing_bpm_slider_widget_key(song_id)] = int(pending_bpm)
     elif BPM_WIDGET_KEY not in st.session_state:
-        st.session_state[BPM_WIDGET_KEY] = int(default_bpm)
+        _set_bpm_tracking_ids(st, song_id, active_bpm)
 
     if not song_changed:
         if pending_groove is not None:
@@ -188,7 +249,7 @@ def apply_backing_defaults_for_song(
         ):
             st.session_state[BACKING_GROOVE_KEY] = norm_groove
 
-    bpm = int(st.session_state.get(BPM_WIDGET_KEY, default_bpm))
+    bpm = int(st.session_state.get(BPM_WIDGET_KEY, active_bpm))
     groove = str(st.session_state.get(BACKING_GROOVE_KEY, norm_groove))
     if groove == "Auto" and norm_groove != "Auto":
         st.session_state[BACKING_GROOVE_KEY] = norm_groove
@@ -242,17 +303,25 @@ def sync_playback_defaults_for_active_song(
     default_groove: str,
     song_data: dict[str, Any] | None = None,
     infer_fn: Callable[..., str] | None = None,
+    pick_key: str = "",
+    is_custom: bool = False,
 ) -> tuple[int, str]:
     """Sync BPM + groove when the active song changes; preserve manual tweaks otherwise."""
+    active_bpm = canonical_active_song_bpm(song_data) if song_data else int(default_bpm)
+    sync_id = active_song_sync_id(
+        pick_key=pick_key,
+        playback_song_id=song_id,
+        is_custom=is_custom,
+    )
     bpm, groove = apply_backing_defaults_for_song(
         st,
-        song_id=song_id,
-        default_bpm=int(default_bpm),
+        song_id=sync_id,
+        default_bpm=active_bpm,
         default_groove=default_groove,
         song_data=song_data,
         infer_fn=infer_fn,
     )
-    if st.session_state.get(LAST_BACKING_DEFAULTS_SONG_ID) == song_id:
+    if st.session_state.get(LAST_BACKING_DEFAULTS_SONG_ID) == sync_id:
         if PRACTICE_GROOVE_KEY not in st.session_state:
             st.session_state[PRACTICE_GROOVE_KEY] = groove
     return bpm, groove

@@ -13,7 +13,13 @@ from .key_state import (
     PENDING_DISPLAY_KEY,
     invalidate_backing_cache,
 )
-from .playback_defaults import reset_playback_song_tracking
+from .playback_defaults import (
+    active_song_sync_id,
+    canonical_active_song_bpm,
+    playback_song_id,
+    prime_active_song_bpm,
+    reset_playback_song_tracking,
+)
 
 SELECTED_SONG_STATE_KEY = "selected_song"
 ACTIVE_CATALOG_PICK_KEY = "active_catalog_pick_key"
@@ -89,7 +95,13 @@ def ensure_master_song_initialized(
     apply_pick_key(st, pk, song_picker_catalog)
 
 
-def apply_pick_key(st: Any, pick_key: str, song_picker_catalog: dict[str, dict[str, dict]]) -> dict[str, Any]:
+def apply_pick_key(
+    st: Any,
+    pick_key: str,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    *,
+    song_library: dict[str, dict[str, dict]] | None = None,
+) -> dict[str, Any]:
     genre, label = parse_pick_key(pick_key)
     data = song_picker_catalog[genre][label]
     st.session_state[SELECTED_SONG_STATE_KEY] = {
@@ -113,6 +125,20 @@ def apply_pick_key(st: Any, pick_key: str, song_picker_catalog: dict[str, dict[s
         st.session_state.pop("multitrack_backing_wav", None)
         st.session_state.pop("multitrack_backing_music_wav", None)
         st.session_state.pop("mixed_track_wav", None)
+        lib_record = data
+        if song_library is not None:
+            lib_record = song_library.get(genre, {}).get(data["title"], data)
+        _pid = playback_song_id(
+            is_custom=False,
+            song_title=data["title"],
+            song_artist=data.get("artist", ""),
+        )
+        _sync_id = active_song_sync_id(pick_key=pick_key, playback_song_id=_pid, is_custom=False)
+        prime_active_song_bpm(
+            st,
+            sync_id=_sync_id,
+            active_song_bpm=canonical_active_song_bpm(lib_record),
+        )
     elif "display_key" not in st.session_state:
         st.session_state[PENDING_DISPLAY_KEY] = data["key"]
     st.session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key

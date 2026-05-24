@@ -229,6 +229,7 @@ _GLOBAL_APP_STATE_KEYS = frozenset(
         "active_song_bpm",
         "active_playback_song_id",
         "last_backing_defaults_song_id",
+        "last_backing_bpm_song_id",
         "_last_bpm_song",
         "_last_playback_groove_song",
         "practice_groove_style",
