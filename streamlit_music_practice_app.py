@@ -5833,9 +5833,9 @@ elif _studio_page == "backing":
         st,
         _backing_card_record,
         level=level,
-        applied_bpm=_synced_bpm,
-        applied_groove=default_groove_style,
-        applied_meter=_applied_meter_pre,
+        applied_bpm=_default_bpm,
+        applied_groove=_default_groove,
+        applied_meter=_default_meter,
     )
     render_backing_defaults_debug(
         st,
@@ -5908,7 +5908,6 @@ elif _studio_page == "backing":
             f"**{_handoff_sec or 'the selected section'}** (full song or other sections still available below)."
         )
 
-    bpm = int(st.session_state.get("backing_track_bpm", _synced_bpm))
     playback_scope = st.session_state.get("backing_track_scope", "Full song")
     if playback_scope == "Single section":
         selected_section_names = [
@@ -5945,7 +5944,7 @@ elif _studio_page == "backing":
         f'<div class="ui-badge-row">'
         f'<span class="ui-badge accent">{html.escape(section_scope_label)}</span>'
         f'<span class="ui-badge purple">{html.escape(resolved_groove)}</span>'
-        f'<span class="ui-badge amber">{bpm} BPM</span>'
+        f'<span class="ui-badge amber">{int(st.session_state.get("backing_track_bpm", _synced_bpm))} BPM</span>'
         f'<span class="ui-badge">{html.escape(backing_time_signature)}</span>'
         f'<span class="ui-badge">{len(backing_chords)} bars × {form_loops}</span>'
         f"</div>",
@@ -5967,6 +5966,18 @@ elif _studio_page == "backing":
 
     coach_section = selected_section_names[0] if selected_section_names else next((name for name, chs in section_order(chart_sections) if chs), "")
     coach_chords = chart_sections.get(coach_section, []) if coach_section else []
+
+    st.markdown(
+        '<div class="ui-card soft"><div class="ui-card-title">Quick playback</div>',
+        unsafe_allow_html=True,
+    )
+    bpm = _render_backing_quick_playback_controls(
+        song_id=_playback_id,
+        default_bpm=_default_bpm,
+        default_groove=default_groove_style,
+        song_data=song_data,
+        section_names=_sec_names,
+    )
     if coach_chords:
         with st.expander(f"💡 Quick coaching — {coach_section}", expanded=False):
             st.markdown(
@@ -5984,17 +5995,6 @@ elif _studio_page == "backing":
 
     _follow_key_prefix = f"backing::{song}::{tuple(selected_section_names)}::{chart_key}::{bpm}::{form_loops}"
 
-    st.markdown(
-        '<div class="ui-card soft"><div class="ui-card-title">Quick playback</div>',
-        unsafe_allow_html=True,
-    )
-    bpm = _render_backing_quick_playback_controls(
-        song_id=_playback_id,
-        default_bpm=_default_bpm,
-        default_groove=default_groove_style,
-        song_data=song_data,
-        section_names=_sec_names,
-    )
     if st.session_state.get("backing_track_scope") == "Single section":
         _q_sec = st.session_state.get("backing_track_single_section", "")
         if _q_sec in _sec_names:

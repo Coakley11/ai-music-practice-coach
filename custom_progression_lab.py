@@ -638,10 +638,29 @@ def prepare_cpl_backing_handoff(
 ) -> None:
     """Sync CPL tempo/groove into Backing Track session keys and queue scope."""
     from songs.key_state import BACKING_NEEDS_REGEN
+    from songs.playback_defaults import apply_backing_defaults_for_song, playback_song_id
 
-    session_state["backing_track_bpm"] = int(active.get("bpm", 100) or 100)
+    class _SessionAdapter:
+        session_state = session_state
+
+    default_bpm = int(active.get("bpm", 100) or 100)
+    default_groove = str(active.get("groove_style", "Auto") or "Auto")
+    song_id = playback_song_id(
+        is_custom=True,
+        song_title=str(active.get("name", "") or ""),
+        song_artist="",
+        custom_name=str(active.get("name", "") or ""),
+        custom_revision=str(active.get("id", "") or ""),
+    )
+    session_state.pop("last_backing_defaults_song_id", None)
+    apply_backing_defaults_for_song(
+        _SessionAdapter(),
+        song_id=song_id,
+        default_bpm=default_bpm,
+        default_groove=default_groove,
+        song_data=active,
+    )
     session_state["backing_track_loops"] = int(active.get("loops", 2) or 2)
-    session_state["backing_groove_style"] = str(active.get("groove_style", "Auto") or "Auto")
     session_state[BACKING_NEEDS_REGEN] = True
     if section:
         session_state[PENDING_BACKING_SCOPE] = "Single section"

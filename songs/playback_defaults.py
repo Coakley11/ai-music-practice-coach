@@ -16,6 +16,9 @@ LAST_PLAYBACK_GROOVE_SONG = "_last_playback_groove_song"
 PENDING_BACKING_GROOVE = "_pending_backing_groove"
 PRACTICE_GROOVE_KEY = "practice_groove_style"
 LAST_BACKING_DEFAULTS_SONG_ID = "last_backing_defaults_song_id"
+ACTIVE_SONG_BPM_KEY = "active_song_bpm"
+ACTIVE_PLAYBACK_SONG_ID_KEY = "active_playback_song_id"
+_STUDIO_PAGE_SNAPSHOTS_KEY = "_studio_page_snapshots"
 
 GROOVE_STYLE_CHOICES: tuple[str, ...] = (
     "Auto",
@@ -54,6 +57,13 @@ def default_bpm_for_song_data(song_data: dict[str, Any] | None) -> int:
     return 100
 
 
+def invalidate_backing_page_snapshots(st: Any) -> None:
+    """Drop stored Backing Track page state so navigation cannot restore stale tempo."""
+    store = st.session_state.get(_STUDIO_PAGE_SNAPSHOTS_KEY)
+    if isinstance(store, dict):
+        store.pop("backing", None)
+
+
 def reset_playback_song_tracking(st: Any) -> None:
     """Force BPM/groove widgets to pick up the next active song's defaults."""
     from .meter_state import reset_backing_meter_tracking
@@ -63,6 +73,7 @@ def reset_playback_song_tracking(st: Any) -> None:
     st.session_state.pop(LAST_BACKING_DEFAULTS_SONG_ID, None)
     st.session_state.pop(PENDING_BACKING_TRACK_BPM, None)
     st.session_state.pop(PENDING_BACKING_GROOVE, None)
+    invalidate_backing_page_snapshots(st)
     reset_backing_meter_tracking(st)
 
 
@@ -148,10 +159,14 @@ def apply_backing_defaults_for_song(
         from .key_state import invalidate_backing_cache
 
         invalidate_backing_cache(st)
+        invalidate_backing_page_snapshots(st)
         st.session_state[LAST_BACKING_DEFAULTS_SONG_ID] = song_id
         st.session_state[LAST_BPM_SONG] = song_id
         st.session_state[LAST_PLAYBACK_GROOVE_SONG] = song_id
+        st.session_state[ACTIVE_PLAYBACK_SONG_ID_KEY] = song_id
+        st.session_state[ACTIVE_SONG_BPM_KEY] = int(default_bpm)
         st.session_state[BPM_WIDGET_KEY] = int(default_bpm)
+        st.session_state["bpm"] = int(default_bpm)
         st.session_state[BACKING_GROOVE_KEY] = norm_groove
     elif pending_bpm is not None:
         st.session_state[BPM_WIDGET_KEY] = int(pending_bpm)
