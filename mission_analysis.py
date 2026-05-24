@@ -44,19 +44,30 @@ MISSION_GOALS: tuple[MissionGoal, ...] = (
     MissionGoal("one_motif", "Develop one motif", _w(motif_consistency=0.45, motif_transformation=0.2, melodic_diversity=0.15, repetition_variation=0.2)),
     MissionGoal("rhythmic_diversity", "Rhythmic diversity", _w(rhythmic_diversity=0.5, rhythmic_syncopation=0.3, phrase_pacing=0.2)),
     MissionGoal("motif_development", "Motif development", _w(motif_consistency=0.35, motif_transformation=0.35, repetition_variation=0.2, phrase_contour_variety=0.1)),
+    MissionGoal("phrase_structure", "Phrase structure", _w(phrase_pacing=0.4, phrase_contour_variety=0.35, space_rests=0.25)),
+    MissionGoal("melodic_diversity_goal", "Melodic diversity", _w(melodic_diversity=0.65, phrase_contour_variety=0.35)),
     MissionGoal("chord_tone_targeting", "Chord-tone targeting", _w(chord_tone_accuracy=0.5, landing_note_quality=0.3, resolution_strength=0.2)),
     MissionGoal("tension_release", "Tension and release", _w(tension_release_balance=0.45, melodic_diversity=0.2, resolution_strength=0.2, phrase_pacing=0.15)),
     MissionGoal("phrasing", "Phrasing", _w(phrase_pacing=0.35, phrase_contour_variety=0.3, space_rests=0.2, landing_note_quality=0.15)),
-    MissionGoal("space_silence", "Space and silence", _w(space_rests=0.55, phrase_pacing=0.25, dynamic_contrast=0.2)),
-    MissionGoal("dynamic_contrast", "Dynamic contrast", _w(dynamic_contrast=0.6, phrase_pacing=0.2, musical_expression=0.2)),
+    MissionGoal("space_silence", "Use of space/rests", _w(space_rests=0.55, phrase_pacing=0.25, dynamic_contrast=0.2)),
+    MissionGoal("dynamic_contrast", "Dynamics", _w(dynamic_contrast=0.6, phrase_pacing=0.2, musical_expression=0.2)),
     MissionGoal("pentatonic_focus", "Pentatonic focus", _w(pentatonic_adherence=0.55, scale_adherence=0.25, melodic_diversity=0.2)),
-    MissionGoal("scale_connection", "Scale connection", _w(scale_adherence=0.45, phrase_contour_variety=0.25, melodic_diversity=0.3)),
+    MissionGoal("scale_connection", "Scale/mode usage", _w(scale_adherence=0.45, phrase_contour_variety=0.25, melodic_diversity=0.3)),
     MissionGoal("voice_leading", "Voice leading", _w(voice_leading_smoothness=0.5, resolution_strength=0.25, chord_tone_accuracy=0.25)),
     MissionGoal("repetition_variation", "Repetition and variation", _w(repetition_variation=0.45, motif_transformation=0.35, rhythmic_diversity=0.2)),
-    MissionGoal("guide_tones", "Landing on guide tones", _w(guide_tone_usage=0.55, landing_note_quality=0.3, resolution_strength=0.15)),
+    MissionGoal("guide_tones", "Guide-tone targeting", _w(guide_tone_usage=0.55, landing_note_quality=0.3, resolution_strength=0.15)),
     MissionGoal("rhythmic_displacement", "Rhythmic displacement", _w(rhythmic_syncopation=0.45, rhythmic_diversity=0.35, groove_consistency=0.2)),
     MissionGoal("bebop_phrasing", "Bebop phrasing", _w(rhythmic_syncopation=0.3, phrase_contour_variety=0.25, tension_release_balance=0.25, chromatic_motion=0.2)),
     MissionGoal("call_response", "Call and response", _w(phrase_pacing=0.35, space_rests=0.3, repetition_variation=0.35)),
+    MissionGoal("deep_harmony", "Deep harmony awareness", _w(chord_tone_accuracy=0.35, guide_tone_usage=0.3, voice_leading_smoothness=0.2, scale_adherence=0.15)),
+    MissionGoal("timing_groove", "Timing/groove", _w(groove_consistency=0.45, timing_stability=0.4, landing_note_quality=0.15)),
+    MissionGoal("articulation", "Articulation", _w(articulation=0.55, rhythmic_diversity=0.25, groove_consistency=0.2)),
+    MissionGoal("instrument_tone", "Instrument tone", _w(instrument_tone=0.55, musical_expression=0.25, melodic_diversity=0.2)),
+    MissionGoal(
+        "mission_completion",
+        "Mission completion",
+        _w(musical_expression=0.3, motif_consistency=0.25, chord_tone_accuracy=0.25, groove_consistency=0.2),
+    ),
     MissionGoal(
         "custom",
         "Custom goal",
@@ -66,6 +77,32 @@ MISSION_GOALS: tuple[MissionGoal, ...] = (
 
 MISSION_BY_ID: dict[str, MissionGoal] = {m.id: m for m in MISSION_GOALS}
 MISSION_LABELS: list[str] = [m.label for m in MISSION_GOALS if m.id != "custom"]
+
+# User-facing multiselect order (Improvisation Intelligence + Upload Analysis)
+AI_IMPROV_METRIC_IDS: tuple[str, ...] = (
+    "motif_development",
+    "phrase_structure",
+    "rhythmic_diversity",
+    "melodic_diversity_goal",
+    "chord_tone_targeting",
+    "guide_tones",
+    "tension_release",
+    "space_silence",
+    "call_response",
+    "repetition_variation",
+    "voice_leading",
+    "scale_connection",
+    "deep_harmony",
+    "dynamic_contrast",
+    "timing_groove",
+    "articulation",
+    "instrument_tone",
+    "mission_completion",
+)
+
+AI_IMPROV_METRIC_LABELS: list[str] = [
+    MISSION_BY_ID[mid].label for mid in AI_IMPROV_METRIC_IDS if mid in MISSION_BY_ID
+]
 
 LEGACY_MISSION_TO_IDS: dict[str, list[str]] = {
     "Improvise using only chord tones": ["chord_tone_targeting"],
@@ -90,11 +127,21 @@ def resolve_selected_mission_ids(
     *,
     include_creative: bool = True,
 ) -> list[str]:
-    """Merge multiselect + optional Creative Lab active mission."""
+    """Merge AI metric picks, upload-page picks, and optional Creative Lab mission."""
     ids: list[str] = []
-    raw = session_state.get("analysis_mission_ids")
-    if isinstance(raw, list):
-        ids.extend(str(x) for x in raw if str(x) in MISSION_BY_ID and str(x) != "custom")
+
+    def _add(raw: Any) -> None:
+        if not isinstance(raw, list):
+            return
+        for x in raw:
+            mid = str(x)
+            if mid in MISSION_BY_ID and mid != "custom" and mid not in ids:
+                ids.append(mid)
+
+    _add(session_state.get("improv_ai_metric_ids"))
+    _add(session_state.get("analysis_ai_metric_ids"))
+    _add(session_state.get("analysis_mission_ids"))
+
     if include_creative and session_state.get("analysis_sync_creative_mission", True):
         legacy = str(session_state.get("improv_active_mission") or "")
         for mid in mission_ids_from_legacy(legacy):
@@ -105,7 +152,7 @@ def resolve_selected_mission_ids(
     ).strip():
         if "custom" not in ids:
             ids.append("custom")
-    return ids[:12]
+    return ids[:18]
 
 
 def _pc_from_hz(hz: float) -> str | None:
@@ -192,7 +239,7 @@ def extract_improv_metrics(
         "tension_release_balance", "phrase_pacing", "dynamic_contrast", "groove_consistency",
         "timing_stability", "phrase_contour_variety", "landing_note_quality", "repetition_variation",
         "resolution_strength", "rhythmic_syncopation", "space_rests", "voice_leading_smoothness",
-        "chromatic_motion", "musical_expression",
+        "chromatic_motion", "musical_expression", "articulation", "instrument_tone",
     )}
 
     if librosa is None:
@@ -301,6 +348,15 @@ def extract_improv_metrics(
     metrics["dynamic_contrast"] = _clamp(float(getattr(features, "dyn_range", 0)) * 500)
     metrics["musical_expression"] = _clamp(
         metrics["dynamic_contrast"] * 0.4 + metrics["melodic_diversity"] * 0.35 + metrics["phrase_contour_variety"] * 0.25
+    )
+    metrics["articulation"] = _clamp(
+        float(getattr(features, "onset_strength_mean", 0) or 0) * 12
+        + (1.0 - min(1.0, float(getattr(features, "zcr_mean", 0) or 0) * 8)) * 35
+        + metrics["rhythmic_diversity"] * 0.25
+    )
+    metrics["instrument_tone"] = _clamp(
+        float(getattr(features, "voiced_ratio", 0) or 0) * 55
+        + min(40, float(getattr(features, "spectral_centroid_mean", 0) or 0) / 80)
     )
 
     rms = getattr(features, "rms", None)
@@ -459,6 +515,38 @@ def _mission_feedback(
     )
 
 
+def _coach_result_fields(score: int, summary: str, why: str) -> tuple[str, str]:
+    """Split feedback into what went well vs what to improve."""
+    if score >= 78:
+        went_well = summary
+        improve_to = why if score < 90 else "Push this skill in one harder section next time."
+    elif score >= 62:
+        went_well = summary if summary else "You are on the right track for this criterion."
+        improve_to = why
+    else:
+        went_well = "Your take gives a clear starting point — keep ideas shorter and more focused."
+        improve_to = why or "Loop one section at a slower tempo and record again."
+    return went_well, improve_to
+
+
+def _blend_performance_metrics(
+    metrics: dict[str, float],
+    performance_scores: dict[str, int] | None,
+) -> dict[str, float]:
+    if not performance_scores:
+        return metrics
+    out = dict(metrics)
+    timing = float(performance_scores.get("timing", 70))
+    groove = float(performance_scores.get("groove", 70))
+    tone = float(performance_scores.get("tone", 70))
+    technique = float(performance_scores.get("technique", 70))
+    out["timing_stability"] = _clamp(out["timing_stability"] * 0.5 + timing * 0.5)
+    out["groove_consistency"] = _clamp(out["groove_consistency"] * 0.5 + groove * 0.5)
+    out["instrument_tone"] = _clamp(out["instrument_tone"] * 0.45 + tone * 0.55)
+    out["articulation"] = _clamp(out["articulation"] * 0.5 + technique * 0.5)
+    return out
+
+
 def _instrument_mission_tips(instrument: str, mission_id: str, score: int) -> list[str]:
     inst = (instrument or "").lower()
     tips: list[str] = []
@@ -495,7 +583,16 @@ def score_missions(
         if not goal:
             continue
         score = _score_from_weights(goal.weights, metrics)
+        if goal.id == "mission_completion" and ctx.get("active_practice_mission_ids"):
+            sub = [
+                _score_from_weights(MISSION_BY_ID[mid].weights, metrics)
+                for mid in ctx["active_practice_mission_ids"]
+                if mid in MISSION_BY_ID
+            ]
+            if sub:
+                score = int(round(sum(sub) / len(sub)))
         summary, why = _mission_feedback(goal, score, metrics, ctx, custom_text=custom_goal)
+        went_well, improve_to = _coach_result_fields(score, summary, why)
         results.append(
             {
                 "id": goal.id,
@@ -503,6 +600,8 @@ def score_missions(
                 "score": score,
                 "summary": summary,
                 "why": why,
+                "went_well": went_well,
+                "improve_to": improve_to,
                 "tips": _instrument_mission_tips(str(ctx.get("instrument") or ""), goal.id, score),
             }
         )
@@ -539,29 +638,36 @@ def analyze_improvisation_missions(
     mission_ids: list[str],
     *,
     custom_goal: str = "",
+    performance_scores: dict[str, int] | None = None,
 ) -> dict[str, Any]:
+    empty = {
+        "mission_results": [],
+        "musical_metrics": {},
+        "mission_coach_summary": "",
+        "mission_strongest": "",
+        "mission_weakest": "",
+        "mission_next_recommendation": "",
+        "overall_improv_score": 0,
+    }
     if not mission_ids:
-        return {
-            "mission_results": [],
-            "musical_metrics": {},
-            "mission_coach_summary": "",
-            "mission_strongest": "",
-            "mission_weakest": "",
-            "mission_next_recommendation": "",
-        }
+        return empty
 
     metrics = extract_improv_metrics(y, sr, features, ctx)
+    metrics = _blend_performance_metrics(metrics, performance_scores)
     results = score_missions(mission_ids, metrics, ctx, custom_goal=custom_goal)
     if not results:
-        return {"mission_results": [], "musical_metrics": metrics}
+        return {**empty, "musical_metrics": metrics}
 
     ranked = sorted(results, key=lambda x: x["score"])
     weakest = ranked[0]
     strongest = ranked[-1]
     avg = sum(r["score"] for r in results) / len(results)
+    overall = int(round(avg))
 
     summary = (
-        f"Improvisation mission read ({len(results)} goals): average **{avg:.0f}%**. "
+        f"Evaluated {len(results)} criteria against **{ctx.get('song') or 'your take'}** "
+        f"({ctx.get('display_key') or ''}, {ctx.get('instrument') or ''}). "
+        f"Overall improvisation score: **{overall}%**. "
         f"Strongest: **{strongest['label']}** ({strongest['score']}%). "
         f"Grow next: **{weakest['label']}** ({weakest['score']}%)."
     )
@@ -573,21 +679,28 @@ def analyze_improvisation_missions(
         "mission_strongest": f"{strongest['label']} — {strongest['score']}%",
         "mission_weakest": f"{weakest['label']} — {weakest['score']}%",
         "mission_next_recommendation": build_mission_recommendation(results, ctx, metrics),
+        "overall_improv_score": overall,
         "mission_ids": mission_ids,
         "custom_goal": custom_goal,
     }
 
 
 def sync_analysis_missions_from_creative(session_state: dict) -> None:
-    """When navigating from Creative Lab, pre-select mapped missions."""
+    """When navigating to Upload Analysis, copy Improvisation Intelligence metric picks."""
+    improv_ids = list(session_state.get("improv_ai_metric_ids") or [])
+    if improv_ids:
+        session_state["analysis_ai_metric_ids"] = list(improv_ids)
+        session_state["analysis_mission_ids"] = list(improv_ids)
+
     legacy = str(session_state.get("improv_active_mission") or "")
     mapped = mission_ids_from_legacy(legacy)
     if mapped:
-        existing = list(session_state.get("analysis_mission_ids") or [])
+        existing = list(session_state.get("analysis_ai_metric_ids") or session_state.get("analysis_mission_ids") or [])
         for mid in mapped:
             if mid not in existing:
                 existing.append(mid)
-        session_state["analysis_mission_ids"] = existing[:12]
+        session_state["analysis_ai_metric_ids"] = existing[:18]
+        session_state["analysis_mission_ids"] = existing[:18]
     session_state["analysis_sync_creative_mission"] = True
 
 
