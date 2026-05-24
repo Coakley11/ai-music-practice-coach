@@ -295,5 +295,105 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
 """
 
 
-def prepare_analysis_from_creative(session_state: dict) -> None:
+ANALYSIS_CRITERIA_LOCKED = "analysis_criteria_locked"
+ANALYSIS_RETURN_TO_METRICS = "analysis_return_to_improv_metrics"
+
+
+def criteria_labels_from_session(session_state: dict) -> list[str]:
+    from mission_analysis import MISSION_BY_ID, resolve_selected_mission_ids
+
+    return [
+        MISSION_BY_ID[mid].label
+        for mid in resolve_selected_mission_ids(session_state, include_creative=True)
+        if mid in MISSION_BY_ID
+    ]
+
+
+def prepare_analysis_from_creative(session_state: dict, *, locked: bool = False) -> None:
     sync_analysis_missions_from_creative(session_state)
+    if locked:
+        session_state[ANALYSIS_CRITERIA_LOCKED] = True
+
+
+def prepare_metrics_upload_workflow(session_state: dict) -> None:
+    """Metrics & AI → Upload Analysis → return to Metrics & AI with results."""
+    prepare_analysis_from_creative(session_state, locked=True)
+    session_state[ANALYSIS_RETURN_TO_METRICS] = True
+
+
+def is_analysis_criteria_locked(session_state: dict) -> bool:
+    return bool(session_state.get(ANALYSIS_CRITERIA_LOCKED))
+
+
+def clear_analysis_workflow_flags(session_state: dict) -> None:
+    session_state.pop(ANALYSIS_CRITERIA_LOCKED, None)
+    session_state.pop(ANALYSIS_RETURN_TO_METRICS, None)
+
+
+def render_analysis_criteria_summary(st: Any, session_state: dict) -> list[str]:
+    """Read-only summary when criteria were chosen on Metrics & AI."""
+    from mission_analysis import resolve_selected_mission_ids
+
+    labels = criteria_labels_from_session(session_state)
+    st.markdown("##### Evaluating")
+    if labels:
+        st.markdown(
+            '<div class="ui-card soft" style="padding:0.75rem 1rem;">'
+            + ", ".join(f"<strong>{_esc(l)}</strong>" for l in labels)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.warning(
+            "No metrics selected yet. Go to **Creative Lab → Improvisation Intelligence → Metrics & AI** "
+            "and choose what to evaluate."
+        )
+    if st.button("Change criteria on Metrics & AI", key="analysis_change_criteria_btn"):
+        session_state[ANALYSIS_CRITERIA_LOCKED] = False
+        session_state[ANALYSIS_RETURN_TO_METRICS] = False
+        st.rerun()
+    return resolve_selected_mission_ids(session_state, include_creative=True)
+
+
+def render_improv_metrics_results(st: Any, result: dict[str, Any]) -> None:
+    """Show completed upload analysis on the Metrics & AI tab."""
+    if not result or not result.get("ok"):
+        return
+    st.markdown("---")
+    st.markdown("#### Your latest AI coach results")
+    st.caption(
+        f"**{result.get('song') or 'Take'}** · {result.get('instrument', '')} · "
+        f"{result.get('level', '')} · {result.get('focus', '')}"
+    )
+    overall = result.get("overall_improv_score")
+    if overall:
+        st.metric("Overall Improvisation Score", f"{overall}%")
+    if result.get("mission_strongest"):
+        st.success(f"Strongest: {result.get('mission_strongest')}")
+    if result.get("mission_weakest"):
+        st.warning(f"Grow next: {result.get('mission_weakest')}")
+    if result.get("mission_next_recommendation"):
+        st.info(f"**Practice recommendation:** {result.get('mission_next_recommendation')}")
+    if result.get("went_well"):
+        st.success(f"**What went well:** {result.get('went_well')}")
+    if result.get("improve_to"):
+        st.warning(f"**What needs improvement:** {result.get('improve_to')}")
+    if result.get("mission_coach_summary") and not result.get("went_well"):
+        st.markdown(result.get("mission_coach_summary"))
+
+    missions = result.get("mission_results") or []
+    if missions:
+        for m in missions:
+            with st.expander(f"{m.get('label', '')} — {m.get('score', 0)}%", expanded=True):
+                st.markdown(m.get("summary", ""))
+                if m.get("went_well"):
+                    st.markdown(f"**What went well:** {m.get('went_well')}")
+                if m.get("improve_to"):
+                    st.markdown(f"**To improve:** {m.get('improve_to')}")
+                for tip in m.get("tips") or []:
+                    st.markdown(f"- {tip}")
+
+    st.markdown(
+        render_mission_analysis_html(result),
+        unsafe_allow_html=True,
+    )

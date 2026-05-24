@@ -6245,12 +6245,18 @@ elif _studio_page == "analysis":
 
     if analysis_mode == "Single recording":
         from mission_analysis_ui import (
+            is_analysis_criteria_locked,
+            render_analysis_criteria_summary,
             render_mission_goals_selector,
             render_mission_history_panel,
+            ANALYSIS_RETURN_TO_METRICS,
         )
 
-        mission_ids = render_mission_goals_selector(st, st.session_state)
-        render_mission_history_panel(st)
+        if is_analysis_criteria_locked(st.session_state):
+            mission_ids = render_analysis_criteria_summary(st, st.session_state)
+        else:
+            mission_ids = render_mission_goals_selector(st, st.session_state)
+            render_mission_history_panel(st)
 
         analysis_audio = st.file_uploader(
             "Upload a recording",
@@ -6275,9 +6281,12 @@ elif _studio_page == "analysis":
                     recording_type=recording_type.lower().replace(" ", "_"),
                 )
                 ctx["mission_ids"] = mission_ids
-                ctx["custom_goal"] = str(
-                    st.session_state.get("analysis_custom_goal") or ""
-                ).strip()
+                if not is_analysis_criteria_locked(st.session_state):
+                    ctx["custom_goal"] = str(
+                        st.session_state.get("analysis_custom_goal") or ""
+                    ).strip()
+                else:
+                    ctx["custom_goal"] = ""
                 from mission_analysis import mission_ids_from_legacy
 
                 ctx["active_practice_mission_ids"] = mission_ids_from_legacy(
@@ -6301,8 +6310,18 @@ elif _studio_page == "analysis":
                     from practice_log_insights import append_analysis_snapshot
 
                     append_analysis_snapshot(result, ctx=ctx)
+                    if st.session_state.get(ANALYSIS_RETURN_TO_METRICS):
+                        st.session_state["creative_lab_analysis_mode"] = (
+                            "Improvisation Intelligence"
+                        )
+                        st.session_state["improv_intelligence_tab"] = "Metrics & AI"
+                        navigate_studio_page(st.session_state, "creative")
+                        st.rerun()
 
-        if st.session_state.get("last_analysis_result"):
+        if (
+            st.session_state.get("last_analysis_result")
+            and not st.session_state.get(ANALYSIS_RETURN_TO_METRICS)
+        ):
             st.divider()
             last = st.session_state["last_analysis_result"]
             st.markdown(
@@ -6901,14 +6920,21 @@ elif _studio_page == "log":
     )
 
     _analysis_history = load_analysis_history()
+    _mission_history: list = []
+    try:
+        from mission_analysis import load_mission_history
+
+        _mission_history = load_mission_history()
+    except Exception:
+        pass
     if st.session_state.get("last_analysis_result", {}).get("ok") and not _analysis_history:
         st.caption(
             "Tip: run **Upload Analysis** on a take — results are saved for future insights."
         )
-    elif _analysis_history:
+    elif _analysis_history or _mission_history:
         st.caption(
-            f"Connected to **{len(_analysis_history)}** saved recording analysis snapshot(s) "
-            "from Upload Analysis."
+            f"Connected to **{len(_analysis_history)}** recording snapshot(s) "
+            f"and **{len(_mission_history)}** mission/metric analysis run(s)."
         )
 
     st.session_state.setdefault("ai_session_builder_minutes", 45)
@@ -6923,6 +6949,7 @@ elif _studio_page == "log":
             _insights = generate_practice_log_insights(
                 _logs_for_insights,
                 analysis_history=_analysis_history,
+                mission_history=_mission_history,
                 session_analysis=st.session_state.get("last_analysis_result"),
                 all_song_records=ALL_SONG_RECORDS,
                 session_minutes=int(st.session_state.get("ai_session_builder_minutes", 45)),

@@ -1237,8 +1237,8 @@ def _tab_deep_harmony(
         session_state=session_state,
         key_prefix="improv_deep_harmony",
         instrument_options=DEFAULT_INSTRUMENT_OPTIONS,
-        label="Instrument · level · focus",
-        show_sync_caption=False,
+        label="",
+        show_sync_caption=True,
     )
 
     ext = song_data.get("extensions") or {}
@@ -1302,7 +1302,19 @@ def _tab_metrics_ai(
             type="primary",
             use_container_width=True,
         ):
-            from mission_analysis_ui import prepare_analysis_from_creative
+            from mission_analysis_ui import prepare_metrics_upload_workflow
 
-            prepare_analysis_from_creative(session_state)
+            prepare_metrics_upload_workflow(session_state)
             on_open_analysis()
+
+    result = session_state.get("last_analysis_result")
+    if result and result.get("ok") and result.get("mission_results"):
+        from mission_analysis_ui import (
+            ANALYSIS_RETURN_TO_METRICS,
+            clear_analysis_workflow_flags,
+            render_improv_metrics_results,
+        )
+
+        render_improv_metrics_results(st, result)
+        if session_state.get(ANALYSIS_RETURN_TO_METRICS):
+            clear_analysis_workflow_flags(session_state)

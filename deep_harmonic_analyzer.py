@@ -18,6 +18,7 @@ from improvisation_intelligence import (
     build_scale_suggestion,
     format_scale_line,
 )
+from improvisation_missions import instrument_family
 from improvisation_motif import chord_tone_names, dedupe_sections_for_display, single_progression_cycle
 from music_theory import CHROMATIC, normalize_root, split_chord
 
@@ -295,24 +296,7 @@ def _tension_release_section(cycle: list[str], key: str) -> list[str]:
     return lines
 
 
-def _voice_leading_section(
-    section_map: list[tuple[str, list[str]]],
-    instrument: str,
-    level: str,
-) -> list[str]:
-    lines = ["## Voice Leading"]
-    inst = (instrument or "").lower()
-    if any(x in inst for x in ("sax", "trumpet", "flute", "clarinet", "voice")):
-        lines.append(
-            "For winds/voice: think in **lines**, not scales — connect chord 3rds and 7ths, breathe at section peaks."
-        )
-    elif "piano" in inst:
-        lines.append("For piano: keep the top voice smooth; let inner notes move stepwise while bass anchors the form.")
-    elif "guitar" in inst:
-        lines.append("For guitar: favor nearby chord tones on adjacent strings; let slash bass notes match the chart.")
-    elif "bass" in inst:
-        lines.append("For bass: the written bass notes *are* the voice leading — connect roots and approach tones.")
-
+def _chord_change_pairs(section_map: list[tuple[str, list[str]]], limit: int = 6) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
     for _sec, chords in section_map:
         cyc = single_progression_cycle(chords)
@@ -320,22 +304,155 @@ def _voice_leading_section(
             pairs.append((cyc[i], cyc[i + 1]))
         if len(cyc) >= 2:
             pairs.append((cyc[-1], cyc[0]))
-
     seen: set[tuple[str, str]] = set()
+    out: list[tuple[str, str]] = []
     for a, b in pairs:
         if (a, b) in seen:
             continue
         seen.add((a, b))
-        lines.append(f"- {_voice_lead_pair(a, b)}")
-        if len(seen) >= 6:
+        out.append((a, b))
+        if len(out) >= limit:
             break
+    return out
 
+
+def _wind_playbook(
+    inp: HarmonicAnalysisInput,
+    section_map: list[tuple[str, list[str]]],
+    cycle: list[str],
+) -> list[str]:
+    inst = inp.instrument or "Saxophone"
+    key = inp.display_key
+    level = inp.level
+    focus = (inp.focus or "").lower()
+    lines = [f"## {inst} — Melodic & Harmonic Playbook"]
+
+    lines.append("### Target notes & guide tones")
+    lines.append(
+        "- On each chord change, **aim for the 3rd and 7th** on strong beats — they tell the listener the harmony."
+    )
+    if cycle:
+        tones = chord_tone_names(cycle[0])
+        if len(tones) >= 3:
+            lines.append(
+                f"- Home sonority **{cycle[0]}**: stable targets **{', '.join(tones[:3])}**; "
+                f"color with the 7th ({tones[3]}) if the chart includes it."
+            )
+    lines.append(
+        f"- In **{key}**, chord-tone soloing beats running scales — land roots/3rds/5ths first, "
+        "then add passing tones between guide tones."
+    )
+
+    lines.append("### Melodic voice leading")
+    for a, b in _chord_change_pairs(section_map):
+        lines.append(f"- {_voice_lead_pair(a, b)}")
+    lines.append(
+        "- Think **stepwise motion** between chord tones; save leaps for phrase peaks or chorus lift."
+    )
+
+    lines.append("### Breath & phrasing")
+    lines.append("- **2-bar question, 2-bar answer** — breathe *before* the chorus or after a tension chord.")
+    lines.append("- Tongue lighter on faster subdivisions; support long notes with steady air.")
+    if "rhythm" in focus:
+        lines.append("- **Focus = Rhythm:** lock time first; one rhythm cell per section before adding notes.")
+
+    lines.append("### Articulation")
     if level == "Beginner":
-        lines.append("- **Practice:** play only roots and 3rds through each move above — one note per beat.")
-    elif level == "Advanced":
+        lines.append("- Keep attacks consistent; accent beat 1 of each bar only.")
+    else:
+        lines.append("- Mix legato lines with one accented approach note into each new chord.")
+
+    lines.append("### Scales vs chord tones")
+    lines.append(
+        "- Use the scale list below as a **source pool** — still resolve phrases on chord tones at cadences."
+    )
+    return lines
+
+
+def _guitar_playbook(
+    inp: HarmonicAnalysisInput,
+    section_map: list[tuple[str, list[str]]],
+    cycle: list[str],
+) -> list[str]:
+    level = inp.level
+    lines = [f"## Guitar — Fretboard & Harmony Playbook"]
+
+    lines.append("### Chord shapes & string sets")
+    if cycle:
         lines.append(
-            "- **Practice:** add chromatic approaches to the 3rd of each target chord; delay resolution by half a beat."
+            f"- Core loop: **{' · '.join(cycle[:4])}** — learn one compact grip per chord in the same fretboard zone."
         )
+    lines.append("- Verse: middle-string triads; chorus: widen to include high E or bass note on slash chords.")
+    if "/" in " ".join(inp.progression_flat or []):
+        lines.append("- **Slash bass:** keep the written bass on the lowest string — do not replace with a root-only grip.")
+
+    lines.append("### Voice leading on the neck")
+    for a, b in _chord_change_pairs(section_map):
+        lines.append(f"- {_voice_lead_pair(a, b)} — find the nearest grip; move the **top voice** by step when possible.")
+    lines.append("- TAB idea: arpeggiate each chord once per bar, then add one passing tone on beat 4.")
+
+    lines.append("### Picking & rhythm")
+    lines.append("- Match the song groove first; muting on 2 & 4 can make the verse feel intimate.")
+    if level == "Advanced":
+        lines.append("- Add 9ths on one chorus pass only — same rhythm, one higher color note per chord.")
+
+    lines.append("### Improvising")
+    lines.append(
+        "- Target chord tones on downbeats; use pentatonic/major scale fills between chord grips in the same position."
+    )
+    return lines
+
+
+def _piano_playbook(
+    inp: HarmonicAnalysisInput,
+    section_map: list[tuple[str, list[str]]],
+    cycle: list[str],
+) -> list[str]:
+    level = inp.level
+    lines = [f"## Piano — Voicing Playbook"]
+
+    lines.append("### LH / RH roles")
+    lines.append("- **Left hand:** root + 5th or shell (root + 7th) — anchor the harmony.")
+    lines.append("- **Right hand:** 3rd + 7th + optional 9th — this is your melodic top voice.")
+    if cycle:
+        lines.append(f"- Verse colors: **{' · '.join(cycle[:4])}** with shell voicings; chorus: spread RH or octave double.")
+
+    lines.append("### Voice leading & inversions")
+    for a, b in _chord_change_pairs(section_map):
+        lines.append(f"- {_voice_lead_pair(a, b)} — move the **top note** stepwise; keep LH on root or shell.")
+    lines.append("- Use inversions to avoid jumping the RH more than a 4th between chords.")
+
+    lines.append("### Chord-tone improvising")
+    lines.append("- RH melodic lines: chord tones on beats 1 and 3; passing tones on weaker beats.")
+    if level == "Advanced":
+        lines.append("- Try upper structures (9, 13) on dominant chords only — one color per chorus.")
+
+    lines.append("### Voicing suggestions")
+    lines.append("- Ballad: light pedal; change pedal on root movement, not every inner voice shift.")
+    return lines
+
+
+def _bass_playbook(
+    inp: HarmonicAnalysisInput,
+    section_map: list[tuple[str, list[str]]],
+    cycle: list[str],
+) -> list[str]:
+    lines = ["## Bass — Line & Groove Playbook"]
+    lines.append("- The written bass notes **are** the harmony — connect roots with stepwise or chromatic approaches.")
+    if cycle:
+        lines.append(f"- Outline: **{' → '.join(cycle[:4])}** — lock with the kick; add passing tones into each root.")
+    lines.append("- Chorus: slightly more forward in the mix; verse: leave space for vocal/melody.")
+    return lines
+
+
+def _generic_playbook(
+    inp: HarmonicAnalysisInput,
+    section_map: list[tuple[str, list[str]]],
+) -> list[str]:
+    lines = [f"## Improvisation on **{inp.song_title}**"]
+    for a, b in _chord_change_pairs(section_map):
+        lines.append(f"- {_voice_lead_pair(a, b)}")
+    lines.append("- Connect chord tones on strong beats; use the scale section for pitch choices.")
     return lines
 
 
@@ -371,69 +488,23 @@ def _harmonic_idea_section(
     return lines
 
 
-def _instrument_lens(
-    inp: HarmonicAnalysisInput,
-    section_map: list[tuple[str, list[str]]],
-) -> list[str]:
-    inst = inp.instrument or "Guitar"
-    low = inst.lower()
-    level = inp.level or "Intermediate"
-    key = inp.display_key
-    lines = [f"## Instrument-Specific Lens — {inst} ({level})"]
-
-    chorus_chords = ""
-    for name, chs in section_map:
-        if section_role(name) == "chorus" and chs:
-            chorus_chords = " · ".join(single_progression_cycle(chs)[:4])
-            break
-
-    if "guitar" in low:
-        lines.append(
-            "- Use **compact voicings** in the verse (middle strings); open the voicing width in the chorus."
-        )
-        if chorus_chords:
-            lines.append(f"- Chorus target shapes: **{chorus_chords}** — let the top note of each chord sing.")
-        if "/" in " ".join(inp.progression_flat or []):
-            lines.append("- **Slash bass:** play the written bass note on the lowest string — do not replace with a root shape.")
-        if level == "Beginner":
-            lines.append("- Capo only if it helps you *sing* in your range — keep the same chord *names* as the chart.")
-        elif level == "Advanced":
-            lines.append("- Try upper-structure color (9ths) on one chord per chorus — not every bar.")
-    elif "piano" in low:
-        lines.append("- **LH:** roots or shell (root + 7th); **RH:** 3rd + 7th + optional extension.")
-        lines.append("- Verse: shell voicings; chorus: spread RH or octave double for lift.")
-        if level == "Advanced":
-            lines.append("- Reharm experiment: substitute **V** with secondary dominant only in the bridge, not the main loop.")
-    elif "bass" in low:
-        lines.append("- Outline **roots first**, then add passing tones approaching the next chord's root.")
-        lines.append("- Groove consistency matters more than note count — lock with the kick in 6/8 or 4/4.")
-    elif any(x in low for x in ("sax", "trumpet", "flute", "clarinet")):
-        lines.append("- **Target notes:** 3rds and 7ths on strong beats; chord roots on downbeats when outlining harmony.")
-        lines.append("- **Phrasing:** 2-bar questions, 2-bar answers; breathe *before* the chorus entrance.")
-        if level == "Beginner":
-            lines.append(f"- Stay in **{key} major** (or relative minor) until chord tones feel automatic.")
-        else:
-            lines.append("- Use guide-tone lines from the Voice Leading section as your practice etude.")
-    elif "voice" in low:
-        lines.append("- Mark breaths before chorus lines; harmony tells you when to widen vowels (chorus arrival).")
-    else:
-        lines.append("- Connect each phrase to the nearest chord tone of the moment — harmony moves, your line should follow.")
-
-    focus = (inp.focus or "").lower()
-    if "rhythm" in focus:
-        lines.append("- **Focus = Rhythm:** harmony supports rhythm — practice the chord *rhythm* before adding notes.")
-    elif "scale" in focus:
-        lines.append("- **Focus = Scales:** use the scale section below, but land on chord tones at cadences.")
-    return lines
-
-
 def _scales_section(
     section_map: list[tuple[str, list[str]]],
     key: str,
     level: str,
+    *,
+    instrument: str = "Guitar",
 ) -> list[str]:
-    lines = ["## Scales / Modes (general options per section)"]
-    lines.append("*Simpler reference — use chord tones on strong beats when improvising.*")
+    family = instrument_family(instrument)
+    lines = ["## Scales / Modes (per section)"]
+    if family == "wind":
+        lines.append("*Pool of pitches — still land on chord tones and guide tones at phrase endings.*")
+    elif family == "guitar":
+        lines.append("*Use in the same fretboard area as your chord grips — chord tones on downbeats.*")
+    elif family == "piano":
+        lines.append("*RH lines from these sets; LH stays on shells/voicings.*")
+    else:
+        lines.append("*Use chord tones on strong beats when improvising.*")
     is_minor_key = str(key).endswith("m")
     parent = key.replace("m", "") if is_minor_key else key
     rel_minor = parent
@@ -529,11 +600,32 @@ def build_deep_harmonic_analysis(
     for name, chords in section_map:
         out.extend(_section_block(name, chords, key, inp.level))
 
-    out.extend(_voice_leading_section(section_map, inp.instrument, inp.level))
     out.extend(_tension_release_section(cycle, key))
     out.extend(_harmonic_idea_section(character, cycle, inp.song_title))
-    out.extend(_instrument_lens(inp, section_map))
-    out.extend(_scales_section(section_map, key, inp.level))
+
+    family = instrument_family(inp.instrument)
+    if family == "wind":
+        out.extend(_wind_playbook(inp, section_map, cycle))
+    elif family == "guitar":
+        out.extend(_guitar_playbook(inp, section_map, cycle))
+    elif family == "piano":
+        out.extend(_piano_playbook(inp, section_map, cycle))
+    elif family == "bass":
+        out.extend(_bass_playbook(inp, section_map, cycle))
+    else:
+        out.extend(_generic_playbook(inp, section_map))
+
+    out.extend(_scales_section(section_map, key, inp.level, instrument=inp.instrument))
+
+    focus = (inp.focus or "").lower()
+    if "rhythm" in focus:
+        out.append(
+            f"\n> **Focus = Rhythm:** practice the chord rhythm of **{inp.song_title}** before adding melodic density."
+        )
+    elif "harmony" in focus or "chord" in focus:
+        out.append(
+            f"\n> **Focus = Harmony:** prioritize 3rds/7ths and chord-tone resolutions on this chart."
+        )
 
     return "\n".join(out)
 

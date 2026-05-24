@@ -130,6 +130,8 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "harmony_map_section",
             "harmony_map_chord",
             "improv_ai_metric_ids",
+            "analysis_criteria_locked",
+            "analysis_return_to_improv_metrics",
         }
     ),
     "multitrack": frozenset(
@@ -155,6 +157,8 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "analysis_custom_goal_enabled",
             "analysis_custom_goal",
             "analysis_mission_trend_pick",
+            "analysis_criteria_locked",
+            "analysis_return_to_improv_metrics",
         }
     ),
     "log": frozenset(

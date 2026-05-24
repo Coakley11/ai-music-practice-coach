@@ -119,6 +119,7 @@ def analysis_snapshot_from_result(
         "mission_strongest": str(result.get("mission_strongest") or ""),
         "mission_weakest": str(result.get("mission_weakest") or ""),
         "mission_coach_summary": str(result.get("mission_coach_summary") or ""),
+        "mission_next_recommendation": str(result.get("mission_next_recommendation") or ""),
         "overall_improv_score": int(result.get("overall_improv_score") or 0),
     }
 
@@ -230,6 +231,196 @@ def _score_trends(history: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _parse_iso_date(raw: str) -> date | None:
+    raw = str(raw or "").strip()[:10]
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def _mission_rows_from_analysis_history(
+    analysis_history: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Use recording-analysis snapshots when dedicated mission history is empty."""
+    rows: list[dict[str, Any]] = []
+    for snap in analysis_history:
+        missions = snap.get("mission_results") or []
+        if not missions:
+            continue
+        rows.append(
+            {
+                "date": snap.get("date") or "",
+                "recorded_at": snap.get("recorded_at") or "",
+                "song": snap.get("song") or "",
+                "instrument": snap.get("instrument") or "",
+                "level": snap.get("level") or "",
+                "focus": snap.get("focus") or "",
+                "missions": [
+                    {
+                        "id": m.get("id"),
+                        "label": m.get("label"),
+                        "score": m.get("score"),
+                    }
+                    for m in missions
+                ],
+            }
+        )
+    return rows
+
+
+def _mission_history_stats(history: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate mission/metric scores from mission_analysis_history.json."""
+    if not history:
+        return {"has_data": False}
+
+    today = date.today()
+    recent_rows = [
+        h
+        for h in history
+        if (d := _parse_iso_date(str(h.get("date") or ""))) and (today - d).days <= 14
+    ]
+    older_rows = [
+        h
+        for h in history
+        if (d := _parse_iso_date(str(h.get("date") or ""))) and 14 < (today - d).days <= 60
+    ]
+
+    def _mission_scores(rows: list[dict[str, Any]]) -> dict[str, list[int]]:
+        by_id: dict[str, list[int]] = {}
+        for row in rows:
+            for m in row.get("missions") or []:
+                mid = str(m.get("id") or "")
+                if not mid:
+                    continue
+                by_id.setdefault(mid, []).append(int(m.get("score") or 0))
+        return by_id
+
+    recent_scores = _mission_scores(recent_rows or history[-5:])
+    older_scores = _mission_scores(older_rows or history[: max(1, len(history) - 5)])
+
+    deltas: dict[str, float] = {}
+    for mid, vals in recent_scores.items():
+        if not vals:
+            continue
+        r_avg = sum(vals) / len(vals)
+        o_vals = older_scores.get(mid) or []
+        o_avg = sum(o_vals) / len(o_vals) if o_vals else r_avg
+        deltas[mid] = r_avg - o_avg
+
+    song_counts: Counter[str] = Counter()
+    inst_counts: Counter[str] = Counter()
+    focus_counts: Counter[str] = Counter()
+    level_counts: Counter[str] = Counter()
+    for row in history:
+        if row.get("song"):
+            song_counts[str(row["song"])] += 1
+        if row.get("instrument"):
+            inst_counts[str(row["instrument"])] += 1
+        if row.get("focus"):
+            focus_counts[str(row["focus"])] += 1
+        if row.get("level"):
+            level_counts[str(row["level"])] += 1
+
+    latest = history[-1] if history else {}
+    latest_missions = {
+        str(m.get("id") or ""): int(m.get("score") or 0)
+        for m in (latest.get("missions") or [])
+    }
+
+    return {
+        "has_data": True,
+        "count": len(history),
+        "recent_count": len(recent_rows),
+        "deltas": deltas,
+        "latest": latest,
+        "latest_missions": latest_missions,
+        "song_counts": song_counts,
+        "inst_counts": inst_counts,
+        "focus_counts": focus_counts,
+        "level_counts": level_counts,
+    }
+
+
+def _mission_label(mid: str) -> str:
+    try:
+        from mission_analysis import MISSION_BY_ID
+
+        spec = MISSION_BY_ID.get(mid)
+        if spec:
+            return spec.label
+    except Exception:
+        pass
+    return mid.replace("_", " ").title()
+
+
+def _build_mission_narrative(
+    mission_stats: dict[str, Any],
+    *,
+    top_song: str = "",
+) -> str:
+    """One-paragraph coach story from mission metric trends."""
+    if not mission_stats.get("has_data"):
+        return ""
+
+    deltas = mission_stats.get("deltas") or {}
+    improving = sorted(
+        ((mid, d) for mid, d in deltas.items() if d >= 5),
+        key=lambda x: -x[1],
+    )
+    weak = sorted(
+        ((mid, d) for mid, d in deltas.items() if d <= -3),
+        key=lambda x: x[1],
+    )
+    latest = mission_stats.get("latest") or {}
+    song = top_song or str(latest.get("song") or "")
+    parts: list[str] = []
+
+    if mission_stats.get("recent_count", 0) >= 2:
+        parts.append("Over the last two weeks")
+    else:
+        parts.append("From your recent metric analyses")
+
+    if improving:
+        labels = [_mission_label(mid) for mid, _ in improving[:2]]
+        if song:
+            parts.append(
+                f", your **{', '.join(labels)}** improved on **{song}**"
+            )
+        else:
+            parts.append(f", your **{', '.join(labels)}** are trending up")
+    elif weak:
+        wlabel = _mission_label(weak[0][0])
+        parts.append(f", **{wlabel}** still needs focused reps")
+    else:
+        parts.append(", your mission scores are holding steady")
+
+    latest_missions = mission_stats.get("latest_missions") or {}
+    if latest_missions:
+        weakest_mid = min(latest_missions, key=lambda k: latest_missions[k])
+        weakest_score = latest_missions[weakest_mid]
+        if weakest_score < 72 and not weak:
+            parts.append(
+                f", but **{_mission_label(weakest_mid)}** is still inconsistent ({weakest_score}%)"
+            )
+        elif weak and not improving:
+            parts.append(
+                f", but **{_mission_label(weak[0][0])}** is still inconsistent"
+            )
+
+    rec = ""
+    if weak:
+        rec = f"Next, loop one section at a slower tempo and target **{_mission_label(weak[0][0])}** — then upload another take."
+    elif improving:
+        rec = "Next, keep the same tempo and push the same skills on a harder section or chorus."
+    else:
+        rec = "Next, pick one mission metric, practice it for 10 minutes, and upload a fresh take."
+
+    return "".join(parts) + f". {rec}"
+
+
 def _category_label(name: str) -> str:
     return {
         "timing": "timing & rhythm",
@@ -246,12 +437,24 @@ def generate_practice_log_insights(
     logs: list[dict[str, Any]],
     *,
     analysis_history: list[dict[str, Any]] | None = None,
+    mission_history: list[dict[str, Any]] | None = None,
     session_analysis: dict[str, Any] | None = None,
     all_song_records: list[dict[str, Any]] | None = None,
     session_minutes: int = 25,
 ) -> PracticeLogInsights:
     """Build coach-style insights from logs and recording analysis."""
     analysis_history = list(analysis_history or [])
+    if mission_history is None:
+        try:
+            from mission_analysis import load_mission_history
+
+            mission_history = load_mission_history()
+        except Exception:
+            mission_history = []
+    mission_history = list(mission_history or [])
+    if not mission_history:
+        mission_history = _mission_rows_from_analysis_history(analysis_history)
+    mission_stats = _mission_history_stats(mission_history)
     if session_analysis and session_analysis.get("ok"):
         snap = analysis_snapshot_from_result(session_analysis)
         if snap and not any(
@@ -263,7 +466,7 @@ def generate_practice_log_insights(
     stats = _aggregate_log_stats(logs)
     trends = _score_trends(analysis_history)
 
-    if not logs and not analysis_history:
+    if not logs and not analysis_history and not mission_stats.get("has_data"):
         out.headline = "Start logging sessions and upload a take on **Upload Analysis** — your coach profile will grow from there."
         out.data_notes.append("No practice logs or saved recording analyses yet.")
         out.recommended_practice.append(
@@ -273,8 +476,16 @@ def generate_practice_log_insights(
         return out
 
     # --- Headline ---
-    if stats.get("total"):
-        top_song = stats["songs"].most_common(1)[0][0] if stats["songs"] else ""
+    top_song = ""
+    if stats.get("songs"):
+        top_song = stats["songs"].most_common(1)[0][0]
+    elif mission_stats.get("song_counts"):
+        top_song = mission_stats["song_counts"].most_common(1)[0][0]
+
+    mission_story = _build_mission_narrative(mission_stats, top_song=top_song)
+    if mission_story:
+        out.headline = mission_story
+    elif stats.get("total"):
         if top_song and stats.get("recent_songs", Counter()).get(top_song, 0) >= 2:
             out.headline = f"You have practiced **{top_song}** several times recently — good depth on that tune."
         elif stats.get("last_14_count", 0) >= 4:
@@ -294,6 +505,20 @@ def generate_practice_log_insights(
             )
     elif len(recent_r) >= 3 and sum(recent_r) / len(recent_r) >= 7:
         out.progress_summary.append("Recent sessions are rated highly — keep the same warmup structure.")
+
+    if mission_stats.get("has_data"):
+        m_deltas = mission_stats.get("deltas") or {}
+        for mid, delta in sorted(m_deltas.items(), key=lambda x: -x[1])[:3]:
+            if delta >= 4:
+                out.progress_summary.append(
+                    f"Mission metric **{_mission_label(mid)}** is improving (+{delta:.0f} pts vs earlier takes)."
+                )
+        latest_m = mission_stats.get("latest") or {}
+        if latest_m.get("song"):
+            out.progress_summary.append(
+                f"Latest metric analysis on **{latest_m['song']}** "
+                f"({latest_m.get('instrument', '')}, {latest_m.get('level', '')}, {latest_m.get('focus', '')})."
+            )
 
     if trends.get("has_trend"):
         deltas = trends["deltas"]
@@ -377,6 +602,23 @@ def generate_practice_log_insights(
                 f"Your written logs mention **{skill}** often — treat it as an active growth area."
             )
 
+    if mission_stats.get("has_data"):
+        m_deltas = mission_stats.get("deltas") or {}
+        declining_m = sorted(
+            ((mid, d) for mid, d in m_deltas.items() if d <= -4),
+            key=lambda x: x[1],
+        )
+        for mid, delta in declining_m[:2]:
+            out.weak_areas.append(
+                f"Mission **{_mission_label(mid)}** has dipped ({delta:+.0f} vs earlier metric runs)."
+            )
+        latest_missions = mission_stats.get("latest_missions") or {}
+        for mid, score in sorted(latest_missions.items(), key=lambda x: x[1])[:2]:
+            if score < 68:
+                out.weak_areas.append(
+                    f"Latest take: **{_mission_label(mid)}** scored {score}% — worth a focused loop."
+                )
+
     if trends.get("has_trend"):
         deltas = trends["deltas"]
         declining = sorted(
@@ -439,9 +681,26 @@ def generate_practice_log_insights(
             if plan.get(key):
                 out.recommended_practice.append(f"- {icon} ({block_mins}+ min): {plan[key]}")
 
+    latest_mission_row = mission_stats.get("latest") or {}
+    if latest_mission_row.get("song"):
+        weak_m = sorted(
+            (m for m in (latest_mission_row.get("missions") or [])),
+            key=lambda x: int(x.get("score") or 0),
+        )
+        if weak_m:
+            w = weak_m[0]
+            out.recommended_practice.append(
+                f"- On **{latest_mission_row['song']}**: 10 min looping one section at ~80% tempo "
+                f"targeting **{w.get('label', _mission_label(str(w.get('id', ''))))}**, then upload another take."
+            )
+
     recent_snap = trends.get("recent") or {}
     if recent_snap.get("next_focus"):
         out.recommended_practice.append(f"- From your last recording: {recent_snap['next_focus']}")
+    if recent_snap.get("mission_next_recommendation"):
+        out.recommended_practice.append(
+            f"- {recent_snap['mission_next_recommendation']}"
+        )
     if recent_snap.get("practice_plan"):
         for item in recent_snap["practice_plan"][:3]:
             out.recommended_practice.append(f"- {item}")
@@ -528,6 +787,14 @@ def generate_practice_log_insights(
     if not analysis_history and not session_analysis:
         out.data_notes.append(
             "Run **Upload Analysis** on a take to connect timing, pitch, and tone feedback here."
+        )
+    if not mission_stats.get("has_data"):
+        out.data_notes.append(
+            "Use **Improvisation Intelligence → Metrics & AI** to score mission criteria and build metric trends."
+        )
+    elif logs or analysis_history:
+        out.data_notes.append(
+            "Insights combine written logs, recording analyses, and mission/metric scoring history."
         )
 
     return out
