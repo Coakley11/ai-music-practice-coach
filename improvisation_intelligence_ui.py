@@ -19,7 +19,6 @@ from improvisation_intelligence import (
     DIFFICULTY_LEVELS,
     GROOVE_INTENSITY,
     MOOD_OPTIONS,
-    PRACTICE_MISSIONS,
     STYLE_JAM_STYLES,
     ChordCoachInsight,
     ImprovSessionContext,
@@ -31,8 +30,18 @@ from improvisation_intelligence import (
     flatten_sections,
     generate_jam_session,
     generate_style_progression,
-    harmony_flow_map,
     level_coaching_summary,
+)
+from improvisation_harmony import (
+    HARMONY_MAP_CHIP_CSS,
+    analyze_chord_for_harmony_map,
+    deduped_section_chords,
+)
+from improvisation_missions import (
+    PRACTICE_MISSIONS,
+    generate_mission_example,
+    load_mission_example,
+    store_mission_example,
 )
 from improvisation_motif import (
     build_motif_guitar_tab,
@@ -148,9 +157,16 @@ def render_improvisation_intelligence_lab(
             bpm=bpm,
         )
     elif active_tab == "Missions":
-        _tab_missions(st, session_state=session_state, level=level)
+        _tab_missions(
+            st,
+            session_state=session_state,
+            improv_ctx=improv_ctx,
+            bpm=bpm,
+            on_open_backing=on_open_backing,
+            on_open_practice=on_open_practice,
+        )
     elif active_tab == "Harmony Map":
-        _tab_harmony_map(st, improv_ctx=improv_ctx)
+        _tab_harmony_map(st, session_state=session_state, improv_ctx=improv_ctx)
     elif active_tab == "Metrics & AI":
         _tab_metrics_ai(st, session_state=session_state, on_open_analysis=on_open_analysis)
 
@@ -761,43 +777,336 @@ def _render_abc(st: Any, abc_text: str, *, height: int = 360) -> None:
     components.html(doc, height=height, scrolling=True)
 
 
-def _tab_missions(st: Any, *, session_state: dict, level: str) -> None:
-    st.markdown("#### Practice missions")
-    mission = st.selectbox(
-        "Choose a mission", list(PRACTICE_MISSIONS), key="improv_mission_pick"
+def _tab_missions(
+    st: Any,
+    *,
+    session_state: dict,
+    improv_ctx: ImprovSessionContext,
+    bpm: int,
+    on_open_backing: Callable[[], None] | None,
+    on_open_practice: Callable[[], None] | None,
+) -> None:
+    from practice_setup_controls import (
+        DEFAULT_INSTRUMENT_OPTIONS,
+        render_setup_quick_controls,
     )
-    if st.button("Set active mission", key="improv_set_mission"):
+
+    st.markdown("#### Practice missions")
+    st.caption(
+        f"Interactive coach for **{html.escape(improv_ctx.song_title)}** "
+        f"({html.escape(improv_ctx.artist)}) · key **{html.escape(improv_ctx.display_key)}**"
+    )
+
+    live_inst, live_level, live_focus = render_setup_quick_controls(
+        st,
+        session_state=session_state,
+        key_prefix="improv_mission",
+        instrument_options=DEFAULT_INSTRUMENT_OPTIONS,
+        label="Instrument · level · focus",
+        show_sync_caption=False,
+    )
+
+    mission_options = list(PRACTICE_MISSIONS)
+    default_mission = session_state.get("improv_active_mission") or mission_options[0]
+    if default_mission not in mission_options:
+        default_mission = mission_options[0]
+    mission_idx = mission_options.index(default_mission)
+
+    mission = st.selectbox(
+        "Choose a mission",
+        mission_options,
+        index=mission_idx,
+        key="improv_mission_pick",
+    )
+    if mission != session_state.get("improv_active_mission"):
         session_state["improv_active_mission"] = mission
-        st.rerun()
-    active = session_state.get("improv_active_mission")
-    if active:
-        st.success(f"Active mission: **{active}**")
-    st.markdown("**Level focus**")
-    summ = level_coaching_summary(level)
-    for k, v in summ.items():
-        st.markdown(f"- **{k.title()}:** {v}")
 
-
-def _tab_harmony_map(st: Any, *, improv_ctx: ImprovSessionContext) -> None:
-    st.markdown("#### Harmony visualization")
-    rows = harmony_flow_map(improv_ctx.sections, improv_ctx.display_key)
-    if not rows:
-        st.info("No harmony to map yet.")
+    section_map = resolve_improv_sections(session_state, improv_ctx)
+    chords = flatten_section_map(section_map)
+    if not chords:
+        st.warning("Select a song with chords first (Song Selection or Custom Progression).")
         return
-    html_rows = []
-    for r in rows:
-        html_rows.append(
-            f'<div style="display:flex;align-items:center;gap:0.5rem;margin:0.25rem 0;">'
-            f'<span style="background:{r["color"]};color:#fff;padding:0.2rem 0.5rem;'
-            f'border-radius:6px;font-weight:700;">{html.escape(r["chord"])}</span>'
-            f'<span style="font-size:0.85rem;color:#64748b;">{html.escape(r["role"])}</span>'
-            f'<span style="font-size:0.85rem;">{html.escape(r["arrow"])}</span></div>'
-        )
+
+    _ensure_chord_selection(session_state, chords)
+    _render_section_chord_map(
+        st,
+        section_map,
+        session_state,
+        key_prefix="improv_mission",
+        source_id=_improv_source_id(session_state, improv_ctx),
+        key_center=improv_ctx.display_key,
+    )
+    cur_chord, _ = _selected_chord(session_state, chords)
+    section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
+
     st.markdown(
-        '<div class="ui-card soft">' + "".join(html_rows[:20]) + "</div>",
+        f'<div class="ui-card soft" style="border-left:4px solid #8b5cf6;">'
+        f"<p class=\"ui-card-title\">{html.escape(mission)}</p>"
+        f"<p class=\"ui-card-sub\">Target chord <strong>{html.escape(cur_chord)}</strong> "
+        f"· section <strong>{html.escape(section_label)}</strong> · "
+        f"{html.escape(live_inst)} · {html.escape(live_level)} · {html.escape(live_focus)}</p>"
+        f"</div>",
         unsafe_allow_html=True,
     )
-    st.caption("Green = tonic/release · Amber = dominant/tension · Indigo = minor color")
+
+    g1, g2, g3, g4 = st.columns(4)
+    with g1:
+        gen_normal = st.button(
+            "Generate example",
+            key="improv_mission_gen",
+            type="primary",
+            use_container_width=True,
+        )
+    with g2:
+        gen_easier = st.button("Easier example", key="improv_mission_easier", use_container_width=True)
+    with g3:
+        gen_harder = st.button("Harder example", key="improv_mission_harder", use_container_width=True)
+    with g4:
+        gen_new = st.button("New idea", key="improv_mission_new", use_container_width=True)
+
+    variant = "normal"
+    if gen_easier:
+        variant = "easier"
+    elif gen_harder:
+        variant = "harder"
+    elif gen_new:
+        variant = "new"
+    elif gen_normal:
+        variant = "normal"
+
+    if gen_normal or gen_easier or gen_harder or gen_new:
+        example = generate_mission_example(
+            mission,
+            improv_ctx=improv_ctx,
+            chord=cur_chord,
+            section=section_label,
+            level=live_level,
+            instrument=live_inst,
+            focus=live_focus,
+            variant=variant,
+            bpm=bpm,
+        )
+        store_mission_example(session_state, example)
+        st.rerun()
+
+    example = load_mission_example(session_state, improv_ctx)
+    if example and example.mission != mission:
+        example = None
+
+    nav1, nav2, nav3 = st.columns(3)
+    with nav1:
+        if on_open_practice and st.button(
+            "Open Practice page",
+            key="improv_mission_practice",
+            use_container_width=True,
+        ):
+            on_open_practice()
+    with nav2:
+        if on_open_backing and st.button(
+            "Open Backing Track",
+            key="improv_mission_backing",
+            use_container_width=True,
+        ):
+            on_open_backing()
+    with nav3:
+        if on_open_backing and st.button(
+            "Practice over backing",
+            key="improv_mission_over_backing",
+            type="primary",
+            use_container_width=True,
+        ):
+            on_open_backing()
+
+    if not example:
+        st.info(
+            "Pick a mission and press **Generate example** for a playable idea tied to "
+            f"**{html.escape(improv_ctx.song_title)}**."
+        )
+        return
+
+    st.markdown("##### Example")
+    st.markdown(f"**Notes:** `{example.motif.get('display', '')}` · **Rhythm:** {example.motif.get('rhythm', '')}")
+    st.markdown(f"**Why it works:** {example.why}")
+    for step in example.practice_steps:
+        st.markdown(f"- {step}")
+
+    st.markdown("**Chord tones**")
+    st.markdown("`" + " · ".join(example.insight.chord_tones) + "`")
+    st.markdown("**Suggested scales**")
+    suggestions = example.insight.scale_suggestions or [
+        build_scale_suggestion(label) for label in example.insight.scales
+    ]
+    for suggestion in suggestions:
+        st.markdown(format_scale_line(suggestion, example.insight.chord_tones))
+
+    if example.abc:
+        st.markdown("**Sheet music**")
+        _render_motif_sheet_music(st, example.abc)
+    if example.show_tab and example.tab:
+        st.markdown("**Guitar TAB**")
+        st.code(example.tab, language=None)
+    if example.show_piano and example.piano_html:
+        st.markdown("**Piano guide**")
+        st.markdown(example.piano_html, unsafe_allow_html=True)
+
+    st.caption(
+        f"Example variant: **{example.variant}** · saved while you explore Backing Track or other pages."
+    )
+
+
+def _tab_harmony_map(
+    st: Any,
+    *,
+    session_state: dict,
+    improv_ctx: ImprovSessionContext,
+) -> None:
+    from practice_setup_controls import (
+        DEFAULT_INSTRUMENT_OPTIONS,
+        render_setup_quick_controls,
+    )
+
+    st.markdown("#### Harmony map")
+    st.caption(
+        f"**{html.escape(improv_ctx.song_title)}** · key **{html.escape(improv_ctx.display_key)}** · "
+        "one progression per section — tap a chord for stable & color tones."
+    )
+
+    live_inst, live_level, live_focus = render_setup_quick_controls(
+        st,
+        session_state=session_state,
+        key_prefix="improv_harmony",
+        instrument_options=DEFAULT_INSTRUMENT_OPTIONS,
+        label="Instrument · level · focus",
+        show_sync_caption=False,
+    )
+    improv_ctx = ImprovSessionContext(
+        song_title=improv_ctx.song_title,
+        artist=improv_ctx.artist,
+        key_center=improv_ctx.key_center,
+        display_key=improv_ctx.display_key,
+        instrument=live_inst,
+        level=live_level,
+        focus=live_focus,
+        sections=improv_ctx.sections,
+        bpm=improv_ctx.bpm,
+        style_label=improv_ctx.style_label,
+        progression_flat=improv_ctx.progression_flat,
+    )
+
+    section_map = deduped_section_chords(improv_ctx.sections)
+    if not section_map:
+        st.info("No chords in the active chart — pick a song or custom progression first.")
+        return
+
+    st.markdown(HARMONY_MAP_CHIP_CSS, unsafe_allow_html=True)
+
+    sel_section = str(session_state.get("harmony_map_section") or "")
+    sel_chord = str(session_state.get("harmony_map_chord") or "")
+
+    src = _safe_widget_key_part(improv_ctx.song_title or "song")
+    for sec_label, chords in section_map:
+        chips = []
+        for ch in chords:
+            selected = sel_section == sec_label and sel_chord == ch
+            chips.append(
+                f'<span class="hm-chord-chip{" selected" if selected else ""}">'
+                f"{html.escape(ch)}</span>"
+            )
+        st.markdown(
+            f'<div class="hm-section-block">'
+            f'<p class="hm-section-title">{html.escape(sec_label)}</p>'
+            f'<div class="hm-chord-row">{"".join(chips)}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+        cols = st.columns(min(len(chords), 8) or 1)
+        for i, ch in enumerate(chords):
+            with cols[i % len(cols)]:
+                if st.button(
+                    ch,
+                    key=f"hm_pick_{src}_{_safe_widget_key_part(sec_label)}_{i}_{_safe_widget_key_part(ch)}",
+                    type="primary" if sel_section == sec_label and sel_chord == ch else "secondary",
+                    use_container_width=True,
+                ):
+                    session_state["harmony_map_section"] = sec_label
+                    session_state["harmony_map_chord"] = ch
+                    st.rerun()
+
+    if not sel_chord:
+        st.info("Tap a chord above to see stable tones, color tones, and practical improvisation ideas.")
+        return
+
+    next_ch = ""
+    prev_ch = ""
+    for si, (sec_label, chords) in enumerate(section_map):
+        if sec_label != sel_section:
+            continue
+        for i, ch in enumerate(chords):
+            if ch != sel_chord:
+                continue
+            if i + 1 < len(chords):
+                next_ch = chords[i + 1]
+            elif si + 1 < len(section_map) and section_map[si + 1][1]:
+                next_ch = section_map[si + 1][1][0]
+            if i > 0:
+                prev_ch = chords[i - 1]
+            elif si > 0 and section_map[si - 1][1]:
+                prev_ch = section_map[si - 1][1][-1]
+            break
+
+    guide = analyze_chord_for_harmony_map(
+        sel_chord,
+        improv_ctx=improv_ctx,
+        section=sel_section,
+        next_chord=next_ch,
+        prev_chord=prev_ch,
+    )
+
+    st.markdown(
+        f'<div class="hm-guide-card">'
+        f'<p style="margin:0 0 0.35rem 0;font-weight:850;font-size:1.05rem;">'
+        f"Chord: {html.escape(guide.chord)}</p>"
+        f'<p style="margin:0;color:#64748b;font-size:0.88rem;">'
+        f"Section: {html.escape(guide.section)} · {html.escape(live_inst)} · "
+        f"{html.escape(live_level)} · {html.escape(live_focus)}</p></div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"**Stable chord tones:** "
+        f"<span class='hm-stable'>{', '.join(html.escape(n) for n in guide.stable_tones)}</span>",
+        unsafe_allow_html=True,
+    )
+
+    if guide.color_tones:
+        st.markdown("**Color tones**")
+        for ct in guide.color_tones:
+            st.markdown(
+                f"- **{html.escape(ct.note)}** = {html.escape(ct.role)} — {html.escape(ct.effect)}"
+            )
+
+    if guide.avoid_notes and live_level != "Beginner":
+        st.markdown("**Avoid / use carefully**")
+        for av in guide.avoid_notes:
+            st.markdown(
+                f"- **{html.escape(av.note)}** — {html.escape(av.reason)}"
+            )
+
+    st.markdown(guide.phrase_idea)
+    if guide.focus_note:
+        st.caption(guide.focus_note)
+
+    if guide.scale_lines:
+        st.markdown("**Scales (with notes)**")
+        for line in guide.scale_lines:
+            st.markdown(line)
+
+    st.markdown("**Instrument tips**")
+    for tip in guide.instrument_tips:
+        st.markdown(f"- {tip}")
+
+    if next_chord := next_ch:
+        st.caption(f"Next chord in this section: **{html.escape(next_chord)}**")
 
 
 def _tab_metrics_ai(

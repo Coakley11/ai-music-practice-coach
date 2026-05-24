@@ -109,6 +109,8 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "improv_motif_abc",
             "improv_motif_tab",
             "improv_active_mission",
+            "improv_mission_example",
+            "improv_mission_variant",
             "improv_style",
             "improv_style_key",
             "improv_difficulty",
@@ -125,6 +127,8 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "ii_selected_section",
             "ii_selected_chord_index",
             "ii_selected_chord_label",
+            "harmony_map_section",
+            "harmony_map_chord",
         }
     ),
     "multitrack": frozenset(
