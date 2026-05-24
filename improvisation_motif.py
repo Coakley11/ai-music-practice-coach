@@ -38,6 +38,19 @@ def _section_base_key(name: str) -> str:
     return n.lower()
 
 
+_CANONICAL_SECTION_LABELS: dict[str, str] = {
+    "verse": "Verse",
+    "chorus": "Chorus",
+    "bridge": "Bridge",
+    "intro": "Intro",
+    "outro": "Outro",
+    "pre-chorus": "Pre-Chorus",
+    "pre chorus": "Pre-Chorus",
+    "solo": "Solo",
+    "interlude": "Interlude",
+}
+
+
 def _display_section_label(name: str) -> str:
     """Short, readable section heading for the chord map."""
     n = str(name or "").strip()
@@ -48,7 +61,42 @@ def _display_section_label(name: str) -> str:
         "final a / tag": "Outro",
         "coda": "Outro",
     }
-    return aliases.get(n.lower(), n)
+    if n.lower() in aliases:
+        return aliases[n.lower()]
+    base = _section_base_key(name)
+    if base in _CANONICAL_SECTION_LABELS:
+        return _CANONICAL_SECTION_LABELS[base]
+    return n
+
+
+def collapse_consecutive_chords(chords: list[str]) -> list[str]:
+    """Merge adjacent duplicate chords (2-bar holds become one cell)."""
+    out: list[str] = []
+    for ch in chords:
+        token = str(ch).strip()
+        if not token:
+            continue
+        if not out or out[-1] != token:
+            out.append(token)
+    return out
+
+
+def single_progression_cycle(chords: list[str]) -> list[str]:
+    """
+    One harmonic pass per section — collapse repeats and repeated cycles
+    (e.g. Verse with 4× the same 4-chord loop → 4 chords shown once).
+    """
+    clean = collapse_consecutive_chords(chords)
+    if len(clean) < 2:
+        return clean
+    n = len(clean)
+    for cycle_len in range(1, n // 2 + 1):
+        if n % cycle_len != 0:
+            continue
+        pattern = clean[:cycle_len]
+        if all(clean[i] == pattern[i % cycle_len] for i in range(n)):
+            return list(pattern)
+    return clean
 
 
 def dedupe_sections_for_display(
@@ -61,7 +109,10 @@ def dedupe_sections_for_display(
     seen: dict[str, tuple[str, ...]] = {}
     out: list[tuple[str, list[str]]] = []
     for name, chords in section_order(sections):
-        clean = [str(c).strip() for c in (chords or []) if c and str(c).strip()]
+        raw = [str(c).strip() for c in (chords or []) if c and str(c).strip()]
+        if not raw:
+            continue
+        clean = single_progression_cycle(raw)
         if not clean:
             continue
         base = _section_base_key(name)

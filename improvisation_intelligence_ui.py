@@ -24,7 +24,9 @@ from improvisation_intelligence import (
     ChordCoachInsight,
     ImprovSessionContext,
     ai_feedback_preview_lines,
+    build_scale_suggestion,
     chord_coach_insight,
+    format_scale_line,
     creativity_metrics_placeholder,
     flatten_sections,
     generate_jam_session,
@@ -393,6 +395,16 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
     st.caption(
         f"**{live_level}** · focus **{live_focus}** — {summary['focus']} · {summary['harmony']}"
     )
+    try:
+        from instrument_transposition import is_transposing_instrument
+
+        if is_transposing_instrument(live_inst):
+            st.caption(
+                f"Chord tones and scales follow your chart in **{improv_ctx.display_key}** "
+                f"(written key for {live_inst})."
+            )
+    except ImportError:
+        pass
 
     section_map = resolve_improv_sections(session_state, improv_ctx)
     chords = flatten_section_map(section_map)
@@ -441,8 +453,11 @@ def _render_chord_coach_card(st: Any, insight: ChordCoachInsight) -> None:
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("**Suggested scales**")
-        for s in insight.scales:
-            st.markdown(f"- {s}")
+        suggestions = insight.scale_suggestions or [
+            build_scale_suggestion(label) for label in insight.scales
+        ]
+        for suggestion in suggestions:
+            st.markdown(format_scale_line(suggestion, insight.chord_tones))
         st.markdown("**Chord tones**")
         st.markdown("`" + " · ".join(insight.chord_tones) + "`")
     with c2:
@@ -703,7 +718,10 @@ def _render_section_chord_map(
                             )
                             _clear_motif_outputs(session_state)
                         st.rerun()
-    cap = "One pass per section — repeats in the full form are hidden. Tap a chord to select."
+    cap = (
+        "One progression per section — repeated verses/choruses and multi-bar holds "
+        "are collapsed. Tap a chord to select."
+    )
     if generate_motif_on_select:
         cap += " Motif updates when you tap a chord."
     st.caption(cap)

@@ -86,9 +86,16 @@ PRACTICE_MISSIONS: tuple[str, ...] = (
 
 
 @dataclass
+class ScaleSuggestion:
+    label: str
+    notes: list[str]
+
+
+@dataclass
 class ChordCoachInsight:
     chord: str
     scales: list[str]
+    scale_suggestions: list[ScaleSuggestion]
     chord_tones: list[str]
     tensions: list[str]
     avoid_notes: list[str]
@@ -96,6 +103,97 @@ class ChordCoachInsight:
     motif_idea: str
     resolve_hint: str
     instrument_tips: list[str] = field(default_factory=list)
+
+
+_SCALE_INTERVALS: dict[str, tuple[int, ...]] = {
+    "major": (0, 2, 4, 5, 7, 9, 11),
+    "major scale": (0, 2, 4, 5, 7, 9, 11),
+    "major pentatonic": (0, 2, 4, 7, 9),
+    "minor pentatonic": (0, 3, 5, 7, 10),
+    "mixolydian": (0, 2, 4, 5, 7, 9, 10),
+    "dorian": (0, 2, 3, 5, 7, 9, 10),
+    "lydian": (0, 2, 4, 6, 7, 9, 11),
+    "locrian": (0, 1, 3, 5, 6, 8, 10),
+    "blues": (0, 3, 5, 6, 7, 10),
+    "melodic minor": (0, 2, 3, 5, 7, 9, 11),
+    "melodic minor (jazz)": (0, 2, 3, 5, 7, 9, 11),
+    "altered": (0, 1, 3, 4, 6, 8, 10),
+    "altered (advanced)": (0, 1, 3, 4, 6, 8, 10),
+    "half-diminished": (0, 1, 3, 5, 6, 8, 10),
+    "half-diminished scale": (0, 1, 3, 5, 6, 8, 10),
+    "locrian #2": (0, 2, 3, 5, 6, 8, 10),
+}
+
+
+def _note_name_at_semitone(root: str, semitone: int) -> str:
+    r = normalize_root(split_chord(str(root))[0])
+    if r not in CHROMATIC:
+        return str(root)
+    return CHROMATIC[(CHROMATIC.index(r) + semitone) % 12]
+
+
+def spell_scale_notes(root: str, kind: str) -> list[str]:
+    """Spell scale degrees from a root and mode name (matches chart/display key)."""
+    low = str(kind or "major").lower().strip()
+    intervals = _SCALE_INTERVALS.get(low)
+    if intervals is None:
+        for key, ivals in _SCALE_INTERVALS.items():
+            if key in low or low in key:
+                intervals = ivals
+                break
+    if intervals is None:
+        intervals = _SCALE_INTERVALS["major"]
+    return [_note_name_at_semitone(root, i) for i in intervals]
+
+
+def _pretty_scale_label(root: str, kind: str) -> str:
+    k = str(kind or "major").lower().strip()
+    if "pentatonic" in k:
+        return f"{root} Minor Pentatonic" if "minor" in k else f"{root} Major Pentatonic"
+    if "mixolydian" in k:
+        return f"{root} Mixolydian"
+    if "dorian" in k:
+        return f"{root} Dorian"
+    if "lydian" in k:
+        return f"{root} Lydian"
+    if "locrian" in k:
+        return f"{root} Locrian" + (" #2" if "#2" in k else "")
+    if "blues" in k:
+        return f"{root} Blues"
+    if "altered" in k:
+        return f"{root} Altered"
+    if "melodic minor" in k:
+        return f"{root} Melodic Minor"
+    if "half-diminished" in k or "diminished" in k:
+        return f"{root} Half-Diminished" if "half" in k else f"{root} Diminished"
+    if k in ("major", ""):
+        return f"{root} Major Scale"
+    return f"{root} {kind.title()} Scale"
+
+
+def build_scale_suggestion(label: str) -> ScaleSuggestion:
+    """Parse 'G mixolydian' / 'C major pentatonic' into labeled note spellings."""
+    text = str(label or "").strip()
+    parts = text.split(None, 1)
+    root = parts[0] if parts else "C"
+    kind = parts[1] if len(parts) > 1 else "major"
+    return ScaleSuggestion(
+        label=_pretty_scale_label(root, kind),
+        notes=spell_scale_notes(root, kind),
+    )
+
+
+def format_scale_line(suggestion: ScaleSuggestion, chord_tones: list[str] | None = None) -> str:
+    """Markdown bullet: scale name → notes (chord tones bold)."""
+    tone_set = {normalize_root(split_chord(t)[0]) for t in (chord_tones or [])}
+    parts: list[str] = []
+    for note in suggestion.notes:
+        n = normalize_root(split_chord(note)[0])
+        if n in tone_set:
+            parts.append(f"**{note}**")
+        else:
+            parts.append(note)
+    return f"• {suggestion.label} → {' '.join(parts)}"
 
 
 @dataclass
@@ -240,9 +338,13 @@ def chord_coach_insight(
 
     inst_tips = instrument_coaching_lines(instrument, chord, level, qual, root)
 
+    scale_labels = scales[:4]
+    scale_suggestions = [build_scale_suggestion(label) for label in scale_labels]
+
     return ChordCoachInsight(
         chord=chord,
-        scales=scales[:4],
+        scales=scale_labels,
+        scale_suggestions=scale_suggestions,
         chord_tones=[root, third, fifth] + ([seventh] if seventh else []),
         tensions=tensions[:3],
         avoid_notes=avoid[:2],
