@@ -636,6 +636,7 @@ def analyze_recording(
                 ctx,
                 mission_ids,
                 custom_goal=str(ctx.get("custom_goal") or ""),
+                performance_scores=scores,
             )
 
         result_payload = {
