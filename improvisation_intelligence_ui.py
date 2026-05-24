@@ -26,7 +26,6 @@ from improvisation_intelligence import (
     build_scale_suggestion,
     chord_coach_insight,
     format_scale_line,
-    creativity_metrics_placeholder,
     flatten_sections,
     generate_jam_session,
     generate_style_progression,
@@ -177,7 +176,12 @@ def render_improvisation_intelligence_lab(
             genre=genre,
         )
     elif active_tab == "Metrics & AI":
-        _tab_metrics_ai(st, session_state=session_state, on_open_analysis=on_open_analysis)
+        _tab_metrics_ai(
+            st,
+            session_state=session_state,
+            improv_ctx=improv_ctx,
+            on_open_analysis=on_open_analysis,
+        )
 
 
 def _tab_entry_modes(
@@ -1194,31 +1198,40 @@ def _tab_metrics_ai(
     st: Any,
     *,
     session_state: dict,
+    improv_ctx: ImprovSessionContext | None = None,
     on_open_analysis: Callable[[], None] | None,
 ) -> None:
-    st.markdown("#### Creativity metrics (non-judgmental)")
-    st.caption(
-        "Exploratory indices — not good/bad scores. Full analysis with recorded takes."
-    )
-    metrics = creativity_metrics_placeholder()
-    cols = st.columns(3)
-    for i, (label, val) in enumerate(metrics.items()):
-        with cols[i % 3]:
-            st.metric(label.replace("_", " ").title(), f"{int(val * 100)}%")
-    st.progress(metrics["motif_development"], text="Motif development (demo)")
+    from mission_analysis_ui import render_ai_improv_metrics_selector
+
+    st.markdown("#### AI Metrics / Mission Criteria")
+    if improv_ctx:
+        st.caption(
+            f"Scores will judge your take against **{html.escape(improv_ctx.song_title)}** "
+            f"in **{html.escape(improv_ctx.display_key)}** · "
+            f"{html.escape(improv_ctx.instrument)} · {html.escape(improv_ctx.level)} · "
+            f"{html.escape(improv_ctx.focus)}"
+        )
+
+    selected = render_ai_improv_metrics_selector(st, session_state, key_prefix="improv")
+
+    if not selected:
+        st.info(
+            "Select at least one metric above, then open Upload Analysis to record or upload a take."
+        )
 
     st.markdown("---")
-    st.markdown("#### Upload Analysis — mission scoring")
-    st.caption(
-        "Record a take, select the missions you practiced, and get per-goal scores with "
-        "explanations, radar chart, and progress history."
-    )
+    st.markdown("##### How scoring works")
     for line in ai_feedback_preview_lines():
         st.markdown(f"- {line}")
-    if on_open_analysis and st.button(
-        "Open Upload Analysis", key="improv_to_analysis", type="primary"
-    ):
-        from mission_analysis_ui import prepare_analysis_from_creative
 
-        prepare_analysis_from_creative(session_state)
-        on_open_analysis()
+    if on_open_analysis:
+        if st.button(
+            "Open Upload Analysis",
+            key="improv_to_analysis",
+            type="primary",
+            use_container_width=True,
+        ):
+            from mission_analysis_ui import prepare_analysis_from_creative
+
+            prepare_analysis_from_creative(session_state)
+            on_open_analysis()

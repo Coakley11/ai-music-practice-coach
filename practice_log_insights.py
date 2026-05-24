@@ -119,6 +119,7 @@ def analysis_snapshot_from_result(
         "mission_strongest": str(result.get("mission_strongest") or ""),
         "mission_weakest": str(result.get("mission_weakest") or ""),
         "mission_coach_summary": str(result.get("mission_coach_summary") or ""),
+        "overall_improv_score": int(result.get("overall_improv_score") or 0),
     }
 
 

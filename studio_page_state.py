@@ -110,6 +110,8 @@ def init_analysis_page_state(session_state: dict) -> None:
     session_state.setdefault("analysis_sync_creative_mission", True)
     session_state.setdefault("analysis_custom_goal_enabled", False)
     session_state.setdefault("analysis_custom_goal", "")
+    session_state.setdefault("improv_ai_metric_ids", [])
+    session_state.setdefault("analysis_ai_metric_ids", [])
 
 
 def apply_improv_song_source(

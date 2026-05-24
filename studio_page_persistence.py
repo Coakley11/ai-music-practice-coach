@@ -129,6 +129,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "ii_selected_chord_label",
             "harmony_map_section",
             "harmony_map_chord",
+            "improv_ai_metric_ids",
         }
     ),
     "multitrack": frozenset(
@@ -149,6 +150,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "last_analysis_result",
             "last_analysis_audio",
             "analysis_mission_ids",
+            "analysis_ai_metric_ids",
             "analysis_sync_creative_mission",
             "analysis_custom_goal_enabled",
             "analysis_custom_goal",

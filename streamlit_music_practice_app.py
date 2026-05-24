@@ -6278,6 +6278,12 @@ elif _studio_page == "analysis":
                 ctx["custom_goal"] = str(
                     st.session_state.get("analysis_custom_goal") or ""
                 ).strip()
+                from mission_analysis import mission_ids_from_legacy
+
+                ctx["active_practice_mission_ids"] = mission_ids_from_legacy(
+                    str(st.session_state.get("improv_active_mission") or "")
+                )
+                ctx["display_key"] = chart_key
                 spin = (
                     "Analyzing timing, pitch, groove, musicality, and improvisation missions…"
                     if mission_ids
@@ -6305,11 +6311,17 @@ elif _studio_page == "analysis":
             )
             mission_rows = last.get("mission_results") or []
             if mission_rows:
-                with st.expander("Mission coach notes (detail)", expanded=False):
+                overall = last.get("overall_improv_score")
+                if overall:
+                    st.metric("Overall Improvisation Score", f"{overall}%")
+                with st.expander("AI metric feedback (detail)", expanded=True):
                     for m in mission_rows:
                         st.markdown(f"#### {m.get('label', '')} — {m.get('score', 0)}%")
                         st.markdown(m.get("summary", ""))
-                        st.caption(m.get("why", ""))
+                        if m.get("went_well"):
+                            st.success(f"**What went well:** {m.get('went_well')}")
+                        if m.get("improve_to"):
+                            st.warning(f"**To improve:** {m.get('improve_to')}")
                         for tip in m.get("tips") or []:
                             st.markdown(f"- {tip}")
             if st.session_state.get("last_analysis_audio"):

@@ -437,19 +437,96 @@ def _mission_feedback(
     if mission.id == "motif_development":
         if score >= 70:
             return (
-                "You developed a motif with both repetition and variation.",
-                f"Consistency ({metrics.get('motif_consistency', 0):.0f}/100) plus variation "
-                f"({metrics.get('repetition_variation', 0):.0f}/100) match classic development.",
+                "You reused a short idea and changed it rhythmically across the take.",
+                f"Motif consistency ({metrics.get('motif_consistency', 0):.0f}/100) and transformation "
+                f"({metrics.get('motif_transformation', 0):.0f}/100) show real development.",
             )
         return (
-            "Ideas change completely each phrase — keep one cell and alter rhythm or contour.",
-            "State the motif, answer it an octave higher, then rhythmically compress it.",
+            "Ideas change completely each phrase — keep one 3–5 note cell and reshape it.",
+            "State the motif, answer it in a new rhythm, then return to the same pitches.",
+        )
+
+    if mission.id == "phrase_structure":
+        if score >= 72:
+            return (
+                "Phrases have clear beginnings and endings with breathing room between ideas.",
+                f"Phrase pacing ({metrics.get('phrase_pacing', 0):.0f}/100) supports a question–answer shape.",
+            )
+        return (
+            "Lines run together — plan 2-bar questions and 2-bar answers.",
+            "Leave a beat of space before starting the next phrase.",
+        )
+
+    if mission.id == "melodic_diversity_goal":
+        if score >= 72:
+            return (
+                "You used a healthy range of pitches without losing the thread of the solo.",
+                f"Melodic variety ({metrics.get('melodic_diversity', 0):.0f}/100) stays musical, not random.",
+            )
+        return (
+            "The melody stays in a narrow band — explore one octave higher or lower in the chorus.",
+            "Keep chord tones on downbeats while using passing tones between them.",
+        )
+
+    if mission.id == "deep_harmony":
+        if score >= 75:
+            return (
+                "You outlined the harmony clearly — chord tones and guide tones show up on strong beats.",
+                f"Chord-tone accuracy ({metrics.get('chord_tone_accuracy', 0):.0f}/100) tracks the chart.",
+            )
+        return (
+            "Harmony is implied but fuzzy — sing the root of each chord before improvising.",
+            "Target 3rds and 7ths at phrase endings to lock in the progression.",
+        )
+
+    if mission.id == "timing_groove":
+        if score >= 75:
+            return (
+                "Your time feels steady and grooves with the pulse of the song.",
+                f"Groove ({metrics.get('groove_consistency', 0):.0f}/100) and timing ({metrics.get('timing_stability', 0):.0f}/100) are solid.",
+            )
+        return (
+            "Rhythm wavers against the beat — practice with metronome on 2 & 4 first.",
+            "Clap the groove of the song, then play only roots in time.",
+        )
+
+    if mission.id == "articulation":
+        if score >= 72:
+            return (
+                "Attacks and note lengths are varied — the line has shape.",
+                f"Articulation score ({metrics.get('articulation', 0):.0f}/100) shows intentional attacks.",
+            )
+        return (
+            "Every note has the same attack — try softer starts and clearer accents on phrase peaks.",
+            "Mirror the backing: lighter in the verse, clearer in the chorus.",
+        )
+
+    if mission.id == "instrument_tone":
+        if score >= 72:
+            return (
+                "Tone stays consistent and supports the emotional mood of the song.",
+                f"Tone steadiness ({metrics.get('instrument_tone', 0):.0f}/100) reads well on this recording.",
+            )
+        return (
+            "Tone thins or wavers — warm up long tones before recording the take.",
+            "Aim for one consistent tone color per phrase, not note-to-note surprises.",
+        )
+
+    if mission.id == "mission_completion":
+        if score >= 75:
+            return (
+                "Your take aligns well with what you set out to practice in Creative Lab.",
+                "Keep using the same mission focus for the next upload to track progress.",
+            )
+        return (
+            "The recording does not yet match your stated practice mission — narrow the focus.",
+            "Re-record one section only, with the mission checklist in front of you.",
         )
 
     if mission.id == "chord_tone_targeting":
         if score >= 78:
             return (
-                "You frequently resolved phrases toward stable chord tones on strong beats.",
+                "You often landed on stable notes during chord changes.",
                 f"Chord-tone accuracy ({metrics.get('chord_tone_accuracy', 0):.0f}/100) and landing quality "
                 f"({metrics.get('landing_note_quality', 0):.0f}/100) align with the chart.",
             )
@@ -465,7 +542,7 @@ def _mission_feedback(
                 f"Tension/release balance ({metrics.get('tension_release_balance', 0):.0f}/100) shows contrast.",
             )
         return (
-            "Some tension notes appear, but phrases often resolve too quickly.",
+            "You created some tension, but your phrases often resolved too quickly.",
             "Hold one color tone through beat 4, then land on a chord tone on beat 1.",
         )
 
