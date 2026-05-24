@@ -12,7 +12,7 @@ from typing import Any
 
 from practice_studio import build_practice_session_from_logs
 
-ANALYSIS_HISTORY_FILE = Path("analysis_history.json")
+ANALYSIS_HISTORY_FILE = Path("analysis_history.json")  # legacy; prefer ai_performance_history
 
 _SKILL_KEYWORDS: dict[str, tuple[str, ...]] = {
     "timing": ("timing", "tempo", "rush", "drag", "groove", "metronome", "rhythm", "pocket"),
@@ -53,20 +53,31 @@ class PracticeLogInsights:
 
 
 def load_analysis_history() -> list[dict[str, Any]]:
-    if not ANALYSIS_HISTORY_FILE.exists():
-        return []
+    """Load unified AI performance history (all coach analysis sources)."""
     try:
-        data = json.loads(ANALYSIS_HISTORY_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
+        from ai_performance_history import load_performance_history
+
+        return load_performance_history()
     except Exception:
-        return []
+        if not ANALYSIS_HISTORY_FILE.exists():
+            return []
+        try:
+            data = json.loads(ANALYSIS_HISTORY_FILE.read_text(encoding="utf-8"))
+            return data if isinstance(data, list) else []
+        except Exception:
+            return []
 
 
 def save_analysis_history(entries: list[dict[str, Any]]) -> None:
-    ANALYSIS_HISTORY_FILE.write_text(
-        json.dumps(entries[-80:], indent=2),
-        encoding="utf-8",
-    )
+    try:
+        from ai_performance_history import save_performance_history
+
+        save_performance_history(entries)
+    except Exception:
+        ANALYSIS_HISTORY_FILE.write_text(
+            json.dumps(entries[-80:], indent=2),
+            encoding="utf-8",
+        )
 
 
 def analysis_snapshot_from_result(
@@ -128,10 +139,29 @@ def append_analysis_snapshot(
     result: dict[str, Any],
     *,
     ctx: dict[str, Any] | None = None,
+    source: str | None = None,
+    session_state: dict[str, Any] | None = None,
 ) -> None:
+    try:
+        from ai_performance_history import (
+            SOURCE_UPLOAD,
+            append_performance_record,
+            resolve_analysis_source,
+        )
+
+        if source is None and session_state is not None:
+            source = resolve_analysis_source(session_state)
+        if source is None:
+            source = SOURCE_UPLOAD
+        append_performance_record(result, ctx=ctx, source=source)
+        return
+    except Exception:
+        pass
     snap = analysis_snapshot_from_result(result, ctx=ctx)
     if not snap:
         return
+    if source:
+        snap["source"] = source
     history = load_analysis_history()
     history.append(snap)
     save_analysis_history(history)
@@ -244,10 +274,18 @@ def _parse_iso_date(raw: str) -> date | None:
 def _mission_rows_from_analysis_history(
     analysis_history: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Use recording-analysis snapshots when dedicated mission history is empty."""
+    """Build mission trend rows from unified performance history."""
     rows: list[dict[str, Any]] = []
     for snap in analysis_history:
         missions = snap.get("mission_results") or []
+        if not missions and snap.get("criteria_ids"):
+            missions = [
+                {"id": mid, "label": lbl, "score": 0}
+                for mid, lbl in zip(
+                    snap.get("criteria_ids") or [],
+                    snap.get("criteria_labels") or [],
+                )
+            ]
         if not missions:
             continue
         rows.append(
@@ -258,6 +296,7 @@ def _mission_rows_from_analysis_history(
                 "instrument": snap.get("instrument") or "",
                 "level": snap.get("level") or "",
                 "focus": snap.get("focus") or "",
+                "source": snap.get("source") or "",
                 "missions": [
                     {
                         "id": m.get("id"),
@@ -360,6 +399,7 @@ def _build_mission_narrative(
     mission_stats: dict[str, Any],
     *,
     top_song: str = "",
+    timing_improving: bool = False,
 ) -> str:
     """One-paragraph coach story from mission metric trends."""
     if not mission_stats.get("has_data"):
@@ -391,6 +431,8 @@ def _build_mission_narrative(
             )
         else:
             parts.append(f", your **{', '.join(labels)}** are trending up")
+        if timing_improving:
+            parts.append(", and **timing** scores are trending upward")
     elif weak:
         wlabel = _mission_label(weak[0][0])
         parts.append(f", **{wlabel}** still needs focused reps")
@@ -411,8 +453,17 @@ def _build_mission_narrative(
             )
 
     rec = ""
-    if weak:
-        rec = f"Next, loop one section at a slower tempo and target **{_mission_label(weak[0][0])}** — then upload another take."
+    weak_label = _mission_label(weak[0][0]) if weak else ""
+    if weak and "motif" in weak_label.lower():
+        section = "Verse"
+        rec = (
+            f"Next, practice one motif over the **{section}** at 80 BPM and upload another take."
+        )
+    elif weak:
+        rec = (
+            f"Next, loop one section at a slower tempo and target **{weak_label}** — "
+            "then upload another take."
+        )
     elif improving:
         rec = "Next, keep the same tempo and push the same skills on a harder section or chorus."
     else:
@@ -444,17 +495,17 @@ def generate_practice_log_insights(
 ) -> PracticeLogInsights:
     """Build coach-style insights from logs and recording analysis."""
     analysis_history = list(analysis_history or [])
-    if mission_history is None:
-        try:
-            from mission_analysis import load_mission_history
-
-            mission_history = load_mission_history()
-        except Exception:
-            mission_history = []
-    mission_history = list(mission_history or [])
-    if not mission_history:
-        mission_history = _mission_rows_from_analysis_history(analysis_history)
+    mission_history = _mission_rows_from_analysis_history(analysis_history)
     mission_stats = _mission_history_stats(mission_history)
+
+    criteria_worked: Counter[str] = Counter()
+    for row in analysis_history:
+        for lbl in row.get("criteria_labels") or []:
+            if lbl:
+                criteria_worked[str(lbl)] += 1
+        for m in row.get("mission_results") or []:
+            if m.get("label"):
+                criteria_worked[str(m["label"])] += 1
     if session_analysis and session_analysis.get("ok"):
         snap = analysis_snapshot_from_result(session_analysis)
         if snap and not any(
@@ -482,7 +533,14 @@ def generate_practice_log_insights(
     elif mission_stats.get("song_counts"):
         top_song = mission_stats["song_counts"].most_common(1)[0][0]
 
-    mission_story = _build_mission_narrative(mission_stats, top_song=top_song)
+    timing_improving = bool(
+        trends.get("has_trend") and (trends.get("deltas") or {}).get("timing", 0) >= 4
+    )
+    mission_story = _build_mission_narrative(
+        mission_stats,
+        top_song=top_song,
+        timing_improving=timing_improving,
+    )
     if mission_story:
         out.headline = mission_story
     elif stats.get("total"):
@@ -566,9 +624,27 @@ def generate_practice_log_insights(
                 if lines:
                     out.patterns_detected.append(f"{title}: {lines}.")
 
+    if criteria_worked:
+        crit_line = ", ".join(
+            f"**{name}** ({n})" for name, n in criteria_worked.most_common(6) if name
+        )
+        if crit_line:
+            out.patterns_detected.append(f"Skills/metrics you've worked on: {crit_line}.")
+
+    sources = Counter(str(h.get("source") or "Analysis") for h in analysis_history)
+    if sources:
+        src_line = ", ".join(f"**{s}** ({n})" for s, n in sources.most_common(4) if s)
+        if src_line:
+            out.patterns_detected.append(f"Analysis sources: {src_line}.")
+
+    if mission_stats.get("has_data"):
+        out.patterns_detected.append(
+            f"**{mission_stats['count']}** scored improvisation/metric run(s) in history."
+        )
+
     if trends.get("count"):
         out.patterns_detected.append(
-            f"**{trends['count']}** AI coach analysis snapshot(s) on file."
+            f"**{trends['count']}** AI coach recording analysis(es) on file."
         )
         inst_from_analysis = Counter(
             str(h.get("instrument") or "") for h in analysis_history if h.get("instrument")
@@ -794,7 +870,8 @@ def generate_practice_log_insights(
         )
     elif logs or analysis_history:
         out.data_notes.append(
-            "Insights combine written logs, recording analyses, and mission/metric scoring history."
+            "Insights combine written logs and unified AI performance history "
+            "(Upload Analysis, Metrics & AI, multitrack, and more)."
         )
 
     return out

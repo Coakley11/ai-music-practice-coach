@@ -6307,9 +6307,32 @@ elif _studio_page == "analysis":
                 st.session_state["last_analysis_result"] = result
                 st.session_state["last_analysis_audio"] = audio_obj.getvalue()
                 if result.get("ok"):
-                    from practice_log_insights import append_analysis_snapshot
+                    from ai_performance_history import (
+                        SOURCE_METRICS_UPLOAD,
+                        append_performance_record,
+                        resolve_analysis_source,
+                    )
 
-                    append_analysis_snapshot(result, ctx=ctx)
+                    src = resolve_analysis_source(st.session_state)
+                    append_performance_record(result, ctx=ctx, source=src)
+                    result["analysis_source"] = src
+                    if src == SOURCE_METRICS_UPLOAD:
+                        went, imp = "", ""
+                        missions = result.get("mission_results") or []
+                        if missions:
+                            best = max(missions, key=lambda m: int(m.get("score") or 0))
+                            worst = min(missions, key=lambda m: int(m.get("score") or 0))
+                            went = str(best.get("went_well") or "")
+                            imp = str(worst.get("improve_to") or "")
+                        result["went_well"] = went
+                        result["improve_to"] = imp
+                        result["next_practice"] = str(
+                            result.get("mission_next_recommendation") or ""
+                        )
+                        result["recommendations"] = [
+                            str(result.get("mission_next_recommendation") or "")
+                        ]
+                    st.session_state["last_analysis_result"] = result
                     if st.session_state.get(ANALYSIS_RETURN_TO_METRICS):
                         st.session_state["creative_lab_analysis_mode"] = (
                             "Improvisation Intelligence"
@@ -6371,9 +6394,9 @@ elif _studio_page == "analysis":
                 mt_result = analyze_multitrack(tracks, ctx)
             st.session_state["last_analysis_result"] = mt_result
             if mt_result.get("ok"):
-                from practice_log_insights import append_analysis_snapshot
+                from ai_performance_history import SOURCE_MULTITRACK, append_performance_record
 
-                append_analysis_snapshot(mt_result, ctx=ctx)
+                append_performance_record(mt_result, ctx=ctx, source=SOURCE_MULTITRACK)
         if st.session_state.get("last_analysis_result", {}).get("multitrack"):
             st.markdown(
                 render_analysis_dashboard(st.session_state["last_analysis_result"]),
@@ -6920,21 +6943,15 @@ elif _studio_page == "log":
     )
 
     _analysis_history = load_analysis_history()
-    _mission_history: list = []
-    try:
-        from mission_analysis import load_mission_history
-
-        _mission_history = load_mission_history()
-    except Exception:
-        pass
     if st.session_state.get("last_analysis_result", {}).get("ok") and not _analysis_history:
         st.caption(
             "Tip: run **Upload Analysis** on a take — results are saved for future insights."
         )
-    elif _analysis_history or _mission_history:
+    elif _analysis_history:
+        scored = sum(1 for h in _analysis_history if h.get("mission_results"))
         st.caption(
-            f"Connected to **{len(_analysis_history)}** recording snapshot(s) "
-            f"and **{len(_mission_history)}** mission/metric analysis run(s)."
+            f"Connected to **{len(_analysis_history)}** saved AI performance analysis(es) "
+            f"({scored} with improvisation metrics)."
         )
 
     st.session_state.setdefault("ai_session_builder_minutes", 45)
@@ -6949,7 +6966,6 @@ elif _studio_page == "log":
             _insights = generate_practice_log_insights(
                 _logs_for_insights,
                 analysis_history=_analysis_history,
-                mission_history=_mission_history,
                 session_analysis=st.session_state.get("last_analysis_result"),
                 all_song_records=ALL_SONG_RECORDS,
                 session_minutes=int(st.session_state.get("ai_session_builder_minutes", 45)),

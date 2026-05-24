@@ -787,6 +787,35 @@ def sync_analysis_missions_from_creative(session_state: dict) -> None:
 
 
 def load_mission_history() -> list[dict[str, Any]]:
+    """Mission score rows from unified AI performance history."""
+    try:
+        from ai_performance_history import load_performance_history
+
+        rows: list[dict[str, Any]] = []
+        for snap in load_performance_history():
+            missions = snap.get("mission_results") or []
+            if not missions:
+                continue
+            rows.append(
+                {
+                    "date": snap.get("date", ""),
+                    "recorded_at": snap.get("recorded_at", ""),
+                    "song": snap.get("song", ""),
+                    "instrument": snap.get("instrument", ""),
+                    "level": snap.get("level", ""),
+                    "focus": snap.get("focus", ""),
+                    "missions": [
+                        {"id": m.get("id"), "label": m.get("label"), "score": m.get("score")}
+                        for m in missions
+                    ],
+                    "filename": snap.get("filename", ""),
+                    "musical_metrics": dict(snap.get("musical_metrics") or {}),
+                }
+            )
+        if rows:
+            return rows
+    except Exception:
+        pass
     if not MISSION_HISTORY_FILE.exists():
         return []
     try:
@@ -808,8 +837,21 @@ def append_mission_history(
     ctx: dict[str, Any],
     mission_block: dict[str, Any],
 ) -> None:
+    """Legacy hook — writes to unified AI performance history."""
     if not mission_block.get("mission_results"):
         return
+    try:
+        from ai_performance_history import append_performance_record, resolve_analysis_source
+
+        merged = dict(result)
+        merged.update(mission_block)
+        source = str(ctx.get("analysis_source") or "")
+        if not source:
+            source = resolve_analysis_source(ctx if isinstance(ctx, dict) else {})
+        append_performance_record(merged, ctx=ctx, source=source or "Upload Analysis")
+        return
+    except Exception:
+        pass
     entry = {
         "date": date.today().isoformat(),
         "recorded_at": datetime.now().isoformat(timespec="seconds"),
@@ -825,7 +867,13 @@ def append_mission_history(
         "musical_metrics": dict(mission_block.get("musical_metrics") or {}),
         "filename": result.get("filename", ""),
     }
-    hist = load_mission_history()
+    hist = []
+    if MISSION_HISTORY_FILE.exists():
+        try:
+            data = json.loads(MISSION_HISTORY_FILE.read_text(encoding="utf-8"))
+            hist = data if isinstance(data, list) else []
+        except Exception:
+            hist = []
     hist.append(entry)
     save_mission_history(hist)
 

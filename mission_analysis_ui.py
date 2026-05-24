@@ -299,14 +299,18 @@ ANALYSIS_CRITERIA_LOCKED = "analysis_criteria_locked"
 ANALYSIS_RETURN_TO_METRICS = "analysis_return_to_improv_metrics"
 
 
-def criteria_labels_from_session(session_state: dict) -> list[str]:
+def criteria_labels_from_session(
+    session_state: dict,
+    *,
+    metrics_only: bool = False,
+) -> list[str]:
     from mission_analysis import MISSION_BY_ID, resolve_selected_mission_ids
 
-    return [
-        MISSION_BY_ID[mid].label
-        for mid in resolve_selected_mission_ids(session_state, include_creative=True)
-        if mid in MISSION_BY_ID
-    ]
+    ids = resolve_selected_mission_ids(
+        session_state,
+        include_creative=not metrics_only,
+    )
+    return [MISSION_BY_ID[mid].label for mid in ids if mid in MISSION_BY_ID]
 
 
 def prepare_analysis_from_creative(session_state: dict, *, locked: bool = False) -> None:
@@ -317,7 +321,12 @@ def prepare_analysis_from_creative(session_state: dict, *, locked: bool = False)
 
 def prepare_metrics_upload_workflow(session_state: dict) -> None:
     """Metrics & AI → Upload Analysis → return to Metrics & AI with results."""
-    prepare_analysis_from_creative(session_state, locked=True)
+    improv_ids = list(session_state.get("improv_ai_metric_ids") or [])
+    if improv_ids:
+        session_state["analysis_ai_metric_ids"] = list(improv_ids)
+        session_state["analysis_mission_ids"] = list(improv_ids)
+    session_state["analysis_sync_creative_mission"] = False
+    session_state[ANALYSIS_CRITERIA_LOCKED] = True
     session_state[ANALYSIS_RETURN_TO_METRICS] = True
 
 
@@ -372,14 +381,28 @@ def render_improv_metrics_results(st: Any, result: dict[str, Any]) -> None:
         st.success(f"Strongest: {result.get('mission_strongest')}")
     if result.get("mission_weakest"):
         st.warning(f"Grow next: {result.get('mission_weakest')}")
+    went = result.get("went_well") or ""
+    improve = result.get("improve_to") or ""
+    if not went and result.get("mission_strongest"):
+        went = str(result.get("mission_strongest"))
+    if not improve and result.get("mission_weakest"):
+        improve = str(result.get("mission_weakest"))
+    if went:
+        st.success(f"**What went well:** {went}")
+    if improve:
+        st.warning(f"**What needs improvement:** {improve}")
+    if result.get("mission_coach_summary"):
+        st.markdown(f"**Summary:** {result.get('mission_coach_summary')}")
+    recs = list(result.get("recommendations") or [])
     if result.get("mission_next_recommendation"):
-        st.info(f"**Practice recommendation:** {result.get('mission_next_recommendation')}")
-    if result.get("went_well"):
-        st.success(f"**What went well:** {result.get('went_well')}")
-    if result.get("improve_to"):
-        st.warning(f"**What needs improvement:** {result.get('improve_to')}")
-    if result.get("mission_coach_summary") and not result.get("went_well"):
-        st.markdown(result.get("mission_coach_summary"))
+        recs.insert(0, str(result["mission_next_recommendation"]))
+    if recs:
+        st.markdown("**Recommendations**")
+        for r in recs[:5]:
+            st.markdown(f"- {r}")
+    next_practice = result.get("next_practice") or result.get("mission_next_recommendation")
+    if next_practice:
+        st.info(f"**Next practice idea:** {next_practice}")
 
     missions = result.get("mission_results") or []
     if missions:

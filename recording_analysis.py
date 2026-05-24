@@ -662,13 +662,6 @@ def analyze_recording(
             "time_signature": ctx.get("time_signature"),
         }
         result_payload.update(mission_block)
-        if mission_block.get("mission_results"):
-            try:
-                from mission_analysis import append_mission_history
-
-                append_mission_history(result_payload, ctx, mission_block)
-            except Exception:
-                pass
         return result_payload
     except Exception as e:
         return {"ok": False, "message": f"Could not analyze recording: {e}"}
