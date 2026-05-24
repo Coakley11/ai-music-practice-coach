@@ -164,6 +164,7 @@ def render_improvisation_intelligence_lab(
             bpm=bpm,
             on_open_backing=on_open_backing,
             on_open_practice=on_open_practice,
+            on_open_analysis=on_open_analysis,
         )
     elif active_tab == "Harmony Map":
         _tab_harmony_map(st, session_state=session_state, improv_ctx=improv_ctx)
@@ -785,6 +786,7 @@ def _tab_missions(
     bpm: int,
     on_open_backing: Callable[[], None] | None,
     on_open_practice: Callable[[], None] | None,
+    on_open_analysis: Callable[[], None] | None = None,
 ) -> None:
     from practice_setup_controls import (
         DEFAULT_INSTRUMENT_OPTIONS,
@@ -916,6 +918,24 @@ def _tab_missions(
             use_container_width=True,
         ):
             on_open_backing()
+
+    if on_open_analysis:
+        st.markdown("---")
+        st.caption(
+            "After practicing this mission, upload a take on **Upload Analysis** — "
+            "the coach scores how well you met this goal."
+        )
+        if st.button(
+            "Analyze take for this mission",
+            key="improv_mission_analyze",
+            type="secondary",
+            use_container_width=True,
+        ):
+            from mission_analysis_ui import prepare_analysis_from_creative
+
+            session_state["improv_active_mission"] = mission
+            prepare_analysis_from_creative(st.session_state)
+            on_open_analysis()
 
     if not example:
         st.info(
@@ -1127,10 +1147,17 @@ def _tab_metrics_ai(
     st.progress(metrics["motif_development"], text="Motif development (demo)")
 
     st.markdown("---")
-    st.markdown("#### AI improvisation feedback (preview)")
+    st.markdown("#### Upload Analysis — mission scoring")
+    st.caption(
+        "Record a take, select the missions you practiced, and get per-goal scores with "
+        "explanations, radar chart, and progress history."
+    )
     for line in ai_feedback_preview_lines():
         st.markdown(f"- {line}")
     if on_open_analysis and st.button(
-        "Upload take for AI coach", key="improv_to_analysis"
+        "Open Upload Analysis", key="improv_to_analysis", type="primary"
     ):
+        from mission_analysis_ui import prepare_analysis_from_creative
+
+        prepare_analysis_from_creative(session_state)
         on_open_analysis()

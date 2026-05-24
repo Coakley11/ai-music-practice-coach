@@ -106,6 +106,19 @@ def analysis_snapshot_from_result(
         "ensemble_notes": list(
             result.get("ensemble_notes") or result.get("findings") or []
         )[:4],
+        "mission_ids": list(result.get("mission_ids") or []),
+        "mission_results": [
+            {
+                "id": m.get("id"),
+                "label": m.get("label"),
+                "score": m.get("score"),
+                "summary": m.get("summary"),
+            }
+            for m in (result.get("mission_results") or [])
+        ],
+        "mission_strongest": str(result.get("mission_strongest") or ""),
+        "mission_weakest": str(result.get("mission_weakest") or ""),
+        "mission_coach_summary": str(result.get("mission_coach_summary") or ""),
     }
 
 

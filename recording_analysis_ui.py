@@ -213,6 +213,19 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
 
     plan_items = "".join(f"<li>{_esc(p)}</li>" for p in result.get("practice_plan", []))
 
+    mission_html = ""
+    if result.get("mission_results"):
+        from mission_analysis_ui import render_mission_analysis_html
+
+        mission_html = render_mission_analysis_html(result)
+        for m in result.get("mission_results") or []:
+            tips = m.get("tips") or []
+            if tips:
+                plan_items += "".join(
+                    f"<li><strong>{_esc(m.get('label', ''))}:</strong> {_esc(t)}</li>"
+                    for t in tips[:2]
+                )
+
     tempo_line = ""
     tempo_val = result.get("tempo")
     if tempo_val is not None:
@@ -265,9 +278,12 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     {categories_html}
   </div>
 
+  {mission_html}
+
   <div class="ra-card">
     <h3>Recommended next practice</h3>
     <ul class="ra-plan">{plan_items}</ul>
+    {f'<p class="ra-muted">{_esc(result.get("mission_next_recommendation", ""))}</p>' if result.get("mission_next_recommendation") else ""}
   </div>
 </div>
 """

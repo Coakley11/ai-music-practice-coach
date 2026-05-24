@@ -148,6 +148,11 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "analysis_audio_record",
             "last_analysis_result",
             "last_analysis_audio",
+            "analysis_mission_ids",
+            "analysis_sync_creative_mission",
+            "analysis_custom_goal_enabled",
+            "analysis_custom_goal",
+            "analysis_mission_trend_pick",
         }
     ),
     "log": frozenset(

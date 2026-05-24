@@ -105,6 +105,10 @@ def init_backing_page_state(session_state: dict) -> None:
 def init_analysis_page_state(session_state: dict) -> None:
     session_state.setdefault("analysis_mode", "Single recording")
     session_state.setdefault("analysis_recording_type", "Practice take")
+    session_state.setdefault("analysis_mission_ids", [])
+    session_state.setdefault("analysis_sync_creative_mission", True)
+    session_state.setdefault("analysis_custom_goal_enabled", False)
+    session_state.setdefault("analysis_custom_goal", "")
 
 
 def apply_improv_song_source(

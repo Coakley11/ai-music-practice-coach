@@ -6238,6 +6238,14 @@ elif _studio_page == "analysis":
         )
 
     if analysis_mode == "Single recording":
+        from mission_analysis_ui import (
+            render_mission_goals_selector,
+            render_mission_history_panel,
+        )
+
+        mission_ids = render_mission_goals_selector(st, st.session_state)
+        render_mission_history_panel(st)
+
         analysis_audio = st.file_uploader(
             "Upload a recording",
             type=["wav", "mp3", "m4a", "ogg", "flac"],
@@ -6260,7 +6268,16 @@ elif _studio_page == "analysis":
                 ctx = _recording_analysis_context(
                     recording_type=recording_type.lower().replace(" ", "_"),
                 )
-                with st.spinner("Analyzing timing, pitch, groove, and musicality…"):
+                ctx["mission_ids"] = mission_ids
+                ctx["custom_goal"] = str(
+                    st.session_state.get("analysis_custom_goal") or ""
+                ).strip()
+                spin = (
+                    "Analyzing timing, pitch, groove, musicality, and improvisation missions…"
+                    if mission_ids
+                    else "Analyzing timing, pitch, groove, and musicality…"
+                )
+                with st.spinner(spin):
                     result = analyze_recording(
                         audio_obj.getvalue(),
                         getattr(audio_obj, "name", "recording.wav"),
@@ -6275,10 +6292,20 @@ elif _studio_page == "analysis":
 
         if st.session_state.get("last_analysis_result"):
             st.divider()
+            last = st.session_state["last_analysis_result"]
             st.markdown(
-                render_analysis_dashboard(st.session_state["last_analysis_result"]),
+                render_analysis_dashboard(last),
                 unsafe_allow_html=True,
             )
+            mission_rows = last.get("mission_results") or []
+            if mission_rows:
+                with st.expander("Mission coach notes (detail)", expanded=False):
+                    for m in mission_rows:
+                        st.markdown(f"#### {m.get('label', '')} — {m.get('score', 0)}%")
+                        st.markdown(m.get("summary", ""))
+                        st.caption(m.get("why", ""))
+                        for tip in m.get("tips") or []:
+                            st.markdown(f"- {tip}")
             if st.session_state.get("last_analysis_audio"):
                 with st.expander("Playback — analyzed take", expanded=False):
                     st.audio(st.session_state["last_analysis_audio"], format="audio/wav")
@@ -6403,6 +6430,9 @@ elif _studio_page == "creative":
         st.rerun()
 
     def _improv_open_analysis() -> None:
+        from mission_analysis_ui import prepare_analysis_from_creative
+
+        prepare_analysis_from_creative(st.session_state)
         navigate_studio_page(st.session_state, "analysis")
         st.rerun()
 

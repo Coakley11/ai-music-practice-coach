@@ -624,7 +624,21 @@ def analyze_recording(
         practice_plan = build_practice_plan(scores, ctx, features)
         summary, biggest, improved, next_focus = build_coach_summary(scores, categories)
 
-        return {
+        mission_ids = list(ctx.get("mission_ids") or [])
+        mission_block: dict[str, Any] = {}
+        if mission_ids:
+            from mission_analysis import analyze_improvisation_missions
+
+            mission_block = analyze_improvisation_missions(
+                y,
+                sr,
+                features,
+                ctx,
+                mission_ids,
+                custom_goal=str(ctx.get("custom_goal") or ""),
+            )
+
+        result_payload = {
             "ok": True,
             "recording_type": ctx.get("recording_type", "practice"),
             "filename": filename,
@@ -643,7 +657,18 @@ def analyze_recording(
             "level": ctx.get("level"),
             "song": ctx.get("song"),
             "focus": ctx.get("focus"),
+            "style_label": ctx.get("style_label"),
+            "time_signature": ctx.get("time_signature"),
         }
+        result_payload.update(mission_block)
+        if mission_block.get("mission_results"):
+            try:
+                from mission_analysis import append_mission_history
+
+                append_mission_history(result_payload, ctx, mission_block)
+            except Exception:
+                pass
+        return result_payload
     except Exception as e:
         return {"ok": False, "message": f"Could not analyze recording: {e}"}
 
@@ -749,4 +774,6 @@ def analysis_context_from_app(
         "recording_type": recording_type,
         "practice_bpm": ext.get("default_bpm"),
         "genre": song_data.get("genre", ""),
+        "time_signature": ext.get("time_signature") or song_data.get("time_signature", ""),
+        "style_label": song_data.get("genre", "") or ext.get("style", ""),
     }

@@ -504,9 +504,8 @@ def creativity_metrics_placeholder() -> dict[str, float]:
 
 def ai_feedback_preview_lines() -> list[str]:
     return [
-        "Record a take on **Upload Analysis** — future versions will score timing, note choice, and phrasing.",
-        "Great rhythmic variation (demo)",
-        "Try stronger resolutions into chord tones on dominant bars",
-        "Excellent motif development when you repeat with rhythmic shift",
-        "Watch overplaying in dense harmony — leave space every 2 bars",
+        "Select missions on Upload Analysis — each goal gets a % score and coach explanation.",
+        "Motif development, chord-tone targeting, tension/release, and 13+ more improvisation goals.",
+        "Progress history tracks the same mission across uploads (e.g. 52% → 76%).",
+        "Analysis uses your active song, key, chords, instrument, level, and meter.",
     ]
