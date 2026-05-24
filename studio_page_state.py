@@ -11,6 +11,7 @@ IMPROV_TAB_NAMES: tuple[str, ...] = (
     "Phrase / Motif",
     "Missions",
     "Harmony Map",
+    "Deep Harmony",
     "Metrics & AI",
 )
 

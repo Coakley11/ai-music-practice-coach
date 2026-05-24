@@ -248,106 +248,11 @@ def instrument_analysis(ctx):
 
 
 def deep_harmonic_analysis_text(ctx, all_chords_from_sections, chord_quality_fn):
-    all_chords = all_chords_from_sections(ctx["sections"])
-    qualities = [chord_quality_fn(ch) for ch in all_chords]
-    dominant_count = sum(1 for q in qualities if "dominant" in q)
-    minor_count = sum(1 for q in qualities if "minor" in q)
-    maj7_count = sum(1 for q in qualities if "major seventh" in q)
+    """Song-aware analysis (delegates to ``deep_harmonic_analyzer``)."""
+    del all_chords_from_sections, chord_quality_fn  # legacy signature
+    from deep_harmonic_analyzer import build_from_lab_context
 
-    out = []
-    out.append(f"# Deep Harmonic Analyzer - {ctx['song']}")
-    line = f"**Artist:** {ctx['artist']}"
-    if ctx.get("composer"):
-        line += f" | **Composer:** {ctx['composer']}"
-    out.append(line)
-    out.append(f"**Style:** {ctx['genre']}")
-    out.append(f"**Original key:** {ctx['key']} | **Displayed key:** {ctx['display_key']}")
-
-    out.append("\n## Harmonic Character")
-    if ctx["genre"] == "Jazz":
-        out.append("- Listen for functional motion: ii-V-I, secondary dominants, half-diminished tension, and guide-tone resolution.")
-        out.append("- Treat dominant chords as questions and tonic/maj7 colors as answers.")
-    elif ctx["genre"] in ["Pop", "Rock"]:
-        out.append("- The song likely gets power from repeated harmonic cells, lyric placement, register, and section contrast.")
-        out.append("- The most important analysis question is where the loop feels settled versus where it wants to lift.")
-    elif ctx["genre"] == "Funk":
-        out.append("- The harmony is groove-centered; repeated vamps matter more than constant chord changes.")
-    elif ctx["genre"] == "Blues":
-        out.append("- The form is built around dominant tension and call-and-response phrasing.")
-    else:
-        out.append("- The harmony supports melodic development and formal balance.")
-
-    out.append("\n## Chord Color And Function")
-    color_notes = chord_color_notes(all_chords, ctx.get("instrument", ""))
-    if color_notes:
-        out.extend(f"- {note}" for note in color_notes[:4])
-    else:
-        out.append("- The chord colors are mostly direct triads/sevenths; make the performance interesting through groove, articulation, register, and dynamics.")
-    out.append(f"- Color inventory: {dominant_count} dominant-type, {minor_count} minor-type, {maj7_count} maj7 color chords.")
-
-    out.append("\n## Section Function And Movement")
-    for sec, chords in ctx["sections"].items():
-        out.extend(section_analysis_lines(sec, chords, ctx.get("display_key") or ctx.get("key") or "C"))
-
-    title = str(ctx.get("song", "")).lower()
-    if "piano man" in title:
-        out.append("\n## Song-Specific Insight")
-        out.append("- **Piano Man** uses descending bass movement like C -> B -> A in key moments, giving the accompaniment a conversational, rolling pull between vocal phrases.")
-    elif "rocket man" in title:
-        out.append("\n## Song-Specific Insight")
-        out.append(
-            "- **Rocket Man** (Advanced) keeps the Bb walkdown **Bb/D, Cm7/Bb, F/A, F/C** intact; "
-            "color comes from **Gm9/Gm11**, **C13sus4→C9**, and **Ebmaj7/Bbmaj7** pads—not reharmonization."
-        )
-        if ctx["level"] == "Advanced":
-            out.append(
-                "- Comping: spread dominants (C9, C13sus4) in the right hand; let slash bass notes "
-                "anchor the left hand on beat 1. Chorus Bbmaj7↔Ebmaj9 should still feel like a simple lift."
-            )
-    elif "shape of you" in title:
-        out.append("\n## Song-Specific Insight")
-        out.append(
-            "- **Shape of You** is a repeating **Bm→Em→G→A** pop loop (recording in C#m). "
-            "Keep the groove even at ~96 BPM; Advanced adds **Bm7, Em7, Gmaj7, Asus2/Aadd9** only as color."
-        )
-        if ctx["level"] == "Advanced":
-            out.append(
-                "- Do not reharmonize the loop—syncopation and pocket matter more than extra changes. "
-                "Bridge **N.C.** bars are breakdown space; return to the same loop energy."
-            )
-    elif "billie jean" in title:
-        out.append("\n## Song-Specific Insight")
-        out.append(
-            "- **Billie Jean** is a **F#m→G#m→A→G#m** groove; Advanced adds **F#m9, G#m7, Amaj7, Bm9** "
-            "without breaking the pocket. Keep rhythm identical to Intermediate."
-        )
-        if ctx["level"] == "Advanced":
-            out.append(
-                "- Voice leading: move the top note G#m7→Amaj7→G#m7 by step; **B5** stays a power chord. "
-                "Bridge **Dmaj9/F#m9** is color only—resolve **C#9** briefly, not a jazz turnaround."
-            )
-    elif "love story" in title:
-        out.append("\n## Song-Specific Insight")
-        out.append("- **Love Story** saves emotional lift for the later modulation/final chorus; practice making the final key change feel brighter without rushing the tempo.")
-    elif any("key change" in sec.lower() or "modulation" in sec.lower() for sec in ctx["sections"]):
-        out.append("\n## Song-Specific Insight")
-        out.append("- A late modulation/key-change section works as an emotional lift; widen the register and simplify the rhythm so the new key feels intentional.")
-
-    out.append("\n## Instrument-Specific Lens")
-    out.extend(instrument_analysis(ctx))
-
-    out.append("\n## Scales, Modes, And Improvisation")
-    if ctx["level"] == "Beginner":
-        out.append("- Start with roots, then add 3rds and 5ths. Make two-bar phrases, not long scale runs.")
-    elif ctx["level"] == "Intermediate":
-        out.append("- Target the 3rd of each chord on beat 1 or beat 3; use one repeated motif and move it through the form.")
-        out.append("- Over diatonic pop/rock loops, begin with the parent major/minor scale, then switch to chord tones on strong beats.")
-    else:
-        out.append("- Use guide-tone lines, chromatic approaches, delayed resolutions, and rhythmic displacement.")
-        out.append("- For reharm, change only one repeated section first: add a secondary dominant, passing diminished chord, pedal point, or tritone sub where the melody allows it.")
-        out.append("- Build solos from motivic development rather than scale inventory.")
-
-    return "\n".join(out)
+    return build_from_lab_context(ctx)
 
 
 def section_role(section_name):

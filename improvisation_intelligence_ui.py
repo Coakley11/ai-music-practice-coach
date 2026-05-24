@@ -168,6 +168,14 @@ def render_improvisation_intelligence_lab(
         )
     elif active_tab == "Harmony Map":
         _tab_harmony_map(st, session_state=session_state, improv_ctx=improv_ctx)
+    elif active_tab == "Deep Harmony":
+        _tab_deep_harmony(
+            st,
+            session_state=session_state,
+            improv_ctx=improv_ctx,
+            song_data=song_data,
+            genre=genre,
+        )
     elif active_tab == "Metrics & AI":
         _tab_metrics_ai(st, session_state=session_state, on_open_analysis=on_open_analysis)
 
@@ -1127,6 +1135,59 @@ def _tab_harmony_map(
 
     if next_chord := next_ch:
         st.caption(f"Next chord in this section: **{html.escape(next_chord)}**")
+
+
+def _tab_deep_harmony(
+    st: Any,
+    *,
+    session_state: dict,
+    improv_ctx: ImprovSessionContext,
+    song_data: dict,
+    genre: str,
+) -> None:
+    from deep_harmonic_analyzer import build_from_improv_context
+    from practice_setup_controls import (
+        DEFAULT_INSTRUMENT_OPTIONS,
+        render_setup_quick_controls,
+    )
+
+    st.markdown("#### Deep Harmonic Analyzer")
+    st.caption(
+        f"Advanced harmonic analysis of **{html.escape(improv_ctx.song_title)}** — "
+        f"sections, voice leading, tension, and scales in **{html.escape(improv_ctx.display_key)}**."
+    )
+
+    live_inst, live_level, live_focus = render_setup_quick_controls(
+        st,
+        session_state=session_state,
+        key_prefix="improv_deep_harmony",
+        instrument_options=DEFAULT_INSTRUMENT_OPTIONS,
+        label="Instrument · level · focus",
+        show_sync_caption=False,
+    )
+
+    ext = song_data.get("extensions") or {}
+    live_ctx = ImprovSessionContext(
+        song_title=improv_ctx.song_title,
+        artist=improv_ctx.artist,
+        key_center=improv_ctx.key_center,
+        display_key=improv_ctx.display_key,
+        instrument=live_inst,
+        level=live_level,
+        focus=live_focus,
+        sections=improv_ctx.sections,
+        bpm=improv_ctx.bpm,
+        style_label=genre or improv_ctx.style_label,
+        progression_flat=improv_ctx.progression_flat,
+    )
+
+    report = build_from_improv_context(
+        live_ctx,
+        genre=genre,
+        time_signature=str(ext.get("time_signature") or ""),
+        arrangement_notes=str(ext.get("arrangement_notes") or ""),
+    )
+    st.markdown(report)
 
 
 def _tab_metrics_ai(

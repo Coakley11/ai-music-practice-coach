@@ -4230,6 +4230,12 @@ def chord_quality(ch):
 
 
 def deep_harmonic_analysis_text(ctx):
+    ext = song_data.get("extensions") or {}
+    ctx = {
+        **ctx,
+        "extensions": ext,
+        "bpm": int(st.session_state.get("backing_track_bpm", _default_song_bpm)),
+    }
     return lab_deep_harmonic(ctx, all_chords_from_sections, lab_chord_quality)
 
 
