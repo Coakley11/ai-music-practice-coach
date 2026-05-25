@@ -241,7 +241,10 @@ def active_song_card_details(record: dict[str, Any], level: str = "Intermediate"
     ext = record.get("extensions") or {}
     genre = record.get("genre", "Pop")
     visual = genre_visual_style(genre)
-    section_labels = _ordered_section_labels(sections)
+    section_labels = practice_ordered_section_names(
+        sections,
+        section_names=record.get("section_order"),
+    )
     concepts = chord_concepts_from_sections(sections, genre=genre)
     bpm = base.get("bpm") or _default_bpm_for_record(record)
     key = base.get("key") or "C"
@@ -672,11 +675,25 @@ _SECTION_SORT_HINTS = (
 )
 
 
-def practice_ordered_section_names(sections: dict[str, list[str]]) -> list[str]:
+def practice_ordered_section_names(
+    sections: dict[str, list[str]],
+    *,
+    section_names: list[str] | None = None,
+) -> list[str]:
     """Section names in musician-friendly order (chart keys, not normalized labels)."""
     from songs.form import section_order
 
-    names = [name for name, chords in section_order(sections) if chords]
+    names = [
+        name
+        for name, chords in section_order(sections, section_names=section_names)
+        if chords
+    ]
+    _numbered = re.compile(
+        r"^(verse|chorus|bridge|intro|outro|pre-chorus|pre chorus)\s+\d+$",
+        re.I,
+    )
+    if any(_numbered.match(str(n or "").strip()) for n in names):
+        return names
     ordered: list[str] = []
     for hint in _SECTION_SORT_HINTS:
         for name in names:
