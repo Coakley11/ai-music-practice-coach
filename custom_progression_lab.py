@@ -637,6 +637,8 @@ def prepare_cpl_backing_handoff(
     section: str | None = None,
 ) -> None:
     """Sync CPL tempo/groove into Backing Track session keys and queue scope."""
+    from types import SimpleNamespace
+
     from songs.key_state import BACKING_NEEDS_REGEN
     from songs.playback_defaults import (
         apply_backing_defaults_for_song,
@@ -644,8 +646,12 @@ def prepare_cpl_backing_handoff(
         prime_active_song_bpm,
     )
 
-    class _SessionAdapter:
-        session_state = session_state
+    # `prime_active_song_bpm` / `apply_backing_defaults_for_song` both expect an
+    # `st`-like object exposing `session_state`. Build one with SimpleNamespace
+    # instead of a class body — `class X: session_state = session_state` raises
+    # NameError because Python class bodies cannot resolve a same-name binding
+    # against the enclosing function's local scope.
+    st_like = SimpleNamespace(session_state=session_state)
 
     default_bpm = int(active.get("bpm", 100) or 100)
     default_groove = str(active.get("groove_style", "Auto") or "Auto")
@@ -657,9 +663,9 @@ def prepare_cpl_backing_handoff(
         custom_revision=str(active.get("id", "") or ""),
     )
     session_state.pop("last_backing_defaults_song_id", None)
-    prime_active_song_bpm(_SessionAdapter(), sync_id=song_id, active_song_bpm=default_bpm)
+    prime_active_song_bpm(st_like, sync_id=song_id, active_song_bpm=default_bpm)
     apply_backing_defaults_for_song(
-        _SessionAdapter(),
+        st_like,
         song_id=song_id,
         default_bpm=default_bpm,
         default_groove=default_groove,

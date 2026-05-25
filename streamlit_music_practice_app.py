@@ -6204,43 +6204,58 @@ elif _studio_page == "backing":
         time_signature=backing_time_signature,
     )
 
-    _chart_expanded = _backing_audio_ready
-    with st.expander("Lead-sheet chart & chord follow", expanded=_chart_expanded):
-        st.caption("Chord boxes highlight when backing audio is playing.")
-        chart_html = full_chord_markdown(
-            song,
-            song_data,
-            chart_sections,
-            instrument,
-            display_key=chart_display_key,
-            level=level,
-            section_lyrics=section_lyrics,
-            groove_style=resolved_groove,
-            bpm=bpm,
-            time_signature=backing_time_signature,
-            current_section=None,
-            current_bar=None,
-            focus=focus,
-            chart_mode="backing",
-            selected_section_names=selected_section_names,
-            shape_sections=_capo_ctx.shape_sections if _capo_ctx.enabled else None,
-            capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
-            capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
+    chart_html = full_chord_markdown(
+        song,
+        song_data,
+        chart_sections,
+        instrument,
+        display_key=chart_display_key,
+        level=level,
+        section_lyrics=section_lyrics,
+        groove_style=resolved_groove,
+        bpm=bpm,
+        time_signature=backing_time_signature,
+        current_section=None,
+        current_bar=None,
+        focus=focus,
+        chart_mode="backing",
+        selected_section_names=selected_section_names,
+        shape_sections=_capo_ctx.shape_sections if _capo_ctx.enabled else None,
+        capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
+        capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
+    )
+
+    if _backing_audio_ready:
+        # When the backing track is ready, render the lead sheet inline (no
+        # expander) so the user never has to hunt for the chart after pressing
+        # Generate. The chart immediately follows playback with chord-by-chord
+        # highlighting.
+        st.markdown(
+            '<div class="ui-backing-leadsheet-card">'
+            '<p class="ui-bar-label" style="color:#15803d;margin:0 0 0.35rem 0;">'
+            "Lead-sheet chart &middot; chord follow"
+            "</p>",
+            unsafe_allow_html=True,
         )
-        if _backing_audio_ready:
-            if not st.session_state.get(BACKING_AUTOPLAY, False):
-                st.info("Backing playback stopped — press **Play** above or use the player **Play** button to resume.")
-            components.html(
-                live_follow_along_component_html(
-                    st.session_state["_last_backing_wav"],
-                    _follow_timeline,
-                    chart_html,
-                    autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, True)),
-                ),
-                height=720,
-                scrolling=True,
+        st.caption("Chord boxes highlight while the backing track plays.")
+        if not st.session_state.get(BACKING_AUTOPLAY, False):
+            st.info(
+                "Backing playback stopped — press **▶ Play** above (or the player **Play** "
+                "button below) to resume."
             )
-        else:
+        components.html(
+            live_follow_along_component_html(
+                st.session_state["_last_backing_wav"],
+                _follow_timeline,
+                chart_html,
+                autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, True)),
+            ),
+            height=720,
+            scrolling=True,
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        with st.expander("Lead-sheet chart & chord follow", expanded=False):
             st.caption("Generate backing audio above to enable live chord highlighting.")
             st.markdown(chart_html, unsafe_allow_html=True)
 

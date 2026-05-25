@@ -354,6 +354,84 @@ def render_custom_progression_lab_page() -> None:
                 st.session_state[pending_key] = ch
                 st.rerun()
 
+    # ----- Slash chord / custom chord builder -----
+    # Lets the user create a slash chord (D/F#, C/E, G/B, A/C#, D/A, ...) by
+    # picking root + bass, or type any chord (e.g. Cmaj7, F#m7b5, Bbmaj9/D).
+    # The exact symbol — slash included — is preserved end-to-end (chart, save,
+    # backing handoff) via normalize_chord_symbol.
+    with st.expander("➕ Custom / slash chord", expanded=False):
+        _root_options = list(simple) + [
+            ch for ch in ("C", "D", "E", "F", "G", "A", "B") if ch not in simple
+        ]
+        _bass_options = [
+            "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+        ]
+        st.caption(
+            "Build a slash chord with root + bass (e.g. **D/F#**, **C/E**, **G/B**), "
+            "or type any chord directly. The exact symbol — slash included — is preserved."
+        )
+        _sc_root_key = f"cpl_slash_root_{home_ns}_{edit_section}"
+        _sc_bass_key = f"cpl_slash_bass_{home_ns}_{edit_section}"
+        _sc_text_key = f"cpl_custom_text_{home_ns}_{edit_section}"
+        st.session_state.setdefault(_sc_root_key, _root_options[0])
+        st.session_state.setdefault(_sc_bass_key, _bass_options[0])
+        st.session_state.setdefault(_sc_text_key, "")
+
+        sc1, sc2, sc3 = st.columns([1, 1, 1])
+        with sc1:
+            _slash_root = st.selectbox(
+                "Root chord",
+                _root_options,
+                key=_sc_root_key,
+                help="The chord quality on top (D, Em7, Cmaj7, etc.).",
+            )
+        with sc2:
+            _slash_bass = st.selectbox(
+                "Bass note",
+                _bass_options,
+                key=_sc_bass_key,
+                help="The note in the bass — appears after the slash.",
+            )
+        with sc3:
+            st.markdown(
+                f'<div style="padding-top:1.65rem;font-size:1.4rem;font-weight:900;'
+                f'color:#1e3a8a;letter-spacing:-0.02em;">'
+                f'{html.escape(str(_slash_root))}/<span style="color:#6d28d9;">'
+                f"{html.escape(str(_slash_bass))}</span></div>",
+                unsafe_allow_html=True,
+            )
+        if st.button(
+            f"Use {_slash_root}/{_slash_bass}",
+            key=f"cpl_use_slash_{home_ns}_{edit_section}",
+            use_container_width=True,
+        ):
+            slash_symbol = f"{_slash_root}/{_slash_bass}"
+            # normalize_chord_symbol preserves slashes; just be defensive about whitespace.
+            st.session_state[pending_key] = normalize_chord_symbol(slash_symbol) or slash_symbol
+            st.rerun()
+
+        st.markdown("**Or type any chord** (e.g. `Cmaj7`, `F#m7b5`, `Bbmaj9/D`):")
+        tc_col, tc_btn = st.columns([3, 1])
+        with tc_col:
+            _typed = st.text_input(
+                "Custom chord",
+                key=_sc_text_key,
+                label_visibility="collapsed",
+                placeholder="e.g. D/F#",
+            )
+        with tc_btn:
+            if st.button(
+                "Use chord",
+                key=f"cpl_use_typed_{home_ns}_{edit_section}",
+                use_container_width=True,
+                disabled=not _typed.strip(),
+            ):
+                cleaned = normalize_chord_symbol(_typed) or _typed.strip()
+                if cleaned:
+                    st.session_state[pending_key] = cleaned
+                    st.session_state[_sc_text_key] = ""
+                    st.rerun()
+
     st.markdown("**2. Choose bars** (adds selected chord, or changes the last chord)")
     b1, b2, b4 = st.columns(3)
 

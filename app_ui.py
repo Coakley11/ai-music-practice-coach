@@ -2330,8 +2330,22 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 }
 .ui-active-song-card,
 .ui-backing-active-song,
-.ui-page-head {
+.ui-page-head,
+.ui-backing-leadsheet-card {
   animation: ui-fade-in 240ms var(--ease) both;
+}
+
+/* ---- Backing track lead-sheet card (auto-opens after Generate) ---- */
+.ui-backing-leadsheet-card {
+  border: 1px solid rgba(22, 163, 74, 0.30);
+  border-radius: var(--r-md);
+  padding: 0.85rem 0.95rem 0.95rem 0.95rem;
+  margin: 0.85rem 0 1.1rem 0;
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+  box-shadow: 0 4px 18px rgba(22, 163, 74, 0.10), var(--shadow-1);
+}
+.ui-backing-leadsheet-card .ui-bar-label {
+  letter-spacing: 0.08em;
 }
 
 /* ---- Responsive trims ---- */
