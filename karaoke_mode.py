@@ -78,6 +78,18 @@ KARAOKE_TRANSITION_LABEL_KEY = "_karaoke_transition_label"
 """Short status string ("Next: <title>", "Setlist complete", ...) the
 Backing Track page shows during a transition."""
 
+KARAOKE_COUNTDOWN_KEY = "karaoke_countdown_enabled"
+"""``bool`` user preference: show a 5-4-3-2-1 countdown before each
+backing track plays (default ``True``)."""
+
+KARAOKE_COUNTDOWN_SECONDS_KEY = "karaoke_countdown_seconds"
+"""``int`` countdown length in seconds (1-10, default 5)."""
+
+PENDING_KARAOKE_AUTO_GENERATE_KEY = "_pending_karaoke_auto_generate"
+"""Set to ``True`` when the Backing Track page should auto-trigger the
+Generate handler on the next rerun - used right after a karaoke
+transition so the next song's audio is ready without a manual click."""
+
 
 # ---------------------------------------------------------------------------
 # Queue operations
@@ -269,7 +281,84 @@ def advance_session(session_state: Any) -> str | None:
     session_state["_karaoke_active_pick_key"] = queue[nxt]
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
+    # Queue an auto-generate so the new song's backing audio is ready
+    # without a manual click - the Backing Track page consumes this on
+    # the next rerun.
+    session_state[PENDING_KARAOKE_AUTO_GENERATE_KEY] = True
     return queue[nxt]
+
+
+def regress_session(session_state: Any) -> str | None:
+    """Step back to the previous queued song.
+
+    Returns the new active ``pick_key``, or ``None`` when already at the
+    first song. The session stays active either way.
+    """
+    queue = get_queue(session_state)
+    if not queue or not is_karaoke_session_active(session_state):
+        return None
+    idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
+    prev_idx = idx - 1
+    if prev_idx < 0:
+        return None
+    session_state[KARAOKE_SESSION_INDEX_KEY] = prev_idx
+    session_state["_karaoke_active_pick_key"] = queue[prev_idx]
+    session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
+    session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
+    session_state[PENDING_KARAOKE_AUTO_GENERATE_KEY] = True
+    return queue[prev_idx]
+
+
+def previous_session_pick_key(session_state: Any) -> str | None:
+    """Pick key of the previously played song (one position back)."""
+    if not is_karaoke_session_active(session_state):
+        return None
+    queue = get_queue(session_state)
+    if not queue:
+        return None
+    idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
+    if idx - 1 < 0:
+        return None
+    return queue[idx - 1]
+
+
+def upcoming_session_pick_keys(session_state: Any, *, limit: int = 3) -> list[str]:
+    """Return up to ``limit`` upcoming queued songs *after* the current one."""
+    if not is_karaoke_session_active(session_state):
+        return []
+    queue = get_queue(session_state)
+    idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
+    return list(queue[idx + 1 : idx + 1 + max(0, int(limit))])
+
+
+# ---------------------------------------------------------------------------
+# Countdown preferences
+# ---------------------------------------------------------------------------
+
+
+def countdown_enabled(session_state: Any) -> bool:
+    """User preference: show a 5-4-3-2-1 pre-roll before each karaoke song?"""
+    raw = (session_state or {}).get(KARAOKE_COUNTDOWN_KEY)
+    if raw is None:
+        return True
+    return bool(raw)
+
+
+def countdown_seconds(session_state: Any) -> int:
+    """Length of the karaoke pre-roll countdown (clamped to 1..10, default 5)."""
+    raw = (session_state or {}).get(KARAOKE_COUNTDOWN_SECONDS_KEY)
+    try:
+        if raw is None:
+            return 5
+        n = int(raw)
+    except (TypeError, ValueError):
+        return 5
+    return max(1, min(10, n))
+
+
+def consume_pending_auto_generate(session_state: Any) -> bool:
+    """Pop the pending-auto-generate flag (set on karaoke transitions)."""
+    return bool(session_state.pop(PENDING_KARAOKE_AUTO_GENERATE_KEY, False))
 
 
 def auto_advance_enabled(session_state: Any) -> bool:
@@ -424,15 +513,22 @@ __all__ = (
     "KARAOKE_SESSION_ACTIVE_KEY",
     "KARAOKE_SESSION_INDEX_KEY",
     "KARAOKE_AUTO_ADVANCE_KEY",
+    "KARAOKE_COUNTDOWN_KEY",
+    "KARAOKE_COUNTDOWN_SECONDS_KEY",
     "PENDING_KARAOKE_ADVANCE_KEY",
+    "PENDING_KARAOKE_AUTO_GENERATE_KEY",
     "KARAOKE_SONG_ENDED_KEY",
     "KARAOKE_TRANSITION_LABEL_KEY",
     "is_voice_mode",
     "is_karaoke_session_active",
     "auto_advance_enabled",
+    "countdown_enabled",
+    "countdown_seconds",
     "session_position",
     "current_session_pick_key",
     "next_session_pick_key",
+    "previous_session_pick_key",
+    "upcoming_session_pick_keys",
     "get_queue",
     "queue_length",
     "is_in_queue",
@@ -444,8 +540,10 @@ __all__ = (
     "start_session",
     "stop_session",
     "advance_session",
+    "regress_session",
     "request_advance",
     "consume_pending_advance",
+    "consume_pending_auto_generate",
     "note_song_ended",
     "voice_wording",
     "voice_mode_modifier_classes",

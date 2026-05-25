@@ -246,6 +246,9 @@ _GLOBAL_APP_STATE_KEYS = frozenset(
         "_karaoke_song_ended",
         "_karaoke_transition_label",
         "_pending_karaoke_advance",
+        "_pending_karaoke_auto_generate",
+        "karaoke_countdown_enabled",
+        "karaoke_countdown_seconds",
     }
 )
 

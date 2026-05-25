@@ -132,8 +132,11 @@ from backing_display import (
 import karaoke_mode as km
 from karaoke_ui import (
     build_karaoke_audio_bridge_script,
+    build_karaoke_countdown_script,
     render_add_to_queue_button,
+    render_karaoke_missing_lyrics_cta,
     render_karaoke_now_singing_banner,
+    render_karaoke_queue_preview,
     render_karaoke_setlist_panel,
     render_karaoke_skip_controls,
     render_karaoke_status_pill,
@@ -2776,13 +2779,23 @@ def live_follow_along_component_html(
     autoplay: bool = True,
     karaoke_auto_advance: bool = False,
     karaoke_continue_button_text: str = "Continue to next song",
+    karaoke_countdown: bool = False,
+    karaoke_countdown_seconds: int = 5,
 ):
     audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
     timeline_json = json.dumps(timeline)
-    autoplay_attr = "autoplay" if autoplay else ""
+    # When a karaoke countdown is queued we suppress native autoplay - the
+    # countdown JS itself calls audio.play() when the 5-4-3-2-1 finishes
+    # (or when the user clicks "Skip countdown").
+    effective_autoplay = bool(autoplay) and not bool(karaoke_countdown)
+    autoplay_attr = "autoplay" if effective_autoplay else ""
     karaoke_bridge_script = build_karaoke_audio_bridge_script(
         auto_advance=bool(karaoke_auto_advance),
         continue_button_text=karaoke_continue_button_text,
+    )
+    karaoke_countdown_script = build_karaoke_countdown_script(
+        enabled=bool(karaoke_countdown),
+        seconds=int(karaoke_countdown_seconds),
     )
     return f"""
 <div class="live-follow-shell">
@@ -2853,6 +2866,66 @@ def live_follow_along_component_html(
     @media (max-width: 760px) {{
       .live-status-grid {{ grid-template-columns: repeat(2, minmax(120px, 1fr)); }}
     }}
+
+    .karaoke-countdown-overlay {{
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      background: radial-gradient(ellipse at center,
+        rgba(15, 23, 42, 0.96) 0%,
+        rgba(8, 11, 24, 0.985) 70%);
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      animation: karaokeOverlayIn 220ms ease-out;
+    }}
+    @keyframes karaokeOverlayIn {{
+      from {{ opacity: 0; }}
+      to   {{ opacity: 1; }}
+    }}
+    .karaoke-countdown-kicker {{
+      font-size: 0.92rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(248, 250, 252, 0.65);
+      font-weight: 700;
+    }}
+    .karaoke-countdown-number {{
+      font-size: clamp(120px, 28vw, 240px);
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: -0.04em;
+      color: #f8fafc;
+      text-shadow: 0 8px 40px rgba(56, 189, 248, 0.30);
+    }}
+    .karaoke-countdown-number.pulse {{
+      animation: karaokeCountPulse 920ms ease-out;
+    }}
+    @keyframes karaokeCountPulse {{
+      0%   {{ transform: scale(0.65); opacity: 0; }}
+      40%  {{ transform: scale(1.12); opacity: 1; }}
+      100% {{ transform: scale(1.0);  opacity: 1; }}
+    }}
+    .karaoke-countdown-skip {{
+      margin-top: 18px;
+      background: rgba(248, 250, 252, 0.12);
+      border: 1px solid rgba(248, 250, 252, 0.32);
+      color: #f8fafc;
+      padding: 10px 22px;
+      border-radius: 999px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.18s ease, transform 0.18s ease;
+    }}
+    .karaoke-countdown-skip:hover {{
+      background: rgba(248, 250, 252, 0.22);
+      transform: translateY(-1px);
+    }}
   </style>
 
   <div class="live-player">
@@ -2892,6 +2965,7 @@ def live_follow_along_component_html(
   <script>
     const timeline = {timeline_json};
     const audio = document.getElementById("live-audio");
+    {karaoke_countdown_script}
     const sectionEl = document.getElementById("live-section");
     const chordEl = document.getElementById("live-chord");
     const barEl = document.getElementById("live-bar");
@@ -6200,6 +6274,13 @@ elif _studio_page == "backing":
     if km.is_karaoke_session_active(st.session_state):
         from song_catalog import record_for_pick_key as _record_for_pick_key
 
+        # Compact "Now Singing / Next / 3rd" queue preview above controls.
+        render_karaoke_queue_preview(
+            st,
+            record_for_pick_key=_record_for_pick_key,
+            all_records=ALL_SONG_RECORDS,
+            max_upcoming=3,
+        )
         render_karaoke_skip_controls(
             st,
             record_for_pick_key=_record_for_pick_key,
@@ -6239,6 +6320,16 @@ elif _studio_page == "backing":
         applied_bpm=_synced_bpm,
         applied_groove=default_groove_style,
         applied_meter=_applied_meter_pre,
+    )
+
+    # Voice mode: when the active karaoke song has no lyric cues yet,
+    # surface a friendly "Add lyrics" prompt so the singer can fill them
+    # in before performing. The CTA only renders for Voice / Vocals /
+    # Singer; instrument mode never sees it.
+    render_karaoke_missing_lyrics_cta(
+        st,
+        song_data=song_data,
+        active_song_title=str(song_data.get("title") or song),
     )
     render_backing_defaults_debug(
         st,
@@ -6514,7 +6605,16 @@ elif _studio_page == "backing":
     else:
         st.caption("Audio is ready — press Play or use the player below.")
 
-    if _gen_clicked:
+    # Karaoke auto-generate: when a transition flips the active song in a
+    # karaoke set, the new song has no backing audio yet. Consume the
+    # one-shot flag and proceed exactly as if the user had clicked
+    # Generate, so the singer never has to click between songs.
+    _karaoke_auto_gen = False
+    if km.consume_pending_auto_generate(st.session_state):
+        if backing_chords and not _backing_audio_ready:
+            _karaoke_auto_gen = True
+
+    if _gen_clicked or _karaoke_auto_gen:
         wav = generate_backing_track(
             backing_events,
             bpm=bpm,
@@ -6541,7 +6641,10 @@ elif _studio_page == "backing":
         st.session_state["beats_per_bar"] = beats_per_bar_from_signature(backing_time_signature)
         st.session_state["backing_time_signature_applied"] = backing_time_signature
         st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
-        st.session_state[BACKING_AUTOPLAY] = False
+        # During a karaoke transition, jump straight into autoplay so the
+        # countdown overlay can run and the next song starts cleanly.
+        # Otherwise keep the normal manual-Play UX.
+        st.session_state[BACKING_AUTOPLAY] = bool(_karaoke_auto_gen)
         # Non-widget pending flag - safe to set here because the lead-sheet
         # block is rendered later in the page (after this st.rerun()), so we
         # never touch a widget key after the widget was already rendered.
@@ -6652,6 +6755,14 @@ elif _studio_page == "backing":
                 "Backing playback stopped — press **▶ Play** above (or the player **Play** "
                 "button below) to resume."
             )
+        _karaoke_active = km.is_karaoke_session_active(st.session_state)
+        _karaoke_voice = km.is_voice_mode(st.session_state)
+        _show_countdown = bool(
+            _karaoke_active
+            and _karaoke_voice
+            and km.countdown_enabled(st.session_state)
+            and bool(st.session_state.get(BACKING_AUTOPLAY, True))
+        )
         components.html(
             live_follow_along_component_html(
                 st.session_state["_last_backing_wav"],
@@ -6659,9 +6770,10 @@ elif _studio_page == "backing":
                 chart_html,
                 autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, True)),
                 karaoke_auto_advance=(
-                    km.is_karaoke_session_active(st.session_state)
-                    and km.auto_advance_enabled(st.session_state)
+                    _karaoke_active and km.auto_advance_enabled(st.session_state)
                 ),
+                karaoke_countdown=_show_countdown,
+                karaoke_countdown_seconds=km.countdown_seconds(st.session_state),
             ),
             height=720,
             scrolling=True,

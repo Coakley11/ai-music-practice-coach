@@ -16,6 +16,7 @@ Layering:
 from __future__ import annotations
 
 import html
+from collections.abc import Mapping, Sequence
 from typing import Any, Callable, Iterable
 
 import karaoke_mode as km
@@ -26,9 +27,12 @@ __all__ = (
     "render_karaoke_status_pill",
     "render_karaoke_skip_controls",
     "render_karaoke_now_singing_banner",
+    "render_karaoke_queue_preview",
+    "render_karaoke_missing_lyrics_cta",
     "render_karaoke_transition_card",
     "lookup_pick_key_label",
     "build_karaoke_audio_bridge_script",
+    "build_karaoke_countdown_script",
     "KARAOKE_SKIP_BUTTON_TEXT",
 )
 
@@ -243,6 +247,32 @@ def render_karaoke_setlist_panel(
         if new_auto != current_auto:
             st.session_state[km.KARAOKE_AUTO_ADVANCE_KEY] = bool(new_auto)
 
+    cc_left, cc_right = st.columns([3, 4])
+    with cc_left:
+        cur_cd = km.countdown_enabled(st.session_state)
+        new_cd = st.toggle(
+            "Countdown before each song",
+            value=cur_cd,
+            key="karaoke_countdown_toggle",
+            help="Show a 5-4-3-2-1 pre-roll before the backing track starts.",
+        )
+        if new_cd != cur_cd:
+            st.session_state[km.KARAOKE_COUNTDOWN_KEY] = bool(new_cd)
+    with cc_right:
+        cur_seconds = km.countdown_seconds(st.session_state)
+        new_seconds = st.slider(
+            "Countdown length",
+            min_value=1,
+            max_value=10,
+            value=cur_seconds,
+            step=1,
+            key="karaoke_countdown_seconds_slider",
+            help="How long the pre-roll countdown lasts (in seconds).",
+            disabled=not new_cd,
+        )
+        if int(new_seconds) != cur_seconds:
+            st.session_state[km.KARAOKE_COUNTDOWN_SECONDS_KEY] = int(new_seconds)
+
     if active:
         cur_t, cur_a = lookup_pick_key_label(
             active_pk or "",
@@ -288,6 +318,7 @@ def render_karaoke_skip_controls(
     if not km.is_karaoke_session_active(st.session_state):
         return
     nxt = km.next_session_pick_key(st.session_state)
+    prv = km.previous_session_pick_key(st.session_state)
     if nxt:
         t, a = lookup_pick_key_label(
             nxt,
@@ -298,7 +329,15 @@ def render_karaoke_skip_controls(
     else:
         next_caption = "Last song in the setlist."
 
-    c_skip, c_end, _spacer = st.columns([3, 2, 5])
+    c_prev, c_skip, c_end, _spacer = st.columns([2, 3, 2, 3])
+    with c_prev:
+        clicked_prev = st.button(
+            "\u23EE  Previous song",
+            key="karaoke_previous_song",
+            use_container_width=True,
+            help="Step back to the previous song in your karaoke set.",
+            disabled=prv is None,
+        )
     with c_skip:
         clicked_skip = st.button(
             f"\u23ED  {KARAOKE_SKIP_BUTTON_TEXT}",
@@ -316,6 +355,16 @@ def render_karaoke_skip_controls(
         )
     st.caption(next_caption)
 
+    if clicked_prev:
+        new_pk = km.regress_session(st.session_state)
+        if new_pk:
+            t2, _ = lookup_pick_key_label(
+                new_pk,
+                record_for_pick_key=record_for_pick_key,
+                all_records=all_records,
+            )
+            st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = f"Now Singing: {t2}"
+        st.rerun()
     if clicked_skip:
         new_pk = km.advance_session(st.session_state)
         if new_pk:
@@ -489,3 +538,221 @@ def build_karaoke_audio_bridge_script(
         console.warn('karaoke audio bridge failed', err);
       }}
     """
+
+
+# ---------------------------------------------------------------------------
+# Pre-roll countdown JS (5-4-3-2-1 overlay before backing audio plays)
+# ---------------------------------------------------------------------------
+
+
+def build_karaoke_countdown_script(
+    *,
+    enabled: bool,
+    seconds: int = 5,
+) -> str:
+    """Return a JS snippet that runs a 5-4-3-2-1 pre-roll inside the audio iframe.
+
+    When ``enabled`` is ``True``:
+
+    * The embedded audio is paused immediately on load.
+    * A fullscreen overlay shows the countdown (5, 4, 3, 2, 1).
+    * After the countdown ends, ``audio.play()`` is invoked.
+    * A "Skip countdown" button inside the overlay starts playback at
+      once and removes the overlay.
+
+    The caller injects this snippet at the *top* of the audio-player
+    initialisation block in :func:`live_follow_along_component_html`. It
+    expects ``audio`` (the ``<audio>`` element) to be in scope.
+    """
+    if not enabled:
+        return ""
+    safe_seconds = max(1, min(10, int(seconds)))
+    return f"""
+      try {{
+        const KARAOKE_COUNTDOWN_SECONDS = {safe_seconds};
+        if (audio) {{
+          try {{ audio.pause(); audio.currentTime = 0; }} catch (e) {{}}
+          audio.autoplay = false;
+        }}
+        const overlay = document.createElement('div');
+        overlay.className = 'karaoke-countdown-overlay';
+        overlay.innerHTML = `
+          <div class="karaoke-countdown-kicker">Get ready to sing</div>
+          <div class="karaoke-countdown-number" id="karaokeCountNum">${{KARAOKE_COUNTDOWN_SECONDS}}</div>
+          <button type="button" class="karaoke-countdown-skip" id="karaokeCountSkip">Skip countdown</button>
+        `;
+        document.body.appendChild(overlay);
+        let remaining = KARAOKE_COUNTDOWN_SECONDS;
+        let cancelled = false;
+        const numEl = overlay.querySelector('#karaokeCountNum');
+        const skipEl = overlay.querySelector('#karaokeCountSkip');
+        const cleanup = () => {{
+          try {{ overlay.remove(); }} catch (e) {{}}
+        }};
+        const startPlayback = () => {{
+          cancelled = true;
+          cleanup();
+          if (audio) {{
+            try {{ audio.play(); }} catch (e) {{
+              console.warn('karaoke countdown play failed', e);
+            }}
+          }}
+        }};
+        if (skipEl) {{
+          skipEl.addEventListener('click', startPlayback);
+        }}
+        const tick = () => {{
+          if (cancelled) return;
+          remaining -= 1;
+          if (remaining <= 0) {{
+            startPlayback();
+            return;
+          }}
+          if (numEl) numEl.textContent = String(remaining);
+          numEl && numEl.classList.remove('pulse');
+          // re-trigger CSS animation
+          void (numEl && numEl.offsetWidth);
+          numEl && numEl.classList.add('pulse');
+          window.setTimeout(tick, 1000);
+        }};
+        numEl && numEl.classList.add('pulse');
+        window.setTimeout(tick, 1000);
+      }} catch (err) {{
+        console.warn('karaoke countdown failed', err);
+        if (audio) {{ try {{ audio.play(); }} catch (e) {{}} }}
+      }}
+    """
+
+
+# ---------------------------------------------------------------------------
+# Queue preview shown on the Backing Track page during a karaoke set
+# ---------------------------------------------------------------------------
+
+
+def render_karaoke_queue_preview(
+    st: Any,
+    *,
+    record_for_pick_key: Callable[[str], Mapping[str, Any] | None] | None = None,
+    all_records: Sequence[Mapping[str, Any]] | None = None,
+    max_upcoming: int = 3,
+) -> None:
+    """Render a compact "Now Singing / Next / 3rd" queue preview.
+
+    Only renders when a karaoke session is active. Designed to live
+    above the chord chart on the Backing Track page so the singer always
+    knows what's coming next.
+    """
+    if not km.is_karaoke_session_active(st.session_state):
+        return
+
+    cur_pk = km.current_session_pick_key(st.session_state)
+    upcoming = km.upcoming_session_pick_keys(st.session_state, limit=max_upcoming)
+    pos, total = km.session_position(st.session_state)
+    if not cur_pk and not upcoming:
+        return
+
+    ordinals = ("Next", "3rd", "4th", "5th", "6th")
+
+    rows_html: list[str] = []
+
+    def _row(label: str, pk: str, *, current: bool = False) -> str:
+        t, a = lookup_pick_key_label(
+            pk,
+            record_for_pick_key=record_for_pick_key,
+            all_records=all_records,
+        )
+        cls = "ui-karaoke-preview-row" + (" current" if current else "")
+        return (
+            f'<div class="{cls}">'
+            f'<span class="ui-karaoke-preview-label">{html.escape(label)}</span>'
+            f'<span class="ui-karaoke-preview-title">{html.escape(t)}</span>'
+            f'<span class="ui-karaoke-preview-artist">{html.escape(a)}</span>'
+            "</div>"
+        )
+
+    if cur_pk:
+        rows_html.append(_row("Now Singing", cur_pk, current=True))
+    for i, pk in enumerate(upcoming):
+        label = ordinals[i] if i < len(ordinals) else f"#{pos + i + 1}"
+        rows_html.append(_row(label, pk))
+
+    header = f"Karaoke Setlist · {pos} of {total}"
+    st.markdown(
+        '<div class="ui-karaoke-preview">'
+        f'<div class="ui-karaoke-preview-header">{html.escape(header)}</div>'
+        + "".join(rows_html)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Missing-lyrics CTA shown when the active karaoke song has no lyric data
+# ---------------------------------------------------------------------------
+
+
+def render_karaoke_missing_lyrics_cta(
+    st: Any,
+    *,
+    song_data: Mapping[str, Any] | None,
+    active_song_title: str | None = None,
+    on_open_editor: Callable[[], None] | None = None,
+) -> bool:
+    """Show a friendly card when the active karaoke song has no lyrics.
+
+    Returns ``True`` when the CTA was rendered (so the caller can skip
+    rendering instrument-focused analysis below it). The CTA only
+    appears in voice mode.
+
+    ``on_open_editor`` is invoked when the user clicks the "Open Lyrics
+    & Cues editor" button. The caller should navigate the user to the
+    Song Selection / Lyrics editor page (or trigger an inline editor).
+    """
+    if not km.is_voice_mode(st.session_state):
+        return False
+    if not isinstance(song_data, Mapping):
+        return False
+
+    lyric_cues = song_data.get("lyric_cues") or {}
+    section_lyrics_user = (
+        st.session_state.get("section_lyrics_overrides") or {}
+        if hasattr(st, "session_state")
+        else {}
+    )
+    if isinstance(lyric_cues, Mapping) and any(
+        (str(v) or "").strip() for v in lyric_cues.values()
+    ):
+        return False
+    if isinstance(section_lyrics_user, Mapping) and any(
+        (str(v) or "").strip() for v in section_lyrics_user.values()
+    ):
+        return False
+
+    title = active_song_title or song_data.get("title") or "this song"
+    st.markdown(
+        '<div class="ui-karaoke-missing-lyrics">'
+        '<div class="ui-karaoke-missing-icon">\U0001F3A4</div>'
+        "<div>"
+        '<p class="ui-karaoke-missing-kicker">No lyrics or cues yet</p>'
+        f'<p class="ui-karaoke-missing-title">Add lyrics &amp; cues for {html.escape(str(title))}</p>'
+        '<p class="ui-karaoke-missing-meta">Singer-friendly lyrics + phrasing cues unlock the full karaoke flow.</p>'
+        "</div></div>",
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        "\u270F\uFE0F  Open Lyrics & Cues editor",
+        key="karaoke_open_lyrics_editor",
+        type="primary",
+    ):
+        if on_open_editor:
+            on_open_editor()
+        else:
+            # Fall back: jump the user back to Song Selection where the
+            # Lyrics & Cues editor lives on the active song card.
+            st.session_state["studio_active_page"] = "picker"
+            st.session_state["_pending_open_lyrics_editor"] = True
+            try:
+                st.rerun()
+            except Exception:
+                pass
+    return True

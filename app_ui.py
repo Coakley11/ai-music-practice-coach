@@ -2535,6 +2535,136 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   opacity: 0.95;
 }
 
+/* ---------- Karaoke queue preview (Backing Track page) ---------- */
+.ui-karaoke-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  margin: 10px 0;
+  border: 1px solid rgba(190, 24, 93, 0.18);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, #fffafc 0%, #ffffff 100%);
+  box-shadow: 0 4px 14px rgba(190, 24, 93, 0.06);
+}
+.ui-karaoke-preview-header {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #831843;
+  margin-bottom: 2px;
+}
+.ui-karaoke-preview-row {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 0;
+  border-top: 1px dashed rgba(15, 23, 42, 0.06);
+}
+.ui-karaoke-preview-row:first-of-type { border-top: 0; }
+.ui-karaoke-preview-row.current {
+  background: linear-gradient(90deg, rgba(190, 24, 93, 0.08), transparent 75%);
+  border-radius: 8px;
+  padding-left: 8px;
+  padding-right: 8px;
+  margin: 0 -8px;
+}
+.ui-karaoke-preview-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+.ui-karaoke-preview-row.current .ui-karaoke-preview-label {
+  color: #be185d;
+}
+.ui-karaoke-preview-title {
+  font-size: 1.00rem;
+  font-weight: 750;
+  color: #0f172a;
+}
+.ui-karaoke-preview-row.current .ui-karaoke-preview-title {
+  font-weight: 850;
+}
+.ui-karaoke-preview-artist {
+  font-size: 0.86rem;
+  color: #64748b;
+}
+
+/* ---------- Karaoke missing-lyrics CTA ---------- */
+.ui-karaoke-missing-lyrics {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  margin: 12px 0;
+  border: 1px solid rgba(190, 24, 93, 0.24);
+  border-radius: var(--r-md);
+  background: linear-gradient(120deg, #fff1f5 0%, #fff7fb 100%);
+}
+.ui-karaoke-missing-lyrics .ui-karaoke-missing-icon {
+  font-size: 1.6rem;
+  background: rgba(190, 24, 93, 0.12);
+  border-radius: 999px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ui-karaoke-missing-lyrics .ui-karaoke-missing-kicker {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #be185d;
+  margin: 0 0 2px 0;
+}
+.ui-karaoke-missing-lyrics .ui-karaoke-missing-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 2px 0;
+}
+.ui-karaoke-missing-lyrics .ui-karaoke-missing-meta {
+  font-size: 0.88rem;
+  color: #64748b;
+  margin: 0;
+}
+
+/* ---------- Karaoke voice mode: lyrics primary, chords secondary ----------
+   Applies whenever the page is rendered in karaoke / voice mode
+   (driven by `document.body.dataset.vocalFocus` set in the main app). */
+[data-vocal-focus="true"] .ui-bar {
+  background: rgba(255, 255, 255, 0.90);
+}
+[data-vocal-focus="true"] .ui-bar .chord-cell,
+[data-vocal-focus="true"] .chord-cell {
+  opacity: 0.78;
+  filter: saturate(0.92);
+}
+[data-vocal-focus="true"] .chord-cell.current-chord {
+  opacity: 1 !important;
+  filter: none !important;
+}
+[data-vocal-focus="true"] .lyric-line,
+[data-vocal-focus="true"] .section-card .lyric-text,
+[data-vocal-focus="true"] .ui-bar-lyric {
+  font-size: 1.18rem !important;
+  font-weight: 600;
+  color: #0f172a;
+}
+[data-vocal-focus="true"] .section-card.current .lyric-line,
+[data-vocal-focus="true"] .section-card.current .lyric-text {
+  font-size: 1.32rem !important;
+  font-weight: 700;
+}
+[data-vocal-focus="true"] .section-card { padding-block: 16px; }
+
 /* The polish stylesheet keeps a `data-ui-polish` attribute on its <style>
    element so its presence can be confirmed via DOM inspection if needed,
    without showing any visible debug UI to the user. */
