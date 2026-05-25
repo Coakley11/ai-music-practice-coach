@@ -11,6 +11,110 @@ def _last_bars_key(section: str) -> str:
     return f"cpl_last_bars_{section}"
 
 
+def _render_subbar_timing_panel(
+    home_entries: list[dict],
+    *,
+    edit_section: str,
+    pending_key: str,
+    save,
+) -> None:
+    """Quick buttons that turn the last bar of the section into a
+    subdivided / pushed bar (half-bar, thirds, quarters, push)."""
+    import streamlit as st
+
+    from chord_subdivisions import Subdivision, join_weighted_subdivisions
+
+    if not home_entries:
+        return
+
+    with st.expander("Sub-bar timing (half-bar, beats, pushed chord)", expanded=False):
+        st.caption(
+            "Add a chord, then click one of these to fold it into the LAST bar."
+        )
+        pending = st.session_state.get(pending_key)
+        if not pending:
+            st.info(
+                "Pick a chord above first, then come back here. "
+                "Example: select **G**, click **Half-bar** to make the last bar `C:2|G:2`."
+            )
+            return
+
+        last_entry = home_entries[-1]
+        last_chord = str(last_entry.get("chord", "")).strip()
+        if "|" in last_chord:
+            st.caption(
+                f"Last bar is already subdivided ({last_chord}). "
+                "Re-clicking a button below replaces that subdivision."
+            )
+        prev_head = last_chord.split("|", 1)[0].split(":", 1)[0] or "C"
+
+        def _apply_token(token: str) -> None:
+            home_entries[-1] = {"chord": token, "bars": 1}
+            st.session_state.pop(pending_key, None)
+            save()
+            st.rerun()
+
+        cols = st.columns(4)
+        with cols[0]:
+            if st.button(
+                "Half-bar",
+                key=f"cpl_sub_half_{edit_section}",
+                use_container_width=True,
+                help="C → C:2|G:2 (4/4) or C:1.5|G:1.5 (3/4)",
+            ):
+                _apply_token(
+                    join_weighted_subdivisions([
+                        Subdivision(prev_head, 2.0, False),
+                        Subdivision(pending, 2.0, False),
+                    ])
+                )
+        with cols[1]:
+            if st.button(
+                "Thirds (3/4 group)",
+                key=f"cpl_sub_thirds_{edit_section}",
+                use_container_width=True,
+                help="Fmaj7 → Am7 → C/D, one chord per beat (Piano Man style)",
+            ):
+                # Pending chord becomes 3rd; previous head stays 1st.
+                # 2nd defaults to a passing chord between them. Users can
+                # tweak the token later via Edit chord text input.
+                _apply_token(
+                    join_weighted_subdivisions([
+                        Subdivision(prev_head, 1.0, False),
+                        Subdivision(prev_head, 1.0, False),
+                        Subdivision(pending, 1.0, False),
+                    ])
+                )
+        with cols[2]:
+            if st.button(
+                "Quarters (4 chords/bar)",
+                key=f"cpl_sub_quarters_{edit_section}",
+                use_container_width=True,
+                help="1 chord per beat in 4/4",
+            ):
+                _apply_token(
+                    join_weighted_subdivisions([
+                        Subdivision(prev_head, 1.0, False),
+                        Subdivision(prev_head, 1.0, False),
+                        Subdivision(prev_head, 1.0, False),
+                        Subdivision(pending, 1.0, False),
+                    ])
+                )
+        with cols[3]:
+            if st.button(
+                "Push (last 1/2 beat)",
+                key=f"cpl_sub_push_{edit_section}",
+                use_container_width=True,
+                help="Anticipates the next chord on the last 8th note",
+            ):
+                _apply_token(
+                    join_weighted_subdivisions([
+                        Subdivision(prev_head, 3.5, False),
+                        Subdivision(pending, 0.5, True),
+                    ])
+                )
+
+
 def render_custom_progression_lab_page() -> None:
     import html
 
@@ -467,7 +571,7 @@ def render_custom_progression_lab_page() -> None:
     with tc1:
         custom_ch = st.text_input(
             "Type any chord",
-            placeholder="Bb, B7, Eb, F#dim…",
+            placeholder="Bb, B7, F#dim, Fmaj7|Am7|C/D, C:2|G:2…",
             key=f"cpl_custom_{edit_section}",
             label_visibility="collapsed",
         )
@@ -488,6 +592,19 @@ def render_custom_progression_lab_page() -> None:
                 st.session_state.pop(pending_key, None)
                 _save(home_sections)
                 st.rerun()
+    st.caption(
+        "Tip: separate chords with `|` to put several inside one bar — "
+        "`Fmaj7|Am7|C/D` for three equal beats in 3/4, "
+        "`C:2|G:2` for a half-bar change in 4/4, "
+        "`C:3.5|D:0.5p` for a pushed chord on the last 8th."
+    )
+
+    _render_subbar_timing_panel(
+        home_entries,
+        edit_section=edit_section,
+        pending_key=pending_key,
+        save=lambda: _save(home_sections),
+    )
 
     with st.expander("Chord extensions — optional", expanded=False):
         st.caption("Pick a chord, then tap an extension (e.g. G + 7 → G7).")

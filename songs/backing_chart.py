@@ -7,6 +7,7 @@ from typing import Any
 
 from chord_subdivisions import (
     is_subdivided_bar as _sub_is_subdivided_bar,
+    parse_subdivisions as _sub_parse_subdivisions,
     subdivisions as _sub_subdivisions,
 )
 
@@ -107,26 +108,37 @@ BACKING_CHART_CSS = """
 }
 .backing-chart-sheet .chord-cell.subdivided .chord-symbol {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  gap: 4px;
-  flex-wrap: wrap;
+  gap: 3px;
+  flex-wrap: nowrap;
   font-size: 0.96rem;
   letter-spacing: -0.02em;
   line-height: 1.05;
+  width: 100%;
 }
 .backing-chart-sheet .chord-cell.subdivided .sub-chord {
-  padding: 2px 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 5px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(15, 23, 42, 0.10);
   transition: background 0.12s ease, color 0.12s ease;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
 }
 .backing-chart-sheet .chord-cell.subdivided .sub-sep {
   color: #94a3b8;
   font-weight: 700;
   font-size: 0.82rem;
   margin: 0 1px;
+  align-self: center;
 }
 .backing-chart-sheet .chord-cell.subdivided.current-chord .sub-chord {
   background: rgba(255, 255, 255, 0.55);
@@ -138,6 +150,32 @@ BACKING_CHART_CSS = """
   border-color: #14532d;
   box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.45);
 }
+.backing-chart-sheet .chord-cell.subdivided .sub-chord.push {
+  border-color: #ea580c;
+  background: linear-gradient(180deg, #fff7ed, #ffedd5);
+  color: #9a3412;
+  font-weight: 800;
+}
+.backing-chart-sheet .chord-cell.subdivided .sub-chord.push::after {
+  content: "push";
+  display: block;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #c2410c;
+  margin-top: 1px;
+  line-height: 1;
+}
+.backing-chart-sheet .chord-cell.subdivided .sub-chord.push.active-sub {
+  background: #ea580c;
+  color: #fff7ed;
+  border-color: #9a3412;
+  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.42);
+}
+.backing-chart-sheet .chord-cell.subdivided .sub-chord.push.active-sub::after {
+  color: #fff7ed;
+}
 .backing-chart-sheet .chord-cell.subdivided .subdivided-tag {
   display: block;
   margin-top: 4px;
@@ -146,6 +184,9 @@ BACKING_CHART_CSS = """
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+.backing-chart-sheet .chord-cell.subdivided .subdivided-tag.has-push {
+  color: #c2410c;
 }
 .backing-chart-sheet .lyric-preview {
   margin-top: 6px;
@@ -162,6 +203,23 @@ BACKING_CHART_CSS = """
 }
 </style>
 """
+
+
+def _beats_per_bar_for_chart(time_signature: str | None) -> float:
+    """Pulses/beats-per-bar for cell layout. Compound meters fall back to
+    their *top* number (6/8 -> 6 pulses) so the proportional widths of
+    weighted sub-chords stay accurate."""
+    raw = str(time_signature or "4/4").strip()
+    if "/" in raw:
+        top, _ = raw.split("/", 1)
+        try:
+            return float(int(top))
+        except ValueError:
+            return 4.0
+    try:
+        return float(int(raw))
+    except ValueError:
+        return 4.0
 
 
 def chart_section_role(section_name: str) -> str:
@@ -192,19 +250,48 @@ def chart_feel_label(style: str | None) -> str:
     }.get(style or "Pop groove", style or "Pop groove")
 
 
-def _render_chord_symbol_html(token: str) -> tuple[str, bool]:
-    """Return ``(symbol_html, is_subdivided)`` for a chart cell."""
-    if _sub_is_subdivided_bar(token):
-        parts = _sub_subdivisions(token)
-        spans: list[str] = []
-        for sub_idx, part in enumerate(parts):
-            if sub_idx > 0:
-                spans.append("<span class='sub-sep'>&rarr;</span>")
-            spans.append(
-                f"<span class='sub-chord' data-sub='{sub_idx}'>{html.escape(str(part))}</span>"
+def _render_chord_symbol_html(
+    token: str, *, beats_per_bar: float = 4.0
+) -> tuple[str, bool, bool]:
+    """Return ``(symbol_html, is_subdivided, has_push)`` for a chart cell.
+
+    Weighted subdivisions (``"C:2|G:2"``) render with proportional widths
+    so a half-bar split visually occupies half of the cell, a 3+1 split
+    fills 75%/25%, and the equal-weight ``"Fmaj7|Am7|C/D"`` form keeps
+    the three pills evenly spaced.
+
+    Pushed sub-chords (``"D:0.5p"``) get a distinct orange pill + a tiny
+    "push" caption underneath the chord symbol.
+    """
+    if not _sub_is_subdivided_bar(token):
+        return html.escape(str(token)), False, False
+    subs = _sub_parse_subdivisions(token, beats_per_bar=beats_per_bar)
+    if not subs:
+        return html.escape(str(token)), False, False
+    total_weight = sum(max(0.0, float(s.weight)) for s in subs) or 1.0
+    spans: list[str] = []
+    any_push = False
+    for sub_idx, sub in enumerate(subs):
+        if sub_idx > 0:
+            spans.append("<span class='sub-sep'>&rarr;</span>")
+        share_pct = (max(0.0, float(sub.weight)) / total_weight) * 100.0
+        push_cls = " push" if sub.push else ""
+        if sub.push:
+            any_push = True
+        spans.append(
+            "<span class='sub-chord{push_cls}' data-sub='{idx}' "
+            "data-beats='{beats:g}'{push_attr} style='flex-grow:{grow:g};flex-basis:{basis:.4f}%;'>"
+            "{chord}</span>".format(
+                push_cls=push_cls,
+                idx=sub_idx,
+                beats=float(sub.weight),
+                push_attr=" data-push='1'" if sub.push else "",
+                grow=float(sub.weight),
+                basis=share_pct,
+                chord=html.escape(str(sub.chord)),
             )
-        return "".join(spans), True
-    return html.escape(str(token)), False
+        )
+    return "".join(spans), True, any_push
 
 
 def chart_grid_html(
@@ -213,6 +300,7 @@ def chart_grid_html(
     section_name: str = "",
     current_bar: int | None = None,
     shape_chords: list[str] | None = None,
+    beats_per_bar: float = 4.0,
 ) -> str:
     """Block chord cells with ``live-chart-cell`` markers for JS follow-along."""
     if not chords:
@@ -229,9 +317,12 @@ def chart_grid_html(
             display_token = "%"
             symbol_html = "%"
             subdivided_cell = False
+            cell_has_push = False
         else:
             display_token = str(chord)
-            symbol_html, subdivided_cell = _render_chord_symbol_html(display_token)
+            symbol_html, subdivided_cell, cell_has_push = _render_chord_symbol_html(
+                display_token, beats_per_bar=float(beats_per_bar)
+            )
         current_class = " current-chord" if current_bar == idx + 1 else ""
         sub_class = " subdivided" if subdivided_cell else ""
         repeat_count = 1
@@ -244,8 +335,10 @@ def chart_grid_html(
             f"<span class='duration'>{repeat_count} bars</span>" if repeat_count > 1 else ""
         )
         if subdivided_cell:
+            push_tag_cls = " has-push" if cell_has_push else ""
+            tag_label = "Pushed change" if cell_has_push else "Passing &middot; subdivided bar"
             duration = (
-                f"{duration}<span class='subdivided-tag'>Passing &middot; subdivided bar</span>"
+                f"{duration}<span class='subdivided-tag{push_tag_cls}'>{tag_label}</span>"
             )
         shape_hint = ""
         if (
@@ -374,7 +467,7 @@ def render_backing_chord_chart(
     </div>
     <div class="section-meta">{now_label}</div>
   </div>
-  {chart_grid_html(chords, section_name=section_name, current_bar=current_bar_for_section, shape_chords=shape_row)}
+  {chart_grid_html(chords, section_name=section_name, current_bar=current_bar_for_section, shape_chords=shape_row, beats_per_bar=_beats_per_bar_for_chart(time_signature))}
   {preview}
 </section>
 """

@@ -9,9 +9,13 @@ from typing import Any
 import numpy as np
 
 from chord_subdivisions import (
+    chord_at_beat as _sub_chord_at_beat,
     chord_at_pulse as _sub_chord_at_pulse,
+    has_push as _sub_has_push,
     is_subdivided_bar as _sub_is_subdivided_bar,
+    next_chord_at_beat as _sub_next_chord_at_beat,
     next_chord_at_pulse as _sub_next_chord_at_pulse,
+    parse_subdivisions as _sub_parse_subdivisions,
     primary_chord as _sub_primary_chord,
 )
 from music_theory import NOTE_TO_MIDI, normalize_root, split_chord
@@ -637,8 +641,11 @@ def synthesize_chords_to_numpy(
         intensity = _section_intensity(section_name, style)
         role = _section_role(section_name)
         section_edge = _is_section_edge(event, next_event)
-        # For subdivided bars, ``chord`` is e.g. ``"Fmaj7|Am7|C/D"``. Compute the
-        # active chord per pulse below; ``chord_notes(_sub_primary_chord(chord))``
+        # For subdivided bars, ``chord`` is e.g. ``"Fmaj7|Am7|C/D"`` (equal
+        # subdivisions) or ``"C:2|G:2"`` / ``"C:3.5|D:0.5p"`` (weighted /
+        # pushed). The per-pulse chord lookup goes through
+        # ``chord_at_beat`` so weighted durations and push markers are
+        # honoured exactly - ``chord_notes(_sub_primary_chord(chord))``
         # only seeds the head chord for any non-pulse-aware fallback uses.
         bar_is_subdivided = _sub_is_subdivided_bar(chord)
         notes = chord_notes(_sub_primary_chord(chord) if bar_is_subdivided else chord)
@@ -650,12 +657,17 @@ def synthesize_chords_to_numpy(
         def _pulse_chord(b_pos: float) -> str:
             if not bar_is_subdivided:
                 return chord
-            return _sub_chord_at_pulse(chord, b_pos, pulses_per_bar)
+            return _sub_chord_at_beat(chord, b_pos, beats_per_bar=pulses_per_bar)
 
         def _pulse_next_chord(b_pos: float) -> str | None:
             if not bar_is_subdivided:
                 return next_chord
-            return _sub_next_chord_at_pulse(chord, b_pos, pulses_per_bar, next_chord)
+            return _sub_next_chord_at_beat(
+                chord,
+                b_pos,
+                beats_per_bar=pulses_per_bar,
+                fallback_next_bar_chord=next_chord,
+            )
 
         for n, b in enumerate(bass_hits):
             pulse_chord = _pulse_chord(b)
@@ -817,6 +829,43 @@ def synthesize_chords_to_numpy(
             )
             if next_event and _section_role(next_event.get("section")) == "chorus":
                 _add_tone(audio, sr, bar_start + (tail + 0.33) * pulse, 0.09, 48, 0.055, "bass")
+
+        # Pushed-chord anticipations: when a sub-chord inside this bar is
+        # marked with ``push`` (e.g. ``"C:3.5|D:0.5p"``) the synth bass
+        # / comp grid above won't fire on the off-beat, so we add a
+        # single extra attack a half-beat *before* its written start
+        # time to give the chord change an audible anticipation.
+        if bar_is_subdivided:
+            push_subs = _sub_parse_subdivisions(chord, beats_per_bar=pulses_per_bar)
+            if any(s.push for s in push_subs):
+                beat_cursor = 0.0
+                for sub in push_subs:
+                    if sub.push and beat_cursor > 0:
+                        push_b = max(0.0, beat_cursor - 0.5)
+                        push_pitch = _bass_motion_pitch(
+                            sub.chord, None, style, 0, 1
+                        )
+                        _add_tone(
+                            audio,
+                            sr,
+                            bar_start + push_b * pulse,
+                            pulse * 0.42,
+                            push_pitch,
+                            0.085 * intensity,
+                            "bass",
+                        )
+                        push_voicing = _voicing_for_comp(sub.chord, level, style, 0)
+                        for _push_note in push_voicing:
+                            _add_tone(
+                                audio,
+                                sr,
+                                bar_start + push_b * pulse,
+                                pulse * 0.55,
+                                _push_note,
+                                0.020 * intensity,
+                                comp_wave,
+                            )
+                    beat_cursor += float(sub.weight)
 
     audio = np.tanh(audio)
     audio = audio / (np.max(np.abs(audio)) + 1e-9) * 0.86

@@ -1899,11 +1899,12 @@ def _chart_lyric_lines(section_name, lyric_cues=None, section_lyrics=None):
     return lines
 
 
-def _chart_grid_html(chords, current_bar=None, section_name=""):
+def _chart_grid_html(chords, current_bar=None, section_name="", *, beats_per_bar=4.0):
     if not chords:
         return "<div class='empty-chart'>No chords entered for this section.</div>"
     cells = []
     safe_section_attr = html.escape(str(section_name), quote=True)
+    bpb = float(beats_per_bar) if beats_per_bar else 4.0
     for idx, chord in enumerate(chords):
         previous = chords[idx - 1] if idx else None
         same_as_prev = bool(previous and chord == previous)
@@ -1912,22 +1913,42 @@ def _chart_grid_html(chords, current_bar=None, section_name=""):
             display_token = "%"
             symbol_html = "%"
             subdivided_cell = False
+            cell_has_push = False
         else:
             display_token = str(chord)
             if is_sub:
-                parts = chord_subdivisions.subdivisions(chord)
+                subs = chord_subdivisions.parse_subdivisions(chord, beats_per_bar=bpb)
+                total_weight = sum(max(0.0, float(s.weight)) for s in subs) or 1.0
                 inner = []
-                for sub_idx, part in enumerate(parts):
+                cell_has_push = False
+                for sub_idx, sub in enumerate(subs):
                     if sub_idx > 0:
                         inner.append("<span class='sub-sep'>&rarr;</span>")
+                    share_pct = (max(0.0, float(sub.weight)) / total_weight) * 100.0
+                    push_cls = " push" if sub.push else ""
+                    if sub.push:
+                        cell_has_push = True
+                    push_attr = " data-push='1'" if sub.push else ""
                     inner.append(
-                        f"<span class='sub-chord' data-sub='{sub_idx}'>{html.escape(str(part))}</span>"
+                        "<span class='sub-chord{push_cls}' data-sub='{i}' "
+                        "data-beats='{beats:g}'{push_attr} "
+                        "style='flex-grow:{grow:g};flex-basis:{basis:.4f}%;'>"
+                        "{chord}</span>".format(
+                            push_cls=push_cls,
+                            i=sub_idx,
+                            beats=float(sub.weight),
+                            push_attr=push_attr,
+                            grow=float(sub.weight),
+                            basis=share_pct,
+                            chord=html.escape(str(sub.chord)),
+                        )
                     )
                 symbol_html = "".join(inner)
                 subdivided_cell = True
             else:
                 symbol_html = html.escape(display_token)
                 subdivided_cell = False
+                cell_has_push = False
         current_class = " current-chord" if current_bar == idx + 1 else ""
         sub_class = " subdivided" if subdivided_cell else ""
         repeat_count = 1
@@ -1938,7 +1959,9 @@ def _chart_grid_html(chords, current_bar=None, section_name=""):
                 repeat_count += 1
         duration = f"<span class='duration'>{repeat_count} bars</span>" if repeat_count > 1 else ""
         if subdivided_cell:
-            duration = f"{duration}<span class='subdivided-tag'>Passing &middot; subdivided bar</span>"
+            push_tag_cls = " has-push" if cell_has_push else ""
+            tag_label = "Pushed change" if cell_has_push else "Passing &middot; subdivided bar"
+            duration = f"{duration}<span class='subdivided-tag{push_tag_cls}'>{tag_label}</span>"
         cells.append(
             f"<div class='chord-cell live-chart-cell{current_class}{sub_class}' data-section='{safe_section_attr}' data-bar='{idx + 1}'>"
             f"<div class='bar-num'>Bar {idx + 1}</div>"
@@ -2211,26 +2234,37 @@ def full_chord_markdown(
 }
 .chord-cell.subdivided .chord-symbol {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  gap: 4px;
-  flex-wrap: wrap;
+  gap: 3px;
+  flex-wrap: nowrap;
   font-size: 0.98rem;
   letter-spacing: -0.02em;
   line-height: 1.05;
+  width: 100%;
 }
 .chord-cell.subdivided .sub-chord {
-  padding: 2px 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 5px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(15, 23, 42, 0.10);
   transition: background 0.12s ease, color 0.12s ease;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
 }
 .chord-cell.subdivided .sub-sep {
   color: #94a3b8;
   font-weight: 700;
   font-size: 0.82rem;
   margin: 0 1px;
+  align-self: center;
 }
 .chord-cell.subdivided.current-chord .sub-chord {
   background: rgba(255, 255, 255, 0.55);
@@ -2242,6 +2276,32 @@ def full_chord_markdown(
   border-color: #14532d;
   box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.45);
 }
+.chord-cell.subdivided .sub-chord.push {
+  border-color: #ea580c;
+  background: linear-gradient(180deg, #fff7ed, #ffedd5);
+  color: #9a3412;
+  font-weight: 800;
+}
+.chord-cell.subdivided .sub-chord.push::after {
+  content: "push";
+  display: block;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #c2410c;
+  margin-top: 1px;
+  line-height: 1;
+}
+.chord-cell.subdivided .sub-chord.push.active-sub {
+  background: #ea580c;
+  color: #fff7ed;
+  border-color: #9a3412;
+  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.42);
+}
+.chord-cell.subdivided .sub-chord.push.active-sub::after {
+  color: #fff7ed;
+}
 .chord-cell.subdivided .subdivided-tag {
   display: block;
   margin-top: 4px;
@@ -2250,6 +2310,9 @@ def full_chord_markdown(
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+.chord-cell.subdivided .subdivided-tag.has-push {
+  color: #c2410c;
 }
 .lyric-box, .analysis-box, .overlay-box {
   border-radius: 10px;
@@ -2723,28 +2786,65 @@ def render_guitar_capo_helper(
 
 
 def build_chord_event_timeline(events, bpm, loops, time_signature="4/4", beats_per_bar=None):
+    """Expand a per-bar chord-event list into a flat sub-event timeline.
+
+    Honours weighted subdivisions and push markers parsed from each bar's
+    chord token (see :mod:`chord_subdivisions`). For a plain bar token
+    like ``"C"`` this is a no-op (one entry covering the full bar). For a
+    weighted token like ``"C:2|G:2"`` (half-bar) or
+    ``"Fmaj7|Am7|C/D"`` (Piano Man passing group in 3/4) it emits one
+    entry per sub-chord with the *exact* start/end times so the player,
+    follow-along highlight, and embedded JS bridge all stay in lock-step
+    with the synthesizer.
+
+    Push markers (``Subdivision.push == True``) shift the sub-event's
+    start time slightly earlier so the chord-follow highlight matches
+    the actual audio attack of a pushed chord.
+    """
     timeline = []
     if not events:
         return timeline
     if beats_per_bar is not None:
-        bar_duration = (60 / max(1, bpm)) * beats_per_bar
+        bpb = float(beats_per_bar)
+        beat_duration = 60.0 / max(1, bpm)
+        bar_duration = beat_duration * bpb
     else:
-        bar_duration = meter_timing(bpm, time_signature).bar_sec
+        timing = meter_timing(bpm, time_signature)
+        bar_duration = timing.bar_sec
+        bpb = float(timing.pulses_per_bar)
+        beat_duration = bar_duration / bpb if bpb > 0 else (60.0 / max(1, bpm))
     looped_events = events * max(1, int(loops))
     total_bars = len(looped_events)
     event_index = 0
+    push_offset = beat_duration * 0.5  # pushes anticipate by half a beat
     for bar_idx, event in enumerate(looped_events):
         bar_start = bar_idx * bar_duration
         chord_token = event.get("chord", "")
-        sub_parts = chord_subdivisions.subdivisions(chord_token)
-        sub_count = max(1, len(sub_parts))
-        sub_duration = bar_duration / sub_count if sub_count > 0 else bar_duration
+        subs = chord_subdivisions.parse_subdivisions(chord_token, beats_per_bar=bpb)
+        if not subs:
+            continue
+        sub_count = len(subs)
         section_name = event.get("section", "")
         bar_in_section = int(event.get("bar_in_section", 0)) + 1
         section_bars = int(event.get("section_bars", 1))
-        for sub_idx, sub_chord in enumerate(sub_parts or [chord_token]):
-            start_time = bar_start + sub_idx * sub_duration
-            end_time = start_time + sub_duration
+        beat_cursor = 0.0
+        for sub_idx, sub in enumerate(subs):
+            start_time = bar_start + beat_cursor * beat_duration
+            duration = float(sub.weight) * beat_duration
+            if sub.push:
+                # Pushed chord lands earlier than its written beat. We
+                # shorten the previous sub-event (and extend this one)
+                # by ``push_offset`` so the timeline reflects the actual
+                # attack ordering the synth produces.
+                shifted_start = max(bar_start, start_time - push_offset)
+                if timeline and timeline[-1]["end_time"] > shifted_start:
+                    timeline[-1]["end_time"] = shifted_start
+                    timeline[-1]["duration"] = (
+                        timeline[-1]["end_time"] - timeline[-1]["start_time"]
+                    )
+                duration += (start_time - shifted_start)
+                start_time = shifted_start
+            end_time = start_time + duration
             entry = {
                 "event_index": event_index,
                 "absolute_bar": bar_idx + 1,
@@ -2752,17 +2852,22 @@ def build_chord_event_timeline(events, bpm, loops, time_signature="4/4", beats_p
                 "section": section_name,
                 "bar_in_section": bar_in_section,
                 "section_bars": section_bars,
-                "chord": sub_chord if sub_count > 1 else chord_token,
+                "chord": sub.chord if sub_count > 1 else chord_token,
                 "start_time": start_time,
-                "duration": sub_duration,
+                "duration": duration,
                 "end_time": end_time,
+                "beat_offset": round(beat_cursor, 6),
+                "beat_duration": round(float(sub.weight), 6),
             }
             if sub_count > 1:
                 entry["subdivision_index"] = sub_idx
                 entry["subdivision_count"] = sub_count
                 entry["parent_chord"] = chord_token
+            if sub.push:
+                entry["push"] = True
             timeline.append(entry)
             event_index += 1
+            beat_cursor += float(sub.weight)
     return timeline
 
 
