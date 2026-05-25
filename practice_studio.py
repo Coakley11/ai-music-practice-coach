@@ -340,8 +340,10 @@ def active_song_card_details(
 
     ``instrument`` (e.g. ``"Piano"``, ``"Voice"``) tunes the
     Practice Focus text. ``level`` (``"Beginner"`` /
-    ``"Intermediate"`` / ``"Advanced"``) tunes both the focus text
-    and which chart tier the section list comes from.
+    ``"Intermediate"`` / ``"Advanced"``) tunes both the focus text,
+    which chart tier the section list comes from, and (for Beginner)
+    whether the section flow is trimmed to a short Intro / Verse /
+    Chorus / Outro arrangement.
     """
     base = song_card_meta(record)
     sections = sections_for_record(record, level)
@@ -352,6 +354,24 @@ def active_song_card_details(
         sections,
         section_names=record.get("section_order"),
     )
+    # Beginner-mode arrangement simplification: trim the section list
+    # to the same short arc the Backing Track page uses (Intro -> Verse
+    # -> Chorus -> Verse -> Chorus -> Outro) so the song card matches
+    # what the singer / player will actually hear.
+    try:
+        from beginner_arrangement import (
+            is_beginner_level as _is_beginner_lvl,
+            select_beginner_section_names as _trim_for_beginner,
+        )
+
+        if _is_beginner_lvl(level):
+            trimmed = _trim_for_beginner(section_labels)
+            if trimmed:
+                section_labels = trimmed
+    except Exception:
+        # Defensive: never break the song card if the helper module is
+        # unavailable - fall back to the full section list.
+        pass
     concepts = chord_concepts_from_sections(sections, genre=genre)
     bpm = base.get("bpm") or _default_bpm_for_record(record)
     key = base.get("key") or "C"

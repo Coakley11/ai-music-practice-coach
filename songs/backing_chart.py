@@ -339,6 +339,12 @@ def render_backing_chord_chart(
     )
 
     current_parts = set() if show_full else {str(current_section).strip()}
+    # Optional Beginner display-label map ({"Verse 1": "Verse", ...}) -
+    # set by ``beginner_view_of_song_data``. The chart cards still use
+    # the raw section_name internally (so lyric-cues, harmony maps, and
+    # chord-follow lookups all keep working), but the section header
+    # text shows the shortened label for cleaner beginner-mode display.
+    display_label_map = song_data.get("_beginner_display_labels") or {}
     section_cards = []
     for section_name, chords in sections.items():
         if not chords:
@@ -357,12 +363,13 @@ def render_backing_chord_chart(
             else ""
         )
         shape_row = (shape_sections or {}).get(section_name) if shape_sections else None
+        display_section_name = display_label_map.get(section_name, section_name)
         section_cards.append(
             f"""
 <section class="section-card {role}{' current' if is_current else ''}">
   <div class="section-head">
     <div>
-      <div class="section-title">{html.escape(section_name)} — {len(chords)} bars</div>
+      <div class="section-title">{html.escape(display_section_name)} — {len(chords)} bars</div>
       <div class="section-meta">{html.escape(chart_feel_label(groove_style))}</div>
     </div>
     <div class="section-meta">{now_label}</div>

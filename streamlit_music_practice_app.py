@@ -130,6 +130,13 @@ from backing_display import (
     render_backing_meter_selector,
 )
 import karaoke_mode as km
+from beginner_arrangement import (
+    beginner_view_of_song_data,
+    beginner_view_of_sections,
+    is_beginner_arrangement_active,
+    is_beginner_level,
+    select_beginner_section_names,
+)
 from karaoke_ui import (
     build_karaoke_audio_bridge_script,
     build_karaoke_countdown_script,
@@ -5524,6 +5531,22 @@ original_key = _chart_bundle["original_key"]
 level_source_sections = _chart_bundle["level_source_sections"]
 sections = _chart_bundle["sections"]
 _cpl_active = _chart_bundle.get("cpl_active")
+
+# Beginner-mode arrangement simplification (derived view only). For
+# Intermediate / Advanced this is a no-op and ``song_data`` /
+# ``sections`` come through unchanged. For Beginner we trim
+# ``section_order`` to a short Intro -> Verse -> Chorus -> Verse ->
+# Chorus -> Outro arc, then filter ``sections`` so backing-track
+# generation, the lead sheet, and the chord-follow highlight all
+# follow the simplified arrangement.
+if is_beginner_level(level):
+    _beginner_song_data = beginner_view_of_song_data(song_data, level=level)
+    if _beginner_song_data and is_beginner_arrangement_active(_beginner_song_data):
+        _beginner_order = list(_beginner_song_data.get("section_order") or [])
+        sections = beginner_view_of_sections(
+            sections, section_order_for_level=_beginner_order
+        )
+        song_data = _beginner_song_data
 
 _capo_ctx = build_capo_context(
     st.session_state,
