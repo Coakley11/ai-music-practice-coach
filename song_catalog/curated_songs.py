@@ -516,6 +516,183 @@ def _piano_man_chart_pack() -> dict[str, Any]:
     }
 
 
+def _hotel_california_chart_pack() -> dict[str, Any]:
+    """Hotel California - Eagles (B minor, 4/4 laid-back rock).
+
+    The user-supplied reference is in A minor; the chart below is the
+    transposition into the song's actual recorded key (B minor):
+
+        Am -> Bm      E7 -> F#7
+        G  -> A       D  -> E
+        F  -> G       C  -> D
+        Dm -> Em
+
+    Harmonic rhythm is **slow and spacious**: every chord is held for
+    **four full bars**. One list item = one bar, so a 4-bar chord appears
+    as four consecutive identical cells; the chord-follow highlighter and
+    backing track honor the long sustain honestly.
+    """
+
+    def _hold(chord: str, bars: int) -> list[str]:
+        return [chord] * bars
+
+    # The iconic 8-chord descending Hotel California cycle (one chord = 4 bars).
+    VERSE_CYCLE = (
+        _hold("Bm", 4) + _hold("F#7", 4) + _hold("A", 4) + _hold("E", 4)
+        + _hold("G", 4) + _hold("D", 4) + _hold("Em", 4) + _hold("F#7", 4)
+    )  # 32 bars
+
+    # Chorus has the same harmonic palette but its own 8-bar voice-leading
+    # phrase: G -> D -> F#7 -> Bm, then G -> D -> Em -> F#7 to set up the next
+    # verse.
+    CHORUS_CYCLE = (
+        _hold("G", 4) + _hold("D", 4) + _hold("F#7", 4) + _hold("Bm", 4)
+        + _hold("G", 4) + _hold("D", 4) + _hold("Em", 4) + _hold("F#7", 4)
+    )  # 32 bars
+
+    base_sections: dict[str, list[str]] = {
+        "Intro": list(VERSE_CYCLE) + list(VERSE_CYCLE),  # 64 bars - two cycles
+        "Verse 1A": list(VERSE_CYCLE),                   # 32 bars
+        "Verse 1B": list(VERSE_CYCLE),                   # 32 bars
+        "Chorus 1": list(CHORUS_CYCLE),                  # 32 bars
+        "Verse 2A": list(VERSE_CYCLE),                   # 32 bars
+        "Verse 2B": list(VERSE_CYCLE),                   # 32 bars
+    }
+
+    section_order: list[str] = [
+        "Intro",
+        "Verse 1A",
+        "Verse 1B",
+        "Chorus 1",
+        "Verse 2A",
+        "Verse 2B",
+    ]
+
+    def _retune(source: dict[str, list[str]], mapper) -> dict[str, list[str]]:
+        return {name: [mapper(c) for c in chords] for name, chords in source.items()}
+
+    beginner = {name: list(chords) for name, chords in base_sections.items()}
+
+    # Intermediate: classic Eagles voicings - bass inversions over the
+    # descending walk so the line is audible under the long sustains.
+    inter_map = {
+        "Bm": "Bm",
+        "F#7": "F#7/A#",
+        "A": "A",
+        "E": "E/G#",
+        "G": "G",
+        "D": "D/F#",
+        "Em": "Em",
+    }
+    intermediate = _retune(base_sections, lambda c: inter_map.get(c, c))
+    # The F#7 cadential cell at the end of every verse cycle should resolve
+    # straight to Bm - keep it as a plain F#7 (root in the bass) so the V-i
+    # punch is audible. Only the descending walk F#7 cells inside the cycle
+    # use the F#7/A# inversion.
+    for sec_name, chords in intermediate.items():
+        # Last 4-bar chord of each 32-bar cycle is the cadential F#7 -
+        # restore it to plain F#7 (the inversion is only useful when
+        # descending from Bm into A, not when resolving back to Bm/G).
+        for cycle_start in range(0, len(chords), 32):
+            tail_start = cycle_start + 28
+            if tail_start + 4 <= len(chords):
+                tail = chords[tail_start:tail_start + 4]
+                if all(c == "F#7/A#" for c in tail):
+                    for i in range(4):
+                        chords[tail_start + i] = "F#7"
+
+    # Advanced: maj9 / m9 / 7b9 colors on top of the same Eagles inversions.
+    adv_map = {
+        "Bm": "Bm9",
+        "F#7": "F#7/A#",
+        "A": "Aadd9",
+        "E": "E/G#",
+        "G": "Gmaj9",
+        "D": "D/F#",
+        "Em": "Em9",
+    }
+    advanced = _retune(base_sections, lambda c: adv_map.get(c, c))
+    # Same cadential treatment - the resolving F#7 at the end of each cycle
+    # gets the b9 tension (the iconic Hotel California "altered V" sound).
+    for sec_name, chords in advanced.items():
+        for cycle_start in range(0, len(chords), 32):
+            tail_start = cycle_start + 28
+            if tail_start + 4 <= len(chords):
+                tail = chords[tail_start:tail_start + 4]
+                if all(c == "F#7/A#" for c in tail):
+                    for i in range(4):
+                        chords[tail_start + i] = "F#7b9"
+
+    lyric_cues: dict[str, list[str]] = {
+        "Intro": [
+            "Solo nylon-string guitar arpeggio over the full 8-chord cycle",
+            "Twice through the cycle - long, spacious harmonic rhythm",
+            "Bass walks Bm -> F#/A# -> A -> E/G# -> G -> D/F# -> Em -> F#",
+        ],
+        "Verse 1A": [
+            "'On a dark desert highway...' - narrative entry",
+            "Voice rides the same descending 8-chord arc",
+            "Each chord rings for 4 full bars - keep the storytelling spacious",
+        ],
+        "Verse 1B": [
+            "'There she stood in the doorway...' - second half of verse 1",
+            "Same descending cycle, builds toward the chorus",
+        ],
+        "Chorus 1": [
+            "Title hook - 'Welcome to the Hotel California'",
+            "Phrase 1 lands on Bm (the 'such a lovely place' settling)",
+            "Phrase 2 lifts back to F#7 to launch verse 2",
+        ],
+        "Verse 2A": [
+            "'Her mind is Tiffany twisted...' - third verse part A",
+            "Returns to the spacious 8-chord cycle",
+        ],
+        "Verse 2B": [
+            "'So I called up the captain...' - third verse part B",
+            "Same form; sets up the second chorus / solo section that follows",
+        ],
+    }
+
+    arrangement_notes = (
+        "**B minor, 4/4 laid-back rock (~75 BPM).** Transposed from the "
+        "A-minor reference: **Am->Bm, E7->F#7, G->A, D->E, F->G, C->D, Dm->Em**. "
+        "The iconic descending 8-chord verse cycle holds **each chord for 4 "
+        "full bars**: Bm -> F#7 -> A -> E -> G -> D -> Em -> F#7 (32 bars). "
+        "The chorus uses the same palette in a new voice-leading shape: "
+        "G -> D -> F#7 -> Bm -> G -> D -> Em -> F#7 (also 32 bars / 4 bars per "
+        "chord). Implemented sections (6): Intro -> Verse 1A -> Verse 1B -> "
+        "Chorus 1 -> Verse 2A -> Verse 2B. The Intro plays the verse cycle "
+        "**twice** (64 bars of nylon-guitar arpeggios) before the vocal "
+        "enters. Beginner uses pure triads / dominant sevenths (Bm / F#7 / "
+        "A / E / G / D / Em). Intermediate adds the Eagles bass-inversion "
+        "voice leading - F#7/A#, E/G#, D/F# - keeping a plain F#7 at the "
+        "cadential resolution bars (V -> i / V -> IV). Advanced layers maj9 "
+        "/ m9 colors and the **F#7b9** altered V for the iconic Hotel "
+        "California modal-minor sound. **One chart bar = one playback bar** "
+        "so the long sustained pacing is honest; chord-follow holds each "
+        "cell for the full 4-bar window before advancing."
+    )
+
+    return {
+        "key": "Bm",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "lyric_cues": lyric_cues,
+        "extensions": _ext(
+            arrangement_notes=arrangement_notes,
+            default_bpm=75,
+            default_groove="Rock groove",
+            time_signature="4/4",
+        ),
+    }
+
+
 def _journey_believin_chart_pack() -> dict[str, Any]:
     """Don't Stop Believin' - Journey (E major, 4/4 arena rock).
 
@@ -1232,6 +1409,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
             },
         ),
         ("Don't Stop Believin'", "Journey"): _journey_believin_chart_pack(),
+        ("Hotel California", "Eagles"): _hotel_california_chart_pack(),
         ("The Girl from Ipanema", "Antonio Carlos Jobim"): pack("F",
             {
                 "Intro": ["Gm", "C7", "Gm", "C7"],
