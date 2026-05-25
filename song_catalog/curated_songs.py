@@ -3308,12 +3308,12 @@ def curated_song_records() -> list[dict[str, Any]]:
         }, composer="Miles Davis / Bill Evans"),
 
         # --- Rock / Funk / Blues anchors ---
+        # Minimal shell - the real 10-section arena-rock chart is supplied by
+        # _journey_believin_chart_pack() via _core_chart_overrides(). This
+        # placeholder only exists so the override has a (title, artist) row
+        # to patch; every chart-related field below is fully replaced.
         _s("Don't Stop Believin'", "Journey", "Rock", "E", {
-            "Intro / Piano Loop": ["E", "B/D#", "C#m7", "Aadd9"],
-            "Verse": ["E", "B/D#", "C#m7", "Aadd9", "E", "B/D#", "C#m7", "Aadd9"],
-            "Pre-Chorus": ["Aadd9", "E/G#", "B", "C#m7", "Aadd9", "E/G#", "B", "B"],
-            "Chorus": ["E", "B/D#", "Aadd9", "E/G#", "Aadd9", "E/G#", "B", "B"],
-            "Final Chorus": ["E", "B/D#", "Aadd9", "E/G#", "Aadd9", "E/G#", "B", "E"],
+            "Placeholder": ["E"],
         }),
         _s("Superstition", "Stevie Wonder", "Funk", "Eb", {
             "Main Groove": ["Ebm7", "Ebm7", "Ebm7", "Ebm7"],
@@ -3334,4 +3334,8 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Practice Variation": ["D", "G", "A", "D"],
         }, composer="Ludwig van Beethoven"),
     ]
-    return _apply_requested_verified_records(_apply_core_chart_overrides(records))
+    # Apply verified-record replacements FIRST, then core chart overrides LAST so
+    # the override always wins. Previously the order was reversed, which caused
+    # _apply_requested_verified_records() to silently clobber freshly-overridden
+    # rows (e.g. Shallow) with their older verified-record snapshots.
+    return _apply_core_chart_overrides(_apply_requested_verified_records(records))

@@ -4556,6 +4556,37 @@ def _picker_navigate(page: str, *, open_chord_coach: bool = False) -> None:
     st.rerun()
 
 
+_DEBUG_V2_CHART_TITLES: dict[tuple[str, str], str] = {
+    # Temporary debug confirmation that the updated v2 charts are actually
+    # loaded. Safe to delete once both pages are visually verified.
+    ("Don't Stop Believin'", "Journey"): "v2 chart - 10 sections / 239 bars / E major / arena-rock pacing",
+    ("Shallow", "Lady Gaga / Bradley Cooper"): "v2 chart - 10 sections / 173 bars / G major / cinematic ballad pacing",
+}
+
+
+def _render_v2_chart_debug_pill(rec: dict) -> None:
+    title = str(rec.get("title") or "")
+    artist = str(rec.get("artist") or "")
+    label = _DEBUG_V2_CHART_TITLES.get((title, artist))
+    if not label:
+        return
+    section_count = len((rec.get("section_order") or list((rec.get("sections") or {}).keys())))
+    sections = rec.get("sections") or {}
+    bar_count = sum(len(v) for v in sections.values())
+    pill_html = (
+        '<div style="margin:6px 0 14px 0;padding:8px 14px;'
+        'background:linear-gradient(135deg,#0ea5e9 0%,#6366f1 100%);'
+        'color:white;border-radius:10px;font-size:0.9rem;font-weight:600;'
+        'box-shadow:0 2px 8px rgba(99,102,241,0.35);">'
+        f'Using updated <span style="background:rgba(255,255,255,0.22);'
+        'padding:2px 8px;border-radius:6px;margin:0 4px;">'
+        f'{html.escape(title)}</span> {html.escape(label)} '
+        f'<span style="opacity:0.85;font-weight:500;">(live: {section_count} sections, {bar_count} bars)</span>'
+        '</div>'
+    )
+    st.markdown(pill_html, unsafe_allow_html=True)
+
+
 def _render_active_song_card(rec: dict) -> None:
     """Rich active-song summary with navigation shortcuts."""
     level = st.session_state.get("level", "Intermediate")
@@ -4600,6 +4631,7 @@ def _render_active_song_card(rec: dict) -> None:
         + "</div></div>"
     )
     st.markdown(card_html, unsafe_allow_html=True)
+    _render_v2_chart_debug_pill(rec)
     st.markdown('<div class="ui-song-card-actions">', unsafe_allow_html=True)
     b1, b2, b3, b4 = st.columns(4)
     with b1:
@@ -5973,6 +6005,7 @@ elif _studio_page == "backing":
         song_id=_playback_id,
         default_time_signature=_default_meter,
     )
+    _render_v2_chart_debug_pill(_backing_card_record)
     render_backing_active_song_card(
         st,
         _backing_card_record,
