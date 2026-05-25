@@ -5,15 +5,18 @@ from __future__ import annotations
 from songs.playback_defaults import (
     ACTIVE_PLAYBACK_SONG_ID_KEY,
     ACTIVE_SONG_BPM_KEY,
+    BACKING_GROOVE_KEY,
     BPM_WIDGET_KEY,
     LAST_BACKING_DEFAULTS_SONG_ID,
     active_song_sync_id,
     apply_backing_defaults_for_song,
     backing_bpm_slider_widget_key,
     canonical_active_song_bpm,
+    canonicalize_backing_defaults_for_song,
     prime_active_song_bpm,
     reset_playback_song_tracking,
 )
+from songs.meter_state import BACKING_METER_KEY, BACKING_METER_OVERRIDE_KEY
 
 
 class _FakeSession:
@@ -100,3 +103,94 @@ def test_canonical_bpm_reads_extensions():
         "extensions": {"default_bpm": 107},
     }
     assert canonical_active_song_bpm(song) == 107
+
+
+def test_canonicalize_force_resets_on_song_change():
+    """Switching songs must reset BPM, groove, meter, and override flags."""
+    st = _FakeSession({
+        BPM_WIDGET_KEY: 100,
+        BACKING_GROOVE_KEY: "Rock groove",
+        BACKING_METER_KEY: "3/4",
+        BACKING_METER_OVERRIDE_KEY: True,
+        "_last_backing_wav": b"stale_audio",
+        "_last_backing_signature": ("stale",),
+    })
+    result = canonicalize_backing_defaults_for_song(
+        st,
+        sync_id="pk::Pop::Shallow",
+        active_song_bpm=96,
+        active_song_groove="Ballad",
+        active_song_meter="4/4",
+    )
+    assert result["did_reset"] is True
+    assert result["applied_bpm"] == 96
+    assert result["applied_groove"] == "Ballad"
+    assert result["applied_meter"] == "4/4"
+    assert st.session_state[BPM_WIDGET_KEY] == 96
+    assert st.session_state[BACKING_GROOVE_KEY] == "Ballad"
+    assert st.session_state[BACKING_METER_KEY] == "4/4"
+    assert st.session_state[BACKING_METER_OVERRIDE_KEY] is False
+    # Cached audio must be wiped so the Play button returns to Generate.
+    assert "_last_backing_wav" not in st.session_state
+    assert "_last_backing_signature" not in st.session_state
+
+
+def test_canonicalize_preserves_user_tweaks_for_same_song():
+    """Once a song is active, user BPM/groove tweaks must survive reruns."""
+    st = _FakeSession()
+    canonicalize_backing_defaults_for_song(
+        st,
+        sync_id="pk::Pop::Shallow",
+        active_song_bpm=96,
+        active_song_groove="Ballad",
+        active_song_meter="4/4",
+    )
+    # User adjusts BPM and groove manually.
+    st.session_state[BPM_WIDGET_KEY] = 110
+    st.session_state[BACKING_GROOVE_KEY] = "Pop groove"
+    result = canonicalize_backing_defaults_for_song(
+        st,
+        sync_id="pk::Pop::Shallow",
+        active_song_bpm=96,
+        active_song_groove="Ballad",
+        active_song_meter="4/4",
+    )
+    assert result["did_reset"] is False
+    assert result["applied_bpm"] == 110  # user override preserved
+    assert result["applied_groove"] == "Pop groove"  # user override preserved
+
+
+def test_canonicalize_song_card_matches_playback_for_known_songs():
+    """End-to-end: the BPM the song card shows must equal what the engine uses."""
+    test_cases = [
+        ("pk::Pop::Shallow — Lady Gaga / Bradley Cooper", 96, "Ballad", "4/4"),
+        ("pk::Pop::Perfect — Ed Sheeran", 95, "Pop groove", "6/8"),
+        ("pk::Jazz::Blue Bossa — Kenny Dorham", 100, "Bossa nova", "4/4"),
+        ("pk::Rock::We Are the Champions — Queen", 65, "Rock groove", "4/4"),
+    ]
+    for sync_id, bpm, groove, meter in test_cases:
+        st = _FakeSession({
+            # Stale state from a "previous song":
+            BPM_WIDGET_KEY: 175,
+            BACKING_GROOVE_KEY: "Funk groove",
+            BACKING_METER_KEY: "12/8",
+        })
+        result = canonicalize_backing_defaults_for_song(
+            st,
+            sync_id=sync_id,
+            active_song_bpm=bpm,
+            active_song_groove=groove,
+            active_song_meter=meter,
+        )
+        assert result["applied_bpm"] == bpm, (
+            f"{sync_id}: card BPM ({bpm}) != applied BPM ({result['applied_bpm']})"
+        )
+        assert result["applied_meter"] == meter, (
+            f"{sync_id}: card meter ({meter}) != applied meter ({result['applied_meter']})"
+        )
+        # Groove gets normalized to GROOVE_STYLE_CHOICES, but the card style
+        # label and the playback engine consume the SAME normalized value.
+        assert result["applied_groove"] == result["active_song_groove"], (
+            f"{sync_id}: groove drift between card and playback "
+            f"({result['active_song_groove']} vs {result['applied_groove']})"
+        )

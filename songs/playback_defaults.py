@@ -141,6 +141,76 @@ def prime_active_song_bpm(
     _set_bpm_tracking_ids(st, sync_id, active_song_bpm)
 
 
+_CANONICAL_BACKING_ID_KEY = "_canonical_active_backing_song_id"
+
+
+def canonicalize_backing_defaults_for_song(
+    st: Any,
+    *,
+    sync_id: str,
+    active_song_bpm: int,
+    active_song_groove: str,
+    active_song_meter: str,
+) -> dict[str, Any]:
+    """Force-sync all backing widgets to the active song's defaults on song change.
+
+    Runs **before** any backing widget renders. Single source of truth for the
+    Backing Track page so the active-song-card BPM/style/meter always matches
+    what the playback engine and chord-follow code consume.
+
+    On song change (sync_id differs from the canonical tracker), this function:
+      - Resets ``backing_track_bpm``, ``backing_groove_style``,
+        ``backing_time_signature`` to song defaults.
+      - Clears the meter override flag.
+      - Resets the per-song BPM slider widget key.
+      - Invalidates any cached backing audio + chord-follow timeline.
+      - Drops page snapshots so back/forward navigation cannot restore stale values.
+
+    Returns a dict with the canonical values and a ``did_reset`` flag.
+    """
+    from .key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+    from .meter import normalize_time_signature
+    from .meter_state import (
+        BACKING_METER_KEY,
+        BACKING_METER_OVERRIDE_KEY,
+        LAST_BACKING_METER_SONG,
+    )
+
+    norm_bpm = int(active_song_bpm)
+    norm_groove = normalize_groove_label(active_song_groove)
+    norm_meter = normalize_time_signature(active_song_meter)
+
+    previous_id = st.session_state.get(_CANONICAL_BACKING_ID_KEY)
+    did_reset = previous_id != sync_id
+
+    if did_reset:
+        invalidate_backing_cache(st)
+        invalidate_backing_page_snapshots(st)
+        _set_bpm_tracking_ids(st, sync_id, norm_bpm)
+        st.session_state[LAST_PLAYBACK_GROOVE_SONG] = sync_id
+        st.session_state[BACKING_GROOVE_KEY] = norm_groove
+        st.session_state[BACKING_METER_KEY] = norm_meter
+        st.session_state[BACKING_METER_OVERRIDE_KEY] = False
+        st.session_state[LAST_BACKING_METER_SONG] = sync_id
+        # Wipe any pending tweaks left over from the previous song so they
+        # cannot re-apply on the next rerun.
+        st.session_state.pop(PENDING_BACKING_TRACK_BPM, None)
+        st.session_state.pop(PENDING_BACKING_GROOVE, None)
+        st.session_state[BACKING_NEEDS_REGEN] = False
+        st.session_state[_CANONICAL_BACKING_ID_KEY] = sync_id
+
+    return {
+        "sync_id": sync_id,
+        "active_song_bpm": norm_bpm,
+        "active_song_groove": norm_groove,
+        "active_song_meter": norm_meter,
+        "applied_bpm": int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm)),
+        "applied_groove": str(st.session_state.get(BACKING_GROOVE_KEY, norm_groove)),
+        "applied_meter": str(st.session_state.get(BACKING_METER_KEY, norm_meter)),
+        "did_reset": did_reset,
+    }
+
+
 def default_groove_for_song(
     song_data: dict[str, Any] | None,
     *,
@@ -354,6 +424,7 @@ __all__ = [
     "apply_song_bpm_defaults",
     "backing_bpm_slider_widget_key",
     "canonical_active_song_bpm",
+    "canonicalize_backing_defaults_for_song",
     "default_bpm_for_song_data",
     "default_groove_for_song",
     "get_song_default_bpm",

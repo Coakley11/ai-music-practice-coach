@@ -116,6 +116,7 @@ from songs.playback_defaults import (
     apply_backing_defaults_for_song,
     backing_bpm_slider_widget_key,
     canonical_active_song_bpm,
+    canonicalize_backing_defaults_for_song,
     default_bpm_for_song_data,
     default_groove_for_song,
     normalize_groove_label,
@@ -4568,6 +4569,72 @@ _DEBUG_V2_CHART_TITLES: dict[tuple[str, str], str] = {
 }
 
 
+def _render_backing_defaults_verification_pill(
+    *,
+    sync_id: str,
+    song_card_bpm: int,
+    applied_bpm: int,
+    song_card_groove: str,
+    applied_groove: str,
+    song_card_meter: str,
+    applied_meter: str,
+    meter_override: bool,
+    did_reset: bool,
+) -> None:
+    """Temporary debug pill - verifies song-card defaults match playback engine.
+
+    Renders a single inline pill near the top of the Backing page so the user
+    can confirm that the same BPM / groove / meter that the active song card
+    displays is the value the playback engine actually consumes. The pill goes
+    green when everything matches and amber when the user has overridden one
+    of the defaults.
+    """
+    bpm_match = int(song_card_bpm) == int(applied_bpm)
+    groove_match = (
+        normalize_groove_label(song_card_groove)
+        == normalize_groove_label(applied_groove)
+    )
+    meter_match = str(song_card_meter) == str(applied_meter)
+    all_match = bpm_match and groove_match and meter_match and not meter_override
+    color = "#15803d" if all_match else "#b45309"
+    bg = "#dcfce7" if all_match else "#fef3c7"
+    status_icon = "\u2714" if all_match else "\u26a0"
+    status_text = (
+        "Song defaults active"
+        if all_match
+        else (
+            "User override active"
+            if meter_override or not (bpm_match and groove_match and meter_match)
+            else "Defaults active"
+        )
+    )
+    reset_hint = " - just reset to song defaults" if did_reset else ""
+    pill_html = (
+        f'<div style="margin:8px 0 12px 0;padding:8px 14px;'
+        f'background:{bg};color:{color};border-radius:10px;'
+        'font-size:0.85rem;font-weight:600;'
+        f'box-shadow:0 1px 4px {color}22;'
+        'display:flex;flex-wrap:wrap;gap:0.6rem;align-items:center;">'
+        f'<span style="font-size:0.95rem;">{status_icon}</span>'
+        f'<span>{html.escape(status_text)}{html.escape(reset_hint)}</span>'
+        '<span style="opacity:0.65;font-weight:500;">|</span>'
+        f'<span>BPM <strong>{int(applied_bpm)}</strong>'
+        + ("" if bpm_match else f' (card: {int(song_card_bpm)})')
+        + '</span>'
+        '<span style="opacity:0.65;font-weight:500;">|</span>'
+        f'<span>Groove <strong>{html.escape(str(applied_groove))}</strong>'
+        + ("" if groove_match else f' (card: {html.escape(str(song_card_groove))})')
+        + '</span>'
+        '<span style="opacity:0.65;font-weight:500;">|</span>'
+        f'<span>Meter <strong>{html.escape(str(applied_meter))}</strong>'
+        + ("" if meter_match else f' (card: {html.escape(str(song_card_meter))})')
+        + ("  user override" if meter_override else "")
+        + '</span>'
+        '</div>'
+    )
+    st.markdown(pill_html, unsafe_allow_html=True)
+
+
 def _render_v2_chart_debug_pill(rec: dict) -> None:
     title = str(rec.get("title") or "")
     artist = str(rec.get("artist") or "")
@@ -5979,6 +6046,18 @@ elif _studio_page == "backing":
     note_page_visit(st.session_state, "backing")
     _render_page_quick_nav("backing")
 
+    # === CANONICAL SONG DEFAULTS - single source of truth ===================
+    # Runs BEFORE any backing widget renders. When the active song changes,
+    # this force-resets BPM, groove, meter, and override flags so the active
+    # song card numbers match what the playback engine consumes everywhere
+    # (Playback setup, Quick BPM, chord-follow timing, lead sheet, etc.).
+    _backing_canon = canonicalize_backing_defaults_for_song(
+        st,
+        sync_id=_bpm_sync_id,
+        active_song_bpm=_default_bpm,
+        active_song_groove=_default_groove,
+        active_song_meter=_default_meter,
+    )
     _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
         st,
         song_id=_playback_id,
@@ -5989,6 +6068,10 @@ elif _studio_page == "backing":
         pick_key=_active_pick_key,
         is_custom=is_custom_progression(st.session_state),
     )
+    # If the canonicalize step just reset state, the post-sync values reflect
+    # the new song defaults. Otherwise they reflect the user's last tweaks.
+    _synced_bpm = int(_backing_canon["applied_bpm"])
+    default_groove_style = str(_backing_canon["applied_groove"])
 
     _studio_page_header(
         "🎧",
@@ -6004,19 +6087,31 @@ elif _studio_page == "backing":
             "artist": "Custom progression",
             "genre": genre or "Custom",
         }
-    _applied_meter_pre, _meter_override_pre, _ = apply_backing_meter_for_song(
-        st,
-        song_id=_playback_id,
-        default_time_signature=_default_meter,
+    # Apply meter from canonical state (no separate apply_backing_meter_for_song
+    # call - canonicalize_backing_defaults_for_song handled that already).
+    _applied_meter_pre = str(_backing_canon["applied_meter"])
+    _meter_override_pre = bool(
+        st.session_state.get(BACKING_METER_OVERRIDE_KEY, False)
     )
     _render_v2_chart_debug_pill(_backing_card_record)
+    _render_backing_defaults_verification_pill(
+        sync_id=_bpm_sync_id,
+        song_card_bpm=int(_default_bpm),
+        applied_bpm=int(_synced_bpm),
+        song_card_groove=str(_default_groove),
+        applied_groove=str(default_groove_style),
+        song_card_meter=str(_default_meter),
+        applied_meter=str(_applied_meter_pre),
+        meter_override=bool(_meter_override_pre),
+        did_reset=bool(_backing_canon["did_reset"]),
+    )
     render_backing_active_song_card(
         st,
         _backing_card_record,
         level=level,
-        applied_bpm=_default_bpm,
-        applied_groove=_default_groove,
-        applied_meter=_default_meter,
+        applied_bpm=_synced_bpm,
+        applied_groove=default_groove_style,
+        applied_meter=_applied_meter_pre,
     )
     render_backing_defaults_debug(
         st,
