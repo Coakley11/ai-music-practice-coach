@@ -190,10 +190,185 @@ _UPTOWN_LYRIC_CUES: dict[str, list[str]] = {
     ],
 }
 
+# --- Kiss Me (Sixpence None the Richer) — written key D ---
+# Folk-pop ballad in 4/4. One list item = one bar so chart, backing, and
+# practice timelines share the same harmonic rhythm.
+
+_KISS_INTRO_CYCLE = (
+    _hold("D", 2)
+    + _hold("Dmaj7", 2)
+    + _hold("D7", 2)
+    + _hold("Dmaj7", 2)
+)
+_KISS_INTRO = list(_KISS_INTRO_CYCLE) * 2  # 16 bars
+
+_KISS_VERSE = (
+    _hold("D", 2)
+    + _hold("Dmaj7", 2)
+    + _hold("D7", 2)
+    + _hold("Dmaj7", 2)
+    + _hold("D", 2)
+    + _hold("Dmaj7", 2)
+    + _hold("D7", 2)
+    + _hold("G", 2)
+)  # 16 bars
+
+_KISS_CHORUS = (
+    # Em | A | D | Bm
+    _hold("Em", 1) + _hold("A", 1) + _hold("D", 1) + _hold("Bm", 1)
+    # Em | A | D | D7
+    + _hold("Em", 1) + _hold("A", 1) + _hold("D", 1) + _hold("D7", 1)
+    # Em | A | D | D/C#
+    + _hold("Em", 1) + _hold("A", 1) + _hold("D", 1) + _hold("D/C#", 1)
+    # Bm7 | D/A
+    + _hold("Bm7", 1) + _hold("D/A", 1)
+    # Gmaj7 (2 bars)
+    + _hold("Gmaj7", 2)
+    # Asus4 | A
+    + _hold("Asus4", 1) + _hold("A", 1)
+)  # 18 bars
+
+_KISS_INTERLUDE = list(_KISS_INTRO_CYCLE) * 2  # 16 bars
+_KISS_HARMONICA = list(_KISS_INTRO_CYCLE) * 2  # 16 bars
+
+_KISS_GUITAR_SECTION = (
+    # Em | A | D | Bm
+    _hold("Em", 1) + _hold("A", 1) + _hold("D", 1) + _hold("Bm", 1)
+    # Em | A | D | D7
+    + _hold("Em", 1) + _hold("A", 1) + _hold("D", 1) + _hold("D7", 1)
+)  # 8 bars
+
+_KISS_OUTRO = (
+    list(_KISS_INTRO_CYCLE) * 4  # 32 bars
+    + _hold("D", 2)               # 2 final bars
+)  # 34 bars
+
+_KISS_SECTION_ORDER: list[str] = [
+    "Intro",
+    "Verse 1",
+    "Chorus 1",
+    "Interlude",
+    "Verse 2",
+    "Chorus 2",
+    "Harmonica / Accordion",
+    "Guitar Section",
+    "Chorus 3",
+    "Outro",
+]
+
+_KISS_SECTIONS: dict[str, list[str]] = {
+    "Intro": list(_KISS_INTRO),
+    "Verse 1": list(_KISS_VERSE),
+    "Chorus 1": list(_KISS_CHORUS),
+    "Interlude": list(_KISS_INTERLUDE),
+    "Verse 2": list(_KISS_VERSE),
+    "Chorus 2": list(_KISS_CHORUS),
+    "Harmonica / Accordion": list(_KISS_HARMONICA),
+    "Guitar Section": list(_KISS_GUITAR_SECTION),
+    "Chorus 3": list(_KISS_CHORUS),
+    "Outro": list(_KISS_OUTRO),
+}
+
+# Beginner: simpler open voicings, identical bar counts so backing timing
+# and chord-follow displays stay in sync with the intermediate/advanced charts.
+def _kiss_beginner_chord(chord: str) -> str:
+    """Map richer Kiss Me chords to simpler open voicings for beginners."""
+    simple_map = {
+        "Dmaj7": "D",
+        "D7": "D",
+        "D/C#": "D",
+        "D/A": "D",
+        "Bm7": "Bm",
+        "Gmaj7": "G",
+        "Asus4": "A",
+    }
+    return simple_map.get(chord, chord)
+
+
+_KISS_BEGINNER: dict[str, list[str]] = {
+    name: [_kiss_beginner_chord(c) for c in chords]
+    for name, chords in _KISS_SECTIONS.items()
+}
+
+# Advanced: tasteful extensions — Dmaj9, add9 colors, sus2/sus4 textures,
+# richer voice leading. Bar counts unchanged.
+def _kiss_advanced_chord(chord: str) -> str:
+    """Map Kiss Me chords to richer voicings for the advanced tier."""
+    advanced_map = {
+        "D": "Dadd9",
+        "Dmaj7": "Dmaj9",
+        "D7": "D9",
+        "Dmaj7/C#": "Dmaj9/C#",
+        "D/C#": "Dmaj7/C#",
+        "D/A": "Dadd9/A",
+        "G": "Gadd9",
+        "Gmaj7": "Gmaj9",
+        "Em": "Em9",
+        "Bm": "Bm9",
+        "Bm7": "Bm9",
+        "A": "Asus2",
+        "Asus4": "A7sus4",
+    }
+    return advanced_map.get(chord, chord)
+
+
+_KISS_ADVANCED: dict[str, list[str]] = {
+    name: [_kiss_advanced_chord(c) for c in chords]
+    for name, chords in _KISS_SECTIONS.items()
+}
+
+# Lyric cues — short paraphrases of the section feel (no copyrighted lines).
+_KISS_LYRIC_CUES: dict[str, list[str]] = {
+    "Intro": [
+        "Soft acoustic strum setup",
+        "Open-string Dmaj7 → D7 arc — establish the dreamy folk-pop feel",
+    ],
+    "Verse 1": [
+        "Imagery setup — moonlit, swaying outdoors",
+        "Vocal sits inside the D · Dmaj7 · D7 · Dmaj7 cycle",
+        "Lift into G at the phrase resolution",
+    ],
+    "Chorus 1": [
+        "Title hook — 'Kiss me' on Em → A → D",
+        "Subtle bass descent: D → D/C# → Bm7 → D/A",
+        "Gmaj7 lift, Asus4 → A release back to the verse",
+    ],
+    "Interlude": [
+        "Wordless / instrumental D · Dmaj7 · D7 · Dmaj7 cycle",
+        "Same harmonic feel as the intro",
+    ],
+    "Verse 2": [
+        "Second-verse imagery — string-light, slow-dance setting",
+        "Same harmonic rhythm as Verse 1",
+    ],
+    "Chorus 2": [
+        "Title hook returns — same chord arc as Chorus 1",
+        "Push slightly in dynamics toward the harmonica break",
+    ],
+    "Harmonica / Accordion": [
+        "Featured harmonica / accordion melody over the intro cycle",
+        "Phrase across D → Dmaj7 → D7 → Dmaj7, repeated",
+    ],
+    "Guitar Section": [
+        "Guitar feature over the chorus chord skeleton",
+        "Em → A → D → Bm, then Em → A → D → D7",
+    ],
+    "Chorus 3": [
+        "Final chorus — sing out the title hook",
+        "Same chord arc, slightly stronger groove",
+    ],
+    "Outro": [
+        "Wordless extended D · Dmaj7 · D7 · Dmaj7 cycle, four times",
+        "Soft 'kiss me' tag fragments allowed over the cycle",
+        "Settle and finish on two bars of D major",
+    ],
+}
+
 VERIFIED_CORE_REFERENCE_KEYS: frozenset[tuple[str, str]] = frozenset(
     {
         ("Across the Universe", "The Beatles"),
         ("Uptown Girl", "Billy Joel"),
+        ("Kiss Me", "Sixpence None the Richer"),
     }
 )
 
@@ -254,6 +429,53 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
             "bridge Am7b5–D7, and full slash-chord bass motion preserved."
         ),
     },
+    ("Kiss Me", "Sixpence None the Richer"): {
+        "key": "D",
+        "genre": "Pop",
+        "default_bpm": 124,
+        "default_groove": "Folk Pop",
+        "time_signature": "4/4",
+        "sections": _KISS_SECTIONS,
+        "section_order": list(_KISS_SECTION_ORDER),
+        "beginner": _KISS_BEGINNER,
+        "advanced": _KISS_ADVANCED,
+        "lyric_cues": _KISS_LYRIC_CUES,
+        "guitar_tabs": {
+            "D": "xx0232",
+            "Dmaj7": "xx0222",
+            "D7": "xx0212",
+            "D/C#": "x4023x",
+            "D/A": "x00232",
+            "G": "320003",
+            "Gmaj7": "320002",
+            "Em": "022000",
+            "Bm": "x24432",
+            "Bm7": "x20202",
+            "A": "x02220",
+            "Asus4": "x02230",
+            "Dadd9": "xx0230",
+            "Dmaj9": "x54222",
+            "Gadd9": "320203",
+            "Gmaj9": "320032",
+            "Em9": "022002",
+            "Bm9": "x24222",
+            "Asus2": "x02200",
+            "A7sus4": "x02030",
+        },
+        "arrangement_notes": (
+            "Folk-pop ballad in D, ~124 BPM, 4/4. Form: "
+            "**Intro → Verse 1 → Chorus 1 → Interlude → Verse 2 → Chorus 2 "
+            "→ Harmonica / Accordion → Guitar Section → Chorus 3 → Outro**. "
+            "Intro / Interlude / Harmonica all share the same 4-chord cycle "
+            "**D(2) · Dmaj7(2) · D7(2) · Dmaj7(2)** (×2 = 16 bars each). "
+            "Verse: same cycle then **D(2) · Dmaj7(2) · D7(2) · G(2)** (16 bars). "
+            "Chorus (18 bars, mostly 1 bar/chord): "
+            "**Em A D Bm | Em A D D7 | Em A D D/C# | Bm7 D/A | Gmaj7(2) | Asus4 A**. "
+            "Guitar Section: **Em A D Bm | Em A D D7** (8 bars). "
+            "Outro: intro cycle ×4 (32 bars), then **D(2)** to finish (34 bars). "
+            "One chart bar = one playback bar."
+        ),
+    },
 }
 
 
@@ -271,10 +493,11 @@ def chart_versions_for_reference(title: str, artist: str) -> dict[str, dict[str,
         return None
     inter = ref["sections"]
     beg = ref.get("beginner") or inter
+    adv = ref.get("advanced") or inter
     return {
         "Beginner": beg,
         "Intermediate": inter,
-        "Advanced": inter,
+        "Advanced": adv,
     }
 
 

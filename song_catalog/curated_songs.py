@@ -950,6 +950,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             raise ValueError(f"Missing verified core reference: {title} — {artist}")
         inter = ref["sections"]
         beg = ref.get("beginner") or inter
+        adv = ref.get("advanced") or inter
         row = v(
             title,
             artist,
@@ -957,7 +958,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             ref["key"],
             beg,
             inter,
-            advanced=inter,
+            advanced=adv,
             composer=composer,
             lyric_cues=lyric_cues_for_reference(title, artist),
             guitar_tabs=ref.get("guitar_tabs"),
@@ -1383,6 +1384,11 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "Uptown Girl",
             "Billy Joel",
             composer="Billy Joel",
+        ),
+        core_ref(
+            "Kiss Me",
+            "Sixpence None the Richer",
+            composer="Matt Slocum",
         ),
         v(
             "Girls Just Want to Have Fun",
