@@ -494,6 +494,170 @@ def _piano_man_chart_pack() -> dict[str, Any]:
     }
 
 
+def _photograph_chart_pack() -> dict[str, Any]:
+    """Photograph — Ed Sheeran (E major, 4/4 modern acoustic pop ballad).
+
+    Transposed from the C-major reference: **C → E, Am → C#m, G → B, F → A**.
+
+    Harmonic rhythm is **slow and sustained**:
+      * Intro / Verse / Chorus / Bridge / Outro: each chord = **4 bars**.
+      * Pre-Chorus: each chord = **2 bars**.
+
+    One list item = one bar, so a 4-bar chord appears as four consecutive
+    identical cells. This keeps backing-track timing and chord-follow
+    highlighting honest about the long sustained pacing the song asks for.
+    """
+
+    def _hold(chord: str, bars: int) -> list[str]:
+        return [chord] * bars
+
+    def _build(tonic: str, sub_med: str, dom: str, sub: str) -> dict[str, list[str]]:
+        """Assemble all sections from the four functional roles.
+
+        Roles (E major):
+            tonic   = E  (I)
+            sub_med = C#m (vi)
+            dom     = B  (V)
+            sub     = A  (IV)
+        """
+        intro = (
+            _hold(tonic, 4) + _hold(sub_med, 4) + _hold(dom, 4) + _hold(sub, 4)
+        )  # 16 bars
+
+        verse_line = (
+            _hold(tonic, 4) + _hold(sub_med, 4) + _hold(dom, 4) + _hold(sub, 4)
+        )
+        verse = verse_line * 2  # 32 bars
+
+        pre_chorus_line = (
+            _hold(sub_med, 2) + _hold(sub, 2) + _hold(tonic, 2) + _hold(dom, 2)
+        )
+        pre_chorus = pre_chorus_line * 2  # 16 bars
+
+        chorus_line = (
+            _hold(tonic, 4) + _hold(dom, 4) + _hold(sub_med, 4) + _hold(sub, 4)
+        )
+        chorus_1 = chorus_line + _hold(tonic, 4)  # 20 bars (single tag)
+        chorus_2 = chorus_line * 2  # 32 bars
+        chorus_3 = chorus_line * 3  # 48 bars
+
+        bridge = (
+            _hold(sub_med, 4) + _hold(sub, 4) + _hold(tonic, 4) + _hold(dom, 4)
+        )  # 16 bars
+
+        outro = _hold(tonic, 4)  # 4 bars
+
+        return {
+            "Intro": intro,
+            "Verse 1": list(verse),
+            "Pre-Chorus 1": list(pre_chorus),
+            "Chorus 1": list(chorus_1),
+            "Verse 2": list(verse),
+            "Pre-Chorus 2": list(pre_chorus),
+            "Chorus 2": list(chorus_2),
+            "Bridge": bridge,
+            "Chorus 3": list(chorus_3),
+            "Outro": outro,
+        }
+
+    # Three tiers — same shape, different voicings.
+    beginner = _build("E", "C#m", "B", "A")
+    intermediate = _build("Eadd9", "C#m7", "Bsus4", "Aadd9")
+    advanced = _build("Emaj9", "C#m11", "B11sus", "Amaj9")
+
+    section_order = [
+        "Intro",
+        "Verse 1",
+        "Pre-Chorus 1",
+        "Chorus 1",
+        "Verse 2",
+        "Pre-Chorus 2",
+        "Chorus 2",
+        "Bridge",
+        "Chorus 3",
+        "Outro",
+    ]
+
+    lyric_cues: dict[str, list[str]] = {
+        "Intro": [
+            "Instrumental — solo acoustic + percussion swell",
+            "Establish the E → C#m → B → A loop with long sustained chords",
+        ],
+        "Verse 1": [
+            "Story opener — 'Loving can hurt…'",
+            "Each chord rings for 4 full bars; let the lyric breathe",
+        ],
+        "Pre-Chorus 1": [
+            "Tension lift — 'So you can keep me…'",
+            "Faster harmonic rhythm (2-bar holds) builds toward the chorus",
+        ],
+        "Chorus 1": [
+            "Title hook — 'We keep this love in a photograph'",
+            "First chorus ends on a single 4-bar tonic to settle",
+        ],
+        "Verse 2": [
+            "Reflective verse — 'Loving can heal…'",
+            "Same 4-bar sustain pattern as Verse 1",
+        ],
+        "Pre-Chorus 2": [
+            "Second tension lift — pre-chorus mirrors the first",
+            "Builds into a longer, more emotional Chorus 2",
+        ],
+        "Chorus 2": [
+            "Repeated title hook with a full second pass — no early tag",
+        ],
+        "Bridge": [
+            "Quiet pull-back — 'And if you hurt me…'",
+            "Starts on C#m for emotional darkness, lifts through A → E → B",
+        ],
+        "Chorus 3": [
+            "Final triple chorus — biggest emotional peak",
+            "Three full passes of the E → B → C#m → A cycle",
+        ],
+        "Outro": [
+            "Single sustained E to close — 'When I'm away, I will remember…'",
+        ],
+    }
+
+    arrangement_notes = (
+        "**E major, 4/4 modern acoustic pop ballad (~108 BPM).** Transposed "
+        "from the C-major reference: **C → E, Am → C#m, G → B, F → A**. "
+        "Slow, sustained harmonic rhythm: every chord rings for **4 bars** in "
+        "Intro / Verses / Choruses / Bridge / Outro; only the **Pre-Choruses** "
+        "use **2-bar** holds to lift the energy. Form (10 sections): Intro → "
+        "Verse 1 → Pre-Chorus 1 → Chorus 1 → Verse 2 → Pre-Chorus 2 → Chorus 2 "
+        "→ Bridge → Chorus 3 → Outro. Chorus 1 ends on a single 4-bar tonic "
+        "(20 bars total); Chorus 2 is a full double pass (32 bars); Chorus 3 "
+        "is a triple-chorus climax (48 bars). Bridge starts on the vi (C#m) "
+        "for emotional darkness before returning to the tonic. "
+        "Beginner uses open triads (E / C#m / B / A); Intermediate adds the "
+        "Ed Sheeran signature add9 / sus / m7 colors (Eadd9, C#m7, Bsus4, "
+        "Aadd9); Advanced opens up to maj9 / m11 / 11sus for sustained-pad "
+        "voicings. Guitar players should think strum-and-let-ring; piano "
+        "should sustain LH voicings beneath floating RH dyads; horns work "
+        "best with long vocal-style phrases that float across the bar lines."
+    )
+
+    return {
+        "key": "E",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "lyric_cues": lyric_cues,
+        "extensions": _ext(
+            arrangement_notes=arrangement_notes,
+            default_bpm=108,
+            default_groove="Modern Acoustic Pop Ballad",
+            time_signature="4/4",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -677,6 +841,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
             },
         ),
         ("Piano Man", "Billy Joel"): _piano_man_chart_pack(),
+        ("Photograph", "Ed Sheeran"): _photograph_chart_pack(),
         ("Turn the Lights Back On", "Billy Joel"): pack("C",
             {
                 "Intro": ["C", "F/C", "C", "F/C"],

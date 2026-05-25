@@ -30,6 +30,7 @@ TRUSTED_CORE_KEYS = {
     ("Perfect", "Ed Sheeran"),
     ("Thinking Out Loud", "Ed Sheeran"),
     ("Shape of You", "Ed Sheeran"),
+    ("Photograph", "Ed Sheeran"),
     ("Viva La Vida", "Coldplay"),
     ("Let It Be", "The Beatles"),
     ("Hey Jude", "The Beatles"),
