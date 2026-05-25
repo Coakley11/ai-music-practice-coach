@@ -516,6 +516,218 @@ def _piano_man_chart_pack() -> dict[str, Any]:
     }
 
 
+def _journey_believin_chart_pack() -> dict[str, Any]:
+    """Don't Stop Believin' - Journey (E major, 4/4 arena rock).
+
+    Section-by-section chart. **One list item = one bar.**
+
+    Most chords hold for **2 bars**; the long-sustain choruses hold for
+    **4 bars** per chord, with the climactic tag using 1-bar / 3-bar mixes.
+    The classic Journey 8-bar piano pattern is built from two cycles:
+
+        E(2) -> B(2) -> C#m(2) -> A(2)        (the iconic first half)
+        E(2) -> B(2) -> G#m(2) -> A(2)        (the iconic second half)
+
+    Verses, Interlude 1, Verse 3, Guitar Solo and the Outro all use this
+    16-bar engine; the choruses break out into the sustained A/E pedal
+    cycle that defines the anthem.
+    """
+
+    def _hold(chord: str, bars: int) -> list[str]:
+        return [chord] * bars
+
+    # --- Shared engines ---
+    JOURNEY_HALF_A = (
+        _hold("E", 2) + _hold("B", 2) + _hold("C#m", 2) + _hold("A", 2)
+    )  # 8 bars - the iconic first half
+    JOURNEY_HALF_B = (
+        _hold("E", 2) + _hold("B", 2) + _hold("G#m", 2) + _hold("A", 2)
+    )  # 8 bars - second half swaps G#m for C#m
+    JOURNEY_CYCLE = list(JOURNEY_HALF_A) + list(JOURNEY_HALF_B)  # 16 bars
+
+    # --- Sections ---
+    intro = list(JOURNEY_CYCLE)                            # 16 bars
+    verse_1 = list(JOURNEY_CYCLE) + list(JOURNEY_CYCLE)    # 32 bars (2x)
+    interlude_1 = list(JOURNEY_CYCLE)                      # 16 bars
+    verse_2 = list(JOURNEY_CYCLE)                          # 16 bars
+
+    # Chorus 1 - long-sustain A/E pedal anthem ending with a 6-bar tag
+    chorus_1 = (
+        _hold("A", 4) + _hold("E", 4)                       # 8
+        + _hold("A", 4) + _hold("E", 4)                     # 8
+        + _hold("A", 4) + _hold("E", 4)                     # 8
+        + _hold("A", 4)                                     # 4
+        + _hold("B", 1) + _hold("E", 1) + _hold("B", 1) + _hold("A", 3)  # 6
+    )  # 34 bars
+
+    interlude_2 = list(JOURNEY_HALF_A)                     # 8 bars (single half)
+    verse_3 = list(JOURNEY_CYCLE) + list(JOURNEY_CYCLE)    # 32 bars (2x)
+
+    # Chorus 2 - same anthem body, ends on a 5-bar tag that sets up the solo
+    chorus_2 = (
+        _hold("A", 4) + _hold("E", 4)                       # 8
+        + _hold("A", 4) + _hold("E", 4)                     # 8
+        + _hold("A", 4) + _hold("E", 4)                     # 8
+        + _hold("A", 4)                                     # 4
+        + _hold("B", 1) + _hold("E", 1) + _hold("B", 3)     # 5
+    )  # 33 bars
+
+    guitar_solo = list(JOURNEY_CYCLE)                      # 16 bars (1 cycle)
+
+    outro = (
+        list(JOURNEY_CYCLE)                                 # 16
+        + list(JOURNEY_CYCLE)                               # 16
+        + _hold("E", 2) + _hold("B", 2)                     # 4 (final tag)
+    )  # 36 bars
+
+    # Beginner = pure open triads (E, B, C#m, A, G#m) - the user's reference.
+    base_sections: dict[str, list[str]] = {
+        "Intro": intro,
+        "Verse 1": verse_1,
+        "Interlude 1": interlude_1,
+        "Verse 2": verse_2,
+        "Chorus 1": chorus_1,
+        "Interlude 2": interlude_2,
+        "Verse 3": verse_3,
+        "Chorus 2": chorus_2,
+        "Guitar Solo / Interlude": guitar_solo,
+        "Outro": outro,
+    }
+
+    section_order: list[str] = [
+        "Intro",
+        "Verse 1",
+        "Interlude 1",
+        "Verse 2",
+        "Chorus 1",
+        "Interlude 2",
+        "Verse 3",
+        "Chorus 2",
+        "Guitar Solo / Interlude",
+        "Outro",
+    ]
+
+    def _retune(source: dict[str, list[str]], mapper) -> dict[str, list[str]]:
+        return {name: [mapper(c) for c in chords] for name, chords in source.items()}
+
+    beginner = {name: list(chords) for name, chords in base_sections.items()}
+
+    # Intermediate canonical Journey voicings: arena open shapes with bass
+    # inversions on B (B/D#) and E (E/G#) that give the rolling piano feel.
+    inter_map = {
+        "E": "E",
+        "B": "B/D#",
+        "C#m": "C#m7",
+        "A": "Aadd9",
+        "G#m": "G#m7",
+    }
+    intermediate = _retune(base_sections, lambda c: inter_map.get(c, c))
+    # The 1-bar B cadential tag bars should punch as a plain B (not the
+    # inversion). Restore them to the pure triad after the map pass.
+    for chorus_name in ("Chorus 1", "Chorus 2"):
+        seq = intermediate[chorus_name]
+        for i, ch in enumerate(seq):
+            if i >= 28 and ch == "B/D#":
+                seq[i] = "B"
+
+    # Advanced: extension-rich anthem voicings - mapped from the pure triads.
+    adv_map = {
+        "E": "Eadd9",
+        "B": "B/D#",
+        "C#m": "C#m9",
+        "A": "Amaj9",
+        "G#m": "G#m9",
+    }
+    advanced = _retune(base_sections, lambda c: adv_map.get(c, c))
+    # Cadential tag uses B13sus for the big anthem lift.
+    for chorus_name in ("Chorus 1", "Chorus 2"):
+        seq = advanced[chorus_name]
+        for i, ch in enumerate(seq):
+            if i >= 28 and ch == "B/D#":
+                seq[i] = "B13sus"
+
+    lyric_cues: dict[str, list[str]] = {
+        "Intro": [
+            "Iconic piano intro - 16 bars on the Journey cycle",
+            "Bass walks E -> B (D#) -> C#m -> A under the right-hand chord pattern",
+        ],
+        "Verse 1": [
+            "'Just a small-town girl, livin' in a lonely world...'",
+            "Vocals enter on the same 16-bar cycle, then repeat the cycle once more",
+        ],
+        "Interlude 1": [
+            "Instrumental link - bass and piano hold the groove for one cycle",
+        ],
+        "Verse 2": [
+            "'A singer in a smoky room...'",
+            "Single 16-bar cycle this time; tension builds toward the chorus",
+        ],
+        "Chorus 1": [
+            "Long-sustain anthem - 'Don't stop believin'...'",
+            "A/E pedal pattern with 4-bar holds; lift on the final B / E / B / A tag",
+        ],
+        "Interlude 2": [
+            "Short 8-bar interlude - just the first half of the Journey cycle",
+            "Resets the groove before the big finish builds",
+        ],
+        "Verse 3": [
+            "'Working hard to get my fill...' - two full cycles",
+            "Crowd-singalong territory: keep the dynamics broad",
+        ],
+        "Chorus 2": [
+            "Second long-sustain anthem chorus",
+            "Tag ends on B (1) / E (1) / B (3) to launch the guitar solo",
+        ],
+        "Guitar Solo / Interlude": [
+            "Neal Schon-style arena solo over one 16-bar cycle",
+            "Stay on E mixolydian / E major pentatonic; phrase across the long holds",
+        ],
+        "Outro": [
+            "Final repeated chorus tag - two full Journey cycles",
+            "Tag fade on E (2) / B (2) - the song never truly cadences",
+        ],
+    }
+
+    arrangement_notes = (
+        "**E major, 4/4 arena rock (~119 BPM).** Driving piano + drums groove "
+        "built on the classic Journey 16-bar cycle: E(2) -> B(2) -> C#m(2) -> "
+        "A(2) || E(2) -> B(2) -> G#m(2) -> A(2). Most chords hold for **2 "
+        "bars**; the choruses break into the sustained **A/E pedal anthem** "
+        "with **4-bar holds** plus a climactic tag. "
+        "Form (10 sections): Intro -> Verse 1 -> Interlude 1 -> Verse 2 -> "
+        "Chorus 1 -> Interlude 2 -> Verse 3 -> Chorus 2 -> Guitar Solo / "
+        "Interlude -> Outro. **Chorus 1** ends with B(1) / E(1) / B(1) / A(3); "
+        "**Chorus 2** ends with B(1) / E(1) / B(3) to set up the solo. The "
+        "**Outro** is two full Journey cycles plus an E(2) / B(2) fade tag - "
+        "the song never truly resolves, which is part of why it works. "
+        "Beginner uses pure open triads (E / B / C#m / A / G#m). Intermediate "
+        "adds the canonical arena voicings: B/D# bass inversion, C#m7, Aadd9, "
+        "G#m7 - with plain B for the cadential 1-bar tags. Advanced opens up "
+        "to maj9 / m9 colors (Eadd9, C#m9, Amaj9, G#m9) and B13sus on the "
+        "chorus tag for the big anthem lift. **One chart bar = one playback "
+        "bar** - the long sustains are honest, not a display convention."
+    )
+
+    return {
+        "key": "E",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "lyric_cues": lyric_cues,
+        "extensions": _ext(
+            arrangement_notes=arrangement_notes,
+            default_bpm=119,
+            default_groove="Rock groove",
+            time_signature="4/4",
+        ),
+    }
+
+
 def _photograph_chart_pack() -> dict[str, Any]:
     """Photograph — Ed Sheeran (E major, 4/4 modern acoustic pop ballad).
 
@@ -1019,29 +1231,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Outro": ["Aadd9", "Dmaj9/F#", "E13", "Aadd9"],
             },
         ),
-        ("Don't Stop Believin'", "Journey"): pack("E",
-            {
-                "Intro / Piano Loop": ["E", "B", "C#m", "A"],
-                "Verse": ["E", "B", "C#m", "A", "E", "B", "C#m", "A"],
-                "Pre-Chorus": ["A", "E", "B", "C#m", "A", "E", "B", "B"],
-                "Chorus": ["E", "B", "A", "E", "A", "E", "B", "B"],
-                "Final Chorus": ["E", "B", "A", "E", "A", "E", "B", "E"],
-            },
-            {
-                "Intro / Piano Loop": ["E", "B/D#", "C#m7", "Aadd9"],
-                "Verse": ["E", "B/D#", "C#m7", "Aadd9", "E", "B/D#", "C#m7", "Aadd9"],
-                "Pre-Chorus": ["Aadd9", "E/G#", "B", "C#m7", "Aadd9", "E/G#", "B", "B"],
-                "Chorus": ["E", "B/D#", "Aadd9", "E/G#", "Aadd9", "E/G#", "B", "B"],
-                "Final Chorus": ["E", "B/D#", "Aadd9", "E/G#", "Aadd9", "E/G#", "B", "E"],
-            },
-            {
-                "Intro / Piano Loop": ["Eadd9", "B/D#", "C#m9", "Amaj9"],
-                "Verse": ["Eadd9", "B/D#", "C#m9", "Amaj9", "Eadd9", "B/D#", "C#m9", "Amaj9"],
-                "Pre-Chorus": ["Amaj9", "E/G#", "B13sus", "C#m9", "Amaj9", "E/G#", "B13sus", "B13"],
-                "Chorus": ["Eadd9", "B/D#", "Amaj9", "E/G#", "Amaj9", "E/G#", "B13sus", "B13"],
-                "Final Chorus": ["Eadd9", "B/D#", "Amaj9", "E/G#", "Amaj9", "E/G#", "B13sus", "Eadd9"],
-            },
-        ),
+        ("Don't Stop Believin'", "Journey"): _journey_believin_chart_pack(),
         ("The Girl from Ipanema", "Antonio Carlos Jobim"): pack("F",
             {
                 "Intro": ["Gm", "C7", "Gm", "C7"],
