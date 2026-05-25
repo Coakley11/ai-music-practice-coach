@@ -2346,57 +2346,11 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   .block-container { padding-left: 0.75rem; padding-right: 0.75rem; }
 }
 
-/* ============================================================
-   POLISH-LOAD VERIFICATION (temporary, very visible)
-   Remove the .ui-polish-debug rules and the corner pill once
-   the user confirms the polish is loading correctly.
-   ============================================================ */
-.ui-polish-debug-pill {
-  position: fixed;
-  right: 14px;
-  bottom: 14px;
-  z-index: 99999;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.75rem;
-  background: linear-gradient(135deg, #4f46e5 0%, #22c55e 100%);
-  color: #ffffff !important;
-  font-family: var(--ui-font, system-ui, sans-serif);
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  border-radius: 999px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.30);
-  opacity: 0.95;
-  transition: opacity 200ms ease;
-  pointer-events: none;
-  user-select: none;
-}
-.ui-polish-debug-pill::before {
-  content: "\\2713";
-  font-weight: 900;
-  font-size: 0.9rem;
-}
-body:hover > .ui-polish-debug-pill { opacity: 0.45; }
-
-/* Hard, unmistakable test styles — these prove the polish CSS
-   actually reaches the page and matches the rendered classes. */
-.ui-active-song-card {
-  outline: 3px solid #2563eb !important;
-  outline-offset: 2px;
-}
-.ui-backing-active-title {
-  text-shadow: 0 0 14px rgba(56, 189, 248, 0.55);
-}
+/* The polish stylesheet keeps a `data-ui-polish` attribute on its <style>
+   element so its presence can be confirmed via DOM inspection if needed,
+   without showing any visible debug UI to the user. */
 </style>
         """.replace("__UI_POLISH_VERSION__", _UI_POLISH_VERSION),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<div class="ui-polish-debug-pill" '
-        f'data-ui-polish="{_UI_POLISH_VERSION}">'
-        f'UI Polish {_UI_POLISH_VERSION} loaded</div>',
         unsafe_allow_html=True,
     )
 

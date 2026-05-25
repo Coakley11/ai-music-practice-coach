@@ -5012,34 +5012,6 @@ sanitize_persisted_snapshots(st.session_state)
 handle_studio_page_transition(st.session_state)
 note_page_visit(st.session_state, _studio_page)
 
-# --- Temporary catalog-debug indicator ---
-# Shows total loaded songs + confirms the new verified entries are present.
-# Remove once you've confirmed Kiss Me, etc., are visible in Song Selection.
-try:
-    _DBG_TOTAL = len(ALL_SONG_RECORDS)
-    _DBG_TITLES = {(r.get("title"), r.get("artist")) for r in ALL_SONG_RECORDS}
-    _DBG_CHECKS = [
-        ("Kiss Me", "Sixpence None the Richer"),
-        ("Across the Universe", "The Beatles"),
-        ("Uptown Girl", "Billy Joel"),
-    ]
-    _DBG_LINES = [
-        f"Catalog loaded: <strong>{_DBG_TOTAL}</strong> songs"
-    ]
-    for _t, _a in _DBG_CHECKS:
-        _mark = "✅" if (_t, _a) in _DBG_TITLES else "❌"
-        _DBG_LINES.append(f"{_mark} {_t} — {_a}")
-    st.sidebar.markdown(
-        '<div style="margin:0.5rem 0 0.75rem 0;padding:0.55rem 0.7rem;'
-        'background:rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.35);'
-        'border-radius:10px;font-size:0.74rem;line-height:1.5;color:#a7f3d0;">'
-        + "<br>".join(_DBG_LINES)
-        + "</div>",
-        unsafe_allow_html=True,
-    )
-except Exception:
-    pass
-
 sidebar_section("Active source", icon="🎼", tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
 _src_kind, _src_detail = unpack_active_source_banner(
