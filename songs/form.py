@@ -5,6 +5,16 @@ from __future__ import annotations
 from typing import Any
 
 
+def section_names_from_song(song_data: dict[str, Any] | None) -> list[str] | None:
+    """Explicit chart section order from catalog metadata, if any."""
+    if not song_data:
+        return None
+    order = song_data.get("section_order")
+    if not order:
+        return None
+    return list(order)
+
+
 def section_order(
     sections: dict[str, list[str]],
     *,

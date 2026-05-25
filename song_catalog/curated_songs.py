@@ -964,11 +964,17 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             notes=ref.get("arrangement_notes"),
             chart_status=status,
         )
+        ext_patch: dict[str, Any] = dict(row.get("extensions") or {})
         if ref.get("default_bpm"):
-            row["extensions"] = {
-                **(row.get("extensions") or {}),
-                "default_bpm": int(ref["default_bpm"]),
-            }
+            ext_patch["default_bpm"] = int(ref["default_bpm"])
+        if ref.get("default_groove"):
+            ext_patch["default_groove"] = str(ref["default_groove"])
+        if ref.get("time_signature"):
+            ext_patch["time_signature"] = str(ref["time_signature"])
+        if ext_patch:
+            row["extensions"] = ext_patch
+        if ref.get("section_order"):
+            row["section_order"] = list(ref["section_order"])
         return row
 
     return [
@@ -2174,11 +2180,6 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["D", "G", "A", "G"],
             "Break": ["D", "D", "A", "A"],
         }, composer="Bert Russell & Phil Medley"),
-        _s("Across the Universe", "The Beatles", "Rock", "D", {
-            "Verse": ["D", "Bm", "F#m", "A"],
-            "Chorus": ["G", "A", "D", "D"],
-            "Bridge": ["G", "D", "A", "A"],
-        }, composer="Lennon–McCartney"),
         _s("A Day in the Life", "The Beatles", "Rock", "G", {
             "Verse": ["G", "Bm", "Em", "Em7"],
             "Orchestral Bridge": ["E", "E", "E", "E"],

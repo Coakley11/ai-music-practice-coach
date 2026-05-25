@@ -374,11 +374,15 @@ def analyze_chord_for_harmony_map(
     )
 
 
-def deduped_section_chords(sections: dict[str, list[str]]) -> list[tuple[str, list[str]]]:
+def deduped_section_chords(
+    sections: dict[str, list[str]],
+    *,
+    section_names: list[str] | None = None,
+) -> list[tuple[str, list[str]]]:
     """One row per unique section with one harmonic cycle of chords."""
     from improvisation_motif import dedupe_sections_for_display
 
-    return dedupe_sections_for_display(sections)
+    return dedupe_sections_for_display(sections, section_names=section_names)
 
 
 def render_chord_chip_html(chord: str, *, selected: bool = False) -> str:

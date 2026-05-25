@@ -113,6 +113,7 @@ def render_improvisation_intelligence_lab(
         unsafe_allow_html=True,
     )
 
+    _section_order = list(song_data.get("section_order") or ctx.get("section_order") or [])
     improv_ctx = ImprovSessionContext(
         song_title=song_title,
         artist=artist,
@@ -124,7 +125,8 @@ def render_improvisation_intelligence_lab(
         sections=sections,
         bpm=bpm,
         style_label=genre,
-        progression_flat=flatten_sections(sections),
+        progression_flat=flatten_sections(sections, section_names=_section_order or None),
+        section_order=_section_order,
     )
 
     active_tab = st.radio(
@@ -1094,9 +1096,13 @@ def _tab_harmony_map(
         bpm=improv_ctx.bpm,
         style_label=improv_ctx.style_label,
         progression_flat=improv_ctx.progression_flat,
+        section_order=list(improv_ctx.section_order),
     )
 
-    section_map = deduped_section_chords(improv_ctx.sections)
+    section_map = deduped_section_chords(
+        improv_ctx.sections,
+        section_names=list(improv_ctx.section_order) or None,
+    )
     if not section_map:
         st.info("No chords in the active chart — pick a song or custom progression first.")
         return

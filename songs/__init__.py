@@ -8,6 +8,7 @@ from .bpm_state import (
 from .form import (
     chord_blocks_for_backing,
     form_timeline_rows,
+    section_names_from_song,
     section_order,
 )
 from .key_state import (
@@ -72,6 +73,7 @@ __all__ = [
     "chord_blocks_for_backing",
     "form_timeline_rows",
     "section_order",
+    "section_names_from_song",
     # BPM
     "BPM_WIDGET_KEY",
     "request_backing_bpm",

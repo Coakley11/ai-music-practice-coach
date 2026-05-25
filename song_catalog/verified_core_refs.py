@@ -8,39 +8,65 @@ from __future__ import annotations
 from typing import Any
 
 # --- Across the Universe (The Beatles) — written key D ---
+# One list item = one bar (repeated chord = sustained harmonic rhythm).
 
-_ACROSS_VERSE = [
-    "D",
-    "Bm",
-    "F#m",
-    "Em7",
-    "A",
-    "D",
-    "Bm",
-    "F#m",
-    "Em7",
-    "Gm",
-]
 
-_ACROSS_CHORUS = [
-    "D",
-    "A7sus4",
-    "A",
-    "A7",
-    "G",
-    "D",
-    "A",
-    "A7",
-    "G",
-    "D",
+def _hold(chord: str, bars: int) -> list[str]:
+    return [chord] * max(1, int(bars))
+
+
+_ACROSS_VERSE_PHRASE_A = (
+    _hold("D", 1)
+    + _hold("Bm", 1)
+    + _hold("F#m", 2)
+    + _hold("Em7", 2)
+    + _hold("A", 1)
+    + _hold("A7", 1)
+)
+
+_ACROSS_VERSE_PHRASE_B = (
+    _hold("D", 1)
+    + _hold("Bm", 1)
+    + _hold("F#m", 2)
+    + _hold("Em7", 2)
+    + _hold("Gm", 2)
+)
+
+_ACROSS_VERSE = list(_ACROSS_VERSE_PHRASE_A + _ACROSS_VERSE_PHRASE_B)
+
+_ACROSS_CHORUS = (
+    _hold("D", 2)
+    + _hold("A7sus4", 2)
+    + _hold("A", 2)
+    + _hold("A7", 2)
+    + _hold("G", 2)
+    + _hold("D", 2)
+    + _hold("A", 2)
+    + _hold("A7", 2)
+    + _hold("G", 2)
+    + _hold("D", 2)
+)
+
+_ACROSS_OUTRO = _hold("D", 4)
+
+_ACROSS_SECTION_ORDER: list[str] = [
+    "Verse 1",
+    "Chorus 1",
+    "Verse 2",
+    "Chorus 2",
+    "Verse 3",
+    "Chorus 3",
+    "Outro",
 ]
 
 _ACROSS_SECTIONS: dict[str, list[str]] = {
     "Verse 1": list(_ACROSS_VERSE),
-    "Chorus": list(_ACROSS_CHORUS),
+    "Chorus 1": list(_ACROSS_CHORUS),
     "Verse 2": list(_ACROSS_VERSE),
+    "Chorus 2": list(_ACROSS_CHORUS),
     "Verse 3": list(_ACROSS_VERSE),
-    "Verse 4": list(_ACROSS_VERSE),
+    "Chorus 3": list(_ACROSS_CHORUS),
+    "Outro": list(_ACROSS_OUTRO),
 }
 
 _ACROSS_BEGINNER: dict[str, list[str]] = {
@@ -55,7 +81,7 @@ _ACROSS_LYRIC_CUES: dict[str, list[str]] = {
         "Pools of sorrow, waves of joy are drifting through my opened mind",
         "Possessing and caressing me",
     ],
-    "Chorus": [
+    "Chorus 1": [
         "Jai guru deva om",
         "Nothing's gonna change my world",
         "Nothing's gonna change my world",
@@ -68,17 +94,30 @@ _ACROSS_LYRIC_CUES: dict[str, list[str]] = {
         "Thoughts meander like a restless wind inside a letterbox",
         "They tumble blindly as they make their way across the universe",
     ],
+    "Chorus 2": [
+        "Jai guru deva om",
+        "Nothing's gonna change my world",
+        "Nothing's gonna change my world",
+        "Nothing's gonna change my world",
+        "Nothing's gonna change my world",
+    ],
     "Verse 3": [
         "Sounds of laughter, shades of life are ringing through my opened ears",
         "Inciting and inviting me",
         "Limitless undying love which shines around me like a million suns",
         "And calls me on and on across the universe",
     ],
-    "Verse 4": [
-        "Sounds of laughter, shades of life are ringing through my opened ears",
-        "Inciting and inviting me",
-        "Limitless undying love which shines around me like a million suns",
-        "And calls me on and on across the universe",
+    "Chorus 3": [
+        "Jai guru deva om",
+        "Nothing's gonna change my world",
+        "Nothing's gonna change my world",
+        "Nothing's gonna change my world",
+        "Nothing's gonna change my world",
+    ],
+    "Outro": [
+        "Nothing's gonna change my world",
+        "Hold on D — let the mantra ring fade",
+        "Four bars on D major — full stop",
     ],
 }
 
@@ -172,7 +211,10 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
         "key": "D",
         "genre": "Rock",
         "default_bpm": 92,
+        "default_groove": "Ballad",
+        "time_signature": "4/4",
         "sections": _ACROSS_SECTIONS,
+        "section_order": list(_ACROSS_SECTION_ORDER),
         "beginner": _ACROSS_BEGINNER,
         "lyric_cues": _ACROSS_LYRIC_CUES,
         "guitar_tabs": {
@@ -187,8 +229,10 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
             "Gm": "355333",
         },
         "arrangement_notes": (
-            "Verified core reference in D: verse D–Bm–F#m–Em7–A with Gm color; "
-            "chorus mantra on D / A7sus4 / A7 / G. Slash and sus chords preserved."
+            "Verified core reference in D (~92 BPM). Form: "
+            "**Verse 1 → Chorus 1 → Verse 2 → Chorus 2 → Verse 3 → Chorus 3 → Outro** "
+            "(D major ×4). Verse: **D–Bm–F#m(2)–Em7(2)–A–A7**, repeat with **Gm(2)**. "
+            "Each chorus change holds **two full bars**. One chart bar = one playback bar."
         ),
     },
     ("Uptown Girl", "Billy Joel"): {

@@ -209,6 +209,7 @@ class ImprovSessionContext:
     bpm: int = 100
     style_label: str = ""
     progression_flat: list[str] = field(default_factory=list)
+    section_order: list[str] = field(default_factory=list)
 
 
 def _chord_quality(ch: str) -> str:
@@ -236,9 +237,15 @@ def _chord_root(ch: str) -> str:
     return normalize_root(root)
 
 
-def flatten_sections(sections: dict[str, list[str]]) -> list[str]:
+def flatten_sections(
+    sections: dict[str, list[str]],
+    *,
+    section_names: list[str] | None = None,
+) -> list[str]:
+    from songs.form import section_order
+
     out: list[str] = []
-    for _name, chords in (sections or {}).items():
+    for _name, chords in section_order(sections or {}, section_names=section_names):
         for ch in chords or []:
             if ch and str(ch).strip():
                 out.append(str(ch).strip())

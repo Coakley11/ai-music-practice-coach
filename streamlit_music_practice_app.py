@@ -102,6 +102,7 @@ from songs import (
     request_backing_bpm,
     request_display_key,
     section_order,
+    section_names_from_song,
     sync_matching_song_dropdown_before_widget,
     sync_backing_bpm_before_widget,
     set_catalog_source,
@@ -815,20 +816,26 @@ def filter_records_by_level(records, level_filter):
     return [r for r in records if has_level_chart(r)]
 
 
-def chord_blocks_for_selected_sections(sections, selected_names=None):
+def chord_blocks_for_selected_sections(sections, selected_names=None, *, song_data=None):
     selected = set(selected_names or [])
     out = []
-    for section_name, section_chords in section_order(sections):
+    for section_name, section_chords in section_order(
+        sections,
+        section_names=section_names_from_song(song_data),
+    ):
         if selected and section_name not in selected:
             continue
         out.extend(section_chords)
     return out
 
 
-def chord_events_for_selected_sections(sections, selected_names=None):
+def chord_events_for_selected_sections(sections, selected_names=None, *, song_data=None):
     selected = set(selected_names or [])
     out = []
-    for section_name, section_chords in section_order(sections):
+    for section_name, section_chords in section_order(
+        sections,
+        section_names=section_names_from_song(song_data),
+    ):
         if selected and section_name not in selected:
             continue
         section_bars = len(section_chords)
@@ -5896,7 +5903,14 @@ elif _studio_page == "backing":
     selected_section_names: list[str] = []
     form_loops = int(st.session_state.get("backing_track_loops", 2))
 
-    _sec_names = [name for name, chs in section_order(sections_for_backing) if chs]
+    _sec_names = [
+        name
+        for name, chs in section_order(
+            sections_for_backing,
+            section_names=section_names_from_song(song_data),
+        )
+        if chs
+    ]
     _from_practice_section = _apply_pending_backing_scope(st.session_state, _sec_names)
     with st.expander(
         "Playback settings (scope & loops)",
@@ -5950,10 +5964,10 @@ elif _studio_page == "backing":
     selected_section_names = selected_section_names or []
     groove_style = st.session_state.get("backing_groove_style", "Auto")
     backing_chords = chord_blocks_for_selected_sections(
-        sections_for_backing, selected_section_names
+        sections_for_backing, selected_section_names, song_data=song_data
     )
     backing_events = chord_events_for_selected_sections(
-        sections_for_backing, selected_section_names
+        sections_for_backing, selected_section_names, song_data=song_data
     )
 
     resolved_groove = infer_groove_style(song_data, groove_style)
@@ -5984,13 +5998,29 @@ elif _studio_page == "backing":
     chart_backing_chords = chord_blocks_for_selected_sections(
         chart_sections,
         selected_section_names,
+        song_data=song_data,
     )
     chart_backing_events = chord_events_for_selected_sections(
         chart_sections,
         selected_section_names,
+        song_data=song_data,
     )
 
-    coach_section = selected_section_names[0] if selected_section_names else next((name for name, chs in section_order(chart_sections) if chs), "")
+    coach_section = (
+        selected_section_names[0]
+        if selected_section_names
+        else next(
+            (
+                name
+                for name, chs in section_order(
+                    chart_sections,
+                    section_names=section_names_from_song(song_data),
+                )
+                if chs
+            ),
+            "",
+        )
+    )
     coach_chords = chart_sections.get(coach_section, []) if coach_section else []
 
     st.markdown(
@@ -6028,10 +6058,10 @@ elif _studio_page == "backing":
     elif st.session_state.get("backing_track_scope") == "Full song":
         selected_section_names = []
     backing_chords = chord_blocks_for_selected_sections(
-        sections_for_backing, selected_section_names
+        sections_for_backing, selected_section_names, song_data=song_data
     )
     backing_events = chord_events_for_selected_sections(
-        sections_for_backing, selected_section_names
+        sections_for_backing, selected_section_names, song_data=song_data
     )
     groove_style = st.session_state.get("backing_groove_style", "Auto")
     resolved_groove = infer_groove_style(song_data, groove_style)
@@ -6221,7 +6251,10 @@ elif _studio_page == "backing":
                 "Bars": len(chords),
                 "Included": "Yes" if (not selected_section_names or name in selected_section_names) else "No",
             }
-            for name, chords in section_order(sections)
+            for name, chords in section_order(
+                sections,
+                section_names=section_names_from_song(song_data),
+            )
             if chords
         ]
         st.dataframe(
@@ -6622,7 +6655,14 @@ elif _studio_page == "multitrack":
 
     mt_time_sig = default_time_signature(song, sections)
     mt_beats_per_bar = beats_per_bar_from_signature(mt_time_sig)
-    mt_sec_names = [name for name, chs in section_order(sections) if chs]
+    mt_sec_names = [
+        name
+        for name, chs in section_order(
+            sections,
+            section_names=section_names_from_song(song_data),
+        )
+        if chs
+    ]
 
     with st.expander("1. Session setup (scope, BPM, monitor backing)", expanded=True):
         mt_scope = st.radio(
@@ -6735,7 +6775,9 @@ elif _studio_page == "multitrack":
             )
 
         mt_events = (
-            chord_events_for_selected_sections(sections, mt_selected_sections)
+            chord_events_for_selected_sections(
+                sections, mt_selected_sections, song_data=song_data
+            )
             if mt_scope != "Free layering (no backing)"
             else []
         )

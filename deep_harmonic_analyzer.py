@@ -20,6 +20,7 @@ from improvisation_intelligence import (
 )
 from improvisation_missions import instrument_family
 from improvisation_motif import chord_tone_names, dedupe_sections_for_display, single_progression_cycle
+from songs.form import section_order
 from music_theory import CHROMATIC, normalize_root, split_chord
 
 
@@ -38,6 +39,7 @@ class HarmonicAnalysisInput:
     time_signature: str = ""
     arrangement_notes: str = ""
     progression_flat: list[str] = field(default_factory=list)
+    section_order: list[str] = field(default_factory=list)
 
 
 def _pc(note: str) -> str | None:
@@ -557,7 +559,11 @@ def build_deep_harmonic_analysis(
   inp: HarmonicAnalysisInput,
 ) -> str:
     """Full markdown report for the active song."""
-    section_map = dedupe_sections_for_display(inp.sections)
+    section_names = list(inp.section_order) if inp.section_order else None
+    section_map = dedupe_sections_for_display(
+        inp.sections,
+        section_names=section_names,
+    )
     flat = inp.progression_flat or []
     cycle = single_progression_cycle(flat) if flat else []
     if not cycle and section_map:
@@ -659,8 +665,9 @@ def build_from_improv_context(
 def build_from_lab_context(ctx: dict[str, Any]) -> str:
     """Adapter for Creative Lab `current_song_context_lab()` dict."""
     sections = ctx.get("sections") or {}
+    section_names = list(ctx.get("section_order") or [])
     flat: list[str] = []
-    for _n, chs in sections.items():
+    for _n, chs in section_order(sections, section_names=section_names or None):
         flat.extend(chs or [])
     ext = ctx.get("extensions") or {}
     return build_deep_harmonic_analysis(
@@ -670,6 +677,7 @@ def build_from_lab_context(ctx: dict[str, Any]) -> str:
             key_center=str(ctx.get("key") or ""),
             display_key=str(ctx.get("display_key") or ctx.get("key") or "C"),
             sections=sections,
+            section_order=section_names,
             instrument=str(ctx.get("instrument") or "Guitar"),
             level=str(ctx.get("level") or "Intermediate"),
             focus=str(ctx.get("focus") or "Improvisation"),

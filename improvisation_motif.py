@@ -33,12 +33,25 @@ _RHYTHM_TO_ABC_LEN: dict[str, str] = {
 RHYTHM_PATTERN_KEYS: tuple[str, ...] = tuple(_RHYTHM_PATTERNS.keys())
 
 
+_NUMBERED_SECTION_RE = re.compile(
+    r"^(verse|chorus|bridge|intro|outro|pre-chorus|pre chorus)\s+(\d+)$",
+    re.I,
+)
+
+
+def _is_numbered_section_instance(name: str) -> bool:
+    """True for labels like Verse 1 / Chorus 2 — keep each pass in the map."""
+    return bool(_NUMBERED_SECTION_RE.match(str(name or "").strip()))
+
+
 def _section_base_key(name: str) -> str:
     """Normalize section labels for deduplication (Verse 2 → verse, etc.)."""
     n = str(name or "").strip()
     n = re.sub(r"\s*\(repeat\)\s*$", "", n, flags=re.I)
     n = re.sub(r"\s*\(alternate\)\s*$", "", n, flags=re.I)
     n = re.sub(r"\s*\(\d+\)\s*$", "", n)
+    if _is_numbered_section_instance(n):
+        return n.lower()
     n = re.sub(r"\s+\d+$", "", n)
     return n.lower()
 
@@ -59,6 +72,8 @@ _CANONICAL_SECTION_LABELS: dict[str, str] = {
 def _display_section_label(name: str) -> str:
     """Short, readable section heading for the chord map."""
     n = str(name or "").strip()
+    if _is_numbered_section_instance(n):
+        return n
     aliases = {
         "a section": "A",
         "b section": "B",
@@ -106,19 +121,25 @@ def single_progression_cycle(chords: list[str]) -> list[str]:
 
 def dedupe_sections_for_display(
     sections: dict[str, list[str]],
+    *,
+    section_names: list[str] | None = None,
 ) -> list[tuple[str, list[str]]]:
     """
     One row per unique section identity — skip repeated Verse/Chorus blocks
-  with identical chords; keep alternates when harmony differs.
+    with identical chords; keep alternates when harmony differs.
+    Numbered sections (Verse 1, Chorus 2, …) are always listed separately.
     """
     seen: dict[str, tuple[str, ...]] = {}
     out: list[tuple[str, list[str]]] = []
-    for name, chords in section_order(sections):
+    for name, chords in section_order(sections, section_names=section_names):
         raw = [str(c).strip() for c in (chords or []) if c and str(c).strip()]
         if not raw:
             continue
         clean = single_progression_cycle(raw)
         if not clean:
+            continue
+        if _is_numbered_section_instance(name):
+            out.append((name, clean))
             continue
         base = _section_base_key(name)
         sig = tuple(clean)
@@ -144,7 +165,11 @@ def resolve_improv_sections(
         if mapped:
             return mapped
     if improv_ctx.sections:
-        mapped = dedupe_sections_for_display(improv_ctx.sections)
+        order = getattr(improv_ctx, "section_order", None) or []
+        mapped = dedupe_sections_for_display(
+            improv_ctx.sections,
+            section_names=list(order) if order else None,
+        )
         if mapped:
             return mapped
     flat = list(improv_ctx.progression_flat or [])
