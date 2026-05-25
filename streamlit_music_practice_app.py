@@ -134,7 +134,11 @@ from songs.meter import (
     meter_timing,
     metronome_accents,
 )
-from songs.meter_state import apply_backing_meter_for_song
+from songs.meter_state import (
+    BACKING_METER_KEY,
+    BACKING_METER_OVERRIDE_KEY,
+    apply_backing_meter_for_song,
+)
 from tuner_tone_ui import render_tuner_tone_section, tuner_key_prefix_for_song
 from practice_setup_controls import (
     DEFAULT_INSTRUMENT_OPTIONS,
@@ -6030,7 +6034,20 @@ elif _studio_page == "backing":
         st.markdown(capo_status_banner_html(_capo_ctx), unsafe_allow_html=True)
 
     if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
-        st.warning("Playback settings changed — regenerate backing track")
+        _regen_reasons = []
+        if st.session_state.get(BACKING_METER_OVERRIDE_KEY):
+            _regen_reasons.append(
+                f"meter changed to **{st.session_state.get(BACKING_METER_KEY, _default_meter)}**"
+            )
+        if key_changed_this_run:
+            _regen_reasons.append("key changed")
+        _reason_text = (
+            " (" + ", ".join(_regen_reasons) + ")" if _regen_reasons else ""
+        )
+        st.warning(
+            f"Playback settings changed{_reason_text} - press **Generate** below "
+            "to rebuild the backing track in the new settings."
+        )
 
     bpm, backing_time_signature = _render_backing_tempo_panel(
         song_id=_bpm_sync_id,
@@ -6303,6 +6320,11 @@ elif _studio_page == "backing":
         st.session_state["backing_time_signature_applied"] = backing_time_signature
         st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
         st.session_state[BACKING_AUTOPLAY] = False
+        # Non-widget pending flag - safe to set here because the lead-sheet
+        # block is rendered later in the page (after this st.rerun()), so we
+        # never touch a widget key after the widget was already rendered.
+        # Consumed by the lead-sheet section to force-open the chart card.
+        st.session_state["_pending_open_backing_lead_sheet"] = True
         clear_backing_needs_regen(st)
         st.rerun()
 
@@ -6354,18 +6376,54 @@ elif _studio_page == "backing":
         capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
     )
 
-    if _backing_audio_ready:
+    # ---- Lead sheet open-state handling ------------------------------------
+    # Apply the non-widget pending flag set by the Generate handler. Doing this
+    # BEFORE the lead-sheet block renders avoids the Streamlit "cannot mutate
+    # a widget key after the widget was rendered" footgun.
+    if st.session_state.pop("_pending_open_backing_lead_sheet", False):
+        st.session_state["backing_lead_sheet_open"] = True
+    # The lead sheet is "open" when (a) we just generated audio (pending flag
+    # consumed above), (b) the user explicitly opened it in a previous run, or
+    # (c) the audio is currently ready - in which case we always show the
+    # chord-follow card so the user never has to hunt for the chart.
+    _leadsheet_open = bool(
+        st.session_state.get("backing_lead_sheet_open", False)
+    ) or _backing_audio_ready
+
+    if _backing_audio_ready and _leadsheet_open:
         # When the backing track is ready, render the lead sheet inline (no
-        # expander) so the user never has to hunt for the chart after pressing
-        # Generate. The chart immediately follows playback with chord-by-chord
-        # highlighting.
-        st.markdown(
-            '<div class="ui-backing-leadsheet-card">'
-            '<p class="ui-bar-label" style="color:#15803d;margin:0 0 0.35rem 0;">'
-            "Lead-sheet chart &middot; chord follow"
-            "</p>",
-            unsafe_allow_html=True,
-        )
+        # expander, no extra click) with a clear "auto-opened" badge so the
+        # user can immediately verify the auto-open worked. The chart
+        # highlights chord-by-chord while playback runs.
+        _hide_clicked = False
+        _hdr_col, _btn_col = st.columns([5, 1])
+        with _hdr_col:
+            st.markdown(
+                '<div class="ui-backing-leadsheet-card" '
+                'data-state="open" id="backing-lead-sheet-anchor">'
+                '<p class="ui-bar-label" style="color:#15803d;margin:0 0 0.35rem 0;'
+                'display:flex;align-items:center;gap:.55rem;">'
+                '<span style="display:inline-flex;align-items:center;gap:.3rem;'
+                'background:#dcfce7;color:#15803d;padding:2px 10px;border-radius:9999px;'
+                'font-size:0.78rem;font-weight:700;letter-spacing:0.02em;">'
+                '<span aria-hidden="true">\u2714</span> Lead Sheet open'
+                '</span>'
+                '<span style="font-weight:600;color:#15803d;">'
+                'Chord chart &middot; live chord follow'
+                '</span>'
+                '</p>',
+                unsafe_allow_html=True,
+            )
+        with _btn_col:
+            _hide_clicked = st.button(
+                "Hide chart",
+                key="backing_leadsheet_hide_btn",
+                help="Collapse the lead sheet (does not stop playback).",
+                use_container_width=True,
+            )
+        if _hide_clicked:
+            st.session_state["backing_lead_sheet_open"] = False
+            st.rerun()
         st.caption("Chord boxes highlight while the backing track plays.")
         if not st.session_state.get(BACKING_AUTOPLAY, False):
             st.info(
@@ -6383,8 +6441,29 @@ elif _studio_page == "backing":
             scrolling=True,
         )
         st.markdown("</div>", unsafe_allow_html=True)
+    elif _backing_audio_ready and not _leadsheet_open:
+        # User collapsed the chart manually; give them a one-click "Show chart"
+        # affordance without losing the generated audio.
+        _show_col, _info_col = st.columns([1, 5])
+        with _show_col:
+            if st.button(
+                "Show chart",
+                key="backing_leadsheet_show_btn",
+                type="primary",
+                use_container_width=True,
+            ):
+                st.session_state["backing_lead_sheet_open"] = True
+                st.rerun()
+        with _info_col:
+            st.caption(
+                "Lead sheet collapsed. Press **Show chart** to bring back the "
+                "chord chart and live chord follow."
+            )
     else:
-        with st.expander("Lead-sheet chart & chord follow", expanded=False):
+        with st.expander(
+            "Lead-sheet chart & chord follow",
+            expanded=bool(st.session_state.get("backing_lead_sheet_open", False)),
+        ):
             st.caption("Generate backing audio above to enable live chord highlighting.")
             st.markdown(chart_html, unsafe_allow_html=True)
 
