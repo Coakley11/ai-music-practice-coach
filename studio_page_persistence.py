@@ -237,6 +237,15 @@ _GLOBAL_APP_STATE_KEYS = frozenset(
         "_backing_needs_regen",
         "_backing_autoplay",
         "practice_minutes",
+        # Karaoke / Vocal Performance Mode state — survives page switches.
+        "karaoke_queue",
+        "karaoke_session_active",
+        "karaoke_session_index",
+        "karaoke_auto_advance",
+        "_karaoke_active_pick_key",
+        "_karaoke_song_ended",
+        "_karaoke_transition_label",
+        "_pending_karaoke_advance",
     }
 )
 

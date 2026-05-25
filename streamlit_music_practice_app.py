@@ -129,6 +129,14 @@ from backing_display import (
     render_backing_defaults_debug,
     render_backing_meter_selector,
 )
+import karaoke_mode as km
+from karaoke_ui import (
+    build_karaoke_audio_bridge_script,
+    render_add_to_queue_button,
+    render_karaoke_setlist_panel,
+    render_karaoke_status_pill,
+    render_karaoke_transition_card,
+)
 from songs.meter import (
     beats_per_bar_from_signature,
     default_time_signature_for_record,
@@ -649,6 +657,23 @@ ensure_master_song_initialized(
     song_library=SONG_LIBRARY,
     song_picker_catalog=SONG_PICKER_CATALOG,
 )
+
+# === KARAOKE SESSION ACTIVE-SONG OVERRIDE ====================================
+# When a karaoke set is running, the active song is dictated by the
+# current queue position. This MUST run BEFORE `get_song_context` so the
+# rest of the app (Backing Track, lyrics, chord-follow, etc.) loads the
+# karaoke-correct song.  Also applies any pending advance flag queued by
+# the audio-ended JS bridge or the visible Skip button.
+km.consume_pending_advance(st.session_state)
+if km.is_karaoke_session_active(st.session_state):
+    _karaoke_target_pk = km.current_session_pick_key(st.session_state)
+    if _karaoke_target_pk and _karaoke_target_pk != st.session_state.get(ACTIVE_CATALOG_PICK_KEY):
+        try:
+            apply_pick_key(st, _karaoke_target_pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
+        except KeyError:
+            # Queued pick_key no longer in catalog (e.g. after rebuild).
+            # Drop it and try the next one on the next rerun.
+            km.remove_from_queue(st.session_state, _karaoke_target_pk)
 
 _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
     st,
@@ -2741,10 +2766,22 @@ def render_follow_along_controls(timeline, key_prefix):
     return pos
 
 
-def live_follow_along_component_html(wav_bytes, timeline, chart_html, *, autoplay: bool = True):
+def live_follow_along_component_html(
+    wav_bytes,
+    timeline,
+    chart_html,
+    *,
+    autoplay: bool = True,
+    karaoke_auto_advance: bool = False,
+    karaoke_continue_button_text: str = "Continue to next song",
+):
     audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
     timeline_json = json.dumps(timeline)
     autoplay_attr = "autoplay" if autoplay else ""
+    karaoke_bridge_script = build_karaoke_audio_bridge_script(
+        auto_advance=bool(karaoke_auto_advance),
+        continue_button_text=karaoke_continue_button_text,
+    )
     return f"""
 <div class="live-follow-shell">
   <style>
@@ -2980,6 +3017,7 @@ def live_follow_along_component_html(wav_bytes, timeline, chart_html, *, autopla
       if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
       updateHighlight(true);
       detailEl.textContent = "Track ended. Press play to restart the follow-along.";
+      {karaoke_bridge_script}
     }});
     window.setInterval(() => {{
       if (!audio.paused && !audio.ended) updateHighlight(false);
@@ -4718,6 +4756,18 @@ def _render_active_song_card(rec: dict) -> None:
         if st.button("Chord Coach", key="picker_card_chord_coach", use_container_width=True):
             _picker_navigate("practice", open_chord_coach=True)
     st.markdown("</div>", unsafe_allow_html=True)
+    # Karaoke "Add to Setlist" CTA - prominent when Voice is the active
+    # instrument, calm but available otherwise.
+    _active_pick_key = st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""
+    if _active_pick_key:
+        render_add_to_queue_button(
+            st,
+            pick_key=_active_pick_key,
+            title=str(rec.get("title", "")),
+            artist=str(rec.get("artist", "")),
+            key_suffix=f"card_{_active_pick_key}",
+            use_container_width=True,
+        )
 
 
 def _picker_visible_records() -> list[dict]:
@@ -5174,6 +5224,23 @@ def _render_backing_tempo_panel(
 # -------------------------------------------------
 
 inject_app_theme()
+
+# Voice / Karaoke body class - applied globally so the larger-lyric +
+# vocal-focused CSS in app_ui.py (`[data-vocal-focus="true"]` selectors)
+# is active on every page when the user's instrument is Voice. Set
+# unconditionally on each rerun so toggling instruments instantly flips
+# the styling without a hard page reload.
+st.markdown(
+    f"""
+    <script>
+      try {{
+        document.body.dataset.vocalFocus = "{ 'true' if km.is_voice_mode(st.session_state) else 'false' }";
+        document.body.dataset.karaokeSession = "{ 'true' if km.is_karaoke_session_active(st.session_state) else 'false' }";
+      }} catch (e) {{}}
+    </script>
+    """,
+    unsafe_allow_html=True,
+)
 
 render_studio_brand_header()
 
@@ -5970,11 +6037,18 @@ elif _studio_page == "picker":
     note_page_visit(st.session_state, "picker")
     _render_page_quick_nav("picker")
 
-    _studio_page_header(
-        "📚",
-        "Song Selection",
-        "Pick a song, add **Lyrics & Cues** below the active song card, then open Practice or Backing Track.",
-    )
+    if km.is_voice_mode(st.session_state):
+        _studio_page_header(
+            "🎤",
+            "Song Selection",
+            "Build your **Karaoke Performance Setlist** below the active song. Add multiple songs, reorder, then start the karaoke set.",
+        )
+    else:
+        _studio_page_header(
+            "📚",
+            "Song Selection",
+            "Pick a song, add **Lyrics & Cues** below the active song card, then open Practice or Backing Track.",
+        )
 
     _render_catalog_song_picker_block(
         show_source_toggle=True,
@@ -5982,6 +6056,20 @@ elif _studio_page == "picker":
         wrap_section=False,
         show_song_cards=True,
     )
+
+    # ---- Karaoke Performance Setlist (always available; emphasized in Voice mode) ----
+    if km.is_voice_mode(st.session_state) or km.queue_length(st.session_state) > 0:
+        from song_catalog import record_for_pick_key as _record_for_pick_key
+
+        def _navigate_to_backing_for_karaoke() -> None:
+            navigate_studio_page(st.session_state, "backing")
+
+        render_karaoke_setlist_panel(
+            st,
+            record_for_pick_key=_record_for_pick_key,
+            all_records=ALL_SONG_RECORDS,
+            navigate_to_backing=_navigate_to_backing_for_karaoke,
+        )
 
     if not is_custom_progression(st.session_state):
         pick_key = st.session_state.get(ACTIVE_CATALOG_PICK_KEY)
@@ -6073,11 +6161,43 @@ elif _studio_page == "backing":
     _synced_bpm = int(_backing_canon["applied_bpm"])
     default_groove_style = str(_backing_canon["applied_groove"])
 
-    _studio_page_header(
-        "🎧",
-        "Backing Track",
-        "Generate accompaniment matched to your active song — then play along.",
-    )
+    if km.is_voice_mode(st.session_state):
+        _studio_page_header(
+            "🎤",
+            km.voice_wording("backing_page_title", voice=True),
+            km.voice_wording("backing_page_subtitle", voice=True),
+        )
+    else:
+        _studio_page_header(
+            "🎧",
+            "Backing Track",
+            "Generate accompaniment matched to your active song — then play along.",
+        )
+
+    # The voice-mode `data-vocal-focus="true"` body attribute is set
+    # globally at app init (search for `dataset.vocalFocus` upstream),
+    # so the larger-lyric / vocal-focused CSS automatically applies on
+    # this page whenever the active instrument is Voice.
+
+    # One-shot "Now Singing: <title>" banner immediately after a karaoke
+    # transition (consumed flag, only shows on the rerun after a skip).
+    render_karaoke_now_singing_banner(st)
+
+    # Karaoke session pill above the active song card.
+    render_karaoke_status_pill(st)
+
+    # Karaoke skip/end controls - visible during the karaoke set.  The
+    # "Skip to next song" button is also the auto-click target the JS
+    # audio-ended bridge searches for, so it must be in the DOM during
+    # a karaoke session even if the user never clicks it manually.
+    if km.is_karaoke_session_active(st.session_state):
+        from song_catalog import record_for_pick_key as _record_for_pick_key
+
+        render_karaoke_skip_controls(
+            st,
+            record_for_pick_key=_record_for_pick_key,
+            all_records=ALL_SONG_RECORDS,
+        )
 
     _backing_card_record = dict(_catalog_song_data or song_data)
     if is_custom_progression(st.session_state) and _cpl_active:
@@ -6531,6 +6651,10 @@ elif _studio_page == "backing":
                 _follow_timeline,
                 chart_html,
                 autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, True)),
+                karaoke_auto_advance=(
+                    km.is_karaoke_session_active(st.session_state)
+                    and km.auto_advance_enabled(st.session_state)
+                ),
             ),
             height=720,
             scrolling=True,

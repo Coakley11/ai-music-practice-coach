@@ -58,7 +58,11 @@ _INSTRUMENT_TOKENS: tuple[str, ...] = (
     "bass",
     "drums",
     "violin",
+    # "voice" must precede "vocal" so the canonical "Voice" instrument
+    # value (set by practice_setup_controls.py) emits `.inst-voice`.
+    "voice",
     "vocal",
+    "singer",
 )
 
 
@@ -2358,6 +2362,177 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   .ui-playback-setup-bpm { font-size: 1.7rem; }
   .ui-page-title { font-size: 1.15rem; }
   .block-container { padding-left: 0.75rem; padding-right: 0.75rem; }
+}
+
+/* =========================================================================
+   Voice / Vocal Performance Mode
+   ------------------------------------------------------------------------
+   Applied when the active instrument is "Voice" (modifier class `.inst-voice`
+   on the active-song cards). Karaoke session mode layers `.mode-karaoke`
+   on top - subtle, warm, performance-ready - never gimmicky.
+   ========================================================================= */
+
+/* Soft rose/amber accent on the cards in voice mode */
+.ui-active-song-card.inst-voice,
+.ui-active-song-card.inst-singer { box-shadow: inset 4px 0 0 #be185d, var(--shadow-3); }
+.ui-backing-active-song.inst-voice,
+.ui-backing-active-song.inst-singer {
+  background: linear-gradient(135deg, #1c0a14 0%, #831843 38%, #be185d 72%, #4a044e 100%);
+}
+
+/* Karaoke session: subtle warm halo + slightly elevated card */
+.ui-active-song-card.mode-karaoke,
+.ui-backing-active-song.mode-karaoke {
+  box-shadow:
+    0 0 0 1px rgba(190, 24, 93, 0.20),
+    0 14px 38px rgba(190, 24, 93, 0.18),
+    var(--shadow-3);
+}
+.ui-backing-active-song.mode-karaoke .ui-backing-active-kicker {
+  color: #fbcfe8 !important;
+  letter-spacing: 0.10em;
+}
+
+/* Karaoke setlist card on Song Selection */
+.ui-karaoke-setlist {
+  border: 1px solid rgba(190, 24, 93, 0.22);
+  border-radius: var(--r-md);
+  padding: 0.95rem 1.05rem 1.05rem 1.05rem;
+  margin: 0.85rem 0 1.1rem 0;
+  background: linear-gradient(180deg, #fff1f5 0%, #ffffff 100%);
+  box-shadow: 0 4px 18px rgba(190, 24, 93, 0.08), var(--shadow-1);
+}
+.ui-karaoke-setlist .ui-karaoke-setlist-kicker {
+  font-size: 0.70rem;
+  font-weight: 800;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: #be185d;
+  margin: 0 0 0.20rem 0;
+}
+.ui-karaoke-setlist .ui-karaoke-setlist-title {
+  font-size: 1.10rem;
+  font-weight: 800;
+  letter-spacing: -0.005em;
+  color: #831843;
+  margin: 0 0 0.50rem 0;
+}
+.ui-karaoke-setlist-empty {
+  color: #831843;
+  opacity: 0.75;
+  font-size: 0.92rem;
+}
+.ui-karaoke-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 10px;
+  background: rgba(190, 24, 93, 0.05);
+  margin-bottom: 0.35rem;
+  border: 1px solid rgba(190, 24, 93, 0.10);
+}
+.ui-karaoke-row .ui-karaoke-row-num {
+  font-weight: 800;
+  color: #be185d;
+  min-width: 1.6rem;
+  text-align: right;
+  opacity: 0.85;
+}
+.ui-karaoke-row.ui-karaoke-row-active {
+  background: rgba(190, 24, 93, 0.12);
+  border-color: rgba(190, 24, 93, 0.35);
+  box-shadow: inset 3px 0 0 #be185d;
+}
+.ui-karaoke-row .ui-karaoke-row-title {
+  font-weight: 700;
+  color: #0f172a;
+}
+.ui-karaoke-row .ui-karaoke-row-artist {
+  color: #64748b;
+  font-size: 0.88rem;
+  margin-left: 0.15rem;
+}
+
+/* Karaoke transition card on Backing Track page */
+.ui-karaoke-transition {
+  border-radius: var(--r-md);
+  border: 1px solid rgba(190, 24, 93, 0.28);
+  background: linear-gradient(135deg, #831843 0%, #be185d 60%, #f472b6 100%);
+  color: #ffffff;
+  padding: 1.10rem 1.30rem;
+  margin: 0.75rem 0 0.85rem 0;
+  box-shadow: 0 14px 36px rgba(190, 24, 93, 0.28), var(--shadow-3);
+  display: flex;
+  align-items: center;
+  gap: 1.10rem;
+}
+.ui-karaoke-transition .ui-karaoke-transition-icon {
+  font-size: 1.80rem;
+  line-height: 1;
+  opacity: 0.95;
+}
+.ui-karaoke-transition .ui-karaoke-transition-kicker {
+  font-size: 0.70rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  margin: 0 0 0.20rem 0;
+}
+.ui-karaoke-transition .ui-karaoke-transition-title {
+  font-size: 1.20rem;
+  font-weight: 800;
+  margin: 0 0 0.15rem 0;
+}
+.ui-karaoke-transition .ui-karaoke-transition-meta {
+  font-size: 0.92rem;
+  opacity: 0.90;
+}
+
+/* Voice-mode lyric panel: larger, calmer, vertically generous - the
+   singer's primary instrument is the lyric, so make it the focal point. */
+.mode-karaoke .ui-lyrics-panel,
+.inst-voice + .ui-lyrics-panel,
+[data-vocal-focus="true"] .ui-lyrics-panel {
+  border-radius: var(--r-md);
+  border: 1px solid rgba(190, 24, 93, 0.18);
+  background: linear-gradient(180deg, #ffffff 0%, #fff7fb 100%);
+  box-shadow: 0 6px 20px rgba(190, 24, 93, 0.06), var(--shadow-1);
+}
+
+/* Larger lyric typography in voice mode (applied via body wrapper) */
+[data-vocal-focus="true"] .lyric-line,
+[data-vocal-focus="true"] .section-card .lyric-text,
+[data-vocal-focus="true"] .ui-bar-lyric {
+  font-size: 1.10rem !important;
+  line-height: 1.55 !important;
+  letter-spacing: 0.005em;
+}
+[data-vocal-focus="true"] .ui-bar-label {
+  opacity: 0.55;
+}
+
+/* Karaoke "Now Singing" banner pill */
+.ui-karaoke-now-singing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.30rem 0.80rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #831843, #be185d);
+  color: #ffffff;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  box-shadow: 0 4px 12px rgba(190, 24, 93, 0.30);
+  margin: 0 0 0.40rem 0;
+}
+.ui-karaoke-now-singing::before {
+  content: "\\266B";
+  font-size: 0.95rem;
+  opacity: 0.95;
 }
 
 /* The polish stylesheet keeps a `data-ui-polish` attribute on its <style>

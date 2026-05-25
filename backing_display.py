@@ -54,16 +54,33 @@ def render_backing_active_song_card(
     try:
         import streamlit as _st  # type: ignore
         _instrument = str(_st.session_state.get("instrument") or "")
+        _session_state = _st.session_state
     except Exception:
         _instrument = ""
+        _session_state = None
     modifier_cls = studio_card_modifier_classes(genre=raw_genre, instrument=_instrument)
+    # Karaoke session modifier class layered on top.
+    _voice_mode = False
+    _karaoke_active = False
+    if _session_state is not None:
+        try:
+            import karaoke_mode as _km
+            _voice_mode = _km.is_voice_mode(_session_state)
+            _karaoke_active = _km.is_karaoke_session_active(_session_state)
+        except Exception:
+            _voice_mode = False
+            _karaoke_active = False
+    if _karaoke_active:
+        modifier_cls = (modifier_cls + " mode-karaoke").strip()
+        modifier_cls = " " + modifier_cls if not modifier_cls.startswith(" ") else modifier_cls
+    kicker_label = "Now Singing · Vocal Performance" if _voice_mode else "Active song · Backing Track"
 
     st.markdown(
         f'<div class="ui-backing-active-song{modifier_cls}">'
         f'<div class="ui-backing-active-art" style="background:{html.escape(gradient)};">'
         f'{emoji}<small>{genre}</small></div>'
         f'<div class="ui-backing-active-body">'
-        f'<p class="ui-backing-active-kicker">Active song · Backing Track</p>'
+        f'<p class="ui-backing-active-kicker">{html.escape(kicker_label)}</p>'
         f'<p class="ui-backing-active-title">{html.escape(details["title"])}'
         f'<span class="ui-backing-active-dash"> — </span>'
         f'{html.escape(details["artist"])}</p>'
