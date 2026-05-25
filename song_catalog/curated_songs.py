@@ -794,6 +794,17 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
         + _hold("G", 4) + _hold("D", 4) + _hold("Em", 4) + _hold("F#7", 4)
     )  # 32 bars
 
+    # Outro Solo = the iconic Hotel California guitar-solo jam over the same
+    # descending 8-chord cycle as the Intro / Verses, repeated FIVE TIMES
+    # TOTAL (5 x 32 bars = 160 bars). This is the long extended outro.
+    OUTRO_SOLO = (
+        list(VERSE_CYCLE)  # cycle 1
+        + list(VERSE_CYCLE)  # cycle 2
+        + list(VERSE_CYCLE)  # cycle 3
+        + list(VERSE_CYCLE)  # cycle 4
+        + list(VERSE_CYCLE)  # cycle 5
+    )  # 160 bars
+
     base_sections: dict[str, list[str]] = {
         "Intro": list(VERSE_CYCLE) + list(VERSE_CYCLE),  # 64 bars - two cycles
         "Verse 1A": list(VERSE_CYCLE),                   # 32 bars
@@ -801,6 +812,10 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
         "Chorus 1": list(CHORUS_CYCLE),                  # 32 bars
         "Verse 2A": list(VERSE_CYCLE),                   # 32 bars
         "Verse 2B": list(VERSE_CYCLE),                   # 32 bars
+        "Chorus 2": list(CHORUS_CYCLE),                  # 32 bars
+        "Verse 3A": list(VERSE_CYCLE),                   # 32 bars
+        "Verse 3B": list(VERSE_CYCLE),                   # 32 bars
+        "Outro Solo": list(OUTRO_SOLO),                  # 160 bars - 5 cycles
     }
 
     section_order: list[str] = [
@@ -810,6 +825,10 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
         "Chorus 1",
         "Verse 2A",
         "Verse 2B",
+        "Chorus 2",
+        "Verse 3A",
+        "Verse 3B",
+        "Outro Solo",
     ]
 
     def _retune(source: dict[str, list[str]], mapper) -> dict[str, list[str]]:
@@ -895,6 +914,26 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
             "'So I called up the captain...' - third verse part B",
             "Same form; sets up the second chorus / solo section that follows",
         ],
+        "Chorus 2": [
+            "Second title-hook chorus - 'Welcome to the Hotel California'",
+            "Same G -> D -> F#7 -> Bm voice-leading as Chorus 1",
+            "Lifts back to F#7 to launch the final verses",
+        ],
+        "Verse 3A": [
+            "'Mirrors on the ceiling...' - final verse part A",
+            "Returns to the spacious descending 8-chord cycle",
+        ],
+        "Verse 3B": [
+            "'Last thing I remember...' - final verse part B",
+            "Closing lyrical phrase - sustained build into the extended solo",
+        ],
+        "Outro Solo": [
+            "The iconic dual-guitar solo - twin harmonized leads",
+            "Cycles the descending Bm -> F#7 -> A -> E -> G -> D -> Em -> F#7 progression FIVE times",
+            "Long-form solo territory: tension/release over sustained harmony",
+            "Improvise with B natural minor / B harmonic minor (F# major over the F#7 cadences)",
+            "Melodic-minor color on the F#7b9 cadential bars (Advanced tier)",
+        ],
     }
 
     arrangement_notes = (
@@ -904,17 +943,23 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
         "full bars**: Bm -> F#7 -> A -> E -> G -> D -> Em -> F#7 (32 bars). "
         "The chorus uses the same palette in a new voice-leading shape: "
         "G -> D -> F#7 -> Bm -> G -> D -> Em -> F#7 (also 32 bars / 4 bars per "
-        "chord). Implemented sections (6): Intro -> Verse 1A -> Verse 1B -> "
-        "Chorus 1 -> Verse 2A -> Verse 2B. The Intro plays the verse cycle "
-        "**twice** (64 bars of nylon-guitar arpeggios) before the vocal "
-        "enters. Beginner uses pure triads / dominant sevenths (Bm / F#7 / "
-        "A / E / G / D / Em). Intermediate adds the Eagles bass-inversion "
-        "voice leading - F#7/A#, E/G#, D/F# - keeping a plain F#7 at the "
-        "cadential resolution bars (V -> i / V -> IV). Advanced layers maj9 "
-        "/ m9 colors and the **F#7b9** altered V for the iconic Hotel "
-        "California modal-minor sound. **One chart bar = one playback bar** "
-        "so the long sustained pacing is honest; chord-follow holds each "
-        "cell for the full 4-bar window before advancing."
+        "chord). Full form (10 sections): Intro -> Verse 1A -> Verse 1B -> "
+        "Chorus 1 -> Verse 2A -> Verse 2B -> Chorus 2 -> Verse 3A -> Verse 3B "
+        "-> Outro Solo. The Intro plays the verse cycle **twice** (64 bars of "
+        "nylon-guitar arpeggios) before the vocal enters. The **Outro Solo** "
+        "repeats the same descending 8-chord cycle **five times total** (160 "
+        "bars) - the famous dual-guitar harmonized lead section. Beginner "
+        "uses pure triads / dominant sevenths (Bm / F#7 / A / E / G / D / "
+        "Em). Intermediate adds the Eagles bass-inversion voice leading - "
+        "F#7/A#, E/G#, D/F# - keeping a plain F#7 at the cadential "
+        "resolution bars (V -> i / V -> IV). Advanced layers maj9 / m9 "
+        "colors and the **F#7b9** altered V for the iconic Hotel California "
+        "modal-minor sound. Solo territory: B natural minor + B harmonic "
+        "minor (F# major over the F#7 cadences); the Advanced F#7b9 bars "
+        "invite F# Phrygian-dominant / melodic-minor lines for the long "
+        "outro jam. **One chart bar = one playback bar** so the long "
+        "sustained pacing is honest; chord-follow holds each cell for the "
+        "full 4-bar window before advancing."
     )
 
     return {
