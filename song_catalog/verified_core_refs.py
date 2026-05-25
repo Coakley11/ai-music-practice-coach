@@ -41,10 +41,6 @@ _ACROSS_CHORUS = (
     + _hold("A7", 2)
     + _hold("G", 2)
     + _hold("D", 2)
-    + _hold("A", 2)
-    + _hold("A7", 2)
-    + _hold("G", 2)
-    + _hold("D", 2)
 )
 
 _ACROSS_OUTRO = _hold("D", 4)
@@ -85,8 +81,6 @@ _ACROSS_LYRIC_CUES: dict[str, list[str]] = {
         "Jai guru deva om",
         "Nothing's gonna change my world",
         "Nothing's gonna change my world",
-        "Nothing's gonna change my world",
-        "Nothing's gonna change my world",
     ],
     "Verse 2": [
         "Images of broken light which dance before me like a million eyes",
@@ -96,8 +90,6 @@ _ACROSS_LYRIC_CUES: dict[str, list[str]] = {
     ],
     "Chorus 2": [
         "Jai guru deva om",
-        "Nothing's gonna change my world",
-        "Nothing's gonna change my world",
         "Nothing's gonna change my world",
         "Nothing's gonna change my world",
     ],
@@ -111,13 +103,12 @@ _ACROSS_LYRIC_CUES: dict[str, list[str]] = {
         "Jai guru deva om",
         "Nothing's gonna change my world",
         "Nothing's gonna change my world",
-        "Nothing's gonna change my world",
-        "Nothing's gonna change my world",
     ],
     "Outro": [
-        "Nothing's gonna change my world",
-        "Hold on D — let the mantra ring fade",
-        "Four bars on D major — full stop",
+        "JAI",
+        "GURU",
+        "DEVA",
+        "OM",
     ],
 }
 
@@ -232,7 +223,8 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
             "Verified core reference in D (~92 BPM). Form: "
             "**Verse 1 → Chorus 1 → Verse 2 → Chorus 2 → Verse 3 → Chorus 3 → Outro** "
             "(D major ×4). Verse: **D–Bm–F#m(2)–Em7(2)–A–A7**, repeat with **Gm(2)**. "
-            "Each chorus change holds **two full bars**. One chart bar = one playback bar."
+            "Chorus: **D(2)–A7sus4(2)–A(2)–A7(2)–G(2)–D(2)** then stops (12 bars). "
+            "One chart bar = one playback bar."
         ),
     },
     ("Uptown Girl", "Billy Joel"): {
