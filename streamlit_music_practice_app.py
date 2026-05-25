@@ -2871,6 +2871,87 @@ def build_chord_event_timeline(events, bpm, loops, time_signature="4/4", beats_p
     return timeline
 
 
+# ---------------------------------------------------------------------------
+# Cached backing-track generation (LRU-ish; tied to the input signature)
+# ---------------------------------------------------------------------------
+# We can't use st.cache_data here because the synth result is a bytes
+# blob produced from numpy + per-song RNG seeding, and Streamlit's
+# decorator infers an unhashable signature from the events list. A
+# tiny manual cache keyed on the exact playback signature gives us
+# instant repeat-Generate ("regenerate after stop", "skip Play and click
+# Generate again") and stays bounded in memory.
+
+_BACKING_WAV_CACHE: "dict[tuple, bytes]" = {}
+_BACKING_TIMELINE_CACHE: "dict[tuple, list[dict]]" = {}
+_BACKING_CACHE_MAX = 12  # last N distinct signatures - tiny memory footprint
+
+
+def _evict_oldest(cache: dict) -> None:
+    while len(cache) > _BACKING_CACHE_MAX:
+        # Python dicts preserve insertion order, so popitem(last=False)
+        # equivalent is just popping the first key.
+        try:
+            first_key = next(iter(cache))
+        except StopIteration:
+            return
+        cache.pop(first_key, None)
+
+
+def _cached_backing_wav(
+    signature: tuple,
+    *,
+    backing_events,
+    bpm,
+    loops,
+    style,
+    level,
+    song_title,
+    song_artist,
+    time_signature,
+) -> bytes:
+    cached = _BACKING_WAV_CACHE.get(signature)
+    if cached is not None:
+        return cached
+    wav = generate_backing_track(
+        backing_events,
+        bpm=bpm,
+        loops=loops,
+        style=style,
+        level=level,
+        song_title=song_title,
+        song_artist=song_artist,
+        time_signature=time_signature,
+    )
+    _BACKING_WAV_CACHE[signature] = wav
+    _evict_oldest(_BACKING_WAV_CACHE)
+    return wav
+
+
+def _cached_backing_timeline(
+    signature: tuple,
+    *,
+    backing_events,
+    bpm,
+    loops,
+    time_signature,
+) -> list[dict]:
+    cached = _BACKING_TIMELINE_CACHE.get(signature)
+    if cached is not None:
+        # Return a shallow copy so downstream mutations don't poison the
+        # cached entry. Each event dict is treated read-only by the
+        # follow-along code, so a shallow copy is enough.
+        return list(cached)
+    timeline = build_chord_event_timeline(
+        backing_events,
+        bpm,
+        loops,
+        time_signature=time_signature,
+    )
+    _BACKING_TIMELINE_CACHE[signature] = timeline
+    _evict_oldest(_BACKING_TIMELINE_CACHE)
+    return list(timeline)
+
+
 def playback_follow_position(timeline, playback_start_time=None, manual_index=0):
     if not timeline:
         return None
@@ -6806,7 +6887,7 @@ elif _studio_page == "backing":
     with _gen_col:
         if _backing_audio_ready:
             _play_clicked = st.button(
-                "▶ Play",
+                "▶ Play Backing Track",
                 key="play_backing_btn",
                 type="primary",
                 use_container_width=True,
@@ -6814,7 +6895,7 @@ elif _studio_page == "backing":
             _gen_clicked = False
         else:
             _gen_clicked = st.button(
-                "Generate",
+                "Generate Backing Track",
                 key="gen_backing_btn",
                 disabled=not bool(backing_chords),
                 type="primary",
@@ -6834,11 +6915,11 @@ elif _studio_page == "backing":
     if not _backing_audio_ready:
         st.caption(
             f"Song default: **{_default_bpm} BPM** · **{_default_groove}** · **{_default_meter}**. "
-            "You can change tempo, groove, meter, or section scope. "
-            "After making any optional changes, press **Generate**."
+            "Tweak tempo / groove / meter / section scope if you want, "
+            "then press **Generate Backing Track** — audio is ready in a second or two."
         )
     else:
-        st.caption("Audio is ready — press Play or use the player below.")
+        st.caption("Audio is ready — press **Play Backing Track** or use the player below.")
 
     # Karaoke auto-generate: when a transition flips the active song in a
     # karaoke set, the new song has no backing audio yet. Consume the
@@ -6850,27 +6931,34 @@ elif _studio_page == "backing":
             _karaoke_auto_gen = True
 
     if _gen_clicked or _karaoke_auto_gen:
-        wav = generate_backing_track(
-            backing_events,
-            bpm=bpm,
-            loops=form_loops,
-            style=resolved_groove,
-            level=level,
-            song_title=song_data.get("title", song),
-            song_artist=song_data.get("artist", ""),
-            time_signature=backing_time_signature,
-        )
+        # Inline spinner so the click feels instant - users see UI
+        # feedback while the WAV synthesizes. Cached signatures hit in
+        # well under 100ms, so repeat-generate feels effectively free.
+        with st.spinner("Generating backing track..."):
+            wav = _cached_backing_wav(
+                _current_backing_signature,
+                backing_events=backing_events,
+                bpm=bpm,
+                loops=form_loops,
+                style=resolved_groove,
+                level=level,
+                song_title=str(song_data.get("title", song)),
+                song_artist=str(song_data.get("artist", "")),
+                time_signature=backing_time_signature,
+            )
+            timeline = _cached_backing_timeline(
+                _current_backing_signature,
+                backing_events=backing_events,
+                bpm=bpm,
+                loops=form_loops,
+                time_signature=backing_time_signature,
+            )
 
         st.session_state["_last_backing_wav"] = wav
         st.session_state["_last_backing_signature"] = _current_backing_signature
-        st.session_state["_last_backing_timeline"] = build_chord_event_timeline(
-            backing_events,
-            bpm,
-            form_loops,
-            time_signature=backing_time_signature,
-        )
+        st.session_state["_last_backing_timeline"] = timeline
         st.session_state["playback_start_time"] = time.time()
-        st.session_state["current_chord_timeline"] = st.session_state["_last_backing_timeline"]
+        st.session_state["current_chord_timeline"] = timeline
         st.session_state["selected_sections"] = list(selected_section_names)
         st.session_state["bpm"] = bpm
         st.session_state["beats_per_bar"] = beats_per_bar_from_signature(backing_time_signature)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import wave
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -188,8 +189,28 @@ def infer_groove_style(song_data, selected_style="Auto"):
     return "Pop groove"
 
 
+@lru_cache(maxsize=256)
 def _freq(midi_num):
-    return 440 * (2 ** ((midi_num - 69) / 12))
+    """Hz for a MIDI pitch. Cached because the synth hits roughly the
+    same handful of voicing pitches thousands of times per generation."""
+    return 440.0 * (2.0 ** ((midi_num - 69) / 12.0))
+
+
+@lru_cache(maxsize=64)
+def _attack_ramp(length: int) -> np.ndarray:
+    """Cached fade-in ramp; the synth calls _add_tone with the same
+    attack length many times per bar."""
+    if length <= 0:
+        return np.zeros(0, dtype=np.float64)
+    return np.linspace(0.0, 1.0, length)
+
+
+@lru_cache(maxsize=64)
+def _release_ramp(length: int) -> np.ndarray:
+    """Cached fade-out ramp (paired with _attack_ramp above)."""
+    if length <= 0:
+        return np.zeros(0, dtype=np.float64)
+    return np.linspace(1.0, 0.02, length)
 
 
 def _add_tone(audio, sr, start_sec, dur_sec, midi_num, volume, wave_type="sine"):
@@ -199,21 +220,34 @@ def _add_tone(audio, sr, start_sec, dur_sec, midi_num, volume, wave_type="sine")
     n = max(1, int(dur_sec * sr))
     end = min(len(audio), start + n)
     n = end - start
-    t = np.linspace(0, dur_sec, n, False)
+    # Build the time axis with arange (cheaper than np.linspace's extra
+    # division work for tight loops).
+    inv_sr = 1.0 / sr
+    base_freq = _freq(midi_num)
+    two_pi = 2.0 * np.pi
+    phase = two_pi * base_freq * inv_sr * np.arange(n, dtype=np.float64)
     if wave_type == "bass":
-        sig = np.sin(2 * np.pi * _freq(midi_num) * t)
-        sig += 0.35 * np.sin(2 * np.pi * _freq(midi_num) * 2 * t)
+        sig = np.sin(phase)
+        sig += 0.35 * np.sin(phase * 2.0)
     elif wave_type == "organ":
-        sig = np.sin(2 * np.pi * _freq(midi_num) * t)
-        sig += 0.25 * np.sin(2 * np.pi * _freq(midi_num + 12) * t)
+        # +12 semitones = doubled frequency
+        sig = np.sin(phase)
+        sig += 0.25 * np.sin(phase * 2.0)
     else:
-        sig = np.sin(2 * np.pi * _freq(midi_num) * t)
+        sig = np.sin(phase)
     attack = max(1, int(0.01 * sr))
     release = max(1, int(min(0.08, dur_sec * 0.35) * sr))
-    env = np.ones(n)
-    env[:min(attack, n)] = np.linspace(0, 1, min(attack, n))
-    env[-min(release, n):] *= np.linspace(1, 0.02, min(release, n))
-    audio[start:end] += sig * env * volume
+    # In-place envelope shaping uses pre-cached ramp arrays so we skip
+    # the np.ones allocation and the np.linspace calls that the original
+    # version did on every single tone.
+    a = min(attack, n)
+    r = min(release, n)
+    out = sig
+    if a > 0:
+        out[:a] *= _attack_ramp(a)
+    if r > 0:
+        out[-r:] *= _release_ramp(r)
+    audio[start:end] += out * volume
 
 
 def _add_noise_hit(audio, sr, start_sec, dur_sec, volume, seed=0):
