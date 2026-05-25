@@ -193,28 +193,124 @@ def chord_concepts_from_sections(sections: dict[str, list[str]], *, genre: str =
     return ordered[:6]
 
 
-def practice_focus_hints(record: dict[str, Any], sections: dict[str, list[str]]) -> str:
+_DOM7_RE = re.compile(r"(?<![A-Za-z])7(?!#|b|\d|sus)")
+_ALT_TOKENS = ("b9", "#9", "#11", "b13", "alt")
+_NINE_RE = re.compile(r"(?<!1)(?<!2)9")
+_THIRTEEN_RE = re.compile(r"13")
+
+
+def _has_pattern(chords: list[str], pat: "re.Pattern[str]") -> bool:
+    return any(pat.search(c) for c in chords)
+
+
+def _has_token(chords: list[str], token: str) -> bool:
+    return any(token in c.lower() for c in chords)
+
+
+def practice_focus_hints(
+    record: dict[str, Any],
+    sections: dict[str, list[str]],
+    *,
+    level: str = "Intermediate",
+    instrument: str = "",
+) -> str:
+    """Concise, level- and instrument-aware practice focus.
+
+    Returns a short ``"phrase A \u00b7 phrase B \u00b7 ..."`` string with
+    at most ~5 musical ideas - intelligent and easy to scan. The
+    arrangement_notes paragraph from the catalog is intentionally **not**
+    used here (it lives on the lead sheet); this string is the
+    quick-glance practice intent.
+    """
+
+    chords_flat = [str(c).strip() for chs in sections.values() for c in (chs or []) if str(c).strip()]
+    chords_lower = [c.lower() for c in chords_flat]
+    genre = (record.get("genre") or "").lower()
     ext = record.get("extensions") or {}
-    if ext.get("arrangement_notes"):
-        return str(ext["arrangement_notes"])
-    genre = (record.get("genre") or "Pop").lower()
-    concepts = chord_concepts_from_sections(sections, genre=record.get("genre", ""))
-    bits = []
-    if "maj7" in " ".join(concepts):
-        bits.append("smooth voice leading")
-    if "slash" in " ".join(concepts):
-        bits.append("bass-line clarity")
-    if "ii–V" in " ".join(concepts):
-        bits.append("cadence resolution")
-    if "pop" in genre:
-        bits.append("pop ballad rhythm")
-    if "jazz" in genre:
-        bits.append("swing time & chord extensions")
-    if "funk" in genre or "soul" in genre:
-        bits.append("tight groove pocket")
-    if not bits:
-        bits = ["steady tempo", "clean chord changes", "section awareness"]
-    return ", ".join(bits[:4])
+    groove = str(ext.get("default_groove") or "").lower()
+    level_norm = (level or "").strip().lower()
+    instr_norm = (instrument or "").strip().lower()
+
+    # ---- Level-driven musical focus (max 3 bits) -------------------------
+    level_bits: list[str] = []
+    if level_norm.startswith("beg"):
+        level_bits.append("core chord changes")
+        level_bits.append("rhythm feel & timing")
+        level_bits.append("clean transitions")
+    elif level_norm.startswith("adv"):
+        if _has_token(chords_lower, "maj7") or _has_token(chords_lower, "maj9"):
+            level_bits.append("maj7 / maj9 colors")
+        if any(tok in c for c in chords_lower for tok in _ALT_TOKENS):
+            level_bits.append("altered tensions")
+        if _has_pattern(chords_flat, _THIRTEEN_RE) or _has_pattern(chords_flat, _NINE_RE):
+            level_bits.append("9th / 13th extensions")
+        if not level_bits:
+            level_bits.append("rich harmonic color")
+        level_bits.append("reharm ideas")
+        level_bits.append("expressive dynamics & phrasing")
+    else:  # Intermediate (default)
+        if any("/" in c for c in chords_flat):
+            level_bits.append("slash-chord voice leading")
+        if _has_token(chords_lower, "maj7"):
+            level_bits.append("maj7 colors")
+        if _has_pattern(chords_flat, _DOM7_RE):
+            level_bits.append("dominant 7th resolution")
+        if any(re.search(r"(?<![A-Za-z])6(?!\d|sus)", c) for c in chords_flat):
+            level_bits.append("6th-chord color")
+        if _has_pattern(chords_flat, _NINE_RE) and not any(b in level_bits for b in ("maj7 colors",)):
+            level_bits.append("9th-chord color")
+        if not level_bits:
+            level_bits.extend(("steady form", "section transitions"))
+
+    # ---- Instrument-aware focus (max 2 bits) -----------------------------
+    instrument_bits: list[str] = []
+    has_slash = any("/" in c for c in chords_flat)
+    if "piano" in instr_norm:
+        instrument_bits.append("rolling LH arpeggios")
+        instrument_bits.append("sustained slash voicings" if has_slash else "sustained voicings")
+    elif "guitar" in instr_norm:
+        if "ballad" in groove or "ballad" in genre:
+            instrument_bits.append("fingerpicking + open strings")
+        else:
+            instrument_bits.append("strumming feel & picking patterns")
+        instrument_bits.append("fretboard movement")
+    elif "bass" in instr_norm:
+        instrument_bits.append("root motion & groove lock")
+        if has_slash:
+            instrument_bits.append("slash-chord bass motion")
+        else:
+            instrument_bits.append("walking movement")
+    elif "voice" in instr_norm or "vocal" in instr_norm or "singer" in instr_norm:
+        instrument_bits.append("lyrical phrasing & breath pacing")
+        instrument_bits.append("dynamic contour & vowel sustain")
+    elif any(t in instr_norm for t in ("saxophone", "sax", "trumpet", "flute", "clarinet", "winds")):
+        instrument_bits.append("breath control & long-tone phrasing")
+        instrument_bits.append("target-note melodic contour")
+
+    # ---- Genre/feel (max 1 bit) ------------------------------------------
+    feel_bit = ""
+    if "bossa" in genre:
+        feel_bit = "bossa pulse"
+    elif "jazz" in genre:
+        feel_bit = "swing time"
+    elif "funk" in genre or "soul" in genre:
+        feel_bit = "pocket groove"
+    elif "rock" in genre:
+        feel_bit = "rock pulse"
+    elif "ballad" in groove:
+        feel_bit = "ballad pacing"
+
+    # ---- Compose (dedupe + cap at 5) -------------------------------------
+    out: list[str] = []
+    for bit in level_bits[:3] + instrument_bits[:2] + ([feel_bit] if feel_bit else []):
+        if bit and bit not in out:
+            out.append(bit)
+        if len(out) >= 5:
+            break
+
+    if not out:
+        out = ["steady form", "clean chord changes"]
+    return " \u00b7 ".join(out)
 
 
 def practice_goals_for_record(record: dict[str, Any], sections: dict[str, list[str]]) -> list[str]:
@@ -234,8 +330,19 @@ def practice_goals_for_record(record: dict[str, Any], sections: dict[str, list[s
     return goals[:4]
 
 
-def active_song_card_details(record: dict[str, Any], level: str = "Intermediate") -> dict[str, Any]:
-    """Rich metadata for the highlighted Active Song card."""
+def active_song_card_details(
+    record: dict[str, Any],
+    level: str = "Intermediate",
+    *,
+    instrument: str = "",
+) -> dict[str, Any]:
+    """Rich metadata for the highlighted Active Song card.
+
+    ``instrument`` (e.g. ``"Piano"``, ``"Voice"``) tunes the
+    Practice Focus text. ``level`` (``"Beginner"`` /
+    ``"Intermediate"`` / ``"Advanced"``) tunes both the focus text
+    and which chart tier the section list comes from.
+    """
     base = song_card_meta(record)
     sections = sections_for_record(record, level)
     ext = record.get("extensions") or {}
@@ -262,8 +369,16 @@ def active_song_card_details(record: dict[str, Any], level: str = "Intermediate"
         "key_display": f"{key} major" if "m" not in str(key).lower() else f"{key} minor",
         "style_label": style_label,
         "sections": section_labels,
-        "section_summary": ", ".join(_short_section_label(n) for n in section_labels[:6]),
-        "practice_focus": practice_focus_hints(record, sections),
+        # Visual section flow: arrow-separated, numbers stripped, adjacent
+        # sub-parts (Verse 3A | Verse 3B) collapsed - while non-adjacent
+        # repetition (Verse ... Chorus ... Verse) is preserved.
+        "section_summary": _build_section_flow(section_labels),
+        "practice_focus": practice_focus_hints(
+            record,
+            sections,
+            level=level,
+            instrument=instrument,
+        ),
         "chord_concepts": concepts,
         "practice_goals": practice_goals_for_record(record, sections),
         "why_practice": (
@@ -280,20 +395,84 @@ def active_song_card_details(record: dict[str, Any], level: str = "Intermediate"
 
 
 def _short_section_label(name: str) -> str:
-    low = name.lower()
+    """Strip numbering and reduce a section name to one of the canonical
+    short labels used on the active-song card.
+
+    Rules (checked in priority order):
+
+    * "Pre-Chorus", "Pre Chorus" -> ``Pre-Chorus``
+    * any "...Chorus..." (including "Final Chorus") -> ``Chorus``
+    * any "...Verse..." -> ``Verse``
+    * "Bridge" -> ``Bridge``
+    * "Refrain" -> ``Refrain``
+    * "Outro", "Ending", "Coda", "Final ..." (non-chorus) -> ``Outro``
+    * "Intro" -> ``Intro``
+    * "Interlude", "Tag", "Turnaround" -> ``Interlude``
+    * "Solo", "Harmonica", "Instrumental", "Guitar Solo" -> ``Solo``
+
+    Falls back to the first segment of the raw name (everything before
+    "/" or "(") so unusual section names still display cleanly.
+    """
+    low = (name or "").lower()
     if "pre" in low and "chorus" in low:
         return "Pre-Chorus"
-    if "verse" in low:
-        return "Verse"
     if "chorus" in low:
         return "Chorus"
+    if "verse" in low:
+        return "Verse"
     if "bridge" in low:
         return "Bridge"
-    if "outro" in low:
+    if "refrain" in low:
+        return "Refrain"
+    if any(tok in low for tok in ("outro", "ending", "coda")):
+        return "Outro"
+    if "final" in low:
         return "Outro"
     if "intro" in low:
         return "Intro"
-    return name.split("/")[0].split("(")[0].strip()
+    if any(tok in low for tok in ("interlude", "tag", "turnaround")):
+        return "Interlude"
+    if any(tok in low for tok in ("solo", "harmonica", "instrumental")):
+        return "Solo"
+    # AABA / form-letter sections (jazz standards): "A1", "A2", "B3", "C2B"
+    # -> reduce to the form letter ("A", "B", "C").
+    m = re.match(r"^([A-Z])\d+[A-Za-z]?$", (name or "").strip())
+    if m:
+        return m.group(1)
+    # Generic fallback: strip a trailing " 1", " 2A", etc. so any odd
+    # section name still reads cleanly on the card. ``\s+`` (one or more
+    # whitespace required) preserves meaningful range expressions like
+    # "Bars 1-4" or "Section A-B" intact.
+    fallback = (name or "").split("/")[0].split("(")[0].strip()
+    fallback = re.sub(r"\s+\d+[A-Za-z]?$", "", fallback).strip()
+    return fallback or (name or "").strip()
+
+
+def _build_section_flow(section_labels: list[str]) -> str:
+    """Compose the visual section flow shown on the active song card.
+
+    Strips numbering suffixes (`Verse 1`, `Chorus 2`, ...) via
+    :func:`_short_section_label` and collapses **adjacent** duplicates
+    (e.g. consecutive sub-parts like `Verse 3A | Verse 3B` become a
+    single `Verse`) while preserving the actual order and any
+    non-adjacent repetition. The returned string uses ``" \u2192 "`` as
+    the separator so the form reads as a flow rather than a list.
+
+    Examples:
+
+        ["Intro", "Verse 1", "Verse 2", "Chorus 1", "Verse 3A", "Verse 3B",
+         "Chorus 2", "Bridge", "Chorus 3", "Outro"]
+        -> "Intro \u2192 Verse \u2192 Chorus \u2192 Verse \u2192 Chorus \u2192 Bridge \u2192 Chorus \u2192 Outro"
+    """
+    shorts: list[str] = []
+    for raw in section_labels:
+        s = _short_section_label(raw)
+        if not s:
+            continue
+        if shorts and shorts[-1] == s:
+            continue
+        shorts.append(s)
+    return " \u2192 ".join(shorts) if shorts else ""
 
 
 def _instruments_for_genre(genre: str) -> str:

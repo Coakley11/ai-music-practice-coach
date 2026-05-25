@@ -30,7 +30,16 @@ def render_backing_active_song_card(
             return ""
 
     try:
-        details = active_song_card_details(record, level=level)
+        import streamlit as _st_for_instrument  # type: ignore
+        _active_instrument = str(_st_for_instrument.session_state.get("instrument") or "")
+    except Exception:
+        _active_instrument = ""
+    try:
+        details = active_song_card_details(
+            record,
+            level=level,
+            instrument=_active_instrument,
+        )
     except Exception:
         details = {
             "title": record.get("title", "Song"),

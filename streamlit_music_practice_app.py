@@ -4701,8 +4701,13 @@ def _render_v2_chart_debug_pill(rec: dict) -> None:
 def _render_active_song_card(rec: dict) -> None:
     """Rich active-song summary with navigation shortcuts."""
     level = st.session_state.get("level", "Intermediate")
+    active_instrument = str(st.session_state.get("instrument") or "")
     try:
-        details = active_song_card_details(rec, level=level)
+        details = active_song_card_details(
+            rec,
+            level=level,
+            instrument=active_instrument,
+        )
     except Exception:
         details = {**song_card_meta(rec), "time_signature": "4/4", "key_display": rec.get("key", "C"), "style_label": rec.get("genre", ""), "sections": list((rec.get("sections") or {}).keys()), "section_summary": "", "practice_focus": "", "chord_concepts": [], "practice_goals": [], "why_practice": "", "visual_emoji": "🎵", "visual_gradient": "linear-gradient(145deg,#334155,#64748b)", "visual_genre": rec.get("genre", "Song"), "bpm": 100}
     trusted_cls = " trusted" if details.get("trusted") else ""
