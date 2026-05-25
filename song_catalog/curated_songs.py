@@ -211,8 +211,8 @@ def _piano_man_chart_pack() -> dict[str, Any]:
     BRIDGE = (
         ["Am", "Am/G", "D7/F#", "F"]
         + ["Am", "Am/G", "D7/F#", "D7"]
-        + ["G", "G/F", "C/E", "G7/D", "G7/D"]
-    )  # 13 bars
+        + ["G", "G/F", "C/E", "G7/D"]
+    )  # 12 bars - single G7/D resolution, no extra held bar
 
     INSTRUMENTAL = (
         ["Am", "Am/G", "D7/F#", "F"]
@@ -239,11 +239,11 @@ def _piano_man_chart_pack() -> dict[str, Any]:
     verse_2 = list(VERSE_LINE_1) + list(VERSE_MEMORY_LINE_2_BASE) + ["C", "C"]
     # 8 + 6 + 2 = 16 bars (Verse 2 uses Em/B walk-down in line 2)
 
-    chorus_1 = list(CHORUS_LINE_1) + list(CHORUS_LINE_2_BASE) + ["C"]
-    # 8 + 6 + 1 = 15 bars
+    chorus_1 = list(CHORUS_LINE_1) + list(CHORUS_LINE_2_BASE) + ["C", "C"]
+    # 8 + 6 + 2 = 16 bars (Bar 16 holds C - matches Chorus 2/3 resolution)
     chorus_2 = list(CHORUS_LINE_1) + list(CHORUS_LINE_2_BASE) + ["C", "C"]
     chorus_3 = list(chorus_2)
-    # Chorus 2 / 3 end on two bars of C => 16 bars each
+    # All three choruses now end on two bars of C => 16 bars each
 
     harmonica_2 = (
         ["C", "Em/B", "Am", "C/G", "F", PASSING_BAR]              # 6 bars
@@ -264,9 +264,9 @@ def _piano_man_chart_pack() -> dict[str, Any]:
     )  # 8 bars total
 
     harmonica_4 = (
-        ["C", "C/B", "Am", "C/G", "F", "G11", "C", "F/C"]
-        + ["C", "F/C", "Cmaj7", "G11"]
-    )  # 8 + 4 = 12 bars
+        ["C", "C/B", "Am", "C/G", "F", "G11", "C", "F/C"]      # bars 1-8
+        + ["C", "F/C", "Cmaj7", PASSING_BAR]                    # bars 9-12 (Bar 12 = Fmaj7 -> Am7 -> C/D inside ONE bar)
+    )  # 12 bars total
 
     verse_6a = list(verse_3a)  # ends C F/C
     verse_6b = list(verse_1)   # ends C C
@@ -405,13 +405,13 @@ def _piano_man_chart_pack() -> dict[str, Any]:
         ],
         "Bridge 1": [
             "Am → Am/G → D7/F# → F descending phrase",
-            "Repeats then lifts via G → G/F → C/E → G7/D",
+            "Repeats then lifts via G → G/F → C/E → G7/D (single G7/D resolution)",
             "Sets up the title-hook chorus",
         ],
         "Chorus 1": [
             "Title hook — 'Sing us a song you're the piano man'",
             "Em/B walk-down through the chorus phrase",
-            "End on single bar of C before the harmonica break",
+            "Resolves with two bars of C before the harmonica break",
         ],
         "Harmonica Section 2": [
             "Featured harmonica solo over the Em/B walk-down",
@@ -449,6 +449,7 @@ def _piano_man_chart_pack() -> dict[str, Any]:
         ],
         "Harmonica Section 4": [
             "Harmonica feature reinforces the rolling groove",
+            "Bar 12 ends on the passing motion Fmaj7 -> Am7 -> C/D (one bar, one chord per beat)",
         ],
         "Verse 6A": [
             "Sixth verse part A — 'And the piano sounds like a carnival'",
@@ -486,10 +487,12 @@ def _piano_man_chart_pack() -> dict[str, Any]:
         "all treat this as one measure with three quick sub-chords, not three "
         "separate bars: the lead-sheet cell shows the trio of pills side-by-side "
         "and the highlight moves beat-by-beat across them as the bar plays. "
-        "Bridges share an identical 13-bar form (Am → Am/G → D7/F# → F twice, "
-        "then G → G/F → C/E → G7/D + 1 held bar). Verse 2 swaps Em/B for C/B "
-        "in line 2 for the darker memory color. Chorus 2 / Chorus 3 end with "
-        "two bars of C; Chorus 1 ends on one bar. Final Outro coda: "
+        "Bridges share an identical 12-bar form (Am → Am/G → D7/F# → F twice, "
+        "then G → G/F → C/E → G7/D - single resolution, no extra held bar). "
+        "Verse 2 swaps Em/B for C/B in line 2 for the darker memory color. "
+        "All three choruses end with two bars of C (16 bars each). "
+        "Harmonica Section 4 closes Bar 12 on the Fmaj7 -> Am7 -> C/D passing "
+        "bar instead of the held G11. Final Outro coda: "
         "**G/F → C/E → G/D → C** (final C = 1 bar). "
         "Beginner replaces extensions with open triads; Advanced enriches with "
         "maj7 / 9 / 13sus colors and slash-chord voice leading. One chart bar "
