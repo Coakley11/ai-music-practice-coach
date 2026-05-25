@@ -405,6 +405,82 @@ get_song_default_bpm = canonical_active_song_bpm
 get_song_default_groove = default_groove_for_song
 normalize_groove_style = normalize_groove_label
 
+
+def get_song_default_meter(
+    song_data: dict[str, Any] | None,
+    sections: dict[str, list[str]] | None = None,
+) -> str:
+    """Active-song default meter — matches ``songs.meter.default_time_signature_for_record``."""
+    from .meter import default_time_signature_for_record
+
+    return default_time_signature_for_record(song_data or {}, sections or {})
+
+
+def sync_backing_defaults_from_song(
+    st: Any,
+    *,
+    sync_id: str,
+    active_song_bpm: int,
+    active_song_groove: str,
+    active_song_meter: str,
+) -> dict[str, Any]:
+    """Force-sync BPM, groove, and meter to song defaults on song change.
+
+    Thin alias for :func:`canonicalize_backing_defaults_for_song` so consumers
+    that imported the older docs/scaffold name keep working.
+    """
+    return canonicalize_backing_defaults_for_song(
+        st,
+        sync_id=sync_id,
+        active_song_bpm=active_song_bpm,
+        active_song_groove=active_song_groove,
+        active_song_meter=active_song_meter,
+    )
+
+
+def apply_backing_song_defaults_if_needed(
+    st: Any,
+    *,
+    sync_id: str,
+    active_song_bpm: int,
+    active_song_groove: str,
+    active_song_meter: str,
+) -> dict[str, Any]:
+    """Alias for :func:`canonicalize_backing_defaults_for_song` (idempotent)."""
+    return canonicalize_backing_defaults_for_song(
+        st,
+        sync_id=sync_id,
+        active_song_bpm=active_song_bpm,
+        active_song_groove=active_song_groove,
+        active_song_meter=active_song_meter,
+    )
+
+
+def invalidate_backing_audio_if_defaults_change(
+    st: Any,
+    *,
+    sync_id: str,
+    active_song_bpm: int,
+    active_song_groove: str,
+    active_song_meter: str,
+) -> bool:
+    """Drop cached backing audio when the active song's defaults shifted.
+
+    Returns ``True`` if a reset actually fired (i.e. the active song changed).
+    Implemented on top of :func:`canonicalize_backing_defaults_for_song`, which
+    already invalidates audio + page snapshots whenever ``sync_id`` differs
+    from the canonical tracker.
+    """
+    result = canonicalize_backing_defaults_for_song(
+        st,
+        sync_id=sync_id,
+        active_song_bpm=active_song_bpm,
+        active_song_groove=active_song_groove,
+        active_song_meter=active_song_meter,
+    )
+    return bool(result.get("did_reset"))
+
+
 __all__ = [
     "ACTIVE_PLAYBACK_SONG_ID_KEY",
     "ACTIVE_SONG_BPM_KEY",
@@ -421,6 +497,7 @@ __all__ = [
     "active_song_sync_id",
     "apply_backing_bpm_defaults",
     "apply_backing_defaults_for_song",
+    "apply_backing_song_defaults_if_needed",
     "apply_song_bpm_defaults",
     "backing_bpm_slider_widget_key",
     "canonical_active_song_bpm",
@@ -429,6 +506,8 @@ __all__ = [
     "default_groove_for_song",
     "get_song_default_bpm",
     "get_song_default_groove",
+    "get_song_default_meter",
+    "invalidate_backing_audio_if_defaults_change",
     "invalidate_backing_page_snapshots",
     "normalize_groove_label",
     "normalize_groove_style",
@@ -437,6 +516,7 @@ __all__ = [
     "request_backing_groove",
     "reset_playback_song_tracking",
     "sync_backing_bpm_from_song",
+    "sync_backing_defaults_from_song",
     "sync_backing_groove_before_widget",
     "sync_playback_defaults_for_active_song",
 ]
