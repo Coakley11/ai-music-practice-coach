@@ -57,6 +57,7 @@ TRUSTED_CORE_KEYS = {
     ("In My Life", "The Beatles"),
     ("Across the Universe", "The Beatles"),
     ("Uptown Girl", "Billy Joel"),
+    ("Kiss Me", "Sixpence None the Richer"),
     ("Girls Just Want to Have Fun", "Cyndi Lauper"),
     ("Every Breath You Take", "The Police"),
     ("Careless Whisper", "George Michael"),
