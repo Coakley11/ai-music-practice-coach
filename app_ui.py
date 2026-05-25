@@ -2665,6 +2665,60 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 }
 [data-vocal-focus="true"] .section-card { padding-block: 16px; }
 
+/* ---------- YouTube integration (Song Selection + Practice page) ---------- */
+.ui-youtube-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1.1rem;
+  margin: 0.5rem 0 0.25rem 0;
+  background: linear-gradient(135deg, #ff0000, #c4302b);
+  color: #ffffff !important;
+  font-weight: 700;
+  font-size: 0.96rem;
+  letter-spacing: 0.01em;
+  text-decoration: none !important;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(196, 48, 43, 0.30);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.ui-youtube-link-btn:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(135deg, #ff2424, #d24238);
+  box-shadow: 0 6px 18px rgba(196, 48, 43, 0.40);
+  color: #ffffff !important;
+}
+.ui-youtube-link-btn:active {
+  transform: translateY(0);
+}
+.ui-youtube-thumb {
+  display: block;
+  max-width: 360px;
+  width: 100%;
+  height: auto;
+  margin: 0.4rem 0;
+  border-radius: var(--r-md);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16);
+}
+.ui-youtube-embed {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  margin: 0.5rem 0 0.25rem 0;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.20);
+}
+.ui-youtube-embed iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
 /* The polish stylesheet keeps a `data-ui-polish` attribute on its <style>
    element so its presence can be confirmed via DOM inspection if needed,
    without showing any visible debug UI to the user. */

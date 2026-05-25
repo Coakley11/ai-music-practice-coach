@@ -137,6 +137,10 @@ from beginner_arrangement import (
     is_beginner_level,
     select_beginner_section_names,
 )
+from youtube_ui import (
+    render_original_song_video_card,
+    render_practice_learning_video_panel,
+)
 from karaoke_ui import (
     build_karaoke_audio_bridge_script,
     build_karaoke_countdown_script,
@@ -5786,6 +5790,30 @@ if _studio_page == "practice":
         _prepare_backing_from_practice(_focus_pick)
         navigate_studio_page(st.session_state, "backing")
         st.rerun()
+
+    # Optional YouTube reference matched to the active instrument /
+    # level / focus. Collapsed by default - nothing loads until the
+    # user opens the expander (and embeds are gated by an explicit
+    # "Load embedded player" click), so this stays lightweight.
+    _yt_practice_title = str(song_data.get("title") or song or "")
+    _yt_practice_artist = str(song_data.get("artist") or "")
+    if _yt_practice_title:
+        _yt_practice_slug, _, _ = _lyrics_cues_session_keys(
+            _yt_practice_title, _yt_practice_artist
+        )
+        render_practice_learning_video_panel(
+            st,
+            song_title=_yt_practice_title,
+            artist=_yt_practice_artist,
+            song_slug=_yt_practice_slug,
+            instrument=str(instrument or ""),
+            level=str(level or ""),
+            focus=str(focus or ""),
+            instrument_options=list(_instrument_options),
+            level_options=["Beginner", "Intermediate", "Advanced"],
+            expanded=False,
+        )
+
     _is_full_song = practice_is_full_song(_focus_pick)
     _active_section = practice_active_section_name(_focus_pick, sections_for_practice)
     _view_sections = practice_display_sections(sections_for_practice, _focus_pick)
@@ -6251,6 +6279,25 @@ elif _studio_page == "picker":
             chart_sections=_picker_level_sections,
             prominent=True,
         )
+
+        # "Watch the original song" expander - simple, no instrument /
+        # level / focus matching. Voice mode swaps the wording to
+        # sing-along-friendly language. Lazy: nothing loads until the
+        # user expands it and (for embeds) explicitly clicks Load.
+        _yt_song_title = str(selected_data.get("title", ""))
+        _yt_song_artist = str(selected_data.get("artist", ""))
+        if _yt_song_title:
+            _yt_picker_slug, _, _ = _lyrics_cues_session_keys(
+                _yt_song_title, _yt_song_artist
+            )
+            render_original_song_video_card(
+                st,
+                song_title=_yt_song_title,
+                artist=_yt_song_artist,
+                song_slug=_yt_picker_slug,
+                instrument=st.session_state.get("instrument", ""),
+                expanded=False,
+            )
 
         selected_versions = selected_data.get("chart_versions") or {}
         available_levels = ", ".join(selected_versions.keys()) if selected_versions else "Beginner · Intermediate · Advanced"
