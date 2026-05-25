@@ -117,7 +117,9 @@ from songs.playback_defaults import (
     canonical_active_song_bpm,
     default_bpm_for_song_data,
     default_groove_for_song,
+    normalize_groove_label,
     playback_song_id,
+    request_backing_groove,
     sync_playback_defaults_for_active_song,
 )
 from backing_display import (
@@ -5200,8 +5202,6 @@ if is_custom_progression(st.session_state) and _cpl_active:
     if _cpl_groove == "Auto":
         _default_groove = default_groove_for_song(song_data, infer_fn=infer_groove_style)
     else:
-        from songs.playback_defaults import normalize_groove_label
-
         _default_groove = normalize_groove_label(
             _cpl_groove,
             song_data=song_data,
@@ -6478,8 +6478,6 @@ elif _studio_page == "creative":
             request_backing_bpm(st, int(meta["bpm"]))
         groove = str(meta.get("groove") or "")
         if groove and groove != "Auto":
-            from songs.playback_defaults import request_backing_groove
-
             request_backing_groove(st, groove)
 
     def _improv_on_song_source(source: str) -> None:

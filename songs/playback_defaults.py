@@ -325,3 +325,47 @@ def sync_playback_defaults_for_active_song(
         if PRACTICE_GROOVE_KEY not in st.session_state:
             st.session_state[PRACTICE_GROOVE_KEY] = groove
     return bpm, groove
+
+
+# Backward-compatible aliases (older import names / docs).
+apply_backing_bpm_defaults = apply_backing_defaults_for_song
+apply_song_bpm_defaults = sync_playback_defaults_for_active_song
+sync_backing_bpm_from_song = sync_playback_defaults_for_active_song
+get_song_default_bpm = canonical_active_song_bpm
+get_song_default_groove = default_groove_for_song
+normalize_groove_style = normalize_groove_label
+
+__all__ = [
+    "ACTIVE_PLAYBACK_SONG_ID_KEY",
+    "ACTIVE_SONG_BPM_KEY",
+    "BACKING_GROOVE_KEY",
+    "BPM_WIDGET_KEY",
+    "GROOVE_STYLE_CHOICES",
+    "LAST_BACKING_DEFAULTS_SONG_ID",
+    "LAST_BPM_DEFAULTS_SONG_ID",
+    "LAST_BPM_SONG",
+    "LAST_PLAYBACK_GROOVE_SONG",
+    "PENDING_BACKING_GROOVE",
+    "PENDING_BACKING_TRACK_BPM",
+    "PRACTICE_GROOVE_KEY",
+    "active_song_sync_id",
+    "apply_backing_bpm_defaults",
+    "apply_backing_defaults_for_song",
+    "apply_song_bpm_defaults",
+    "backing_bpm_slider_widget_key",
+    "canonical_active_song_bpm",
+    "default_bpm_for_song_data",
+    "default_groove_for_song",
+    "get_song_default_bpm",
+    "get_song_default_groove",
+    "invalidate_backing_page_snapshots",
+    "normalize_groove_label",
+    "normalize_groove_style",
+    "playback_song_id",
+    "prime_active_song_bpm",
+    "request_backing_groove",
+    "reset_playback_song_tracking",
+    "sync_backing_bpm_from_song",
+    "sync_backing_groove_before_widget",
+    "sync_playback_defaults_for_active_song",
+]
