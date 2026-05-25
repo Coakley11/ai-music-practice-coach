@@ -32,7 +32,58 @@ __all__ = [
     "sidebar_section",
     "sidebar_source_banner",
     "sidebar_goto_song_selection",
+    "studio_card_modifier_classes",
 ]
+
+
+_GENRE_TOKENS: tuple[str, ...] = (
+    "jazz",
+    "bossa",
+    "blues",
+    "rock",
+    "funk",
+    "soul",
+    "pop",
+    "classical",
+    "folk",
+    "country",
+    "latin",
+)
+
+_INSTRUMENT_TOKENS: tuple[str, ...] = (
+    "guitar",
+    "piano",
+    "saxophone",
+    "trumpet",
+    "bass",
+    "drums",
+    "violin",
+    "vocal",
+)
+
+
+def studio_card_modifier_classes(
+    *,
+    genre: str = "",
+    instrument: str = "",
+) -> str:
+    """Compact CSS modifier string for tasteful genre/instrument-aware accents.
+
+    Returns a space-prefixed string so it can be appended directly to existing
+    card class strings (or `""` when neither token matches).
+    """
+    bits: list[str] = []
+    g = (genre or "").lower()
+    for token in _GENRE_TOKENS:
+        if token in g:
+            bits.append(f"genre-{token}")
+            break
+    i = (instrument or "").lower()
+    for token in _INSTRUMENT_TOKENS:
+        if token in i:
+            bits.append(f"inst-{token}")
+            break
+    return (" " + " ".join(bits)) if bits else ""
 
 
 def inject_app_theme() -> None:
@@ -1801,6 +1852,494 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   .ui-now-playing .np-title { font-size: 0.9rem; }
   .ui-section-jump { top: 0.25rem; }
   .lead-grid { grid-template-columns: repeat(2, minmax(88px, 1fr)) !important; }
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+    _inject_app_theme_polish()
+
+
+def _inject_app_theme_polish() -> None:
+    """Layer of refinements on top of the base theme — keeps existing classes intact.
+
+    Loaded AFTER the base style block so equal-specificity rules win on cascade.
+    Goals: cleaner typography, consistent radii/shadows, subtler hover/focus,
+    polished tabs/expanders, and tasteful genre/instrument accent classes.
+    """
+    import streamlit as st
+
+    st.markdown(
+        """
+<style>
+/* ===========================================================
+   UI POLISH v2 — refined design tokens & component finishing
+   =========================================================== */
+
+:root {
+  --ui-font: -apple-system, BlinkMacSystemFont, "Inter", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --ui-font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, Menlo, Monaco, Consolas, monospace;
+  --ui-ink: #0b1220;
+  --ui-text: #1e293b;
+  --ui-muted: #64748b;
+  --ui-faint: #94a3b8;
+  --ui-line: rgba(15, 23, 42, 0.08);
+  --ui-line-2: rgba(15, 23, 42, 0.14);
+  --ui-accent: #4f46e5;
+  --ui-accent-soft: #eef2ff;
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-xl: 22px;
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-2: 0 2px 8px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-3: 0 8px 24px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.04);
+  --shadow-4: 0 16px 40px rgba(15, 23, 42, 0.10), 0 4px 12px rgba(15, 23, 42, 0.05);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* ---- Global typography polish ---- */
+html, body, .block-container, [data-testid="stSidebar"] {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+.block-container {
+  padding-top: 0.75rem;
+  padding-bottom: 2.5rem;
+}
+.ui-page-title,
+.ui-brand-main-title,
+.ui-hero-title,
+.ui-active-song-title,
+.ui-backing-active-title,
+.ui-card-title,
+.ui-compact-title,
+.ui-playback-setup-title,
+.ui-now-playing .np-title {
+  font-feature-settings: "ss01", "cv11";
+  letter-spacing: -0.018em;
+}
+.block-container h1, .block-container h2, .block-container h3, .block-container h4 {
+  letter-spacing: -0.015em;
+}
+
+/* ---- Cards & panels — consistent transitions / soft hover ---- */
+.ui-card,
+.ui-page-head,
+.ui-ctrl-section,
+.ui-song-card,
+.ui-active-song-card,
+.ui-backing-active-song,
+.ui-playback-setup,
+.ui-now-playing,
+.ui-follow-strip,
+.ui-section-jump,
+.cpl-section-card,
+.cpl-builder-panel,
+.cpl-finish-panel,
+.cpl-panel,
+.cpl-section-block,
+.tutorial-quick-card,
+.notation-output {
+  transition: transform 180ms var(--ease), box-shadow 180ms var(--ease), border-color 180ms var(--ease);
+}
+.ui-card:hover,
+.ui-song-card:hover:not(.active),
+.cpl-section-card:hover:not(.cpl-section-active),
+.cpl-section-block:hover:not(.cpl-section-active) {
+  box-shadow: var(--shadow-2);
+  border-color: var(--ui-line-2);
+}
+.ui-active-song-card { box-shadow: var(--shadow-3); }
+.ui-backing-active-song {
+  box-shadow: 0 14px 38px rgba(30, 64, 175, 0.20), 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+/* ---- Badge — uniform sizing/weight, less shouty ---- */
+.ui-badge {
+  font-size: 0.74rem;
+  letter-spacing: 0.01em;
+  padding: 0.26rem 0.6rem;
+  font-weight: 700;
+  transition: background-color 160ms var(--ease), border-color 160ms var(--ease);
+}
+.ui-backing-badge {
+  font-weight: 750;
+  letter-spacing: 0.02em;
+}
+
+/* ---- Buttons — softer corners, subtle lift, smoother feel ---- */
+.block-container .stButton > button,
+.block-container .stDownloadButton > button {
+  border-radius: 10px !important;
+  font-weight: 700 !important;
+  transition: transform 140ms var(--ease), box-shadow 140ms var(--ease), filter 140ms var(--ease) !important;
+}
+.block-container .stButton > button:hover:not(:disabled),
+.block-container .stDownloadButton > button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.10);
+}
+.block-container .stButton > button:active:not(:disabled) {
+  transform: translateY(0);
+}
+.block-container .stButton > button:disabled {
+  opacity: 0.55 !important;
+}
+
+/* ---- Better focus rings ---- */
+.block-container button:focus-visible,
+.block-container [data-baseweb="select"] > div:focus-within,
+.block-container input:focus-visible,
+.block-container textarea:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.45) !important;
+  outline-offset: 2px !important;
+}
+
+/* ---- Selectbox / inputs — refined border + hover ---- */
+.block-container [data-baseweb="select"] > div,
+.block-container .stTextInput > div > div,
+.block-container .stTextArea > div > div,
+.block-container .stNumberInput > div > div {
+  border-radius: 10px !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  transition: border-color 140ms var(--ease), box-shadow 140ms var(--ease);
+}
+.block-container [data-baseweb="select"] > div:hover {
+  border-color: rgba(15, 23, 42, 0.22) !important;
+}
+
+/* ---- Slider — softer thumb shadow + accent ---- */
+.block-container [data-baseweb="slider"] [role="slider"] {
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18) !important;
+}
+
+/* ---- Tabs — modern, focused active indicator ---- */
+div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+  border-bottom: 1px solid var(--ui-line);
+  gap: 0.15rem;
+  margin-bottom: 0.85rem;
+}
+div[data-testid="stTabs"] [data-baseweb="tab"] {
+  font-weight: 700 !important;
+  font-size: 0.86rem !important;
+  padding: 0.55rem 0.85rem !important;
+  color: var(--ui-muted) !important;
+  border-radius: 10px 10px 0 0 !important;
+  transition: background-color 140ms var(--ease), color 140ms var(--ease);
+}
+div[data-testid="stTabs"] [data-baseweb="tab"]:hover {
+  color: var(--ui-text) !important;
+  background: rgba(15, 23, 42, 0.04);
+}
+div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {
+  color: var(--ui-ink) !important;
+}
+div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+  background: var(--ui-accent) !important;
+  height: 2px !important;
+  border-radius: 2px;
+}
+
+/* ---- Expanders — flatter, more modern ---- */
+.block-container [data-testid="stExpander"] {
+  border: 1px solid var(--ui-line) !important;
+  border-radius: var(--r-md) !important;
+  background: #ffffff !important;
+  box-shadow: var(--shadow-1);
+  margin-bottom: 0.6rem;
+  overflow: hidden;
+}
+.block-container [data-testid="stExpander"] summary {
+  padding: 0.6rem 0.85rem !important;
+  font-weight: 750 !important;
+  font-size: 0.92rem !important;
+  color: var(--ui-text) !important;
+  transition: background-color 140ms var(--ease);
+}
+.block-container [data-testid="stExpander"] summary:hover {
+  background: rgba(15, 23, 42, 0.025);
+}
+.block-container [data-testid="stExpander"][open] summary {
+  border-bottom: 1px solid var(--ui-line) !important;
+}
+
+/* ---- Top nav — calmer surface, clearer active state ---- */
+.ui-studio-nav-segmented {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-color: var(--ui-line) !important;
+  box-shadow: var(--shadow-1);
+}
+.ui-studio-nav-segmented [data-testid="stBaseButton-segmented_control"],
+.ui-studio-nav-segmented [data-testid="stBaseButton-segmented_controlActive"] {
+  border-radius: 10px !important;
+  transition: background 140ms var(--ease), color 140ms var(--ease), box-shadow 140ms var(--ease) !important;
+}
+.ui-studio-nav-segmented [data-testid="stBaseButton-segmented_controlActive"] {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%) !important;
+  color: #f8fafc !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), 0 4px 12px rgba(15, 23, 42, 0.18) !important;
+}
+
+/* ---- Sidebar — slightly cleaner gradient + spacing ---- */
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #0b1220 0%, #111827 50%, #1e293b 100%);
+  border-right: 1px solid rgba(255,255,255,0.04);
+}
+[data-testid="stSidebar"] > div:first-child { padding-top: 0.75rem; }
+[data-testid="stSidebar"] .stButton > button {
+  border-radius: 9px !important;
+}
+
+/* ---- Sidebar nav items — calmer when inactive, clearer when active ---- */
+.ui-sb-nav-wrap .studio-nav-item button {
+  font-size: 0.79rem !important;
+  letter-spacing: 0.01em;
+}
+.ui-sb-nav-wrap .studio-nav-item:not(.nav-btn-active) button {
+  opacity: 0.88;
+}
+.ui-sb-nav-wrap .nav-btn-active button {
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.28) !important;
+}
+
+/* ---- Page header — calmer top spacing ---- */
+.ui-page-head {
+  padding: 0.85rem 1.05rem 0.95rem;
+  box-shadow: var(--shadow-1);
+}
+.ui-page-title {
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+.ui-compact-title {
+  font-weight: 800;
+  letter-spacing: -0.018em;
+}
+
+/* ---- Quick navigation label — tighter rhythm ---- */
+.ui-page-nav-label {
+  letter-spacing: 0.1em;
+  color: var(--ui-faint);
+  margin-bottom: 0.3rem;
+}
+
+/* ---- Now-playing strip — cleaner edge ---- */
+.ui-now-playing {
+  border-color: rgba(15, 23, 42, 0.10);
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+  box-shadow: var(--shadow-1);
+}
+.ui-now-playing .np-title { font-weight: 800; }
+
+/* ---- Active song card — cleaner hierarchy ---- */
+.ui-active-song-card {
+  border-color: rgba(15, 23, 42, 0.12);
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 55%, #f1f5f9 100%);
+}
+.ui-active-song-card.trusted {
+  border-color: rgba(34, 197, 94, 0.32);
+  background: linear-gradient(135deg, #ffffff 0%, #f6fdf9 55%, #ecfdf5 100%);
+}
+.ui-active-song-card.active::before { display: none; }
+.ui-active-song-kicker { color: var(--ui-accent); }
+.ui-active-song-title { font-weight: 850; letter-spacing: -0.022em; }
+.ui-active-song-facts dd { font-weight: 700; color: var(--ui-text); }
+
+/* ---- Backing active song — softer, less heavy ---- */
+.ui-backing-active-song {
+  background: linear-gradient(135deg, #0b1220 0%, #1e3a8a 38%, #312e81 72%, #1e1b4b 100%);
+}
+.ui-backing-active-title { letter-spacing: -0.022em; }
+.ui-backing-active-kicker { letter-spacing: 0.1em; }
+
+/* ---- Card row rhythm ---- */
+.ui-card + .ui-card { margin-top: 0.75rem; }
+
+/* ---- Notation / TAB display — cleaner background, better spacing ---- */
+.notation-output {
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  background: #fdfdf6;
+  box-shadow: var(--shadow-1);
+  padding: 1rem 1.15rem;
+}
+.notation-output .notation-title {
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.tab-measure {
+  border: 1.5px solid rgba(15, 23, 42, 0.2);
+  background: #fdfdf6;
+  box-shadow: var(--shadow-1);
+}
+.tab-measure:hover { box-shadow: var(--shadow-2); }
+.tab-prog-chord {
+  border-color: rgba(30, 64, 175, 0.55);
+  background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
+}
+
+/* ---- Scrollbars — subtle, slim ---- */
+.block-container *::-webkit-scrollbar,
+[data-testid="stSidebar"] *::-webkit-scrollbar {
+  width: 10px; height: 10px;
+}
+.block-container *::-webkit-scrollbar-track,
+[data-testid="stSidebar"] *::-webkit-scrollbar-track { background: transparent; }
+.block-container *::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.18);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.block-container *::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.32);
+  background-clip: padding-box;
+}
+[data-testid="stSidebar"] *::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
+
+/* ---- Captions / helper text — softer, less attention-grabbing ---- */
+.block-container .stCaption,
+.block-container p[data-testid="stCaptionContainer"],
+.block-container p[data-testid="stCaptionContainer"] p {
+  color: var(--ui-muted) !important;
+  line-height: 1.5;
+}
+
+/* ---- Section jump bar — calmer ---- */
+.ui-section-jump {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: var(--shadow-1);
+}
+
+/* ---- Quick BPM card (Backing Track Quick Playback) ---- */
+.ui-card.soft {
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  border-color: var(--ui-line);
+}
+.ui-card.soft .ui-card-title {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ui-muted);
+  font-weight: 800;
+  margin-bottom: 0.55rem;
+}
+
+/* ---- Playback setup — tidier label/value hierarchy ---- */
+.ui-playback-setup {
+  background: linear-gradient(160deg, #ffffff 0%, #f8fafc 60%, #f1f5f9 100%);
+  box-shadow: var(--shadow-1);
+}
+.ui-playback-setup-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+}
+.ui-playback-setup-bpm {
+  font-feature-settings: "tnum";
+  font-size: 2.05rem;
+  letter-spacing: -0.04em;
+}
+
+/* ---- Genre-aware accents on backing active card ---- */
+.ui-backing-active-song.genre-jazz {
+  background: linear-gradient(135deg, #0b1220 0%, #312e81 38%, #4c1d95 72%, #1e1b4b 100%);
+}
+.ui-backing-active-song.genre-bossa {
+  background: linear-gradient(135deg, #052e2b 0%, #064e3b 38%, #115e59 72%, #0c2723 100%);
+}
+.ui-backing-active-song.genre-rock {
+  background: linear-gradient(135deg, #0b1220 0%, #1e3a8a 38%, #1e40af 72%, #172554 100%);
+}
+.ui-backing-active-song.genre-blues {
+  background: linear-gradient(135deg, #0b1220 0%, #1e3a8a 38%, #312e81 72%, #1c1917 100%);
+}
+.ui-backing-active-song.genre-funk {
+  background: linear-gradient(135deg, #1c1917 0%, #7c2d12 38%, #b45309 72%, #422006 100%);
+}
+.ui-backing-active-song.genre-soul {
+  background: linear-gradient(135deg, #1c0a2e 0%, #3b0764 38%, #6b21a8 72%, #831843 100%);
+}
+.ui-backing-active-song.genre-pop {
+  background: linear-gradient(135deg, #0b1220 0%, #075985 38%, #1d4ed8 72%, #0c4a6e 100%);
+}
+.ui-backing-active-song.genre-classical {
+  background: linear-gradient(135deg, #0f172a 0%, #1f2937 38%, #334155 72%, #0b1220 100%);
+}
+
+/* ---- Instrument-aware accent line on the active song card ---- */
+.ui-active-song-card { border-left-width: 1px; }
+.ui-active-song-card.inst-guitar { box-shadow: inset 4px 0 0 #a16207, var(--shadow-3); }
+.ui-active-song-card.inst-piano { box-shadow: inset 4px 0 0 #0e7490, var(--shadow-3); }
+.ui-active-song-card.inst-bass { box-shadow: inset 4px 0 0 #6b21a8, var(--shadow-3); }
+.ui-active-song-card.inst-saxophone { box-shadow: inset 4px 0 0 #a21caf, var(--shadow-3); }
+.ui-active-song-card.inst-trumpet { box-shadow: inset 4px 0 0 #b45309, var(--shadow-3); }
+.ui-active-song-card.inst-violin { box-shadow: inset 4px 0 0 #7c2d12, var(--shadow-3); }
+.ui-active-song-card.inst-drums { box-shadow: inset 4px 0 0 #475569, var(--shadow-3); }
+.ui-active-song-card.inst-vocal { box-shadow: inset 4px 0 0 #be185d, var(--shadow-3); }
+
+/* ---- Small decorative musical accent on Active Song kicker ---- */
+.ui-active-song-kicker::before {
+  content: "\\266A  ";
+  font-weight: 800;
+  margin-right: 0.05rem;
+  opacity: 0.7;
+}
+.ui-backing-active-kicker::before {
+  content: "\\266A  ";
+  margin-right: 0.05rem;
+  opacity: 0.7;
+}
+
+/* ---- Studio deck — calmer surface ---- */
+.ui-studio-deck {
+  background: linear-gradient(170deg, #ffffff 0%, #f8fafc 60%, #f1f5f9 100%);
+  border-color: var(--ui-line);
+  box-shadow: var(--shadow-1);
+}
+
+/* ---- Source banner (sidebar) — slightly cleaner ---- */
+[data-testid="stSidebar"] .ui-source-banner {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+/* ---- Markdown content — calmer rhythm ---- */
+.block-container .stMarkdown p { line-height: 1.55; }
+.block-container .stMarkdown h2 { margin-top: 1.1rem; }
+.block-container .stMarkdown h3 { margin-top: 0.9rem; }
+
+/* ---- Reduce vertical noise from empty containers ---- */
+[data-testid="stVerticalBlock"] > div:empty { display: none; }
+.block-container hr { border-color: var(--ui-line); margin: 1rem 0; }
+
+/* ---- Animations: subtle fade for newly rendered cards ---- */
+@keyframes ui-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.ui-active-song-card,
+.ui-backing-active-song,
+.ui-page-head {
+  animation: ui-fade-in 240ms var(--ease) both;
+}
+
+/* ---- Responsive trims ---- */
+@media (max-width: 1100px) {
+  .block-container { padding-left: 1rem; padding-right: 1rem; }
+}
+@media (max-width: 760px) {
+  .ui-active-song-title { font-size: 1.08rem; }
+  .ui-backing-active-title { font-size: 1.02rem; }
+  .ui-playback-setup-bpm { font-size: 1.7rem; }
+  .ui-page-title { font-size: 1.15rem; }
+  .block-container { padding-left: 0.75rem; padding-right: 0.75rem; }
 }
 </style>
         """,

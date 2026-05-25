@@ -4465,8 +4465,16 @@ def _render_active_song_card(rec: dict) -> None:
     goals_html = "".join(
         f"<li>{html.escape(g)}</li>" for g in (details.get("practice_goals") or [])
     )
+    try:
+        from app_ui import studio_card_modifier_classes as _studio_card_modifier_classes
+        modifier_cls = _studio_card_modifier_classes(
+            genre=str(rec.get("genre") or details.get("visual_genre") or ""),
+            instrument=str(st.session_state.get("instrument") or ""),
+        )
+    except Exception:
+        modifier_cls = ""
     card_html = (
-        f'<div class="ui-active-song-card{trusted_cls}">'
+        f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}">'
         f'<div class="ui-active-song-art" style="background:{html.escape(details["visual_gradient"])};">'
         f'{html.escape(details["visual_emoji"])}<small>{html.escape(details["visual_genre"])}</small></div>'
         f'<div class="ui-active-song-body">'

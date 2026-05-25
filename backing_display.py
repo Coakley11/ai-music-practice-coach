@@ -23,6 +23,11 @@ def render_backing_active_song_card(
 ) -> None:
     """Premium active-song card (Song Selection style) for Backing Track."""
     from practice_studio import active_song_card_details, genre_visual_style
+    try:
+        from app_ui import studio_card_modifier_classes
+    except Exception:  # pragma: no cover - defensive
+        def studio_card_modifier_classes(**_kwargs: Any) -> str:
+            return ""
 
     try:
         details = active_song_card_details(record, level=level)
@@ -38,16 +43,23 @@ def render_backing_active_song_card(
             "visual_gradient": "linear-gradient(145deg,#1e3a8a,#312e81)",
             "visual_genre": record.get("genre", "Song"),
         }
+    raw_genre = str(record.get("genre") or details.get("visual_genre") or "Song")
     genre = html.escape(str(details.get("genre") or details.get("visual_genre") or "Song"))
     bpm = int(applied_bpm if applied_bpm is not None else details.get("bpm") or 100)
     groove = html.escape(str(applied_groove or details.get("style_label") or "Auto"))
     meter = html.escape(str(applied_meter or details.get("time_signature") or "4/4"))
-    visual = genre_visual_style(str(record.get("genre") or "Song"))
+    visual = genre_visual_style(raw_genre)
     gradient = visual.get("gradient") or "linear-gradient(145deg,#1e3a8a,#312e81)"
     emoji = html.escape(visual.get("emoji") or details.get("visual_emoji") or "🎵")
+    try:
+        import streamlit as _st  # type: ignore
+        _instrument = str(_st.session_state.get("instrument") or "")
+    except Exception:
+        _instrument = ""
+    modifier_cls = studio_card_modifier_classes(genre=raw_genre, instrument=_instrument)
 
     st.markdown(
-        f'<div class="ui-backing-active-song">'
+        f'<div class="ui-backing-active-song{modifier_cls}">'
         f'<div class="ui-backing-active-art" style="background:{html.escape(gradient)};">'
         f'{emoji}<small>{genre}</small></div>'
         f'<div class="ui-backing-active-body">'
