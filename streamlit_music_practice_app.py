@@ -195,6 +195,7 @@ from backing_audio import (
     synthesize_chords_to_numpy,
     wav_bytes_from_float,
 )
+import chord_subdivisions
 from coach_overlay import section_overlay_html as _section_overlay
 
 from song_chart_editor import render_chart_editor_panel
@@ -1799,19 +1800,43 @@ def _chart_grid_html(chords, current_bar=None, section_name=""):
     safe_section_attr = html.escape(str(section_name), quote=True)
     for idx, chord in enumerate(chords):
         previous = chords[idx - 1] if idx else None
-        display = "%" if previous and chord == previous else str(chord)
+        same_as_prev = bool(previous and chord == previous)
+        is_sub = chord_subdivisions.is_subdivided_bar(chord)
+        if same_as_prev and not is_sub:
+            display_token = "%"
+            symbol_html = "%"
+            subdivided_cell = False
+        else:
+            display_token = str(chord)
+            if is_sub:
+                parts = chord_subdivisions.subdivisions(chord)
+                inner = []
+                for sub_idx, part in enumerate(parts):
+                    if sub_idx > 0:
+                        inner.append("<span class='sub-sep'>&rarr;</span>")
+                    inner.append(
+                        f"<span class='sub-chord' data-sub='{sub_idx}'>{html.escape(str(part))}</span>"
+                    )
+                symbol_html = "".join(inner)
+                subdivided_cell = True
+            else:
+                symbol_html = html.escape(display_token)
+                subdivided_cell = False
         current_class = " current-chord" if current_bar == idx + 1 else ""
+        sub_class = " subdivided" if subdivided_cell else ""
         repeat_count = 1
-        if display != "%":
+        if display_token != "%" and not subdivided_cell:
             for nxt in chords[idx + 1:]:
                 if nxt != chord:
                     break
                 repeat_count += 1
         duration = f"<span class='duration'>{repeat_count} bars</span>" if repeat_count > 1 else ""
+        if subdivided_cell:
+            duration = f"{duration}<span class='subdivided-tag'>Passing &middot; subdivided bar</span>"
         cells.append(
-            f"<div class='chord-cell live-chart-cell{current_class}' data-section='{safe_section_attr}' data-bar='{idx + 1}'>"
+            f"<div class='chord-cell live-chart-cell{current_class}{sub_class}' data-section='{safe_section_attr}' data-bar='{idx + 1}'>"
             f"<div class='bar-num'>Bar {idx + 1}</div>"
-            f"<div class='chord-symbol'>{html.escape(display)}</div>"
+            f"<div class='chord-symbol'>{symbol_html}</div>"
             f"{duration}"
             "</div>"
         )
@@ -2077,6 +2102,48 @@ def full_chord_markdown(
   color: #64748b;
   font-size: 0.70rem;
   font-weight: 700;
+}
+.chord-cell.subdivided .chord-symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  font-size: 0.98rem;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+.chord-cell.subdivided .sub-chord {
+  padding: 2px 5px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.chord-cell.subdivided .sub-sep {
+  color: #94a3b8;
+  font-weight: 700;
+  font-size: 0.82rem;
+  margin: 0 1px;
+}
+.chord-cell.subdivided.current-chord .sub-chord {
+  background: rgba(255, 255, 255, 0.55);
+  color: #14532d;
+}
+.chord-cell.subdivided .sub-chord.active-sub {
+  background: #15803d;
+  color: #f0fdf4;
+  border-color: #14532d;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.45);
+}
+.chord-cell.subdivided .subdivided-tag {
+  display: block;
+  margin-top: 4px;
+  color: #15803d;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .lyric-box, .analysis-box, .overlay-box {
   border-radius: 10px;
@@ -2558,21 +2625,38 @@ def build_chord_event_timeline(events, bpm, loops, time_signature="4/4", beats_p
     else:
         bar_duration = meter_timing(bpm, time_signature).bar_sec
     looped_events = events * max(1, int(loops))
-    for idx, event in enumerate(looped_events):
-        start_time = idx * bar_duration
-        end_time = start_time + bar_duration
-        timeline.append({
-            "event_index": idx,
-            "absolute_bar": idx + 1,
-            "total_bars": len(looped_events),
-            "section": event.get("section", ""),
-            "bar_in_section": int(event.get("bar_in_section", 0)) + 1,
-            "section_bars": int(event.get("section_bars", 1)),
-            "chord": event.get("chord", ""),
-            "start_time": start_time,
-            "duration": bar_duration,
-            "end_time": end_time,
-        })
+    total_bars = len(looped_events)
+    event_index = 0
+    for bar_idx, event in enumerate(looped_events):
+        bar_start = bar_idx * bar_duration
+        chord_token = event.get("chord", "")
+        sub_parts = chord_subdivisions.subdivisions(chord_token)
+        sub_count = max(1, len(sub_parts))
+        sub_duration = bar_duration / sub_count if sub_count > 0 else bar_duration
+        section_name = event.get("section", "")
+        bar_in_section = int(event.get("bar_in_section", 0)) + 1
+        section_bars = int(event.get("section_bars", 1))
+        for sub_idx, sub_chord in enumerate(sub_parts or [chord_token]):
+            start_time = bar_start + sub_idx * sub_duration
+            end_time = start_time + sub_duration
+            entry = {
+                "event_index": event_index,
+                "absolute_bar": bar_idx + 1,
+                "total_bars": total_bars,
+                "section": section_name,
+                "bar_in_section": bar_in_section,
+                "section_bars": section_bars,
+                "chord": sub_chord if sub_count > 1 else chord_token,
+                "start_time": start_time,
+                "duration": sub_duration,
+                "end_time": end_time,
+            }
+            if sub_count > 1:
+                entry["subdivision_index"] = sub_idx
+                entry["subdivision_count"] = sub_count
+                entry["parent_chord"] = chord_token
+            timeline.append(entry)
+            event_index += 1
     return timeline
 
 
@@ -2796,6 +2880,7 @@ def live_follow_along_component_html(wav_bytes, timeline, chart_html, *, autopla
     function clearHighlight() {{
       document.querySelectorAll(".live-chart-cell.current-chord").forEach((el) => el.classList.remove("current-chord"));
       document.querySelectorAll(".section-card.current").forEach((el) => el.classList.remove("current"));
+      document.querySelectorAll(".sub-chord.active-sub").forEach((el) => el.classList.remove("active-sub"));
       document.querySelectorAll(".section-card .section-head .section-meta:last-child").forEach((el) => {{
         if (el.textContent.trim() === "Now Playing") el.textContent = "";
       }});
@@ -2813,14 +2898,21 @@ def live_follow_along_component_html(wav_bytes, timeline, chart_html, *, autopla
       lastEventIndex = event.event_index;
 
       const next = timeline[(event.event_index + 1) % timeline.length] || event;
+      const isSubdivided = typeof event.subdivision_index === "number";
+      const displayChord = isSubdivided
+        ? `${{event.chord}}  (${{event.subdivision_index + 1}}/${{event.subdivision_count}})`
+        : (event.chord || "-");
+      const nextDisplay = (typeof next.subdivision_index === "number" && next.subdivision_index > 0)
+        ? next.chord
+        : (next.chord || "-");
       sectionEl.textContent = event.section || "Section";
-      chordEl.textContent = event.chord || "-";
+      chordEl.textContent = displayChord;
       barEl.textContent = `${{event.bar_in_section}} of ${{event.section_bars}}`;
-      nextEl.textContent = next.chord || "-";
+      nextEl.textContent = nextDisplay;
       detailEl.textContent = `Audio ${{audioTime.toFixed(2)}}s | Event ${{event.event_index + 1}} of ${{timeline.length}} | ${{event.start_time.toFixed(1)}}s-${{event.end_time.toFixed(1)}}s`;
       const nowPlayingBanner = document.querySelector(".now-playing");
       if (nowPlayingBanner) {{
-        nowPlayingBanner.textContent = `Now Playing: ${{event.section}} | Bar ${{event.bar_in_section}} | ${{event.chord}}`;
+        nowPlayingBanner.textContent = `Now Playing: ${{event.section}} | Bar ${{event.bar_in_section}} | ${{displayChord}}`;
       }}
 
       clearHighlight();
@@ -2830,6 +2922,10 @@ def live_follow_along_component_html(wav_bytes, timeline, chart_html, *, autopla
       );
       if (currentCell) {{
         currentCell.classList.add("current-chord");
+        if (isSubdivided) {{
+          const subEl = currentCell.querySelector(`.sub-chord[data-sub="${{event.subdivision_index}}"]`);
+          if (subEl) subEl.classList.add("active-sub");
+        }}
         const card = currentCell.closest(".section-card");
         if (card) {{
           card.classList.add("current");

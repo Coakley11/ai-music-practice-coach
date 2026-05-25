@@ -5,6 +5,11 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from chord_subdivisions import (
+    is_subdivided_bar as _sub_is_subdivided_bar,
+    subdivisions as _sub_subdivisions,
+)
+
 BACKING_CHART_CSS = """
 <style>
 .backing-chart-sheet { font-family: system-ui, -apple-system, Segoe UI, sans-serif; }
@@ -100,6 +105,48 @@ BACKING_CHART_CSS = """
   font-size: 0.70rem;
   font-weight: 700;
 }
+.backing-chart-sheet .chord-cell.subdivided .chord-symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  font-size: 0.96rem;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+.backing-chart-sheet .chord-cell.subdivided .sub-chord {
+  padding: 2px 5px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.backing-chart-sheet .chord-cell.subdivided .sub-sep {
+  color: #94a3b8;
+  font-weight: 700;
+  font-size: 0.82rem;
+  margin: 0 1px;
+}
+.backing-chart-sheet .chord-cell.subdivided.current-chord .sub-chord {
+  background: rgba(255, 255, 255, 0.55);
+  color: #14532d;
+}
+.backing-chart-sheet .chord-cell.subdivided .sub-chord.active-sub {
+  background: #15803d;
+  color: #f0fdf4;
+  border-color: #14532d;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.45);
+}
+.backing-chart-sheet .chord-cell.subdivided .subdivided-tag {
+  display: block;
+  margin-top: 4px;
+  color: #15803d;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .backing-chart-sheet .lyric-preview {
   margin-top: 6px;
   padding: 6px 8px;
@@ -145,6 +192,21 @@ def chart_feel_label(style: str | None) -> str:
     }.get(style or "Pop groove", style or "Pop groove")
 
 
+def _render_chord_symbol_html(token: str) -> tuple[str, bool]:
+    """Return ``(symbol_html, is_subdivided)`` for a chart cell."""
+    if _sub_is_subdivided_bar(token):
+        parts = _sub_subdivisions(token)
+        spans: list[str] = []
+        for sub_idx, part in enumerate(parts):
+            if sub_idx > 0:
+                spans.append("<span class='sub-sep'>&rarr;</span>")
+            spans.append(
+                f"<span class='sub-chord' data-sub='{sub_idx}'>{html.escape(str(part))}</span>"
+            )
+        return "".join(spans), True
+    return html.escape(str(token)), False
+
+
 def chart_grid_html(
     chords: list[str],
     *,
@@ -159,10 +221,21 @@ def chart_grid_html(
     safe_section_attr = html.escape(str(section_name), quote=True)
     for idx, chord in enumerate(chords):
         previous = chords[idx - 1] if idx else None
-        display = "%" if previous and chord == previous else str(chord)
+        same_as_prev = bool(previous and chord == previous)
+        is_subdivided = _sub_is_subdivided_bar(chord)
+        # Don't compress subdivided bars with a "%" repeat marker - each
+        # subdivided bar is its own distinct passing-harmony event.
+        if same_as_prev and not is_subdivided:
+            display_token = "%"
+            symbol_html = "%"
+            subdivided_cell = False
+        else:
+            display_token = str(chord)
+            symbol_html, subdivided_cell = _render_chord_symbol_html(display_token)
         current_class = " current-chord" if current_bar == idx + 1 else ""
+        sub_class = " subdivided" if subdivided_cell else ""
         repeat_count = 1
-        if display != "%":
+        if display_token != "%" and not subdivided_cell:
             for nxt in chords[idx + 1:]:
                 if nxt != chord:
                     break
@@ -170,22 +243,27 @@ def chart_grid_html(
         duration = (
             f"<span class='duration'>{repeat_count} bars</span>" if repeat_count > 1 else ""
         )
+        if subdivided_cell:
+            duration = (
+                f"{duration}<span class='subdivided-tag'>Passing &middot; subdivided bar</span>"
+            )
         shape_hint = ""
         if (
             shape_chords
             and idx < len(shape_chords)
-            and display != "%"
-            and shape_chords[idx] != display
+            and display_token != "%"
+            and not subdivided_cell
+            and shape_chords[idx] != display_token
         ):
             shape_hint = (
                 f"<div class='chord-shape-hint' style='font-size:0.72rem;color:#64748b;"
                 f"margin-top:2px;'>{html.escape(str(shape_chords[idx]))} shape</div>"
             )
         cells.append(
-            f"<div class='chord-cell live-chart-cell{current_class}' "
+            f"<div class='chord-cell live-chart-cell{current_class}{sub_class}' "
             f"data-section='{safe_section_attr}' data-bar='{idx + 1}'>"
             f"<div class='bar-num'>Bar {idx + 1}</div>"
-            f"<div class='chord-symbol'>{html.escape(display)}</div>"
+            f"<div class='chord-symbol'>{symbol_html}</div>"
             f"{shape_hint}{duration}</div>"
         )
     return "<div class='lead-grid'>" + "".join(cells) + "</div>"

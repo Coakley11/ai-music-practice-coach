@@ -8,6 +8,12 @@ from typing import Any
 
 import numpy as np
 
+from chord_subdivisions import (
+    chord_at_pulse as _sub_chord_at_pulse,
+    is_subdivided_bar as _sub_is_subdivided_bar,
+    next_chord_at_pulse as _sub_next_chord_at_pulse,
+    primary_chord as _sub_primary_chord,
+)
 from music_theory import NOTE_TO_MIDI, normalize_root, split_chord
 
 try:
@@ -61,7 +67,8 @@ def _chord_head(chord: str) -> str:
 
 
 def _chord_bass(chord):
-    parts = str(chord).strip().split("/", 1)
+    primary = _sub_primary_chord(chord) or str(chord).strip()
+    parts = primary.split("/", 1)
     return parts[1] if len(parts) == 2 and parts[1] else parts[0]
 
 
@@ -630,14 +637,30 @@ def synthesize_chords_to_numpy(
         intensity = _section_intensity(section_name, style)
         role = _section_role(section_name)
         section_edge = _is_section_edge(event, next_event)
-        notes = chord_notes(chord)
+        # For subdivided bars, ``chord`` is e.g. ``"Fmaj7|Am7|C/D"``. Compute the
+        # active chord per pulse below; ``chord_notes(_sub_primary_chord(chord))``
+        # only seeds the head chord for any non-pulse-aware fallback uses.
+        bar_is_subdivided = _sub_is_subdivided_bar(chord)
+        notes = chord_notes(_sub_primary_chord(chord) if bar_is_subdivided else chord)
         bass_hits = patterns["bass_beats"]
         if groove_seed % 3 == 0 and role == "verse":
             bass_hits = bass_hits[: max(2, len(bass_hits) - 1)]
         comp_wave = _comp_wave_for_style(style, role)
 
+        def _pulse_chord(b_pos: float) -> str:
+            if not bar_is_subdivided:
+                return chord
+            return _sub_chord_at_pulse(chord, b_pos, pulses_per_bar)
+
+        def _pulse_next_chord(b_pos: float) -> str | None:
+            if not bar_is_subdivided:
+                return next_chord
+            return _sub_next_chord_at_pulse(chord, b_pos, pulses_per_bar, next_chord)
+
         for n, b in enumerate(bass_hits):
-            bass_pitch = _bass_motion_pitch(chord, next_chord, style, n, len(bass_hits))
+            pulse_chord = _pulse_chord(b)
+            pulse_next = _pulse_next_chord(b)
+            bass_pitch = _bass_motion_pitch(pulse_chord, pulse_next, style, n, len(bass_hits))
             bass_dur = pulse * (0.72 if style in ["Ballad", "Jazz swing"] else 0.50)
             if style == "Funk groove":
                 bass_dur = pulse * 0.32
@@ -671,7 +694,7 @@ def synthesize_chords_to_numpy(
                 dur *= 0.95
             elif song_profile.get("latin_relaxed"):
                 dur *= 0.88
-            voicing = _voicing_for_comp(chord, level, style, comp_idx)
+            voicing = _voicing_for_comp(_pulse_chord(b), level, style, comp_idx)
             comp_vol = 0.022 * intensity
             if role == "verse":
                 comp_vol *= 0.72
@@ -778,7 +801,11 @@ def synthesize_chords_to_numpy(
                 seed_base=idx,
             )
             tail = max(0.0, pulses_per_bar - 0.45)
-            approach = _bass_motion_pitch(chord, next_chord, style, len(bass_hits) - 1, len(bass_hits))
+            tail_chord = _pulse_chord(tail)
+            tail_next = next_chord if not bar_is_subdivided else (
+                _sub_primary_chord(next_chord) if next_chord else None
+            )
+            approach = _bass_motion_pitch(tail_chord, tail_next, style, len(bass_hits) - 1, len(bass_hits))
             _add_tone(audio, sr, bar_start + tail * pulse, pulse * 0.25, approach, 0.075 * intensity, "bass")
             _add_noise_hit(
                 audio,

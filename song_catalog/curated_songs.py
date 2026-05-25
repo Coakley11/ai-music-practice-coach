@@ -184,16 +184,23 @@ def _piano_man_chart_pack() -> dict[str, Any]:
 
     Section-by-section chart. One list item = one bar.
 
-    The passing motion **Fmaj7 → Am7 → C/D** appears wherever the score asks for
-    "G11 replaced in one bar"; we represent it as three consecutive one-bar
-    cells so chord-follow, audio rendering, and harmony analysis all reflect
-    the descending bass walk. Performers in 3/4 play it as one bar of three
-    quarter-note changes — the arrangement notes document this.
+    Where the original chart had a single bar of **G11**, the harmonica
+    passages substitute the passing motion **Fmaj7 -> Am7 -> C/D** *inside the
+    same one bar*. This is encoded as the subdivided-bar token
+    ``"Fmaj7|Am7|C/D"`` (see :mod:`chord_subdivisions`):
+
+    * Backing audio plays Fmaj7 / Am7 / C/D on consecutive beats inside the
+      same measure (one chord per beat in 3/4).
+    * Chord-follow highlighting moves beat-by-beat across the three sub-chords
+      while the cell stays lit as one bar.
+    * The lead sheet renders the cell as a single bar with three sub-chord
+      pills - the quick walk-up turnaround the chart calls for.
     """
 
     # --- Shared building blocks (intermediate level / canonical) ---
     HARM_INTRO_LINE_1 = ["C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G"]
-    PASSING = ["Fmaj7", "Am7", "C/D"]
+    # Subdivided passing bar: three chords inside one measure.
+    PASSING_BAR = "Fmaj7|Am7|C/D"
 
     VERSE_LINE_1 = ["C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G"]
     VERSE_LINE_2_BASE = ["C", "C/B", "Am", "C/G", "F", "G11"]  # 6 bars, then ending
@@ -214,13 +221,13 @@ def _piano_man_chart_pack() -> dict[str, Any]:
         + ["G", "G/F", "C/E", "G/D"]
     )  # 16 bars
 
-    # Section assemblers
+    # Section assemblers (each PASSING_BAR is ONE bar containing 3 sub-chords).
     harmonica_intro = (
-        list(HARM_INTRO_LINE_1)
-        + ["C", "C/B", "Am", "C/G", "F"] + list(PASSING)
-        + ["C", "F/C", "Cmaj7"] + list(PASSING)
-        + ["C", "F/C", "Cmaj7"] + list(PASSING)
-    )  # 8 + 8 + 6 + 6 = 28 bars
+        list(HARM_INTRO_LINE_1)                                   # 8 bars
+        + ["C", "C/B", "Am", "C/G", "F", PASSING_BAR]             # 6 bars
+        + ["C", "F/C", "Cmaj7", PASSING_BAR]                      # 4 bars
+        + ["C", "F/C", "Cmaj7", PASSING_BAR]                      # 4 bars
+    )  # 22 bars total
 
     verse_1 = list(VERSE_LINE_1) + list(VERSE_LINE_2_BASE) + ["C", "C"]
     # 8 + 6 + 2 = 16 bars
@@ -239,10 +246,10 @@ def _piano_man_chart_pack() -> dict[str, Any]:
     # Chorus 2 / 3 end on two bars of C => 16 bars each
 
     harmonica_2 = (
-        ["C", "Em/B", "Am", "C/G", "F"] + list(PASSING)
-        + ["C", "F/C", "Cmaj7"] + list(PASSING)
-        + ["C", "F/C", "Cmaj7"] + list(PASSING)
-    )  # 8 + 6 + 6 = 20 bars
+        ["C", "Em/B", "Am", "C/G", "F", PASSING_BAR]              # 6 bars
+        + ["C", "F/C", "Cmaj7", PASSING_BAR]                      # 4 bars
+        + ["C", "F/C", "Cmaj7", PASSING_BAR]                      # 4 bars
+    )  # 14 bars total
 
     # Verse 3A ends with C | F/C (different tag)
     verse_3a = list(VERSE_LINE_1) + list(VERSE_LINE_2_BASE) + ["C", "F/C"]
@@ -252,9 +259,9 @@ def _piano_man_chart_pack() -> dict[str, Any]:
     verse_5 = list(verse_1)   # standard
 
     harmonica_3 = (
-        ["C", "Em/B", "Am", "C/G", "F"] + list(PASSING)
-        + ["C", "F/C"]
-    )  # 5 + 3 + 2 = 10 bars
+        ["C", "Em/B", "Am", "C/G", "F", PASSING_BAR]              # 6 bars
+        + ["C", "F/C"]                                            # 2 bars
+    )  # 8 bars total
 
     harmonica_4 = (
         ["C", "C/B", "Am", "C/G", "F", "G11", "C", "F/C"]
@@ -265,10 +272,10 @@ def _piano_man_chart_pack() -> dict[str, Any]:
     verse_6b = list(verse_1)   # ends C C
 
     final_outro = (
-        ["C", "C/B", "Am", "C/G", "F"] + list(PASSING)
-        + ["C", "F/C", "Cmaj7"] + list(PASSING)
-        + ["G/F", "C/E", "G/D", "C"]
-    )  # 8 + 6 + 4 = 18 bars (final C = 1 bar)
+        ["C", "C/B", "Am", "C/G", "F", PASSING_BAR]               # 6 bars
+        + ["C", "F/C", "Cmaj7", PASSING_BAR]                      # 4 bars
+        + ["G/F", "C/E", "G/D", "C"]                              # 4 bars (final C = 1 bar)
+    )  # 14 bars total
 
     intermediate: dict[str, list[str]] = {
         "Harmonica Intro": harmonica_intro,
@@ -318,8 +325,15 @@ def _piano_man_chart_pack() -> dict[str, Any]:
         "Final Harmonica Outro",
     ]
 
+    def _map_subdivided(token: str, mapper) -> str:
+        """Apply ``mapper`` to each sub-chord inside a subdivided bar; preserve the ``|`` form."""
+        if "|" not in token:
+            return mapper(token)
+        parts = [p.strip() for p in token.split("|") if p.strip()]
+        return "|".join(mapper(p) for p in parts)
+
     # --- Beginner: simpler open voicings, no jazz extensions ---
-    def _simplify(chord: str) -> str:
+    def _simplify_single(chord: str) -> str:
         mapping = {
             "Cmaj7": "C",
             "Fmaj7": "F",
@@ -332,13 +346,16 @@ def _piano_man_chart_pack() -> dict[str, Any]:
         }
         return mapping.get(chord, chord)
 
+    def _simplify(chord: str) -> str:
+        return _map_subdivided(chord, _simplify_single)
+
     beginner: dict[str, list[str]] = {
         name: [_simplify(c) for c in chords]
         for name, chords in intermediate.items()
     }
 
     # --- Advanced: tasteful extensions, richer voice leading ---
-    def _enrich(chord: str) -> str:
+    def _enrich_single(chord: str) -> str:
         mapping = {
             "C": "Cmaj7",
             "F": "Fmaj7",
@@ -358,6 +375,9 @@ def _piano_man_chart_pack() -> dict[str, Any]:
             "Em/B": "Em9/B",
         }
         return mapping.get(chord, chord)
+
+    def _enrich(chord: str) -> str:
+        return _map_subdivided(chord, _enrich_single)
 
     advanced: dict[str, list[str]] = {
         name: [_enrich(c) for c in chords]
@@ -461,9 +481,11 @@ def _piano_man_chart_pack() -> dict[str, Any]:
         "5 → Instrumental → Chorus 2 → Harmonica Section 4 → Verse 6A → Verse "
         "6B → Bridge 3 → Chorus 3 → Final Harmonica Outro. "
         "Most G11 bars in the harmonica sections are replaced with the passing "
-        "motion **Fmaj7 → Am7 → C/D**; in 3/4 this is one chord per beat inside "
-        "a single bar — represented here as three one-bar cells so the audio "
-        "engine and chord-follow render the descending bass walk explicitly. "
+        "motion **Fmaj7 → Am7 → C/D** — three chords played **inside one single "
+        "bar** (one per beat in 3/4). The chart, backing audio, and chord-follow "
+        "all treat this as one measure with three quick sub-chords, not three "
+        "separate bars: the lead-sheet cell shows the trio of pills side-by-side "
+        "and the highlight moves beat-by-beat across them as the bar plays. "
         "Bridges share an identical 13-bar form (Am → Am/G → D7/F# → F twice, "
         "then G → G/F → C/E → G7/D + 1 held bar). Verse 2 swaps Em/B for C/B "
         "in line 2 for the darker memory color. Chorus 2 / Chorus 3 end with "
