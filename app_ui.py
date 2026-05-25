@@ -1860,6 +1860,9 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
     _inject_app_theme_polish()
 
 
+_UI_POLISH_VERSION = "v2-2026-05-24"
+
+
 def _inject_app_theme_polish() -> None:
     """Layer of refinements on top of the base theme — keeps existing classes intact.
 
@@ -1871,9 +1874,10 @@ def _inject_app_theme_polish() -> None:
 
     st.markdown(
         """
-<style>
+<style data-ui-polish="__UI_POLISH_VERSION__">
 /* ===========================================================
-   UI POLISH v2 — refined design tokens & component finishing
+   UI POLISH __UI_POLISH_VERSION__ — refined design tokens & component finishing
+   Marker class .ui-polish-loaded is appended so we can confirm via DOM.
    =========================================================== */
 
 :root {
@@ -2341,8 +2345,58 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   .ui-page-title { font-size: 1.15rem; }
   .block-container { padding-left: 0.75rem; padding-right: 0.75rem; }
 }
+
+/* ============================================================
+   POLISH-LOAD VERIFICATION (temporary, very visible)
+   Remove the .ui-polish-debug rules and the corner pill once
+   the user confirms the polish is loading correctly.
+   ============================================================ */
+.ui-polish-debug-pill {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 99999;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  background: linear-gradient(135deg, #4f46e5 0%, #22c55e 100%);
+  color: #ffffff !important;
+  font-family: var(--ui-font, system-ui, sans-serif);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.30);
+  opacity: 0.95;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+  user-select: none;
+}
+.ui-polish-debug-pill::before {
+  content: "\\2713";
+  font-weight: 900;
+  font-size: 0.9rem;
+}
+body:hover > .ui-polish-debug-pill { opacity: 0.45; }
+
+/* Hard, unmistakable test styles — these prove the polish CSS
+   actually reaches the page and matches the rendered classes. */
+.ui-active-song-card {
+  outline: 3px solid #2563eb !important;
+  outline-offset: 2px;
+}
+.ui-backing-active-title {
+  text-shadow: 0 0 14px rgba(56, 189, 248, 0.55);
+}
 </style>
-        """,
+        """.replace("__UI_POLISH_VERSION__", _UI_POLISH_VERSION),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<div class="ui-polish-debug-pill" '
+        f'data-ui-polish="{_UI_POLISH_VERSION}">'
+        f'UI Polish {_UI_POLISH_VERSION} loaded</div>',
         unsafe_allow_html=True,
     )
 
