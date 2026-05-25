@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
 _BRACKET_HEADER_RE = re.compile(r"^\[(.+?)\]\s*(.*)$")
@@ -203,6 +204,135 @@ def rename_lyrics_section(
 
 def optional_sections_to_add(layout: list[str]) -> list[str]:
     return [s for s in STANDARD_SECTION_NAMES if s not in layout]
+
+
+# ---------------------------------------------------------------------------
+# Lyric-bearing section filter (used by the Lyrics & Cues editor)
+# ---------------------------------------------------------------------------
+
+
+def _section_has_existing_lyrics(
+    section_name: str,
+    *,
+    catalog_lyric_cues: Mapping[str, Any] | None = None,
+    user_section_lyrics: Mapping[str, Any] | None = None,
+) -> bool:
+    """Return ``True`` when ``section_name`` already has any lyric/cue text.
+
+    Checks both the catalog ``lyric_cues`` (list-of-strings per section) and
+    the user's saved ``section_lyrics`` (plain strings per section).
+    """
+    if isinstance(catalog_lyric_cues, Mapping):
+        val = catalog_lyric_cues.get(section_name)
+        if isinstance(val, (list, tuple)):
+            if any(str(item).strip() for item in val):
+                return True
+        elif str(val or "").strip():
+            return True
+    if isinstance(user_section_lyrics, Mapping):
+        val = user_section_lyrics.get(section_name)
+        if str(val or "").strip():
+            return True
+    return False
+
+
+def is_lyric_bearing_section(
+    section_name: str,
+    *,
+    catalog_lyric_cues: Mapping[str, Any] | None = None,
+    user_section_lyrics: Mapping[str, Any] | None = None,
+) -> bool:
+    """``True`` when a section should appear in the Lyrics & Cues editor by default.
+
+    Rules (in priority order):
+
+    * Verses, Pre-Choruses, and Choruses are **always** lyric-bearing.
+    * Bridges are lyric-bearing only when they already have lyrics (most
+      pop bridges do, but not every song writes them out).
+    * Intros, Outros, Solos, Interludes (and the synonyms Harmonica /
+      Instrumental / Turnaround / Vamp / Tag) are **not** lyric-bearing
+      by default, unless the user / catalog already typed lyrics there
+      (in which case respect the existing data).
+    * Unknown section names ("Section A", "Tag 1", ...) are treated as
+      lyric-bearing so the editor never silently hides a section a user
+      explicitly added.
+
+    Pass ``catalog_lyric_cues`` and / or ``user_section_lyrics`` to let
+    "has lyrics?" override the default classification.
+    """
+    # Local import keeps the songs/ package self-contained at module load
+    # time - the role classifier lives at the project root.
+    try:
+        from beginner_arrangement import (
+            ROLE_BRIDGE,
+            ROLE_CHORUS,
+            ROLE_INTERLUDE,
+            ROLE_INTRO,
+            ROLE_OTHER,
+            ROLE_OUTRO,
+            ROLE_PRECHORUS,
+            ROLE_SOLO,
+            ROLE_VERSE,
+            classify_section_role,
+        )
+    except Exception:
+        return True
+
+    role = classify_section_role(section_name)
+    if role in (ROLE_VERSE, ROLE_PRECHORUS, ROLE_CHORUS):
+        return True
+    has_lyrics = _section_has_existing_lyrics(
+        section_name,
+        catalog_lyric_cues=catalog_lyric_cues,
+        user_section_lyrics=user_section_lyrics,
+    )
+    if role == ROLE_BRIDGE:
+        return has_lyrics
+    if role in (ROLE_INTRO, ROLE_OUTRO, ROLE_SOLO, ROLE_INTERLUDE):
+        return has_lyrics
+    if role == ROLE_OTHER:
+        return True
+    return has_lyrics
+
+
+def filter_lyric_bearing_sections(
+    section_names: list[str] | None,
+    *,
+    show_instrumental: bool = False,
+    catalog_lyric_cues: Mapping[str, Any] | None = None,
+    user_section_lyrics: Mapping[str, Any] | None = None,
+) -> list[str]:
+    """Filter a section list to lyric-bearing sections only.
+
+    When ``show_instrumental`` is ``True`` the input is returned unchanged
+    (the user has explicitly opted in to seeing every section). Otherwise
+    sections classified as Intro / Outro / Solo / Interlude are stripped
+    out unless they already have lyric content.
+
+    Always returns a fresh list to keep callers' inputs intact. If the
+    filter would return nothing (e.g. a song whose chart only has solo /
+    interlude sections), the original list is returned so the editor
+    never goes empty.
+    """
+    if not section_names:
+        return []
+    if show_instrumental:
+        return list(section_names)
+    kept = [
+        name
+        for name in section_names
+        if is_lyric_bearing_section(
+            name,
+            catalog_lyric_cues=catalog_lyric_cues,
+            user_section_lyrics=user_section_lyrics,
+        )
+    ]
+    return kept if kept else list(section_names)
+
+
+def lyrics_show_instrumental_key(song_slug: str) -> str:
+    """Session key for the per-song "Show instrumental sections" toggle."""
+    return f"lyrics_show_instrumental::{song_slug}"
 
 
 def lyrics_paste_placeholder(section_names: list[str]) -> str:

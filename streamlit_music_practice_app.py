@@ -1158,6 +1158,8 @@ def _render_lyrics_and_cues_panel(
 
     from songs.lyrics_editor import (
         add_lyrics_section,
+        filter_lyric_bearing_sections,
+        lyrics_show_instrumental_key,
         move_lyrics_section,
         optional_sections_to_add,
         remove_lyrics_section,
@@ -1183,21 +1185,66 @@ def _render_lyrics_and_cues_panel(
 
     def _body() -> None:
         if song_data is not None and chart_sections is not None:
-            ordered = resolve_lyrics_editor_sections(
+            ordered_all = resolve_lyrics_editor_sections(
                 st.session_state,
                 slug,
                 song_data,
                 chart_sections,
             )
         else:
-            ordered = _ordered_section_names_for_lyrics(section_names)
-        if not ordered:
-            ordered = ["Full song"]
+            ordered_all = _ordered_section_names_for_lyrics(section_names)
+        if not ordered_all:
+            ordered_all = ["Full song"]
 
         st.caption(
             "Paste lyrics and performance cues you provide — saved per song, "
             "used on **Practice** and **Backing Track**."
         )
+
+        # Per-song "Show instrumental / non-lyric sections" toggle. Default
+        # OFF so the editor stays focused on Verse / Pre-Chorus / Chorus
+        # (and Bridge when it already has lyrics). Intros / Outros / Solos
+        # / Interludes are hidden by default - the user can opt in to see
+        # them when they actually want to type cues there.
+        _show_instr_key = lyrics_show_instrumental_key(slug)
+        show_instrumental = bool(st.session_state.get(_show_instr_key, False))
+        new_show_instrumental = st.toggle(
+            "Show instrumental / non-lyric sections",
+            value=show_instrumental,
+            key=f"lyrics_show_instr_toggle::{slug}",
+            help=(
+                "Off (default): hide Intro / Outro / Solo / Interlude / "
+                "Harmonica / Turnaround sections — most users only need "
+                "Verse / Chorus / Bridge. Turn on to type cues for "
+                "instrumental sections too."
+            ),
+        )
+        if bool(new_show_instrumental) != show_instrumental:
+            st.session_state[_show_instr_key] = bool(new_show_instrumental)
+        show_instrumental = bool(new_show_instrumental)
+
+        # Look up any existing lyric content (catalog cues + user-typed
+        # lyrics) so a Bridge / Outro etc. that *already* has lyrics is
+        # still shown in the default view.
+        _catalog_cues = (
+            (song_data or {}).get("lyric_cues") if isinstance(song_data, dict) else None
+        )
+        _existing_user = st.session_state.get(section_lyrics_state_key) or {}
+        ordered = filter_lyric_bearing_sections(
+            ordered_all,
+            show_instrumental=show_instrumental,
+            catalog_lyric_cues=_catalog_cues,
+            user_section_lyrics=_existing_user,
+        )
+
+        _hidden_count = max(0, len(ordered_all) - len(ordered))
+        if _hidden_count and not show_instrumental:
+            st.caption(
+                f"Showing **{len(ordered)}** lyric section(s). "
+                f"**{_hidden_count}** instrumental / non-lyric section(s) "
+                "are hidden — turn on the toggle above to manage them."
+            )
+
         st.markdown("**Paste all lyrics or cues (optional)**")
         st.caption(
             "Paste lyrics/cues with section headers like **[Verse 1]**, **[Chorus 1]**, "
@@ -1230,13 +1277,17 @@ def _render_lyrics_and_cues_panel(
                 st.json(st.session_state[f"_lyrics_assign_debug::{slug}"])
 
         if song_data is not None and chart_sections is not None:
+            _editor_caption_sections = ordered if ordered else ordered_all
             st.caption(
-                "Sections match **this song's chart** — only "
-                + ", ".join(ordered)
+                "Editing sections from **this song's chart** — "
+                + ", ".join(_editor_caption_sections)
                 + ". Add or reorder optional sections below."
             )
             with st.expander("Manage song sections", expanded=False):
-                add_opts = optional_sections_to_add(ordered)
+                # Use the full (unfiltered) layout when deciding which optional
+                # section types are missing, so adding "Intro" / "Outro" still
+                # works correctly even when those are hidden by the filter.
+                add_opts = optional_sections_to_add(ordered_all)
                 if add_opts:
                     ac1, ac2 = st.columns([2, 1])
                     with ac1:
@@ -1279,12 +1330,21 @@ def _render_lyrics_and_cues_panel(
                     key=f"lyrics_reset_layout::{slug}",
                     use_container_width=True,
                 ):
-                    ordered = reset_lyrics_section_layout(
+                    ordered_all = reset_lyrics_section_layout(
                         st.session_state, slug, song_data, chart_sections
+                    )
+                    ordered = filter_lyric_bearing_sections(
+                        ordered_all,
+                        show_instrumental=show_instrumental,
+                        catalog_lyric_cues=_catalog_cues,
+                        user_section_lyrics=_existing_user,
                     )
                     st.rerun()
 
-                for sec in list(ordered):
+                # Always iterate the full chart layout here so users can
+                # reorder / rename / remove instrumental sections too -
+                # the filter only affects the lyric editing area below.
+                for sec in list(ordered_all):
                     st.markdown(f"**{_html.escape(sec)}**")
                     rc1, rc2, rc3, rc4 = st.columns([1, 1, 1, 2])
                     with rc1:
