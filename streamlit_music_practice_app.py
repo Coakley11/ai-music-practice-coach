@@ -133,7 +133,9 @@ import karaoke_mode as km
 from karaoke_ui import (
     build_karaoke_audio_bridge_script,
     render_add_to_queue_button,
+    render_karaoke_now_singing_banner,
     render_karaoke_setlist_panel,
+    render_karaoke_skip_controls,
     render_karaoke_status_pill,
     render_karaoke_transition_card,
 )
