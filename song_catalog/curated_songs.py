@@ -179,6 +179,321 @@ def _champions_chart_pack() -> dict[str, Any]:
     }
 
 
+def _piano_man_chart_pack() -> dict[str, Any]:
+    """Piano Man — Billy Joel (C major, 3/4 waltz feel).
+
+    Section-by-section chart. One list item = one bar.
+
+    The passing motion **Fmaj7 → Am7 → C/D** appears wherever the score asks for
+    "G11 replaced in one bar"; we represent it as three consecutive one-bar
+    cells so chord-follow, audio rendering, and harmony analysis all reflect
+    the descending bass walk. Performers in 3/4 play it as one bar of three
+    quarter-note changes — the arrangement notes document this.
+    """
+
+    # --- Shared building blocks (intermediate level / canonical) ---
+    HARM_INTRO_LINE_1 = ["C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G"]
+    PASSING = ["Fmaj7", "Am7", "C/D"]
+
+    VERSE_LINE_1 = ["C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G"]
+    VERSE_LINE_2_BASE = ["C", "C/B", "Am", "C/G", "F", "G11"]  # 6 bars, then ending
+    VERSE_MEMORY_LINE_2_BASE = ["C", "Em/B", "Am", "C/G", "F", "G11"]
+    CHORUS_LINE_1 = ["C", "Em/B", "Am", "C/G", "F", "C/E", "D7", "G"]
+    CHORUS_LINE_2_BASE = ["C", "Em/B", "Am", "C/G", "F", "G11"]
+
+    BRIDGE = (
+        ["Am", "Am/G", "D7/F#", "F"]
+        + ["Am", "Am/G", "D7/F#", "D7"]
+        + ["G", "G/F", "C/E", "G7/D", "G7/D"]
+    )  # 13 bars
+
+    INSTRUMENTAL = (
+        ["Am", "Am/G", "D7/F#", "F"]
+        + ["Am", "Am/G", "D7/F#", "F"]
+        + ["Am", "Am/G", "D7/F#", "D7"]
+        + ["G", "G/F", "C/E", "G/D"]
+    )  # 16 bars
+
+    # Section assemblers
+    harmonica_intro = (
+        list(HARM_INTRO_LINE_1)
+        + ["C", "C/B", "Am", "C/G", "F"] + list(PASSING)
+        + ["C", "F/C", "Cmaj7"] + list(PASSING)
+        + ["C", "F/C", "Cmaj7"] + list(PASSING)
+    )  # 8 + 8 + 6 + 6 = 28 bars
+
+    verse_1 = list(VERSE_LINE_1) + list(VERSE_LINE_2_BASE) + ["C", "C"]
+    # 8 + 6 + 2 = 16 bars
+
+    harmonica_turnaround = (
+        ["C", "C/B", "Am", "C/G", "F", "G11", "C", "F/C"]
+    )  # 8 bars
+
+    verse_2 = list(VERSE_LINE_1) + list(VERSE_MEMORY_LINE_2_BASE) + ["C", "C"]
+    # 8 + 6 + 2 = 16 bars (Verse 2 uses Em/B walk-down in line 2)
+
+    chorus_1 = list(CHORUS_LINE_1) + list(CHORUS_LINE_2_BASE) + ["C"]
+    # 8 + 6 + 1 = 15 bars
+    chorus_2 = list(CHORUS_LINE_1) + list(CHORUS_LINE_2_BASE) + ["C", "C"]
+    chorus_3 = list(chorus_2)
+    # Chorus 2 / 3 end on two bars of C => 16 bars each
+
+    harmonica_2 = (
+        ["C", "Em/B", "Am", "C/G", "F"] + list(PASSING)
+        + ["C", "F/C", "Cmaj7"] + list(PASSING)
+        + ["C", "F/C", "Cmaj7"] + list(PASSING)
+    )  # 8 + 6 + 6 = 20 bars
+
+    # Verse 3A ends with C | F/C (different tag)
+    verse_3a = list(VERSE_LINE_1) + list(VERSE_LINE_2_BASE) + ["C", "F/C"]
+    # 8 + 6 + 2 = 16 bars
+    verse_3b = list(verse_1)  # ends with C C
+    verse_4 = list(verse_1)   # standard
+    verse_5 = list(verse_1)   # standard
+
+    harmonica_3 = (
+        ["C", "Em/B", "Am", "C/G", "F"] + list(PASSING)
+        + ["C", "F/C"]
+    )  # 5 + 3 + 2 = 10 bars
+
+    harmonica_4 = (
+        ["C", "C/B", "Am", "C/G", "F", "G11", "C", "F/C"]
+        + ["C", "F/C", "Cmaj7", "G11"]
+    )  # 8 + 4 = 12 bars
+
+    verse_6a = list(verse_3a)  # ends C F/C
+    verse_6b = list(verse_1)   # ends C C
+
+    final_outro = (
+        ["C", "C/B", "Am", "C/G", "F"] + list(PASSING)
+        + ["C", "F/C", "Cmaj7"] + list(PASSING)
+        + ["G/F", "C/E", "G/D", "C"]
+    )  # 8 + 6 + 4 = 18 bars (final C = 1 bar)
+
+    intermediate: dict[str, list[str]] = {
+        "Harmonica Intro": harmonica_intro,
+        "Verse 1": verse_1,
+        "Harmonica Turnaround": harmonica_turnaround,
+        "Verse 2": verse_2,
+        "Bridge 1": list(BRIDGE),
+        "Chorus 1": chorus_1,
+        "Harmonica Section 2": harmonica_2,
+        "Verse 3A": verse_3a,
+        "Verse 3B": verse_3b,
+        "Bridge 2": list(BRIDGE),
+        "Verse 4": verse_4,
+        "Harmonica Section 3": harmonica_3,
+        "Verse 5": verse_5,
+        "Instrumental": list(INSTRUMENTAL),
+        "Chorus 2": chorus_2,
+        "Harmonica Section 4": harmonica_4,
+        "Verse 6A": verse_6a,
+        "Verse 6B": verse_6b,
+        "Bridge 3": list(BRIDGE),
+        "Chorus 3": chorus_3,
+        "Final Harmonica Outro": final_outro,
+    }
+
+    section_order: list[str] = [
+        "Harmonica Intro",
+        "Verse 1",
+        "Harmonica Turnaround",
+        "Verse 2",
+        "Bridge 1",
+        "Chorus 1",
+        "Harmonica Section 2",
+        "Verse 3A",
+        "Verse 3B",
+        "Bridge 2",
+        "Verse 4",
+        "Harmonica Section 3",
+        "Verse 5",
+        "Instrumental",
+        "Chorus 2",
+        "Harmonica Section 4",
+        "Verse 6A",
+        "Verse 6B",
+        "Bridge 3",
+        "Chorus 3",
+        "Final Harmonica Outro",
+    ]
+
+    # --- Beginner: simpler open voicings, no jazz extensions ---
+    def _simplify(chord: str) -> str:
+        mapping = {
+            "Cmaj7": "C",
+            "Fmaj7": "F",
+            "Am7": "Am",
+            "Am/G": "Am",
+            "G7/D": "G",
+            "G7/F": "G",
+            "G11": "G",
+            "C/D": "G",  # closest beginner-friendly substitution
+        }
+        return mapping.get(chord, chord)
+
+    beginner: dict[str, list[str]] = {
+        name: [_simplify(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+
+    # --- Advanced: tasteful extensions, richer voice leading ---
+    def _enrich(chord: str) -> str:
+        mapping = {
+            "C": "Cmaj7",
+            "F": "Fmaj7",
+            "Am": "Am7",
+            "Am/G": "Am7/G",
+            "G": "G7",
+            "G7/D": "G13/D",
+            "G7/F": "G13/F",
+            "G11": "G13sus",
+            "D7": "D9",
+            "D7/F#": "D9/F#",
+            "C/B": "Cmaj7/B",
+            "C/G": "Cmaj7/G",
+            "C/E": "Cmaj7/E",
+            "F/C": "Fmaj7/C",
+            "F/A": "Fmaj7/A",
+            "Em/B": "Em9/B",
+        }
+        return mapping.get(chord, chord)
+
+    advanced: dict[str, list[str]] = {
+        name: [_enrich(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+
+    lyric_cues: dict[str, list[str]] = {
+        "Harmonica Intro": [
+            "Solo harmonica establishes the C major waltz",
+            "Descending bass walk: C → B → A → G → F → E → D → G",
+            "Setup of the rolling 3/4 piano-ballad groove",
+        ],
+        "Verse 1": [
+            "Story setup — 'It's nine o'clock on a Saturday'",
+            "Voice enters on the same descending walk",
+            "Resolves to C with G11 → C cadence",
+        ],
+        "Harmonica Turnaround": [
+            "Short harmonica fill bridging Verse 1 → Verse 2",
+            "Same C → C/B → Am → C/G walk-down",
+        ],
+        "Verse 2": [
+            "Second verse — 'He says, son can you play me a memory?'",
+            "Line 2 uses Em/B for darker color over the walk-down",
+        ],
+        "Bridge 1": [
+            "Am → Am/G → D7/F# → F descending phrase",
+            "Repeats then lifts via G → G/F → C/E → G7/D",
+            "Sets up the title-hook chorus",
+        ],
+        "Chorus 1": [
+            "Title hook — 'Sing us a song you're the piano man'",
+            "Em/B walk-down through the chorus phrase",
+            "End on single bar of C before the harmonica break",
+        ],
+        "Harmonica Section 2": [
+            "Featured harmonica solo over the Em/B walk-down",
+            "Passing motion Fmaj7 → Am7 → C/D in place of G11",
+        ],
+        "Verse 3A": [
+            "Third verse part A — 'Now John at the bar is a friend of mine'",
+            "Ends with C → F/C tag heading into Verse 3B",
+        ],
+        "Verse 3B": [
+            "Third verse part B — completes the John portrait",
+            "Standard verse ending: two bars of C",
+        ],
+        "Bridge 2": [
+            "Same harmonic arc as Bridge 1 — Am descent + lift",
+        ],
+        "Verse 4": [
+            "Fourth verse — 'Now Paul is a real estate novelist'",
+            "Standard verse ending: two bars of C",
+        ],
+        "Harmonica Section 3": [
+            "Short harmonica interlude before Verse 5",
+            "Em/B walk-down + Fmaj7 → Am7 → C/D passing",
+        ],
+        "Verse 5": [
+            "Fifth verse — 'It's a pretty good crowd for a Saturday'",
+        ],
+        "Instrumental": [
+            "Full-band instrumental on the bridge progression",
+            "Two passes of Am → Am/G → D7/F# descents",
+        ],
+        "Chorus 2": [
+            "Title-hook chorus returns",
+            "Ends with two bars of C",
+        ],
+        "Harmonica Section 4": [
+            "Harmonica feature reinforces the rolling groove",
+        ],
+        "Verse 6A": [
+            "Sixth verse part A — 'And the piano sounds like a carnival'",
+            "Ends with C → F/C tag",
+        ],
+        "Verse 6B": [
+            "Sixth verse part B — 'And the microphone smells like a beer'",
+            "Standard verse ending: two bars of C",
+        ],
+        "Bridge 3": [
+            "Final bridge — same Am descent + lift",
+        ],
+        "Chorus 3": [
+            "Final chorus — full title hook",
+            "Ends with two bars of C heading into the outro",
+        ],
+        "Final Harmonica Outro": [
+            "Final harmonica statement over the walk-down",
+            "Two passes of Fmaj7 → Am7 → C/D passing motion",
+            "Coda cadence: G/F → C/E → G/D → C (final C = 1 bar)",
+        ],
+    }
+
+    arrangement_notes = (
+        "**C major, 3/4 waltz (~88 BPM).** Piano-ballad with rolling left-hand "
+        "arpeggios and a descending bass walk: **C → C/B → Am → C/G → F → C/E "
+        "→ D7 → G**. Form (21 sections): Harmonica Intro → Verse 1 → Harmonica "
+        "Turnaround → Verse 2 → Bridge 1 → Chorus 1 → Harmonica Section 2 → "
+        "Verse 3A → Verse 3B → Bridge 2 → Verse 4 → Harmonica Section 3 → Verse "
+        "5 → Instrumental → Chorus 2 → Harmonica Section 4 → Verse 6A → Verse "
+        "6B → Bridge 3 → Chorus 3 → Final Harmonica Outro. "
+        "Most G11 bars in the harmonica sections are replaced with the passing "
+        "motion **Fmaj7 → Am7 → C/D**; in 3/4 this is one chord per beat inside "
+        "a single bar — represented here as three one-bar cells so the audio "
+        "engine and chord-follow render the descending bass walk explicitly. "
+        "Bridges share an identical 13-bar form (Am → Am/G → D7/F# → F twice, "
+        "then G → G/F → C/E → G7/D + 1 held bar). Verse 2 swaps Em/B for C/B "
+        "in line 2 for the darker memory color. Chorus 2 / Chorus 3 end with "
+        "two bars of C; Chorus 1 ends on one bar. Final Outro coda: "
+        "**G/F → C/E → G/D → C** (final C = 1 bar). "
+        "Beginner replaces extensions with open triads; Advanced enriches with "
+        "maj7 / 9 / 13sus colors and slash-chord voice leading. One chart bar "
+        "= one playback bar."
+    )
+
+    return {
+        "key": "C",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "lyric_cues": lyric_cues,
+        "extensions": _ext(
+            arrangement_notes=arrangement_notes,
+            default_bpm=88,
+            default_groove="Ballad",
+            time_signature="3/4",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -361,142 +676,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Outro": ["Dbmaj9", "Eb13sus", "Ab/C", "Fm9"],
             },
         ),
-        ("Piano Man", "Billy Joel"): pack(
-            "C",
-            {
-                "Intro (Harmonica)": [
-                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G",
-                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G",
-                    "C", "C/B", "Am", "C/G", "F", "G", "C",
-                    "C", "F/C", "C", "G",
-                    "C", "F/C", "C", "G",
-                ],
-                "Verse": [
-                    "C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G",
-                    "C", "G/B", "F/A", "C/G", "F", "G", "C",
-                ],
-                "Verse (Memory)": [
-                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G",
-                    "C", "Em/B", "Am", "C/G", "F", "G", "C",
-                ],
-                "Verse (Extended Tag)": [
-                    "C", "G/B", "F/A", "C/G", "F", "G", "C",
-                    "F/C", "C", "G",
-                ],
-                "Harmonica Interlude": [
-                    "C", "C/B", "Am", "C/G", "F", "G", "C",
-                    "C", "F/C", "C", "G",
-                ],
-                "Bridge": [
-                    "Am", "Am/G", "D7/F#", "F",
-                    "Am", "Am/G", "D7/F#", "D7", "G", "G/F", "C/E", "G/D",
-                ],
-                "Chorus": [
-                    "C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G",
-                    "C", "G/B", "F/A", "C/G", "F", "G", "C",
-                ],
-                "Instrumental": [
-                    "Am", "Am/G", "D7/F#", "F",
-                    "Am", "Am/G", "D7/F#", "F",
-                    "Am", "Am/G", "D7/F#", "D7", "G", "G/F", "C/E", "G/D",
-                ],
-                "Outro": [
-                    "C", "G/B", "F/A", "C/G", "F", "G", "C",
-                    "C", "F/C", "C", "G",
-                    "C", "F/C", "C", "G",
-                    "G/F", "C/E", "G/D", "C",
-                ],
-            },
-            {
-                "Intro (Harmonica)": [
-                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G7",
-                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G7",
-                    "C", "C/B", "Am", "C/G", "F", "G11", "C",
-                    "C", "F/C", "Cmaj7", "G11",
-                    "C", "F/C", "Cmaj7", "G11",
-                ],
-                "Verse": [
-                    "C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G7",
-                    "C", "G/B", "F/A", "C/G", "F", "G11", "C",
-                ],
-                "Verse (Memory)": [
-                    "C", "C/B", "Am", "C/G", "F", "C/E", "D7", "G7",
-                    "C", "Em/B", "Am", "C/G", "F", "G11", "C",
-                ],
-                "Verse (Extended Tag)": [
-                    "C", "G/B", "F/A", "C/G", "F", "G11", "C",
-                    "F/C", "Cmaj7", "G11",
-                ],
-                "Harmonica Interlude": [
-                    "C", "Em/B", "Am", "C/G", "F", "G11", "C",
-                    "C", "F/C", "Cmaj7", "G11",
-                ],
-                "Bridge": [
-                    "Am", "Am/G", "D7/F#", "F",
-                    "Am", "Am/G", "D7/F#", "D7", "G", "G/F", "C/E", "G7/D",
-                ],
-                "Chorus": [
-                    "C", "G/B", "F/A", "C/G", "F", "C/E", "D7", "G7",
-                    "C", "G/B", "F/A", "C/G", "F", "G11", "C",
-                ],
-                "Instrumental": [
-                    "Am", "Am/G", "D7/F#", "F",
-                    "Am", "Am/G", "D7/F#", "F",
-                    "Am", "Am/G", "D7/F#", "D7", "G", "G/F", "C/E", "G/D",
-                ],
-                "Outro": [
-                    "C", "G/B", "F/A", "C/G", "F", "G11", "C",
-                    "C", "F/C", "Cmaj7", "G11",
-                    "C", "F/C", "Cmaj7", "G11",
-                    "G/F", "C/E", "G/D", "C",
-                ],
-            },
-            {
-                "Intro (Harmonica)": [
-                    "C", "C/B", "Am7", "C/G", "Fmaj7", "C/E", "D7", "G7",
-                    "C", "C/B", "Am7", "C/G", "Fmaj7", "C/E", "D7", "G7",
-                    "C", "C/B", "Am7", "C/G", "Fmaj7", "G11", "Cmaj7",
-                    "C", "F/C", "Cmaj7", "G11",
-                    "C", "F/C", "Cmaj7", "G11",
-                ],
-                "Verse": [
-                    "C", "G/B", "F/A", "C/G", "Fmaj7", "C/E", "D7", "G7",
-                    "C", "G/B", "F/A", "C/G", "Fmaj7", "G11", "Cmaj7",
-                ],
-                "Verse (Memory)": [
-                    "C", "C/B", "Am7", "C/G", "Fmaj7", "C/E", "D7", "G7",
-                    "C", "Em/B", "Am7", "C/G", "Fmaj7", "G11", "Cmaj7",
-                ],
-                "Verse (Extended Tag)": [
-                    "C", "G/B", "F/A", "C/G", "Fmaj7", "G11", "Cmaj7",
-                    "F/C", "Cmaj7", "G11",
-                ],
-                "Harmonica Interlude": [
-                    "C", "Em/B", "Am7", "C/G", "Fmaj7", "G11", "Cmaj7",
-                    "C", "F/C", "Cmaj7", "G11",
-                ],
-                "Bridge": [
-                    "Am7", "Am7/G", "D7/F#", "Fmaj7",
-                    "Am7", "Am7/G", "D7/F#", "D7", "G7", "G7/F", "C/E", "G7/D",
-                ],
-                "Chorus": [
-                    "C", "G/B", "F/A", "C/G", "Fmaj7", "C/E", "D7", "G7",
-                    "C", "G/B", "F/A", "C/G", "Fmaj7", "G11", "Cmaj7",
-                ],
-                "Instrumental": [
-                    "Am7", "Am7/G", "D7/F#", "Fmaj7",
-                    "Am7", "Am7/G", "D7/F#", "Fmaj7",
-                    "Am7", "Am7/G", "D7/F#", "D7", "G7", "G7/F", "C/E", "G7/D",
-                ],
-                "Outro": [
-                    "C", "G/B", "F/A", "C/G", "Fmaj7", "G11", "Cmaj7",
-                    "C", "F/C", "Cmaj7", "G11",
-                    "C", "F/C", "Cmaj7", "G11",
-                    "G7/F", "C/E", "G7/D", "Cmaj7",
-                ],
-            },
-            status="practice_needs_review",
-        ),
+        ("Piano Man", "Billy Joel"): _piano_man_chart_pack(),
         ("Turn the Lights Back On", "Billy Joel"): pack("C",
             {
                 "Intro": ["C", "F/C", "C", "F/C"],
