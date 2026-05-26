@@ -15,6 +15,9 @@ import json
 import wave
 import tempfile
 import html
+import html as _html  # Alias so module-level helpers (lyric_guide_html,
+# _chord_strip_html, _build_karaoke_lyrics_panel_html, etc.) can use the
+# same ``_html.escape`` name that nested helpers already use.
 import time
 import base64
 import traceback
