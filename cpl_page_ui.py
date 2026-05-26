@@ -214,7 +214,12 @@ def render_custom_progression_lab_page() -> None:
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         prepare_cpl_backing_handoff(st.session_state, active, section=None)
         from studio_nav_history import navigate_studio_page
+        from studio_scroll_anchors import (
+            ANCHOR_BACKING_MAIN_CONTROLS,
+            set_pending_anchor,
+        )
 
+        set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
         navigate_studio_page(st.session_state, "backing")
         st.rerun()
 

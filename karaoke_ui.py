@@ -787,8 +787,21 @@ def render_karaoke_missing_lyrics_cta(
             on_open_editor()
         else:
             # Fall back: jump the user back to Song Selection where the
-            # Lyrics & Cues editor lives on the active song card.
-            st.session_state["studio_active_page"] = "picker"
+            # Lyrics & Cues editor lives on the active song card, and
+            # queue a scroll anchor so they land at the editor instead
+            # of the top of the page.
+            try:
+                from studio_nav_history import navigate_studio_page
+                from studio_scroll_anchors import (
+                    ANCHOR_LYRICS_EDITOR,
+                    set_pending_anchor,
+                )
+
+                set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
+                navigate_studio_page(st.session_state, "picker")
+            except Exception:
+                # Last-resort legacy fallback so the button is never a no-op.
+                st.session_state["studio_page"] = "picker"
             st.session_state["_pending_open_lyrics_editor"] = True
             try:
                 st.rerun()

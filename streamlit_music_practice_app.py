@@ -181,6 +181,16 @@ from studio_nav_history import (
     navigate_studio_page,
     render_sidebar_nav_history,
 )
+from studio_scroll_anchors import (
+    ANCHOR_BACKING_MAIN_CONTROLS,
+    ANCHOR_CHOOSE_ACTIVE_SONG,
+    ANCHOR_CHORD_COACH,
+    ANCHOR_LYRICS_EDITOR,
+    ANCHOR_PRACTICE_COACH,
+    render_pending_scroll_script,
+    render_scroll_anchor_marker,
+    set_pending_anchor,
+)
 from studio_page_state import (
     apply_improv_song_source,
     migrate_legacy_session_keys,
@@ -4914,8 +4924,18 @@ def _stop_backing_playback() -> None:
             st.session_state[key] = 0
 
 
+_PICKER_NAV_ANCHORS: dict[str, str] = {
+    "practice": ANCHOR_PRACTICE_COACH,
+    "backing": ANCHOR_BACKING_MAIN_CONTROLS,
+}
+
+
 def _picker_navigate(page: str, *, open_chord_coach: bool = False) -> None:
     """Open a studio page for the already-selected catalog song (no re-selection)."""
+    if open_chord_coach:
+        set_pending_anchor(st.session_state, ANCHOR_CHORD_COACH)
+    else:
+        set_pending_anchor(st.session_state, _PICKER_NAV_ANCHORS.get(page))
     navigate_studio_page(st.session_state, page)
     if open_chord_coach:
         st.session_state["picker_open_chord_coach"] = True
@@ -5236,6 +5256,7 @@ def _render_catalog_song_picker_block(
         default_pk,
     )
     if show_song_cards:
+        render_scroll_anchor_marker(st, ANCHOR_CHOOSE_ACTIVE_SONG)
         st.markdown("### Choose active song")
     st.selectbox(
         "Select song",
@@ -5646,6 +5667,7 @@ sidebar_source_banner(_src_kind, _src_detail)
 
 
 def _sidebar_open_song_selection() -> None:
+    set_pending_anchor(st.session_state, ANCHOR_CHOOSE_ACTIVE_SONG)
     navigate_studio_page(st.session_state, "picker")
 
 
@@ -5992,6 +6014,7 @@ if _studio_page == "practice":
         "Set up your session below — change key in the sidebar; pick songs on **Song Selection**.",
     )
 
+    render_scroll_anchor_marker(st, ANCHOR_PRACTICE_COACH)
     _render_practice_setup_panel(
         instrument_options=_instrument_options,
         default_groove=default_groove_style,
@@ -6016,6 +6039,7 @@ if _studio_page == "practice":
         use_container_width=True,
     ):
         _prepare_backing_from_practice(_focus_pick)
+        set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
         navigate_studio_page(st.session_state, "backing")
         st.rerun()
 
@@ -6345,6 +6369,7 @@ if _studio_page == "practice":
 
     _coach_from_picker = st.session_state.pop("picker_open_chord_coach", False)
     _coach_chords = _view_chords or all_chords_from_sections(sections)
+    render_scroll_anchor_marker(st, ANCHOR_CHORD_COACH)
     with st.expander("🎸 Musician tools — chord coach", expanded=_coach_from_picker):
         if _active_section:
             st.caption(f"Chords from **{_active_section}** only.")
@@ -6485,6 +6510,7 @@ elif _studio_page == "picker":
         from song_catalog import record_for_pick_key as _record_for_pick_key
 
         def _navigate_to_backing_for_karaoke() -> None:
+            set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
             navigate_studio_page(st.session_state, "backing")
 
         render_karaoke_setlist_panel(
@@ -6502,6 +6528,7 @@ elif _studio_page == "picker":
         selected_data = SONG_PICKER_CATALOG[pick_genre][pick_label]
 
         _picker_level_sections = sections_for_level(selected_data, level)
+        render_scroll_anchor_marker(st, ANCHOR_LYRICS_EDITOR)
         _render_lyrics_and_cues_panel(
             song_title=str(selected_data.get("title", "")),
             song_artist=str(selected_data.get("artist", "")),
@@ -6910,6 +6937,7 @@ elif _studio_page == "backing":
         and st.session_state.get("_last_backing_signature") == _current_backing_signature
     )
 
+    render_scroll_anchor_marker(st, ANCHOR_BACKING_MAIN_CONTROLS)
     st.markdown(
         '<div class="ui-card soft"><div class="ui-card-title">Generate & play</div>',
         unsafe_allow_html=True,
@@ -7466,6 +7494,7 @@ elif _studio_page == "creative":
         )
         _improv_apply_playback_from_style()
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
         navigate_studio_page(st.session_state, "backing")
         st.rerun()
 
@@ -7478,6 +7507,7 @@ elif _studio_page == "creative":
             set_custom_source=set_custom_source,
         )
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        set_pending_anchor(st.session_state, ANCHOR_PRACTICE_COACH)
         navigate_studio_page(st.session_state, "practice")
         st.rerun()
 
@@ -7489,6 +7519,7 @@ elif _studio_page == "creative":
         st.rerun()
 
     def _improv_go_song_selection() -> None:
+        set_pending_anchor(st.session_state, ANCHOR_CHOOSE_ACTIVE_SONG)
         navigate_studio_page(st.session_state, "picker")
         st.rerun()
 
@@ -8018,6 +8049,7 @@ elif _studio_page == "log":
                 st.markdown(f"{icon} **{label.title()}** — {_plan[label]}")
         st.markdown("</div>", unsafe_allow_html=True)
         if st.button("Start warmup on Practice page", key="session_go_practice"):
+            set_pending_anchor(st.session_state, ANCHOR_PRACTICE_COACH)
             navigate_studio_page(st.session_state, "practice")
             st.rerun()
 
@@ -8083,3 +8115,13 @@ elif _studio_page == "log":
         st.info(
             "No practice logs yet."
         )
+
+# --------------------------------------------------------------------------
+# Pending-scroll handler. Internal jump buttons (e.g. active-song card,
+# Improv lab nav, Practice "Send to Backing Track") queue a target anchor
+# via ``set_pending_anchor`` before navigating. This runs once per render
+# - it consumes the flag and injects a tiny scroll script that targets the
+# matching ``render_scroll_anchor_marker`` already rendered on the
+# destination page. Safe to call when nothing is queued (it's a no-op).
+# --------------------------------------------------------------------------
+render_pending_scroll_script(st)
