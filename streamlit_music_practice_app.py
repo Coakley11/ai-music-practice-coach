@@ -6710,10 +6710,28 @@ if _studio_page == "practice":
         if not practice_is_full_song(_focus_pick)
         else None
     )
+    # Beginner display labels: map raw chart keys ("Verse 1") -> short
+    # user-facing labels ("Verse"). The map is populated upstream by
+    # ``beginner_view_of_song_data``; outside Beginner mode it is empty
+    # and the lookup falls through to the raw section name. Computed
+    # once here so every panel below shares the same helper.
+    _practice_display_label_map: dict[str, str] = dict(
+        (song_data or {}).get("_beginner_display_labels") or {}
+    )
+
+    def _display_section(name: str | None) -> str:
+        if not name:
+            return ""
+        return _practice_display_label_map.get(str(name), str(name))
+
+    _resolved_send_section_display = _display_section(_resolved_send_section)
     _send_label = (
         "Send to Backing Track (full song)"
         if practice_is_full_song(_focus_pick)
-        else f"Send to Backing Track — loop {_resolved_send_section or _focus_pick}"
+        else (
+            "Send to Backing Track — loop "
+            f"{_resolved_send_section_display or _focus_pick}"
+        )
     )
     if st.button(
         _send_label,
@@ -6923,7 +6941,7 @@ if _studio_page == "practice":
                 st.markdown(_deep_focus_md)
             else:
                 st.info(
-                    f"This section (**{_active_section}**) has no chord data "
+                    f"This section (**{_active_section_display}**) has no chord data "
                     "in the current chart. Pick **Full Song** above to see "
                     "the whole arrangement, or pick a different section."
                 )
@@ -6999,7 +7017,7 @@ if _studio_page == "practice":
                 if _scales_rendered == 0:
                     st.info(
                         f"No scale suggestions matched the chords in "
-                        f"**{_active_section}** for **{instrument}** at "
+                        f"**{_active_section_display}** for **{instrument}** at "
                         f"**{level}** level. Try a different section or "
                         "switch instruments in the sidebar."
                     )
@@ -7013,7 +7031,7 @@ if _studio_page == "practice":
                     )
             else:
                 st.info(
-                    f"**{_active_section}** has no chords in the current "
+                    f"**{_active_section_display}** has no chords in the current "
                     "chart, so there's nothing to suggest scales over. "
                     "Pick **Full Song** above or choose a different section."
                 )
@@ -7188,7 +7206,7 @@ if _studio_page == "practice":
         _notation_section_label = (
             "Full Song"
             if _is_full_song
-            else (_active_section or _focus_pick or "Section")
+            else (_active_section_display or _focus_pick or "Section")
         )
         st.caption(
             f"Song **{song}** · section **{_notation_section_label}** · "
@@ -7279,7 +7297,7 @@ if _studio_page == "practice":
     render_scroll_anchor_marker(st, ANCHOR_CHORD_COACH)
     with st.expander("🎸 Musician tools — chord coach", expanded=_coach_from_picker):
         if _active_section:
-            st.caption(f"Chords from **{_active_section}** only.")
+            st.caption(f"Chords from **{_active_section_display}** only.")
         render_chord_coach_ui(
             _coach_chords,
             instrument,
@@ -7343,7 +7361,7 @@ if _studio_page == "practice":
                         header_note=str(
                             (song_data.get("extensions") or {}).get("arrangement_notes") or ""
                         ),
-                        now_playing=_active_section if not _is_full_song else "Full song",
+                        now_playing=_active_section_display if not _is_full_song else "Full song",
                         show_full=_is_full_song,
                     ),
                     unsafe_allow_html=True,
