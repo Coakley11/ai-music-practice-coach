@@ -130,12 +130,23 @@ def render_karaoke_setlist_panel(
     record_for_pick_key: Callable[[Iterable[dict], str], dict | None],
     all_records: Iterable[dict],
     navigate_to_backing: Callable[[], None] | None = None,
+    on_pick_song: Callable[[str], None] | None = None,
 ) -> None:
     """Render the Performance Setlist UI on the Song Selection page.
 
     Lets the user reorder / remove queued songs and start the karaoke
     session. ``navigate_to_backing`` is called when the user clicks
     "Start Karaoke Set" so the parent page can route to Backing Track.
+
+    ``on_pick_song`` is invoked with the row's ``pick_key`` when the
+    user clicks a song title in the setlist. This makes the clicked
+    song the **active editing/viewing song** (lyrics editor, song
+    card, backing defaults, karaoke preview all switch to it) without
+    touching the queue order or any active karaoke session position -
+    the user can prep multiple songs without re-arranging the set.
+    Callers should typically wire this to ``apply_pick_key`` from
+    ``songs.state`` so the rest of the app (Practice, Backing Track,
+    Lyrics editor) follows along.
 
     Voice-only: when the active instrument is anything other than
     Voice / Vocals / Singer, the panel hides itself so instrumentalists
@@ -165,25 +176,103 @@ def render_karaoke_setlist_panel(
         )
         return
 
-    active_pk = km.current_session_pick_key(st.session_state)
+    st.caption(
+        "Click a song to make it the active editing/viewing song "
+        "(lyrics, song card, backing defaults switch to it). "
+        "Queue order and karaoke state stay untouched."
+    )
+
+    # The "active editing/viewing" song = the master selection. We
+    # surface a visual indicator next to whichever queue row matches
+    # so the user always knows which row their edits will land on.
+    session_active_pk = km.current_session_pick_key(st.session_state)
+    selected_pk = ""
+    try:
+        selected_pk = str(
+            (st.session_state.get("selected_song") or {}).get("pick_key") or ""
+        )
+    except Exception:
+        selected_pk = ""
+
     for idx, pick_key in enumerate(queue):
         t, a = lookup_pick_key_label(
             pick_key,
             record_for_pick_key=record_for_pick_key,
             all_records=all_records,
         )
-        is_active = pick_key == active_pk
-        row_cls = "ui-karaoke-row ui-karaoke-row-active" if is_active else "ui-karaoke-row"
-        meta_marker = "  (Now Singing)" if is_active else ""
-        st.markdown(
-            f'<div class="{row_cls}">'
-            f'<span class="ui-karaoke-row-num">{idx + 1}.</span>'
-            f'<span class="ui-karaoke-row-title">{html.escape(t)}</span>'
-            f'<span class="ui-karaoke-row-artist">— {html.escape(a)}{html.escape(meta_marker)}</span>'
-            "</div>",
-            unsafe_allow_html=True,
+        is_now_singing = pick_key == session_active_pk
+        is_editing = bool(selected_pk and pick_key == selected_pk)
+
+        # Status markers: "Now Singing" (karaoke session) takes priority
+        # over "Editing" (master selection) because performing trumps
+        # previewing in the user's mental model.
+        if is_now_singing:
+            marker_text = "Now Singing"
+            marker_color = "#831843"
+            marker_bg = "rgba(190, 24, 93, 0.12)"
+        elif is_editing:
+            marker_text = "Editing"
+            marker_color = "#0f766e"
+            marker_bg = "rgba(20, 184, 166, 0.14)"
+        else:
+            marker_text = ""
+            marker_color = ""
+            marker_bg = ""
+
+        row_cls = "ui-karaoke-row"
+        if is_now_singing:
+            row_cls += " ui-karaoke-row-active"
+        elif is_editing:
+            row_cls += " ui-karaoke-row-editing"
+
+        marker_html = (
+            f'<span class="ui-karaoke-row-marker" '
+            f'style="background:{marker_bg};color:{marker_color};">'
+            f"{html.escape(marker_text)}"
+            "</span>"
+            if marker_text
+            else ""
         )
-        c_up, c_dn, c_rm, _spacer = st.columns([1, 1, 1, 5])
+
+        # Layout: clickable title button (wide) | up | down | remove.
+        # The button label embeds the queue number + title + artist so
+        # the row reads naturally even when the visual marker is off.
+        c_pick, c_up, c_dn, c_rm = st.columns([8, 1, 1, 1])
+        with c_pick:
+            # Row marker pill sits above the button so the button label
+            # itself stays clean and the marker reads as status, not as
+            # part of the song title.
+            if marker_html:
+                st.markdown(
+                    f'<div class="{row_cls}-marker-wrap">{marker_html}</div>',
+                    unsafe_allow_html=True,
+                )
+            pick_label = f"{idx + 1}.  {t}  —  {a}"
+            if st.button(
+                pick_label,
+                key=f"karaoke_pick_{idx}_{pick_key}",
+                use_container_width=True,
+                type="primary" if is_editing else "secondary",
+                help=(
+                    "Make this the active editing/viewing song "
+                    "(lyrics, song card, backing defaults switch to it). "
+                    "Queue position stays unchanged."
+                ),
+                disabled=on_pick_song is None,
+            ):
+                if on_pick_song is not None and not is_editing:
+                    try:
+                        on_pick_song(pick_key)
+                    except Exception:
+                        # Last-resort fallback: at minimum write the
+                        # pick_key into session_state so the rest of
+                        # the app at least sees the selection.
+                        st.session_state["selected_song"] = {
+                            "pick_key": pick_key,
+                            "title": t,
+                            "artist": a,
+                        }
+                    st.rerun()
         with c_up:
             if st.button(
                 "↑",

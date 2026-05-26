@@ -7428,16 +7428,66 @@ elif _studio_page == "picker":
     # workflow (Practice / Backing Track / Creative Lab) instead.
     if km.is_voice_mode(st.session_state):
         from song_catalog import record_for_pick_key as _record_for_pick_key
+        from songs.state import apply_pick_key as _apply_pick_key
 
         def _navigate_to_backing_for_karaoke() -> None:
             set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
             navigate_studio_page(st.session_state, "backing")
+
+        def _on_pick_setlist_song(pick_key: str) -> None:
+            """Make the clicked setlist row the active editing/viewing song.
+
+            ``apply_pick_key`` handles every downstream concern:
+
+            * writes ``selected_song`` / ``ACTIVE_CATALOG_PICK_KEY`` /
+              ``active_genre`` / ``active_song_title``,
+            * primes the song's canonical BPM,
+            * resets playback tracking + invalidates backing cache so
+              the Backing Track page regenerates audio for this song,
+            * queues the dropdown widget alignment for the next run.
+
+            We deliberately do **not** touch:
+
+            * the karaoke queue (queue order stays),
+            * the karaoke session state (current session position,
+              auto-advance, countdown, show-chords),
+            * the active instrument / voice mode,
+            * any session-state lyrics override map.
+            """
+            try:
+                _apply_pick_key(st, pick_key, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
+            except Exception:
+                # Fallback: at minimum mark the selection so the
+                # picker / song card update on the next rerun.
+                from song_catalog import parse_pick_key as _parse_pk
+                try:
+                    _g, _l = _parse_pk(pick_key)
+                    _data = SONG_PICKER_CATALOG.get(_g, {}).get(_l) or {}
+                    st.session_state["selected_song"] = {
+                        "pick_key": pick_key,
+                        "title": _data.get("title", ""),
+                        "artist": _data.get("artist", ""),
+                        "genre": _g,
+                        "label": _l,
+                    }
+                    st.session_state["active_genre"] = _g
+                    st.session_state["active_song_title"] = _data.get("title", "")
+                    st.session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
+                except Exception:
+                    pass
+            # Land the user on the Lyrics & Cues editor for the newly
+            # active song - that's the most common reason to switch
+            # the editing song mid-setlist (filling in lyrics for the
+            # whole performance set). The page re-renders on rerun
+            # with the new song card up top + editor pre-positioned.
+            set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
 
         render_karaoke_setlist_panel(
             st,
             record_for_pick_key=_record_for_pick_key,
             all_records=ALL_SONG_RECORDS,
             navigate_to_backing=_navigate_to_backing_for_karaoke,
+            on_pick_song=_on_pick_setlist_song,
         )
 
     if not is_custom_progression(st.session_state):

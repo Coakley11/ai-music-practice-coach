@@ -2444,6 +2444,11 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   border-color: rgba(190, 24, 93, 0.35);
   box-shadow: inset 3px 0 0 #be185d;
 }
+.ui-karaoke-row.ui-karaoke-row-editing {
+  background: rgba(20, 184, 166, 0.12);
+  border-color: rgba(20, 184, 166, 0.35);
+  box-shadow: inset 3px 0 0 #0d9488;
+}
 .ui-karaoke-row .ui-karaoke-row-title {
   font-weight: 700;
   color: #0f172a;
@@ -2452,6 +2457,27 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   color: #64748b;
   font-size: 0.88rem;
   margin-left: 0.15rem;
+}
+/* Status pill that sits above a clickable setlist row's pick button.
+   "Now Singing" (active karaoke session) or "Editing" (master
+   selection) - rendered as a small chip so it reads as status
+   metadata, not as part of the song title. */
+.ui-karaoke-row-marker-wrap,
+.ui-karaoke-row-editing-marker-wrap,
+.ui-karaoke-row-active-marker-wrap {
+  margin: 0 0 0.18rem 0.08rem;
+  display: flex;
+}
+.ui-karaoke-row-marker {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 1px 8px;
+  border-radius: 999px;
+  line-height: 1.5;
 }
 
 /* Karaoke transition card on Backing Track page */
