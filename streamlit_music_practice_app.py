@@ -5998,6 +5998,13 @@ if st.session_state.get("tutorial_open"):
     )
     st.stop()
 
+# Inject the pending scroll-to-section script *before* the page dispatch
+# so it survives early ``st.stop()`` calls (e.g. picker with no song,
+# fatal-error guards). The JS polls for the anchor element for ~3s, so
+# rendering it before the destination markup is fine - the markup will
+# appear during the same render and the polling will find it.
+render_pending_scroll_script(st)
+
 # -------------------------------------------------
 # PRACTICE
 # -------------------------------------------------
@@ -6700,10 +6707,22 @@ elif _studio_page == "backing":
     # surface a friendly "Add lyrics" prompt so the singer can fill them
     # in before performing. The CTA only renders for Voice / Vocals /
     # Singer; instrument mode never sees it.
+    def _open_lyrics_editor_from_backing() -> None:
+        # Jump to the Song Selection page and land the user directly on
+        # the Lyrics & Cues editor for the currently active song. We use
+        # the canonical navigate helper (preserves global state -
+        # instrument / level / focus / song / BPM / meter / groove) and
+        # queue a scroll anchor so the destination renders are positioned
+        # at the editor instead of the top of the page.
+        set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
+        navigate_studio_page(st.session_state, "picker")
+        st.rerun()
+
     render_karaoke_missing_lyrics_cta(
         st,
         song_data=song_data,
         active_song_title=str(song_data.get("title") or song),
+        on_open_editor=_open_lyrics_editor_from_backing,
     )
     render_backing_defaults_debug(
         st,
@@ -7090,13 +7109,12 @@ elif _studio_page == "backing":
     # a widget key after the widget was rendered" footgun.
     if st.session_state.pop("_pending_open_backing_lead_sheet", False):
         st.session_state["backing_lead_sheet_open"] = True
-    # The lead sheet is "open" when (a) we just generated audio (pending flag
-    # consumed above), (b) the user explicitly opened it in a previous run, or
-    # (c) the audio is currently ready - in which case we always show the
-    # chord-follow card so the user never has to hunt for the chart.
-    _leadsheet_open = bool(
-        st.session_state.get("backing_lead_sheet_open", False)
-    ) or _backing_audio_ready
+    # The lead-sheet visibility is *purely* driven by ``backing_lead_sheet_open``
+    # so the user's "Hide chart" / "Show chart" clicks always win. Generate
+    # auto-opens by toggling the flag above; from then on it's a plain
+    # session_state boolean that survives reruns without resetting playback,
+    # audio, scroll position, song, karaoke queue, or section selection.
+    _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
 
     if _backing_audio_ready and _leadsheet_open:
         # When the backing track is ready, render the lead sheet inline (no
@@ -8115,13 +8133,3 @@ elif _studio_page == "log":
         st.info(
             "No practice logs yet."
         )
-
-# --------------------------------------------------------------------------
-# Pending-scroll handler. Internal jump buttons (e.g. active-song card,
-# Improv lab nav, Practice "Send to Backing Track") queue a target anchor
-# via ``set_pending_anchor`` before navigating. This runs once per render
-# - it consumes the flag and injects a tiny scroll script that targets the
-# matching ``render_scroll_anchor_marker`` already rendered on the
-# destination page. Safe to call when nothing is queued (it's a no-op).
-# --------------------------------------------------------------------------
-render_pending_scroll_script(st)
