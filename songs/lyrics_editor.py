@@ -236,6 +236,27 @@ def _section_has_existing_lyrics(
     return False
 
 
+def _user_has_typed_lyrics(
+    section_name: str,
+    user_section_lyrics: Mapping[str, Any] | None,
+) -> bool:
+    """``True`` when the *user* has typed lyrics for this section.
+
+    Catalog ``lyric_cues`` are intentionally ignored here - catalog
+    cues for instrumental sections (Harmonica / Solo / Interlude /
+    Turnaround / Instrumental) are almost always stage directions
+    ("Solo harmonica establishes the C major waltz", "Am -> Am/G
+    descending phrase"), **not** singable lyrics. Treating them as
+    "has lyrics" leaks instrumental sections back into the lyrics
+    editor, which is exactly the clutter the editor is supposed to
+    avoid. Only the user's own typed text qualifies.
+    """
+    if not isinstance(user_section_lyrics, Mapping):
+        return False
+    val = user_section_lyrics.get(section_name)
+    return bool(str(val or "").strip())
+
+
 def is_lyric_bearing_section(
     section_name: str,
     *,
@@ -246,22 +267,26 @@ def is_lyric_bearing_section(
 
     Rules (in priority order):
 
-    * Verses, Pre-Choruses, and Choruses are **always** lyric-bearing.
-    * Bridges are lyric-bearing only when they already have lyrics (most
-      pop bridges do, but not every song writes them out).
+    * Verses, Pre-Choruses, Choruses, **Bridges**, and Refrains are
+      always lyric-bearing - the canonical singing sections.
     * Intros, Outros, Solos, Interludes (and the synonyms Harmonica /
-      Instrumental / Turnaround / Vamp / Tag) are **not** lyric-bearing
-      by default, unless the user / catalog already typed lyrics there
-      (in which case respect the existing data).
+      Instrumental / Turnaround / Vamp / Tag / Lead Break / Accordion /
+      Guitar Solo / Musical Interlude) are **not** lyric-bearing by
+      default. They only appear in the editor when the **user** has
+      typed lyrics for them - catalog stage directions never qualify
+      them.
     * Unknown section names ("Section A", "Tag 1", ...) are treated as
       lyric-bearing so the editor never silently hides a section a user
       explicitly added.
 
-    Pass ``catalog_lyric_cues`` and / or ``user_section_lyrics`` to let
-    "has lyrics?" override the default classification.
+    Pass ``user_section_lyrics`` to let user-typed text override the
+    default classification. ``catalog_lyric_cues`` is accepted for
+    backward compatibility but is intentionally **not** consulted; see
+    :func:`_user_has_typed_lyrics` for the rationale.
     """
-    # Local import keeps the songs/ package self-contained at module load
-    # time - the role classifier lives at the project root.
+    # ``catalog_lyric_cues`` is kept in the signature so existing
+    # callers keep working - but it is deliberately unused.
+    del catalog_lyric_cues
     try:
         from beginner_arrangement import (
             ROLE_BRIDGE,
@@ -279,20 +304,15 @@ def is_lyric_bearing_section(
         return True
 
     role = classify_section_role(section_name)
-    if role in (ROLE_VERSE, ROLE_PRECHORUS, ROLE_CHORUS):
+    if role in (ROLE_VERSE, ROLE_PRECHORUS, ROLE_CHORUS, ROLE_BRIDGE):
         return True
-    has_lyrics = _section_has_existing_lyrics(
-        section_name,
-        catalog_lyric_cues=catalog_lyric_cues,
-        user_section_lyrics=user_section_lyrics,
-    )
-    if role == ROLE_BRIDGE:
-        return has_lyrics
-    if role in (ROLE_INTRO, ROLE_OUTRO, ROLE_SOLO, ROLE_INTERLUDE):
-        return has_lyrics
     if role == ROLE_OTHER:
+        # Custom section names that don't match a known instrumental
+        # role - keep them visible so users can type lyrics there.
         return True
-    return has_lyrics
+    if role in (ROLE_INTRO, ROLE_OUTRO, ROLE_SOLO, ROLE_INTERLUDE):
+        return _user_has_typed_lyrics(section_name, user_section_lyrics)
+    return _user_has_typed_lyrics(section_name, user_section_lyrics)
 
 
 def filter_lyric_bearing_sections(

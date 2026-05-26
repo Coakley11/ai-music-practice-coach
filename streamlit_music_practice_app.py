@@ -5519,17 +5519,67 @@ def _render_v2_chart_debug_pill(rec: dict) -> None:
 
 
 def _render_active_song_card(rec: dict) -> None:
-    """Rich active-song summary with navigation shortcuts."""
+    """Rich active-song summary with navigation shortcuts.
+
+    Designed to **never render blank fields** on the active-song card.
+    Every value reaches the markdown layer with a sensible fallback so
+    a missing extension, partial chart, or upstream exception cannot
+    blank out Levels / Sections / Instruments / Practice Focus.
+    """
     level = st.session_state.get("level", "Intermediate")
     active_instrument = str(st.session_state.get("instrument") or "")
+    _details_error: Exception | None = None
     try:
         details = active_song_card_details(
             rec,
             level=level,
             instrument=active_instrument,
         )
-    except Exception:
-        details = {**song_card_meta(rec), "time_signature": "4/4", "key_display": rec.get("key", "C"), "style_label": rec.get("genre", ""), "sections": list((rec.get("sections") or {}).keys()), "section_summary": "", "practice_focus": "", "chord_concepts": [], "practice_goals": [], "why_practice": "", "visual_emoji": "🎵", "visual_gradient": "linear-gradient(145deg,#334155,#64748b)", "visual_genre": rec.get("genre", "Song"), "bpm": 100}
+    except Exception as _details_exc:
+        _details_error = _details_exc
+        # Last-resort fallback - matches the live shape of
+        # ``active_song_card_details`` so the template below renders
+        # cleanly without dictionary KeyErrors.
+        _fallback_meta = song_card_meta(rec)
+        _raw_section_keys = list((rec.get("sections") or {}).keys())
+        details = {
+            **_fallback_meta,
+            "time_signature": "4/4",
+            "key_display": str(rec.get("key", "C") or "C"),
+            "style_label": str(rec.get("genre", "Song") or "Song"),
+            "sections": _raw_section_keys,
+            "section_summary": (
+                " -> ".join(_raw_section_keys[:8])
+                if _raw_section_keys
+                else "Intro -> Verse -> Chorus -> Outro"
+            ),
+            "practice_focus": "core chord changes · rhythm feel · clean transitions",
+            "chord_concepts": [],
+            "practice_goals": [],
+            "why_practice": "",
+            "visual_emoji": "🎵",
+            "visual_gradient": "linear-gradient(145deg,#334155,#64748b)",
+            "visual_genre": rec.get("genre", "Song") or "Song",
+            "bpm": _fallback_meta.get("bpm") or 100,
+        }
+    # Ensure every field the template renders has a non-empty value.
+    details.setdefault("levels_display", "Beginner / Intermediate / Advanced")
+    details.setdefault("difficulty", "All levels")
+    details.setdefault("instruments", "Piano, Guitar, Voice")
+    details.setdefault("section_summary", "Intro -> Verse -> Chorus -> Outro")
+    details.setdefault(
+        "practice_focus",
+        "core chord changes · rhythm feel · clean transitions",
+    )
+    for key, blank_fallback in (
+        ("levels_display", "Beginner / Intermediate / Advanced"),
+        ("difficulty", "All levels"),
+        ("instruments", "Piano, Guitar, Voice"),
+        ("section_summary", "Intro -> Verse -> Chorus -> Outro"),
+        ("practice_focus", "core chord changes · rhythm feel · clean transitions"),
+    ):
+        if not str(details.get(key) or "").strip():
+            details[key] = blank_fallback
     trusted_cls = " trusted" if details.get("trusted") else ""
     concepts = ", ".join(html.escape(c) for c in details.get("chord_concepts") or [])
     goals_html = "".join(
@@ -5554,12 +5604,13 @@ def _render_active_song_card(rec: dict) -> None:
         f'<dl class="ui-active-song-facts">'
         f'<dt>Key</dt><dd>{html.escape(details.get("key_display", details.get("key", "")))}</dd>'
         f'<dt>Style</dt><dd>{html.escape(details.get("style_label", details.get("genre", "")))}</dd>'
-        f'<dt>Level</dt><dd>{html.escape(details.get("difficulty", ""))}</dd>'
+        f'<dt>Levels</dt><dd>{html.escape(details["levels_display"])}</dd>'
+        f'<dt>Level fit</dt><dd>{html.escape(details["difficulty"])}</dd>'
         f'<dt>BPM</dt><dd>{int(details.get("bpm") or 100)}</dd>'
         f'<dt>Time</dt><dd>{html.escape(details.get("time_signature", "4/4"))}</dd>'
-        f'<dt>Sections</dt><dd>{html.escape(details.get("section_summary") or "—")}</dd>'
-        f'<dt>Instruments</dt><dd>{html.escape(details.get("instruments", ""))}</dd>'
-        f'<dt>Practice focus</dt><dd>{html.escape(details.get("practice_focus", ""))}</dd>'
+        f'<dt>Sections</dt><dd>{html.escape(details["section_summary"])}</dd>'
+        f'<dt>Instruments</dt><dd>{html.escape(details["instruments"])}</dd>'
+        f'<dt>Practice focus</dt><dd>{html.escape(details["practice_focus"])}</dd>'
         f"</dl>"
         + (f'<p class="ui-active-song-blurb"><strong>Harmony:</strong> {concepts}</p>' if concepts else "")
         + f'<p class="ui-active-song-blurb">{html.escape(str(details.get("why_practice", "")))}</p>'
@@ -5567,6 +5618,14 @@ def _render_active_song_card(rec: dict) -> None:
         + "</div></div>"
     )
     st.markdown(card_html, unsafe_allow_html=True)
+    if _details_error is not None and _developer_mode_enabled():
+        st.warning(
+            "Developer Mode · active-song card fell back to defaults "
+            f"because ``active_song_card_details`` raised "
+            f"``{type(_details_error).__name__}: {_details_error}``. "
+            "The fields shown above are safe defaults - the underlying "
+            "issue is logged here so we don't render blank rows silently."
+        )
     _render_v2_chart_debug_pill(rec)
     st.markdown('<div class="ui-song-card-actions">', unsafe_allow_html=True)
     b1, b2, b3, b4 = st.columns(4)
@@ -6690,36 +6749,127 @@ if _studio_page == "practice":
     )
 
     if not _is_full_song and _active_section:
+        # ----- Section Deep Focus -----------------------------------
+        # ``section_deep_practice_markdown`` returns "No chords in
+        # this section." when ``section_chords`` is empty - which to
+        # the user *looks* like the panel is blank. Detect that
+        # explicitly and render an actionable fallback instead.
+        _deep_focus_md = ""
+        _deep_focus_error: Exception | None = None
+        try:
+            _deep_focus_md = section_deep_practice_markdown(
+                section_name=_active_section,
+                section_chords=_focus_chords,
+                instrument=instrument,
+                level=level,
+                focus=focus,
+                display_key=_practice_chart_key,
+                bpm=_practice_bpm,
+                groove_style=_practice_groove,
+            ) or ""
+        except Exception as _deep_focus_exc:
+            _deep_focus_error = _deep_focus_exc
         with st.expander(f"🔬 Section deep focus — {_active_section}", expanded=True):
-            st.markdown(
-                section_deep_practice_markdown(
-                    section_name=_active_section,
-                    section_chords=_focus_chords,
-                    instrument=instrument,
-                    level=level,
-                    focus=focus,
-                    display_key=_practice_chart_key,
-                    bpm=_practice_bpm,
-                    groove_style=_practice_groove,
+            if _deep_focus_md.strip() and not _deep_focus_md.strip().lower().startswith(
+                "no chords"
+            ):
+                st.markdown(_deep_focus_md)
+            else:
+                st.info(
+                    f"This section (**{_active_section}**) has no chord data "
+                    "in the current chart. Pick **Full Song** above to see "
+                    "the whole arrangement, or pick a different section."
                 )
-            )
-
-        if instrument in ("Guitar", "Piano"):
-            with st.expander("🥁 Rhythm guide (this section)", expanded=False):
-                st.markdown(
-                    rhythm_guide_markdown(
-                        instrument,
-                        _practice_groove,
-                        _time_sig,
+                if _developer_mode_enabled():
+                    st.caption(
+                        f"Developer Mode · deep focus diagnostics — "
+                        f"section={_active_section!r} · "
+                        f"chord_count={len(_focus_chords)} · "
+                        f"instrument={instrument!r} · "
+                        f"level={level!r} · "
+                        f"focus={focus!r}"
+                        + (
+                            f" · error=`{type(_deep_focus_error).__name__}: "
+                            f"{_deep_focus_error}`"
+                            if _deep_focus_error is not None
+                            else ""
+                        )
                     )
-                )
 
-        if _focus_chords:
-            with st.expander("🎼 Scales & approaches (this section)", expanded=False):
+        # ----- Rhythm Guide -----------------------------------------
+        # Previously gated to Guitar / Piano only, which left singers,
+        # bassists, and horn players staring at no rhythm guidance at
+        # all. The helper itself returns a sensible generic line for
+        # every instrument, so we always show it now.
+        _rhythm_md = ""
+        _rhythm_error: Exception | None = None
+        try:
+            _rhythm_md = rhythm_guide_markdown(
+                instrument,
+                _practice_groove,
+                _time_sig,
+            ) or ""
+        except Exception as _rhythm_exc:
+            _rhythm_error = _rhythm_exc
+        with st.expander("🥁 Rhythm guide (this section)", expanded=False):
+            if _rhythm_md.strip():
+                st.markdown(_rhythm_md)
+            else:
+                st.info(
+                    f"Lock to **{_practice_groove}** at **{_time_sig}** — "
+                    "use the metronome above and stay relaxed on beats 2 & 4."
+                )
+                if _developer_mode_enabled():
+                    st.caption(
+                        f"Developer Mode · rhythm guide diagnostics — "
+                        f"instrument={instrument!r} · "
+                        f"groove={_practice_groove!r} · "
+                        f"time_sig={_time_sig!r}"
+                        + (
+                            f" · error=`{type(_rhythm_error).__name__}: "
+                            f"{_rhythm_error}`"
+                            if _rhythm_error is not None
+                            else ""
+                        )
+                    )
+
+        # ----- Scales & Approaches ----------------------------------
+        with st.expander("🎼 Scales & approaches (this section)", expanded=False):
+            if _focus_chords:
+                _scales_rendered = 0
+                _scales_errors: list[tuple[str, Exception]] = []
                 for ch in _focus_chords[:12]:
-                    st.markdown(
-                        scale_suggestions_for_chord(ch, _practice_chart_key, level, instrument)
+                    try:
+                        _scale_md = scale_suggestions_for_chord(
+                            ch, _practice_chart_key, level, instrument
+                        ) or ""
+                    except Exception as _scales_exc:
+                        _scales_errors.append((str(ch), _scales_exc))
+                        continue
+                    if _scale_md.strip():
+                        st.markdown(_scale_md)
+                        _scales_rendered += 1
+                if _scales_rendered == 0:
+                    st.info(
+                        f"No scale suggestions matched the chords in "
+                        f"**{_active_section}** for **{instrument}** at "
+                        f"**{level}** level. Try a different section or "
+                        "switch instruments in the sidebar."
                     )
+                if _developer_mode_enabled() and _scales_errors:
+                    st.caption(
+                        "Developer Mode · scales errors: "
+                        + "; ".join(
+                            f"{ch}: {type(exc).__name__}: {exc}"
+                            for ch, exc in _scales_errors[:6]
+                        )
+                    )
+            else:
+                st.info(
+                    f"**{_active_section}** has no chords in the current "
+                    "chart, so there's nothing to suggest scales over. "
+                    "Pick **Full Song** above or choose a different section."
+                )
 
     _chart_current = None if _is_full_song else _active_section
     _chart_html = full_chord_markdown(

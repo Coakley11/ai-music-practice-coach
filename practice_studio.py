@@ -45,15 +45,41 @@ def _accidental_count(key: str) -> int:
     return sum(1 for c in str(key) if c in "#b")
 
 
+_STANDARD_LEVELS: tuple[str, ...] = ("Beginner", "Intermediate", "Advanced")
+
+
+def _normalize_levels_list(record: dict[str, Any]) -> list[str]:
+    """Return the levels supported by this record, preserving Beginner ->
+    Intermediate -> Advanced order. Falls back to the full set so the
+    active-song card never has a blank "Levels" line."""
+    versions = record.get("chart_versions") or {}
+    if versions:
+        ordered: list[str] = []
+        for canonical in _STANDARD_LEVELS:
+            if canonical in versions:
+                ordered.append(canonical)
+        # Catch any non-standard tier names the chart provider added.
+        for tier in versions:
+            if tier not in ordered:
+                ordered.append(str(tier))
+        if ordered:
+            return ordered
+    return list(_STANDARD_LEVELS)
+
+
 def song_card_meta(record: dict[str, Any]) -> dict[str, Any]:
-    """Display metadata for a song selection card."""
-    genre = record.get("genre", "Pop")
-    key = record.get("key", "C")
+    """Display metadata for a song selection card.
+
+    Always returns non-empty values for ``levels``, ``difficulty``,
+    ``instruments``, and ``genre`` so the active-song card on Song
+    Selection never renders blank fields.
+    """
+    genre = record.get("genre") or "Pop"
+    key = record.get("key") or "C"
     ext = record.get("extensions") or {}
     bpm = ext.get("default_bpm")
-    versions = record.get("chart_versions") or {}
-    levels = list(versions.keys()) if versions else ["Beginner", "Intermediate", "Advanced"]
-    if len(levels) >= 3:
+    levels = _normalize_levels_list(record)
+    if len(levels) >= 3 and all(lvl in levels for lvl in _STANDARD_LEVELS):
         difficulty = "All levels"
     elif "Advanced" in levels:
         difficulty = "Intermediate–Advanced"
@@ -62,14 +88,29 @@ def song_card_meta(record: dict[str, Any]) -> dict[str, Any]:
     else:
         difficulty = " · ".join(levels[:2])
 
-    instruments = _instruments_for_genre(genre)
+    # Prefer an explicit catalog/instrument list if the record provides
+    # one; otherwise fall back to a genre-based default so the card
+    # never shows a blank "Instruments" row.
+    instruments_value = (
+        ext.get("instruments")
+        or record.get("instruments")
+        or _instruments_for_genre(genre)
+    )
+    if isinstance(instruments_value, (list, tuple)):
+        instruments = ", ".join(str(i) for i in instruments_value if str(i).strip())
+    else:
+        instruments = str(instruments_value or "")
+    if not instruments.strip():
+        instruments = _instruments_for_genre(genre)
     return {
-        "title": record.get("title", "Song"),
-        "artist": record.get("artist", ""),
+        "title": record.get("title") or "Song",
+        "artist": record.get("artist") or "",
         "genre": genre,
         "key": key,
         "bpm": int(bpm) if bpm else None,
         "difficulty": difficulty,
+        "levels": levels,
+        "levels_display": " / ".join(levels) if levels else "Beginner / Intermediate / Advanced",
         "instruments": instruments,
         "trusted": bool(record.get("trusted_core")),
     }
@@ -382,6 +423,28 @@ def active_song_card_details(
     if "pop" in g and ("ballad" in notes or "deep" in title_low):
         style_label = "Pop / Soft Rock Ballad"
 
+    # The section flow ("Intro -> Verse -> Chorus -> ...") is the
+    # primary way the song card communicates structure. If for any
+    # reason the simplified flow comes back empty, fall back to a
+    # readable join of the raw section labels so the card never
+    # renders an empty "Sections" row.
+    section_summary = _build_section_flow(section_labels)
+    if not section_summary.strip() and section_labels:
+        section_summary = " -> ".join(section_labels[:8])
+    if not section_summary.strip():
+        section_summary = "Intro -> Verse -> Chorus -> Outro"
+
+    practice_focus_text = practice_focus_hints(
+        record,
+        sections,
+        level=level,
+        instrument=instrument,
+    )
+    if not str(practice_focus_text or "").strip():
+        practice_focus_text = (
+            "core chord changes · rhythm feel · clean transitions"
+        )
+
     return {
         **base,
         "bpm": bpm,
@@ -392,13 +455,8 @@ def active_song_card_details(
         # Visual section flow: arrow-separated, numbers stripped, adjacent
         # sub-parts (Verse 3A | Verse 3B) collapsed - while non-adjacent
         # repetition (Verse ... Chorus ... Verse) is preserved.
-        "section_summary": _build_section_flow(section_labels),
-        "practice_focus": practice_focus_hints(
-            record,
-            sections,
-            level=level,
-            instrument=instrument,
-        ),
+        "section_summary": section_summary,
+        "practice_focus": practice_focus_text,
         "chord_concepts": concepts,
         "practice_goals": practice_goals_for_record(record, sections),
         "why_practice": (

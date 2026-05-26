@@ -88,11 +88,37 @@ def is_beginner_level(level: Any) -> bool:
     return str(level or "").strip().lower() == BEGINNER_LEVEL.lower()
 
 
+_INSTRUMENTAL_INSTRUMENTS = (
+    "harmonica",
+    "guitar solo",
+    "lead break",
+    "accordion",
+    "saxophone solo",
+    "sax solo",
+    "trumpet solo",
+    "piano solo",
+    "organ solo",
+    "fiddle break",
+    "banjo break",
+    "mandolin break",
+    "dobro break",
+)
+
+
 def classify_section_role(name: str) -> str:
     """Map a raw section name (e.g. ``"Verse 2A"``) to a canonical role.
 
-    Order matters: ``Pre-Chorus`` must be checked before ``Chorus`` so
-    "Pre-Chorus 1" doesn't get classified as a chorus.
+    Order matters:
+
+    * ``Pre-Chorus`` is checked before ``Chorus`` so "Pre-Chorus 1"
+      doesn't get classified as a chorus.
+    * **Instrumental-feature names ("Harmonica Intro", "Final Harmonica
+      Outro", "Guitar Solo", "Accordion Section", ...) are classified
+      as ``ROLE_SOLO`` *before* the bare "intro" / "outro" / "verse"
+      keyword check.** Otherwise "Harmonica Intro" would be tagged as
+      an INTRO (and leak into the lyrics editor) even though it's a
+      pure instrumental feature. This matters for both the lyric
+      editor's section filter and the beginner-arrangement picker.
     """
     low = str(name or "").strip().lower()
     if not low:
@@ -101,6 +127,17 @@ def classify_section_role(name: str) -> str:
         return ROLE_PRECHORUS
     if "chorus" in low or "refrain" in low or "hook" in low:
         return ROLE_CHORUS
+    # Instrumental-feature names take priority over generic "intro" /
+    # "outro" / "verse" keyword matches so "Harmonica Intro" is treated
+    # as a solo feature, not as a sung intro.
+    if "instrumental" in low:
+        return ROLE_SOLO
+    if any(tok in low for tok in _INSTRUMENTAL_INSTRUMENTS):
+        return ROLE_SOLO
+    if "solo" in low:
+        return ROLE_SOLO
+    if any(tok in low for tok in ("interlude", "intermezzo", "vamp", "tag", "turnaround")):
+        return ROLE_INTERLUDE
     if "intro" in low:
         return ROLE_INTRO
     if any(tok in low for tok in ("outro", "coda", "ending", "fade-out", "fadeout")):
@@ -109,12 +146,6 @@ def classify_section_role(name: str) -> str:
         return ROLE_VERSE
     if "bridge" in low:
         return ROLE_BRIDGE
-    if any(tok in low for tok in ("solo", "instrumental")):
-        return ROLE_SOLO
-    if any(tok in low for tok in ("interlude", "intermezzo", "vamp", "tag", "turnaround")):
-        return ROLE_INTERLUDE
-    if "harmonica" in low:
-        return ROLE_SOLO
     return ROLE_OTHER
 
 
