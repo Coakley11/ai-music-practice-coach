@@ -675,21 +675,38 @@ ensure_master_song_initialized(
 )
 
 # === KARAOKE SESSION ACTIVE-SONG OVERRIDE ====================================
-# When a karaoke set is running, the active song is dictated by the
-# current queue position. This MUST run BEFORE `get_song_context` so the
-# rest of the app (Backing Track, lyrics, chord-follow, etc.) loads the
-# karaoke-correct song.  Also applies any pending advance flag queued by
-# the audio-ended JS bridge or the visible Skip button.
-km.consume_pending_advance(st.session_state)
-if km.is_karaoke_session_active(st.session_state):
-    _karaoke_target_pk = km.current_session_pick_key(st.session_state)
-    if _karaoke_target_pk and _karaoke_target_pk != st.session_state.get(ACTIVE_CATALOG_PICK_KEY):
-        try:
-            apply_pick_key(st, _karaoke_target_pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
-        except KeyError:
-            # Queued pick_key no longer in catalog (e.g. after rebuild).
-            # Drop it and try the next one on the next rerun.
-            km.remove_from_queue(st.session_state, _karaoke_target_pk)
+# When a karaoke set is running AND the active instrument is Voice,
+# the active song is dictated by the current queue position. This MUST
+# run BEFORE `get_song_context` so the rest of the app (Backing Track,
+# lyrics, chord-follow, etc.) loads the karaoke-correct song. Also
+# applies any pending advance flag queued by the audio-ended JS bridge
+# or the visible Skip button.
+#
+# Strict voice gate: when the user has switched to Guitar / Piano /
+# Bass / etc., we drop any pending karaoke advance flag and STOP the
+# session so non-voice instruments never get hijacked by a stale
+# karaoke pick_key. The queue itself is preserved so flipping back to
+# Voice can resume the setlist.
+if km.is_voice_mode(st.session_state):
+    km.consume_pending_advance(st.session_state)
+    if km.is_karaoke_session_active(st.session_state):
+        _karaoke_target_pk = km.current_session_pick_key(st.session_state)
+        if _karaoke_target_pk and _karaoke_target_pk != st.session_state.get(ACTIVE_CATALOG_PICK_KEY):
+            try:
+                apply_pick_key(st, _karaoke_target_pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
+            except KeyError:
+                # Queued pick_key no longer in catalog (e.g. after rebuild).
+                # Drop it and try the next one on the next rerun.
+                km.remove_from_queue(st.session_state, _karaoke_target_pk)
+else:
+    # Non-voice instrument: hibernate the karaoke session so no
+    # karaoke UI / behaviour leaks into the instrumentalist workflow.
+    if km.is_karaoke_session_active(st.session_state):
+        km.stop_session(st.session_state)
+    st.session_state.pop(km.PENDING_KARAOKE_ADVANCE_KEY, None)
+    st.session_state.pop(km.PENDING_KARAOKE_AUTO_GENERATE_KEY, None)
+    st.session_state.pop(km.KARAOKE_TRANSITION_LABEL_KEY, None)
+    st.session_state.pop(km.KARAOKE_SONG_ENDED_KEY, None)
 
 _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
     st,
@@ -5067,10 +5084,11 @@ def _render_active_song_card(rec: dict) -> None:
         if st.button("Chord Coach", key="picker_card_chord_coach", use_container_width=True):
             _picker_navigate("practice", open_chord_coach=True)
     st.markdown("</div>", unsafe_allow_html=True)
-    # Karaoke "Add to Setlist" CTA - prominent when Voice is the active
-    # instrument, calm but available otherwise.
+    # Karaoke "Add to Setlist" CTA - only visible when the active
+    # instrument is Voice / Vocals / Singer. Instrumentalists never see
+    # this button. (The button itself also self-gates as a safety net.)
     _active_pick_key = st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""
-    if _active_pick_key:
+    if _active_pick_key and km.is_voice_mode(st.session_state):
         render_add_to_queue_button(
             st,
             pick_key=_active_pick_key,
@@ -5571,7 +5589,7 @@ st.markdown(
     <script>
       try {{
         document.body.dataset.vocalFocus = "{ 'true' if km.is_voice_mode(st.session_state) else 'false' }";
-        document.body.dataset.karaokeSession = "{ 'true' if km.is_karaoke_session_active(st.session_state) else 'false' }";
+        document.body.dataset.karaokeSession = "{ 'true' if (km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)) else 'false' }";
       }} catch (e) {{}}
     </script>
     """,
@@ -6459,8 +6477,11 @@ elif _studio_page == "picker":
         show_song_cards=True,
     )
 
-    # ---- Karaoke Performance Setlist (always available; emphasized in Voice mode) ----
-    if km.is_voice_mode(st.session_state) or km.queue_length(st.session_state) > 0:
+    # ---- Karaoke Performance Setlist (Voice-only) ----
+    # Karaoke UI is strictly voice-only. Instrumentalists never see the
+    # setlist on Song Selection - they get the standard musician
+    # workflow (Practice / Backing Track / Creative Lab) instead.
+    if km.is_voice_mode(st.session_state):
         from song_catalog import record_for_pick_key as _record_for_pick_key
 
         def _navigate_to_backing_for_karaoke() -> None:
@@ -6592,11 +6613,12 @@ elif _studio_page == "backing":
     # Karaoke session pill above the active song card.
     render_karaoke_status_pill(st)
 
-    # Karaoke skip/end controls - visible during the karaoke set.  The
-    # "Skip to next song" button is also the auto-click target the JS
-    # audio-ended bridge searches for, so it must be in the DOM during
-    # a karaoke session even if the user never clicks it manually.
-    if km.is_karaoke_session_active(st.session_state):
+    # Karaoke skip/end controls - voice-only, only visible during an
+    # active karaoke set. The "Skip to next song" button is also the
+    # auto-click target the JS audio-ended bridge searches for, so it
+    # must be in the DOM during a karaoke session even if the user
+    # never clicks it manually.
+    if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
         from song_catalog import record_for_pick_key as _record_for_pick_key
 
         # Compact "Now Singing / Next / 3rd" queue preview above controls.
@@ -6934,8 +6956,9 @@ elif _studio_page == "backing":
     # karaoke set, the new song has no backing audio yet. Consume the
     # one-shot flag and proceed exactly as if the user had clicked
     # Generate, so the singer never has to click between songs.
+    # Voice-only: instrumentalists never auto-generate from a karaoke flag.
     _karaoke_auto_gen = False
-    if km.consume_pending_auto_generate(st.session_state):
+    if km.is_voice_mode(st.session_state) and km.consume_pending_auto_generate(st.session_state):
         if backing_chords and not _backing_audio_ready:
             _karaoke_auto_gen = True
 
@@ -7089,9 +7112,13 @@ elif _studio_page == "backing":
             )
         _karaoke_active = km.is_karaoke_session_active(st.session_state)
         _karaoke_voice = km.is_voice_mode(st.session_state)
+        # Every karaoke-flavoured JS feature (countdown overlay, audio-
+        # ended auto-advance bridge, transition overlays) is gated on
+        # `_karaoke_voice`. Non-voice instruments get a plain
+        # follow-along player with no karaoke behaviours injected.
+        _karaoke_engaged = _karaoke_active and _karaoke_voice
         _show_countdown = bool(
-            _karaoke_active
-            and _karaoke_voice
+            _karaoke_engaged
             and km.countdown_enabled(st.session_state)
             and bool(st.session_state.get(BACKING_AUTOPLAY, True))
         )
@@ -7102,7 +7129,7 @@ elif _studio_page == "backing":
                 chart_html,
                 autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, True)),
                 karaoke_auto_advance=(
-                    _karaoke_active and km.auto_advance_enabled(st.session_state)
+                    _karaoke_engaged and km.auto_advance_enabled(st.session_state)
                 ),
                 karaoke_countdown=_show_countdown,
                 karaoke_countdown_seconds=km.countdown_seconds(st.session_state),

@@ -85,9 +85,16 @@ def render_add_to_queue_button(
 ) -> bool:
     """Render an "Add to Karaoke Queue" button. Returns ``True`` if clicked.
 
+    Karaoke UI is voice-only: the button is suppressed for Piano /
+    Guitar / Bass / Sax / Trumpet / Drums and every other non-Voice
+    instrument so instrumentalists see the standard musician workflow
+    without any karaoke clutter.
+
     Idempotent: a song already in the queue shows a calmer "In Setlist"
     state instead of allowing duplicate adds.
     """
+    if not km.is_voice_mode(st.session_state):
+        return False
     already = km.is_in_queue(st.session_state, pick_key)
     if already:
         label = "In Karaoke Setlist"
@@ -129,7 +136,13 @@ def render_karaoke_setlist_panel(
     Lets the user reorder / remove queued songs and start the karaoke
     session. ``navigate_to_backing`` is called when the user clicks
     "Start Karaoke Set" so the parent page can route to Backing Track.
+
+    Voice-only: when the active instrument is anything other than
+    Voice / Vocals / Singer, the panel hides itself so instrumentalists
+    don't see a karaoke setlist on their Song Selection page.
     """
+    if not km.is_voice_mode(st.session_state):
+        return
     queue = km.get_queue(st.session_state)
     pos, total = km.session_position(st.session_state)
     title = km.voice_wording("queue_section_title", voice=True)
@@ -290,7 +303,13 @@ def render_karaoke_setlist_panel(
 
 
 def render_karaoke_status_pill(st: Any) -> None:
-    """Show a "Karaoke Set: 2 of 5" pill above the Backing Track player."""
+    """Show a "Karaoke Set: 2 of 5" pill above the Backing Track player.
+
+    Voice-only - non-voice instruments never see this pill even if a
+    stale session is still active in session_state.
+    """
+    if not km.is_voice_mode(st.session_state):
+        return
     if not km.is_karaoke_session_active(st.session_state):
         return
     pos, total = km.session_position(st.session_state)
@@ -311,10 +330,16 @@ def render_karaoke_skip_controls(
 ) -> None:
     """Render Skip / End controls above the player during a karaoke set.
 
+    Voice-only - the controls only render when the active instrument is
+    Voice / Vocals / Singer so non-voice instruments never see karaoke
+    skip/end buttons mid-page.
+
     The "Skip to next song" button label is the JS bridge's auto-click
     target (see :data:`KARAOKE_SKIP_BUTTON_TEXT`). The button is visible
     so the singer can skip manually at any time.
     """
+    if not km.is_voice_mode(st.session_state):
+        return
     if not km.is_karaoke_session_active(st.session_state):
         return
     nxt = km.next_session_pick_key(st.session_state)
@@ -385,9 +410,17 @@ def render_karaoke_skip_controls(
 def render_karaoke_now_singing_banner(st: Any) -> None:
     """One-shot "Now Singing: <title>" banner shown right after a transition.
 
+    Voice-only - the banner suppresses (and silently drops any stale
+    flag) when the active instrument isn't Voice / Vocals / Singer.
+
     Consumes the :data:`karaoke_mode.KARAOKE_TRANSITION_LABEL_KEY` flag
     so the banner only appears on the rerun immediately after a skip.
     """
+    if not km.is_voice_mode(st.session_state):
+        # Drop any stale label so it can't surface later when the user
+        # flips back to Voice mode.
+        st.session_state.pop(km.KARAOKE_TRANSITION_LABEL_KEY, None)
+        return
     label = st.session_state.pop(km.KARAOKE_TRANSITION_LABEL_KEY, None)
     if not label:
         return
@@ -408,6 +441,7 @@ def render_karaoke_transition_card(
 
     Only shows when:
 
+    * The active instrument is Voice / Vocals / Singer (karaoke-only).
     * A karaoke session is active.
     * The audio of the current song fired the ``ended`` event (sticky
       flag :data:`karaoke_mode.KARAOKE_SONG_ENDED_KEY`).
@@ -415,6 +449,8 @@ def render_karaoke_transition_card(
     ``on_continue`` is invoked when the user clicks the prominent
     "Continue to next song" button.
     """
+    if not km.is_voice_mode(st.session_state):
+        return
     if not km.is_karaoke_session_active(st.session_state):
         return
     if not st.session_state.get(km.KARAOKE_SONG_ENDED_KEY):
@@ -638,10 +674,13 @@ def render_karaoke_queue_preview(
 ) -> None:
     """Render a compact "Now Singing / Next / 3rd" queue preview.
 
-    Only renders when a karaoke session is active. Designed to live
-    above the chord chart on the Backing Track page so the singer always
-    knows what's coming next.
+    Voice-only - hides immediately when the active instrument isn't
+    Voice / Vocals / Singer. Designed to live above the chord chart
+    on the Backing Track page so the singer always knows what's
+    coming next.
     """
+    if not km.is_voice_mode(st.session_state):
+        return
     if not km.is_karaoke_session_active(st.session_state):
         return
 
