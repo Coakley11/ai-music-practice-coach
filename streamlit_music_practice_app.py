@@ -1163,7 +1163,6 @@ def _render_lyrics_and_cues_panel(
     from songs.lyrics_editor import (
         add_lyrics_section,
         filter_lyric_bearing_sections,
-        lyrics_show_instrumental_key,
         move_lyrics_section,
         optional_sections_to_add,
         remove_lyrics_section,
@@ -1205,49 +1204,23 @@ def _render_lyrics_and_cues_panel(
             "used on **Practice** and **Backing Track**."
         )
 
-        # Per-song "Show instrumental / non-lyric sections" toggle. Default
-        # OFF so the editor stays focused on Verse / Pre-Chorus / Chorus
-        # (and Bridge when it already has lyrics). Intros / Outros / Solos
-        # / Interludes are hidden by default - the user can opt in to see
-        # them when they actually want to type cues there.
-        _show_instr_key = lyrics_show_instrumental_key(slug)
-        show_instrumental = bool(st.session_state.get(_show_instr_key, False))
-        new_show_instrumental = st.toggle(
-            "Show instrumental / non-lyric sections",
-            value=show_instrumental,
-            key=f"lyrics_show_instr_toggle::{slug}",
-            help=(
-                "Off (default): hide Intro / Outro / Solo / Interlude / "
-                "Harmonica / Turnaround sections — most users only need "
-                "Verse / Chorus / Bridge. Turn on to type cues for "
-                "instrumental sections too."
-            ),
-        )
-        if bool(new_show_instrumental) != show_instrumental:
-            st.session_state[_show_instr_key] = bool(new_show_instrumental)
-        show_instrumental = bool(new_show_instrumental)
-
-        # Look up any existing lyric content (catalog cues + user-typed
-        # lyrics) so a Bridge / Outro etc. that *already* has lyrics is
-        # still shown in the default view.
+        # The lyrics editor only ever shows lyric-bearing sections
+        # (Verse / Pre-Chorus / Chorus / Bridge / Refrain, plus any
+        # section that already has lyrics typed for it). Intros / Outros
+        # / Solos / Interludes / Harmonica / Turnaround sections never
+        # appear in the lyric typing area - they aren't sung. Section
+        # management (add / reorder / remove) below still operates on
+        # the full chart layout.
         _catalog_cues = (
             (song_data or {}).get("lyric_cues") if isinstance(song_data, dict) else None
         )
         _existing_user = st.session_state.get(section_lyrics_state_key) or {}
         ordered = filter_lyric_bearing_sections(
             ordered_all,
-            show_instrumental=show_instrumental,
+            show_instrumental=False,
             catalog_lyric_cues=_catalog_cues,
             user_section_lyrics=_existing_user,
         )
-
-        _hidden_count = max(0, len(ordered_all) - len(ordered))
-        if _hidden_count and not show_instrumental:
-            st.caption(
-                f"Showing **{len(ordered)}** lyric section(s). "
-                f"**{_hidden_count}** instrumental / non-lyric section(s) "
-                "are hidden — turn on the toggle above to manage them."
-            )
 
         st.markdown("**Paste all lyrics or cues (optional)**")
         st.caption(
@@ -1339,7 +1312,7 @@ def _render_lyrics_and_cues_panel(
                     )
                     ordered = filter_lyric_bearing_sections(
                         ordered_all,
-                        show_instrumental=show_instrumental,
+                        show_instrumental=False,
                         catalog_lyric_cues=_catalog_cues,
                         user_section_lyrics=_existing_user,
                     )
@@ -5259,7 +5232,23 @@ def _render_catalog_song_picker_block(
         st.caption(f"**{len(filtered)}** songs available in this list.")
         st.markdown("#### Active song")
         active_rec = record_for_pick_key(visible_song_records, active_pick_key)
+        # Original-song YouTube card lives right above the song card so
+        # the "hear/watch the original" link is the first thing users see
+        # after they pick a song. Lazy: nothing loads until they expand
+        # it (and embeds only render when they explicitly click Load).
         if active_rec:
+            _yt_title = str(active_rec.get("title", ""))
+            _yt_artist = str(active_rec.get("artist", ""))
+            if _yt_title:
+                _yt_slug, _, _ = _lyrics_cues_session_keys(_yt_title, _yt_artist)
+                render_original_song_video_card(
+                    st,
+                    song_title=_yt_title,
+                    artist=_yt_artist,
+                    song_slug=_yt_slug,
+                    instrument=st.session_state.get("instrument", ""),
+                    expanded=False,
+                )
             _render_active_song_card(active_rec)
         else:
             st.info("Select a song from the menu above.")
@@ -5324,9 +5313,18 @@ def _render_page_quick_nav(current_page: str) -> str:
 
 
 def _sync_focus_options_before_widget(instrument: str) -> list[str]:
+    """Compute focus options for ``instrument`` and clamp the global
+    ``focus`` to a value Streamlit will accept.
+
+    The old version used ``setdefault`` which silently leaves a stale
+    out-of-options value in place when the user switches instruments;
+    that caused page-to-page drift (the global was a Sax focus while
+    the new page only offered Piano focuses). We overwrite directly so
+    every surface sees the same value on the same render.
+    """
     opts = focus_options_for_instrument(instrument)
-    if st.session_state.get("focus") not in opts:
-        st.session_state.setdefault("focus", opts[0])
+    if opts and st.session_state.get("focus") not in opts:
+        st.session_state["focus"] = opts[0]
     return opts
 
 
@@ -5639,8 +5637,13 @@ if is_custom_progression(st.session_state):
 else:
     st.sidebar.caption(f"**{_catalog_song}** · {_catalog_genre}")
 
-st.session_state.setdefault("instrument", "Piano")
-st.session_state.setdefault("level", "Intermediate")
+from practice_setup_globals import ensure_global_setup_defaults as _ensure_global_setup_defaults
+
+# Single source of truth for Instrument / Level / Practice Focus.
+# Initialise + validate the three global keys before any sidebar /
+# page widget reads them, so any page that changes one of these values
+# (sidebar, quick controls, YouTube panel, etc.) sees it everywhere.
+_ensure_global_setup_defaults(st.session_state)
 
 original_key, _song_identity = display_key_context(
     st.session_state,
@@ -5671,10 +5674,27 @@ _instrument_options = DEFAULT_INSTRUMENT_OPTIONS
 
 
 def _on_global_instrument_change() -> None:
-    request_transposing_instrument_sync(
-        st.session_state,
-        st.session_state.get("instrument", "Piano"),
-    )
+    # Re-validate Practice Focus against the new instrument's option
+    # list so other pages don't render a focus that the new instrument
+    # doesn't offer. Done via the canonical setter so the focus key
+    # is *also* clamped before downstream code reads it on this rerun.
+    from practice_setup_globals import set_active_instrument
+
+    new_value = st.session_state.get("instrument", "Piano")
+    set_active_instrument(st.session_state, new_value)
+    request_transposing_instrument_sync(st.session_state, new_value)
+
+
+def _on_global_focus_change() -> None:
+    from practice_setup_globals import set_active_focus
+
+    set_active_focus(st.session_state, st.session_state.get("focus"))
+
+
+def _on_global_level_change() -> None:
+    from practice_setup_globals import set_active_level
+
+    set_active_level(st.session_state, st.session_state.get("level"))
 
 
 sidebar_section("Your practice setup", icon="🎸", tone="session")
@@ -5689,12 +5709,16 @@ st.sidebar.selectbox(
     "Level",
     ["Beginner", "Intermediate", "Advanced"],
     key="level",
+    on_change=_on_global_level_change,
+    help="Applies on every page — controls arrangement length and harmonic detail.",
 )
 _focus_options = _sync_focus_options_before_widget(st.session_state.get("instrument", "Piano"))
 st.sidebar.selectbox(
     "Practice focus",
     _focus_options,
     key="focus",
+    on_change=_on_global_focus_change,
+    help="Applies on every page — drives practice goals, suggestions, and video matching.",
 )
 
 sidebar_section("Session", icon="⏱️", tone="session")
@@ -6466,24 +6490,9 @@ elif _studio_page == "picker":
             prominent=True,
         )
 
-        # "Watch the original song" expander - simple, no instrument /
-        # level / focus matching. Voice mode swaps the wording to
-        # sing-along-friendly language. Lazy: nothing loads until the
-        # user expands it and (for embeds) explicitly clicks Load.
-        _yt_song_title = str(selected_data.get("title", ""))
-        _yt_song_artist = str(selected_data.get("artist", ""))
-        if _yt_song_title:
-            _yt_picker_slug, _, _ = _lyrics_cues_session_keys(
-                _yt_song_title, _yt_song_artist
-            )
-            render_original_song_video_card(
-                st,
-                song_title=_yt_song_title,
-                artist=_yt_song_artist,
-                song_slug=_yt_picker_slug,
-                instrument=st.session_state.get("instrument", ""),
-                expanded=False,
-            )
+        # The "Watch the original song" YouTube card is rendered higher
+        # up on this page (right above the Active Song card) so users
+        # see it immediately after picking a song.
 
         selected_versions = selected_data.get("chart_versions") or {}
         available_levels = ", ".join(selected_versions.keys()) if selected_versions else "Beginner · Intermediate · Advanced"

@@ -124,6 +124,15 @@ def _sync_widget_from_global(
     global_key: str,
     options: list[str],
 ) -> str:
+    """Pre-fill a page-local widget key from the canonical global key.
+
+    If the global value is missing or not in the offered options,
+    fall back to the first option and write that back to the global
+    so every other surface (sidebar, other quick-controls) sees the
+    same clamped value on the next render.
+    """
+    if not options:
+        return str(session_state.get(global_key) or "")
     value = str(session_state.get(global_key) or "")
     if value not in options:
         value = options[0]
@@ -159,25 +168,34 @@ def render_setup_quick_controls(
     focus = _sync_widget_from_global(session_state, fk, "focus", focus_opts)
 
     def _apply_instrument() -> None:
-        session_state["instrument"] = session_state[ik]
+        # Flow through the canonical setter so the focus key is
+        # re-validated against the new instrument's options before any
+        # other widget on the page reads it.
+        from practice_setup_globals import set_active_instrument
+
+        new_inst = set_active_instrument(session_state, session_state[ik])
         try:
             from instrument_transposition import request_transposing_instrument_sync
 
-            request_transposing_instrument_sync(session_state, session_state["instrument"])
+            request_transposing_instrument_sync(session_state, new_inst)
         except ImportError:
             pass
-        opts = focus_options_for_instrument(session_state["instrument"])
-        if session_state.get("focus") not in opts:
-            session_state["focus"] = opts[0]
-        session_state[fk] = session_state["focus"]
+        # Keep this widget's focus key in sync with the (possibly
+        # clamped) global focus so the local Focus selectbox renders
+        # the right value on the next pass.
+        session_state[fk] = session_state.get("focus", "")
         if on_instrument_change:
             on_instrument_change()
 
     def _apply_level() -> None:
-        session_state["level"] = session_state[lk]
+        from practice_setup_globals import set_active_level
+
+        set_active_level(session_state, session_state[lk])
 
     def _apply_focus() -> None:
-        session_state["focus"] = session_state[fk]
+        from practice_setup_globals import set_active_focus
+
+        set_active_focus(session_state, session_state[fk])
 
     st_module.markdown(
         '<div class="setup-quick-row">',

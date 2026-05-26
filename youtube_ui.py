@@ -227,16 +227,55 @@ def render_practice_learning_video_panel(
 ) -> None:
     """Render the Practice-page "Optional YouTube reference" panel.
 
-    The Instrument / Level / Focus selectors default to the active
-    practice session values but can be overridden inside the panel
-    (without changing the rest of the session). Voice mode pre-fills
+    Changing the Instrument or Level inside this panel updates the
+    global session keys (so every other page sees the same value -
+    that's the app-wide instrument/level/focus sync rule). The Focus
+    selector inside this panel is YouTube-search-specific (categories
+    like "Chords" / "Improvisation" / "Strumming") and stays
+    panel-local so it doesn't overwrite the more granular global
+    Practice Focus (e.g. "Bebop Phrasing"). Voice mode pre-fills
     karaoke / lyric / vocal-performance focus options.
     """
     if not song_title:
         return
 
+    # Always read the latest global values on entry so a change
+    # elsewhere in the app (sidebar, another quick-control row) is
+    # already reflected when this panel re-renders.
+    try:
+        from practice_setup_globals import (
+            commit_widget_state_to_globals,
+            get_active_instrument,
+            get_active_level,
+        )
+
+        instrument = get_active_instrument(st.session_state) or instrument
+        level = get_active_level(st.session_state) or level
+    except ImportError:
+        commit_widget_state_to_globals = None  # type: ignore[assignment]
+
     voice_mode = is_voice_instrument(instrument)
     header = practice_panel_kicker(instrument)
+
+    inst_widget_key = f"_yt_practice_inst::{song_slug}"
+    level_widget_key = f"_yt_practice_level::{song_slug}"
+    focus_widget_key = f"_yt_practice_focus::{song_slug}"
+
+    def _on_inst_change() -> None:
+        if commit_widget_state_to_globals is None:
+            return
+        commit_widget_state_to_globals(
+            st.session_state,
+            instrument_widget_key=inst_widget_key,
+        )
+
+    def _on_level_change() -> None:
+        if commit_widget_state_to_globals is None:
+            return
+        commit_widget_state_to_globals(
+            st.session_state,
+            level_widget_key=level_widget_key,
+        )
 
     with st.expander(f"\U0001F4FA  {header}", expanded=expanded):
         if voice_mode:
@@ -263,20 +302,32 @@ def render_practice_learning_video_panel(
             _opts_inst = [instrument] + _opts_inst
         _opts_level = list(level_options or ["Beginner", "Intermediate", "Advanced"])
 
+        # Pre-fill widget keys from the global values so the selectors
+        # always render the current canonical Instrument / Level. This
+        # is the "sync before render" half of the global-sync pattern.
+        st.session_state[inst_widget_key] = (
+            instrument if instrument in _opts_inst else _opts_inst[0]
+        )
+        st.session_state[level_widget_key] = (
+            level if level in _opts_level else _opts_level[1]
+        )
+
         c1, c2, c3 = st.columns([2, 2, 3])
         with c1:
             sel_instrument = st.selectbox(
                 "Instrument",
                 _opts_inst,
-                index=_opts_inst.index(instrument) if instrument in _opts_inst else 0,
-                key=f"_yt_practice_inst::{song_slug}",
+                key=inst_widget_key,
+                on_change=_on_inst_change,
+                help="Syncs across the whole app — sidebar, Practice, Backing Track, etc.",
             )
         with c2:
             sel_level = st.selectbox(
                 "Level",
                 _opts_level,
-                index=_opts_level.index(level) if level in _opts_level else 1,
-                key=f"_yt_practice_level::{song_slug}",
+                key=level_widget_key,
+                on_change=_on_level_change,
+                help="Syncs across the whole app.",
             )
         with c3:
             focus_options = focus_options_for_instrument(sel_instrument)
@@ -288,11 +339,16 @@ def render_practice_learning_video_panel(
                     if opt.lower() == low or low in opt.lower() or opt.lower() in low:
                         default_idx = i
                         break
+            # The YouTube Focus selector uses YouTube-search categories
+            # (Chords / Strumming / Improvisation / ...) which are a
+            # different set from the global Practice Focus, so it
+            # stays panel-local on purpose.
             sel_focus = st.selectbox(
                 "Focus",
                 focus_options,
                 index=default_idx,
-                key=f"_yt_practice_focus::{song_slug}",
+                key=focus_widget_key,
+                help="YouTube search filter — stays local to this video panel.",
             )
 
         # Persisted override URL (per-song).
