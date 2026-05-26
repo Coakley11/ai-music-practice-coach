@@ -904,24 +904,144 @@ def practice_ordered_section_names(
     return ordered
 
 
+_SECTION_TYPE_TRAILING_NUM = re.compile(r"\s+\d+[A-Za-z]?\s*$")
+_SECTION_TYPE_REPEAT_COUNT = re.compile(r"\s*[xX]\s*\d+\s*$")
+_SECTION_TYPE_PAREN_TAIL = re.compile(r"\s*\([^)]*\)\s*$")
+
+
+def practice_section_type(section_name: str | None) -> str:
+    """Collapse a chart section name to its **type label**.
+
+    Examples:
+
+    * ``"Verse 1"`` -> ``"Verse"``
+    * ``"Chorus 2A"`` -> ``"Chorus"``
+    * ``"Bridge 3"`` -> ``"Bridge"``
+    * ``"Outro x5"`` -> ``"Outro"``
+    * ``"Pre-Chorus 1"`` -> ``"Pre-Chorus"``
+    * ``"Harmonica Solo"`` -> ``"Harmonica Solo"`` (no trailing index, kept as-is)
+    * ``"Intro"`` -> ``"Intro"``
+
+    The section *type* is what we expose in the Section Focus selector so
+    the user sees one entry per kind ("Verse", "Chorus", "Bridge", ...)
+    instead of one per numbered occurrence.
+    """
+    if not section_name:
+        return ""
+    s = str(section_name).strip()
+    if not s:
+        return ""
+    # "Outro x5" -> strip the repeat marker.
+    s = _SECTION_TYPE_REPEAT_COUNT.sub("", s).strip()
+    # "Verse (repeat)" -> strip the trailing parenthetical hint.
+    s = _SECTION_TYPE_PAREN_TAIL.sub("", s).strip()
+    # "Verse 1" / "Verse 1A" -> strip trailing index.
+    s = _SECTION_TYPE_TRAILING_NUM.sub("", s).strip()
+    return s or str(section_name).strip()
+
+
 def practice_section_options(sections: dict[str, list[str]]) -> list[str]:
-    """Dropdown/radio choices: Full Song plus each chart section."""
-    return [PRACTICE_FOCUS_FULL] + practice_ordered_section_names(sections)
+    """Section Focus selector choices.
+
+    Returns ``["Full Song", "<Type 1>", "<Type 2>", ...]`` where each
+    type appears at most once and the order matches the first
+    appearance of that type in the chart (so "Intro" comes before
+    "Verse" before "Chorus" before "Bridge" before "Outro" for a
+    typical pop arrangement).
+    """
+    ordered_names = practice_ordered_section_names(sections)
+    seen: set[str] = set()
+    types: list[str] = []
+    for name in ordered_names:
+        t = practice_section_type(name)
+        if not t:
+            continue
+        key = t.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        types.append(t)
+    return [PRACTICE_FOCUS_FULL] + types
 
 
 def practice_is_full_song(focus: str | None) -> bool:
     return not focus or focus == PRACTICE_FOCUS_FULL
 
 
+def practice_first_section_for_type(
+    sections: dict[str, list[str]],
+    type_label: str | None,
+) -> str | None:
+    """Return the first real section name whose *type* matches ``type_label``.
+
+    ``"Verse"`` matches ``"Verse 1"`` (then ``"Verse 2"`` etc., but the
+    *first* one wins). Lookup is case-insensitive. Returns ``None`` when
+    nothing matches.
+    """
+    if not type_label:
+        return None
+    target = practice_section_type(type_label).lower()
+    if not target:
+        return None
+    for name in practice_ordered_section_names(sections):
+        if practice_section_type(name).lower() == target and sections.get(name):
+            return name
+    return None
+
+
+def practice_sections_for_type(
+    sections: dict[str, list[str]],
+    type_label: str | None,
+) -> list[str]:
+    """All real section names whose type matches ``type_label`` (in order)."""
+    if not type_label:
+        return []
+    target = practice_section_type(type_label).lower()
+    if not target:
+        return []
+    return [
+        name
+        for name in practice_ordered_section_names(sections)
+        if practice_section_type(name).lower() == target
+        and sections.get(name)
+    ]
+
+
+def practice_resolve_focus_section(
+    focus: str | None,
+    sections: dict[str, list[str]],
+) -> str | None:
+    """Resolve a Section Focus pick (type label *or* legacy real name) to a
+    concrete section in ``sections``.
+
+    Order of preference:
+
+    1. Exact match (legacy / direct-section focus).
+    2. First section whose type matches ``focus``.
+    3. ``None`` (caller falls back to Full Song behaviour).
+    """
+    if practice_is_full_song(focus):
+        return None
+    if focus and focus in sections and sections.get(focus):
+        return focus
+    return practice_first_section_for_type(sections, focus)
+
+
 def practice_display_sections(
     sections: dict[str, list[str]],
     focus: str | None,
 ) -> dict[str, list[str]]:
-    """Lead sheet / coach view: one section or the full form."""
+    """Lead sheet / coach view: one section or the full form.
+
+    Type-aware: ``focus="Verse"`` resolves to ``{"Verse 1": [...]}`` so
+    the chord chart shows the first matching section's progression and
+    repeated verses don't clutter the focused view.
+    """
     if practice_is_full_song(focus):
         return sections
-    if focus and focus in sections and sections.get(focus):
-        return {focus: sections[focus]}
+    resolved = practice_resolve_focus_section(focus, sections)
+    if resolved:
+        return {resolved: sections[resolved]}
     return sections
 
 
@@ -929,12 +1049,14 @@ def practice_active_section_name(
     focus: str | None,
     sections: dict[str, list[str]],
 ) -> str | None:
-    """Resolved chart section key, or None when Full Song is selected."""
+    """Resolved chart section key, or ``None`` when Full Song is selected.
+
+    Returns the **first** concrete section matching a type label - so
+    ``"Verse"`` resolves to ``"Verse 1"`` for the active song.
+    """
     if practice_is_full_song(focus):
         return None
-    if focus and focus in sections:
-        return focus
-    return None
+    return practice_resolve_focus_section(focus, sections)
 
 
 def song_groove_seed(title: str, artist: str = "") -> int:

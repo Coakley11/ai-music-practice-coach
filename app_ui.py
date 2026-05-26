@@ -2788,8 +2788,38 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   font-size: 0.88rem;
   color: #64748b;
 }
-/* Voice mode: lyrics dominate, chord chips shrink and soften so the
-   singer's eye lands on the words first. */
+/* Lyrics-only line variant: drops the leading chord-chip column so the
+   words read as a clean lyric block. Used by the Lyric Phrasing Guide
+   (the Full Chord Chart panel above still shows chords with lyrics). */
+.lyric-guide-line--lyrics-only {
+  padding: 2px 0;
+}
+.lyric-guide-line--lyrics-only .lyric-guide-lyric-text {
+  font-size: 1.02rem;
+  line-height: 1.55;
+  font-weight: 500;
+  color: #1e293b;
+}
+.lyric-guide-phrasing-tip {
+  margin: 6px 0 0 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(190, 24, 93, 0.06);
+  color: #831843;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.lyric-guide-phrasing-icon {
+  font-size: 0.85rem;
+  flex: 0 0 auto;
+}
+/* Voice mode: lyrics dominate so the singer's eye lands on the words
+   first. The Lyric Phrasing Guide is lyrics-only by design, but we
+   still soften any chord chips that linger from the Full Chord Chart
+   panel for the legacy variant. */
 [data-vocal-focus="true"] .lyric-guide-chord-strip {
   opacity: 0.85;
 }
@@ -2799,10 +2829,43 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   font-size: 0.78rem;
   min-width: 40px;
 }
+[data-vocal-focus="true"] .lyric-guide-line--lyrics-only .lyric-guide-lyric-text,
 [data-vocal-focus="true"] .lyric-guide-lyric-text {
-  font-size: 1.16rem;
+  font-size: 1.18rem;
   font-weight: 600;
   letter-spacing: 0.005em;
+}
+
+/* Optional extra-lyrics block shown below the Full Chord Chart when
+   the user toggles "Show Verse 2 / Chorus 2 / ..." lyrics. */
+.ui-extra-lyrics-kicker {
+  margin: 14px 0 4px 0;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #4338ca;
+}
+.ui-extra-lyrics-block {
+  margin: 6px 0 10px 0;
+  padding: 10px 14px;
+  border: 1px dashed rgba(67, 56, 202, 0.22);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f8faff 0%, #ffffff 100%);
+}
+.ui-extra-lyrics-section {
+  margin: 0 0 4px 0;
+  font-size: 0.80rem;
+  font-weight: 800;
+  color: #3730a3;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ui-extra-lyrics-line {
+  margin: 2px 0;
+  font-size: 0.98rem;
+  line-height: 1.55;
+  color: #0f172a;
 }
 
 /* ---------- Karaoke: section-aware lyric panel (Backing Track) ----------
