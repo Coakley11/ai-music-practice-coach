@@ -965,7 +965,14 @@ def practice_section_options(sections: dict[str, list[str]]) -> list[str]:
 
 
 def practice_is_full_song(focus: str | None) -> bool:
-    return not focus or focus == PRACTICE_FOCUS_FULL
+    """``True`` when *focus* selects the entire song.
+
+    Tolerant of legacy / case-variant values such as ``"Full song"``
+    (lowercase 's') that may still live in older session state.
+    """
+    if not focus:
+        return True
+    return str(focus).strip().lower() == PRACTICE_FOCUS_FULL.lower()
 
 
 def practice_first_section_for_type(
@@ -1014,17 +1021,38 @@ def practice_resolve_focus_section(
     """Resolve a Section Focus pick (type label *or* legacy real name) to a
     concrete section in ``sections``.
 
-    Order of preference:
+    The current Section Focus selector exposes *type labels* such as
+    ``"Verse"`` / ``"Chorus"`` / ``"Bridge"``, while the chart's real
+    section keys are usually numbered (``"Verse 1"`` / ``"Verse 2"``
+    / ...). Downstream panels - Full Chord Chart, Section Deep Focus,
+    Rhythm Guide, Metronome loop, Send to Backing Track, notation
+    generation - **must** receive a real chart key, otherwise they
+    silently fall back to empty content.
 
-    1. Exact match (legacy / direct-section focus).
-    2. First section whose type matches ``focus``.
-    3. ``None`` (caller falls back to Full Song behaviour).
+    Resolution order (intentionally type-first so the selector and the
+    rendered panels always agree):
+
+    1. **Type match** - first chart section whose type collapses to
+       ``focus``. Handles ``"Verse"`` -> ``"Verse 1"``.
+       Also handles ``focus="Verse 1"`` legacy callers correctly,
+       because ``"Verse 1"``'s type is ``"Verse"`` and the first
+       matching section in the chart is still ``"Verse 1"``.
+    2. **Exact match** - falls through for unusual section names that
+       don't have a clean type collapse (e.g. ``"Harmonica Solo"``).
+    3. ``None`` - caller falls back to Full Song behaviour and the
+       Practice page renders a Developer Mode warning so the issue is
+       not silent.
     """
     if practice_is_full_song(focus):
         return None
+    if not sections:
+        return None
+    type_match = practice_first_section_for_type(sections, focus)
+    if type_match:
+        return type_match
     if focus and focus in sections and sections.get(focus):
         return focus
-    return practice_first_section_for_type(sections, focus)
+    return None
 
 
 def practice_display_sections(

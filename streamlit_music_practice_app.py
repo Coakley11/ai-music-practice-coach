@@ -251,6 +251,7 @@ from songs.sheet_format import (
 )
 from songs.lyric_chord_renderer import render_lyric_chord_sheet
 
+_PRACTICE_STUDIO_IMPORT_ERROR: Exception | None = None
 try:
     from practice_studio import (
         PRACTICE_FOCUS_FULL,
@@ -259,7 +260,9 @@ try:
         fretboard_ascii,
         practice_active_section_name,
         practice_display_sections,
+        practice_first_section_for_type,
         practice_is_full_song,
+        practice_resolve_focus_section,
         practice_section_options,
         practice_section_type,
         practice_sections_for_type,
@@ -271,30 +274,84 @@ try:
         song_groove_seed,
     )
     from practice_notation import generate_practice_notation, notation_tab_html
-except Exception:
+except ImportError as _practice_studio_import_err:  # noqa: BLE001 - reported in dev mode
+    _PRACTICE_STUDIO_IMPORT_ERROR = _practice_studio_import_err
     PRACTICE_FOCUS_FULL = "Full Song"
 
-    def practice_section_options(sections):
-        return [PRACTICE_FOCUS_FULL] + list(sections.keys())
+    import re as _ps_re
+
+    _PS_FALLBACK_TRAILING_NUM = _ps_re.compile(r"\s+\d+[A-Za-z]?\s*$")
+
+    def practice_section_type(name):
+        s = str(name or "").strip()
+        if not s:
+            return ""
+        return _PS_FALLBACK_TRAILING_NUM.sub("", s).strip() or s
 
     def practice_is_full_song(focus):
-        return not focus or focus == PRACTICE_FOCUS_FULL
+        if not focus:
+            return True
+        return str(focus).strip().lower() == PRACTICE_FOCUS_FULL.lower()
+
+    def practice_section_options(sections):
+        seen: set[str] = set()
+        out: list[str] = [PRACTICE_FOCUS_FULL]
+        for name in sections or {}:
+            if not (sections or {}).get(name):
+                continue
+            t = practice_section_type(name)
+            key = t.lower()
+            if not t or key in seen:
+                continue
+            seen.add(key)
+            out.append(t)
+        return out
+
+    def practice_first_section_for_type(sections, type_label):
+        if not type_label:
+            return None
+        target = practice_section_type(type_label).lower()
+        if not target:
+            return None
+        for name, chords in (sections or {}).items():
+            if not chords:
+                continue
+            if practice_section_type(name).lower() == target:
+                return name
+        return None
+
+    def practice_sections_for_type(sections, type_label):
+        if not type_label:
+            return []
+        target = practice_section_type(type_label).lower()
+        if not target:
+            return []
+        return [
+            n
+            for n, ch in (sections or {}).items()
+            if ch and practice_section_type(n).lower() == target
+        ]
+
+    def practice_resolve_focus_section(focus, sections):
+        if practice_is_full_song(focus):
+            return None
+        type_match = practice_first_section_for_type(sections or {}, focus)
+        if type_match:
+            return type_match
+        if focus and focus in (sections or {}) and (sections or {}).get(focus):
+            return focus
+        return None
 
     def practice_display_sections(sections, focus):
         if practice_is_full_song(focus):
             return sections
-        if focus in sections:
-            return {focus: sections[focus]}
+        resolved = practice_resolve_focus_section(focus, sections)
+        if resolved:
+            return {resolved: (sections or {})[resolved]}
         return sections
 
     def practice_active_section_name(focus, sections):
-        return None if practice_is_full_song(focus) else focus
-
-    def practice_section_type(name):
-        return str(name or "").strip()
-
-    def practice_sections_for_type(sections, type_label):
-        return [n for n in sections if n == type_label and sections[n]]
+        return practice_resolve_focus_section(focus, sections)
     def song_card_meta(record):
         return {"title": record.get("title", ""), "artist": record.get("artist", ""), "genre": "", "key": "C", "bpm": None, "difficulty": "", "instruments": "", "trusted": False}
 
@@ -6456,10 +6513,18 @@ if _studio_page == "practice":
         state_key="practice_focus_section",
         rerun_fn=st.rerun,
     )
+    # ``_focus_pick`` is the *selector value* (e.g. "Verse" - a type label).
+    # ``_resolved_send_section`` is the *real chart key* used by panels
+    # that need actual chord data (Send to Backing, notation, etc.).
+    _resolved_send_section = (
+        practice_active_section_name(_focus_pick, sections_for_practice)
+        if not practice_is_full_song(_focus_pick)
+        else None
+    )
     _send_label = (
         "Send to Backing Track (full song)"
         if practice_is_full_song(_focus_pick)
-        else f"Send to Backing Track — loop {practice_active_section_name(_focus_pick, sections) or _focus_pick}"
+        else f"Send to Backing Track — loop {_resolved_send_section or _focus_pick}"
     )
     if st.button(
         _send_label,
@@ -6467,7 +6532,9 @@ if _studio_page == "practice":
         type="primary",
         use_container_width=True,
     ):
-        _prepare_backing_from_practice(_focus_pick)
+        # Always hand the *real* section name (e.g. "Verse 1") to the
+        # backing track flow - it looks up by exact key in section_names.
+        _prepare_backing_from_practice(_resolved_send_section or _focus_pick)
         set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
         navigate_studio_page(st.session_state, "backing")
         st.rerun()
@@ -6505,6 +6572,43 @@ if _studio_page == "practice":
     )
     _time_sig = default_time_signature(song, sections_for_practice)
     _section_bar_count = len(_view_chords) if _active_section else 0
+
+    # Visible safety net: the Section Focus selector exposes *type
+    # labels* (e.g. "Verse"). Downstream panels need a *real* chart key
+    # (e.g. "Verse 1"). If the resolver failed - either because the
+    # type label has no matching section in the current arrangement,
+    # or because the matching section has an empty chord list - we
+    # warn instead of silently rendering empty deep-focus / rhythm-
+    # guide / chord-chart panels.
+    if (
+        not _is_full_song
+        and (not _active_section or not _view_chords)
+    ):
+        st.warning(
+            "Section focus could not be resolved to a chart section with "
+            "chords - the panels below may render empty until either the "
+            "song's section keys are corrected or a different focus is "
+            "picked."
+        )
+        if _developer_mode_enabled():
+            _dev_keys = list(sections_for_practice.keys())
+            _dev_types = [
+                practice_section_type(n) for n in _dev_keys if n
+            ]
+            st.caption(
+                "Developer Mode · focus resolver diagnostics — "
+                f"selected focus = `{_focus_pick}` · "
+                f"resolved section = `{_active_section or 'None'}` · "
+                f"available sections = {_dev_keys} · "
+                f"section types = {_dev_types}"
+            )
+    if _PRACTICE_STUDIO_IMPORT_ERROR is not None and _developer_mode_enabled():
+        st.caption(
+            f"Developer Mode · practice_studio import fell back: "
+            f"`{type(_PRACTICE_STUDIO_IMPORT_ERROR).__name__}: "
+            f"{_PRACTICE_STUDIO_IMPORT_ERROR}` - the section resolver "
+            "may be running in degraded mode."
+        )
 
     _NOTATION_KEY = "practice_notation_result"
     for _old_key in (
@@ -6713,6 +6817,7 @@ if _studio_page == "practice":
     _notation_sig = (
         song,
         _focus_pick,
+        _active_section or "",
         instrument,
         focus,
         _practice_chart_key,
@@ -6783,8 +6888,13 @@ if _studio_page == "practice":
         "Generated Music Notation / TAB",
         expanded=bool(st.session_state.get(_NOTATION_KEY)),
     ):
+        _notation_section_label = (
+            "Full Song"
+            if _is_full_song
+            else (_active_section or _focus_pick or "Section")
+        )
         st.caption(
-            f"Song **{song}** · section **{_focus_pick}** · "
+            f"Song **{song}** · section **{_notation_section_label}** · "
             f"instrument **{instrument}** · focus **{focus}** · {_practice_bpm} BPM"
             + (
                 f" · chart key **{_practice_chart_key}** (concert {display_key})"
@@ -6820,6 +6930,15 @@ if _studio_page == "practice":
             )
 
         if _gen_notation:
+            # Pass the *resolved* real section name (e.g. "Verse 1") so
+            # the notation generator can look up the actual chord list
+            # in ``sections_for_practice``. Passing the type label
+            # ("Verse") here used to silently fall back to a stub chart.
+            _notation_section_focus = (
+                PRACTICE_FOCUS_FULL
+                if _is_full_song
+                else (_active_section or _focus_pick)
+            )
             st.session_state[_NOTATION_KEY] = generate_practice_notation(
                 song_title=song,
                 artist=song_data.get("artist", ""),
@@ -6829,7 +6948,7 @@ if _studio_page == "practice":
                 groove_style=_practice_groove,
                 instrument=instrument,
                 focus=focus,
-                section_focus=_focus_pick,
+                section_focus=_notation_section_focus,
                 sections=sections_for_practice,
                 guitar_tabs=song_data.get("guitar_tabs") or {},
                 num_lines=_notation_lines,
