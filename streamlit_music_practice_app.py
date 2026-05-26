@@ -6835,21 +6835,12 @@ if _studio_page == "practice":
     if _capo_ctx.enabled and instrument == "Guitar":
         st.markdown(capo_status_banner_html(_capo_ctx), unsafe_allow_html=True)
 
-    # In Beginner mode, swap raw chart keys ("Verse 1") for cleaner
-    # display labels ("Verse") on every UI surface that shows the
-    # active section name - expander headers, badges, focus pill.
-    # The map is created upstream by ``beginner_view_of_song_data``;
-    # outside of Beginner mode the map is empty and ``_display_section``
-    # is a no-op (returns the raw name unchanged).
-    _practice_display_label_map: dict[str, str] = dict(
-        song_data.get("_beginner_display_labels") or {}
-    )
-
-    def _display_section(name: str | None) -> str:
-        if not name:
-            return ""
-        return _practice_display_label_map.get(str(name), str(name))
-
+    # ``_display_section`` was defined near the top of the practice
+    # dispatch with the section-focus picker. It collapses raw chart
+    # keys ("Verse 1") to Beginner display labels ("Verse") - a no-op
+    # outside Beginner mode. ``_active_section_display`` is the
+    # resolved real section name in display form, used by every panel
+    # header / badge / caption below.
     _active_section_display = _display_section(_active_section)
 
     st.markdown(
