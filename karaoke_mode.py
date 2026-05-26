@@ -85,6 +85,19 @@ backing track plays (default ``True``)."""
 KARAOKE_COUNTDOWN_SECONDS_KEY = "karaoke_countdown_seconds"
 """``int`` countdown length in seconds (1-10, default 5)."""
 
+KARAOKE_SHOW_CHORDS_KEY = "karaoke_show_chords"
+"""``bool`` user preference: render the chord strip + live highlight
+underneath the karaoke lyrics (default ``True``). When ``False`` the
+karaoke screen shows lyrics only - a cleaner sing-along view for
+performers who don't read chord charts."""
+
+KARAOKE_LYRIC_COLOR_KEY = "karaoke_lyric_color"
+"""``str`` user preference: lyric color theme on the karaoke black
+screen. One of: ``"white"``, ``"gold"``, ``"cyan"``, ``"cream"``.
+Default is ``"white"`` (highest contrast). Stored as a small token
+so the same value can drive both the CSS class on the panel and the
+"Lyric color" picker in the karaoke settings."""
+
 PENDING_KARAOKE_AUTO_GENERATE_KEY = "_pending_karaoke_auto_generate"
 """Set to ``True`` when the Backing Track page should auto-trigger the
 Generate handler on the next rerun - used right after a karaoke
@@ -369,6 +382,37 @@ def auto_advance_enabled(session_state: Any) -> bool:
     return bool(raw)
 
 
+def show_chords_enabled(session_state: Any) -> bool:
+    """User preference: show chord chips under karaoke lyrics? Default ``True``.
+
+    Mirrors the "[ Show chords while singing ]" toggle in the
+    karaoke setlist controls. When ``False`` the karaoke screen
+    suppresses the chord strip and the live chord-follow highlight,
+    leaving a lyrics-only sing-along view.
+    """
+    raw = (session_state or {}).get(KARAOKE_SHOW_CHORDS_KEY)
+    if raw is None:
+        return True
+    return bool(raw)
+
+
+_LYRIC_COLOR_OPTIONS = ("white", "gold", "cyan", "cream")
+
+
+def lyric_color(session_state: Any) -> str:
+    """User preference: lyric color token. One of white/gold/cyan/cream.
+
+    Defaults to ``"white"`` (highest contrast on the dark panel).
+    Unknown / legacy values fall through to the default so a stale
+    session_state never breaks rendering.
+    """
+    raw = (session_state or {}).get(KARAOKE_LYRIC_COLOR_KEY)
+    token = str(raw or "").strip().lower()
+    if token in _LYRIC_COLOR_OPTIONS:
+        return token
+    return "white"
+
+
 # ---------------------------------------------------------------------------
 # Pending-advance flag (consumed at the top of the Backing page)
 # ---------------------------------------------------------------------------
@@ -515,6 +559,8 @@ __all__ = (
     "KARAOKE_AUTO_ADVANCE_KEY",
     "KARAOKE_COUNTDOWN_KEY",
     "KARAOKE_COUNTDOWN_SECONDS_KEY",
+    "KARAOKE_SHOW_CHORDS_KEY",
+    "KARAOKE_LYRIC_COLOR_KEY",
     "PENDING_KARAOKE_ADVANCE_KEY",
     "PENDING_KARAOKE_AUTO_GENERATE_KEY",
     "KARAOKE_SONG_ENDED_KEY",
@@ -524,6 +570,8 @@ __all__ = (
     "auto_advance_enabled",
     "countdown_enabled",
     "countdown_seconds",
+    "show_chords_enabled",
+    "lyric_color",
     "session_position",
     "current_session_pick_key",
     "next_session_pick_key",

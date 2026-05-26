@@ -286,6 +286,51 @@ def render_karaoke_setlist_panel(
         if int(new_seconds) != cur_seconds:
             st.session_state[km.KARAOKE_COUNTDOWN_SECONDS_KEY] = int(new_seconds)
 
+    # Karaoke display options - chords toggle + lyric color picker.
+    # Both write straight to session_state so the Backing Track page
+    # picks them up on the next render without any extra plumbing.
+    disp_left, disp_right = st.columns([3, 4])
+    with disp_left:
+        cur_show = km.show_chords_enabled(st.session_state)
+        new_show = st.toggle(
+            "Show chords while singing",
+            value=cur_show,
+            key="karaoke_show_chords_toggle",
+            help=(
+                "When on, the chord strip is rendered under the lyrics "
+                "and the current chord highlights in sync with the backing "
+                "track. Turn off for a lyrics-only sing-along view."
+            ),
+        )
+        if bool(new_show) != cur_show:
+            st.session_state[km.KARAOKE_SHOW_CHORDS_KEY] = bool(new_show)
+    with disp_right:
+        _color_options = ["white", "gold", "cyan", "cream"]
+        _color_labels = {
+            "white": "White (highest contrast)",
+            "gold": "Soft gold",
+            "cyan": "Cyan",
+            "cream": "Warm cream",
+        }
+        cur_color = km.lyric_color(st.session_state)
+        try:
+            _idx = _color_options.index(cur_color)
+        except ValueError:
+            _idx = 0
+        new_color = st.selectbox(
+            "Lyric color",
+            options=_color_options,
+            index=_idx,
+            format_func=lambda v: _color_labels.get(v, v.title()),
+            key="karaoke_lyric_color_picker",
+            help=(
+                "Color used for lyrics on the karaoke black screen. "
+                "Choose what's easiest to read from a distance."
+            ),
+        )
+        if str(new_color) != cur_color:
+            st.session_state[km.KARAOKE_LYRIC_COLOR_KEY] = str(new_color)
+
     if active:
         cur_t, cur_a = lookup_pick_key_label(
             active_pk or "",
