@@ -2665,6 +2665,240 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 }
 [data-vocal-focus="true"] .section-card { padding-block: 16px; }
 
+/* ---------- Practice page: Lyric / Section Cue Guide ----------
+   Renders one card per section with a compact chord strip on top
+   and the user-entered lyric lines below, each line prefixed by a
+   small leading chord chip distributed across the section's chord
+   sequence. Voice mode emphasises lyrics; instrument modes
+   emphasise the chord strip. */
+.lyric-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 6px 0 8px 0;
+}
+.lyric-guide-title {
+  margin: 0 0 2px 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.005em;
+  color: #0f172a;
+}
+.lyric-guide-caption {
+  margin: 0 0 6px 0;
+  font-size: 0.86rem;
+  color: #64748b;
+}
+.lyric-guide-section {
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #fafbff 100%);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+.lyric-guide-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.lyric-guide-section-name {
+  font-size: 1.00rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: 0.005em;
+}
+.lyric-guide-section-meta {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.lyric-guide-chord-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 4px 0 10px 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f8fafc, #ffffff);
+  border: 1px dashed rgba(15, 23, 42, 0.10);
+}
+.lyric-guide-chord-strip .lg-chord {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+.lyric-guide-chord-strip .lg-arrow {
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.lyric-guide-chord-strip--emphasis {
+  background: linear-gradient(180deg, #eef2ff, #ffffff);
+  border-color: rgba(67, 56, 202, 0.22);
+}
+.lyric-guide-chord-strip--emphasis .lg-chord {
+  background: #4338ca;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(67, 56, 202, 0.22);
+}
+.lyric-guide-lyrics {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.lyric-guide-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px dashed rgba(15, 23, 42, 0.06);
+}
+.lyric-guide-line:last-child { border-bottom: 0; }
+.lyric-guide-chord-chip {
+  flex: 0 0 auto;
+  min-width: 48px;
+  text-align: center;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #4338ca;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+}
+.lyric-guide-lyric-text {
+  font-size: 1.00rem;
+  line-height: 1.55;
+  color: #0f172a;
+}
+.lyric-guide-empty {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #64748b;
+}
+/* Voice mode: lyrics dominate, chord chips shrink and soften so the
+   singer's eye lands on the words first. */
+[data-vocal-focus="true"] .lyric-guide-chord-strip {
+  opacity: 0.85;
+}
+[data-vocal-focus="true"] .lyric-guide-chord-chip {
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  min-width: 40px;
+}
+[data-vocal-focus="true"] .lyric-guide-lyric-text {
+  font-size: 1.16rem;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+}
+
+/* ---------- Karaoke: section-aware lyric panel (Backing Track) ----------
+   Embedded inside the live-follow-along component. Updates per
+   section via the same chord-event timeline that drives the chart
+   highlight, so lyrics swap automatically as the song moves through
+   Verse / Chorus / Bridge / etc. */
+.karaoke-lyric-panel {
+  margin: 10px 0 14px 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(190, 24, 93, 0.22);
+  background: linear-gradient(180deg, #fff7fb 0%, #ffffff 100%);
+  box-shadow: 0 6px 18px rgba(190, 24, 93, 0.10);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.karaoke-lp-kicker {
+  font-size: 0.70rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #be185d;
+}
+.karaoke-lp-title {
+  font-size: 1.10rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+}
+.karaoke-lp-section {
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 2px 0 4px 0;
+}
+.karaoke-lp-chord-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 7px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(241, 245, 249, 0.6);
+  border: 1px dashed rgba(15, 23, 42, 0.08);
+  margin: 2px 0 6px 0;
+  min-height: 30px;
+}
+.karaoke-lp-chord-strip .karaoke-lp-chord {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #be185d;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-size: 0.82rem;
+  border: 1px solid rgba(190, 24, 93, 0.18);
+}
+.karaoke-lp-chord-strip .karaoke-lp-arrow {
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+.karaoke-lp-lyrics {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 0 0 0;
+}
+.karaoke-lp-lyric-line {
+  font-size: 1.32rem;
+  line-height: 1.55;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.005em;
+}
+.karaoke-lp-lyrics.empty .karaoke-lp-lyric-empty {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: #64748b;
+  font-style: italic;
+}
+.karaoke-lp-next {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.karaoke-lp-next:empty { display: none; }
+
 /* ---------- YouTube integration (Song Selection + Practice page) ---------- */
 .ui-youtube-link-btn {
   display: inline-flex;

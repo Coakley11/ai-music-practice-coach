@@ -1502,31 +1502,167 @@ def lyric_cue_markdown(section_name, chords, lyric_cues, instrument, full_sectio
     return "\n".join(out)
 
 
-def lyric_guide_markdown(sections, lyric_cues, instrument, section_lyrics=None):
-    out = ["### Lyric / Section Cue Guide"]
-    if instrument == "Voice":
-        out.append("_Use this to map entrances, breaths, vowels, phrase peaks, and delivery. Add lyrics/cues on **Song Selection** for exact alignment._")
+def _lyric_lines_for_section(
+    section_name: str,
+    lyric_cues: dict | None,
+    section_lyrics: dict | None,
+    limit: int = 8,
+) -> list[str]:
+    """Return the user-entered lyric lines for a section.
+
+    Priority:
+
+    1. The full-text editor block (``section_lyrics[section_name]``) - this
+       is what the Lyrics & Cues editor writes when the user types or
+       pastes lyrics.
+    2. The short cue list (``lyric_cues[section_name]``) - shorter, more
+       compact phrasing cues used when the user only typed cues.
+
+    The app **never** auto-fills copyrighted lyrics; this function only
+    reads back data the user has explicitly entered.
+    """
+    full = ""
+    if section_lyrics:
+        full = str(section_lyrics.get(section_name, "") or "")
+    if full.strip():
+        lines = [ln.strip() for ln in full.splitlines() if ln.strip()]
     else:
-        out.append("_Short locator cues help you know where you are in the form. The app does not fetch or generate full copyrighted lyrics._")
+        raw = (lyric_cues or {}).get(section_name) or []
+        if isinstance(raw, str):
+            raw = [raw]
+        lines = [str(c).strip() for c in raw if str(c).strip()]
+    return lines[:limit]
+
+
+def _distribute_chord_chips(
+    chords: list[str], lyric_lines: list[str]
+) -> list[tuple[str, str]]:
+    """Pair each lyric line with one representative chord.
+
+    Doesn't try to do perfect lyric-to-chord alignment (which would
+    require lyric/audio sync data we don't have). Instead it spreads
+    the section's chords evenly across the lyric lines so the user
+    sees a useful harmonic anchor for each line:
+
+    * First line always carries the first chord.
+    * Remaining lines pick a chord proportional to their position.
+    """
+    if not lyric_lines:
+        return []
+    if not chords:
+        return [(line, "") for line in lyric_lines]
+    n = len(lyric_lines)
+    m = len(chords)
+    out: list[tuple[str, str]] = []
+    for i, line in enumerate(lyric_lines):
+        idx = 0 if n <= 1 else min(i * m // n, m - 1)
+        out.append((line, chords[idx]))
+    return out
+
+
+def _chord_strip_html(chords: list[str], emphasis: bool = False) -> str:
+    """Compact ``Em → C → G → D`` strip used above each lyric block."""
+    if not chords:
+        return ""
+    cls_extra = " lyric-guide-chord-strip--emphasis" if emphasis else ""
+    chips = (
+        ' <span class="lg-arrow" aria-hidden="true">\u2192</span> '
+    ).join(
+        f'<span class="lg-chord">{_html.escape(str(c))}</span>'
+        for c in chords
+    )
+    return (
+        f'<div class="lyric-guide-chord-strip{cls_extra}" '
+        f'aria-label="Section chords">{chips}</div>'
+    )
+
+
+def lyric_guide_html(
+    sections, lyric_cues, instrument, section_lyrics=None
+) -> str:
+    """Practice page lyric / section cue guide with section chords.
+
+    Renders one card per section showing (a) a chord strip and (b) the
+    user-entered lyrics. Each lyric line gets a small leading chord
+    chip distributed across the section's chords so the user has a
+    musical anchor for every line they're singing or playing.
+
+    Voice mode emphasises the lyric typography (CSS handles the size
+    bump via ``[data-vocal-focus="true"]``). Instrumental modes draw a
+    bit more attention to the chord strip via the ``emphasis`` variant.
+    """
+    voice_mode = (instrument == "Voice")
+    chord_emphasis = not voice_mode
+    parts: list[str] = []
+    parts.append(
+        '<div class="lyric-guide" '
+        f'data-instrument="{_html.escape(str(instrument or "")) }">'
+    )
+    parts.append('<h3 class="lyric-guide-title">Lyric / Section Cue Guide</h3>')
+    if voice_mode:
+        parts.append(
+            '<p class="lyric-guide-caption">Your lyrics &amp; cues sit alongside '
+            "each section's chord changes - lyrics lead, chords anchor.</p>"
+        )
+    else:
+        parts.append(
+            '<p class="lyric-guide-caption">Section chords sit above each lyric block '
+            "so you can follow the form musically. Only user-entered lyrics are shown.</p>"
+        )
 
     for section_name, chords in sections.items():
-        cue_lines = lyric_cues.get(section_name, []) if lyric_cues else []
-        full_text = (section_lyrics or {}).get(section_name, "")
-        entry = chords[0] if chords else "the first chord"
-        peak = chords[max(0, len(chords) // 2)] if chords else "the middle"
-        if cue_lines:
-            cue = "; ".join(cue_lines[:2])
-        elif instrument == "Voice":
-            cue = f"Enter on {entry}; breathe before the section; shape toward {peak}."
+        chord_list = [str(c) for c in (chords or [])]
+        lyric_lines = _lyric_lines_for_section(
+            section_name, lyric_cues, section_lyrics
+        )
+
+        parts.append('<div class="lyric-guide-section">')
+        parts.append(
+            '<div class="lyric-guide-section-head">'
+            f'<span class="lyric-guide-section-name">{_html.escape(str(section_name))}</span>'
+            f'<span class="lyric-guide-section-meta">{len(chord_list)} bars</span>'
+            "</div>"
+        )
+        parts.append(_chord_strip_html(chord_list, emphasis=chord_emphasis))
+
+        if lyric_lines:
+            parts.append('<div class="lyric-guide-lyrics">')
+            for line, chord in _distribute_chord_chips(chord_list, lyric_lines):
+                chord_html = (
+                    f'<span class="lyric-guide-chord-chip">{_html.escape(chord)}</span>'
+                    if chord
+                    else ""
+                )
+                parts.append(
+                    '<div class="lyric-guide-line">'
+                    f"{chord_html}"
+                    f'<span class="lyric-guide-lyric-text">{_html.escape(line)}</span>'
+                    "</div>"
+                )
+            parts.append("</div>")
         else:
-            cue = f"{section_name} entry around {entry}; listen for the section change and phrase shape."
-        out.append(f"- **{section_name}** ({len(chords)} bars): {cue}")
-        if instrument == "Voice" and full_text:
-            out.append(f"  - Delivery: speak the text in rhythm first, mark a breath before bar 1, and sing stronger near **{peak}**.")
-            for line in str(full_text).splitlines()[:2]:
-                if line.strip():
-                    out.append(f"  - Lyric line: _{line.strip()}_")
-    return "\n".join(out)
+            entry = chord_list[0] if chord_list else "the first chord"
+            if voice_mode:
+                msg = (
+                    f"Add lyrics or cues for <strong>{_html.escape(str(section_name))}</strong> "
+                    f"on Song Selection to anchor your phrasing. Entry chord: "
+                    f"<strong>{_html.escape(entry)}</strong>."
+                )
+            else:
+                msg = (
+                    f"Section entry around <strong>{_html.escape(entry)}</strong>. "
+                    "Add lyrics on Song Selection to anchor your practice."
+                )
+            parts.append(f'<p class="lyric-guide-empty">{msg}</p>')
+        parts.append("</div>")
+    parts.append("</div>")
+    return "\n".join(parts)
+
+
+# Backwards-compatible alias - older imports / callers may still use the
+# old name. New code should call ``lyric_guide_html``.
+def lyric_guide_markdown(sections, lyric_cues, instrument, section_lyrics=None):
+    return lyric_guide_html(sections, lyric_cues, instrument, section_lyrics)
 
 
 GUITAR_VOICING_LIBRARY = {
@@ -3028,6 +3164,143 @@ def render_follow_along_controls(timeline, key_prefix):
     return pos
 
 
+def _build_karaoke_lyrics_panel_html(
+    *,
+    song_title: str,
+    has_panel: bool,
+) -> str:
+    """Static DOM scaffold for the karaoke section-aware lyric panel.
+
+    JS in :func:`_build_karaoke_lyrics_panel_script` keeps it in sync
+    with the currently playing section. Returns an empty string when
+    the panel is disabled (non-voice mode), keeping the existing
+    instrumentalist layout untouched.
+    """
+    if not has_panel:
+        return ""
+    safe_title = _html.escape(str(song_title or "Now Singing"))
+    return (
+        '<div class="karaoke-lyric-panel" id="karaoke-lyric-panel" data-state="ready">'
+        '<p class="karaoke-lp-kicker">Now Singing</p>'
+        f'<p class="karaoke-lp-title" id="karaoke-lp-title">{safe_title}</p>'
+        '<p class="karaoke-lp-section" id="karaoke-lp-section">Section</p>'
+        '<div class="karaoke-lp-chord-strip" id="karaoke-lp-chord-strip"></div>'
+        '<div class="karaoke-lp-lyrics" id="karaoke-lp-lyrics">'
+        '<div class="karaoke-lp-lyric-empty">Press play to follow the lyrics.</div>'
+        "</div>"
+        '<p class="karaoke-lp-next" id="karaoke-lp-next"></p>'
+        "</div>"
+    )
+
+
+def _build_karaoke_lyrics_panel_script(
+    section_lyrics_map: dict | None,
+) -> str:
+    """JS that wires the karaoke lyric panel to the chord-event timeline.
+
+    Returns a snippet to inline inside the existing follow-along
+    ``<script>`` block (after the timeline + dom-element constants).
+    When ``section_lyrics_map`` is None / empty the snippet is empty -
+    no panel + no listeners are registered for instrumentalists.
+
+    The map is shaped::
+
+        {
+            "Verse 1": {"lyrics": ["line 1", "line 2"], "chords": ["C", "G"]},
+            "Chorus":  {"lyrics": [...],                "chords": [...]},
+            ...
+        }
+
+    Lookup is whitespace + case-insensitive so timeline section names
+    (e.g. ``"Verse 1"``) still match map keys (``"verse 1"``).
+    """
+    if not section_lyrics_map:
+        return ""
+    map_json = json.dumps(section_lyrics_map)
+    return f"""
+    (function() {{
+      const LYRIC_MAP = {map_json};
+      const lpSection = document.getElementById("karaoke-lp-section");
+      const lpStrip = document.getElementById("karaoke-lp-chord-strip");
+      const lpLyrics = document.getElementById("karaoke-lp-lyrics");
+      const lpNext = document.getElementById("karaoke-lp-next");
+      if (!lpSection || !lpStrip || !lpLyrics) return;
+
+      // Build a case/space-insensitive lookup so timeline section
+      // names (e.g. "Verse 1") still match map keys.
+      const NORM_MAP = {{}};
+      Object.keys(LYRIC_MAP).forEach((k) => {{
+        NORM_MAP[String(k).trim().toLowerCase()] = LYRIC_MAP[k];
+      }});
+
+      function escapeHtml(s) {{
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }}
+
+      function dataFor(sectionName) {{
+        if (!sectionName) return null;
+        return NORM_MAP[String(sectionName).trim().toLowerCase()] || null;
+      }}
+
+      function nextSectionAfter(eventIndex) {{
+        if (!Array.isArray(window.__karaokeTimeline)) return "";
+        const tl = window.__karaokeTimeline;
+        const here = tl[eventIndex];
+        if (!here) return "";
+        const hereSection = here.section || "";
+        for (let i = eventIndex + 1; i < tl.length; i++) {{
+          if (tl[i].section && tl[i].section !== hereSection) {{
+            return tl[i].section;
+          }}
+        }}
+        return "";
+      }}
+
+      let lastSection = null;
+      window.__karaokeUpdateLyricPanel = function(event) {{
+        if (!event || event.section === lastSection) return;
+        lastSection = event.section;
+        const data = dataFor(event.section);
+        lpSection.textContent = event.section || "";
+        const chords = (data && data.chords) || [];
+        if (chords.length) {{
+          const chips = chords.map((c) =>
+            '<span class="karaoke-lp-chord">' + escapeHtml(c) + '</span>'
+          );
+          lpStrip.innerHTML = chips.join(
+            '<span class="karaoke-lp-arrow" aria-hidden="true">&rarr;</span>'
+          );
+        }} else {{
+          lpStrip.innerHTML = "";
+        }}
+        const lines = (data && data.lyrics) || [];
+        if (lines.length) {{
+          lpLyrics.classList.remove("empty");
+          lpLyrics.innerHTML = lines
+            .map((l) =>
+              '<div class="karaoke-lp-lyric-line">' + escapeHtml(l) + "</div>"
+            )
+            .join("");
+        }} else {{
+          lpLyrics.classList.add("empty");
+          lpLyrics.innerHTML =
+            '<div class="karaoke-lp-lyric-empty">' +
+            "No lyrics added for this section yet - lyrics-first karaoke needs " +
+            "your text from <strong>Song Selection &rsaquo; Lyrics &amp; Cues</strong>." +
+            "</div>";
+        }}
+        const nxt = nextSectionAfter(event.event_index);
+        lpNext.textContent = nxt ? ("Next: " + nxt) : "";
+      }};
+    }})();
+    """
+
+
 def live_follow_along_component_html(
     wav_bytes,
     timeline,
@@ -3038,6 +3311,8 @@ def live_follow_along_component_html(
     karaoke_continue_button_text: str = "Continue to next song",
     karaoke_countdown: bool = False,
     karaoke_countdown_seconds: int = 5,
+    karaoke_lyrics_panel: dict | None = None,
+    karaoke_song_title: str = "",
 ):
     audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
     timeline_json = json.dumps(timeline)
@@ -3053,6 +3328,14 @@ def live_follow_along_component_html(
     karaoke_countdown_script = build_karaoke_countdown_script(
         enabled=bool(karaoke_countdown),
         seconds=int(karaoke_countdown_seconds),
+    )
+    karaoke_lyric_panel_enabled = bool(karaoke_lyrics_panel)
+    karaoke_lyric_panel_html = _build_karaoke_lyrics_panel_html(
+        song_title=karaoke_song_title,
+        has_panel=karaoke_lyric_panel_enabled,
+    )
+    karaoke_lyric_panel_script = _build_karaoke_lyrics_panel_script(
+        karaoke_lyrics_panel
     )
     return f"""
 <div class="live-follow-shell">
@@ -3215,14 +3498,20 @@ def live_follow_along_component_html(
     </div>
   </div>
 
+  {karaoke_lyric_panel_html}
+
   <div id="live-chart-root">
     {chart_html}
   </div>
 
   <script>
     const timeline = {timeline_json};
+    // Expose the timeline so the karaoke lyric-panel snippet can peek
+    // at upcoming events to compute the "Next: ..." section label.
+    window.__karaokeTimeline = timeline;
     const audio = document.getElementById("live-audio");
     {karaoke_countdown_script}
+    {karaoke_lyric_panel_script}
     const sectionEl = document.getElementById("live-section");
     const chordEl = document.getElementById("live-chord");
     const barEl = document.getElementById("live-bar");
@@ -3285,6 +3574,13 @@ def live_follow_along_component_html(
       barEl.textContent = `${{event.bar_in_section}} of ${{event.section_bars}}`;
       nextEl.textContent = nextDisplay;
       detailEl.textContent = `Audio ${{audioTime.toFixed(2)}}s | Event ${{event.event_index + 1}} of ${{timeline.length}} | ${{event.start_time.toFixed(1)}}s-${{event.end_time.toFixed(1)}}s`;
+      // Karaoke section-aware lyric panel - voice mode only.
+      // The snippet installs ``window.__karaokeUpdateLyricPanel`` only
+      // when a lyrics map was provided, so this is a no-op for
+      // instrumentalists (no panel rendered, no listener registered).
+      if (typeof window.__karaokeUpdateLyricPanel === "function") {{
+        try {{ window.__karaokeUpdateLyricPanel(event); }} catch (e) {{}}
+      }}
       const nowPlayingBanner = document.querySelector(".now-playing");
       if (nowPlayingBanner) {{
         nowPlayingBanner.textContent = `Now Playing: ${{event.section}} | Bar ${{event.bar_in_section}} | ${{displayChord}}`;
@@ -6451,12 +6747,13 @@ if _studio_page == "practice":
 
     with st.expander("📝 Lyric phrasing guide", expanded=(instrument == "Voice")):
         st.markdown(
-            lyric_guide_markdown(
+            lyric_guide_html(
                 _view_sections,
                 lyric_cues,
                 instrument,
                 section_lyrics=section_lyrics,
-            )
+            ),
+            unsafe_allow_html=True,
         )
 
     with st.expander("📆 Suggested daily time breakdown", expanded=False):
@@ -7168,6 +7465,32 @@ elif _studio_page == "backing":
             and km.countdown_enabled(st.session_state)
             and bool(st.session_state.get(BACKING_AUTOPLAY, True))
         )
+        # Karaoke section-aware lyric panel:
+        # Build a {section: {lyrics, chords}} map from the user's saved
+        # Lyrics & Cues plus the section chord list. Voice-only - the
+        # panel is suppressed (None) for instrumentalists so the
+        # follow-along component renders exactly as before for them.
+        # Only builds when at least one section has user-entered lyrics
+        # (avoids showing an empty card when the song has none yet).
+        _karaoke_lyric_panel: dict | None = None
+        if _karaoke_voice:
+            _user_section_text = section_lyrics or {}
+            _catalog_cues = song_data.get("lyric_cues") or {}
+            _panel_map: dict[str, dict] = {}
+            for _sec_name, _sec_chords in (chart_sections or {}).items():
+                _lines = _lyric_lines_for_section(
+                    _sec_name,
+                    _catalog_cues,
+                    _user_section_text,
+                    limit=16,
+                )
+                _panel_map[str(_sec_name)] = {
+                    "lyrics": _lines,
+                    "chords": [str(c) for c in (_sec_chords or [])],
+                }
+            if any(entry.get("lyrics") for entry in _panel_map.values()):
+                _karaoke_lyric_panel = _panel_map
+        _karaoke_song_title = str(song_data.get("title") or song or "Now Singing")
         components.html(
             live_follow_along_component_html(
                 st.session_state["_last_backing_wav"],
@@ -7179,8 +7502,10 @@ elif _studio_page == "backing":
                 ),
                 karaoke_countdown=_show_countdown,
                 karaoke_countdown_seconds=km.countdown_seconds(st.session_state),
+                karaoke_lyrics_panel=_karaoke_lyric_panel,
+                karaoke_song_title=_karaoke_song_title,
             ),
-            height=720,
+            height=820 if _karaoke_lyric_panel else 720,
             scrolling=True,
         )
         st.markdown("</div>", unsafe_allow_html=True)
