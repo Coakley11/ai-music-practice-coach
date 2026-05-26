@@ -2343,7 +2343,23 @@ def full_chord_markdown(
         "full form",
         "",
     )
-    now_playing = "Full song" if show_full else str(current_section)
+    # Beginner mode swaps "Verse 1" / "Verse 2" -> "Verse" on display
+    # only. The underlying section dict keys stay raw so resolvers,
+    # focus-section lookups, lyric maps, and chord-event timelines
+    # keep working unchanged - only the rendered card header text
+    # changes.
+    _practice_display_labels: dict[str, str] = dict(
+        (song_data or {}).get("_beginner_display_labels") or {}
+    )
+
+    def _display_section_name(name: str) -> str:
+        if not name:
+            return name
+        return _practice_display_labels.get(str(name), str(name))
+
+    now_playing = (
+        "Full song" if show_full else _display_section_name(str(current_section))
+    )
     ext = song_data.get("extensions") or {}
 
     style = """
@@ -2590,12 +2606,13 @@ def full_chord_markdown(
         is_current = section_name in current_parts
         now_label = "Now Playing" if is_current else ""
         current_bar_for_section = current_bar if is_current else None
+        _section_display = _display_section_name(section_name)
         section_cards.append(
             f"""
 <section class="section-card {role}{' current' if is_current else ''}">
   <div class="section-head">
     <div>
-      <div class="section-title">{html.escape(section_name)} - {len(chords)} bars</div>
+      <div class="section-title">{html.escape(_section_display)} - {len(chords)} bars</div>
       <div class="section-meta">{html.escape(_chart_feel_label(groove_style))}</div>
     </div>
     <div class="section-meta">{now_label}</div>
@@ -3262,9 +3279,19 @@ def _build_karaoke_lyrics_panel_html(
 ) -> str:
     """Static DOM scaffold for the karaoke section-aware lyric panel.
 
-    JS in :func:`_build_karaoke_lyrics_panel_script` keeps it in sync
-    with the currently playing section. Returns an empty string when
-    the panel is disabled (non-voice mode), keeping the existing
+    The DOM order is intentional:
+
+    1. Kicker (``Now Singing``)
+    2. Title (active song)
+    3. Section label (``Verse 1`` / ``Verse`` in beginner mode / ...)
+    4. **Lyrics** - the main visual focus, large + centered.
+    5. **Chord strip** - secondary support under the lyrics, with a
+       chip per bar that highlights live as the backing plays.
+    6. ``Next: ...`` cue.
+
+    JS in :func:`_build_karaoke_lyrics_panel_script` keeps every field
+    in sync with the chord-event timeline. Returns an empty string
+    when the panel is disabled (non-voice mode), keeping the existing
     instrumentalist layout untouched.
     """
     if not has_panel:
@@ -3275,10 +3302,12 @@ def _build_karaoke_lyrics_panel_html(
         '<p class="karaoke-lp-kicker">Now Singing</p>'
         f'<p class="karaoke-lp-title" id="karaoke-lp-title">{safe_title}</p>'
         '<p class="karaoke-lp-section" id="karaoke-lp-section">Section</p>'
-        '<div class="karaoke-lp-chord-strip" id="karaoke-lp-chord-strip"></div>'
+        # Lyrics first, large and centered. The chord strip lives
+        # underneath so the singer's eye lands on the lyrics first.
         '<div class="karaoke-lp-lyrics" id="karaoke-lp-lyrics">'
         '<div class="karaoke-lp-lyric-empty">Press play to follow the lyrics.</div>'
         "</div>"
+        '<div class="karaoke-lp-chord-strip" id="karaoke-lp-chord-strip"></div>'
         '<p class="karaoke-lp-next" id="karaoke-lp-next"></p>'
         "</div>"
     )
@@ -3286,31 +3315,50 @@ def _build_karaoke_lyrics_panel_html(
 
 def _build_karaoke_lyrics_panel_script(
     section_lyrics_map: dict | None,
+    *,
+    display_label_map: dict | None = None,
 ) -> str:
     """JS that wires the karaoke lyric panel to the chord-event timeline.
 
-    Returns a snippet to inline inside the existing follow-along
-    ``<script>`` block (after the timeline + dom-element constants).
-    When ``section_lyrics_map`` is None / empty the snippet is empty -
-    no panel + no listeners are registered for instrumentalists.
+    Returns a snippet to inline inside the follow-along ``<script>``
+    block (after the timeline + DOM-element constants). When
+    ``section_lyrics_map`` is None / empty the snippet is empty - no
+    panel + no listeners are registered for instrumentalists.
 
     The map is shaped::
 
         {
-            "Verse 1": {"lyrics": ["line 1", "line 2"], "chords": ["C", "G"]},
+            "Verse 1": {"lyrics": ["line 1", "line 2"], "chords": ["C", "G", "Am", "F"]},
             "Chorus":  {"lyrics": [...],                "chords": [...]},
             ...
         }
 
+    The chord array is the **per-bar** chord progression for that
+    section (one token per bar, possibly subdivided with ``|`` like
+    ``"Fmaj7|Am7|C/D"``).
+
+    ``display_label_map`` (optional) maps raw section keys to display
+    labels (e.g. ``{"Verse 1": "Verse"}``) for Beginner mode.
+
     Lookup is whitespace + case-insensitive so timeline section names
-    (e.g. ``"Verse 1"``) still match map keys (``"verse 1"``).
+    (e.g. ``"Verse 1"``) still match map keys.
+
+    On every chord-event tick the JS:
+
+    * (section change) rebuilds the chord strip with one chip per
+      bar, plus swaps the lyrics block.
+    * (every event) highlights the chip matching ``event.bar_in_section``
+      and the sub-chord matching ``event.subdivision_index`` so the
+      singer can see which chord the band is on right now.
     """
     if not section_lyrics_map:
         return ""
     map_json = json.dumps(section_lyrics_map)
+    label_json = json.dumps(display_label_map or {})
     return f"""
     (function() {{
       const LYRIC_MAP = {map_json};
+      const DISPLAY_LABELS = {label_json};
       const lpSection = document.getElementById("karaoke-lp-section");
       const lpStrip = document.getElementById("karaoke-lp-chord-strip");
       const lpLyrics = document.getElementById("karaoke-lp-lyrics");
@@ -3322,6 +3370,10 @@ def _build_karaoke_lyrics_panel_script(
       const NORM_MAP = {{}};
       Object.keys(LYRIC_MAP).forEach((k) => {{
         NORM_MAP[String(k).trim().toLowerCase()] = LYRIC_MAP[k];
+      }});
+      const NORM_LABELS = {{}};
+      Object.keys(DISPLAY_LABELS).forEach((k) => {{
+        NORM_LABELS[String(k).trim().toLowerCase()] = DISPLAY_LABELS[k];
       }});
 
       function escapeHtml(s) {{
@@ -3336,6 +3388,12 @@ def _build_karaoke_lyrics_panel_script(
       function dataFor(sectionName) {{
         if (!sectionName) return null;
         return NORM_MAP[String(sectionName).trim().toLowerCase()] || null;
+      }}
+
+      function displayLabelFor(sectionName) {{
+        if (!sectionName) return "";
+        const norm = String(sectionName).trim().toLowerCase();
+        return NORM_LABELS[norm] || sectionName;
       }}
 
       function hasLyrics(sectionName) {{
@@ -3358,63 +3416,133 @@ def _build_karaoke_lyrics_panel_script(
         return "";
       }}
 
+      function buildChordStripForSection(sectionName, chords) {{
+        if (!chords || !chords.length) {{
+          lpStrip.innerHTML = "";
+          return;
+        }}
+        const safeSection = escapeHtml(sectionName);
+        const parts = [];
+        chords.forEach((token, idx) => {{
+          const bar = idx + 1;
+          // A subdivision token like "Fmaj7|Am7|C/D" -> render the
+          // chip with nested sub-chord spans so we can highlight the
+          // exact sub on per-event ticks.
+          const subs = String(token == null ? "" : token).split("|");
+          let inner;
+          if (subs.length > 1) {{
+            const subSpans = subs
+              .map((sub, sIdx) =>
+                '<span class="sub-chord" data-sub="' + sIdx + '">' +
+                escapeHtml(sub.trim()) +
+                "</span>"
+              )
+              .join('<span class="karaoke-lp-arrow" aria-hidden="true">&middot;</span>');
+            inner =
+              '<span class="sub-chord-list">' + subSpans + "</span>";
+          }} else {{
+            inner = escapeHtml(String(token).trim());
+          }}
+          parts.push(
+            '<span class="karaoke-lp-chord" ' +
+              'data-section="' + safeSection + '" ' +
+              'data-bar-in-section="' + bar + '" ' +
+              'data-sub-count="' + subs.length + '">' +
+              inner +
+            "</span>"
+          );
+        }});
+        // Re-wrap every chord chip every line - we let CSS flex wrap
+        // handle layout; arrows between chips read better only for
+        // short progressions, so omit them here.
+        lpStrip.innerHTML = parts.join("");
+      }}
+
+      function highlightActiveChord(event) {{
+        // Clear previous highlight + re-apply to the cell matching
+        // this event's section + bar_in_section + (optional) sub
+        // index. We re-query the DOM each tick because the chord
+        // strip is rebuilt on section change.
+        const chips = lpStrip.querySelectorAll(".karaoke-lp-chord");
+        const targetBar = Number(event.bar_in_section);
+        const subIdx = Number(event.subdivision_index);
+        chips.forEach((chip) => {{
+          chip.classList.remove("active");
+          const subs = chip.querySelectorAll(".sub-chord");
+          subs.forEach((sub) => sub.classList.remove("active-sub"));
+          if (
+            chip.dataset.section === event.section &&
+            Number(chip.dataset.bar_in_section || chip.dataset.barInSection) === targetBar
+          ) {{
+            chip.classList.add("active");
+            if (!Number.isNaN(subIdx) && subs.length) {{
+              const sub = chip.querySelector(
+                '.sub-chord[data-sub="' + subIdx + '"]'
+              );
+              if (sub) sub.classList.add("active-sub");
+            }}
+          }}
+        }});
+      }}
+
       let lastSection = null;
       window.__karaokeUpdateLyricPanel = function(event) {{
-        if (!event || event.section === lastSection) return;
-        lastSection = event.section;
-        const data = dataFor(event.section);
+        if (!event) return;
         const sectionName = event.section || "";
-        const chords = (data && data.chords) || [];
-        const lines = (data && data.lyrics) || [];
 
-        if (chords.length) {{
-          const chips = chords.map((c) =>
-            '<span class="karaoke-lp-chord">' + escapeHtml(c) + '</span>'
-          );
-          lpStrip.innerHTML = chips.join(
-            '<span class="karaoke-lp-arrow" aria-hidden="true">&rarr;</span>'
-          );
-        }} else {{
-          lpStrip.innerHTML = "";
-        }}
+        // -- Section change: rebuild chord strip + swap lyrics. ----
+        if (sectionName !== lastSection) {{
+          lastSection = sectionName;
+          const data = dataFor(sectionName);
+          const chords = (data && data.chords) || [];
+          const lines = (data && data.lyrics) || [];
 
-        if (lines.length) {{
-          // Lyric-bearing section -> show section name + lyrics.
-          lpSection.textContent = sectionName;
-          lpLyrics.classList.remove("empty");
-          lpLyrics.classList.remove("instrumental");
-          lpLyrics.innerHTML = lines
-            .map((l) =>
-              '<div class="karaoke-lp-lyric-line">' + escapeHtml(l) + "</div>"
-            )
-            .join("");
-          const nxt = nextSectionAfter(event.event_index, false);
-          lpNext.textContent = nxt ? ("Next: " + nxt) : "";
-        }} else {{
-          // Instrumental section (Intro / Solo / Interlude / etc.).
-          // Show an instrumental label + the next *lyric-bearing*
-          // section so the singer can prepare for their re-entry.
-          lpSection.textContent = "Instrumental " + sectionName;
-          lpLyrics.classList.add("empty");
-          lpLyrics.classList.add("instrumental");
-          const nextLyric = nextSectionAfter(event.event_index, true);
-          if (nextLyric) {{
-            lpLyrics.innerHTML =
-              '<div class="karaoke-lp-lyric-empty">' +
-              '<span class="karaoke-lp-instr-icon" aria-hidden="true">&#9835;</span> ' +
-              "Instrumental section - get ready to sing " +
-              '<strong>' + escapeHtml(nextLyric) + '</strong>.' +
-              "</div>";
-            lpNext.textContent = "Next: " + nextLyric;
+          buildChordStripForSection(sectionName, chords);
+
+          if (lines.length) {{
+            // Lyric-bearing section - section label + lyrics.
+            lpSection.textContent = displayLabelFor(sectionName);
+            lpLyrics.classList.remove("empty");
+            lpLyrics.classList.remove("instrumental");
+            lpLyrics.innerHTML = lines
+              .map((l) =>
+                '<div class="karaoke-lp-lyric-line">' + escapeHtml(l) + "</div>"
+              )
+              .join("");
+            const nxt = nextSectionAfter(event.event_index, false);
+            lpNext.innerHTML = nxt
+              ? ('Next: <strong>' + escapeHtml(displayLabelFor(nxt)) + '</strong>')
+              : "";
           }} else {{
-            lpLyrics.innerHTML =
-              '<div class="karaoke-lp-lyric-empty">' +
-              '<span class="karaoke-lp-instr-icon" aria-hidden="true">&#9835;</span> ' +
-              "Instrumental section - no further lyric sections." +
-              "</div>";
-            lpNext.textContent = "";
+            // Instrumental section - show "get ready" + preview the
+            // next *lyric-bearing* section so the singer can prep
+            // their entry without searching the chart.
+            lpSection.textContent = "Instrumental " + displayLabelFor(sectionName);
+            lpLyrics.classList.add("empty");
+            lpLyrics.classList.add("instrumental");
+            const nextLyric = nextSectionAfter(event.event_index, true);
+            if (nextLyric) {{
+              lpLyrics.innerHTML =
+                '<div class="karaoke-lp-lyric-empty">' +
+                '<span class="karaoke-lp-instr-icon" aria-hidden="true">&#9835;</span> ' +
+                "Instrumental section - get ready to sing " +
+                '<strong>' + escapeHtml(displayLabelFor(nextLyric)) + '</strong>.' +
+                "</div>";
+              lpNext.innerHTML =
+                'Next: <strong>' + escapeHtml(displayLabelFor(nextLyric)) + '</strong>';
+            }} else {{
+              lpLyrics.innerHTML =
+                '<div class="karaoke-lp-lyric-empty">' +
+                '<span class="karaoke-lp-instr-icon" aria-hidden="true">&#9835;</span> ' +
+                "Instrumental section - no further lyric sections." +
+                "</div>";
+              lpNext.innerHTML = "";
+            }}
           }}
         }}
+
+        // -- Every tick: highlight the active chord under lyrics. --
+        highlightActiveChord(event);
       }};
     }})();
     """
@@ -3433,6 +3561,7 @@ def live_follow_along_component_html(
     karaoke_lyrics_panel: dict | None = None,
     karaoke_song_title: str = "",
     karaoke_hide_chart: bool = False,
+    karaoke_display_labels: dict | None = None,
 ):
     audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
     timeline_json = json.dumps(timeline)
@@ -3455,7 +3584,8 @@ def live_follow_along_component_html(
         has_panel=karaoke_lyric_panel_enabled,
     )
     karaoke_lyric_panel_script = _build_karaoke_lyrics_panel_script(
-        karaoke_lyrics_panel
+        karaoke_lyrics_panel,
+        display_label_map=karaoke_display_labels,
     )
     # Karaoke voice mode: the lyric panel is the main surface, so wrap
     # the chord chart in a collapsed ``<details>`` so it sits as a
@@ -6687,6 +6817,23 @@ if _studio_page == "practice":
     if _capo_ctx.enabled and instrument == "Guitar":
         st.markdown(capo_status_banner_html(_capo_ctx), unsafe_allow_html=True)
 
+    # In Beginner mode, swap raw chart keys ("Verse 1") for cleaner
+    # display labels ("Verse") on every UI surface that shows the
+    # active section name - expander headers, badges, focus pill.
+    # The map is created upstream by ``beginner_view_of_song_data``;
+    # outside of Beginner mode the map is empty and ``_display_section``
+    # is a no-op (returns the raw name unchanged).
+    _practice_display_label_map: dict[str, str] = dict(
+        song_data.get("_beginner_display_labels") or {}
+    )
+
+    def _display_section(name: str | None) -> str:
+        if not name:
+            return ""
+        return _practice_display_label_map.get(str(name), str(name))
+
+    _active_section_display = _display_section(_active_section)
+
     st.markdown(
         f'<div class="ui-badge-row">'
         f'<span class="ui-badge accent">{html.escape(_ui_source_label())}</span>'
@@ -6708,7 +6855,7 @@ if _studio_page == "practice":
         st.markdown(
             f'<div class="ui-badge-row">'
             f'<span class="ui-badge accent">Section focus</span>'
-            f'<span class="ui-badge green">{html.escape(_active_section)}</span>'
+            f'<span class="ui-badge green">{html.escape(_active_section_display)}</span>'
             f'<span class="ui-badge">{_section_bar_count} bars</span>'
             f"</div>",
             unsafe_allow_html=True,
@@ -6731,7 +6878,7 @@ if _studio_page == "practice":
             )
     elif _active_section:
         with st.expander(
-            f"⏱️ Metronome — {_active_section} only ({_section_bar_count} bars)",
+            f"⏱️ Metronome — {_active_section_display} only ({_section_bar_count} bars)",
             expanded=False,
         ):
             render_metronome_widget(
@@ -6769,7 +6916,7 @@ if _studio_page == "practice":
             ) or ""
         except Exception as _deep_focus_exc:
             _deep_focus_error = _deep_focus_exc
-        with st.expander(f"🔬 Section deep focus — {_active_section}", expanded=True):
+        with st.expander(f"🔬 Section deep focus — {_active_section_display}", expanded=True):
             if _deep_focus_md.strip() and not _deep_focus_md.strip().lower().startswith(
                 "no chords"
             ):
@@ -6888,7 +7035,7 @@ if _studio_page == "practice":
         focus=focus,
         chart_mode="practice",
     )
-    _chart_scope = "full song" if _is_full_song else str(_active_section)
+    _chart_scope = "full song" if _is_full_song else (_active_section_display or "section")
     _chart_key_note = ""
     if _chart_key_mode == "written" and is_transposing_instrument(instrument):
         _t_type = selected_transposing_type(st.session_state, instrument)
@@ -7951,13 +8098,21 @@ elif _studio_page == "backing":
             if any(entry.get("lyrics") for entry in _panel_map.values()):
                 _karaoke_lyric_panel = _panel_map
         _karaoke_song_title = str(song_data.get("title") or song or "Now Singing")
-        # Karaoke voice mode: when we have a lyric panel, the chord chart
-        # becomes a collapsed "Show chord chart" affordance so the lyric
-        # block is the dominant view. The chart DOM is still rendered
-        # (just hidden inside <details>) so the chord-highlight JS keeps
-        # tracking the active bar - the user can pop it open whenever
-        # they want a quick chord reference.
+        # Karaoke voice mode behaviour:
+        # * When user-typed lyrics exist for at least one section,
+        #   the karaoke lyric panel becomes the main view and the
+        #   chord chart collapses into a "Show chord chart" toggle.
+        # * When no lyrics exist (or instrumentalists are playing),
+        #   the chord chart stays the primary view as a fallback so
+        #   singers still have something to follow.
         _karaoke_hide_chart = bool(_karaoke_voice and _karaoke_lyric_panel)
+        # Beginner mode swaps "Verse 1" / "Verse 2" / ... headers for
+        # the cleaner "Verse" / "Chorus" / "Bridge" labels. Pass the
+        # raw->display map so the JS shows the same labels in the
+        # karaoke "Now Singing" / "Next" lines as the lead sheet.
+        _karaoke_display_labels = dict(
+            song_data.get("_beginner_display_labels") or {}
+        )
         components.html(
             live_follow_along_component_html(
                 st.session_state["_last_backing_wav"],
@@ -7972,6 +8127,7 @@ elif _studio_page == "backing":
                 karaoke_lyrics_panel=_karaoke_lyric_panel,
                 karaoke_song_title=_karaoke_song_title,
                 karaoke_hide_chart=_karaoke_hide_chart,
+                karaoke_display_labels=_karaoke_display_labels,
             ),
             height=820 if _karaoke_lyric_panel else 720,
             scrolling=True,

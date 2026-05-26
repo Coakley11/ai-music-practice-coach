@@ -2869,98 +2869,174 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 }
 
 /* ---------- Karaoke: section-aware lyric panel (Backing Track) ----------
-   Embedded inside the live-follow-along component. Updates per
-   section via the same chord-event timeline that drives the chart
-   highlight, so lyrics swap automatically as the song moves through
-   Verse / Chorus / Bridge / etc. */
+   True karaoke-stage display embedded inside the live-follow-along
+   component. Dark performance background, large readable lyrics on
+   top, chord strip underneath with live highlight that syncs to the
+   chord-event timeline. Lyrics swap automatically as the song moves
+   through Verse / Chorus / Bridge / etc. */
 .karaoke-lyric-panel {
-  margin: 10px 0 14px 0;
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(190, 24, 93, 0.22);
-  background: linear-gradient(180deg, #fff7fb 0%, #ffffff 100%);
-  box-shadow: 0 6px 18px rgba(190, 24, 93, 0.10);
+  margin: 12px 0 16px 0;
+  padding: 22px 24px 20px 24px;
+  border-radius: 18px;
+  border: 1px solid rgba(236, 72, 153, 0.32);
+  background:
+    radial-gradient(120% 90% at 30% 0%, rgba(124, 58, 237, 0.30) 0%, rgba(124, 58, 237, 0) 70%),
+    radial-gradient(140% 100% at 80% 100%, rgba(236, 72, 153, 0.22) 0%, rgba(236, 72, 153, 0) 70%),
+    linear-gradient(180deg, #0b1020 0%, #050810 100%);
+  box-shadow:
+    0 18px 48px -16px rgba(15, 23, 42, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  color: #f8fafc;
+  position: relative;
+  overflow: hidden;
+}
+.karaoke-lyric-panel::before {
+  /* subtle stage-light sheen across the top */
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(236, 72, 153, 0.5) 50%, transparent 100%);
 }
 .karaoke-lp-kicker {
-  font-size: 0.70rem;
+  font-size: 0.72rem;
   font-weight: 800;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: #be185d;
+  color: #f472b6;
+  margin: 0;
+  text-shadow: 0 1px 2px rgba(190, 24, 93, 0.45);
 }
 .karaoke-lp-title {
-  font-size: 1.10rem;
+  font-size: 1.45rem;
   font-weight: 800;
-  color: #0f172a;
+  color: #ffffff;
   margin: 0;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 .karaoke-lp-section {
-  font-size: 0.86rem;
+  font-size: 0.95rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #64748b;
-  margin: 2px 0 4px 0;
-}
-.karaoke-lp-chord-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px 7px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: rgba(241, 245, 249, 0.6);
-  border: 1px dashed rgba(15, 23, 42, 0.08);
-  margin: 2px 0 6px 0;
-  min-height: 30px;
-}
-.karaoke-lp-chord-strip .karaoke-lp-chord {
-  display: inline-block;
-  padding: 1px 8px;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #be185d;
-  font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-  font-weight: 700;
-  font-size: 0.82rem;
-  border: 1px solid rgba(190, 24, 93, 0.18);
-}
-.karaoke-lp-chord-strip .karaoke-lp-arrow {
-  color: #94a3b8;
-  font-weight: 600;
-  font-size: 0.78rem;
+  color: #c7d2fe;
+  margin: 0 0 4px 0;
 }
 .karaoke-lp-lyrics {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 4px 0 0 0;
+  gap: 6px;
+  padding: 14px 4px 10px 4px;
+  min-height: 132px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 .karaoke-lp-lyric-line {
-  font-size: 1.32rem;
-  line-height: 1.55;
+  font-size: clamp(1.45rem, 2.6vw, 2.05rem);
+  line-height: 1.4;
   font-weight: 700;
-  color: #0f172a;
+  color: #ffffff;
   letter-spacing: 0.005em;
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 }
 .karaoke-lp-lyrics.empty .karaoke-lp-lyric-empty {
-  font-size: 0.92rem;
-  font-weight: 500;
-  color: #64748b;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #94a3b8;
   font-style: italic;
+  text-align: center;
+}
+.karaoke-lp-lyrics.instrumental {
+  font-style: italic;
+  color: #cbd5f5;
+}
+.karaoke-lp-instr-icon {
+  font-size: 1.6rem;
+  display: block;
+  margin-bottom: 4px;
+  text-align: center;
+}
+/* Chord strip - chords are now BELOW the lyrics, smaller, secondary.
+   Each chip carries data-bar-in-section / data-sub attributes so the
+   chord-event timeline can highlight the active chord in sync. */
+.karaoke-lp-chord-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 10px 8px 2px 8px;
+  margin: 0;
+  min-height: 36px;
+}
+.karaoke-lp-chord-strip .karaoke-lp-chord {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.65);
+  color: #f5f3ff;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border: 1px solid rgba(196, 181, 253, 0.22);
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease,
+    box-shadow 120ms ease;
+}
+.karaoke-lp-chord-strip .karaoke-lp-chord.active {
+  background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%);
+  color: #1c1917;
+  border-color: rgba(252, 211, 77, 0.85);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -2px rgba(251, 191, 36, 0.55);
+}
+.karaoke-lp-chord-strip .karaoke-lp-arrow {
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 0.85rem;
+  user-select: none;
+}
+.karaoke-lp-chord-strip .karaoke-lp-chord .sub-chord-list {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 4px;
+}
+.karaoke-lp-chord-strip .karaoke-lp-chord .sub-chord {
+  display: inline-block;
+  padding: 0 2px;
+  opacity: 0.78;
+}
+.karaoke-lp-chord-strip .karaoke-lp-chord .sub-chord.active-sub {
+  color: #1c1917;
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .karaoke-lp-next {
-  margin-top: 4px;
-  font-size: 0.78rem;
+  margin-top: 8px;
+  font-size: 0.82rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #94a3b8;
+  color: #a5b4fc;
+  text-align: center;
 }
 .karaoke-lp-next:empty { display: none; }
+.karaoke-lp-next strong {
+  color: #f5f3ff;
+}
 
 /* ---------- YouTube integration (Song Selection + Practice page) ---------- */
 .ui-youtube-link-btn {

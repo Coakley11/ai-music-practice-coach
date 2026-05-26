@@ -152,21 +152,42 @@ def classify_section_role(name: str) -> str:
 def select_beginner_section_names(
     section_names: list[str] | None,
     *,
-    max_verses: int = 2,
+    max_verses: int = 3,
     max_choruses: int = 2,
 ) -> list[str]:
     """Pick a beginner-friendly subset of an existing section name order.
 
-    Keeps:
+    Beginner arrangements stay short and easy to finish so beginners
+    can build confidence. The picker keeps the canonical singing
+    sections and drops every long instrumental form.
+
+    Kept by default:
 
     * the first Intro (if any)
     * the first Pre-Chorus before the first chorus (if any)
-    * up to ``max_verses`` distinct Verses (default 2)
+    * up to ``max_verses`` distinct Verses (default 3)
     * up to ``max_choruses`` distinct Choruses (default 2)
     * the first Outro (if any)
 
-    Drops bridges, solos, interludes, instrumentals, and extra repeats
-    of any kept role. Returns ``[]`` only if the input was empty.
+    Always dropped:
+
+    * bridges (so beginners learn the core verse/chorus loop first)
+    * solos / instrumental sections / harmonica features
+    * interludes / turnarounds / vamps / tags
+    * every repeat past the limits above
+
+    The arrangement assembled here looks like::
+
+        Intro -> Verse 1 -> [Pre-Chorus] -> Chorus 1
+               -> Verse 2 -> Chorus 2
+               -> Verse 3 -> Outro
+
+    so a beginner gets two clear V/C cycles and finishes on a final
+    verse + outro. When the song doesn't have three verses or two
+    choruses available, the picker gracefully degrades (one V/C
+    cycle, or just verses if no chorus exists).
+
+    Returns ``[]`` only if the input was empty.
     """
     if not section_names:
         return []
@@ -204,6 +225,12 @@ def select_beginner_section_names(
             out.append(chosen_verses[1])
             if len(chosen_choruses) >= 2:
                 out.append(chosen_choruses[1])
+
+        # Third pass: (Verse3) - reinforces the form without a third
+        # chorus, so beginners land on a final verse + outro instead
+        # of a long chorus repeat tail.
+        if len(chosen_verses) >= 3:
+            out.append(chosen_verses[2])
 
     if outros and (outros[0] not in out):
         out.append(outros[0])
