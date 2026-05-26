@@ -17,6 +17,13 @@ from music_theory import (
     split_chord,
     transpose_chord,
 )
+from groove_feel import (
+    GROOVE_PROFILE,
+    get_profile as groove_get_profile,
+    instrument_phrasing_hint as groove_instrument_hint,
+    resolve_groove_style as groove_resolve,
+    short_feel_tag as groove_feel_tag,
+)
 
 GUITAR_FRIENDLY_KEYS = ("G", "D", "A", "E", "C")
 VOCAL_EASY_KEYS = ("C", "G", "D", "A", "F")
@@ -730,37 +737,98 @@ def _ii_v_i_coach(key_name: str, level: str, instrument: str) -> str:
     return "\n".join(lines)
 
 
-def rhythm_guide_markdown(instrument: str, groove_style: str, time_sig: str = "4/4") -> str:
-    """Strumming / comping pattern hints."""
+def rhythm_guide_markdown(
+    instrument: str,
+    groove_style: str,
+    time_sig: str = "4/4",
+    *,
+    song_data: dict | None = None,
+) -> str:
+    """Strumming / comping / phrasing hints driven by ``groove_feel.GROOVE_PROFILE``.
+
+    *groove_style* may be ``"Auto"`` (or empty) -- it will be resolved against
+    *song_data* so the Practice page Rhythm Guide actually changes when the
+    user picks "Auto" on a Jazz / Bossa / Funk song.
+    """
+    resolved = groove_resolve(groove_style, song_data)
+    profile = groove_get_profile(resolved)
     inst = (instrument or "").lower()
-    pattern = STRUM_PATTERNS.get(groove_style, STRUM_PATTERNS["Pop groove"])
-    beats = " | ".join(pattern)
-    count_in = "1 – 2 – 3 – 4" if time_sig.startswith("4") else "1 – 2 – 3"
+    count_in = profile["count_in"] if time_sig.startswith("4") else "1 - 2 - 3"
+    feel_line = (
+        f"**Feel:** {profile['feel']} -- accent {profile['accent']}; "
+        f"{profile['time_feel']}."
+    )
+    dynamics_line = f"**Dynamics & articulation:** {profile['dynamics']}; {profile['articulation']}."
 
     if "guitar" in inst:
+        pattern = list(profile["strum"])
+        bar_label = "Beat" if time_sig.startswith("4") else "Pulse"
         return f"""
-**Rhythm guide (guitar)** — {groove_style} · {time_sig}
+**Rhythm guide (guitar)** -- {resolved} ({profile['feel']}) - {time_sig}
 
-| Beat | {' | '.join(str(i + 1) for i in range(len(pattern)))} |
+| {bar_label} | {' | '.join(str(i + 1) for i in range(len(pattern)))} |
 |------|{'|'.join(['---'] * len(pattern))}|
 | Strum | {' | '.join(pattern)} |
 
-- **D** = downstroke · **U** = upstroke · **—** = rest
-- Count-in: *{count_in}* then start on beat 1 with the first chord change.
-- Keep the wrist loose; mute between changes if the chart moves quickly.
-""".strip()
-
-    if "piano" in inst:
-        comp = PIANO_COMP_PATTERNS.get(groove_style, PIANO_COMP_PATTERNS["Pop groove"])
-        return f"""
-**Rhythm guide (piano)** — {groove_style} · {time_sig}
-
-- **Pattern:** {comp}
+- **D** = downstroke - **U** = upstroke - **u** = light upstroke - **x** = muted - **-** = rest
 - **Count-in:** *{count_in}*
-- **LH/RH:** bass defines the pulse; RH stays lighter than you think on verses.
+- {feel_line}
+- {dynamics_line}
+- Tempo zone: *{profile['tempo_hint']}*.
 """.strip()
 
-    return f"**Rhythm:** lock to **{groove_style}** at {time_sig}; use metronome on 2 & 4."
+    if "piano" in inst or "key" in inst:
+        return f"""
+**Rhythm guide (piano)** -- {resolved} ({profile['feel']}) - {time_sig}
+
+- **Pattern:** {profile['piano_comp']}
+- **Count-in:** *{count_in}*
+- {feel_line}
+- {dynamics_line}
+- Tempo zone: *{profile['tempo_hint']}*.
+""".strip()
+
+    if "bass" in inst:
+        return f"""
+**Rhythm guide (bass)** -- {resolved} ({profile['feel']}) - {time_sig}
+
+- **Bass line shape:** {profile['bass']}
+- **Count-in:** *{count_in}*
+- {feel_line}
+- {dynamics_line}
+- Tempo zone: *{profile['tempo_hint']}*.
+""".strip()
+
+    if "voice" in inst or "vocal" in inst or "sing" in inst:
+        return f"""
+**Vocal phrasing guide** -- {resolved} ({profile['feel']}) - {time_sig}
+
+- **Phrasing:** {profile['voice']}
+- **Count-in:** *{count_in}*
+- {feel_line}
+- {dynamics_line}
+- Tempo zone: *{profile['tempo_hint']}*.
+""".strip()
+
+    if any(token in inst for token in ("sax", "horn", "trumpet", "flute", "clarinet", "wind")):
+        return f"""
+**Rhythm guide (winds)** -- {resolved} ({profile['feel']}) - {time_sig}
+
+- **Phrasing:** {profile['winds']}
+- **Count-in:** *{count_in}*
+- {feel_line}
+- {dynamics_line}
+- Tempo zone: *{profile['tempo_hint']}*.
+""".strip()
+
+    return f"""
+**Rhythm guide** -- {resolved} ({profile['feel']}) - {time_sig}
+
+- {feel_line}
+- {dynamics_line}
+- **Count-in:** *{count_in}*
+- Tempo zone: *{profile['tempo_hint']}*.
+""".strip()
 
 
 def section_deep_practice_markdown(
@@ -773,8 +841,15 @@ def section_deep_practice_markdown(
     display_key: str,
     bpm: int,
     groove_style: str,
+    song_data: dict | None = None,
 ) -> str:
-    """Detailed breakdown for one section."""
+    """Detailed breakdown for one section.
+
+    The body now includes a **Groove feel** block that materially changes when
+    the user picks a different Rhythm / Groove Feel - per-groove count, accent,
+    dynamics, articulation, and an instrument-specific phrasing tip pulled from
+    ``groove_feel.GROOVE_PROFILE``.
+    """
     if not section_chords:
         return "No chords in this section."
 
@@ -782,40 +857,112 @@ def section_deep_practice_markdown(
     for i in range(len(section_chords) - 1):
         a, b = section_chords[i], section_chords[i + 1]
         if a != b:
-            transitions.append(f"**{a} → {b}**")
+            transitions.append(f"**{a} -> {b}**")
 
     hard = transitions[:4]
-    chord_summary = " · ".join(section_chords[:12])
+    chord_summary = " - ".join(section_chords[:12])
     if len(section_chords) > 12:
-        chord_summary += " …"
+        chord_summary += " ..."
 
-    exercise = _section_exercise(section_name, section_chords, instrument, level, focus)
+    resolved_groove = groove_resolve(groove_style, song_data)
+    profile = groove_get_profile(resolved_groove)
+    instrument_tip = groove_instrument_hint(instrument, resolved_groove)
+    exercise = _section_exercise(
+        section_name, section_chords, instrument, level, focus, resolved_groove
+    )
+
+    groove_block = (
+        f"**Groove feel ({html.escape(resolved_groove)}):** "
+        f"{html.escape(profile['feel'])}. "
+        f"Accent {html.escape(profile['accent'])}; "
+        f"{html.escape(profile['time_feel'])}. "
+        f"Count it: *{html.escape(profile['count_in'])}*.\n\n"
+        f"**Dynamics & articulation:** {html.escape(profile['dynamics'])}; "
+        f"{html.escape(profile['articulation'])}.\n\n"
+        f"**For {html.escape((instrument or 'your instrument').strip())}:** "
+        f"{html.escape(instrument_tip)}"
+    )
 
     return f"""
 ### Section focus: {html.escape(section_name)}
-**{len(section_chords)} bars** in **{html.escape(display_key)}** · **{bpm} BPM** · {html.escape(groove_style)}
+**{len(section_chords)} bars** in **{html.escape(display_key)}** - **{bpm} BPM** - {html.escape(resolved_groove)} ({html.escape(profile['feel'])})
 
 **Chord path:** {html.escape(chord_summary)}
 
 **Key changes:** {html.escape(', '.join(hard) if hard else 'Loop one bar until steady, then link pairs.')}
 
+{groove_block}
+
 **Section exercise:** {exercise}
 
-**Loop tip:** Use **Backing Track** with *Single section* scope, or metronome at **{bpm}** BPM for {max(4, len(section_chords))} bars only.
+**Loop tip:** Use **Backing Track** with *Single section* scope, or metronome at **{bpm}** BPM for {max(4, len(section_chords))} bars only. Target tempo zone: *{html.escape(profile['tempo_hint'])}*.
 """.strip()
 
 
-def _section_exercise(section_name: str, chords: list[str], instrument: str, level: str, focus: str) -> str:
+def _section_exercise(
+    section_name: str,
+    chords: list[str],
+    instrument: str,
+    level: str,
+    focus: str,
+    groove_style: str = "",
+) -> str:
+    """Section exercise prompt - now flavoured by the resolved groove feel.
+
+    The base prompt picks up section-role / focus / level (existing behaviour)
+    and we *append* a one-line groove-specific drill so the exercise text
+    visibly changes when the user moves the Rhythm / Groove Feel dropdown.
+    """
     role = section_name.lower()
     if "chorus" in role:
-        return "Play the section 4× with backing; last time add dynamics +10%."
-    if "bridge" in role:
-        return "Map the first chord change only; then add the full bar line."
+        base = "Play the section 4x with backing; last time add dynamics +10%."
+    elif "bridge" in role:
+        base = "Map the first chord change only; then add the full bar line."
+    elif focus == "Rhythm":
+        base = "Metronome: 2 min chord changes only, then 2 min with groove pattern."
+    elif level == "Beginner":
+        base = "3 min: one bar at a time. 3 min: two-bar links. 2 min: full section slow."
+    else:
+        base = "Loop 6x: accuracy pass, then musical pass, then one pass with eyes on chart only."
+
+    if not groove_style:
+        return base
+
+    groove_drill = _groove_drill_tagline(groove_style, instrument, focus)
+    return f"{base} **Groove drill:** {groove_drill}"
+
+
+def _groove_drill_tagline(groove_style: str, instrument: str, focus: str) -> str:
+    """One-sentence "what to focus on" drill for the resolved groove."""
+    profile = groove_get_profile(groove_style)
+    inst = (instrument or "").lower()
+    label = profile.get("label", groove_style)
     if focus == "Rhythm":
-        return "Metronome: 2 min chord changes only, then 2 min with groove pattern."
-    if level == "Beginner":
-        return "3 min: one bar at a time. 3 min: two-bar links. 2 min: full section slow."
-    return "Loop 6×: accuracy pass, then musical pass, then one pass with eyes on chart only."
+        return (
+            f"loop a 2-bar cell at half tempo, locking the {profile['time_feel']} "
+            f"with the metronome ticking {profile['accent']}, then speed up 8 BPM at a time."
+        )
+    if focus == "Melody":
+        if label.startswith("Jazz"):
+            return "phrase melodies in swung 8ths; land long notes on chord tones (3rds & 7ths)."
+        if label.startswith("Bossa"):
+            return "phrase melodies a hair behind the beat; target the AND of 2 / AND of 4 for syncopated stabs."
+        if label.startswith("Funk"):
+            return "phrase in short 16th-note cells; rest as much as you play."
+        if label.startswith("Rock"):
+            return "lean melodies into the backbeat (beats 2 & 4); stab consonants if singing."
+        if label.startswith("Ballad"):
+            return "phrase across the bar line; long sustained notes with breath swells."
+        return "phrase in 4-bar arcs over the straight-8th pulse; land the hook on beat 1."
+    if "guitar" in inst:
+        return f"strum pattern {'  '.join(profile['strum'])}; {profile['articulation']}."
+    if "piano" in inst or "key" in inst:
+        return profile["piano_comp"]
+    if "bass" in inst:
+        return profile["bass"]
+    if "voice" in inst or "vocal" in inst or "sing" in inst:
+        return profile["voice"]
+    return f"lock to the {profile['feel']}; accent {profile['accent']}."
 
 
 def fretboard_ascii(chord: str, level: str) -> str:

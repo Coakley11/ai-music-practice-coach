@@ -239,6 +239,25 @@ from backing_audio import (
 )
 import chord_subdivisions
 from coach_overlay import section_overlay_html as _section_overlay
+from groove_feel import (
+    GROOVE_PROFILE,
+    get_profile as _groove_profile,
+    instrument_phrasing_hint as _groove_instrument_hint,
+    resolve_groove_style as _groove_resolve,
+    short_feel_tag as _groove_short_feel_tag,
+)
+
+
+def _resolve_groove_override(groove_override: str | None) -> str:
+    """Resolve a user-facing groove pick into a concrete profile label.
+
+    The Practice page passes the user's ``practice_groove_style`` selectbox
+    value here. Anything blank or ``"Auto"`` falls back to the song-data
+    inference that ``backing_audio.infer_groove_style`` provides, so this
+    helper is safe to use anywhere we previously hard-coded
+    ``infer_groove_style(globals().get("song_data", {}), "Auto")``.
+    """
+    return _groove_resolve(groove_override, globals().get("song_data") or {})
 
 from song_chart_editor import render_chart_editor_panel
 from songs.backing_chart import render_backing_chord_chart
@@ -4519,7 +4538,17 @@ def _instrument_drills(
     ]
 
 
-def daily_practice_breakdown_markdown(song, sections, instrument, level, focus, minutes, variation=0):
+def daily_practice_breakdown_markdown(
+    song,
+    sections,
+    instrument,
+    level,
+    focus,
+    minutes,
+    variation=0,
+    *,
+    groove_override: str | None = None,
+):
     section_name, section_chords = _section_for_exercise(sections, variation)
     first_chord, second_chord = _transition_pair(section_chords, variation)
     blocks = _practice_time_blocks(minutes)
@@ -4527,7 +4556,7 @@ def daily_practice_breakdown_markdown(song, sections, instrument, level, focus, 
     chord_path = _chord_run(section_chords, span)
     family = _instrument_family(instrument)
     time_signature = default_time_signature(song, sections)
-    groove_style = infer_groove_style(globals().get("song_data", {}), "Auto")
+    groove_style = _resolve_groove_override(groove_override)
     bpm = int(st.session_state.get("backing_track_bpm", 100))
     rhythm = _rhythm_guidance(
         instrument,
@@ -4566,7 +4595,18 @@ def daily_practice_breakdown_markdown(song, sections, instrument, level, focus, 
 """.strip()
 
 
-def song_practice_plan(song, sections, instrument, level, focus, variation, section_lyrics=None, minutes=30):
+def song_practice_plan(
+    song,
+    sections,
+    instrument,
+    level,
+    focus,
+    variation,
+    section_lyrics=None,
+    minutes=30,
+    *,
+    groove_override: str | None = None,
+):
     section_name, section_chords = _section_for_exercise(sections, variation)
     first_chord, second_chord = _transition_pair(section_chords, variation)
     family = _instrument_family(instrument)
@@ -4578,7 +4618,7 @@ def song_practice_plan(song, sections, instrument, level, focus, variation, sect
     span = _exercise_span(level, bars)
     chord_path = _chord_run(section_chords, span)
     time_signature = default_time_signature(song, sections)
-    groove_style = infer_groove_style(globals().get("song_data", {}), "Auto")
+    groove_style = _resolve_groove_override(groove_override)
     bpm = int(st.session_state.get("backing_track_bpm", 100))
     section_text = (section_lyrics or {}).get(section_name, "")
     first_line = next(
@@ -4702,14 +4742,14 @@ def _ensure_song_bpm_defaults(song_title: str, song_data: dict | None = None) ->
     )
 
 
-def practice_text(level, instrument=None, sections=None, focus=None):
+def practice_text(level, instrument=None, sections=None, focus=None, *, groove_override: str | None = None):
     sections = sections or {}
     section_name, section_chords = _section_for_exercise(sections, 0)
     first_chord, second_chord = _transition_pair(section_chords, 0)
     chord_path = _chord_run(section_chords, _exercise_span(level, len(section_chords)))
     focus_area = _focus_area(focus)
     time_signature = default_time_signature(globals().get("song", ""), sections)
-    groove_style = infer_groove_style(globals().get("song_data", {}), "Auto")
+    groove_style = _resolve_groove_override(groove_override)
     bpm = int(st.session_state.get("backing_track_bpm", 100))
     rhythm = _rhythm_guidance(
         instrument or "",
@@ -6922,6 +6962,7 @@ if _studio_page == "practice":
                 display_key=_practice_chart_key,
                 bpm=_practice_bpm,
                 groove_style=_practice_groove,
+                song_data=song_data,
             ) or ""
         except Exception as _deep_focus_exc:
             _deep_focus_error = _deep_focus_exc
@@ -6964,6 +7005,7 @@ if _studio_page == "practice":
                 instrument,
                 _practice_groove,
                 _time_sig,
+                song_data=song_data,
             ) or ""
         except Exception as _rhythm_exc:
             _rhythm_error = _rhythm_exc
@@ -7179,6 +7221,7 @@ if _studio_page == "practice":
                 st.session_state[_coach_exercise_key],
                 section_lyrics=section_lyrics,
                 minutes=minutes,
+                groove_override=_practice_groove,
             )
         )
         st.markdown("</div>", unsafe_allow_html=True)
@@ -7382,6 +7425,7 @@ if _studio_page == "practice":
                 focus,
                 minutes,
                 variation=st.session_state[exercise_key],
+                groove_override=_practice_groove,
             )
         )
 
