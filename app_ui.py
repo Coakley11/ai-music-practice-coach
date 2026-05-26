@@ -2393,91 +2393,248 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   letter-spacing: 0.10em;
 }
 
-/* Karaoke setlist card on Song Selection */
-.ui-karaoke-setlist {
-  border: 1px solid rgba(190, 24, 93, 0.22);
-  border-radius: var(--r-md);
-  padding: 0.95rem 1.05rem 1.05rem 1.05rem;
-  margin: 0.85rem 0 1.1rem 0;
-  background: linear-gradient(180deg, #fff1f5 0%, #ffffff 100%);
-  box-shadow: 0 4px 18px rgba(190, 24, 93, 0.08), var(--shadow-1);
+/* ---------- Karaoke setlist (Song Selection) ---------------------
+   Vocal-stage / neon-lounge aesthetic: deep purple card, magenta
+   accents, soft pink glow on hover, neon-magenta highlight on the
+   "Now Singing" row, warm pink on the "Editing" row. Scoped to the
+   keyed container so it does NOT leak onto the rest of the page.
+   The wrapper class ``.st-key-karaoke_stage`` is emitted by
+   ``st.container(key="karaoke_stage")`` in karaoke_ui.py. */
+
+.st-key-karaoke_stage .ui-karaoke-setlist {
+  border: 1px solid rgba(244, 114, 182, 0.30);
+  border-radius: 18px;
+  padding: 1.20rem 1.30rem 1.10rem 1.30rem;
+  margin: 0.85rem 0 0.70rem 0;
+  background:
+    radial-gradient(140% 110% at 12% -10%, rgba(236, 72, 153, 0.18) 0%, rgba(236, 72, 153, 0) 60%),
+    radial-gradient(140% 110% at 92% 110%, rgba(168, 85, 247, 0.20) 0%, rgba(168, 85, 247, 0) 60%),
+    linear-gradient(180deg, #1a0b2e 0%, #2a0f3f 55%, #1f0a36 100%);
+  color: #fce7f3;
+  box-shadow:
+    0 22px 50px -20px rgba(8, 4, 28, 0.85),
+    0 4px 14px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  position: relative;
+  overflow: hidden;
 }
-.ui-karaoke-setlist .ui-karaoke-setlist-kicker {
-  font-size: 0.70rem;
-  font-weight: 800;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  color: #be185d;
-  margin: 0 0 0.20rem 0;
+.st-key-karaoke_stage .ui-karaoke-setlist::before {
+  /* neon-pink top sheen */
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(244, 114, 182, 0.55) 30%,
+    rgba(216, 180, 254, 0.55) 50%,
+    rgba(244, 114, 182, 0.55) 70%,
+    transparent 100%);
+  filter: blur(0.5px);
 }
-.ui-karaoke-setlist .ui-karaoke-setlist-title {
-  font-size: 1.10rem;
-  font-weight: 800;
-  letter-spacing: -0.005em;
-  color: #831843;
-  margin: 0 0 0.50rem 0;
-}
-.ui-karaoke-setlist-empty {
-  color: #831843;
-  opacity: 0.75;
-  font-size: 0.92rem;
-}
-.ui-karaoke-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.45rem 0.55rem;
-  border-radius: 10px;
-  background: rgba(190, 24, 93, 0.05);
-  margin-bottom: 0.35rem;
-  border: 1px solid rgba(190, 24, 93, 0.10);
-}
-.ui-karaoke-row .ui-karaoke-row-num {
-  font-weight: 800;
-  color: #be185d;
-  min-width: 1.6rem;
-  text-align: right;
-  opacity: 0.85;
-}
-.ui-karaoke-row.ui-karaoke-row-active {
-  background: rgba(190, 24, 93, 0.12);
-  border-color: rgba(190, 24, 93, 0.35);
-  box-shadow: inset 3px 0 0 #be185d;
-}
-.ui-karaoke-row.ui-karaoke-row-editing {
-  background: rgba(20, 184, 166, 0.12);
-  border-color: rgba(20, 184, 166, 0.35);
-  box-shadow: inset 3px 0 0 #0d9488;
-}
-.ui-karaoke-row .ui-karaoke-row-title {
-  font-weight: 700;
-  color: #0f172a;
-}
-.ui-karaoke-row .ui-karaoke-row-artist {
-  color: #64748b;
-  font-size: 0.88rem;
-  margin-left: 0.15rem;
-}
-/* Status pill that sits above a clickable setlist row's pick button.
-   "Now Singing" (active karaoke session) or "Editing" (master
-   selection) - rendered as a small chip so it reads as status
-   metadata, not as part of the song title. */
-.ui-karaoke-row-marker-wrap,
-.ui-karaoke-row-editing-marker-wrap,
-.ui-karaoke-row-active-marker-wrap {
-  margin: 0 0 0.18rem 0.08rem;
-  display: flex;
-}
-.ui-karaoke-row-marker {
+.st-key-karaoke_stage .ui-karaoke-setlist-kicker {
   display: inline-flex;
   align-items: center;
-  font-size: 0.66rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  padding: 1px 8px;
+  color: #f9a8d4;
+  margin: 0 0 0.30rem 0;
+  text-shadow: 0 0 12px rgba(244, 114, 182, 0.45);
+}
+.st-key-karaoke_stage .ui-karaoke-setlist-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f472b6;
+  box-shadow: 0 0 10px rgba(244, 114, 182, 0.9);
+  animation: ui-karaoke-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ui-karaoke-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.85); }
+}
+.st-key-karaoke_stage .ui-karaoke-setlist-title {
+  font-size: 1.20rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: #ffffff;
+  margin: 0 0 0.55rem 0;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+}
+.st-key-karaoke_stage .ui-karaoke-setlist-count {
+  font-weight: 700;
+  color: #f9a8d4;
+  margin-left: 0.35rem;
+  letter-spacing: 0.05em;
+  opacity: 0.95;
+}
+.st-key-karaoke_stage .ui-karaoke-setlist-empty {
+  color: #f5d0fe;
+  opacity: 0.8;
+  font-size: 0.95rem;
+  font-style: italic;
+}
+
+/* Captions inside the stage container (the "click a song..." help
+   text and the "Karaoke set in progress" footer) need to lift off
+   the dark purple. Streamlit renders captions as small grey text - we
+   override so they read clearly on the dark vocal-stage card. */
+.st-key-karaoke_stage [data-testid="stCaptionContainer"],
+.st-key-karaoke_stage .stCaption,
+.st-key-karaoke_stage small {
+  color: #f5d0fe !important;
+  opacity: 0.95;
+}
+.st-key-karaoke_stage [data-testid="stCaptionContainer"] strong,
+.st-key-karaoke_stage .stCaption strong {
+  color: #ffffff;
+}
+
+/* Toggle / slider / selectbox labels on the dark card. */
+.st-key-karaoke_stage label,
+.st-key-karaoke_stage [data-testid="stWidgetLabel"] p {
+  color: #fbcfe8 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em;
+}
+
+/* Pick buttons (one per queue row), the actions row (Start / Stop /
+   Clear Setlist), and the up/down/remove icons. Default look = dark
+   purple with magenta border; hover = soft pink glow; primary type
+   (currently-editing song) = magenta neon. */
+.st-key-karaoke_stage .stButton > button {
+  background: rgba(76, 29, 113, 0.55) !important;
+  color: #fce7f3 !important;
+  border: 1px solid rgba(244, 114, 182, 0.30) !important;
+  border-radius: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 200ms ease,
+    transform 160ms ease,
+    filter 160ms ease !important;
+}
+.st-key-karaoke_stage .stButton > button:hover:not(:disabled) {
+  background: rgba(124, 58, 237, 0.45) !important;
+  border-color: rgba(244, 114, 182, 0.55) !important;
+  box-shadow:
+    0 8px 22px -6px rgba(236, 72, 153, 0.45),
+    inset 0 0 0 1px rgba(244, 114, 182, 0.20) !important;
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+.st-key-karaoke_stage .stButton > button:disabled {
+  background: rgba(76, 29, 113, 0.22) !important;
+  color: rgba(252, 231, 243, 0.45) !important;
+  border-color: rgba(244, 114, 182, 0.16) !important;
+}
+/* Primary-typed buttons in the stage: the currently-editing song's
+   pick button and the "Start Karaoke Set" button. */
+.st-key-karaoke_stage .stButton > button[kind="primary"] {
+  background: linear-gradient(180deg, #ec4899 0%, #be185d 100%) !important;
+  color: #ffffff !important;
+  border-color: rgba(251, 207, 232, 0.55) !important;
+  box-shadow:
+    0 12px 28px -6px rgba(236, 72, 153, 0.55),
+    0 0 0 1px rgba(251, 207, 232, 0.35) inset !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.40);
+}
+.st-key-karaoke_stage .stButton > button[kind="primary"]:hover:not(:disabled) {
+  background: linear-gradient(180deg, #f472b6 0%, #db2777 100%) !important;
+  box-shadow:
+    0 16px 36px -6px rgba(236, 72, 153, 0.75),
+    0 0 0 1px rgba(251, 207, 232, 0.55) inset !important;
+}
+
+/* Toggle (st.toggle) and selectbox/slider widgets inherit from the
+   site-wide controls. Add a magenta tint on the toggle thumb so the
+   karaoke-only prefs feel cohesive with the rest of the card. */
+.st-key-karaoke_stage [data-baseweb="checkbox"] [role="checkbox"][aria-checked="true"],
+.st-key-karaoke_stage [data-baseweb="checkbox"] [role="switch"][aria-checked="true"] {
+  background: linear-gradient(180deg, #ec4899 0%, #be185d 100%) !important;
+}
+
+/* Status pill that sits above each clickable setlist row's pick
+   button. "Now Singing" (active karaoke session) or "Editing"
+   (master selection) - small chip so it reads as status metadata,
+   not as part of the song title. */
+.st-key-karaoke_stage .ui-karaoke-row,
+.st-key-karaoke_stage .ui-karaoke-row-active,
+.st-key-karaoke_stage .ui-karaoke-row-editing,
+.st-key-karaoke_stage .ui-karaoke-row-marker-wrap,
+.st-key-karaoke_stage .ui-karaoke-row-editing-marker-wrap,
+.st-key-karaoke_stage .ui-karaoke-row-active-marker-wrap {
+  margin: 0 0 0.18rem 0.10rem;
+  display: flex;
+}
+.st-key-karaoke_stage .ui-karaoke-row-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.30rem;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 2px 10px 2px 9px;
   border-radius: 999px;
   line-height: 1.5;
+}
+.st-key-karaoke_stage .ui-karaoke-row-marker.marker-singing {
+  color: #ffffff;
+  background: linear-gradient(180deg, #ec4899 0%, #be185d 100%);
+  box-shadow:
+    0 0 0 1px rgba(251, 207, 232, 0.55),
+    0 0 14px rgba(236, 72, 153, 0.55);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.40);
+}
+.st-key-karaoke_stage .ui-karaoke-row-marker.marker-singing::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
+  animation: ui-karaoke-pulse 1.4s ease-in-out infinite;
+}
+.st-key-karaoke_stage .ui-karaoke-row-marker.marker-editing {
+  color: #fdf4ff;
+  background: rgba(168, 85, 247, 0.32);
+  border: 1px solid rgba(216, 180, 254, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(216, 180, 254, 0.10);
+}
+
+/* When the currently-editing song's pick button is :hover, lift it
+   a touch more to reinforce the click affordance. */
+.st-key-karaoke_stage .ui-karaoke-row-editing-marker-wrap + div .stButton > button,
+.st-key-karaoke_stage .ui-karaoke-row-active-marker-wrap + div .stButton > button {
+  /* Make the pick button visually align with its status pill above. */
+  border-radius: 12px !important;
+}
+
+/* Restyle Streamlit's native selectbox + slider chrome on the stage
+   to match the magenta theme (without overriding upstream behaviour). */
+.st-key-karaoke_stage [data-baseweb="select"] > div,
+.st-key-karaoke_stage [data-baseweb="input"] > div {
+  background: rgba(76, 29, 113, 0.45) !important;
+  border-color: rgba(244, 114, 182, 0.32) !important;
+  color: #fce7f3 !important;
+}
+.st-key-karaoke_stage [data-baseweb="select"] svg {
+  fill: #f9a8d4 !important;
+}
+.st-key-karaoke_stage [data-testid="stSlider"] [data-baseweb="slider"] > div:nth-child(2) {
+  background: rgba(244, 114, 182, 0.30) !important;
+}
+.st-key-karaoke_stage [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
+  background: linear-gradient(180deg, #ec4899 0%, #be185d 100%) !important;
+  border-color: rgba(251, 207, 232, 0.55) !important;
 }
 
 /* Karaoke transition card on Backing Track page */

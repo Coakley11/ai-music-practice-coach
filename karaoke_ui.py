@@ -158,277 +158,290 @@ def render_karaoke_setlist_panel(
     pos, total = km.session_position(st.session_state)
     title = km.voice_wording("queue_section_title", voice=True)
 
-    st.markdown(
-        f'<div class="ui-karaoke-setlist">'
-        f'<p class="ui-karaoke-setlist-kicker">Vocal Performance</p>'
-        f'<p class="ui-karaoke-setlist-title">{html.escape(title)}'
-        + (f' <small style="font-weight:600;opacity:0.75;color:#831843;">({total} queued)</small>' if total else "")
-        + "</p>",
-        unsafe_allow_html=True,
-    )
-
-    if not queue:
+    # Wrap the entire setlist in a keyed container so the karaoke-
+    # themed CSS (deep purple background, magenta accents, neon-pink
+    # active highlight) can scope to ``.st-key-karaoke_stage ...``.
+    # Without this scope the dark vocal-stage styling would bleed onto
+    # the regular musician buttons elsewhere on the page.
+    stage = st.container(key="karaoke_stage")
+    with stage:
         st.markdown(
-            '<p class="ui-karaoke-setlist-empty">'
-            + html.escape(km.voice_wording("queue_empty_caption", voice=True))
-            + "</p></div>",
+            f'<div class="ui-karaoke-setlist">'
+            f'<p class="ui-karaoke-setlist-kicker">'
+            f'<span class="ui-karaoke-setlist-dot" aria-hidden="true"></span>'
+            f"Vocal Performance"
+            f"</p>"
+            f'<p class="ui-karaoke-setlist-title">{html.escape(title)}'
+            + (
+                f' <small class="ui-karaoke-setlist-count">'
+                f"({total} queued)"
+                "</small>"
+                if total
+                else ""
+            )
+            + "</p>",
             unsafe_allow_html=True,
         )
-        return
 
-    st.caption(
-        "Click a song to make it the active editing/viewing song "
-        "(lyrics, song card, backing defaults switch to it). "
-        "Queue order and karaoke state stay untouched."
-    )
+        if not queue:
+            st.markdown(
+                '<p class="ui-karaoke-setlist-empty">'
+                + html.escape(km.voice_wording("queue_empty_caption", voice=True))
+                + "</p></div>",
+                unsafe_allow_html=True,
+            )
+            return
 
-    # The "active editing/viewing" song = the master selection. We
-    # surface a visual indicator next to whichever queue row matches
-    # so the user always knows which row their edits will land on.
-    session_active_pk = km.current_session_pick_key(st.session_state)
-    selected_pk = ""
-    try:
-        selected_pk = str(
-            (st.session_state.get("selected_song") or {}).get("pick_key") or ""
-        )
-    except Exception:
-        selected_pk = ""
-
-    for idx, pick_key in enumerate(queue):
-        t, a = lookup_pick_key_label(
-            pick_key,
-            record_for_pick_key=record_for_pick_key,
-            all_records=all_records,
-        )
-        is_now_singing = pick_key == session_active_pk
-        is_editing = bool(selected_pk and pick_key == selected_pk)
-
-        # Status markers: "Now Singing" (karaoke session) takes priority
-        # over "Editing" (master selection) because performing trumps
-        # previewing in the user's mental model.
-        if is_now_singing:
-            marker_text = "Now Singing"
-            marker_color = "#831843"
-            marker_bg = "rgba(190, 24, 93, 0.12)"
-        elif is_editing:
-            marker_text = "Editing"
-            marker_color = "#0f766e"
-            marker_bg = "rgba(20, 184, 166, 0.14)"
-        else:
-            marker_text = ""
-            marker_color = ""
-            marker_bg = ""
-
-        row_cls = "ui-karaoke-row"
-        if is_now_singing:
-            row_cls += " ui-karaoke-row-active"
-        elif is_editing:
-            row_cls += " ui-karaoke-row-editing"
-
-        marker_html = (
-            f'<span class="ui-karaoke-row-marker" '
-            f'style="background:{marker_bg};color:{marker_color};">'
-            f"{html.escape(marker_text)}"
-            "</span>"
-            if marker_text
-            else ""
-        )
-
-        # Layout: clickable title button (wide) | up | down | remove.
-        # The button label embeds the queue number + title + artist so
-        # the row reads naturally even when the visual marker is off.
-        c_pick, c_up, c_dn, c_rm = st.columns([8, 1, 1, 1])
-        with c_pick:
-            # Row marker pill sits above the button so the button label
-            # itself stays clean and the marker reads as status, not as
-            # part of the song title.
-            if marker_html:
-                st.markdown(
-                    f'<div class="{row_cls}-marker-wrap">{marker_html}</div>',
-                    unsafe_allow_html=True,
-                )
-            pick_label = f"{idx + 1}.  {t}  —  {a}"
-            if st.button(
-                pick_label,
-                key=f"karaoke_pick_{idx}_{pick_key}",
-                use_container_width=True,
-                type="primary" if is_editing else "secondary",
-                help=(
-                    "Make this the active editing/viewing song "
-                    "(lyrics, song card, backing defaults switch to it). "
-                    "Queue position stays unchanged."
-                ),
-                disabled=on_pick_song is None,
-            ):
-                if on_pick_song is not None and not is_editing:
-                    try:
-                        on_pick_song(pick_key)
-                    except Exception:
-                        # Last-resort fallback: at minimum write the
-                        # pick_key into session_state so the rest of
-                        # the app at least sees the selection.
-                        st.session_state["selected_song"] = {
-                            "pick_key": pick_key,
-                            "title": t,
-                            "artist": a,
-                        }
-                    st.rerun()
-        with c_up:
-            if st.button(
-                "↑",
-                key=f"karaoke_up_{idx}_{pick_key}",
-                use_container_width=True,
-                disabled=idx == 0,
-                help="Move earlier in the setlist",
-            ):
-                km.move_in_queue(st.session_state, pick_key, -1)
-                st.rerun()
-        with c_dn:
-            if st.button(
-                "↓",
-                key=f"karaoke_dn_{idx}_{pick_key}",
-                use_container_width=True,
-                disabled=idx == len(queue) - 1,
-                help="Move later in the setlist",
-            ):
-                km.move_in_queue(st.session_state, pick_key, +1)
-                st.rerun()
-        with c_rm:
-            if st.button(
-                "✕",
-                key=f"karaoke_rm_{idx}_{pick_key}",
-                use_container_width=True,
-                help="Remove from setlist",
-            ):
-                km.remove_from_queue(st.session_state, pick_key)
-                st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # Setlist actions
-    active = km.is_karaoke_session_active(st.session_state)
-    c_start, c_stop, c_clear, c_auto = st.columns([2, 2, 2, 3])
-    with c_start:
-        if st.button(
-            km.voice_wording("start_session_button", voice=True),
-            key="karaoke_start_session",
-            disabled=active or not queue,
-            type="primary",
-            use_container_width=True,
-        ):
-            started = km.start_session(st.session_state)
-            if started and navigate_to_backing is not None:
-                navigate_to_backing()
-            st.rerun()
-    with c_stop:
-        if st.button(
-            km.voice_wording("stop_session_button", voice=True),
-            key="karaoke_stop_session",
-            disabled=not active,
-            use_container_width=True,
-        ):
-            km.stop_session(st.session_state)
-            st.rerun()
-    with c_clear:
-        if st.button(
-            "Clear Setlist",
-            key="karaoke_clear_queue",
-            use_container_width=True,
-            disabled=not queue,
-        ):
-            km.clear_queue(st.session_state)
-            st.rerun()
-    with c_auto:
-        current_auto = km.auto_advance_enabled(st.session_state)
-        new_auto = st.toggle(
-            "Auto-advance between songs",
-            value=current_auto,
-            key="karaoke_auto_advance_toggle",
-            help="When a song finishes, automatically load the next karaoke song.",
-        )
-        if new_auto != current_auto:
-            st.session_state[km.KARAOKE_AUTO_ADVANCE_KEY] = bool(new_auto)
-
-    cc_left, cc_right = st.columns([3, 4])
-    with cc_left:
-        cur_cd = km.countdown_enabled(st.session_state)
-        new_cd = st.toggle(
-            "Countdown before each song",
-            value=cur_cd,
-            key="karaoke_countdown_toggle",
-            help="Show a 5-4-3-2-1 pre-roll before the backing track starts.",
-        )
-        if new_cd != cur_cd:
-            st.session_state[km.KARAOKE_COUNTDOWN_KEY] = bool(new_cd)
-    with cc_right:
-        cur_seconds = km.countdown_seconds(st.session_state)
-        new_seconds = st.slider(
-            "Countdown length",
-            min_value=1,
-            max_value=10,
-            value=cur_seconds,
-            step=1,
-            key="karaoke_countdown_seconds_slider",
-            help="How long the pre-roll countdown lasts (in seconds).",
-            disabled=not new_cd,
-        )
-        if int(new_seconds) != cur_seconds:
-            st.session_state[km.KARAOKE_COUNTDOWN_SECONDS_KEY] = int(new_seconds)
-
-    # Karaoke display options - chords toggle + lyric color picker.
-    # Both write straight to session_state so the Backing Track page
-    # picks them up on the next render without any extra plumbing.
-    disp_left, disp_right = st.columns([3, 4])
-    with disp_left:
-        cur_show = km.show_chords_enabled(st.session_state)
-        new_show = st.toggle(
-            "Show chords while singing",
-            value=cur_show,
-            key="karaoke_show_chords_toggle",
-            help=(
-                "When on, the chord strip is rendered under the lyrics "
-                "and the current chord highlights in sync with the backing "
-                "track. Turn off for a lyrics-only sing-along view."
-            ),
-        )
-        if bool(new_show) != cur_show:
-            st.session_state[km.KARAOKE_SHOW_CHORDS_KEY] = bool(new_show)
-    with disp_right:
-        _color_options = ["white", "gold", "cyan", "cream"]
-        _color_labels = {
-            "white": "White (highest contrast)",
-            "gold": "Soft gold",
-            "cyan": "Cyan",
-            "cream": "Warm cream",
-        }
-        cur_color = km.lyric_color(st.session_state)
-        try:
-            _idx = _color_options.index(cur_color)
-        except ValueError:
-            _idx = 0
-        new_color = st.selectbox(
-            "Lyric color",
-            options=_color_options,
-            index=_idx,
-            format_func=lambda v: _color_labels.get(v, v.title()),
-            key="karaoke_lyric_color_picker",
-            help=(
-                "Color used for lyrics on the karaoke black screen. "
-                "Choose what's easiest to read from a distance."
-            ),
-        )
-        if str(new_color) != cur_color:
-            st.session_state[km.KARAOKE_LYRIC_COLOR_KEY] = str(new_color)
-
-    if active:
-        cur_t, cur_a = lookup_pick_key_label(
-            active_pk or "",
-            record_for_pick_key=record_for_pick_key,
-            all_records=all_records,
-        )
         st.caption(
-            f"Karaoke set in progress · **{pos} of {total}** · Now singing **{cur_t}** — {cur_a}"
+            "Click a song to make it the active editing/viewing song "
+            "(lyrics, song card, backing defaults switch to it). "
+            "Queue order and karaoke state stay untouched."
         )
+
+        # The "active editing/viewing" song = the master selection. We
+        # surface a visual indicator next to whichever queue row matches
+        # so the user always knows which row their edits will land on.
+        session_active_pk = km.current_session_pick_key(st.session_state)
+        selected_pk = ""
+        try:
+            selected_pk = str(
+                (st.session_state.get("selected_song") or {}).get("pick_key") or ""
+            )
+        except Exception:
+            selected_pk = ""
+
+        for idx, pick_key in enumerate(queue):
+            t, a = lookup_pick_key_label(
+                pick_key,
+                record_for_pick_key=record_for_pick_key,
+                all_records=all_records,
+            )
+            is_now_singing = pick_key == session_active_pk
+            is_editing = bool(selected_pk and pick_key == selected_pk)
+
+            # Status markers: "Now Singing" (karaoke session) takes
+            # priority over "Editing" (master selection) because
+            # performing trumps previewing in the user's mental model.
+            if is_now_singing:
+                marker_text = "Now Singing"
+                marker_cls = "marker-singing"
+            elif is_editing:
+                marker_text = "Editing"
+                marker_cls = "marker-editing"
+            else:
+                marker_text = ""
+                marker_cls = ""
+
+            row_cls = "ui-karaoke-row"
+            if is_now_singing:
+                row_cls += " ui-karaoke-row-active"
+            elif is_editing:
+                row_cls += " ui-karaoke-row-editing"
+
+            marker_html = (
+                f'<span class="ui-karaoke-row-marker {marker_cls}">'
+                f"{html.escape(marker_text)}"
+                "</span>"
+                if marker_text
+                else ""
+            )
+
+            # Layout: clickable title button (wide) | up | down | remove.
+            # The button label embeds the queue number + title + artist
+            # so the row reads naturally even when the marker is off.
+            c_pick, c_up, c_dn, c_rm = st.columns([8, 1, 1, 1])
+            with c_pick:
+                # Row marker pill sits above the button so the button
+                # label stays clean and the marker reads as status,
+                # not as part of the song title.
+                if marker_html:
+                    st.markdown(
+                        f'<div class="{row_cls}-marker-wrap">{marker_html}</div>',
+                        unsafe_allow_html=True,
+                    )
+                pick_label = f"{idx + 1}.  {t}  —  {a}"
+                if st.button(
+                    pick_label,
+                    key=f"karaoke_pick_{idx}_{pick_key}",
+                    use_container_width=True,
+                    type="primary" if is_editing else "secondary",
+                    help=(
+                        "Make this the active editing/viewing song "
+                        "(lyrics, song card, backing defaults switch to it). "
+                        "Queue position stays unchanged."
+                    ),
+                    disabled=on_pick_song is None,
+                ):
+                    if on_pick_song is not None and not is_editing:
+                        try:
+                            on_pick_song(pick_key)
+                        except Exception:
+                            # Last-resort fallback: at minimum write
+                            # the pick_key into session_state so the
+                            # rest of the app sees the selection.
+                            st.session_state["selected_song"] = {
+                                "pick_key": pick_key,
+                                "title": t,
+                                "artist": a,
+                            }
+                        st.rerun()
+            with c_up:
+                if st.button(
+                    "↑",
+                    key=f"karaoke_up_{idx}_{pick_key}",
+                    use_container_width=True,
+                    disabled=idx == 0,
+                    help="Move earlier in the setlist",
+                ):
+                    km.move_in_queue(st.session_state, pick_key, -1)
+                    st.rerun()
+            with c_dn:
+                if st.button(
+                    "↓",
+                    key=f"karaoke_dn_{idx}_{pick_key}",
+                    use_container_width=True,
+                    disabled=idx == len(queue) - 1,
+                    help="Move later in the setlist",
+                ):
+                    km.move_in_queue(st.session_state, pick_key, +1)
+                    st.rerun()
+            with c_rm:
+                if st.button(
+                    "✕",
+                    key=f"karaoke_rm_{idx}_{pick_key}",
+                    use_container_width=True,
+                    help="Remove from setlist",
+                ):
+                    km.remove_from_queue(st.session_state, pick_key)
+                    st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # Setlist actions
+        active = km.is_karaoke_session_active(st.session_state)
+        c_start, c_stop, c_clear, c_auto = st.columns([2, 2, 2, 3])
+        with c_start:
+            if st.button(
+                km.voice_wording("start_session_button", voice=True),
+                key="karaoke_start_session",
+                disabled=active or not queue,
+                type="primary",
+                use_container_width=True,
+            ):
+                started = km.start_session(st.session_state)
+                if started and navigate_to_backing is not None:
+                    navigate_to_backing()
+                st.rerun()
+        with c_stop:
+            if st.button(
+                km.voice_wording("stop_session_button", voice=True),
+                key="karaoke_stop_session",
+                disabled=not active,
+                use_container_width=True,
+            ):
+                km.stop_session(st.session_state)
+                st.rerun()
+        with c_clear:
+            if st.button(
+                "Clear Setlist",
+                key="karaoke_clear_queue",
+                use_container_width=True,
+                disabled=not queue,
+            ):
+                km.clear_queue(st.session_state)
+                st.rerun()
+        with c_auto:
+            current_auto = km.auto_advance_enabled(st.session_state)
+            new_auto = st.toggle(
+                "Auto-advance between songs",
+                value=current_auto,
+                key="karaoke_auto_advance_toggle",
+                help="When a song finishes, automatically load the next karaoke song.",
+            )
+            if new_auto != current_auto:
+                st.session_state[km.KARAOKE_AUTO_ADVANCE_KEY] = bool(new_auto)
+
+        cc_left, cc_right = st.columns([3, 4])
+        with cc_left:
+            cur_cd = km.countdown_enabled(st.session_state)
+            new_cd = st.toggle(
+                "Countdown before each song",
+                value=cur_cd,
+                key="karaoke_countdown_toggle",
+                help="Show a 5-4-3-2-1 pre-roll before the backing track starts.",
+            )
+            if new_cd != cur_cd:
+                st.session_state[km.KARAOKE_COUNTDOWN_KEY] = bool(new_cd)
+        with cc_right:
+            cur_seconds = km.countdown_seconds(st.session_state)
+            new_seconds = st.slider(
+                "Countdown length",
+                min_value=1,
+                max_value=10,
+                value=cur_seconds,
+                step=1,
+                key="karaoke_countdown_seconds_slider",
+                help="How long the pre-roll countdown lasts (in seconds).",
+                disabled=not new_cd,
+            )
+            if int(new_seconds) != cur_seconds:
+                st.session_state[km.KARAOKE_COUNTDOWN_SECONDS_KEY] = int(new_seconds)
+
+        # Karaoke display options - chords toggle + lyric color picker.
+        # Both write straight to session_state so the Backing Track
+        # page picks them up on the next render with no extra plumbing.
+        disp_left, disp_right = st.columns([3, 4])
+        with disp_left:
+            cur_show = km.show_chords_enabled(st.session_state)
+            new_show = st.toggle(
+                "Show chords while singing",
+                value=cur_show,
+                key="karaoke_show_chords_toggle",
+                help=(
+                    "When on, the chord strip is rendered under the lyrics "
+                    "and the current chord highlights in sync with the "
+                    "backing track. Turn off for a lyrics-only sing-along."
+                ),
+            )
+            if bool(new_show) != cur_show:
+                st.session_state[km.KARAOKE_SHOW_CHORDS_KEY] = bool(new_show)
+        with disp_right:
+            _color_options = ["white", "gold", "cyan", "cream"]
+            _color_labels = {
+                "white": "White (highest contrast)",
+                "gold": "Soft gold",
+                "cyan": "Cyan",
+                "cream": "Warm cream",
+            }
+            cur_color = km.lyric_color(st.session_state)
+            try:
+                _idx = _color_options.index(cur_color)
+            except ValueError:
+                _idx = 0
+            new_color = st.selectbox(
+                "Lyric color",
+                options=_color_options,
+                index=_idx,
+                format_func=lambda v: _color_labels.get(v, v.title()),
+                key="karaoke_lyric_color_picker",
+                help=(
+                    "Color used for lyrics on the karaoke black screen. "
+                    "Choose what's easiest to read from a distance."
+                ),
+            )
+            if str(new_color) != cur_color:
+                st.session_state[km.KARAOKE_LYRIC_COLOR_KEY] = str(new_color)
+
+        if active:
+            cur_t, cur_a = lookup_pick_key_label(
+                session_active_pk or "",
+                record_for_pick_key=record_for_pick_key,
+                all_records=all_records,
+            )
+            st.caption(
+                f"Karaoke set in progress · **{pos} of {total}** · "
+                f"Now singing **{cur_t}** — {cur_a}"
+            )
 
 
 # ---------------------------------------------------------------------------
