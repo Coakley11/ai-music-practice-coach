@@ -185,13 +185,22 @@ def load_song_catalog():
 
 
 def build_search_blob(r: dict[str, Any]) -> str:
+    ext = r.get("extensions") or {}
+    levels = list((r.get("chart_versions") or {}).keys())
     parts = [
         r.get("title") or "",
         r.get("artist") or "",
         r.get("composer") or "",
         r.get("genre") or "",
+        ext.get("default_groove") or "",
+        ext.get("time_signature") or "",
+        r.get("chart_status") or "",
+        " ".join(levels),
+        "beginner" if "Beginner" in levels else "",
+        "intermediate" if "Intermediate" in levels else "",
+        "advanced" if "Advanced" in levels else "",
     ]
-    return " ".join(parts).lower()
+    return " ".join(str(p) for p in parts if p).lower()
 
 
 def _token_match(token: str, blob: str) -> bool:
@@ -212,14 +221,24 @@ def search_records(
     query: str,
     *,
     genre: str | None = None,
+    genres: list[str] | None = None,
     limit: int = 120,
 ) -> list[dict[str, Any]]:
     """
-    Filter songs by title, artist, composer, or genre.
+    Filter songs by title, artist, composer, genre, groove/style, or chart level.
     Supports partial typing; all space-separated tokens must match somewhere in the blob.
+
+    When ``genres`` is a non-empty list, keep rows whose genre is in that list (OR).
+    Legacy ``genre`` (single) is used only when ``genres`` is empty/None.
     """
     q = (query or "").strip().lower()
-    pool = [r for r in records if genre is None or r.get("genre") == genre]
+    genre_set = {g for g in (genres or []) if g}
+    if genre_set:
+        pool = [r for r in records if r.get("genre") in genre_set]
+    elif genre:
+        pool = [r for r in records if r.get("genre") == genre]
+    else:
+        pool = list(records)
 
     if not q:
         return pool[:limit]

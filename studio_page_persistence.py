@@ -54,6 +54,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "song_search_scope",
             "song_picker_level_filter",
             "workspace_genre_filter",
+            "workspace_genre_filters",
             "song_search_text",
             "picker_open_chord_coach",
             "song_picker_active_source",

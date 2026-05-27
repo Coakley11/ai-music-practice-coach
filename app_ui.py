@@ -1162,6 +1162,65 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   color: #64748b;
   margin: 0.45rem 0 0.35rem 0;
 }
+.st-key-song_library_panel .ui-genre-filter-active-summary {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin: 0.35rem 0 0.15rem 0;
+  line-height: 1.4;
+}
+.st-key-song_library_panel .ui-genre-filter-active-summary strong {
+  color: #b91c1c;
+  font-weight: 800;
+}
+.st-key-song_library_panel [class*="st-key-genre_pill_"] .stButton > button,
+.st-key-song_library_panel [class*="st-key-genre_more_"] .stButton > button {
+  border-radius: 999px !important;
+  font-size: 0.78rem !important;
+  font-weight: 750 !important;
+  letter-spacing: 0.02em !important;
+  min-height: 2rem !important;
+  padding: 0.28rem 0.65rem !important;
+  border: 1px solid rgba(148, 163, 184, 0.55) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #334155 !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease !important;
+}
+.st-key-song_library_panel [class*="st-key-genre_pill_"] .stButton > button:hover,
+.st-key-song_library_panel [class*="st-key-genre_more_"] .stButton > button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(220, 38, 38, 0.45) !important;
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.12) !important;
+}
+.st-key-song_library_panel [class*="st-key-genre_pill_"] .stButton > button[kind="primary"],
+.st-key-song_library_panel [class*="st-key-genre_more_"] .stButton > button[kind="primary"] {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 55%, #b91c1c 100%) !important;
+  border-color: rgba(220, 38, 38, 0.85) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15) inset, 0 4px 16px rgba(220, 38, 38, 0.38) !important;
+}
+.st-key-song_library_panel .st-key-genre_clear_filters .stButton > button {
+  border-radius: 999px !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  min-height: 1.85rem !important;
+  border: 1px dashed rgba(148, 163, 184, 0.65) !important;
+  background: transparent !important;
+  color: #64748b !important;
+}
+.st-key-song_library_panel .st-key-genre_clear_filters .stButton > button:hover {
+  border-color: rgba(220, 38, 38, 0.55) !important;
+  color: #b91c1c !important;
+  background: rgba(254, 226, 226, 0.35) !important;
+}
+.ui-active-song-hub.source-custom,
+.st-key-active_song_hub .ui-active-song-hub.source-custom {
+  border: 2px solid rgba(234, 88, 12, 0.45);
+  box-shadow: 0 8px 28px rgba(234, 88, 12, 0.18);
+}
+.ui-active-song-hub.source-custom .ui-active-song-hero-title,
+.st-key-active_song_hub .source-custom .ui-active-song-hero-title {
+  color: #fff7ed;
+}
 .ui-backing-active-song {
   display: grid;
   grid-template-columns: 96px 1fr;
