@@ -6,10 +6,21 @@ import html
 from typing import Any
 
 from chord_subdivisions import (
+    is_hit_token as _sub_is_hit_token,
     is_subdivided_bar as _sub_is_subdivided_bar,
+    hit_underlying_chord as _sub_hit_underlying_chord,
     parse_subdivisions as _sub_parse_subdivisions,
     subdivisions as _sub_subdivisions,
 )
+
+try:
+    from music_theory import is_no_chord_token as _is_no_chord_token
+except ImportError:
+    def _is_no_chord_token(chord):
+        if chord is None:
+            return False
+        cleaned = str(chord).strip().replace(" ", "").upper()
+        return cleaned in {"N.C.", "NC", "N.C", "N/C", "(N.C.)", "TACET", "—", "-"}
 
 BACKING_CHART_CSS = """
 <style>
@@ -198,6 +209,91 @@ BACKING_CHART_CSS = """
   font-style: italic;
 }
 .backing-chart-sheet .empty-chart { color: #64748b; font-size: 0.9rem; }
+
+/* N.C. (no-chord / tacet) cell — dashed silver border, muted glyph,
+   and a "Tacet" caption so the breakdown reads at a glance instead
+   of the cell looking like a normal chord that happens to spell
+   "N.C." in plain text. */
+.backing-chart-sheet .chord-cell.tacet {
+  background: repeating-linear-gradient(
+      135deg,
+      rgba(148, 163, 184, 0.05) 0 6px,
+      rgba(148, 163, 184, 0.00) 6px 12px),
+    linear-gradient(180deg, #f8fafc, #eef2f7);
+  border-style: dashed;
+  border-color: rgba(100, 116, 139, 0.55);
+  color: #475569;
+}
+.backing-chart-sheet .chord-cell.tacet .chord-symbol {
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.backing-chart-sheet .chord-cell.tacet .chord-symbol::before {
+  content: "♪";
+  display: inline-block;
+  transform: rotate(-12deg) scale(1.05);
+  color: #94a3b8;
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: #94a3b8;
+  font-weight: 900;
+}
+.backing-chart-sheet .chord-cell.tacet .duration {
+  color: #64748b;
+}
+.backing-chart-sheet .chord-cell.tacet .tacet-tag {
+  display: block;
+  margin-top: 3px;
+  color: #475569;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.backing-chart-sheet .chord-cell.tacet.current-chord {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(148, 163, 184, 0.10) 0 6px,
+      rgba(148, 163, 184, 0.00) 6px 12px),
+    linear-gradient(180deg, #fef9c3, #fde68a);
+  border-color: #b45309;
+  box-shadow: 0 0 0 4px rgba(180, 83, 9, 0.15), 0 0 22px rgba(180, 83, 9, 0.20);
+}
+
+/* Rhythmic hit / stop-time cell — orange starburst styling so the
+   eye lands on it as a band-stab even when surrounded by normal
+   chord bars. */
+.backing-chart-sheet .chord-cell.hit {
+  background: linear-gradient(180deg, #fff7ed 0%, #ffedd5 100%);
+  border-color: rgba(234, 88, 12, 0.55);
+  border-style: solid;
+}
+.backing-chart-sheet .chord-cell.hit .chord-symbol {
+  color: #9a3412;
+  font-weight: 900;
+}
+.backing-chart-sheet .chord-cell.hit .chord-symbol::after {
+  content: " ✦";
+  color: #ea580c;
+  font-weight: 900;
+}
+.backing-chart-sheet .chord-cell.hit .hit-tag {
+  display: block;
+  margin-top: 3px;
+  color: #c2410c;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 760px) {
   .backing-chart-sheet .lead-grid { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
 }
@@ -311,11 +407,24 @@ def chart_grid_html(
         previous = chords[idx - 1] if idx else None
         same_as_prev = bool(previous and chord == previous)
         is_subdivided = _sub_is_subdivided_bar(chord)
-        # Don't compress subdivided bars with a "%" repeat marker - each
-        # subdivided bar is its own distinct passing-harmony event.
-        if same_as_prev and not is_subdivided:
+        is_tacet = (not is_subdivided) and _is_no_chord_token(chord)
+        is_hit = (not is_subdivided) and _sub_is_hit_token(chord)
+        # Don't compress subdivided / tacet / hit bars with a "%"
+        # repeat marker — each is its own distinct event the singer
+        # / band needs to read at a glance.
+        if same_as_prev and not (is_subdivided or is_tacet or is_hit):
             display_token = "%"
             symbol_html = "%"
+            subdivided_cell = False
+            cell_has_push = False
+        elif is_tacet:
+            display_token = "N.C."
+            symbol_html = "N.C."
+            subdivided_cell = False
+            cell_has_push = False
+        elif is_hit:
+            display_token = _sub_hit_underlying_chord(chord) or str(chord)
+            symbol_html = html.escape(display_token)
             subdivided_cell = False
             cell_has_push = False
         else:
@@ -325,10 +434,23 @@ def chart_grid_html(
             )
         current_class = " current-chord" if current_bar == idx + 1 else ""
         sub_class = " subdivided" if subdivided_cell else ""
+        if is_tacet:
+            sub_class += " tacet"
+        if is_hit:
+            sub_class += " hit"
         repeat_count = 1
-        if display_token != "%" and not subdivided_cell:
+        if display_token != "%" and not subdivided_cell and not is_hit and not is_tacet:
             for nxt in chords[idx + 1:]:
                 if nxt != chord:
+                    break
+                repeat_count += 1
+        elif is_tacet:
+            # Collapse adjacent N.C. bars into a "tacet (N bars)" badge
+            # so a long breakdown reads as one block instead of a wall
+            # of dashes. Adjacent N.C. tokens (any spelling variant)
+            # all match because the cell key is the canonical token.
+            for nxt in chords[idx + 1:]:
+                if not _is_no_chord_token(nxt):
                     break
                 repeat_count += 1
         duration = (
@@ -340,12 +462,22 @@ def chart_grid_html(
             duration = (
                 f"{duration}<span class='subdivided-tag{push_tag_cls}'>{tag_label}</span>"
             )
+        elif is_tacet:
+            duration = (
+                f"{duration}<span class='tacet-tag'>Tacet &middot; drums only</span>"
+            )
+        elif is_hit:
+            duration = (
+                f"{duration}<span class='hit-tag'>Hit &middot; stop-time</span>"
+            )
         shape_hint = ""
         if (
             shape_chords
             and idx < len(shape_chords)
             and display_token != "%"
             and not subdivided_cell
+            and not is_tacet
+            and not is_hit
             and shape_chords[idx] != display_token
         ):
             shape_hint = (

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -41,6 +42,31 @@ from creative_lab_text import (
     section_analysis_lines,
     NOTE_TO_PC,
 )
+
+try:
+    from chord_subdivisions import (
+        SUBDIVISION_SEPARATOR as _SUB_SEP,
+        join_subdivisions as _join_subs,
+        make_hit_token as _make_hit_token,
+    )
+except ImportError:  # streamlit cloud / partial path setups
+    _SUB_SEP = "|"
+
+    def _join_subs(parts):
+        return _SUB_SEP.join(parts)
+
+    def _make_hit_token(chord):
+        return f"{chord}.hit"
+
+
+try:
+    from music_theory import is_no_chord_token as _is_no_chord_token
+except ImportError:
+    def _is_no_chord_token(chord):
+        if chord is None:
+            return False
+        cleaned = str(chord).strip().replace(" ", "").upper()
+        return cleaned in {"N.C.", "NC", "N.C", "N/C", "(N.C.)", "TACET", "—", "-"}
 
 CPL_SAVED_KEY = "cpl_saved_progressions"
 CPL_ACTIVE_KEY = "cpl_active_progression"
@@ -1063,15 +1089,158 @@ def transpose_debug_lines(active, display_key):
     return lines
 
 
+_REPEAT_RE = re.compile(
+    r"\s*[x×*]\s*(\d+)\s*$",
+    re.IGNORECASE,
+)
+# Whitespace-around `/` means "two chords inside one bar". A bare `/`
+# (e.g. ``D/F#``) stays a slash chord. The regex requires at least
+# one whitespace character on either side of the slash.
+_SPLIT_BAR_RE = re.compile(r"\s+/\s+")
+# Chart-author shorthand for "rhythmic hit / stop-time" bars: any of
+# ``Bm hit``, ``Bm hits``, ``Bm.hit``, ``Bm!`` followed by end of bar.
+_HIT_TRAILER_RE = re.compile(
+    r"\s*(?:!\.?|\.hit|\s+hit(?:s|stop)?|\s+stop[\- ]?time)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_rest_token(text: str) -> bool:
+    """Plain rest markers (``rest``, ``-``, ``—``) parsed as N.C."""
+    cleaned = str(text or "").strip().lower()
+    return cleaned in {"rest", "tacet", "-", "—", "–"}
+
+
+def _bar_to_entry(bar_text: str) -> dict | None:
+    """Parse a single bar string into a CPL entry.
+
+    Recognises:
+
+    * ``"Bm"``                  -> normal bar
+    * ``"Bm.hit"`` / ``"Bm hit"`` / ``"Bm!"`` -> stop-time hit bar
+    * ``"Bm / Em"`` (with whitespace) -> half-bar split = ``"Bm|Em"``
+    * ``"D/F#"`` (no whitespace) -> slash chord, untouched
+    * ``"N.C."`` / ``"rest"`` / ``"-"`` -> tacet bar (``"N.C."``)
+    """
+    raw = str(bar_text or "").strip()
+    if not raw:
+        return None
+
+    # Tacet / rest markers collapse to the canonical ``N.C.`` token.
+    if _is_rest_token(raw) or _is_no_chord_token(raw):
+        return {"chord": "N.C.", "bars": 1}
+
+    # Half-bar split: ``"Bm / Em"`` -> ``"Bm|Em"`` (one bar, two
+    # equal chords). The outer split is on whitespace-padded ``/`` so
+    # bare slash chords like ``D/F#`` survive intact.
+    if _SPLIT_BAR_RE.search(raw):
+        sub_parts = [
+            normalize_chord_symbol(p) for p in _SPLIT_BAR_RE.split(raw)
+        ]
+        sub_parts = [p for p in sub_parts if p]
+        if len(sub_parts) >= 2:
+            return {"chord": _join_subs(sub_parts), "bars": 1}
+
+    # Hit / stop-time trailer: ``Bm hit``, ``Bm.hit``, ``Bm!``.
+    hit_match = _HIT_TRAILER_RE.search(raw)
+    if hit_match:
+        chord_part = raw[: hit_match.start()].strip()
+        chord_part = normalize_chord_symbol(chord_part)
+        if chord_part:
+            return {"chord": _make_hit_token(chord_part), "bars": 1}
+
+    # Plain chord — possibly already a hit token (``"Bm.hit"``) which
+    # ``normalize_chord_symbol`` will preserve as-is.
+    chord = normalize_chord_symbol(raw)
+    if not chord:
+        return None
+    return {"chord": chord, "bars": 1}
+
+
 def parse_chord_line(line):
+    """Parse a chart line into ``[{chord, bars, ...}, ...]`` entries.
+
+    Supports the lead-sheet notations that real chord charts use:
+
+    * Bar separators: ``|`` (preferred), ``,``, or whitespace.
+    * Repeats: ``"Bm x2"`` / ``"Bm × 4"`` / ``"Bm * 3"`` -> the
+      preceding chord expanded N times.
+    * Half-bar splits: ``"Bm / Em"`` (whitespace around the slash) ->
+      one bar with two equal sub-chords. Bare ``"D/F#"`` keeps its
+      slash-bass meaning.
+    * No-chord / tacet: ``"N.C."`` / ``"rest"`` / ``"-"`` /
+      ``"(N.C.)"``.
+    * Stop-time hits: ``"Bm hit"`` / ``"Bm.hit"`` / ``"Bm!"`` -> bar
+      stings on beat 1, drums lay out for the rest of the bar.
+
+    Examples::
+
+        parse_chord_line("Bm | Em | G | A")
+        parse_chord_line("Bm x2 | Em | G | A")
+        parse_chord_line("Bm / Em | G / A")
+        parse_chord_line("N.C. | N.C. | Bm | Em")
+        parse_chord_line("Bm hit | rest | G | A")
+    """
     if not line:
         return []
-    parts = [p.strip() for p in line.replace("|", ",").split(",")]
-    out = []
-    for part in parts:
-        ch = normalize_chord_symbol(part)
-        if ch:
-            out.append({"chord": ch, "bars": 1})
+
+    # Normalize separators. ``|`` and ``,`` both split bars. We do not
+    # collapse whitespace yet because ``Bm x2`` and ``Bm / Em`` need
+    # their internal spaces preserved.
+    raw = str(line).replace("|", ",")
+
+    # Split on commas first; if the user wrote a single-comma-free
+    # whitespace list (e.g. ``"Bm Em G A"``) fall back to whitespace
+    # tokenisation for that part. We refuse the whitespace fallback
+    # when the chunk already contains rich tokens (`x2`, `/`, `hit`,
+    # `N.C.`, `(...)`) - those need explicit comma/bar separators
+    # to disambiguate from bar-internal whitespace.
+    chunks: list[str] = []
+    for chunk in raw.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        is_rich = bool(
+            re.search(r"[x×*]\s*\d", chunk, re.IGNORECASE)
+            or re.search(r"\s+/\s+", chunk)
+            or re.search(r"hit|stop|rest|n\.?c\.?", chunk, re.IGNORECASE)
+            or "/" in chunk and re.search(r"[A-Ga-g]", chunk.split("/")[1] or "")
+            or re.search(r"\(.*\)", chunk)
+        )
+        if "," in chunk or is_rich:
+            chunks.append(chunk)
+            continue
+        sub_words = chunk.split()
+        # Only fall back to whitespace tokenisation when the chunk
+        # looks like a list of plain chord tokens.
+        if (
+            len(sub_words) > 1
+            and all(re.fullmatch(r"[A-Ga-g][^\s]*", w) for w in sub_words)
+        ):
+            chunks.extend(sub_words)
+        else:
+            chunks.append(chunk)
+
+    out: list[dict] = []
+    for chunk in chunks:
+        # Repeat trailer ``" x2"`` / ``" ×3"`` applies to the bar
+        # that immediately precedes it (i.e. the rest of this chunk).
+        repeat_match = _REPEAT_RE.search(chunk)
+        repeat_count = 1
+        if repeat_match:
+            try:
+                repeat_count = max(1, min(64, int(repeat_match.group(1))))
+            except (TypeError, ValueError):
+                repeat_count = 1
+            chunk = chunk[: repeat_match.start()].strip()
+
+        entry = _bar_to_entry(chunk)
+        if not entry:
+            continue
+        for _ in range(repeat_count):
+            # ``copy()`` so the caller can mutate one without
+            # spooking the others.
+            out.append(dict(entry))
     return out
 
 

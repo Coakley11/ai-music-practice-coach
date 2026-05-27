@@ -50,11 +50,20 @@ from typing import Iterable
 SUBDIVISION_SEPARATOR = "|"
 WEIGHT_SEPARATOR = ":"
 PUSH_MARKERS = ("p", "P", "!")
+# Suffix used to mark a "rhythmic hit / stop-time" bar. The chord
+# stings on beat 1 (bass + comp), drums lay out for the rest of the
+# bar so the hit reads as a band-stab rather than a normal bar of
+# steady comping. Token form: ``"<chord>.hit"`` (e.g. ``"Bm.hit"``).
+# Lives next to the existing subdivision/push markers so all of the
+# parsing surfaces (``backing_audio``, ``backing_chart``, lead-sheet
+# rendering, custom progression parser) share one canonical source.
+HIT_SUFFIX = ".hit"
 
 __all__ = [
     "SUBDIVISION_SEPARATOR",
     "WEIGHT_SEPARATOR",
     "PUSH_MARKERS",
+    "HIT_SUFFIX",
     "Subdivision",
     "is_subdivided_bar",
     "subdivisions",
@@ -73,6 +82,9 @@ __all__ = [
     "has_push",
     "any_push",
     "join_weighted_subdivisions",
+    "is_hit_token",
+    "hit_underlying_chord",
+    "make_hit_token",
 ]
 
 
@@ -97,6 +109,44 @@ def is_subdivided_bar(token: object) -> bool:
         return False
     parts = [p.strip() for p in s.split(SUBDIVISION_SEPARATOR) if p.strip()]
     return len(parts) >= 2
+
+
+def is_hit_token(token: object) -> bool:
+    """True for rhythmic-hit / stop-time bars (``"Bm.hit"``).
+
+    Case-insensitive on the suffix so chart authors can write ``.HIT``
+    too. Returns ``False`` for plain chords, subdivided bars, and
+    empty strings.
+    """
+    if token is None:
+        return False
+    s = str(token).strip()
+    if not s:
+        return False
+    return s.lower().endswith(HIT_SUFFIX.lower())
+
+
+def hit_underlying_chord(token: object) -> str:
+    """Strip the ``.hit`` suffix and return the chord that should sound.
+
+    Useful when the synth needs the raw chord token to compute notes
+    or the chart needs the bare symbol to render. Idempotent for plain
+    chords.
+    """
+    s = str(token or "").strip()
+    if is_hit_token(s):
+        return s[: -len(HIT_SUFFIX)].strip()
+    return s
+
+
+def make_hit_token(chord: str) -> str:
+    """Return ``"<chord>.hit"`` from a bare chord. Idempotent."""
+    raw = str(chord or "").strip()
+    if not raw:
+        return ""
+    if is_hit_token(raw):
+        return raw
+    return f"{raw}{HIT_SUFFIX}"
 
 
 def subdivisions(token: object) -> list[str]:

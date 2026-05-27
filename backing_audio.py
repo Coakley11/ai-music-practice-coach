@@ -13,6 +13,8 @@ from chord_subdivisions import (
     chord_at_beat as _sub_chord_at_beat,
     chord_at_pulse as _sub_chord_at_pulse,
     has_push as _sub_has_push,
+    hit_underlying_chord as _sub_hit_underlying_chord,
+    is_hit_token as _sub_is_hit_token,
     is_subdivided_bar as _sub_is_subdivided_bar,
     next_chord_at_beat as _sub_next_chord_at_beat,
     next_chord_at_pulse as _sub_next_chord_at_pulse,
@@ -354,16 +356,99 @@ def _bass_motion_pitch(chord, next_chord, style, slot_index, slot_count):
 
 
 def _voicing_for_comp(chord, level, style, beat_index=0):
-    notes = chord_notes(chord)
-    if level == "Advanced" and len(notes) > 4:
-        voicing = [notes[0], notes[2], notes[3], notes[4]]
-    elif level == "Beginner":
-        voicing = notes[:3]
-    else:
-        voicing = notes[:4]
+    """Style-aware comping voicing.
 
-    if beat_index % 2 and len(voicing) >= 3:
-        voicing = voicing[1:] + voicing[:1]
+    Voicing strategy by style (subject to ``level`` thinning):
+
+    * Jazz swing  — rootless 3-7-9 / 7-3-5 shells (what a jazz pianist
+      actually plays under the bass).
+    * Bossa nova  — stacked-thirds upper structure (no doubled root,
+      preserves João Gilberto-style chord clarity).
+    * Funk groove — punchy upper structures (drop the root, push the
+      9th / 13th up so the comp sits *on top of* the bass instead of
+      colliding with it).
+    * Ballad      — open, wider spacing in the lower octave so
+      sustained chords don't cloud the vocal.
+    * Pop/Rock    — block voicing (close-position triad/seventh)
+      which is what the previous implementation produced. Kept as
+      the default to avoid surprising existing arrangements.
+    """
+    notes = chord_notes(chord)
+    if not notes:
+        return []
+    style_key = (style or "").lower()
+
+    # Helper: rotate so that ``rotation`` becomes the bottom note
+    # (mod len). Used for inversion variation across beats.
+    def _rotate(seq, rotation):
+        if not seq:
+            return seq
+        rotation = rotation % len(seq)
+        rotated = list(seq[rotation:]) + [n + 12 for n in seq[:rotation]]
+        return rotated
+
+    if "jazz" in style_key and len(notes) >= 3:
+        # Rootless shell: drop the root, lean on 3rd/7th.
+        # ``chord_notes`` returns root, 3, 5, (7), so notes[1] is the
+        # 3rd and notes[3] is the 7th when present.
+        third = notes[1]
+        seventh = notes[3] if len(notes) >= 4 else notes[2]
+        ninth = (notes[1] + 14) - notes[1]  # placeholder, recomputed below
+        ninth = third + 14  # 9th = root + 14 semitones, expressed off the 3rd
+        thirteenth = (notes[2] if len(notes) >= 3 else third) + 9
+        # Alternate between two classic shells to add motion across
+        # beats: A-form (3-5-7-9) and B-form (7-9-3-5).
+        if beat_index % 2 == 0:
+            voicing = [third, seventh, ninth]
+        else:
+            voicing = [seventh, ninth, third + 12]
+        if level == "Advanced":
+            voicing.append(thirteenth)
+
+    elif "bossa" in style_key and len(notes) >= 3:
+        # Stacked thirds, no doubled root; rotate gently per beat for
+        # the João Gilberto/Tom Jobim "thumb-and-fingers" feel.
+        upper = [n + 12 for n in notes[1:4]] if len(notes) >= 4 else [n + 12 for n in notes[1:3]]
+        if level == "Beginner":
+            upper = upper[:2]
+        voicing = _rotate(upper, beat_index)
+
+    elif "funk" in style_key and len(notes) >= 3:
+        # Drop root, push the 9th + 13th up. Keeps the comp in the
+        # mid/upper register so it sits cleanly above a busy bass.
+        upper = [notes[1], notes[2]]
+        if len(notes) >= 4:
+            upper.append(notes[3])
+        ninth = notes[1] + 14
+        thirteenth = notes[2] + 9
+        if level == "Beginner":
+            voicing = [n + 12 for n in upper[:2]]
+        elif level == "Advanced":
+            voicing = [n + 12 for n in upper] + [ninth + 12, thirteenth + 12]
+        else:
+            voicing = [n + 12 for n in upper] + [ninth + 12]
+
+    elif "ballad" in style_key and len(notes) >= 3:
+        # Wider open voicing so sustained chords have air.
+        voicing = [notes[0], notes[2]]
+        if len(notes) >= 4:
+            voicing.append(notes[3] + 12)
+        voicing.append(notes[1] + 12)
+        if level == "Beginner":
+            voicing = voicing[:3]
+
+    else:
+        # Pop / Rock / unrecognised: previous block voicing,
+        # preserved verbatim so existing arrangements stay stable.
+        if level == "Advanced" and len(notes) > 4:
+            voicing = [notes[0], notes[2], notes[3], notes[4]]
+        elif level == "Beginner":
+            voicing = notes[:3]
+        else:
+            voicing = notes[:4]
+        if beat_index % 2 and len(voicing) >= 3:
+            voicing = voicing[1:] + voicing[:1]
+
     octave = 12 if style != "Ballad" else 0
     return [n + octave for n in voicing]
 
@@ -655,6 +740,7 @@ def synthesize_chords_to_numpy(
     bar = timing.bar_sec
     pulses_per_bar = timing.pulses_per_bar
     event_cycle = _coerce_chord_events(chords)
+    cycle_len = max(1, len(event_cycle))
     chord_list = event_cycle * max(1, int(loops))
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
     song_profile = _song_backing_profile(song_title, song_artist, style, bpm=bpm)
@@ -675,6 +761,13 @@ def synthesize_chords_to_numpy(
         intensity = _section_intensity(section_name, style)
         role = _section_role(section_name)
         section_edge = _is_section_edge(event, next_event)
+        # Loop pass index — used to seed humanization so loop 2 of a
+        # repeated section is *slightly* different from loop 1
+        # (different micro-timing + velocity jitter). Keeps the take
+        # from sounding like a copy-paste while staying deterministic
+        # for a given (song, settings) input.
+        loop_pass = idx // cycle_len
+        loop_seed = loop_pass * 9173 + groove_seed * 31
         # For subdivided bars, ``chord`` is e.g. ``"Fmaj7|Am7|C/D"`` (equal
         # subdivisions) or ``"C:2|G:2"`` / ``"C:3.5|D:0.5p"`` (weighted /
         # pushed). The per-pulse chord lookup goes through
@@ -688,13 +781,35 @@ def synthesize_chords_to_numpy(
         bar_is_no_chord = (
             False if bar_is_subdivided else is_no_chord_token(chord)
         )
-        notes = chord_notes(_sub_primary_chord(chord) if bar_is_subdivided else chord)
+        # ``Bm.hit`` rhythmic-hit / stop-time bar: the band stings
+        # the chord on beat 1, then the rest of the bar lays out so
+        # the gap reads as a band-stab rather than a tame bar of
+        # comping. Solo bars also get one snare crack on beat 1.
+        bar_is_hit = (
+            False if bar_is_subdivided else _sub_is_hit_token(chord)
+        )
+        # Bridge dropout: when the bridge starts on a tacet bar we
+        # pull the kit back even further than a plain N.C. (no hat,
+        # no full snare — just kick + cross-stick) so the breakdown
+        # has real space. Re-engages automatically on the next bar
+        # that has chords.
+        bar_is_bridge_dropout = bar_is_no_chord and role == "bridge"
+        # Resolve the *sounding* chord for hit bars: ``"Bm.hit"`` ->
+        # ``"Bm"`` so chord_notes/voicing/bass calls all agree.
+        sounding_chord = (
+            _sub_hit_underlying_chord(chord) if bar_is_hit else chord
+        )
+        notes = chord_notes(
+            _sub_primary_chord(chord) if bar_is_subdivided else sounding_chord
+        )
         bass_hits = patterns["bass_beats"]
         if groove_seed % 3 == 0 and role == "verse":
             bass_hits = bass_hits[: max(2, len(bass_hits) - 1)]
         comp_wave = _comp_wave_for_style(style, role)
 
         def _pulse_chord(b_pos: float) -> str:
+            if bar_is_hit:
+                return sounding_chord
             if not bar_is_subdivided:
                 return chord
             return _sub_chord_at_beat(chord, b_pos, beats_per_bar=pulses_per_bar)
@@ -709,143 +824,234 @@ def synthesize_chords_to_numpy(
                 fallback_next_bar_chord=next_chord,
             )
 
-        for n, b in enumerate(bass_hits):
-            if bar_is_no_chord:
-                break  # tacet — bass lays out for the whole bar
-            pulse_chord = _pulse_chord(b)
-            pulse_next = _pulse_next_chord(b)
-            if is_no_chord_token(pulse_chord):
-                continue  # bar contains an N.C. sub-segment
-            bass_pitch = _bass_motion_pitch(pulse_chord, pulse_next, style, n, len(bass_hits))
-            bass_dur = pulse * (0.72 if style in ["Ballad", "Jazz swing"] else 0.50)
-            if style == "Funk groove":
-                bass_dur = pulse * 0.32
-            elif song_profile.get("pop_soul"):
-                bass_dur = pulse * 0.55
-            t_hit = _humanize_time(
-                _groove_time(bar_start, b, pulse, style, swing=swing_amt),
-                seed=idx * 41 + n + groove_seed,
-                amount=humanize,
+        # ----- Bass line ----------------------------------------------
+        # Hit bars play exactly one short, accented attack on beat 1
+        # (the "stab"); the rest of the bar lays out so the gap reads
+        # as a stop-time break.
+        if bar_is_hit and not bar_is_no_chord:
+            stab_pitch = _bass_motion_pitch(
+                sounding_chord, next_chord, style, 0, max(1, len(bass_hits))
+            )
+            t_stab = _humanize_time(
+                bar_start,
+                seed=idx * 41 + groove_seed + loop_seed,
+                amount=humanize * 0.5,
                 beat_len=pulse,
             )
             _add_tone(
                 audio,
                 sr,
-                t_hit,
-                bass_dur,
-                bass_pitch,
-                _humanize_volume(0.11 * intensity, idx * 41 + n),
+                t_stab,
+                pulse * 0.40,
+                stab_pitch,
+                _humanize_volume(0.16 * intensity, idx * 41 + loop_seed),
                 "bass",
             )
-
-        for comp_idx, b in enumerate(patterns["comp_beats"]):
-            if bar_is_no_chord:
-                break  # tacet — chord comping lays out for the whole bar
-            if is_no_chord_token(_pulse_chord(b)):
-                continue  # bar contains an N.C. sub-segment
-            if role == "verse" and comp_idx % 3 == 2 and not song_profile.get("anthem_rock"):
-                continue
-            if role == "intro" and comp_idx > 1:
-                continue
-            dur = pulse * patterns.get("comp_dur", 0.45)
-            if role == "chorus":
-                dur *= 1.18 if song_profile.get("anthem_rock") else 1.15
-            elif role == "bridge":
-                dur *= 0.95
-            elif song_profile.get("latin_relaxed"):
-                dur *= 0.88
-            voicing = _voicing_for_comp(_pulse_chord(b), level, style, comp_idx)
-            comp_vol = 0.022 * intensity
-            if role == "verse":
-                comp_vol *= 0.72
-            elif role == "chorus":
-                comp_vol *= 1.14 if song_profile.get("anthem_rock") else 1.12
-            if song_profile.get("comp_stab"):
-                dur *= 0.55
-                comp_vol *= 1.2
-            t_comp = _humanize_time(
-                _groove_time(bar_start, b, pulse, style, swing=swing_amt),
-                seed=idx * 53 + comp_idx,
-                amount=humanize * 0.7,
-                beat_len=pulse,
-            )
-            for note in voicing:
+        else:
+            for n, b in enumerate(bass_hits):
+                if bar_is_no_chord:
+                    break  # tacet — bass lays out for the whole bar
+                pulse_chord = _pulse_chord(b)
+                pulse_next = _pulse_next_chord(b)
+                if is_no_chord_token(pulse_chord):
+                    continue  # bar contains an N.C. sub-segment
+                bass_pitch = _bass_motion_pitch(pulse_chord, pulse_next, style, n, len(bass_hits))
+                bass_dur = pulse * (0.72 if style in ["Ballad", "Jazz swing"] else 0.50)
+                if style == "Funk groove":
+                    bass_dur = pulse * 0.32
+                elif song_profile.get("pop_soul"):
+                    bass_dur = pulse * 0.55
+                t_hit = _humanize_time(
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt),
+                    seed=idx * 41 + n + groove_seed + loop_seed,
+                    amount=humanize,
+                    beat_len=pulse,
+                )
                 _add_tone(
                     audio,
                     sr,
-                    t_comp,
-                    dur,
-                    note,
-                    _humanize_volume(comp_vol, idx + comp_idx + note),
-                    comp_wave,
+                    t_hit,
+                    bass_dur,
+                    bass_pitch,
+                    _humanize_volume(0.11 * intensity, idx * 41 + n + loop_seed),
+                    "bass",
                 )
 
-        for b in patterns["hat_beats"]:
-            hat_vol = (0.006 if style == "Ballad" else 0.010) * hat_mul
-            if role == "chorus":
-                hat_vol *= 1.28
-            _add_noise_hit(
-                audio,
-                sr,
-                _humanize_time(
+        # ----- Chord comping -------------------------------------------
+        if bar_is_hit and not bar_is_no_chord:
+            # Single chord stab on beat 1, brighter and shorter than
+            # a normal comping hit — the punctuation that makes a
+            # hit bar sound like a band stop.
+            stab_voicing = _voicing_for_comp(sounding_chord, level, style, 0)
+            stab_dur = pulse * 0.32
+            stab_vol = 0.034 * intensity
+            t_stab = _humanize_time(
+                bar_start,
+                seed=idx * 53 + loop_seed,
+                amount=humanize * 0.4,
+                beat_len=pulse,
+            )
+            for note in stab_voicing:
+                _add_tone(
+                    audio,
+                    sr,
+                    t_stab,
+                    stab_dur,
+                    note,
+                    _humanize_volume(stab_vol, idx + note + loop_seed),
+                    comp_wave,
+                )
+        else:
+            for comp_idx, b in enumerate(patterns["comp_beats"]):
+                if bar_is_no_chord:
+                    break  # tacet — chord comping lays out for the whole bar
+                if is_no_chord_token(_pulse_chord(b)):
+                    continue  # bar contains an N.C. sub-segment
+                if role == "verse" and comp_idx % 3 == 2 and not song_profile.get("anthem_rock"):
+                    continue
+                if role == "intro" and comp_idx > 1:
+                    continue
+                dur = pulse * patterns.get("comp_dur", 0.45)
+                if role == "chorus":
+                    dur *= 1.18 if song_profile.get("anthem_rock") else 1.15
+                elif role == "bridge":
+                    dur *= 0.95
+                elif song_profile.get("latin_relaxed"):
+                    dur *= 0.88
+                voicing = _voicing_for_comp(_pulse_chord(b), level, style, comp_idx)
+                comp_vol = 0.022 * intensity
+                if role == "verse":
+                    comp_vol *= 0.72
+                elif role == "chorus":
+                    comp_vol *= 1.14 if song_profile.get("anthem_rock") else 1.12
+                if song_profile.get("comp_stab"):
+                    dur *= 0.55
+                    comp_vol *= 1.2
+                t_comp = _humanize_time(
                     _groove_time(bar_start, b, pulse, style, swing=swing_amt),
-                    seed=idx * 31 + int(b * 100),
-                    amount=humanize * 0.5,
+                    seed=idx * 53 + comp_idx + loop_seed,
+                    amount=humanize * 0.7,
                     beat_len=pulse,
-                ),
-                0.028,
-                hat_vol * intensity,
-                seed=idx * 31 + int(b * 100) + (groove_seed % 997),
-            )
+                )
+                for note in voicing:
+                    _add_tone(
+                        audio,
+                        sr,
+                        t_comp,
+                        dur,
+                        note,
+                        _humanize_volume(comp_vol, idx + comp_idx + note + loop_seed),
+                        comp_wave,
+                    )
 
-        for b in patterns["snare_beats"]:
-            snare_vol = 0.032 * intensity
-            if song_profile.get("cross_stick"):
-                snare_vol *= 0.65
+        # Hit / stop-time bars: drums lay out for the bar except for
+        # one snare crack on beat 1 to punctuate the band-stab. The
+        # kick + percussion blocks below are skipped via
+        # ``bar_drums_silent``.
+        bar_drums_silent = bar_is_hit
+        if bar_is_hit:
             _add_noise_hit(
                 audio,
                 sr,
-                _groove_time(bar_start, b, pulse, style, swing=swing_amt),
-                0.055,
-                _humanize_volume(snare_vol, idx * 67 + int(b * 100)),
-                seed=idx * 67 + int(b * 100),
+                bar_start,
+                0.060,
+                0.040 * intensity,
+                seed=idx * 67 + loop_seed,
             )
 
-        for b in patterns.get("ghost_snare", []):
-            _add_noise_hit(
-                audio,
-                sr,
-                _groove_time(bar_start, b, pulse, style, swing=swing_amt),
-                0.025,
-                0.010 * intensity,
-                seed=idx * 71 + int(b * 50),
-            )
+        # Bridge dropout: when the bridge starts on a tacet bar drop
+        # the kit to kick + cross-stick only so the breakdown breathes.
+        # The flag controls hat/snare/ghost suppression below.
+        bar_bridge_breakdown = bar_is_bridge_dropout
 
-        for b in patterns.get("cross_stick", []):
-            _add_noise_hit(
-                audio,
-                sr,
-                _groove_time(bar_start, b, pulse, style),
-                0.040,
-                0.014 * intensity,
-                seed=idx * 73 + int(b * 40),
-            )
+        if not bar_drums_silent and not bar_bridge_breakdown:
+            for b in patterns["hat_beats"]:
+                hat_vol = (0.006 if style == "Ballad" else 0.010) * hat_mul
+                if role == "chorus":
+                    hat_vol *= 1.28
+                _add_noise_hit(
+                    audio,
+                    sr,
+                    _humanize_time(
+                        _groove_time(bar_start, b, pulse, style, swing=swing_amt),
+                        seed=idx * 31 + int(b * 100) + loop_seed,
+                        amount=humanize * 0.5,
+                        beat_len=pulse,
+                    ),
+                    0.028,
+                    hat_vol * intensity,
+                    seed=idx * 31 + int(b * 100) + (groove_seed % 997) + loop_seed,
+                )
 
-        for b in patterns["kick_beats"]:
-            _add_tone(
-                audio,
-                sr,
-                _humanize_time(
-                    bar_start + b * pulse,
-                    seed=idx * 83 + int(b * 10),
-                    amount=humanize * 0.35,
-                    beat_len=pulse,
-                ),
-                0.07,
-                36,
-                _humanize_volume(0.070 * intensity * kick_mul, idx * 83),
-                "bass",
-            )
+        if not bar_drums_silent and not bar_bridge_breakdown:
+            for b in patterns["snare_beats"]:
+                snare_vol = 0.032 * intensity
+                if song_profile.get("cross_stick"):
+                    snare_vol *= 0.65
+                _add_noise_hit(
+                    audio,
+                    sr,
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt),
+                    0.055,
+                    _humanize_volume(snare_vol, idx * 67 + int(b * 100) + loop_seed),
+                    seed=idx * 67 + int(b * 100) + loop_seed,
+                )
+
+        if not bar_drums_silent and not bar_bridge_breakdown:
+            for b in patterns.get("ghost_snare", []):
+                _add_noise_hit(
+                    audio,
+                    sr,
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt),
+                    0.025,
+                    0.010 * intensity,
+                    seed=idx * 71 + int(b * 50) + loop_seed,
+                )
+
+        # Cross-stick keeps its 2/4 colouring even on a bridge
+        # dropout — that's the only piece of the kit that stays so
+        # the listener still has a pulse reference to count against.
+        if not bar_drums_silent:
+            cross_beats = patterns.get("cross_stick", [])
+            if bar_bridge_breakdown and not cross_beats:
+                # Bridge bar without baked-in cross-stick gets a soft
+                # 2 & 4 click so the dropout still has a pulse.
+                cross_beats = [b for b in (1.0, 3.0) if b < pulses_per_bar]
+            for b in cross_beats:
+                _add_noise_hit(
+                    audio,
+                    sr,
+                    _groove_time(bar_start, b, pulse, style),
+                    0.040,
+                    0.014 * intensity * (0.85 if bar_bridge_breakdown else 1.0),
+                    seed=idx * 73 + int(b * 40) + loop_seed,
+                )
+
+        if not bar_drums_silent:
+            kick_beats = patterns["kick_beats"]
+            if bar_bridge_breakdown:
+                # Pull kicks down to just beat 1 (and beat 3 in 4/4)
+                # so the bridge breakdown reads as dropout, not as a
+                # full bar of drums under N.C.
+                kick_beats = [b for b in kick_beats if b in (0.0, 2.0)]
+            kick_vol_mul = 0.78 if bar_bridge_breakdown else 1.0
+            for b in kick_beats:
+                _add_tone(
+                    audio,
+                    sr,
+                    _humanize_time(
+                        bar_start + b * pulse,
+                        seed=idx * 83 + int(b * 10) + loop_seed,
+                        amount=humanize * 0.35,
+                        beat_len=pulse,
+                    ),
+                    0.07,
+                    36,
+                    _humanize_volume(
+                        0.070 * intensity * kick_mul * kick_vol_mul, idx * 83 + loop_seed
+                    ),
+                    "bass",
+                )
 
         if section_edge:
             _add_section_transition_fill(
