@@ -7032,27 +7032,56 @@ if _studio_page == "practice":
                     )
 
         # ----- Scales & Approaches ----------------------------------
+        # Deduplicate scale suggestions so a looping progression like
+        # Em | C | G | D | Em | C | G | D doesn't render the same
+        # chord-scale line twice. We dedup on the *rendered* markdown
+        # so that if a chord ever produces a different scale in a
+        # different harmonic context (e.g. D mixolydian vs D altered),
+        # both variants still surface as distinct entries.
         with st.expander("🎼 Scales & approaches (this section)", expanded=False):
             if _focus_chords:
                 _scales_rendered = 0
                 _scales_errors: list[tuple[str, Exception]] = []
-                for ch in _focus_chords[:12]:
-                    try:
-                        _scale_md = scale_suggestions_for_chord(
-                            ch, _practice_chart_key, level, instrument
-                        ) or ""
-                    except Exception as _scales_exc:
-                        _scales_errors.append((str(ch), _scales_exc))
+                _seen_scale_suggestions: set[str] = set()
+                _scale_chord_cache: dict[str, str] = {}
+                _scale_repeats = 0
+                _scale_unique_cap = 12
+                for ch in _focus_chords:
+                    if _scales_rendered >= _scale_unique_cap:
+                        break
+                    ch_str = str(ch)
+                    if ch_str in _scale_chord_cache:
+                        _scale_md = _scale_chord_cache[ch_str]
+                    else:
+                        try:
+                            _scale_md = scale_suggestions_for_chord(
+                                ch_str, _practice_chart_key, level, instrument
+                            ) or ""
+                        except Exception as _scales_exc:
+                            _scales_errors.append((ch_str, _scales_exc))
+                            _scale_chord_cache[ch_str] = ""
+                            continue
+                        _scale_chord_cache[ch_str] = _scale_md
+                    _scale_key = _scale_md.strip()
+                    if not _scale_key:
                         continue
-                    if _scale_md.strip():
-                        st.markdown(_scale_md)
-                        _scales_rendered += 1
+                    if _scale_key in _seen_scale_suggestions:
+                        _scale_repeats += 1
+                        continue
+                    _seen_scale_suggestions.add(_scale_key)
+                    st.markdown(_scale_md)
+                    _scales_rendered += 1
                 if _scales_rendered == 0:
                     st.info(
                         f"No scale suggestions matched the chords in "
                         f"**{_active_section_display}** for **{instrument}** at "
                         f"**{level}** level. Try a different section or "
                         "switch instruments in the sidebar."
+                    )
+                elif _scale_repeats > 0:
+                    st.caption(
+                        "↻ Repeated through section — these chords loop, so the "
+                        "same scale choices apply each time they come around."
                     )
                 if _developer_mode_enabled() and _scales_errors:
                     st.caption(
