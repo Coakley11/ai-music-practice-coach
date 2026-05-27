@@ -2538,6 +2538,174 @@ body[data-backing-studio-ui] .ui-backing-studio-deck-head {
 """
 
 
+def _backing_scope_panel_css() -> str:
+    """Scope & loop panel — keyed container + inner shell (Streamlit 1.49+)."""
+    return """
+/* Scope & loop control — styles the keyed container (widgets live here) */
+.st-key-backing_scope_panel,
+.ui-backing-scope-panel {
+  margin: 0.4rem 0 0.25rem !important;
+  padding: 1rem 1.1rem 0.85rem !important;
+  border-radius: 16px !important;
+  border: 2px solid rgba(99, 102, 241, 0.4) !important;
+  background:
+    radial-gradient(110% 80% at 0% -20%, rgba(99, 102, 241, 0.14) 0%, transparent 55%),
+    radial-gradient(90% 70% at 100% 110%, rgba(34, 197, 94, 0.1) 0%, transparent 50%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 62%, #f1f5f9 100%) !important;
+  box-shadow:
+    0 14px 36px -22px rgba(79, 70, 229, 0.28),
+    0 2px 8px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+.st-key-backing_scope_panel::before,
+.ui-backing-scope-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  z-index: 1;
+  background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.75), rgba(34, 197, 94, 0.65), transparent);
+}
+.ui-backing-scope-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin: 0 0 0.65rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.35);
+}
+.ui-backing-scope-panel-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+  color: #0f172a;
+}
+.ui-backing-scope-panel-sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.76rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+.ui-backing-scope-summary-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #0369a1;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: linear-gradient(135deg, rgba(224, 242, 254, 0.95), rgba(240, 249, 255, 0.9));
+  white-space: nowrap;
+}
+.ui-backing-scope-summary-badge strong { color: #0c4a6e; font-weight: 900; }
+.ui-backing-scope-segment {
+  margin: 0 0 0.65rem;
+}
+.st-key-backing_scope_panel [data-testid="stRadio"] > div,
+.ui-backing-scope-panel [data-testid="stRadio"] > div {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 0.35rem !important;
+  padding: 0.35rem !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(148, 163, 184, 0.32) !important;
+  background: rgba(241, 245, 249, 0.95) !important;
+}
+.st-key-backing_scope_panel [data-testid="stRadio"] label,
+.ui-backing-scope-panel [data-testid="stRadio"] label {
+  flex: 1 1 auto !important;
+  min-width: 7.5rem;
+  margin: 0 !important;
+  padding: 0.42rem 0.65rem !important;
+  border-radius: 9px !important;
+  font-size: 0.78rem !important;
+  font-weight: 750 !important;
+  text-align: center;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.st-key-backing_scope_panel [data-testid="stRadio"] label:hover,
+.ui-backing-scope-panel [data-testid="stRadio"] label:hover {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border-color: rgba(148, 163, 184, 0.35) !important;
+}
+.st-key-backing_scope_panel [data-testid="stRadio"] label[data-checked="true"],
+.st-key-backing_scope_panel [data-testid="stRadio"] label:has(input:checked),
+.ui-backing-scope-panel [data-testid="stRadio"] label[data-checked="true"],
+.ui-backing-scope-panel [data-testid="stRadio"] label:has(input:checked) {
+  background: #ffffff !important;
+  border-color: rgba(16, 185, 129, 0.55) !important;
+  color: #047857 !important;
+  font-weight: 850 !important;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.14) !important;
+}
+.ui-backing-scope-field {
+  margin: 0 0 0.55rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 11px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.88);
+}
+.ui-backing-scope-loops-row {
+  margin: 0.15rem 0 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 11px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.88);
+}
+.st-key-backing_scope_panel [data-testid="stSlider"] > div > div,
+.ui-backing-scope-panel [data-testid="stSlider"] > div > div {
+  padding-top: 0.15rem !important;
+}
+.st-key-backing_scope_panel .ui-backing-scope-field,
+.st-key-backing_scope_panel .ui-backing-scope-loops-row {
+  margin-left: 0;
+  margin-right: 0;
+}
+.ui-backing-scope-handoff {
+  margin: 0.35rem 0 0.45rem !important;
+  padding: 0.45rem 0.65rem !important;
+  font-size: 0.78rem !important;
+  border-radius: 10px !important;
+}
+.ui-backing-scope-quicklinks.ui-cross-links {
+  margin: 0.55rem 0 0 !important;
+  padding-top: 0.55rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.32);
+}
+.ui-backing-scope-quicklinks.ui-cross-links .stButton > button {
+  font-size: 0.68rem !important;
+  font-weight: 750 !important;
+  min-height: 1.85rem !important;
+  padding: 0.28rem 0.45rem !important;
+  border-radius: 999px !important;
+  letter-spacing: 0.01em !important;
+}
+.ui-backing-scope-quicklinks .cross-practice button {
+  background: linear-gradient(135deg, #0ea5e9, #14b8a6) !important;
+}
+.st-key-backing_scope_panel [data-testid="stSelectbox"] > div > div,
+.st-key-backing_scope_panel [data-testid="stMultiSelect"] > div > div {
+  border-radius: 10px !important;
+  border-color: rgba(99, 102, 241, 0.45) !important;
+  background: #fff !important;
+  min-height: 2.45rem !important;
+}
+"""
+
+
+def _backing_studio_all_css() -> str:
+    return _backing_studio_panel_css() + _backing_scope_panel_css()
+
+
 def _inject_app_theme_polish() -> None:
     """Layer of refinements on top of the base theme — keeps existing classes intact.
 
@@ -3891,7 +4059,7 @@ __BACKING_STUDIO_PANEL_CSS__
 </style>
         """
         .replace("__UI_POLISH_VERSION__", _UI_POLISH_VERSION)
-        .replace("__BACKING_STUDIO_PANEL_CSS__", _backing_studio_panel_css()),
+        .replace("__BACKING_STUDIO_PANEL_CSS__", _backing_studio_all_css()),
         unsafe_allow_html=True,
     )
 
@@ -4163,7 +4331,8 @@ def render_active_song_key_row(
     )
 
 
-BACKING_STUDIO_UI_VERSION = "2026-05-27-studio-v5"
+BACKING_STUDIO_UI_VERSION = "2026-05-27-studio-v6"
+SONG_PICKER_UI_VERSION = "2026-05-27-picker-v2"
 
 
 def inject_backing_studio_styles(st: Any) -> None:
@@ -4171,9 +4340,23 @@ def inject_backing_studio_styles(st: Any) -> None:
     st.markdown(
         f"""
 <style data-backing-studio-ui="{BACKING_STUDIO_UI_VERSION}">
-{_backing_studio_panel_css()}
+{_backing_studio_all_css()}
 </style>
 <script>try{{document.body.dataset.backingStudioUi="{BACKING_STUDIO_UI_VERSION}";document.body.classList.add("backing-studio-page");}}catch(e){{}}</script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def inject_song_picker_page_styles(st: Any) -> None:
+    """Marker + layout helpers for Song Selection (confirms deploy revision)."""
+    st.markdown(
+        f"""
+<style data-song-picker-ui="{SONG_PICKER_UI_VERSION}">
+/* Song Selection — no separate footer metadata block (genre/levels live on Active Song card) */
+body[data-song-picker-ui] .ui-active-song-card .ui-active-song-facts dt:first-child {{ color: #4f46e5; }}
+</style>
+<script>try{{document.body.dataset.songPickerUi="{SONG_PICKER_UI_VERSION}";}}catch(e){{}}</script>
         """,
         unsafe_allow_html=True,
     )
@@ -4200,6 +4383,52 @@ def render_backing_field_label(st: Any, label: str, hint: str = "") -> None:
     )
     st.markdown(
         f'<p class="ui-backing-field-label">{html.escape(label)}</p>{hint_html}',
+        unsafe_allow_html=True,
+    )
+
+
+def backing_scope_loop_summary_text(
+    scope: str,
+    *,
+    single_section: str = "",
+    multi_sections: list[str] | None = None,
+    loops: int = 2,
+) -> str:
+    """Human-readable loop summary for the scope control badge."""
+    loops = max(1, int(loops or 1))
+    scope = (scope or "Full song").strip()
+    if scope == "Single section":
+        sec = (single_section or "Section").strip() or "Section"
+        return f"Looping: {sec} ×{loops}"
+    if scope == "Multiple selected sections":
+        parts = [s for s in (multi_sections or []) if s]
+        if not parts:
+            return f"Custom sections ×{loops}"
+        if len(parts) <= 2:
+            joined = " + ".join(parts)
+        else:
+            joined = f"{parts[0]} + {parts[1]} +{len(parts) - 2}"
+        return f"Looping: {joined} ×{loops}"
+    return f"Full song ×{loops}"
+
+
+def backing_scope_loop_summary_badge_html(summary: str) -> str:
+    text = html.escape((summary or "Full song ×2").strip())
+    return (
+        f'<span class="ui-backing-scope-summary-badge" title="Current playback range">'
+        f"<strong>Range</strong> {text}</span>"
+    )
+
+
+def render_backing_scope_panel_header(st: Any, *, summary_html: str = "") -> None:
+    """Title row for the Scope & Loop Control sub-panel."""
+    badge = summary_html or ""
+    st.markdown(
+        f'<div class="ui-backing-scope-panel-head" data-scope-panel-ui="{BACKING_STUDIO_UI_VERSION}">'
+        f'<span class="ui-backing-panel-kicker" style="color:#4f46e5;">Playback range</span>'
+        f"<div><p class=\"ui-backing-scope-panel-title\">Scope &amp; Loop Control</p>"
+        f'<p class="ui-backing-scope-panel-sub">Choose what to generate and how many times to loop it.</p></div>'
+        f"{badge}</div>",
         unsafe_allow_html=True,
     )
 
@@ -4403,6 +4632,13 @@ CROSS_PAGE_LINKS: list[tuple[str, str]] = [
     ("custom", "Go to Custom Progression"),
 ]
 
+BACKING_SCOPE_QUICK_LINKS: list[tuple[str, str]] = [
+    ("practice", "Practice"),
+    ("picker", "Songs"),
+    ("creative", "Creative Lab"),
+    ("custom", "Custom"),
+]
+
 
 def ensure_studio_page(session_state: dict[str, Any], default: str = "practice") -> str:
     return session_state.setdefault("studio_page", default)
@@ -4511,6 +4747,7 @@ def render_cross_page_links(
     rerun_fn: Any,
     key_prefix: str = "cross",
     pages: Optional[list[tuple[str, str]]] = None,
+    wrapper_class: str = "ui-cross-links",
 ) -> None:
     """Small shortcut buttons to other workspaces (excludes current page)."""
     import streamlit as st
@@ -4519,7 +4756,7 @@ def render_cross_page_links(
     targets = [(pid, label) for pid, label in link_pages if pid != current_page]
     if not targets:
         return
-    st.markdown('<div class="ui-cross-links">', unsafe_allow_html=True)
+    st.markdown(f'<div class="{html.escape(wrapper_class)}">', unsafe_allow_html=True)
     cols = st.columns(len(targets))
     for col, (page_id, label) in zip(cols, targets):
         nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)

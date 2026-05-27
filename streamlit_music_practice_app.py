@@ -460,7 +460,12 @@ try:
         render_backing_panel_shell_close,
         render_backing_field_label,
         render_backing_transport_status,
+        render_backing_scope_panel_header,
+        backing_scope_loop_summary_text,
+        backing_scope_loop_summary_badge_html,
+        BACKING_SCOPE_QUICK_LINKS,
         inject_backing_studio_styles,
+        inject_song_picker_page_styles,
         render_backing_studio_deck_header,
         render_active_song_hub_open,
         render_active_song_hub_hero,
@@ -516,6 +521,9 @@ except Exception as _app_ui_first_err:
                 inject_backing_studio_styles = getattr(
                     _app_ui_mod, "inject_backing_studio_styles", lambda _st: None
                 )
+                inject_song_picker_page_styles = getattr(
+                    _app_ui_mod, "inject_song_picker_page_styles", lambda _st: None
+                )
                 render_backing_studio_deck_header = getattr(
                     _app_ui_mod, "render_backing_studio_deck_header", lambda _st: None
                 )
@@ -533,6 +541,22 @@ except Exception as _app_ui_first_err:
                 )
                 render_backing_transport_status = getattr(
                     _app_ui_mod, "render_backing_transport_status", lambda *_a, **_k: None
+                )
+                render_backing_scope_panel_header = getattr(
+                    _app_ui_mod, "render_backing_scope_panel_header", lambda *_a, **_k: None
+                )
+                backing_scope_loop_summary_text = getattr(
+                    _app_ui_mod,
+                    "backing_scope_loop_summary_text",
+                    lambda *_a, **_k: "Full song ×2",
+                )
+                backing_scope_loop_summary_badge_html = getattr(
+                    _app_ui_mod,
+                    "backing_scope_loop_summary_badge_html",
+                    lambda s: f"<span>{s}</span>",
+                )
+                BACKING_SCOPE_QUICK_LINKS = getattr(
+                    _app_ui_mod, "BACKING_SCOPE_QUICK_LINKS", []
                 )
                 _APP_UI_LOADED = True
                 _APP_UI_IMPORT_ERROR = None
@@ -7518,43 +7542,48 @@ def _render_backing_scope_controls(
     *,
     from_practice_handoff: bool,
 ) -> None:
-    """Scope and loop controls inside the Playback Setup card."""
-    render_backing_field_label(
-        st,
-        "Playback range",
-        "Full song, one section, or a custom multi-section pass.",
-    )
-    playback_scope = st.radio(
-        "Playback range",
-        ["Full song", "Single section", "Multiple selected sections"],
-        horizontal=True,
-        key="backing_track_scope",
-        label_visibility="collapsed",
-    )
-    if playback_scope == "Single section" and section_names:
-        render_backing_field_label(st, "Section", "Loops this section when generating.")
-        st.selectbox(
-            "Section to loop",
-            section_names,
-            key="backing_track_single_section",
+    """Scope and loop controls inside the Playback Setup card (keyed container)."""
+    with st.container(key="backing_scope_panel", border=False):
+        render_backing_scope_panel_header(st)
+
+        st.markdown('<div class="ui-backing-scope-segment">', unsafe_allow_html=True)
+        playback_scope = st.radio(
+            "Playback range",
+            ["Full song", "Single section", "Multiple selected sections"],
+            horizontal=True,
+            key="backing_track_scope",
             label_visibility="collapsed",
         )
-    elif playback_scope == "Multiple selected sections" and section_names:
-        if "backing_track_multi_sections" not in st.session_state:
-            st.session_state["backing_track_multi_sections"] = [
-                name
-                for name in section_names
-                if any(token in name.lower() for token in ["verse", "chorus"])
-            ] or section_names[:2]
-        render_backing_field_label(st, "Sections", "Keeps original song order.")
-        st.multiselect(
-            "Sections to play (keeps original song order)",
-            section_names,
-            key="backing_track_multi_sections",
-            label_visibility="collapsed",
-        )
-    c_loop, _ = st.columns([1.2, 2])
-    with c_loop:
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if playback_scope == "Single section" and section_names:
+            st.markdown('<div class="ui-backing-scope-field">', unsafe_allow_html=True)
+            render_backing_field_label(st, "Section", "Loops this section when generating.")
+            st.selectbox(
+                "Section to loop",
+                section_names,
+                key="backing_track_single_section",
+                label_visibility="collapsed",
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+        elif playback_scope == "Multiple selected sections" and section_names:
+            if "backing_track_multi_sections" not in st.session_state:
+                st.session_state["backing_track_multi_sections"] = [
+                    name
+                    for name in section_names
+                    if any(token in name.lower() for token in ["verse", "chorus"])
+                ] or section_names[:2]
+            st.markdown('<div class="ui-backing-scope-field">', unsafe_allow_html=True)
+            render_backing_field_label(st, "Sections", "Keeps original song order.")
+            st.multiselect(
+                "Sections to play (keeps original song order)",
+                section_names,
+                key="backing_track_multi_sections",
+                label_visibility="collapsed",
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown('<div class="ui-backing-scope-loops-row">', unsafe_allow_html=True)
         render_backing_field_label(st, "Repeats", "How many times to loop the chosen range.")
         st.slider(
             "Number of repeats",
@@ -7565,11 +7594,35 @@ def _render_backing_scope_controls(
             key="backing_track_loops",
             label_visibility="collapsed",
         )
-    if from_practice_handoff:
-        _handoff_sec = st.session_state.get("backing_track_single_section", "")
-        st.info(
-            f"Opened from **Practice** — defaults to "
-            f"**{_handoff_sec or 'the selected section'}** (change range above anytime)."
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        _loop_summary = backing_scope_loop_summary_text(
+            st.session_state.get("backing_track_scope", playback_scope),
+            single_section=str(st.session_state.get("backing_track_single_section", "")),
+            multi_sections=list(st.session_state.get("backing_track_multi_sections") or []),
+            loops=int(st.session_state.get("backing_track_loops", 2)),
+        )
+        st.markdown(
+            f'<div style="margin:0.35rem 0 0.15rem;">'
+            f"{backing_scope_loop_summary_badge_html(_loop_summary)}</div>",
+            unsafe_allow_html=True,
+        )
+
+        if from_practice_handoff:
+            _handoff_sec = st.session_state.get("backing_track_single_section", "")
+            st.markdown(
+                f'<div class="ui-backing-scope-handoff">Opened from <strong>Practice</strong> — '
+                f"defaults to <strong>{html.escape(_handoff_sec or 'the selected section')}</strong>.</div>",
+                unsafe_allow_html=True,
+            )
+
+        render_cross_page_links(
+            st.session_state,
+            current_page="backing",
+            rerun_fn=st.rerun,
+            key_prefix="backing_scope",
+            pages=BACKING_SCOPE_QUICK_LINKS,
+            wrapper_class="ui-cross-links ui-backing-scope-quicklinks",
         )
 
 
@@ -7747,19 +7800,9 @@ def _render_backing_playback_setup_panel(
                     unsafe_allow_html=True,
                 )
         st.markdown('<div class="ui-backing-scope-divider"></div>', unsafe_allow_html=True)
-        st.markdown(
-            '<p class="ui-backing-field-label">Scope &amp; loops</p>',
-            unsafe_allow_html=True,
-        )
         _render_backing_scope_controls(
             section_names,
             from_practice_handoff=from_practice_handoff,
-        )
-        render_cross_page_links(
-            st.session_state,
-            current_page="backing",
-            rerun_fn=st.rerun,
-            key_prefix="backing_x",
         )
         render_backing_panel_shell_close(st)
     return int(bpm), str(applied_meter)
@@ -8936,6 +8979,7 @@ elif _studio_page == "picker":
 
     ensure_page_initialized(st.session_state, "picker")
     note_page_visit(st.session_state, "picker")
+    inject_song_picker_page_styles(st)
     _render_page_quick_nav("picker")
 
     if km.is_voice_mode(st.session_state):
@@ -9058,17 +9102,10 @@ elif _studio_page == "picker":
         # up on this page (right above the Active Song card) so users
         # see it immediately after picking a song.
 
-        selected_versions = selected_data.get("chart_versions") or {}
-        available_levels = ", ".join(selected_versions.keys()) if selected_versions else "Beginner · Intermediate · Advanced"
-
         st.success(
             f"**Active source: Song** — **{selected_data['title']}** — {selected_data['artist']}."
         )
 
-        st.write(
-            f"**Genre/style:** {selected_data.get('genre', 'Unknown')}  \n"
-            f"**Chart levels:** {available_levels}"
-        )
         st.caption(chart_source_caption(selected_data))
         render_chart_editor_panel(
             st,
