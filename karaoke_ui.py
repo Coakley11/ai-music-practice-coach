@@ -225,18 +225,15 @@ def render_karaoke_setlist_panel(
             if is_now_singing:
                 marker_text = "Now Singing"
                 marker_cls = "marker-singing"
+                wrap_state = "is-singing"
             elif is_editing:
                 marker_text = "Editing"
                 marker_cls = "marker-editing"
+                wrap_state = "is-editing"
             else:
                 marker_text = ""
                 marker_cls = ""
-
-            row_cls = "ui-karaoke-row"
-            if is_now_singing:
-                row_cls += " ui-karaoke-row-active"
-            elif is_editing:
-                row_cls += " ui-karaoke-row-editing"
+                wrap_state = "is-idle"
 
             marker_html = (
                 f'<span class="ui-karaoke-row-marker {marker_cls}">'
@@ -246,20 +243,24 @@ def render_karaoke_setlist_panel(
                 else ""
             )
 
-            # Layout: clickable title button (wide) | up | down | remove.
-            # The button label embeds the queue number + title + artist
-            # so the row reads naturally even when the marker is off.
+            # Layout: queue # + title (wide) | up | down | remove.
+            # Each column emits a tiny wrapper div *before* its button
+            # so the CSS can target each control class precisely
+            # (compact pick button vs. square icon controls) without
+            # bleeding onto the action row at the bottom of the panel.
             c_pick, c_up, c_dn, c_rm = st.columns([8, 1, 1, 1])
             with c_pick:
-                # Row marker pill sits above the button so the button
-                # label stays clean and the marker reads as status,
-                # not as part of the song title.
-                if marker_html:
-                    st.markdown(
-                        f'<div class="{row_cls}-marker-wrap">{marker_html}</div>',
-                        unsafe_allow_html=True,
-                    )
-                pick_label = f"{idx + 1}.  {t}  —  {a}"
+                # Always emit the wrap so every row aligns vertically,
+                # even when no marker pill is shown. The pill sits
+                # above the button so the title text stays clean.
+                st.markdown(
+                    f'<div class="ui-karaoke-pick-wrap {wrap_state}" '
+                    f'data-row="{idx}">{marker_html}</div>',
+                    unsafe_allow_html=True,
+                )
+                # Queue index renders as a small monospaced badge so
+                # the title reads as the dominant element of the row.
+                pick_label = f"{idx + 1:>2}.  {t}  —  {a}"
                 if st.button(
                     pick_label,
                     key=f"karaoke_pick_{idx}_{pick_key}",
@@ -286,6 +287,10 @@ def render_karaoke_setlist_panel(
                             }
                         st.rerun()
             with c_up:
+                st.markdown(
+                    '<div class="ui-karaoke-ctrl-wrap" data-action="up"></div>',
+                    unsafe_allow_html=True,
+                )
                 if st.button(
                     "↑",
                     key=f"karaoke_up_{idx}_{pick_key}",
@@ -296,6 +301,10 @@ def render_karaoke_setlist_panel(
                     km.move_in_queue(st.session_state, pick_key, -1)
                     st.rerun()
             with c_dn:
+                st.markdown(
+                    '<div class="ui-karaoke-ctrl-wrap" data-action="down"></div>',
+                    unsafe_allow_html=True,
+                )
                 if st.button(
                     "↓",
                     key=f"karaoke_dn_{idx}_{pick_key}",
@@ -306,6 +315,10 @@ def render_karaoke_setlist_panel(
                     km.move_in_queue(st.session_state, pick_key, +1)
                     st.rerun()
             with c_rm:
+                st.markdown(
+                    '<div class="ui-karaoke-ctrl-wrap" data-action="remove"></div>',
+                    unsafe_allow_html=True,
+                )
                 if st.button(
                     "✕",
                     key=f"karaoke_rm_{idx}_{pick_key}",
