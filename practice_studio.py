@@ -37,6 +37,7 @@ STRUM_PATTERNS = {
     "Funk groove": ("D", "U", "D", "U", "D", "U", "D", "U"),
     "Bossa nova": ("D", "—", "U", "—", "D", "—", "U", "—"),
     "Jazz swing": ("D", "—", "U", "D", "U", "—"),
+    "Jewish groove": ("D", "—", "U", "D", "—", "U", "D", "—"),
 }
 
 PIANO_COMP_PATTERNS = {
@@ -46,6 +47,7 @@ PIANO_COMP_PATTERNS = {
     "Bossa nova": "LH bossa pattern (root-chord-chord) · RH syncopated offbeats",
     "Jazz swing": "LH walking root · RH shell voicings on 2 and 4",
     "Funk groove": "LH syncopated root · RH short staccato grips on the pocket",
+    "Jewish groove": "LH hora root on 1 · RH klezmer stabs on 2 & 3",
 }
 
 
@@ -165,6 +167,7 @@ def genre_visual_style(genre: str) -> dict[str, str]:
         "funk": ("Funk", "🕺", "linear-gradient(145deg, #422006 0%, #a16207 45%, #713f12 100%)"),
         "soul": ("Soul", "💜", "linear-gradient(145deg, #3b0764 0%, #6b21a8 55%, #831843 100%)"),
         "bossa": ("Bossa", "🌴", "linear-gradient(145deg, #064e3b 0%, #047857 50%, #0f766e 100%)"),
+        "jewish": ("Jewish", "✡", "linear-gradient(145deg, #1e3a8a 0%, #4c1d95 45%, #ca8a04 100%)"),
     }
     for token, payload in styles.items():
         if token in g:
@@ -231,6 +234,8 @@ def chord_concepts_from_sections(sections: dict[str, list[str]], *, genre: str =
         concepts.append("pop ballad comping")
     elif "funk" in g or "soul" in g:
         concepts.append("pocket & syncopation")
+    elif "jewish" in g:
+        concepts.append("minor-key folk / hora pulse")
 
     seen: set[str] = set()
     ordered: list[str] = []
@@ -348,6 +353,8 @@ def practice_focus_hints(
         feel_bit = "rock pulse"
     elif "ballad" in groove:
         feel_bit = "ballad pacing"
+    elif "jewish" in genre or "jewish" in groove or "klezmer" in groove:
+        feel_bit = "hora / klezmer dance feel"
 
     # ---- Compose (dedupe + cap at 5) -------------------------------------
     out: list[str] = []

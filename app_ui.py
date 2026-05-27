@@ -46,6 +46,7 @@ _GENRE_TOKENS: tuple[str, ...] = (
     "pop",
     "classical",
     "folk",
+    "jewish",
     "country",
     "latin",
 )
@@ -942,6 +943,121 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 @media (max-width: 720px) {
   .ui-active-song-card { grid-template-columns: 1fr; }
   .ui-active-song-art { min-height: 84px; flex-direction: row; gap: 0.5rem; font-size: 1.6rem; }
+}
+/* Active Song Hub — centerpiece control on Song Selection */
+.st-key-active_song_hub {
+  border: 1px solid rgba(30, 64, 175, 0.22);
+  border-radius: 20px;
+  padding: 0.15rem 0.85rem 0.85rem 0.85rem;
+  margin: 0.5rem 0 1rem 0;
+  background: linear-gradient(165deg, #ffffff 0%, #f8fafc 42%, #eff6ff 100%);
+  box-shadow: 0 10px 36px rgba(30, 64, 175, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.ui-active-song-hub-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin: 0.55rem 0 0.35rem 0;
+  flex-wrap: wrap;
+}
+.ui-active-song-hub-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1d4ed8;
+}
+.ui-active-song-hub-label::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.28);
+  animation: ui-active-song-pulse 1.8s ease-in-out infinite;
+}
+@keyframes ui-active-song-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.65; transform: scale(0.88); }
+}
+.ui-active-song-hub-sub {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin: 0;
+}
+.ui-active-song-hub .ui-active-song-card {
+  border: 2px solid rgba(37, 99, 235, 0.35);
+  border-radius: 18px;
+  padding: 1.1rem 1.15rem;
+  margin: 0.25rem 0 0.65rem 0;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 40%, #eef2ff 100%);
+  box-shadow: 0 6px 24px rgba(37, 99, 235, 0.14);
+}
+.ui-active-song-hub .ui-active-song-art {
+  min-height: 120px;
+  font-size: 2.35rem;
+  border-radius: 16px;
+}
+.ui-active-song-hub .ui-active-song-kicker {
+  font-size: 0.7rem;
+  color: #4338ca;
+}
+.ui-active-song-hub .ui-active-song-title {
+  font-size: 1.65rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+.ui-active-song-hub .ui-active-song-artist {
+  font-size: 0.95rem;
+  color: #475569;
+  margin-bottom: 0.45rem;
+}
+.ui-active-song-hub .ui-active-song-genre-line {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #6d28d9;
+  margin: 0 0 0.5rem 0;
+}
+.ui-active-song-meta-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 0.65rem 0;
+}
+.ui-active-song-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 750;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  color: #334155;
+}
+.ui-active-song-meta-pill strong { color: #0f172a; font-weight: 850; }
+.ui-active-song-hub-actions .stButton > button {
+  font-weight: 750 !important;
+  min-height: 2.1rem !important;
+}
+.ui-active-song-recent {
+  margin: 0.35rem 0 0.15rem 0;
+  padding-top: 0.45rem;
+  border-top: 1px dashed rgba(15, 23, 42, 0.12);
+}
+.ui-active-song-recent-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 0.35rem 0;
 }
 .ui-backing-active-song {
   display: grid;
@@ -2278,6 +2394,12 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 }
 .ui-backing-active-song.genre-classical {
   background: linear-gradient(135deg, #0f172a 0%, #1f2937 38%, #334155 72%, #0b1220 100%);
+}
+.ui-backing-active-song.genre-jewish {
+  background: linear-gradient(135deg, #0b1220 0%, #1e3a8a 38%, #4c1d95 55%, #854d0e 100%);
+}
+.ui-active-song-card.genre-jewish {
+  box-shadow: inset 4px 0 0 #ca8a04, 0 6px 24px rgba(37, 99, 235, 0.14);
 }
 
 /* ---- Instrument-aware accent line on the active song card ---- */

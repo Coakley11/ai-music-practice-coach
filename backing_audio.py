@@ -170,6 +170,9 @@ def infer_groove_style(song_data, selected_style="Auto"):
         return str(x)
 
     song_data = song_data or {}
+    ext = song_data.get("extensions") or {}
+    if ext.get("default_groove"):
+        return str(ext["default_groove"])
     genre_name = safe_text(song_data.get("genre", ""))
     artist = safe_text(song_data.get("artist", ""))
     composer = safe_text(song_data.get("composer", ""))
@@ -189,6 +192,8 @@ def infer_groove_style(song_data, selected_style="Auto"):
         return "Funk groove"
     if genre_name == "Rock":
         return "Rock groove"
+    if genre_name == "Jewish":
+        return "Jewish groove"
     return "Pop groove"
 
 
@@ -925,6 +930,12 @@ def _song_backing_profile(
         profile["humanize_ms"] = 0.008
         # Ballads breathe back of the beat — sets up the romantic feel.
         profile["pocket_offset"] = 0.020
+    elif style == "Jewish groove":
+        profile["swing"] = 0.06
+        profile["comp_stab"] = True
+        profile["humanize_ms"] = 0.014
+        profile["hat_soft"] = 0.85
+        profile["pocket_offset"] = 0.010
     elif style in ("Pop groove", "Pop"):
         # Modern pop = tight, quantized, on the grid.
         profile["pocket_offset"] = 0.0
@@ -990,6 +1001,15 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
                 out[key] = _scale_pattern_beats(out[key], from_pulses=base_pulses, to_pulses=pulses)
         return out
 
+    if time_signature == "6/8" and style == "Jewish groove":
+        return {
+            "bass_beats": [0, 3],
+            "comp_beats": [0, 1.5, 3, 4.5],
+            "hat_beats": [0, 1, 2, 3, 4, 5],
+            "snare_beats": [2, 5],
+            "kick_beats": [0, 3],
+            "comp_dur": 0.34,
+        }
     if time_signature == "6/8" and style == "Ballad":
         return {
             "bass_beats": [0, 3],
@@ -1067,6 +1087,15 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "snare_beats": [3.0],
             "kick_beats": [0],
             "comp_dur": 0.95,
+        })
+    if style == "Jewish groove":
+        return _fit({
+            "bass_beats": [0, 1.5, 2, 3],
+            "comp_beats": [0, 0.75, 1.5, 2.25, 3],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 2.5, 3.0],
+            "kick_beats": [0, 2],
+            "comp_dur": 0.32,
         })
     if profile.get("pop_soul"):
         return _fit({

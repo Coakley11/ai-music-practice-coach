@@ -28,6 +28,7 @@ GROOVE_STYLE_CHOICES: tuple[str, ...] = (
     "Bossa nova",
     "Funk groove",
     "Ballad",
+    "Jewish groove",
 )
 
 
@@ -257,6 +258,8 @@ def normalize_groove_label(
         return "Funk groove"
     if "ballad" in low:
         return "Ballad"
+    if "jewish" in low or "klezmer" in low or "hora" in low or "freylekh" in low:
+        return "Jewish groove"
     if "pop" in low:
         return "Pop groove"
     if raw.lower() == "auto" and infer_fn and song_data is not None:

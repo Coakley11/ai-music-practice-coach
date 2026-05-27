@@ -45,6 +45,7 @@ GROOVE_JAZZ = "Jazz swing"
 GROOVE_BOSSA = "Bossa nova"
 GROOVE_FUNK = "Funk groove"
 GROOVE_BALLAD = "Ballad"
+GROOVE_JEWISH = "Jewish groove"
 
 ALL_GROOVE_LABELS: tuple[str, ...] = (
     GROOVE_POP,
@@ -53,6 +54,7 @@ ALL_GROOVE_LABELS: tuple[str, ...] = (
     GROOVE_BOSSA,
     GROOVE_FUNK,
     GROOVE_BALLAD,
+    GROOVE_JEWISH,
 )
 
 
@@ -96,6 +98,8 @@ def _canonical(label: str) -> str:
         return GROOVE_ROCK
     if "ballad" in low or "slow" in low:
         return GROOVE_BALLAD
+    if "jewish" in low or "klezmer" in low or "hora" in low or "freylekh" in low:
+        return GROOVE_JEWISH
     if "pop" in low:
         return GROOVE_POP
     return GROOVE_POP
@@ -298,6 +302,39 @@ GROOVE_PROFILE: dict[str, dict[str, Any]] = {
         ),
         "notation": "half-time straight 8ths; sustained chords",
         "tab_pattern": "Ballad arpeggio (R-3-5-7 fingerpicking)",
+    },
+    GROOVE_JEWISH: {
+        "label": GROOVE_JEWISH,
+        "feel": "hora / klezmer dance pulse with freylekh bounce",
+        "count_in": "1-2-3, 2-2-3 (hora triple feel in the bar)",
+        "accent": "strong downbeat on 1; lift on beats 2 & 3 (triple lilt)",
+        "dynamics": "mf with bright lift; build energy through each hora pass",
+        "articulation": (
+            "short, punchy chord stabs on offbeats; let the melody breathe "
+            "between klezmer-style comp hits"
+        ),
+        "time_feel": "compound triple lilt over 4/4 or native 6/8 hora",
+        "tempo_hint": "88-132 BPM",
+        "strum": ["D", "-", "U", "D", "-", "U", "D", "-"],
+        "piano_comp": (
+            "Left hand: root on beat 1, fifth on the 'and' of 2. "
+            "Right hand: syncopated klezmer stabs on beats 2 and 3 — "
+            "short, bright, slightly detached."
+        ),
+        "bass": (
+            "Root on 1, approach tone into beat 3. "
+            "Emphasize the hora 1-2-3 lift; keep the line bouncy, not legato."
+        ),
+        "voice": (
+            "Bright, celebratory delivery on dance tunes; "
+            "lean into the hora lift at phrase peaks."
+        ),
+        "winds": (
+            "Clarinet-style phrasing: ornament the melody with quick turns; "
+            "match the dance pulse on downbeats."
+        ),
+        "notation": "hora triple feel; klezmer offbeat accents",
+        "tab_pattern": "Hora strum (D--U-D-U-D--)",
     },
 }
 

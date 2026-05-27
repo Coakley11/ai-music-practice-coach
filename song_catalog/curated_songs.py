@@ -2887,6 +2887,251 @@ def _apply_core_chart_overrides(records: list[dict[str, Any]]) -> list[dict[str,
     return out
 
 
+def _jewish_catalog_songs() -> list[dict[str, Any]]:
+    """Traditional Jewish repertoire — hora/klezmer dance tunes and prayer ballads."""
+
+    def _j(
+        title: str,
+        key: str,
+        sections: dict[str, list[str]],
+        *,
+        bpm: int,
+        groove: str,
+        meter: str = "4/4",
+        lyric_cues: dict[str, list[str]] | None = None,
+        section_order: list[str] | None = None,
+        guitar_tabs: dict[str, str] | None = None,
+        beginner: dict[str, list[str]] | None = None,
+        advanced: dict[str, list[str]] | None = None,
+        composer: str | None = None,
+        artist: str = "Traditional",
+    ) -> dict[str, Any]:
+        inter = sections
+        beg = beginner or sections
+        adv = advanced or sections
+        ext = _ext(
+            default_bpm=bpm,
+            default_groove=groove,
+            time_signature=meter,
+            arrangement_notes=(
+                f"{title}: practice-level Jewish folk chart; one chord cell = one bar."
+            ),
+        )
+        row = _s(
+            title,
+            artist,
+            "Jewish",
+            key,
+            inter,
+            composer=composer,
+            lyric_cues=lyric_cues or {},
+            guitar_tabs=guitar_tabs or {},
+            chart_status="practice_simplified",
+            chart_versions=_levels(beginner=beg, intermediate=inter, advanced=adv),
+            extensions=ext,
+        )
+        row["section_order"] = section_order or list(sections.keys())
+        return row
+
+    _em_tabs = {"Em": "022000", "B7": "x21202", "C": "x32010", "G": "320003", "Am": "x02210"}
+    _dm_tabs = {"Dm": "xx0231", "Gm": "355333", "A7": "x02020", "Bb": "x13331"}
+    _am_tabs = {"Am": "x02210", "G": "320003", "F": "133211", "E7": "020100", "C": "x32010"}
+    _d_tabs = {"D": "xx0232", "G": "320003", "A": "x02220", "Bm": "x24432"}
+    _f_tabs = {"F": "133211", "Bb": "x13331", "C": "x32010", "Dm": "xx0231", "Gm": "355333"}
+
+    _hora_8 = ["Em", "B7", "Em", "B7", "Em", "C", "B7", "Em"]
+    _hora_beg = ["Em", "Em", "Em", "B7", "Em", "Em", "B7", "Em"]
+
+    return [
+        _j(
+            "Hava Nagila",
+            "Em",
+            {
+                "Hora A": list(_hora_8),
+                "Hora B (lift)": list(_hora_8),
+                "Outro": ["Em", "B7", "Em", "Em", "B7", "Em", "Em", "Em"],
+            },
+            bpm=120,
+            groove="Jewish groove",
+            meter="6/8",
+            beginner={"Hora A": _hora_beg, "Hora B (lift)": _hora_beg, "Outro": _hora_beg},
+            advanced={
+                "Hora A": ["Em", "B7", "Em7", "B7", "Em", "Cmaj7", "B7", "Em"],
+                "Hora B (lift)": ["Em", "B7", "Em7", "B7", "Em", "Cmaj7", "B7", "Em"],
+                "Outro": ["Em", "B7", "Em7", "Em", "B7", "Em", "Em", "Em"],
+            },
+            lyric_cues={
+                "Hora A": ["hora circle entrance", "build the dance pulse"],
+                "Hora B (lift)": ["acceleration — brighter energy", "hands up on the lift"],
+                "Outro": ["final hora pass", "hold the last Em"],
+            },
+            guitar_tabs=_em_tabs,
+            section_order=["Hora A", "Hora B (lift)", "Outro"],
+        ),
+        _j(
+            "Hevenu Shalom Aleichem",
+            "Dm",
+            {
+                "Melody A": ["Dm", "Gm", "A7", "Dm", "Bb", "A7", "Dm", "Dm"],
+                "Melody B": ["Dm", "Gm", "A7", "Dm", "Bb", "A7", "Dm", "Dm"],
+            },
+            bpm=72,
+            groove="Ballad",
+            lyric_cues={
+                "Melody A": ["gentle welcome phrase", "soft consonants on A7"],
+                "Melody B": ["repeat with warmth", "let the final Dm ring"],
+            },
+            guitar_tabs=_dm_tabs,
+            beginner={
+                "Melody A": ["Dm", "Dm", "A7", "Dm", "Bb", "A7", "Dm", "Dm"],
+                "Melody B": ["Dm", "Dm", "A7", "Dm", "Bb", "A7", "Dm", "Dm"],
+            },
+        ),
+        _j(
+            "Oseh Shalom",
+            "Am",
+            {
+                "Prayer": ["Am", "G", "F", "E7", "Am", "G", "F", "E7"],
+                "Refrain": ["Am", "G", "F", "E7", "Am", "G", "F", "E7"],
+            },
+            bpm=80,
+            groove="Ballad",
+            lyric_cues={
+                "Prayer": ["calm prayer tone", "smooth vowels through E7"],
+                "Refrain": ["peace refrain lift", "sustain on the final Am"],
+            },
+            guitar_tabs=_am_tabs,
+            beginner={
+                "Prayer": ["Am", "Am", "F", "E7", "Am", "Am", "F", "E7"],
+                "Refrain": ["Am", "Am", "F", "E7", "Am", "Am", "F", "E7"],
+            },
+        ),
+        _j(
+            "Am Yisrael Chai",
+            "Am",
+            {
+                "Chorus": ["Am", "F", "G", "Am", "C", "G", "Am", "Am"],
+                "Refrain": ["Am", "F", "G", "Am", "C", "G", "Am", "Am"],
+            },
+            bpm=118,
+            groove="Jewish groove",
+            lyric_cues={
+                "Chorus": ["anthem entrance — strong downbeat", "build through G to Am"],
+                "Refrain": ["repeat with more energy", "celebratory lift on final Am"],
+            },
+            guitar_tabs={**_am_tabs, "F": "133211"},
+            beginner={
+                "Chorus": ["Am", "Am", "G", "Am", "C", "G", "Am", "Am"],
+                "Refrain": ["Am", "Am", "G", "Am", "C", "G", "Am", "Am"],
+            },
+        ),
+        _j(
+            "Siman Tov U'Mazal Tov",
+            "D",
+            {
+                "Hora A": ["D", "G", "A", "D", "D", "G", "A", "D"],
+                "Hora B": ["D", "G", "A", "D", "D", "G", "A", "D"],
+            },
+            bpm=130,
+            groove="Jewish groove",
+            meter="6/8",
+            lyric_cues={
+                "Hora A": ["wedding hora — bright pulse", "short punchy chord changes"],
+                "Hora B": ["repeat with more drive", "keep the triple lilt steady"],
+            },
+            guitar_tabs=_d_tabs,
+            beginner={
+                "Hora A": ["D", "D", "A", "D", "D", "D", "A", "D"],
+                "Hora B": ["D", "D", "A", "D", "D", "D", "A", "D"],
+            },
+        ),
+        _j(
+            "Yerushalayim Shel Zahav",
+            "Am",
+            {
+                "Verse 1": ["Am", "Em", "Am", "Em", "F", "C", "G", "Am"],
+                "Verse 2": ["Am", "Em", "Am", "Em", "F", "C", "G", "Am"],
+                "Bridge": ["F", "C", "G", "Am", "F", "C", "G", "Am"],
+            },
+            bpm=76,
+            groove="Ballad",
+            composer="Naomi Shemer",
+            lyric_cues={
+                "Verse 1": ["tender opening — golden city imagery", "soft pick or arpeggio"],
+                "Verse 2": ["deepen the lyric line", "gentle swell into F"],
+                "Bridge": ["emotional peak", "sustain through G to Am"],
+            },
+            guitar_tabs={**_am_tabs, "Em": "022000"},
+            beginner={
+                "Verse 1": ["Am", "Am", "Am", "Em", "F", "C", "G", "Am"],
+                "Verse 2": ["Am", "Am", "Am", "Em", "F", "C", "G", "Am"],
+                "Bridge": ["F", "C", "G", "Am", "F", "C", "G", "Am"],
+            },
+        ),
+        _j(
+            "Hinei Ma Tov",
+            "D",
+            {
+                "Round A": ["D", "G", "A", "D", "Bm", "G", "A", "D"],
+                "Round B": ["D", "G", "A", "D", "Bm", "G", "A", "D"],
+            },
+            bpm=88,
+            groove="Jewish groove",
+            lyric_cues={
+                "Round A": ["freylekh entrance", "brotherhood / unity phrase"],
+                "Round B": ["repeat — keep the bounce", "clean landing on D"],
+            },
+            guitar_tabs=_d_tabs,
+            beginner={
+                "Round A": ["D", "D", "A", "D", "Bm", "G", "A", "D"],
+                "Round B": ["D", "D", "A", "D", "Bm", "G", "A", "D"],
+            },
+        ),
+        _j(
+            "Shalom Aleichem",
+            "Dm",
+            {
+                "Verse (Peace unto you)": ["Dm", "Gm", "A7", "Dm"] * 2,
+                "Verse (Return in peace)": ["Dm", "Gm", "A7", "Dm"] * 2,
+            },
+            bpm=70,
+            groove="Ballad",
+            lyric_cues={
+                "Verse (Peace unto you)": ["Shabbat welcome — very soft", "four-bar phrase breathing"],
+                "Verse (Return in peace)": ["answer phrase", "gentle A7 resolution"],
+            },
+            guitar_tabs=_dm_tabs,
+            beginner={
+                "Verse (Peace unto you)": ["Dm", "Dm", "A7", "Dm", "Dm", "Dm", "A7", "Dm"],
+                "Verse (Return in peace)": ["Dm", "Dm", "A7", "Dm", "Dm", "Dm", "A7", "Dm"],
+            },
+        ),
+        _j(
+            "Adon Olam",
+            "F",
+            {
+                "Strophe A": ["F", "Bb", "C", "F", "Dm", "Gm", "C", "F"],
+                "Strophe B": ["Bb", "F", "C", "F", "Dm", "Gm", "C", "F"],
+            },
+            bpm=88,
+            groove="Ballad",
+            lyric_cues={
+                "Strophe A": ["stately prayer march", "clear downbeats on F and C"],
+                "Strophe B": ["second strophe — steady confidence", "hold the final F"],
+            },
+            guitar_tabs=_f_tabs,
+            beginner={
+                "Strophe A": ["F", "Bb", "C", "F", "Dm", "Dm", "C", "F"],
+                "Strophe B": ["Bb", "F", "C", "F", "Dm", "Dm", "C", "F"],
+            },
+            advanced={
+                "Strophe A": ["F", "Bb", "C7", "F", "Dm7", "Gm7", "C7", "F"],
+                "Strophe B": ["Bb", "F/A", "C7", "F", "Dm7", "Gm7", "C7", "F"],
+            },
+        ),
+    ]
+
+
 def curated_song_records() -> list[dict[str, Any]]:
     records = [
         # --- John Mayer / Pop foundations ---
@@ -3473,6 +3718,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Bars 5-8": ["Bb7", "Bb7", "F7", "F7"],
             "Bars 9-12": ["C7", "Bb7", "F7", "C7"],
         }),
+        *_jewish_catalog_songs(),
         _s("Ode to Joy", "Beethoven", "Classical", "D", {
             "Main Theme": ["D", "A", "D", "G", "D", "A", "D"],
             "Practice Variation": ["D", "G", "A", "D"],

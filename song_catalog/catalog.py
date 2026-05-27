@@ -158,7 +158,7 @@ def build_libraries(records: list[dict[str, Any]]):
 
         library.setdefault(g, {})[title] = dict(_row_common)
 
-    genres_preferred = ["Jazz", "Pop", "Rock", "Funk", "Blues", "Classical"]
+    genres_preferred = ["Jazz", "Pop", "Rock", "Funk", "Blues", "Jewish", "Classical"]
     genres = [g for g in genres_preferred if g in library]
     genres.extend(sorted(g for g in library if g not in genres))
     return library, picker, genres, records

@@ -6416,10 +6416,30 @@ _PICKER_NAV_ANCHORS: dict[str, str] = {
 }
 
 
-def _picker_navigate(page: str, *, open_chord_coach: bool = False) -> None:
+_CATALOG_RECENT_KEY = "catalog_recent_pick_keys"
+_CATALOG_FAVORITES_KEY = "catalog_favorite_pick_keys"
+
+
+def _push_recent_pick_key(session_state, pick_key: str) -> None:
+    """Keep the last few catalog picks for quick-switch chips on Song Selection."""
+    if not pick_key:
+        return
+    recent = [k for k in (session_state.get(_CATALOG_RECENT_KEY) or []) if k != pick_key]
+    recent.insert(0, pick_key)
+    session_state[_CATALOG_RECENT_KEY] = recent[:5]
+
+
+def _picker_navigate(
+    page: str,
+    *,
+    open_chord_coach: bool = False,
+    anchor: str | None = None,
+) -> None:
     """Open a studio page for the already-selected catalog song (no re-selection)."""
     if open_chord_coach:
         set_pending_anchor(st.session_state, ANCHOR_CHORD_COACH)
+    elif anchor:
+        set_pending_anchor(st.session_state, anchor)
     else:
         set_pending_anchor(st.session_state, _PICKER_NAV_ANCHORS.get(page))
     navigate_studio_page(st.session_state, page)
@@ -6600,22 +6620,41 @@ def _render_active_song_card(rec: dict) -> None:
         )
     except Exception:
         modifier_cls = ""
+    _ext = rec.get("extensions") or {}
+    _groove_label = str(_ext.get("default_groove") or details.get("style_label") or rec.get("genre") or "Song")
+    _section_keys = list((rec.get("sections") or {}).keys())
+    _section_count = len(_section_keys)
+    _bar_count = sum(len(v or []) for v in (rec.get("sections") or {}).values())
+    _active_pk = st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""
+    _favorites = set(st.session_state.get(_CATALOG_FAVORITES_KEY) or [])
+    _is_fav = _active_pk in _favorites
+    _fav_icon = "★" if _is_fav else "☆"
+    _fav_title = "Remove from favorites" if _is_fav else "Add to favorites"
+    meta_pills = (
+        f'<span class="ui-active-song-meta-pill"><strong>Key</strong> '
+        f'{html.escape(details.get("key_display", details.get("key", "")))}</span>'
+        f'<span class="ui-active-song-meta-pill"><strong>BPM</strong> {int(details.get("bpm") or 100)}</span>'
+        f'<span class="ui-active-song-meta-pill"><strong>Time</strong> '
+        f'{html.escape(details.get("time_signature", "4/4"))}</span>'
+        f'<span class="ui-active-song-meta-pill"><strong>Sections</strong> {_section_count}</span>'
+        f'<span class="ui-active-song-meta-pill"><strong>Bars</strong> {_bar_count}</span>'
+        f'<span class="ui-active-song-meta-pill"><strong>Feel</strong> {html.escape(_groove_label)}</span>'
+    )
     card_html = (
         f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}">'
         f'<div class="ui-active-song-art" style="background:{html.escape(details["visual_gradient"])};">'
         f'{html.escape(details["visual_emoji"])}<small>{html.escape(details["visual_genre"])}</small></div>'
         f'<div class="ui-active-song-body">'
-        f'<p class="ui-active-song-kicker">Active Song</p>'
+        f'<p class="ui-active-song-kicker">Now loaded for practice</p>'
         f'<p class="ui-active-song-title">{html.escape(details["title"])}</p>'
         f'<p class="ui-active-song-artist">{html.escape(details["artist"])}</p>'
+        f'<p class="ui-active-song-genre-line">{html.escape(str(rec.get("genre") or details.get("visual_genre") or ""))}'
+        f' · {html.escape(_groove_label)}</p>'
+        f'<div class="ui-active-song-meta-pills">{meta_pills}</div>'
         f'<dl class="ui-active-song-facts">'
-        f'<dt>Key</dt><dd>{html.escape(details.get("key_display", details.get("key", "")))}</dd>'
-        f'<dt>Style</dt><dd>{html.escape(details.get("style_label", details.get("genre", "")))}</dd>'
         f'<dt>Levels</dt><dd>{html.escape(details["levels_display"])}</dd>'
         f'<dt>Level fit</dt><dd>{html.escape(details["difficulty"])}</dd>'
-        f'<dt>BPM</dt><dd>{int(details.get("bpm") or 100)}</dd>'
-        f'<dt>Time</dt><dd>{html.escape(details.get("time_signature", "4/4"))}</dd>'
-        f'<dt>Sections</dt><dd>{html.escape(details["section_summary"])}</dd>'
+        f'<dt>Form</dt><dd>{html.escape(details["section_summary"])}</dd>'
         f'<dt>Instruments</dt><dd>{html.escape(details["instruments"])}</dd>'
         f'<dt>Practice focus</dt><dd>{html.escape(details["practice_focus"])}</dd>'
         f"</dl>"
@@ -6634,8 +6673,17 @@ def _render_active_song_card(rec: dict) -> None:
             "issue is logged here so we don't render blank rows silently."
         )
     _render_v2_chart_debug_pill(rec)
-    st.markdown('<div class="ui-song-card-actions">', unsafe_allow_html=True)
-    b1, b2, b3, b4 = st.columns(4)
+    st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
+    fav_col, b1, b2, b3, b4 = st.columns([0.55, 1, 1, 1, 1])
+    with fav_col:
+        if _active_pk and st.button(_fav_icon, key="picker_card_favorite", help=_fav_title):
+            favs = set(st.session_state.get(_CATALOG_FAVORITES_KEY) or [])
+            if _active_pk in favs:
+                favs.discard(_active_pk)
+            else:
+                favs.add(_active_pk)
+            st.session_state[_CATALOG_FAVORITES_KEY] = sorted(favs)
+            st.rerun()
     with b1:
         if st.button("Practice", key="picker_card_practice", use_container_width=True):
             _picker_navigate("practice")
@@ -6643,8 +6691,8 @@ def _render_active_song_card(rec: dict) -> None:
         if st.button("Backing Track", key="picker_card_backing", use_container_width=True):
             _picker_navigate("backing")
     with b3:
-        if st.button("Creative", key="picker_card_creative", use_container_width=True):
-            _picker_navigate("creative")
+        if st.button("Karaoke", key="picker_card_karaoke", use_container_width=True):
+            _picker_navigate("practice", anchor=ANCHOR_LYRICS_EDITOR)
     with b4:
         if st.button("Chord Coach", key="picker_card_chord_coach", use_container_width=True):
             _picker_navigate("practice", open_chord_coach=True)
@@ -6662,6 +6710,36 @@ def _render_active_song_card(rec: dict) -> None:
             key_suffix=f"card_{_active_pick_key}",
             use_container_width=True,
         )
+
+
+def _render_active_song_recent_switch(
+    visible_records: list[dict],
+    pick_options: list[str],
+    active_pick_key: str,
+) -> None:
+    """Quick-switch chips for recently selected catalog songs."""
+    recent = [
+        k for k in (st.session_state.get(_CATALOG_RECENT_KEY) or [])
+        if k in pick_options and k != active_pick_key
+    ][:3]
+    if not recent:
+        return
+    st.markdown(
+        '<p class="ui-active-song-recent-label">Recently selected</p>',
+        unsafe_allow_html=True,
+    )
+    cols = st.columns(len(recent))
+    for col, pk in zip(cols, recent):
+        rec = record_for_pick_key(visible_records, pk)
+        label = str(rec.get("title", parse_pick_key(pk)[1])) if rec else parse_pick_key(pk)[1]
+        with col:
+            if st.button(label, key=f"recent_pick_{pk}", use_container_width=True):
+                st.session_state["matching_song_dropdown"] = pk
+                set_catalog_source(st.session_state)
+                apply_pick_key(st, pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
+                _push_recent_pick_key(st.session_state, pk)
+                note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+                st.rerun()
 
 
 def _picker_visible_records() -> list[dict]:
@@ -6883,6 +6961,10 @@ def _render_catalog_song_picker_block(
             SONG_PICKER_CATALOG,
             song_library=SONG_LIBRARY,
         )
+        _push_recent_pick_key(
+            st.session_state,
+            st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "",
+        )
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         try:
             st.toast("Song updated — chart and backing track follow this selection.", icon="🎵")
@@ -6952,32 +7034,40 @@ def _render_catalog_song_picker_block(
         _render_song_picker_widget()
 
     if show_song_cards:
-        st.markdown(
-            '<p class="ui-page-nav-label" style="margin:1.1rem 0 0.55rem 0;">'
-            "Active song details</p>",
-            unsafe_allow_html=True,
-        )
         active_rec = record_for_pick_key(visible_song_records, active_pick_key)
-        # Original-song YouTube card lives right above the song card so
-        # the "hear/watch the original" link is the first thing users see
-        # after they pick a song. Lazy: nothing loads until they expand
-        # it (and embeds only render when they explicitly click Load).
-        if active_rec:
-            _yt_title = str(active_rec.get("title", ""))
-            _yt_artist = str(active_rec.get("artist", ""))
-            if _yt_title:
-                _yt_slug, _, _ = _lyrics_cues_session_keys(_yt_title, _yt_artist)
-                render_original_song_video_card(
-                    st,
-                    song_title=_yt_title,
-                    artist=_yt_artist,
-                    song_slug=_yt_slug,
-                    instrument=st.session_state.get("instrument", ""),
-                    expanded=False,
+        with st.container(key="active_song_hub"):
+            st.markdown(
+                """
+<div class="ui-active-song-hub-head">
+  <span class="ui-active-song-hub-label">Current active song</span>
+  <span class="ui-active-song-hub-sub">Chart · lyrics · backing · practice tools follow this pick</span>
+</div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if active_rec:
+                _yt_title = str(active_rec.get("title", ""))
+                _yt_artist = str(active_rec.get("artist", ""))
+                if _yt_title:
+                    _yt_slug, _, _ = _lyrics_cues_session_keys(_yt_title, _yt_artist)
+                    render_original_song_video_card(
+                        st,
+                        song_title=_yt_title,
+                        artist=_yt_artist,
+                        song_slug=_yt_slug,
+                        instrument=st.session_state.get("instrument", ""),
+                        expanded=False,
+                    )
+                _render_active_song_card(active_rec)
+                st.markdown('<div class="ui-active-song-recent">', unsafe_allow_html=True)
+                _render_active_song_recent_switch(
+                    visible_song_records,
+                    pick_options,
+                    active_pick_key,
                 )
-            _render_active_song_card(active_rec)
-        else:
-            st.info("Select a song from the menu above.")
+                st.markdown("</div>", unsafe_allow_html=True)
+            else:
+                st.info("Select a song from the menu above — it becomes the active track for the whole studio.")
     elif not _developer_mode_enabled():
         st.caption(
             f"**{len(filtered)}** songs in list · open **Practice** or **Backing Track** after you pick one."

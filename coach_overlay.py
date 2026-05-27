@@ -32,6 +32,7 @@ def _chart_feel_label(style):
         "Bossa nova": "Bossa feel",
         "Funk groove": "Funk syncopation",
         "Ballad": "Ballad feel",
+        "Jewish groove": "Hora / klezmer dance feel",
     }.get(style or "Pop groove", style or "Pop groove")
 
 
