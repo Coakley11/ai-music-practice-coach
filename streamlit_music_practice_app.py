@@ -228,7 +228,11 @@ from instrument_transposition import (
 )
 
 from backing_audio import (
+    _arrangement_intensity_overlay,
+    _build_arrangement_context,
     _chord_head,
+    _section_intensity,
+    _section_role,
     backing_bytes_to_float,
     bass_note,
     chord_notes,
@@ -3182,6 +3186,18 @@ def build_chord_event_timeline(events, bpm, loops, time_signature="4/4", beats_p
         beat_duration = bar_duration / bpb if bpb > 0 else (60.0 / max(1, bpm))
     looped_events = events * max(1, int(loops))
     total_bars = len(looped_events)
+    # Pre-compute the arrangement context (chorus passes, final
+    # chorus, phrase positions, bridge recovery) so each timeline
+    # entry can carry the same arrangement-intelligence the synth
+    # uses. Karaoke visuals key off these fields to dim during
+    # tacet bridge bars and saturate during the final chorus.
+    try:
+        arr_ctx = _build_arrangement_context(looped_events)
+    except Exception:
+        # If the arrangement helper isn't available (e.g. partial
+        # imports during a failed hot-reload) we fall back to None
+        # and downstream code uses neutral defaults.
+        arr_ctx = None
     event_index = 0
     push_offset = beat_duration * 0.5  # pushes anticipate by half a beat
     for bar_idx, event in enumerate(looped_events):
@@ -3194,6 +3210,59 @@ def build_chord_event_timeline(events, bpm, loops, time_signature="4/4", beats_p
         section_name = event.get("section", "")
         bar_in_section = int(event.get("bar_in_section", 0)) + 1
         section_bars = int(event.get("section_bars", 1))
+        # ---- Arrangement-intelligence fields ----
+        if arr_ctx is not None:
+            try:
+                role_for_event = _section_role(section_name)
+                base_intensity = _section_intensity(section_name, "Pop groove")
+                arr_mul = _arrangement_intensity_overlay(
+                    bar_idx, role_for_event, arr_ctx
+                )
+                arrangement_intensity = float(base_intensity * arr_mul)
+                chorus_pass = int(arr_ctx.chorus_pass_at(bar_idx))
+                is_final_chorus = bool(
+                    arr_ctx.is_final_chorus_event(bar_idx)
+                )
+                is_breakdown_recovery = bool(
+                    bar_idx in arr_ctx.bridge_recovery
+                )
+                phrase_pos = float(arr_ctx.phrase_pos(bar_idx))
+            except Exception:
+                role_for_event = ""
+                arrangement_intensity = 1.0
+                chorus_pass = 0
+                is_final_chorus = False
+                is_breakdown_recovery = False
+                phrase_pos = 0.0
+        else:
+            role_for_event = ""
+            arrangement_intensity = 1.0
+            chorus_pass = 0
+            is_final_chorus = False
+            is_breakdown_recovery = False
+            phrase_pos = 0.0
+        # Quantise the intensity into a coarse mood bucket so the JS
+        # doesn't have to threshold on every tick. Bucket boundaries
+        # are tuned around the base intensity table in
+        # ``_section_intensity`` (verse ≈ 0.78, pre ≈ 0.95,
+        # chorus ≈ 1.18, climax ≈ 1.30).
+        if is_breakdown_recovery and bar_idx == 0:
+            mood = "neutral"  # impossible state, but be safe
+        elif arrangement_intensity >= 1.25:
+            mood = "climax"
+        elif arrangement_intensity >= 1.05:
+            mood = "chorus"
+        elif arrangement_intensity >= 0.90:
+            mood = "lift"
+        elif arrangement_intensity >= 0.75:
+            mood = "verse"
+        else:
+            mood = "soft"
+        # Tacet bars (any spelling) read as a breakdown regardless
+        # of intensity bucket — the visual should dim even if the
+        # last computed intensity overshot.
+        if is_no_chord_token(chord_token):
+            mood = "tacet"
         beat_cursor = 0.0
         for sub_idx, sub in enumerate(subs):
             start_time = bar_start + beat_cursor * beat_duration
@@ -3225,6 +3294,12 @@ def build_chord_event_timeline(events, bpm, loops, time_signature="4/4", beats_p
                 "end_time": end_time,
                 "beat_offset": round(beat_cursor, 6),
                 "beat_duration": round(float(sub.weight), 6),
+                "arrangement_intensity": round(arrangement_intensity, 4),
+                "chorus_pass": chorus_pass,
+                "is_final_chorus": is_final_chorus,
+                "is_breakdown_recovery": is_breakdown_recovery,
+                "phrase_pos": round(phrase_pos, 4),
+                "mood": mood,
             }
             if sub_count > 1:
                 entry["subdivision_index"] = sub_idx
@@ -3837,6 +3912,48 @@ def _build_karaoke_lyrics_panel_script(
         //    that's "due" right now (no per-line timing required).
         highlightActiveChord(event);
         highlightActiveLine(event);
+        // ---- Arrangement-mood theming ----
+        // Each timeline event carries a coarse ``mood`` bucket
+        // (verse / lift / chorus / climax / tacet / soft) plus a
+        // raw arrangement_intensity float. Sync them onto the
+        // panel as data attributes + a CSS variable so the
+        // stylesheet can dim during tacet bridges, saturate
+        // during the final chorus, and pulse the background in
+        // proportion to the band's energy. We update only when
+        // values change to avoid forcing a layout recompute on
+        // every tick.
+        try {{
+          const lpPanel = document.getElementById("karaoke-lyric-panel");
+          if (lpPanel) {{
+            const mood = event.mood || "verse";
+            const intensity = Number(event.arrangement_intensity) || 1.0;
+            if (lpPanel.dataset.mood !== mood) {{
+              lpPanel.dataset.mood = mood;
+            }}
+            if (event.is_final_chorus) {{
+              if (lpPanel.dataset.finalChorus !== "1") {{
+                lpPanel.dataset.finalChorus = "1";
+              }}
+            }} else if (lpPanel.dataset.finalChorus === "1") {{
+              lpPanel.dataset.finalChorus = "0";
+            }}
+            // Clamp + quantise the intensity to a few decimals so
+            // CSS-var thrash is minimal. The custom property is
+            // consumed by the panel's background gradient + glow.
+            const clamped = Math.max(0.4, Math.min(1.45, intensity));
+            const quantised = Math.round(clamped * 50) / 50;  // 0.02 step
+            const current = parseFloat(
+              lpPanel.style.getPropertyValue("--karaoke-arrangement-intensity") || "0"
+            );
+            if (Math.abs(current - quantised) > 0.005) {{
+              lpPanel.style.setProperty(
+                "--karaoke-arrangement-intensity", quantised.toFixed(3)
+              );
+            }}
+          }}
+        }} catch (_e) {{
+          /* mood theming is decorative — never break the panel */
+        }}
       }};
     }})();
     """
@@ -4138,6 +4255,110 @@ def live_follow_along_component_html(
       --karaoke-lyric: #fef3c7;
       --karaoke-lyric-glow: rgba(254, 243, 199, 0.50);
     }}
+
+    /* ---- Arrangement-mood theming ----
+       Each timeline tick the JS sets ``data-mood`` and the CSS
+       custom property ``--karaoke-arrangement-intensity`` on the
+       panel. The base design is intentionally minimal: a couple of
+       subtle gradient overlays + a glow ring whose opacity scales
+       with the band's energy. The result is the screen visibly
+       brightens on the chorus, dims on a tacet bridge, and pulses
+       to climax in the final chorus — without changing layout. */
+    .karaoke-lyric-panel {{
+      transition: background-color 600ms ease, box-shadow 400ms ease,
+                  border-color 400ms ease;
+    }}
+    .karaoke-lyric-panel::after {{
+      /* Mood overlay: a soft radial wash whose hue/intensity is
+         driven by the data-mood attribute. Decoupled from the
+         neon top sheen (::before) so both can co-exist. */
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(
+        130% 110% at 50% 35%,
+        var(--karaoke-mood-wash, rgba(244, 114, 182, 0.00)) 0%,
+        rgba(0, 0, 0, 0) 65%);
+      opacity: calc(var(--karaoke-arrangement-intensity, 1.0) * 0.85);
+      transition: background 700ms ease, opacity 600ms ease;
+      z-index: 0;
+      mix-blend-mode: screen;
+    }}
+    .karaoke-lyric-panel[data-mood="soft"] {{
+      --karaoke-mood-wash: rgba(99, 102, 241, 0.10);
+      border-color: rgba(99, 102, 241, 0.18);
+    }}
+    .karaoke-lyric-panel[data-mood="verse"] {{
+      --karaoke-mood-wash: rgba(129, 140, 248, 0.10);
+      border-color: rgba(129, 140, 248, 0.18);
+    }}
+    .karaoke-lyric-panel[data-mood="lift"] {{
+      /* Pre-chorus rise: introduce magenta hint so the eye senses
+         the build before the drop. */
+      --karaoke-mood-wash: rgba(217, 70, 239, 0.16);
+      border-color: rgba(217, 70, 239, 0.32);
+    }}
+    .karaoke-lyric-panel[data-mood="chorus"] {{
+      --karaoke-mood-wash: rgba(244, 114, 182, 0.22);
+      border-color: rgba(244, 114, 182, 0.40);
+      box-shadow:
+        0 30px 72px -28px rgba(244, 114, 182, 0.50),
+        0 8px 24px rgba(244, 114, 182, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }}
+    .karaoke-lyric-panel[data-mood="climax"] {{
+      /* Final chorus / climax: brighter wash + saturated border +
+         dramatic glow. The pulse animation sits on top of the
+         intensity-driven opacity so it reads even at low intensity. */
+      --karaoke-mood-wash: rgba(251, 191, 36, 0.22);
+      border-color: rgba(251, 191, 36, 0.55);
+      box-shadow:
+        0 0 0 1px rgba(251, 191, 36, 0.35),
+        0 30px 80px -24px rgba(251, 113, 133, 0.55),
+        0 12px 32px rgba(251, 191, 36, 0.20),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      animation: karaoke-climax-pulse 2.2s ease-in-out infinite;
+    }}
+    .karaoke-lyric-panel[data-mood="tacet"] {{
+      /* Bridge breakdown / tacet bars: dim the room. The dashed
+         lyric-line accent and the chord strip's tacet pills already
+         signal "drums only" — this overlay quiets the whole stage. */
+      --karaoke-mood-wash: rgba(15, 23, 42, 0.20);
+      border-color: rgba(148, 163, 184, 0.20);
+      filter: brightness(0.86) saturate(0.85);
+    }}
+    .karaoke-lyric-panel[data-final-chorus="1"][data-mood="chorus"],
+    .karaoke-lyric-panel[data-final-chorus="1"][data-mood="climax"] {{
+      /* Final chorus reads as the brightest moment of the song
+         even before intensity peaks (some songs end on a sustained
+         climax rather than a louder one). */
+      border-color: rgba(251, 191, 36, 0.65);
+      box-shadow:
+        0 0 0 1px rgba(251, 191, 36, 0.40),
+        0 30px 80px -24px rgba(251, 113, 133, 0.65),
+        0 12px 32px rgba(251, 191, 36, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }}
+    @keyframes karaoke-climax-pulse {{
+      0%   {{ box-shadow:
+              0 0 0 1px rgba(251, 191, 36, 0.35),
+              0 30px 80px -24px rgba(251, 113, 133, 0.45),
+              0 12px 32px rgba(251, 191, 36, 0.18),
+              inset 0 1px 0 rgba(255, 255, 255, 0.08); }}
+      50%  {{ box-shadow:
+              0 0 0 1px rgba(251, 191, 36, 0.55),
+              0 36px 96px -22px rgba(251, 113, 133, 0.65),
+              0 16px 40px rgba(251, 191, 36, 0.30),
+              inset 0 1px 0 rgba(255, 255, 255, 0.10); }}
+      100% {{ box-shadow:
+              0 0 0 1px rgba(251, 191, 36, 0.35),
+              0 30px 80px -24px rgba(251, 113, 133, 0.45),
+              0 12px 32px rgba(251, 191, 36, 0.18),
+              inset 0 1px 0 rgba(255, 255, 255, 0.08); }}
+    }}
+    /* Lyrics + chords sit above the mood overlay.  */
+    .karaoke-lyric-panel > * {{ position: relative; z-index: 1; }}
 
     .karaoke-lp-kicker {{
       display: inline-block;

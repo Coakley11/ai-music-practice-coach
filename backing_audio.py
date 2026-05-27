@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import wave
+from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
 
@@ -329,6 +330,186 @@ def _is_section_edge(event, next_event):
     return bool(next_event and next_event.get("section") != event.get("section"))
 
 
+# ---------------------------------------------------------------------------
+# Arrangement intelligence
+#
+# Up until now the synth treated every bar as standalone: ``role`` and
+# ``intensity`` came from the section name and that was that. A real
+# arrangement evolves *across* a song — the second chorus is bigger
+# than the first, the bar after a bridge breakdown lifts back in,
+# pre-choruses ramp into the drop, the outro fades out. The
+# ``ArrangementContext`` is the small cache the synth builds once
+# before the per-bar render loop so every per-bar decision (intensity
+# multiplier, fill choice, anticipation, fade) can ask "where am I in
+# the song?" rather than "what does my section name say?".
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ArrangementContext:
+    """Per-render arrangement memory.
+
+    Attributes
+    ----------
+    chorus_index_for_event:
+        For each event index, the 1-based chorus-pass number. ``0``
+        for non-chorus bars. Lets the synth know "this is the second
+        chorus" / "this is the final chorus".
+    total_choruses:
+        How many distinct chorus passes are in the rendered chord
+        list. Used to identify the *final* chorus for a lift.
+    section_phrase_pos:
+        For each event, ``bar_in_section / max(1, section_bars - 1)``
+        clamped to ``[0, 1]``. Drives phrase-level dynamic curves so
+        the section gently builds toward its end.
+    bridge_recovery:
+        Set of event indices where the *previous* event's section had
+        ``role == "bridge"`` and this bar does not. Used to drop a
+        crash + lift on the breakdown-recovery downbeat.
+    is_final_section_bar:
+        True when this is the last bar of the song (used by outro
+        fade and final-fill logic).
+    is_song_last_bar:
+        Convenience: integer index of the very last bar in the
+        rendered chord list. Equal to ``len(chord_list) - 1``.
+    final_chorus_first_bar:
+        Integer index of the first bar of the final chorus, or
+        ``None`` if there are no choruses. Lets the fill engine put a
+        bigger transition fill into the final chorus.
+    """
+
+    chorus_index_for_event: tuple[int, ...] = field(default_factory=tuple)
+    total_choruses: int = 0
+    section_phrase_pos: tuple[float, ...] = field(default_factory=tuple)
+    bridge_recovery: frozenset[int] = field(default_factory=frozenset)
+    is_song_last_bar: int = 0
+    final_chorus_first_bar: int | None = None
+
+    def chorus_pass_at(self, idx: int) -> int:
+        if 0 <= idx < len(self.chorus_index_for_event):
+            return int(self.chorus_index_for_event[idx])
+        return 0
+
+    def is_final_chorus_event(self, idx: int) -> bool:
+        return (
+            self.total_choruses > 0
+            and self.chorus_pass_at(idx) == self.total_choruses
+        )
+
+    def phrase_pos(self, idx: int) -> float:
+        if 0 <= idx < len(self.section_phrase_pos):
+            return float(self.section_phrase_pos[idx])
+        return 0.0
+
+
+def _build_arrangement_context(chord_list: list[dict]) -> ArrangementContext:
+    """Pre-compute arrangement metadata for the rendered chord list."""
+    if not chord_list:
+        return ArrangementContext()
+
+    # ------ Chorus pass numbering ------
+    # Walk the events; every time we *enter* a new chorus section
+    # (role == "chorus" and previous event was not in the same chorus
+    # section) we increment the chorus counter. All bars inside that
+    # section share the chorus index. Events that aren't chorus get
+    # chorus_index = 0.
+    chorus_index_for_event: list[int] = [0] * len(chord_list)
+    chorus_pass = 0
+    last_chorus_section: str | None = None
+    final_chorus_first_bar: int | None = None
+    for idx, event in enumerate(chord_list):
+        section = str(event.get("section") or "")
+        role = _section_role(section)
+        if role == "chorus":
+            if section != last_chorus_section:
+                chorus_pass += 1
+                last_chorus_section = section
+            chorus_index_for_event[idx] = chorus_pass
+        else:
+            # Reset the "current chorus section" tracker so the next
+            # chorus block (even one with the same name) counts as a
+            # new pass. This is what makes "Chorus 1" → "Verse 2" →
+            # "Chorus 1" still register as two distinct chorus passes.
+            last_chorus_section = None
+    total_choruses = chorus_pass
+    if total_choruses > 0:
+        for idx, pass_no in enumerate(chorus_index_for_event):
+            if pass_no == total_choruses:
+                final_chorus_first_bar = idx
+                break
+
+    # ------ Phrase position within section ------
+    section_phrase_pos: list[float] = []
+    for event in chord_list:
+        bar_in_section = float(event.get("bar_in_section", 0) or 0)
+        section_bars = max(1.0, float(event.get("section_bars", 1) or 1))
+        denom = max(1.0, section_bars - 1.0)
+        ratio = max(0.0, min(1.0, bar_in_section / denom))
+        section_phrase_pos.append(ratio)
+
+    # ------ Bridge recovery ------
+    bridge_recovery: set[int] = set()
+    for idx in range(1, len(chord_list)):
+        prev_role = _section_role(chord_list[idx - 1].get("section") or "")
+        cur_role = _section_role(chord_list[idx].get("section") or "")
+        if prev_role == "bridge" and cur_role != "bridge":
+            bridge_recovery.add(idx)
+
+    return ArrangementContext(
+        chorus_index_for_event=tuple(chorus_index_for_event),
+        total_choruses=total_choruses,
+        section_phrase_pos=tuple(section_phrase_pos),
+        bridge_recovery=frozenset(bridge_recovery),
+        is_song_last_bar=len(chord_list) - 1,
+        final_chorus_first_bar=final_chorus_first_bar,
+    )
+
+
+def _arrangement_intensity_overlay(
+    idx: int,
+    role: str,
+    arr_ctx: ArrangementContext,
+) -> float:
+    """Multiplier (~0.88..1.18) on top of base section intensity.
+
+    Combines four "where am I in the arrangement?" signals:
+
+    1. **Final chorus lift** — last chorus is +10% over earlier ones,
+       so the climax actually feels like a climax.
+    2. **Phrase position curve** — gentle build across the section
+       (0.96 at bar 1 → 1.04 at last bar) so each section breathes.
+       Slightly stronger curve for pre-choruses (0.92 → 1.06) which
+       are *meant* to feel like a ramp into the drop.
+    3. **Bridge recovery** — first bar after a bridge gets +8% so
+       the breakdown→band-back feels intentional, not a continuation.
+    4. **Repeated chorus growth** — every chorus pass after the first
+       gains +3% (capped at +9%) so even non-final repeats feel
+       slightly fuller than the first one.
+    """
+    mul = 1.0
+
+    if role == "pre":
+        # Stronger ramp on pre-choruses (they exist to lift).
+        mul *= 0.92 + 0.14 * arr_ctx.phrase_pos(idx)
+    else:
+        # Subtle phrase-shape ramp for everything else: -4% at bar 1,
+        # +4% at last bar of the section.
+        mul *= 0.96 + 0.08 * arr_ctx.phrase_pos(idx)
+
+    if role == "chorus":
+        chorus_pass = arr_ctx.chorus_pass_at(idx)
+        if chorus_pass > 1:
+            growth = min(0.09, 0.03 * (chorus_pass - 1))
+            mul *= 1.0 + growth
+        if arr_ctx.is_final_chorus_event(idx):
+            mul *= 1.10  # final chorus = climax
+
+    if idx in arr_ctx.bridge_recovery:
+        mul *= 1.08
+
+    return mul
+
+
 def _bass_motion_pitch(chord, next_chord, style, slot_index, slot_count):
     notes = chord_notes(chord)
     root = bass_note(chord) - 12
@@ -453,15 +634,59 @@ def _voicing_for_comp(chord, level, style, beat_index=0):
     return [n + octave for n in voicing]
 
 
-def _groove_time(bar_start, beat, beat_len, style, *, swing: float = 0.0):
+def _groove_time(
+    bar_start,
+    beat,
+    beat_len,
+    style,
+    *,
+    swing: float = 0.0,
+    pocket: float = 0.0,
+):
+    """Place a hit at ``bar_start + beat * beat_len`` with style feel.
+
+    ``pocket`` is a per-style "where the band sits" offset in beats:
+
+    * Negative -> ahead-of-the-beat / pushed (rock, funk).
+    * Zero     -> tight quantized (modern pop).
+    * Positive -> laid-back / behind-the-beat (R&B, neo-soul, hip-hop).
+
+    Pocket only nudges off-beats so the kick/downbeat anchor doesn't
+    drift — keeps the groove glued to the metronome while everything
+    *around* the kick breathes.
+    """
     t = bar_start + beat * beat_len
-    if swing and beat % 1:
+    is_offbeat = bool(beat % 1)
+    if swing and is_offbeat:
         t = bar_start + (beat + swing) * beat_len
-    elif style == "Jazz swing" and beat % 1:
+    elif style == "Jazz swing" and is_offbeat:
         t = bar_start + (beat + 0.08) * beat_len
-    elif style == "Funk groove" and beat % 1:
+    elif style == "Funk groove" and is_offbeat:
         t = bar_start + (beat - 0.02) * beat_len
+    if pocket and is_offbeat:
+        t = t + pocket * beat_len
     return t
+
+
+def _outro_fade_envelope(
+    idx: int,
+    total_bars: int,
+    fade_bars: int,
+) -> float:
+    """Linear taper across the last ``fade_bars`` bars of the song.
+
+    Returns a multiplier in ``[0.0, 1.0]``: ``1.0`` for any bar more
+    than ``fade_bars`` from the end, then a smooth linear fade down
+    to a soft floor (0.10) on the very last bar so the final downbeat
+    still has presence.
+    """
+    if fade_bars <= 0 or total_bars <= 0:
+        return 1.0
+    bars_left = max(0, total_bars - 1 - idx)
+    if bars_left >= fade_bars:
+        return 1.0
+    progress = 1.0 - (bars_left / float(fade_bars))  # 0.0..1.0
+    return max(0.10, 1.0 - 0.90 * progress)
 
 
 def _scale_pattern_beats(beats: list[float], *, from_pulses: int, to_pulses: int) -> list[float]:
@@ -469,6 +694,42 @@ def _scale_pattern_beats(beats: list[float], *, from_pulses: int, to_pulses: int
         return list(beats)
     factor = to_pulses / from_pulses
     return [round(b * factor, 4) for b in beats]
+
+
+def _add_cymbal_swell(
+    audio,
+    sr,
+    fill_start,
+    pulse_sec,
+    pulses_per_bar,
+    intensity,
+    *,
+    seed_base: int,
+    duration_pulses: float = 1.5,
+):
+    """Cymbal/white-noise crescendo into a section drop.
+
+    Stacks short hi-hat-style noise hits at increasing volumes so the
+    listener hears a "shhhhhhhh" rising into the next downbeat. Used
+    for chorus drops (especially the final chorus) and for
+    breakdown→band-back recoveries.
+    """
+    swell_start = max(0.0, fill_start)
+    swell_dur = max(0.4, float(duration_pulses)) * pulse_sec
+    n_hits = max(8, int(duration_pulses * 12))
+    for i in range(n_hits):
+        progress = i / max(1, n_hits - 1)
+        # Quadratic ramp so the swell *crests* into the downbeat.
+        vol = 0.005 + 0.045 * (progress ** 1.6) * intensity
+        t = swell_start + progress * swell_dur
+        _add_noise_hit(
+            audio,
+            sr,
+            t,
+            0.045,
+            vol,
+            seed=seed_base * 23 + i,
+        )
 
 
 def _add_section_transition_fill(
@@ -483,24 +744,68 @@ def _add_section_transition_fill(
     intensity,
     *,
     seed_base: int,
+    next_intensity: float = 1.0,
+    is_into_final_chorus: bool = False,
 ):
-    """Drum fill and lift between sections."""
+    """Drum fill and lift between sections.
+
+    The fill complexity scales with how *big* the section we're going
+    into is. A tom roll into the final chorus is a different beast
+    from a soft brush-fill into a verse, so we ramp:
+
+    * Number of fill hits scales with ``next_intensity``.
+    * Cymbal swell is added for chorus drops (and is bigger for the
+      final chorus or anthem-rock songs).
+    * Bridge transitions still get the long organ tone.
+    """
     fill_anchor = max(0.0, pulses_per_bar - 0.8)
     fill_start = bar_start + fill_anchor * pulse_sec
     next_role = _section_role(next_event.get("section")) if next_event else "neutral"
-    for i, off in enumerate([0.0, 0.5, 1.0, 1.5, 2.0, 2.5]):
+
+    # Number of fill hits scales with the *target* section intensity.
+    base_hits = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
+    # Final chorus / chorus drops get a denser tom-style roll.
+    drop_into_chorus = next_role == "chorus"
+    if drop_into_chorus or is_into_final_chorus:
+        base_hits = [0.0, 0.33, 0.66, 1.0, 1.33, 1.66, 2.0, 2.33, 2.66]
+    fill_volume = 0.022 * intensity * max(0.6, min(1.4, next_intensity))
+    for i, off in enumerate(base_hits):
         _add_noise_hit(
             audio,
             sr,
             fill_start + off * pulse_sec * 0.15,
             0.04,
-            0.022 * intensity,
+            fill_volume,
             seed=seed_base * 17 + i,
         )
-    if next_role == "chorus":
+
+    # Cymbal swell into chorus drops. The swell is louder and longer
+    # for the final chorus / anthem songs, giving the climax its
+    # dramatic "lift".
+    if drop_into_chorus:
+        swell_intensity = intensity * (1.4 if is_into_final_chorus else 1.0)
+        swell_start = bar_start + max(0.0, pulses_per_bar - 1.6) * pulse_sec
+        _add_cymbal_swell(
+            audio,
+            sr,
+            swell_start,
+            pulse_sec,
+            pulses_per_bar,
+            swell_intensity,
+            seed_base=seed_base,
+            duration_pulses=1.8 if is_into_final_chorus else 1.2,
+        )
         for t, freq in [(3.5, 200), (3.65, 260), (3.8, 330)]:
             pulse = min(float(pulses_per_bar) - 0.5, t)
-            _add_tone(audio, sr, bar_start + pulse * pulse_sec, 0.06, freq, 0.04 * intensity, "bass")
+            _add_tone(
+                audio,
+                sr,
+                bar_start + pulse * pulse_sec,
+                0.06,
+                freq,
+                0.04 * intensity * (1.20 if is_into_final_chorus else 1.0),
+                "bass",
+            )
     elif next_role == "bridge":
         _add_tone(
             audio,
@@ -513,6 +818,34 @@ def _add_section_transition_fill(
         )
     if role == "intro":
         _add_noise_hit(audio, sr, bar_start + 0.1 * pulse_sec, 0.08, 0.012 * intensity, seed=seed_base * 3)
+
+
+def _add_breakdown_recovery_crash(
+    audio,
+    sr,
+    bar_start,
+    pulse_sec,
+    intensity,
+    *,
+    seed_base: int,
+):
+    """Crash + sub-tone on the downbeat following a bridge breakdown.
+
+    Real bands punctuate the "we're back!" moment with a cymbal crash
+    and a deep low-end hit. This adds both on the very first
+    downbeat after the bridge ends so the recovery actually lands.
+    """
+    # The crash itself: short, bright noise burst.
+    _add_noise_hit(
+        audio,
+        sr,
+        bar_start,
+        0.18,
+        0.060 * intensity,
+        seed=seed_base * 41,
+    )
+    # Sub-tone underneath the crash.
+    _add_tone(audio, sr, bar_start, 0.15, 36, 0.085 * intensity, "bass")
 
 
 def _comp_wave_for_style(style: str, role: str) -> str:
@@ -544,33 +877,65 @@ def _song_backing_profile(
         "kick_push": 1.0,
         "hat_soft": 1.0,
         "comp_stab": False,
+        # ---- Arrangement-level character (new) ----
+        # ``pocket_offset`` is in *beats* and applied to off-beats by
+        # ``_groove_time``. Negative = pushed/ahead, positive =
+        # laid-back. Tight modern pop sits at 0.
+        "pocket_offset": 0.0,
+        # ``hat_open_ands`` = play an *open* hi-hat (longer noise
+        # tail) on the listed off-beat positions. Funk/disco/pop
+        # idioms put it on the "and of 4"; rock uses it sparser.
+        "hat_open_ands": [],
+        # ``outro_fade_bars`` lets a song request a programmed fade
+        # on the very last N bars of the rendered chord list. When
+        # 0 (default) the synth ends cold on the last downbeat,
+        # which is the previous behaviour.
+        "outro_fade_bars": 0,
     }
     if style == "Jazz swing":
         profile["swing"] = 0.11
         profile["ride_jazz"] = True
         profile["humanize_ms"] = 0.018
+        # Jazz sits squarely in the pocket — drummers ride a hair
+        # behind to swing the eighth-notes, but kick + bass stay
+        # right on the beat. Net: tiny laid-back nudge.
+        profile["pocket_offset"] = 0.012
     elif style == "Bossa nova":
         profile["cross_stick"] = True
         profile["latin_relaxed"] = True
         profile["swing"] = 0.04
         profile["hat_soft"] = 0.72
         profile["humanize_ms"] = 0.015
+        profile["pocket_offset"] = 0.018
     elif style == "Funk groove":
         profile["ghost_snare"] = True
         profile["comp_stab"] = True
         profile["kick_push"] = 1.12
+        # Funk pushes the off-beats slightly ahead — that's the
+        # "in the pocket but on top" feel. Open hat on "and of 4"
+        # is the genre signature.
+        profile["pocket_offset"] = -0.015
+        profile["hat_open_ands"] = [3.5]
     elif style == "Rock groove":
         profile["kick_push"] = 1.2
         profile["hat_soft"] = 0.9
+        profile["pocket_offset"] = -0.008
     elif style == "Ballad":
         profile["hat_soft"] = 0.55
         profile["humanize_ms"] = 0.008
+        # Ballads breathe back of the beat — sets up the romantic feel.
+        profile["pocket_offset"] = 0.020
+    elif style in ("Pop groove", "Pop"):
+        # Modern pop = tight, quantized, on the grid.
+        profile["pocket_offset"] = 0.0
+        profile["hat_open_ands"] = [3.5]
 
     if any(k in title for k in ("waiting on the world", "say", "john mayer")):
         profile["pop_soul"] = True
         profile["swing"] = max(profile["swing"], 0.03)
         profile["hat_soft"] = 0.82
         profile["humanize_ms"] = 0.014
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.012)
     if "champions" in title or "queen" in title:
         profile["anthem_rock"] = True
         profile["kick_push"] = 1.28
@@ -750,6 +1115,15 @@ def synthesize_chords_to_numpy(
     humanize = float(song_profile.get("humanize_ms", 0.012))
     kick_mul = float(song_profile.get("kick_push", 1.0))
     hat_mul = float(song_profile.get("hat_soft", 1.0))
+    pocket_offset = float(song_profile.get("pocket_offset", 0.0))
+    hat_open_ands = list(song_profile.get("hat_open_ands", []))
+    outro_fade_bars = int(song_profile.get("outro_fade_bars", 0) or 0)
+
+    # Pre-compute arrangement memory (chorus passes, phrase positions,
+    # bridge-recovery bars) so per-bar decisions know "where am I in
+    # the song?" rather than relying on section name alone.
+    arr_ctx = _build_arrangement_context(chord_list)
+    total_song_bars = len(chord_list)
 
     for idx, event in enumerate(chord_list):
 
@@ -758,9 +1132,17 @@ def synthesize_chords_to_numpy(
         next_chord = next_event["chord"] if next_event else None
         bar_start = idx * bar
         section_name = event.get("section", "Practice Loop")
-        intensity = _section_intensity(section_name, style)
+        base_intensity = _section_intensity(section_name, style)
         role = _section_role(section_name)
+        # Arrangement-aware overlay: pre-chorus ramp, final chorus
+        # lift, phrase-position curve, bridge recovery.
+        arrangement_mul = _arrangement_intensity_overlay(idx, role, arr_ctx)
+        # Outro fade: only the last ``outro_fade_bars`` taper down.
+        fade_mul = _outro_fade_envelope(idx, total_song_bars, outro_fade_bars)
+        intensity = base_intensity * arrangement_mul * fade_mul
         section_edge = _is_section_edge(event, next_event)
+        is_breakdown_recovery = idx in arr_ctx.bridge_recovery
+        is_final_chorus_bar = arr_ctx.is_final_chorus_event(idx)
         # Loop pass index — used to seed humanization so loop 2 of a
         # repeated section is *slightly* different from loop 1
         # (different micro-timing + velocity jitter). Keeps the take
@@ -862,7 +1244,7 @@ def synthesize_chords_to_numpy(
                 elif song_profile.get("pop_soul"):
                     bass_dur = pulse * 0.55
                 t_hit = _humanize_time(
-                    _groove_time(bar_start, b, pulse, style, swing=swing_amt),
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
                     seed=idx * 41 + n + groove_seed + loop_seed,
                     amount=humanize,
                     beat_len=pulse,
@@ -928,7 +1310,7 @@ def synthesize_chords_to_numpy(
                     dur *= 0.55
                     comp_vol *= 1.2
                 t_comp = _humanize_time(
-                    _groove_time(bar_start, b, pulse, style, swing=swing_amt),
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
                     seed=idx * 53 + comp_idx + loop_seed,
                     amount=humanize * 0.7,
                     beat_len=pulse,
@@ -969,17 +1351,27 @@ def synthesize_chords_to_numpy(
                 hat_vol = (0.006 if style == "Ballad" else 0.010) * hat_mul
                 if role == "chorus":
                     hat_vol *= 1.28
+                # Open hi-hat: longer noise tail on style-defined
+                # off-beats (e.g. the "and of 4" in funk/disco/pop).
+                # We detect the open-hat by approximate match because
+                # the pattern beats may have been rescaled to an odd
+                # meter via ``_scale_pattern_beats``.
+                is_open_hat = any(abs(b - oa) < 0.06 for oa in hat_open_ands)
+                hat_dur = 0.090 if is_open_hat else 0.028
+                hat_vol_local = hat_vol
+                if is_open_hat:
+                    hat_vol_local *= 1.35
                 _add_noise_hit(
                     audio,
                     sr,
                     _humanize_time(
-                        _groove_time(bar_start, b, pulse, style, swing=swing_amt),
+                        _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
                         seed=idx * 31 + int(b * 100) + loop_seed,
                         amount=humanize * 0.5,
                         beat_len=pulse,
                     ),
-                    0.028,
-                    hat_vol * intensity,
+                    hat_dur,
+                    hat_vol_local * intensity,
                     seed=idx * 31 + int(b * 100) + (groove_seed % 997) + loop_seed,
                 )
 
@@ -991,7 +1383,7 @@ def synthesize_chords_to_numpy(
                 _add_noise_hit(
                     audio,
                     sr,
-                    _groove_time(bar_start, b, pulse, style, swing=swing_amt),
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
                     0.055,
                     _humanize_volume(snare_vol, idx * 67 + int(b * 100) + loop_seed),
                     seed=idx * 67 + int(b * 100) + loop_seed,
@@ -1002,7 +1394,7 @@ def synthesize_chords_to_numpy(
                 _add_noise_hit(
                     audio,
                     sr,
-                    _groove_time(bar_start, b, pulse, style, swing=swing_amt),
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
                     0.025,
                     0.010 * intensity,
                     seed=idx * 71 + int(b * 50) + loop_seed,
@@ -1053,7 +1445,102 @@ def synthesize_chords_to_numpy(
                     "bass",
                 )
 
+        # ----- Mid-bar bass anticipation pickup -------------------
+        # On the "and of 4" (last off-beat of the bar) play a short
+        # chromatic-approach note toward the next bar's chord root.
+        # This is the classic "walk-up into the change" that bass
+        # players add to glue the bar line. Only fires when:
+        #   * the next bar exists and has a *different* root,
+        #   * the current bar isn't tacet/hit/subdivided (those have
+        #     their own logic),
+        #   * the style is one where this groove fits (skip Ballad
+        #     which prefers held notes).
+        try:
+            if (
+                next_chord
+                and not bar_is_no_chord
+                and not bar_is_hit
+                and not bar_is_subdivided
+                and style not in ("Ballad",)
+            ):
+                cur_root = bass_note(sounding_chord)
+                # ``next_chord`` may itself be a hit/tacet/subdivided
+                # token; resolve to a sounding chord head before
+                # asking for its root.
+                if _sub_is_hit_token(next_chord):
+                    nxt_head = _sub_hit_underlying_chord(next_chord)
+                elif _sub_is_subdivided_bar(next_chord):
+                    nxt_head = _sub_primary_chord(next_chord)
+                elif is_no_chord_token(next_chord):
+                    nxt_head = None
+                else:
+                    nxt_head = next_chord
+                if nxt_head:
+                    nxt_root = bass_note(nxt_head)
+                    if (cur_root % 12) != (nxt_root % 12):
+                        # Half-step chromatic approach toward the
+                        # target root, in the bass register.
+                        target = nxt_root - 12
+                        approach_pitch = (
+                            target - 1 if target >= cur_root - 12 else target + 1
+                        )
+                        pickup_b = max(0.0, pulses_per_bar - 0.5)
+                        t_pickup = _humanize_time(
+                            _groove_time(
+                                bar_start, pickup_b, pulse, style,
+                                swing=swing_amt, pocket=pocket_offset,
+                            ),
+                            seed=idx * 113 + loop_seed,
+                            amount=humanize * 0.6,
+                            beat_len=pulse,
+                        )
+                        # Volume scales gently so the pickup doesn't
+                        # eclipse the downbeat that follows.
+                        _add_tone(
+                            audio,
+                            sr,
+                            t_pickup,
+                            pulse * 0.30,
+                            approach_pitch,
+                            _humanize_volume(
+                                0.055 * intensity, idx * 113 + loop_seed
+                            ),
+                            "bass",
+                        )
+        except Exception:
+            # Pickup is purely decorative — never let an unexpected
+            # chord-token form (e.g. a custom non-standard symbol)
+            # break the synth. Silently skip and continue.
+            pass
+
+        # Breakdown recovery: first downbeat after a bridge gets a
+        # crash + sub-tone so the band-back-in moment lands. We do
+        # this *before* the section-edge fill check so the crash
+        # sits cleanly under any pickup that follows.
+        if is_breakdown_recovery and not bar_is_no_chord:
+            _add_breakdown_recovery_crash(
+                audio,
+                sr,
+                bar_start,
+                pulse,
+                intensity,
+                seed_base=idx,
+            )
+
         if section_edge:
+            # Estimate the *next* section's intensity so the fill
+            # engine can size the roll appropriately (bigger fill
+            # before a chorus, more so for the final chorus).
+            next_section_name = next_event.get("section") if next_event else ""
+            next_role_for_fill = _section_role(next_section_name)
+            next_arr_mul = _arrangement_intensity_overlay(idx + 1, next_role_for_fill, arr_ctx)
+            next_intensity_estimate = (
+                _section_intensity(next_section_name, style) * next_arr_mul
+            )
+            into_final_chorus = (
+                next_role_for_fill == "chorus"
+                and arr_ctx.is_final_chorus_event(idx + 1)
+            )
             _add_section_transition_fill(
                 audio,
                 sr,
@@ -1065,6 +1552,8 @@ def synthesize_chords_to_numpy(
                 next_event,
                 intensity,
                 seed_base=idx,
+                next_intensity=next_intensity_estimate,
+                is_into_final_chorus=into_final_chorus,
             )
             tail = max(0.0, pulses_per_bar - 0.45)
             tail_chord = _pulse_chord(tail)
