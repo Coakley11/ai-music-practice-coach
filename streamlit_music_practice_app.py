@@ -3295,6 +3295,7 @@ def _build_karaoke_lyrics_panel_html(
     *,
     song_title: str,
     has_panel: bool,
+    lyric_color: str = "white",
 ) -> str:
     """Static DOM scaffold for the karaoke section-aware lyric panel.
 
@@ -3312,12 +3313,19 @@ def _build_karaoke_lyrics_panel_html(
     in sync with the chord-event timeline. Returns an empty string
     when the panel is disabled (non-voice mode), keeping the existing
     instrumentalist layout untouched.
+
+    ``lyric_color`` (one of ``white`` / ``gold`` / ``cyan`` / ``cream``)
+    is written onto the panel root as ``data-lyric-color="..."`` so
+    the CSS theme variables pick up the user's preference for the
+    active-line text color and accent glow.
     """
     if not has_panel:
         return ""
     safe_title = _html.escape(str(song_title or "Now Singing"))
+    safe_color = _html.escape(str(lyric_color or "white").lower(), quote=True)
     return (
-        '<div class="karaoke-lyric-panel" id="karaoke-lyric-panel" data-state="ready">'
+        f'<div class="karaoke-lyric-panel" id="karaoke-lyric-panel" '
+        f'data-state="ready" data-lyric-color="{safe_color}">'
         '<p class="karaoke-lp-kicker">Now Singing</p>'
         f'<p class="karaoke-lp-title" id="karaoke-lp-title">{safe_title}</p>'
         '<p class="karaoke-lp-section" id="karaoke-lp-section">Section</p>'
@@ -3491,7 +3499,7 @@ def _build_karaoke_lyrics_panel_script(
           subs.forEach((sub) => sub.classList.remove("active-sub"));
           if (
             chip.dataset.section === event.section &&
-            Number(chip.dataset.bar_in_section || chip.dataset.barInSection) === targetBar
+            Number(chip.dataset.barInSection) === targetBar
           ) {{
             chip.classList.add("active");
             if (!Number.isNaN(subIdx) && subs.length) {{
@@ -3500,6 +3508,32 @@ def _build_karaoke_lyrics_panel_script(
               );
               if (sub) sub.classList.add("active-sub");
             }}
+          }}
+        }});
+      }}
+
+      // Map this tick's bar-in-section position to a "current line"
+      // index inside the section's lyric block. Sections rarely have
+      // per-line timing data, so we evenly distribute the lines
+      // across the section's bars: the singer sees one line lit per
+      // chunk of the bar count. Re-applying classes is cheap (1-8
+      // line elements) so we just rewrite them every tick.
+      function highlightActiveLine(event) {{
+        const lines = lpLyrics.querySelectorAll(".karaoke-lp-lyric-line");
+        if (!lines.length) return;
+        const totalBars = Math.max(1, Number(event.section_bars) || 1);
+        const barInSection = Math.max(1, Number(event.bar_in_section) || 1);
+        const fraction = Math.min(1, (barInSection - 1) / totalBars);
+        const activeIdx = Math.min(
+          lines.length - 1,
+          Math.floor(fraction * lines.length)
+        );
+        lines.forEach((line, idx) => {{
+          line.classList.remove("active", "before-active");
+          if (idx === activeIdx) {{
+            line.classList.add("active");
+          }} else if (idx < activeIdx) {{
+            line.classList.add("before-active");
           }}
         }});
       }}
@@ -3560,8 +3594,12 @@ def _build_karaoke_lyrics_panel_script(
           }}
         }}
 
-        // -- Every tick: highlight the active chord under lyrics. --
+        // -- Every tick: highlight the active chord under the
+        //    lyrics, and pick the lyric line corresponding to the
+        //    section's bar progress so the singer follows the line
+        //    that's "due" right now (no per-line timing required).
         highlightActiveChord(event);
+        highlightActiveLine(event);
       }};
     }})();
     """
@@ -3581,6 +3619,7 @@ def live_follow_along_component_html(
     karaoke_song_title: str = "",
     karaoke_hide_chart: bool = False,
     karaoke_display_labels: dict | None = None,
+    karaoke_lyric_color: str = "white",
 ):
     audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
     timeline_json = json.dumps(timeline)
@@ -3601,6 +3640,7 @@ def live_follow_along_component_html(
     karaoke_lyric_panel_html = _build_karaoke_lyrics_panel_html(
         song_title=karaoke_song_title,
         has_panel=karaoke_lyric_panel_enabled,
+        lyric_color=str(karaoke_lyric_color or "white"),
     )
     karaoke_lyric_panel_script = _build_karaoke_lyrics_panel_script(
         karaoke_lyrics_panel,
@@ -3788,17 +3828,263 @@ def live_follow_along_component_html(
       padding: 6px 14px 14px 14px;
     }}
 
-    /* Karaoke instrumental-section state (Intro / Solo / Interlude). */
+    /* ================================================================
+       Karaoke "black screen" lyric panel — the main stage for voice
+       practice. Renders a real karaoke-player look:
+         * deep black gradient backdrop with a soft magenta vignette
+         * large centered lyrics with active-line highlight
+         * compact chord strip under the lyrics
+         * polished kicker / title / section labels at the top
+         * smooth transitions on section + active-line changes
+       The user-picked lyric color (white / gold / cyan / cream) is
+       applied via a CSS variable on the panel root, so the active-line
+       glow and chord-strip accent both follow the preference.
+       ================================================================ */
+    .karaoke-lyric-panel {{
+      /* Default lyric color; overridden by data-lyric-color="..." below. */
+      --karaoke-lyric: #f8fafc;
+      --karaoke-lyric-glow: rgba(248, 250, 252, 0.55);
+      --karaoke-accent: #f472b6;
+      --karaoke-accent-soft: rgba(244, 114, 182, 0.55);
+
+      position: relative;
+      margin: 14px 0 18px 0;
+      padding: 26px clamp(18px, 4vw, 44px) 22px clamp(18px, 4vw, 44px);
+      border-radius: 22px;
+      border: 1px solid rgba(244, 114, 182, 0.22);
+      background:
+        radial-gradient(120% 90% at 18% -10%, rgba(236, 72, 153, 0.18) 0%, rgba(236, 72, 153, 0) 55%),
+        radial-gradient(110% 90% at 90% 110%, rgba(168, 85, 247, 0.20) 0%, rgba(168, 85, 247, 0) 55%),
+        radial-gradient(140% 70% at 50% 50%, rgba(15, 23, 42, 0.0) 0%, rgba(0, 0, 0, 0.45) 100%),
+        linear-gradient(180deg, #07050d 0%, #0c0816 55%, #050309 100%);
+      color: var(--karaoke-lyric);
+      box-shadow:
+        0 30px 72px -28px rgba(0, 0, 0, 0.95),
+        0 6px 22px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      overflow: hidden;
+      isolation: isolate;
+      text-align: center;
+    }}
+    /* Neon top sheen — same magenta-on-violet wash used on the
+       Performance Setlist card so the two surfaces feel like one
+       coherent stage. */
+    .karaoke-lyric-panel::before {{
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 2px;
+      background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(244, 114, 182, 0.55) 30%,
+        rgba(216, 180, 254, 0.55) 50%,
+        rgba(244, 114, 182, 0.55) 70%,
+        transparent 100%);
+      filter: blur(0.5px);
+      z-index: 1;
+    }}
+    /* User-selectable lyric color tokens. The same value tints the
+       active line text and the active chord chip's accent. */
+    .karaoke-lyric-panel[data-lyric-color="white"] {{
+      --karaoke-lyric: #f8fafc;
+      --karaoke-lyric-glow: rgba(248, 250, 252, 0.45);
+    }}
+    .karaoke-lyric-panel[data-lyric-color="gold"] {{
+      --karaoke-lyric: #fde68a;
+      --karaoke-lyric-glow: rgba(253, 230, 138, 0.55);
+    }}
+    .karaoke-lyric-panel[data-lyric-color="cyan"] {{
+      --karaoke-lyric: #67e8f9;
+      --karaoke-lyric-glow: rgba(103, 232, 249, 0.55);
+    }}
+    .karaoke-lyric-panel[data-lyric-color="cream"] {{
+      --karaoke-lyric: #fef3c7;
+      --karaoke-lyric-glow: rgba(254, 243, 199, 0.50);
+    }}
+
+    .karaoke-lp-kicker {{
+      display: inline-block;
+      margin: 0 auto 6px auto;
+      font-size: 0.66rem;
+      font-weight: 900;
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
+      color: #f9a8d4;
+      text-shadow: 0 0 14px rgba(244, 114, 182, 0.55);
+      padding: 3px 14px;
+      border-radius: 999px;
+      background: rgba(236, 72, 153, 0.10);
+      border: 1px solid rgba(244, 114, 182, 0.30);
+    }}
+    .karaoke-lp-title {{
+      margin: 4px 0 10px 0;
+      font-size: clamp(1.35rem, 2.6vw, 1.85rem);
+      font-weight: 800;
+      letter-spacing: -0.005em;
+      color: #ffffff;
+      text-shadow: 0 1px 18px rgba(0, 0, 0, 0.85);
+    }}
+    .karaoke-lp-section {{
+      margin: 0 auto 16px auto;
+      display: inline-block;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #fbcfe8;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: rgba(168, 85, 247, 0.18);
+      border: 1px solid rgba(216, 180, 254, 0.30);
+    }}
+
+    /* Lyric stack — the visual focal point. Each line is a separate
+       element so we can highlight the "current" line as the bar
+       progresses through the section. Inactive lines stay dim and
+       slightly smaller so the eye glides naturally to the active one. */
+    .karaoke-lp-lyrics {{
+      margin: 6px auto 14px auto;
+      max-width: 52rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.45rem;
+    }}
+    .karaoke-lp-lyric-line {{
+      font-size: clamp(1.45rem, 3.4vw, 2.45rem);
+      font-weight: 750;
+      line-height: 1.22;
+      letter-spacing: -0.005em;
+      color: rgba(248, 250, 252, 0.42);
+      transition:
+        color 220ms ease,
+        text-shadow 240ms ease,
+        transform 240ms ease,
+        opacity 220ms ease;
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
+      will-change: transform, color;
+    }}
+    .karaoke-lp-lyric-line.active {{
+      color: var(--karaoke-lyric);
+      text-shadow:
+        0 0 18px var(--karaoke-lyric-glow),
+        0 2px 10px rgba(0, 0, 0, 0.85);
+      transform: scale(1.04);
+    }}
+    .karaoke-lp-lyric-line.before-active {{
+      color: rgba(248, 250, 252, 0.28);
+      opacity: 0.78;
+    }}
+    .karaoke-lp-lyric-empty {{
+      font-size: clamp(1.05rem, 2vw, 1.25rem);
+      font-weight: 600;
+      color: rgba(245, 208, 254, 0.62);
+      font-style: italic;
+      padding: 18px 8px;
+    }}
+
+    /* Chord strip under the lyrics. Each chip is one bar; the active
+       chip glows magenta in time with the backing track. */
+    .karaoke-lp-chord-strip {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 8px;
+      justify-content: center;
+      margin: 6px auto 4px auto;
+      max-width: 56rem;
+      padding: 8px 4px 0 4px;
+      border-top: 1px solid rgba(216, 180, 254, 0.12);
+    }}
+    .karaoke-lp-chord {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 44px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.92rem;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+      color: #fbcfe8;
+      background: rgba(46, 20, 75, 0.55);
+      border: 1px solid rgba(216, 180, 254, 0.18);
+      transition:
+        background 160ms ease,
+        color 160ms ease,
+        border-color 160ms ease,
+        box-shadow 200ms ease,
+        transform 160ms ease;
+    }}
+    .karaoke-lp-chord.active {{
+      background: linear-gradient(180deg, #ec4899 0%, #be185d 100%);
+      color: #ffffff;
+      border-color: rgba(251, 207, 232, 0.65);
+      box-shadow:
+        0 0 0 1px rgba(251, 207, 232, 0.40),
+        0 8px 22px -6px rgba(236, 72, 153, 0.65);
+      transform: translateY(-1px);
+    }}
+    .karaoke-lp-chord .sub-chord-list {{
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+    }}
+    .karaoke-lp-chord .sub-chord {{
+      padding: 0 3px;
+      border-radius: 4px;
+      transition: background 160ms ease, color 160ms ease;
+    }}
+    .karaoke-lp-chord.active .sub-chord.active-sub {{
+      background: rgba(255, 255, 255, 0.22);
+      color: #ffffff;
+    }}
+    .karaoke-lp-arrow {{
+      color: rgba(216, 180, 254, 0.55);
+      font-weight: 700;
+      font-size: 0.78rem;
+      margin: 0 2px;
+    }}
+
+    .karaoke-lp-next {{
+      margin: 12px 0 0 0;
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #f5d0fe;
+      opacity: 0.85;
+    }}
+    .karaoke-lp-next strong {{
+      color: #ffffff;
+      letter-spacing: 0.04em;
+      margin-left: 4px;
+      text-shadow: 0 0 10px rgba(244, 114, 182, 0.45);
+    }}
+
+    /* Karaoke instrumental-section state (Intro / Solo / Interlude).
+       Reuses the dark stage palette so the breakdown reads as part of
+       the same screen, not a stark light-mode card. */
     .karaoke-lp-lyrics.instrumental {{
-      padding: 8px 12px;
-      border-radius: 10px;
-      background: linear-gradient(180deg, rgba(190, 24, 93, 0.06), rgba(255, 247, 251, 0.60));
-      border: 1px dashed rgba(190, 24, 93, 0.18);
+      padding: 14px 18px;
+      border-radius: 14px;
+      background:
+        radial-gradient(120% 90% at 50% 50%, rgba(168, 85, 247, 0.10), rgba(0, 0, 0, 0));
+      border: 1px dashed rgba(216, 180, 254, 0.30);
     }}
     .karaoke-lp-instr-icon {{
-      font-size: 1rem;
-      margin-right: 4px;
-      color: #be185d;
+      font-size: 1.05rem;
+      margin-right: 6px;
+      color: #f9a8d4;
+      text-shadow: 0 0 8px rgba(244, 114, 182, 0.55);
+    }}
+    .karaoke-lp-lyrics.instrumental .karaoke-lp-lyric-empty {{
+      color: rgba(248, 250, 252, 0.78);
+      font-style: normal;
+    }}
+    .karaoke-lp-lyrics.instrumental .karaoke-lp-lyric-empty strong {{
+      color: #ffffff;
+      text-shadow: 0 0 12px var(--karaoke-lyric-glow);
     }}
   </style>
 
@@ -8260,6 +8546,10 @@ elif _studio_page == "backing":
                 karaoke_song_title=_karaoke_song_title,
                 karaoke_hide_chart=_karaoke_hide_chart,
                 karaoke_display_labels=_karaoke_display_labels,
+                # Voice-only setting; instrumentalists never reach this
+                # branch, but we still default-resolve via km.lyric_color
+                # so a stale session_state can never break rendering.
+                karaoke_lyric_color=km.lyric_color(st.session_state),
             ),
             height=820 if _karaoke_lyric_panel else 720,
             scrolling=True,
