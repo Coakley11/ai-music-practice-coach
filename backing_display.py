@@ -84,6 +84,17 @@ def render_backing_active_song_card(
         modifier_cls = " " + modifier_cls if not modifier_cls.startswith(" ") else modifier_cls
     kicker_label = "Now Singing · Vocal Performance" if _voice_mode else "Active song · Backing Track"
 
+    original_key = str(record.get("key") or "C")
+    practice_key = str(
+        (_session_state or {}).get("display_key") or original_key
+    )
+    try:
+        from app_ui import active_song_key_row_html
+
+        key_row = active_song_key_row_html(original_key, practice_key)
+    except Exception:
+        key_row = ""
+
     st.markdown(
         f'<div class="ui-backing-active-song{modifier_cls}">'
         f'<div class="ui-backing-active-art" style="background:{html.escape(gradient)};">'
@@ -93,6 +104,7 @@ def render_backing_active_song_card(
         f'<p class="ui-backing-active-title">{html.escape(details["title"])}'
         f'<span class="ui-backing-active-dash"> — </span>'
         f'{html.escape(details["artist"])}</p>'
+        f'{key_row}'
         f'<div class="ui-backing-active-badges">'
         f'<span class="ui-backing-badge genre">{genre}</span>'
         f'<span class="ui-backing-badge bpm">{bpm} BPM</span>'

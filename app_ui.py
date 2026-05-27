@@ -1042,6 +1042,60 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   color: #334155;
 }
 .ui-active-song-meta-pill strong { color: #0f172a; font-weight: 850; }
+.ui-active-song-key-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.55rem;
+  margin: 0.45rem 0 0.55rem;
+  padding: 0.5rem 0.62rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: linear-gradient(135deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.92));
+}
+.ui-active-song-key-row.is-shifted {
+  border-color: rgba(99, 102, 241, 0.35);
+  background: linear-gradient(135deg, rgba(238, 242, 255, 0.95), rgba(224, 231, 255, 0.55));
+}
+.ui-active-song-key-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 5.5rem;
+}
+.ui-active-song-key-chip.practice .ui-active-song-key-value {
+  color: #4338ca;
+}
+.ui-active-song-key-row.is-shifted .ui-active-song-key-chip.practice .ui-active-song-key-value {
+  font-weight: 900;
+}
+.ui-active-song-key-label {
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.ui-active-song-key-value {
+  font-size: 1.02rem;
+  font-weight: 850;
+  color: #0f172a;
+  line-height: 1.15;
+}
+.ui-active-song-key-arrow {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #94a3b8;
+  padding: 0 0.15rem;
+}
+.ui-active-song-hero-strip .ui-active-song-key-row {
+  margin: 0.35rem 0 0.5rem;
+  max-width: 28rem;
+}
+.ui-backing-active-song .ui-active-song-key-row {
+  margin: 0.5rem 0 0.65rem;
+  max-width: 100%;
+}
 .ui-active-song-hub-actions .stButton > button {
   font-weight: 750 !important;
   min-height: 2.1rem !important;
@@ -2143,6 +2197,345 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 
 
 _UI_POLISH_VERSION = "v2-2026-05-24"
+
+
+def _backing_studio_panel_css() -> str:
+    """Backing Track studio panels — targets inner shell divs (reliable in Streamlit 1.49+)."""
+    return """
+/* ---------- Backing Track studio panels (shell + keyed container) ---------- */
+.st-key-backing_playback_setup,
+.st-key-backing_quick_playback,
+.st-key-backing_transport {
+  border: none !important;
+  padding: 0 !important;
+  margin: 0.65rem 0 1rem !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.st-key-backing_playback_setup::before,
+.st-key-backing_quick_playback::before,
+.st-key-backing_transport::before {
+  display: none !important;
+  content: none !important;
+}
+.ui-backing-panel-shell {
+  border: 1px solid rgba(16, 185, 129, 0.34);
+  border-radius: 18px;
+  padding: 1.15rem 1.25rem 1.2rem;
+  margin: 0 0 0.15rem;
+  background:
+    radial-gradient(120% 90% at 6% -10%, rgba(16, 185, 129, 0.16) 0%, transparent 55%),
+    radial-gradient(100% 80% at 98% 110%, rgba(34, 197, 94, 0.1) 0%, transparent 52%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 58%, #f1f5f9 100%);
+  box-shadow:
+    0 18px 44px -24px rgba(15, 23, 42, 0.34),
+    0 2px 10px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  position: relative;
+  overflow: hidden;
+}
+.ui-backing-panel-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  z-index: 1;
+  background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.75), rgba(34, 197, 94, 0.65), transparent);
+}
+.ui-backing-panel-shell.is-quick {
+  border-color: rgba(14, 165, 233, 0.38);
+  background:
+    radial-gradient(120% 90% at 8% -8%, rgba(14, 165, 233, 0.14) 0%, transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+.ui-backing-panel-shell.is-quick::before {
+  background: linear-gradient(90deg, transparent, rgba(14, 165, 233, 0.7), rgba(56, 189, 248, 0.55), transparent);
+}
+.ui-backing-panel-shell.is-transport {
+  border-color: rgba(99, 102, 241, 0.38);
+  background:
+    radial-gradient(120% 90% at 92% -10%, rgba(99, 102, 241, 0.14) 0%, transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+.ui-backing-panel-shell.is-transport::before {
+  background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.7), rgba(139, 92, 246, 0.55), transparent);
+}
+.ui-backing-panel-shell .ui-backing-panel-kicker { color: #059669; }
+.ui-backing-panel-shell.is-quick .ui-backing-panel-kicker { color: #0284c7; }
+.ui-backing-panel-shell.is-transport .ui-backing-panel-kicker { color: #4f46e5; }
+.ui-backing-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+  margin: 0 0 0.9rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.32);
+}
+.ui-backing-panel-kicker {
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0 0 0.3rem;
+}
+.ui-backing-panel-title {
+  margin: 0;
+  font-size: 1.28rem;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  color: #0f172a;
+  line-height: 1.2;
+}
+.ui-backing-panel-sub {
+  margin: 0.32rem 0 0;
+  font-size: 0.84rem;
+  color: #64748b;
+  line-height: 1.45;
+  max-width: 44rem;
+}
+.ui-backing-panel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.32rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(255, 255, 255, 0.95);
+  color: #64748b;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+}
+.ui-backing-panel-badge.ready {
+  color: #047857;
+  border-color: rgba(110, 231, 183, 0.7);
+  background: rgba(236, 253, 245, 0.98);
+}
+.ui-backing-field-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #475569;
+  margin: 0 0 0.28rem;
+}
+.ui-backing-field-hint {
+  font-size: 0.74rem;
+  color: #94a3b8;
+  margin: 0 0 0.45rem;
+  line-height: 1.35;
+}
+.ui-backing-scope-divider {
+  margin: 0.75rem 0 0.55rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.4);
+}
+.ui-backing-setup-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0 0 0.25rem;
+}
+@media (max-width: 900px) {
+  .ui-backing-setup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.ui-backing-panel-shell .ui-playback-setup-bpm {
+  font-size: 2.1rem;
+  font-weight: 900;
+  color: #0f172a;
+  line-height: 1;
+  margin: 0.15rem 0 0.25rem;
+}
+.ui-backing-panel-shell .ui-playback-setup-bpm span {
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: #64748b;
+}
+.ui-backing-transport-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  padding: 0.62rem 0.8rem;
+  margin: 0 0 0.85rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  background: rgba(248, 250, 252, 0.98);
+}
+.ui-backing-transport-strip.ready {
+  border-color: rgba(110, 231, 183, 0.6);
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.98), rgba(240, 253, 250, 0.92));
+}
+.ui-backing-transport-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.22);
+}
+.ui-backing-transport-strip.ready .ui-backing-transport-dot {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.28);
+  animation: ui-backing-pulse 1.8s ease-in-out infinite;
+}
+@keyframes ui-backing-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.65; transform: scale(0.9); }
+}
+.ui-backing-transport-state {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #334155;
+  margin-right: 0.2rem;
+}
+.ui-backing-transport-strip.ready .ui-backing-transport-state { color: #047857; }
+.ui-backing-transport-meta {
+  font-size: 0.7rem;
+  font-weight: 750;
+  padding: 0.18rem 0.52rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  color: #475569;
+}
+.ui-backing-transport-meta.scope {
+  color: #0369a1;
+  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(224, 242, 254, 0.75);
+}
+.ui-backing-transport-hint {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin: 0.5rem 0 0;
+  line-height: 1.45;
+}
+.ui-backing-transport-actions { margin-top: 0.35rem; }
+.ui-backing-panel-shell [data-testid="stSelectbox"] label,
+.ui-backing-panel-shell [data-testid="stRadio"] label,
+.ui-backing-panel-shell [data-testid="stSlider"] label,
+.ui-backing-panel-shell [data-testid="stMultiSelect"] label,
+.ui-backing-panel-shell [data-testid="stButton"] label {
+  display: none !important;
+}
+.ui-backing-panel-shell [data-testid="stSelectbox"] > div > div,
+.ui-backing-panel-shell [data-testid="stMultiSelect"] > div > div,
+.ui-backing-panel-shell [data-testid="stSlider"] > div > div {
+  border-radius: 10px !important;
+  border-color: rgba(148, 163, 184, 0.55) !important;
+  background: #fff !important;
+  min-height: 2.5rem !important;
+}
+.ui-backing-panel-shell [data-testid="stRadio"] > div {
+  gap: 0.45rem !important;
+  padding: 0.45rem 0.55rem !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+}
+.ui-playback-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: #fff;
+  color: #64748b;
+}
+.ui-playback-status-badge.ready {
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+  color: #047857;
+}
+.ui-backing-panel-shell.is-transport .st-key-gen_backing_btn button,
+.ui-backing-panel-shell.is-transport .st-key-gen_backing_btn [data-testid="stBaseButton-primary"],
+.ui-backing-panel-shell.is-transport .st-key-play_backing_btn button,
+.ui-backing-panel-shell.is-transport .st-key-play_backing_btn [data-testid="stBaseButton-primary"],
+.st-key-backing_transport .st-key-gen_backing_btn button,
+.st-key-backing_transport .st-key-play_backing_btn button {
+  min-height: 3.1rem !important;
+  font-size: 0.98rem !important;
+  font-weight: 800 !important;
+  border-radius: 12px !important;
+  letter-spacing: 0.02em !important;
+}
+.ui-backing-panel-shell.is-transport .st-key-gen_backing_btn button,
+.ui-backing-panel-shell.is-transport .st-key-gen_backing_btn [data-testid="stBaseButton-primary"],
+.st-key-backing_transport .st-key-gen_backing_btn button {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 50%, #4338ca 100%) !important;
+  border: none !important;
+  color: #fff !important;
+  box-shadow: 0 8px 22px rgba(79, 70, 229, 0.38) !important;
+}
+.ui-backing-panel-shell.is-transport .st-key-play_backing_btn button,
+.ui-backing-panel-shell.is-transport .st-key-play_backing_btn [data-testid="stBaseButton-primary"],
+.st-key-backing_transport .st-key-play_backing_btn button {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 50%, #15803d 100%) !important;
+  border: none !important;
+  color: #fff !important;
+  box-shadow: 0 8px 22px rgba(34, 197, 94, 0.38) !important;
+}
+.ui-backing-panel-shell.is-transport .st-key-stop_backing_btn button,
+.ui-backing-panel-shell.is-transport .st-key-stop_backing_btn [data-testid="stBaseButton-secondary"],
+.st-key-backing_transport .st-key-stop_backing_btn button {
+  min-height: 3.1rem !important;
+  font-weight: 750 !important;
+  border-radius: 12px !important;
+  border: 2px solid rgba(239, 68, 68, 0.5) !important;
+  background: rgba(254, 242, 242, 0.98) !important;
+  color: #b91c1c !important;
+}
+.ui-backing-panel-shell.is-transport .st-key-dl_backing_btn button,
+.st-key-backing_transport .st-key-dl_backing_btn button {
+  min-height: 2.75rem !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+  border: 1px dashed rgba(99, 102, 241, 0.5) !important;
+  background: rgba(238, 242, 255, 0.85) !important;
+  color: #4338ca !important;
+}
+.ui-backing-studio-deck-head {
+  margin: 0.15rem 0 1.1rem 0;
+  padding: 1rem 1.15rem 1.05rem;
+  border-radius: 18px;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(14, 165, 233, 0.1) 55%, rgba(99, 102, 241, 0.1) 100%);
+  box-shadow: 0 12px 32px -20px rgba(15, 23, 42, 0.4);
+}
+.ui-backing-studio-kicker {
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #059669;
+  margin: 0 0 0.35rem;
+}
+.ui-backing-studio-title {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+  line-height: 1.15;
+}
+.ui-backing-studio-sub {
+  margin: 0.4rem 0 0;
+  font-size: 0.88rem;
+  color: #475569;
+  line-height: 1.45;
+  max-width: 42rem;
+}
+body[data-backing-studio-ui] .ui-backing-studio-deck-head {
+  outline: 2px solid rgba(16, 185, 129, 0.2);
+  outline-offset: 2px;
+}
+"""
 
 
 def _inject_app_theme_polish() -> None:
@@ -3347,6 +3740,8 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   color: #475569;
   margin: 0 0 0.28rem 0;
 }
+
+__BACKING_STUDIO_PANEL_CSS__
 .st-key-song_library_panel .ui-song-library-field-hint {
   font-size: 0.74rem;
   color: #94a3b8;
@@ -3494,7 +3889,9 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
    element so its presence can be confirmed via DOM inspection if needed,
    without showing any visible debug UI to the user. */
 </style>
-        """.replace("__UI_POLISH_VERSION__", _UI_POLISH_VERSION),
+        """
+        .replace("__UI_POLISH_VERSION__", _UI_POLISH_VERSION)
+        .replace("__BACKING_STUDIO_PANEL_CSS__", _backing_studio_panel_css()),
         unsafe_allow_html=True,
     )
 
@@ -3589,11 +3986,15 @@ def render_active_song_hub_hero(
     section_count: int,
     emoji: str = "🎵",
     gradient: str = "linear-gradient(145deg, #0f172a 0%, #334155 55%, #475569 100%)",
+    original_key: str | None = None,
+    practice_key: str | None = None,
 ) -> None:
     """Large hero strip showing the currently loaded song at a glance."""
+    _orig = str(original_key or key_display or "C")
+    _practice = str(practice_key or key_display or _orig)
+    key_row = active_song_key_row_html(_orig, _practice)
     pills = (
         f'<span class="ui-active-song-meta-pill"><strong>Genre</strong> {html.escape(genre)}</span>'
-        f'<span class="ui-active-song-meta-pill"><strong>Key</strong> {html.escape(key_display)}</span>'
         f'<span class="ui-active-song-meta-pill"><strong>BPM</strong> {int(bpm)}</span>'
         f'<span class="ui-active-song-meta-pill"><strong>Time</strong> {html.escape(time_signature)}</span>'
         f'<span class="ui-active-song-meta-pill"><strong>Sections</strong> {int(section_count)}</span>'
@@ -3608,6 +4009,7 @@ def render_active_song_hub_hero(
   <div>
     <p class="ui-active-song-hero-title">{html.escape(title)}</p>
     <p class="ui-active-song-hero-artist">{html.escape(artist)}</p>
+    {key_row}
     <div class="ui-active-song-meta-pills">{pills}</div>
   </div>
 </div>
@@ -3686,6 +4088,143 @@ def render_song_library_field_label(st: Any, label: str, hint: str = "") -> None
     )
     st.markdown(
         f'<p class="ui-song-library-field-label">{html.escape(label)}</p>{hint_html}',
+        unsafe_allow_html=True,
+    )
+
+
+def render_backing_panel_shell_open(st: Any, variant: str) -> None:
+    """Open inner card shell (pairs with shell_close) — reliable styling vs st-key alone."""
+    v = html.escape(str(variant or "setup").strip().lower())
+    st.markdown(
+        f'<div class="ui-backing-panel-shell is-{v}" data-backing-panel="{v}">',
+        unsafe_allow_html=True,
+    )
+
+
+def render_backing_panel_shell_close(st: Any) -> None:
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_backing_panel_header(
+    st: Any,
+    *,
+    kicker: str,
+    title: str,
+    subtitle: str = "",
+    badge_html: str = "",
+) -> None:
+    """Header for Backing Track setup / quick / transport cards."""
+    badge_block = badge_html if badge_html else ""
+    sub = (
+        f'<p class="ui-backing-panel-sub">{html.escape(subtitle)}</p>'
+        if subtitle
+        else ""
+    )
+    st.markdown(
+        f'<div class="ui-backing-panel-head">'
+        f'<div><span class="ui-backing-panel-kicker">{html.escape(kicker)}</span>'
+        f'<p class="ui-backing-panel-title">{html.escape(title)}</p>{sub}</div>'
+        f"{badge_block}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def active_song_key_row_html(
+    original_key: str,
+    practice_key: str,
+) -> str:
+    """Compact Original vs Display/practice key row for Active Song cards."""
+    orig = html.escape(str(original_key or "C").strip() or "C")
+    practice = html.escape(str(practice_key or original_key or "C").strip() or orig)
+    shifted = practice != orig
+    shift_cls = " is-shifted" if shifted else ""
+    return (
+        f'<div class="ui-active-song-key-row{shift_cls}">'
+        f'<span class="ui-active-song-key-chip original">'
+        f'<span class="ui-active-song-key-label">Original key</span>'
+        f'<span class="ui-active-song-key-value">{orig}</span></span>'
+        f'<span class="ui-active-song-key-arrow" aria-hidden="true">→</span>'
+        f'<span class="ui-active-song-key-chip practice">'
+        f'<span class="ui-active-song-key-label">Display / practice</span>'
+        f'<span class="ui-active-song-key-value">{practice}</span></span>'
+        f"</div>"
+    )
+
+
+def render_active_song_key_row(
+    st: Any,
+    *,
+    original_key: str,
+    practice_key: str,
+) -> None:
+    st.markdown(
+        active_song_key_row_html(original_key, practice_key),
+        unsafe_allow_html=True,
+    )
+
+
+BACKING_STUDIO_UI_VERSION = "2026-05-27-studio-v5"
+
+
+def inject_backing_studio_styles(st: Any) -> None:
+    """Re-inject backing studio CSS on the backing page (belt + suspenders with global theme)."""
+    st.markdown(
+        f"""
+<style data-backing-studio-ui="{BACKING_STUDIO_UI_VERSION}">
+{_backing_studio_panel_css()}
+</style>
+<script>try{{document.body.dataset.backingStudioUi="{BACKING_STUDIO_UI_VERSION}";document.body.classList.add("backing-studio-page");}}catch(e){{}}</script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_backing_studio_deck_header(st: Any) -> None:
+    """Section header above the three-step backing control deck."""
+    st.markdown(
+        f"""
+<div class="ui-backing-studio-deck-head">
+  <span class="ui-backing-studio-kicker">Backing studio</span>
+  <h2 class="ui-backing-studio-title">Playback &amp; accompaniment</h2>
+  <p class="ui-backing-studio-sub">Three steps below — <strong>Setup</strong> groove &amp; range, <strong>Quick</strong> tempo &amp; section, then <strong>Generate &amp; play</strong>. Cards use the same polished style as Song Selection.</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_backing_field_label(st: Any, label: str, hint: str = "") -> None:
+    """Field label inside backing playback cards."""
+    hint_html = (
+        f'<p class="ui-backing-field-hint">{html.escape(hint)}</p>' if hint else ""
+    )
+    st.markdown(
+        f'<p class="ui-backing-field-label">{html.escape(label)}</p>{hint_html}',
+        unsafe_allow_html=True,
+    )
+
+
+def render_backing_transport_status(
+    st: Any,
+    *,
+    ready: bool,
+    bpm: int,
+    groove: str,
+    meter: str,
+    scope_label: str,
+) -> None:
+    """Mini transport readout strip (Quick Playback card)."""
+    state_cls = "ready" if ready else "idle"
+    state_label = "Ready to play" if ready else "Not generated"
+    st.markdown(
+        f'<div class="ui-backing-transport-strip {state_cls}">'
+        f'<span class="ui-backing-transport-dot" aria-hidden="true"></span>'
+        f'<span class="ui-backing-transport-state">{html.escape(state_label)}</span>'
+        f'<span class="ui-backing-transport-meta">{int(bpm)} BPM</span>'
+        f'<span class="ui-backing-transport-meta">{html.escape(groove)}</span>'
+        f'<span class="ui-backing-transport-meta">{html.escape(meter)}</span>'
+        f'<span class="ui-backing-transport-meta scope">{html.escape(scope_label)}</span>'
+        f"</div>",
         unsafe_allow_html=True,
     )
 
