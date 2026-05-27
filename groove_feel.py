@@ -46,6 +46,9 @@ GROOVE_BOSSA = "Bossa nova"
 GROOVE_FUNK = "Funk groove"
 GROOVE_BALLAD = "Ballad"
 GROOVE_JEWISH = "Jewish groove"
+GROOVE_JEWISH_HORA = "Jewish hora"
+GROOVE_KLEZMER = "Klezmer groove"
+GROOVE_JEWISH_BALLAD = "Jewish ballad"
 
 ALL_GROOVE_LABELS: tuple[str, ...] = (
     GROOVE_POP,
@@ -55,6 +58,9 @@ ALL_GROOVE_LABELS: tuple[str, ...] = (
     GROOVE_FUNK,
     GROOVE_BALLAD,
     GROOVE_JEWISH,
+    GROOVE_JEWISH_HORA,
+    GROOVE_KLEZMER,
+    GROOVE_JEWISH_BALLAD,
 )
 
 
@@ -99,6 +105,12 @@ def _canonical(label: str) -> str:
     if "ballad" in low or "slow" in low:
         return GROOVE_BALLAD
     if "jewish" in low or "klezmer" in low or "hora" in low or "freylekh" in low:
+        if "ballad" in low or "prayer" in low:
+            return GROOVE_JEWISH_BALLAD
+        if "hora" in low:
+            return GROOVE_JEWISH_HORA
+        if "klezmer" in low or "freylekh" in low:
+            return GROOVE_KLEZMER
         return GROOVE_JEWISH
     if "pop" in low:
         return GROOVE_POP
@@ -335,6 +347,57 @@ GROOVE_PROFILE: dict[str, dict[str, Any]] = {
         ),
         "notation": "hora triple feel; klezmer offbeat accents",
         "tab_pattern": "Hora strum (D--U-D-U-D--)",
+    },
+    GROOVE_JEWISH_HORA: {
+        "label": GROOVE_JEWISH_HORA,
+        "feel": "6/8 hora circle-dance pulse",
+        "count_in": "1-2-3, 2-2-3",
+        "accent": "strong beat 1; lift on 2 and 3",
+        "dynamics": "mf with celebratory lift",
+        "articulation": "bouncy, detached chord hits",
+        "time_feel": "compound triple hora",
+        "tempo_hint": "108-132 BPM",
+        "strum": ["D", "-", "U", "D", "-", "U", "D", "-"],
+        "piano_comp": "LH roots on 1 and 3 · RH bright stabs on 2",
+        "bass": "root on 1, fifth on 3 — keep the hora lilt",
+        "voice": "bright, dance-forward phrasing",
+        "winds": "ornamented melody with strong downbeats",
+        "notation": "6/8 hora pulse",
+        "tab_pattern": "Hora 6/8",
+    },
+    GROOVE_KLEZMER: {
+        "label": GROOVE_KLEZMER,
+        "feel": "freylekh / klezmer bounce in 4/4",
+        "count_in": "1-2-AND-3-AND",
+        "accent": "syncopated offbeat stabs",
+        "dynamics": "mf with playful accents",
+        "articulation": "short klezmer comp hits",
+        "time_feel": "syncopated 4/4 bounce",
+        "tempo_hint": "96-130 BPM",
+        "strum": ["D", "-", "U", "x", "U", "D", "-", "U"],
+        "piano_comp": "LH root on 1 · RH klezmer stabs on offbeats",
+        "bass": "bouncy root-fifth with chromatic approaches",
+        "voice": "expressive, slightly behind-the-beat folk delivery",
+        "winds": "clarinet-style turns and trills",
+        "notation": "klezmer offbeat accents",
+        "tab_pattern": "Freylekh bounce",
+    },
+    GROOVE_JEWISH_BALLAD: {
+        "label": GROOVE_JEWISH_BALLAD,
+        "feel": "Shabbat/prayer ballad — calm and lyrical",
+        "count_in": "1...2...3...4...",
+        "accent": "gentle downbeat on 1",
+        "dynamics": "pp-mp; reverent swells",
+        "articulation": "sustained, legato chords",
+        "time_feel": "slow straight pulse",
+        "tempo_hint": "60-88 BPM",
+        "strum": ["D", "-", "-", "-", "u", "-", "u", "-"],
+        "piano_comp": "LH whole-note root · RH soft arpeggios",
+        "bass": "whole-note roots with gentle pickups",
+        "voice": "warm, unhurried prayer tone",
+        "winds": "long lyrical lines, soft attack",
+        "notation": "prayer ballad pulse",
+        "tab_pattern": "Jewish ballad arpeggio",
     },
 }
 

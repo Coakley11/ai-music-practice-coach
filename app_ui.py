@@ -1059,6 +1059,109 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   color: #64748b;
   margin: 0 0 0.35rem 0;
 }
+/* Direct child styling when ui-active-song-hub wrapper is present OR via Streamlit key */
+.st-key-active_song_hub,
+.ui-active-song-hub {
+  border: 2px solid rgba(37, 99, 235, 0.45) !important;
+  border-radius: 22px !important;
+  padding: 1rem 1.15rem 1.15rem 1.15rem !important;
+  margin: 0 0 1.35rem 0 !important;
+  background: linear-gradient(165deg, #ffffff 0%, #eef2ff 38%, #dbeafe 100%) !important;
+  box-shadow: 0 16px 48px rgba(37, 99, 235, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+}
+.st-key-active_song_hub .ui-active-song-card,
+.ui-active-song-hub .ui-active-song-card {
+  border: 2px solid rgba(37, 99, 235, 0.42) !important;
+  border-radius: 18px !important;
+  padding: 1.15rem 1.2rem !important;
+  margin: 0.5rem 0 0.75rem 0 !important;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 40%, #eef2ff 100%) !important;
+  box-shadow: 0 8px 28px rgba(37, 99, 235, 0.16) !important;
+}
+.st-key-active_song_hub .ui-active-song-title,
+.ui-active-song-hub .ui-active-song-title {
+  font-size: clamp(1.55rem, 3.2vw, 2rem) !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.035em !important;
+  color: #0f172a !important;
+}
+.st-key-active_song_hub .ui-active-song-art,
+.ui-active-song-hub .ui-active-song-art {
+  min-height: 128px !important;
+  font-size: 2.5rem !important;
+}
+.st-key-active_song_hub .ui-active-song-hero-title {
+  font-size: clamp(1.75rem, 4vw, 2.35rem);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  color: #0f172a;
+  margin: 0;
+  line-height: 1.1;
+}
+.st-key-active_song_hub .ui-active-song-hero-strip {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  margin: 0.65rem 0 0.75rem 0;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+.st-key-active_song_hub .ui-active-song-hero-art {
+  border-radius: 14px;
+  min-height: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #f8fafc;
+  font-size: 2rem;
+  font-weight: 900;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+.st-key-active_song_hub .ui-active-song-hero-art small {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 0.25rem;
+}
+.st-key-active_song_hub .ui-active-song-hero-artist {
+  font-size: 0.92rem;
+  color: #475569;
+  margin: 0.15rem 0 0 0;
+}
+.st-key-active_song_hub .ui-active-song-picker-label {
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1e40af;
+  margin: 0.35rem 0 0.25rem 0;
+}
+.st-key-active_song_hub [data-testid="stSelectbox"] > div > div {
+  border: 2px solid rgba(37, 99, 235, 0.35) !important;
+  border-radius: 12px !important;
+  background: #ffffff !important;
+  font-weight: 700 !important;
+  min-height: 2.65rem !important;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.1) !important;
+}
+.st-key-active_song_hub [data-testid="stSelectbox"] > div > div:focus-within {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18) !important;
+}
+.st-key-song_library_panel .ui-song-library-genre-chips-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0.45rem 0 0.35rem 0;
+}
 .ui-backing-active-song {
   display: grid;
   grid-template-columns: 96px 1fr;
@@ -3400,6 +3503,64 @@ def close_control_section() -> None:
     st.markdown("</div></div>", unsafe_allow_html=True)
 
 
+def render_active_song_hub_open(st: Any) -> None:
+    """Open the Active Song command-center wrapper (pairs with hub_close)."""
+    st.markdown('<div class="ui-active-song-hub">', unsafe_allow_html=True)
+    st.markdown(
+        """
+<div class="ui-active-song-hub-head">
+  <span class="ui-active-song-hub-label">Current active song</span>
+  <span class="ui-active-song-hub-sub">Main selector — chart, lyrics, backing &amp; practice follow this track</span>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_active_song_hub_hero(
+    st: Any,
+    *,
+    title: str,
+    artist: str,
+    genre: str,
+    key_display: str,
+    bpm: int,
+    groove: str,
+    time_signature: str,
+    section_count: int,
+    emoji: str = "🎵",
+    gradient: str = "linear-gradient(145deg, #0f172a 0%, #334155 55%, #475569 100%)",
+) -> None:
+    """Large hero strip showing the currently loaded song at a glance."""
+    pills = (
+        f'<span class="ui-active-song-meta-pill"><strong>Genre</strong> {html.escape(genre)}</span>'
+        f'<span class="ui-active-song-meta-pill"><strong>Key</strong> {html.escape(key_display)}</span>'
+        f'<span class="ui-active-song-meta-pill"><strong>BPM</strong> {int(bpm)}</span>'
+        f'<span class="ui-active-song-meta-pill"><strong>Time</strong> {html.escape(time_signature)}</span>'
+        f'<span class="ui-active-song-meta-pill"><strong>Sections</strong> {int(section_count)}</span>'
+        f'<span class="ui-active-song-meta-pill"><strong>Feel</strong> {html.escape(groove)}</span>'
+    )
+    st.markdown(
+        f"""
+<div class="ui-active-song-hero-strip">
+  <div class="ui-active-song-hero-art" style="background:{html.escape(gradient)};">
+    {html.escape(emoji)}<small>{html.escape(genre)}</small>
+  </div>
+  <div>
+    <p class="ui-active-song-hero-title">{html.escape(title)}</p>
+    <p class="ui-active-song-hero-artist">{html.escape(artist)}</p>
+    <div class="ui-active-song-meta-pills">{pills}</div>
+  </div>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_active_song_hub_close(st: Any) -> None:
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def render_song_library_panel_header(
   st: Any,
   *,
@@ -3417,11 +3578,10 @@ def render_song_library_panel_header(
         f"""
 <div class="ui-song-library-head">
   <p class="ui-song-library-kicker">Catalog</p>
-  <h3 class="ui-song-library-title">Song Library</h3>
+  <h3 class="ui-song-library-title">Browse Library</h3>
   <p class="ui-song-library-sub">
-    Find a song in the catalog, then open <strong>Practice</strong> or
-    <strong>Backing Track</strong> — your chart, lyrics, and groove follow
-    this selection everywhere in the studio.
+    Filter by genre or search below — load your pick in the
+    <strong>Active Song</strong> panel above.
   </p>
   {count_html}
 </div>

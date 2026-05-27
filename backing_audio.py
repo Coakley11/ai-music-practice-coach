@@ -930,12 +930,22 @@ def _song_backing_profile(
         profile["humanize_ms"] = 0.008
         # Ballads breathe back of the beat — sets up the romantic feel.
         profile["pocket_offset"] = 0.020
-    elif style == "Jewish groove":
+    elif style in ("Jewish groove", "Klezmer groove"):
         profile["swing"] = 0.06
         profile["comp_stab"] = True
         profile["humanize_ms"] = 0.014
         profile["hat_soft"] = 0.85
         profile["pocket_offset"] = 0.010
+    elif style == "Jewish hora":
+        profile["swing"] = 0.04
+        profile["comp_stab"] = True
+        profile["humanize_ms"] = 0.012
+        profile["hat_soft"] = 0.9
+        profile["pocket_offset"] = 0.006
+    elif style == "Jewish ballad":
+        profile["hat_soft"] = 0.5
+        profile["humanize_ms"] = 0.010
+        profile["pocket_offset"] = 0.018
     elif style in ("Pop groove", "Pop"):
         # Modern pop = tight, quantized, on the grid.
         profile["pocket_offset"] = 0.0
@@ -1001,7 +1011,7 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
                 out[key] = _scale_pattern_beats(out[key], from_pulses=base_pulses, to_pulses=pulses)
         return out
 
-    if time_signature == "6/8" and style == "Jewish groove":
+    if time_signature == "6/8" and style in ("Jewish groove", "Jewish hora"):
         return {
             "bass_beats": [0, 3],
             "comp_beats": [0, 1.5, 3, 4.5],
@@ -1088,7 +1098,16 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "kick_beats": [0],
             "comp_dur": 0.95,
         })
-    if style == "Jewish groove":
+    if style == "Jewish ballad":
+        return _fit({
+            "bass_beats": [0, 2],
+            "comp_beats": [0, 3.5],
+            "hat_beats": [0, 2],
+            "snare_beats": [3.0],
+            "kick_beats": [0],
+            "comp_dur": 1.05,
+        })
+    if style in ("Jewish groove", "Klezmer groove"):
         return _fit({
             "bass_beats": [0, 1.5, 2, 3],
             "comp_beats": [0, 0.75, 1.5, 2.25, 3],

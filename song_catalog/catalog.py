@@ -67,6 +67,15 @@ TRUSTED_CORE_KEYS = {
     ("Billie Jean", "Michael Jackson"),
     ("Love Story", "Taylor Swift"),
     ("You've Got a Friend in Me", "Randy Newman"),
+    ("Hava Nagila", "Traditional"),
+    ("Hevenu Shalom Aleichem", "Traditional"),
+    ("Oseh Shalom", "Traditional"),
+    ("Am Yisrael Chai", "Traditional"),
+    ("Siman Tov U'Mazal Tov", "Traditional"),
+    ("Yerushalayim Shel Zahav", "Traditional"),
+    ("Hinei Ma Tov", "Traditional"),
+    ("Shalom Aleichem", "Traditional"),
+    ("Adon Olam", "Traditional"),
 }
 
 

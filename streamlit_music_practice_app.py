@@ -448,6 +448,9 @@ try:
         render_song_library_panel_header,
         render_song_library_selection_chip,
         render_song_library_field_label,
+        render_active_song_hub_open,
+        render_active_song_hub_hero,
+        render_active_song_hub_close,
     )
     _APP_UI_LOADED = True
 except Exception as _app_ui_first_err:
@@ -774,6 +777,21 @@ if hasattr(st, "session_state"):
     st.session_state["_catalog_backup_library"] = SONG_LIBRARY
     st.session_state["_catalog_backup_picker"] = SONG_PICKER_CATALOG
     st.session_state["_catalog_backup_genres"] = list(GENRES)
+
+# Hot-reload catalog when song data changes without a full process restart.
+CATALOG_REVISION = "2026-05-27-jewish-v3"
+if hasattr(st, "session_state") and st.session_state.get("_catalog_revision") != CATALOG_REVISION:
+    try:
+        from song_catalog.catalog import reload_song_catalog as _reload_catalog
+
+        SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = _reload_catalog()
+        st.session_state["_catalog_revision"] = CATALOG_REVISION
+        st.session_state["_catalog_backup_records"] = ALL_SONG_RECORDS
+        st.session_state["_catalog_backup_library"] = SONG_LIBRARY
+        st.session_state["_catalog_backup_picker"] = SONG_PICKER_CATALOG
+        st.session_state["_catalog_backup_genres"] = list(GENRES)
+    except Exception:
+        pass
 
 TRUSTED_CORE_RECORDS = [
     r for r in ALL_SONG_RECORDS
@@ -6817,9 +6835,145 @@ def _render_catalog_song_picker_block(
     _library_polished = bool(show_song_cards)
     if _library_polished:
         render_scroll_anchor_marker(st, ANCHOR_CHOOSE_ACTIVE_SONG)
-        _library_shell = st.container(key="song_library_panel")
-    else:
-        _library_shell = None
+    _library_shell = st.container(key="song_library_panel") if _library_polished else None
+
+    def _filtered_picker_records(*, workspace_genre: str | None = None) -> tuple[str, list[dict], list[str], str]:
+        """Apply genre/search session state and return pick list + active key."""
+        _wg = workspace_genre if workspace_genre is not None else st.session_state.get(
+            "workspace_genre_filter", _ALL_GENRE_FILTER
+        )
+        _filter_genre = None if _wg == _ALL_GENRE_FILTER else _wg
+        _search_text = st.session_state.get("song_search_text", "")
+        _filtered = search_records(
+            visible_song_records,
+            _search_text,
+            genre=_filter_genre,
+            limit=max(500, len(ALL_SONG_RECORDS)),
+        )
+        if not _filtered:
+            _filtered = list(visible_song_records)
+
+        _master_sel = st.session_state.get("selected_song") or {}
+        _master_pk = _master_sel.get("pick_key")
+        _master_rec = record_for_pick_key(visible_song_records, _master_pk) if _master_pk else None
+        if _master_rec:
+            _mk = format_pick_key(_master_rec["genre"], f"{_master_rec['title']} — {_master_rec['artist']}")
+            if _mk not in {format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in _filtered}:
+                _filtered = [_master_rec] + _filtered
+
+        _pick_options = [
+            format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in _filtered
+        ]
+        if not _pick_options:
+            return _wg, _filtered, _pick_options, ""
+
+        _default_pk = _master_pk if _master_pk in _pick_options else _pick_options[0]
+        if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in _pick_options:
+            set_catalog_source(st.session_state)
+            apply_pick_key(st, _default_pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
+            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+
+        _active_pk = sync_matching_song_dropdown_before_widget(
+            st,
+            _pick_options,
+            _default_pk,
+        )
+        return _wg, _filtered, _pick_options, _active_pk
+
+    def _on_song_dropdown_change():
+        set_catalog_source(st.session_state)
+        apply_pick_key(
+            st,
+            st.session_state["matching_song_dropdown"],
+            SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+        )
+        _push_recent_pick_key(
+            st.session_state,
+            st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "",
+        )
+        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        try:
+            st.toast("Song updated — chart and backing track follow this selection.", icon="🎵")
+        except Exception:
+            pass
+
+    if _library_polished:
+        _pre_genre, _pre_filtered, _pre_pick_options, _pre_active_pk = _filtered_picker_records()
+        if not _pre_pick_options:
+            st.warning("No songs match your filters — try another genre or clear the search box.")
+            if wrap_section:
+                close_control_section()
+            return
+        _active_rec_top = record_for_pick_key(visible_song_records, _pre_active_pk)
+        with st.container(key="active_song_hub"):
+            render_active_song_hub_open(st)
+            if _active_rec_top:
+                try:
+                    from practice_studio import active_song_card_details as _hub_details_fn
+
+                    _hub_details = _hub_details_fn(
+                        _active_rec_top,
+                        level=st.session_state.get("level", "Intermediate"),
+                        instrument=str(st.session_state.get("instrument") or ""),
+                    )
+                except Exception:
+                    _hub_details = song_card_meta(_active_rec_top)
+                _hub_ext = _active_rec_top.get("extensions") or {}
+                render_active_song_hub_hero(
+                    st,
+                    title=str(_active_rec_top.get("title", "")),
+                    artist=str(_active_rec_top.get("artist", "")),
+                    genre=str(_active_rec_top.get("genre", "")),
+                    key_display=str(_hub_details.get("key_display") or _active_rec_top.get("key", "")),
+                    bpm=int(_hub_details.get("bpm") or _hub_ext.get("default_bpm") or 100),
+                    groove=str(_hub_ext.get("default_groove") or _active_rec_top.get("genre", "")),
+                    time_signature=str(
+                        _hub_details.get("time_signature") or _hub_ext.get("time_signature") or "4/4"
+                    ),
+                    section_count=len((_active_rec_top.get("sections") or {})),
+                    emoji=str(_hub_details.get("visual_emoji") or "🎵"),
+                    gradient=str(
+                        _hub_details.get("visual_gradient") or "linear-gradient(145deg,#1e3a8a,#ca8a04)"
+                    ),
+                )
+            st.markdown(
+                '<p class="ui-active-song-picker-label">Switch active song</p>',
+                unsafe_allow_html=True,
+            )
+            st.selectbox(
+                "Active song",
+                _pre_pick_options,
+                format_func=lambda opt: f"{parse_pick_key(opt)[1]}  ·  {parse_pick_key(opt)[0]}",
+                key="matching_song_dropdown",
+                on_change=_on_song_dropdown_change,
+                label_visibility="collapsed",
+                help="Primary selector — updates Practice, Backing Track, Karaoke, and all coach tools.",
+            )
+            if _active_rec_top:
+                _yt_title = str(_active_rec_top.get("title", ""))
+                _yt_artist = str(_active_rec_top.get("artist", ""))
+                if _yt_title:
+                    _yt_slug, _, _ = _lyrics_cues_session_keys(_yt_title, _yt_artist)
+                    render_original_song_video_card(
+                        st,
+                        song_title=_yt_title,
+                        artist=_yt_artist,
+                        song_slug=_yt_slug,
+                        instrument=st.session_state.get("instrument", ""),
+                        expanded=False,
+                    )
+                _render_active_song_card(_active_rec_top)
+                st.markdown('<div class="ui-active-song-recent">', unsafe_allow_html=True)
+                _render_active_song_recent_switch(
+                    visible_song_records,
+                    _pre_pick_options,
+                    _pre_active_pk,
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+            else:
+                st.info("Choose a song below — it becomes the active track for the whole studio.")
+            render_active_song_hub_close(st)
 
     def _render_filter_widgets() -> str:
         """Genre + search widgets; returns the selected genre filter value."""
@@ -6907,168 +7061,106 @@ def _render_catalog_song_picker_block(
                 )
         return workspace_genre
 
-    if _library_shell is not None:
-        with _library_shell:
-            workspace_genre = _render_filter_widgets()
-    else:
-        workspace_genre = _render_filter_widgets()
+    def _render_genre_quick_chips() -> None:
+        if not _library_polished:
+            return
+        _chip_genres = [_ALL_GENRE_FILTER]
+        for _g in ("Jewish", "Jazz", "Pop", "Rock", "Funk", "Blues", "Classical"):
+            if _g in _genre_filter_options and _g not in _chip_genres:
+                _chip_genres.append(_g)
+        for _g in sorted(_genre_filter_options):
+            if _g not in _chip_genres and _g != _ALL_GENRE_FILTER:
+                _chip_genres.append(_g)
+        _chip_genres = _chip_genres[:8]
+        st.markdown(
+            '<p class="ui-song-library-genre-chips-label">Quick genre filters</p>',
+            unsafe_allow_html=True,
+        )
+        _chip_cols = st.columns(len(_chip_genres))
+        _active_chip = st.session_state.get("workspace_genre_filter", _ALL_GENRE_FILTER)
+        for _col, _chip in zip(_chip_cols, _chip_genres):
+            _label = "All" if _chip == _ALL_GENRE_FILTER else _chip
+            _is_active = _active_chip == _chip
+            with _col:
+                if st.button(
+                    f"{'● ' if _is_active else ''}{_label}",
+                    key=f"genre_quick_{_chip}",
+                    use_container_width=True,
+                    type="primary" if _is_active else "secondary",
+                ):
+                    st.session_state["workspace_genre_filter"] = _chip
+                    st.rerun()
 
-    filter_genre = None if workspace_genre == _ALL_GENRE_FILTER else workspace_genre
-
-    search_text = st.session_state.get("song_search_text", "")
-    filtered = search_records(
-        visible_song_records,
-        search_text,
-        genre=filter_genre,
-        limit=max(500, len(ALL_SONG_RECORDS)),
-    )
-    if not filtered:
-        filtered = list(visible_song_records)
-
-    master_sel = st.session_state.get("selected_song") or {}
-    master_pk = master_sel.get("pick_key")
-    master_rec = record_for_pick_key(visible_song_records, master_pk) if master_pk else None
-    if master_rec:
-        mk = format_pick_key(master_rec["genre"], f"{master_rec['title']} — {master_rec['artist']}")
-        if mk not in {format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered}:
-            filtered = [master_rec] + filtered
-
-    pick_options = [format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered]
-
-    if not pick_options:
+    if _library_polished:
         if _library_shell is not None:
             with _library_shell:
-                st.warning(
-                    "No songs match your filters — try another genre or clear the search box."
+                workspace_genre = _render_filter_widgets()
+                _render_genre_quick_chips()
+                st.markdown(
+                    f'<p class="ui-song-library-foot">'
+                    f"<strong>{len(_pre_filtered)}</strong> songs match your browse filters "
+                    f"· tap a quick genre (e.g. <strong>Jewish</strong>) or use the "
+                    f"<strong>Active Song</strong> panel above</p>",
+                    unsafe_allow_html=True,
                 )
-        else:
-            st.warning("No songs match your search — try another genre or clear the search box.")
-        if wrap_section:
-            close_control_section()
-        return
-
-    default_pk = master_pk if master_pk in pick_options else pick_options[0]
-    if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
-        set_catalog_source(st.session_state)
-        apply_pick_key(st, default_pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
-        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-
-    def _on_song_dropdown_change():
-        set_catalog_source(st.session_state)
-        apply_pick_key(
-            st,
-            st.session_state["matching_song_dropdown"],
-            SONG_PICKER_CATALOG,
-            song_library=SONG_LIBRARY,
-        )
-        _push_recent_pick_key(
-            st.session_state,
-            st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "",
-        )
-        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-        try:
-            st.toast("Song updated — chart and backing track follow this selection.", icon="🎵")
-        except Exception:
-            pass
-
-    active_pick_key = sync_matching_song_dropdown_before_widget(
-        st,
-        pick_options,
-        default_pk,
-    )
-
-    def _render_song_picker_widget() -> None:
-        if _library_polished:
-            render_song_library_field_label(
-                st,
-                "Active song",
-                "Your chart, lyrics, and backing track follow this pick everywhere.",
-            )
-            st.selectbox(
-                "Active song",
-                pick_options,
-                format_func=lambda opt: f"{parse_pick_key(opt)[1]}  ·  {parse_pick_key(opt)[0]}",
-                key="matching_song_dropdown",
-                on_change=_on_song_dropdown_change,
-                label_visibility="collapsed",
-                help="Primary selector — updates Practice, Backing Track, Creative Lab, and coach tools.",
-            )
-            _chip_rec = record_for_pick_key(visible_song_records, active_pick_key)
-            if _chip_rec:
-                render_song_library_selection_chip(
-                    st,
-                    title=str(_chip_rec.get("title", "")),
-                    artist=str(_chip_rec.get("artist", "")),
-                    genre=str(_chip_rec.get("genre", "")),
-                )
-            else:
-                _pk_g, _pk_lbl = parse_pick_key(active_pick_key)
-                _title_part = _pk_lbl.split("—")[0].strip() if "—" in _pk_lbl else _pk_lbl
-                _artist_part = _pk_lbl.split("—", 1)[1].strip() if "—" in _pk_lbl else ""
-                render_song_library_selection_chip(
-                    st,
-                    title=_title_part,
-                    artist=_artist_part,
-                    genre=_pk_g,
-                )
-            st.markdown(
-                f'<p class="ui-song-library-foot">'
-                f"<strong>{len(filtered)}</strong> songs match your filters "
-                f"· scroll the list above to switch songs</p>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.selectbox(
-                "Select song",
-                pick_options,
-                format_func=lambda opt: f"{parse_pick_key(opt)[1]}  [{parse_pick_key(opt)[0]}]",
-                key="matching_song_dropdown",
-                on_change=_on_song_dropdown_change,
-                help="Primary selector — updates Practice, Backing Track, Creative Lab, and all coach tools.",
-            )
-
-    if _library_shell is not None:
-        with _library_shell:
-            _render_song_picker_widget()
+        filtered = _pre_filtered
+        pick_options = _pre_pick_options
+        active_pick_key = _pre_active_pk
     else:
-        _render_song_picker_widget()
+        if _library_shell is not None:
+            with _library_shell:
+                workspace_genre = _render_filter_widgets()
+        else:
+            workspace_genre = _render_filter_widgets()
 
-    if show_song_cards:
-        active_rec = record_for_pick_key(visible_song_records, active_pick_key)
-        with st.container(key="active_song_hub"):
-            st.markdown(
-                """
-<div class="ui-active-song-hub-head">
-  <span class="ui-active-song-hub-label">Current active song</span>
-  <span class="ui-active-song-hub-sub">Chart · lyrics · backing · practice tools follow this pick</span>
-</div>
-                """,
-                unsafe_allow_html=True,
-            )
-            if active_rec:
-                _yt_title = str(active_rec.get("title", ""))
-                _yt_artist = str(active_rec.get("artist", ""))
-                if _yt_title:
-                    _yt_slug, _, _ = _lyrics_cues_session_keys(_yt_title, _yt_artist)
-                    render_original_song_video_card(
-                        st,
-                        song_title=_yt_title,
-                        artist=_yt_artist,
-                        song_slug=_yt_slug,
-                        instrument=st.session_state.get("instrument", ""),
-                        expanded=False,
-                    )
-                _render_active_song_card(active_rec)
-                st.markdown('<div class="ui-active-song-recent">', unsafe_allow_html=True)
-                _render_active_song_recent_switch(
-                    visible_song_records,
-                    pick_options,
-                    active_pick_key,
-                )
-                st.markdown("</div>", unsafe_allow_html=True)
-            else:
-                st.info("Select a song from the menu above — it becomes the active track for the whole studio.")
-    elif not _developer_mode_enabled():
+        filter_genre = None if workspace_genre == _ALL_GENRE_FILTER else workspace_genre
+        search_text = st.session_state.get("song_search_text", "")
+        filtered = search_records(
+            visible_song_records,
+            search_text,
+            genre=filter_genre,
+            limit=max(500, len(ALL_SONG_RECORDS)),
+        )
+        if not filtered:
+            filtered = list(visible_song_records)
+
+        master_sel = st.session_state.get("selected_song") or {}
+        master_pk = master_sel.get("pick_key")
+        master_rec = record_for_pick_key(visible_song_records, master_pk) if master_pk else None
+        if master_rec:
+            mk = format_pick_key(master_rec["genre"], f"{master_rec['title']} — {master_rec['artist']}")
+            if mk not in {format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered}:
+                filtered = [master_rec] + filtered
+
+        pick_options = [format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered]
+
+        if not pick_options:
+            st.warning("No songs match your search — try another genre or clear the search box.")
+            if wrap_section:
+                close_control_section()
+            return
+
+        default_pk = master_pk if master_pk in pick_options else pick_options[0]
+        if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
+            set_catalog_source(st.session_state)
+            apply_pick_key(st, default_pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
+            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+
+        active_pick_key = sync_matching_song_dropdown_before_widget(
+            st,
+            pick_options,
+            default_pk,
+        )
+        st.selectbox(
+            "Select song",
+            pick_options,
+            format_func=lambda opt: f"{parse_pick_key(opt)[1]}  [{parse_pick_key(opt)[0]}]",
+            key="matching_song_dropdown",
+            on_change=_on_song_dropdown_change,
+            help="Primary selector — updates Practice, Backing Track, Creative Lab, and all coach tools.",
+        )
+
+    if not show_song_cards and not _developer_mode_enabled():
         st.caption(
             f"**{len(filtered)}** songs in list · open **Practice** or **Backing Track** after you pick one."
         )
@@ -7180,6 +7272,9 @@ def _render_practice_setup_panel(
         "Bossa nova",
         "Funk groove",
         "Ballad",
+        "Jewish hora",
+        "Klezmer groove",
+        "Jewish ballad",
     ]
 
     st.markdown(
@@ -8562,7 +8657,17 @@ elif _studio_page == "picker":
         _studio_page_header(
             "📚",
             "Song Selection",
-            "Pick a song, add **Lyrics & Cues** below the active song card, then open Practice or Backing Track.",
+            "The **Active Song** panel is your main control — pick a song there, then open Practice or Backing Track.",
+        )
+
+    if "Jewish" in GENRES:
+        _jewish_n = sum(1 for r in ALL_SONG_RECORDS if r.get("genre") == "Jewish")
+        st.markdown(
+            f'<p class="ui-song-library-foot" style="margin-top:0.35rem;margin-bottom:0.75rem;">'
+            f"✡ <strong>Jewish</strong> genre available — {_jewish_n} traditional songs "
+            f"(Hava Nagila, Shalom Aleichem, Adon Olam, and more). "
+            f"Use the <strong>Jewish</strong> quick filter below or set Genre to Jewish.</p>",
+            unsafe_allow_html=True,
         )
 
     _render_catalog_song_picker_block(

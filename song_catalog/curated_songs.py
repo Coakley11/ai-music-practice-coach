@@ -2926,7 +2926,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
             composer=composer,
             lyric_cues=lyric_cues or {},
             guitar_tabs=guitar_tabs or {},
-            chart_status="practice_simplified",
+            chart_status="practice_level_verified",
             chart_versions=_levels(beginner=beg, intermediate=inter, advanced=adv),
             extensions=ext,
         )
@@ -2952,7 +2952,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
                 "Outro": ["Em", "B7", "Em", "Em", "B7", "Em", "Em", "Em"],
             },
             bpm=120,
-            groove="Jewish groove",
+            groove="Jewish hora",
             meter="6/8",
             beginner={"Hora A": _hora_beg, "Hora B (lift)": _hora_beg, "Outro": _hora_beg},
             advanced={
@@ -2976,7 +2976,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
                 "Melody B": ["Dm", "Gm", "A7", "Dm", "Bb", "A7", "Dm", "Dm"],
             },
             bpm=72,
-            groove="Ballad",
+            groove="Jewish ballad",
             lyric_cues={
                 "Melody A": ["gentle welcome phrase", "soft consonants on A7"],
                 "Melody B": ["repeat with warmth", "let the final Dm ring"],
@@ -2995,7 +2995,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
                 "Refrain": ["Am", "G", "F", "E7", "Am", "G", "F", "E7"],
             },
             bpm=80,
-            groove="Ballad",
+            groove="Jewish ballad",
             lyric_cues={
                 "Prayer": ["calm prayer tone", "smooth vowels through E7"],
                 "Refrain": ["peace refrain lift", "sustain on the final Am"],
@@ -3014,7 +3014,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
                 "Refrain": ["Am", "F", "G", "Am", "C", "G", "Am", "Am"],
             },
             bpm=118,
-            groove="Jewish groove",
+            groove="Klezmer groove",
             lyric_cues={
                 "Chorus": ["anthem entrance — strong downbeat", "build through G to Am"],
                 "Refrain": ["repeat with more energy", "celebratory lift on final Am"],
@@ -3033,7 +3033,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
                 "Hora B": ["D", "G", "A", "D", "D", "G", "A", "D"],
             },
             bpm=130,
-            groove="Jewish groove",
+            groove="Jewish hora",
             meter="6/8",
             lyric_cues={
                 "Hora A": ["wedding hora — bright pulse", "short punchy chord changes"],
@@ -3054,7 +3054,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
                 "Bridge": ["F", "C", "G", "Am", "F", "C", "G", "Am"],
             },
             bpm=76,
-            groove="Ballad",
+            groove="Jewish ballad",
             composer="Naomi Shemer",
             lyric_cues={
                 "Verse 1": ["tender opening — golden city imagery", "soft pick or arpeggio"],
@@ -3076,7 +3076,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
                 "Round B": ["D", "G", "A", "D", "Bm", "G", "A", "D"],
             },
             bpm=88,
-            groove="Jewish groove",
+            groove="Klezmer groove",
             lyric_cues={
                 "Round A": ["freylekh entrance", "brotherhood / unity phrase"],
                 "Round B": ["repeat — keep the bounce", "clean landing on D"],
@@ -3095,7 +3095,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
                 "Verse (Return in peace)": ["Dm", "Gm", "A7", "Dm"] * 2,
             },
             bpm=70,
-            groove="Ballad",
+            groove="Jewish ballad",
             lyric_cues={
                 "Verse (Peace unto you)": ["Shabbat welcome — very soft", "four-bar phrase breathing"],
                 "Verse (Return in peace)": ["answer phrase", "gentle A7 resolution"],
@@ -3114,7 +3114,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
                 "Strophe B": ["Bb", "F", "C", "F", "Dm", "Gm", "C", "F"],
             },
             bpm=88,
-            groove="Ballad",
+            groove="Jewish ballad",
             lyric_cues={
                 "Strophe A": ["stately prayer march", "clear downbeats on F and C"],
                 "Strophe B": ["second strophe — steady confidence", "hold the final F"],

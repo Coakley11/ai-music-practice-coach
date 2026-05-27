@@ -32,6 +32,9 @@ GROOVE_ICONS: dict[str, str] = {
     "Funk groove": "🕺",
     "Ballad": "🎹",
     "Jewish groove": "✡",
+    "Jewish hora": "💃",
+    "Klezmer groove": "🎻",
+    "Jewish ballad": "🕯",
 }
 
 FOCUS_ICONS: dict[str, str] = {
