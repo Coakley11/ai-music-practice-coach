@@ -445,6 +445,9 @@ try:
         sidebar_section,
         sidebar_source_banner,
         sidebar_goto_song_selection,
+        render_song_library_panel_header,
+        render_song_library_selection_chip,
+        render_song_library_field_label,
     )
     _APP_UI_LOADED = True
 except Exception as _app_ui_first_err:
@@ -482,6 +485,15 @@ except Exception as _app_ui_first_err:
                 sidebar_source_banner = _app_ui_mod.sidebar_source_banner
                 sidebar_goto_song_selection = getattr(
                     _app_ui_mod, "sidebar_goto_song_selection", None
+                )
+                render_song_library_panel_header = getattr(
+                    _app_ui_mod, "render_song_library_panel_header", None
+                )
+                render_song_library_selection_chip = getattr(
+                    _app_ui_mod, "render_song_library_selection_chip", None
+                )
+                render_song_library_field_label = getattr(
+                    _app_ui_mod, "render_song_library_field_label", None
                 )
                 _APP_UI_LOADED = True
                 _APP_UI_IMPORT_ERROR = None
@@ -6682,7 +6694,9 @@ def _render_catalog_song_picker_block(
             "Choose what music you are practicing — catalog song or custom progression.",
         )
 
-    if show_source_toggle:
+    # On Song Selection the source toggle lives inside the library
+    # panel; other surfaces keep the legacy placement above filters.
+    if show_source_toggle and not show_song_cards:
         _picker_source_options = [
             "Song Selection (catalog song)",
             "Use Custom Progression / Create Your Own Song",
@@ -6722,19 +6736,105 @@ def _render_catalog_song_picker_block(
     if _wgf not in _genre_filter_options:
         st.session_state["workspace_genre_filter"] = _ALL_GENRE_FILTER
 
-    genre_col, search_col = st.columns([1, 2])
-    with genre_col:
-        workspace_genre = st.selectbox(
-            "Filter songs by genre",
-            _genre_filter_options,
-            key="workspace_genre_filter",
-        )
-    with search_col:
-        st.text_input(
-            "Search / filter songs",
-            placeholder="Title, artist, genre…",
-            key="song_search_text",
-        )
+    _library_polished = bool(show_song_cards)
+    if _library_polished:
+        render_scroll_anchor_marker(st, ANCHOR_CHOOSE_ACTIVE_SONG)
+        _library_shell = st.container(key="song_library_panel")
+    else:
+        _library_shell = None
+
+    def _render_filter_widgets() -> str:
+        """Genre + search widgets; returns the selected genre filter value."""
+        if _library_polished:
+            if show_source_toggle:
+                st.markdown(
+                    '<p class="ui-page-nav-label" style="margin-top:0;">Music source</p>',
+                    unsafe_allow_html=True,
+                )
+                _picker_source_options = [
+                    "Song Selection (catalog song)",
+                    "Use Custom Progression / Create Your Own Song",
+                ]
+                _picker_source_index = 1 if is_custom_progression(st.session_state) else 0
+                _panel_source = st.radio(
+                    "Music source",
+                    _picker_source_options,
+                    index=_picker_source_index,
+                    horizontal=True,
+                    key="song_picker_active_source",
+                    label_visibility="collapsed",
+                )
+                if _panel_source.startswith("Use Custom"):
+                    if not is_custom_progression(st.session_state):
+                        set_custom_source(st.session_state)
+                        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+                        st.rerun()
+                    _cpl_pick = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+                    st.info(
+                        f"**Custom Progression** — {_cpl_pick.get('name', 'Untitled')}. "
+                        "Edit in **Custom Progression** · transpose with **Practice / Display Key** in the sidebar."
+                    )
+                    if wrap_section:
+                        close_control_section()
+                    st.stop()
+                if is_custom_progression(st.session_state):
+                    set_catalog_source(st.session_state)
+                    note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+                    st.rerun()
+            render_song_library_panel_header(
+                st,
+                result_count=len(visible_song_records),
+            )
+            _filter_cols = st.columns([1, 2.15])
+        else:
+            _filter_cols = st.columns([1, 2])
+        _genre_col, _search_col = _filter_cols
+        with _genre_col:
+            if _library_polished:
+                render_song_library_field_label(
+                    st,
+                    "Genre",
+                    "Browse one style, or show the full catalog.",
+                )
+                workspace_genre = st.selectbox(
+                    "Genre",
+                    _genre_filter_options,
+                    key="workspace_genre_filter",
+                    label_visibility="collapsed",
+                )
+            else:
+                workspace_genre = st.selectbox(
+                    "Filter songs by genre",
+                    _genre_filter_options,
+                    key="workspace_genre_filter",
+                )
+        with _search_col:
+            if _library_polished:
+                render_song_library_field_label(
+                    st,
+                    "Search",
+                    "Search by title, artist, style, or difficulty.",
+                )
+                st.text_input(
+                    "Search",
+                    placeholder="e.g. Autumn Leaves, Bossa, Ed Sheeran…",
+                    key="song_search_text",
+                    label_visibility="collapsed",
+                )
+            else:
+                st.text_input(
+                    "Search / filter songs",
+                    placeholder="Title, artist, genre…",
+                    key="song_search_text",
+                )
+        return workspace_genre
+
+    if _library_shell is not None:
+        with _library_shell:
+            workspace_genre = _render_filter_widgets()
+    else:
+        workspace_genre = _render_filter_widgets()
+
     filter_genre = None if workspace_genre == _ALL_GENRE_FILTER else workspace_genre
 
     search_text = st.session_state.get("song_search_text", "")
@@ -6758,7 +6858,13 @@ def _render_catalog_song_picker_block(
     pick_options = [format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered]
 
     if not pick_options:
-        st.warning("No songs match your search — try another genre or clear the search box.")
+        if _library_shell is not None:
+            with _library_shell:
+                st.warning(
+                    "No songs match your filters — try another genre or clear the search box."
+                )
+        else:
+            st.warning("No songs match your search — try another genre or clear the search box.")
         if wrap_section:
             close_control_section()
         return
@@ -6788,21 +6894,69 @@ def _render_catalog_song_picker_block(
         pick_options,
         default_pk,
     )
-    if show_song_cards:
-        render_scroll_anchor_marker(st, ANCHOR_CHOOSE_ACTIVE_SONG)
-        st.markdown("### Choose active song")
-    st.selectbox(
-        "Select song",
-        pick_options,
-        format_func=lambda opt: f"{parse_pick_key(opt)[1]}  [{parse_pick_key(opt)[0]}]",
-        key="matching_song_dropdown",
-        on_change=_on_song_dropdown_change,
-        help="Primary selector — updates Practice, Backing Track, Creative Lab, and all coach tools.",
-    )
+
+    def _render_song_picker_widget() -> None:
+        if _library_polished:
+            render_song_library_field_label(
+                st,
+                "Active song",
+                "Your chart, lyrics, and backing track follow this pick everywhere.",
+            )
+            st.selectbox(
+                "Active song",
+                pick_options,
+                format_func=lambda opt: f"{parse_pick_key(opt)[1]}  ·  {parse_pick_key(opt)[0]}",
+                key="matching_song_dropdown",
+                on_change=_on_song_dropdown_change,
+                label_visibility="collapsed",
+                help="Primary selector — updates Practice, Backing Track, Creative Lab, and coach tools.",
+            )
+            _chip_rec = record_for_pick_key(visible_song_records, active_pick_key)
+            if _chip_rec:
+                render_song_library_selection_chip(
+                    st,
+                    title=str(_chip_rec.get("title", "")),
+                    artist=str(_chip_rec.get("artist", "")),
+                    genre=str(_chip_rec.get("genre", "")),
+                )
+            else:
+                _pk_g, _pk_lbl = parse_pick_key(active_pick_key)
+                _title_part = _pk_lbl.split("—")[0].strip() if "—" in _pk_lbl else _pk_lbl
+                _artist_part = _pk_lbl.split("—", 1)[1].strip() if "—" in _pk_lbl else ""
+                render_song_library_selection_chip(
+                    st,
+                    title=_title_part,
+                    artist=_artist_part,
+                    genre=_pk_g,
+                )
+            st.markdown(
+                f'<p class="ui-song-library-foot">'
+                f"<strong>{len(filtered)}</strong> songs match your filters "
+                f"· scroll the list above to switch songs</p>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.selectbox(
+                "Select song",
+                pick_options,
+                format_func=lambda opt: f"{parse_pick_key(opt)[1]}  [{parse_pick_key(opt)[0]}]",
+                key="matching_song_dropdown",
+                on_change=_on_song_dropdown_change,
+                help="Primary selector — updates Practice, Backing Track, Creative Lab, and all coach tools.",
+            )
+
+    if _library_shell is not None:
+        with _library_shell:
+            _render_song_picker_widget()
+    else:
+        _render_song_picker_widget()
 
     if show_song_cards:
-        st.caption(f"**{len(filtered)}** songs available in this list.")
-        st.markdown("#### Active song")
+        st.markdown(
+            '<p class="ui-page-nav-label" style="margin:1.1rem 0 0.55rem 0;">'
+            "Active song details</p>",
+            unsafe_allow_html=True,
+        )
         active_rec = record_for_pick_key(visible_song_records, active_pick_key)
         # Original-song YouTube card lives right above the song card so
         # the "hear/watch the original" link is the first thing users see
@@ -6842,33 +6996,41 @@ def _render_catalog_song_picker_block(
             if filters_in_expander
             else "Refine search & filters (developer)"
         )
-        with st.expander(_dev_label, expanded=False):
-            st.caption("Developer Mode — library scope and chart filters.")
-            st.radio(
-                "Song library",
-                _library_options,
-                horizontal=True,
-                key="chart_library_mode",
-            )
-            st.radio(
-                "Search scope",
-                ["Entire library", "Single genre"],
-                horizontal=True,
-                key="song_search_scope",
-            )
-            c1, c2 = st.columns(2)
-            with c1:
-                st.selectbox(
-                    "Show songs",
-                    _chart_filter_options,
-                    key="song_picker_chart_status",
+
+        def _render_developer_library_filters() -> None:
+            with st.expander(_dev_label, expanded=False):
+                st.caption("Developer Mode — library scope and chart filters.")
+                st.radio(
+                    "Song library",
+                    _library_options,
+                    horizontal=True,
+                    key="chart_library_mode",
                 )
-            with c2:
-                st.selectbox(
-                    "Chart level available",
-                    ["Any level", "Beginner", "Intermediate", "Advanced"],
-                    key="song_picker_level_filter",
+                st.radio(
+                    "Search scope",
+                    ["Entire library", "Single genre"],
+                    horizontal=True,
+                    key="song_search_scope",
                 )
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.selectbox(
+                        "Show songs",
+                        _chart_filter_options,
+                        key="song_picker_chart_status",
+                    )
+                with c2:
+                    st.selectbox(
+                        "Chart level available",
+                        ["Any level", "Beginner", "Intermediate", "Advanced"],
+                        key="song_picker_level_filter",
+                    )
+
+        if _library_shell is not None:
+            with _library_shell:
+                _render_developer_library_filters()
+        else:
+            _render_developer_library_filters()
 
     if wrap_section:
         close_control_section()

@@ -2982,6 +2982,176 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 }
 [data-vocal-focus="true"] .section-card { padding-block: 16px; }
 
+/* ---------- Song library panel (Song Selection page) ---------------
+   Scoped to ``st.container(key="song_library_panel")`` so the
+   polished search/filter card does not leak onto other pages. */
+.st-key-song_library_panel {
+  border: 1px solid rgba(99, 102, 241, 0.22);
+  border-radius: 16px;
+  padding: 1.05rem 1.15rem 1.10rem 1.15rem;
+  margin: 0.35rem 0 1.05rem 0;
+  background:
+    radial-gradient(120% 90% at 8% -8%, rgba(99, 102, 241, 0.10) 0%, rgba(99, 102, 241, 0) 55%),
+    radial-gradient(110% 90% at 96% 108%, rgba(14, 165, 233, 0.08) 0%, rgba(14, 165, 233, 0) 55%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 58%, #f1f5f9 100%);
+  box-shadow:
+    0 14px 36px -22px rgba(15, 23, 42, 0.28),
+    0 2px 8px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  position: relative;
+  overflow: hidden;
+}
+.st-key-song_library_panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(99, 102, 241, 0.45) 28%,
+    rgba(56, 189, 248, 0.40) 50%,
+    rgba(99, 102, 241, 0.45) 72%,
+    transparent 100%);
+}
+.st-key-song_library_panel .ui-song-library-head {
+  margin: 0 0 0.85rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+}
+.st-key-song_library_panel .ui-song-library-kicker {
+  display: inline-block;
+  margin: 0 0 0.35rem 0;
+  font-size: 0.64rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #4f46e5;
+}
+.st-key-song_library_panel .ui-song-library-title {
+  margin: 0;
+  font-size: 1.22rem;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+  line-height: 1.2;
+}
+.st-key-song_library_panel .ui-song-library-sub {
+  margin: 0.35rem 0 0 0;
+  font-size: 0.84rem;
+  color: #64748b;
+  line-height: 1.45;
+  max-width: 42rem;
+}
+.st-key-song_library_panel .ui-song-library-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+  padding: 0.22rem 0.62rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #3730a3;
+  background: rgba(99, 102, 241, 0.10);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+}
+.st-key-song_library_panel .ui-song-library-field-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #475569;
+  margin: 0 0 0.28rem 0;
+}
+.st-key-song_library_panel .ui-song-library-field-hint {
+  font-size: 0.74rem;
+  color: #94a3b8;
+  margin: 0 0 0.35rem 0;
+  line-height: 1.35;
+}
+.st-key-song_library_panel .ui-song-library-selected {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+  margin: 0.65rem 0 0.15rem 0;
+  padding: 0.62rem 0.75rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(56, 189, 248, 0.06) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.24);
+}
+.st-key-song_library_panel .ui-song-library-selected-label {
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6366f1;
+  flex: 0 0 auto;
+}
+.st-key-song_library_panel .ui-song-library-selected-title {
+  font-size: 0.95rem;
+  font-weight: 850;
+  color: #0f172a;
+  line-height: 1.25;
+}
+.st-key-song_library_panel .ui-song-library-selected-meta {
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: #64748b;
+}
+.st-key-song_library_panel .ui-song-library-genre-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.14rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #3730a3;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(99, 102, 241, 0.28);
+}
+.st-key-song_library_panel .ui-song-library-source {
+  margin: 0 0 0.85rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.35);
+}
+.st-key-song_library_panel .ui-song-library-source .ui-page-nav-label {
+  margin-bottom: 0.35rem;
+}
+.st-key-song_library_panel [data-testid="stSelectbox"] label,
+.st-key-song_library_panel [data-testid="stTextInput"] label {
+  display: none !important;
+}
+.st-key-song_library_panel [data-testid="stSelectbox"] > div > div,
+.st-key-song_library_panel [data-testid="stTextInput"] input {
+  border-radius: 10px !important;
+  border-color: rgba(148, 163, 184, 0.55) !important;
+  min-height: 2.45rem !important;
+  font-size: 0.88rem !important;
+}
+.st-key-song_library_panel [data-testid="stSelectbox"] > div > div:focus-within,
+.st-key-song_library_panel [data-testid="stTextInput"] input:focus {
+  border-color: rgba(99, 102, 241, 0.65) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.14) !important;
+}
+.st-key-song_library_panel [data-testid="stRadio"] label {
+  font-size: 0.84rem !important;
+  font-weight: 650 !important;
+}
+.st-key-song_library_panel [data-baseweb="radio"] {
+  gap: 0.35rem !important;
+}
+.st-key-song_library_panel .ui-song-library-active-row {
+  margin-top: 0.55rem;
+}
+.st-key-song_library_panel .ui-song-library-foot {
+  margin: 0.55rem 0 0 0;
+  font-size: 0.76rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
 /* ---------- YouTube integration (Song Selection + Practice page) ---------- */
 .ui-youtube-link-btn {
   display: inline-flex;
@@ -3106,6 +3276,77 @@ def close_control_section() -> None:
     import streamlit as st
 
     st.markdown("</div></div>", unsafe_allow_html=True)
+
+
+def render_song_library_panel_header(
+  st: Any,
+  *,
+  result_count: int,
+  filtered_count: int | None = None,
+) -> None:
+    """Header block for the Song Selection library card (inside keyed container)."""
+    shown = filtered_count if filtered_count is not None else result_count
+    count_html = (
+        f'<span class="ui-song-library-count">'
+        f"{shown} song{'s' if shown != 1 else ''} in this list"
+        f"</span>"
+    )
+    st.markdown(
+        f"""
+<div class="ui-song-library-head">
+  <p class="ui-song-library-kicker">Catalog</p>
+  <h3 class="ui-song-library-title">Song Library</h3>
+  <p class="ui-song-library-sub">
+    Find a song in the catalog, then open <strong>Practice</strong> or
+    <strong>Backing Track</strong> — your chart, lyrics, and groove follow
+    this selection everywhere in the studio.
+  </p>
+  {count_html}
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_song_library_selection_chip(
+  st: Any,
+  *,
+  title: str,
+  artist: str,
+  genre: str,
+) -> None:
+    """Highlight the currently active song inside the library panel."""
+    safe_title = html.escape(str(title or "Song"))
+    safe_artist = html.escape(str(artist or ""))
+    safe_genre = html.escape(str(genre or "Song"))
+    artist_html = (
+        f'<span class="ui-song-library-selected-meta">— {safe_artist}</span>'
+        if safe_artist
+        else ""
+    )
+    st.markdown(
+        f"""
+<div class="ui-song-library-selected" role="status" aria-live="polite">
+  <span class="ui-song-library-selected-label">Now selected</span>
+  <span class="ui-song-library-selected-title">{safe_title}{artist_html}</span>
+  <span class="ui-song-library-genre-pill">{safe_genre}</span>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_song_library_field_label(st: Any, label: str, hint: str = "") -> None:
+    """Compact field label for library panel columns (widgets use collapsed labels)."""
+    hint_html = (
+        f'<p class="ui-song-library-field-hint">{html.escape(hint)}</p>'
+        if hint
+        else ""
+    )
+    st.markdown(
+        f'<p class="ui-song-library-field-label">{html.escape(label)}</p>{hint_html}',
+        unsafe_allow_html=True,
+    )
 
 
 def app_hero(title: str, subtitle: str) -> None:
