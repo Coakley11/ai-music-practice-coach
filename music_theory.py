@@ -36,6 +36,33 @@ def normalize_root(root):
     return FLAT_TO_SHARP.get(root, root)
 
 
+# Tokens (case-insensitive, dot/space-tolerant) that should be treated as
+# *no chord / tacet* bars: harmony instruments lay out, drums/percussion
+# carry the groove. ``"N.C."`` is the lead-sheet convention; we also
+# accept a handful of plain variants and an empty string.
+_NO_CHORD_TOKENS = {"N.C.", "NC", "N.C", "N/C", "(N.C.)", "TACET", "—", "-", ""}
+
+
+def is_no_chord_token(chord) -> bool:
+    """Return True for ``N.C.``-style "no chord / tacet" bars.
+
+    Recognises the lead-sheet convention ``N.C.`` plus common variants
+    (``NC``, ``N/C``, ``Tacet``, em/en dashes, empty string). The check
+    is case-insensitive and tolerant of surrounding whitespace and
+    parentheses so chart authors can write ``"N.C."``, ``"(N.C.)"``,
+    ``"nc"``, etc., interchangeably.
+    """
+    if chord is None:
+        return False
+    raw = str(chord).strip()
+    if not raw:
+        return False  # blank cells are treated as "missing", not tacet
+    cleaned = raw.replace(" ", "").upper()
+    if cleaned in _NO_CHORD_TOKENS:
+        return True
+    return cleaned.strip("()") in _NO_CHORD_TOKENS
+
+
 def split_chord(chord):
     chord = str(chord)
     if len(chord) >= 2 and chord[1] in ["b", "#"]:

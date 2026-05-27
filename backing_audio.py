@@ -19,7 +19,7 @@ from chord_subdivisions import (
     parse_subdivisions as _sub_parse_subdivisions,
     primary_chord as _sub_primary_chord,
 )
-from music_theory import NOTE_TO_MIDI, normalize_root, split_chord
+from music_theory import NOTE_TO_MIDI, is_no_chord_token, normalize_root, split_chord
 
 try:
     from practice_studio import song_groove_seed
@@ -682,6 +682,12 @@ def synthesize_chords_to_numpy(
         # honoured exactly - ``chord_notes(_sub_primary_chord(chord))``
         # only seeds the head chord for any non-pulse-aware fallback uses.
         bar_is_subdivided = _sub_is_subdivided_bar(chord)
+        # ``N.C.`` (no chord / tacet) bars: harmony instruments lay
+        # out so the breakdown stays stark. Drums/percussion still
+        # carry the groove via the kick/snare/hat blocks below.
+        bar_is_no_chord = (
+            False if bar_is_subdivided else is_no_chord_token(chord)
+        )
         notes = chord_notes(_sub_primary_chord(chord) if bar_is_subdivided else chord)
         bass_hits = patterns["bass_beats"]
         if groove_seed % 3 == 0 and role == "verse":
@@ -704,8 +710,12 @@ def synthesize_chords_to_numpy(
             )
 
         for n, b in enumerate(bass_hits):
+            if bar_is_no_chord:
+                break  # tacet — bass lays out for the whole bar
             pulse_chord = _pulse_chord(b)
             pulse_next = _pulse_next_chord(b)
+            if is_no_chord_token(pulse_chord):
+                continue  # bar contains an N.C. sub-segment
             bass_pitch = _bass_motion_pitch(pulse_chord, pulse_next, style, n, len(bass_hits))
             bass_dur = pulse * (0.72 if style in ["Ballad", "Jazz swing"] else 0.50)
             if style == "Funk groove":
@@ -729,6 +739,10 @@ def synthesize_chords_to_numpy(
             )
 
         for comp_idx, b in enumerate(patterns["comp_beats"]):
+            if bar_is_no_chord:
+                break  # tacet — chord comping lays out for the whole bar
+            if is_no_chord_token(_pulse_chord(b)):
+                continue  # bar contains an N.C. sub-segment
             if role == "verse" and comp_idx % 3 == 2 and not song_profile.get("anthem_rock"):
                 continue
             if role == "intro" and comp_idx > 1:
@@ -851,8 +865,12 @@ def synthesize_chords_to_numpy(
             tail_next = next_chord if not bar_is_subdivided else (
                 _sub_primary_chord(next_chord) if next_chord else None
             )
-            approach = _bass_motion_pitch(tail_chord, tail_next, style, len(bass_hits) - 1, len(bass_hits))
-            _add_tone(audio, sr, bar_start + tail * pulse, pulse * 0.25, approach, 0.075 * intensity, "bass")
+            # Skip the pickup bass note if this bar (or its tail
+            # segment) is tacet — N.C. bars shouldn't suddenly fire a
+            # bass attack just because a section ends.
+            if not bar_is_no_chord and not is_no_chord_token(tail_chord):
+                approach = _bass_motion_pitch(tail_chord, tail_next, style, len(bass_hits) - 1, len(bass_hits))
+                _add_tone(audio, sr, bar_start + tail * pulse, pulse * 0.25, approach, 0.075 * intensity, "bass")
             _add_noise_hit(
                 audio,
                 sr,
@@ -861,7 +879,11 @@ def synthesize_chords_to_numpy(
                 0.018 * intensity,
                 seed=idx * 101,
             )
-            if next_event and _section_role(next_event.get("section")) == "chorus":
+            if (
+                not bar_is_no_chord
+                and next_event
+                and _section_role(next_event.get("section")) == "chorus"
+            ):
                 _add_tone(audio, sr, bar_start + (tail + 0.33) * pulse, 0.09, 48, 0.055, "bass")
 
         # Pushed-chord anticipations: when a sub-chord inside this bar is

@@ -1448,50 +1448,114 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Outro": ["G6", "Cmaj9/G", "G6", "Cmaj9/G"],
             },
         ),
+        # ``Shape of You`` — Ed Sheeran. Form (one chord = one bar in 4/4):
+        #   Verse x4 -> Pre-Chorus x4 -> Chorus x8 -> Verse x4 ->
+        #   Pre-Chorus x4 -> Chorus x8 -> Bridge (16 bars N.C. breakdown
+        #   + 2 loops) -> Final Chorus x8.
+        # Repeats are written out so the karaoke cue clock, backing
+        # bar timeline, and section-focus practice loop all see the
+        # exact bar count without inferring repeats. The 16-bar
+        # ``N.C.`` block in the bridge tells the backing engine to
+        # drop harmony instruments (bass + comp lay out) so only
+        # drums/percussion carry the breakdown.
         ("Shape of You", "Ed Sheeran"): pack(
             "Bm",
+            # --- Beginner: one main-loop pass per section so newcomers
+            # can lock the groove without losing their place in the
+            # form. The bridge keeps the tacet bars so the breakdown
+            # cue still surfaces in Karaoke/Practice. ---
             {
-                "Intro": ["Bm", "Em", "G", "A"],
-                "Verse": ["Bm", "Em", "G", "A"],
-                "Pre-Chorus": ["Bm", "Em", "G", "A"],
-                "Chorus": ["Bm", "Em", "G", "A"],
-                "Bridge": ["Bm", "Em", "G", "A"],
-                "Outro": ["Bm", "Em", "G", "A"],
+                "Verse 1": ["Bm", "Em", "G", "A"],
+                "Pre-Chorus 1": ["Bm", "Em", "G", "A"],
+                "Chorus 1": ["Bm", "Em", "G", "A"],
+                "Verse 2": ["Bm", "Em", "G", "A"],
+                "Pre-Chorus 2": ["Bm", "Em", "G", "A"],
+                "Chorus 2": ["Bm", "Em", "G", "A"],
+                "Bridge": ["N.C."] * 4 + ["Bm", "Em", "G", "A"],
+                "Final Chorus": ["Bm", "Em", "G", "A"],
             },
+            # --- Intermediate / Authoritative: full per-bar form. ---
             {
-                "Intro": ["Bm", "Em", "G", "A"],
-                "Verse": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
-                "Pre-Chorus": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
-                "Chorus": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
-                "Bridge": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
-                "Outro": ["Bm", "Em", "G", "A"],
+                "Verse 1": ["Bm", "Em", "G", "A"] * 4,
+                "Pre-Chorus 1": ["Bm", "Em", "G", "A"] * 4,
+                "Chorus 1": ["Bm", "Em", "G", "A"] * 8,
+                "Verse 2": ["Bm", "Em", "G", "A"] * 4,
+                "Pre-Chorus 2": ["Bm", "Em", "G", "A"] * 4,
+                "Chorus 2": ["Bm", "Em", "G", "A"] * 8,
+                "Bridge": ["N.C."] * 16 + ["Bm", "Em", "G", "A"] * 2,
+                "Final Chorus": ["Bm", "Em", "G", "A"] * 8,
             },
+            # --- Advanced: extension-rich voicings over the same form
+            # (Bm7 / Em7 / Gmaj7 / Aadd9) so the per-bar timing is
+            # identical to Intermediate but the comping is jazzier. ---
             {
-                "Intro": ["Bm7", "Em7", "Gmaj7", "Asus2"],
-                "Verse": ["Bm7", "Em7", "Gmaj7", "Asus2", "Bm7", "Em7", "Gmaj7", "Asus2"],
-                "Pre-Chorus": ["Bm7", "Em7", "Gmaj7", "Asus2", "Bm7", "Em7", "Gmaj7", "Asus2"],
-                "Chorus": ["Bm7", "Em7", "Gmaj7", "Aadd9", "Bm7", "Em7", "Gmaj7", "Aadd9"],
-                "Bridge": ["Bm7", "Em7", "Gmaj7", "Aadd9", "N.C.", "N.C.", "Bm7", "Em7"],
-                "Outro": ["Bm7", "Em7", "Gmaj7", "Aadd9"],
+                "Verse 1": ["Bm7", "Em7", "Gmaj7", "Asus2"] * 4,
+                "Pre-Chorus 1": ["Bm7", "Em7", "Gmaj7", "Asus2"] * 4,
+                "Chorus 1": ["Bm7", "Em7", "Gmaj7", "Aadd9"] * 8,
+                "Verse 2": ["Bm7", "Em7", "Gmaj7", "Asus2"] * 4,
+                "Pre-Chorus 2": ["Bm7", "Em7", "Gmaj7", "Asus2"] * 4,
+                "Chorus 2": ["Bm7", "Em7", "Gmaj7", "Aadd9"] * 8,
+                "Bridge": ["N.C."] * 16 + ["Bm7", "Em7", "Gmaj7", "Aadd9"] * 2,
+                "Final Chorus": ["Bm7", "Em7", "Gmaj7", "Aadd9"] * 8,
             },
             status="practice_level_verified",
             lyric_cues={
-                "Intro": ["percussion / marimba loop enters"],
-                "Verse": ["syncopated vocal pickup over loop"],
-                "Pre-Chorus": ["lift before hook — keep groove steady"],
-                "Chorus": ["title-hook rhythm — lock the loop"],
-                "Bridge": ["breakdown / vocal-only bars then loop returns"],
-                "Outro": ["fade on main loop vamp"],
+                "Verse 1": [
+                    "The club isn't the best place to find a lover…",
+                    "syncopated pickup over the Bm–Em–G–A loop",
+                ],
+                "Pre-Chorus 1": [
+                    "Girl, you know I want your love…",
+                    "lift before the hook — hold the A into the chorus",
+                ],
+                "Chorus 1": [
+                    "I'm in love with the shape of you…",
+                    "title-hook rhythm — lock the loop for 8 cycles",
+                ],
+                "Verse 2": [
+                    "One week in, we let the story begin…",
+                    "same loop, fuller percussion underneath",
+                ],
+                "Pre-Chorus 2": [
+                    "Come on, be my baby, come on…",
+                    "second lift — match Pre-Chorus 1 exactly",
+                ],
+                "Chorus 2": [
+                    "I'm in love with the shape of you…",
+                    "second chorus — same 8-cycle loop",
+                ],
+                "Bridge": [
+                    "Come on, be my baby, come on… (vocal over N.C.)",
+                    "16 bars tacet — drums/percussion only, no chords",
+                    "loop returns: Bm–Em–G–A x2 lifts back into the final chorus",
+                ],
+                "Final Chorus": [
+                    "I'm in love with the shape of you…",
+                    "final 8-cycle hook — fade on the loop",
+                ],
             },
             extensions=_ext(
                 arrangement_notes=(
                     "Radio-accurate **Bm–Em–G–A** loop (one chord per bar, 4/4). "
-                    "Recording key is C#m; transpose with Display Key as needed. "
-                    "Default groove: pop syncopation ~96 BPM — keep the loop even."
+                    "Form: Verse x4 -> Pre-Chorus x4 -> Chorus x8, twice, then a "
+                    "bridge that opens with **16 bars of N.C.** (drums/percussion "
+                    "only — harmony lays out) before the loop returns x2 and the "
+                    "Final Chorus rides x8. Recording key is C#m; transpose with "
+                    "Display Key as needed. Default groove: pop syncopation ~96 BPM."
                 ),
                 default_bpm=96,
                 default_groove="Pop groove",
             ),
+            section_order=[
+                "Verse 1",
+                "Pre-Chorus 1",
+                "Chorus 1",
+                "Verse 2",
+                "Pre-Chorus 2",
+                "Chorus 2",
+                "Bridge",
+                "Final Chorus",
+            ],
         ),
         ("Perfect", "Ed Sheeran"): _perfect_chart_pack(),
         ("Thinking Out Loud", "Ed Sheeran"): pack("D",
@@ -2887,14 +2951,46 @@ def curated_song_records() -> list[dict[str, Any]]:
                 "Outro",
             ],
         ),
-        _s("Shape of You", "Ed Sheeran", "Pop", "Bm", {
-            "Intro": ["Bm", "Em", "G", "A"],
-            "Verse": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
-            "Pre-Chorus": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
-            "Chorus": ["Bm", "Em", "G", "A", "Bm", "Em", "G", "A"],
-            "Bridge": ["Bm", "Em", "G", "A"],
-            "Outro": ["Bm", "Em", "G", "A"],
-        }),
+        # Shape of You — Ed Sheeran. Authoritative form mirrors the
+        # ``_core_chart_overrides`` entry above so Practice / Karaoke /
+        # Backing all see the same per-bar structure (one chord = one
+        # 4/4 bar). The bridge opens with 16 bars of ``N.C.``
+        # (percussion-only breakdown) before the loop returns.
+        _s(
+            "Shape of You",
+            "Ed Sheeran",
+            "Pop",
+            "Bm",
+            {
+                # Verse 1 — main loop x4 (16 bars).
+                "Verse 1": ["Bm", "Em", "G", "A"] * 4,
+                # Pre-Chorus 1 — main loop x4 (16 bars), holds A into the chorus.
+                "Pre-Chorus 1": ["Bm", "Em", "G", "A"] * 4,
+                # Chorus 1 — main loop x8 (32 bars).
+                "Chorus 1": ["Bm", "Em", "G", "A"] * 8,
+                # Verse 2 — same shape as Verse 1.
+                "Verse 2": ["Bm", "Em", "G", "A"] * 4,
+                # Pre-Chorus 2 — same shape as Pre-Chorus 1.
+                "Pre-Chorus 2": ["Bm", "Em", "G", "A"] * 4,
+                # Chorus 2 — same shape as Chorus 1.
+                "Chorus 2": ["Bm", "Em", "G", "A"] * 8,
+                # Bridge — 16 bars tacet (N.C.) breakdown, then 8 bars
+                # of the main loop x2 to lift back into the final chorus.
+                "Bridge": ["N.C."] * 16 + ["Bm", "Em", "G", "A"] * 2,
+                # Final Chorus — same shape as the prior choruses.
+                "Final Chorus": ["Bm", "Em", "G", "A"] * 8,
+            },
+            section_order=[
+                "Verse 1",
+                "Pre-Chorus 1",
+                "Chorus 1",
+                "Verse 2",
+                "Pre-Chorus 2",
+                "Chorus 2",
+                "Bridge",
+                "Final Chorus",
+            ],
+        ),
         _s("Thinking Out Loud", "Ed Sheeran", "Pop", "D", {
             "Intro": ["D", "D/F#", "G", "A7"],
             "Verse": ["D", "D/F#", "G", "A7", "D", "D/F#", "G", "A7"],

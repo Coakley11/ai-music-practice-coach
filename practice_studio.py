@@ -12,6 +12,7 @@ from music_theory import (
     COMMON_KEYS,
     NOTE_TO_MIDI,
     display_key_options,
+    is_no_chord_token,
     normalize_root,
     semitone_distance,
     split_chord,
@@ -668,6 +669,16 @@ def _piano_easy_key(key: str) -> str:
 
 def scale_suggestions_for_chord(chord: str, key_name: str, level: str, instrument: str) -> str:
     """Scale / arpeggio hints for a chord or short progression."""
+    if is_no_chord_token(chord):
+        # ``N.C.`` bars: harmony lays out, percussion carries the
+        # groove. Surface a tacet hint instead of inventing a
+        # nonsensical "N major" scale for the chart.
+        return (
+            "**N.C.** — *No chord / tacet.* Harmony instruments lay out; "
+            "lock into the **groove and dynamics** instead. Use this space "
+            "to set up the next entry with rhythm, breath, or a short "
+            "rhythmic motif on a single tone."
+        )
     head = str(chord).split()[0] if " " in str(chord) and "–" in str(chord) else str(chord)
     if "–" in str(chord) or "->" in str(chord):
         return progression_coach_markdown(str(chord), key_name, level, instrument)
