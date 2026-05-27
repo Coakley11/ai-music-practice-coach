@@ -275,25 +275,122 @@ def search_records(
     return matched[:limit]
 
 
+PICK_KEY_SEP = "\x1f"
+
+
 def format_pick_key(genre: str, label: str) -> str:
     """Stable option id for selectbox (genre and label may contain unicode)."""
-    return f"{genre}\x1f{label}"
+    return f"{genre}{PICK_KEY_SEP}{label}"
 
 
 def parse_pick_key(key: str) -> tuple[str, str]:
-    genre, label = key.split("\x1f", 1)
-    return genre, label
+    """Parse a pick key; never raises.
+
+    Canonical keys are ``genre\\x1flabel``. Plain titles/labels (no separator) return
+    ``("", text)`` so callers can resolve via :func:`resolve_pick_key`.
+    """
+    raw = (key or "").strip()
+    if not raw:
+        return "", ""
+    if PICK_KEY_SEP in raw:
+        genre, label = raw.split(PICK_KEY_SEP, 1)
+        return genre.strip(), label.strip()
+    return "", raw
+
+
+def _match_record_from_plain(
+    records: list[dict[str, Any]],
+    text: str,
+) -> dict[str, Any] | None:
+    """Match catalog row from ``Title — Artist`` or title-only text."""
+    text = (text or "").strip()
+    if not text or not records:
+        return None
+    title, _, artist = text.partition(" — ")
+    title = title.strip()
+    artist = artist.strip()
+    if artist:
+        for r in records:
+            if r.get("title") == title and r.get("artist") == artist:
+                return r
+        return None
+    matches = [r for r in records if r.get("title") == text or r.get("title") == title]
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def resolve_pick_key(
+    key: str,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+    records: list[dict[str, Any]] | None = None,
+) -> str | None:
+    """Resolve dropdown/session value to canonical ``genre\\x1flabel`` key.
+
+    Handles legacy/plain values (display label only, title only, stale session keys).
+    Returns ``None`` when no unique catalog match exists (e.g. unknown custom title).
+    """
+    raw = (key or "").strip()
+    if not raw:
+        return None
+
+    genre_hint, label_part = parse_pick_key(raw)
+    search_text = label_part or raw
+
+    if song_picker_catalog:
+        if genre_hint and label_part:
+            labels = song_picker_catalog.get(genre_hint) or {}
+            if label_part in labels:
+                return format_pick_key(genre_hint, label_part)
+
+        exact: list[tuple[str, str]] = []
+        for g, labels in song_picker_catalog.items():
+            for lab in labels:
+                if lab == search_text:
+                    exact.append((g, lab))
+        if len(exact) == 1:
+            g, lab = exact[0]
+            return format_pick_key(g, lab)
+
+        title, _, artist = search_text.partition(" — ")
+        title = title.strip()
+        artist = artist.strip()
+        by_row: list[tuple[str, str]] = []
+        for g, labels in song_picker_catalog.items():
+            for lab, data in labels.items():
+                row_title = str(data.get("title") or "")
+                row_artist = str(data.get("artist") or "")
+                if row_title != title and row_title != search_text:
+                    continue
+                if artist and row_artist != artist:
+                    continue
+                by_row.append((g, lab))
+        if len(by_row) == 1:
+            g, lab = by_row[0]
+            return format_pick_key(g, lab)
+
+    if records:
+        rec = _match_record_from_plain(records, search_text)
+        if rec:
+            lab = f"{rec['title']} — {rec['artist']}"
+            return format_pick_key(str(rec.get("genre") or ""), lab)
+
+    return None
 
 
 def record_for_pick_key(records: list[dict[str, Any]], pick_key: str) -> dict[str, Any] | None:
     """Resolve a picker/session key back to the merged catalog row."""
-    try:
-        genre, label = parse_pick_key(pick_key)
-    except ValueError:
-        return None
-    title, _, _artist = label.partition(" — ")
+    canonical = resolve_pick_key(pick_key, records=records)
+    genre, label = parse_pick_key(canonical or pick_key)
+    title, _, artist = label.partition(" — ")
     title = title.strip()
-    for r in records:
-        if r.get("genre") == genre and r.get("title") == title:
-            return r
+    artist = artist.strip()
+    if genre:
+        for r in records:
+            if r.get("genre") == genre and r.get("title") == title:
+                return r
+    rec = _match_record_from_plain(records, label or pick_key)
+    if rec:
+        return rec
     return None

@@ -7,8 +7,10 @@ from .catalog import (
     search_records,
     format_pick_key,
     parse_pick_key,
+    resolve_pick_key,
     build_search_blob,
     record_for_pick_key,
+    PICK_KEY_SEP,
 )
 
 __all__ = [
@@ -18,6 +20,8 @@ __all__ = [
     "search_records",
     "format_pick_key",
     "parse_pick_key",
+    "resolve_pick_key",
     "build_search_blob",
     "record_for_pick_key",
+    "PICK_KEY_SEP",
 ]

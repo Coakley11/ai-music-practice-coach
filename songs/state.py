@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from song_catalog import format_pick_key, parse_pick_key
+from song_catalog import format_pick_key, parse_pick_key, resolve_pick_key
 
 from .key_state import (
     BACKING_NEEDS_REGEN,
@@ -102,7 +102,23 @@ def apply_pick_key(
     *,
     song_library: dict[str, dict[str, dict]] | None = None,
 ) -> dict[str, Any]:
+    resolved = resolve_pick_key(pick_key, song_picker_catalog=song_picker_catalog)
+    if not resolved:
+        existing = st.session_state.get(SELECTED_SONG_STATE_KEY)
+        if isinstance(existing, dict) and existing.get("title"):
+            return existing
+        for genre, labels in song_picker_catalog.items():
+            if labels:
+                first_label = next(iter(labels))
+                resolved = format_pick_key(genre, first_label)
+                break
+        if not resolved:
+            return {}
+    pick_key = resolved
     genre, label = parse_pick_key(pick_key)
+    if genre not in song_picker_catalog or label not in song_picker_catalog[genre]:
+        existing = st.session_state.get(SELECTED_SONG_STATE_KEY)
+        return existing if isinstance(existing, dict) else {}
     data = song_picker_catalog[genre][label]
     st.session_state[SELECTED_SONG_STATE_KEY] = {
         "pick_key": pick_key,
@@ -157,7 +173,10 @@ def get_song_context(
     pk = sel.get("pick_key")
     if not pk:
         raise RuntimeError("Master song not initialized — call ensure_master_song_initialized first.")
-    genre, label = parse_pick_key(pk)
+    resolved = resolve_pick_key(pk, song_picker_catalog=song_picker_catalog) or pk
+    genre, label = parse_pick_key(resolved)
+    if genre not in song_picker_catalog or label not in song_picker_catalog[genre]:
+        raise RuntimeError(f"Master song pick key could not be resolved: {pk!r}")
     title = song_picker_catalog[genre][label]["title"]
     song_data = song_library[genre][title]
     return genre, title, song_data

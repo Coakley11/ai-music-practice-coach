@@ -36,6 +36,14 @@ from .music_source import (
     set_catalog_source,
     set_custom_source,
 )
+from .picker_session import (
+    SONG_SEARCH_RESET_REQUESTED_KEY,
+    SONG_SEARCH_TEXT_KEY,
+    WORKSPACE_GENRE_FILTERS_KEY,
+    apply_picker_session_resets,
+    request_clear_browse_filters,
+    toggle_genre_filter,
+)
 from .state import (
     ACTIVE_CATALOG_PICK_KEY,
     PENDING_MATCHING_SONG_DROPDOWN,
@@ -55,6 +63,13 @@ __all__ = [
     "ensure_master_song_initialized",
     "get_song_context",
     "sync_matching_song_dropdown_before_widget",
+    # Picker filters (songs/picker_session.py)
+    "WORKSPACE_GENRE_FILTERS_KEY",
+    "SONG_SEARCH_RESET_REQUESTED_KEY",
+    "SONG_SEARCH_TEXT_KEY",
+    "apply_picker_session_resets",
+    "request_clear_browse_filters",
+    "toggle_genre_filter",
     # Music source
     "ACTIVE_MUSIC_SOURCE_KEY",
     "SOURCE_CATALOG",
