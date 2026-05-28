@@ -7010,26 +7010,10 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
     with st.container(key="active_song_hub"):
         st.markdown('<div class="ui-active-song-hub source-custom">', unsafe_allow_html=True)
         render_active_song_hub_open(st)
-        _orig_key, _practice_key = _active_song_key_pair(rec)
-        render_active_song_hub_hero(
-            st,
-            title=str(rec.get("title", "")),
-            artist=str(rec.get("artist", "")),
-            genre="Custom progression",
-            key_display=str(details.get("key_display") or rec.get("key", "")),
-            bpm=int(details.get("bpm") or ext.get("default_bpm") or 100),
-            groove=str(ext.get("default_groove") or "Auto"),
-            time_signature=str(details.get("time_signature") or ext.get("time_signature") or "4/4"),
-            section_count=len([k for k, v in (rec.get("sections") or {}).items() if v]),
-            emoji="✏️",
-            gradient="linear-gradient(145deg, #7c2d12 0%, #c2410c 45%, #ea580c 100%)",
-            original_key=_orig_key,
-            practice_key=_practice_key,
-        )
         st.caption(
             "This is **your** song — Practice, Backing Track, and charts follow this custom progression."
         )
-        _render_active_song_card(rec, show_key_row=False)
+        _render_active_song_card(rec)
         st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
         b1, b2, b3 = st.columns(3)
         with b1:
@@ -7116,38 +7100,6 @@ def _render_catalog_active_song_hub(
     with st.container(key="active_song_hub"):
         st.markdown('<div class="ui-active-song-hub">', unsafe_allow_html=True)
         render_active_song_hub_open(st)
-        if active_rec:
-            try:
-                from practice_studio import active_song_card_details as _hub_details_fn
-
-                hub_details = _hub_details_fn(
-                    active_rec,
-                    level=st.session_state.get("level", "Intermediate"),
-                    instrument=str(st.session_state.get("instrument") or ""),
-                )
-            except Exception:
-                hub_details = song_card_meta(active_rec)
-            hub_ext = active_rec.get("extensions") or {}
-            _orig_key, _practice_key = _active_song_key_pair(active_rec)
-            render_active_song_hub_hero(
-                st,
-                title=str(active_rec.get("title", "")),
-                artist=str(active_rec.get("artist", "")),
-                genre=str(active_rec.get("genre", "")),
-                key_display=str(hub_details.get("key_display") or active_rec.get("key", "")),
-                bpm=int(hub_details.get("bpm") or hub_ext.get("default_bpm") or 100),
-                groove=str(hub_ext.get("default_groove") or active_rec.get("genre", "")),
-                time_signature=str(
-                    hub_details.get("time_signature") or hub_ext.get("time_signature") or "4/4"
-                ),
-                section_count=len((active_rec.get("sections") or {})),
-                emoji=str(hub_details.get("visual_emoji") or "🎵"),
-                gradient=str(
-                    hub_details.get("visual_gradient") or "linear-gradient(145deg,#1e3a8a,#ca8a04)"
-                ),
-                original_key=_orig_key,
-                practice_key=_practice_key,
-            )
         st.markdown(
             '<p class="ui-active-song-picker-label">Switch active song</p>',
             unsafe_allow_html=True,
@@ -7165,6 +7117,7 @@ def _render_catalog_active_song_hub(
         else:
             st.info(empty_message)
         if active_rec:
+            _render_active_song_card(active_rec)
             yt_title = str(active_rec.get("title", ""))
             yt_artist = str(active_rec.get("artist", ""))
             if yt_title:
@@ -7177,7 +7130,6 @@ def _render_catalog_active_song_hub(
                     instrument=st.session_state.get("instrument", ""),
                     expanded=False,
                 )
-            _render_active_song_card(active_rec, show_key_row=False)
             st.markdown('<div class="ui-active-song-recent">', unsafe_allow_html=True)
             _render_active_song_recent_switch(
                 visible_song_records,
