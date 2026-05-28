@@ -2923,40 +2923,65 @@ def _backing_studio_all_css() -> str:
 def _creative_studio_panel_css() -> str:
     """Creative Lab / Improvisation Intelligence studio panel."""
     return """
-/* Creative Studio */
-.st-key-creative_studio_panel,
+/* Creative Studio — card on keyed container */
 .st-key-creative_song_source_panel {
   border: none !important;
   padding: 0 !important;
-  margin: 0 !important;
+  margin: 0 0 0.45rem !important;
   background: transparent !important;
   box-shadow: none !important;
 }
-.st-key-creative_studio_panel > div[data-testid="stVerticalBlock"] {
-  gap: 0.4rem !important;
-}
 .st-key-creative_studio_panel {
-  margin-top: 0.15rem !important;
-}
-.ui-creative-studio-shell {
-  margin: 0.35rem 0 0.85rem;
-  padding: 1rem 1.1rem 0.9rem;
-  border-radius: 18px;
-  border: 2px solid rgba(139, 92, 246, 0.42);
+  margin: 0.2rem 0 0.85rem !important;
+  padding: 1rem 1.1rem 0.9rem !important;
+  border-radius: 18px !important;
+  border: 2px solid rgba(139, 92, 246, 0.42) !important;
   background:
     radial-gradient(110% 80% at 0% -12%, rgba(139, 92, 246, 0.16) 0%, transparent 55%),
     radial-gradient(90% 70% at 100% 108%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
-    linear-gradient(180deg, #ffffff 0%, #faf5ff 58%, #f8fafc 100%);
-  box-shadow: 0 14px 36px -22px rgba(124, 58, 237, 0.28), 0 2px 8px rgba(15, 23, 42, 0.06);
-  position: relative;
-  overflow: hidden;
+    linear-gradient(180deg, #ffffff 0%, #faf5ff 58%, #f8fafc 100%) !important;
+  box-shadow:
+    0 14px 36px -22px rgba(124, 58, 237, 0.28),
+    0 2px 8px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+  position: relative !important;
+  overflow: hidden !important;
 }
-.ui-creative-studio-shell::before {
+.st-key-creative_studio_panel::before {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
   height: 4px;
+  z-index: 1;
   background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.75), rgba(99, 102, 241, 0.6), transparent);
+}
+.st-key-creative_studio_panel > div[data-testid="stVerticalBlock"] {
+  gap: 0.4rem !important;
+}
+body[data-creative-studio-ui] .st-key-creative_studio_panel {
+  outline: 2px solid rgba(139, 92, 246, 0.16);
+  outline-offset: 2px;
+}
+.st-key-creative_studio_panel .ui-creative-studio-shell {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.st-key-creative_studio_panel .ui-creative-studio-shell::before {
+  display: none !important;
+}
+.ui-creative-studio-shell {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  position: relative;
+}
+.ui-creative-studio-shell::before {
+  display: none;
 }
 .ui-creative-studio-head {
   margin: 0 0 0.65rem;
@@ -3102,36 +3127,47 @@ def _creative_studio_panel_css() -> str:
 def _custom_builder_panel_css() -> str:
     """Custom Song Builder — keyed container + step cards."""
     return """
-/* Custom Song Builder */
+/* Custom Song Builder — card on keyed container (Streamlit 1.49+) */
 .st-key-custom_song_builder_panel {
-  border: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-.st-key-custom_song_builder_panel > div[data-testid="stVerticalBlock"] {
-  gap: 0.4rem !important;
-}
-.ui-custom-builder-shell {
-  margin: 0.2rem 0 0.75rem;
-  padding: 1rem 1.1rem 0.85rem;
-  border-radius: 18px;
-  border: 2px solid rgba(16, 185, 129, 0.38);
+  margin: 0.25rem 0 0.85rem !important;
+  padding: 1rem 1.1rem 0.9rem !important;
+  border-radius: 18px !important;
+  border: 2px solid rgba(16, 185, 129, 0.42) !important;
   background:
     radial-gradient(110% 80% at 0% -12%, rgba(16, 185, 129, 0.14) 0%, transparent 55%),
     radial-gradient(90% 70% at 100% 108%, rgba(14, 165, 233, 0.1) 0%, transparent 50%),
-    linear-gradient(180deg, #ffffff 0%, #f0fdf4 58%, #f8fafc 100%);
-  box-shadow: 0 14px 36px -22px rgba(5, 150, 105, 0.22), 0 2px 8px rgba(15, 23, 42, 0.06);
-  position: relative;
-  overflow: hidden;
+    linear-gradient(180deg, #ffffff 0%, #f0fdf4 58%, #f8fafc 100%) !important;
+  box-shadow:
+    0 14px 36px -22px rgba(5, 150, 105, 0.22),
+    0 2px 8px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+  position: relative !important;
+  overflow: hidden !important;
 }
-.ui-custom-builder-shell::before {
+.st-key-custom_song_builder_panel::before {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
   height: 4px;
+  z-index: 1;
   background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.75), rgba(14, 165, 233, 0.55), transparent);
+}
+.st-key-custom_song_builder_panel > div[data-testid="stVerticalBlock"] {
+  gap: 0.42rem !important;
+}
+body[data-custom-builder-ui] .st-key-custom_song_builder_panel {
+  outline: 2px solid rgba(16, 185, 129, 0.16);
+  outline-offset: 2px;
+}
+.ui-custom-builder-shell {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.ui-custom-builder-shell::before {
+  display: none !important;
 }
 .ui-custom-builder-head {
   margin: 0 0 0.55rem;
@@ -4960,11 +4996,13 @@ def render_active_song_key_row(
     )
 
 
-BACKING_STUDIO_UI_VERSION = "2026-05-27-studio-v6"
-SONG_PICKER_UI_VERSION = "2026-05-27-picker-v2"
-PRACTICE_SETUP_UI_VERSION = "2026-05-27-practice-v2"
-CREATIVE_STUDIO_UI_VERSION = "2026-05-28-creative-v1"
-CUSTOM_BUILDER_UI_VERSION = "2026-05-28-custom-v1"
+STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v2"
+
+BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v7"
+SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
+PRACTICE_SETUP_UI_VERSION = "2026-05-28-practice-v3"
+CREATIVE_STUDIO_UI_VERSION = "2026-05-28-creative-v2"
+CUSTOM_BUILDER_UI_VERSION = "2026-05-28-custom-v2"
 
 PRACTICE_QUICK_LINKS: list[tuple[str, str]] = [
     ("picker", "Songs"),
@@ -4981,7 +5019,7 @@ def inject_backing_studio_styles(st: Any) -> None:
 <style data-backing-studio-ui="{BACKING_STUDIO_UI_VERSION}">
 {_backing_studio_all_css()}
 </style>
-<script>try{{document.body.dataset.backingStudioUi="{BACKING_STUDIO_UI_VERSION}";document.body.classList.add("backing-studio-page");}}catch(e){{}}</script>
+<script>try{{document.body.dataset.backingStudioUi="{BACKING_STUDIO_UI_VERSION}";document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";document.body.classList.add("backing-studio-page");}}catch(e){{}}</script>
         """,
         unsafe_allow_html=True,
     )
@@ -5008,7 +5046,7 @@ def inject_practice_page_styles(st: Any) -> None:
 <style data-practice-setup-ui="{PRACTICE_SETUP_UI_VERSION}">
 {_practice_control_panel_css()}
 </style>
-<script>try{{document.body.dataset.practiceSetupUi="{PRACTICE_SETUP_UI_VERSION}";document.body.classList.add("practice-page");}}catch(e){{}}</script>
+<script>try{{document.body.dataset.practiceSetupUi="{PRACTICE_SETUP_UI_VERSION}";document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";document.body.classList.add("practice-page");}}catch(e){{}}</script>
         """,
         unsafe_allow_html=True,
     )
@@ -5048,7 +5086,7 @@ def inject_creative_studio_styles(st: Any) -> None:
 <style data-creative-studio-ui="{CREATIVE_STUDIO_UI_VERSION}">
 {_creative_studio_panel_css()}
 </style>
-<script>try{{document.body.dataset.creativeStudioUi="{CREATIVE_STUDIO_UI_VERSION}";}}catch(e){{}}</script>
+<script>try{{document.body.dataset.creativeStudioUi="{CREATIVE_STUDIO_UI_VERSION}";document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";}}catch(e){{}}</script>
         """,
         unsafe_allow_html=True,
     )
@@ -5061,7 +5099,26 @@ def inject_custom_builder_styles(st: Any) -> None:
 <style data-custom-builder-ui="{CUSTOM_BUILDER_UI_VERSION}">
 {_custom_builder_panel_css()}
 </style>
-<script>try{{document.body.dataset.customBuilderUi="{CUSTOM_BUILDER_UI_VERSION}";}}catch(e){{}}</script>
+<script>try{{
+document.body.dataset.customBuilderUi="{CUSTOM_BUILDER_UI_VERSION}";
+document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";
+document.body.classList.add("custom-builder-page");
+}}catch(e){{}}</script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def inject_studio_ui_release_marker(st: Any, *, page: str) -> None:
+    """Hidden deploy marker — confirms Streamlit is serving the latest UI bundle."""
+    st.markdown(
+        f"""
+<div id="studio-ui-release-marker" data-studio-ui-release="{html.escape(STUDIO_UI_RELEASE)}"
+     data-studio-page="{html.escape(page)}" style="display:none!important" aria-hidden="true"></div>
+<script>try{{
+document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";
+document.body.dataset.studioPage="{html.escape(page)}";
+}}catch(e){{}}</script>
         """,
         unsafe_allow_html=True,
     )

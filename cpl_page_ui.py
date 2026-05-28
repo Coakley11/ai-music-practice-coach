@@ -258,11 +258,8 @@ def render_custom_progression_lab_page() -> None:
         navigate_studio_page(st.session_state, "practice")
         st.rerun()
 
-    st.markdown('<div class="ui-custom-builder-shell">', unsafe_allow_html=True)
-    render_custom_builder_panel_header(st, working_title=prog_title)
-
-    # --- Song info ---
     with st.container(key="custom_song_builder_panel", border=False):
+        render_custom_builder_panel_header(st, working_title=prog_title)
         st.markdown('<div class="cpl-title-panel">', unsafe_allow_html=True)
         info_a, info_b = st.columns([2, 1])
         with info_a:
@@ -391,479 +388,477 @@ def render_custom_progression_lab_page() -> None:
                     st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
-    active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
-    prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
-    original_key = written_home_key(active)
-    original_label = format_key_label(original_key)
-    home_ns = original_key.replace("#", "s").replace("b", "f")
+        active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
+        prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
+        original_key = written_home_key(active)
+        original_label = format_key_label(original_key)
+        home_ns = original_key.replace("#", "s").replace("b", "f")
 
-    display_sections = deep_copy_sections(display_sections_for_key(active, display_key))
-    has_chords = bool(flatten_sections_to_events(display_sections))
-    _filled = filled_section_names(_home_sections())
-    _sections_line = (
-        f"Sections: {', '.join(_filled)}" if _filled else "No sections with chords yet"
-    )
-    st.markdown(
-        custom_song_preview_card_html(
-            title=prog_title,
-            artist=str(active.get("artist") or ""),
-            key_label=original_label,
-            bpm=int(active.get("bpm", 100) or 100),
-            time_signature=str(active.get("time_signature") or "4/4"),
-            style=str(active.get("progression_style") or "Pop"),
-            sections_line=_sections_line,
-            has_chords=has_chords,
-            is_active=is_custom_progression(st.session_state),
-        ),
-        unsafe_allow_html=True,
-    )
-
-    # --- Finished view ---
-    if finished:
+        display_sections = deep_copy_sections(display_sections_for_key(active, display_key))
+        has_chords = bool(flatten_sections_to_events(display_sections))
+        _filled = filled_section_names(_home_sections())
+        _sections_line = (
+            f"Sections: {', '.join(_filled)}" if _filled else "No sections with chords yet"
+        )
         st.markdown(
-            cpl_steps_strip_html(
-                style=True,
-                key_set=True,
-                has_section_chords=True,
-                finished=True,
+            custom_song_preview_card_html(
+                title=prog_title,
+                artist=str(active.get("artist") or ""),
+                key_label=original_label,
+                bpm=int(active.get("bpm", 100) or 100),
+                time_signature=str(active.get("time_signature") or "4/4"),
+                style=str(active.get("progression_style") or "Pop"),
+                sections_line=_sections_line,
+                has_chords=has_chords,
+                is_active=is_custom_progression(st.session_state),
             ),
             unsafe_allow_html=True,
         )
-        map_html = song_structure_overview_html(active, display_key, only_filled=True)
-        if map_html:
-            st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
 
-        launch = st.columns([1, 1, 1])
-        with launch[0]:
+        # --- Finished view ---
+        if finished:
+            st.markdown(
+                cpl_steps_strip_html(
+                    style=True,
+                    key_set=True,
+                    has_section_chords=True,
+                    finished=True,
+                ),
+                unsafe_allow_html=True,
+            )
+            map_html = song_structure_overview_html(active, display_key, only_filled=True)
+            if map_html:
+                st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
+
+            launch = st.columns([1, 1, 1])
+            with launch[0]:
+                if st.button(
+                    "Set as Active Song",
+                    key="cpl_set_active_finish",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    _activate_custom_song()
+            with launch[1]:
+                if st.button(
+                    "Open Backing Track",
+                    key="cpl_to_backing_finish",
+                    use_container_width=True,
+                    disabled=not has_chords,
+                ):
+                    _open_backing()
+            with launch[2]:
+                if st.button("Keep editing", key="cpl_unfinish", use_container_width=True):
+                    st.session_state["cpl_finished"] = False
+                    st.rerun()
+
+            c1, c2 = st.columns(2)
+            with c1:
+                active["bpm"] = st.slider(
+                    "BPM", 50, 200, int(active.get("bpm", 100)), 5, key="cpl_bpm_finish"
+                )
+            with c2:
+                active["loops"] = st.slider(
+                    "Loops", 1, 10, int(active.get("loops", 2)), 1, key="cpl_loops_finish"
+                )
+            _save()
+            return
+
+        # --- Builder ---
+        style = str(active.get("progression_style") or "Pop")
+        edit_section = st.selectbox(
+            "Section to edit",
+            CPL_UI_SECTION_ORDER,
+            key="cpl_edit_section",
+            help="Intro, Verse, Chorus, Bridge, and more.",
+        )
+        home_sections = _home_sections()
+        home_entries = home_sections[edit_section]
+        simple = simple_chords_for_key(original_key)
+        style_presets = presets_for_style(style)
+        time_sig = str(active.get("time_signature") or "4/4")
+        use_lead_sheet = bool(active.get("section_labels")) or bool(active.get("demo_chart_id"))
+        pending_key = _pending_chord_key(edit_section)
+        last_bars_key = _last_bars_key(edit_section)
+        st.session_state.setdefault(last_bars_key, 1)
+        pending_chord = st.session_state.get(pending_key)
+
+        st.markdown(
+            cpl_steps_strip_html(
+                style=bool(style),
+                key_set=True,
+                has_section_chords=not progression_is_empty(home_sections),
+                finished=False,
+            ),
+            unsafe_allow_html=True,
+        )
+
+        st.markdown('<div class="cpl-builder-panel">', unsafe_allow_html=True)
+        st.markdown(f'<p class="cpl-section-heading">{edit_section}</p>', unsafe_allow_html=True)
+        if original_key != display_key:
+            st.markdown(
+                f'<p class="cpl-key-line">Written in <strong>{original_label}</strong> · '
+                f"Showing in <strong>{display_label}</strong> (change practice key in the sidebar)</p>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f'<p class="cpl-key-line">Key: <strong>{original_label}</strong> · '
+                f"change practice key in the sidebar to transpose</p>",
+                unsafe_allow_html=True,
+            )
+
+        active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
+        section_display = display_entries_for_section(active, display_key, edit_section)
+        section_has_chords = not section_is_empty(home_entries)
+
+        st.markdown("**Progression in this section**")
+        st.markdown('<div class="cpl-live-progression">', unsafe_allow_html=True)
+        if section_has_chords:
+            st.markdown(
+                entries_chord_tiles_html(
+                    section_display,
+                    time_signature=time_sig,
+                    lead_sheet=use_lead_sheet,
+                ),
+                unsafe_allow_html=True,
+            )
+        if pending_chord:
+            st.markdown(
+                f'<p class="cpl-pending-hint">Selected: <strong>{html.escape(pending_chord)}</strong> '
+                f"— click 1, 2, or 4 bars below to add it</p>",
+                unsafe_allow_html=True,
+            )
+        elif not section_has_chords:
+            st.info("Tap a chord below, then choose **1**, **2**, or **4** bars to add it.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown("**1. Click a chord**")
+        cols = st.columns(min(6, max(1, len(simple))))
+        for i, ch in enumerate(simple):
+            with cols[i % len(cols)]:
+                if st.button(ch, key=f"cpl_pick_{home_ns}_{edit_section}_{ch}", use_container_width=True):
+                    st.session_state[pending_key] = ch
+                    st.rerun()
+
+        # ----- Slash chord / custom chord builder -----
+        # Lets the user create a slash chord (D/F#, C/E, G/B, A/C#, D/A, ...) by
+        # picking root + bass, or type any chord (e.g. Cmaj7, F#m7b5, Bbmaj9/D).
+        # The exact symbol — slash included — is preserved end-to-end (chart, save,
+        # backing handoff) via normalize_chord_symbol.
+        with st.expander("➕ Custom / slash chord", expanded=False):
+            _root_options = list(simple) + [
+                ch for ch in ("C", "D", "E", "F", "G", "A", "B") if ch not in simple
+            ]
+            _bass_options = [
+                "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+            ]
+            st.caption(
+                "Build a slash chord with root + bass (e.g. **D/F#**, **C/E**, **G/B**), "
+                "or type any chord directly. The exact symbol — slash included — is preserved."
+            )
+            _sc_root_key = f"cpl_slash_root_{home_ns}_{edit_section}"
+            _sc_bass_key = f"cpl_slash_bass_{home_ns}_{edit_section}"
+            _sc_text_key = f"cpl_custom_text_{home_ns}_{edit_section}"
+            st.session_state.setdefault(_sc_root_key, _root_options[0])
+            st.session_state.setdefault(_sc_bass_key, _bass_options[0])
+            st.session_state.setdefault(_sc_text_key, "")
+
+            sc1, sc2, sc3 = st.columns([1, 1, 1])
+            with sc1:
+                _slash_root = st.selectbox(
+                    "Root chord",
+                    _root_options,
+                    key=_sc_root_key,
+                    help="The chord quality on top (D, Em7, Cmaj7, etc.).",
+                )
+            with sc2:
+                _slash_bass = st.selectbox(
+                    "Bass note",
+                    _bass_options,
+                    key=_sc_bass_key,
+                    help="The note in the bass — appears after the slash.",
+                )
+            with sc3:
+                st.markdown(
+                    f'<div style="padding-top:1.65rem;font-size:1.4rem;font-weight:900;'
+                    f'color:#1e3a8a;letter-spacing:-0.02em;">'
+                    f'{html.escape(str(_slash_root))}/<span style="color:#6d28d9;">'
+                    f"{html.escape(str(_slash_bass))}</span></div>",
+                    unsafe_allow_html=True,
+                )
+            if st.button(
+                f"Use {_slash_root}/{_slash_bass}",
+                key=f"cpl_use_slash_{home_ns}_{edit_section}",
+                use_container_width=True,
+            ):
+                slash_symbol = f"{_slash_root}/{_slash_bass}"
+                # normalize_chord_symbol preserves slashes; just be defensive about whitespace.
+                st.session_state[pending_key] = normalize_chord_symbol(slash_symbol) or slash_symbol
+                st.rerun()
+
+            st.markdown("**Or type any chord** (e.g. `Cmaj7`, `F#m7b5`, `Bbmaj9/D`):")
+            tc_col, tc_btn = st.columns([3, 1])
+            with tc_col:
+                _typed = st.text_input(
+                    "Custom chord",
+                    key=_sc_text_key,
+                    label_visibility="collapsed",
+                    placeholder="e.g. D/F#",
+                )
+            with tc_btn:
+                if st.button(
+                    "Use chord",
+                    key=f"cpl_use_typed_{home_ns}_{edit_section}",
+                    use_container_width=True,
+                    disabled=not _typed.strip(),
+                ):
+                    cleaned = normalize_chord_symbol(_typed) or _typed.strip()
+                    if cleaned:
+                        st.session_state[pending_key] = cleaned
+                        st.session_state[_sc_text_key] = ""
+                        st.rerun()
+
+        st.markdown("**2. Choose bars** (adds selected chord, or changes the last chord)")
+        b1, b2, b4 = st.columns(3)
+
+        def _apply_bars(bars: int) -> None:
+            nonlocal active, pending_chord
+            bars = int(bars)
+            st.session_state[last_bars_key] = bars
+            pending = st.session_state.get(pending_key)
+            if pending:
+                home_entries.append({"chord": pending, "bars": bars})
+                st.session_state.pop(pending_key, None)
+                pending_chord = None
+            elif home_entries:
+                home_entries[-1]["bars"] = bars
+            else:
+                return
+            _save(home_sections)
+            active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
+            st.rerun()
+
+        with b1:
+            if st.button("1 bar", key=f"cpl_b1_{edit_section}", use_container_width=True):
+                _apply_bars(1)
+        with b2:
+            if st.button("2 bars", key=f"cpl_b2_{edit_section}", use_container_width=True):
+                _apply_bars(2)
+        with b4:
+            if st.button("4 bars", key=f"cpl_b4_{edit_section}", use_container_width=True):
+                _apply_bars(4)
+
+        st.markdown("**Type any chord**")
+        tc1, tc2, tc3 = st.columns([3, 1, 1])
+        with tc1:
+            custom_ch = st.text_input(
+                "Type any chord",
+                placeholder="Bb, B7, F#dim, Fmaj7|Am7|C/D, C:2|G:2…",
+                key=f"cpl_custom_{edit_section}",
+                label_visibility="collapsed",
+            )
+        with tc2:
+            if st.button("Select", key=f"cpl_custom_sel_{edit_section}", use_container_width=True):
+                ch = normalize_chord_symbol(custom_ch)
+                if ch:
+                    st.session_state[pending_key] = ch
+                    st.rerun()
+        with tc3:
+            if st.button("Add now", key=f"cpl_custom_add_{edit_section}", use_container_width=True):
+                ch = normalize_chord_symbol(custom_ch)
+                if ch:
+                    home_entries.append({
+                        "chord": ch,
+                        "bars": int(st.session_state.get(last_bars_key, 1)),
+                    })
+                    st.session_state.pop(pending_key, None)
+                    _save(home_sections)
+                    st.rerun()
+        st.caption(
+            "Tip: separate chords with `|` to put several inside one bar — "
+            "`Fmaj7|Am7|C/D` for three equal beats in 3/4, "
+            "`C:2|G:2` for a half-bar change in 4/4, "
+            "`C:3.5|D:0.5p` for a pushed chord on the last 8th."
+        )
+
+        _render_subbar_timing_panel(
+            home_entries,
+            edit_section=edit_section,
+            pending_key=pending_key,
+            save=lambda: _save(home_sections),
+        )
+
+        with st.expander("Chord extensions — optional", expanded=False):
+            st.caption("Pick a chord, then tap an extension (e.g. G + 7 → G7).")
+            st.session_state.setdefault("cpl_ext_root", simple[0] if simple else "C")
+            rcols = st.columns(min(6, max(1, len(simple))))
+            for i, ch in enumerate(simple):
+                with rcols[i % len(rcols)]:
+                    if st.button(ch, key=f"cpl_ext_root_{home_ns}_{edit_section}_{ch}"):
+                        st.session_state["cpl_ext_root"] = ch
+                        st.rerun()
+            ext_cols = st.columns(len(CHORD_QUICK_EDIT_KEYS))
+            for i, ek in enumerate(CHORD_QUICK_EDIT_KEYS):
+                with ext_cols[i]:
+                    if st.button(ek, key=f"cpl_ext_{home_ns}_{edit_section}_{ek}"):
+                        staged = apply_quick_chord_edit(st.session_state["cpl_ext_root"], ek)
+                        st.session_state[pending_key] = staged
+                        st.rerun()
+
+        demo_presets = demo_presets_for_style(style)
+        if demo_presets:
+            st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
+            st.markdown(f"**{style} chart demos** ({original_label})")
+            for demo_label, demo_id in demo_presets.items():
+                if st.button(
+                    demo_label,
+                    key=f"cpl_demo_{demo_id}_{edit_section}",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    apply_cpl_session_progression(
+                        st.session_state, build_demo_progression(demo_id)
+                    )
+                    st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        if style_presets:
+            st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
+            st.markdown(f"**{style} presets** ({original_label}) — fills {edit_section} only")
+            for preset_id, spec in style_presets.items():
+                label = preset_button_label(preset_id, original_key, spec)
+                if st.button(
+                    label,
+                    key=f"cpl_pre_{home_ns}_{style}_{edit_section}_{preset_id}",
+                    use_container_width=True,
+                ):
+                    home_sections[edit_section] = build_style_preset_entries(
+                        style, preset_id, original_key
+                    )
+                    st.session_state.pop(pending_key, None)
+                    if home_sections[edit_section]:
+                        st.session_state[last_bars_key] = int(
+                            home_sections[edit_section][-1].get("bars", 1) or 1
+                        )
+                    _save(home_sections)
+                    st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        if section_has_chords:
+            with st.expander("Edit chords in this section", expanded=False):
+                section_display = display_entries_for_section(active, display_key, edit_section)
+                for idx, entry in enumerate(list(home_entries)):
+                    e1, e2, e3 = st.columns([2, 2, 1])
+                    with e1:
+                        st.markdown(
+                            entries_chord_tiles_html(
+                                [section_display[idx]],
+                                time_signature=time_sig,
+                            ),
+                            unsafe_allow_html=True,
+                        )
+                    with e2:
+                        cur_bars = max(1, int(entry.get("bars", 1) or 1))
+                        bar_ix = [1, 2, 4].index(cur_bars if cur_bars in (1, 2, 4) else 1)
+                        new_bars = st.selectbox(
+                            "Bars",
+                            [1, 2, 4],
+                            index=bar_ix,
+                            key=f"cpl_bar_{home_ns}_{edit_section}_{idx}",
+                            label_visibility="collapsed",
+                        )
+                        if int(new_bars) != cur_bars:
+                            entry["bars"] = int(new_bars)
+                            _save(home_sections)
+                            st.rerun()
+                    with e3:
+                        if st.button("Remove", key=f"cpl_rm_{home_ns}_{edit_section}_{idx}"):
+                            home_entries.pop(idx)
+                            _save(home_sections)
+                            st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown("---")
+        u1, u2, u3 = st.columns(3)
+        with u1:
+            if st.button(
+                "Undo last chord",
+                key=f"cpl_undo_{edit_section}",
+                use_container_width=True,
+                disabled=not home_entries,
+            ):
+                home_entries.pop()
+                st.session_state.pop(pending_key, None)
+                _save(home_sections)
+                st.rerun()
+        with u2:
+            if st.button(
+                "Clear section",
+                key=f"cpl_clear_{edit_section}",
+                use_container_width=True,
+                disabled=not section_has_chords and not pending_chord,
+            ):
+                home_sections[edit_section] = []
+                st.session_state.pop(pending_key, None)
+                _save(home_sections)
+                st.rerun()
+        with u3:
+            if st.button(
+                "Finish Song",
+                key="cpl_finish",
+                type="primary",
+                use_container_width=True,
+                disabled=not filled_section_names(home_sections),
+            ):
+                st.session_state["cpl_finished"] = True
+                _save(home_sections)
+                st.rerun()
+
+        active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
+        map_html = song_structure_overview_html(
+            active,
+            display_key,
+            highlight_section=edit_section,
+            only_filled=True,
+        )
+        if map_html:
+            st.markdown("**Song structure**")
+            st.markdown(map_html, unsafe_allow_html=True)
+
+        st.markdown("#### Launch in the studio")
+        setup = st.columns(3)
+        with setup[0]:
             if st.button(
                 "Set as Active Song",
-                key="cpl_set_active_finish",
+                key="cpl_set_active_bottom",
                 type="primary",
                 use_container_width=True,
             ):
                 _activate_custom_song()
-        with launch[1]:
+        with setup[1]:
             if st.button(
                 "Open Backing Track",
-                key="cpl_to_backing_finish",
+                key="cpl_open_backing_bottom",
                 use_container_width=True,
                 disabled=not has_chords,
             ):
                 _open_backing()
-        with launch[2]:
-            if st.button("Keep editing", key="cpl_unfinish", use_container_width=True):
-                st.session_state["cpl_finished"] = False
-                st.rerun()
-
-        c1, c2 = st.columns(2)
-        with c1:
-            active["bpm"] = st.slider(
-                "BPM", 50, 200, int(active.get("bpm", 100)), 5, key="cpl_bpm_finish"
-            )
-        with c2:
-            active["loops"] = st.slider(
-                "Loops", 1, 10, int(active.get("loops", 2)), 1, key="cpl_loops_finish"
-            )
-        _save()
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
-
-    # --- Builder ---
-    style = str(active.get("progression_style") or "Pop")
-    edit_section = st.selectbox(
-        "Section to edit",
-        CPL_UI_SECTION_ORDER,
-        key="cpl_edit_section",
-        help="Intro, Verse, Chorus, Bridge, and more.",
-    )
-    home_sections = _home_sections()
-    home_entries = home_sections[edit_section]
-    simple = simple_chords_for_key(original_key)
-    style_presets = presets_for_style(style)
-    time_sig = str(active.get("time_signature") or "4/4")
-    use_lead_sheet = bool(active.get("section_labels")) or bool(active.get("demo_chart_id"))
-    pending_key = _pending_chord_key(edit_section)
-    last_bars_key = _last_bars_key(edit_section)
-    st.session_state.setdefault(last_bars_key, 1)
-    pending_chord = st.session_state.get(pending_key)
-
-    st.markdown(
-        cpl_steps_strip_html(
-            style=bool(style),
-            key_set=True,
-            has_section_chords=not progression_is_empty(home_sections),
-            finished=False,
-        ),
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="cpl-builder-panel">', unsafe_allow_html=True)
-    st.markdown(f'<p class="cpl-section-heading">{edit_section}</p>', unsafe_allow_html=True)
-    if original_key != display_key:
-        st.markdown(
-            f'<p class="cpl-key-line">Written in <strong>{original_label}</strong> · '
-            f"Showing in <strong>{display_label}</strong> (change practice key in the sidebar)</p>",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            f'<p class="cpl-key-line">Key: <strong>{original_label}</strong> · '
-            f"change practice key in the sidebar to transpose</p>",
-            unsafe_allow_html=True,
-        )
-
-    active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
-    section_display = display_entries_for_section(active, display_key, edit_section)
-    section_has_chords = not section_is_empty(home_entries)
-
-    st.markdown("**Progression in this section**")
-    st.markdown('<div class="cpl-live-progression">', unsafe_allow_html=True)
-    if section_has_chords:
-        st.markdown(
-            entries_chord_tiles_html(
-                section_display,
-                time_signature=time_sig,
-                lead_sheet=use_lead_sheet,
-            ),
-            unsafe_allow_html=True,
-        )
-    if pending_chord:
-        st.markdown(
-            f'<p class="cpl-pending-hint">Selected: <strong>{html.escape(pending_chord)}</strong> '
-            f"— click 1, 2, or 4 bars below to add it</p>",
-            unsafe_allow_html=True,
-        )
-    elif not section_has_chords:
-        st.info("Tap a chord below, then choose **1**, **2**, or **4** bars to add it.")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("**1. Click a chord**")
-    cols = st.columns(min(6, max(1, len(simple))))
-    for i, ch in enumerate(simple):
-        with cols[i % len(cols)]:
-            if st.button(ch, key=f"cpl_pick_{home_ns}_{edit_section}_{ch}", use_container_width=True):
-                st.session_state[pending_key] = ch
-                st.rerun()
-
-    # ----- Slash chord / custom chord builder -----
-    # Lets the user create a slash chord (D/F#, C/E, G/B, A/C#, D/A, ...) by
-    # picking root + bass, or type any chord (e.g. Cmaj7, F#m7b5, Bbmaj9/D).
-    # The exact symbol — slash included — is preserved end-to-end (chart, save,
-    # backing handoff) via normalize_chord_symbol.
-    with st.expander("➕ Custom / slash chord", expanded=False):
-        _root_options = list(simple) + [
-            ch for ch in ("C", "D", "E", "F", "G", "A", "B") if ch not in simple
-        ]
-        _bass_options = [
-            "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
-        ]
-        st.caption(
-            "Build a slash chord with root + bass (e.g. **D/F#**, **C/E**, **G/B**), "
-            "or type any chord directly. The exact symbol — slash included — is preserved."
-        )
-        _sc_root_key = f"cpl_slash_root_{home_ns}_{edit_section}"
-        _sc_bass_key = f"cpl_slash_bass_{home_ns}_{edit_section}"
-        _sc_text_key = f"cpl_custom_text_{home_ns}_{edit_section}"
-        st.session_state.setdefault(_sc_root_key, _root_options[0])
-        st.session_state.setdefault(_sc_bass_key, _bass_options[0])
-        st.session_state.setdefault(_sc_text_key, "")
-
-        sc1, sc2, sc3 = st.columns([1, 1, 1])
-        with sc1:
-            _slash_root = st.selectbox(
-                "Root chord",
-                _root_options,
-                key=_sc_root_key,
-                help="The chord quality on top (D, Em7, Cmaj7, etc.).",
-            )
-        with sc2:
-            _slash_bass = st.selectbox(
-                "Bass note",
-                _bass_options,
-                key=_sc_bass_key,
-                help="The note in the bass — appears after the slash.",
-            )
-        with sc3:
-            st.markdown(
-                f'<div style="padding-top:1.65rem;font-size:1.4rem;font-weight:900;'
-                f'color:#1e3a8a;letter-spacing:-0.02em;">'
-                f'{html.escape(str(_slash_root))}/<span style="color:#6d28d9;">'
-                f"{html.escape(str(_slash_bass))}</span></div>",
-                unsafe_allow_html=True,
-            )
-        if st.button(
-            f"Use {_slash_root}/{_slash_bass}",
-            key=f"cpl_use_slash_{home_ns}_{edit_section}",
-            use_container_width=True,
-        ):
-            slash_symbol = f"{_slash_root}/{_slash_bass}"
-            # normalize_chord_symbol preserves slashes; just be defensive about whitespace.
-            st.session_state[pending_key] = normalize_chord_symbol(slash_symbol) or slash_symbol
-            st.rerun()
-
-        st.markdown("**Or type any chord** (e.g. `Cmaj7`, `F#m7b5`, `Bbmaj9/D`):")
-        tc_col, tc_btn = st.columns([3, 1])
-        with tc_col:
-            _typed = st.text_input(
-                "Custom chord",
-                key=_sc_text_key,
-                label_visibility="collapsed",
-                placeholder="e.g. D/F#",
-            )
-        with tc_btn:
+        with setup[2]:
             if st.button(
-                "Use chord",
-                key=f"cpl_use_typed_{home_ns}_{edit_section}",
+                "Open Practice",
+                key="cpl_open_practice_bottom",
                 use_container_width=True,
-                disabled=not _typed.strip(),
+                disabled=not has_chords,
             ):
-                cleaned = normalize_chord_symbol(_typed) or _typed.strip()
-                if cleaned:
-                    st.session_state[pending_key] = cleaned
-                    st.session_state[_sc_text_key] = ""
+                _open_practice()
+
+        with st.expander("More options", expanded=False):
+            if saved_names := list_saved_progression_names(saved):
+                del_pick = st.selectbox("Delete saved", ["—"] + saved_names, key="cpl_del_pick")
+                if st.button("Delete saved progression", disabled=del_pick == "—"):
+                    delete_progression(saved, del_pick)
                     st.rerun()
 
-    st.markdown("**2. Choose bars** (adds selected chord, or changes the last chord)")
-    b1, b2, b4 = st.columns(3)
-
-    def _apply_bars(bars: int) -> None:
-        nonlocal active, pending_chord
-        bars = int(bars)
-        st.session_state[last_bars_key] = bars
-        pending = st.session_state.get(pending_key)
-        if pending:
-            home_entries.append({"chord": pending, "bars": bars})
-            st.session_state.pop(pending_key, None)
-            pending_chord = None
-        elif home_entries:
-            home_entries[-1]["bars"] = bars
-        else:
-            return
         _save(home_sections)
-        active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
-        st.rerun()
-
-    with b1:
-        if st.button("1 bar", key=f"cpl_b1_{edit_section}", use_container_width=True):
-            _apply_bars(1)
-    with b2:
-        if st.button("2 bars", key=f"cpl_b2_{edit_section}", use_container_width=True):
-            _apply_bars(2)
-    with b4:
-        if st.button("4 bars", key=f"cpl_b4_{edit_section}", use_container_width=True):
-            _apply_bars(4)
-
-    st.markdown("**Type any chord**")
-    tc1, tc2, tc3 = st.columns([3, 1, 1])
-    with tc1:
-        custom_ch = st.text_input(
-            "Type any chord",
-            placeholder="Bb, B7, F#dim, Fmaj7|Am7|C/D, C:2|G:2…",
-            key=f"cpl_custom_{edit_section}",
-            label_visibility="collapsed",
-        )
-    with tc2:
-        if st.button("Select", key=f"cpl_custom_sel_{edit_section}", use_container_width=True):
-            ch = normalize_chord_symbol(custom_ch)
-            if ch:
-                st.session_state[pending_key] = ch
-                st.rerun()
-    with tc3:
-        if st.button("Add now", key=f"cpl_custom_add_{edit_section}", use_container_width=True):
-            ch = normalize_chord_symbol(custom_ch)
-            if ch:
-                home_entries.append({
-                    "chord": ch,
-                    "bars": int(st.session_state.get(last_bars_key, 1)),
-                })
-                st.session_state.pop(pending_key, None)
-                _save(home_sections)
-                st.rerun()
-    st.caption(
-        "Tip: separate chords with `|` to put several inside one bar — "
-        "`Fmaj7|Am7|C/D` for three equal beats in 3/4, "
-        "`C:2|G:2` for a half-bar change in 4/4, "
-        "`C:3.5|D:0.5p` for a pushed chord on the last 8th."
-    )
-
-    _render_subbar_timing_panel(
-        home_entries,
-        edit_section=edit_section,
-        pending_key=pending_key,
-        save=lambda: _save(home_sections),
-    )
-
-    with st.expander("Chord extensions — optional", expanded=False):
-        st.caption("Pick a chord, then tap an extension (e.g. G + 7 → G7).")
-        st.session_state.setdefault("cpl_ext_root", simple[0] if simple else "C")
-        rcols = st.columns(min(6, max(1, len(simple))))
-        for i, ch in enumerate(simple):
-            with rcols[i % len(rcols)]:
-                if st.button(ch, key=f"cpl_ext_root_{home_ns}_{edit_section}_{ch}"):
-                    st.session_state["cpl_ext_root"] = ch
-                    st.rerun()
-        ext_cols = st.columns(len(CHORD_QUICK_EDIT_KEYS))
-        for i, ek in enumerate(CHORD_QUICK_EDIT_KEYS):
-            with ext_cols[i]:
-                if st.button(ek, key=f"cpl_ext_{home_ns}_{edit_section}_{ek}"):
-                    staged = apply_quick_chord_edit(st.session_state["cpl_ext_root"], ek)
-                    st.session_state[pending_key] = staged
-                    st.rerun()
-
-    demo_presets = demo_presets_for_style(style)
-    if demo_presets:
-        st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
-        st.markdown(f"**{style} chart demos** ({original_label})")
-        for demo_label, demo_id in demo_presets.items():
-            if st.button(
-                demo_label,
-                key=f"cpl_demo_{demo_id}_{edit_section}",
-                use_container_width=True,
-                type="primary",
-            ):
-                apply_cpl_session_progression(
-                    st.session_state, build_demo_progression(demo_id)
-                )
-                st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    if style_presets:
-        st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
-        st.markdown(f"**{style} presets** ({original_label}) — fills {edit_section} only")
-        for preset_id, spec in style_presets.items():
-            label = preset_button_label(preset_id, original_key, spec)
-            if st.button(
-                label,
-                key=f"cpl_pre_{home_ns}_{style}_{edit_section}_{preset_id}",
-                use_container_width=True,
-            ):
-                home_sections[edit_section] = build_style_preset_entries(
-                    style, preset_id, original_key
-                )
-                st.session_state.pop(pending_key, None)
-                if home_sections[edit_section]:
-                    st.session_state[last_bars_key] = int(
-                        home_sections[edit_section][-1].get("bars", 1) or 1
-                    )
-                _save(home_sections)
-                st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    if section_has_chords:
-        with st.expander("Edit chords in this section", expanded=False):
-            section_display = display_entries_for_section(active, display_key, edit_section)
-            for idx, entry in enumerate(list(home_entries)):
-                e1, e2, e3 = st.columns([2, 2, 1])
-                with e1:
-                    st.markdown(
-                        entries_chord_tiles_html(
-                            [section_display[idx]],
-                            time_signature=time_sig,
-                        ),
-                        unsafe_allow_html=True,
-                    )
-                with e2:
-                    cur_bars = max(1, int(entry.get("bars", 1) or 1))
-                    bar_ix = [1, 2, 4].index(cur_bars if cur_bars in (1, 2, 4) else 1)
-                    new_bars = st.selectbox(
-                        "Bars",
-                        [1, 2, 4],
-                        index=bar_ix,
-                        key=f"cpl_bar_{home_ns}_{edit_section}_{idx}",
-                        label_visibility="collapsed",
-                    )
-                    if int(new_bars) != cur_bars:
-                        entry["bars"] = int(new_bars)
-                        _save(home_sections)
-                        st.rerun()
-                with e3:
-                    if st.button("Remove", key=f"cpl_rm_{home_ns}_{edit_section}_{idx}"):
-                        home_entries.pop(idx)
-                        _save(home_sections)
-                        st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("---")
-    u1, u2, u3 = st.columns(3)
-    with u1:
-        if st.button(
-            "Undo last chord",
-            key=f"cpl_undo_{edit_section}",
-            use_container_width=True,
-            disabled=not home_entries,
-        ):
-            home_entries.pop()
-            st.session_state.pop(pending_key, None)
-            _save(home_sections)
-            st.rerun()
-    with u2:
-        if st.button(
-            "Clear section",
-            key=f"cpl_clear_{edit_section}",
-            use_container_width=True,
-            disabled=not section_has_chords and not pending_chord,
-        ):
-            home_sections[edit_section] = []
-            st.session_state.pop(pending_key, None)
-            _save(home_sections)
-            st.rerun()
-    with u3:
-        if st.button(
-            "Finish Song",
-            key="cpl_finish",
-            type="primary",
-            use_container_width=True,
-            disabled=not filled_section_names(home_sections),
-        ):
-            st.session_state["cpl_finished"] = True
-            _save(home_sections)
-            st.rerun()
-
-    active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
-    map_html = song_structure_overview_html(
-        active,
-        display_key,
-        highlight_section=edit_section,
-        only_filled=True,
-    )
-    if map_html:
-        st.markdown("**Song structure**")
-        st.markdown(map_html, unsafe_allow_html=True)
-
-    st.markdown("#### Launch in the studio")
-    setup = st.columns(3)
-    with setup[0]:
-        if st.button(
-            "Set as Active Song",
-            key="cpl_set_active_bottom",
-            type="primary",
-            use_container_width=True,
-        ):
-            _activate_custom_song()
-    with setup[1]:
-        if st.button(
-            "Open Backing Track",
-            key="cpl_open_backing_bottom",
-            use_container_width=True,
-            disabled=not has_chords,
-        ):
-            _open_backing()
-    with setup[2]:
-        if st.button(
-            "Open Practice",
-            key="cpl_open_practice_bottom",
-            use_container_width=True,
-            disabled=not has_chords,
-        ):
-            _open_practice()
-
-    with st.expander("More options", expanded=False):
-        if saved_names := list_saved_progression_names(saved):
-            del_pick = st.selectbox("Delete saved", ["—"] + saved_names, key="cpl_del_pick")
-            if st.button("Delete saved progression", disabled=del_pick == "—"):
-                delete_progression(saved, del_pick)
-                st.rerun()
-
-    _save(home_sections)
-    st.markdown("</div>", unsafe_allow_html=True)

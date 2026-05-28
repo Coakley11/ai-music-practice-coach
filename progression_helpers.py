@@ -52,11 +52,6 @@ def render_cpl_page_header() -> None:
         key_prefix="cpl_header_quick_nav",
         rerun_fn=st.rerun,
     )
-    compact_page_title(
-        "✏️",
-        "Custom Song Builder",
-        "Write chords, set your active song, and launch practice or backing.",
-    )
     try:
         from instrument_aware import render_instrument_context_strip
 

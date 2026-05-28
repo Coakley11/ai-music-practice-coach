@@ -7853,6 +7853,12 @@ def _render_backing_playback_setup_panel(
 # -------------------------------------------------
 
 inject_app_theme()
+try:
+    from app_ui import STUDIO_UI_RELEASE
+
+    st.sidebar.caption(f"Studio UI · `{STUDIO_UI_RELEASE}`")
+except Exception:
+    pass
 
 # Voice / Karaoke body class - applied globally so the larger-lyric +
 # vocal-focused CSS in app_ui.py (`[data-vocal-focus="true"]` selectors)
@@ -8268,6 +8274,12 @@ if _studio_page == "practice":
     ensure_page_initialized(st.session_state, "practice")
     note_page_visit(st.session_state, "practice")
     inject_practice_page_styles(st)
+    try:
+        from app_ui import inject_studio_ui_release_marker
+
+        inject_studio_ui_release_marker(st, page="practice")
+    except Exception:
+        pass
     _render_page_quick_nav("practice")
 
     _studio_page_header(
@@ -9021,6 +9033,12 @@ elif _studio_page == "picker":
     ensure_page_initialized(st.session_state, "picker")
     note_page_visit(st.session_state, "picker")
     inject_song_picker_page_styles(st)
+    try:
+        from app_ui import inject_studio_ui_release_marker
+
+        inject_studio_ui_release_marker(st, page="picker")
+    except Exception:
+        pass
     _render_page_quick_nav("picker")
 
     if km.is_voice_mode(st.session_state):
@@ -9289,6 +9307,12 @@ elif _studio_page == "backing":
     )
 
     inject_backing_studio_styles(st)
+    try:
+        from app_ui import inject_studio_ui_release_marker
+
+        inject_studio_ui_release_marker(st, page="backing")
+    except Exception:
+        pass
     render_backing_studio_deck_header(st)
     if _developer_mode_enabled():
         try:
@@ -10080,6 +10104,13 @@ elif _studio_page == "custom":
 
     ensure_page_initialized(st.session_state, "custom")
     note_page_visit(st.session_state, "custom")
+    try:
+        from app_ui import inject_custom_builder_styles, inject_studio_ui_release_marker
+
+        inject_custom_builder_styles(st)
+        inject_studio_ui_release_marker(st, page="custom")
+    except Exception:
+        pass
     from cpl_page_ui import render_custom_progression_lab_page
 
     render_custom_progression_lab_page()
@@ -10097,6 +10128,9 @@ elif _studio_page == "creative":
         from app_ui import inject_creative_studio_styles
 
         inject_creative_studio_styles(st)
+        from app_ui import inject_studio_ui_release_marker
+
+        inject_studio_ui_release_marker(st, page="creative")
     except Exception:
         pass
     _render_page_quick_nav("creative")
