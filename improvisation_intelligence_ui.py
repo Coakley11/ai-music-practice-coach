@@ -105,13 +105,16 @@ def render_improvisation_intelligence_lab(
     except Exception:
         pass
 
-    st.markdown(
-        '<div class="ui-card soft" style="margin-bottom:1rem;border-left:4px solid #8b5cf6;">'
-        '<p class="ui-card-title">🎷 Improvisation Intelligence</p>'
-        '<p class="ui-card-sub">Interactive improvisation coach + creative laboratory — '
-        "connected to your active song, custom progression, backing track, and practice.</p></div>",
-        unsafe_allow_html=True,
-    )
+    try:
+        from app_ui import (
+            inject_creative_studio_styles,
+            render_creative_studio_panel_header,
+        )
+    except Exception:
+        inject_creative_studio_styles = lambda _st: None  # type: ignore
+        render_creative_studio_panel_header = lambda *_a, **_k: None  # type: ignore
+
+    inject_creative_studio_styles(st)
 
     _section_order = list(song_data.get("section_order") or ctx.get("section_order") or [])
     improv_ctx = ImprovSessionContext(
@@ -129,65 +132,81 @@ def render_improvisation_intelligence_lab(
         section_order=_section_order,
     )
 
-    active_tab = st.radio(
-        "Improvisation section",
-        list(IMPROV_TAB_NAMES),
-        horizontal=True,
-        key="improv_intelligence_tab",
-        label_visibility="collapsed",
-    )
+    with st.container(key="creative_studio_panel", border=False):
+        st.markdown('<div class="ui-creative-studio-shell">', unsafe_allow_html=True)
+        try:
+            render_creative_studio_panel_header(
+                st,
+                instrument=instrument,
+                level=level,
+                song_title=song_title,
+            )
+        except Exception:
+            pass
 
-    if active_tab == "Entry & Jam":
-        _tab_entry_modes(
-            st,
-            session_state=session_state,
-            improv_ctx=improv_ctx,
-            is_custom=is_custom,
-            on_open_backing=on_open_backing,
-            on_open_practice=on_open_practice,
-            on_song_source_change=on_song_source_change,
-            apply_style_to_playback=apply_style_to_playback,
-            on_go_song_selection=on_go_song_selection,
-            on_go_custom_progression=on_go_custom_progression,
+        st.markdown('<div class="ui-creative-mode-segment">', unsafe_allow_html=True)
+        active_tab = st.radio(
+            "Improvisation section",
+            list(IMPROV_TAB_NAMES),
+            horizontal=True,
+            key="improv_intelligence_tab",
+            label_visibility="collapsed",
         )
-    elif active_tab == "Live Coach":
-        _tab_live_coach(st, session_state=session_state, improv_ctx=improv_ctx)
-    elif active_tab == "Phrase / Motif":
-        _tab_motif(
-            st,
-            session_state=session_state,
-            improv_ctx=improv_ctx,
-            level=level,
-            instrument=instrument,
-            bpm=bpm,
-        )
-    elif active_tab == "Missions":
-        _tab_missions(
-            st,
-            session_state=session_state,
-            improv_ctx=improv_ctx,
-            bpm=bpm,
-            on_open_backing=on_open_backing,
-            on_open_practice=on_open_practice,
-            on_open_analysis=on_open_analysis,
-        )
-    elif active_tab == "Harmony Map":
-        _tab_harmony_map(st, session_state=session_state, improv_ctx=improv_ctx)
-    elif active_tab == "Deep Harmony":
-        _tab_deep_harmony(
-            st,
-            session_state=session_state,
-            improv_ctx=improv_ctx,
-            song_data=song_data,
-            genre=genre,
-        )
-    elif active_tab == "Metrics & AI":
-        _tab_metrics_ai(
-            st,
-            session_state=session_state,
-            improv_ctx=improv_ctx,
-            on_open_analysis=on_open_analysis,
-        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if active_tab == "Entry & Jam":
+            _tab_entry_modes(
+                st,
+                session_state=session_state,
+                improv_ctx=improv_ctx,
+                is_custom=is_custom,
+                on_open_backing=on_open_backing,
+                on_open_practice=on_open_practice,
+                on_song_source_change=on_song_source_change,
+                apply_style_to_playback=apply_style_to_playback,
+                on_go_song_selection=on_go_song_selection,
+                on_go_custom_progression=on_go_custom_progression,
+            )
+        elif active_tab == "Live Coach":
+            _tab_live_coach(st, session_state=session_state, improv_ctx=improv_ctx)
+        elif active_tab == "Phrase / Motif":
+            _tab_motif(
+                st,
+                session_state=session_state,
+                improv_ctx=improv_ctx,
+                level=level,
+                instrument=instrument,
+                bpm=bpm,
+            )
+        elif active_tab == "Missions":
+            _tab_missions(
+                st,
+                session_state=session_state,
+                improv_ctx=improv_ctx,
+                bpm=bpm,
+                on_open_backing=on_open_backing,
+                on_open_practice=on_open_practice,
+                on_open_analysis=on_open_analysis,
+            )
+        elif active_tab == "Harmony Map":
+            _tab_harmony_map(st, session_state=session_state, improv_ctx=improv_ctx)
+        elif active_tab == "Deep Harmony":
+            _tab_deep_harmony(
+                st,
+                session_state=session_state,
+                improv_ctx=improv_ctx,
+                song_data=song_data,
+                genre=genre,
+            )
+        elif active_tab == "Metrics & AI":
+            _tab_metrics_ai(
+                st,
+                session_state=session_state,
+                improv_ctx=improv_ctx,
+                on_open_analysis=on_open_analysis,
+            )
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _tab_entry_modes(
@@ -203,68 +222,99 @@ def _tab_entry_modes(
     on_go_song_selection: Callable[[], None] | None = None,
     on_go_custom_progression: Callable[[], None] | None = None,
 ) -> None:
+    try:
+        from app_ui import render_creative_song_context_card
+    except Exception:
+        render_creative_song_context_card = None  # type: ignore
+
+    st.markdown(
+        '<p class="ui-creative-section-label">Improvisation entry mode</p>',
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="ui-creative-entry-segment">', unsafe_allow_html=True)
     entry = st.radio(
         "Improvisation entry mode",
         list(IMPROV_ENTRY_MODES),
         horizontal=True,
         key="improv_entry_mode",
+        label_visibility="collapsed",
     )
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if entry == "Song-Based Improvisation":
-        st.markdown("#### 🎼 Song-based improvisation")
         def _sync_song_source() -> None:
             if on_song_source_change:
                 on_song_source_change(
                     str(session_state.get("improv_song_source", "Active song"))
                 )
 
-        source = st.radio(
-            "Song source",
-            list(IMPROV_SONG_SOURCES),
-            horizontal=True,
-            key="improv_song_source",
-            on_change=_sync_song_source,
-        )
-
-        if source == "Active song":
-            st.info(
-                f"**Active song:** {improv_ctx.song_title} — {improv_ctx.artist} · "
-                f"Key **{improv_ctx.display_key}** · "
-                f"{len(improv_ctx.progression_flat)} chords in chart."
+        st.markdown('<p class="ui-creative-section-label">Song source</p>', unsafe_allow_html=True)
+        with st.container(key="creative_song_source_panel", border=False):
+            st.markdown('<div class="ui-creative-source-panel">', unsafe_allow_html=True)
+            source = st.radio(
+                "Song source",
+                list(IMPROV_SONG_SOURCES),
+                horizontal=True,
+                key="improv_song_source",
+                on_change=_sync_song_source,
+                label_visibility="collapsed",
             )
-            st.caption("Uses the song selected in **Song Selection** (global studio source).")
-            if on_go_song_selection and st.button(
-                "Go to Song Selection",
-                key="improv_go_picker",
-                type="secondary",
-                use_container_width=True,
-            ):
-                on_go_song_selection()
-            preview_sections = improv_ctx.sections
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        preview_sections = improv_ctx.sections
+        if source == "Active song":
+            if render_creative_song_context_card:
+                render_creative_song_context_card(
+                    st,
+                    title=improv_ctx.song_title,
+                    artist=improv_ctx.artist,
+                    display_key=improv_ctx.display_key,
+                    chord_count=len(improv_ctx.progression_flat),
+                    source_label="Active song · Song Selection",
+                )
+            st.markdown(
+                '<p class="ui-creative-progression-preview">Uses the song selected in '
+                "<strong>Song Selection</strong> (global studio source).</p>",
+                unsafe_allow_html=True,
+            )
+            if on_go_song_selection:
+                _nav1, _nav2, _ = st.columns([1.1, 1.1, 2.8])
+                with _nav1:
+                    st.markdown('<div class="ui-creative-quick-actions">', unsafe_allow_html=True)
+                    if st.button("🎼 Songs", key="improv_go_picker", type="secondary"):
+                        on_go_song_selection()
+                    st.markdown("</div>", unsafe_allow_html=True)
         else:
-            if is_custom:
-                st.success(
-                    "**Custom progression** is the active studio source "
-                    f"({improv_ctx.song_title or 'Custom Progression'})."
+            if render_creative_song_context_card:
+                render_creative_song_context_card(
+                    st,
+                    title=improv_ctx.song_title or "Custom Progression",
+                    artist=improv_ctx.artist or "Custom",
+                    display_key=improv_ctx.display_key,
+                    chord_count=len(improv_ctx.progression_flat),
+                    source_label="Custom progression",
+                    variant="custom",
                 )
-            else:
-                st.warning(
-                    "Custom progression is not the active source yet — "
-                    "selecting it will switch the studio to your saved CPL progression."
+            if not is_custom:
+                st.markdown(
+                    '<p class="ui-creative-progression-preview">Selecting this switches the studio '
+                    "to your saved <strong>Custom progression</strong>.</p>",
+                    unsafe_allow_html=True,
                 )
-            if on_go_custom_progression and st.button(
-                "Go to Custom Progression",
-                key="improv_go_custom",
-                type="secondary",
-                use_container_width=True,
-            ):
-                on_go_custom_progression()
-            preview_sections = improv_ctx.sections
+            if on_go_custom_progression:
+                _nav1, _ = st.columns([1.2, 3.8])
+                with _nav1:
+                    st.markdown('<div class="ui-creative-quick-actions">', unsafe_allow_html=True)
+                    if st.button("✏️ Custom", key="improv_go_custom", type="secondary"):
+                        on_go_custom_progression()
+                    st.markdown("</div>", unsafe_allow_html=True)
 
         if preview_sections:
-            st.caption(
-                "Progression preview: "
-                + " | ".join(flatten_sections(preview_sections)[:14])
+            _preview = " | ".join(flatten_sections(preview_sections)[:14])
+            st.markdown(
+                f'<p class="ui-creative-progression-preview"><strong>Progression:</strong> '
+                f"{html.escape(_preview)}</p>",
+                unsafe_allow_html=True,
             )
 
         _render_open_practice_backing_row(
@@ -274,7 +324,7 @@ def _tab_entry_modes(
         )
 
     elif entry == "Style Jam Mode":
-        st.markdown("#### 🎹 Style Jam Mode")
+        st.markdown('<p class="ui-creative-section-label">Style jam generator</p>', unsafe_allow_html=True)
         c1, c2, c3 = st.columns(3)
         with c1:
             style = st.selectbox("Style", list(STYLE_JAM_STYLES), key="improv_style")

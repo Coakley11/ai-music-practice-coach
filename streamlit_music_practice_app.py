@@ -467,7 +467,6 @@ try:
         inject_backing_studio_styles,
         inject_song_picker_page_styles,
         inject_practice_page_styles,
-        render_practice_control_deck_header,
         render_practice_control_panel_header,
         practice_setup_summary_text,
         practice_setup_summary_badge_html,
@@ -8278,7 +8277,6 @@ if _studio_page == "practice":
     )
 
     render_scroll_anchor_marker(st, ANCHOR_PRACTICE_COACH)
-    render_practice_control_deck_header(st)
     _render_practice_setup_panel(
         instrument_options=_instrument_options,
         default_groove=default_groove_style,
@@ -10095,6 +10093,12 @@ elif _studio_page == "creative":
 
     ensure_page_initialized(st.session_state, "creative")
     note_page_visit(st.session_state, "creative")
+    try:
+        from app_ui import inject_creative_studio_styles
+
+        inject_creative_studio_styles(st)
+    except Exception:
+        pass
     _render_page_quick_nav("creative")
 
     _studio_page_header("🧠", "Creative Lab", "Harmony, improvisation, and growth tools.")

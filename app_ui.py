@@ -2920,8 +2920,184 @@ def _backing_studio_all_css() -> str:
     return _backing_studio_panel_css() + _backing_scope_panel_css()
 
 
+def _creative_studio_panel_css() -> str:
+    """Creative Lab / Improvisation Intelligence studio panel."""
+    return """
+/* Creative Studio */
+.st-key-creative_studio_panel,
+.st-key-creative_song_source_panel {
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.st-key-creative_studio_panel > div[data-testid="stVerticalBlock"] {
+  gap: 0.45rem !important;
+}
+.ui-creative-studio-shell {
+  margin: 0.35rem 0 0.85rem;
+  padding: 1rem 1.1rem 0.9rem;
+  border-radius: 18px;
+  border: 2px solid rgba(139, 92, 246, 0.42);
+  background:
+    radial-gradient(110% 80% at 0% -12%, rgba(139, 92, 246, 0.16) 0%, transparent 55%),
+    radial-gradient(90% 70% at 100% 108%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
+    linear-gradient(180deg, #ffffff 0%, #faf5ff 58%, #f8fafc 100%);
+  box-shadow: 0 14px 36px -22px rgba(124, 58, 237, 0.28), 0 2px 8px rgba(15, 23, 42, 0.06);
+  position: relative;
+  overflow: hidden;
+}
+.ui-creative-studio-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.75), rgba(99, 102, 241, 0.6), transparent);
+}
+.ui-creative-studio-head {
+  margin: 0 0 0.65rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.35);
+}
+.ui-creative-studio-kicker {
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7c3aed;
+  margin: 0 0 0.28rem;
+}
+.ui-creative-studio-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+.ui-creative-studio-sub {
+  margin: 0.28rem 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+.ui-creative-mode-segment {
+  margin: 0 0 0.7rem;
+}
+.st-key-creative_studio_panel [data-testid="stRadio"] > div,
+.ui-creative-mode-segment [data-testid="stRadio"] > div {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 0.35rem !important;
+  padding: 0.35rem !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(167, 139, 250, 0.35) !important;
+  background: rgba(245, 243, 255, 0.95) !important;
+}
+.st-key-creative_studio_panel [data-testid="stRadio"] label,
+.ui-creative-mode-segment [data-testid="stRadio"] label {
+  flex: 1 1 auto !important;
+  min-width: 6.5rem;
+  margin: 0 !important;
+  padding: 0.38rem 0.55rem !important;
+  border-radius: 9px !important;
+  font-size: 0.74rem !important;
+  font-weight: 750 !important;
+  text-align: center;
+  border: 1px solid transparent !important;
+}
+.st-key-creative_studio_panel [data-testid="stRadio"] label[data-checked="true"],
+.st-key-creative_studio_panel [data-testid="stRadio"] label:has(input:checked),
+.ui-creative-mode-segment [data-testid="stRadio"] label[data-checked="true"],
+.ui-creative-mode-segment [data-testid="stRadio"] label:has(input:checked) {
+  background: #fff !important;
+  border-color: rgba(139, 92, 246, 0.55) !important;
+  color: #6d28d9 !important;
+  font-weight: 850 !important;
+  box-shadow: 0 2px 10px rgba(139, 92, 246, 0.14) !important;
+}
+.ui-creative-section-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #475569;
+  margin: 0 0 0.4rem;
+}
+.ui-creative-entry-segment {
+  margin: 0 0 0.65rem;
+}
+.ui-creative-song-card {
+  padding: 0.65rem 0.75rem;
+  margin: 0.5rem 0 0.55rem;
+  border-radius: 12px;
+  border: 1px solid rgba(139, 92, 246, 0.32);
+  background: linear-gradient(135deg, rgba(245, 243, 255, 0.98), rgba(255, 255, 255, 0.95));
+}
+.ui-creative-song-card.custom {
+  border-color: rgba(249, 115, 22, 0.35);
+  background: linear-gradient(135deg, rgba(255, 247, 237, 0.95), rgba(255, 255, 255, 0.95));
+}
+.ui-creative-song-kicker {
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7c3aed;
+  margin: 0 0 0.25rem;
+}
+.ui-creative-song-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 850;
+  color: #0f172a;
+}
+.ui-creative-song-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+}
+.ui-creative-song-meta span {
+  font-size: 0.7rem;
+  font-weight: 750;
+  padding: 0.16rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.9);
+  color: #475569;
+}
+.ui-creative-source-panel {
+  padding: 0.55rem 0.65rem;
+  margin: 0.45rem 0 0.5rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(255, 255, 255, 0.88);
+}
+.ui-creative-progression-preview {
+  font-size: 0.76rem;
+  color: #64748b;
+  margin: 0.35rem 0 0.45rem;
+  line-height: 1.45;
+}
+.ui-creative-quick-actions .stButton > button {
+  font-size: 0.72rem !important;
+  font-weight: 750 !important;
+  min-height: 2rem !important;
+  border-radius: 999px !important;
+  padding: 0.28rem 0.75rem !important;
+}
+.st-key-creative_studio_panel [data-testid="stSelectbox"] label,
+.st-key-creative_studio_panel [data-testid="stSlider"] label,
+.st-key-creative_studio_panel [data-testid="stTextInput"] label {
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+}
+"""
+
+
 def _studio_panels_css() -> str:
-    return _backing_studio_all_css() + _practice_control_panel_css()
+    return _backing_studio_all_css() + _practice_control_panel_css() + _creative_studio_panel_css()
 
 
 def _inject_app_theme_polish() -> None:
@@ -4552,6 +4728,7 @@ def render_active_song_key_row(
 BACKING_STUDIO_UI_VERSION = "2026-05-27-studio-v6"
 SONG_PICKER_UI_VERSION = "2026-05-27-picker-v2"
 PRACTICE_SETUP_UI_VERSION = "2026-05-27-practice-v2"
+CREATIVE_STUDIO_UI_VERSION = "2026-05-28-creative-v1"
 
 PRACTICE_QUICK_LINKS: list[tuple[str, str]] = [
     ("picker", "Songs"),
@@ -4628,16 +4805,59 @@ def practice_setup_summary_badge_html(summary: str) -> str:
     )
 
 
-def render_practice_control_deck_header(st: Any) -> None:
-    """Banner above Practice Control Center (visible deploy marker)."""
+def inject_creative_studio_styles(st: Any) -> None:
+    """Inject Creative Lab studio CSS."""
     st.markdown(
         f"""
-<div class="ui-practice-studio-deck-head" data-practice-deck-ui="{PRACTICE_SETUP_UI_VERSION}">
-  <span class="ui-practice-studio-kicker">Practice studio</span>
-  <h2 class="ui-practice-studio-title">Session control center</h2>
-  <p class="ui-practice-studio-sub">Configure your instrument, level, focus, groove, and practice length — then jump into coaching below.</p>
+<style data-creative-studio-ui="{CREATIVE_STUDIO_UI_VERSION}">
+{_creative_studio_panel_css()}
+</style>
+<script>try{{document.body.dataset.creativeStudioUi="{CREATIVE_STUDIO_UI_VERSION}";}}catch(e){{}}</script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_creative_studio_panel_header(
+    st: Any,
+    *,
+    instrument: str,
+    level: str,
+    song_title: str,
+) -> None:
+    st.markdown(
+        f"""
+<div class="ui-creative-studio-head" data-creative-panel-ui="{CREATIVE_STUDIO_UI_VERSION}">
+  <span class="ui-creative-studio-kicker">Creative studio</span>
+  <p class="ui-creative-studio-title">Improvisation lab · {html.escape(instrument)} · {html.escape(level)}</p>
+  <p class="ui-creative-studio-sub">Working from <strong>{html.escape(song_title or "your song")}</strong> — pick a mode, then shape your jam.</p>
 </div>
         """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_creative_song_context_card(
+    st: Any,
+    *,
+    title: str,
+    artist: str,
+    display_key: str,
+    chord_count: int,
+    source_label: str,
+    variant: str = "active",
+) -> None:
+    cls = "custom" if variant == "custom" else "active"
+    st.markdown(
+        f'<div class="ui-creative-song-card {cls}">'
+        f'<p class="ui-creative-song-kicker">{html.escape(source_label)}</p>'
+        f'<p class="ui-creative-song-title">{html.escape(title)}'
+        f' <span style="font-weight:600;color:#64748b;">— {html.escape(artist)}</span></p>'
+        f'<div class="ui-creative-song-meta">'
+        f'<span>Key {html.escape(display_key)}</span>'
+        f"<span>{int(chord_count)} chords</span>"
+        f'<span>{html.escape(source_label)}</span>'
+        f"</div></div>",
         unsafe_allow_html=True,
     )
 
