@@ -5951,7 +5951,7 @@ def _inject_practice_toolkit_styles() -> None:
 .ui-section-jump{
   border:1px solid rgba(148,163,184,.28)!important;border-radius:14px!important;
   background:linear-gradient(180deg,#fff,#f8fafc)!important;box-shadow:0 8px 24px rgba(15,23,42,.07)!important;
-  padding:.56rem .65rem!important;margin:0 0 .52rem 0!important;
+  padding:.56rem .65rem!important;margin:0 0 .52rem 0!important;position:static!important;top:auto!important;
 }
 .ui-section-jump [data-testid="stRadio"] > div{
   gap:.35rem!important;flex-wrap:wrap!important;
@@ -5971,6 +5971,10 @@ body[data-practice-setup-ui] [data-testid="stExpander"] summary{
   font-weight:760;color:#0f172a;
 }
 .st-key-practice_toolkit_panel .ui-badge-row{margin:.2rem 0 .1rem!important;}
+.st-key-practice_tool_notation,.st-key-practice_tool_chord_coach,.st-key-practice_tool_transpose,.st-key-practice_tool_lyric_sheet,.st-key-practice_tool_lyric_phrasing,.st-key-practice_tool_daily_breakdown{
+  border:1px solid rgba(148,163,184,.24);border-radius:13px;background:rgba(255,255,255,.92);
+  padding:.52rem .65rem .28rem;margin:.42rem 0;
+}
 </style>
         """,
         unsafe_allow_html=True,
@@ -8469,12 +8473,9 @@ if _studio_page == "practice":
     )
 
     _section_choices = practice_section_options(sections)
-    _focus_pick = render_section_jump_bar(
-        _section_choices,
-        st.session_state,
-        state_key="practice_focus_section",
-        rerun_fn=st.rerun,
-    )
+    if _section_choices and st.session_state.get("practice_focus_section") not in _section_choices:
+        st.session_state["practice_focus_section"] = _section_choices[0]
+    _focus_pick = st.session_state.get("practice_focus_section", _section_choices[0] if _section_choices else "")
     # ``_focus_pick`` is the *selector value* (e.g. "Verse" - a type label).
     # ``_resolved_send_section`` is the *real chart key* used by panels
     # that need actual chord data (Send to Backing, notation, etc.).
@@ -8592,6 +8593,12 @@ if _studio_page == "practice":
         st.markdown(
             '<p class="ui-practice-focus-sub">Choose a section, see key metadata, and jump directly into focused looping practice.</p>',
             unsafe_allow_html=True,
+        )
+        _focus_pick = render_section_jump_bar(
+            _section_choices,
+            st.session_state,
+            state_key="practice_focus_section",
+            rerun_fn=st.rerun,
         )
         st.markdown(
             f'<div class="ui-badge-row">'
@@ -9041,201 +9048,222 @@ if _studio_page == "practice":
             with col_ex_b:
                 st.caption("Rotates section targets and raises demand gradually.")
 
-    with st.expander(
-        "Generated Music Notation / TAB",
-        expanded=bool(st.session_state.get(_NOTATION_KEY)),
-    ):
-        _notation_section_label = (
-            "Full Song"
-            if _is_full_song
-            else (_active_section_display or _focus_pick or "Section")
+    with st.container(key="practice_tool_notation", border=False):
+        st.markdown('<p class="ui-practice-tool-title">Generated Music Notation / TAB</p>', unsafe_allow_html=True)
+        st.markdown(
+            '<p class="ui-practice-tool-sub">Generate readable notation for the selected section focus.</p>',
+            unsafe_allow_html=True,
         )
-        st.caption(
-            f"Song **{song}** · section **{_notation_section_label}** · "
-            f"instrument **{instrument}** · focus **{focus}** · {_practice_bpm} BPM"
-            + (
-                f" · chart key **{_practice_chart_key}** (concert {display_key})"
-                if _chart_key_mode == "written"
-                else ""
-            )
-        )
-        _n_col1, _n_col2, _n_col3 = st.columns([1, 1, 1])
-        with _n_col1:
-            _notation_lines = st.slider(
-                "Number of lines",
-                min_value=1,
-                max_value=4,
-                value=int(st.session_state.get("practice_notation_lines", 2)),
-                key="practice_notation_lines",
-            )
-        with _n_col2:
-            _diff_opts = ["easy", "medium", "advanced"]
-            _diff_default = st.session_state.get("practice_notation_difficulty", "medium")
-            _notation_difficulty = st.selectbox(
-                "Difficulty",
-                options=_diff_opts,
-                index=_diff_opts.index(_diff_default) if _diff_default in _diff_opts else 1,
-                key="practice_notation_difficulty",
-            )
-        with _n_col3:
-            st.write("")
-            _gen_notation = st.button(
-                "Generate notation / TAB",
-                key="practice_generate_notation",
-                type="primary",
-                use_container_width=True,
-            )
-
-        if _gen_notation:
-            # Pass the *resolved* real section name (e.g. "Verse 1") so
-            # the notation generator can look up the actual chord list
-            # in ``sections_for_practice``. Passing the type label
-            # ("Verse") here used to silently fall back to a stub chart.
-            _notation_section_focus = (
-                PRACTICE_FOCUS_FULL
+        with st.expander(
+            "🧾 Generated Music Notation / TAB",
+            expanded=bool(st.session_state.get(_NOTATION_KEY)),
+        ):
+            _notation_section_label = (
+                "Full Song"
                 if _is_full_song
-                else (_active_section or _focus_pick)
+                else (_active_section_display or _focus_pick or "Section")
             )
-            st.session_state[_NOTATION_KEY] = generate_practice_notation(
-                song_title=song,
-                artist=song_data.get("artist", ""),
-                display_key=_practice_chart_key,
-                original_key=original_key,
-                bpm=_practice_bpm,
-                groove_style=_practice_groove,
-                instrument=instrument,
-                focus=focus,
-                section_focus=_notation_section_focus,
-                sections=sections_for_practice,
-                guitar_tabs=song_data.get("guitar_tabs") or {},
-                num_lines=_notation_lines,
-                difficulty=_notation_difficulty,
-            )
-            st.rerun()
-
-        _notation = st.session_state.get(_NOTATION_KEY)
-        if _notation:
-            st.markdown(f"**{getattr(_notation, 'title', 'Practice notation')}**")
             st.caption(
-                f"Chords: **{getattr(_notation, 'chord_labels', '')}** · "
-                f"{getattr(_notation, 'rhythm_counts', '')}"
+                f"Song **{song}** · section **{_notation_section_label}** · "
+                f"instrument **{instrument}** · focus **{focus}** · {_practice_bpm} BPM"
+                + (
+                    f" · chart key **{_practice_chart_key}** (concert {display_key})"
+                    if _chart_key_mode == "written"
+                    else ""
+                )
             )
-            if getattr(_notation, "format", "") == "tab":
-                st.markdown(notation_tab_html(_notation), unsafe_allow_html=True)
-                with st.expander("Copy TAB text", expanded=False):
-                    st.code(getattr(_notation, "body", ""), language=None)
-            else:
-                if getattr(_notation, "body", ""):
-                    st.markdown("**Note guide**")
-                    st.code(getattr(_notation, "body", ""), language=None)
-                if getattr(_notation, "abc", ""):
-                    st.markdown("**Standard notation (ABC)**")
-                    render_abc(getattr(_notation, "abc", ""))
-                with st.expander("ABC source", expanded=False):
-                    st.code(getattr(_notation, "abc", ""), language=None)
+            _n_col1, _n_col2, _n_col3 = st.columns([1, 1, 1])
+            with _n_col1:
+                _notation_lines = st.slider(
+                    "Number of lines",
+                    min_value=1,
+                    max_value=4,
+                    value=int(st.session_state.get("practice_notation_lines", 2)),
+                    key="practice_notation_lines",
+                )
+            with _n_col2:
+                _diff_opts = ["easy", "medium", "advanced"]
+                _diff_default = st.session_state.get("practice_notation_difficulty", "medium")
+                _notation_difficulty = st.selectbox(
+                    "Difficulty",
+                    options=_diff_opts,
+                    index=_diff_opts.index(_diff_default) if _diff_default in _diff_opts else 1,
+                    key="practice_notation_difficulty",
+                )
+            with _n_col3:
+                st.write("")
+                _gen_notation = st.button(
+                    "Generate notation / TAB",
+                    key="practice_generate_notation",
+                    type="primary",
+                    use_container_width=True,
+                )
+
+            if _gen_notation:
+                # Pass the *resolved* real section name (e.g. "Verse 1") so
+                # the notation generator can look up the actual chord list
+                # in ``sections_for_practice``. Passing the type label
+                # ("Verse") here used to silently fall back to a stub chart.
+                _notation_section_focus = (
+                    PRACTICE_FOCUS_FULL
+                    if _is_full_song
+                    else (_active_section or _focus_pick)
+                )
+                st.session_state[_NOTATION_KEY] = generate_practice_notation(
+                    song_title=song,
+                    artist=song_data.get("artist", ""),
+                    display_key=_practice_chart_key,
+                    original_key=original_key,
+                    bpm=_practice_bpm,
+                    groove_style=_practice_groove,
+                    instrument=instrument,
+                    focus=focus,
+                    section_focus=_notation_section_focus,
+                    sections=sections_for_practice,
+                    guitar_tabs=song_data.get("guitar_tabs") or {},
+                    num_lines=_notation_lines,
+                    difficulty=_notation_difficulty,
+                )
+                st.rerun()
+
+            _notation = st.session_state.get(_NOTATION_KEY)
+            if _notation:
+                st.markdown(f"**{getattr(_notation, 'title', 'Practice notation')}**")
+                st.caption(
+                    f"Chords: **{getattr(_notation, 'chord_labels', '')}** · "
+                    f"{getattr(_notation, 'rhythm_counts', '')}"
+                )
+                if getattr(_notation, "format", "") == "tab":
+                    st.markdown(notation_tab_html(_notation), unsafe_allow_html=True)
+                    with st.expander("Copy TAB text", expanded=False):
+                        st.code(getattr(_notation, "body", ""), language=None)
+                else:
+                    if getattr(_notation, "body", ""):
+                        st.markdown("**Note guide**")
+                        st.code(getattr(_notation, "body", ""), language=None)
+                    if getattr(_notation, "abc", ""):
+                        st.markdown("**Standard notation (ABC)**")
+                        render_abc(getattr(_notation, "abc", ""))
+                    with st.expander("ABC source", expanded=False):
+                        st.code(getattr(_notation, "abc", ""), language=None)
 
     _coach_from_picker = st.session_state.pop("picker_open_chord_coach", False)
     _coach_chords = _view_chords or all_chords_from_sections(sections)
     render_scroll_anchor_marker(st, ANCHOR_CHORD_COACH)
-    with st.expander("🎸 Musician tools — chord coach", expanded=_coach_from_picker):
-        if _active_section:
-            st.caption(f"Chords from **{_active_section_display}** only.")
-        render_chord_coach_ui(
-            _coach_chords,
-            instrument,
-            level,
-            key_prefix=f"practice::{song}::{instrument}::{level}",
-            expanded=True,
-            display_key=_practice_chart_key,
-        )
-
-    with st.expander("🎚️ Transpose / capo / instrument key", expanded=False):
-        render_general_transpose_helper(
-            original_key,
-            concert_key,
-            sections,
-            level_source_sections,
-            key_prefix=f"practice::{song}",
-        )
-        if instrument == "Guitar":
-            st.divider()
-            render_guitar_capo_helper(
-                sections,
-                concert_key,
-                key_prefix=f"practice::{song}",
-                wrap_expander=False,
-            )
-        if is_transposing_instrument(instrument):
-            st.divider()
-            st.caption(
-                "Transposing type and **Show all charts in my instrument key** are in the panel above."
-            )
-        elif instrument == "Flute":
-            st.divider()
-            render_transposition_helper(
-                concert_key,
+    with st.container(key="practice_tool_chord_coach", border=False):
+        st.markdown('<p class="ui-practice-tool-title">Musician tools — chord coach</p>', unsafe_allow_html=True)
+        st.markdown('<p class="ui-practice-tool-sub">Chord-tone guidance and voicing help for your current focus.</p>', unsafe_allow_html=True)
+        with st.expander("🎸 Musician tools — chord coach", expanded=_coach_from_picker):
+            if _active_section:
+                st.caption(f"Chords from **{_active_section_display}** only.")
+            render_chord_coach_ui(
+                _coach_chords,
                 instrument,
-                key_prefix=f"practice::{song}",
-                wrap_expander=False,
+                level,
+                key_prefix=f"practice::{song}::{instrument}::{level}",
+                expanded=True,
+                display_key=_practice_chart_key,
             )
+
+    with st.container(key="practice_tool_transpose", border=False):
+        st.markdown('<p class="ui-practice-tool-title">Transpose / capo / instrument key</p>', unsafe_allow_html=True)
+        st.markdown('<p class="ui-practice-tool-sub">Align written shapes and sounding key for your instrument.</p>', unsafe_allow_html=True)
+        with st.expander("🎚️ Transpose / capo / instrument key", expanded=False):
+            render_general_transpose_helper(
+                original_key,
+                concert_key,
+                sections,
+                level_source_sections,
+                key_prefix=f"practice::{song}",
+            )
+            if instrument == "Guitar":
+                st.divider()
+                render_guitar_capo_helper(
+                    sections,
+                    concert_key,
+                    key_prefix=f"practice::{song}",
+                    wrap_expander=False,
+                )
+            if is_transposing_instrument(instrument):
+                st.divider()
+                st.caption(
+                    "Transposing type and **Show all charts in my instrument key** are in the panel above."
+                )
+            elif instrument == "Flute":
+                st.divider()
+                render_transposition_helper(
+                    concert_key,
+                    instrument,
+                    key_prefix=f"practice::{song}",
+                    wrap_expander=False,
+                )
 
     if has_lyric_chord_sheet(song_data):
         _ug_sections = lyric_chord_chart_sections(song_data)
         if _ug_sections:
-            with st.expander(
-                "🎤 Lyric & chord sheet (Ultimate Guitar style)",
-                expanded=False,
-            ):
-                st.caption("Separate from the practice grid — aligned chord pills above lyrics.")
-                st.markdown(
-                    render_lyric_chord_sheet(
-                        _ug_sections,
-                        song_name=song,
-                        artist=str(song_data.get("artist", "")),
-                        original_key=song_data["key"],
-                        display_key=_practice_chart_key,
-                        current_section=_chart_current,
-                        meta_bits=[
-                            f"Level: {level}",
-                            f"Tempo: {int(_practice_bpm)} BPM",
-                            f"Time: {_time_sig}",
-                        ],
-                        header_note=str(
-                            (song_data.get("extensions") or {}).get("arrangement_notes") or ""
+            with st.container(key="practice_tool_lyric_sheet", border=False):
+                st.markdown('<p class="ui-practice-tool-title">Lyric & chord sheet</p>', unsafe_allow_html=True)
+                st.markdown('<p class="ui-practice-tool-sub">Readable lyric-aligned chart for quick sing/play-throughs.</p>', unsafe_allow_html=True)
+                with st.expander(
+                    "🎤 Lyric & chord sheet (Ultimate Guitar style)",
+                    expanded=False,
+                ):
+                    st.caption("Separate from the practice grid — aligned chord pills above lyrics.")
+                    st.markdown(
+                        render_lyric_chord_sheet(
+                            _ug_sections,
+                            song_name=song,
+                            artist=str(song_data.get("artist", "")),
+                            original_key=song_data["key"],
+                            display_key=_practice_chart_key,
+                            current_section=_chart_current,
+                            meta_bits=[
+                                f"Level: {level}",
+                                f"Tempo: {int(_practice_bpm)} BPM",
+                                f"Time: {_time_sig}",
+                            ],
+                            header_note=str(
+                                (song_data.get("extensions") or {}).get("arrangement_notes") or ""
+                            ),
+                            now_playing=_active_section_display if not _is_full_song else "Full song",
+                            show_full=_is_full_song,
                         ),
-                        now_playing=_active_section_display if not _is_full_song else "Full song",
-                        show_full=_is_full_song,
-                    ),
-                    unsafe_allow_html=True,
-                )
+                        unsafe_allow_html=True,
+                    )
 
-    with st.expander("📝 Lyric phrasing guide", expanded=(instrument == "Voice")):
-        # Always show ALL the user's lyrics / cues here, not just the
-        # focused section - this card is the lyrics-first companion to
-        # the chord chart and benefits from full-song context.
-        st.markdown(
-            lyric_guide_html(
-                sections_for_practice,
-                lyric_cues,
-                instrument,
-                section_lyrics=section_lyrics,
-            ),
-            unsafe_allow_html=True,
-        )
-
-    with st.expander("📆 Suggested daily time breakdown", expanded=False):
-        st.markdown(
-            daily_practice_breakdown_markdown(
-                song,
-                sections,
-                instrument,
-                level,
-                focus,
-                minutes,
-                variation=st.session_state[exercise_key],
-                groove_override=_practice_groove,
+    with st.container(key="practice_tool_lyric_phrasing", border=False):
+        st.markdown('<p class="ui-practice-tool-title">Lyric phrasing guide</p>', unsafe_allow_html=True)
+        st.markdown('<p class="ui-practice-tool-sub">Phrasing and breath/grouping guidance across your lyrics.</p>', unsafe_allow_html=True)
+        with st.expander("📝 Lyric phrasing guide", expanded=(instrument == "Voice")):
+            # Always show ALL the user's lyrics / cues here, not just the
+            # focused section - this card is the lyrics-first companion to
+            # the chord chart and benefits from full-song context.
+            st.markdown(
+                lyric_guide_html(
+                    sections_for_practice,
+                    lyric_cues,
+                    instrument,
+                    section_lyrics=section_lyrics,
+                ),
+                unsafe_allow_html=True,
             )
-        )
+
+    with st.container(key="practice_tool_daily_breakdown", border=False):
+        st.markdown('<p class="ui-practice-tool-title">Suggested daily time breakdown</p>', unsafe_allow_html=True)
+        st.markdown('<p class="ui-practice-tool-sub">A concise plan for warmup, section reps, and consolidation.</p>', unsafe_allow_html=True)
+        with st.expander("📆 Suggested daily time breakdown", expanded=False):
+            st.markdown(
+                daily_practice_breakdown_markdown(
+                    song,
+                    sections,
+                    instrument,
+                    level,
+                    focus,
+                    minutes,
+                    variation=st.session_state[exercise_key],
+                    groove_override=_practice_groove,
+                )
+            )
 
     with st.expander("Full song ABC sketch (optional)", expanded=False):
         st.caption("Optional overview — not required for daily practice.")
