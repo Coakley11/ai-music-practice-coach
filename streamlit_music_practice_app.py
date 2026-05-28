@@ -7908,6 +7908,14 @@ def _ui_source_label() -> str:
     return "Catalog song"
 
 
+def _active_song_artist_label() -> str:
+    """Artist line for the active song (catalog metadata or custom progression)."""
+    if is_custom_progression(st.session_state):
+        cpl = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+        return str(cpl.get("artist") or "").strip()
+    return str((song_data or {}).get("artist") or "").strip()
+
+
 # SIDEBAR
 
 _studio_page = ensure_studio_page(st.session_state)
@@ -9936,7 +9944,7 @@ elif _studio_page == "analysis":
         pass
 
     _song_title = str(song or "Your song")
-    _song_artist = str(artist or "")
+    _song_artist = _active_song_artist_label()
 
     with st.container(key="upload_studio_panel", border=False):
         render_upload_studio_panel_header(st, song_title=_song_title, artist=_song_artist)
