@@ -1,0 +1,15 @@
+---
+description: Default git branch and push target for all development work
+alwaysApply: true
+---
+
+# Development branch: `dev`
+
+- **Always work on `dev`**, not `main`. `main` is production/stable.
+- Before committing: `git branch --show-current` should be `dev`.
+- Push with: `git push origin dev` or `scripts/push-dev.ps1`.
+- **Never** `git push origin main` unless the user explicitly requests a production release.
+- Do not force-push `main`.
+- Streamlit Cloud dev app deploys from **`origin/dev`** (confirm branch in Streamlit dashboard → Settings).
+
+After commits, offer to push to `origin/dev` only—not `main`.

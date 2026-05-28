@@ -2,6 +2,8 @@
 
 <!-- dev branch: Streamlit Cloud indexing refresh -->
 
+**Development:** work on branch `dev`, push to `origin/dev` (Streamlit Cloud dev app). See [docs/DEV_WORKFLOW.md](docs/DEV_WORKFLOW.md). Run `.\scripts\setup-dev-git.ps1` once per clone.
+
 The Adaptive Practice Sheet Generator is now fitted to the actual song context.
 
 It uses:

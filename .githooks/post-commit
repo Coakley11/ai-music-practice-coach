@@ -1,0 +1,10 @@
+#!/bin/sh
+# Optional auto-push to origin/dev after each commit on dev.
+# Enable: set environment variable AUTO_PUSH_DEV=1
+
+branch=$(git symbolic-ref --short HEAD 2>/dev/null) || exit 0
+[ "$branch" = "dev" ] || exit 0
+[ "${AUTO_PUSH_DEV:-}" = "1" ] || exit 0
+
+echo "post-commit: AUTO_PUSH_DEV=1 — pushing to origin/dev..."
+git push origin dev

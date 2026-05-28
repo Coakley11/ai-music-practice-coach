@@ -1,0 +1,18 @@
+#!/bin/sh
+# Block accidental pushes to main unless explicitly allowed.
+# Usage: ALLOW_MAIN_PUSH=1 git push origin main
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main)
+      if [ "${ALLOW_MAIN_PUSH:-}" != "1" ]; then
+        echo "pre-push: blocked push to origin/main."
+        echo "  Develop on 'dev' and push with: git push origin dev"
+        echo "  Or run: scripts/push-dev.ps1"
+        echo "  To override once: ALLOW_MAIN_PUSH=1 git push origin main"
+        exit 1
+      fi
+      ;;
+  esac
+done
+exit 0
