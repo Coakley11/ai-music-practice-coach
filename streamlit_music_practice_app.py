@@ -5932,10 +5932,43 @@ def _inject_practice_toolkit_styles() -> None:
   border:1px solid rgba(148,163,184,.24);border-radius:13px;background:rgba(255,255,255,.92);
   padding:.52rem .65rem .28rem;margin:.42rem 0;
 }
+.st-key-practice_section_focus_panel{
+  border:1px solid rgba(148,163,184,.26);border-radius:14px;background:rgba(255,255,255,.95);
+  box-shadow:0 10px 24px rgba(15,23,42,.06);padding:.66rem .75rem .55rem;margin:.35rem 0 .55rem;
+}
+.ui-practice-focus-title{margin:0;color:#0f172a;font-size:.94rem;font-weight:820;}
+.ui-practice-focus-sub{margin:.15rem 0 .45rem;color:#64748b;font-size:.78rem;}
+.ui-practice-focus-transition{
+  border:1px dashed rgba(148,163,184,.36);border-radius:10px;background:#f8fafc;
+  padding:.45rem .55rem;color:#334155;font-size:.78rem;margin:.4rem 0 .3rem;
+}
+.ui-practice-focus-transition strong{color:#0f172a;}
 .ui-practice-tool-title{margin:0;color:#0f172a;font-size:.9rem;font-weight:800;}
 .ui-practice-tool-sub{margin:.14rem 0 .4rem;color:#64748b;font-size:.78rem;}
 .st-key-practice_tool_tuner [data-testid="stExpander"], .st-key-practice_tool_metronome [data-testid="stExpander"], .st-key-practice_tool_chart [data-testid="stExpander"], .st-key-practice_tool_coach [data-testid="stExpander"]{
   border:none;background:transparent;
+}
+.ui-section-jump{
+  border:1px solid rgba(148,163,184,.28)!important;border-radius:14px!important;
+  background:linear-gradient(180deg,#fff,#f8fafc)!important;box-shadow:0 8px 24px rgba(15,23,42,.07)!important;
+  padding:.56rem .65rem!important;margin:0 0 .52rem 0!important;
+}
+.ui-section-jump [data-testid="stRadio"] > div{
+  gap:.35rem!important;flex-wrap:wrap!important;
+}
+.ui-section-jump [data-testid="stRadio"] label{
+  border:1px solid rgba(148,163,184,.32)!important;border-radius:999px!important;
+  padding:.24rem .55rem!important;background:#fff!important;
+}
+.ui-section-jump [data-testid="stRadio"] label:has(input:checked){
+  border-color:rgba(59,130,246,.55)!important;background:linear-gradient(140deg,rgba(59,130,246,.14),rgba(14,165,233,.1))!important;
+}
+body[data-practice-setup-ui] [data-testid="stExpander"]{
+  border:1px solid rgba(148,163,184,.24);border-radius:12px;background:rgba(255,255,255,.94);
+  box-shadow:0 6px 16px rgba(15,23,42,.04);margin:.38rem 0;
+}
+body[data-practice-setup-ui] [data-testid="stExpander"] summary{
+  font-weight:760;color:#0f172a;
 }
 </style>
         """,
@@ -8522,6 +8555,63 @@ if _studio_page == "practice":
     # resolved real section name in display form, used by every panel
     # header / badge / caption below.
     _active_section_display = _display_section(_active_section)
+    _focus_chords_preview = sections_for_practice.get(_active_section) or [] if _active_section else []
+    _focus_unique_chords = len({str(ch).strip() for ch in _view_chords if str(ch).strip()})
+    _focus_bar_count = len(_view_chords)
+    _focus_section_name = "Full song" if _is_full_song else (_active_section_display or str(_focus_pick or "Section"))
+    _transition_pairs: list[str] = []
+    if not _is_full_song and _focus_chords_preview:
+        for _i in range(len(_focus_chords_preview) - 1):
+            _a = str(_focus_chords_preview[_i]).strip()
+            _b = str(_focus_chords_preview[_i + 1]).strip()
+            if not _a or not _b:
+                continue
+            _pair = f"{_a} → {_b}"
+            if _pair not in _transition_pairs:
+                _transition_pairs.append(_pair)
+            if len(_transition_pairs) >= 4:
+                break
+
+    with st.container(key="practice_section_focus_panel", border=False):
+        st.markdown('<p class="ui-practice-focus-title">Section Focus</p>', unsafe_allow_html=True)
+        st.markdown(
+            '<p class="ui-practice-focus-sub">Choose a section, see key metadata, and jump directly into focused looping practice.</p>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="ui-badge-row">'
+            f'<span class="ui-badge accent">{html.escape(_focus_section_name)}</span>'
+            f'<span class="ui-badge">{_focus_unique_chords} chord{"s" if _focus_unique_chords != 1 else ""}</span>'
+            f'<span class="ui-badge">{_focus_bar_count} bars</span>'
+            f'<span class="ui-badge green">Key {html.escape(global_display_key)}</span>'
+            f'<span class="ui-badge amber">{int(_practice_bpm)} BPM</span>'
+            f'<span class="ui-badge purple">{html.escape(_practice_groove)}</span>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        if _transition_pairs:
+            st.markdown(
+                '<div class="ui-practice-focus-transition"><strong>Transition practice:</strong> '
+                + " · ".join(html.escape(p) for p in _transition_pairs)
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+        if not _is_full_song and _active_section:
+            _loop_cols = st.columns([1.2, 2.2])
+            with _loop_cols[0]:
+                if st.button(
+                    f"Loop {_active_section_display} in Backing Track",
+                    key="practice_loop_section_to_backing",
+                    use_container_width=True,
+                ):
+                    _prepare_backing_from_practice(_active_section)
+                    set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
+                    navigate_studio_page(st.session_state, "backing")
+                    st.rerun()
+            with _loop_cols[1]:
+                st.caption(
+                    "Sends this focused section directly to Backing Track with section-loop scope for tighter transition reps."
+                )
 
     _focus_chords = sections_for_practice.get(_active_section) or [] if _active_section else []
     with st.container(key="practice_toolkit_panel", border=False):
