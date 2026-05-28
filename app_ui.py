@@ -3776,6 +3776,150 @@ body[data-multitrack-studio-ui] .st-key-multitrack_studio_panel {
   border-color: rgba(245, 158, 11, 0.35) !important;
   background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%) !important;
 }
+.st-key-multitrack_session_panel {
+  padding: 0.85rem 0.95rem 0.75rem !important;
+  border-color: rgba(245, 158, 11, 0.32) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 251, 235, 0.55)) !important;
+}
+.ui-mt-session-setup-head {
+  margin: 0 0 0.55rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+}
+.ui-mt-session-setup-kicker {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #d97706;
+  margin: 0 0 0.15rem;
+}
+.ui-mt-session-setup-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 850;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+.ui-mt-session-setup-sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.74rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+.ui-mt-session-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.32rem 0.4rem;
+  margin: 0 0 0.6rem;
+  padding: 0.4rem 0.48rem;
+  border-radius: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  background: linear-gradient(180deg, rgba(255, 251, 235, 0.95), rgba(255, 255, 255, 0.92));
+}
+.ui-mt-ctx-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.18rem 0.48rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 650;
+  color: #334155;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: #fff;
+  white-space: nowrap;
+}
+.ui-mt-ctx-badge strong { font-weight: 850; color: #0f172a; }
+.ui-mt-ctx-ico { font-size: 0.76rem; line-height: 1; }
+.ui-mt-ctx-badge.song { border-color: rgba(245, 158, 11, 0.45); background: rgba(255, 251, 235, 0.95); max-width: 100%; }
+.ui-mt-ctx-badge.key-orig { border-color: rgba(99, 102, 241, 0.4); background: rgba(238, 242, 255, 0.95); }
+.ui-mt-ctx-badge.key-practice { border-color: rgba(16, 185, 129, 0.42); background: rgba(236, 253, 245, 0.95); }
+.ui-mt-ctx-badge.bpm { border-color: rgba(234, 88, 12, 0.4); background: rgba(255, 237, 213, 0.9); }
+.ui-mt-ctx-badge.meter { border-color: rgba(14, 165, 233, 0.38); background: rgba(224, 242, 254, 0.9); }
+.ui-mt-ctx-badge.scope { border-color: rgba(79, 70, 229, 0.38); background: rgba(238, 242, 255, 0.92); }
+.ui-mt-ctx-badge.groove { border-color: rgba(217, 119, 6, 0.4); background: rgba(254, 243, 199, 0.92); }
+.ui-mt-setup-section {
+  margin: 0 0 0.55rem;
+  padding: 0 0 0.48rem;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.26);
+}
+.ui-mt-setup-section:last-of-type { border-bottom: none; margin-bottom: 0.15rem; padding-bottom: 0; }
+.ui-mt-setup-section-title {
+  margin: 0 0 0.38rem;
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 0.32rem;
+}
+.ui-mt-setup-section-icon { font-size: 0.82rem; }
+.ui-mt-setup-fields-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem 0.65rem;
+}
+.ui-mt-setup-fields-row.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 900px) {
+  .ui-mt-setup-fields-row { grid-template-columns: 1fr; }
+}
+.ui-mt-field-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #475569;
+  margin: 0 0 0.22rem;
+}
+.ui-mt-session-hint {
+  font-size: 0.72rem;
+  color: #64748b;
+  margin: 0 0 0.45rem;
+  line-height: 1.35;
+}
+.ui-mt-target-line {
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.38rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.74rem;
+  color: #475569;
+  background: rgba(248, 250, 252, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+.ui-mt-target-line strong { color: #0f172a; }
+.st-key-multitrack_session_panel [data-testid="stRadio"] > label,
+.st-key-multitrack_session_panel [data-testid="stSelectbox"] label,
+.st-key-multitrack_session_panel [data-testid="stSlider"] label,
+.st-key-multitrack_session_panel [data-testid="stMultiSelect"] label,
+.st-key-multitrack_session_panel [data-testid="stCheckbox"] label {
+  display: none !important;
+}
+.st-key-multitrack_session_panel [data-testid="stSelectbox"] > div > div,
+.st-key-multitrack_session_panel [data-testid="stMultiSelect"] > div > div,
+.st-key-multitrack_session_panel [data-testid="stSlider"] > div > div {
+  border-radius: 10px !important;
+  min-height: 2.35rem !important;
+}
+.st-key-multitrack_session_panel [data-testid="stRadio"] > div {
+  gap: 0.35rem !important;
+  padding: 0.35rem 0.45rem !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+}
+.st-key-multitrack_session_panel .st-key-mt_prepare_backing button {
+  min-height: 2.5rem !important;
+  font-weight: 800 !important;
+  border-radius: 10px !important;
+  background: linear-gradient(135deg, #f59e0b 0%, #ea580c 55%, #c2410c 100%) !important;
+  color: #fff !important;
+  border: none !important;
+  box-shadow: 0 6px 18px rgba(234, 88, 12, 0.32) !important;
+}
 """
 
 
@@ -5418,7 +5562,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v6"
+STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v7"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v9"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -5426,7 +5570,7 @@ PRACTICE_SETUP_UI_VERSION = "2026-05-28-practice-v3"
 CREATIVE_STUDIO_UI_VERSION = "2026-05-28-creative-v2"
 CUSTOM_BUILDER_UI_VERSION = "2026-05-28-custom-v2"
 UPLOAD_STUDIO_UI_VERSION = "2026-05-28-upload-v1"
-MULTITRACK_STUDIO_UI_VERSION = "2026-05-28-multitrack-v1"
+MULTITRACK_STUDIO_UI_VERSION = "2026-05-28-multitrack-v2"
 
 PRACTICE_QUICK_LINKS: list[tuple[str, str]] = [
     ("picker", "Songs"),
@@ -5644,6 +5788,81 @@ def multitrack_layer_badge_html(*, ready: bool) -> str:
     if ready:
         return '<span class="ui-mt-layer-badge ready">● Ready</span>'
     return '<span class="ui-mt-layer-badge empty">○ Empty</span>'
+
+
+def render_multitrack_session_setup_header(st: Any) -> None:
+    st.markdown(
+        f"""
+<div class="ui-mt-session-setup-head" data-mt-setup-ui="{MULTITRACK_STUDIO_UI_VERSION}">
+  <span class="ui-mt-session-setup-kicker">Step 1</span>
+  <p class="ui-mt-session-setup-title">Session Setup</p>
+  <p class="ui-mt-session-setup-sub">Choose your song, tempo, key, and recording setup.</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_multitrack_session_context_strip(
+    st: Any,
+    *,
+    song_title: str,
+    original_key: str,
+    practice_key: str,
+    bpm: int,
+    meter: str,
+    groove: str,
+    scope_label: str,
+) -> None:
+    _song = html.escape(str(song_title or "Active song").strip())
+    _orig = html.escape(str(original_key or "C").strip() or "C")
+    _practice = html.escape(str(practice_key or original_key or "C").strip() or "C")
+    _meter = html.escape(str(meter or "4/4").strip() or "4/4")
+    _groove = html.escape(str(groove or "Auto").strip() or "Auto")
+    _scope = html.escape(str(scope_label or "full song").strip())
+    st.markdown(
+        f'<div class="ui-mt-session-context" role="group" aria-label="Session context">'
+        f'<span class="ui-mt-ctx-badge song" title="Active song">'
+        f'<span class="ui-mt-ctx-ico">🎵</span> <strong>{_song}</strong></span>'
+        f'<span class="ui-mt-ctx-badge key-orig" title="Original key">'
+        f'<span class="ui-mt-ctx-ico">🎹</span> Orig <strong>{_orig}</strong></span>'
+        f'<span class="ui-mt-ctx-badge key-practice" title="Practice key">'
+        f'<span class="ui-mt-ctx-ico">🎼</span> Practice <strong>{_practice}</strong></span>'
+        f'<span class="ui-mt-ctx-badge bpm" title="Session tempo">'
+        f'<span class="ui-mt-ctx-ico">⏱</span> <strong>{int(bpm)}</strong> BPM</span>'
+        f'<span class="ui-mt-ctx-badge meter" title="Time signature">'
+        f'<span class="ui-mt-ctx-ico">🥁</span> <strong>{_meter}</strong></span>'
+        f'<span class="ui-mt-ctx-badge groove" title="Groove feel">'
+        f'<span class="ui-mt-ctx-ico">✨</span> {_groove}</span>'
+        f'<span class="ui-mt-ctx-badge scope" title="Record range">'
+        f'<span class="ui-mt-ctx-ico">🔁</span> {_scope}</span>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_multitrack_setup_section_open(st: Any, title: str, *, icon: str = "") -> None:
+    _icon = (
+        f'<span class="ui-mt-setup-section-icon" aria-hidden="true">{html.escape(icon)}</span>'
+        if icon
+        else ""
+    )
+    st.markdown(
+        f'<div class="ui-mt-setup-section">'
+        f'<p class="ui-mt-setup-section-title">{_icon}{html.escape(title)}</p>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_multitrack_setup_section_close(st: Any) -> None:
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_multitrack_field_label(st: Any, label: str) -> None:
+    st.markdown(
+        f'<p class="ui-mt-field-label">{html.escape(label)}</p>',
+        unsafe_allow_html=True,
+    )
 
 
 def inject_studio_ui_release_marker(st: Any, *, page: str) -> None:

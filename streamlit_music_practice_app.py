@@ -6282,6 +6282,293 @@ def multitrack_monitor_backing_bytes(
     return wav_bytes_from_float(backing_y), events
 
 
+def _render_multitrack_session_setup_panel(
+    *,
+    mt_sec_names: list[str],
+    mt_time_sig: str,
+    song_data: dict | None,
+    song_title: str,
+    original_key: str,
+    practice_key: str,
+    setup_header_fn,
+    context_strip_fn,
+    section_open_fn,
+    section_close_fn,
+    field_label_fn,
+) -> tuple[
+    int,
+    int,
+    str,
+    str,
+    list[str],
+    list,
+    float,
+    bool,
+    bool,
+    bool,
+    bool,
+    float,
+    int,
+    str,
+]:
+    """Step 1 — session setup card. Returns session control values for downstream steps."""
+    setup_header_fn(st)
+    _mt_bpm_default = int(st.session_state.get("bpm", 100))
+    _mt_groove_default = str(st.session_state.get("mt_groove_style", "Auto") or "Auto")
+    _scope_default = st.session_state.get("mt_playback_scope", "Full song")
+    _mt_single = str(st.session_state.get("mt_single_section", "") or "")
+    _mt_multi = list(st.session_state.get("mt_multi_sections") or [])
+    _scope_preview = (
+        "free layering"
+        if _scope_default == "Free layering (no backing)"
+        else (
+            "full song"
+            if _scope_default == "Full song"
+            else (
+                _mt_single
+                if _scope_default == "Single section (verse, chorus, solo, …)"
+                else (" + ".join(_mt_multi) if _mt_multi else "sections")
+            )
+        )
+    )
+    context_strip_fn(
+        st,
+        song_title=song_title,
+        original_key=original_key,
+        practice_key=practice_key,
+        bpm=_mt_bpm_default,
+        meter=mt_time_sig,
+        groove=_mt_groove_default,
+        scope_label=_scope_preview,
+    )
+    st.markdown(
+        '<p class="ui-mt-session-hint">🎧 Headphones recommended — monitor backing is for timing, '
+        "not baked into layers unless you export with it.</p>",
+        unsafe_allow_html=True,
+    )
+
+    section_open_fn(st, "Song / project", icon="🎵")
+    mt_scope = st.radio(
+        "Loop / record range",
+        [
+            "Full song",
+            "Single section (verse, chorus, solo, …)",
+            "Multiple sections",
+            "Free layering (no backing)",
+        ],
+        horizontal=True,
+        key="mt_playback_scope",
+        label_visibility="collapsed",
+    )
+    mt_selected_sections: list[str] = []
+    if mt_scope == "Single section (verse, chorus, solo, …)" and mt_sec_names:
+        field_label_fn(st, "Section")
+        mt_selected_sections = [
+            st.selectbox(
+                "Section",
+                mt_sec_names,
+                key="mt_single_section",
+                label_visibility="collapsed",
+            )
+        ]
+    elif mt_scope == "Multiple sections" and mt_sec_names:
+        mt_default = [
+            name
+            for name in mt_sec_names
+            if any(token in name.lower() for token in ["verse", "chorus", "solo"])
+        ] or mt_sec_names[:2]
+        field_label_fn(st, "Sections (song order)")
+        mt_selected_sections = st.multiselect(
+            "Sections (song order)",
+            mt_sec_names,
+            default=mt_default,
+            key="mt_multi_sections",
+            label_visibility="collapsed",
+        )
+    section_close_fn(st)
+
+    section_open_fn(st, "Key / BPM / meter", icon="⏱")
+    st.markdown('<div class="ui-mt-setup-fields-row">', unsafe_allow_html=True)
+    st.markdown("<div>", unsafe_allow_html=True)
+    field_label_fn(st, "Session BPM")
+    mt_bpm = st.slider(
+        "Session BPM",
+        50,
+        180,
+        _mt_bpm_default,
+        5,
+        key="multitrack_bpm",
+        label_visibility="collapsed",
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<div>", unsafe_allow_html=True)
+    field_label_fn(st, "Section repeats")
+    mt_loops = st.slider(
+        "Section repeats (loop recording)",
+        1,
+        8,
+        2,
+        1,
+        key="mt_section_loops",
+        disabled=mt_scope == "Free layering (no backing)",
+        label_visibility="collapsed",
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<div>", unsafe_allow_html=True)
+    field_label_fn(st, "Groove / feel")
+    mt_groove = st.selectbox(
+        "Groove style",
+        [
+            "Auto",
+            "Pop groove",
+            "Rock groove",
+            "Jazz swing",
+            "Bossa nova",
+            "Funk groove",
+            "Ballad",
+        ],
+        key="mt_groove_style",
+        disabled=mt_scope == "Free layering (no backing)",
+        label_visibility="collapsed",
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    section_close_fn(st)
+
+    section_open_fn(st, "Input / recording mode", icon="🎙")
+    st.markdown('<div class="ui-mt-setup-fields-row cols-2">', unsafe_allow_html=True)
+    st.markdown("<div>", unsafe_allow_html=True)
+    field_label_fn(st, "Count-in")
+    count_in_label = st.selectbox(
+        "Count-in before playback",
+        ["None", "1 bar", "2 bars"],
+        index=1,
+        key="mt_count_in_bars",
+        label_visibility="collapsed",
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<div>", unsafe_allow_html=True)
+    field_label_fn(st, "During playback")
+    mt_metronome_playback = st.checkbox(
+        "Metronome during playback",
+        value=False,
+        key="mt_metronome_playback",
+        label_visibility="collapsed",
+    )
+    st.caption("Metronome click during playback")
+    mt_loop_backing = st.checkbox(
+        "Loop backing / section",
+        value=True,
+        key="mt_loop_backing",
+        label_visibility="collapsed",
+    )
+    st.caption("Loop section while recording")
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    section_close_fn(st)
+
+    section_open_fn(st, "Tracks / monitoring", icon="🎚")
+    st.markdown('<div class="ui-mt-setup-fields-row cols-2">', unsafe_allow_html=True)
+    st.markdown("<div>", unsafe_allow_html=True)
+    field_label_fn(st, "Monitor backing")
+    use_backing_monitor = st.checkbox(
+        "Use backing track while recording",
+        value=mt_scope != "Free layering (no backing)",
+        help="Plays in headphones/speakers for timing. Not baked into your recorded layers.",
+        key="mt_use_backing_monitor",
+        label_visibility="collapsed",
+    )
+    st.caption("Play monitor backing while recording")
+    field_label_fn(st, "Export mix")
+    include_backing_in_mix = st.checkbox(
+        "Include backing in exported mix",
+        value=False,
+        key="include_backing_mix",
+        label_visibility="collapsed",
+    )
+    st.caption("Include backing in exported WAV")
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<div>", unsafe_allow_html=True)
+    field_label_fn(st, "Backing level")
+    backing_volume = st.slider(
+        "Backing level (monitor + export)",
+        0.0,
+        1.5,
+        0.75,
+        0.05,
+        key="backing_volume",
+        label_visibility="collapsed",
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    section_close_fn(st)
+
+    mt_count_in_bars = {"None": 0, "1 bar": 1, "2 bars": 2}[count_in_label]
+    mt_scope_label = (
+        "free layering"
+        if mt_scope == "Free layering (no backing)"
+        else ("full song" if not mt_selected_sections else " + ".join(mt_selected_sections))
+    )
+    mt_events = (
+        chord_events_for_selected_sections(
+            sections, mt_selected_sections, song_data=song_data
+        )
+        if mt_scope != "Free layering (no backing)"
+        else []
+    )
+    mt_resolved_groove = infer_groove_style(song_data, mt_groove)
+    mt_bar_duration = meter_timing(mt_bpm, mt_time_sig).bar_sec
+    mt_backing_duration = len(mt_events) * mt_bar_duration * max(1, mt_loops)
+
+    if mt_scope != "Free layering (no backing)" and not mt_events:
+        st.warning("Choose at least one section (or use Free layering).")
+    else:
+        st.markdown(
+            f'<p class="ui-mt-target-line">Target pass: <strong>{html.escape(mt_scope_label)}</strong> · '
+            f"{html.escape(mt_time_sig)} @ <strong>{int(mt_bpm)}</strong> BPM · "
+            f"{len(mt_events)} bars × {mt_loops} ≈ <strong>{mt_backing_duration:.1f}s</strong></p>",
+            unsafe_allow_html=True,
+        )
+
+    if st.button(
+        "⚡ Prepare monitor backing",
+        key="mt_prepare_backing",
+        type="primary",
+        use_container_width=True,
+        disabled=mt_scope == "Free layering (no backing)" or not mt_events,
+    ):
+        monitor_wav, _ = multitrack_monitor_backing_bytes(
+            sections,
+            mt_selected_sections,
+            bpm=mt_bpm,
+            loops=mt_loops,
+            style=mt_resolved_groove,
+            level=level,
+            time_signature=mt_time_sig,
+        )
+        st.session_state.multitrack_backing_music_wav = monitor_wav
+        st.session_state.mt_backing_scope = mt_scope_label
+        st.session_state.mt_backing_duration = mt_backing_duration
+        st.success("Monitor backing ready — use Step 3 transport while recording layers.")
+
+    return (
+        mt_bpm,
+        mt_loops,
+        mt_groove,
+        mt_resolved_groove,
+        mt_selected_sections,
+        mt_events,
+        mt_backing_duration,
+        use_backing_monitor,
+        include_backing_in_mix,
+        mt_metronome_playback,
+        mt_loop_backing,
+        backing_volume,
+        mt_count_in_bars,
+        mt_scope_label,
+    )
+
+
 def multitrack_studio_html(
     *,
     backing_b64,
@@ -10624,6 +10911,11 @@ elif _studio_page == "multitrack":
             inject_studio_ui_release_marker,
             multitrack_layer_badge_html,
             multitrack_session_context_html,
+            render_multitrack_field_label,
+            render_multitrack_session_context_strip,
+            render_multitrack_session_setup_header,
+            render_multitrack_setup_section_close,
+            render_multitrack_setup_section_open,
             render_multitrack_studio_panel_header,
         )
     except Exception:
@@ -10631,7 +10923,14 @@ elif _studio_page == "multitrack":
         inject_studio_ui_release_marker = lambda *_a, **_k: None  # type: ignore
         multitrack_layer_badge_html = lambda **_k: ""  # type: ignore
         multitrack_session_context_html = lambda **_k: ""  # type: ignore
+        render_multitrack_field_label = lambda *_a, **_k: None  # type: ignore
+        render_multitrack_session_context_strip = lambda *_a, **_k: None  # type: ignore
+        render_multitrack_session_setup_header = lambda _st: None  # type: ignore
+        render_multitrack_setup_section_close = lambda _st: None  # type: ignore
+        render_multitrack_setup_section_open = lambda *_a, **_k: None  # type: ignore
         render_multitrack_studio_panel_header = lambda *_a, **_k: None  # type: ignore
+
+    _mt_orig_key, _mt_practice_key = _active_song_key_pair(song_data)
 
     inject_multitrack_studio_styles(st)
     inject_studio_ui_release_marker(st, page="multitrack")
@@ -10675,168 +10974,34 @@ elif _studio_page == "multitrack":
         render_multitrack_studio_panel_header(st, song_title=str(song or "Your song"))
 
         with st.container(key="multitrack_session_panel", border=False):
-            st.markdown(
-                '<p class="ui-multitrack-step-kicker">Step 1 · Session setup</p>',
-                unsafe_allow_html=True,
+            (
+                mt_bpm,
+                mt_loops,
+                mt_groove,
+                mt_resolved_groove,
+                mt_selected_sections,
+                mt_events,
+                mt_backing_duration,
+                use_backing_monitor,
+                include_backing_in_mix,
+                mt_metronome_playback,
+                mt_loop_backing,
+                backing_volume,
+                mt_count_in_bars,
+                mt_scope_label,
+            ) = _render_multitrack_session_setup_panel(
+                mt_sec_names=mt_sec_names,
+                mt_time_sig=mt_time_sig,
+                song_data=song_data,
+                song_title=str(song or "Your song"),
+                original_key=_mt_orig_key,
+                practice_key=_mt_practice_key,
+                setup_header_fn=render_multitrack_session_setup_header,
+                context_strip_fn=render_multitrack_session_context_strip,
+                section_open_fn=render_multitrack_setup_section_open,
+                section_close_fn=render_multitrack_setup_section_close,
+                field_label_fn=render_multitrack_field_label,
             )
-            st.caption("Headphones recommended. Monitor backing is for timing — not printed into your layers unless you export with it.")
-
-            mt_scope = st.radio(
-                "Loop / record range",
-                [
-                    "Full song",
-                    "Single section (verse, chorus, solo, …)",
-                    "Multiple sections",
-                    "Free layering (no backing)",
-                ],
-                horizontal=True,
-                key="mt_playback_scope",
-            )
-
-            mt_selected_sections = []
-            if mt_scope == "Single section (verse, chorus, solo, …)" and mt_sec_names:
-                mt_selected_sections = [
-                    st.selectbox(
-                        "Section",
-                        mt_sec_names,
-                        key="mt_single_section",
-                    )
-                ]
-            elif mt_scope == "Multiple sections" and mt_sec_names:
-                mt_default = [
-                    name
-                    for name in mt_sec_names
-                    if any(token in name.lower() for token in ["verse", "chorus", "solo"])
-                ] or mt_sec_names[:2]
-                mt_selected_sections = st.multiselect(
-                    "Sections (song order)",
-                    mt_sec_names,
-                    default=mt_default,
-                    key="mt_multi_sections",
-                )
-            elif mt_scope == "Free layering (no backing)":
-                mt_selected_sections = []
-
-            mt_scope_label = (
-                "free layering"
-                if mt_scope == "Free layering (no backing)"
-                else ("full song" if not mt_selected_sections else " + ".join(mt_selected_sections))
-            )
-
-            col_mt_a, col_mt_b, col_mt_c = st.columns(3)
-
-            with col_mt_a:
-                mt_bpm = st.slider(
-                    "Session BPM",
-                    50,
-                    180,
-                    int(st.session_state.get("bpm", 100)),
-                    5,
-                    key="multitrack_bpm",
-                )
-                mt_loops = st.slider(
-                    "Section repeats (loop recording)",
-                    1,
-                    8,
-                    2,
-                    1,
-                    key="mt_section_loops",
-                    disabled=mt_scope == "Free layering (no backing)",
-                )
-                mt_groove = st.selectbox(
-                    "Groove style",
-                    [
-                        "Auto",
-                        "Pop groove",
-                        "Rock groove",
-                        "Jazz swing",
-                        "Bossa nova",
-                        "Funk groove",
-                        "Ballad",
-                    ],
-                    key="mt_groove_style",
-                    disabled=mt_scope == "Free layering (no backing)",
-                )
-
-            with col_mt_b:
-                count_in_label = st.selectbox(
-                    "Count-in before playback",
-                    ["None", "1 bar", "2 bars"],
-                    index=1,
-                    key="mt_count_in_bars",
-                )
-                mt_count_in_bars = {"None": 0, "1 bar": 1, "2 bars": 2}[count_in_label]
-                mt_metronome_playback = st.checkbox(
-                    "Metronome during playback",
-                    value=False,
-                    key="mt_metronome_playback",
-                )
-                mt_loop_backing = st.checkbox(
-                    "Loop backing / section",
-                    value=True,
-                    key="mt_loop_backing",
-                )
-
-            with col_mt_c:
-                use_backing_monitor = st.checkbox(
-                    "Use backing track while recording",
-                    value=mt_scope != "Free layering (no backing)",
-                    help="Plays in headphones/speakers for timing. Not baked into your recorded layers.",
-                    key="mt_use_backing_monitor",
-                )
-                include_backing_in_mix = st.checkbox(
-                    "Include backing in exported mix",
-                    value=False,
-                    key="include_backing_mix",
-                )
-                backing_volume = st.slider(
-                    "Backing level (monitor + export)",
-                    0.0,
-                    1.5,
-                    0.75,
-                    0.05,
-                    key="backing_volume",
-                )
-
-            mt_events = (
-                chord_events_for_selected_sections(
-                    sections, mt_selected_sections, song_data=song_data
-                )
-                if mt_scope != "Free layering (no backing)"
-                else []
-            )
-            mt_resolved_groove = infer_groove_style(song_data, mt_groove)
-            mt_bar_duration = meter_timing(mt_bpm, mt_time_sig).bar_sec
-            mt_backing_duration = len(mt_events) * mt_bar_duration * max(1, mt_loops)
-
-            if mt_scope != "Free layering (no backing)" and not mt_events:
-                st.warning("Choose at least one section (or use Free layering).")
-            else:
-                st.caption(
-                    f"Target: **{mt_scope_label}** | {mt_time_sig} @ {mt_bpm} BPM | "
-                    f"{len(mt_events)} bars per pass × {mt_loops} repeat(s) ≈ {mt_backing_duration:.1f}s"
-                )
-
-            if st.button(
-                "Prepare monitor backing (no count-in in file)",
-                key="mt_prepare_backing",
-                disabled=mt_scope == "Free layering (no backing)" or not mt_events,
-            ):
-                monitor_wav, _ = multitrack_monitor_backing_bytes(
-                    sections,
-                    mt_selected_sections,
-                    bpm=mt_bpm,
-                    loops=mt_loops,
-                    style=mt_resolved_groove,
-                    level=level,
-                    time_signature=mt_time_sig,
-                )
-                st.session_state.multitrack_backing_music_wav = monitor_wav
-                st.session_state.mt_backing_scope = mt_scope_label
-                st.session_state.mt_backing_duration = mt_backing_duration
-                st.success(
-                    "Monitor backing ready. Use the studio transport below while recording layers."
-                )
 
         monitor_wav = st.session_state.get("multitrack_backing_music_wav")
         backing_b64 = (
@@ -10943,16 +11108,12 @@ elif _studio_page == "multitrack":
                             }
                         )
 
-        st.markdown(
-            multitrack_session_context_html(
-                song_title=str(song or "Your song"),
-                scope_label=st.session_state.get("mt_backing_scope", mt_scope_label),
-                bpm=mt_bpm,
-                time_signature=mt_time_sig,
-                layer_count=len(track_items_for_mix),
-            ),
-            unsafe_allow_html=True,
-        )
+        if track_items_for_mix:
+            st.markdown(
+                f'<p class="ui-mt-target-line">'
+                f'<strong>{len(track_items_for_mix)}</strong> layer(s) saved for this session.</p>',
+                unsafe_allow_html=True,
+            )
 
         track_items_for_studio = list(track_items_for_mix)
         layer_names = [item["name"] for item in track_items_for_studio]
