@@ -2575,6 +2575,63 @@ def _backing_studio_panel_css() -> str:
   line-height: 1.3;
 }
 .ui-backing-setup-key-row { margin: 0.1rem 0 0; }
+.ui-backing-setup-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.32rem 0.4rem;
+  margin: 0 0 0.65rem;
+  padding: 0.42rem 0.48rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.92));
+}
+.ui-backing-ctx-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.2rem 0.48rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 650;
+  color: #334155;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #fff;
+  white-space: nowrap;
+}
+.ui-backing-ctx-badge strong { font-weight: 850; color: #0f172a; }
+.ui-backing-ctx-ico { font-size: 0.78rem; line-height: 1; opacity: 0.92; }
+.ui-backing-ctx-badge.key-orig { border-color: rgba(99, 102, 241, 0.4); background: rgba(238, 242, 255, 0.95); }
+.ui-backing-ctx-badge.key-practice { border-color: rgba(16, 185, 129, 0.45); background: rgba(236, 253, 245, 0.95); }
+.ui-backing-ctx-badge.meter { border-color: rgba(14, 165, 233, 0.4); background: rgba(224, 242, 254, 0.9); }
+.ui-backing-ctx-badge.groove { border-color: rgba(245, 158, 11, 0.45); background: rgba(255, 251, 235, 0.95); }
+.ui-backing-ctx-badge.range { border-color: rgba(79, 70, 229, 0.4); background: rgba(238, 242, 255, 0.92); }
+.ui-backing-ctx-badge.bpm { border-color: rgba(100, 116, 139, 0.35); background: rgba(248, 250, 252, 0.98); color: #64748b; }
+.ui-backing-setup-section {
+  margin: 0 0 0.55rem;
+  padding: 0 0 0.5rem;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.28);
+}
+.ui-backing-setup-section:last-of-type { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.ui-backing-setup-section-title {
+  margin: 0 0 0.42rem;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.ui-backing-setup-section-icon { font-size: 0.85rem; line-height: 1; }
+.ui-backing-setup-fields-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem 0.75rem;
+}
+@media (max-width: 720px) {
+  .ui-backing-setup-fields-row { grid-template-columns: 1fr; }
+}
 .ui-backing-quick-controls {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
@@ -5154,9 +5211,12 @@ def close_control_section() -> None:
     st.markdown("</div></div>", unsafe_allow_html=True)
 
 
-def render_active_song_hub_open(st: Any) -> None:
+def render_active_song_hub_open(st: Any, *, extra_class: str = "") -> None:
     """Open the Active Song command-center wrapper (pairs with hub_close)."""
-    st.markdown('<div class="ui-active-song-hub">', unsafe_allow_html=True)
+    _cls = "ui-active-song-hub"
+    if extra_class:
+        _cls = f"{_cls} {html.escape(extra_class.strip())}"
+    st.markdown(f'<div class="{_cls}">', unsafe_allow_html=True)
     st.markdown(
         """
 <div class="ui-active-song-hub-head">
@@ -5358,9 +5418,9 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v5"
+STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v6"
 
-BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v8"
+BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v9"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
 PRACTICE_SETUP_UI_VERSION = "2026-05-28-practice-v3"
 CREATIVE_STUDIO_UI_VERSION = "2026-05-28-creative-v2"
@@ -5770,6 +5830,55 @@ def render_backing_setup_group_open(st: Any, title: str, hint: str = "") -> None
 
 def render_backing_setup_group_close(st: Any) -> None:
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_backing_setup_section_open(st: Any, title: str, *, icon: str = "") -> None:
+    """Sub-section inside the unified Playback Setup card."""
+    _icon = f'<span class="ui-backing-setup-section-icon" aria-hidden="true">{html.escape(icon)}</span>' if icon else ""
+    st.markdown(
+        f'<div class="ui-backing-setup-section">'
+        f'<p class="ui-backing-setup-section-title">{_icon}{html.escape(title)}</p>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_backing_setup_section_close(st: Any) -> None:
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_backing_setup_context_strip(
+    st: Any,
+    *,
+    original_key: str,
+    practice_key: str,
+    meter: str,
+    groove: str,
+    range_summary: str,
+    default_bpm: int,
+) -> None:
+    """At-a-glance playback context row (keys, meter, feel, range)."""
+    _orig = html.escape(str(original_key or "C").strip() or "C")
+    _practice = html.escape(str(practice_key or original_key or "C").strip() or "C")
+    _meter = html.escape(str(meter or "4/4").strip() or "4/4")
+    _groove = html.escape(str(groove or "Auto").strip() or "Auto")
+    _range = html.escape(str(range_summary or "Full song ×2").strip())
+    st.markdown(
+        f'<div class="ui-backing-setup-context" role="group" aria-label="Playback context">'
+        f'<span class="ui-backing-ctx-badge key-orig" title="Catalog original key">'
+        f'<span class="ui-backing-ctx-ico">🎹</span> Original <strong>{_orig}</strong></span>'
+        f'<span class="ui-backing-ctx-badge key-practice" title="Display / practice key">'
+        f'<span class="ui-backing-ctx-ico">🎼</span> Practice <strong>{_practice}</strong></span>'
+        f'<span class="ui-backing-ctx-badge meter" title="Time signature">'
+        f'<span class="ui-backing-ctx-ico">🥁</span> <strong>{_meter}</strong></span>'
+        f'<span class="ui-backing-ctx-badge groove" title="Rhythm feel">'
+        f'<span class="ui-backing-ctx-ico">✨</span> <strong>{_groove}</strong></span>'
+        f'<span class="ui-backing-ctx-badge range" title="Playback range &amp; loops">'
+        f'<span class="ui-backing-ctx-ico">🔁</span> {_range}</span>'
+        f'<span class="ui-backing-ctx-badge bpm" title="Song default tempo — adjust in Quick Playback">'
+        f'<span class="ui-backing-ctx-ico">⏱</span> Default <strong>{int(default_bpm)}</strong> BPM</span>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def render_backing_field_label(st: Any, label: str, hint: str = "") -> None:

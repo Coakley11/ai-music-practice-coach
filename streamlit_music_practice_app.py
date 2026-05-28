@@ -474,6 +474,9 @@ try:
         render_backing_studio_deck_header,
         render_backing_setup_group_open,
         render_backing_setup_group_close,
+        render_backing_setup_section_open,
+        render_backing_setup_section_close,
+        render_backing_setup_context_strip,
         render_active_song_key_row,
         render_active_song_hub_open,
         render_active_song_hub_hero,
@@ -557,6 +560,24 @@ except Exception as _app_ui_first_err:
                 render_active_song_key_row = getattr(
                     _app_ui_mod, "render_active_song_key_row", lambda *_a, **_k: None
                 )
+                render_backing_setup_section_open = getattr(
+                    _app_ui_mod, "render_backing_setup_section_open", lambda *_a, **_k: None
+                )
+                render_backing_setup_section_close = getattr(
+                    _app_ui_mod, "render_backing_setup_section_close", lambda *_a, **_k: None
+                )
+                render_backing_setup_context_strip = getattr(
+                    _app_ui_mod, "render_backing_setup_context_strip", lambda *_a, **_k: None
+                )
+                render_active_song_hub_open = getattr(
+                    _app_ui_mod, "render_active_song_hub_open", lambda *_a, **_k: None
+                )
+                render_active_song_hub_close = getattr(
+                    _app_ui_mod, "render_active_song_hub_close", lambda *_a, **_k: None
+                )
+                render_active_song_hub_hero = getattr(
+                    _app_ui_mod, "render_active_song_hub_hero", lambda *_a, **_k: None
+                )
                 render_backing_panel_header = getattr(
                     _app_ui_mod, "render_backing_panel_header", lambda *_a, **_k: None
                 )
@@ -594,6 +615,61 @@ except Exception as _app_ui_first_err:
             traceback.print_exc()
             _APP_UI_IMPORT_ERROR = _app_ui_path_err
 
+def _fallback_active_song_hub_open(st: Any, *, extra_class: str = "") -> None:
+    _cls = f"ui-active-song-hub {extra_class}".strip()
+    st.markdown(f'<div class="{_cls}">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="ui-active-song-hub-head">'
+        '<span class="ui-active-song-hub-label">Current active song</span></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _fallback_active_song_hub_close(st: Any) -> None:
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def _fallback_active_song_hub_hero(st: Any, **kwargs: Any) -> None:
+    title = str(kwargs.get("title") or "Active song")
+    st.markdown(f"**{title}**")
+
+
+def _fallback_backing_setup_section_open(st: Any, title: str, *, icon: str = "") -> None:
+    st.markdown(f"**{icon} {title}**".strip())
+
+
+def _fallback_backing_setup_section_close(st: Any) -> None:
+    pass
+
+
+def _fallback_backing_setup_context_strip(st: Any, **kwargs: Any) -> None:
+    st.caption(
+        f"Keys: {kwargs.get('original_key')} → {kwargs.get('practice_key')} · "
+        f"{kwargs.get('meter')} · {kwargs.get('groove')} · {kwargs.get('range_summary')}"
+    )
+
+
+def _ensure_app_ui_helpers() -> None:
+    """Bind app_ui helpers if the primary import path omitted them."""
+    global render_active_song_hub_open, render_active_song_hub_close, render_active_song_hub_hero
+    global render_backing_setup_section_open, render_backing_setup_section_close
+    global render_backing_setup_context_strip
+    if not callable(globals().get("render_active_song_hub_open")):
+        render_active_song_hub_open = _fallback_active_song_hub_open
+    if not callable(globals().get("render_active_song_hub_close")):
+        render_active_song_hub_close = _fallback_active_song_hub_close
+    if not callable(globals().get("render_active_song_hub_hero")):
+        render_active_song_hub_hero = _fallback_active_song_hub_hero
+    if not callable(globals().get("render_backing_setup_section_open")):
+        render_backing_setup_section_open = _fallback_backing_setup_section_open
+    if not callable(globals().get("render_backing_setup_section_close")):
+        render_backing_setup_section_close = _fallback_backing_setup_section_close
+    if not callable(globals().get("render_backing_setup_context_strip")):
+        render_backing_setup_context_strip = _fallback_backing_setup_context_strip
+
+
+_ensure_app_ui_helpers()
+
 if not _APP_UI_LOADED:
     st.error(
         "app_ui import failed: "
@@ -601,6 +677,12 @@ if not _APP_UI_LOADED:
         "Ensure **app_ui.py** is in the repository root next to this file, then redeploy. "
         "Using basic layout fallbacks so the app can still run."
     )
+    render_active_song_hub_open = _fallback_active_song_hub_open
+    render_active_song_hub_close = _fallback_active_song_hub_close
+    render_active_song_hub_hero = _fallback_active_song_hub_hero
+    render_backing_setup_section_open = _fallback_backing_setup_section_open
+    render_backing_setup_section_close = _fallback_backing_setup_section_close
+    render_backing_setup_context_strip = _fallback_backing_setup_context_strip
 
     def inject_app_theme() -> None:
         st.markdown(
@@ -7207,8 +7289,7 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
     ext = rec.get("extensions") or {}
 
     with st.container(key="active_song_hub"):
-        st.markdown('<div class="ui-active-song-hub source-custom">', unsafe_allow_html=True)
-        render_active_song_hub_open(st)
+        render_active_song_hub_open(st, extra_class="source-custom")
         st.caption(
             "This is **your** song — Practice, Backing Track, and charts follow this custom progression."
         )
@@ -7227,7 +7308,6 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
         render_active_song_hub_close(st)
-        st.markdown("</div>", unsafe_allow_html=True)
 
     if wrap_section:
         close_control_section()
@@ -7297,7 +7377,6 @@ def _render_catalog_active_song_hub(
 ) -> None:
     """Featured Active Song hub for catalog picks."""
     with st.container(key="active_song_hub"):
-        st.markdown('<div class="ui-active-song-hub">', unsafe_allow_html=True)
         render_active_song_hub_open(st)
         st.markdown(
             '<p class="ui-active-song-picker-label">Switch active song</p>',
@@ -7337,7 +7416,6 @@ def _render_catalog_active_song_hub(
             )
             st.markdown("</div>", unsafe_allow_html=True)
         render_active_song_hub_close(st)
-        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _render_catalog_song_picker_block(
@@ -7898,17 +7976,6 @@ def _render_backing_scope_controls(
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
-        _loop_summary = backing_scope_loop_summary_text(
-            st.session_state.get("backing_track_scope", playback_scope),
-            single_section=str(st.session_state.get("backing_track_single_section", "")),
-            multi_sections=list(st.session_state.get("backing_track_multi_sections") or []),
-            loops=int(st.session_state.get("backing_track_loops", 2)),
-        )
-        st.markdown(
-            f'<div style="margin:0.2rem 0 0;">{backing_scope_loop_summary_badge_html(_loop_summary)}</div>',
-            unsafe_allow_html=True,
-        )
-
         if from_practice_handoff:
             _handoff_sec = st.session_state.get("backing_track_single_section", "")
             st.markdown(
@@ -8052,6 +8119,13 @@ def _render_backing_playback_setup_panel(
         if backing_ready
         else '<span class="ui-backing-panel-badge">○ Not generated</span>'
     )
+    _groove_label = str(st.session_state.get("backing_groove_style", default_groove) or default_groove)
+    _loop_summary = backing_scope_loop_summary_text(
+        st.session_state.get("backing_track_scope", "Full song"),
+        single_section=str(st.session_state.get("backing_track_single_section", "")),
+        multi_sections=list(st.session_state.get("backing_track_multi_sections") or []),
+        loops=int(st.session_state.get("backing_track_loops", 2)),
+    )
 
     with st.container(key="backing_playback_setup", border=False):
         render_backing_panel_shell_open(st, "setup")
@@ -8062,59 +8136,48 @@ def _render_backing_playback_setup_panel(
             subtitle=_subtitle,
             badge_html=_badge,
         )
-        st.caption(
-            f"Song defaults **{int(default_bpm)} BPM** · **{default_groove}** · **{default_meter}** — "
-            "these shape the generated WAV."
+        render_backing_setup_context_strip(
+            st,
+            original_key=_orig_key,
+            practice_key=_practice_key,
+            meter=str(applied_meter or default_meter),
+            groove=_groove_label,
+            range_summary=_loop_summary,
+            default_bpm=int(default_bpm),
         )
 
-        render_backing_setup_group_open(
-            st,
-            "Playback range",
-            "Sections and repeats included in the backing track.",
+        render_backing_setup_section_open(st, "Feel & groove", icon="✨")
+        st.markdown('<div class="ui-backing-setup-fields-row">', unsafe_allow_html=True)
+        st.markdown("<div>", unsafe_allow_html=True)
+        render_backing_field_label(st, "Groove / feel", "")
+        st.selectbox(
+            "Groove style",
+            list(GROOVE_STYLE_CHOICES),
+            key="backing_groove_style",
+            label_visibility="collapsed",
         )
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div>", unsafe_allow_html=True)
+        render_backing_field_label(st, "Meter / time signature", "")
+        applied_meter = render_backing_meter_selector(
+            st,
+            song_default_meter=default_meter,
+            applied_meter=applied_meter,
+            user_override=meter_override,
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        render_backing_setup_section_close(st)
+
+        render_backing_setup_section_open(st, "Playback range & loops", icon="🔁")
         _render_backing_scope_controls(
             section_names,
             from_practice_handoff=from_practice_handoff,
             show_panel_header=False,
         )
-        render_backing_setup_group_close(st)
+        render_backing_setup_section_close(st)
 
-        render_backing_setup_group_open(
-            st,
-            "Feel & meter",
-            "Groove and time signature for synthesis.",
-        )
-        col_groove, col_meter = st.columns(2)
-        with col_groove:
-            render_backing_field_label(st, "Groove", "")
-            st.selectbox(
-                "Groove style",
-                list(GROOVE_STYLE_CHOICES),
-                key="backing_groove_style",
-                label_visibility="collapsed",
-            )
-        with col_meter:
-            applied_meter = render_backing_meter_selector(
-                st,
-                song_default_meter=default_meter,
-                applied_meter=applied_meter,
-                user_override=meter_override,
-            )
-        render_backing_setup_group_close(st)
-
-        render_backing_setup_group_open(
-            st,
-            "Key",
-            "Charts and playback follow display / practice key.",
-        )
-        st.markdown('<div class="ui-backing-setup-key-row">', unsafe_allow_html=True)
-        render_active_song_key_row(
-            st,
-            original_key=_orig_key,
-            practice_key=_practice_key,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-        render_backing_setup_group_close(st)
+        st.caption("Tempo (BPM) is in **Quick Playback** — regenerate after changes.")
 
         render_backing_panel_shell_close(st)
     return int(bpm), str(applied_meter)
