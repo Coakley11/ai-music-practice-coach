@@ -472,6 +472,9 @@ try:
         practice_setup_summary_badge_html,
         PRACTICE_QUICK_LINKS,
         render_backing_studio_deck_header,
+        render_backing_setup_group_open,
+        render_backing_setup_group_close,
+        render_active_song_key_row,
         render_active_song_hub_open,
         render_active_song_hub_hero,
         render_active_song_hub_close,
@@ -544,6 +547,15 @@ except Exception as _app_ui_first_err:
                 PRACTICE_QUICK_LINKS = getattr(_app_ui_mod, "PRACTICE_QUICK_LINKS", [])
                 render_backing_studio_deck_header = getattr(
                     _app_ui_mod, "render_backing_studio_deck_header", lambda _st: None
+                )
+                render_backing_setup_group_open = getattr(
+                    _app_ui_mod, "render_backing_setup_group_open", lambda *_a, **_k: None
+                )
+                render_backing_setup_group_close = getattr(
+                    _app_ui_mod, "render_backing_setup_group_close", lambda *_a, **_k: None
+                )
+                render_active_song_key_row = getattr(
+                    _app_ui_mod, "render_active_song_key_row", lambda *_a, **_k: None
                 )
                 render_backing_panel_header = getattr(
                     _app_ui_mod, "render_backing_panel_header", lambda *_a, **_k: None
@@ -7820,10 +7832,21 @@ def _render_backing_scope_controls(
     section_names: list[str],
     *,
     from_practice_handoff: bool,
+    show_panel_header: bool = True,
 ) -> None:
     """Scope and loop controls inside the Playback Setup card (keyed container)."""
     with st.container(key="backing_scope_panel", border=False):
-        render_backing_scope_panel_header(st)
+        if show_panel_header:
+            _loop_summary = backing_scope_loop_summary_text(
+                st.session_state.get("backing_track_scope", "Full song"),
+                single_section=str(st.session_state.get("backing_track_single_section", "")),
+                multi_sections=list(st.session_state.get("backing_track_multi_sections") or []),
+                loops=int(st.session_state.get("backing_track_loops", 2)),
+            )
+            render_backing_scope_panel_header(
+                st,
+                summary_html=backing_scope_loop_summary_badge_html(_loop_summary),
+            )
 
         st.markdown('<div class="ui-backing-scope-segment">', unsafe_allow_html=True)
         playback_scope = st.radio(
@@ -7882,8 +7905,7 @@ def _render_backing_scope_controls(
             loops=int(st.session_state.get("backing_track_loops", 2)),
         )
         st.markdown(
-            f'<div style="margin:0.35rem 0 0.15rem;">'
-            f"{backing_scope_loop_summary_badge_html(_loop_summary)}</div>",
+            f'<div style="margin:0.2rem 0 0;">{backing_scope_loop_summary_badge_html(_loop_summary)}</div>',
             unsafe_allow_html=True,
         )
 
@@ -7939,7 +7961,7 @@ def _render_backing_quick_playback_controls(
             st,
             kicker="Step 2",
             title="Quick Playback",
-            subtitle="Adjust tempo and section focus — summary below.",
+            subtitle="Live tempo & section focus — regenerate after changes.",
         )
         render_backing_transport_status(
             st,
@@ -7949,51 +7971,46 @@ def _render_backing_quick_playback_controls(
             meter=applied_meter,
             scope_label=scope_label,
         )
-        q1, q2 = st.columns([1, 1.35])
-        with q1:
-            render_backing_field_label(
-                st,
-                "Tempo (BPM)",
-                "Drag to match your practice speed.",
-            )
-            bpm = st.slider(
-                "Quick BPM",
-                50,
-                180,
-                widget_bpm,
-                5,
-                key=slider_key,
-                label_visibility="collapsed",
-                help="Synced with Playback setup — regenerate audio after changing tempo.",
-            )
-            st.session_state["backing_track_bpm"] = int(bpm)
-        with q2:
-            render_backing_field_label(
-                st,
-                "Quick section",
-                "Jump to a section without opening extra menus.",
-            )
-            cur_quick = st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song")
-            if cur_quick not in quick_opts:
-                cur_quick = "Full song"
-            idx = quick_opts.index(cur_quick)
+        st.markdown('<div class="ui-backing-quick-controls">', unsafe_allow_html=True)
+        st.markdown("<div>", unsafe_allow_html=True)
+        render_backing_field_label(st, "Tempo (BPM)", "")
+        bpm = st.slider(
+            "Quick BPM",
+            50,
+            180,
+            widget_bpm,
+            5,
+            key=slider_key,
+            label_visibility="collapsed",
+            help="Regenerate in Step 3 after changing tempo.",
+        )
+        st.session_state["backing_track_bpm"] = int(bpm)
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div>", unsafe_allow_html=True)
+        render_backing_field_label(st, "Section focus", "")
+        cur_quick = st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song")
+        if cur_quick not in quick_opts:
+            cur_quick = "Full song"
+        idx = quick_opts.index(cur_quick)
 
-            def _on_quick_section() -> None:
-                request_backing_quick_section_change(
-                    st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song"),
-                    section_names,
-                )
-                st.rerun()
-
-            st.selectbox(
-                "Quick section",
-                quick_opts,
-                index=idx,
-                key=BACKING_QUICK_SECTION_KEY,
-                on_change=_on_quick_section,
-                label_visibility="collapsed",
-                help="Synced with Playback setup — regenerate after changing section.",
+        def _on_quick_section() -> None:
+            request_backing_quick_section_change(
+                st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song"),
+                section_names,
             )
+            st.rerun()
+
+        st.selectbox(
+            "Quick section",
+            quick_opts,
+            index=idx,
+            key=BACKING_QUICK_SECTION_KEY,
+            on_change=_on_quick_section,
+            label_visibility="collapsed",
+            help="Synced with playback range in Step 1.",
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
         render_backing_panel_shell_close(st)
     return int(bpm)
 
@@ -8026,14 +8043,14 @@ def _render_backing_playback_setup_panel(
     _title = str((song_data or {}).get("title") or "Active song")
     _artist = str((song_data or {}).get("artist") or "")
     _orig_key, _practice_key = _active_song_key_pair(song_data or {})
-    _subtitle = (
-        f"Song defaults: **{int(default_bpm)} BPM** · **{default_groove}** · **{default_meter}**"
-        + (f" · {_title}" if _title else "")
-    )
+    _subtitle_parts = [_title]
+    if _artist:
+        _subtitle_parts.append(_artist)
+    _subtitle = " · ".join(_subtitle_parts)
     _badge = (
-        '<span class="ui-backing-panel-badge ready">● Audio ready</span>'
+        '<span class="ui-backing-panel-badge ready">● Ready</span>'
         if backing_ready
-        else '<span class="ui-backing-panel-badge">○ Not generated yet</span>'
+        else '<span class="ui-backing-panel-badge">○ Not generated</span>'
     )
 
     with st.container(key="backing_playback_setup", border=False):
@@ -8045,22 +8062,31 @@ def _render_backing_playback_setup_panel(
             subtitle=_subtitle,
             badge_html=_badge,
         )
-        st.markdown(
-            f'<p class="ui-backing-setup-summary" style="margin:0 0 .55rem;font-size:.82rem;color:#475569;">'
-            f"Defaults: <strong>{int(default_bpm)} BPM</strong> · <strong>{html.escape(default_groove)}</strong> · "
-            f"<strong>{html.escape(default_meter)}</strong> · original <strong>{html.escape(_orig_key)}</strong> · "
-            f"display <strong>{html.escape(_practice_key)}</strong></p>",
-            unsafe_allow_html=True,
+        st.caption(
+            f"Song defaults **{int(default_bpm)} BPM** · **{default_groove}** · **{default_meter}** — "
+            "these shape the generated WAV."
         )
-        col_tempo, col_groove, col_meter, col_status = st.columns([0.85, 1.15, 1.35, 0.9])
-        with col_tempo:
-            render_backing_field_label(st, "Tempo", "Use Quick playback to adjust.")
-            st.markdown(
-                f'<p class="ui-playback-setup-bpm">{bpm} <span>BPM</span></p>',
-                unsafe_allow_html=True,
-            )
+
+        render_backing_setup_group_open(
+            st,
+            "Playback range",
+            "Sections and repeats included in the backing track.",
+        )
+        _render_backing_scope_controls(
+            section_names,
+            from_practice_handoff=from_practice_handoff,
+            show_panel_header=False,
+        )
+        render_backing_setup_group_close(st)
+
+        render_backing_setup_group_open(
+            st,
+            "Feel & meter",
+            "Groove and time signature for synthesis.",
+        )
+        col_groove, col_meter = st.columns(2)
         with col_groove:
-            render_backing_field_label(st, "Groove / style", "Rhythm feel for the backing track.")
+            render_backing_field_label(st, "Groove", "")
             st.selectbox(
                 "Groove style",
                 list(GROOVE_STYLE_CHOICES),
@@ -8074,23 +8100,22 @@ def _render_backing_playback_setup_panel(
                 applied_meter=applied_meter,
                 user_override=meter_override,
             )
-        with col_status:
-            render_backing_field_label(st, "Engine", "Generate audio in Step 3.")
-            if backing_ready:
-                st.markdown(
-                    '<span class="ui-playback-status-badge ready">✅ Ready</span>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    '<span class="ui-playback-status-badge">⏳ Awaiting generate</span>',
-                    unsafe_allow_html=True,
-                )
-        st.markdown('<div class="ui-backing-scope-divider"></div>', unsafe_allow_html=True)
-        _render_backing_scope_controls(
-            section_names,
-            from_practice_handoff=from_practice_handoff,
+        render_backing_setup_group_close(st)
+
+        render_backing_setup_group_open(
+            st,
+            "Key",
+            "Charts and playback follow display / practice key.",
         )
+        st.markdown('<div class="ui-backing-setup-key-row">', unsafe_allow_html=True)
+        render_active_song_key_row(
+            st,
+            original_key=_orig_key,
+            practice_key=_practice_key,
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        render_backing_setup_group_close(st)
+
         render_backing_panel_shell_close(st)
     return int(bpm), str(applied_meter)
 
@@ -9729,65 +9754,65 @@ elif _studio_page == "backing":
             st,
             kicker="Step 3",
             title="Generate & play",
-            subtitle="Build the backing WAV, then play along or download.",
+            subtitle="Build WAV from your setup, then play or download.",
             badge_html=_transport_badge,
         )
-        st.markdown('<div class="ui-backing-transport-actions">', unsafe_allow_html=True)
-        _gen_col, _stop_col = st.columns([2.2, 1])
-        with _gen_col:
-            if _backing_audio_ready:
-                _play_clicked = st.button(
-                    "▶  Play backing track",
-                    key="play_backing_btn",
-                    type="primary",
-                    use_container_width=True,
-                )
-                _gen_clicked = False
-            else:
-                _gen_clicked = st.button(
-                    "⚡  Generate backing track",
-                    key="gen_backing_btn",
-                    disabled=not bool(backing_chords),
-                    type="primary",
-                    use_container_width=True,
-                )
-                _play_clicked = False
-        with _stop_col:
-            if st.button(
-                "■  Stop",
-                key="stop_backing_btn",
-                disabled=not bool(st.session_state.get("_last_backing_wav")),
+        render_backing_transport_status(
+            st,
+            ready=_backing_audio_ready,
+            bpm=int(bpm),
+            groove=resolved_groove,
+            meter=backing_time_signature,
+            scope_label=section_scope_label,
+        )
+        st.markdown('<div class="ui-backing-transport-toolbar">', unsafe_allow_html=True)
+        if _backing_audio_ready:
+            _play_clicked = st.button(
+                "▶ Play",
+                key="play_backing_btn",
+                type="primary",
                 use_container_width=True,
-            ):
-                _stop_backing_playback()
-                st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        if not _backing_audio_ready:
-            st.markdown(
-                f'<p class="ui-backing-transport-hint">'
-                f"Defaults: <strong>{_default_bpm} BPM</strong> · <strong>{html.escape(_default_groove)}</strong> · "
-                f"<strong>{html.escape(_default_meter)}</strong>. "
-                f"Tweak setup above, then generate — usually ready in a second or two.</p>",
-                unsafe_allow_html=True,
             )
+            _gen_clicked = False
         else:
-            st.markdown(
-                '<p class="ui-backing-transport-hint">'
-                "Audio matches your current settings — press <strong>Play</strong> or use the player below.</p>",
-                unsafe_allow_html=True,
+            _gen_clicked = st.button(
+                "⚡ Generate",
+                key="gen_backing_btn",
+                disabled=not bool(backing_chords),
+                type="primary",
+                use_container_width=True,
             )
-
+            _play_clicked = False
+        if st.button(
+            "■ Stop",
+            key="stop_backing_btn",
+            disabled=not bool(st.session_state.get("_last_backing_wav")),
+            use_container_width=True,
+        ):
+            _stop_backing_playback()
+            st.rerun()
         if _backing_audio_ready:
             _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
             st.download_button(
-                "⬇  Download backing WAV",
+                "⬇ Download WAV",
                 st.session_state["_last_backing_wav"],
                 file_name=f"{song.replace(' ', '_')}_{_scope_bit}_{form_loops}loops.wav",
                 mime="audio/wav",
                 key="dl_backing_btn",
                 use_container_width=True,
             )
+        else:
+            st.markdown(
+                '<p class="ui-backing-transport-hint" style="margin:0.35rem 0 0;">'
+                "Generate to enable download.</p>",
+                unsafe_allow_html=True,
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if not _backing_audio_ready:
+            st.caption("Adjust Steps 1–2, then generate — usually ready in a second or two.")
+        else:
+            st.caption("Audio matches current settings — play below or open the lead sheet.")
         render_backing_panel_shell_close(st)
 
     # Karaoke auto-generate: when a transition flips the active song in a

@@ -2220,8 +2220,8 @@ def _backing_studio_panel_css() -> str:
 }
 .ui-backing-panel-shell {
   border: 1px solid rgba(16, 185, 129, 0.34);
-  border-radius: 18px;
-  padding: 1.15rem 1.25rem 1.2rem;
+  border-radius: 14px;
+  padding: 0.72rem 0.85rem 0.78rem;
   margin: 0 0 0.15rem;
   background:
     radial-gradient(120% 90% at 6% -10%, rgba(16, 185, 129, 0.16) 0%, transparent 55%),
@@ -2283,18 +2283,18 @@ def _backing_studio_panel_css() -> str:
 }
 .ui-backing-panel-title {
   margin: 0;
-  font-size: 1.28rem;
-  font-weight: 900;
-  letter-spacing: -0.025em;
+  font-size: 1.02rem;
+  font-weight: 850;
+  letter-spacing: -0.02em;
   color: #0f172a;
   line-height: 1.2;
 }
 .ui-backing-panel-sub {
-  margin: 0.32rem 0 0;
-  font-size: 0.84rem;
+  margin: 0.18rem 0 0;
+  font-size: 0.76rem;
   color: #64748b;
-  line-height: 1.45;
-  max-width: 44rem;
+  line-height: 1.35;
+  max-width: 40rem;
 }
 .ui-backing-panel-badge {
   display: inline-flex;
@@ -2359,10 +2359,10 @@ def _backing_studio_panel_css() -> str:
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem 0.65rem;
-  padding: 0.62rem 0.8rem;
-  margin: 0 0 0.85rem;
-  border-radius: 12px;
+  gap: 0.35rem 0.5rem;
+  padding: 0.42rem 0.58rem;
+  margin: 0 0 0.55rem;
+  border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.38);
   background: rgba(248, 250, 252, 0.98);
 }
@@ -2458,10 +2458,10 @@ def _backing_studio_panel_css() -> str:
 .ui-backing-panel-shell.is-transport .st-key-play_backing_btn [data-testid="stBaseButton-primary"],
 .st-key-backing_transport .st-key-gen_backing_btn button,
 .st-key-backing_transport .st-key-play_backing_btn button {
-  min-height: 3.1rem !important;
-  font-size: 0.98rem !important;
+  min-height: 2.55rem !important;
+  font-size: 0.88rem !important;
   font-weight: 800 !important;
-  border-radius: 12px !important;
+  border-radius: 10px !important;
   letter-spacing: 0.02em !important;
 }
 .ui-backing-panel-shell.is-transport .st-key-gen_backing_btn button,
@@ -2483,57 +2483,124 @@ def _backing_studio_panel_css() -> str:
 .ui-backing-panel-shell.is-transport .st-key-stop_backing_btn button,
 .ui-backing-panel-shell.is-transport .st-key-stop_backing_btn [data-testid="stBaseButton-secondary"],
 .st-key-backing_transport .st-key-stop_backing_btn button {
-  min-height: 3.1rem !important;
+  min-height: 2.55rem !important;
   font-weight: 750 !important;
-  border-radius: 12px !important;
+  border-radius: 10px !important;
   border: 2px solid rgba(239, 68, 68, 0.5) !important;
   background: rgba(254, 242, 242, 0.98) !important;
   color: #b91c1c !important;
 }
 .ui-backing-panel-shell.is-transport .st-key-dl_backing_btn button,
 .st-key-backing_transport .st-key-dl_backing_btn button {
-  min-height: 2.75rem !important;
+  min-height: 2.35rem !important;
+  font-size: 0.82rem !important;
   font-weight: 700 !important;
-  border-radius: 10px !important;
+  border-radius: 9px !important;
   border: 1px dashed rgba(99, 102, 241, 0.5) !important;
   background: rgba(238, 242, 255, 0.85) !important;
   color: #4338ca !important;
 }
 .ui-backing-studio-deck-head {
-  margin: 0.15rem 0 1.1rem 0;
-  padding: 1rem 1.15rem 1.05rem;
-  border-radius: 18px;
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(14, 165, 233, 0.1) 55%, rgba(99, 102, 241, 0.1) 100%);
-  box-shadow: 0 12px 32px -20px rgba(15, 23, 42, 0.4);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.85rem;
+  margin: 0 0 0.55rem 0;
+  padding: 0.48rem 0.72rem;
+  border-radius: 11px;
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(14, 165, 233, 0.06) 100%);
+  box-shadow: 0 4px 14px -10px rgba(15, 23, 42, 0.28);
 }
+.ui-backing-studio-deck-main { flex: 1 1 12rem; min-width: 0; }
 .ui-backing-studio-kicker {
   display: inline-block;
-  font-size: 0.64rem;
+  font-size: 0.58rem;
   font-weight: 850;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #059669;
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.12rem;
 }
 .ui-backing-studio-title {
   margin: 0;
-  font-size: 1.45rem;
-  font-weight: 900;
-  letter-spacing: -0.03em;
+  font-size: 1.02rem;
+  font-weight: 850;
+  letter-spacing: -0.02em;
   color: #0f172a;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 .ui-backing-studio-sub {
-  margin: 0.4rem 0 0;
-  font-size: 0.88rem;
+  margin: 0;
+  font-size: 0.72rem;
+  color: #64748b;
+  line-height: 1.35;
+  max-width: 36rem;
+}
+.ui-backing-studio-steps {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  align-items: center;
+}
+.ui-backing-studio-step {
+  font-size: 0.66rem;
+  font-weight: 750;
+  padding: 0.16rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.88);
   color: #475569;
-  line-height: 1.45;
-  max-width: 42rem;
+}
+.ui-backing-setup-group {
+  margin: 0 0 0.5rem;
+  padding: 0.45rem 0.55rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+}
+.ui-backing-setup-group-title {
+  margin: 0 0 0.12rem;
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #334155;
+}
+.ui-backing-setup-group-hint {
+  margin: 0 0 0.38rem;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  line-height: 1.3;
+}
+.ui-backing-setup-key-row { margin: 0.1rem 0 0; }
+.ui-backing-quick-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 0.55rem 0.75rem;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .ui-backing-quick-controls { grid-template-columns: 1fr; }
+}
+.ui-backing-transport-toolbar {
+  display: grid;
+  grid-template-columns: 1.4fr 0.7fr 1fr;
+  gap: 0.45rem;
+  align-items: stretch;
+  margin: 0.15rem 0 0.35rem;
+}
+@media (max-width: 720px) {
+  .ui-backing-transport-toolbar { grid-template-columns: 1fr 1fr; }
+}
+.st-key-backing_playback_setup,
+.st-key-backing_quick_playback,
+.st-key-backing_transport {
+  margin: 0.4rem 0 0.55rem !important;
 }
 body[data-backing-studio-ui] .ui-backing-studio-deck-head {
-  outline: 2px solid rgba(16, 185, 129, 0.2);
-  outline-offset: 2px;
+  outline: none;
 }
 """
 
@@ -2548,25 +2615,15 @@ def _backing_scope_panel_css() -> str:
   padding: 1rem 1.1rem 0.85rem !important;
   border-radius: 16px !important;
   border: 2px solid rgba(99, 102, 241, 0.4) !important;
-  background:
-    radial-gradient(110% 80% at 0% -20%, rgba(99, 102, 241, 0.14) 0%, transparent 55%),
-    radial-gradient(90% 70% at 100% 110%, rgba(34, 197, 94, 0.1) 0%, transparent 50%),
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 62%, #f1f5f9 100%) !important;
-  box-shadow:
-    0 14px 36px -22px rgba(79, 70, 229, 0.28),
-    0 2px 8px rgba(15, 23, 42, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+  background: transparent !important;
+  box-shadow: none !important;
   position: relative !important;
-  overflow: hidden !important;
+  overflow: visible !important;
 }
 .st-key-backing_scope_panel::before,
 .ui-backing-scope-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 4px;
-  z-index: 1;
-  background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.75), rgba(34, 197, 94, 0.65), transparent);
+  display: none !important;
+  content: none !important;
 }
 .ui-backing-scope-panel-head {
   display: flex;
@@ -5301,9 +5358,9 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v4"
+STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v5"
 
-BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v7"
+BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v8"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
 PRACTICE_SETUP_UI_VERSION = "2026-05-28-practice-v3"
 CREATIVE_STUDIO_UI_VERSION = "2026-05-28-creative-v2"
@@ -5678,17 +5735,41 @@ def render_practice_control_panel_header(st: Any) -> None:
 
 
 def render_backing_studio_deck_header(st: Any) -> None:
-    """Section header above the three-step backing control deck."""
+    """Compact section header above the three-step backing control deck."""
     st.markdown(
-        f"""
+        """
 <div class="ui-backing-studio-deck-head">
-  <span class="ui-backing-studio-kicker">Backing studio</span>
-  <h2 class="ui-backing-studio-title">Playback &amp; accompaniment</h2>
-  <p class="ui-backing-studio-sub">Three steps below — <strong>Setup</strong> groove &amp; range, <strong>Quick</strong> tempo &amp; section, then <strong>Generate &amp; play</strong>. Cards use the same polished style as Song Selection.</p>
+  <div class="ui-backing-studio-deck-main">
+    <span class="ui-backing-studio-kicker">Backing studio</span>
+    <h2 class="ui-backing-studio-title">Playback &amp; accompaniment</h2>
+    <p class="ui-backing-studio-sub">Setup range &amp; feel → adjust tempo → generate &amp; play.</p>
+  </div>
+  <div class="ui-backing-studio-steps" aria-label="Workflow steps">
+    <span class="ui-backing-studio-step">1 Setup</span>
+    <span class="ui-backing-studio-step">2 Quick</span>
+    <span class="ui-backing-studio-step">3 Generate</span>
+  </div>
 </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_backing_setup_group_open(st: Any, title: str, hint: str = "") -> None:
+    """Grouped block inside Playback Setup (range / feel / key)."""
+    hint_html = (
+        f'<p class="ui-backing-setup-group-hint">{html.escape(hint)}</p>' if hint else ""
+    )
+    st.markdown(
+        f'<div class="ui-backing-setup-group">'
+        f'<p class="ui-backing-setup-group-title">{html.escape(title)}</p>'
+        f"{hint_html}",
+        unsafe_allow_html=True,
+    )
+
+
+def render_backing_setup_group_close(st: Any) -> None:
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_backing_field_label(st: Any, label: str, hint: str = "") -> None:
