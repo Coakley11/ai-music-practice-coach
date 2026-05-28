@@ -466,6 +466,12 @@ try:
         BACKING_SCOPE_QUICK_LINKS,
         inject_backing_studio_styles,
         inject_song_picker_page_styles,
+        inject_practice_page_styles,
+        render_practice_control_deck_header,
+        render_practice_control_panel_header,
+        practice_setup_summary_text,
+        practice_setup_summary_badge_html,
+        PRACTICE_QUICK_LINKS,
         render_backing_studio_deck_header,
         render_active_song_hub_open,
         render_active_song_hub_hero,
@@ -524,6 +530,19 @@ except Exception as _app_ui_first_err:
                 inject_song_picker_page_styles = getattr(
                     _app_ui_mod, "inject_song_picker_page_styles", lambda _st: None
                 )
+                inject_practice_page_styles = getattr(
+                    _app_ui_mod, "inject_practice_page_styles", lambda _st: None
+                )
+                render_practice_control_panel_header = getattr(
+                    _app_ui_mod, "render_practice_control_panel_header", lambda *_a, **_k: None
+                )
+                practice_setup_summary_text = getattr(
+                    _app_ui_mod, "practice_setup_summary_text", lambda **_k: ""
+                )
+                practice_setup_summary_badge_html = getattr(
+                    _app_ui_mod, "practice_setup_summary_badge_html", lambda s: f"<span>{s}</span>"
+                )
+                PRACTICE_QUICK_LINKS = getattr(_app_ui_mod, "PRACTICE_QUICK_LINKS", [])
                 render_backing_studio_deck_header = getattr(
                     _app_ui_mod, "render_backing_studio_deck_header", lambda _st: None
                 )
@@ -7451,7 +7470,7 @@ def _render_practice_setup_panel(
     instrument_options: list[str],
     default_groove: str,
 ) -> None:
-    """Practice-only setup controls (instrument, level, focus, session length, groove)."""
+    """Practice Control Center — instrument, level, focus, groove, session length."""
     from practice_ui_labels import (
         GROOVE_ICONS,
         INSTRUMENT_ICONS,
@@ -7460,12 +7479,6 @@ def _render_practice_setup_panel(
         setup_pill_html,
     )
 
-    st.markdown(
-        '<div class="practice-setup-card">'
-        '<p class="ui-page-nav-label">Practice setup</p></div>',
-        unsafe_allow_html=True,
-    )
-    levels = ["Beginner", "Intermediate", "Advanced"]
     grooves = [
         "Auto",
         "Pop groove",
@@ -7478,52 +7491,80 @@ def _render_practice_setup_panel(
         "Klezmer groove",
         "Jewish ballad",
     ]
-
-    st.markdown(
-        setup_pill_html(st.session_state.get("instrument", "Piano"), INSTRUMENT_ICONS.get(st.session_state.get("instrument", "Piano"), "🎵"))
-        + " "
-        + setup_pill_html(st.session_state.get("level", "Intermediate"), LEVEL_ICONS.get(st.session_state.get("level", "Intermediate"), "🌱"))
-        + " "
-        + setup_pill_html(st.session_state.get("focus", "General"), icon_for_focus(st.session_state.get("focus", "General"))),
-        unsafe_allow_html=True,
-    )
-    st.caption(
-        "Instrument, level, and focus sync with the **sidebar** and the quick controls inside "
-        "Practice Coach and Chord Finder."
-    )
-
+    _instrument = str(st.session_state.get("instrument", "Piano"))
+    _level = str(st.session_state.get("level", "Intermediate"))
+    _focus = str(st.session_state.get("focus", "General"))
     st.session_state.setdefault("practice_groove_style", default_groove)
-    g1, g2 = st.columns([1, 1])
-    with g1:
-        st.selectbox(
-            "Rhythm / groove feel",
-            grooves,
-            key="practice_groove_style",
-        )
+    st.session_state.setdefault("practice_minutes", 30)
+    _groove = str(st.session_state.get("practice_groove_style", default_groove))
+    _minutes = int(st.session_state.get("practice_minutes", 30))
+
+    with st.container(key="practice_control_panel", border=False):
+        render_practice_control_panel_header(st)
+
         st.markdown(
-            setup_pill_html(
-                st.session_state["practice_groove_style"],
-                GROOVE_ICONS.get(st.session_state["practice_groove_style"], "✨"),
-            ),
+            '<div class="ui-practice-meta-row">'
+            + setup_pill_html(_instrument, INSTRUMENT_ICONS.get(_instrument, "🎵"))
+            + setup_pill_html(_level, LEVEL_ICONS.get(_level, "🌱"))
+            + setup_pill_html(_focus, icon_for_focus(_focus))
+            + "</div>",
             unsafe_allow_html=True,
         )
-    with g2:
-        st.session_state.setdefault("practice_minutes", 30)
-        st.slider(
-            "Practice length (minutes)",
-            10,
-            120,
-            int(st.session_state.get("practice_minutes", 30)),
-            5,
-            key="practice_minutes",
+
+        g1, g2 = st.columns([1, 1])
+        with g1:
+            st.markdown('<div class="ui-practice-control-field">', unsafe_allow_html=True)
+            render_backing_field_label(st, "Rhythm / groove feel", "Shapes coach pacing and backing style hints.")
+            st.selectbox(
+                "Rhythm / groove feel",
+                grooves,
+                key="practice_groove_style",
+                label_visibility="collapsed",
+            )
+            _groove_icon = GROOVE_ICONS.get(st.session_state.get("practice_groove_style", _groove), "✨")
+            _groove_label = html.escape(str(st.session_state.get("practice_groove_style", _groove)))
+            st.markdown(
+                f'<span class="ui-practice-groove-badge">{html.escape(_groove_icon)} {_groove_label}</span>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+        with g2:
+            st.markdown('<div class="ui-practice-control-field">', unsafe_allow_html=True)
+            render_backing_field_label(st, "Practice length", "Session goal in minutes — coach scales to this.")
+            st.slider(
+                "Practice length (minutes)",
+                10,
+                120,
+                int(st.session_state.get("practice_minutes", 30)),
+                5,
+                key="practice_minutes",
+                label_visibility="collapsed",
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        _summary = practice_setup_summary_text(
+            instrument=str(st.session_state.get("instrument", _instrument)),
+            level=str(st.session_state.get("level", _level)),
+            focus=str(st.session_state.get("focus", _focus)),
+            groove=str(st.session_state.get("practice_groove_style", _groove)),
+            minutes=int(st.session_state.get("practice_minutes", _minutes)),
         )
-    st.caption("Coach and charts follow these choices. Tempo and section loops are on **Backing Track**.")
-    render_cross_page_links(
-        st.session_state,
-        current_page="practice",
-        rerun_fn=st.rerun,
-        key_prefix="practice_x",
-    )
+        st.markdown(practice_setup_summary_badge_html(_summary), unsafe_allow_html=True)
+
+        st.markdown(
+            '<p class="ui-practice-panel-hint">Coach and charts follow these choices. '
+            "Tempo and section loops live on <strong>Backing Track</strong>.</p>",
+            unsafe_allow_html=True,
+        )
+
+        render_cross_page_links(
+            st.session_state,
+            current_page="practice",
+            rerun_fn=st.rerun,
+            key_prefix="practice_nav",
+            pages=PRACTICE_QUICK_LINKS,
+            wrapper_class="ui-cross-links ui-practice-quicklinks",
+        )
 
 
 def _studio_page_header(icon: str, title: str, subtitle: str = "") -> None:
@@ -8227,6 +8268,7 @@ if _studio_page == "practice":
 
     ensure_page_initialized(st.session_state, "practice")
     note_page_visit(st.session_state, "practice")
+    inject_practice_page_styles(st)
     _render_page_quick_nav("practice")
 
     _studio_page_header(
@@ -8236,6 +8278,7 @@ if _studio_page == "practice":
     )
 
     render_scroll_anchor_marker(st, ANCHOR_PRACTICE_COACH)
+    render_practice_control_deck_header(st)
     _render_practice_setup_panel(
         instrument_options=_instrument_options,
         default_groove=default_groove_style,

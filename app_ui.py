@@ -2702,8 +2702,226 @@ def _backing_scope_panel_css() -> str:
 """
 
 
+def _practice_control_panel_css() -> str:
+    """Practice Control Center — keyed container (Streamlit 1.49+)."""
+    return """
+/* Practice Control Center */
+.ui-practice-studio-deck-head {
+  margin: 0.2rem 0 0.85rem 0;
+  padding: 0.9rem 1rem 0.95rem;
+  border-radius: 16px;
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.14) 0%, rgba(249, 115, 22, 0.08) 55%, rgba(99, 102, 241, 0.08) 100%);
+  box-shadow: 0 10px 28px -18px rgba(14, 165, 233, 0.35);
+}
+.ui-practice-studio-kicker {
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #0284c7;
+  margin: 0 0 0.35rem;
+}
+.ui-practice-studio-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+  line-height: 1.15;
+}
+.ui-practice-studio-sub {
+  margin: 0.35rem 0 0;
+  font-size: 0.86rem;
+  color: #475569;
+  line-height: 1.45;
+  max-width: 42rem;
+}
+body[data-practice-setup-ui] .ui-practice-studio-deck-head {
+  outline: 2px solid rgba(14, 165, 233, 0.22);
+  outline-offset: 2px;
+}
+.st-key-practice_control_panel {
+  margin: 0.35rem 0 0.85rem !important;
+  padding: 1.05rem 1.15rem 0.9rem !important;
+  border-radius: 18px !important;
+  border: 2px solid rgba(14, 165, 233, 0.48) !important;
+  background:
+    radial-gradient(110% 80% at 0% -15%, rgba(14, 165, 233, 0.16) 0%, transparent 55%),
+    radial-gradient(90% 70% at 100% 105%, rgba(249, 115, 22, 0.1) 0%, transparent 50%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 62%, #f1f5f9 100%) !important;
+  box-shadow:
+    0 14px 36px -22px rgba(14, 165, 233, 0.28),
+    0 2px 8px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+.st-key-practice_control_panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  z-index: 1;
+  background: linear-gradient(90deg, transparent, rgba(14, 165, 233, 0.75), rgba(249, 115, 22, 0.55), transparent);
+}
+.ui-practice-control-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin: 0 0 0.7rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.35);
+}
+.ui-practice-control-kicker {
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #0284c7;
+  margin: 0 0 0.3rem;
+}
+.ui-practice-control-title {
+  margin: 0;
+  font-size: 1.28rem;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  color: #0f172a;
+  line-height: 1.15;
+}
+body[data-practice-setup-ui] .st-key-practice_control_panel {
+  outline: 2px solid rgba(14, 165, 233, 0.18);
+  outline-offset: 2px;
+}
+.ui-practice-control-sub {
+  margin: 0.28rem 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  line-height: 1.4;
+  max-width: 40rem;
+}
+.ui-practice-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.5rem;
+  margin: 0 0 0.65rem;
+}
+.st-key-practice_control_panel .setup-field-pill,
+.ui-practice-meta-row .setup-field-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #0c4a6e;
+  background: linear-gradient(135deg, rgba(224, 242, 254, 0.98), rgba(255, 255, 255, 0.95));
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 999px;
+  padding: 0.32rem 0.72rem;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.1);
+}
+.ui-practice-summary-badge {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.32rem 0.7rem;
+  margin: 0 0 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 750;
+  color: #334155;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(255, 255, 255, 0.95);
+  line-height: 1.45;
+}
+.ui-practice-summary-badge strong {
+  color: #0369a1;
+  font-weight: 900;
+}
+.ui-practice-controls-grid {
+  margin: 0 0 0.5rem;
+}
+.ui-practice-control-field {
+  padding: 0.55rem 0.65rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(255, 255, 255, 0.9);
+  margin-bottom: 0.5rem;
+}
+.ui-practice-groove-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+  padding: 0.22rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #c2410c;
+  border: 1px solid rgba(251, 146, 60, 0.5);
+  background: linear-gradient(135deg, rgba(255, 237, 213, 0.95), rgba(255, 247, 237, 0.9));
+}
+.ui-practice-panel-hint {
+  margin: 0.15rem 0 0.55rem;
+  font-size: 0.78rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+.st-key-practice_control_panel [data-testid="stSelectbox"] label,
+.st-key-practice_control_panel [data-testid="stSlider"] label {
+  display: none !important;
+}
+.st-key-practice_control_panel [data-testid="stSelectbox"] > div > div,
+.st-key-practice_control_panel [data-testid="stSlider"] > div > div {
+  border-radius: 10px !important;
+  border-color: rgba(14, 165, 233, 0.4) !important;
+  background: #fff !important;
+  min-height: 2.45rem !important;
+}
+.ui-practice-quicklinks.ui-cross-links {
+  margin: 0.45rem 0 0 !important;
+  padding-top: 0.5rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.32);
+}
+.ui-practice-quicklinks.ui-cross-links .stButton > button {
+  font-size: 0.68rem !important;
+  font-weight: 750 !important;
+  min-height: 1.85rem !important;
+  padding: 0.28rem 0.45rem !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(14, 165, 233, 0.35) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+}
+.st-key-practice_control_panel [class*="st-key-practice_nav_to_"] .stButton > button {
+  background: linear-gradient(135deg, #f8fafc, #ffffff) !important;
+  color: #0f172a !important;
+}
+.st-key-practice_control_panel .st-key-practice_nav_to_picker .stButton > button {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7) !important;
+  color: #fff !important;
+  border: none !important;
+}
+.st-key-practice_control_panel [data-testid="column"] {
+  padding: 0 0.35rem !important;
+}
+/* Legacy plain card — hide if old markup ever renders */
+.practice-setup-card:has(.ui-page-nav-label:only-child) {
+  display: none !important;
+}
+"""
+
+
 def _backing_studio_all_css() -> str:
     return _backing_studio_panel_css() + _backing_scope_panel_css()
+
+
+def _studio_panels_css() -> str:
+    return _backing_studio_all_css() + _practice_control_panel_css()
 
 
 def _inject_app_theme_polish() -> None:
@@ -4059,7 +4277,7 @@ __BACKING_STUDIO_PANEL_CSS__
 </style>
         """
         .replace("__UI_POLISH_VERSION__", _UI_POLISH_VERSION)
-        .replace("__BACKING_STUDIO_PANEL_CSS__", _backing_studio_all_css()),
+        .replace("__BACKING_STUDIO_PANEL_CSS__", _studio_panels_css()),
         unsafe_allow_html=True,
     )
 
@@ -4333,6 +4551,14 @@ def render_active_song_key_row(
 
 BACKING_STUDIO_UI_VERSION = "2026-05-27-studio-v6"
 SONG_PICKER_UI_VERSION = "2026-05-27-picker-v2"
+PRACTICE_SETUP_UI_VERSION = "2026-05-27-practice-v2"
+
+PRACTICE_QUICK_LINKS: list[tuple[str, str]] = [
+    ("picker", "Songs"),
+    ("backing", "Backing Track"),
+    ("creative", "Creative Lab"),
+    ("custom", "Custom"),
+]
 
 
 def inject_backing_studio_styles(st: Any) -> None:
@@ -4357,6 +4583,76 @@ def inject_song_picker_page_styles(st: Any) -> None:
 body[data-song-picker-ui] .ui-active-song-card .ui-active-song-facts dt:first-child {{ color: #4f46e5; }}
 </style>
 <script>try{{document.body.dataset.songPickerUi="{SONG_PICKER_UI_VERSION}";}}catch(e){{}}</script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def inject_practice_page_styles(st: Any) -> None:
+    """Re-inject Practice Control Center CSS on the Practice page."""
+    st.markdown(
+        f"""
+<style data-practice-setup-ui="{PRACTICE_SETUP_UI_VERSION}">
+{_practice_control_panel_css()}
+</style>
+<script>try{{document.body.dataset.practiceSetupUi="{PRACTICE_SETUP_UI_VERSION}";document.body.classList.add("practice-page");}}catch(e){{}}</script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def practice_setup_summary_text(
+    *,
+    instrument: str,
+    level: str,
+    focus: str,
+    groove: str,
+    minutes: int,
+) -> str:
+    """One-line session summary for the practice setup badge."""
+    parts = [
+        (instrument or "Piano").strip(),
+        (level or "Intermediate").strip(),
+        (focus or "General").strip(),
+        (groove or "Auto").strip(),
+        f"{max(10, int(minutes or 30))} min",
+    ]
+    return " · ".join(html.escape(p) for p in parts if p)
+
+
+def practice_setup_summary_badge_html(summary: str) -> str:
+    text = summary or ""
+    return (
+        f'<span class="ui-practice-summary-badge" title="Current practice session setup">'
+        f"<strong>Session</strong> {text}</span>"
+    )
+
+
+def render_practice_control_deck_header(st: Any) -> None:
+    """Banner above Practice Control Center (visible deploy marker)."""
+    st.markdown(
+        f"""
+<div class="ui-practice-studio-deck-head" data-practice-deck-ui="{PRACTICE_SETUP_UI_VERSION}">
+  <span class="ui-practice-studio-kicker">Practice studio</span>
+  <h2 class="ui-practice-studio-title">Session control center</h2>
+  <p class="ui-practice-studio-sub">Configure your instrument, level, focus, groove, and practice length — then jump into coaching below.</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_practice_control_panel_header(st: Any) -> None:
+    """Title row for the Practice Control Center panel."""
+    st.markdown(
+        f"""
+<div class="ui-practice-control-head" data-practice-panel-ui="{PRACTICE_SETUP_UI_VERSION}">
+  <div>
+    <span class="ui-practice-control-kicker">Session setup</span>
+    <p class="ui-practice-control-title">Practice Control Center</p>
+    <p class="ui-practice-control-sub">Your instrument, level, and focus sync with the sidebar — groove and length shape coaching below.</p>
+  </div>
+</div>
         """,
         unsafe_allow_html=True,
     )
