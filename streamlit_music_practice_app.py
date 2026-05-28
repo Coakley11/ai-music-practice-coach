@@ -5903,6 +5903,44 @@ def _render_practice_session_card(entry: dict) -> None:
     )
 
 
+def _inject_practice_toolkit_styles() -> None:
+    st.markdown(
+        """
+<style>
+.st-key-practice_toolkit_panel{
+  border:1px solid rgba(148,163,184,.26);border-radius:16px;
+  background:linear-gradient(180deg,rgba(255,255,255,.97),rgba(248,250,252,.95));
+  box-shadow:0 14px 30px rgba(15,23,42,.08);padding:.85rem .9rem .7rem;margin:.4rem 0 .6rem;
+}
+.ui-practice-toolkit-head{margin:0 0 .5rem;}
+.ui-practice-toolkit-title{margin:0;font-size:1rem;font-weight:850;color:#0f172a;}
+.ui-practice-toolkit-sub{margin:.18rem 0 0;font-size:.82rem;color:#64748b;}
+.st-key-practice_toolkit_panel .st-key-practice_send_to_backing .stButton > button{
+  min-height:2.3rem;padding:.3rem .9rem;font-weight:800;border-radius:10px;
+}
+.ui-practice-tool-actions{display:flex;flex-wrap:wrap;gap:.35rem;margin:.45rem 0 .2rem;}
+.ui-practice-tool-action-chip{
+  border:1px solid rgba(148,163,184,.28);border-radius:999px;padding:.22rem .52rem;
+  background:#f8fafc;color:#1e293b;font-size:.74rem;font-weight:700;
+}
+.ui-practice-guidance-card{
+  border:1px solid rgba(59,130,246,.22);border-radius:12px;padding:.58rem .68rem;
+  background:linear-gradient(145deg,rgba(219,234,254,.58),rgba(224,242,254,.46));
+  color:#0f172a;font-size:.8rem;margin:.42rem 0 .15rem;
+}
+.st-key-practice_tool_tuner,.st-key-practice_tool_metronome,.st-key-practice_tool_chart,.st-key-practice_tool_coach{
+  border:1px solid rgba(148,163,184,.24);border-radius:13px;background:rgba(255,255,255,.92);
+  padding:.52rem .65rem .28rem;margin:.42rem 0;
+}
+.ui-practice-tool-title{margin:0;color:#0f172a;font-size:.9rem;font-weight:800;}
+.ui-practice-tool-sub{margin:.14rem 0 .4rem;color:#64748b;font-size:.78rem;}
+.st-key-practice_tool_tuner [data-testid="stExpander"], .st-key-practice_tool_metronome [data-testid="stExpander"], .st-key-practice_tool_chart [data-testid="stExpander"], .st-key-practice_tool_coach [data-testid="stExpander"]{
+  border:none;background:transparent;
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def make_count_in_click(*, bpm, beats, sr=44100):
@@ -8365,6 +8403,7 @@ if _studio_page == "practice":
         "Song Practice",
         "Set up your session below — change key in the sidebar; pick songs on **Song Selection**.",
     )
+    _inject_practice_toolkit_styles()
 
     render_scroll_anchor_marker(st, ANCHOR_PRACTICE_COACH)
     _render_practice_setup_panel(
@@ -8410,42 +8449,6 @@ if _studio_page == "practice":
             f"{_resolved_send_section_display or _focus_pick}"
         )
     )
-    if st.button(
-        _send_label,
-        key="practice_send_to_backing",
-        type="primary",
-        use_container_width=True,
-    ):
-        # Always hand the *real* section name (e.g. "Verse 1") to the
-        # backing track flow - it looks up by exact key in section_names.
-        _prepare_backing_from_practice(_resolved_send_section or _focus_pick)
-        set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
-        navigate_studio_page(st.session_state, "backing")
-        st.rerun()
-
-    # Optional YouTube reference matched to the active instrument /
-    # level / focus. Collapsed by default - nothing loads until the
-    # user opens the expander (and embeds are gated by an explicit
-    # "Load embedded player" click), so this stays lightweight.
-    _yt_practice_title = str(song_data.get("title") or song or "")
-    _yt_practice_artist = str(song_data.get("artist") or "")
-    if _yt_practice_title:
-        _yt_practice_slug, _, _ = _lyrics_cues_session_keys(
-            _yt_practice_title, _yt_practice_artist
-        )
-        render_practice_learning_video_panel(
-            st,
-            song_title=_yt_practice_title,
-            artist=_yt_practice_artist,
-            song_slug=_yt_practice_slug,
-            instrument=str(instrument or ""),
-            level=str(level or ""),
-            focus=str(focus or ""),
-            instrument_options=list(_instrument_options),
-            level_options=["Beginner", "Intermediate", "Advanced"],
-            expanded=False,
-        )
-
     _is_full_song = practice_is_full_song(_focus_pick)
     _active_section = practice_active_section_name(_focus_pick, sections_for_practice)
     _view_sections = practice_display_sections(sections_for_practice, _focus_pick)
@@ -8520,60 +8523,112 @@ if _studio_page == "practice":
     # header / badge / caption below.
     _active_section_display = _display_section(_active_section)
 
-    st.markdown(
-        f'<div class="ui-badge-row">'
-        f'<span class="ui-badge accent">{html.escape(_ui_source_label())}</span>'
-        f'<span class="ui-badge green">Key {html.escape(global_display_key)}</span>'
-        f'<span class="ui-badge">{html.escape(level)}</span>'
-        f'<span class="ui-badge">{html.escape(instrument)}</span>'
-        f'<span class="ui-badge purple">{html.escape(focus)}</span>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-
-    if _is_full_song:
-        st.info(
-            "Select a **section** above (Verse, Chorus, Bridge, etc.) to isolate chords, "
-            "lyrics, metronome loop, deep focus, scales, and rhythm tools for that part only."
+    _focus_chords = sections_for_practice.get(_active_section) or [] if _active_section else []
+    with st.container(key="practice_toolkit_panel", border=False):
+        st.markdown(
+            '<div class="ui-practice-toolkit-head">'
+            '<p class="ui-practice-toolkit-title">Practice Toolkit</p>'
+            '<p class="ui-practice-toolkit-sub">Quick actions and session tools for timing, tone, chart review, and coaching.</p>'
+            '</div>',
+            unsafe_allow_html=True,
         )
-    elif _active_section:
-        _focus_chords = sections_for_practice.get(_active_section) or []
+        _send_cols = st.columns([1.2, 1.8])
+        with _send_cols[0]:
+            if st.button(
+                _send_label,
+                key="practice_send_to_backing",
+                type="primary",
+                use_container_width=True,
+            ):
+                _prepare_backing_from_practice(_resolved_send_section or _focus_pick)
+                set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
+                navigate_studio_page(st.session_state, "backing")
+                st.rerun()
+        with _send_cols[1]:
+            st.markdown(
+                '<div class="ui-practice-tool-actions">'
+                '<span class="ui-practice-tool-action-chip">🎚 Backing Track</span>'
+                '<span class="ui-practice-tool-action-chip">🎯 Coach</span>'
+                '<span class="ui-practice-tool-action-chip">⏱ Metronome</span>'
+                '<span class="ui-practice-tool-action-chip">🎼 Chord chart</span>'
+                '<span class="ui-practice-tool-action-chip">🔧 Tuner</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
         st.markdown(
             f'<div class="ui-badge-row">'
-            f'<span class="ui-badge accent">Section focus</span>'
-            f'<span class="ui-badge green">{html.escape(_active_section_display)}</span>'
-            f'<span class="ui-badge">{_section_bar_count} bars</span>'
+            f'<span class="ui-badge accent">{html.escape(_ui_source_label())}</span>'
+            f'<span class="ui-badge green">Key {html.escape(global_display_key)}</span>'
+            f'<span class="ui-badge">{html.escape(level)}</span>'
+            f'<span class="ui-badge">{html.escape(instrument)}</span>'
+            f'<span class="ui-badge purple">{html.escape(focus)}</span>'
             f"</div>",
             unsafe_allow_html=True,
         )
-    else:
-        _focus_chords = []
-
-    render_tuner_tone_section(
-        st,
-        instrument=instrument,
-        display_key=chart_key,
-        key_prefix=tuner_key_prefix_for_song(song),
-    )
-
-    if _is_full_song:
-        with st.expander("⏱️ Metronome", expanded=False):
-            render_metronome_widget(
-                default_bpm=_practice_bpm,
-                default_signature=_time_sig,
+        _guide = (
+            "Select a **section** above (Verse, Chorus, Bridge, etc.) to isolate chords, lyrics, metronome loop, and deep-focus tools."
+            if _is_full_song
+            else (
+                f"Focused on **{_active_section_display}** ({_section_bar_count} bars). Use Metronome, Chart, and Coach below for section-specific work."
+                if _active_section
+                else "Choose a section focus above to unlock targeted metronome, chart, and coaching tools."
             )
-    elif _active_section:
-        with st.expander(
-            f"⏱️ Metronome — {_active_section_display} only ({_section_bar_count} bars)",
-            expanded=False,
-        ):
-            render_metronome_widget(
-                default_bpm=_practice_bpm,
-                default_signature=_time_sig,
-                section_bars=_section_bar_count,
-                section_label=_active_section,
-                loop_section=True,
+        )
+        st.markdown(
+            f'<div class="ui-practice-guidance-card">{_guide}</div>',
+            unsafe_allow_html=True,
+        )
+
+        _yt_practice_title = str(song_data.get("title") or song or "")
+        _yt_practice_artist = str(song_data.get("artist") or "")
+        if _yt_practice_title:
+            _yt_practice_slug, _, _ = _lyrics_cues_session_keys(
+                _yt_practice_title, _yt_practice_artist
             )
+            render_practice_learning_video_panel(
+                st,
+                song_title=_yt_practice_title,
+                artist=_yt_practice_artist,
+                song_slug=_yt_practice_slug,
+                instrument=str(instrument or ""),
+                level=str(level or ""),
+                focus=str(focus or ""),
+                instrument_options=list(_instrument_options),
+                level_options=["Beginner", "Intermediate", "Advanced"],
+                expanded=False,
+            )
+
+    with st.container(key="practice_tool_tuner", border=False):
+        st.markdown('<p class="ui-practice-tool-title">Tuner & Tone Development</p>', unsafe_allow_html=True)
+        st.markdown('<p class="ui-practice-tool-sub">Check pitch, tone, and instrument sound.</p>', unsafe_allow_html=True)
+        render_tuner_tone_section(
+            st,
+            instrument=instrument,
+            display_key=chart_key,
+            key_prefix=tuner_key_prefix_for_song(song),
+        )
+
+    with st.container(key="practice_tool_metronome", border=False):
+        st.markdown('<p class="ui-practice-tool-title">Metronome</p>', unsafe_allow_html=True)
+        st.markdown('<p class="ui-practice-tool-sub">Set tempo and lock in timing.</p>', unsafe_allow_html=True)
+        if _is_full_song:
+            with st.expander("⏱️ Metronome", expanded=False):
+                render_metronome_widget(
+                    default_bpm=_practice_bpm,
+                    default_signature=_time_sig,
+                )
+        elif _active_section:
+            with st.expander(
+                f"⏱️ Metronome — {_active_section_display} only ({_section_bar_count} bars)",
+                expanded=False,
+            ):
+                render_metronome_widget(
+                    default_bpm=_practice_bpm,
+                    default_signature=_time_sig,
+                    section_bars=_section_bar_count,
+                    section_label=_active_section,
+                    loop_section=True,
+                )
 
     render_practice_transposing_controls(
         st,
@@ -8760,73 +8815,76 @@ if _studio_page == "practice":
             f" · {instrument_display_name(_t_type, instrument)}"
             f" · written key **{_practice_chart_key}**"
         )
-    with st.expander(
-        f"📋 Full chord chart — {_chart_scope}{_chart_key_note}",
-        expanded=False,
-    ):
-        st.markdown(_chart_html, unsafe_allow_html=True)
+    with st.container(key="practice_tool_chart", border=False):
+        st.markdown('<p class="ui-practice-tool-title">Full chord chart</p>', unsafe_allow_html=True)
+        st.markdown('<p class="ui-practice-tool-sub">Review the full song structure.</p>', unsafe_allow_html=True)
+        with st.expander(
+            f"📋 Full chord chart — {_chart_scope}{_chart_key_note}",
+            expanded=False,
+        ):
+            st.markdown(_chart_html, unsafe_allow_html=True)
 
-        # When the user has picked a *type* (Verse / Chorus / ...) and
-        # the song has more than one numbered version of that type
-        # (Verse 1 / Verse 2 / Verse 3 ...), offer opt-in toggles for
-        # the extra lyric versions. The chord progression doesn't
-        # change between versions, so we only surface their lyrics -
-        # keeps the main chart uncluttered.
-        if not _is_full_song and _active_section:
-            _focus_type = practice_section_type(_focus_pick)
-            _same_type_sections = practice_sections_for_type(
-                sections_for_practice, _focus_type
-            )
-            _other_versions = [
-                n for n in _same_type_sections if n != _active_section
-            ]
-            _versions_with_lyrics = [
-                name
-                for name in _other_versions
-                if _lyric_lines_for_section(
-                    name, lyric_cues, section_lyrics, limit=24
+            # When the user has picked a *type* (Verse / Chorus / ...) and
+            # the song has more than one numbered version of that type
+            # (Verse 1 / Verse 2 / Verse 3 ...), offer opt-in toggles for
+            # the extra lyric versions. The chord progression doesn't
+            # change between versions, so we only surface their lyrics -
+            # keeps the main chart uncluttered.
+            if not _is_full_song and _active_section:
+                _focus_type = practice_section_type(_focus_pick)
+                _same_type_sections = practice_sections_for_type(
+                    sections_for_practice, _focus_type
                 )
-            ]
-            if _versions_with_lyrics:
-                st.markdown(
-                    '<p class="ui-extra-lyrics-kicker">Other '
-                    f'{_html.escape(_focus_type or "section")} versions</p>',
-                    unsafe_allow_html=True,
-                )
-                st.caption(
-                    "Toggle any additional verse / chorus to add its lyrics below "
-                    "the chord chart. The chord progression stays the same."
-                )
-                for _ov_name in _versions_with_lyrics:
-                    _ov_key = (
-                        f"practice_show_extra_lyrics::{song}::{_focus_type}::{_ov_name}"
+                _other_versions = [
+                    n for n in _same_type_sections if n != _active_section
+                ]
+                _versions_with_lyrics = [
+                    name
+                    for name in _other_versions
+                    if _lyric_lines_for_section(
+                        name, lyric_cues, section_lyrics, limit=24
                     )
-                    _show_ov = st.checkbox(
-                        f"Show {_ov_name} lyrics",
-                        key=_ov_key,
-                        value=False,
+                ]
+                if _versions_with_lyrics:
+                    st.markdown(
+                        '<p class="ui-extra-lyrics-kicker">Other '
+                        f'{_html.escape(_focus_type or "section")} versions</p>',
+                        unsafe_allow_html=True,
                     )
-                    if _show_ov:
-                        _ov_lines = _lyric_lines_for_section(
-                            _ov_name, lyric_cues, section_lyrics, limit=24
+                    st.caption(
+                        "Toggle any additional verse / chorus to add its lyrics below "
+                        "the chord chart. The chord progression stays the same."
+                    )
+                    for _ov_name in _versions_with_lyrics:
+                        _ov_key = (
+                            f"practice_show_extra_lyrics::{song}::{_focus_type}::{_ov_name}"
                         )
-                        _ov_html_parts = [
-                            '<div class="ui-extra-lyrics-block">',
-                            '<p class="ui-extra-lyrics-section">'
-                            f"{_html.escape(_ov_name)}"
-                            "</p>",
-                        ]
-                        for _ln in _ov_lines:
-                            _ov_html_parts.append(
-                                '<p class="ui-extra-lyrics-line">'
-                                f"{_html.escape(_ln)}"
-                                "</p>"
+                        _show_ov = st.checkbox(
+                            f"Show {_ov_name} lyrics",
+                            key=_ov_key,
+                            value=False,
+                        )
+                        if _show_ov:
+                            _ov_lines = _lyric_lines_for_section(
+                                _ov_name, lyric_cues, section_lyrics, limit=24
                             )
-                        _ov_html_parts.append("</div>")
-                        st.markdown(
-                            "\n".join(_ov_html_parts),
-                            unsafe_allow_html=True,
-                        )
+                            _ov_html_parts = [
+                                '<div class="ui-extra-lyrics-block">',
+                                '<p class="ui-extra-lyrics-section">'
+                                f"{_html.escape(_ov_name)}"
+                                "</p>",
+                            ]
+                            for _ln in _ov_lines:
+                                _ov_html_parts.append(
+                                    '<p class="ui-extra-lyrics-line">'
+                                    f"{_html.escape(_ln)}"
+                                    "</p>"
+                                )
+                            _ov_html_parts.append("</div>")
+                            st.markdown(
+                                "\n".join(_ov_html_parts),
+                                unsafe_allow_html=True,
+                            )
 
     _notation_sig = (
         song,
@@ -8851,53 +8909,56 @@ if _studio_page == "practice":
     if exercise_key not in st.session_state:
         st.session_state[exercise_key] = 0
 
-    with st.expander("🎯 Practice coach & session settings", expanded=False):
-        _coach_inst, _coach_lvl, _coach_focus = render_setup_quick_controls(
-            st,
-            session_state=st.session_state,
-            key_prefix="practice_coach",
-            instrument_options=_instrument_options,
-            label="Instrument · level · focus",
-            show_sync_caption=False,
-        )
-        st.caption(
-            f"Session length: **{minutes} min** · chart key: **{global_display_key}**"
-            + (
-                f" (concert **{concert_key}**)"
-                if _chart_key_mode == "written"
-                else " (concert key from sidebar)."
+    with st.container(key="practice_tool_coach", border=False):
+        st.markdown('<p class="ui-practice-tool-title">Practice coach & session settings</p>', unsafe_allow_html=True)
+        st.markdown('<p class="ui-practice-tool-sub">Customize coaching focus and session goals.</p>', unsafe_allow_html=True)
+        with st.expander("🎯 Practice coach & session settings", expanded=False):
+            _coach_inst, _coach_lvl, _coach_focus = render_setup_quick_controls(
+                st,
+                session_state=st.session_state,
+                key_prefix="practice_coach",
+                instrument_options=_instrument_options,
+                label="Instrument · level · focus",
+                show_sync_caption=False,
             )
-        )
-        _coach_exercise_key = (
-            f"exercise_variation::{song}::{_coach_inst}::{_coach_lvl}::{_coach_focus}"
-        )
-        if _coach_exercise_key not in st.session_state:
-            st.session_state[_coach_exercise_key] = st.session_state.get(exercise_key, 0)
-        st.markdown(
-            '<div class="ui-card soft"><div class="ui-card-title">Personalized coach exercise</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            song_practice_plan(
-                song,
-                _view_sections,
-                _coach_inst,
-                _coach_lvl,
-                _coach_focus,
-                st.session_state[_coach_exercise_key],
-                section_lyrics=section_lyrics,
-                minutes=minutes,
-                groove_override=_practice_groove,
+            st.caption(
+                f"Session length: **{minutes} min** · chart key: **{global_display_key}**"
+                + (
+                    f" (concert **{concert_key}**)"
+                    if _chart_key_mode == "written"
+                    else " (concert key from sidebar)."
+                )
             )
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-        col_ex_a, col_ex_b = st.columns([1, 2])
-        with col_ex_a:
-            if st.button("🔄 New exercise", use_container_width=True):
-                st.session_state[_coach_exercise_key] += 1
-                st.rerun()
-        with col_ex_b:
-            st.caption("Rotates section targets and raises demand gradually.")
+            _coach_exercise_key = (
+                f"exercise_variation::{song}::{_coach_inst}::{_coach_lvl}::{_coach_focus}"
+            )
+            if _coach_exercise_key not in st.session_state:
+                st.session_state[_coach_exercise_key] = st.session_state.get(exercise_key, 0)
+            st.markdown(
+                '<div class="ui-card soft"><div class="ui-card-title">Personalized coach exercise</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                song_practice_plan(
+                    song,
+                    _view_sections,
+                    _coach_inst,
+                    _coach_lvl,
+                    _coach_focus,
+                    st.session_state[_coach_exercise_key],
+                    section_lyrics=section_lyrics,
+                    minutes=minutes,
+                    groove_override=_practice_groove,
+                )
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+            col_ex_a, col_ex_b = st.columns([1, 2])
+            with col_ex_a:
+                if st.button("🔄 New exercise", use_container_width=True):
+                    st.session_state[_coach_exercise_key] += 1
+                    st.rerun()
+            with col_ex_b:
+                st.caption("Rotates section targets and raises demand gradually.")
 
     with st.expander(
         "Generated Music Notation / TAB",
