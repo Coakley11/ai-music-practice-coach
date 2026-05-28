@@ -3362,12 +3362,317 @@ body[data-custom-builder-ui] .ui-instrument-strip {
 """
 
 
+def _upload_studio_panel_css() -> str:
+    """Audio Upload Studio — upload / recording analysis page."""
+    return """
+/* Upload Studio */
+.st-key-upload_studio_panel {
+  margin: 0.25rem 0 0.85rem !important;
+  padding: 1rem 1.1rem 0.9rem !important;
+  border-radius: 18px !important;
+  border: 2px solid rgba(244, 63, 94, 0.4) !important;
+  background:
+    radial-gradient(110% 80% at 0% -12%, rgba(244, 63, 94, 0.12) 0%, transparent 55%),
+    radial-gradient(90% 70% at 100% 108%, rgba(236, 72, 153, 0.1) 0%, transparent 50%),
+    linear-gradient(180deg, #ffffff 0%, #fff1f2 58%, #f8fafc 100%) !important;
+  box-shadow:
+    0 14px 36px -22px rgba(225, 29, 72, 0.22),
+    0 2px 8px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+.st-key-upload_studio_panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  z-index: 1;
+  background: linear-gradient(90deg, transparent, rgba(244, 63, 94, 0.8), rgba(236, 72, 153, 0.6), transparent);
+}
+.st-key-upload_studio_panel > div[data-testid="stVerticalBlock"] {
+  gap: 0.45rem !important;
+}
+body[data-upload-studio-ui] .st-key-upload_studio_panel {
+  outline: 2px solid rgba(244, 63, 94, 0.14);
+  outline-offset: 2px;
+}
+.ui-upload-studio-head {
+  margin: 0 0 0.55rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.35);
+}
+.ui-upload-studio-kicker {
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #e11d48;
+  margin: 0 0 0.25rem;
+}
+.ui-upload-studio-title {
+  margin: 0;
+  font-size: 1.22rem;
+  font-weight: 900;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+.ui-upload-studio-sub {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+.ui-upload-session-card {
+  margin: 0.35rem 0 0.55rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(244, 63, 94, 0.28);
+  background: rgba(255, 241, 242, 0.75);
+  font-size: 0.76rem;
+  color: #475569;
+  line-height: 1.45;
+}
+.ui-upload-session-card strong { color: #0f172a; }
+.ui-upload-format-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.55rem;
+}
+.ui-upload-format-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9f1239;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+.ui-upload-step-kicker {
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #be123c;
+  margin: 0 0 0.35rem;
+}
+.st-key-upload_mode_segment,
+.st-key-upload_capture_panel,
+.st-key-upload_results_panel {
+  margin: 0.35rem 0 !important;
+  padding: 0.75rem 0.85rem !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.05) !important;
+}
+.st-key-upload_capture_panel [data-testid="stFileUploader"] {
+  border-radius: 14px !important;
+  border: 2px dashed rgba(244, 63, 94, 0.38) !important;
+  background: linear-gradient(180deg, #fffbfb 0%, #ffffff 100%) !important;
+  padding: 0.35rem !important;
+}
+.st-key-upload_capture_panel [data-testid="stFileUploader"] section {
+  padding: 0.85rem 0.65rem !important;
+}
+.st-key-upload_capture_panel [data-testid="stFileUploader"] small {
+  color: #64748b !important;
+  font-size: 0.76rem !important;
+}
+.st-key-upload_studio_panel [data-testid="stRadio"] > div {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 0.35rem !important;
+  padding: 0.35rem !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(244, 63, 94, 0.25) !important;
+  background: rgba(255, 241, 242, 0.65) !important;
+}
+.st-key-upload_studio_panel [data-testid="stRadio"] label {
+  flex: 1 1 auto !important;
+  min-width: 8rem;
+  margin: 0 !important;
+  padding: 0.4rem 0.55rem !important;
+  border-radius: 9px !important;
+  font-size: 0.78rem !important;
+  font-weight: 750 !important;
+  text-align: center;
+  border: 1px solid transparent !important;
+}
+.st-key-upload_studio_panel [data-testid="stRadio"] label[data-checked="true"],
+.st-key-upload_studio_panel [data-testid="stRadio"] label:has(input:checked) {
+  background: #fff !important;
+  border-color: rgba(244, 63, 94, 0.45) !important;
+  color: #be123c !important;
+  font-weight: 850 !important;
+  box-shadow: 0 2px 10px rgba(244, 63, 94, 0.12) !important;
+}
+.st-key-upload_studio_panel [data-testid="stButton"] button[kind="primary"] {
+  border-radius: 11px !important;
+  font-weight: 850 !important;
+  min-height: 2.65rem !important;
+}
+.st-key-upload_results_panel {
+  border-color: rgba(244, 63, 94, 0.35) !important;
+  background: linear-gradient(180deg, #fff1f2 0%, #ffffff 100%) !important;
+}
+"""
+
+
+def _multitrack_studio_panel_css() -> str:
+    """Multitrack Studio — session / layers / transport / export."""
+    return """
+/* Multitrack Studio */
+.st-key-multitrack_studio_panel {
+  margin: 0.25rem 0 0.85rem !important;
+  padding: 1rem 1.1rem 0.9rem !important;
+  border-radius: 18px !important;
+  border: 2px solid rgba(245, 158, 11, 0.45) !important;
+  background:
+    radial-gradient(110% 80% at 0% -12%, rgba(245, 158, 11, 0.14) 0%, transparent 55%),
+    radial-gradient(90% 70% at 100% 108%, rgba(249, 115, 22, 0.1) 0%, transparent 50%),
+    linear-gradient(180deg, #ffffff 0%, #fffbeb 58%, #f8fafc 100%) !important;
+  box-shadow:
+    0 14px 36px -22px rgba(217, 119, 6, 0.24),
+    0 2px 8px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+.st-key-multitrack_studio_panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  z-index: 1;
+  background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.85), rgba(249, 115, 22, 0.65), transparent);
+}
+.st-key-multitrack_studio_panel > div[data-testid="stVerticalBlock"] {
+  gap: 0.5rem !important;
+}
+body[data-multitrack-studio-ui] .st-key-multitrack_studio_panel {
+  outline: 2px solid rgba(245, 158, 11, 0.16);
+  outline-offset: 2px;
+}
+.ui-multitrack-studio-head {
+  margin: 0 0 0.55rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.35);
+}
+.ui-multitrack-studio-kicker {
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #d97706;
+  margin: 0 0 0.25rem;
+}
+.ui-multitrack-studio-title {
+  margin: 0;
+  font-size: 1.22rem;
+  font-weight: 900;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+.ui-multitrack-studio-sub {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+.ui-multitrack-session-card {
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  background: rgba(255, 251, 235, 0.85);
+  font-size: 0.76rem;
+  color: #475569;
+  line-height: 1.45;
+}
+.ui-multitrack-session-card strong { color: #0f172a; }
+.ui-multitrack-step-kicker {
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #b45309;
+  margin: 0 0 0.4rem;
+}
+.st-key-multitrack_session_panel,
+.st-key-multitrack_layers_panel,
+.st-key-multitrack_transport_panel,
+.st-key-multitrack_export_panel {
+  margin: 0.4rem 0 !important;
+  padding: 0.8rem 0.9rem !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.05) !important;
+}
+.st-key-multitrack_layers_panel [data-testid="stExpander"] {
+  border: 1px solid rgba(245, 158, 11, 0.22) !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  margin-bottom: 0.4rem !important;
+  overflow: hidden;
+}
+.st-key-multitrack_layers_panel [data-testid="stExpander"] summary {
+  font-weight: 800 !important;
+  color: #0f172a !important;
+  padding: 0.55rem 0.75rem !important;
+}
+.st-key-multitrack_layers_panel [data-testid="stExpander"] summary:hover {
+  background: rgba(255, 251, 235, 0.9) !important;
+}
+.ui-mt-layer-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-left: 0.35rem;
+}
+.ui-mt-layer-badge.ready {
+  color: #166534;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+.ui-mt-layer-badge.empty {
+  color: #64748b;
+  background: rgba(248, 250, 252, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+.st-key-multitrack_studio_panel [data-testid="stButton"] button[kind="primary"] {
+  border-radius: 11px !important;
+  font-weight: 850 !important;
+}
+.st-key-multitrack_export_panel {
+  border-color: rgba(245, 158, 11, 0.35) !important;
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%) !important;
+}
+"""
+
+
 def _studio_panels_css() -> str:
     return (
         _backing_studio_all_css()
         + _practice_control_panel_css()
         + _creative_studio_panel_css()
         + _custom_builder_panel_css()
+        + _upload_studio_panel_css()
+        + _multitrack_studio_panel_css()
     )
 
 
@@ -4996,13 +5301,15 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v2"
+STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v3"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v7"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
 PRACTICE_SETUP_UI_VERSION = "2026-05-28-practice-v3"
 CREATIVE_STUDIO_UI_VERSION = "2026-05-28-creative-v2"
 CUSTOM_BUILDER_UI_VERSION = "2026-05-28-custom-v2"
+UPLOAD_STUDIO_UI_VERSION = "2026-05-28-upload-v1"
+MULTITRACK_STUDIO_UI_VERSION = "2026-05-28-multitrack-v1"
 
 PRACTICE_QUICK_LINKS: list[tuple[str, str]] = [
     ("picker", "Songs"),
@@ -5107,6 +5414,119 @@ document.body.classList.add("custom-builder-page");
         """,
         unsafe_allow_html=True,
     )
+
+
+def inject_upload_studio_styles(st: Any) -> None:
+    """Inject Audio Upload Studio CSS on the analysis page."""
+    st.markdown(
+        f"""
+<style data-upload-studio-ui="{UPLOAD_STUDIO_UI_VERSION}">
+{_upload_studio_panel_css()}
+</style>
+<script>try{{
+document.body.dataset.uploadStudioUi="{UPLOAD_STUDIO_UI_VERSION}";
+document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";
+document.body.classList.add("upload-studio-page");
+}}catch(e){{}}</script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def inject_multitrack_studio_styles(st: Any) -> None:
+    """Inject Multitrack Studio CSS on the multitrack page."""
+    st.markdown(
+        f"""
+<style data-multitrack-studio-ui="{MULTITRACK_STUDIO_UI_VERSION}">
+{_multitrack_studio_panel_css()}
+</style>
+<script>try{{
+document.body.dataset.multitrackStudioUi="{MULTITRACK_STUDIO_UI_VERSION}";
+document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";
+document.body.classList.add("multitrack-studio-page");
+}}catch(e){{}}</script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_upload_studio_panel_header(
+    st: Any,
+    *,
+    song_title: str,
+    artist: str = "",
+) -> None:
+    artist_bit = f" · {html.escape(artist.strip())}" if (artist or "").strip() else ""
+    st.markdown(
+        f"""
+<div class="ui-upload-studio-head" data-upload-panel-ui="{UPLOAD_STUDIO_UI_VERSION}">
+  <span class="ui-upload-studio-kicker">Audio upload studio</span>
+  <p class="ui-upload-studio-title">Upload &amp; AI Coach</p>
+  <p class="ui-upload-studio-sub">Drop a take, get timing and pitch feedback, then jump to practice or multitrack.</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def upload_session_context_html(
+    *,
+    song_title: str,
+    artist: str,
+    display_key: str,
+    instrument: str,
+) -> str:
+    return (
+        f'<div class="ui-upload-session-card" data-upload-session-ui="{UPLOAD_STUDIO_UI_VERSION}">'
+        f"<strong>{html.escape(song_title or 'Your song')}</strong>"
+        f"{(' · ' + html.escape(artist.strip())) if (artist or '').strip() else ''}"
+        f" · Key <strong>{html.escape(display_key or 'C')}</strong>"
+        f" · {html.escape(instrument or 'Instrument')}</div>"
+    )
+
+
+def upload_format_chips_html() -> str:
+    formats = ("WAV", "MP3", "M4A", "OGG", "FLAC")
+    chips = "".join(
+        f'<span class="ui-upload-format-chip">{html.escape(fmt)}</span>' for fmt in formats
+    )
+    return f'<div class="ui-upload-format-row">{chips}</div>'
+
+
+def render_multitrack_studio_panel_header(st: Any, *, song_title: str) -> None:
+    st.markdown(
+        f"""
+<div class="ui-multitrack-studio-head" data-multitrack-panel-ui="{MULTITRACK_STUDIO_UI_VERSION}">
+  <span class="ui-multitrack-studio-kicker">Multitrack studio</span>
+  <p class="ui-multitrack-studio-title">Session Workspace</p>
+  <p class="ui-multitrack-studio-sub">Overdub layers with monitor backing, mix, and export — synced to your active song.</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def multitrack_session_context_html(
+    *,
+    song_title: str,
+    scope_label: str,
+    bpm: int,
+    time_signature: str,
+    layer_count: int,
+) -> str:
+    return (
+        f'<div class="ui-multitrack-session-card" data-mt-session-ui="{MULTITRACK_STUDIO_UI_VERSION}">'
+        f"<strong>{html.escape(song_title or 'Song')}</strong> · "
+        f"{html.escape(scope_label or 'session')} · "
+        f"<strong>{int(bpm)}</strong> BPM · {html.escape(time_signature or '4/4')} · "
+        f"<strong>{int(layer_count)}</strong> layer(s) saved</div>"
+    )
+
+
+def multitrack_layer_badge_html(*, ready: bool) -> str:
+    if ready:
+        return '<span class="ui-mt-layer-badge ready">● Ready</span>'
+    return '<span class="ui-mt-layer-badge empty">○ Empty</span>'
 
 
 def inject_studio_ui_release_marker(st: Any, *, page: str) -> None:
