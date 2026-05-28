@@ -5970,6 +5970,7 @@ body[data-practice-setup-ui] [data-testid="stExpander"]{
 body[data-practice-setup-ui] [data-testid="stExpander"] summary{
   font-weight:760;color:#0f172a;
 }
+.st-key-practice_toolkit_panel .ui-badge-row{margin:.2rem 0 .1rem!important;}
 </style>
         """,
         unsafe_allow_html=True,
@@ -7840,8 +7841,18 @@ def _render_backing_quick_playback_controls(
         render_backing_panel_header(
             st,
             kicker="Step 2",
-            title="Quick playback",
-            subtitle="Fine-tune tempo and section focus — regenerate audio after changes.",
+            title="Quick Playback / Transport",
+            subtitle="Fine-tune tempo and section focus, then generate in Step 3.",
+        )
+        st.markdown(
+            f'<div class="ui-badge-row" style="margin-bottom:0.45rem;">'
+            f'<span class="ui-badge accent">Scope</span>'
+            f'<span class="ui-badge">{html.escape(scope_label)}</span>'
+            f'<span class="ui-badge amber">{int(widget_bpm)} BPM</span>'
+            f'<span class="ui-badge purple">{html.escape(applied_groove)}</span>'
+            f'<span class="ui-badge">{html.escape(applied_meter)}</span>'
+            f"</div>",
+            unsafe_allow_html=True,
         )
         render_backing_transport_status(
             st,
@@ -7927,6 +7938,7 @@ def _render_backing_playback_setup_panel(
     )
     _title = str((song_data or {}).get("title") or "Active song")
     _artist = str((song_data or {}).get("artist") or "")
+    _orig_key, _practice_key = _active_song_key_pair(song_data or {})
     _subtitle = (
         f"Song defaults: **{int(default_bpm)} BPM** · **{default_groove}** · **{default_meter}**"
         + (f" · {_title}" if _title else "")
@@ -7945,6 +7957,18 @@ def _render_backing_playback_setup_panel(
             title="Playback setup",
             subtitle=_subtitle,
             badge_html=_badge,
+        )
+        st.markdown(
+            f'<div class="ui-badge-row" style="margin-bottom:0.5rem;">'
+            f'<span class="ui-badge accent">{html.escape(_title)}</span>'
+            f'{f"<span class=\"ui-badge\">{html.escape(_artist)}</span>" if _artist else ""}'
+            f'<span class="ui-badge green">Original key {html.escape(_orig_key)}</span>'
+            f'<span class="ui-badge purple">Display key {html.escape(_practice_key)}</span>'
+            f'<span class="ui-badge amber">{int(default_bpm)} BPM</span>'
+            f'<span class="ui-badge">{html.escape(default_groove)}</span>'
+            f'<span class="ui-badge">{html.escape(default_meter)}</span>'
+            f"</div>",
+            unsafe_allow_html=True,
         )
         col_tempo, col_groove, col_meter, col_status = st.columns([0.85, 1.15, 1.35, 0.9])
         with col_tempo:
@@ -8473,15 +8497,6 @@ if _studio_page == "practice":
             return ""
         return _practice_display_label_map.get(str(name), str(name))
 
-    _resolved_send_section_display = _display_section(_resolved_send_section)
-    _send_label = (
-        "Send to Backing Track (full song)"
-        if practice_is_full_song(_focus_pick)
-        else (
-            "Send to Backing Track — loop "
-            f"{_resolved_send_section_display or _focus_pick}"
-        )
-    )
     _is_full_song = practice_is_full_song(_focus_pick)
     _active_section = practice_active_section_name(_focus_pick, sections_for_practice)
     _view_sections = practice_display_sections(sections_for_practice, _focus_pick)
@@ -8618,41 +8633,17 @@ if _studio_page == "practice":
         st.markdown(
             '<div class="ui-practice-toolkit-head">'
             '<p class="ui-practice-toolkit-title">Practice Toolkit</p>'
-            '<p class="ui-practice-toolkit-sub">Quick actions and session tools for timing, tone, chart review, and coaching.</p>'
+            '<p class="ui-practice-toolkit-sub">Quick tools for timing, tone, chart review, and coaching.</p>'
             '</div>',
             unsafe_allow_html=True,
         )
-        _send_cols = st.columns([1.2, 1.8])
-        with _send_cols[0]:
-            if st.button(
-                _send_label,
-                key="practice_send_to_backing",
-                type="primary",
-                use_container_width=True,
-            ):
-                _prepare_backing_from_practice(_resolved_send_section or _focus_pick)
-                set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
-                navigate_studio_page(st.session_state, "backing")
-                st.rerun()
-        with _send_cols[1]:
-            st.markdown(
-                '<div class="ui-practice-tool-actions">'
-                '<span class="ui-practice-tool-action-chip">🎚 Backing Track</span>'
-                '<span class="ui-practice-tool-action-chip">🎯 Coach</span>'
-                '<span class="ui-practice-tool-action-chip">⏱ Metronome</span>'
-                '<span class="ui-practice-tool-action-chip">🎼 Chord chart</span>'
-                '<span class="ui-practice-tool-action-chip">🔧 Tuner</span>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
         st.markdown(
-            f'<div class="ui-badge-row">'
-            f'<span class="ui-badge accent">{html.escape(_ui_source_label())}</span>'
-            f'<span class="ui-badge green">Key {html.escape(global_display_key)}</span>'
-            f'<span class="ui-badge">{html.escape(level)}</span>'
-            f'<span class="ui-badge">{html.escape(instrument)}</span>'
-            f'<span class="ui-badge purple">{html.escape(focus)}</span>'
-            f"</div>",
+            '<div class="ui-practice-tool-actions">'
+            '<span class="ui-practice-tool-action-chip">🎯 Coach</span>'
+            '<span class="ui-practice-tool-action-chip">⏱ Metronome</span>'
+            '<span class="ui-practice-tool-action-chip">🎼 Chord chart</span>'
+            '<span class="ui-practice-tool-action-chip">🔧 Tuner</span>'
+            '</div>',
             unsafe_allow_html=True,
         )
         _guide = (
