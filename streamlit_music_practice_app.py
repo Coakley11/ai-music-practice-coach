@@ -5932,10 +5932,8 @@ def _inject_practice_toolkit_styles() -> None:
   border:1px solid rgba(148,163,184,.24);border-radius:13px;background:rgba(255,255,255,.92);
   padding:.52rem .65rem .28rem;margin:.42rem 0;
 }
-.st-key-practice_section_focus_panel{
-  border:1px solid rgba(148,163,184,.26);border-radius:14px;background:rgba(255,255,255,.95);
-  box-shadow:0 10px 24px rgba(15,23,42,.06);padding:.66rem .75rem .55rem;margin:.35rem 0 .55rem;
-}
+.st-key-practice_control_panel .ui-practice-focus-title{margin:.1rem 0 .35rem;}
+.st-key-practice_control_panel .ui-badge-row{margin:.25rem 0 .35rem!important;}
 .ui-practice-focus-title{margin:0;color:#0f172a;font-size:.94rem;font-weight:820;}
 .ui-practice-focus-sub{margin:.15rem 0 .45rem;color:#64748b;font-size:.78rem;}
 .ui-practice-focus-transition{
@@ -5970,10 +5968,12 @@ body[data-practice-setup-ui] [data-testid="stExpander"]{
 body[data-practice-setup-ui] [data-testid="stExpander"] summary{
   font-weight:760;color:#0f172a;
 }
-.st-key-practice_toolkit_panel .ui-badge-row{margin:.2rem 0 .1rem!important;}
-.st-key-practice_tool_notation,.st-key-practice_tool_chord_coach,.st-key-practice_tool_transpose,.st-key-practice_tool_lyric_sheet,.st-key-practice_tool_lyric_phrasing,.st-key-practice_tool_daily_breakdown{
-  border:1px solid rgba(148,163,184,.24);border-radius:13px;background:rgba(255,255,255,.92);
-  padding:.52rem .65rem .28rem;margin:.42rem 0;
+.ui-active-song-meta-row{margin:.35rem 0 .5rem;font-size:.8rem;color:#475569;line-height:1.45;}
+.ui-practice-tools-kicker{margin:.55rem 0 .25rem;font-size:.78rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748b;}
+.st-key-practice_control_panel [data-baseweb="tab-list"]{gap:.25rem;margin-bottom:.35rem;}
+.st-key-practice_control_panel [data-baseweb="tab"]{font-size:.82rem;font-weight:700;padding:.35rem .55rem;}
+body[data-practice-setup-ui] [data-testid="stTabs"] [data-testid="stVerticalBlock"]{
+  gap:.35rem!important;
 }
 </style>
         """,
@@ -6945,13 +6945,13 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     _key_row_html = (
         active_song_key_row_html(_original_key, _practice_key) if show_key_row else ""
     )
-    meta_pills = (
-        f'<span class="ui-active-song-meta-pill"><strong>BPM</strong> {int(details.get("bpm") or 100)}</span>'
-        f'<span class="ui-active-song-meta-pill"><strong>Time</strong> '
-        f'{html.escape(details.get("time_signature", "4/4"))}</span>'
-        f'<span class="ui-active-song-meta-pill"><strong>Sections</strong> {_section_count}</span>'
-        f'<span class="ui-active-song-meta-pill"><strong>Bars</strong> {_bar_count}</span>'
-        f'<span class="ui-active-song-meta-pill"><strong>Feel</strong> {html.escape(_groove_label)}</span>'
+    _genre_label = html.escape(str(rec.get("genre") or details.get("visual_genre") or "Song"))
+    _meta_row = (
+        f'<p class="ui-active-song-meta-row">{_genre_label} · '
+        f"<strong>{int(details.get('bpm') or 100)} BPM</strong> · "
+        f"{html.escape(details.get('time_signature', '4/4'))} · "
+        f"{_section_count} sections · {_bar_count} bars · "
+        f"{html.escape(_groove_label)}</p>"
     )
     card_html = (
         f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}">'
@@ -6962,13 +6962,10 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         f'<p class="ui-active-song-title">{html.escape(details["title"])}</p>'
         f'<p class="ui-active-song-artist">{html.escape(details["artist"])}</p>'
         f'{_key_row_html}'
-        f'<p class="ui-active-song-genre-line">{html.escape(str(rec.get("genre") or details.get("visual_genre") or ""))}'
-        f' · {html.escape(_groove_label)}</p>'
-        f'<div class="ui-active-song-meta-pills">{meta_pills}</div>'
+        f'{_meta_row}'
         f'<dl class="ui-active-song-facts">'
         f'<dt>Levels</dt><dd>{html.escape(details["levels_display"])}</dd>'
         f'<dt>Level fit</dt><dd>{html.escape(details["difficulty"])}</dd>'
-        f'<dt>Form</dt><dd>{html.escape(details["section_summary"])}</dd>'
         f'<dt>Instruments</dt><dd>{html.escape(details["instruments"])}</dd>'
         f'<dt>Practice focus</dt><dd>{html.escape(details["practice_focus"])}</dd>'
         f"</dl>"
@@ -7610,10 +7607,85 @@ def _sync_focus_options_before_widget(instrument: str) -> list[str]:
     return opts
 
 
+def _render_practice_section_focus_details(
+    *,
+    focus_pick: str,
+    sections_for_practice: dict,
+    display_section_fn: Callable[[str | None], str],
+    transition_pairs: list[str],
+    prepare_backing_fn: Callable[[str], None],
+) -> None:
+    """Section metadata and loop action — rendered inside Practice Control Center."""
+    _is_full_song = practice_is_full_song(focus_pick)
+    _active_section = (
+        practice_active_section_name(focus_pick, sections_for_practice)
+        if not _is_full_song
+        else None
+    )
+    _active_section_display = display_section_fn(_active_section)
+    _view_sections = practice_display_sections(sections_for_practice, focus_pick)
+    _view_chords = (
+        all_chords_from_sections(_view_sections)
+        if _is_full_song
+        else list((_view_sections.get(_active_section) or []) if _active_section else [])
+    )
+    _focus_section_name = (
+        "Full song" if _is_full_song else (_active_section_display or str(focus_pick or "Section"))
+    )
+    _focus_unique_chords = len({str(ch).strip() for ch in _view_chords if str(ch).strip()})
+    _focus_bar_count = len(_view_chords)
+    st.markdown(
+        f'<div class="ui-badge-row">'
+        f'<span class="ui-badge accent">{html.escape(_focus_section_name)}</span>'
+        f'<span class="ui-badge">{_focus_unique_chords} chord{"s" if _focus_unique_chords != 1 else ""}</span>'
+        f'<span class="ui-badge">{_focus_bar_count} bars</span>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    if transition_pairs:
+        st.markdown(
+            '<div class="ui-practice-focus-transition"><strong>Transition practice:</strong> '
+            + " · ".join(html.escape(p) for p in transition_pairs)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+    if not _is_full_song and _active_section:
+        if st.button(
+            f"Loop {_active_section_display} in Backing Track",
+            key="practice_loop_section_to_backing",
+            use_container_width=True,
+        ):
+            prepare_backing_fn(_active_section)
+            set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
+            navigate_studio_page(st.session_state, "backing")
+            st.rerun()
+
+
+def _practice_section_transition_pairs(
+    section_chords: list,
+    *,
+    max_pairs: int = 4,
+) -> list[str]:
+    _transition_pairs: list[str] = []
+    for _i in range(len(section_chords) - 1):
+        _a = str(section_chords[_i]).strip()
+        _b = str(section_chords[_i + 1]).strip()
+        if not _a or not _b:
+            continue
+        _pair = f"{_a} → {_b}"
+        if _pair not in _transition_pairs:
+            _transition_pairs.append(_pair)
+        if len(_transition_pairs) >= max_pairs:
+            break
+    return _transition_pairs
+
+
 def _render_practice_setup_panel(
     *,
     instrument_options: list[str],
     default_groove: str,
+    section_choices: list[str] | None = None,
+    section_focus_after_jump: Callable[[], None] | None = None,
 ) -> None:
     """Practice Control Center — instrument, level, focus, groove, session length."""
     from practice_ui_labels import (
@@ -7710,6 +7782,27 @@ def _render_practice_setup_panel(
             pages=PRACTICE_QUICK_LINKS,
             wrapper_class="ui-cross-links ui-practice-quicklinks",
         )
+
+        if section_choices:
+            st.markdown(
+                '<hr class="ui-practice-focus-divider" style="margin:.7rem 0 .55rem;border:none;'
+                'border-top:1px solid rgba(148,163,184,.22);">',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                '<p class="ui-practice-focus-title">Section Focus</p>',
+                unsafe_allow_html=True,
+            )
+            from app_ui import render_section_jump_bar as _render_section_jump_bar
+
+            _render_section_jump_bar(
+                section_choices,
+                st.session_state,
+                state_key="practice_focus_section",
+                rerun_fn=st.rerun,
+            )
+            if section_focus_after_jump:
+                section_focus_after_jump()
 
 
 def _studio_page_header(icon: str, title: str, subtitle: str = "") -> None:
@@ -7845,18 +7938,8 @@ def _render_backing_quick_playback_controls(
         render_backing_panel_header(
             st,
             kicker="Step 2",
-            title="Quick Playback / Transport",
-            subtitle="Fine-tune tempo and section focus, then generate in Step 3.",
-        )
-        st.markdown(
-            f'<div class="ui-badge-row" style="margin-bottom:0.45rem;">'
-            f'<span class="ui-badge accent">Scope</span>'
-            f'<span class="ui-badge">{html.escape(scope_label)}</span>'
-            f'<span class="ui-badge amber">{int(widget_bpm)} BPM</span>'
-            f'<span class="ui-badge purple">{html.escape(applied_groove)}</span>'
-            f'<span class="ui-badge">{html.escape(applied_meter)}</span>'
-            f"</div>",
-            unsafe_allow_html=True,
+            title="Quick Playback",
+            subtitle="Adjust tempo and section focus — summary below.",
         )
         render_backing_transport_status(
             st,
@@ -7963,15 +8046,10 @@ def _render_backing_playback_setup_panel(
             badge_html=_badge,
         )
         st.markdown(
-            f'<div class="ui-badge-row" style="margin-bottom:0.5rem;">'
-            f'<span class="ui-badge accent">{html.escape(_title)}</span>'
-            f'{f"<span class=\"ui-badge\">{html.escape(_artist)}</span>" if _artist else ""}'
-            f'<span class="ui-badge green">Original key {html.escape(_orig_key)}</span>'
-            f'<span class="ui-badge purple">Display key {html.escape(_practice_key)}</span>'
-            f'<span class="ui-badge amber">{int(default_bpm)} BPM</span>'
-            f'<span class="ui-badge">{html.escape(default_groove)}</span>'
-            f'<span class="ui-badge">{html.escape(default_meter)}</span>'
-            f"</div>",
+            f'<p class="ui-backing-setup-summary" style="margin:0 0 .55rem;font-size:.82rem;color:#475569;">'
+            f"Defaults: <strong>{int(default_bpm)} BPM</strong> · <strong>{html.escape(default_groove)}</strong> · "
+            f"<strong>{html.escape(default_meter)}</strong> · original <strong>{html.escape(_orig_key)}</strong> · "
+            f"display <strong>{html.escape(_practice_key)}</strong></p>",
             unsafe_allow_html=True,
         )
         col_tempo, col_groove, col_meter, col_status = st.columns([0.85, 1.15, 1.35, 0.9])
@@ -8467,28 +8545,11 @@ if _studio_page == "practice":
     _inject_practice_toolkit_styles()
 
     render_scroll_anchor_marker(st, ANCHOR_PRACTICE_COACH)
-    _render_practice_setup_panel(
-        instrument_options=_instrument_options,
-        default_groove=default_groove_style,
-    )
 
     _section_choices = practice_section_options(sections)
     if _section_choices and st.session_state.get("practice_focus_section") not in _section_choices:
         st.session_state["practice_focus_section"] = _section_choices[0]
-    _focus_pick = st.session_state.get("practice_focus_section", _section_choices[0] if _section_choices else "")
-    # ``_focus_pick`` is the *selector value* (e.g. "Verse" - a type label).
-    # ``_resolved_send_section`` is the *real chart key* used by panels
-    # that need actual chord data (Send to Backing, notation, etc.).
-    _resolved_send_section = (
-        practice_active_section_name(_focus_pick, sections_for_practice)
-        if not practice_is_full_song(_focus_pick)
-        else None
-    )
-    # Beginner display labels: map raw chart keys ("Verse 1") -> short
-    # user-facing labels ("Verse"). The map is populated upstream by
-    # ``beginner_view_of_song_data``; outside Beginner mode it is empty
-    # and the lookup falls through to the raw section name. Computed
-    # once here so every panel below shares the same helper.
+
     _practice_display_label_map: dict[str, str] = dict(
         (song_data or {}).get("_beginner_display_labels") or {}
     )
@@ -8498,6 +8559,41 @@ if _studio_page == "practice":
             return ""
         return _practice_display_label_map.get(str(name), str(name))
 
+    def _section_focus_after_jump() -> None:
+        _fp = st.session_state.get(
+            "practice_focus_section",
+            _section_choices[0] if _section_choices else "",
+        )
+        _act = (
+            practice_active_section_name(_fp, sections_for_practice)
+            if not practice_is_full_song(_fp)
+            else None
+        )
+        _preview = sections_for_practice.get(_act) or [] if _act else []
+        _render_practice_section_focus_details(
+            focus_pick=_fp,
+            sections_for_practice=sections_for_practice,
+            display_section_fn=_display_section,
+            transition_pairs=_practice_section_transition_pairs(_preview),
+            prepare_backing_fn=_prepare_backing_from_practice,
+        )
+
+    _render_practice_setup_panel(
+        instrument_options=_instrument_options,
+        default_groove=default_groove_style,
+        section_choices=_section_choices or None,
+        section_focus_after_jump=_section_focus_after_jump if _section_choices else None,
+    )
+
+    _focus_pick = st.session_state.get("practice_focus_section", _section_choices[0] if _section_choices else "")
+    # ``_focus_pick`` is the *selector value* (e.g. "Verse" - a type label).
+    # ``_resolved_send_section`` is the *real chart key* used by panels
+    # that need actual chord data (Send to Backing, notation, etc.).
+    _resolved_send_section = (
+        practice_active_section_name(_focus_pick, sections_for_practice)
+        if not practice_is_full_song(_focus_pick)
+        else None
+    )
     _is_full_song = practice_is_full_song(_focus_pick)
     _active_section = practice_active_section_name(_focus_pick, sections_for_practice)
     _view_sections = practice_display_sections(sections_for_practice, _focus_pick)
@@ -8571,312 +8667,7 @@ if _studio_page == "practice":
     # resolved real section name in display form, used by every panel
     # header / badge / caption below.
     _active_section_display = _display_section(_active_section)
-    _focus_chords_preview = sections_for_practice.get(_active_section) or [] if _active_section else []
-    _focus_unique_chords = len({str(ch).strip() for ch in _view_chords if str(ch).strip()})
-    _focus_bar_count = len(_view_chords)
-    _focus_section_name = "Full song" if _is_full_song else (_active_section_display or str(_focus_pick or "Section"))
-    _transition_pairs: list[str] = []
-    if not _is_full_song and _focus_chords_preview:
-        for _i in range(len(_focus_chords_preview) - 1):
-            _a = str(_focus_chords_preview[_i]).strip()
-            _b = str(_focus_chords_preview[_i + 1]).strip()
-            if not _a or not _b:
-                continue
-            _pair = f"{_a} → {_b}"
-            if _pair not in _transition_pairs:
-                _transition_pairs.append(_pair)
-            if len(_transition_pairs) >= 4:
-                break
-
-    with st.container(key="practice_section_focus_panel", border=False):
-        st.markdown('<p class="ui-practice-focus-title">Section Focus</p>', unsafe_allow_html=True)
-        st.markdown(
-            '<p class="ui-practice-focus-sub">Choose a section, see key metadata, and jump directly into focused looping practice.</p>',
-            unsafe_allow_html=True,
-        )
-        _focus_pick = render_section_jump_bar(
-            _section_choices,
-            st.session_state,
-            state_key="practice_focus_section",
-            rerun_fn=st.rerun,
-        )
-        st.markdown(
-            f'<div class="ui-badge-row">'
-            f'<span class="ui-badge accent">{html.escape(_focus_section_name)}</span>'
-            f'<span class="ui-badge">{_focus_unique_chords} chord{"s" if _focus_unique_chords != 1 else ""}</span>'
-            f'<span class="ui-badge">{_focus_bar_count} bars</span>'
-            f'<span class="ui-badge green">Key {html.escape(global_display_key)}</span>'
-            f'<span class="ui-badge amber">{int(_practice_bpm)} BPM</span>'
-            f'<span class="ui-badge purple">{html.escape(_practice_groove)}</span>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-        if _transition_pairs:
-            st.markdown(
-                '<div class="ui-practice-focus-transition"><strong>Transition practice:</strong> '
-                + " · ".join(html.escape(p) for p in _transition_pairs)
-                + "</div>",
-                unsafe_allow_html=True,
-            )
-        if not _is_full_song and _active_section:
-            _loop_cols = st.columns([1.2, 2.2])
-            with _loop_cols[0]:
-                if st.button(
-                    f"Loop {_active_section_display} in Backing Track",
-                    key="practice_loop_section_to_backing",
-                    use_container_width=True,
-                ):
-                    _prepare_backing_from_practice(_active_section)
-                    set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
-                    navigate_studio_page(st.session_state, "backing")
-                    st.rerun()
-            with _loop_cols[1]:
-                st.caption(
-                    "Sends this focused section directly to Backing Track with section-loop scope for tighter transition reps."
-                )
-
     _focus_chords = sections_for_practice.get(_active_section) or [] if _active_section else []
-    with st.container(key="practice_toolkit_panel", border=False):
-        st.markdown(
-            '<div class="ui-practice-toolkit-head">'
-            '<p class="ui-practice-toolkit-title">Practice Toolkit</p>'
-            '<p class="ui-practice-toolkit-sub">Quick tools for timing, tone, chart review, and coaching.</p>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div class="ui-practice-tool-actions">'
-            '<span class="ui-practice-tool-action-chip">🎯 Coach</span>'
-            '<span class="ui-practice-tool-action-chip">⏱ Metronome</span>'
-            '<span class="ui-practice-tool-action-chip">🎼 Chord chart</span>'
-            '<span class="ui-practice-tool-action-chip">🔧 Tuner</span>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        _guide = (
-            "Select a **section** above (Verse, Chorus, Bridge, etc.) to isolate chords, lyrics, metronome loop, and deep-focus tools."
-            if _is_full_song
-            else (
-                f"Focused on **{_active_section_display}** ({_section_bar_count} bars). Use Metronome, Chart, and Coach below for section-specific work."
-                if _active_section
-                else "Choose a section focus above to unlock targeted metronome, chart, and coaching tools."
-            )
-        )
-        st.markdown(
-            f'<div class="ui-practice-guidance-card">{_guide}</div>',
-            unsafe_allow_html=True,
-        )
-
-        _yt_practice_title = str(song_data.get("title") or song or "")
-        _yt_practice_artist = str(song_data.get("artist") or "")
-        if _yt_practice_title:
-            _yt_practice_slug, _, _ = _lyrics_cues_session_keys(
-                _yt_practice_title, _yt_practice_artist
-            )
-            render_practice_learning_video_panel(
-                st,
-                song_title=_yt_practice_title,
-                artist=_yt_practice_artist,
-                song_slug=_yt_practice_slug,
-                instrument=str(instrument or ""),
-                level=str(level or ""),
-                focus=str(focus or ""),
-                instrument_options=list(_instrument_options),
-                level_options=["Beginner", "Intermediate", "Advanced"],
-                expanded=False,
-            )
-
-    with st.container(key="practice_tool_tuner", border=False):
-        st.markdown('<p class="ui-practice-tool-title">Tuner & Tone Development</p>', unsafe_allow_html=True)
-        st.markdown('<p class="ui-practice-tool-sub">Check pitch, tone, and instrument sound.</p>', unsafe_allow_html=True)
-        render_tuner_tone_section(
-            st,
-            instrument=instrument,
-            display_key=chart_key,
-            key_prefix=tuner_key_prefix_for_song(song),
-        )
-
-    with st.container(key="practice_tool_metronome", border=False):
-        st.markdown('<p class="ui-practice-tool-title">Metronome</p>', unsafe_allow_html=True)
-        st.markdown('<p class="ui-practice-tool-sub">Set tempo and lock in timing.</p>', unsafe_allow_html=True)
-        if _is_full_song:
-            with st.expander("⏱️ Metronome", expanded=False):
-                render_metronome_widget(
-                    default_bpm=_practice_bpm,
-                    default_signature=_time_sig,
-                )
-        elif _active_section:
-            with st.expander(
-                f"⏱️ Metronome — {_active_section_display} only ({_section_bar_count} bars)",
-                expanded=False,
-            ):
-                render_metronome_widget(
-                    default_bpm=_practice_bpm,
-                    default_signature=_time_sig,
-                    section_bars=_section_bar_count,
-                    section_label=_active_section,
-                    loop_section=True,
-                )
-
-    render_practice_transposing_controls(
-        st,
-        concert_key=concert_key,
-        instrument=instrument,
-    )
-
-    if not _is_full_song and _active_section:
-        # ----- Section Deep Focus -----------------------------------
-        # ``section_deep_practice_markdown`` returns "No chords in
-        # this section." when ``section_chords`` is empty - which to
-        # the user *looks* like the panel is blank. Detect that
-        # explicitly and render an actionable fallback instead.
-        _deep_focus_md = ""
-        _deep_focus_error: Exception | None = None
-        try:
-            _deep_focus_md = section_deep_practice_markdown(
-                section_name=_active_section,
-                section_chords=_focus_chords,
-                instrument=instrument,
-                level=level,
-                focus=focus,
-                display_key=_practice_chart_key,
-                bpm=_practice_bpm,
-                groove_style=_practice_groove,
-                song_data=song_data,
-            ) or ""
-        except Exception as _deep_focus_exc:
-            _deep_focus_error = _deep_focus_exc
-        with st.expander(f"🔬 Section deep focus — {_active_section_display}", expanded=True):
-            if _deep_focus_md.strip() and not _deep_focus_md.strip().lower().startswith(
-                "no chords"
-            ):
-                st.markdown(_deep_focus_md)
-            else:
-                st.info(
-                    f"This section (**{_active_section_display}**) has no chord data "
-                    "in the current chart. Pick **Full Song** above to see "
-                    "the whole arrangement, or pick a different section."
-                )
-                if _developer_mode_enabled():
-                    st.caption(
-                        f"Developer Mode · deep focus diagnostics — "
-                        f"section={_active_section!r} · "
-                        f"chord_count={len(_focus_chords)} · "
-                        f"instrument={instrument!r} · "
-                        f"level={level!r} · "
-                        f"focus={focus!r}"
-                        + (
-                            f" · error=`{type(_deep_focus_error).__name__}: "
-                            f"{_deep_focus_error}`"
-                            if _deep_focus_error is not None
-                            else ""
-                        )
-                    )
-
-        # ----- Rhythm Guide -----------------------------------------
-        # Previously gated to Guitar / Piano only, which left singers,
-        # bassists, and horn players staring at no rhythm guidance at
-        # all. The helper itself returns a sensible generic line for
-        # every instrument, so we always show it now.
-        _rhythm_md = ""
-        _rhythm_error: Exception | None = None
-        try:
-            _rhythm_md = rhythm_guide_markdown(
-                instrument,
-                _practice_groove,
-                _time_sig,
-                song_data=song_data,
-            ) or ""
-        except Exception as _rhythm_exc:
-            _rhythm_error = _rhythm_exc
-        with st.expander("🥁 Rhythm guide (this section)", expanded=False):
-            if _rhythm_md.strip():
-                st.markdown(_rhythm_md)
-            else:
-                st.info(
-                    f"Lock to **{_practice_groove}** at **{_time_sig}** — "
-                    "use the metronome above and stay relaxed on beats 2 & 4."
-                )
-                if _developer_mode_enabled():
-                    st.caption(
-                        f"Developer Mode · rhythm guide diagnostics — "
-                        f"instrument={instrument!r} · "
-                        f"groove={_practice_groove!r} · "
-                        f"time_sig={_time_sig!r}"
-                        + (
-                            f" · error=`{type(_rhythm_error).__name__}: "
-                            f"{_rhythm_error}`"
-                            if _rhythm_error is not None
-                            else ""
-                        )
-                    )
-
-        # ----- Scales & Approaches ----------------------------------
-        # Deduplicate scale suggestions so a looping progression like
-        # Em | C | G | D | Em | C | G | D doesn't render the same
-        # chord-scale line twice. We dedup on the *rendered* markdown
-        # so that if a chord ever produces a different scale in a
-        # different harmonic context (e.g. D mixolydian vs D altered),
-        # both variants still surface as distinct entries.
-        with st.expander("🎼 Scales & approaches (this section)", expanded=False):
-            if _focus_chords:
-                _scales_rendered = 0
-                _scales_errors: list[tuple[str, Exception]] = []
-                _seen_scale_suggestions: set[str] = set()
-                _scale_chord_cache: dict[str, str] = {}
-                _scale_repeats = 0
-                _scale_unique_cap = 12
-                for ch in _focus_chords:
-                    if _scales_rendered >= _scale_unique_cap:
-                        break
-                    ch_str = str(ch)
-                    if ch_str in _scale_chord_cache:
-                        _scale_md = _scale_chord_cache[ch_str]
-                    else:
-                        try:
-                            _scale_md = scale_suggestions_for_chord(
-                                ch_str, _practice_chart_key, level, instrument
-                            ) or ""
-                        except Exception as _scales_exc:
-                            _scales_errors.append((ch_str, _scales_exc))
-                            _scale_chord_cache[ch_str] = ""
-                            continue
-                        _scale_chord_cache[ch_str] = _scale_md
-                    _scale_key = _scale_md.strip()
-                    if not _scale_key:
-                        continue
-                    if _scale_key in _seen_scale_suggestions:
-                        _scale_repeats += 1
-                        continue
-                    _seen_scale_suggestions.add(_scale_key)
-                    st.markdown(_scale_md)
-                    _scales_rendered += 1
-                if _scales_rendered == 0:
-                    st.info(
-                        f"No scale suggestions matched the chords in "
-                        f"**{_active_section_display}** for **{instrument}** at "
-                        f"**{level}** level. Try a different section or "
-                        "switch instruments in the sidebar."
-                    )
-                elif _scale_repeats > 0:
-                    st.caption(
-                        "↻ Repeated through section — these chords loop, so the "
-                        "same scale choices apply each time they come around."
-                    )
-                if _developer_mode_enabled() and _scales_errors:
-                    st.caption(
-                        "Developer Mode · scales errors: "
-                        + "; ".join(
-                            f"{ch}: {type(exc).__name__}: {exc}"
-                            for ch, exc in _scales_errors[:6]
-                        )
-                    )
-            else:
-                st.info(
-                    f"**{_active_section_display}** has no chords in the current "
-                    "chart, so there's nothing to suggest scales over. "
-                    "Pick **Full Song** above or choose a different section."
-                )
 
     _chart_current = None if _is_full_song else _active_section
     _chart_html = full_chord_markdown(
@@ -8903,12 +8694,298 @@ if _studio_page == "practice":
             f" · {instrument_display_name(_t_type, instrument)}"
             f" · written key **{_practice_chart_key}**"
         )
-    with st.container(key="practice_tool_chart", border=False):
-        st.markdown('<p class="ui-practice-tool-title">Full chord chart</p>', unsafe_allow_html=True)
-        st.markdown('<p class="ui-practice-tool-sub">Review the full song structure.</p>', unsafe_allow_html=True)
+
+    _notation_sig = (
+        song,
+        _focus_pick,
+        _active_section or "",
+        instrument,
+        focus,
+        _practice_chart_key,
+        _practice_bpm,
+        _practice_groove,
+        selected_saxophone_type(st.session_state) if is_transposing_instrument(instrument) else "",
+        st.session_state.get(CHART_IN_INSTRUMENT_KEY_KEY, False),
+        _capo_ctx.enabled,
+        _capo_ctx.shape_key if _capo_ctx.enabled else "",
+        _capo_ctx.capo_fret if _capo_ctx.enabled else 0,
+    )
+    if st.session_state.get("practice_notation_sig") != _notation_sig:
+        st.session_state.pop(_NOTATION_KEY, None)
+    st.session_state["practice_notation_sig"] = _notation_sig
+
+    exercise_key = f"exercise_variation::{song}::{instrument}::{level}::{focus}"
+    if exercise_key not in st.session_state:
+        st.session_state[exercise_key] = 0
+
+    st.markdown(
+        '<p class="ui-practice-tools-kicker">Practice tools</p>',
+        unsafe_allow_html=True,
+    )
+    (
+        _tab_coach,
+        _tab_timing,
+        _tab_chart,
+        _tab_lyrics,
+        _tab_transpose,
+        _tab_tone,
+    ) = st.tabs(
+        [
+            "Coach",
+            "Timing",
+            "Chart / TAB",
+            "Lyrics",
+            "Transpose / Instrument",
+            "Tone / Tuner",
+        ]
+    )
+
+    with _tab_tone:
+        render_tuner_tone_section(
+            st,
+            instrument=instrument,
+            display_key=chart_key,
+            key_prefix=tuner_key_prefix_for_song(song),
+        )
+
+    with _tab_timing:
+        if _is_full_song:
+            render_metronome_widget(
+                default_bpm=_practice_bpm,
+                default_signature=_time_sig,
+            )
+        elif _active_section:
+            render_metronome_widget(
+                default_bpm=_practice_bpm,
+                default_signature=_time_sig,
+                section_bars=_section_bar_count,
+                section_label=_active_section,
+                loop_section=True,
+            )
+        else:
+            st.caption("Choose a section in **Section Focus** above for a section loop metronome.")
+        if not _is_full_song and _active_section:
+            _rhythm_md = ""
+            _rhythm_error: Exception | None = None
+            try:
+                _rhythm_md = rhythm_guide_markdown(
+                    instrument,
+                    _practice_groove,
+                    _time_sig,
+                    song_data=song_data,
+                ) or ""
+            except Exception as _rhythm_exc:
+                _rhythm_error = _rhythm_exc
+            with st.expander("Rhythm guide", expanded=False):
+                if _rhythm_md.strip():
+                    st.markdown(_rhythm_md)
+                else:
+                    st.info(
+                        f"Lock to **{_practice_groove}** at **{_time_sig}** — "
+                        "use the metronome and stay relaxed on beats 2 & 4."
+                    )
+                    if _developer_mode_enabled() and _rhythm_error is not None:
+                        st.caption(
+                            f"Developer Mode · rhythm guide: "
+                            f"`{type(_rhythm_error).__name__}: {_rhythm_error}`"
+                        )
+
+    with _tab_coach:
+        if not _is_full_song and _active_section:
+            # ----- Section Deep Focus -----------------------------------
+        # ``section_deep_practice_markdown`` returns "No chords in
+        # this section." when ``section_chords`` is empty - which to
+        # the user *looks* like the panel is blank. Detect that
+        # explicitly and render an actionable fallback instead.
+            _deep_focus_md = ""
+            _deep_focus_error: Exception | None = None
+            try:
+                _deep_focus_md = section_deep_practice_markdown(
+                    section_name=_active_section,
+                    section_chords=_focus_chords,
+                    instrument=instrument,
+                    level=level,
+                    focus=focus,
+                    display_key=_practice_chart_key,
+                    bpm=_practice_bpm,
+                    groove_style=_practice_groove,
+                    song_data=song_data,
+                ) or ""
+            except Exception as _deep_focus_exc:
+                _deep_focus_error = _deep_focus_exc
+            with st.expander(f"Section deep focus — {_active_section_display}", expanded=True):
+                if _deep_focus_md.strip() and not _deep_focus_md.strip().lower().startswith(
+                    "no chords"
+                ):
+                    st.markdown(_deep_focus_md)
+                else:
+                    st.info(
+                        f"This section (**{_active_section_display}**) has no chord data "
+                        "in the current chart. Pick **Full Song** above to see "
+                        "the whole arrangement, or pick a different section."
+                    )
+                    if _developer_mode_enabled():
+                        st.caption(
+                            f"Developer Mode · deep focus diagnostics — "
+                            f"section={_active_section!r} · "
+                            f"chord_count={len(_focus_chords)} · "
+                            f"instrument={instrument!r} · "
+                            f"level={level!r} · "
+                            f"focus={focus!r}"
+                            + (
+                                f" · error=`{type(_deep_focus_error).__name__}: "
+                                f"{_deep_focus_error}`"
+                                if _deep_focus_error is not None
+                                else ""
+                            )
+                        )
+
+            with st.expander("Scales & approaches", expanded=False):
+                if _focus_chords:
+                    _scales_rendered = 0
+                    _scales_errors: list[tuple[str, Exception]] = []
+                    _seen_scale_suggestions: set[str] = set()
+                    _scale_chord_cache: dict[str, str] = {}
+                    _scale_repeats = 0
+                    _scale_unique_cap = 12
+                    for ch in _focus_chords:
+                        if _scales_rendered >= _scale_unique_cap:
+                            break
+                        ch_str = str(ch)
+                        if ch_str in _scale_chord_cache:
+                            _scale_md = _scale_chord_cache[ch_str]
+                        else:
+                            try:
+                                _scale_md = scale_suggestions_for_chord(
+                                    ch_str, _practice_chart_key, level, instrument
+                                ) or ""
+                            except Exception as _scales_exc:
+                                _scales_errors.append((ch_str, _scales_exc))
+                                _scale_chord_cache[ch_str] = ""
+                                continue
+                            _scale_chord_cache[ch_str] = _scale_md
+                        _scale_key = _scale_md.strip()
+                        if not _scale_key:
+                            continue
+                        if _scale_key in _seen_scale_suggestions:
+                            _scale_repeats += 1
+                            continue
+                        _seen_scale_suggestions.add(_scale_key)
+                        st.markdown(_scale_md)
+                        _scales_rendered += 1
+                    if _scales_rendered == 0:
+                        st.info(
+                            f"No scale suggestions matched the chords in "
+                            f"**{_active_section_display}** for **{instrument}** at "
+                            f"**{level}** level. Try a different section or "
+                            "switch instruments in the sidebar."
+                        )
+                    elif _scale_repeats > 0:
+                        st.caption(
+                            "↻ Repeated through section — these chords loop, so the "
+                            "same scale choices apply each time they come around."
+                        )
+                    if _developer_mode_enabled() and _scales_errors:
+                        st.caption(
+                            "Developer Mode · scales errors: "
+                            + "; ".join(
+                                f"{ch}: {type(exc).__name__}: {exc}"
+                                for ch, exc in _scales_errors[:6]
+                            )
+                        )
+                else:
+                    st.info(
+                        f"**{_active_section_display}** has no chords in the current "
+                        "chart, so there's nothing to suggest scales over. "
+                        "Pick **Full Song** above or choose a different section."
+                    )
+
+        with st.expander("Practice coach & session", expanded=False):
+            _coach_inst, _coach_lvl, _coach_focus = render_setup_quick_controls(
+                st,
+                session_state=st.session_state,
+                key_prefix="practice_coach",
+                instrument_options=_instrument_options,
+                label="Instrument · level · focus",
+                show_sync_caption=False,
+            )
+            st.caption(
+                f"Session length: **{minutes} min** · chart key: **{global_display_key}**"
+                + (
+                    f" (concert **{concert_key}**)"
+                    if _chart_key_mode == "written"
+                    else " (concert key from sidebar)."
+                )
+            )
+            _coach_exercise_key = (
+                f"exercise_variation::{song}::{_coach_inst}::{_coach_lvl}::{_coach_focus}"
+            )
+            if _coach_exercise_key not in st.session_state:
+                st.session_state[_coach_exercise_key] = st.session_state.get(exercise_key, 0)
+            st.markdown(
+                '<div class="ui-card soft"><div class="ui-card-title">Personalized coach exercise</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                song_practice_plan(
+                    song,
+                    _view_sections,
+                    _coach_inst,
+                    _coach_lvl,
+                    _coach_focus,
+                    st.session_state[_coach_exercise_key],
+                    section_lyrics=section_lyrics,
+                    minutes=minutes,
+                    groove_override=_practice_groove,
+                )
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+            col_ex_a, col_ex_b = st.columns([1, 2])
+            with col_ex_a:
+                if st.button("🔄 New exercise", use_container_width=True):
+                    st.session_state[_coach_exercise_key] += 1
+                    st.rerun()
+            with col_ex_b:
+                st.caption("Rotates section targets and raises demand gradually.")
+
+        _coach_from_picker = st.session_state.pop("picker_open_chord_coach", False)
+        _coach_chords = _view_chords or all_chords_from_sections(sections)
+        render_scroll_anchor_marker(st, ANCHOR_CHORD_COACH)
+        with st.expander("Chord coach", expanded=_coach_from_picker):
+            if _active_section:
+                st.caption(f"Chords from **{_active_section_display}** only.")
+            render_chord_coach_ui(
+                _coach_chords,
+                instrument,
+                level,
+                key_prefix=f"practice::{song}::{instrument}::{level}",
+                expanded=True,
+                display_key=_practice_chart_key,
+            )
+
+        with st.expander("Daily time breakdown", expanded=False):
+            st.markdown(
+                daily_practice_breakdown_markdown(
+                    song,
+                    sections,
+                    instrument,
+                    level,
+                    focus,
+                    minutes,
+                    variation=st.session_state[exercise_key],
+                    groove_override=_practice_groove,
+                )
+            )
+
+        with st.expander("Full song ABC sketch (optional)", expanded=False):
+            st.caption("Optional overview — not required for daily practice.")
+            if st.button("Render full-song ABC sketch", key="practice_full_abc_sketch"):
+                render_abc(build_abc(song, sections))
+
+    with _tab_chart:
         with st.expander(
-            f"📋 Full chord chart — {_chart_scope}{_chart_key_note}",
-            expanded=False,
+            f"Chord chart — {_chart_scope}{_chart_key_note}",
+            expanded=True,
         ):
             st.markdown(_chart_html, unsafe_allow_html=True)
 
@@ -8974,88 +9051,8 @@ if _studio_page == "practice":
                                 unsafe_allow_html=True,
                             )
 
-    _notation_sig = (
-        song,
-        _focus_pick,
-        _active_section or "",
-        instrument,
-        focus,
-        _practice_chart_key,
-        _practice_bpm,
-        _practice_groove,
-        selected_saxophone_type(st.session_state) if is_transposing_instrument(instrument) else "",
-        st.session_state.get(CHART_IN_INSTRUMENT_KEY_KEY, False),
-        _capo_ctx.enabled,
-        _capo_ctx.shape_key if _capo_ctx.enabled else "",
-        _capo_ctx.capo_fret if _capo_ctx.enabled else 0,
-    )
-    if st.session_state.get("practice_notation_sig") != _notation_sig:
-        st.session_state.pop(_NOTATION_KEY, None)
-    st.session_state["practice_notation_sig"] = _notation_sig
-
-    exercise_key = f"exercise_variation::{song}::{instrument}::{level}::{focus}"
-    if exercise_key not in st.session_state:
-        st.session_state[exercise_key] = 0
-
-    with st.container(key="practice_tool_coach", border=False):
-        st.markdown('<p class="ui-practice-tool-title">Practice coach & session settings</p>', unsafe_allow_html=True)
-        st.markdown('<p class="ui-practice-tool-sub">Customize coaching focus and session goals.</p>', unsafe_allow_html=True)
-        with st.expander("🎯 Practice coach & session settings", expanded=False):
-            _coach_inst, _coach_lvl, _coach_focus = render_setup_quick_controls(
-                st,
-                session_state=st.session_state,
-                key_prefix="practice_coach",
-                instrument_options=_instrument_options,
-                label="Instrument · level · focus",
-                show_sync_caption=False,
-            )
-            st.caption(
-                f"Session length: **{minutes} min** · chart key: **{global_display_key}**"
-                + (
-                    f" (concert **{concert_key}**)"
-                    if _chart_key_mode == "written"
-                    else " (concert key from sidebar)."
-                )
-            )
-            _coach_exercise_key = (
-                f"exercise_variation::{song}::{_coach_inst}::{_coach_lvl}::{_coach_focus}"
-            )
-            if _coach_exercise_key not in st.session_state:
-                st.session_state[_coach_exercise_key] = st.session_state.get(exercise_key, 0)
-            st.markdown(
-                '<div class="ui-card soft"><div class="ui-card-title">Personalized coach exercise</div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                song_practice_plan(
-                    song,
-                    _view_sections,
-                    _coach_inst,
-                    _coach_lvl,
-                    _coach_focus,
-                    st.session_state[_coach_exercise_key],
-                    section_lyrics=section_lyrics,
-                    minutes=minutes,
-                    groove_override=_practice_groove,
-                )
-            )
-            st.markdown("</div>", unsafe_allow_html=True)
-            col_ex_a, col_ex_b = st.columns([1, 2])
-            with col_ex_a:
-                if st.button("🔄 New exercise", use_container_width=True):
-                    st.session_state[_coach_exercise_key] += 1
-                    st.rerun()
-            with col_ex_b:
-                st.caption("Rotates section targets and raises demand gradually.")
-
-    with st.container(key="practice_tool_notation", border=False):
-        st.markdown('<p class="ui-practice-tool-title">Generated Music Notation / TAB</p>', unsafe_allow_html=True)
-        st.markdown(
-            '<p class="ui-practice-tool-sub">Generate readable notation for the selected section focus.</p>',
-            unsafe_allow_html=True,
-        )
         with st.expander(
-            "🧾 Generated Music Notation / TAB",
+            "Notation / TAB",
             expanded=bool(st.session_state.get(_NOTATION_KEY)),
         ):
             _notation_section_label = (
@@ -9147,28 +9144,13 @@ if _studio_page == "practice":
                     with st.expander("ABC source", expanded=False):
                         st.code(getattr(_notation, "abc", ""), language=None)
 
-    _coach_from_picker = st.session_state.pop("picker_open_chord_coach", False)
-    _coach_chords = _view_chords or all_chords_from_sections(sections)
-    render_scroll_anchor_marker(st, ANCHOR_CHORD_COACH)
-    with st.container(key="practice_tool_chord_coach", border=False):
-        st.markdown('<p class="ui-practice-tool-title">Musician tools — chord coach</p>', unsafe_allow_html=True)
-        st.markdown('<p class="ui-practice-tool-sub">Chord-tone guidance and voicing help for your current focus.</p>', unsafe_allow_html=True)
-        with st.expander("🎸 Musician tools — chord coach", expanded=_coach_from_picker):
-            if _active_section:
-                st.caption(f"Chords from **{_active_section_display}** only.")
-            render_chord_coach_ui(
-                _coach_chords,
-                instrument,
-                level,
-                key_prefix=f"practice::{song}::{instrument}::{level}",
-                expanded=True,
-                display_key=_practice_chart_key,
-            )
-
-    with st.container(key="practice_tool_transpose", border=False):
-        st.markdown('<p class="ui-practice-tool-title">Transpose / capo / instrument key</p>', unsafe_allow_html=True)
-        st.markdown('<p class="ui-practice-tool-sub">Align written shapes and sounding key for your instrument.</p>', unsafe_allow_html=True)
-        with st.expander("🎚️ Transpose / capo / instrument key", expanded=False):
+    with _tab_transpose:
+        render_practice_transposing_controls(
+            st,
+            concert_key=concert_key,
+            instrument=instrument,
+        )
+        with st.expander("Transpose / capo helpers", expanded=False):
             render_general_transpose_helper(
                 original_key,
                 concert_key,
@@ -9187,7 +9169,7 @@ if _studio_page == "practice":
             if is_transposing_instrument(instrument):
                 st.divider()
                 st.caption(
-                    "Transposing type and **Show all charts in my instrument key** are in the panel above."
+                    "Transposing type and **Show all charts in my instrument key** are in the sidebar."
                 )
             elif instrument == "Flute":
                 st.divider()
@@ -9198,17 +9180,29 @@ if _studio_page == "practice":
                     wrap_expander=False,
                 )
 
-    if has_lyric_chord_sheet(song_data):
-        _ug_sections = lyric_chord_chart_sections(song_data)
-        if _ug_sections:
-            with st.container(key="practice_tool_lyric_sheet", border=False):
-                st.markdown('<p class="ui-practice-tool-title">Lyric & chord sheet</p>', unsafe_allow_html=True)
-                st.markdown('<p class="ui-practice-tool-sub">Readable lyric-aligned chart for quick sing/play-throughs.</p>', unsafe_allow_html=True)
-                with st.expander(
-                    "🎤 Lyric & chord sheet (Ultimate Guitar style)",
-                    expanded=False,
-                ):
-                    st.caption("Separate from the practice grid — aligned chord pills above lyrics.")
+    with _tab_lyrics:
+        _yt_practice_title = str(song_data.get("title") or song or "")
+        _yt_practice_artist = str(song_data.get("artist") or "")
+        if _yt_practice_title:
+            _yt_practice_slug, _, _ = _lyrics_cues_session_keys(
+                _yt_practice_title, _yt_practice_artist
+            )
+            render_practice_learning_video_panel(
+                st,
+                song_title=_yt_practice_title,
+                artist=_yt_practice_artist,
+                song_slug=_yt_practice_slug,
+                instrument=str(instrument or ""),
+                level=str(level or ""),
+                focus=str(focus or ""),
+                instrument_options=list(_instrument_options),
+                level_options=["Beginner", "Intermediate", "Advanced"],
+                expanded=False,
+            )
+        if has_lyric_chord_sheet(song_data):
+            _ug_sections = lyric_chord_chart_sections(song_data)
+            if _ug_sections:
+                with st.expander("Lyric & chord sheet", expanded=False):
                     st.markdown(
                         render_lyric_chord_sheet(
                             _ug_sections,
@@ -9219,7 +9213,6 @@ if _studio_page == "practice":
                             current_section=_chart_current,
                             meta_bits=[
                                 f"Level: {level}",
-                                f"Tempo: {int(_practice_bpm)} BPM",
                                 f"Time: {_time_sig}",
                             ],
                             header_note=str(
@@ -9230,14 +9223,7 @@ if _studio_page == "practice":
                         ),
                         unsafe_allow_html=True,
                     )
-
-    with st.container(key="practice_tool_lyric_phrasing", border=False):
-        st.markdown('<p class="ui-practice-tool-title">Lyric phrasing guide</p>', unsafe_allow_html=True)
-        st.markdown('<p class="ui-practice-tool-sub">Phrasing and breath/grouping guidance across your lyrics.</p>', unsafe_allow_html=True)
-        with st.expander("📝 Lyric phrasing guide", expanded=(instrument == "Voice")):
-            # Always show ALL the user's lyrics / cues here, not just the
-            # focused section - this card is the lyrics-first companion to
-            # the chord chart and benefits from full-song context.
+        with st.expander("Lyric phrasing guide", expanded=(instrument == "Voice")):
             st.markdown(
                 lyric_guide_html(
                     sections_for_practice,
@@ -9247,28 +9233,6 @@ if _studio_page == "practice":
                 ),
                 unsafe_allow_html=True,
             )
-
-    with st.container(key="practice_tool_daily_breakdown", border=False):
-        st.markdown('<p class="ui-practice-tool-title">Suggested daily time breakdown</p>', unsafe_allow_html=True)
-        st.markdown('<p class="ui-practice-tool-sub">A concise plan for warmup, section reps, and consolidation.</p>', unsafe_allow_html=True)
-        with st.expander("📆 Suggested daily time breakdown", expanded=False):
-            st.markdown(
-                daily_practice_breakdown_markdown(
-                    song,
-                    sections,
-                    instrument,
-                    level,
-                    focus,
-                    minutes,
-                    variation=st.session_state[exercise_key],
-                    groove_override=_practice_groove,
-                )
-            )
-
-    with st.expander("Full song ABC sketch (optional)", expanded=False):
-        st.caption("Optional overview — not required for daily practice.")
-        if st.button("Render full-song ABC sketch", key="practice_full_abc_sketch"):
-            render_abc(build_abc(song, sections))
 
     st.caption("Deep harmony & improvisation → **Creative Lab** page.")
 
@@ -9300,16 +9264,6 @@ elif _studio_page == "picker":
             "📚",
             "Song Selection",
             "The **Active Song** panel is your main control — pick a song there, then open Practice or Backing Track.",
-        )
-
-    if "Jewish" in GENRES:
-        _jewish_n = sum(1 for r in ALL_SONG_RECORDS if r.get("genre") == "Jewish")
-        st.markdown(
-            f'<p class="ui-song-library-foot" style="margin-top:0.35rem;margin-bottom:0.75rem;">'
-            f"✡ <strong>Jewish</strong> genre available — {_jewish_n} traditional songs "
-            f"(Hava Nagila, Shalom Aleichem, Adon Olam, and more). "
-            f"Click the <strong>Jewish</strong> genre pill below or search for shalom.</p>",
-            unsafe_allow_html=True,
         )
 
     _render_catalog_song_picker_block(
@@ -9396,45 +9350,33 @@ elif _studio_page == "picker":
 
         _picker_level_sections = sections_for_level(selected_data, level)
         render_scroll_anchor_marker(st, ANCHOR_LYRICS_EDITOR)
-        _render_lyrics_and_cues_panel(
-            song_title=str(selected_data.get("title", "")),
-            song_artist=str(selected_data.get("artist", "")),
-            section_names=list(_picker_level_sections.keys()),
-            song_data=selected_data,
-            chart_sections=_picker_level_sections,
-            prominent=True,
-        )
-
-        # The "Watch the original song" YouTube card is rendered higher
-        # up on this page (right above the Active Song card) so users
-        # see it immediately after picking a song.
-
-        st.success(
-            f"**Active source: Song** — **{selected_data['title']}** — {selected_data['artist']}."
-        )
-
-        st.caption(chart_source_caption(selected_data))
-        render_chart_editor_panel(
-            st,
-            module_globals=globals(),
-            all_records=ALL_SONG_RECORDS,
-            song_data=selected_data,
-            genre=pick_genre,
-            level=level,
-            sections_for_level=sections_for_level,
-            invalidate_backing=invalidate_backing_cache,
-        )
-        if chart_key != selected_data.get("key"):
-            st.caption(
-                f"Chords in Practice and Backing Track are shown in **{global_display_key}** "
-                f"(+{semitone_distance(selected_data.get('key', 'C'), chart_key)} semitones from catalog key)."
+        _tab_lyrics, _tab_chart = st.tabs(["Lyrics & Cues", "Edit Song Chart"])
+        with _tab_lyrics:
+            _render_lyrics_and_cues_panel(
+                song_title=str(selected_data.get("title", "")),
+                song_artist=str(selected_data.get("artist", "")),
+                section_names=list(_picker_level_sections.keys()),
+                song_data=selected_data,
+                chart_sections=_picker_level_sections,
+                prominent=True,
             )
-
-        st.info(
-            "Go to **Backing Track** for the full chart and playback. "
-            "Go to **Practice** for exercises. "
-            "Go to **Multitrack Recorder** to record."
-        )
+        with _tab_chart:
+            st.caption(chart_source_caption(selected_data))
+            render_chart_editor_panel(
+                st,
+                module_globals=globals(),
+                all_records=ALL_SONG_RECORDS,
+                song_data=selected_data,
+                genre=pick_genre,
+                level=level,
+                sections_for_level=sections_for_level,
+                invalidate_backing=invalidate_backing_cache,
+            )
+            if chart_key != selected_data.get("key"):
+                st.caption(
+                    f"Practice and Backing use **{global_display_key}** "
+                    f"(+{semitone_distance(selected_data.get('key', 'C'), chart_key)} semitones from catalog key)."
+                )
 
 # -------------------------------------------------
 # BACKING TRACK
@@ -9687,17 +9629,6 @@ elif _studio_page == "backing":
 
     if not backing_chords:
         st.warning("Choose at least one section to generate a backing track.")
-
-    st.markdown(
-        f'<div class="ui-badge-row">'
-        f'<span class="ui-badge accent">{html.escape(section_scope_label)}</span>'
-        f'<span class="ui-badge purple">{html.escape(resolved_groove)}</span>'
-        f'<span class="ui-badge amber">{int(st.session_state.get("backing_track_bpm", _synced_bpm))} BPM</span>'
-        f'<span class="ui-badge">{html.escape(backing_time_signature)}</span>'
-        f'<span class="ui-badge">{len(backing_chords)} bars × {form_loops}</span>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
 
     chart_display_key = (
         _capo_ctx.sounding_key if _capo_ctx.enabled else chart_key

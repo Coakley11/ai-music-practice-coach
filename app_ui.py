@@ -5301,7 +5301,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v3"
+STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v4"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v7"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
