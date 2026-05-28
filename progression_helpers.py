@@ -54,8 +54,8 @@ def render_cpl_page_header() -> None:
     )
     compact_page_title(
         "✏️",
-        "Custom Progression",
-        "Create your own chord progression and play it with a backing track.",
+        "Custom Song Builder",
+        "Write chords, set your active song, and launch practice or backing.",
     )
     try:
         from instrument_aware import render_instrument_context_strip

@@ -2933,7 +2933,10 @@ def _creative_studio_panel_css() -> str:
   box-shadow: none !important;
 }
 .st-key-creative_studio_panel > div[data-testid="stVerticalBlock"] {
-  gap: 0.45rem !important;
+  gap: 0.4rem !important;
+}
+.st-key-creative_studio_panel {
+  margin-top: 0.15rem !important;
 }
 .ui-creative-studio-shell {
   margin: 0.35rem 0 0.85rem;
@@ -3096,8 +3099,240 @@ def _creative_studio_panel_css() -> str:
 """
 
 
+def _custom_builder_panel_css() -> str:
+    """Custom Song Builder — keyed container + step cards."""
+    return """
+/* Custom Song Builder */
+.st-key-custom_song_builder_panel {
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.st-key-custom_song_builder_panel > div[data-testid="stVerticalBlock"] {
+  gap: 0.4rem !important;
+}
+.ui-custom-builder-shell {
+  margin: 0.2rem 0 0.75rem;
+  padding: 1rem 1.1rem 0.85rem;
+  border-radius: 18px;
+  border: 2px solid rgba(16, 185, 129, 0.38);
+  background:
+    radial-gradient(110% 80% at 0% -12%, rgba(16, 185, 129, 0.14) 0%, transparent 55%),
+    radial-gradient(90% 70% at 100% 108%, rgba(14, 165, 233, 0.1) 0%, transparent 50%),
+    linear-gradient(180deg, #ffffff 0%, #f0fdf4 58%, #f8fafc 100%);
+  box-shadow: 0 14px 36px -22px rgba(5, 150, 105, 0.22), 0 2px 8px rgba(15, 23, 42, 0.06);
+  position: relative;
+  overflow: hidden;
+}
+.ui-custom-builder-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.75), rgba(14, 165, 233, 0.55), transparent);
+}
+.ui-custom-builder-head {
+  margin: 0 0 0.55rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.35);
+}
+.ui-custom-builder-kicker {
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #059669;
+  margin: 0 0 0.25rem;
+}
+.ui-custom-builder-title {
+  margin: 0;
+  font-size: 1.22rem;
+  font-weight: 900;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+.ui-custom-builder-sub {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+.ui-custom-step-card {
+  margin: 0.55rem 0 0.35rem;
+  padding: 0.75rem 0.85rem 0.65rem;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.05);
+}
+.ui-custom-step-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0 0 0.55rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+}
+.ui-custom-step-num {
+  flex: 0 0 auto;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 900;
+  color: #fff;
+  background: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+}
+.ui-custom-step-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 850;
+  color: #0f172a;
+  line-height: 1.25;
+}
+.ui-custom-step-sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.74rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+.ui-custom-preview-card {
+  margin: 0.45rem 0 0.35rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 14px;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%);
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.1);
+}
+.ui-custom-preview-kicker {
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #047857;
+  margin: 0 0 0.25rem;
+}
+.ui-custom-preview-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: #0f172a;
+}
+.ui-custom-preview-meta {
+  margin: 0.35rem 0 0;
+  font-size: 0.76rem;
+  color: #475569;
+  line-height: 1.45;
+}
+.ui-custom-preview-meta strong { color: #0f172a; }
+.ui-custom-preview-empty {
+  margin: 0.35rem 0 0;
+  font-size: 0.76rem;
+  color: #64748b;
+  font-style: italic;
+}
+.ui-custom-active-pill {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #065f46;
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+.ui-custom-action-row {
+  margin: 0.35rem 0 0.15rem;
+}
+.st-key-custom_song_builder_panel .cpl-title-panel,
+.st-key-custom_song_builder_panel .cpl-builder-panel {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+.st-key-custom_song_builder_panel .cpl-steps-strip {
+  margin: 0.15rem 0 0.35rem !important;
+}
+.st-key-custom_song_builder_panel [data-testid="stTextInput"] input,
+.st-key-custom_song_builder_panel [data-testid="stNumberInput"] input {
+  border-radius: 10px !important;
+  border-color: rgba(148, 163, 184, 0.45) !important;
+}
+.st-key-custom_song_builder_panel [data-testid="stButton"] button[kind="primary"] {
+  border-radius: 11px !important;
+  font-weight: 800 !important;
+}
+.st-key-custom_song_builder_panel .cpl-now-editing {
+  margin: 0.25rem 0 0.45rem !important;
+  font-size: 0.78rem !important;
+  color: #64748b !important;
+}
+.st-key-custom_song_builder_panel .cpl-now-editing span {
+  color: #047857 !important;
+  font-weight: 800 !important;
+}
+.st-key-custom_song_builder_panel .cpl-live-progression {
+  margin: 0.35rem 0 !important;
+  padding: 0.55rem !important;
+  border-radius: 12px !important;
+  border: 1px dashed rgba(16, 185, 129, 0.35) !important;
+  background: rgba(240, 253, 244, 0.65) !important;
+}
+body[data-custom-builder-ui] .ui-custom-builder-shell + div .cpl-steps-strip,
+body[data-custom-builder-ui] .cpl-builder-panel,
+body[data-custom-builder-ui] .cpl-finish-panel {
+  margin-top: 0.35rem;
+}
+body[data-custom-builder-ui] .cpl-steps-strip {
+  margin-bottom: 0.45rem !important;
+}
+body[data-custom-builder-ui] [data-testid="stVerticalBlock"] {
+  gap: 0.45rem !important;
+}
+body[data-custom-builder-ui] .ui-instrument-strip {
+  margin-bottom: 0.35rem !important;
+}
+.ui-custom-setup-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+.ui-custom-setup-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.32rem 0.55rem;
+  border-radius: 9px;
+  font-size: 0.72rem;
+  font-weight: 750;
+  color: #0f766e;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  text-decoration: none;
+}
+"""
+
+
 def _studio_panels_css() -> str:
-    return _backing_studio_all_css() + _practice_control_panel_css() + _creative_studio_panel_css()
+    return (
+        _backing_studio_all_css()
+        + _practice_control_panel_css()
+        + _creative_studio_panel_css()
+        + _custom_builder_panel_css()
+    )
 
 
 def _inject_app_theme_polish() -> None:
@@ -4729,6 +4964,7 @@ BACKING_STUDIO_UI_VERSION = "2026-05-27-studio-v6"
 SONG_PICKER_UI_VERSION = "2026-05-27-picker-v2"
 PRACTICE_SETUP_UI_VERSION = "2026-05-27-practice-v2"
 CREATIVE_STUDIO_UI_VERSION = "2026-05-28-creative-v1"
+CUSTOM_BUILDER_UI_VERSION = "2026-05-28-custom-v1"
 
 PRACTICE_QUICK_LINKS: list[tuple[str, str]] = [
     ("picker", "Songs"),
@@ -4813,6 +5049,92 @@ def inject_creative_studio_styles(st: Any) -> None:
 {_creative_studio_panel_css()}
 </style>
 <script>try{{document.body.dataset.creativeStudioUi="{CREATIVE_STUDIO_UI_VERSION}";}}catch(e){{}}</script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def inject_custom_builder_styles(st: Any) -> None:
+    """Inject Custom Song Builder panel CSS."""
+    st.markdown(
+        f"""
+<style data-custom-builder-ui="{CUSTOM_BUILDER_UI_VERSION}">
+{_custom_builder_panel_css()}
+</style>
+<script>try{{document.body.dataset.customBuilderUi="{CUSTOM_BUILDER_UI_VERSION}";}}catch(e){{}}</script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def custom_builder_step_open_html(step: int, title: str, subtitle: str = "") -> str:
+    sub = (
+        f'<p class="ui-custom-step-sub">{html.escape(subtitle)}</p>'
+        if subtitle
+        else ""
+    )
+    return (
+        f'<div class="ui-custom-step-card" data-custom-step="{int(step)}">'
+        f'<div class="ui-custom-step-head">'
+        f'<span class="ui-custom-step-num">{int(step)}</span>'
+        f"<div><p class=\"ui-custom-step-title\">{html.escape(title)}</p>{sub}</div>"
+        f"</div>"
+    )
+
+
+def custom_builder_step_close_html() -> str:
+    return "</div>"
+
+
+def custom_song_preview_card_html(
+    *,
+    title: str,
+    artist: str,
+    key_label: str,
+    bpm: int,
+    time_signature: str,
+    style: str,
+    sections_line: str,
+    has_chords: bool,
+    is_active: bool,
+) -> str:
+    artist_bit = (
+        f" · {html.escape(artist.strip())}" if (artist or "").strip() else ""
+    )
+    meta = (
+        f"<strong>{html.escape(key_label)}</strong> · "
+        f"<strong>{int(bpm)}</strong> BPM · "
+        f"{html.escape(time_signature or '4/4')} · "
+        f"{html.escape(style or 'Pop')}"
+    )
+    body = (
+        f'<p class="ui-custom-preview-meta">{meta}</p>'
+        f'<p class="ui-custom-preview-meta">{html.escape(sections_line)}</p>'
+        if has_chords
+        else '<p class="ui-custom-preview-empty">Add chords in step 2 to see your song structure here.</p>'
+    )
+    active_pill = (
+        '<span class="ui-custom-active-pill">Active song</span>'
+        if is_active
+        else ""
+    )
+    return (
+        f'<div class="ui-custom-preview-card" data-custom-preview-ui="{CUSTOM_BUILDER_UI_VERSION}">'
+        f'<div class="ui-custom-preview-kicker">Preview</div>'
+        f'<p class="ui-custom-preview-title">{html.escape(title or "Untitled")}{artist_bit}</p>'
+        f"{body}{active_pill}</div>"
+    )
+
+
+def render_custom_builder_panel_header(st: Any, *, working_title: str) -> None:
+    title = (working_title or "My Progression").strip() or "My Progression"
+    st.markdown(
+        f"""
+<div class="ui-custom-builder-head" data-custom-builder-ui="{CUSTOM_BUILDER_UI_VERSION}">
+  <span class="ui-custom-builder-kicker">Custom song builder</span>
+  <p class="ui-custom-builder-title">Create Your Own Song</p>
+  <p class="ui-custom-builder-sub">Build a chord chart, set it as your active song, then practice with backing or karaoke.</p>
+</div>
         """,
         unsafe_allow_html=True,
     )

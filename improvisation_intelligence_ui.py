@@ -99,13 +99,6 @@ def render_improvisation_intelligence_lab(
     artist = str(ctx.get("artist") or "")
 
     try:
-        from instrument_aware import render_instrument_context_strip
-
-        render_instrument_context_strip(st, instrument, "creative")
-    except Exception:
-        pass
-
-    try:
         from app_ui import (
             inject_creative_studio_styles,
             render_creative_studio_panel_header,

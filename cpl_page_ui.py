@@ -169,9 +169,25 @@ def render_custom_progression_lab_page() -> None:
         session_display_key,
     )
     from jazz_demo_charts import build_demo_progression, demo_presets_for_style
-    from songs.music_source import note_active_source_change, set_custom_source
+    from songs.music_source import (
+        is_custom_progression,
+        note_active_source_change,
+        set_custom_source,
+    )
 
     render_cpl_page_header()
+    try:
+        from app_ui import (
+            custom_song_preview_card_html,
+            inject_custom_builder_styles,
+            render_custom_builder_panel_header,
+        )
+    except Exception:
+        inject_custom_builder_styles = lambda _st: None  # type: ignore
+        render_custom_builder_panel_header = lambda *_a, **_k: None  # type: ignore
+        custom_song_preview_card_html = lambda **_k: ""  # type: ignore
+
+    inject_custom_builder_styles(st)
 
     if st.session_state.get("cpl_builder_version") != CPL_BUILDER_VERSION:
         apply_cpl_session_progression(st.session_state, default_active_progression())
@@ -226,36 +242,89 @@ def render_custom_progression_lab_page() -> None:
     def _home_sections() -> dict:
         return ensure_all_cpl_sections(active.get("original_sections"))
 
-    # --- Progression title + save / load / new ---
-    with st.container():
+    def _activate_custom_song(*, toast: bool = True) -> None:
+        _save(_home_sections())
+        set_custom_source(st.session_state)
+        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        if toast:
+            st.success(f"**{prog_title}** is now your active song.")
+
+    def _open_practice() -> None:
+        _save(_home_sections())
+        set_custom_source(st.session_state)
+        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        from studio_nav_history import navigate_studio_page
+
+        navigate_studio_page(st.session_state, "practice")
+        st.rerun()
+
+    st.markdown('<div class="ui-custom-builder-shell">', unsafe_allow_html=True)
+    render_custom_builder_panel_header(st, working_title=prog_title)
+
+    # --- Song info ---
+    with st.container(key="custom_song_builder_panel", border=False):
         st.markdown('<div class="cpl-title-panel">', unsafe_allow_html=True)
-        title = st.text_input(
-            "Progression title",
-            value=prog_title,
-            key="cpl_title_input",
-            placeholder="My Progression",
-        )
+        info_a, info_b = st.columns([2, 1])
+        with info_a:
+            title = st.text_input(
+                "Song title",
+                value=prog_title,
+                key="cpl_title_input",
+                placeholder="e.g. My Ballad",
+            )
+        with info_b:
+            artist_val = st.text_input(
+                "Artist (optional)",
+                value=str(active.get("artist") or ""),
+                key="cpl_artist_input",
+                placeholder="Your name",
+            )
         title = (title or "").strip() or "My Progression"
-        if active.get("name") != title:
+        artist_val = (artist_val or "").strip()
+        if active.get("name") != title or str(active.get("artist") or "") != artist_val:
             active["name"] = title
+            active["artist"] = artist_val
             prog_title = title
             _save()
 
+        row2 = st.columns([1, 1, 1])
         cur_ts = str(active.get("time_signature") or "4/4")
         ts_ix = CPL_TIME_SIGNATURES.index(cur_ts) if cur_ts in CPL_TIME_SIGNATURES else 0
-        picked_ts = st.radio(
-            "Time signature",
-            CPL_TIME_SIGNATURES,
-            index=ts_ix,
-            horizontal=True,
-            key="cpl_time_signature",
+        with row2[0]:
+            picked_ts = st.radio(
+                "Meter",
+                CPL_TIME_SIGNATURES,
+                index=ts_ix,
+                horizontal=True,
+                key="cpl_time_signature",
+            )
+        cur_bpm = int(active.get("bpm", 100) or 100)
+        with row2[1]:
+            picked_bpm = st.slider("BPM", 50, 200, cur_bpm, 5, key="cpl_bpm_builder")
+        style_ix = (
+            CPL_PROGRESSION_STYLES.index(active.get("progression_style", "Pop"))
+            if active.get("progression_style") in CPL_PROGRESSION_STYLES
+            else 0
         )
+        with row2[2]:
+            picked_style = st.selectbox(
+                "Genre / style",
+                CPL_PROGRESSION_STYLES,
+                index=style_ix,
+                key="cpl_style_early",
+            )
         if picked_ts != cur_ts:
             active["time_signature"] = picked_ts
             _save()
+        if int(picked_bpm) != cur_bpm:
+            active["bpm"] = int(picked_bpm)
+            _save()
+        if active.get("progression_style") != picked_style:
+            active["progression_style"] = picked_style
+            _save()
 
         st.markdown(
-            f'<p class="cpl-now-editing">Now editing: <span>{html.escape(prog_title)}</span></p>',
+            f'<p class="cpl-now-editing">Editing <span>{html.escape(prog_title)}</span></p>',
             unsafe_allow_html=True,
         )
 
@@ -265,15 +334,12 @@ def render_custom_progression_lab_page() -> None:
             else 0
         )
         picked_orig = st.selectbox(
-            "Original key of this progression",
+            "Original key (written key)",
             CPL_KEY_OPTIONS,
             index=orig_ix,
             format_func=format_key_label,
             key="cpl_original_key",
-            help="Original key tells the app how to transpose your custom progression later.",
-        )
-        st.caption(
-            "Original key tells the app how to transpose your custom progression later."
+            help="Written key for the chart; transpose for practice in the sidebar.",
         )
         if picked_orig != original_key:
             active = set_original_key_center(active, picked_orig)
@@ -282,39 +348,33 @@ def render_custom_progression_lab_page() -> None:
 
         n1, n2, n3 = st.columns(3)
         with n1:
-            if st.button("Save Progression", key="cpl_save_prog", use_container_width=True, type="primary"):
+            if st.button("Save to library", key="cpl_save_prog", use_container_width=True):
                 save_progression(saved, active["name"], active)
-                st.success(f"Saved **{active['name']}**.")
+                st.success(f"Saved **{active['name']}** to your library.")
         with n2:
-            if st.button(
-                "Start New Progression",
-                key="cpl_start_new",
-                use_container_width=True,
-            ):
+            if st.button("New song", key="cpl_start_new", use_container_width=True):
                 apply_cpl_session_progression(st.session_state, start_new_progression())
                 st.rerun()
         with n3:
-            pass
-
-        st.markdown("**Load Saved Progression**")
-        saved_names = list_saved_progression_names(saved)
-        if not saved_names:
-            st.info("No saved progressions yet.")
-        else:
-            load_pick = st.selectbox(
-                "Choose a saved progression",
-                saved_names,
-                key="cpl_load_pick",
-            )
             if st.button(
-                "Load selected progression",
-                key="cpl_load_btn",
+                "Set as Active Song",
+                key="cpl_set_active",
+                type="primary",
                 use_container_width=True,
             ):
-                loaded = load_saved_progression(saved, load_pick)
-                apply_cpl_session_progression(st.session_state, loaded)
-                st.rerun()
-        with st.expander("Jazz chart demos (test charts)", expanded=False):
+                _activate_custom_song()
+
+        with st.expander("Load saved or demo charts", expanded=False):
+            saved_names = list_saved_progression_names(saved)
+            if not saved_names:
+                st.caption("No saved songs yet — build chords below, then save.")
+            else:
+                load_pick = st.selectbox("Saved songs", saved_names, key="cpl_load_pick")
+                if st.button("Load selected", key="cpl_load_btn", use_container_width=True):
+                    loaded = load_saved_progression(saved, load_pick)
+                    apply_cpl_session_progression(st.session_state, loaded)
+                    st.rerun()
+        with st.expander("Jazz chart demos", expanded=False):
             st.caption("Load a full jazz-standard chart with measure bars and repeat (%) notation.")
             d1, d2 = st.columns(2)
             with d1:
@@ -339,6 +399,24 @@ def render_custom_progression_lab_page() -> None:
 
     display_sections = deep_copy_sections(display_sections_for_key(active, display_key))
     has_chords = bool(flatten_sections_to_events(display_sections))
+    _filled = filled_section_names(_home_sections())
+    _sections_line = (
+        f"Sections: {', '.join(_filled)}" if _filled else "No sections with chords yet"
+    )
+    st.markdown(
+        custom_song_preview_card_html(
+            title=prog_title,
+            artist=str(active.get("artist") or ""),
+            key_label=original_label,
+            bpm=int(active.get("bpm", 100) or 100),
+            time_signature=str(active.get("time_signature") or "4/4"),
+            style=str(active.get("progression_style") or "Pop"),
+            sections_line=_sections_line,
+            has_chords=has_chords,
+            is_active=is_custom_progression(st.session_state),
+        ),
+        unsafe_allow_html=True,
+    )
 
     # --- Finished view ---
     if finished:
@@ -351,50 +429,54 @@ def render_custom_progression_lab_page() -> None:
             ),
             unsafe_allow_html=True,
         )
-        st.markdown(f"## {prog_title}")
         map_html = song_structure_overview_html(active, display_key, only_filled=True)
         if map_html:
             st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
 
-        if st.button(
-            "▶ Open in Backing Track",
-            key="cpl_to_backing_finish",
-            type="primary",
-            use_container_width=True,
-            disabled=not has_chords,
-        ):
-            _open_backing()
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            active["bpm"] = st.slider("BPM", 50, 180, int(active.get("bpm", 100)), 5, key="cpl_bpm_finish")
-        with c2:
-            active["loops"] = st.slider("Loops", 1, 10, int(active.get("loops", 2)), 1, key="cpl_loops_finish")
-        with c3:
+        launch = st.columns([1, 1, 1])
+        with launch[0]:
+            if st.button(
+                "Set as Active Song",
+                key="cpl_set_active_finish",
+                type="primary",
+                use_container_width=True,
+            ):
+                _activate_custom_song()
+        with launch[1]:
+            if st.button(
+                "Open Backing Track",
+                key="cpl_to_backing_finish",
+                use_container_width=True,
+                disabled=not has_chords,
+            ):
+                _open_backing()
+        with launch[2]:
             if st.button("Keep editing", key="cpl_unfinish", use_container_width=True):
                 st.session_state["cpl_finished"] = False
                 st.rerun()
+
+        c1, c2 = st.columns(2)
+        with c1:
+            active["bpm"] = st.slider(
+                "BPM", 50, 200, int(active.get("bpm", 100)), 5, key="cpl_bpm_finish"
+            )
+        with c2:
+            active["loops"] = st.slider(
+                "Loops", 1, 10, int(active.get("loops", 2)), 1, key="cpl_loops_finish"
+            )
         _save()
+        st.markdown("</div>", unsafe_allow_html=True)
         return
 
     # --- Builder ---
-    style_ix = (
-        CPL_PROGRESSION_STYLES.index(active.get("progression_style", "Pop"))
-        if active.get("progression_style") in CPL_PROGRESSION_STYLES
-        else 0
+    style = str(active.get("progression_style") or "Pop")
+    edit_section = st.selectbox(
+        "Section to edit",
+        CPL_UI_SECTION_ORDER,
+        key="cpl_edit_section",
+        help="Intro, Verse, Chorus, Bridge, and more.",
     )
-    style = st.selectbox(
-        "What kind of song are you making?",
-        CPL_PROGRESSION_STYLES,
-        index=style_ix,
-        key="cpl_style",
-    )
-    edit_section = st.selectbox("Section", CPL_UI_SECTION_ORDER, key="cpl_edit_section")
     home_sections = _home_sections()
-
-    if active.get("progression_style") != style:
-        active["progression_style"] = style
-        _save(home_sections)
     home_entries = home_sections[edit_section]
     simple = simple_chords_for_key(original_key)
     style_presets = presets_for_style(style)
@@ -452,7 +534,7 @@ def render_custom_progression_lab_page() -> None:
             unsafe_allow_html=True,
         )
     elif not section_has_chords:
-        st.caption("Click a chord, then choose how many bars.")
+        st.info("Tap a chord below, then choose **1**, **2**, or **4** bars to add it.")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("**1. Click a chord**")
@@ -746,8 +828,35 @@ def render_custom_progression_lab_page() -> None:
         only_filled=True,
     )
     if map_html:
-        st.markdown("### Song structure")
+        st.markdown("**Song structure**")
         st.markdown(map_html, unsafe_allow_html=True)
+
+    st.markdown("#### Launch in the studio")
+    setup = st.columns(3)
+    with setup[0]:
+        if st.button(
+            "Set as Active Song",
+            key="cpl_set_active_bottom",
+            type="primary",
+            use_container_width=True,
+        ):
+            _activate_custom_song()
+    with setup[1]:
+        if st.button(
+            "Open Backing Track",
+            key="cpl_open_backing_bottom",
+            use_container_width=True,
+            disabled=not has_chords,
+        ):
+            _open_backing()
+    with setup[2]:
+        if st.button(
+            "Open Practice",
+            key="cpl_open_practice_bottom",
+            use_container_width=True,
+            disabled=not has_chords,
+        ):
+            _open_practice()
 
     with st.expander("More options", expanded=False):
         if saved_names := list_saved_progression_names(saved):
@@ -757,3 +866,4 @@ def render_custom_progression_lab_page() -> None:
                 st.rerun()
 
     _save(home_sections)
+    st.markdown("</div>", unsafe_allow_html=True)
