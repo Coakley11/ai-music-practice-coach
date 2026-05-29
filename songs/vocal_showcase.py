@@ -13,6 +13,8 @@ _VOCAL_SHOWCASE_TAG_HINTS = (
     "broadway",
     "disney",
     "inspirational ballad",
+    "piano ballad",
+    "storytelling song",
     "karaoke friendly",
 )
 
@@ -31,6 +33,8 @@ def is_vocal_showcase(song_data: dict[str, Any] | None) -> bool:
         return False
     ext = song_data.get("extensions") or {}
     if ext.get("vocal_showcase") or ext.get("broadway_disney") or ext.get("disney_ballad"):
+        return True
+    if ext.get("piano_centric"):
         return True
     tags = [str(t).strip().lower() for t in (ext.get("repertoire_tags") or [])]
     return any(any(hint in tag for hint in _VOCAL_SHOWCASE_TAG_HINTS) for tag in tags)

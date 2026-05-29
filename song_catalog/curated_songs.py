@@ -3141,6 +3141,167 @@ def _how_far_ill_go_chart_pack() -> dict[str, Any]:
     }
 
 
+def _vienna_chart_pack() -> dict[str, Any]:
+    """Vienna — Billy Joel (G major, piano ballad, 4/4).
+
+    Capo-3 guitar chart reads in **G**; preserve Joel color tones (**G6**,
+    **Faug**, **B9sus**, **Eb7**, **B5/F#**, slash walks). Piano-centric
+    arrangement — not guitar-strumming logic.
+    """
+    intro = [
+        "G6",
+        "Faug",
+        "F7",
+        "B7sus4",
+        "C/G",
+        "Am7b5",
+        "Bm7",
+        "G",
+    ]
+
+    def _verse_a() -> list[str]:
+        return ["Em", "G", "D", "F", "C", "G", "A", "B9sus", "B"]
+
+    def _verse_b() -> list[str]:
+        return ["Em", "G", "D", "F", "C", "G", "F#m", "B9sus", "B"]
+
+    def _chorus(*, with_b5: bool = False) -> list[str]:
+        tail = ["D", "G", "B5/F#"] if with_b5 else ["D", "G"]
+        return [
+            "C",
+            "D",
+            "G",
+            "D/F#",
+            "Em",
+            "G/D",
+            "C",
+            "F#m",
+            "B7",
+            "Em7",
+            "A7",
+            "Eb7",
+            *tail,
+        ]
+
+    instrumental = ["Em", "G", "D", "F", "C", "G", "F#m", "B9sus", "B"]
+
+    outro = ["E7", "A7", "N.C.", "D", "G"]
+
+    intermediate = {
+        "Intro": list(intro),
+        "Verse 1": _verse_a() + _verse_b(),
+        "Chorus 1": _chorus(with_b5=True),
+        "Verse 2": _verse_a() + _verse_b(),
+        "Chorus 2": _chorus(),
+        "Instrumental": list(instrumental),
+        "Chorus 3": _chorus(),
+        "Final Chorus": _chorus(),
+        "Outro": list(outro),
+    }
+
+    def _beg(ch: str) -> str:
+        if ch == "N.C.":
+            return "N.C."
+        head = ch.split("/")[0].strip()
+        return (
+            head.replace("G6", "G")
+            .replace("Faug", "F")
+            .replace("B7sus4", "B7")
+            .replace("B9sus", "B7")
+            .replace("Am7b5", "Am")
+            .replace("Bm7", "Bm")
+            .replace("Em7", "Em")
+            .replace("Eb7", "Eb")
+            .replace("B5", "B")
+            .replace("aug", "")
+            .replace("sus4", "")
+            .replace("sus", "")
+            .replace("m7b5", "dim")
+            .replace("maj7", "")
+            .replace("m7", "m")
+        )
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+
+    section_order = list(intermediate.keys())
+    return {
+        "key": "G",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Billy Joel",
+        "lyric_cues": {
+            "Intro": ["Iconic Joel intro — G6 · Faug · chromatic color"],
+            "Verse 1": [
+                "Slow down, you crazy child — (breath) storytelling",
+                "Intimate piano; let lyrics lead",
+            ],
+            "Chorus 1": [
+                "Vienna waits for you — (breath) emotional lift",
+                "Eb7 borrowed color — don't rush the slash walks",
+            ],
+            "Verse 2": ["Second verse — deepen the narrative"],
+            "Instrumental": ["Melodic piano fill — same harmony as verse tail"],
+            "Final Chorus": ["Biggest peak — richest voicings, still reflective"],
+            "Outro": ["E7 · A7 · N.C. — gradual release into D · G"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**G major** piano ballad (**4/4**, ~63 BPM). Guitar chart "
+                "often played with **capo 3** (Em shapes). Preserve Joel "
+                "colors: **G6**, **Faug**, **F7**, **B7sus4**, **C/G**, "
+                "**Am7b5**, **B9sus**, **D/F#**, **G/D**, **Em7**, **Eb7**, "
+                "**B5/F#**. Piano-centric — not rock guitar strumming. Verse "
+                "intimate; chorus fuller; instrumental piano fills; final "
+                "chorus = emotional peak; outro relaxes. Advanced study: "
+                "secondary dominants & modal interchange. Tags: Billy Joel · "
+                "Piano Ballad · Singer-Songwriter · Storytelling · Vocal "
+                "Showcase."
+            ),
+            default_bpm=63,
+            default_groove="Ballad",
+            time_signature="4/4",
+            capo_note="Capo 3 (Em-shape chart) · sounding key G major",
+            repertoire_tags=[
+                "Billy Joel",
+                "Piano Ballad",
+                "Singer-Songwriter",
+                "Storytelling Song",
+                "Vocal Showcase",
+            ],
+            vocal_showcase=True,
+            piano_centric=True,
+            harmonic_analysis={
+                "progression_summary": (
+                    "G major with chromatic passing (Faug, Eb7) and "
+                    "secondary dominants (A7, E7); slash bass voice-leading"
+                ),
+                "scale_suggestions": {
+                    "G": ["G major", "G mixolydian (passing F7)"],
+                    "Em": ["E natural minor", "E dorian (Em7–A7)"],
+                    "Eb7": ["Ab major / borrowed bVII color (modal interchange)"],
+                    "F#m": ["F# natural minor (ii in G)"],
+                },
+                "study_topics": [
+                    "Secondary dominant analysis",
+                    "Modal interchange awareness",
+                    "Slash-chord voice leading",
+                ],
+            },
+            backing_character="piano_ballad_joel",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -3218,6 +3379,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
             "Disney · Hercules",
         ): _iwont_say_in_love_chart_pack(),
         ("How Far I'll Go", "Disney · Moana"): _how_far_ill_go_chart_pack(),
+        ("Vienna", "Billy Joel"): _vienna_chart_pack(),
         ("Waiting on the World to Change", "John Mayer"): _say_waiting_lyric_pack(
             "Waiting on the World to Change"
         ),
@@ -3424,32 +3586,6 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Pre-Chorus": ["Fmaj9", "G13sus", "Em9", "Am9", "D13/F#", "D13", "G13sus", "G13"],
                 "Chorus": ["Cmaj9", "E7b9/G#", "Am9", "D13/F#", "Fmaj9", "G13sus", "Cmaj9", "G13"],
                 "Bridge": ["Fmaj9", "G13sus", "E7b9/G#", "Am9", "D13/F#", "D13", "G13sus", "G13"],
-            },
-        ),
-        ("Vienna", "Billy Joel"): pack("Gm",
-            {
-                "Intro": ["Gm", "Bb", "F", "Ab", "Eb", "Bb", "C", "D"],
-                "Verse": ["Gm", "Bb", "F", "Ab", "Eb", "Bb", "C", "D"],
-                "Pre-Chorus": ["Eb", "Bb/D", "Cm", "D", "Gm", "F", "Eb", "D"],
-                "Chorus": ["Gm", "D/F#", "Gm/F", "C/E", "Eb", "Bb/D", "Cm", "D"],
-                "Bridge": ["Am7b5", "D7", "Gm", "C7", "Cm", "F7", "Bb", "D7"],
-                "Outro": ["Gm", "Bb", "F", "Ab", "Eb", "D", "Gm", "Gm"],
-            },
-            {
-                "Intro": ["Gm7", "Bb/F", "F", "Abmaj7", "Ebmaj7", "Bb/D", "C7", "D7sus4"],
-                "Verse": ["Gm7", "Bb/F", "F", "Abmaj7", "Ebmaj7", "Bb/D", "C7", "D7"],
-                "Pre-Chorus": ["Ebmaj7", "Bb/D", "Cm7", "D7", "Gm7", "F", "Ebmaj7", "D7"],
-                "Chorus": ["Gm7", "D/F#", "Gm/F", "C/E", "Ebmaj7", "Bb/D", "Cm7", "D7"],
-                "Bridge": ["Am7b5", "D7b9", "Gm7", "C7", "Cm7", "F7", "Bbmaj7", "D7b9"],
-                "Outro": ["Gm7", "Bb/F", "F", "Abmaj7", "Ebmaj7", "D7", "Gm7", "Gm7"],
-            },
-            {
-                "Intro": ["Gm9", "Bb/F", "F13", "Abmaj9", "Ebmaj9", "Bb/D", "C13", "D7sus4"],
-                "Verse": ["Gm9", "Bb/F", "F13", "Abmaj9", "Ebmaj9", "Bb/D", "C13", "D7b9"],
-                "Pre-Chorus": ["Ebmaj9", "Bb/D", "Cm9", "D7b9", "Gm9", "F13", "Ebmaj9", "D7b9"],
-                "Chorus": ["Gm9", "D7/F#", "Gm9/F", "C13/E", "Ebmaj9", "Bb/D", "Cm9", "D7b9"],
-                "Bridge": ["Am7b5", "D7b9", "Gm9", "C13", "Cm9", "F13", "Bbmaj9", "D7b9"],
-                "Outro": ["Gm9", "Bb/F", "F13", "Abmaj9", "Ebmaj9", "D7b9", "Gm9", "Gm9"],
             },
         ),
         ("Let It Be", "The Beatles"): pack("C",
@@ -5367,13 +5503,20 @@ def curated_song_records() -> list[dict[str, Any]]:
             ],
             extensions=_ext(default_bpm=76, default_groove="Ballad", time_signature="4/4"),
         ),
-        _s("Vienna", "Billy Joel", "Pop", "Bb", {
-            "Intro": ["Bb", "Bb/D", "Ebmaj7", "F7"],
-            "Verse": ["Bb", "Dm7", "Gm7", "Ebmaj7", "Bb/F", "F7", "Bb", "F7"],
-            "Pre-Chorus": ["Ebmaj7", "F/Eb", "Dm7", "Gm7", "Cm7", "F7", "Bb", "F7"],
-            "Chorus": ["Ebmaj7", "F7", "Dm7", "Gm7", "Cm7", "F7", "Bb", "F7"],
-            "Bridge": ["Gm7", "Dm7/F", "Ebmaj7", "Bb/D", "Cm7", "F7", "Bb", "F7"],
-        }, composer="Billy Joel"),
+        _s("Vienna", "Billy Joel", "Pop", "G", {
+            "Intro": ["G6", "Faug", "F7", "B7sus4"],
+            "Verse 1": ["Em", "G", "D", "F"],
+            "Chorus 1": ["C", "D", "G", "D/F#"],
+        }, composer="Billy Joel",
+          extensions=_ext(
+              default_bpm=63,
+              default_groove="Ballad",
+              piano_centric=True,
+              vocal_showcase=True,
+              capo_note="Capo 3 (Em-shape chart)",
+              repertoire_tags=["Billy Joel", "Piano Ballad", "Vocal Showcase"],
+          ),
+          chart_status="practice_level_verified"),
         _s(
             "New York State of Mind",
             "Billy Joel",
