@@ -43,6 +43,7 @@ TRUSTED_CORE_KEYS = {
     ("Autumn Leaves", "Jazz Standard"),
     ("Autumn Leaves", "Eric Clapton"),
     ("All the Things You Are", "Jazz Standard"),
+    ("Satin Doll", "Duke Ellington"),
     ("Fly Me to the Moon", "Bart Howard"),
     ("So Nice (Summer Samba)", "Marcos Valle"),
     ("One Note Samba", "Antonio Carlos Jobim"),

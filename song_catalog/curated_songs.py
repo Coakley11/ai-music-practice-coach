@@ -3494,6 +3494,297 @@ def _attya_chart_pack() -> dict[str, Any]:
     }
 
 
+def _satin_doll_chart_pack() -> dict[str, Any]:
+    """Satin Doll — Duke Ellington / Strayhorn (AABA + turnaround, 4/4).
+
+    **C major** swing standard. Each **ii–V** cell is one bar with in-bar
+  splits (``Dm7|G7``). AABA = 32 bars; optional 4-bar **Turnaround** tag.
+    """
+    def _a_tail(*, hold_c: bool = False) -> list[str]:
+        tail = ["Cmaj7", "Cmaj7"] if hold_c else ["Cmaj7|B7", "Bb7|A7"]
+        return [
+            "Dm7|G7",
+            "Dm7|G7",
+            "Em7|A7",
+            "Em7|A7",
+            "Am7|D7",
+            "Am7|D7",
+            *tail,
+        ]
+
+    section_b = [
+        "Gm7|C7",
+        "Gm7|C7",
+        "Fmaj7",
+        "Fmaj7",
+        "Fm7|Bb7",
+        "Em7|A7",
+        "Am7|D7",
+        "Dm7|G7",
+    ]
+
+    turnaround = ["Dm7|G7", "Em7|A7", "Am7|D7", "G7"]
+
+    intermediate = {
+        "A": _a_tail(),
+        "A2": _a_tail(hold_c=True),
+        "B (Bridge)": list(section_b),
+        "A3": _a_tail(),
+        "Turnaround": list(turnaround),
+    }
+
+    def _beg(ch: str) -> str:
+        if "|" in ch:
+            return "|".join(_beg(p.strip()) for p in ch.split("|") if p.strip())
+        head = ch.split("/")[0].strip()
+        return head.replace("maj7", "").replace("m7", "m").replace("7", "")
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+
+    scale_hints = {
+        "Dm7": ["D Dorian"],
+        "G7": ["G Mixolydian", "G altered (advanced)"],
+        "Em7": ["E Dorian"],
+        "A7": ["A Mixolydian", "A altered (advanced)"],
+        "Am7": ["A Dorian"],
+        "D7": ["D Mixolydian", "D altered (advanced)"],
+        "Cmaj7": ["C Ionian"],
+        "B7": ["B Mixolydian", "B altered (advanced)"],
+        "Bb7": ["Bb Mixolydian"],
+        "Gm7": ["G Dorian"],
+        "C7": ["C Mixolydian", "C altered (advanced)"],
+        "Fmaj7": ["F Ionian", "F Lydian"],
+        "Fm7": ["F Dorian"],
+    }
+
+    section_order = list(intermediate.keys())
+    return {
+        "key": "C",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Duke Ellington · Billy Strayhorn · Johnny Mercer",
+        "lyric_cues": {
+            "A": ["Chain of ii–V's in C — Dm7|G7 pickup feel"],
+            "A2": ["Second A — hold on Cmaj7 (no chromatic B7/Bb7)"],
+            "B (Bridge)": ["Bridge to F — Gm7|C7 · Fmaj7 · Fm7|Bb7"],
+            "A3": ["Return of A — same as first A"],
+            "Turnaround": ["Tag: Dm7|G7 · Em7|A7 · Am7|D7 · G7 back to top"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**C major** AABA swing standard (**4/4**, ~128 BPM medium "
+                "swing; **110–130** bossa in groove picker). **32-bar** head "
+                "(A–A2–B–A3) plus optional **4-bar turnaround**. Preserve "
+                "**m7**, **maj7**, and dominant **7** — use **Dm7|G7** "
+                "half-bar splits for each ii–V bar. Core jazz repertoire "
+                "alongside Autumn Leaves, ATTYA, Blue Bossa. Piano: shell "
+                "voicings on 2 and 4; guitar: Freddie Green-style comp; bass: "
+                "walking quarter notes in swing. Tags: Jazz Standard · Swing · "
+                "Duke Ellington · Big Band · ii-V-I · Essential Standards."
+            ),
+            default_bpm=128,
+            default_groove="Jazz swing",
+            time_signature="4/4",
+            form="AABA (32 bars) + Turnaround (4 bars)",
+            repertoire_tags=[
+                "Jazz Standard",
+                "Swing",
+                "Duke Ellington",
+                "Big Band",
+                "Jazz Repertoire",
+                "ii-V-I Progressions",
+                "Improvisation",
+                "Essential Standards",
+            ],
+            jazz_standard_flagship=True,
+            harmonic_analysis={
+                "progression_summary": "Chain of ii–V progressions in C and brief F major bridge",
+                "key_centers": [
+                    {
+                        "section": "A / A3",
+                        "center": "C major",
+                        "progression": "Dm7|G7 · Em7|A7 · Am7|D7 · Cmaj7|B7|Bb7|A7",
+                    },
+                    {
+                        "section": "A2",
+                        "center": "C major",
+                        "progression": "Same chain; resolves to Cmaj7",
+                    },
+                    {
+                        "section": "B (Bridge)",
+                        "center": "F major",
+                        "progression": "Gm7|C7 · Fmaj7 · Fm7|Bb7 · return to C via ii–V chain",
+                    },
+                ],
+                "ii_v_i_groupings": [
+                    "Dm7|G7 (ii–V in C)",
+                    "Em7|A7 (ii–V in D / secondary)",
+                    "Am7|D7 (ii–V in G / secondary)",
+                    "Gm7|C7 (ii–V in F)",
+                    "Fm7|Bb7 (ii–V in Eb)",
+                    "Turnaround: Dm7|G7 · Em7|A7 · Am7|D7 · G7",
+                ],
+                "guide_tone_notes": (
+                    "Connect 3rds and 7ths across each ii–V: e.g. Dm7 (F,C) → G7 (B,F) "
+                    "→ Cmaj7; keep guide tones on beats 1 and 3 when walking or comping."
+                ),
+                "improvisation_notes": (
+                    "Use Dorian on minors, Mixolydian or altered on dominants; "
+                    "target chord tones through each ii–V in swing eighths."
+                ),
+                "comping_notes": {
+                    "Piano": "Shell voicings (rootless 3–7) on beats 2 and 4; Charleston rhythm optional.",
+                    "Guitar": "Muted quarter-note Freddie Green comp; highlight ii–V pairs.",
+                    "Bass": "Walking quarters: root–chord tone–scale–approach on each bar.",
+                },
+                "scale_suggestions": scale_hints,
+            },
+            jazz_ballad=False,
+            backing_character="jazz_swing_standard",
+        ),
+    }
+
+
+def _iris_chart_pack() -> dict[str, Any]:
+    """Iris — Goo Goo Dolls (B minor, alt-rock ballad, 4/4).
+
+    Soaring 90s pop-rock ballad with gradual build. Preserve **Bsus2**,
+    **Gmaj7**, **Bm/A**, **F#m**; one list item = one bar.
+    """
+    intro = ["Bm", "Bsus2", "G", "Gmaj7", "G"]
+
+    def _verse() -> list[str]:
+        return ["D", "Em", "G", "Bm", "A", "G"] * 2
+
+    chorus = ["Bm", "A", "G"] * 4
+
+    instrumental_head = (
+        ["Bm", "Bm/A", "D", "D", "Bm", "Bm/A", "G", "G"] * 2
+        + ["Bm", "Bsus2", "G", "G"] * 3
+        + ["Bm", "Bsus2"]
+    )
+
+    build = (
+        ["G", "F#m", "G", "Bm"]
+        + ["G", "F#m", "Bm", "Bm"]
+        + ["G", "F#m", "Bm", "Bm"]
+    )
+
+    ending_build = ["Bm", "Bm/A", "G", "G"] * 4
+
+    outro = ["Bm", "A", "G"] * 2 + ["Bm", "A", "Bm"]
+
+    coda = ["Bm", "Bm/A", "G", "G"] * 4
+
+    intermediate = {
+        "Intro": list(intro),
+        "Verse 1": _verse(),
+        "Verse 2": _verse(),
+        "Chorus 1": list(chorus),
+        "Interlude": list(intro),
+        "Verse 3": _verse(),
+        "Chorus 2": list(chorus),
+        "Instrumental": list(instrumental_head),
+        "Build": list(build),
+        "Ending Build": list(ending_build),
+        "Final Chorus": list(chorus) * 2,
+        "Outro": list(outro),
+        "Coda": list(coda),
+    }
+
+    def _beg(ch: str) -> str:
+        head = ch.split("/")[0].strip()
+        return (
+            head.replace("Bsus2", "Bm")
+            .replace("Gmaj7", "G")
+            .replace("F#m", "F#")
+            .replace("m7", "m")
+            .replace("sus2", "")
+            .replace("maj7", "")
+        )
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "Bm": ["B natural minor", "B minor pentatonic"],
+        "A": ["A major"],
+        "G": ["G major"],
+        "Em": ["E natural minor"],
+        "D": ["D major"],
+        "F#m": ["F# Dorian", "F# natural minor"],
+    }
+    return {
+        "key": "Bm",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "John Rzeznik",
+        "lyric_cues": {
+            "Intro": ["Atmospheric Bm · Bsus2 · G — (breath) before vocal"],
+            "Verse 1": ["And I'd give up forever… — intimate, conversational"],
+            "Chorus 1": ["I don't want the world to see me — (breath) open vowels"],
+            "Interlude": ["Guitar interlude — same as intro colors"],
+            "Instrumental": ["Dynamic lift — Bm/A slash bass movement"],
+            "Build": ["F#m color — push energy toward climax"],
+            "Final Chorus": ["Fullest arrangement — repeat for impact"],
+            "Outro": ["And I just want you to know who I am — release"],
+            "Coda": ["Fade on Bm/A · G vamp"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**B minor** alt-rock ballad (**4/4**, ~154 BPM). **Not** "
+                "piano-ballad or jazz comping — layered acoustic/electric "
+                "guitars, pads, rock drums, melodic bass. Preserve **Bsus2**, "
+                "**Gmaj7**, **Bm/A**, **F#m**. Verse: lighter acoustic; chorus: "
+                "bigger drums/guitars; instrumental/build: gradual emotional "
+                "swell; final chorus: peak. Karaoke-friendly vocal showcase."
+            ),
+            default_bpm=154,
+            default_groove="Rock groove",
+            time_signature="4/4",
+            repertoire_tags=[
+                "90s Rock",
+                "Alternative Rock",
+                "Pop Rock Ballad",
+                "Vocal Showcase",
+                "Acoustic Rock",
+            ],
+            vocal_showcase=True,
+            vocal_range_notes=(
+                "Melody mostly mid–high chest in verses; chorus soars to "
+                "head-mix on 'I don't want the world to see me'. Plan breaths "
+                "before each chorus entrance and the final chorus repeat."
+            ),
+            harmonic_analysis={
+                "progression_summary": "Bm-centric with G major and D major verse color",
+                "scale_suggestions": scale_hints,
+            },
+            alt_rock_ballad=True,
+            backing_character="alt_rock_ballad",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -3574,6 +3865,8 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Vienna", "Billy Joel"): _vienna_chart_pack(),
         ("All the Things You Are", "Jazz Standard"): _attya_chart_pack(),
         ("All the Things You Are", "Jerome Kern"): _attya_chart_pack(),
+        ("Satin Doll", "Duke Ellington"): _satin_doll_chart_pack(),
+        ("Iris", "Goo Goo Dolls"): _iris_chart_pack(),
         ("Waiting on the World to Change", "John Mayer"): _say_waiting_lyric_pack(
             "Waiting on the World to Change"
         ),
@@ -4316,7 +4609,9 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             },
             composer="John Rzeznik",
             lyric_cues={"Verse": ["introspective low entry"], "Pre-Chorus": ["confessional lift"], "Chorus": ["big open hook"]},
-            notes="Practice chart in concert B minor; original guitar uses altered tuning, so voicings are normalized for app playback.",
+            notes="Practice chart in B minor; full form in chart override.",
+            default_bpm=154,
+            default_groove="Rock groove",
         ),
         v(
             "Take Me Home, Country Roads",
@@ -6153,9 +6448,17 @@ def curated_song_records() -> list[dict[str, Any]]:
             "B Section": ["Am7b5", "D7", "Gm7", "C7", "Fm7", "Bb7", "Ebmaj7", "Ebmaj7"],
         }, composer="Erroll Garner"),
         _s("Satin Doll", "Duke Ellington", "Jazz", "C", {
-            "A Section": ["D7", "D7", "Dm7", "G7", "Cmaj7", "Cmaj7", "Am7", "D7"],
-            "B Section": ["Dm7", "G7", "Cmaj7", "A7", "Dm7", "G7", "Cmaj7", "Cmaj7"],
-        }, composer="Duke Ellington"),
+            "A": ["Dm7|G7", "Dm7|G7", "Em7|A7", "Em7|A7"],
+            "B (Bridge)": ["Gm7|C7", "Gm7|C7", "Fmaj7", "Fmaj7"],
+            "Turnaround": ["Dm7|G7", "Em7|A7", "Am7|D7", "G7"],
+        }, composer="Duke Ellington · Billy Strayhorn · Johnny Mercer",
+          extensions=_ext(
+              default_bpm=128,
+              default_groove="Jazz swing",
+              jazz_standard_flagship=True,
+              repertoire_tags=["Jazz Standard", "Swing", "Duke Ellington", "Essential Standards"],
+          ),
+          chart_status="practice_level_verified"),
         _s("Blue in Green", "Miles Davis", "Jazz", "Gm", {
             "A Section": ["Gm7", "Gm7", "A7#9", "A7#9", "Gm7", "Gm7", "Gm7", "Gm7"],
         }, composer="Miles Davis / Bill Evans"),

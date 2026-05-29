@@ -890,6 +890,7 @@ def _song_backing_profile(
         "disney_cinematic": False,
         "piano_centric": False,
         "jazz_ballad": False,
+        "alt_rock_ballad": False,
         # ---- Arrangement-level character (new) ----
         # ``pocket_offset`` is in *beats* and applied to off-beats by
         # ``_groove_time``. Negative = pushed/ahead, positive =
@@ -997,6 +998,21 @@ def _song_backing_profile(
         elif style == "Bossa nova":
             profile["latin_relaxed"] = True
             profile["swing"] = max(profile["swing"], 0.04)
+    if "satin doll" in title:
+        profile["jazz_ballad"] = True
+        profile["comp_stab"] = True
+        profile["kick_push"] = 1.08
+        profile["hat_soft"] = min(profile["hat_soft"], 0.90)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.014)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.010)
+        if style == "Jazz swing":
+            profile["ride_jazz"] = True
+            profile["swing"] = max(profile["swing"], 0.11)
+        elif style == "Bossa nova":
+            profile["latin_relaxed"] = True
+            profile["cross_stick"] = True
+            profile["swing"] = max(profile["swing"], 0.05)
+            profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
     if any(
         k in title
         for k in ("attention", "treasure", "uptown funk", "get lucky", "charlie puth")
@@ -1059,6 +1075,14 @@ def _song_backing_profile(
         profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
         profile["pocket_offset"] = max(profile["pocket_offset"], 0.022)
         profile["outro_fade_bars"] = 4
+    if "iris" in title or "goo goo" in title:
+        profile["alt_rock_ballad"] = True
+        profile["vocal_ballad"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.58)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
+        profile["kick_push"] = max(profile["kick_push"], 1.06)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.012)
+        profile["outro_fade_bars"] = 6
     if "take the a train" in title or "ellington" in title:
         profile["ride_jazz"] = True
         profile["swing"] = 0.12
@@ -1290,6 +1314,15 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "cross_stick": [1.0],
             "comp_dur": 0.82,
         })
+    if profile.get("alt_rock_ballad"):
+        return _fit({
+            "bass_beats": [0, 2],
+            "comp_beats": [0, 2, 2.5, 3.5],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 3.0],
+            "kick_beats": [0, 2.5],
+            "comp_dur": 0.52,
+        })
     return _fit({
         "bass_beats": [0, 2],
         "comp_beats": [0, 1.5, 2.5, 3.5],
@@ -1375,9 +1408,20 @@ def synthesize_chords_to_numpy(
             "final" in str(section_name).lower() or role == "chorus"
         ):
             intensity *= 1.08
+        if song_profile.get("alt_rock_ballad") and role == "verse":
+            intensity *= 0.90
+        if song_profile.get("alt_rock_ballad") and role == "chorus":
+            intensity *= 1.08
+        if song_profile.get("alt_rock_ballad") and any(
+            k in str(section_name).lower()
+            for k in ("build", "instrumental", "ending", "final chorus")
+        ):
+            intensity *= 1.12
         section_edge = _is_section_edge(event, next_event)
         is_breakdown_recovery = idx in arr_ctx.bridge_recovery
         is_final_chorus_bar = arr_ctx.is_final_chorus_event(idx)
+        if song_profile.get("alt_rock_ballad") and is_final_chorus_bar:
+            intensity *= 1.06
         # Loop pass index — used to seed humanization so loop 2 of a
         # repeated section is *slightly* different from loop 1
         # (different micro-timing + velocity jitter). Keeps the take
@@ -1594,6 +1638,16 @@ def synthesize_chords_to_numpy(
                     if role == "chorus" or "final" in str(section_name).lower():
                         comp_vol *= 1.06
                     dur *= 1.12
+                if song_profile.get("alt_rock_ballad"):
+                    comp_vol *= 0.72 if role == "verse" else 0.92
+                    if role == "chorus":
+                        comp_vol *= 1.06
+                    if any(
+                        k in str(section_name).lower()
+                        for k in ("build", "instrumental", "ending", "final")
+                    ):
+                        comp_vol *= 1.05
+                    dur *= 1.02 if role == "chorus" else 0.96
                 if song_profile.get("comp_stab"):
                     dur *= 0.55
                     comp_vol *= 1.2
