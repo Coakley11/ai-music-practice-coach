@@ -4587,6 +4587,201 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
     }
 
 
+def _love_story_chart_pack() -> dict[str, Any]:
+    """Love Story — Taylor Swift (C guitar shapes / capo 2, D concert, 4/4).
+
+    Country-pop ballad built on **C · G · Am · F** with a signature whole-step
+    key change to **D · A · Bm · G** at the final chorus. One list item = one bar.
+    Preserve **Am**, **Bm**, **F**, and **G** exactly.
+    """
+    intro = ["C", "G", "Am", "F"]
+
+    verse_1 = ["C", "F", "Am", "F", "C", "F", "Am", "G"]
+    verse_2 = ["C", "F", "Am", "G"]
+
+    def _pre_chorus() -> list[str]:
+        return ["F", "G", "Am", "C", "F", "G", "Am", "F", "G"]
+
+    chorus = ["C", "G", "Am", "F", "G", "C"]
+    chorus_2 = ["C", "G", "Am", "F", "G", "C", "G", "Am", "F", "G"]
+
+    solo = ["C", "C", "G", "G", "Am", "Am", "F", "G"]
+    bridge = ["Am", "F", "C", "G", "Am", "F", "C", "G"]
+
+    final_chorus = ["D", "A", "Bm", "G", "A", "D"]
+    outro = ["A", "Bm", "G", "D"]
+
+    intermediate = {
+        "Intro": list(intro),
+        "Verse 1": list(verse_1),
+        "Pre-Chorus": _pre_chorus(),
+        "Chorus": list(chorus),
+        "Verse 2": list(verse_2),
+        "Pre-Chorus 2": _pre_chorus(),
+        "Chorus 2": list(chorus_2),
+        "Solo": list(solo),
+        "Bridge": list(bridge),
+        "Final Chorus (Key Change)": list(final_chorus),
+        "Outro": list(outro),
+    }
+
+    beginner = {name: list(chords) for name, chords in intermediate.items()}
+
+    def _adv(ch: str) -> str:
+        if ch in {"Am", "Bm", "F", "G"}:
+            return ch
+        return {"C": "Cadd9", "D": "Dadd9", "A": "Asus2"}.get(ch, ch)
+
+    advanced = {
+        name: [_adv(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "C": ["C Major", "C Major Pentatonic"],
+        "G": ["G Major"],
+        "Am": ["A Natural Minor", "A Minor Pentatonic"],
+        "F": ["F Major"],
+        "D": ["D Major"],
+        "A": ["A Major"],
+        "Bm": ["B Natural Minor"],
+    }
+
+    return {
+        "key": "C",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Taylor Swift",
+        "guitar_tabs": {
+            "C": "x32010",
+            "G": "320003",
+            "Am": "x02210",
+            "F": "133211",
+            "D": "xx0232",
+            "A": "x02220",
+            "Bm": "x24432",
+        },
+        "lyric_cues": {
+            "Intro": [
+                "Acoustic storybook pickup — (breath) before 'We were both young…'",
+                "C · G · Am · F sets the fairytale frame",
+            ],
+            "Verse 1": [
+                "Intimate verse — conversational, light country-pop tone",
+                "(breath) after long lines; let the guitar carry the rhythm",
+            ],
+            "Pre-Chorus": [
+                "Gradual build — (breath) before 'That you were Romeo…'",
+                "Tension climbs on F · G · Am · C",
+            ],
+            "Chorus": [
+                "Title hook — 'Love Story' — open vowels, fuller drums enter",
+                "(breath) before 'Romeo take me somewhere we can be alone'",
+                "Land the F · G · C tag cleanly",
+            ],
+            "Verse 2": [
+                "Shorter second verse — stay intimate, don't rush to pre-chorus",
+            ],
+            "Pre-Chorus 2": [
+                "Same lift as first pre-chorus — save energy for double chorus",
+            ],
+            "Chorus 2": [
+                "Double chorus pass — stronger bass and wider arrangement",
+                "Second half repeats the hook with full band energy",
+            ],
+            "Solo": [
+                "Fiddle/guitar solo section — support improvisation over C · G · Am · F",
+            ],
+            "Bridge": [
+                "Emotional lift — (breath) 'Marry me, Juliet…'",
+                "Quiet plea before the famous key change",
+            ],
+            "Final Chorus (Key Change)": [
+                "Whole-step lift C → D — biggest energy of the song",
+                "(breath) then commit to the brighter D · A · Bm · G hook",
+                "Open up tone for the proposal moment",
+            ],
+            "Outro": [
+                "Warm fade — reduce instrumentation on A · Bm · G · D",
+                "Let the final D ring; soft ending",
+            ],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**D major** concert; chart in **C shapes** (capo **2**). **4/4**, "
+                "~119 BPM country-pop / acoustic ballad. Core loop **C · G · Am · F** "
+                "with pre-chorus build and double chorus before solo/bridge. "
+                "Signature **modulation to D · A · Bm · G** at the final chorus — "
+                "do not flatten the key change. Backing: acoustic guitar, light "
+                "drums, bass, optional fiddle, piano support — **not** rock/EDM/jazz "
+                "reharm. Verse intimate; pre-chorus builds; chorus fullest; bridge "
+                "lifts; final chorus = peak; outro thins warmly. Core beginner "
+                "vocal-showcase repertoire alongside All of Me, Shallow, Friend in Me."
+            ),
+            default_bpm=119,
+            default_groove="Ballad",
+            time_signature="4/4",
+            capo_note="Capo 2 (C-shape chart) · concert key D major",
+            repertoire_tags=[
+                "Taylor Swift",
+                "Country Pop",
+                "Pop Ballad",
+                "Love Song",
+                "Karaoke Friendly",
+                "Vocal Showcase",
+                "Beginner Friendly",
+            ],
+            vocal_showcase=True,
+            modulation={
+                "from_key": "C",
+                "to_key": "D",
+                "section": "Final Chorus (Key Change)",
+            },
+            vocal_range_notes=(
+                "Verse and pre-chorus sit in comfortable chest/mix; chorus opens "
+                "slightly. Plan breaths before each chorus and the bridge plea. "
+                "Final chorus (key change up a whole step) is the highest sustained "
+                "moment — warm up mix voice before the D-major lift."
+            ),
+            vocal_harmony_hints=(
+                "Country-pop storytelling: soften consonants in verses, open the "
+                "title hook on 'Love Story', and breathe before the pre-chorus "
+                "lift. The C → D key change is the emotional peak — brighten tone "
+                "and don't rush the Bm · G landing."
+            ),
+            harmonic_analysis={
+                "progression_summary": "I–V–vi–IV in C; whole-step modulation to D for final chorus",
+                "key_centers": [
+                    {
+                        "section": "Intro through Bridge",
+                        "center": "C major",
+                        "progression": "C · G · Am · F with pre-chorus F · G · Am · C",
+                    },
+                    {
+                        "section": "Final Chorus / Outro",
+                        "center": "D major",
+                        "progression": "D · A · Bm · G · A · D (modulation up whole step)",
+                    },
+                ],
+                "improvisation_notes": (
+                    "Solo section repeats C · G · Am · F pairs — use major pentatonic "
+                    "on C and A minor pentatonic on Am for beginner-friendly fills."
+                ),
+                "scale_suggestions": scale_hints,
+            },
+            acoustic_unplugged=True,
+            backing_character="country_pop_acoustic_vocal",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -4672,6 +4867,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Satin Doll", "Duke Ellington"): _satin_doll_chart_pack(),
         ("Iris", "Goo Goo Dolls"): _iris_chart_pack(),
         ("All of Me", "John Legend"): _all_of_me_chart_pack(),
+        ("Love Story", "Taylor Swift"): _love_story_chart_pack(),
         (
             "Shalom Aleichem",
             "Traditional Jewish Sabbath Song",
@@ -5947,36 +6143,19 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "Country",
             "C",
             {
-                "Intro": ["C", "F", "Am", "F"],
-                "Verse": ["C", "F", "Am", "F", "C", "F", "Am", "G"],
-                "Pre-Chorus": ["F", "G", "Am", "G", "F", "G", "Am", "C"],
-                "Chorus": ["C", "G", "Am", "F", "C", "G", "Am", "F"],
-                "Bridge": ["Am", "F", "C", "G", "Am", "F", "C", "G"],
-                "Final Chorus (Key Change)": ["D", "A", "Bm", "G", "D", "A", "Bm", "G"],
-                "Outro": ["D", "A", "Bm", "G", "D", "A", "G", "D"],
+                "Intro": ["C", "G", "Am", "F"],
+                "Verse 1": ["C", "F", "Am", "F"],
             },
             {
-                "Intro": ["Cadd9", "Fadd9", "Am7", "Fadd9"],
-                "Verse": ["Cadd9", "Fadd9", "Am7", "Fadd9", "Cadd9", "Fadd9", "Am7", "G"],
-                "Pre-Chorus": ["Fadd9", "G", "Am7", "G", "Fadd9", "G", "Am7", "Cadd9"],
-                "Chorus": ["Cadd9", "G", "Am7", "Fadd9", "Cadd9", "G", "Am7", "Fadd9"],
-                "Bridge": ["Am7", "Fadd9", "Cadd9", "G", "Am7", "Fadd9", "Cadd9", "G"],
-                "Final Chorus (Key Change)": ["Dadd9", "A", "Bm7", "Gadd9", "Dadd9", "A", "Bm7", "Gadd9"],
-                "Outro": ["Dadd9", "A", "Bm7", "Gadd9", "Dadd9", "A", "Gadd9", "Dadd9"],
-            },
-            advanced={
-                "Intro": ["Cadd9", "Fadd9", "Am7", "Fadd9"],
-                "Verse": ["Cadd9", "Fadd9", "Am7", "Fadd9", "Cadd9", "Fadd9", "Am7", "Gsus4"],
-                "Pre-Chorus": ["Fadd9", "Gsus4", "Am7", "G", "Fadd9", "Gsus4", "Am7", "Cadd9"],
-                "Chorus": ["Cadd9", "G/B", "Am7", "Fadd9", "Cadd9", "G/B", "Am7", "Fadd9"],
-                "Bridge": ["Am7", "Fadd9", "Cadd9", "G", "Am7", "Fadd9", "Cadd9", "Gsus4"],
-                "Final Chorus (Key Change)": ["Dadd9", "A/C#", "Bm7", "Gadd9", "Dadd9", "A/C#", "Bm7", "Gadd9"],
-                "Outro": ["Dadd9", "A/C#", "Bm7", "Gadd9", "Dadd9", "A", "Gadd9", "Dadd9"],
+                "Intro": ["C", "G", "Am", "F"],
+                "Verse 1": ["C", "F", "Am", "F"],
             },
             composer="Taylor Swift",
-            lyric_cues={"Intro": ["mandolin/guitar storybook pickup"], "Verse": ["storybook scene setup"], "Pre-Chorus": ["tension climbs toward the hook"], "Chorus": ["proposal/title hook"], "Bridge": ["quiet plea before final lift"], "Final Chorus (Key Change)": ["whole-step final lift"], "Outro": ["tag after key change"]},
-            guitar_tabs={"Cadd9": "x32030", "Fadd9": "xx3213", "Am7": "x02010", "G": "320003", "Gsus4": "320013", "Dadd9": "xx0230", "A": "x02220", "Bm7": "x24232", "Gadd9": "320203"},
-            notes="Capo-shape practice chart centered on C-F-Am-G movement; capo 2 sounds in D for the main body, with the final chorus shape lift to D-A-Bm-G sounding in E.",
+            lyric_cues={"Intro": ["C · G · Am · F storybook pickup"]},
+            notes="C-shape chart (capo 2 = D concert); full form with key change in override.",
+            chart_status=status,
+            default_bpm=119,
+            default_groove="Ballad",
         ),
         v(
             "You've Got a Friend in Me",

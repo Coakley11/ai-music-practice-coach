@@ -1042,6 +1042,13 @@ def _song_backing_profile(
         profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
         profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
         profile["outro_fade_bars"] = 4
+    if "love story" in title or ("taylor swift" in title and "story" in title):
+        profile["acoustic_unplugged"] = True
+        profile["vocal_ballad"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.52)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.014)
+        profile["outro_fade_bars"] = 4
     if "blue bossa" in title or "bossa" in title:
         profile["latin_relaxed"] = True
         profile["cross_stick"] = True
