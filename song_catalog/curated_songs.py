@@ -5154,6 +5154,219 @@ def _wonderwall_chart_pack() -> dict[str, Any]:
     }
 
 
+def _why_georgia_chart_pack() -> dict[str, Any]:
+    """Why Georgia — John Mayer (G major, acoustic rock, 4/4).
+
+    Fingerstyle acoustic showcase: **Gsus2 · D · Dsus · D** riff, **C6/9**
+    holds, Mayer color pre-chorus (**Em7 · D/F# · Cadd9 · A7sus**), atmospheric
+    bridge (**Bbsus2 · Csus2 · Gm/C**). Preserve all sus/add9 voicings exactly.
+    """
+    def _riff(bars: int = 1) -> list[str]:
+        cell = ["Gsus2", "D", "Dsus", "D"]
+        return cell * bars
+
+    def _verse() -> list[str]:
+        return _riff(2) + ["C6/9", "C6/9"] + _riff(1)
+
+    def _pre_chorus() -> list[str]:
+        return ["Em7", "D/F#", "G", "Cadd9", "Em7", "D/F#", "G", "A7sus"]
+
+    def _chorus() -> list[str]:
+        return ["D", "A", "G", "D", "A", "Em7", "D", "A", "G", "Fsus2", "Cadd9"]
+
+    def _bridge() -> list[str]:
+        return (
+            ["Fsus2", "Bbsus2", "Csus2", "Bbsus2"] * 2
+            + ["G", "Cadd9", "Dadd4", "Cadd9"] * 2
+            + ["Em7", "Dsus2", "Gm/C", "Fsus2"]
+        )
+
+    intermediate = {
+        "Intro": _riff(4),
+        "Verse 1": _verse(),
+        "Verse Build": _pre_chorus(),
+        "Chorus": _chorus(),
+        "Intro Riff Return": _riff(1),
+        "Verse 2": _verse(),
+        "Pre-Chorus": _pre_chorus(),
+        "Chorus 2": _chorus() + ["G", "Gmaj7"],
+        "Bridge": _bridge(),
+        "Verse 3": _verse(),
+        "Final Build": ["Em7", "D/F#", "G", "A7sus"],
+        "Final Chorus": _chorus() + ["G"],
+        "Outro": _riff(2),
+    }
+
+    _signature = {
+        "Gsus2",
+        "Dsus",
+        "C6/9",
+        "Em7",
+        "D/F#",
+        "Cadd9",
+        "A7sus",
+        "Fsus2",
+        "Gmaj7",
+        "Bbsus2",
+        "Csus2",
+        "Dsus2",
+        "Gm/C",
+        "Dadd4",
+    }
+
+    def _beg(ch: str) -> str:
+        if ch in _signature or "/" in ch or "sus" in ch or "6/9" in ch:
+            return ch
+        return ch.replace("maj7", "").replace("m7", "m")
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "G": ["G Major", "G Major Pentatonic"],
+        "Gsus2": ["G Major", "G Major Pentatonic"],
+        "Em7": ["E Dorian", "E Minor Pentatonic"],
+        "A7sus": ["A Mixolydian"],
+        "Cadd9": ["C Major"],
+        "D/F#": ["D Major"],
+        "Gm/C": ["C Mixolydian", "modal color"],
+        "C6/9": ["C Major"],
+        "Fsus2": ["F Major"],
+    }
+
+    return {
+        "key": "G",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "John Mayer",
+        "guitar_tabs": {
+            "Gsus2": "300033",
+            "D": "xx0232",
+            "Dsus": "xx0230",
+            "C6/9": "x32030",
+            "Em7": "022030",
+            "D/F#": "2x0232",
+            "G": "320003",
+            "Cadd9": "x32030",
+            "A7sus": "x02030",
+            "A": "x02220",
+            "Fsus2": "133011",
+            "Gmaj7": "3x443x",
+            "Bbsus2": "x13311",
+            "Csus2": "x35533",
+            "Dadd4": "xx0233",
+            "Dsus2": "xx0230",
+            "Gm/C": "x30333",
+        },
+        "lyric_cues": {
+            "Intro": [
+                "Fingerpicked Gsus2 · D · Dsus · D — (breath) before vocal",
+                "Let each sus chord ring; thumb on bass notes",
+            ],
+            "Verse 1": [
+                "'I am driving up 85…' — intimate, conversational",
+                "Hold C6/9 for two bars; don't rush the return riff",
+            ],
+            "Verse Build": [
+                "Gradual lift — Em7 · D/F# bass walk",
+                "Land A7sus cleanly before chorus",
+            ],
+            "Chorus": [
+                "'I am living in the eye of the hurricane…' — open vowels",
+                "Fuller band enters; Fsus2 · Cadd9 tags each chorus",
+            ],
+            "Intro Riff Return": ["Instrumental riff — reset before Verse 2"],
+            "Verse 2": ["Second verse — same fingerstyle feel as Verse 1"],
+            "Pre-Chorus": ["Build again — save peak for Chorus 2 tag"],
+            "Chorus 2": [
+                "Chorus + G · Gmaj7 lift — widest verse-chorus energy so far",
+            ],
+            "Bridge": [
+                "Atmospheric Bbsus2 · Csus2 tension",
+                "Gm/C modal color — emotional bridge peak",
+            ],
+            "Verse 3": ["Third verse — pull back to intimate riff"],
+            "Final Build": [
+                "Single-bar build Em7 → D/F# → G → A7sus — (breath) before final chorus",
+            ],
+            "Final Chorus": [
+                "Biggest dynamic peak — fullest drums and guitars",
+                "Land on ringing G",
+            ],
+            "Outro": [
+                "Return to Gsus2 · D · Dsus · D — fade out reflectively",
+            ],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**G major** acoustic rock / singer-songwriter (**4/4**, ~84 BPM). "
+                "Signature Mayer fingerstyle riff **Gsus2 · D · Dsus · D**; preserve "
+                "all sus/add9/slash colors exactly (**C6/9**, **A7sus**, **Fsus2**, "
+                "**Bbsus2**, **Csus2**, **Dsus2**, **Gm/C**, **Gmaj7**). Verse: "
+                "intimate fingerpick; pre-chorus builds; chorus fuller band; bridge "
+                "atmospheric; final chorus = peak; outro fades on intro riff. "
+                "**Not** heavy distortion, EDM, or piano ballad. Advanced acoustic "
+                "guitar showcase — character comes from voicings and rhythm."
+            ),
+            default_bpm=84,
+            default_groove="Ballad",
+            time_signature="4/4",
+            fingerstyle_notes=(
+                "Thumb–finger pattern on Gsus2–D–Dsus–D: bass note on beat 1, "
+                "syncopated pluck on 2 and 4; let sus chords ring. Pre-chorus "
+                "Em7–D/F#: walk bass under arpeggios."
+            ),
+            rhythm_guitar_notes=(
+                "Chorus: light strum or arpeggiated A and D triads; keep Fsus2 "
+                "and Cadd9 as open ringing voicings, not power chords."
+            ),
+            repertoire_tags=[
+                "John Mayer",
+                "Acoustic Rock",
+                "Singer-Songwriter",
+                "Reflective",
+                "Guitar Showcase",
+                "Karaoke Friendly",
+            ],
+            vocal_showcase=True,
+            guitar_showcase=True,
+            vocal_range_notes=(
+                "Verse in comfortable chest; chorus opens into mix without forcing. "
+                "Plan breaths before each chorus and the final build; bridge is "
+                "the most atmospheric vocal moment."
+            ),
+            vocal_harmony_hints=(
+                "Reflective Mayer delivery: conversational verses, slightly brighter "
+                "tone on chorus hooks, and let the guitar voicings breathe between "
+                "lines — don't compete with the sus chord ringing."
+            ),
+            harmonic_analysis={
+                "progression_summary": (
+                    "G major riff-based song; pre-chorus Em7–D/F#–Cadd9; "
+                    "chorus D–A–G with Fsus2 color; modal bridge"
+                ),
+                "improvisation_notes": (
+                    "G major pentatonic over riff; E Dorian on Em7; sparse "
+                    "fills in gaps — the voicings carry the song."
+                ),
+                "scale_suggestions": scale_hints,
+            },
+            acoustic_unplugged=True,
+            backing_character="mayer_acoustic_guitar_showcase",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -5217,6 +5430,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
 
     return {
         ("Say", "John Mayer"): _say_chart_pack(),
+        ("Why Georgia", "John Mayer"): _why_georgia_chart_pack(),
         ("The Scientist", "Coldplay"): _scientist_chart_pack(),
         ("New York State of Mind", "Billy Joel"): _nysom_chart_pack(),
         ("Just the Way You Are", "Billy Joel"): _jtway_chart_pack(),
@@ -6510,6 +6724,26 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "F#m9/G#m7/Amaj7/Bm9 colors without changing the tight loop. Not AI-verified."
             ),
             chart_status="user_corrected_reference",
+        ),
+        v(
+            "Why Georgia",
+            "John Mayer",
+            "Pop",
+            "G",
+            {
+                "Intro": ["Gsus2", "D", "Dsus", "D"],
+                "Verse 1": ["Gsus2", "D", "Dsus", "D"],
+            },
+            {
+                "Intro": ["Gsus2", "D", "Dsus", "D"],
+                "Verse 1": ["Gsus2", "D", "Dsus", "D"],
+            },
+            composer="John Mayer",
+            lyric_cues={"Intro": ["Gsus2 · D · Dsus · D fingerpick riff"]},
+            notes="G major Mayer acoustic showcase; full form in chart override.",
+            chart_status=status,
+            default_bpm=84,
+            default_groove="Ballad",
         ),
         v(
             "Love Story",

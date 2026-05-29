@@ -26,6 +26,7 @@ TRUSTED_CORE_KEYS = {
     ("Turn the Lights Back On", "Billy Joel"),
     ("Vienna", "Billy Joel"),
     ("Say", "John Mayer"),
+    ("Why Georgia", "John Mayer"),
     ("Gravity", "John Mayer"),
     ("Perfect", "Ed Sheeran"),
     ("Thinking Out Loud", "Ed Sheeran"),

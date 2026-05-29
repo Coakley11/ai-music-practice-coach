@@ -969,6 +969,13 @@ def _song_backing_profile(
         profile["hat_soft"] = 0.82
         profile["humanize_ms"] = 0.014
         profile["pocket_offset"] = max(profile["pocket_offset"], 0.012)
+    if "why georgia" in title:
+        profile["acoustic_unplugged"] = True
+        profile["pop_soul"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.48)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.012)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
+        profile["outro_fade_bars"] = 8
     if "champions" in title or "queen" in title:
         profile["anthem_rock"] = True
         profile["kick_push"] = 1.28
