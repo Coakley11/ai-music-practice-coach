@@ -76,6 +76,7 @@ TRUSTED_CORE_KEYS = {
     ("How Far I'll Go", "Disney · Moana"),
     ("Billie Jean", "Michael Jackson"),
     ("Love Story", "Taylor Swift"),
+    ("Breakaway", "Kelly Clarkson"),
     ("Imagine", "John Lennon"),
     ("Wonderwall", "Oasis"),
     ("You've Got a Friend in Me", "Randy Newman"),

@@ -5367,6 +5367,169 @@ def _why_georgia_chart_pack() -> dict[str, Any]:
     }
 
 
+def _breakaway_chart_pack() -> dict[str, Any]:
+    """Breakaway — Kelly Clarkson (C major, inspirational pop ballad, 4/4).
+
+    Uplifting **Am · G · C · F** loop with **D** in build sections. One list
+    item = one bar. Preserve **Am**, **G**, **C**, **F**, and **D** exactly.
+    """
+    loop = ["Am", "G", "C", "F"]
+    intro_cell = list(loop) + ["Am", "G", "F"]
+
+    def _verse_stanza() -> list[str]:
+        return ["Am", "G", "C", "F", "Am", "G", "F"]
+
+    def _build_tail() -> list[str]:
+        return ["Am", "G", "D", "F", "G"]
+
+    def _chorus() -> list[str]:
+        half = ["C", "G", "Am", "F", "C", "G", "Am", "G", "F"]
+        return half * 2
+
+    def _bridge() -> list[str]:
+        return ["G", "C", "F", "G", "C", "F", "G", "C", "F", "D", "F", "G"]
+
+    intermediate = {
+        "Intro": intro_cell * 2,
+        "Verse 1": _verse_stanza() * 3 + _build_tail(),
+        "Chorus": _chorus(),
+        "Instrumental": list(intro_cell),
+        "Verse 2": _verse_stanza() * 2 + _build_tail(),
+        "Chorus 2": _chorus(),
+        "Bridge": _bridge(),
+        "Final Chorus": _chorus(),
+        "Ending": ["Am", "G", "F", "Am", "G", "F"],
+        "Outro": ["C"],
+    }
+
+    beginner = {name: list(chords) for name, chords in intermediate.items()}
+
+    def _adv(ch: str) -> str:
+        if ch in {"Am", "G", "C", "F", "D"}:
+            return ch
+        return ch
+
+    advanced = {
+        name: [_adv(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "Am": ["A Natural Minor", "A Minor Pentatonic"],
+        "G": ["G Major"],
+        "C": ["C Major"],
+        "F": ["F Major"],
+        "D": ["D Major"],
+    }
+
+    return {
+        "key": "C",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Avril Lavigne · Kara DioGuardi · Matthew Gerrard",
+        "guitar_tabs": {
+            "Am": "x02210",
+            "G": "320003",
+            "C": "x32010",
+            "F": "133211",
+            "D": "xx0232",
+        },
+        "lyric_cues": {
+            "Intro": [
+                "Am · G · C · F pickup — (breath) before 'Grew up in a small town…'",
+                "Lighter instrumentation; set the inspirational story",
+            ],
+            "Verse 1": [
+                "Intimate storytelling — conversational delivery",
+                "(breath) between phrases; land **D** on the fourth stanza build",
+            ],
+            "Chorus": [
+                "'Breakaway' title hook — open vowels, fuller drums and piano",
+                "(breath) before 'I'll spread my wings and I'll learn how to fly'",
+                "Uplifting anthem energy",
+            ],
+            "Instrumental": ["Short instrumental — same Am · G · C · F feel"],
+            "Verse 2": [
+                "Second verse — deepen the journey narrative",
+                "D major lift on final stanza before Chorus 2",
+            ],
+            "Chorus 2": ["Repeat chorus lift — stronger band support"],
+            "Bridge": [
+                "Strongest build — (breath) 'Out of the darkness and into the sun'",
+                "Three G · C · F climbs then **D** · F · G peak",
+            ],
+            "Final Chorus": [
+                "Biggest emotional peak — graduation-anthem delivery",
+                "Fullest strings and drums; sustain through both halves",
+            ],
+            "Ending": [
+                "Wind down on Am · G · F — release intensity gradually",
+            ],
+            "Outro": [
+                "Single **C** — warm landing; let the chord ring",
+            ],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**C major** inspirational pop ballad (**4/4**, ~160 BPM). "
+                "Core loop **Am · G · C · F** drives verses; preserve **D** in "
+                "build/transition stanzas (Verse 1 tail, Verse 2 tail, Bridge). "
+                "Chorus: **C · G · Am · F** with extended **G · Am · G · F** tags. "
+                "Verse intimate; chorus bigger drums and piano; bridge strongest "
+                "build; final chorus = emotional peak; outro thins to **C**. "
+                "**Not** rock distortion, jazz reharm, or EDM. Graduation / "
+                "empowerment karaoke repertoire."
+            ),
+            default_bpm=160,
+            default_groove="Ballad",
+            time_signature="4/4",
+            repertoire_tags=[
+                "Kelly Clarkson",
+                "Inspirational Pop",
+                "Pop Ballad",
+                "Female Vocal Showcase",
+                "Karaoke Friendly",
+                "Graduation Song",
+                "Inspirational",
+                "Empowerment",
+                "Life Journey",
+                "Vocal Showcase",
+            ],
+            vocal_showcase=True,
+            inspirational_ballad=True,
+            vocal_range_notes=(
+                "Verse in comfortable chest; chorus opens into mix on the title "
+                "hook and high notes on 'fly'. Plan breaths before each chorus "
+                "and the bridge; final chorus is the sustained peak."
+            ),
+            vocal_harmony_hints=(
+                "Inspirational delivery: tell the story in verses, then open up "
+                "on 'Breakaway' — don't rush the **D** build bars; let the "
+                "emotion climb through the bridge into the final chorus."
+            ),
+            harmonic_analysis={
+                "progression_summary": (
+                    "Am–G–C–F verse loop (vi–V–I–IV in C); D major in builds; "
+                    "chorus I–V–vi–IV anthem"
+                ),
+                "improvisation_notes": (
+                    "A minor pentatonic over verse loop; C major over chorus; "
+                    "keep fills sparse and uplifting."
+                ),
+                "scale_suggestions": scale_hints,
+            },
+            backing_character="inspirational_pop_anthem",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -5456,6 +5619,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Love Story", "Taylor Swift"): _love_story_chart_pack(),
         ("Imagine", "John Lennon"): _imagine_chart_pack(),
         ("Wonderwall", "Oasis"): _wonderwall_chart_pack(),
+        ("Breakaway", "Kelly Clarkson"): _breakaway_chart_pack(),
         (
             "Shalom Aleichem",
             "Traditional Jewish Sabbath Song",
@@ -6724,6 +6888,26 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "F#m9/G#m7/Amaj7/Bm9 colors without changing the tight loop. Not AI-verified."
             ),
             chart_status="user_corrected_reference",
+        ),
+        v(
+            "Breakaway",
+            "Kelly Clarkson",
+            "Pop",
+            "C",
+            {
+                "Intro": ["Am", "G", "C", "F"],
+                "Verse 1": ["Am", "G", "C", "F"],
+            },
+            {
+                "Intro": ["Am", "G", "C", "F"],
+                "Verse 1": ["Am", "G", "C", "F"],
+            },
+            composer="Avril Lavigne · Kara DioGuardi · Matthew Gerrard",
+            lyric_cues={"Intro": ["Am · G · C · F inspirational pickup"]},
+            notes="C major pop ballad; full form with D builds in override.",
+            chart_status=status,
+            default_bpm=160,
+            default_groove="Ballad",
         ),
         v(
             "Why Georgia",

@@ -1142,6 +1142,13 @@ def _song_backing_profile(
         profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
         profile["pocket_offset"] = max(profile["pocket_offset"], 0.012)
         profile["outro_fade_bars"] = 8
+    if "breakaway" in title or "clarkson" in title:
+        profile["vocal_ballad"] = True
+        profile["kick_push"] = max(profile["kick_push"], 1.10)
+        profile["hat_soft"] = min(profile["hat_soft"], 0.72)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.008)
+        profile["outro_fade_bars"] = 2
     if "iris" in title or "goo goo" in title:
         profile["alt_rock_ballad"] = True
         profile["vocal_ballad"] = True
