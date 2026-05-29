@@ -5367,6 +5367,228 @@ def _why_georgia_chart_pack() -> dict[str, Any]:
     }
 
 
+def _daughters_chart_pack() -> dict[str, Any]:
+    """Daughters — John Mayer (D major, acoustic ballad, 4/4).
+
+    Fingerpicked Mayer ballad: preserve **Bm7 · Em7 · A7sus4 · D** cycle,
+    chorus **E7** lift, and bridge colors (**D9 · Gm/D · Dmaj7 · Dsus2 ·
+    Gm11 · D/F#**) exactly — no simplification of sus/add9/slash voicings.
+    """
+    intro_cell = ["Bm7", "Em7", "A7sus4", "D"]
+
+    def _verse() -> list[str]:
+        stanza = ["Bm7", "Em7", "A7sus4", "D"]
+        return stanza * 4
+
+    def _chorus() -> list[str]:
+        stanza = ["Bm7", "E7", "A7sus4", "D"]
+        return stanza * 4
+
+    def _bridge() -> list[str]:
+        return [
+            "D9",
+            "Gm/D",
+            "D",
+            "Dmaj7",
+            "Dsus2",
+            "Bm7",
+            "Em7",
+            "D/F#",
+            "Gm11",
+            "A7sus4",
+            "Bm7",
+        ]
+
+    def _instrumental_tag() -> list[str]:
+        return ["Bm7", "E7", "A7sus4", "D", "Bm7", "E7", "A7sus4"]
+
+    def _interlude() -> list[str]:
+        return [
+            "D",
+            "Bm7",
+            "E7",
+            "A7sus4",
+            "D",
+            "Bm7",
+            "E7",
+            "A7sus4",
+            "D",
+        ]
+
+    intermediate = {
+        "Intro": intro_cell * 2,
+        "Verse 1": _verse(),
+        "Chorus": _chorus(),
+        "Instrumental": intro_cell * 2,
+        "Verse 2": _verse(),
+        "Chorus 2": _chorus(),
+        "Bridge": _bridge(),
+        "Instrumental Tag": _instrumental_tag(),
+        "Interlude": _interlude(),
+        "Final Chorus": _chorus(),
+        "Outro": _chorus()[:4],
+    }
+
+    _signature = {
+        "Bm7",
+        "Em7",
+        "A7sus4",
+        "D9",
+        "Gm/D",
+        "Dmaj7",
+        "Dsus2",
+        "D/F#",
+        "Gm11",
+        "E7",
+    }
+
+    def _beg(ch: str) -> str:
+        if ch in _signature or "/" in ch or "sus" in ch or "11" in ch:
+            return ch
+        return ch.replace("maj7", "").replace("m7", "m")
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "Bm7": ["B Dorian", "B Minor Pentatonic"],
+        "Em7": ["E Dorian"],
+        "A7sus4": ["A Mixolydian"],
+        "D": ["D Major"],
+        "E7": ["E Mixolydian", "E Altered (advanced)"],
+        "Dmaj7": ["D Ionian", "D Lydian"],
+        "Gm11": ["G Dorian"],
+        "D9": ["D Major"],
+        "Gm/D": ["D Major", "modal color"],
+        "Dsus2": ["D Major"],
+        "D/F#": ["D Major"],
+    }
+
+    return {
+        "key": "D",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "John Mayer",
+        "guitar_tabs": {
+            "Bm7": "x24232",
+            "Em7": "022030",
+            "A7sus4": "x02030",
+            "D": "xx0232",
+            "E7": "020100",
+            "D9": "x54530",
+            "Gm/D": "xx0331",
+            "Dmaj7": "xx0222",
+            "Dsus2": "xx0230",
+            "D/F#": "2x0232",
+            "Gm11": "353533",
+        },
+        "lyric_cues": {
+            "Intro": [
+                "Bm7 · Em7 · A7sus4 · D — fingerpicked intro, (breath) before vocal",
+                "Intimate acoustic; let each sus voicing ring",
+            ],
+            "Verse 1": [
+                "'Fathers be good to your daughters…' — conversational, reflective",
+                "Hold the A7sus4 → D resolution; don't rush the cycle",
+            ],
+            "Chorus": [
+                "Slightly fuller — E7 lift before A7sus4 · D",
+                "Open vowels; stronger bass under the chorus",
+            ],
+            "Instrumental": [
+                "Same intro cycle — reset energy before Verse 2",
+            ],
+            "Verse 2": [
+                "Second verse — same intimate fingerstyle as Verse 1",
+            ],
+            "Chorus 2": [
+                "Chorus again — maintain Mayer phrasing, not pushed",
+            ],
+            "Bridge": [
+                "Emotional peak — D9 · Gm/D · Dmaj7 colors",
+                "Gm11 · A7sus4 · Bm7 — richest harmony in the song",
+            ],
+            "Instrumental Tag": [
+                "Short tag — hang on final A7sus4",
+            ],
+            "Interlude": [
+                "D · Bm7 · E7 · A7sus4 turnaround — (breath) before final chorus",
+            ],
+            "Final Chorus": [
+                "Widest dynamic — fullest arrangement, still acoustic",
+            ],
+            "Outro": [
+                "Pull instrumentation back — let chords breathe and fade",
+            ],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**D major** singer-songwriter acoustic ballad (**4/4**, ~125 BPM). "
+                "Preserve Mayer color voicings exactly: **Bm7 · Em7 · A7sus4 · D** "
+                "verse cycle; chorus **E7** lift; bridge **D9 · Gm/D · Dmaj7 · "
+                "**Dsus2 · Gm11 · D/F#**. Verse: intimate fingerpick; chorus slightly "
+                "fuller with stronger bass; bridge = emotional peak; outro pulls back. "
+                "Backing: acoustic fingerpicked guitar, light percussion, bass, subtle "
+                "electric texture — **not** heavy drums or rock distortion. Group with "
+                "core Mayer repertoire (Why Georgia, Gravity, Slow Dancing, Stop This "
+                "Train)."
+            ),
+            default_bpm=125,
+            default_groove="Ballad",
+            time_signature="4/4",
+            fingerstyle_notes=(
+                "Thumb–finger arpeggio on Bm7–Em7–A7sus4–D: bass on 1, syncopated "
+                "pluck on 2 and 4; let sus chords ring through the bar."
+            ),
+            rhythm_guitar_notes=(
+                "Chorus: light strum or arpeggiated D and A triads; keep A7sus4 and "
+                "E7 as open ringing voicings. Bridge: richer voicings — no power chords."
+            ),
+            repertoire_tags=[
+                "John Mayer",
+                "Acoustic Ballad",
+                "Singer-Songwriter",
+                "Reflective",
+                "Guitar Showcase",
+                "Karaoke Friendly",
+            ],
+            vocal_showcase=True,
+            guitar_showcase=True,
+            vocal_range_notes=(
+                "Comfortable chest voice in verses; chorus opens slightly without "
+                "forcing. Plan breaths before each chorus and the bridge peak."
+            ),
+            vocal_harmony_hints=(
+                "Reflective Mayer delivery: intimate verses, warm tone on chorus hooks, "
+                "and let fingerpicked voicings breathe between lines."
+            ),
+            harmonic_analysis={
+                "progression_summary": (
+                    "D major ballad; Bm7–Em7–A7sus4–D verse; chorus E7 color; "
+                    "bridge with D9, Gm/D, Dmaj7, Gm11 peak"
+                ),
+                "improvisation_notes": (
+                    "B Dorian / B minor pentatonic over Bm7; E Dorian on Em7; "
+                    "A Mixolydian on A7sus4; sparse fills — voicings carry the song."
+                ),
+                "scale_suggestions": scale_hints,
+            },
+            acoustic_unplugged=True,
+            backing_character="mayer_acoustic_guitar_showcase",
+        ),
+    }
+
+
 def _breakaway_chart_pack() -> dict[str, Any]:
     """Breakaway — Kelly Clarkson (C major, inspirational pop ballad, 4/4).
 
@@ -5755,6 +5977,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
     return {
         ("Say", "John Mayer"): _say_chart_pack(),
         ("Why Georgia", "John Mayer"): _why_georgia_chart_pack(),
+        ("Daughters", "John Mayer"): _daughters_chart_pack(),
         ("The Scientist", "Coldplay"): _scientist_chart_pack(),
         ("New York State of Mind", "Billy Joel"): _nysom_chart_pack(),
         ("Just the Way You Are", "Billy Joel"): _jtway_chart_pack(),
@@ -7112,6 +7335,29 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             default_groove="Ballad",
         ),
         v(
+            "Daughters",
+            "John Mayer",
+            "Pop",
+            "D",
+            {
+                "Intro": ["Bm7", "Em7", "A7sus4", "D"],
+                "Verse 1": ["Bm7", "Em7", "A7sus4", "D"],
+            },
+            {
+                "Intro": ["Bm7", "Em7", "A7sus4", "D", "Bm7", "Em7", "A7sus4", "D"],
+                "Verse 1": ["Bm7", "Em7", "A7sus4", "D"] * 4,
+            },
+            composer="John Mayer",
+            lyric_cues={"Intro": ["Bm7 · Em7 · A7sus4 · D fingerpicked intro"]},
+            notes=(
+                "D major Mayer acoustic ballad; preserve Bm7, Em7, A7sus4, D9, "
+                "Gm/D, Dmaj7, Dsus2, D/F#, Gm11, E7 — full form in chart override."
+            ),
+            chart_status=status,
+            default_bpm=125,
+            default_groove="Ballad",
+        ),
+        v(
             "Love Story",
             "Taylor Swift",
             "Country",
@@ -7715,9 +7961,8 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Final Chorus": ["D", "Bm", "G", "D", "A", "Bm", "G", "D", "D", "Em", "Bm", "Em7", "A", "Bm", "G", "D"],
         }),
         _s("Daughters", "John Mayer", "Pop", "D", {
-            "Verse": ["D", "G", "D", "A"],
-            "Chorus": ["Bm", "G", "D", "A"],
-            "Bridge": ["Em", "G", "D", "A"],
+            "Intro": ["Bm7", "Em7", "A7sus4", "D"],
+            "Verse 1": ["Bm7", "Em7", "A7sus4", "D"],
         }),
         _s("Slow Dancing in a Burning Room", "John Mayer", "Pop", "C#m", {
             "Verse": ["C#m", "A", "E", "B"],

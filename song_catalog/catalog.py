@@ -27,6 +27,7 @@ TRUSTED_CORE_KEYS = {
     ("Vienna", "Billy Joel"),
     ("Say", "John Mayer"),
     ("Why Georgia", "John Mayer"),
+    ("Daughters", "John Mayer"),
     ("Gravity", "John Mayer"),
     ("Perfect", "Ed Sheeran"),
     ("Thinking Out Loud", "Ed Sheeran"),
