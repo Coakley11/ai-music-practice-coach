@@ -889,6 +889,7 @@ def _song_backing_profile(
         "broadway_gospel": False,
         "disney_cinematic": False,
         "piano_centric": False,
+        "jazz_ballad": False,
         # ---- Arrangement-level character (new) ----
         # ``pocket_offset`` is in *beats* and applied to off-beats by
         # ``_groove_time``. Negative = pushed/ahead, positive =
@@ -984,6 +985,18 @@ def _song_backing_profile(
         if style == "Jazz swing":
             profile["ride_jazz"] = True
             profile["swing"] = max(profile["swing"], 0.07)
+    if "all the things" in title or "things you are" in title:
+        profile["jazz_ballad"] = True
+        profile["cross_stick"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.48)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.022)
+        if style == "Jazz swing":
+            profile["ride_jazz"] = True
+            profile["swing"] = max(profile["swing"], 0.10)
+        elif style == "Bossa nova":
+            profile["latin_relaxed"] = True
+            profile["swing"] = max(profile["swing"], 0.04)
     if any(
         k in title
         for k in ("attention", "treasure", "uptown funk", "get lucky", "charlie puth")

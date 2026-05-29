@@ -3302,6 +3302,198 @@ def _vienna_chart_pack() -> dict[str, Any]:
     }
 
 
+def _attya_chart_pack() -> dict[str, Any]:
+    """All the Things You Are — Jerome Kern (AABA, 36 bars, 4/4).
+
+    Flagship jazz standard: **Ab** opening, modulations through **Db**, **C**,
+    **B**, **E**, **G**, return to **C**. One list item = one bar; preserve
+    **maj7**, **m7**, **dim7**, and dominant **7** qualities exactly.
+    """
+    section_a = [
+        "Fm7",
+        "Bbm7",
+        "Eb7",
+        "Abmaj7",
+        "Dbmaj7",
+        "G7",
+        "Cmaj7",
+        "Cmaj7",
+    ]
+    section_b = [
+        "Fm7",
+        "Bbm7",
+        "Eb7",
+        "Abmaj7",
+        "Dbmaj7",
+        "Bdim7",
+        "Ebm7",
+        "Ab7",
+    ]
+    section_a2 = [
+        "Dbm7",
+        "Gb7",
+        "Bmaj7",
+        "Emaj7",
+        "Am7",
+        "D7",
+        "Gmaj7",
+        "C7",
+    ]
+    # Bars 25–36: turnaround in C plus standard 4-bar tag to complete 36-bar form.
+    section_c = [
+        "Fm7",
+        "Dm7",
+        "G7",
+        "Cmaj7",
+        "Am7",
+        "Dm7",
+        "G7",
+        "Cmaj7",
+        "Am7",
+        "D7",
+        "Gmaj7",
+        "Cmaj7",
+    ]
+
+    intermediate = {
+        "A": list(section_a),
+        "B": list(section_b),
+        "A2": list(section_a2),
+        "C": list(section_c),
+    }
+
+    def _beg(ch: str) -> str:
+        head = ch.split("/")[0].strip()
+        return (
+            head.replace("maj7", "")
+            .replace("m7b5", "dim")
+            .replace("dim7", "dim")
+            .replace("m7", "m")
+            .replace("b5", "")
+        )
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+
+    scale_hints = {
+        "Fm7": ["F Dorian"],
+        "Bbm7": ["Bb Dorian"],
+        "Eb7": ["Eb Mixolydian"],
+        "Abmaj7": ["Ab Ionian"],
+        "Dbmaj7": ["Db Lydian"],
+        "G7": ["G Mixolydian", "G altered (advanced)"],
+        "Cmaj7": ["C Ionian"],
+        "Bdim7": ["Whole-half diminished"],
+        "Ebm7": ["Eb Dorian"],
+        "Ab7": ["Ab Mixolydian"],
+        "Dbm7": ["Db Dorian"],
+        "Gb7": ["Gb Mixolydian"],
+        "Bmaj7": ["B Ionian"],
+        "Emaj7": ["E Ionian"],
+        "Am7": ["A Dorian"],
+        "D7": ["D Mixolydian", "D altered (advanced)"],
+        "Gmaj7": ["G Ionian"],
+        "Dm7": ["D Dorian"],
+        "C7": ["C Mixolydian", "C altered (advanced)"],
+    }
+
+    section_order = list(intermediate.keys())
+    return {
+        "key": "Ab",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Jerome Kern · Oscar Hammerstein II",
+        "lyric_cues": {
+            "A": ["Ab major — ii–V–I opening (Fm7 · Bbm7 · Eb7 · Abmaj7)"],
+            "B": ["Return to Ab; Bdim7 chromatic approach to Ebm7"],
+            "A2": ["Modulation chain: Db → B → E → G major areas"],
+            "C": ["Final turnaround in C; tag Am7 · D7 · Gmaj7 · Cmaj7"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**AABA** (36 bars, **4/4**). Opens in **Ab major** (~72 BPM "
+                "ballad default; **medium swing** or **bossa** in groove "
+                "picker). Preserve all qualities: **maj7**, **m7**, **dim7**, "
+                "dominant **7** — do not simplify. Section **C** (bars 25–36) "
+                "uses the Dm7–G7 turnaround in C plus a 4-bar tag. Flagship "
+                "chart for ii–V–I, modulations, and bebop vocabulary. Tags: "
+                "Jazz Standard · Essential Repertoire · Improvisation · Bebop."
+            ),
+            default_bpm=72,
+            default_groove="Ballad",
+            time_signature="4/4",
+            form="AABA (36 bars)",
+            repertoire_tags=[
+                "Jazz Standard",
+                "Essential Repertoire",
+                "Improvisation",
+                "Bebop",
+                "ii-V-I Progressions",
+                "Advanced Harmony",
+                "Great American Songbook",
+            ],
+            jazz_standard_flagship=True,
+            harmonic_analysis={
+                "progression_summary": (
+                    "Modulating AABA through Ab, Db, C, B, E, G, and back to C"
+                ),
+                "key_centers": [
+                    {
+                        "section": "A (bars 1–8)",
+                        "center": "Ab major",
+                        "progression": "Fm7 → Bbm7 → Eb7 → Abmaj7 → Dbmaj7 → G7 → Cmaj7",
+                    },
+                    {
+                        "section": "B (bars 9–16)",
+                        "center": "Ab major → Eb minor",
+                        "progression": "Fm7 → Bbm7 → Eb7 → Abmaj7 → Dbmaj7 → Bdim7 → Ebm7 → Ab7",
+                    },
+                    {
+                        "section": "A2 (bars 17–24)",
+                        "center": "B major → E major → G major",
+                        "progression": "Dbm7 → Gb7 → Bmaj7 → Emaj7 → Am7 → D7 → Gmaj7 → C7",
+                    },
+                    {
+                        "section": "C (bars 25–36)",
+                        "center": "C major",
+                        "progression": "Fm7 → Dm7 → G7 → Cmaj7 → Am7 → D7 → Gmaj7 → Cmaj7",
+                    },
+                ],
+                "ii_v_i_groupings": [
+                    "Bars 1–3: Fm7–Bbm7–Eb7 (ii–V–I in Ab)",
+                    "Bars 5–7: Dbmaj7–G7–Cmaj7 (ii–V–I in C)",
+                    "Bars 9–11: Fm7–Bbm7–Eb7 (ii–V–I in Ab)",
+                    "Bars 17–18: Dbm7–Gb7 (ii–V in B)",
+                    "Bars 21–22: Am7–D7 (ii–V in G)",
+                    "Bars 26–27 & 30–31: Dm7–G7 (ii–V in C)",
+                    "Bars 33–34: Am7–D7 (ii–V in G)",
+                ],
+                "guide_tone_notes": (
+                    "Follow 3rds/7ths through each ii–V: e.g. Abmaj7 3rd→7th "
+                    "voice-leading into Dbmaj7; G7 tritone resolves to Cmaj7."
+                ),
+                "improvisation_notes": (
+                    "Outline guide tones on changes, then use mode per chord "
+                    "from scale_suggestions; target chord tones on beats 1 "
+                    "and 3 in swing. Reharmonization-friendly on every ii–V."
+                ),
+                "scale_suggestions": scale_hints,
+            },
+            jazz_ballad=True,
+            backing_character="jazz_standard_flagship",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -3380,6 +3572,8 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ): _iwont_say_in_love_chart_pack(),
         ("How Far I'll Go", "Disney · Moana"): _how_far_ill_go_chart_pack(),
         ("Vienna", "Billy Joel"): _vienna_chart_pack(),
+        ("All the Things You Are", "Jazz Standard"): _attya_chart_pack(),
+        ("All the Things You Are", "Jerome Kern"): _attya_chart_pack(),
         ("Waiting on the World to Change", "John Mayer"): _say_waiting_lyric_pack(
             "Waiting on the World to Change"
         ),
@@ -5927,10 +6121,29 @@ def curated_song_records() -> list[dict[str, Any]]:
             "A Section": ["Ebmaj7", "Cm7", "Fm7", "Bb7", "Gm7", "C7", "Fm7", "Bb7"],
             "B Section": ["Ebmaj7", "Abmaj7", "Dm7b5", "G7", "Cm7", "F7", "Fm7", "Bb7"],
         }, composer="Harry Warren"),
+        _s("All the Things You Are", "Jazz Standard", "Jazz", "Ab", {
+            "A": ["Fm7", "Bbm7", "Eb7", "Abmaj7"],
+            "B": ["Fm7", "Bbm7", "Eb7", "Abmaj7"],
+            "A2": ["Dbm7", "Gb7", "Bmaj7", "Emaj7"],
+            "C": ["Fm7", "Dm7", "G7", "Cmaj7"],
+        }, composer="Jerome Kern · Oscar Hammerstein II",
+          extensions=_ext(
+              default_bpm=72,
+              default_groove="Ballad",
+              jazz_standard_flagship=True,
+              repertoire_tags=[
+                  "Jazz Standard",
+                  "Essential Repertoire",
+                  "Improvisation",
+                  "Bebop",
+              ],
+          ),
+          chart_status="practice_level_verified"),
         _s("All the Things You Are", "Jerome Kern", "Jazz", "Ab", {
-            "A Section": ["Fm7", "Bbm7", "Eb7", "Abmaj7", "Dbmaj7", "G7", "Cmaj7", "Cmaj7"],
-            "B Section": ["Cm7", "Fm7", "Bb7", "Ebmaj7", "Abmaj7", "D7", "Gmaj7", "Gmaj7"],
-        }, composer="Jerome Kern"),
+            "A": ["Fm7", "Bbm7", "Eb7", "Abmaj7"],
+            "C": ["Fm7", "Dm7", "G7", "Cmaj7"],
+        }, composer="Jerome Kern · Oscar Hammerstein II",
+          chart_status="practice_level_verified"),
         _s("Body and Soul", "Jazz Standard", "Jazz", "Db", {
             "A Section": ["Dbmaj7", "Ebm7", "E7", "Amaj7", "Abm7", "Db7", "Gbmaj7", "Gbmaj7"],
             "B Section": ["Fm7", "Bb7", "Ebmaj7", "Gm7b5", "C7", "Fm7", "Bb7", "Eb7"],
