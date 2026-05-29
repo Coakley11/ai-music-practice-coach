@@ -10918,7 +10918,6 @@ elif _studio_page == "custom":
 
     ensure_page_initialized(st.session_state, "custom")
     note_page_visit(st.session_state, "custom")
-    _render_page_quick_nav("custom")
     try:
         from app_ui import inject_custom_builder_styles, inject_studio_ui_release_marker
 

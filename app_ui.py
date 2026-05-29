@@ -6408,7 +6408,8 @@ def _quick_nav_artistic_css() -> str:
     return """
 @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap');
 
-.st-key-quick_nav_art_panel {
+.st-key-quick_nav_art_panel,
+[class*="st-key-"][class*="quick_nav_art_panel"] {
   margin: 0 0 0.45rem !important;
   padding: 0.28rem 0.45rem 0.32rem !important;
   border-radius: 10px !important;
@@ -6416,13 +6417,16 @@ def _quick_nav_artistic_css() -> str:
   background: linear-gradient(180deg, #fffdf9 0%, #ffffff 100%) !important;
   box-shadow: 0 1px 6px rgba(15, 23, 42, 0.05) !important;
 }
-.st-key-quick_nav_art_panel::before { display: none !important; }
-.st-key-quick_nav_art_panel [data-testid="stHorizontalBlock"] {
+.st-key-quick_nav_art_panel::before,
+[class*="st-key-"][class*="quick_nav_art_panel"]::before { display: none !important; }
+.st-key-quick_nav_art_panel [data-testid="stHorizontalBlock"],
+[class*="st-key-"][class*="quick_nav_art_panel"] [data-testid="stHorizontalBlock"] {
   gap: 0.12rem 0.18rem !important;
   align-items: center !important;
   flex-wrap: wrap !important;
 }
-.st-key-quick_nav_art_panel [data-testid="column"] {
+.st-key-quick_nav_art_panel [data-testid="column"],
+[class*="st-key-"][class*="quick_nav_art_panel"] [data-testid="column"] {
   min-width: 0 !important;
   flex: 1 1 auto !important;
 }
@@ -6538,7 +6542,8 @@ def _quick_nav_artistic_css() -> str:
 }
 @media (max-width: 720px) {
   .ui-nav-script-label { font-size: 1.12rem !important; }
-  .st-key-quick_nav_art_panel [data-testid="stHorizontalBlock"] { gap: 0.08rem !important; }
+  .st-key-quick_nav_art_panel [data-testid="stHorizontalBlock"],
+  [class*="st-key-"][class*="quick_nav_art_panel"] [data-testid="stHorizontalBlock"] { gap: 0.08rem !important; }
 }
 """
 
@@ -6637,7 +6642,8 @@ def render_page_quick_nav(
 
     current = ensure_studio_page(session_state, default=current_page)
 
-    with st.container(key="quick_nav_art_panel"):
+    panel_key = f"{key_prefix}_quick_nav_art_panel"
+    with st.container(key=panel_key):
         st.markdown(
             '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap">',
             unsafe_allow_html=True,
