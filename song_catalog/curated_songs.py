@@ -2362,6 +2362,256 @@ def _attention_chart_pack() -> dict[str, Any]:
     }
 
 
+def _dance_monkey_chart_pack() -> dict[str, Any]:
+    """Dance Monkey — Tones and I (F# minor, dance/electro-pop, 4/4).
+
+    Main loop **F#m · D · E · C#m** (one chord per bar). Production groove —
+    not campfire strumming. Preserve **N.C.** stops and **E.hit** in Verse 1.
+    """
+    loop = ["F#m", "D", "E", "C#m"]
+    pre_chorus_tail = ["F#m", "D", "E", "N.C."]
+
+    intermediate = {
+        "Intro": list(loop),
+        "Verse 1": list(loop) + ["F#m", "D", "E.hit", "C#m"],
+        "Pre-Chorus 1": list(loop) + list(pre_chorus_tail),
+        "Chorus 1": list(loop) * 2,
+        "Verse 2": list(loop) * 2,
+        "Pre-Chorus 2": list(loop) + list(pre_chorus_tail),
+        "Chorus 2": list(loop) * 2,
+        "Chorus 3": list(loop) * 2,
+        "Bridge": list(loop) + list(pre_chorus_tail),
+        "Final Chorus": list(loop) * 2,
+        "Final Chorus Repeat": list(loop) * 2,
+        "Outro": ["N.C."],
+    }
+
+    beginner = {
+        "Intro": list(loop),
+        "Verse 1": list(loop) + ["F#m", "D", "E.hit", "C#m"],
+        "Pre-Chorus 1": list(loop) + ["N.C."],
+        "Chorus 1": list(loop),
+        "Verse 2": list(loop),
+        "Pre-Chorus 2": list(loop) + ["N.C."],
+        "Chorus 2": list(loop),
+        "Chorus 3": list(loop),
+        "Bridge": list(loop) + ["N.C."],
+        "Final Chorus": list(loop),
+        "Final Chorus Repeat": list(loop),
+        "Outro": ["N.C."],
+    }
+
+    advanced = {
+        name: [
+            c.replace("F#m", "F#m7")
+            .replace("C#m", "C#m7")
+            .replace("D", "Dmaj7")
+            .replace("E.hit", "Emaj7.hit")
+            .replace("E", "Emaj7")
+            for c in chords
+        ]
+        for name, chords in intermediate.items()
+    }
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "F#m": ["F# natural minor", "F# minor pentatonic"],
+        "D": ["D major"],
+        "E": ["E major / Mixolydian color"],
+        "C#m": ["C# natural minor"],
+    }
+    return {
+        "key": "F#m",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Toni Watson",
+        "lyric_cues": {
+            "Intro": ["Synth hook — F#m · D · E · C#m pocket"],
+            "Verse 1": ["They say oh my god I see the way you shine…", "E.hit = single strum on E"],
+            "Pre-Chorus 1": ["Build — last bar N.C. stop before chorus"],
+            "Chorus 1": ["Dance for me, dance for me…", "full dance-pop groove"],
+            "Verse 2": ["Second verse — same loop, fuller percussion"],
+            "Pre-Chorus 2": ["Second lift — N.C. break into chorus"],
+            "Chorus 2": ["Second chorus — lock the loop"],
+            "Chorus 3": ["Third chorus pass"],
+            "Bridge": ["Breakdown — N.C. before final chorus"],
+            "Final Chorus": ["Biggest energy — full bass pulse"],
+            "Final Chorus Repeat": ["Repeat/fade on the loop"],
+            "Outro": ["N.C. — tacet outro"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**F# minor**, **4/4**. Main loop **F#m · D · E · C#m** (one chord/bar). "
+                "~98 BPM half-time (~196 double-time). Dance/electro-pop production — "
+                "electronic drums, synth bass, claps, rhythmic keys; **not** campfire or "
+                "piano ballad. Verse: lighter; pre-chorus/bridge: **N.C.** dramatic stops; "
+                "chorus: full pulse. **E.hit** = hold/single strum on E in Verse 1."
+            ),
+            default_bpm=98,
+            default_groove="Pop groove",
+            time_signature="4/4",
+            repertoire_tags=[
+                "Pop",
+                "Dance Pop",
+                "Electro Pop",
+                "Groove-Based",
+                "Karaoke Friendly",
+                "Vocal Style Practice",
+                "Tones and I",
+            ],
+            harmonic_analysis={
+                "progression_summary": "F#m · D · E · C#m (i–VI–VII–iv in F# minor)",
+                "scale_suggestions": scale_hints,
+            },
+            groove_based=True,
+            backing_character="pop_funk",
+        ),
+    }
+
+
+def _im_yours_chart_pack() -> dict[str, Any]:
+    """I'm Yours — Jason Mraz (G shapes / capo 4, concert B major, reggae-pop, 4/4).
+
+    Chart in **G–D–Em–C** with **Dsus4**, **D/F#**, **A7**, half-bar splits, and
+    **N.C.** outro pickup. Acoustic island groove — not rock or piano ballad.
+    """
+    loop = ["G", "D", "Em", "C"]
+    verse = list(loop) * 2
+
+    intermediate = {
+        "Intro": list(loop),
+        "Verse 1": list(verse),
+        "Chorus 1": list(loop) * 2,
+        "Verse 2": list(loop) + ["G", "D", "Em", "C", "A7"],
+        "Chorus 2": ["G", "D|Dsus4", "Em", "C", "G", "D", "Em", "C"],
+        "Bridge": [
+            "G",
+            "D",
+            "Em",
+            "D",
+            "C",
+            "A7",
+            "G|D/F#",
+            "Em|D",
+            "C",
+            "A7",
+        ],
+        "Verse 3": list(verse),
+        "Final Chorus / Outro Build": [
+            "G",
+            "D|Dsus4",
+            "Em",
+            "C",
+            "G",
+            "D",
+            "Em",
+            "C",
+            "A7",
+        ],
+        "Outro": ["N.C."] + list(loop) * 2,
+    }
+
+    beginner = {
+        "Intro": list(loop),
+        "Verse 1": list(loop),
+        "Chorus 1": list(loop),
+        "Verse 2": list(loop) + ["A7"],
+        "Chorus 2": ["G", "D|Dsus4", "Em", "C"],
+        "Bridge": ["G", "D", "Em", "C", "A7", "G|D/F#", "Em|D", "C", "A7"],
+        "Verse 3": list(loop),
+        "Final Chorus / Outro Build": ["G", "D|Dsus4", "Em", "C", "A7"],
+        "Outro": ["N.C."] + list(loop),
+    }
+
+    advanced = {
+        name: [
+            c.replace("G|", "Gmaj7|")
+            .replace("|Dsus4", "|Dsus2")
+            .replace("Em|D", "Em7|D")
+            .replace("G", "Gmaj7")
+            .replace("Em", "Em7")
+            .replace("C", "Cadd9")
+            .replace("A7", "A7sus4")
+            for c in chords
+        ]
+        for name, chords in intermediate.items()
+    }
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "G": ["G major", "G major pentatonic"],
+        "D": ["D major"],
+        "Em": ["E natural minor / relative minor"],
+        "C": ["C major"],
+        "A7": ["A mixolydian / blues pentatonic over V"],
+    }
+    return {
+        "key": "G",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Jason Mraz",
+        "guitar_tabs": {
+            "G": "320003",
+            "D": "xx0232",
+            "Dsus4": "xx0233",
+            "D/F#": "2x0232",
+            "Em": "022000",
+            "C": "x32010",
+            "A7": "x02020",
+        },
+        "lyric_cues": {
+            "Intro": ["Acoustic island vamp — G · D · Em · C"],
+            "Verse 1": ["Well you done done me and you bet I felt it…"],
+            "Chorus 1": ["But I won't hesitate no more, no more…"],
+            "Verse 2": ["Come on and open up your plans…", "A7 lift into chorus 2"],
+            "Chorus 2": ["Open up your plans and damn you're free…", "D|Dsus4 color"],
+            "Bridge": ["And it's our God-forsaken right to be loved…", "G|D/F# walkdown"],
+            "Verse 3": ["Third verse — same relaxed groove"],
+            "Final Chorus / Outro Build": ["I've been spendin' way too long…", "A7 turn"],
+            "Outro": ["N.C. pickup — fade on G · D · Em · C"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**B major** concert; chart in **G shapes** (capo **4**). **4/4**, ~75 BPM. "
+                "Reggae-pop / island groove — acoustic guitar, light hand percussion, soft "
+                "bass, relaxed drums. **Not** rock kit or piano ballad. Preserve **Dsus4**, "
+                "**D/F#**, **A7**, half-bar splits (**D|Dsus4**, **G|D/F#**, **Em|D**), "
+                "and **N.C.** outro pickup."
+            ),
+            default_bpm=75,
+            default_groove="Pop groove",
+            time_signature="4/4",
+            capo_note="Capo 4 (G-shape chart) · concert key B major",
+            repertoire_tags=[
+                "Reggae Pop",
+                "Acoustic Pop",
+                "Island Groove",
+                "Singer-Songwriter",
+                "Karaoke Friendly",
+                "Jason Mraz",
+            ],
+            harmonic_analysis={
+                "progression_summary": "G–D–Em–C (I–V–vi–IV); A7 dominant color; bridge walkdown",
+                "scale_suggestions": scale_hints,
+            },
+            acoustic_unplugged=True,
+            backing_character="mtv_unplugged_acoustic",
+        ),
+    }
+
+
 def _take_on_me_unplugged_chart_pack() -> dict[str, Any]:
     """Take On Me (MTV Unplugged) — a-ha (G major center, acoustic, 4/4).
 
@@ -3928,6 +4178,180 @@ def _shalom_aleichem_chart_pack() -> dict[str, Any]:
     }
 
 
+def _all_of_me_chart_pack() -> dict[str, Any]:
+    """All of Me — John Legend (Em capo chart, piano ballad, 4/4).
+
+    Contemporary wedding/love ballad. Preserve **C/D** (do not replace with plain D);
+  one list item = one bar.
+    """
+    intro = ["Em", "C", "G", "D"] * 2
+
+    def _verse() -> list[str]:
+        return (
+            ["Em", "C", "G", "D"] * 2
+            + ["Em", "C", "G", "D", "Em"]
+            + ["C", "G", "D", "Am"]
+        )
+
+    def _pre_chorus() -> list[str]:
+        return ["Am", "G", "D", "Am", "Am", "G", "D"]
+
+    def _chorus_core() -> list[str]:
+        return ["G", "Em", "Am", "C/D", "D", "G", "Em", "Am", "C/D", "D"]
+
+    def _chorus() -> list[str]:
+        return _chorus_core() + ["Em", "C", "G", "D"] * 2
+
+    bridge = ["Am", "Am", "G", "D", "Am", "Am", "G", "D"]
+
+    final_chorus = _chorus_core() + ["Em", "C", "G", "D"] * 4
+
+    outro = ["Em", "C", "G", "D"] * 4
+
+    intermediate = {
+        "Intro": list(intro),
+        "Verse 1": _verse(),
+        "Pre-Chorus": _pre_chorus(),
+        "Chorus 1": _chorus(),
+        "Verse 2": _verse(),
+        "Pre-Chorus 2": _pre_chorus(),
+        "Chorus 2": _chorus(),
+        "Bridge": list(bridge),
+        "Final Chorus": list(final_chorus),
+        "Outro": list(outro),
+    }
+
+    def _beg(ch: str) -> str:
+        head = ch.split("/")[0].strip()
+        if ch == "C/D":
+            return "C/D"
+        return head.replace("maj7", "").replace("m7", "m")
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+
+    def _adv(ch: str) -> str:
+        if ch == "C/D":
+            return "C/D"
+        return {
+            "Em": "Em7",
+            "C": "Cmaj7",
+            "G": "Gmaj7",
+            "D": "Dmaj7",
+            "Am": "Am7",
+        }.get(ch, ch)
+
+    advanced = {name: [_adv(c) for c in chords] for name, chords in intermediate.items()}
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "Em": ["E natural minor", "E minor pentatonic"],
+        "C": ["C major"],
+        "G": ["G major"],
+        "D": ["D major"],
+        "Am": ["A natural minor"],
+    }
+
+    return {
+        "key": "Em",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "John Legend & Toby Gad",
+        "guitar_tabs": {
+            "Em": "022000",
+            "C": "x32010",
+            "G": "320003",
+            "D": "xx0232",
+            "Am": "x02210",
+            "C/D": "x3023x",
+        },
+        "lyric_cues": {
+            "Intro": ["Piano vamp — (breath) before 'What would I do without your smart mouth'"],
+            "Verse 1": [
+                "Intimate verse — (breath) conversational tone",
+                "Smart mouth / crazy — light, playful delivery",
+                "Land Am color on last line before pre-chorus",
+            ],
+            "Pre-Chorus": [
+                "Gentle build — (breath) before chorus lift",
+                "Love your curves and all your edges — open vowels",
+            ],
+            "Chorus 1": [
+                "'Cause all of me loves all of you — (breath) title hook",
+                "Preserve **C/D** → D resolution — don't rush the dominant",
+                "Fuller piano + bass — wedding-song declaration",
+            ],
+            "Verse 2": ["Second verse — same breath map; deepen intimacy"],
+            "Pre-Chorus 2": ["Build again — save energy for bridge lift"],
+            "Chorus 2": ["Repeat chorus energy — blend on sustained vowels"],
+            "Bridge": [
+                "Emotional lift — (breath) 'How many times do I have to tell you'",
+                "Strongest story moment before final chorus",
+            ],
+            "Final Chorus": [
+                "Biggest dynamic peak — fullest piano and vocal support",
+                "Extra Em–C–G–D passes — sustain through the climax",
+            ],
+            "Outro": [
+                "Vamp Em–C–G–D — gradually release; let final Em ring",
+                "(breath) between passes as instrumentation thins",
+            ],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**E minor** capo guitar chart (**4/4**, ~126 BPM). Original "
+                "recordings vary in sounding key — this chart follows the common "
+                "**Em-shape** arrangement. **Piano-led** love ballad: preserve "
+                "**C/D** (suspended dominant — do not simplify to plain D). "
+                "Verse intimate; pre-chorus gentle build; chorus fuller piano/"
+                "bass; bridge emotional lift; final chorus = peak; outro fades. "
+                "**Not** rock drums or distorted guitar. Core vocal-showcase "
+                "wedding repertoire."
+            ),
+            default_bpm=126,
+            default_groove="Ballad",
+            time_signature="4/4",
+            capo_note=(
+                "Em-shape capo chart · sounding key varies by vocalist; "
+                "studio take often sits higher than this shape"
+            ),
+            repertoire_tags=[
+                "Wedding Song",
+                "Love Song",
+                "Piano Ballad",
+                "Vocal Showcase",
+                "Contemporary Pop",
+                "Karaoke Friendly",
+            ],
+            vocal_showcase=True,
+            piano_centric=True,
+            vocal_range_notes=(
+                "Verse sits in comfortable mid chest; pre-chorus and chorus "
+                "ask for mixed voice on sustained vowels ('all of me'). Plan "
+                "breaths before each chorus and the bridge; final chorus is the "
+                "highest sustained belt — warm up the top mix beforehand."
+            ),
+            vocal_harmony_hints=(
+                "Piano ballad: let the lyric lead; soften consonants in verses "
+                "and open the chorus on 'all of me'. C/D → D is the emotional "
+                "punctuation — don't clip the dominant."
+            ),
+            harmonic_analysis={
+                "progression_summary": "Em-centric pop ballad with Am pre-chorus and C/D dominant color",
+                "scale_suggestions": scale_hints,
+            },
+            backing_character="piano_vocal_ballad_wedding",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -3998,6 +4422,8 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Autumn Leaves", "Jazz Standard"): _autumn_leaves_chart_pack(),
         ("Autumn Leaves", "Eric Clapton"): _autumn_leaves_chart_pack(),
         ("Attention", "Charlie Puth"): _attention_chart_pack(),
+        ("Dance Monkey", "Tones and I"): _dance_monkey_chart_pack(),
+        ("I'm Yours", "Jason Mraz"): _im_yours_chart_pack(),
         ("Take On Me (MTV Unplugged Version)", "a-ha"): _take_on_me_unplugged_chart_pack(),
         ("I Want It That Way", "Backstreet Boys"): _iwantit_chart_pack(),
         (
@@ -4010,6 +4436,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("All the Things You Are", "Jerome Kern"): _attya_chart_pack(),
         ("Satin Doll", "Duke Ellington"): _satin_doll_chart_pack(),
         ("Iris", "Goo Goo Dolls"): _iris_chart_pack(),
+        ("All of Me", "John Legend"): _all_of_me_chart_pack(),
         (
             "Shalom Aleichem",
             "Traditional Jewish Sabbath Song",
@@ -4637,31 +5064,25 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "All of Me",
             "John Legend",
             "Pop",
-            "Ab",
+            "Em",
             {
-                "Intro / Verse": ["Fm", "Db", "Ab", "Eb"] * 2,
-                "Pre-Chorus": ["Db", "Ab", "Eb", "Fm", "Db", "Ab", "Eb", "Eb"],
-                "Chorus": ["Ab", "Fm", "Db", "Eb", "Ab", "Fm", "Db", "Eb"],
-                "Bridge": ["Fm", "Db", "Ab", "Eb", "Fm", "Db", "Ab", "Eb"],
-                "Outro": ["Ab", "Fm", "Db", "Eb", "Ab", "Ab"],
+                "Intro": ["Em", "C", "G", "D"] * 2,
+                "Verse": ["Em", "C", "G", "D"] * 4,
+                "Chorus": ["G", "Em", "Am", "C/D", "D", "Em", "C", "G", "D"],
             },
             {
-                "Intro / Verse": ["Fm7", "Dbadd9", "Ab", "Eb/G"] * 2,
-                "Pre-Chorus": ["Dbadd9", "Ab/C", "Eb", "Fm7", "Dbadd9", "Ab/C", "Eb", "Eb"],
-                "Chorus": ["Ab", "Fm7", "Dbadd9", "Eb", "Ab", "Fm7", "Dbadd9", "Eb"],
-                "Bridge": ["Fm7", "Dbadd9", "Ab", "Eb/G", "Fm7", "Dbadd9", "Ab", "Eb"],
-                "Outro": ["Ab", "Fm7", "Dbadd9", "Eb", "Ab", "Ab"],
-            },
-            advanced={
-                "Intro / Verse": ["Fm9", "Dbmaj9", "Abadd9", "Eb/G"] * 2,
-                "Pre-Chorus": ["Dbmaj9", "Ab/C", "Eb13sus", "Fm9", "Dbmaj9", "Ab/C", "Eb13sus", "Eb13"],
-                "Chorus": ["Abadd9", "Fm9", "Dbmaj9", "Eb13sus", "Abadd9", "Fm9", "Dbmaj9", "Eb13sus"],
-                "Bridge": ["Fm9", "Dbmaj9", "Abadd9", "Eb/G", "Fm9", "Dbmaj9", "Abadd9", "Eb13sus"],
-                "Outro": ["Abadd9", "Fm9", "Dbmaj9", "Eb13sus", "Abadd9", "Abadd9"],
+                "Intro": ["Em7", "Cmaj7", "G", "D"] * 2,
+                "Verse": ["Em7", "Cmaj7", "G", "D"] * 4,
+                "Chorus": ["G", "Em7", "Am7", "C/D", "D", "Em7", "Cmaj7", "G", "D"],
             },
             composer="John Legend & Toby Gad",
-            lyric_cues={"Intro / Verse": ["intimate piano entry"], "Chorus": ["title-hook declaration"], "Bridge": ["vow-like build"]},
-            notes="Piano ballad in Ab; slash bass keeps the verse descent clear while preserving one bar per cell.",
+            lyric_cues={
+                "Intro": ["piano vamp — full chart in override"],
+                "Chorus": ["title hook — preserve C/D color"],
+            },
+            notes="Em capo chart (~126 BPM); full form with C/D in chart override.",
+            default_bpm=126,
+            default_groove="Ballad",
         ),
         v(
             "Attention",
@@ -4681,6 +5102,44 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             notes="D minor pop-funk loop; full form in chart override.",
             default_bpm=100,
             default_groove="Funk groove",
+        ),
+        v(
+            "Dance Monkey",
+            "Tones and I",
+            "Pop",
+            "F#m",
+            {
+                "Intro": ["F#m", "D", "E", "C#m"],
+                "Verse 1": ["F#m", "D", "E", "C#m"],
+            },
+            {
+                "Intro": ["F#m", "D", "E", "C#m"],
+                "Verse 1": ["F#m", "D", "E", "C#m"],
+            },
+            composer="Toni Watson",
+            lyric_cues={"Intro": ["F#m · D · E · C#m dance-pop loop"]},
+            notes="F# minor electro-pop loop; full form in chart override.",
+            default_bpm=98,
+            default_groove="Pop groove",
+        ),
+        v(
+            "I'm Yours",
+            "Jason Mraz",
+            "Pop",
+            "G",
+            {
+                "Intro": ["G", "D", "Em", "C"],
+                "Verse 1": ["G", "D", "Em", "C"],
+            },
+            {
+                "Intro": ["G", "D", "Em", "C"],
+                "Verse 1": ["G", "D", "Em", "C"],
+            },
+            composer="Jason Mraz",
+            lyric_cues={"Intro": ["G · D · Em · C island groove"]},
+            notes="G-shape chart (capo 4 = B concert); full form in chart override.",
+            default_bpm=75,
+            default_groove="Pop groove",
         ),
         v(
             "Hotel California",

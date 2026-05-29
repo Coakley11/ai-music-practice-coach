@@ -1018,7 +1018,16 @@ def _song_backing_profile(
             profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
     if any(
         k in title
-        for k in ("attention", "treasure", "uptown funk", "get lucky", "charlie puth")
+        for k in (
+            "attention",
+            "treasure",
+            "uptown funk",
+            "get lucky",
+            "charlie puth",
+            "dance monkey",
+            "tones and i",
+            "shape of you",
+        )
     ):
         profile["groove_based"] = True
         profile["comp_stab"] = True
@@ -1027,6 +1036,12 @@ def _song_backing_profile(
         profile["hat_soft"] = min(profile["hat_soft"], 0.92)
         profile["pocket_offset"] = min(profile["pocket_offset"], -0.012)
         profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
+    if any(k in title for k in ("i'm yours", "im yours", "jason mraz")):
+        profile["acoustic_unplugged"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.42)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
+        profile["outro_fade_bars"] = 4
     if "blue bossa" in title or "bossa" in title:
         profile["latin_relaxed"] = True
         profile["cross_stick"] = True
@@ -1078,6 +1093,14 @@ def _song_backing_profile(
         profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
         profile["pocket_offset"] = max(profile["pocket_offset"], 0.022)
         profile["outro_fade_bars"] = 4
+    if "all of me" in title and "legend" in title:
+        profile["piano_centric"] = True
+        profile["vocal_ballad"] = True
+        profile["cross_stick"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.42)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
+        profile["outro_fade_bars"] = 8
     if "iris" in title or "goo goo" in title:
         profile["alt_rock_ballad"] = True
         profile["vocal_ballad"] = True
@@ -1428,6 +1451,18 @@ def synthesize_chords_to_numpy(
             "final" in str(section_name).lower() or role == "chorus"
         ):
             intensity *= 1.08
+        if (
+            song_profile.get("piano_centric")
+            and song_profile.get("vocal_ballad")
+            and "all of me" in f"{song_title} {song_artist}".lower()
+            and "legend" in f"{song_title} {song_artist}".lower()
+        ):
+            if role == "pre":
+                intensity *= 1.04
+            if "final" in str(section_name).lower():
+                intensity *= 1.10
+            if "outro" in str(section_name).lower():
+                intensity *= 0.92
         if song_profile.get("alt_rock_ballad") and role == "verse":
             intensity *= 0.90
         if song_profile.get("alt_rock_ballad") and role == "chorus":

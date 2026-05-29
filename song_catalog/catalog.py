@@ -50,6 +50,8 @@ TRUSTED_CORE_KEYS = {
     ("Shallow", "Lady Gaga / Bradley Cooper"),
     ("All of Me", "John Legend"),
     ("Attention", "Charlie Puth"),
+    ("Dance Monkey", "Tones and I"),
+    ("I'm Yours", "Jason Mraz"),
     ("Hotel California", "Eagles"),
     ("Californication", "Red Hot Chili Peppers"),
     ("Iris", "Goo Goo Dolls"),
