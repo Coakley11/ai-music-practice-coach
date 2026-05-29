@@ -2362,6 +2362,785 @@ def _attention_chart_pack() -> dict[str, Any]:
     }
 
 
+def _take_on_me_unplugged_chart_pack() -> dict[str, Any]:
+    """Take On Me (MTV Unplugged) — a-ha (G major center, acoustic, 4/4).
+
+    MTV Unplugged Summer Solstice 2017 arrangement. One list item = one bar;
+    ``|`` marks in-bar half-bar splits (e.g. ``C|G/B``). **Not** the 1980s
+    synth-pop production — acoustic guitar, light piano, soft percussion.
+    """
+    intro = [
+        "Am",
+        "D/F#",
+        "G",
+        "C|G/B",
+        "Am",
+        "D/F#",
+        "G",
+        "C|Gmaj7/B",
+    ]
+
+    def _verse() -> list[str]:
+        return [
+            "Am",
+            "D/F#",
+            "Em",
+            "Am",
+            "D/F#",
+            "Em",
+            "Am",
+            "D/F#",
+            "Em",
+            "C",
+        ]
+
+    def _chorus(*, final: bool = False) -> list[str]:
+        tail = ["G", "Bm", "Em", "C"] if final else ["G", "D/F#", "C", "D"]
+        return [
+            "G",
+            "D",
+            "Em",
+            "D/F#",
+            "G",
+            "Bm",
+            "Em",
+            "C",
+            "G",
+            "B7",
+            "Em",
+            "C",
+            *tail,
+        ]
+
+    bridge = [
+        "Am",
+        "D",
+        "G",
+        "C|G/B",
+        "Am",
+        "D",
+        "G",
+        "C|Gmaj7/B",
+        "Am",
+        "D",
+        "Am",
+        "D",
+    ]
+
+    outro = [
+        "G",
+        "B7",
+        "Em",
+        "C",
+        "G",
+        "D/F#",
+        "Em",
+        "C",
+        "G",
+        "D/F#",
+        "C",
+    ]
+
+    intermediate = {
+        "Intro": list(intro),
+        "Verse 1": _verse(),
+        "Chorus": _chorus(),
+        "Verse 2": _verse(),
+        "Chorus 2": _chorus(),
+        "Bridge": list(bridge),
+        "Verse 3": _verse(),
+        "Final Chorus": _chorus(final=True),
+        "Outro": list(outro),
+    }
+
+    def _beg(ch: str) -> str:
+        if "|" in ch:
+            return "|".join(_beg(p.strip()) for p in ch.split("|") if p.strip())
+        head = ch.split("/")[0].strip()
+        return (
+            head.replace("Gmaj7", "G")
+            .replace("maj7", "")
+            .replace("m7", "m")
+        )
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "Am": ["A natural minor", "A minor pentatonic"],
+        "D/F#": ["D major"],
+        "G": ["G major"],
+        "Em": ["E natural minor"],
+        "C": ["C major"],
+        "Bm": ["B natural minor"],
+        "B7": ["B mixolydian", "B harmonic minor (dominant color)"],
+        "C|G/B": ["G major"],
+        "C|Gmaj7/B": ["G major", "G lydian"],
+    }
+    return {
+        "key": "G",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Magne Furuholmen, Morten Harket & Pål Waaktaar",
+        "lyric_cues": {
+            "Intro": ["Acoustic fingerpicked intro — Am · D/F# · G · C|G/B"],
+            "Verse 1": ["Talking away…"],
+            "Chorus": ["Take on me — fuller acoustic strum + piano"],
+            "Bridge": ["Dynamic lift — wider acoustic texture"],
+            "Final Chorus": ["Biggest unplugged chorus — peak vocal support"],
+            "Outro": ["Gradual thinning — fade on G · D/F# · C"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**MTV Unplugged Summer Solstice 2017** (a-ha). **G major** "
+                "center with **Am** verse color (**4/4**, ~64 BPM). **Acoustic "
+                "pop ballad** — **not** the synth-pop record: use acoustic "
+                "guitar, light piano, soft percussion, warm bass. Preserve "
+                "slashes **D/F#**, **G/B**, **Gmaj7/B** and colors **B7**, "
+                "**Bm**, **Em**. Half-bar splits: **C|G/B**, **C|Gmaj7/B**. "
+                "Verse: sparse guitar; chorus: fuller strum; bridge: lift; "
+                "outro: reduce instrumentation. Tags: Acoustic · MTV "
+                "Unplugged · Pop · Ballad · Folk Pop · Vocal Performance."
+            ),
+            default_bpm=64,
+            default_groove="Ballad",
+            time_signature="4/4",
+            repertoire_tags=[
+                "Acoustic",
+                "MTV Unplugged",
+                "Pop",
+                "Ballad",
+                "Folk Pop",
+                "Vocal Performance",
+                "Singer-Songwriter",
+            ],
+            harmonic_analysis={
+                "progression_summary": (
+                    "Am–D/F#–G–C (G major); chorus on G with Bm and B7 color"
+                ),
+                "scale_suggestions": scale_hints,
+            },
+            acoustic_unplugged=True,
+            backing_character="mtv_unplugged_acoustic",
+        ),
+    }
+
+
+def _iwantit_chart_pack() -> dict[str, Any]:
+    """I Want It That Way — Backstreet Boys (Em → F#m, 90s pop ballad, 4/4).
+
+    One list item = one bar. Signature **modulation** to **F# minor** at the
+    final chorus; preserve slash **G/D**. Vocal-harmony ballad — backing stays
+    light for singers.
+    """
+    intro = ["Em", "C", "G"] * 2
+
+    def _verse() -> list[str]:
+        return ["Em", "C", "G"] * 3 + ["Em", "D", "G"]
+
+    def _chorus(*, tag_end: str = "G") -> list[str]:
+        tail = ["Em", "D", tag_end] if tag_end == "G" else ["Em", tag_end]
+        return [
+            "C",
+            "D",
+            "Em",
+            "C",
+            "D",
+            "Em",
+            "C",
+            "D",
+            "G",
+            *tail,
+        ]
+
+    bridge = [
+        "Em",
+        "G/D",
+        "C",
+        "Am",
+        "D",
+        "Em",
+        "G/D",
+        "C",
+        "D",
+    ]
+
+    pre_final = [
+        "C",
+        "D",
+        "Em",
+        "C",
+        "D",
+        "Em",
+        "C",
+        "D",
+        "G",
+        "Em",
+        "D",
+    ]
+
+    def _final_chorus() -> list[str]:
+        return [
+            "D",
+            "E",
+            "F#m",
+            "D",
+            "E",
+            "F#m",
+            "D",
+            "E",
+            "A",
+            "F#m",
+            "E",
+            "A",
+        ]
+
+    intermediate = {
+        "Intro": list(intro),
+        "Verse 1": _verse(),
+        "Chorus 1": _chorus(),
+        "Verse 2": _verse(),
+        "Chorus 2": _chorus(tag_end="B"),
+        "Bridge": list(bridge),
+        "Verse 3": _verse(),
+        "Pre-Final Chorus": list(pre_final),
+        "Key Change": ["N.C."],
+        "Final Chorus": _final_chorus(),
+        "Final Chorus Repeat": _final_chorus(),
+        "Outro": _final_chorus(),
+    }
+
+    beginner = dict(intermediate)
+
+    def _adv(ch: str) -> str:
+        if ch in ("N.C.", "G/D"):
+            return ch
+        return {
+            "Em": "Em7",
+            "C": "Cmaj7",
+            "G": "Gmaj7",
+            "D": "Dmaj7",
+            "B": "B7",
+            "E": "E7",
+            "F#m": "F#m7",
+            "A": "Amaj7",
+            "Am": "Am7",
+        }.get(ch, ch)
+
+    advanced = {
+        name: [_adv(c) for c in chords] for name, chords in intermediate.items()
+    }
+
+    section_order = list(intermediate.keys())
+    return {
+        "key": "Em",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Max Martin & Andreas Carlsson",
+        "lyric_cues": {
+            "Intro": ["Soft pad + guitar — (breath) before verse entrance"],
+            "Verse 1": [
+                "You are my fire — (breath)",
+                "The one desire — (breath)",
+                "Believe when I say — (breath)",
+                "I want it that way",
+            ],
+            "Chorus 1": [
+                "Tell me why… — (breath before lift)",
+                "Ain't nothin' but a heartache — harmony stack",
+                "I want it that way — (breath) title hook",
+            ],
+            "Verse 2": ["Second verse — same breath map as Verse 1"],
+            "Chorus 2": ["Chorus 2 — land **B** major color on last bar"],
+            "Bridge": [
+                "Emotional build — (breath) low support",
+                "G/D bass line — widen tone toward pre-chorus",
+            ],
+            "Verse 3": ["Third verse — conserve energy for final lift"],
+            "Pre-Final Chorus": [
+                "Rise into modulation — (breath) before key change",
+                "Stronger support each pass",
+            ],
+            "Key Change": [
+                "★ Modulate to F# minor — energy step up",
+                "(breath) then attack Final Chorus downbeat",
+            ],
+            "Final Chorus": [
+                "F#m chorus — biggest drums & pads",
+                "Harmony on 'that way' — (breath) between phrases",
+            ],
+            "Final Chorus Repeat": ["Hold blend — sustain through repeat"],
+            "Outro": ["Gradual release — (breath) on last 'that way'"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**E minor** 90s pop ballad (**4/4**, ~99 BPM) modulating to "
+                "**F# minor** at the final chorus (signature moment). Preserve "
+                "**G/D** slash. **Vocal harmony ballad** — not a busy "
+                "instrumental track: light verse, fuller chorus, bridge build, "
+                "noticeable lift at key change. Tags: Vocal Showcase · Harmony "
+                "Singing · 90s Pop · Boy Band · Ballad."
+            ),
+            default_bpm=99,
+            default_groove="Ballad",
+            time_signature="4/4",
+            repertoire_tags=[
+                "Vocal Showcase",
+                "Harmony Singing",
+                "90s Pop",
+                "Boy Band",
+                "Ballad",
+            ],
+            vocal_showcase=True,
+            modulation={
+                "from_key": "Em",
+                "to_key": "F#m",
+                "section": "Key Change",
+            },
+            vocal_harmony_hints={
+                "Chorus": "Boy-band stacks: melody + upper harmony on title hook.",
+                "Final Chorus": "Same stacks a whole step up in F#m — brighter, more open vowels.",
+            },
+            harmonic_analysis={
+                "progression_summary": "Em–C–G verse; chorus C–D–Em; modulates to F#m",
+                "scale_suggestions": {
+                    "Em": ["E natural minor", "E minor pentatonic"],
+                    "C": ["C major"],
+                    "G": ["G major"],
+                    "D": ["D major"],
+                    "F#m": ["F# natural minor", "F# minor pentatonic"],
+                },
+            },
+            backing_character="vocal_ballad_90s",
+        ),
+    }
+
+
+def _iwont_say_in_love_chart_pack() -> dict[str, Any]:
+    """I Won't Say (I'm in Love) — Disney's Hercules (C, Broadway/gospel, 4/4).
+
+    Susan Egan & the Muses. Slash harmony drives the Broadway sound — preserve
+    **C/G**, **G/C**, **G/B**, **G/A**, **Am/G**, **C/E**, **C/D**, **Fmaj7/G**,
+    etc. Vocal call-and-response; piano/gospel backing, not guitar strumming.
+    """
+    verse1 = [
+        "C/G",
+        "Fmaj7/G",
+        "F6/G",
+        "C/G",
+        "F/G",
+        "G7",
+        "Am",
+        "C/D",
+        "D7",
+        "G",
+        "F/G",
+        "G",
+        "F/G",
+        "G",
+    ]
+
+    pre1 = [
+        "C",
+        "F",
+        "G",
+        "C",
+        "Am",
+        "Am/G",
+        "F",
+        "C/E",
+        "Dm7",
+        "Gsus",
+        "G",
+    ]
+
+    chorus1 = [
+        "C",
+        "G/C",
+        "C",
+        "G/B",
+        "Am",
+        "G/A",
+        "Am",
+        "Am/G",
+        "Fmaj7",
+        "G/F",
+        "Fmaj7/G",
+        "G",
+        "C",
+    ]
+
+    verse2 = [
+        "C",
+        "Fmaj7/G",
+        "F6",
+        "C/E",
+        "G7",
+        "Am",
+        "C/D",
+        "D",
+        "G",
+        "F/G",
+        "G",
+        "F/G",
+        "G",
+    ]
+
+    pre2 = [
+        "C",
+        "F",
+        "G",
+        "C",
+        "Am",
+        "F",
+        "C/E",
+        "Dm7",
+        "F/G",
+    ]
+
+    chorus2 = [
+        "C",
+        "G/C",
+        "C",
+        "G/B",
+        "Am",
+        "G/A",
+        "Am/G",
+        "Fmaj7",
+        "G/F",
+        "Fmaj7",
+        "F/G",
+    ]
+
+    ensemble = [
+        "G",
+        "Fmaj7/G",
+        "G",
+        "C",
+        "G/C",
+        "C",
+        "G/B",
+        "Am",
+        "G/A",
+        "Am",
+        "Am/G",
+        "Fmaj7",
+        "G/F",
+        "Fmaj7",
+        "G",
+        "C",
+    ]
+
+    tag = ["Am", "F", "G/F", "Fmaj7/G", "G", "C"]
+
+    intermediate = {
+        "Verse 1": list(verse1),
+        "Pre-Chorus 1": list(pre1),
+        "Chorus 1": list(chorus1),
+        "Verse 2": list(verse2),
+        "Pre-Chorus 2": list(pre2),
+        "Chorus 2": list(chorus2),
+        "Ensemble Chorus": list(ensemble),
+        "Tag": list(tag),
+    }
+
+    def _beg(ch: str) -> str:
+        head = ch.split("/")[0].strip()
+        return (
+            head.replace("Fmaj7", "F")
+            .replace("F6", "F")
+            .replace("Dm7", "Dm")
+            .replace("Gsus", "G")
+            .replace("G7", "G")
+            .replace("D7", "D")
+            .replace("maj7", "")
+            .replace("sus", "")
+            .replace("m7", "m")
+        )
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+
+    section_order = list(intermediate.keys())
+    return {
+        "key": "C",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Alan Menken & David Zippel",
+        "lyric_cues": {
+            "Verse 1": [
+                "Meg — conversational storytelling; (breath) before Muses enter",
+                "If there's a prize — light, not belting yet",
+            ],
+            "Pre-Chorus 1": [
+                "(Call) Muses: 'Honey, you mean the ones who…'",
+                "(Response) gospel push on **Gsus → G**",
+            ],
+            "Chorus 1": [
+                "Title hook — 'I won't say I'm in love' (breath)",
+                "Slash bass walk **G/B · G/A · Am/G** — keep vowels forward",
+            ],
+            "Verse 2": ["Second verse — same intimacy as Verse 1"],
+            "Pre-Chorus 2": ["Muses tighter — answer phrases shorter"],
+            "Chorus 2": ["Chorus lift — brighter, still controlled"],
+            "Ensemble Chorus": [
+                "(Call-and-response) full Muses gospel stack",
+                "Biggest energy — Broadway finale; blend over volume",
+                "Shout responses on **G** pickups",
+            ],
+            "Tag": ["Final tag — (breath) resolve on **C**"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**Disney's Hercules** — Meg & the Muses (**C major**, **4/4**, "
+                "~92 BPM). **Broadway / gospel pop** ballad: preserve slash "
+                "voicings (**C/G**, **G/C**, **G/B**, **G/A**, **Am/G**, "
+                "**C/E**, **C/D**, **Fmaj7/G**, **F6/G**, **F/G**, **Gsus**). "
+                "Vocal phrasing, call-and-response, and ensemble harmony drive "
+                "the chart — backing uses piano/gospel pads, brushed drums, "
+                "light bass (not rock guitar strumming). Verse sparse; "
+                "pre-chorus tension; chorus fuller; **Ensemble Chorus** = finale. "
+                "Tags: Disney · Broadway · Musical Theatre · Female Vocal "
+                "Showcase · Ensemble Vocal · Gospel Pop."
+            ),
+            default_bpm=92,
+            default_groove="Ballad",
+            time_signature="4/4",
+            repertoire_tags=[
+                "Disney",
+                "Broadway",
+                "Musical Theatre",
+                "Female Vocal Showcase",
+                "Ensemble Vocal",
+                "Gospel Pop",
+            ],
+            vocal_showcase=True,
+            broadway_disney=True,
+            call_and_response={
+                "Pre-Chorus 1": "Muses interrupt Meg — short call phrases, gospel answers.",
+                "Pre-Chorus 2": "Tighter banter — leave space for ensemble punches.",
+                "Ensemble Chorus": "Full Muses choir — call-and-response gospel stack.",
+            },
+            vocal_harmony_hints={
+                "Chorus 1": "Gospel-tinged thirds above melody on slash walks.",
+                "Ensemble Chorus": "Ensemble stacks + shout responses on G pickups.",
+            },
+            harmonic_analysis={
+                "progression_summary": "C major Broadway slashes; gospel sus + maj7 color",
+                "scale_suggestions": {
+                    "C": ["C major", "C mixolydian (gospel color)"],
+                    "Am": ["A natural minor", "A minor pentatonic"],
+                    "Fmaj7": ["F major", "F lydian"],
+                    "G7": ["G mixolydian"],
+                    "D7": ["D mixolydian"],
+                },
+            },
+            backing_character="broadway_gospel",
+        ),
+    }
+
+
+def _how_far_ill_go_chart_pack() -> dict[str, Any]:
+    """How Far I'll Go — Disney's Moana (E → F, inspirational ballad, 4/4).
+
+    Auli'i Cravalho. Preserve slash bass **B/D#**, **E/G#**, **Dm/C**, **Ab/G**,
+    **Dm7b5** and the full **Ending Descent**. Piano/strings Disney soundtrack
+    feel — not rock guitar strumming.
+    """
+    verse = ["E", "F#m", "C#m", "A"] * 2
+
+    def _pre() -> list[str]:
+        return ["C#m", "B/D#", "E", "Am"]
+
+    chorus_a = [
+        "E",
+        "B",
+        "C#m",
+        "A",
+        "E",
+        "B",
+        "C#m",
+        "Am",
+        "E",
+    ]
+
+    verse2 = ["E", "F#m", "C#m", "A", "E", "F#m", "C#m", "A", "E/G#"]
+
+    chorus_b = [
+        "E",
+        "B",
+        "C#m",
+        "A",
+        "E",
+        "B",
+        "C#m",
+        "A",
+    ]
+
+    final_chorus = [
+        "F",
+        "C",
+        "Dm",
+        "Bb",
+        "F",
+        "C",
+        "Dm",
+        "Dm/C",
+    ]
+
+    ending_descent = ["Ab", "Ab/G", "Fm", "Dm7b5", "C"]
+
+    intermediate = {
+        "Verse 1": list(verse),
+        "Pre-Chorus 1": _pre(),
+        "Chorus A": list(chorus_a),
+        "Verse 2": list(verse2),
+        "Pre-Chorus 2": _pre(),
+        "Chorus B": list(chorus_b),
+        "Key Change": ["N.C."],
+        "Final Chorus": list(final_chorus),
+        "Ending Descent": list(ending_descent),
+    }
+
+    def _beg(ch: str) -> str:
+        if ch == "N.C.":
+            return "N.C."
+        head = ch.split("/")[0].strip()
+        return (
+            head.replace("F#m", "F#")
+            .replace("C#m", "C#")
+            .replace("Dm7b5", "Ddim")
+            .replace("m7b5", "dim")
+            .replace("m", "")
+        )
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+
+    section_order = list(intermediate.keys())
+    return {
+        "key": "E",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Lin-Manuel Miranda & Mark Mancina",
+        "lyric_cues": {
+            "Verse 1": [
+                "Moana — intimate storytelling; (breath) on 'I've been staring at the edge'",
+                "Piano-led — keep vowels warm, not pushed",
+            ],
+            "Pre-Chorus 1": [
+                "Build — 'I know everybody has a calling' (breath)",
+                "B/D# bass walk lifts into chorus",
+            ],
+            "Chorus A": [
+                "Title — 'How far I'll go' (breath) emotional peak",
+                "See the line where the sky meets the sea — open vowels",
+            ],
+            "Verse 2": [
+                "Second verse — E/G# color on last bar",
+                "Deeper commitment in delivery",
+            ],
+            "Pre-Chorus 2": ["Stronger arc than Pre-Chorus 1"],
+            "Chorus B": ["Chorus lift — fuller strings, same heart"],
+            "Key Change": [
+                "★ Modulate **E major → F major** — energy step up",
+                "(breath) then Final Chorus downbeat",
+            ],
+            "Final Chorus": [
+                "F major — biggest orchestral support",
+                "Dm/C bass descent — don't rush the slash",
+            ],
+            "Ending Descent": [
+                "Dramatic Disney resolution — Ab · Ab/G · Fm · Dm7b5 · C",
+                "Hold each change; (breath) before final C",
+            ],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**Disney's Moana** — How Far I'll Go (**E major** → **F major**, "
+                "**4/4**, ~84 BPM). Inspirational Disney ballad: preserve "
+                "**B/D#**, **E/G#**, **Dm/C**, **Ab/G**, **Dm7b5** and the full "
+                "**Ending Descent** (do not simplify). Piano/strings/cinematic "
+                "pads — not rock guitar. Verse sparse; pre-chorus build; chorus "
+                "wider; key change lifts energy; final chorus + ending = emotional "
+                "payoff. Tags: Disney · Musical Theatre · Female Vocal Showcase · "
+                "Broadway · Inspirational Ballad · Karaoke Friendly."
+            ),
+            default_bpm=84,
+            default_groove="Ballad",
+            time_signature="4/4",
+            repertoire_tags=[
+                "Disney",
+                "Musical Theatre",
+                "Female Vocal Showcase",
+                "Broadway",
+                "Inspirational Ballad",
+                "Karaoke Friendly",
+            ],
+            vocal_showcase=True,
+            broadway_disney=True,
+            disney_ballad=True,
+            modulation={
+                "from_key": "E",
+                "to_key": "F",
+                "section": "Key Change",
+            },
+            vocal_harmony_hints={
+                "Chorus A": "Melody forward — strings pad; save biggest tone for Final Chorus.",
+                "Final Chorus": "Brighter vowels in F; let Dm/C bass lead the line down.",
+                "Ending Descent": "Storytelling resolution — each slash is a new emotional color.",
+            },
+            harmonic_analysis={
+                "progression_summary": "E major verse/chorus; modulates to F; dramatic ending descent",
+                "scale_suggestions": {
+                    "E": ["E major", "E major pentatonic"],
+                    "F#m": ["F# natural minor"],
+                    "C#m": ["C# natural minor"],
+                    "A": ["A major"],
+                    "F": ["F major"],
+                    "Dm": ["D natural minor"],
+                },
+            },
+            backing_character="disney_cinematic",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -2432,6 +3211,13 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Autumn Leaves", "Jazz Standard"): _autumn_leaves_chart_pack(),
         ("Autumn Leaves", "Eric Clapton"): _autumn_leaves_chart_pack(),
         ("Attention", "Charlie Puth"): _attention_chart_pack(),
+        ("Take On Me (MTV Unplugged Version)", "a-ha"): _take_on_me_unplugged_chart_pack(),
+        ("I Want It That Way", "Backstreet Boys"): _iwantit_chart_pack(),
+        (
+            "I Won't Say (I'm in Love)",
+            "Disney · Hercules",
+        ): _iwont_say_in_love_chart_pack(),
+        ("How Far I'll Go", "Disney · Moana"): _how_far_ill_go_chart_pack(),
         ("Waiting on the World to Change", "John Mayer"): _say_waiting_lyric_pack(
             "Waiting on the World to Change"
         ),
@@ -3544,6 +4330,82 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             composer="Magne Furuholmen, Morten Harket & Pal Waaktaar",
             lyric_cues={"Synth Intro": ["iconic synth-riff entry"], "Verse": ["quick synth-pop verse"], "Pre-Chorus": ["rising pickup"], "Chorus": ["high title hook"], "Bridge": ["brief breakdown before return"], "Outro": ["riff tag"]},
             notes="Original-key A synth-pop chart; slash bass and add9 colors support the bright keyboard riff movement.",
+        ),
+        v(
+            "Take On Me (MTV Unplugged Version)",
+            "a-ha",
+            "Pop",
+            "G",
+            {
+                "Intro": ["Am", "D/F#", "G", "C|G/B"],
+                "Verse 1": ["Am", "D/F#", "Em"],
+            },
+            {
+                "Intro": ["Am", "D/F#", "G", "C|G/B"],
+                "Verse 1": ["Am", "D/F#", "Em"],
+            },
+            composer="Magne Furuholmen, Morten Harket & Pål Waaktaar",
+            lyric_cues={"Intro": ["Acoustic unplugged — not synth-pop"]},
+            notes="MTV Unplugged 2017; full chart in override.",
+            default_bpm=64,
+            default_groove="Ballad",
+        ),
+        v(
+            "I Want It That Way",
+            "Backstreet Boys",
+            "Pop",
+            "Em",
+            {
+                "Intro": ["Em", "C", "G"],
+                "Verse 1": ["Em", "C", "G"],
+            },
+            {
+                "Intro": ["Em", "C", "G"],
+                "Verse 1": ["Em", "C", "G"],
+            },
+            composer="Max Martin & Andreas Carlsson",
+            lyric_cues={"Intro": ["90s ballad — vocal-forward"]},
+            notes="Em → F#m modulation; full chart in override.",
+            default_bpm=99,
+            default_groove="Ballad",
+        ),
+        v(
+            "I Won't Say (I'm in Love)",
+            "Disney · Hercules",
+            "Pop",
+            "C",
+            {
+                "Verse 1": ["C/G", "Fmaj7/G", "F6/G"],
+                "Chorus 1": ["C", "G/C", "C"],
+            },
+            {
+                "Verse 1": ["C/G", "Fmaj7/G", "F6/G"],
+                "Chorus 1": ["C", "G/C", "C"],
+            },
+            composer="Alan Menken & David Zippel",
+            lyric_cues={"Verse 1": ["Meg — Broadway storytelling"]},
+            notes="Hercules Muses chart; full slashes in override.",
+            default_bpm=92,
+            default_groove="Ballad",
+        ),
+        v(
+            "How Far I'll Go",
+            "Disney · Moana",
+            "Pop",
+            "E",
+            {
+                "Verse 1": ["E", "F#m", "C#m", "A"],
+                "Chorus A": ["E", "B", "C#m", "A"],
+            },
+            {
+                "Verse 1": ["E", "F#m", "C#m", "A"],
+                "Chorus A": ["E", "B", "C#m", "A"],
+            },
+            composer="Lin-Manuel Miranda & Mark Mancina",
+            lyric_cues={"Verse 1": ["Moana — storytelling ballad"]},
+            notes="E→F modulation; full ending descent in override.",
+            default_bpm=84,
+            default_groove="Ballad",
         ),
         v(
             "Billie Jean",
@@ -4812,7 +5674,90 @@ def curated_song_records() -> list[dict[str, Any]]:
                   "Essential Jazz Repertoire",
               ],
           ),
-          chart_status="practice_level_verified"),
+            chart_status="practice_level_verified"),
+        _s(
+            "Take On Me (MTV Unplugged Version)",
+            "a-ha",
+            "Pop",
+            "G",
+            {
+                "Intro": ["Am", "D/F#", "G", "C|G/B"],
+                "Verse 1": ["Am", "D/F#", "Em"],
+                "Chorus": ["G", "D", "Em", "D/F#"],
+            },
+            composer="Magne Furuholmen, Morten Harket & Pål Waaktaar",
+            extensions=_ext(
+                default_bpm=64,
+                default_groove="Ballad",
+                repertoire_tags=[
+                    "Acoustic",
+                    "MTV Unplugged",
+                    "Pop",
+                    "Ballad",
+                    "Folk Pop",
+                ],
+                acoustic_unplugged=True,
+            ),
+            chart_status="practice_level_verified",
+        ),
+        _s(
+            "I Want It That Way",
+            "Backstreet Boys",
+            "Pop",
+            "Em",
+            {
+                "Intro": ["Em", "C", "G"],
+                "Verse 1": ["Em", "C", "G"],
+                "Chorus 1": ["C", "D", "Em"],
+            },
+            composer="Max Martin & Andreas Carlsson",
+            extensions=_ext(
+                default_bpm=99,
+                default_groove="Ballad",
+                vocal_showcase=True,
+                repertoire_tags=["Vocal Showcase", "Boy Band", "90s Pop"],
+            ),
+            chart_status="practice_level_verified",
+        ),
+        _s(
+            "I Won't Say (I'm in Love)",
+            "Disney · Hercules",
+            "Pop",
+            "C",
+            {
+                "Verse 1": ["C/G", "Fmaj7/G", "F6/G"],
+                "Chorus 1": ["C", "G/C", "C"],
+            },
+            composer="Alan Menken & David Zippel",
+            extensions=_ext(
+                default_bpm=92,
+                default_groove="Ballad",
+                vocal_showcase=True,
+                broadway_disney=True,
+                repertoire_tags=["Disney", "Broadway", "Musical Theatre"],
+            ),
+            chart_status="practice_level_verified",
+        ),
+        _s(
+            "How Far I'll Go",
+            "Disney · Moana",
+            "Pop",
+            "E",
+            {
+                "Verse 1": ["E", "F#m", "C#m", "A"],
+                "Chorus A": ["E", "B", "C#m", "A"],
+            },
+            composer="Lin-Manuel Miranda & Mark Mancina",
+            extensions=_ext(
+                default_bpm=84,
+                default_groove="Ballad",
+                vocal_showcase=True,
+                broadway_disney=True,
+                disney_ballad=True,
+                repertoire_tags=["Disney", "Musical Theatre", "Inspirational Ballad"],
+            ),
+            chart_status="practice_level_verified",
+        ),
         _s("Blue Bossa", "Kenny Dorham", "Jazz", "Cm", {
             "A Section": ["Cm9", "Fm9", "Dm7b5", "G7b9", "Cm9", "Cm9"],
             "B Section": ["Ebm9", "Ab13", "Dbmaj9", "Dbmaj9", "Dm7b5", "G7b9", "Cm9", "G7b9"],

@@ -9566,7 +9566,42 @@ if _studio_page == "practice":
                         ),
                         unsafe_allow_html=True,
                     )
-        with st.expander("Lyric phrasing guide", expanded=(instrument == "Voice")):
+        try:
+            from songs.vocal_showcase import (
+                is_vocal_showcase as _is_vocal_showcase,
+                vocal_showcase_harmony_blurb as _vocal_showcase_harmony_blurb,
+            )
+        except ImportError:
+            _is_vocal_showcase = lambda _sd: False  # type: ignore[assignment,misc]
+            _vocal_showcase_harmony_blurb = lambda _sd: ""  # type: ignore[assignment,misc]
+        _vocal_showcase_song = _is_vocal_showcase(song_data)
+        if _vocal_showcase_song:
+            mod = (song_data.get("extensions") or {}).get("modulation") or {}
+            mod_line = ""
+            if mod.get("from_key") and mod.get("to_key"):
+                mod_line = (
+                    f" Key change **{mod.get('from_key')} → {mod.get('to_key')}** "
+                    f"at **{mod.get('section', 'Key Change')}**."
+                )
+            if instrument != "Voice":
+                st.info(
+                    "**Vocal Showcase** — switch to **Voice** for phrasing cues, "
+                    "karaoke setlist tools, and harmony-focused practice."
+                    + mod_line
+                )
+            else:
+                st.caption(
+                    "Vocal Showcase · prioritize breath phrasing and blend; "
+                    "backing stays light for singers."
+                    + mod_line
+                )
+                _harmony_blurb = _vocal_showcase_harmony_blurb(song_data)
+                if _harmony_blurb:
+                    st.caption(_harmony_blurb)
+        with st.expander(
+            "Lyric phrasing guide",
+            expanded=(instrument == "Voice" or _vocal_showcase_song),
+        ):
             st.markdown(
                 lyric_guide_html(
                     sections_for_practice,

@@ -884,6 +884,10 @@ def _song_backing_profile(
         "comp_stab": False,
         "riff_driven": False,
         "groove_based": False,
+        "acoustic_unplugged": False,
+        "vocal_ballad": False,
+        "broadway_gospel": False,
+        "disney_cinematic": False,
         # ---- Arrangement-level character (new) ----
         # ``pocket_offset`` is in *beats* and applied to off-beats by
         # ``_groove_time``. Negative = pushed/ahead, positive =
@@ -993,6 +997,27 @@ def _song_backing_profile(
     if "blue bossa" in title or "bossa" in title:
         profile["latin_relaxed"] = True
         profile["cross_stick"] = True
+    if "take on me" in title and ("unplugged" in title or "mtv" in title):
+        profile["acoustic_unplugged"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.38)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.018)
+        profile["outro_fade_bars"] = 8
+    if "want it that way" in title or "backstreet" in title:
+        profile["vocal_ballad"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.52)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.014)
+    if any(
+        k in title
+        for k in ("won't say", "wont say", "in love", "hercules", "muses", "megara")
+    ):
+        profile["broadway_gospel"] = True
+        profile["vocal_ballad"] = True
+        profile["cross_stick"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.44)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
     if "take the a train" in title or "ellington" in title:
         profile["ride_jazz"] = True
         profile["swing"] = 0.12
@@ -1175,6 +1200,45 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "kick_beats": [0, 1.5, 2.75],
             "comp_dur": 0.18,
         })
+    if profile.get("acoustic_unplugged"):
+        return _fit({
+            "bass_beats": [0, 2],
+            "comp_beats": [0, 2.5, 3.5],
+            "hat_beats": [0, 2],
+            "snare_beats": [3.0],
+            "kick_beats": [0],
+            "cross_stick": [1.0],
+            "comp_dur": 0.78,
+        })
+    if profile.get("vocal_ballad"):
+        return _fit({
+            "bass_beats": [0, 2],
+            "comp_beats": [0, 3.5],
+            "hat_beats": [0, 1, 2, 3],
+            "snare_beats": [3.0],
+            "kick_beats": [0, 2.5],
+            "comp_dur": 0.62,
+        })
+    if profile.get("broadway_gospel"):
+        return _fit({
+            "bass_beats": [0, 2],
+            "comp_beats": [0, 1.5, 2.5, 3.5],
+            "hat_beats": [0, 2],
+            "snare_beats": [3.0],
+            "kick_beats": [0],
+            "cross_stick": [1.0],
+            "comp_dur": 0.52,
+        })
+    if profile.get("disney_cinematic"):
+        return _fit({
+            "bass_beats": [0, 2],
+            "comp_beats": [0, 2.5],
+            "hat_beats": [0, 2],
+            "snare_beats": [],
+            "kick_beats": [0],
+            "cross_stick": [2.0],
+            "comp_dur": 0.88,
+        })
     return _fit({
         "bass_beats": [0, 2],
         "comp_beats": [0, 1.5, 2.5, 3.5],
@@ -1240,6 +1304,20 @@ def synthesize_chords_to_numpy(
         intensity = base_intensity * arrangement_mul * fade_mul
         if song_profile.get("groove_based") and role == "bridge":
             intensity *= 0.82
+        if song_profile.get("vocal_ballad") and role == "verse":
+            intensity *= 0.88
+        if song_profile.get("vocal_ballad") and role in ("pre", "bridge"):
+            intensity *= 1.05
+        if song_profile.get("broadway_gospel") and "ensemble" in str(section_name).lower():
+            intensity *= 1.12
+        if song_profile.get("disney_cinematic") and role == "pre":
+            intensity *= 1.06
+        if song_profile.get("disney_cinematic") and (
+            "final" in str(section_name).lower()
+            or "ending" in str(section_name).lower()
+            or "key change" in str(section_name).lower()
+        ):
+            intensity *= 1.14
         section_edge = _is_section_edge(event, next_event)
         is_breakdown_recovery = idx in arr_ctx.bridge_recovery
         is_final_chorus_bar = arr_ctx.is_final_chorus_event(idx)
@@ -1431,6 +1509,29 @@ def synthesize_chords_to_numpy(
                 if song_profile.get("groove_based"):
                     comp_vol *= 0.52
                     dur *= 0.62
+                if song_profile.get("acoustic_unplugged"):
+                    comp_vol *= 0.68 if role == "verse" else 0.88 if role == "chorus" else 0.78
+                    dur *= 1.05 if role == "chorus" else 0.92
+                if song_profile.get("vocal_ballad"):
+                    comp_vol *= 0.55 if role == "verse" else 0.72
+                    if role == "chorus":
+                        comp_vol *= 1.08
+                if song_profile.get("broadway_gospel"):
+                    comp_vol *= 0.50 if role == "verse" else 0.65
+                    if role == "pre":
+                        comp_vol *= 0.78
+                    if role == "chorus" or "ensemble" in str(section_name).lower():
+                        comp_vol *= 1.10
+                    dur *= 0.95
+                if song_profile.get("disney_cinematic"):
+                    comp_vol *= 0.48 if role == "verse" else 0.62
+                    if role == "pre":
+                        comp_vol *= 0.75
+                    if role == "chorus":
+                        comp_vol *= 0.85
+                    if "final" in str(section_name).lower() or "ending" in str(section_name).lower():
+                        comp_vol *= 1.05
+                    dur *= 1.08
                 if song_profile.get("comp_stab"):
                     dur *= 0.55
                     comp_vol *= 1.2
