@@ -6341,12 +6341,6 @@ def _render_multitrack_session_setup_panel(
         groove=_mt_groove_default,
         scope_label=_scope_preview,
     )
-    st.markdown(
-        '<p class="ui-mt-session-hint">🎧 Headphones recommended — monitor backing is for timing, '
-        "not baked into layers unless you export with it.</p>",
-        unsafe_allow_html=True,
-    )
-
     section_open_fn(st, "Song / project", icon="🎵")
     mt_scope = st.radio(
         "Loop / record range",
@@ -6388,119 +6382,90 @@ def _render_multitrack_session_setup_panel(
     section_close_fn(st)
 
     section_open_fn(st, "Key / BPM / meter", icon="⏱")
-    st.markdown('<div class="ui-mt-setup-fields-row">', unsafe_allow_html=True)
-    st.markdown("<div>", unsafe_allow_html=True)
-    field_label_fn(st, "Session BPM")
-    mt_bpm = st.slider(
-        "Session BPM",
-        50,
-        180,
-        _mt_bpm_default,
-        5,
-        key="multitrack_bpm",
-        label_visibility="collapsed",
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("<div>", unsafe_allow_html=True)
-    field_label_fn(st, "Section repeats")
-    mt_loops = st.slider(
-        "Section repeats (loop recording)",
-        1,
-        8,
-        2,
-        1,
-        key="mt_section_loops",
-        disabled=mt_scope == "Free layering (no backing)",
-        label_visibility="collapsed",
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("<div>", unsafe_allow_html=True)
-    field_label_fn(st, "Groove / feel")
-    mt_groove = st.selectbox(
-        "Groove style",
-        [
-            "Auto",
-            "Pop groove",
-            "Rock groove",
-            "Jazz swing",
-            "Bossa nova",
-            "Funk groove",
-            "Ballad",
-        ],
-        key="mt_groove_style",
-        disabled=mt_scope == "Free layering (no backing)",
-        label_visibility="collapsed",
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    _kbpm_c1, _kbpm_c2, _kbpm_c3 = st.columns(3, gap="small")
+    with _kbpm_c1:
+        mt_bpm = st.slider(
+            "Session BPM",
+            50,
+            180,
+            _mt_bpm_default,
+            5,
+            key="multitrack_bpm",
+        )
+    with _kbpm_c2:
+        mt_loops = st.slider(
+            "Section repeats",
+            1,
+            8,
+            2,
+            1,
+            key="mt_section_loops",
+            disabled=mt_scope == "Free layering (no backing)",
+            help="Loops the selected section range while recording.",
+        )
+    with _kbpm_c3:
+        mt_groove = st.selectbox(
+            "Groove / feel",
+            [
+                "Auto",
+                "Pop groove",
+                "Rock groove",
+                "Jazz swing",
+                "Bossa nova",
+                "Funk groove",
+                "Ballad",
+            ],
+            key="mt_groove_style",
+            disabled=mt_scope == "Free layering (no backing)",
+        )
     section_close_fn(st)
 
-    section_open_fn(st, "Input / recording mode", icon="🎙")
-    st.markdown('<div class="ui-mt-setup-fields-row cols-2">', unsafe_allow_html=True)
-    st.markdown("<div>", unsafe_allow_html=True)
-    field_label_fn(st, "Count-in")
-    count_in_label = st.selectbox(
-        "Count-in before playback",
-        ["None", "1 bar", "2 bars"],
-        index=1,
-        key="mt_count_in_bars",
-        label_visibility="collapsed",
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("<div>", unsafe_allow_html=True)
-    field_label_fn(st, "During playback")
-    mt_metronome_playback = st.checkbox(
-        "Metronome during playback",
-        value=False,
-        key="mt_metronome_playback",
-        label_visibility="collapsed",
-    )
-    st.caption("Metronome click during playback")
-    mt_loop_backing = st.checkbox(
-        "Loop backing / section",
-        value=True,
-        key="mt_loop_backing",
-        label_visibility="collapsed",
-    )
-    st.caption("Loop section while recording")
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-    section_close_fn(st)
-
-    section_open_fn(st, "Tracks / monitoring", icon="🎚")
-    st.markdown('<div class="ui-mt-setup-fields-row cols-2">', unsafe_allow_html=True)
-    st.markdown("<div>", unsafe_allow_html=True)
-    field_label_fn(st, "Monitor backing")
-    use_backing_monitor = st.checkbox(
-        "Use backing track while recording",
-        value=mt_scope != "Free layering (no backing)",
-        help="Plays in headphones/speakers for timing. Not baked into your recorded layers.",
-        key="mt_use_backing_monitor",
-        label_visibility="collapsed",
-    )
-    st.caption("Play monitor backing while recording")
-    field_label_fn(st, "Export mix")
-    include_backing_in_mix = st.checkbox(
-        "Include backing in exported mix",
-        value=False,
-        key="include_backing_mix",
-        label_visibility="collapsed",
-    )
-    st.caption("Include backing in exported WAV")
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("<div>", unsafe_allow_html=True)
-    field_label_fn(st, "Backing level")
-    backing_volume = st.slider(
-        "Backing level (monitor + export)",
-        0.0,
-        1.5,
-        0.75,
-        0.05,
-        key="backing_volume",
-        label_visibility="collapsed",
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    section_open_fn(st, "Recording & monitor", icon="🎙")
+    _rec_top1, _rec_top2, _rec_top3, _rec_top4 = st.columns([0.95, 1.15, 1.15, 1.2], gap="small")
+    with _rec_top1:
+        count_in_label = st.selectbox(
+            "Count-in",
+            ["None", "1 bar", "2 bars"],
+            index=1,
+            key="mt_count_in_bars",
+            help="Bars of click before playback starts.",
+        )
+    with _rec_top2:
+        mt_metronome_playback = st.checkbox(
+            "Metronome click during playback",
+            value=False,
+            key="mt_metronome_playback",
+        )
+    with _rec_top3:
+        mt_loop_backing = st.checkbox(
+            "Loop section while recording",
+            value=True,
+            key="mt_loop_backing",
+        )
+    with _rec_top4:
+        use_backing_monitor = st.checkbox(
+            "Monitor backing while recording",
+            value=mt_scope != "Free layering (no backing)",
+            help="Plays in headphones for timing — not baked into layers unless you export with it.",
+            key="mt_use_backing_monitor",
+        )
+    _rec_bot1, _rec_bot2 = st.columns([1.25, 1], gap="small")
+    with _rec_bot1:
+        include_backing_in_mix = st.checkbox(
+            "Include backing in exported mix",
+            value=False,
+            key="include_backing_mix",
+        )
+    with _rec_bot2:
+        backing_volume = st.slider(
+            "Backing level",
+            0.0,
+            1.5,
+            0.75,
+            0.05,
+            key="backing_volume",
+            help="Monitor and export loudness.",
+        )
     section_close_fn(st)
 
     mt_count_in_bars = {"None": 0, "1 bar": 1, "2 bars": 2}[count_in_label]
@@ -6520,23 +6485,26 @@ def _render_multitrack_session_setup_panel(
     mt_bar_duration = meter_timing(mt_bpm, mt_time_sig).bar_sec
     mt_backing_duration = len(mt_events) * mt_bar_duration * max(1, mt_loops)
 
-    if mt_scope != "Free layering (no backing)" and not mt_events:
-        st.warning("Choose at least one section (or use Free layering).")
-    else:
-        st.markdown(
-            f'<p class="ui-mt-target-line">Target pass: <strong>{html.escape(mt_scope_label)}</strong> · '
-            f"{html.escape(mt_time_sig)} @ <strong>{int(mt_bpm)}</strong> BPM · "
-            f"{len(mt_events)} bars × {mt_loops} ≈ <strong>{mt_backing_duration:.1f}s</strong></p>",
-            unsafe_allow_html=True,
+    _prep_info, _prep_btn = st.columns([2.1, 1], gap="small")
+    with _prep_info:
+        if mt_scope != "Free layering (no backing)" and not mt_events:
+            st.warning("Choose at least one section (or use Free layering).")
+        else:
+            st.markdown(
+                f'<p class="ui-mt-target-line">Target: <strong>{html.escape(mt_scope_label)}</strong> · '
+                f"{html.escape(mt_time_sig)} @ <strong>{int(mt_bpm)}</strong> BPM · "
+                f"{len(mt_events)} bars × {mt_loops} ≈ <strong>{mt_backing_duration:.1f}s</strong></p>",
+                unsafe_allow_html=True,
+            )
+    with _prep_btn:
+        _prep_clicked = st.button(
+            "Prepare backing",
+            key="mt_prepare_backing",
+            type="primary",
+            use_container_width=True,
+            disabled=mt_scope == "Free layering (no backing)" or not mt_events,
         )
-
-    if st.button(
-        "⚡ Prepare monitor backing",
-        key="mt_prepare_backing",
-        type="primary",
-        use_container_width=True,
-        disabled=mt_scope == "Free layering (no backing)" or not mt_events,
-    ):
+    if _prep_clicked:
         monitor_wav, _ = multitrack_monitor_backing_bytes(
             sections,
             mt_selected_sections,
@@ -6549,7 +6517,7 @@ def _render_multitrack_session_setup_panel(
         st.session_state.multitrack_backing_music_wav = monitor_wav
         st.session_state.mt_backing_scope = mt_scope_label
         st.session_state.mt_backing_duration = mt_backing_duration
-        st.success("Monitor backing ready — use Step 3 transport while recording layers.")
+        st.success("Monitor backing ready — use Step 3 transport while recording.")
 
     return (
         mt_bpm,

@@ -3777,13 +3777,13 @@ body[data-multitrack-studio-ui] .st-key-multitrack_studio_panel {
   background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%) !important;
 }
 .st-key-multitrack_session_panel {
-  padding: 0.85rem 0.95rem 0.75rem !important;
+  padding: 0.55rem 0.7rem 0.5rem !important;
   border-color: rgba(245, 158, 11, 0.32) !important;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 251, 235, 0.55)) !important;
 }
 .ui-mt-session-setup-head {
-  margin: 0 0 0.55rem;
-  padding-bottom: 0.45rem;
+  margin: 0 0 0.38rem;
+  padding-bottom: 0.32rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.28);
 }
 .ui-mt-session-setup-kicker {
@@ -3811,9 +3811,9 @@ body[data-multitrack-studio-ui] .st-key-multitrack_studio_panel {
 .ui-mt-session-context {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.32rem 0.4rem;
-  margin: 0 0 0.6rem;
-  padding: 0.4rem 0.48rem;
+  gap: 0.28rem 0.35rem;
+  margin: 0 0 0.38rem;
+  padding: 0.32rem 0.4rem;
   border-radius: 10px;
   border: 1px solid rgba(245, 158, 11, 0.28);
   background: linear-gradient(180deg, rgba(255, 251, 235, 0.95), rgba(255, 255, 255, 0.92));
@@ -3841,14 +3841,14 @@ body[data-multitrack-studio-ui] .st-key-multitrack_studio_panel {
 .ui-mt-ctx-badge.scope { border-color: rgba(79, 70, 229, 0.38); background: rgba(238, 242, 255, 0.92); }
 .ui-mt-ctx-badge.groove { border-color: rgba(217, 119, 6, 0.4); background: rgba(254, 243, 199, 0.92); }
 .ui-mt-setup-section {
-  margin: 0 0 0.55rem;
-  padding: 0 0 0.48rem;
-  border-bottom: 1px dashed rgba(148, 163, 184, 0.26);
-}
-.ui-mt-setup-section:last-of-type { border-bottom: none; margin-bottom: 0.15rem; padding-bottom: 0; }
-.ui-mt-setup-section-title {
   margin: 0 0 0.38rem;
-  font-size: 0.7rem;
+  padding: 0 0 0.32rem;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.22);
+}
+.ui-mt-setup-section:last-of-type { border-bottom: none; margin-bottom: 0.08rem; padding-bottom: 0; }
+.ui-mt-setup-section-title {
+  margin: 0 0 0.28rem;
+  font-size: 0.68rem;
   font-weight: 850;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -3875,15 +3875,9 @@ body[data-multitrack-studio-ui] .st-key-multitrack_studio_panel {
   color: #475569;
   margin: 0 0 0.22rem;
 }
-.ui-mt-session-hint {
-  font-size: 0.72rem;
-  color: #64748b;
-  margin: 0 0 0.45rem;
-  line-height: 1.35;
-}
 .ui-mt-target-line {
-  margin: 0.35rem 0 0.5rem;
-  padding: 0.38rem 0.5rem;
+  margin: 0.22rem 0 0.35rem;
+  padding: 0.3rem 0.45rem;
   border-radius: 8px;
   font-size: 0.74rem;
   color: #475569;
@@ -3891,25 +3885,62 @@ body[data-multitrack-studio-ui] .st-key-multitrack_studio_panel {
   border: 1px solid rgba(148, 163, 184, 0.25);
 }
 .ui-mt-target-line strong { color: #0f172a; }
-.st-key-multitrack_session_panel [data-testid="stRadio"] > label,
-.st-key-multitrack_session_panel [data-testid="stSelectbox"] label,
-.st-key-multitrack_session_panel [data-testid="stSlider"] label,
-.st-key-multitrack_session_panel [data-testid="stMultiSelect"] label,
-.st-key-multitrack_session_panel [data-testid="stCheckbox"] label {
-  display: none !important;
+.st-key-multitrack_session_panel [data-testid="stHorizontalBlock"] {
+  gap: 0.35rem 0.45rem !important;
+  align-items: flex-start !important;
+}
+.st-key-multitrack_session_panel [data-testid="stWidgetLabel"] p,
+.st-key-multitrack_session_panel label[data-testid="stWidgetLabel"] p {
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  color: #475569 !important;
+  margin-bottom: 0.12rem !important;
 }
 .st-key-multitrack_session_panel [data-testid="stSelectbox"] > div > div,
-.st-key-multitrack_session_panel [data-testid="stMultiSelect"] > div > div,
+.st-key-multitrack_session_panel [data-testid="stMultiSelect"] > div > div {
+  border-radius: 9px !important;
+  min-height: 2.05rem !important;
+}
 .st-key-multitrack_session_panel [data-testid="stSlider"] > div > div {
-  border-radius: 10px !important;
+  border-radius: 9px !important;
+}
+.st-key-multitrack_session_panel [data-testid="stCheckbox"] {
+  margin: 0 !important;
+  padding: 0.28rem 0.42rem !important;
+  border-radius: 9px !important;
+  border: 1px solid rgba(148, 163, 184, 0.32) !important;
+  background: rgba(248, 250, 252, 0.95) !important;
   min-height: 2.35rem !important;
+  display: flex !important;
+  align-items: center !important;
+}
+.st-key-multitrack_session_panel [data-testid="stCheckbox"]:has(input:checked) {
+  border-color: rgba(34, 197, 94, 0.55) !important;
+  background: rgba(220, 252, 231, 0.65) !important;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.2) !important;
+}
+.st-key-multitrack_session_panel [data-testid="stCheckbox"] label,
+.st-key-multitrack_session_panel [data-testid="stCheckbox"] label p {
+  display: flex !important;
+  font-size: 0.74rem !important;
+  font-weight: 650 !important;
+  color: #334155 !important;
+  line-height: 1.25 !important;
+  margin: 0 !important;
+}
+.st-key-multitrack_session_panel [data-testid="stCheckbox"]:has(input:checked) label p {
+  color: #14532d !important;
+  font-weight: 750 !important;
 }
 .st-key-multitrack_session_panel [data-testid="stRadio"] > div {
-  gap: 0.35rem !important;
-  padding: 0.35rem 0.45rem !important;
-  border-radius: 10px !important;
-  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  gap: 0.28rem !important;
+  padding: 0.28rem 0.38rem !important;
+  border-radius: 9px !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.92) !important;
+}
+.st-key-multitrack_session_panel [data-testid="stRadio"] label p {
+  font-size: 0.72rem !important;
 }
 .st-key-multitrack_session_panel .st-key-mt_prepare_backing button {
   min-height: 2.5rem !important;
@@ -5563,7 +5594,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v8"
+STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v9"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v9"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -5571,7 +5602,7 @@ PRACTICE_SETUP_UI_VERSION = "2026-05-28-practice-v3"
 CREATIVE_STUDIO_UI_VERSION = "2026-05-28-creative-v2"
 CUSTOM_BUILDER_UI_VERSION = "2026-05-28-custom-v2"
 UPLOAD_STUDIO_UI_VERSION = "2026-05-28-upload-v1"
-MULTITRACK_STUDIO_UI_VERSION = "2026-05-28-multitrack-v2"
+MULTITRACK_STUDIO_UI_VERSION = "2026-05-28-multitrack-v3"
 
 PRACTICE_QUICK_LINKS: list[tuple[str, str]] = [
     ("picker", "Songs"),
@@ -5797,7 +5828,7 @@ def render_multitrack_session_setup_header(st: Any) -> None:
 <div class="ui-mt-session-setup-head" data-mt-setup-ui="{MULTITRACK_STUDIO_UI_VERSION}">
   <span class="ui-mt-session-setup-kicker">Step 1</span>
   <p class="ui-mt-session-setup-title">Session Setup</p>
-  <p class="ui-mt-session-setup-sub">Choose your song, tempo, key, and recording setup.</p>
+  <p class="ui-mt-session-setup-sub">Song, tempo, range, and recording options in one compact panel.</p>
 </div>
         """,
         unsafe_allow_html=True,
@@ -6336,156 +6367,101 @@ def nav_two_line_label(page_id: str) -> str:
 
 
 def _quick_nav_artistic_css() -> str:
-    """Quick Navigation — script typography, sketch icons, studio card."""
+    """Quick Navigation — compact script menu bar."""
     return """
-@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Patrick+Hand&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap');
 
 .st-key-quick_nav_art_panel {
-  margin: 0 0 0.85rem !important;
-  padding: 0.65rem 0.7rem 0.72rem !important;
-  border-radius: 16px !important;
-  border: 1.5px solid rgba(15, 23, 42, 0.12) !important;
-  background:
-    radial-gradient(120% 80% at 0% -20%, rgba(251, 191, 36, 0.08) 0%, transparent 50%),
-    radial-gradient(90% 70% at 100% 110%, rgba(99, 102, 241, 0.07) 0%, transparent 48%),
-    linear-gradient(168deg, #fffdf8 0%, #ffffff 42%, #f8fafc 100%) !important;
-  box-shadow:
-    0 10px 28px -18px rgba(15, 23, 42, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
-  position: relative !important;
-  overflow: hidden !important;
+  margin: 0 0 0.45rem !important;
+  padding: 0.28rem 0.45rem 0.32rem !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  background: linear-gradient(180deg, #fffdf9 0%, #ffffff 100%) !important;
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.05) !important;
 }
-.st-key-quick_nav_art_panel::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto auto 0;
-  width: 100%;
-  height: 3px;
-  background: linear-gradient(90deg, #f59e0b, #8b5cf6, #22c55e, #0ea5e9, #f43f5e);
-  opacity: 0.55;
-}
-.ui-quick-nav-studio-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.25rem 0.75rem;
-  margin: 0.15rem 0 0.55rem;
-  padding: 0 0.15rem;
-}
-.ui-quick-nav-script-title {
-  margin: 0;
-  font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive;
-  font-size: 1.65rem;
-  font-weight: 700;
-  color: #1e293b;
-  letter-spacing: 0.02em;
-  line-height: 1.1;
-}
-.ui-quick-nav-studio-sub {
-  font-family: "Patrick Hand", "Segoe UI", sans-serif;
-  font-size: 0.82rem;
-  color: #64748b;
-  margin: 0;
-}
+.st-key-quick_nav_art_panel::before { display: none !important; }
 .st-key-quick_nav_art_panel [data-testid="stHorizontalBlock"] {
-  gap: 0.4rem 0.38rem !important;
-  align-items: stretch !important;
+  gap: 0.12rem 0.18rem !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
 }
 .st-key-quick_nav_art_panel [data-testid="column"] {
   min-width: 0 !important;
+  flex: 1 1 auto !important;
 }
-.ui-nav-art-cell { min-width: 0; }
-.ui-nav-art-card {
+.ui-nav-art-cell {
   position: relative;
+  min-width: 0;
+}
+.ui-nav-art-link {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.12rem;
-  min-height: 4.35rem;
-  padding: 0.42rem 0.35rem 0.38rem;
-  border-radius: 13px;
-  border: 1.5px solid rgba(15, 23, 42, 0.11);
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  min-height: 1.85rem;
+  padding: 0.12rem 0.22rem 0.18rem;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  transition: background 120ms ease, color 120ms ease;
+  cursor: pointer;
 }
-.ui-nav-art-card:hover {
-  transform: translateY(-2px) rotate(-0.4deg);
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.1);
-  border-color: rgba(15, 23, 42, 0.18);
-}
-.ui-nav-sketch-icon {
-  display: block;
-  font-size: 1.42rem;
-  line-height: 1;
-  transform: rotate(-3deg);
-  filter:
-    drop-shadow(1px 1px 0 rgba(15, 23, 42, 0.12))
-    drop-shadow(-0.5px 0.5px 0 rgba(15, 23, 42, 0.08));
-  user-select: none;
+.ui-nav-art-link:hover {
+  background: rgba(15, 23, 42, 0.045);
 }
 .ui-nav-script-label {
-  font-family: "Caveat", "Segoe Script", cursive;
-  font-size: 1.08rem;
+  font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive;
+  font-size: 1.14rem;
   font-weight: 600;
-  color: #334155;
-  line-height: 1.05;
-  letter-spacing: 0.02em;
+  color: #475569;
+  line-height: 1;
+  letter-spacing: 0.015em;
   white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  padding-bottom: 1px;
+  transition: color 120ms ease, border-color 120ms ease;
+  user-select: none;
 }
-.ui-nav-art-card.is-active {
-  border-width: 2px;
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+.ui-nav-art-link:hover .ui-nav-script-label {
+  color: #1e293b;
 }
-.ui-nav-art-card.is-active .ui-nav-script-label {
+.ui-nav-art-link.is-active .ui-nav-script-label {
   font-weight: 700;
   color: #0f172a;
 }
-.ui-nav-art-card.is-active .ui-nav-sketch-icon {
-  transform: rotate(2deg) scale(1.06);
+.ui-nav-art-link.nav-practice.is-active .ui-nav-script-label {
+  border-bottom-color: rgba(14, 165, 233, 0.75);
 }
-.ui-nav-art-card.nav-practice.is-active {
-  border-color: rgba(14, 165, 233, 0.55);
-  background: linear-gradient(145deg, rgba(224, 242, 254, 0.95), rgba(255, 255, 255, 0.92));
+.ui-nav-art-link.nav-picker.is-active .ui-nav-script-label {
+  border-bottom-color: rgba(139, 92, 246, 0.75);
 }
-.ui-nav-art-card.nav-picker.is-active {
-  border-color: rgba(139, 92, 246, 0.55);
-  background: linear-gradient(145deg, rgba(237, 233, 254, 0.95), rgba(255, 255, 255, 0.92));
+.ui-nav-art-link.nav-backing.is-active .ui-nav-script-label {
+  border-bottom-color: rgba(34, 197, 94, 0.75);
 }
-.ui-nav-art-card.nav-backing.is-active {
-  border-color: rgba(34, 197, 94, 0.55);
-  background: linear-gradient(145deg, rgba(220, 252, 231, 0.95), rgba(255, 255, 255, 0.92));
+.ui-nav-art-link.nav-custom.is-active .ui-nav-script-label {
+  border-bottom-color: rgba(99, 102, 241, 0.75);
 }
-.ui-nav-art-card.nav-custom.is-active {
-  border-color: rgba(99, 102, 241, 0.55);
-  background: linear-gradient(145deg, rgba(224, 231, 255, 0.95), rgba(255, 255, 255, 0.92));
+.ui-nav-art-link.nav-creative.is-active .ui-nav-script-label {
+  border-bottom-color: rgba(245, 158, 11, 0.8);
 }
-.ui-nav-art-card.nav-creative.is-active {
-  border-color: rgba(245, 158, 11, 0.55);
-  background: linear-gradient(145deg, rgba(254, 243, 199, 0.95), rgba(255, 255, 255, 0.92));
+.ui-nav-art-link.nav-multitrack.is-active .ui-nav-script-label {
+  border-bottom-color: rgba(244, 63, 94, 0.7);
 }
-.ui-nav-art-card.nav-multitrack.is-active {
-  border-color: rgba(244, 63, 94, 0.5);
-  background: linear-gradient(145deg, rgba(255, 228, 230, 0.95), rgba(255, 255, 255, 0.92));
+.ui-nav-art-link.nav-analysis.is-active .ui-nav-script-label {
+  border-bottom-color: rgba(6, 182, 212, 0.75);
 }
-.ui-nav-art-card.nav-analysis.is-active {
-  border-color: rgba(6, 182, 212, 0.55);
-  background: linear-gradient(145deg, rgba(207, 250, 254, 0.95), rgba(255, 255, 255, 0.92));
+.ui-nav-art-link.nav-log.is-active .ui-nav-script-label {
+  border-bottom-color: rgba(100, 116, 139, 0.75);
 }
-.ui-nav-art-card.nav-log.is-active {
-  border-color: rgba(100, 116, 139, 0.55);
-  background: linear-gradient(145deg, rgba(241, 245, 249, 0.98), rgba(255, 255, 255, 0.92));
+.ui-nav-art-link.is-active {
+  background: rgba(248, 250, 252, 0.9);
 }
-.ui-nav-art-cell .stButton { margin: 0 !important; }
+.ui-nav-art-cell .stButton { margin: 0 !important; padding: 0 !important; }
 .ui-nav-art-cell .stButton > button {
   position: absolute !important;
   inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
-  min-height: 4.35rem !important;
+  min-height: 1.85rem !important;
   opacity: 0 !important;
   margin: 0 !important;
   padding: 0 !important;
@@ -6493,46 +6469,25 @@ def _quick_nav_artistic_css() -> str:
   z-index: 2 !important;
   cursor: pointer !important;
 }
-.ui-nav-art-cell {
-  position: relative;
+.ui-nav-art-cell:focus-within .ui-nav-art-link {
+  outline: 2px solid rgba(59, 130, 246, 0.35);
+  outline-offset: 1px;
 }
-.ui-nav-art-cell:focus-within .ui-nav-art-card {
-  outline: 2px solid rgba(59, 130, 246, 0.45);
-  outline-offset: 2px;
-}
-/* Legacy segmented fallback — still styled if used */
-.ui-studio-nav-segmented.ui-studio-nav-artistic {
-  border-radius: 14px;
-  border: 1.5px dashed rgba(15, 23, 42, 0.14);
-  background: linear-gradient(180deg, #fffdf8, #f8fafc);
-}
-.ui-studio-nav-segmented.ui-studio-nav-artistic [data-testid="stBaseButton-segmented_control"],
-.ui-studio-nav-segmented.ui-studio-nav-artistic [data-testid="stBaseButton-segmented_controlActive"] {
-  font-family: "Caveat", cursive !important;
-  font-size: 0.95rem !important;
-  font-weight: 600 !important;
-  min-height: 70px !important;
-  height: 70px !important;
-  max-height: 70px !important;
-}
-.ui-studio-nav-segmented.ui-studio-nav-artistic [data-testid="stBaseButton-segmented_controlActive"] {
-  background: linear-gradient(135deg, #1e293b 0%, #334155 100%) !important;
-  color: #f8fafc !important;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.2) !important;
+@media (max-width: 720px) {
+  .ui-nav-script-label { font-size: 1.05rem; }
+  .st-key-quick_nav_art_panel [data-testid="stHorizontalBlock"] { gap: 0.08rem !important; }
 }
 """
 
 
-def _nav_art_card_html(page_id: str, *, active: bool) -> str:
+def _nav_art_link_html(page_id: str, *, active: bool) -> str:
     meta = STUDIO_PAGE_META.get(page_id, {})
     nav_class = meta.get("nav_class", page_id)
-    icon = html.escape(meta.get("icon", ""))
     title = html.escape(_NAV_COMPACT_TITLE.get(page_id, meta.get("label", page_id)))
     active_cls = " is-active" if active else ""
     return (
-        f'<div class="ui-nav-art-card nav-{html.escape(nav_class)}{active_cls}" '
+        f'<div class="ui-nav-art-link nav-{html.escape(nav_class)}{active_cls}" '
         f'data-nav-page="{html.escape(page_id)}">'
-        f'<span class="ui-nav-sketch-icon" aria-hidden="true">{icon}</span>'
         f'<span class="ui-nav-script-label">{title}</span>'
         f"</div>"
     )
@@ -6602,16 +6557,18 @@ def _render_quick_nav_art_row(
         is_active = page_id == current
         nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
         with col:
+            _label = _NAV_COMPACT_TITLE.get(page_id, page_id)
             st.markdown(
                 f'<div class="ui-nav-art-cell nav-{html.escape(nav_class)}">'
-                f"{_nav_art_card_html(page_id, active=is_active)}",
+                f"{_nav_art_link_html(page_id, active=is_active)}",
                 unsafe_allow_html=True,
             )
             if st.button(
-                _NAV_COMPACT_TITLE.get(page_id, page_id),
+                _label,
                 key=f"{key_prefix}_art_{page_id}",
                 use_container_width=True,
                 help=STUDIO_PAGE_META.get(page_id, {}).get("label", page_id),
+                label_visibility="collapsed",
             ):
                 if page_id != current and navigate_studio_page(session_state, page_id):
                     rerun_fn()
@@ -6624,38 +6581,20 @@ def render_page_quick_nav(
     rerun_fn: Any,
     key_prefix: str = "main_quick_nav",
 ) -> str:
-    """Top navigation — artistic studio card with script labels and sketch-style icons."""
+    """Top navigation — compact script menu bar (single row)."""
     import streamlit as st
 
     current = ensure_studio_page(session_state, default=current_page)
-    _row_a = TOP_NAV_PAGE_IDS[:4]
-    _row_b = TOP_NAV_PAGE_IDS[4:]
 
     with st.container(key="quick_nav_art_panel"):
-        st.markdown(
-            f'<div class="ui-quick-nav-studio-head" data-active-nav="{html.escape(current)}">'
-            '<p class="ui-quick-nav-script-title">Quick Navigation</p>'
-            '<span class="ui-quick-nav-studio-sub">Your practice studios</span>'
-            "</div>",
-            unsafe_allow_html=True,
-        )
         _render_quick_nav_art_row(
             st,
             session_state,
-            page_ids=_row_a,
+            page_ids=TOP_NAV_PAGE_IDS,
             current=current,
             rerun_fn=rerun_fn,
             key_prefix=key_prefix,
         )
-        if _row_b:
-            _render_quick_nav_art_row(
-                st,
-                session_state,
-                page_ids=_row_b,
-                current=current,
-                rerun_fn=rerun_fn,
-                key_prefix=key_prefix,
-            )
 
     return session_state.get("studio_page", current)
 
