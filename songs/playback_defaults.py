@@ -99,6 +99,41 @@ def backing_bpm_slider_widget_key(sync_id: str) -> str:
     return f"backing_track_bpm::{safe}"
 
 
+def resolve_backing_bpm_for_slider(
+    st: Any,
+    *,
+    sync_id: str,
+    default_bpm: int,
+    song_just_reset: bool = False,
+) -> int:
+    """BPM for the slider *before* it renders — never clobber a user edit on rerun."""
+    slider_key = backing_bpm_slider_widget_key(sync_id)
+    canonical = int(st.session_state.get(BPM_WIDGET_KEY, default_bpm))
+
+    if song_just_reset:
+        st.session_state[slider_key] = canonical
+        st.session_state["bpm"] = canonical
+        return canonical
+
+    if slider_key in st.session_state:
+        slider_val = int(st.session_state[slider_key])
+        st.session_state[BPM_WIDGET_KEY] = slider_val
+        st.session_state["bpm"] = slider_val
+        return slider_val
+
+    st.session_state[slider_key] = canonical
+    return canonical
+
+
+def sync_backing_bpm_from_slider(st: Any, *, sync_id: str, slider_bpm: int) -> int:
+    """Keep canonical BPM keys aligned with the slider widget value."""
+    bpm = int(slider_bpm)
+    st.session_state[BPM_WIDGET_KEY] = bpm
+    st.session_state["bpm"] = bpm
+    st.session_state[backing_bpm_slider_widget_key(sync_id)] = bpm
+    return bpm
+
+
 def invalidate_backing_page_snapshots(st: Any) -> None:
     """Drop stored Backing Track page state so navigation cannot restore stale tempo."""
     store = st.session_state.get(_STUDIO_PAGE_SNAPSHOTS_KEY)
@@ -512,6 +547,8 @@ __all__ = [
     "apply_backing_song_defaults_if_needed",
     "apply_song_bpm_defaults",
     "backing_bpm_slider_widget_key",
+    "resolve_backing_bpm_for_slider",
+    "sync_backing_bpm_from_slider",
     "canonical_active_song_bpm",
     "canonicalize_backing_defaults_for_song",
     "default_bpm_for_song_data",

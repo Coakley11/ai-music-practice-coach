@@ -15,6 +15,8 @@ from songs.playback_defaults import (
     canonicalize_backing_defaults_for_song,
     prime_active_song_bpm,
     reset_playback_song_tracking,
+    resolve_backing_bpm_for_slider,
+    sync_backing_bpm_from_slider,
 )
 from songs.meter_state import BACKING_METER_KEY, BACKING_METER_OVERRIDE_KEY
 
@@ -158,6 +160,32 @@ def test_canonicalize_preserves_user_tweaks_for_same_song():
     assert result["did_reset"] is False
     assert result["applied_bpm"] == 110  # user override preserved
     assert result["applied_groove"] == "Pop groove"  # user override preserved
+
+
+def test_slider_bpm_not_clobbered_on_rerun():
+    """Slider widget value must win over stale canonical BPM before render."""
+    st = _FakeSession({BPM_WIDGET_KEY: 100, "bpm": 100})
+    sync_id = "pk::Pop::Song — Artist"
+    slider_key = backing_bpm_slider_widget_key(sync_id)
+    st.session_state[slider_key] = 132
+    resolved = resolve_backing_bpm_for_slider(
+        st,
+        sync_id=sync_id,
+        default_bpm=100,
+        song_just_reset=False,
+    )
+    assert resolved == 132
+    assert st.session_state[BPM_WIDGET_KEY] == 132
+    assert st.session_state["bpm"] == 132
+
+
+def test_sync_backing_bpm_from_slider_updates_canonical_keys():
+    st = _FakeSession({BPM_WIDGET_KEY: 100})
+    sync_id = "pk::Pop::Song — Artist"
+    bpm = sync_backing_bpm_from_slider(st, sync_id=sync_id, slider_bpm=118)
+    assert bpm == 118
+    assert st.session_state[BPM_WIDGET_KEY] == 118
+    assert st.session_state[backing_bpm_slider_widget_key(sync_id)] == 118
 
 
 def test_canonicalize_song_card_matches_playback_for_known_songs():

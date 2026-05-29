@@ -2310,9 +2310,39 @@ def _backing_studio_panel_css() -> str:
 .ui-backing-action-controls {
   margin-bottom: 0.35rem;
 }
+.ui-backing-transport-feedback {
+  margin: 0.35rem 0 0.45rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 9px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(248, 250, 252, 0.95);
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: #475569;
+  line-height: 1.35;
+}
+.ui-backing-transport-feedback.is-ready {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(236, 253, 245, 0.95);
+  color: #047857;
+}
+.ui-backing-transport-feedback.is-active {
+  border-color: rgba(34, 197, 94, 0.45);
+  background: rgba(240, 253, 244, 0.98);
+  color: #15803d;
+}
+.ui-backing-transport-feedback.is-warn {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(255, 251, 235, 0.98);
+  color: #b45309;
+}
+.ui-backing-transport-feedback.is-stopped {
+  border-color: rgba(100, 116, 139, 0.35);
+  background: rgba(241, 245, 249, 0.98);
+  color: #64748b;
+}
 .st-key-backing_step1_range,
-.st-key-backing_step2_feel,
-.st-key-backing_step3_action {
+.st-key-backing_step2_action {
   margin: 0.25rem 0 0.35rem !important;
 }
 .ui-backing-panel-shell .ui-backing-panel-kicker { color: #059669; }
@@ -2530,10 +2560,10 @@ def _backing_studio_panel_css() -> str:
 .ui-backing-panel-shell.is-transport .st-key-gen_backing_btn button,
 .ui-backing-panel-shell.is-transport .st-key-gen_backing_btn [data-testid="stBaseButton-primary"],
 .st-key-backing_transport .st-key-gen_backing_btn button {
-  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 50%, #4338ca 100%) !important;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%) !important;
   border: none !important;
   color: #fff !important;
-  box-shadow: 0 8px 22px rgba(79, 70, 229, 0.38) !important;
+  box-shadow: 0 8px 22px rgba(220, 38, 38, 0.35) !important;
 }
 .ui-backing-panel-shell.is-transport .st-key-play_backing_btn button,
 .ui-backing-panel-shell.is-transport .st-key-play_backing_btn [data-testid="stBaseButton-primary"],
@@ -2543,15 +2573,25 @@ def _backing_studio_panel_css() -> str:
   color: #fff !important;
   box-shadow: 0 8px 22px rgba(34, 197, 94, 0.38) !important;
 }
+.ui-backing-panel-shell.is-transport .st-key-play_backing_btn button:disabled,
+.ui-backing-panel-shell.is-transport .st-key-play_backing_btn [data-testid="stBaseButton-primary"]:disabled,
+.st-key-backing_transport .st-key-play_backing_btn button:disabled {
+  background: rgba(226, 232, 240, 0.95) !important;
+  border: 1px solid rgba(148, 163, 184, 0.45) !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+  opacity: 0.85 !important;
+}
 .ui-backing-panel-shell.is-transport .st-key-stop_backing_btn button,
 .ui-backing-panel-shell.is-transport .st-key-stop_backing_btn [data-testid="stBaseButton-secondary"],
 .st-key-backing_transport .st-key-stop_backing_btn button {
   min-height: 2.55rem !important;
   font-weight: 750 !important;
   border-radius: 10px !important;
-  border: 2px solid rgba(239, 68, 68, 0.5) !important;
-  background: rgba(254, 242, 242, 0.98) !important;
-  color: #b91c1c !important;
+  border: 2px solid rgba(51, 65, 85, 0.35) !important;
+  background: rgba(248, 250, 252, 0.98) !important;
+  color: #334155 !important;
+  box-shadow: none !important;
 }
 .ui-backing-panel-shell.is-transport .st-key-dl_backing_btn button,
 .st-key-backing_transport .st-key-dl_backing_btn button {
@@ -2718,8 +2758,7 @@ def _backing_studio_panel_css() -> str:
 .st-key-backing_quick_playback,
 .st-key-backing_transport,
 .st-key-backing_step1_range,
-.st-key-backing_step2_feel,
-.st-key-backing_step3_action {
+.st-key-backing_step2_action {
   margin: 0.25rem 0 0.35rem !important;
 }
 body[data-backing-studio-ui] .ui-backing-studio-deck-head {
@@ -5664,7 +5703,7 @@ def render_active_song_key_row(
 
 STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v12"
 
-BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v10"
+BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
 PRACTICE_SETUP_UI_VERSION = "2026-05-28-practice-v3"
 CREATIVE_STUDIO_UI_VERSION = "2026-05-28-creative-v2"
@@ -6114,24 +6153,40 @@ def render_practice_control_panel_header(st: Any) -> None:
 
 
 def render_backing_studio_deck_header(st: Any) -> None:
-    """Compact section header above the three-step backing control deck."""
+    """Compact section header above the two-step backing control deck."""
     st.markdown(
         """
 <div class="ui-backing-studio-deck-head">
   <div class="ui-backing-studio-deck-main">
     <span class="ui-backing-studio-kicker">Backing studio</span>
     <h2 class="ui-backing-studio-title">Playback &amp; accompaniment</h2>
-    <p class="ui-backing-studio-sub">Choose section → set tempo → generate backing track.</p>
+    <p class="ui-backing-studio-sub">Choose what to practice, then set tempo and generate.</p>
   </div>
   <div class="ui-backing-studio-steps" aria-label="Workflow steps">
     <span class="ui-backing-studio-step">1 Range</span>
-    <span class="ui-backing-studio-step">2 Feel</span>
-    <span class="ui-backing-studio-step">3 Play</span>
+    <span class="ui-backing-studio-step">2 Tempo &amp; play</span>
   </div>
 </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_backing_transport_feedback(
+    st: Any,
+    *,
+    message: str,
+    state: str = "idle",
+) -> None:
+    """Visible playback status line under transport controls."""
+    msg = html.escape(str(message or "").strip())
+    if not msg:
+        return
+    cls = "ui-backing-transport-feedback"
+    state_norm = str(state or "idle").strip().lower()
+    if state_norm in {"ready", "active", "warn", "stopped"}:
+        cls += f" is-{state_norm}"
+    st.markdown(f'<p class="{cls}" role="status">{msg}</p>', unsafe_allow_html=True)
 
 
 def render_backing_setup_group_open(st: Any, title: str, hint: str = "") -> None:
