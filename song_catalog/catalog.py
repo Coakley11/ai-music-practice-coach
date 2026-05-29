@@ -41,6 +41,7 @@ TRUSTED_CORE_KEYS = {
     ("Wave", "Antonio Carlos Jobim"),
     ("Blue Bossa", "Kenny Dorham"),
     ("Autumn Leaves", "Jazz Standard"),
+    ("Autumn Leaves", "Eric Clapton"),
     ("Fly Me to the Moon", "Bart Howard"),
     ("So Nice (Summer Samba)", "Marcos Valle"),
     ("One Note Samba", "Antonio Carlos Jobim"),
@@ -187,6 +188,7 @@ def load_song_catalog():
 def build_search_blob(r: dict[str, Any]) -> str:
     ext = r.get("extensions") or {}
     levels = list((r.get("chart_versions") or {}).keys())
+    rep_tags = ext.get("repertoire_tags") or []
     parts = [
         r.get("title") or "",
         r.get("artist") or "",
@@ -195,6 +197,7 @@ def build_search_blob(r: dict[str, Any]) -> str:
         ext.get("default_groove") or "",
         ext.get("time_signature") or "",
         r.get("chart_status") or "",
+        " ".join(str(t) for t in rep_tags),
         " ".join(levels),
         "beginner" if "Beginner" in levels else "",
         "intermediate" if "Intermediate" in levels else "",

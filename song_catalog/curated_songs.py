@@ -2045,6 +2045,323 @@ def _jtway_chart_pack() -> dict[str, Any]:
     }
 
 
+def _come_together_chart_pack() -> dict[str, Any]:
+    """Come Together — The Beatles (D minor, blues-rock / swamp groove, 4/4).
+
+    Riff-driven form: intro/instrumental **Dm7** vamp, verses with **N.C.**
+  stop-time bars, chorus lift on **Bm** / **Bm/A**.
+    """
+    riff4 = ["Dm7"] * 4
+    riff2 = ["Dm7"] * 2
+    verse = ["Dm", "Dm", "A", "G", "N.C."]
+    chorus = ["Bm", "Bm/A", "G", "A", "N.C."]
+    solo = ["Dm"] * 4 + ["A"] * 4
+    outro_fade = ["Dm"] * 4
+
+    intermediate = {
+        "Intro": list(riff4),
+        "Verse 1": list(verse),
+        "Verse 2": list(verse),
+        "Chorus 1": list(chorus),
+        "Instrumental 1": list(riff4),
+        "Verse 3": list(verse),
+        "Chorus 2": list(chorus),
+        "Instrumental 2": list(riff2),
+        "Solo": list(solo),
+        "Instrumental 3": list(riff2),
+        "Verse 4": list(verse),
+        "Final Chorus": list(chorus),
+        "Outro (Fade)": list(outro_fade),
+    }
+
+    def _beg(ch: str) -> str:
+        if ch == "N.C.":
+            return "N.C."
+        head = ch.split("/")[0].strip()
+        return (
+            head.replace("Dm7", "Dm")
+            .replace("Bm/A", "Bm")
+            .replace("maj7", "")
+            .replace("m7", "m")
+        )
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    section_order = list(intermediate.keys())
+    return {
+        "key": "Dm",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=intermediate,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Lennon–McCartney",
+        "lyric_cues": {
+            "Intro": ["Iconic Dm7 riff — bass and guitar groove"],
+            "Verse 1": ["Here come old flat-top…"],
+            "Chorus 1": ["Come together, right now, over me"],
+            "Instrumental 1": ["Intro riff ×4"],
+            "Solo": ["Lead-guitar solo — Dm then A vamp"],
+            "Final Chorus": ["Final chorus lift"],
+            "Outro (Fade)": ["Fade on Dm riff"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**D minor** blues-rock / swamp groove (**4/4**, ~82 BPM). "
+                "**Riff-driven** — bass riff and guitar riff carry the feel; "
+                "avoid piano-ballad comping. **N.C.** bars are intentional "
+                "stop-time pockets. Intro/instrumentals vamp **Dm7**; verses "
+                "**Dm–Dm–A–G–N.C.**; chorus **Bm–Bm/A–G–A–N.C.** Brushed "
+                "drums, prominent bass, chorus slightly fuller than verses."
+            ),
+            default_bpm=82,
+            default_groove="Rock groove",
+            time_signature="4/4",
+            riff_driven=True,
+            backing_character="blues_rock_riff",
+        ),
+    }
+
+
+def _autumn_leaves_chart_pack() -> dict[str, Any]:
+    """Autumn Leaves — jazz standard in B minor (4/4).
+
+    Classic **ii–V–I–IV** (Em7–A7–Dmaj7–Gmaj7) then **iiø–V7–i**
+    (C#m7b5–F#7–Bm). Matches the common Eric Clapton / jazz-ballad
+    reading; one list item = one bar in 4/4.
+    """
+    cycle = ["Em7", "A7", "Dmaj7", "Gmaj7", "C#m7b5", "F#7", "Bm", "Bm"]
+    pre_chorus = [
+        "C#m7b5",
+        "F#7",
+        "Bm",
+        "Bm",
+        "Em7",
+        "A7",
+        "Dmaj7",
+        "Dmaj7",
+    ]
+    chorus = [
+        "C#m7b5",
+        "F#7",
+        "Bm",
+        "Bm",
+        "C#m7b5",
+        "F#7",
+        "Bm",
+        "Bm",
+    ]
+
+    intermediate = {
+        "Intro": ["Bm", "Bm"],
+        "Verse 1": list(cycle),
+        "Verse 2": list(cycle),
+        "Pre-Chorus": list(pre_chorus),
+        "Chorus": list(chorus),
+        "Instrumental": list(cycle) * 2,
+        "Pre-Chorus 2": list(pre_chorus),
+        "Chorus 2": list(chorus),
+        "Final Chorus": list(chorus),
+        "Outro Solo": list(cycle) * 4,
+    }
+
+    def _beg(ch: str) -> str:
+        return (
+            ch.replace("C#m7b5", "C#dim")
+            .replace("Dmaj7", "D")
+            .replace("Gmaj7", "G")
+            .replace("Em7", "Em")
+            .replace("m7b5", "dim")
+            .replace("maj7", "")
+            .replace("m7", "m")
+        )
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+
+    def _adv(ch: str) -> str:
+        mapping = {
+            "Em7": "Em9",
+            "A7": "A13",
+            "Dmaj7": "Dmaj9",
+            "Gmaj7": "Gmaj9",
+            "C#m7b5": "C#m7b5",
+            "F#7": "F#7b9",
+            "Bm": "Bm9",
+        }
+        return mapping.get(ch, ch)
+
+    advanced = {
+        name: [_adv(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "Em7": ["E Dorian"],
+        "A7": ["A Mixolydian", "A altered (advanced)"],
+        "Dmaj7": ["D Ionian"],
+        "Gmaj7": ["G Lydian"],
+        "C#m7b5": ["C# Locrian"],
+        "F#7": ["F# Mixolydian", "F# altered (advanced)"],
+        "Bm": ["B melodic minor", "B natural minor"],
+    }
+    return {
+        "key": "Bm",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Joseph Kosma · Johnny Mercer",
+        "lyric_cues": {
+            "Intro": ["Piano intro — Bm vamp"],
+            "Verse 1": ["The falling leaves drift by the window…"],
+            "Verse 2": ["Second verse — same A section harmony"],
+            "Pre-Chorus": ["Bridge into tonic — C#ø · F#7 · Bm"],
+            "Chorus": ["Chorus turnaround — iiø–V7–i twice"],
+            "Instrumental": ["Head / instrumental — full 8-bar cycle ×2"],
+            "Pre-Chorus 2": ["Second bridge"],
+            "Chorus 2": ["Second chorus"],
+            "Final Chorus": ["Final chorus — hold on Bm"],
+            "Outro Solo": [
+                "Outro solo — repeat Em7–A7–Dmaj7–Gmaj7 · C#ø–F#7–Bm"
+            ],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**B minor** jazz ballad (**4/4**, ~80–85 BPM). Default feel is "
+                "a straight **jazz ballad** (even eighths); **Jazz swing** is "
+                "available in the groove picker for a light swing. Preserve "
+                "qualities: **Em7 · A7 · Dmaj7 · Gmaj7 · C#m7b5 · F#7 · Bm**. "
+                "Core motion: **ii–V–I–IV** then **iiø–V7–i**. Backing: piano, "
+                "upright bass, brushed drums; optional jazz-guitar comping. "
+                "**Advanced** tier adds rootless extensions and **F#7b9**. "
+                "Tags: Jazz Standard · Improvisation Standard · Essential Jazz "
+                "Repertoire."
+            ),
+            default_bpm=82,
+            default_groove="Ballad",
+            time_signature="4/4",
+            repertoire_tags=[
+                "Jazz Standard",
+                "Improvisation Standard",
+                "Essential Jazz Repertoire",
+            ],
+            harmonic_analysis={
+                "progression_summary": (
+                    "ii–V–I–IV (Em7–A7–Dmaj7–Gmaj7) then "
+                    "iiø–V7–i (C#m7b5–F#7–Bm)"
+                ),
+                "scale_suggestions": scale_hints,
+            },
+            jazz_ballad=True,
+        ),
+    }
+
+
+def _attention_chart_pack() -> dict[str, Any]:
+    """Attention — Charlie Puth (D minor, pop-funk, 4/4).
+
+    The entire song rides the **Dm · C · Am · Bb** loop (one chord per bar).
+    Groove-driven production — not singer-songwriter strumming.
+    """
+    loop = ["Dm", "C", "Am", "Bb"]
+
+    intermediate = {
+        "Intro": list(loop),
+        "Verse 1": list(loop) * 2,
+        "Pre-Chorus": list(loop) * 2,
+        "Chorus": list(loop) * 2,
+        "Verse 2": list(loop) * 2,
+        "Pre-Chorus 2": list(loop) * 2,
+        "Chorus 2": list(loop) * 2,
+        "Bridge": list(loop) * 2,
+        "Pre-Chorus 3": list(loop) * 2,
+        "Final Chorus": list(loop) * 3,
+        "Outro": list(loop) * 2,
+    }
+
+    beginner = dict(intermediate)
+    advanced = {
+        name: [
+            c.replace("Dm", "Dm7")
+            .replace("Am", "Am7")
+            .replace("Bb", "Bbmaj7")
+            .replace("C", "Cmaj7")
+            for c in chords
+        ]
+        for name, chords in intermediate.items()
+    }
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "Dm": ["D natural minor", "D minor pentatonic"],
+        "C": ["C major"],
+        "Am": ["A minor pentatonic"],
+        "Bb": ["Bb major"],
+    }
+    return {
+        "key": "Dm",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Charlie Puth & Jacob Kasher",
+        "lyric_cues": {
+            "Intro": ["Tight bass-pocket intro — Dm · C · Am · Bb"],
+            "Verse 1": ["You've been runnin' round…"],
+            "Pre-Chorus": ["Lift before the hook — groove builds"],
+            "Chorus": ["'Cause you know that I need that attention"],
+            "Bridge": ["Bridge — slight breakdown, same loop"],
+            "Final Chorus": ["Final chorus — highest energy"],
+            "Outro": ["Outro vamp — fade on the loop"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**D minor** pop-funk (**4/4**, ~100 BPM). The whole tune is "
+                "**Dm · C · Am · Bb** (one chord per bar). **Not** campfire "
+                "strumming — bass-led, syncopated guitar, crisp drums. Verse: "
+                "lighter; pre-chorus: builds; chorus: full pocket; bridge: "
+                "slight breakdown; final chorus: peak energy. Keys stay light "
+                "in the mix. Tags: Pop · Funk · Modern Pop · Groove-Based · "
+                "Bass Driven."
+            ),
+            default_bpm=100,
+            default_groove="Funk groove",
+            time_signature="4/4",
+            repertoire_tags=[
+                "Pop",
+                "Funk",
+                "Modern Pop",
+                "Charlie Puth",
+                "Groove-Based",
+                "Bass Driven",
+            ],
+            harmonic_analysis={
+                "progression_summary": "Dm · C · Am · Bb (repeating pop-funk loop)",
+                "scale_suggestions": scale_hints,
+            },
+            groove_based=True,
+            backing_character="pop_funk",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -2111,6 +2428,10 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("The Scientist", "Coldplay"): _scientist_chart_pack(),
         ("New York State of Mind", "Billy Joel"): _nysom_chart_pack(),
         ("Just the Way You Are", "Billy Joel"): _jtway_chart_pack(),
+        ("Come Together", "The Beatles"): _come_together_chart_pack(),
+        ("Autumn Leaves", "Jazz Standard"): _autumn_leaves_chart_pack(),
+        ("Autumn Leaves", "Eric Clapton"): _autumn_leaves_chart_pack(),
+        ("Attention", "Charlie Puth"): _attention_chart_pack(),
         ("Waiting on the World to Change", "John Mayer"): _say_waiting_lyric_pack(
             "Waiting on the World to Change"
         ),
@@ -2494,26 +2815,6 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 arrangement_notes="Latin jazz bossa — ~100 BPM; A/B sections, one chord per bar.",
             ),
         ),
-        ("Autumn Leaves", "Jazz Standard"): pack("Gm",
-            {
-                "Intro": ["Am7b5", "D7", "Gm", "Gm"],
-                "A Section": ["Cm", "F7", "Bb", "Eb", "Am7b5", "D7", "Gm", "Gm"],
-                "B Section": ["Am7b5", "D7", "Gm", "Gm", "Cm", "F7", "Bb", "Eb"],
-                "Final A": ["Am7b5", "D7", "Gm", "C7", "Fm", "Bb7", "Eb", "D7"],
-            },
-            {
-                "Intro": ["Am7b5", "D7b9", "Gm7", "Gm7"],
-                "A Section": ["Cm7", "F7", "Bbmaj7", "Ebmaj7", "Am7b5", "D7b9", "Gm7", "Gm7"],
-                "B Section": ["Am7b5", "D7b9", "Gm7", "Gm7", "Cm7", "F7", "Bbmaj7", "Ebmaj7"],
-                "Final A": ["Am7b5", "D7b9", "Gm7", "C7", "Fm7", "Bb7", "Ebmaj7", "D7b9"],
-            },
-            {
-                "Intro": ["Am7b5", "D7b9", "Gm9", "Gm9"],
-                "A Section": ["Cm9", "F13", "Bbmaj9", "Ebmaj9", "Am7b5", "D7b9", "Gm9", "Gm9"],
-                "B Section": ["Am7b5", "D7b9", "Gm9", "Gm9", "Cm9", "F13", "Bbmaj9", "Ebmaj9"],
-                "Final A": ["Am7b5", "D7b9", "Gm9", "C13", "Fm9", "Bb13", "Ebmaj9", "D7b9"],
-            },
-        ),
         ("Fly Me to the Moon", "Bart Howard"): pack("C",
             {
                 "A1": ["Am", "Dm", "G7", "C", "F", "Bm7b5", "E7", "Am"],
@@ -2810,31 +3111,20 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "Attention",
             "Charlie Puth",
             "Pop",
-            "Ebm",
+            "Dm",
             {
-                "Bass Intro / Verse": ["Ebm", "Db", "Bbm", "B"] * 2,
-                "Pre-Chorus": ["Ebm", "Db", "Bbm", "B", "Ebm", "Db", "Bbm", "B"],
-                "Chorus": ["Ebm", "Db", "Bbm", "B"] * 2,
-                "Bridge / Breakdown": ["B", "Db", "Ebm", "Bbm", "B", "Db", "Ebm", "Ebm"],
-                "Outro Vamp": ["Ebm", "Db", "Bbm", "B"],
+                "Intro": ["Dm", "C", "Am", "Bb"],
+                "Verse 1": ["Dm", "C", "Am", "Bb"] * 2,
             },
             {
-                "Bass Intro / Verse": ["Ebm7", "Db", "Bbm7", "Bmaj7"] * 2,
-                "Pre-Chorus": ["Ebm7", "Db", "Bbm7", "Bmaj7", "Ebm7", "Db", "Bbm7", "Bmaj7"],
-                "Chorus": ["Ebm7", "Db", "Bbm7", "Bmaj7"] * 2,
-                "Bridge / Breakdown": ["Bmaj7", "Db", "Ebm7", "Bbm7", "Bmaj7", "Db", "Ebm7", "Ebm7"],
-                "Outro Vamp": ["Ebm7", "Db", "Bbm7", "Bmaj7"],
-            },
-            advanced={
-                "Bass Intro / Verse": ["Ebm9", "Dbadd9", "Bbm9", "Bmaj9"] * 2,
-                "Pre-Chorus": ["Ebm9", "Dbadd9", "Bbm9", "Bmaj9", "Ebm9", "Dbadd9", "Bbm9", "Bmaj9"],
-                "Chorus": ["Ebm9", "Dbadd9", "Bbm9", "Bmaj9"] * 2,
-                "Bridge / Breakdown": ["Bmaj9", "Dbadd9", "Ebm9", "Bbm9", "Bmaj9", "Dbadd9", "Ebm9", "Ebm9"],
-                "Outro Vamp": ["Ebm9", "Dbadd9", "Bbm9", "Bmaj9"],
+                "Intro": ["Dm", "C", "Am", "Bb"],
+                "Verse 1": ["Dm", "C", "Am", "Bb"] * 2,
             },
             composer="Charlie Puth & Jacob Kasher",
-            lyric_cues={"Bass Intro / Verse": ["tight bass-pocket entry"], "Pre-Chorus": ["lift before hook"], "Chorus": ["syncopated title hook"]},
-            notes="Funk-pop loop chart in Eb minor; backing track follows the bass-harmony cycle section by section.",
+            lyric_cues={"Intro": ["Dm · C · Am · Bb pocket"]},
+            notes="D minor pop-funk loop; full form in chart override.",
+            default_bpm=100,
+            default_groove="Funk groove",
         ),
         v(
             "Hotel California",
@@ -4349,11 +4639,43 @@ def curated_song_records() -> list[dict[str, Any]]:
         }, composer="Freddie Mercury", guitar_tabs={
             "Cm": "x35543", "Gm7/C": "x30303", "F": "133211", "Bb": "x13331",
         }),
-        _s("Come Together", "The Beatles", "Rock", "Dm", {
-            "Verse Vamp": ["Dm7", "Dm7", "Dm7", "Dm7"],
-            "Chorus": ["A7", "G7", "D7", "A7"],
-            "Bridge": ["Bm", "G", "A", "A"],
-        }, composer="Lennon–McCartney"),
+        _s(
+            "Come Together",
+            "The Beatles",
+            "Rock",
+            "Dm",
+            {
+                "Intro": ["Dm7"] * 4,
+                "Verse 1": ["Dm", "Dm", "A", "G", "N.C."],
+                "Chorus 1": ["Bm", "Bm/A", "G", "A", "N.C."],
+                "Instrumental 1": ["Dm7"] * 4,
+                "Solo": ["Dm"] * 4 + ["A"] * 4,
+                "Outro (Fade)": ["Dm"] * 4,
+            },
+            composer="Lennon–McCartney",
+            chart_status="practice_level_verified",
+            section_order=[
+                "Intro",
+                "Verse 1",
+                "Verse 2",
+                "Chorus 1",
+                "Instrumental 1",
+                "Verse 3",
+                "Chorus 2",
+                "Instrumental 2",
+                "Solo",
+                "Instrumental 3",
+                "Verse 4",
+                "Final Chorus",
+                "Outro (Fade)",
+            ],
+            extensions=_ext(
+                default_bpm=82,
+                default_groove="Rock groove",
+                time_signature="4/4",
+                riff_driven=True,
+            ),
+        ),
         _s("While My Guitar Gently Weeps", "The Beatles", "Rock", "Am", {
             "Verse": ["Am", "Am/G", "D/F#", "F", "Am", "G", "D", "E"],
             "Chorus": ["A", "C#m", "F#m", "C#m", "Bm", "E", "A", "E"],
@@ -4462,11 +4784,35 @@ def curated_song_records() -> list[dict[str, Any]]:
           chart_status="practice_level_verified"),
 
         # --- Jazz standards (practice forms) ---
-        _s("Autumn Leaves", "Jazz Standard", "Jazz", "Gm", {
-            "Intro (Minor ii–V)": ["Am7b5", "D7b9", "Gm9", "Gm9"],
-            "Verse / A": ["Cm9", "F13", "Bbmaj9", "Ebmaj9", "Am7b5", "D7b9", "Gm9", "Gm9"],
-            "Bridge / B": ["Cm9", "F13", "Bbmaj9", "Ebmaj9", "Am7b5", "D7b9", "Gm9", "D7b9"],
-        }, composer="Joseph Kosma"),
+        _s("Autumn Leaves", "Jazz Standard", "Jazz", "Bm", {
+            "Intro": ["Bm", "Bm"],
+            "Verse 1": ["Em7", "A7", "Dmaj7", "Gmaj7", "C#m7b5", "F#7", "Bm", "Bm"],
+        }, composer="Joseph Kosma · Johnny Mercer",
+          extensions=_ext(
+              default_bpm=82,
+              default_groove="Ballad",
+              repertoire_tags=[
+                  "Jazz Standard",
+                  "Improvisation Standard",
+                  "Essential Jazz Repertoire",
+              ],
+          ),
+          chart_status="practice_level_verified"),
+        _s("Autumn Leaves", "Eric Clapton", "Jazz", "Bm", {
+            "Intro": ["Bm", "Bm"],
+            "Verse 1": ["Em7", "A7", "Dmaj7", "Gmaj7", "C#m7b5", "F#7", "Bm", "Bm"],
+        }, composer="Joseph Kosma · Johnny Mercer",
+          extensions=_ext(
+              default_bpm=82,
+              default_groove="Ballad",
+              arrangement_notes="Eric Clapton jazz-ballad reading in B minor.",
+              repertoire_tags=[
+                  "Jazz Standard",
+                  "Improvisation Standard",
+                  "Essential Jazz Repertoire",
+              ],
+          ),
+          chart_status="practice_level_verified"),
         _s("Blue Bossa", "Kenny Dorham", "Jazz", "Cm", {
             "A Section": ["Cm9", "Fm9", "Dm7b5", "G7b9", "Cm9", "Cm9"],
             "B Section": ["Ebm9", "Ab13", "Dbmaj9", "Dbmaj9", "Dm7b5", "G7b9", "Cm9", "G7b9"],

@@ -882,6 +882,8 @@ def _song_backing_profile(
         "kick_push": 1.0,
         "hat_soft": 1.0,
         "comp_stab": False,
+        "riff_driven": False,
+        "groove_based": False,
         # ---- Arrangement-level character (new) ----
         # ``pocket_offset`` is in *beats* and applied to off-beats by
         # ``_groove_time``. Negative = pushed/ahead, positive =
@@ -960,6 +962,34 @@ def _song_backing_profile(
     if "champions" in title or "queen" in title:
         profile["anthem_rock"] = True
         profile["kick_push"] = 1.28
+    if "come together" in title:
+        profile["riff_driven"] = True
+        profile["comp_stab"] = True
+        profile["ghost_snare"] = True
+        profile["kick_push"] = 1.18
+        profile["hat_soft"] = 0.88
+        profile["humanize_ms"] = 0.014
+        profile["pocket_offset"] = 0.016
+        profile["outro_fade_bars"] = 4
+    if "autumn leaves" in title:
+        profile["cross_stick"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.48)
+        profile["humanize_ms"] = min(profile["humanize_ms"], 0.009)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.022)
+        if style == "Jazz swing":
+            profile["ride_jazz"] = True
+            profile["swing"] = max(profile["swing"], 0.07)
+    if any(
+        k in title
+        for k in ("attention", "treasure", "uptown funk", "get lucky", "charlie puth")
+    ):
+        profile["groove_based"] = True
+        profile["comp_stab"] = True
+        profile["ghost_snare"] = True
+        profile["kick_push"] = max(profile["kick_push"], 1.14)
+        profile["hat_soft"] = min(profile["hat_soft"], 0.92)
+        profile["pocket_offset"] = min(profile["pocket_offset"], -0.012)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
     if "blue bossa" in title or "bossa" in title:
         profile["latin_relaxed"] = True
         profile["cross_stick"] = True
@@ -1125,6 +1155,26 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "kick_beats": [0, 2.5],
             "comp_dur": 0.40,
         })
+    if profile.get("riff_driven"):
+        return _fit({
+            "bass_beats": [0, 1, 2, 3],
+            "comp_beats": [0, 2],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 3.0],
+            "kick_beats": [0, 2],
+            "ghost_snare": [1.5, 3.5],
+            "comp_dur": 0.26,
+        })
+    if profile.get("groove_based"):
+        return _fit({
+            "bass_beats": [0, 0.75, 1.5, 2, 2.75, 3.5],
+            "comp_beats": [0.5, 1.25, 2.5, 3.25],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 3.0],
+            "ghost_snare": [0.5, 1.5, 2.5, 3.5],
+            "kick_beats": [0, 1.5, 2.75],
+            "comp_dur": 0.18,
+        })
     return _fit({
         "bass_beats": [0, 2],
         "comp_beats": [0, 1.5, 2.5, 3.5],
@@ -1188,6 +1238,8 @@ def synthesize_chords_to_numpy(
         # Outro fade: only the last ``outro_fade_bars`` taper down.
         fade_mul = _outro_fade_envelope(idx, total_song_bars, outro_fade_bars)
         intensity = base_intensity * arrangement_mul * fade_mul
+        if song_profile.get("groove_based") and role == "bridge":
+            intensity *= 0.82
         section_edge = _is_section_edge(event, next_event)
         is_breakdown_recovery = idx in arr_ctx.bridge_recovery
         is_final_chorus_bar = arr_ctx.is_final_chorus_event(idx)
@@ -1291,6 +1343,10 @@ def synthesize_chords_to_numpy(
                     bass_dur = pulse * 0.32
                 elif song_profile.get("pop_soul"):
                     bass_dur = pulse * 0.55
+                elif song_profile.get("riff_driven"):
+                    bass_dur = pulse * 0.42
+                elif song_profile.get("groove_based"):
+                    bass_dur = pulse * 0.36
                 t_hit = _humanize_time(
                     _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
                     seed=idx * 41 + n + groove_seed + loop_seed,
@@ -1303,7 +1359,17 @@ def synthesize_chords_to_numpy(
                     t_hit,
                     bass_dur,
                     bass_pitch,
-                    _humanize_volume(0.11 * intensity, idx * 41 + n + loop_seed),
+                    _humanize_volume(
+                        (
+                            0.16
+                            if song_profile.get("riff_driven")
+                            else 0.15
+                            if song_profile.get("groove_based")
+                            else 0.11
+                        )
+                        * intensity,
+                        idx * 41 + n + loop_seed,
+                    ),
                     "bass",
                 )
 
@@ -1354,6 +1420,17 @@ def synthesize_chords_to_numpy(
                     comp_vol *= 0.72
                 elif role == "chorus":
                     comp_vol *= 1.14 if song_profile.get("anthem_rock") else 1.12
+                if song_profile.get("riff_driven"):
+                    head = _sub_primary_chord(_pulse_chord(b)).split("/")[0]
+                    if head.startswith("Dm"):
+                        comp_vol *= 0.28
+                    elif is_no_chord_token(_pulse_chord(b)):
+                        comp_vol = 0.0
+                    else:
+                        comp_vol *= 0.65
+                if song_profile.get("groove_based"):
+                    comp_vol *= 0.52
+                    dur *= 0.62
                 if song_profile.get("comp_stab"):
                     dur *= 0.55
                     comp_vol *= 1.2
