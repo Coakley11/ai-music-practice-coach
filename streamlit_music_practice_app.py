@@ -8487,7 +8487,7 @@ def _render_backing_step2_playback_action(
                 label_visibility="collapsed",
                 help="Your tempo is kept until you change songs.",
             )
-            bpm = sync_backing_bpm_from_slider(st, sync_id=song_id, slider_bpm=int(bpm))
+            bpm = sync_backing_bpm_from_slider(st, slider_bpm=int(bpm))
         with _tc2:
             st.markdown('<span class="ui-backing-inline-label">Section focus</span>', unsafe_allow_html=True)
             cur_quick = st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song")

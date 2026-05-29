@@ -125,12 +125,11 @@ def resolve_backing_bpm_for_slider(
     return canonical
 
 
-def sync_backing_bpm_from_slider(st: Any, *, sync_id: str, slider_bpm: int) -> int:
-    """Keep canonical BPM keys aligned with the slider widget value."""
+def sync_backing_bpm_from_slider(st: Any, *, slider_bpm: int) -> int:
+    """Mirror slider BPM into canonical keys (never mutate the slider widget key after render)."""
     bpm = int(slider_bpm)
     st.session_state[BPM_WIDGET_KEY] = bpm
     st.session_state["bpm"] = bpm
-    st.session_state[backing_bpm_slider_widget_key(sync_id)] = bpm
     return bpm
 
 
