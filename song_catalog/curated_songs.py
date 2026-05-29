@@ -1563,6 +1563,488 @@ def _scientist_chart_pack() -> dict[str, Any]:
     }
 
 
+def _nysom_chart_pack() -> dict[str, Any]:
+    """New York State of Mind — Billy Joel (C major, jazz piano ballad, 4/4).
+
+    One list item = one bar. Tokens with ``|`` (e.g. ``Gm7|C7``) are in-bar
+    half-bar splits (two beats each in 4/4).
+    """
+    intro_head = ["Dm9", "Abmaj7/Bb", "Dm9", "Em7", "F", "Dm9", "F/G"]
+    intro_tail = [
+        "C",
+        "E7",
+        "Am7",
+        "Gm7|C7",
+        "F",
+        "A7",
+        "Dm",
+        "Bb9",
+        "C",
+        "E7/B",
+        "Am7",
+        "C/G",
+        "F",
+        "C/E",
+        "D9",
+        "C/F",
+        "F/G",
+        "Am7",
+        "D9",
+        "Am",
+        "G",
+        "F/G",
+    ]
+    verse1 = [
+        "C",
+        "E7",
+        "Am7",
+        "Gm7|C7",
+        "F",
+        "A7",
+        "Dm",
+        "Bb9",
+        "C",
+        "E7/B",
+        "Am7",
+        "C/G",
+        "F",
+        "C/E",
+        "D7",
+        "C/F",
+        "F/G",
+        "Am",
+        "D7",
+        "Am",
+        "G",
+        "F/G",
+    ]
+    verse2 = [
+        "C",
+        "E7",
+        "Am7",
+        "Gm7|C7",
+        "F",
+        "A7",
+        "Dm",
+        "Bb9",
+        "C",
+        "E7/B",
+        "Am7",
+        "C/G",
+        "F",
+        "C/E",
+        "D7",
+        "C/F",
+        "F/G",
+        "Am",
+        "D9",
+        "Am",
+        "G",
+        "E7",
+    ]
+    chorus = [
+        "Am7",
+        "D7",
+        "Gmaj7",
+        "G",
+        "Gm7",
+        "C7",
+        "Fmaj7",
+        "Bm7",
+        "E7",
+        "Amaj7",
+        "Am7",
+        "D7",
+        "Gmaj7",
+        "Dm7",
+        "F/G|G7",
+    ]
+    verse4 = list(verse1) + [
+        "C",
+        "E7",
+        "Am7",
+        "C/G",
+        "F",
+        "C/E",
+        "D7",
+        "C/F",
+        "F/G",
+        "C",
+        "E7",
+        "Am7",
+        "Bb9",
+    ]
+    solo = [
+        "C",
+        "E7",
+        "Am7",
+        "Gm7|C7",
+        "F",
+        "A7",
+        "Dm",
+        "Bb9",
+        "C",
+        "E7/B",
+        "Am7",
+        "C/G",
+        "F",
+        "C/E",
+        "D9",
+        "C/F",
+        "F/G",
+        "Am",
+        "D7",
+        "Am",
+        "G",
+        "E7",
+    ]
+    outro = ["Eb6", "Ab", "Dm7", "Dbmaj13", "Cmaj9"]
+
+    intermediate = {
+        "Intro": intro_head + intro_tail,
+        "Verse 1": list(verse1),
+        "Verse 2": list(verse2),
+        "Chorus 1": list(chorus),
+        "Verse 3": list(verse1),
+        "Solo": list(solo),
+        "Chorus 2": list(chorus),
+        "Verse 4 (Extended)": list(verse4),
+        "Outro": list(outro),
+    }
+
+    def _beg_token(ch: str) -> str:
+        if "|" in ch:
+            return "|".join(_beg_token(p.strip()) for p in ch.split("|") if p.strip())
+        head = ch.split("/")[0].strip()
+        repl = (
+            ("Abmaj7", "Ab"),
+            ("Dbmaj13", "Db"),
+            ("Cmaj9", "C"),
+            ("Gmaj7", "G"),
+            ("Fmaj7", "F"),
+            ("Amaj7", "A"),
+            ("Bb9", "Bb"),
+            ("Dm9", "Dm"),
+            ("Eb6", "Eb"),
+            ("Em7", "Em"),
+            ("Am7", "Am"),
+            ("Gm7", "Gm"),
+            ("Bm7", "Bm"),
+            ("Dm7", "Dm"),
+            ("C7", "C"),
+            ("D9", "D"),
+            ("D7", "D"),
+            ("E7", "E"),
+            ("A7", "A"),
+            ("G7", "G"),
+        )
+        for old, new in repl:
+            head = head.replace(old, new)
+        if "/" in ch:
+            bass = ch.split("/", 1)[1].strip()
+            bass_root = bass[0] if bass and bass[0].isalpha() else ""
+            if bass_root and bass_root not in head:
+                return f"{head}/{bass}"
+        return head
+
+    beginner = {
+        name: [_beg_token(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    section_order = list(intermediate.keys())
+    return {
+        "key": "C",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=intermediate,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Billy Joel",
+        "lyric_cues": {
+            "Intro": ["Piano intro — Dm9 · Abmaj7/Bb · jazz turnaround"],
+            "Verse 1": ["Some folks like to get away…"],
+            "Verse 2": ["Second verse — same changes, tag to E7"],
+            "Chorus 1": ["New York State of Mind — chorus lift"],
+            "Verse 3": ["Third verse"],
+            "Solo": ["Sax-style solo section — verse changes with D9"],
+            "Chorus 2": ["Chorus return — fuller lounge band"],
+            "Verse 4 (Extended)": ["Extended ending verse — final cadence setup"],
+            "Outro": ["Outro: Eb6 · Ab · Dm7 · Dbmaj13 · Cmaj9"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**C major** jazz piano ballad (**4/4**, ~74 BPM, straight 8ths). "
+                "Preserve slash chords (**Abmaj7/Bb**, **F/G**, **E7/B**, **C/G**, "
+                "**C/E**, **C/F**) and color tones (**Dm9**, **Bb9**, **D9**, "
+                "**Gmaj7**, **Fmaj7**, **Amaj7**, **Dbmaj13**, **Cmaj9**). "
+                "Half-bar splits: **Gm7|C7**, **F/G|G7**. Piano-led lounge "
+                "feel; brushed drums; walking bass; solo section suits sax lead; "
+                "outro is a final jazz cadence. **Advanced** chart tier."
+            ),
+            default_bpm=74,
+            default_groove="Ballad",
+            time_signature="4/4",
+        ),
+    }
+
+
+def _jtway_chart_pack() -> dict[str, Any]:
+    """Just the Way You Are — Billy Joel (D major, smooth pop/jazz ballad, 4/4).
+
+    One list item = one bar. ``|`` marks in-bar half-bar splits (e.g. ``Bm|D7``).
+    """
+    turn = ["Gm6/D", "G/D", "Dsus4"]
+    intro = turn * 2
+
+    verse1 = [
+        "D",
+        "Bm6",
+        "Gmaj7",
+        "Bm|D7",
+        "Gmaj7",
+        "Gm7",
+        "D/F#",
+        "Am7|D7",
+        "Gmaj7",
+        "Gm7",
+        "D/F#",
+        "Bm7",
+        "E9sus4",
+        "E9",
+        "G/A",
+    ]
+    refrain1 = [
+        "D",
+        "Bm6",
+        "Gmaj7",
+        "Bm|D9",
+        "Gmaj7",
+        "Gm7",
+        "D/F#",
+        "Am7|D7",
+        "Gmaj7",
+        "Gm",
+        "D/F#",
+        "Bm7",
+        "Em7",
+        "G/A",
+        *turn,
+        *turn,
+    ]
+    verse2 = [
+        "D",
+        "Bm6",
+        "Gmaj7",
+        "Bm|D9",
+        "Gmaj7",
+        "Gm",
+        "D/F#",
+        "Am7|D7",
+        "Gmaj7",
+        "Gm",
+        "D/F#",
+        "Bm7",
+        "E9sus4",
+        "E9",
+        "G/A",
+    ]
+    refrain2 = [
+        "D",
+        "Bm6",
+        "Gmaj7",
+        "Bm|D9",
+        "Gmaj7",
+        "Gm",
+        "D/F#",
+        "Am7|D7",
+        "Gmaj7",
+        "Gm",
+        "D/F#",
+        "Bm7",
+        "Em7",
+        "G/A",
+        *turn,
+        "Gm6/D",
+        "G/D",
+        "Dmaj7",
+        "D7",
+    ]
+    bridge = [
+        "Gmaj7",
+        "A6",
+        "F#m7",
+        "B7",
+        "Em7",
+        "A7sus",
+        "D",
+        "D/C",
+        "Bb",
+        "C",
+        "Am7",
+        "D9",
+        "Gm",
+        "C/G",
+        "G/A",
+    ]
+    sax_solo = [
+        "D",
+        "Bm6",
+        "Gmaj7",
+        "Bm|D7",
+        "Gmaj7",
+        "Gm",
+        "D/F#",
+        "Am7|D7",
+        "Gmaj7",
+        "Gm",
+        "D/F#",
+        "Bm7",
+        "E9sus4",
+        "E9",
+        "G/A",
+    ]
+    refrain4 = [
+        "D",
+        "Bm6",
+        "Gmaj7",
+        "Bm|D9",
+        "Gmaj7",
+        "Gm",
+        "D/F#",
+        "Am7|D7",
+        "Gmaj7",
+        "Gm",
+        "D/F#",
+        "Bm7",
+        "Em",
+        "A7sus4",
+        "Bb",
+        "C",
+        "Am7",
+        "D9",
+        "Gm",
+        "A7sus4|A7",
+    ]
+    outro = [
+        "D",
+        "Bm6",
+        "Gmaj7",
+        "Bm|D7",
+        "Gmaj7",
+        "Gm",
+        "D/F#",
+        "Am7|D7",
+        "Gmaj7",
+        "Gm",
+        "D/F#",
+        "Bm7",
+        "E9sus4",
+        "E9",
+        "G/A",
+    ]
+    outro_fade = [
+        "D",
+        "Bm6",
+        "Gmaj7",
+        "Bm|D7",
+        "Gmaj7",
+        "Gm",
+        "D/F#",
+        "Am7|D7",
+    ]
+
+    intermediate = {
+        "Intro": list(intro),
+        "Verse 1": list(verse1),
+        "Refrain 1": list(refrain1),
+        "Verse 2": list(verse2),
+        "Refrain 2": list(refrain2),
+        "Bridge": list(bridge),
+        "Refrain 3": list(refrain1),
+        "Sax Solo": list(sax_solo),
+        "Refrain 4": list(refrain4),
+        "Outro": list(outro),
+        "Outro (Fade)": list(outro_fade),
+    }
+
+    def _beg_token(ch: str) -> str:
+        if "|" in ch:
+            return "|".join(_beg_token(p.strip()) for p in ch.split("|") if p.strip())
+        head = ch.split("/")[0].strip()
+        repl = (
+            ("E9sus4", "E"),
+            ("A7sus4", "A"),
+            ("A7sus", "A"),
+            ("Gmaj7", "G"),
+            ("Bm6", "Bm"),
+            ("Gm6", "Gm"),
+            ("Dsus4", "D"),
+            ("Dmaj7", "D"),
+            ("F#m7", "F#m"),
+            ("Em7", "Em"),
+            ("Am7", "Am"),
+            ("Bm7", "Bm"),
+            ("Gm7", "Gm"),
+            ("D9", "D"),
+            ("D7", "D"),
+            ("B7", "B"),
+            ("A6", "A"),
+        )
+        for old, new in repl:
+            head = head.replace(old, new)
+        if "/" in ch:
+            return ch.split("/")[0].replace("maj7", "").replace("m7", "m") or head
+        return head
+
+    beginner = {
+        name: [_beg_token(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    section_order = list(intermediate.keys())
+    return {
+        "key": "D",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=intermediate,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Billy Joel",
+        "lyric_cues": {
+            "Intro": ["Electric piano — Gm6/D · G/D · Dsus4 turnaround"],
+            "Verse 1": ["Don't go changing…"],
+            "Refrain 1": ["I love you just the way you are"],
+            "Verse 2": ["Second verse — Gm color on line 2"],
+            "Refrain 2": ["Refrain — tag Dmaj7 · D7 before bridge"],
+            "Bridge": ["Bridge lift — Bb · C · Am7 · D9"],
+            "Refrain 3": ["Refrain return"],
+            "Sax Solo": ["Sax / solo — verse-style changes"],
+            "Refrain 4": ["Final refrain — extended tag"],
+            "Outro": ["Outro vamp"],
+            "Outro (Fade)": ["Fade on refrain changes"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**D major** smooth pop/jazz ballad (**4/4**, ~76 BPM). Preserve "
+                "slash chords (**Gm6/D**, **G/D**, **D/F#**, **G/A**, **D/C**, "
+                "**C/G**) and color tones (**Bm6**, **Gmaj7**, **D9**, **E9sus4**, "
+                "**A6**, **A7sus**, **A7sus4**). Half-bar splits: **Bm|D7**, "
+                "**Am7|D7**, **Bm|D9**, **A7sus4|A7**. Piano/Rhodes-led; bass "
+                "follows slash basses; refrains warmer than verses; sax solo "
+                "section; outro supports fade. **Advanced** tier."
+            ),
+            default_bpm=76,
+            default_groove="Ballad",
+            time_signature="4/4",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -1627,6 +2109,8 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
     return {
         ("Say", "John Mayer"): _say_chart_pack(),
         ("The Scientist", "Coldplay"): _scientist_chart_pack(),
+        ("New York State of Mind", "Billy Joel"): _nysom_chart_pack(),
+        ("Just the Way You Are", "Billy Joel"): _jtway_chart_pack(),
         ("Waiting on the World to Change", "John Mayer"): _say_waiting_lyric_pack(
             "Waiting on the World to Change"
         ),
@@ -1833,26 +2317,6 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Pre-Chorus": ["Fmaj9", "G13sus", "Em9", "Am9", "D13/F#", "D13", "G13sus", "G13"],
                 "Chorus": ["Cmaj9", "E7b9/G#", "Am9", "D13/F#", "Fmaj9", "G13sus", "Cmaj9", "G13"],
                 "Bridge": ["Fmaj9", "G13sus", "E7b9/G#", "Am9", "D13/F#", "D13", "G13sus", "G13"],
-            },
-        ),
-        ("Just the Way You Are", "Billy Joel"): pack("D",
-            {
-                "Intro": ["D", "Gm/D", "D", "Gm/D"],
-                "Verse": ["D", "Bm", "G", "Gm", "D/F#", "B7", "Em", "A"],
-                "Chorus": ["G", "A", "F#m", "B7", "Em", "A", "D", "Gm/D"],
-                "Bridge": ["Am", "D7", "G", "Gm", "D/F#", "B7", "Em", "A"],
-            },
-            {
-                "Intro": ["Dmaj7", "Gm6/D", "Dmaj7", "Gm6/D"],
-                "Verse": ["Dmaj7", "Bm7", "Gmaj7", "Gm6", "D/F#", "B7b9", "Em7", "A7sus4"],
-                "Chorus": ["Gmaj7", "A6", "F#m7", "B7b9", "Em7", "A7sus4", "Dmaj7", "Gm6/D"],
-                "Bridge": ["Am7", "D9", "Gmaj7", "Gm6", "F#m7", "B7b9", "Em7", "A7sus4"],
-            },
-            {
-                "Intro": ["Dmaj9", "Gm6/D", "Dmaj9", "Gm6/D"],
-                "Verse": ["Dmaj9", "Bm9", "Gmaj9", "Gm6", "D/F#", "B7b9", "Em9", "A13"],
-                "Chorus": ["Gmaj9", "A13", "F#m9", "B7b9", "Em9", "A13sus", "Dmaj9", "Gm6/D"],
-                "Bridge": ["Am9", "D13", "Gmaj9", "Gm6", "F#m9", "B7b9", "Em9", "A13sus"],
             },
         ),
         ("Vienna", "Billy Joel"): pack("Gm",
@@ -3722,11 +4186,35 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["C", "Am7", "Fmaj7", "G", "C/E", "Am7", "Fmaj7", "G"],
             "Bridge": ["Fmaj7", "G", "Em7", "Am7", "Dm7", "G", "C", "G"],
         }, composer="Billy Joel"),
-        _s("Just the Way You Are", "Billy Joel", "Pop", "D", {
-            "Verse": ["Dmaj7", "Bm7", "Gmaj7", "A7", "F#m7", "B7", "Em7", "A7"],
-            "Chorus": ["Gmaj7", "Gm6", "D/F#", "B7", "Em7", "A7", "Dmaj7", "A7"],
-            "Bridge": ["Bbmaj7", "Eb", "Am7", "D7", "Gmaj7", "A7", "Dmaj7", "A7"],
-        }, composer="Billy Joel"),
+        _s(
+            "Just the Way You Are",
+            "Billy Joel",
+            "Pop",
+            "D",
+            {
+                "Intro": ["Gm6/D", "G/D", "Dsus4"] * 2,
+                "Verse 1": ["D", "Bm6", "Gmaj7", "Bm|D7", "Gmaj7", "Gm7", "D/F#"],
+                "Refrain 1": ["D", "Bm6", "Gmaj7", "Bm|D9", "Gmaj7", "Gm7", "D/F#"],
+                "Bridge": ["Gmaj7", "A6", "F#m7", "B7", "Em7", "A7sus", "D", "D/C"],
+                "Outro": ["D", "Bm6", "Gmaj7", "Bm|D7", "Gmaj7", "Gm", "D/F#"],
+            },
+            composer="Billy Joel",
+            chart_status="practice_level_verified",
+            section_order=[
+                "Intro",
+                "Verse 1",
+                "Refrain 1",
+                "Verse 2",
+                "Refrain 2",
+                "Bridge",
+                "Refrain 3",
+                "Sax Solo",
+                "Refrain 4",
+                "Outro",
+                "Outro (Fade)",
+            ],
+            extensions=_ext(default_bpm=76, default_groove="Ballad", time_signature="4/4"),
+        ),
         _s("Vienna", "Billy Joel", "Pop", "Bb", {
             "Intro": ["Bb", "Bb/D", "Ebmaj7", "F7"],
             "Verse": ["Bb", "Dm7", "Gm7", "Ebmaj7", "Bb/F", "F7", "Bb", "F7"],
@@ -3734,12 +4222,48 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["Ebmaj7", "F7", "Dm7", "Gm7", "Cm7", "F7", "Bb", "F7"],
             "Bridge": ["Gm7", "Dm7/F", "Ebmaj7", "Bb/D", "Cm7", "F7", "Bb", "F7"],
         }, composer="Billy Joel"),
-        _s("New York State of Mind", "Billy Joel", "Jazz", "C", {
-            "Intro": ["Cmaj9", "A7b9", "Dm9", "G13"],
-            "Verse": ["Cmaj9", "B7#9", "Em9", "A13", "Dm9", "G13", "Cmaj9", "G13"],
-            "Chorus": ["Fmaj9", "Fm9", "Em7", "A7b9", "Dm9", "G13", "Cmaj9", "G13"],
-            "Bridge": ["Abmaj9", "Db13", "Cmaj9", "A7b9", "Dm9", "G13", "Cmaj9", "G13"],
-        }, composer="Billy Joel"),
+        _s(
+            "New York State of Mind",
+            "Billy Joel",
+            "Jazz",
+            "C",
+            {
+                "Intro": [
+                    "Dm9",
+                    "Abmaj7/Bb",
+                    "Dm9",
+                    "Em7",
+                    "F",
+                    "Dm9",
+                    "F/G",
+                    "C",
+                    "E7",
+                    "Am7",
+                    "Gm7|C7",
+                    "F",
+                    "A7",
+                    "Dm",
+                    "Bb9",
+                ],
+                "Verse 1": ["C", "E7", "Am7", "Gm7|C7", "F", "A7", "Dm", "Bb9"],
+                "Chorus 1": ["Am7", "D7", "Gmaj7", "G", "Gm7", "C7", "Fmaj7"],
+                "Outro": ["Eb6", "Ab", "Dm7", "Dbmaj13", "Cmaj9"],
+            },
+            composer="Billy Joel",
+            chart_status="practice_level_verified",
+            section_order=[
+                "Intro",
+                "Verse 1",
+                "Verse 2",
+                "Chorus 1",
+                "Verse 3",
+                "Solo",
+                "Chorus 2",
+                "Verse 4 (Extended)",
+                "Outro",
+            ],
+            extensions=_ext(default_bpm=74, default_groove="Ballad", time_signature="4/4"),
+        ),
         _s("Scenes from an Italian Restaurant", "Billy Joel", "Rock", "F", {
             "Ballad Intro": ["F", "Dm7", "Bb", "C", "F", "Dm7", "Gm7", "C7"],
             "Groove Section": ["F7", "Bb7", "Eb7", "Ab7"],
