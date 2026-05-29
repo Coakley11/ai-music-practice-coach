@@ -227,6 +227,8 @@ _GLOBAL_APP_STATE_KEYS = frozenset(
         "backing_groove_style",
         "backing_time_signature",
         "backing_time_signature_override",
+        "backing_humanize_chord_timing",
+        "backing_preserve_exact_timing",
         "active_song_bpm",
         "active_playback_song_id",
         "last_backing_defaults_song_id",

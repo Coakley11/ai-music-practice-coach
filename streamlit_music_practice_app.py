@@ -140,6 +140,13 @@ from backing_display import (
     render_backing_defaults_debug,
     render_backing_meter_selector,
 )
+from harmonic_rhythm_intelligence import (
+    BACKING_HUMANIZE_LEVEL_KEY,
+    BACKING_PRESERVE_EXACT_KEY,
+    HUMANIZE_LEVEL_CHOICES,
+    annotations_lookup,
+    apply_harmonic_rhythm_intelligence,
+)
 import karaoke_mode as km
 from beginner_arrangement import (
     beginner_view_of_song_data,
@@ -1234,6 +1241,32 @@ def chord_events_for_selected_sections(sections, selected_names=None, *, song_da
                 "section_bars": section_bars,
             })
     return out
+
+
+def _humanized_backing_sections(
+    sections: dict[str, list[str]],
+    *,
+    song_data: dict | None,
+    groove_style: str,
+    time_signature: str,
+    humanize_level: str,
+    preserve_exact_timing: bool,
+    section_lyrics: dict | None = None,
+    lyric_cues: dict | None = None,
+) -> tuple[dict[str, list[str]], dict[tuple[str, int], object]]:
+    """Apply performance-feel inference for backing playback and chart preview."""
+    result = apply_harmonic_rhythm_intelligence(
+        sections,
+        groove_style=groove_style,
+        time_signature=time_signature,
+        humanize_level=humanize_level,
+        preserve_exact_timing=preserve_exact_timing,
+        section_names=section_names_from_song(song_data),
+        song_data=song_data,
+        section_lyrics=section_lyrics,
+        lyric_cues=lyric_cues,
+    )
+    return result.sections, annotations_lookup(result.annotations)
 
 
 def compact_bar_summary(chords):
@@ -2609,6 +2642,7 @@ def full_chord_markdown(
     shape_sections: dict[str, list[str]] | None = None,
     capo_fret: int = 0,
     capo_shape_key: str = "",
+    auto_inferences: dict[tuple[str, int], object] | None = None,
 ):
     """Practice musician chart. Use ``chart_mode='backing'`` for backing follow-along."""
     dk = display_key or song_data["key"]
@@ -2630,6 +2664,7 @@ def full_chord_markdown(
             shape_sections=shape_sections,
             capo_fret=capo_fret,
             capo_shape_key=capo_shape_key,
+            auto_inferences=auto_inferences,
         )
     merged_lyric_cues = merge_lyric_cues_for_song(song_data, lyric_cues)
     sheet_class = lead_sheet_body_class(song_data)
@@ -8458,6 +8493,37 @@ def _render_backing_playback_setup_panel(
         st.markdown("</div>", unsafe_allow_html=True)
         render_backing_setup_section_close(st)
 
+        render_backing_setup_section_open(st, "Performance feel", icon="🎚️")
+        st.session_state.setdefault(BACKING_HUMANIZE_LEVEL_KEY, "Subtle")
+        st.markdown('<div class="ui-backing-setup-fields-row">', unsafe_allow_html=True)
+        st.markdown("<div>", unsafe_allow_html=True)
+        render_backing_field_label(
+            st,
+            "Humanize chord timing / infer pushes",
+            "Adds tasteful anticipations based on groove and form.",
+        )
+        st.selectbox(
+            "Humanize chord timing",
+            list(HUMANIZE_LEVEL_CHOICES),
+            key=BACKING_HUMANIZE_LEVEL_KEY,
+            label_visibility="collapsed",
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div>", unsafe_allow_html=True)
+        render_backing_field_label(
+            st,
+            "Preserve exact chart timing",
+            "When on, only explicit chart pushes and splits are used.",
+        )
+        st.checkbox(
+            "Preserve exact chart timing",
+            key=BACKING_PRESERVE_EXACT_KEY,
+            help="Disables inferred anticipations — honors the chart literally.",
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        render_backing_setup_section_close(st)
+
         render_backing_setup_section_open(st, "Playback range & loops", icon="🔁")
         _render_backing_scope_controls(
             section_names,
@@ -9968,14 +10034,28 @@ elif _studio_page == "backing":
 
     selected_section_names = selected_section_names or []
     groove_style = st.session_state.get("backing_groove_style", "Auto")
+    resolved_groove = infer_groove_style(song_data, groove_style)
+    _humanize_level = str(
+        st.session_state.get(BACKING_HUMANIZE_LEVEL_KEY, "Subtle") or "Subtle"
+    )
+    _preserve_exact_timing = bool(st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False))
+    performed_sections, _hri_annotations = _humanized_backing_sections(
+        sections_for_backing,
+        song_data=song_data,
+        groove_style=resolved_groove,
+        time_signature=backing_time_signature,
+        humanize_level=_humanize_level,
+        preserve_exact_timing=_preserve_exact_timing,
+        section_lyrics=section_lyrics,
+        lyric_cues=lyric_cues,
+    )
+    st.session_state["_backing_hri_annotations"] = _hri_annotations
     backing_chords = chord_blocks_for_selected_sections(
-        sections_for_backing, selected_section_names, song_data=song_data
+        performed_sections, selected_section_names, song_data=song_data
     )
     backing_events = chord_events_for_selected_sections(
-        sections_for_backing, selected_section_names, song_data=song_data
+        performed_sections, selected_section_names, song_data=song_data
     )
-
-    resolved_groove = infer_groove_style(song_data, groove_style)
     section_scope_label = (
         "full form"
         if not selected_section_names
@@ -10046,7 +10126,7 @@ elif _studio_page == "backing":
     chart_display_key = (
         _capo_ctx.sounding_key if _capo_ctx.enabled else chart_key
     )
-    chart_sections = sections_for_backing
+    chart_sections = performed_sections
     chart_backing_chords = chord_blocks_for_selected_sections(
         chart_sections,
         selected_section_names,
@@ -10099,13 +10179,11 @@ elif _studio_page == "backing":
     elif st.session_state.get("backing_track_scope") == "Full song":
         selected_section_names = []
     backing_chords = chord_blocks_for_selected_sections(
-        sections_for_backing, selected_section_names, song_data=song_data
+        performed_sections, selected_section_names, song_data=song_data
     )
     backing_events = chord_events_for_selected_sections(
-        sections_for_backing, selected_section_names, song_data=song_data
+        performed_sections, selected_section_names, song_data=song_data
     )
-    groove_style = st.session_state.get("backing_groove_style", "Auto")
-    resolved_groove = infer_groove_style(song_data, groove_style)
     section_scope_label = (
         "full form"
         if not selected_section_names
@@ -10123,6 +10201,8 @@ elif _studio_page == "backing":
         backing_time_signature,
         form_loops,
         tuple(selected_section_names),
+        _humanize_level,
+        _preserve_exact_timing,
         tuple(backing_chords),
     )
     _backing_audio_ready = bool(
@@ -10294,6 +10374,7 @@ elif _studio_page == "backing":
         shape_sections=_capo_ctx.shape_sections if _capo_ctx.enabled else None,
         capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
         capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
+        auto_inferences=_hri_annotations,
     )
 
     # ---- Lead sheet open-state handling ------------------------------------

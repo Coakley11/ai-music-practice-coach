@@ -199,6 +199,45 @@ BACKING_CHART_CSS = """
 .backing-chart-sheet .chord-cell.subdivided .subdivided-tag.has-push {
   color: #c2410c;
 }
+.backing-chart-sheet .chord-cell.subdivided .subdivided-tag.auto-inferred {
+  color: #7c3aed;
+}
+.backing-chart-sheet .chord-cell.subdivided .sub-chord.push.auto-inferred {
+  border-color: #7c3aed;
+  background: linear-gradient(180deg, #f5f3ff, #ede9fe);
+  color: #5b21b6;
+}
+.backing-chart-sheet .chord-cell.subdivided .sub-chord.push.auto-inferred::after {
+  content: "auto push";
+  color: #6d28d9;
+}
+.backing-chart-sheet .chord-cell.has-auto-inference {
+  position: relative;
+}
+.backing-chart-sheet .chord-cell.has-auto-inference::before {
+  content: "→";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #7c3aed;
+  opacity: 0.85;
+  pointer-events: none;
+}
+.backing-chart-sheet .auto-inference-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #ede9fe;
+  color: #5b21b6;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: help;
+}
 .backing-chart-sheet .lyric-preview {
   margin-top: 6px;
   padding: 6px 8px;
@@ -348,7 +387,10 @@ def chart_feel_label(style: str | None) -> str:
 
 
 def _render_chord_symbol_html(
-    token: str, *, beats_per_bar: float = 4.0
+    token: str,
+    *,
+    beats_per_bar: float = 4.0,
+    auto_inferred: bool = False,
 ) -> tuple[str, bool, bool]:
     """Return ``(symbol_html, is_subdivided, has_push)`` for a chart cell.
 
@@ -373,13 +415,15 @@ def _render_chord_symbol_html(
             spans.append("<span class='sub-sep'>&rarr;</span>")
         share_pct = (max(0.0, float(sub.weight)) / total_weight) * 100.0
         push_cls = " push" if sub.push else ""
+        auto_cls = " auto-inferred" if auto_inferred and sub.push else ""
         if sub.push:
             any_push = True
         spans.append(
-            "<span class='sub-chord{push_cls}' data-sub='{idx}' "
+            "<span class='sub-chord{push_cls}{auto_cls}' data-sub='{idx}' "
             "data-beats='{beats:g}'{push_attr} style='flex-grow:{grow:g};flex-basis:{basis:.4f}%;'>"
             "{chord}</span>".format(
                 push_cls=push_cls,
+                auto_cls=auto_cls,
                 idx=sub_idx,
                 beats=float(sub.weight),
                 push_attr=" data-push='1'" if sub.push else "",
@@ -398,6 +442,7 @@ def chart_grid_html(
     current_bar: int | None = None,
     shape_chords: list[str] | None = None,
     beats_per_bar: float = 4.0,
+    auto_inferences: dict[tuple[str, int], Any] | None = None,
 ) -> str:
     """Block chord cells with ``live-chart-cell`` markers for JS follow-along."""
     if not chords:
@@ -410,6 +455,7 @@ def chart_grid_html(
         is_subdivided = _sub_is_subdivided_bar(chord)
         is_tacet = (not is_subdivided) and _is_no_chord_token(chord)
         is_hit = (not is_subdivided) and _sub_is_hit_token(chord)
+        _auto_ann = (auto_inferences or {}).get((section_name, idx + 1))
         # Don't compress subdivided / tacet / hit bars with a "%"
         # repeat marker — each is its own distinct event the singer
         # / band needs to read at a glance.
@@ -431,9 +477,12 @@ def chart_grid_html(
         else:
             display_token = str(chord)
             symbol_html, subdivided_cell, cell_has_push = _render_chord_symbol_html(
-                display_token, beats_per_bar=float(beats_per_bar)
+                display_token,
+                beats_per_bar=float(beats_per_bar),
+                auto_inferred=bool(_auto_ann),
             )
         current_class = " current-chord" if current_bar == idx + 1 else ""
+        auto_class = " has-auto-inference" if _auto_ann else ""
         sub_class = " subdivided" if subdivided_cell else ""
         if is_tacet:
             sub_class += " tacet"
@@ -459,9 +508,23 @@ def chart_grid_html(
         )
         if subdivided_cell:
             push_tag_cls = " has-push" if cell_has_push else ""
-            tag_label = "Pushed change" if cell_has_push else "Passing &middot; subdivided bar"
+            auto_tag_cls = " auto-inferred" if _auto_ann else ""
+            if _auto_ann:
+                tag_label = "Auto anticipation"
+                _tip = html.escape(str(getattr(_auto_ann, "reason", "")), quote=True)
+                auto_badge = (
+                    f"<span class='auto-inference-badge' title='{_tip}'>"
+                    "Auto &middot; style feel</span>"
+                )
+            elif cell_has_push:
+                tag_label = "Pushed change"
+                auto_badge = ""
+            else:
+                tag_label = "Passing &middot; subdivided bar"
+                auto_badge = ""
             duration = (
-                f"{duration}<span class='subdivided-tag{push_tag_cls}'>{tag_label}</span>"
+                f"{duration}<span class='subdivided-tag{push_tag_cls}{auto_tag_cls}'>"
+                f"{tag_label}</span>{auto_badge}"
             )
         elif is_tacet:
             duration = (
@@ -486,7 +549,7 @@ def chart_grid_html(
                 f"margin-top:2px;'>{html.escape(str(shape_chords[idx]))} shape</div>"
             )
         cells.append(
-            f"<div class='chord-cell live-chart-cell{current_class}{sub_class}' "
+            f"<div class='chord-cell live-chart-cell{current_class}{sub_class}{auto_class}' "
             f"data-section='{safe_section_attr}' data-bar='{idx + 1}'>"
             f"<div class='bar-num'>Bar {idx + 1}</div>"
             f"<div class='chord-symbol'>{symbol_html}</div>"
@@ -525,6 +588,7 @@ def render_backing_chord_chart(
     shape_sections: dict[str, list[str]] | None = None,
     capo_fret: int = 0,
     capo_shape_key: str = "",
+    auto_inferences: dict[tuple[str, int], Any] | None = None,
 ) -> str:
     """Section-based block chart for backing playback (no auto lyric dump)."""
     dk = display_key or song_data.get("key", "C")
@@ -600,7 +664,7 @@ def render_backing_chord_chart(
     </div>
     <div class="section-meta">{now_label}</div>
   </div>
-  {chart_grid_html(chords, section_name=section_name, current_bar=current_bar_for_section, shape_chords=shape_row, beats_per_bar=_beats_per_bar_for_chart(time_signature))}
+  {chart_grid_html(chords, section_name=section_name, current_bar=current_bar_for_section, shape_chords=shape_row, beats_per_bar=_beats_per_bar_for_chart(time_signature), auto_inferences=auto_inferences)}
   {preview}
 </section>
 """
