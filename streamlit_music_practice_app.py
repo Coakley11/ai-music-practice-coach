@@ -143,7 +143,6 @@ from backing_display import (
 from harmonic_rhythm_intelligence import (
     BACKING_HUMANIZE_LEVEL_KEY,
     BACKING_PRESERVE_EXACT_KEY,
-    HUMANIZE_LEVEL_CHOICES,
     annotations_lookup,
     apply_harmonic_rhythm_intelligence,
 )
@@ -8351,94 +8350,6 @@ def _render_backing_scope_controls(
         )
 
 
-def _render_backing_quick_playback_controls(
-    *,
-    song_id: str,
-    default_bpm: int,
-    default_groove: str,
-    song_data: dict | None,
-    section_names: list[str],
-    backing_ready: bool,
-    applied_groove: str,
-    applied_meter: str,
-    scope_label: str,
-) -> int:
-    """Quick BPM + section controls in a polished control-panel card."""
-    apply_backing_defaults_for_song(
-        st,
-        song_id=song_id,
-        default_bpm=default_bpm,
-        default_groove=default_groove,
-        song_data=song_data,
-        infer_fn=infer_groove_style,
-    )
-    _prime_backing_quick_section_from_scope(st.session_state, section_names)
-    quick_opts = ["Full song"] + list(section_names)
-    slider_key = backing_bpm_slider_widget_key(song_id)
-    canonical_bpm = int(st.session_state.get("active_song_bpm", default_bpm))
-    widget_bpm = int(st.session_state.get("backing_track_bpm", canonical_bpm))
-    st.session_state[slider_key] = widget_bpm
-
-    with st.container(key="backing_quick_playback", border=False):
-        render_backing_panel_shell_open(st, "quick")
-        render_backing_panel_header(
-            st,
-            kicker="Step 2",
-            title="Quick Playback",
-            subtitle="Live tempo & section focus — regenerate after changes.",
-        )
-        render_backing_transport_status(
-            st,
-            ready=backing_ready,
-            bpm=widget_bpm,
-            groove=applied_groove,
-            meter=applied_meter,
-            scope_label=scope_label,
-        )
-        st.markdown('<div class="ui-backing-quick-controls">', unsafe_allow_html=True)
-        st.markdown("<div>", unsafe_allow_html=True)
-        render_backing_field_label(st, "Tempo (BPM)", "")
-        bpm = st.slider(
-            "Quick BPM",
-            50,
-            180,
-            widget_bpm,
-            5,
-            key=slider_key,
-            label_visibility="collapsed",
-            help="Regenerate in Step 3 after changing tempo.",
-        )
-        st.session_state["backing_track_bpm"] = int(bpm)
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("<div>", unsafe_allow_html=True)
-        render_backing_field_label(st, "Section focus", "")
-        cur_quick = st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song")
-        if cur_quick not in quick_opts:
-            cur_quick = "Full song"
-        idx = quick_opts.index(cur_quick)
-
-        def _on_quick_section() -> None:
-            request_backing_quick_section_change(
-                st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song"),
-                section_names,
-            )
-            st.rerun()
-
-        st.selectbox(
-            "Quick section",
-            quick_opts,
-            index=idx,
-            key=BACKING_QUICK_SECTION_KEY,
-            on_change=_on_quick_section,
-            label_visibility="collapsed",
-            help="Synced with playback range in Step 1.",
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        render_backing_panel_shell_close(st)
-    return int(bpm)
-
-
 def _render_backing_playback_setup_panel(
     *,
     song_id: str,
@@ -8450,7 +8361,7 @@ def _render_backing_playback_setup_panel(
     section_names: list[str],
     from_practice_handoff: bool,
 ) -> tuple[int, str]:
-    """Playback Setup card — groove, meter, status, scope, and loops."""
+    """Step 1 (range) + Step 2 (compact feel/meter) — workflow-first layout."""
     bpm, _groove_val = apply_backing_defaults_for_song(
         st,
         song_id=song_id,
@@ -8464,49 +8375,40 @@ def _render_backing_playback_setup_panel(
         song_id=song_id,
         default_time_signature=default_meter,
     )
-    _title = str((song_data or {}).get("title") or "Active song")
-    _artist = str((song_data or {}).get("artist") or "")
-    _orig_key, _practice_key = _active_song_key_pair(song_data or {})
-    _subtitle_parts = [_title]
-    if _artist:
-        _subtitle_parts.append(_artist)
-    _subtitle = " · ".join(_subtitle_parts)
     _badge = (
         '<span class="ui-backing-panel-badge ready">● Ready</span>'
         if backing_ready
         else '<span class="ui-backing-panel-badge">○ Not generated</span>'
     )
-    _groove_label = str(st.session_state.get("backing_groove_style", default_groove) or default_groove)
-    _loop_summary = backing_scope_loop_summary_text(
-        st.session_state.get("backing_track_scope", "Full song"),
-        single_section=str(st.session_state.get("backing_track_single_section", "")),
-        multi_sections=list(st.session_state.get("backing_track_multi_sections") or []),
-        loops=int(st.session_state.get("backing_track_loops", 2)),
-    )
 
-    with st.container(key="backing_playback_setup", border=False):
-        render_backing_panel_shell_open(st, "setup")
+    with st.container(key="backing_step1_range", border=False):
+        render_backing_panel_shell_open(st, "scope")
         render_backing_panel_header(
             st,
             kicker="Step 1",
-            title="Playback setup",
-            subtitle=_subtitle,
+            title="Playback range & loops",
+            subtitle="Choose section focus and how many times to loop.",
             badge_html=_badge,
         )
-        render_backing_setup_context_strip(
-            st,
-            original_key=_orig_key,
-            practice_key=_practice_key,
-            meter=str(applied_meter or default_meter),
-            groove=_groove_label,
-            range_summary=_loop_summary,
-            default_bpm=int(default_bpm),
+        _render_backing_scope_controls(
+            section_names,
+            from_practice_handoff=from_practice_handoff,
+            show_panel_header=False,
         )
+        render_backing_panel_shell_close(st)
 
-        render_backing_setup_section_open(st, "Feel & groove", icon="✨")
-        st.markdown('<div class="ui-backing-setup-fields-row">', unsafe_allow_html=True)
+    with st.container(key="backing_step2_feel", border=False):
+        render_backing_panel_shell_open(st, "compact")
+        render_backing_panel_header(
+            st,
+            kicker="Step 2",
+            title="Feel & groove",
+            subtitle="",
+            compact=True,
+        )
+        st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
         st.markdown("<div>", unsafe_allow_html=True)
-        render_backing_field_label(st, "Groove / feel", "")
+        st.markdown('<span class="ui-backing-inline-label">Feel</span>', unsafe_allow_html=True)
         st.selectbox(
             "Groove style",
             list(GROOVE_STYLE_CHOICES),
@@ -8515,7 +8417,7 @@ def _render_backing_playback_setup_panel(
         )
         st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("<div>", unsafe_allow_html=True)
-        render_backing_field_label(st, "Meter / time signature", "")
+        st.markdown('<span class="ui-backing-inline-label">Meter</span>', unsafe_allow_html=True)
         applied_meter = render_backing_meter_selector(
             st,
             song_default_meter=default_meter,
@@ -8524,51 +8426,153 @@ def _render_backing_playback_setup_panel(
         )
         st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-        render_backing_setup_section_close(st)
-
-        render_backing_setup_section_open(st, "Performance feel", icon="🎚️")
-        st.session_state.setdefault(BACKING_HUMANIZE_LEVEL_KEY, "Subtle")
-        st.markdown('<div class="ui-backing-setup-fields-row">', unsafe_allow_html=True)
-        st.markdown("<div>", unsafe_allow_html=True)
-        render_backing_field_label(
-            st,
-            "Humanize chord timing / infer pushes",
-            "Adds tasteful anticipations based on groove and form.",
-        )
-        st.selectbox(
-            "Humanize chord timing",
-            list(HUMANIZE_LEVEL_CHOICES),
-            key=BACKING_HUMANIZE_LEVEL_KEY,
-            label_visibility="collapsed",
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("<div>", unsafe_allow_html=True)
-        render_backing_field_label(
-            st,
-            "Preserve exact chart timing",
-            "When on, only explicit chart pushes and splits are used.",
-        )
-        st.checkbox(
-            "Preserve exact chart timing",
-            key=BACKING_PRESERVE_EXACT_KEY,
-            help="Disables inferred anticipations — honors the chart literally.",
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        render_backing_setup_section_close(st)
-
-        render_backing_setup_section_open(st, "Playback range & loops", icon="🔁")
-        _render_backing_scope_controls(
-            section_names,
-            from_practice_handoff=from_practice_handoff,
-            show_panel_header=False,
-        )
-        render_backing_setup_section_close(st)
-
-        st.caption("Tempo (BPM) is in **Quick Playback** — regenerate after changes.")
-
         render_backing_panel_shell_close(st)
+
+    st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = "Strong"
+    st.session_state.setdefault(BACKING_PRESERVE_EXACT_KEY, False)
+
     return int(bpm), str(applied_meter)
+
+
+def _render_backing_step3_playback_action(
+    *,
+    song_id: str,
+    default_bpm: int,
+    default_groove: str,
+    song_data: dict | None,
+    section_names: list[str],
+    backing_chords: list,
+    section_scope_label: str,
+    song_title: str,
+    signature_for_bpm,
+) -> tuple[int, bool, bool]:
+    """Step 3 — tempo, section focus, generate & play in one action card."""
+    apply_backing_defaults_for_song(
+        st,
+        song_id=song_id,
+        default_bpm=default_bpm,
+        default_groove=default_groove,
+        song_data=song_data,
+        infer_fn=infer_groove_style,
+    )
+    _prime_backing_quick_section_from_scope(st.session_state, section_names)
+    quick_opts = ["Full song"] + list(section_names)
+    slider_key = backing_bpm_slider_widget_key(song_id)
+    widget_bpm = int(st.session_state.get("backing_track_bpm", default_bpm))
+    st.session_state[slider_key] = widget_bpm
+
+    with st.container(key="backing_step3_action", border=False):
+        render_backing_panel_shell_open(st, "transport")
+        render_backing_panel_header(
+            st,
+            kicker="Step 3",
+            title="Tempo & playback",
+            subtitle="Set tempo, then generate or play.",
+            badge_html="",
+            compact=True,
+        )
+        st.markdown(
+            '<div class="ui-backing-quick-controls ui-backing-action-controls">',
+            unsafe_allow_html=True,
+        )
+        _tc1, _tc2 = st.columns(2)
+        with _tc1:
+            st.markdown('<span class="ui-backing-inline-label">Tempo (BPM)</span>', unsafe_allow_html=True)
+            bpm = st.slider(
+                "Quick BPM",
+                50,
+                180,
+                widget_bpm,
+                5,
+                key=slider_key,
+                label_visibility="collapsed",
+                help="Regenerate after changing tempo.",
+            )
+            st.session_state["backing_track_bpm"] = int(bpm)
+        with _tc2:
+            st.markdown('<span class="ui-backing-inline-label">Section focus</span>', unsafe_allow_html=True)
+            cur_quick = st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song")
+            if cur_quick not in quick_opts:
+                cur_quick = "Full song"
+            idx = quick_opts.index(cur_quick)
+
+            def _on_quick_section() -> None:
+                request_backing_quick_section_change(
+                    st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song"),
+                    section_names,
+                )
+                st.rerun()
+
+            st.selectbox(
+                "Quick section",
+                quick_opts,
+                index=idx,
+                key=BACKING_QUICK_SECTION_KEY,
+                on_change=_on_quick_section,
+                label_visibility="collapsed",
+                help="Synced with playback range in Step 1.",
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        backing_ready = bool(
+            st.session_state.get("_last_backing_wav")
+            and st.session_state.get("_last_backing_signature") == signature_for_bpm(int(bpm))
+        )
+        _transport_badge = (
+            '<span class="ui-backing-panel-badge ready">● Audio ready</span>'
+            if backing_ready
+            else '<span class="ui-backing-panel-badge">○ Generate to hear audio</span>'
+        )
+        st.markdown(
+            f'<div class="ui-backing-transport-strip{" ready" if backing_ready else ""}">'
+            f'<span class="ui-backing-transport-dot"></span>'
+            f'<span class="ui-backing-transport-state">{_transport_badge}</span>'
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown('<div class="ui-backing-transport-toolbar">', unsafe_allow_html=True)
+        if backing_ready:
+            _play_clicked = st.button(
+                "▶ Play",
+                key="play_backing_btn",
+                type="primary",
+                use_container_width=True,
+            )
+            _gen_clicked = False
+        else:
+            _gen_clicked = st.button(
+                "⚡ Generate",
+                key="gen_backing_btn",
+                disabled=not bool(backing_chords),
+                type="primary",
+                use_container_width=True,
+            )
+            _play_clicked = False
+        if st.button(
+            "■ Stop",
+            key="stop_backing_btn",
+            disabled=not bool(st.session_state.get("_last_backing_wav")),
+            use_container_width=True,
+        ):
+            _stop_backing_playback()
+            st.rerun()
+        if backing_ready:
+            _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
+            st.download_button(
+                "⬇ Download WAV",
+                st.session_state["_last_backing_wav"],
+                file_name=f"{song_title.replace(' ', '_')}_{_scope_bit}_{int(st.session_state.get('backing_track_loops', 2))}loops.wav",
+                mime="audio/wav",
+                key="dl_backing_btn",
+                use_container_width=True,
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+        if not backing_ready:
+            st.caption("Usually ready in a second or two after Generate.")
+        render_backing_panel_shell_close(st)
+
+    return int(bpm), _gen_clicked, _play_clicked
 
 
 # -------------------------------------------------
@@ -10102,10 +10106,9 @@ elif _studio_page == "backing":
     selected_section_names = selected_section_names or []
     groove_style = st.session_state.get("backing_groove_style", "Auto")
     resolved_groove = infer_groove_style(song_data, groove_style)
-    _humanize_level = str(
-        st.session_state.get(BACKING_HUMANIZE_LEVEL_KEY, "Subtle") or "Subtle"
-    )
-    _preserve_exact_timing = bool(st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False))
+    _humanize_level = "Strong"
+    _preserve_exact_timing = False
+    st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = _humanize_level
     performed_sections, _hri_annotations = _humanized_backing_sections(
         sections_for_backing,
         song_data=song_data,
@@ -10117,22 +10120,55 @@ elif _studio_page == "backing":
         lyric_cues=lyric_cues,
     )
     st.session_state["_backing_hri_annotations"] = _hri_annotations
+
+    backing_chords = chord_blocks_for_selected_sections(
+        performed_sections, selected_section_names, song_data=song_data
+    )
+    backing_events = chord_events_for_selected_sections(
+        performed_sections, selected_section_names, song_data=song_data
+    )
+    if not backing_chords:
+        st.warning("Choose at least one section to generate a backing track.")
     section_scope_label = (
         "full form"
         if not selected_section_names
         else " + ".join(selected_section_names)
     )
+    backing_time_signature = str(
+        st.session_state.get("backing_time_signature", backing_time_signature)
+    )
 
-    bpm = _render_backing_quick_playback_controls(
+    def _backing_signature_for_bpm(bpm_val: int) -> tuple:
+        return (
+            song,
+            chart_key,
+            level,
+            resolved_groove,
+            int(bpm_val),
+            backing_time_signature,
+            form_loops,
+            tuple(selected_section_names),
+            _humanize_level,
+            _preserve_exact_timing,
+            tuple(backing_chords),
+        )
+
+    render_scroll_anchor_marker(st, ANCHOR_BACKING_MAIN_CONTROLS)
+    bpm, _gen_clicked, _play_clicked = _render_backing_step3_playback_action(
         song_id=_bpm_sync_id,
         default_bpm=_default_bpm,
         default_groove=default_groove_style,
         song_data=song_data,
         section_names=_sec_names,
-        backing_ready=_backing_audio_ready_pre,
-        applied_groove=resolved_groove,
-        applied_meter=backing_time_signature,
-        scope_label=section_scope_label,
+        backing_chords=backing_chords,
+        section_scope_label=section_scope_label,
+        song_title=str(song),
+        signature_for_bpm=_backing_signature_for_bpm,
+    )
+    _current_backing_signature = _backing_signature_for_bpm(bpm)
+    _backing_audio_ready = bool(
+        st.session_state.get("_last_backing_wav")
+        and st.session_state.get("_last_backing_signature") == _current_backing_signature
     )
 
     # Voice mode: when the active karaoke song has no lyric cues yet,
@@ -10177,7 +10213,7 @@ elif _studio_page == "backing":
             " (" + ", ".join(_regen_reasons) + ")" if _regen_reasons else ""
         )
         st.warning(
-            f"Playback settings changed{_reason_text} - press **Generate** in Step 3 "
+            f"Playback settings changed{_reason_text} - press **Generate** above "
             "to rebuild the backing track in the new settings."
         )
 
@@ -10219,114 +10255,6 @@ elif _studio_page == "backing":
             )
 
     _follow_key_prefix = f"backing::{song}::{tuple(selected_section_names)}::{chart_key}::{bpm}::{form_loops}"
-
-    if st.session_state.get("backing_track_scope") == "Single section":
-        _q_sec = st.session_state.get("backing_track_single_section", "")
-        if _q_sec in _sec_names:
-            selected_section_names = [_q_sec]
-    elif st.session_state.get("backing_track_scope") == "Full song":
-        selected_section_names = []
-    backing_chords = chord_blocks_for_selected_sections(
-        performed_sections, selected_section_names, song_data=song_data
-    )
-    backing_events = chord_events_for_selected_sections(
-        performed_sections, selected_section_names, song_data=song_data
-    )
-    if not backing_chords:
-        st.warning("Choose at least one section to generate a backing track.")
-    backing_time_signature = str(
-        st.session_state.get("backing_time_signature", backing_time_signature)
-    )
-    _current_backing_signature = (
-        song,
-        chart_key,
-        level,
-        resolved_groove,
-        bpm,
-        backing_time_signature,
-        form_loops,
-        tuple(selected_section_names),
-        _humanize_level,
-        _preserve_exact_timing,
-        tuple(backing_chords),
-    )
-    _backing_audio_ready = bool(
-        st.session_state.get("_last_backing_wav")
-        and st.session_state.get("_last_backing_signature") == _current_backing_signature
-    )
-
-    render_scroll_anchor_marker(st, ANCHOR_BACKING_MAIN_CONTROLS)
-    with st.container(key="backing_transport", border=False):
-        render_backing_panel_shell_open(st, "transport")
-        _transport_badge = (
-            '<span class="ui-backing-panel-badge ready">● Audio ready</span>'
-            if _backing_audio_ready
-            else '<span class="ui-backing-panel-badge">○ Generate to hear audio</span>'
-        )
-        render_backing_panel_header(
-            st,
-            kicker="Step 3",
-            title="Generate & play",
-            subtitle="Build WAV from your setup, then play or download.",
-            badge_html=_transport_badge,
-        )
-        render_backing_transport_status(
-            st,
-            ready=_backing_audio_ready,
-            bpm=int(bpm),
-            groove=resolved_groove,
-            meter=backing_time_signature,
-            scope_label=section_scope_label,
-        )
-        st.markdown('<div class="ui-backing-transport-toolbar">', unsafe_allow_html=True)
-        if _backing_audio_ready:
-            _play_clicked = st.button(
-                "▶ Play",
-                key="play_backing_btn",
-                type="primary",
-                use_container_width=True,
-            )
-            _gen_clicked = False
-        else:
-            _gen_clicked = st.button(
-                "⚡ Generate",
-                key="gen_backing_btn",
-                disabled=not bool(backing_chords),
-                type="primary",
-                use_container_width=True,
-            )
-            _play_clicked = False
-        if st.button(
-            "■ Stop",
-            key="stop_backing_btn",
-            disabled=not bool(st.session_state.get("_last_backing_wav")),
-            use_container_width=True,
-        ):
-            _stop_backing_playback()
-            st.rerun()
-        if _backing_audio_ready:
-            _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
-            st.download_button(
-                "⬇ Download WAV",
-                st.session_state["_last_backing_wav"],
-                file_name=f"{song.replace(' ', '_')}_{_scope_bit}_{form_loops}loops.wav",
-                mime="audio/wav",
-                key="dl_backing_btn",
-                use_container_width=True,
-            )
-        else:
-            st.markdown(
-                '<p class="ui-backing-transport-hint" style="margin:0.35rem 0 0;">'
-                "Generate to enable download.</p>",
-                unsafe_allow_html=True,
-            )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        if not _backing_audio_ready:
-            st.caption("Adjust Steps 1–2, then generate — usually ready in a second or two.")
-        else:
-            st.caption("Audio matches current settings — play below or open the lead sheet.")
-        render_backing_panel_shell_close(st)
 
     # Karaoke auto-generate: when a transition flips the active song in a
     # karaoke set, the new song has no backing audio yet. Consume the

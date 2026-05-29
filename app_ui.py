@@ -2260,6 +2260,61 @@ def _backing_studio_panel_css() -> str:
 .ui-backing-panel-shell.is-transport::before {
   background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.7), rgba(139, 92, 246, 0.55), transparent);
 }
+.ui-backing-panel-shell.is-scope {
+  border-color: rgba(79, 70, 229, 0.42);
+  padding: 0.85rem 0.95rem 0.82rem;
+  margin-bottom: 0.35rem;
+  background:
+    radial-gradient(120% 90% at 4% -8%, rgba(79, 70, 229, 0.12) 0%, transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+.ui-backing-panel-shell.is-scope::before {
+  height: 5px;
+  background: linear-gradient(90deg, transparent, rgba(79, 70, 229, 0.85), rgba(99, 102, 241, 0.65), transparent);
+}
+.ui-backing-panel-shell.is-compact {
+  border-color: rgba(148, 163, 184, 0.28);
+  padding: 0.45rem 0.65rem 0.5rem;
+  margin-bottom: 0.35rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 8px 24px -20px rgba(15, 23, 42, 0.28);
+}
+.ui-backing-panel-shell.is-compact::before {
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.55), rgba(100, 116, 139, 0.45), transparent);
+}
+.ui-backing-panel-shell.is-compact .ui-backing-panel-head {
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+.ui-backing-panel-shell.is-compact .ui-backing-panel-title {
+  font-size: 0.98rem;
+}
+.ui-backing-panel-shell.is-scope .ui-backing-panel-kicker { color: #4338ca; }
+.ui-backing-panel-shell.is-compact .ui-backing-panel-kicker { color: #64748b; }
+.ui-backing-feel-inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.55rem 0.75rem;
+  align-items: end;
+}
+.ui-backing-inline-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 0.2rem;
+}
+.ui-backing-action-controls {
+  margin-bottom: 0.35rem;
+}
+.st-key-backing_step1_range,
+.st-key-backing_step2_feel,
+.st-key-backing_step3_action {
+  margin: 0.25rem 0 0.35rem !important;
+}
 .ui-backing-panel-shell .ui-backing-panel-kicker { color: #059669; }
 .ui-backing-panel-shell.is-quick .ui-backing-panel-kicker { color: #0284c7; }
 .ui-backing-panel-shell.is-transport .ui-backing-panel-kicker { color: #4f46e5; }
@@ -2272,6 +2327,14 @@ def _backing_studio_panel_css() -> str:
   margin: 0 0 0.9rem;
   padding-bottom: 0.8rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.32);
+}
+.ui-backing-panel-head-compact {
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.35rem;
+  gap: 0.35rem 0.65rem;
+}
+.ui-backing-panel-head-compact .ui-backing-panel-title {
+  font-size: 0.98rem;
 }
 .ui-backing-panel-kicker {
   display: inline-block;
@@ -2653,8 +2716,11 @@ def _backing_studio_panel_css() -> str:
 }
 .st-key-backing_playback_setup,
 .st-key-backing_quick_playback,
-.st-key-backing_transport {
-  margin: 0.4rem 0 0.55rem !important;
+.st-key-backing_transport,
+.st-key-backing_step1_range,
+.st-key-backing_step2_feel,
+.st-key-backing_step3_action {
+  margin: 0.25rem 0 0.35rem !important;
 }
 body[data-backing-studio-ui] .ui-backing-studio-deck-head {
   outline: none;
@@ -5543,6 +5609,7 @@ def render_backing_panel_header(
     title: str,
     subtitle: str = "",
     badge_html: str = "",
+    compact: bool = False,
 ) -> None:
     """Header for Backing Track setup / quick / transport cards."""
     badge_block = badge_html if badge_html else ""
@@ -5551,8 +5618,9 @@ def render_backing_panel_header(
         if subtitle
         else ""
     )
+    head_cls = " ui-backing-panel-head-compact" if compact else ""
     st.markdown(
-        f'<div class="ui-backing-panel-head">'
+        f'<div class="ui-backing-panel-head{head_cls}">'
         f'<div><span class="ui-backing-panel-kicker">{html.escape(kicker)}</span>'
         f'<p class="ui-backing-panel-title">{html.escape(title)}</p>{sub}</div>'
         f"{badge_block}</div>",
@@ -5596,7 +5664,7 @@ def render_active_song_key_row(
 
 STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v12"
 
-BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v9"
+BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v10"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
 PRACTICE_SETUP_UI_VERSION = "2026-05-28-practice-v3"
 CREATIVE_STUDIO_UI_VERSION = "2026-05-28-creative-v2"
@@ -6053,12 +6121,12 @@ def render_backing_studio_deck_header(st: Any) -> None:
   <div class="ui-backing-studio-deck-main">
     <span class="ui-backing-studio-kicker">Backing studio</span>
     <h2 class="ui-backing-studio-title">Playback &amp; accompaniment</h2>
-    <p class="ui-backing-studio-sub">Setup range &amp; feel → adjust tempo → generate &amp; play.</p>
+    <p class="ui-backing-studio-sub">Choose section → set tempo → generate backing track.</p>
   </div>
   <div class="ui-backing-studio-steps" aria-label="Workflow steps">
-    <span class="ui-backing-studio-step">1 Setup</span>
-    <span class="ui-backing-studio-step">2 Quick</span>
-    <span class="ui-backing-studio-step">3 Generate</span>
+    <span class="ui-backing-studio-step">1 Range</span>
+    <span class="ui-backing-studio-step">2 Feel</span>
+    <span class="ui-backing-studio-step">3 Play</span>
   </div>
 </div>
         """,
