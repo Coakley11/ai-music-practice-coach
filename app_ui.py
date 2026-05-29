@@ -5594,7 +5594,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v11"
+STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v12"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v9"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -6370,10 +6370,29 @@ _NAV_COMPACT_ICON: dict[str, str] = {
 
 
 def nav_compact_button_label(page_id: str) -> str:
-    """Single-line nav label: icon + script-style word (one clickable control)."""
-    icon = _NAV_COMPACT_ICON.get(page_id, STUDIO_PAGE_META.get(page_id, {}).get("icon", ""))
-    title = _NAV_COMPACT_TITLE.get(page_id, STUDIO_PAGE_META.get(page_id, {}).get("label", page_id))
-    return f"{icon} {title}".strip() if icon else title
+    """Script word only (icon rendered separately in nav face HTML)."""
+    return _NAV_COMPACT_TITLE.get(
+        page_id, STUDIO_PAGE_META.get(page_id, {}).get("label", page_id)
+    )
+
+
+def _nav_compact_icon(page_id: str) -> str:
+    return _NAV_COMPACT_ICON.get(
+        page_id, STUDIO_PAGE_META.get(page_id, {}).get("icon", "")
+    )
+
+
+def _nav_art_face_html(page_id: str, *, active: bool) -> str:
+    """Visible nav face: emoji icon + Caveat script word (styled via CSS)."""
+    icon = html.escape(_nav_compact_icon(page_id))
+    title = html.escape(nav_compact_button_label(page_id))
+    active_cls = " is-active" if active else ""
+    return (
+        f'<div class="ui-nav-art-face{active_cls}" data-nav-page="{html.escape(page_id)}">'
+        f'<span class="ui-nav-icon" aria-hidden="true">{icon}</span>'
+        f'<span class="ui-nav-script-label">{title}</span>'
+        f"</div>"
+    )
 
 
 def nav_two_line_label(page_id: str) -> str:
@@ -6385,7 +6404,7 @@ def nav_two_line_label(page_id: str) -> str:
 
 
 def _quick_nav_artistic_css() -> str:
-    """Quick Navigation — compact script menu bar."""
+    """Quick Navigation — icon + Caveat script word, one invisible click target."""
     return """
 @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap');
 
@@ -6408,88 +6427,117 @@ def _quick_nav_artistic_css() -> str:
   flex: 1 1 auto !important;
 }
 .ui-nav-art-cell {
+  position: relative;
   min-width: 0;
+  min-height: 2rem;
+}
+.ui-nav-art-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.26rem;
+  min-height: 2rem;
+  padding: 0.14rem 0.28rem 0.2rem;
+  border-radius: 7px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  pointer-events: none;
+  user-select: none;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+.ui-nav-icon {
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif !important;
+  font-size: 1.02rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.ui-nav-script-label {
+  font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive !important;
+  font-size: 1.24rem !important;
+  font-weight: 600 !important;
+  color: #475569 !important;
+  letter-spacing: 0.02em !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  transition: color 120ms ease, font-weight 120ms ease;
+}
+.ui-nav-art-cell:hover .ui-nav-art-face {
+  background: rgba(15, 23, 42, 0.045);
+  transform: translateY(-1px);
+}
+.ui-nav-art-cell:hover .ui-nav-script-label {
+  color: #1e293b !important;
+}
+.ui-nav-art-cell.is-active .ui-nav-art-face {
+  background: rgba(248, 250, 252, 0.92);
+}
+.ui-nav-art-cell.is-active .ui-nav-script-label {
+  font-weight: 700 !important;
+  color: #0f172a !important;
+}
+.ui-nav-art-cell.nav-practice.is-active .ui-nav-art-face {
+  border-bottom-color: rgba(14, 165, 233, 0.75);
+}
+.ui-nav-art-cell.nav-picker.is-active .ui-nav-art-face {
+  border-bottom-color: rgba(139, 92, 246, 0.75);
+}
+.ui-nav-art-cell.nav-backing.is-active .ui-nav-art-face {
+  border-bottom-color: rgba(34, 197, 94, 0.75);
+}
+.ui-nav-art-cell.nav-custom.is-active .ui-nav-art-face {
+  border-bottom-color: rgba(99, 102, 241, 0.75);
+}
+.ui-nav-art-cell.nav-creative.is-active .ui-nav-art-face {
+  border-bottom-color: rgba(245, 158, 11, 0.8);
+}
+.ui-nav-art-cell.nav-multitrack.is-active .ui-nav-art-face {
+  border-bottom-color: rgba(244, 63, 94, 0.7);
+}
+.ui-nav-art-cell.nav-analysis.is-active .ui-nav-art-face {
+  border-bottom-color: rgba(6, 182, 212, 0.75);
+}
+.ui-nav-art-cell.nav-log.is-active .ui-nav-art-face {
+  border-bottom-color: rgba(100, 116, 139, 0.75);
 }
 .ui-nav-art-cell .stButton {
+  position: absolute !important;
+  inset: 0 !important;
   margin: 0 !important;
   padding: 0 !important;
   width: 100% !important;
+  height: 100% !important;
+  z-index: 2 !important;
 }
 .ui-nav-art-cell .stButton > button {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 0.24rem !important;
   width: 100% !important;
+  height: 100% !important;
   min-height: 2rem !important;
   margin: 0 !important;
-  padding: 0.14rem 0.28rem 0.2rem !important;
-  border-radius: 7px !important;
+  padding: 0 !important;
   border: none !important;
-  border-bottom: 2px solid transparent !important;
   background: transparent !important;
   box-shadow: none !important;
-  font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive !important;
-  font-size: 1.16rem !important;
-  font-weight: 600 !important;
-  color: #475569 !important;
-  letter-spacing: 0.015em !important;
-  line-height: 1.05 !important;
-  white-space: nowrap !important;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease !important;
+  opacity: 0 !important;
+  color: transparent !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  cursor: pointer !important;
 }
-.ui-nav-art-cell .stButton > button p {
-  font-family: inherit !important;
-  font-size: inherit !important;
-  font-weight: inherit !important;
-  color: inherit !important;
-  line-height: inherit !important;
-  margin: 0 !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 0.24rem !important;
+.ui-nav-art-cell .stButton > button p,
+.ui-nav-art-cell .stButton > button span,
+.ui-nav-art-cell .stButton > button div {
+  opacity: 0 !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
 }
-.ui-nav-art-cell .stButton > button:hover {
-  background: rgba(15, 23, 42, 0.045) !important;
-  color: #1e293b !important;
-  border-color: transparent !important;
-  transform: translateY(-1px) !important;
-}
-.ui-nav-art-cell .stButton > button:focus-visible {
-  outline: 2px solid rgba(59, 130, 246, 0.35) !important;
-  outline-offset: 1px !important;
-}
-.ui-nav-art-cell.is-active .stButton > button {
-  font-weight: 700 !important;
-  color: #0f172a !important;
-  background: rgba(248, 250, 252, 0.9) !important;
-}
-.ui-nav-art-cell.nav-practice.is-active .stButton > button {
-  border-bottom-color: rgba(14, 165, 233, 0.75) !important;
-}
-.ui-nav-art-cell.nav-picker.is-active .stButton > button {
-  border-bottom-color: rgba(139, 92, 246, 0.75) !important;
-}
-.ui-nav-art-cell.nav-backing.is-active .stButton > button {
-  border-bottom-color: rgba(34, 197, 94, 0.75) !important;
-}
-.ui-nav-art-cell.nav-custom.is-active .stButton > button {
-  border-bottom-color: rgba(99, 102, 241, 0.75) !important;
-}
-.ui-nav-art-cell.nav-creative.is-active .stButton > button {
-  border-bottom-color: rgba(245, 158, 11, 0.8) !important;
-}
-.ui-nav-art-cell.nav-multitrack.is-active .stButton > button {
-  border-bottom-color: rgba(244, 63, 94, 0.7) !important;
-}
-.ui-nav-art-cell.nav-analysis.is-active .stButton > button {
-  border-bottom-color: rgba(6, 182, 212, 0.75) !important;
-}
-.ui-nav-art-cell.nav-log.is-active .stButton > button {
-  border-bottom-color: rgba(100, 116, 139, 0.75) !important;
+.ui-nav-art-cell:focus-within .ui-nav-art-face {
+  outline: 2px solid rgba(59, 130, 246, 0.35);
+  outline-offset: 1px;
 }
 @media (max-width: 720px) {
-  .ui-nav-art-cell .stButton > button { font-size: 1.05rem !important; }
+  .ui-nav-script-label { font-size: 1.12rem !important; }
   .st-key-quick_nav_art_panel [data-testid="stHorizontalBlock"] { gap: 0.08rem !important; }
 }
 """
@@ -6512,7 +6560,8 @@ def _render_quick_nav_art_row(
         _active_cls = " is-active" if is_active else ""
         with col:
             st.markdown(
-                f'<div class="ui-nav-art-cell nav-{html.escape(nav_class)}{_active_cls}">',
+                f'<div class="ui-nav-art-cell nav-{html.escape(nav_class)}{_active_cls}">'
+                f"{_nav_art_face_html(page_id, active=is_active)}",
                 unsafe_allow_html=True,
             )
             if st.button(
@@ -6589,6 +6638,10 @@ def render_page_quick_nav(
     current = ensure_studio_page(session_state, default=current_page)
 
     with st.container(key="quick_nav_art_panel"):
+        st.markdown(
+            '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap">',
+            unsafe_allow_html=True,
+        )
         _render_quick_nav_art_row(
             st,
             session_state,

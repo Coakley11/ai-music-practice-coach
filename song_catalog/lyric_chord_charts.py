@@ -170,13 +170,28 @@ LYRIC_CHORD_CHARTS: dict[tuple[str, str], dict[str, Any]] = {
     ("Say", "John Mayer"): {
         "key": "G",
         "chart": SAY_CHART,
-        "sections": sections_from_lyric_chart(SAY_CHART),
+        "sections": {
+            "Intro": ["G", "C", "Em", "D"],
+            "Verse 1": ["G", "C", "Em", "D"] * 4,
+            "Chorus 1": ["G", "C", "Em", "D"] * 4,
+            "Turnaround 1": ["G", "C", "Em", "D"],
+            "Verse 2": ["G", "C", "Em", "D"] * 4,
+            "Chorus 2": ["G", "C", "Em", "D"] * 4,
+            "Turnaround 2": ["G", "C", "Em", "D"],
+            "Bridge": ["Am", "C", "D", "Am", "C", "D", "C", "D"],
+            "Turnaround 3": ["G", "C", "Em", "D"],
+            "Verse 3": ["G", "C", "Em", "D"] * 4,
+            "Final Chorus": ["Em", "G", "C7", "C7", "Em", "G", "C7", "C7"],
+        },
         "arrangement_notes": (
-            "Main loop G–C–Em–D; chorus pairs G–C / Em–D; bridge Am–C–D; "
-            "final chorus Em–G then C7 hold."
+            "G major pop ballad (4/4, mid-tempo, straight 8ths). Main loop "
+            "G–C–Em–D one chord per bar. Form: Intro → Verse → Chorus → "
+            "Turnaround (×3) with Bridge before final verse. Bridge: Am–C–D "
+            "then C–D. Final chorus: Em–G / C7. Chorus energy builds on each "
+            "pass; final chorus peaks."
         ),
         "default_bpm": 82,
-        "default_groove": "Pop groove",
+        "default_groove": "Ballad",
         "guitar_tabs": {
             "G": "320003",
             "C": "x32010",
