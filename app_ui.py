@@ -5594,7 +5594,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v9"
+STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v10"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v9"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -6390,107 +6390,106 @@ def _quick_nav_artistic_css() -> str:
   flex: 1 1 auto !important;
 }
 .ui-nav-art-cell {
-  position: relative;
   min-width: 0;
 }
-.ui-nav-art-link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 1.85rem;
-  padding: 0.12rem 0.22rem 0.18rem;
-  border-radius: 7px;
-  border: none;
-  background: transparent;
-  transition: background 120ms ease, color 120ms ease;
-  cursor: pointer;
-}
-.ui-nav-art-link:hover {
-  background: rgba(15, 23, 42, 0.045);
-}
-.ui-nav-script-label {
-  font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive;
-  font-size: 1.14rem;
-  font-weight: 600;
-  color: #475569;
-  line-height: 1;
-  letter-spacing: 0.015em;
-  white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  padding-bottom: 1px;
-  transition: color 120ms ease, border-color 120ms ease;
-  user-select: none;
-}
-.ui-nav-art-link:hover .ui-nav-script-label {
-  color: #1e293b;
-}
-.ui-nav-art-link.is-active .ui-nav-script-label {
-  font-weight: 700;
-  color: #0f172a;
-}
-.ui-nav-art-link.nav-practice.is-active .ui-nav-script-label {
-  border-bottom-color: rgba(14, 165, 233, 0.75);
-}
-.ui-nav-art-link.nav-picker.is-active .ui-nav-script-label {
-  border-bottom-color: rgba(139, 92, 246, 0.75);
-}
-.ui-nav-art-link.nav-backing.is-active .ui-nav-script-label {
-  border-bottom-color: rgba(34, 197, 94, 0.75);
-}
-.ui-nav-art-link.nav-custom.is-active .ui-nav-script-label {
-  border-bottom-color: rgba(99, 102, 241, 0.75);
-}
-.ui-nav-art-link.nav-creative.is-active .ui-nav-script-label {
-  border-bottom-color: rgba(245, 158, 11, 0.8);
-}
-.ui-nav-art-link.nav-multitrack.is-active .ui-nav-script-label {
-  border-bottom-color: rgba(244, 63, 94, 0.7);
-}
-.ui-nav-art-link.nav-analysis.is-active .ui-nav-script-label {
-  border-bottom-color: rgba(6, 182, 212, 0.75);
-}
-.ui-nav-art-link.nav-log.is-active .ui-nav-script-label {
-  border-bottom-color: rgba(100, 116, 139, 0.75);
-}
-.ui-nav-art-link.is-active {
-  background: rgba(248, 250, 252, 0.9);
-}
-.ui-nav-art-cell .stButton { margin: 0 !important; padding: 0 !important; }
-.ui-nav-art-cell .stButton > button {
-  position: absolute !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 1.85rem !important;
-  opacity: 0 !important;
+.ui-nav-art-cell .stButton {
   margin: 0 !important;
   padding: 0 !important;
-  border: none !important;
-  z-index: 2 !important;
-  cursor: pointer !important;
+  width: 100% !important;
 }
-.ui-nav-art-cell:focus-within .ui-nav-art-link {
-  outline: 2px solid rgba(59, 130, 246, 0.35);
-  outline-offset: 1px;
+.ui-nav-art-cell .stButton > button {
+  width: 100% !important;
+  min-height: 1.85rem !important;
+  margin: 0 !important;
+  padding: 0.12rem 0.22rem 0.18rem !important;
+  border-radius: 7px !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive !important;
+  font-size: 1.14rem !important;
+  font-weight: 600 !important;
+  color: #475569 !important;
+  letter-spacing: 0.015em !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease !important;
+}
+.ui-nav-art-cell .stButton > button:hover {
+  background: rgba(15, 23, 42, 0.045) !important;
+  color: #1e293b !important;
+  border-color: transparent !important;
+}
+.ui-nav-art-cell .stButton > button:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.35) !important;
+  outline-offset: 1px !important;
+}
+.ui-nav-art-cell.is-active .stButton > button {
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  background: rgba(248, 250, 252, 0.9) !important;
+}
+.ui-nav-art-cell.nav-practice.is-active .stButton > button {
+  border-bottom-color: rgba(14, 165, 233, 0.75) !important;
+}
+.ui-nav-art-cell.nav-picker.is-active .stButton > button {
+  border-bottom-color: rgba(139, 92, 246, 0.75) !important;
+}
+.ui-nav-art-cell.nav-backing.is-active .stButton > button {
+  border-bottom-color: rgba(34, 197, 94, 0.75) !important;
+}
+.ui-nav-art-cell.nav-custom.is-active .stButton > button {
+  border-bottom-color: rgba(99, 102, 241, 0.75) !important;
+}
+.ui-nav-art-cell.nav-creative.is-active .stButton > button {
+  border-bottom-color: rgba(245, 158, 11, 0.8) !important;
+}
+.ui-nav-art-cell.nav-multitrack.is-active .stButton > button {
+  border-bottom-color: rgba(244, 63, 94, 0.7) !important;
+}
+.ui-nav-art-cell.nav-analysis.is-active .stButton > button {
+  border-bottom-color: rgba(6, 182, 212, 0.75) !important;
+}
+.ui-nav-art-cell.nav-log.is-active .stButton > button {
+  border-bottom-color: rgba(100, 116, 139, 0.75) !important;
 }
 @media (max-width: 720px) {
-  .ui-nav-script-label { font-size: 1.05rem; }
+  .ui-nav-art-cell .stButton > button { font-size: 1.05rem !important; }
   .st-key-quick_nav_art_panel [data-testid="stHorizontalBlock"] { gap: 0.08rem !important; }
 }
 """
 
 
-def _nav_art_link_html(page_id: str, *, active: bool) -> str:
-    meta = STUDIO_PAGE_META.get(page_id, {})
-    nav_class = meta.get("nav_class", page_id)
-    title = html.escape(_NAV_COMPACT_TITLE.get(page_id, meta.get("label", page_id)))
-    active_cls = " is-active" if active else ""
-    return (
-        f'<div class="ui-nav-art-link nav-{html.escape(nav_class)}{active_cls}" '
-        f'data-nav-page="{html.escape(page_id)}">'
-        f'<span class="ui-nav-script-label">{title}</span>'
-        f"</div>"
-    )
+def _render_quick_nav_art_row(
+    st: Any,
+    session_state: Any,
+    *,
+    page_ids: list[str],
+    current: str,
+    rerun_fn: Any,
+    key_prefix: str,
+) -> None:
+    cols = st.columns(len(page_ids))
+    for col, page_id in zip(cols, page_ids):
+        is_active = page_id == current
+        nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
+        _label = _NAV_COMPACT_TITLE.get(page_id, page_id)
+        _active_cls = " is-active" if is_active else ""
+        with col:
+            st.markdown(
+                f'<div class="ui-nav-art-cell nav-{html.escape(nav_class)}{_active_cls}">',
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                _label,
+                key=f"{key_prefix}_art_{page_id}",
+                use_container_width=True,
+                help=STUDIO_PAGE_META.get(page_id, {}).get("label", page_id),
+            ):
+                if page_id != current and navigate_studio_page(session_state, page_id):
+                    rerun_fn()
+            st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _sync_studio_page_nav_widget(
@@ -6541,37 +6540,6 @@ def end_studio_control_deck() -> None:
     import streamlit as st
 
     st.markdown("</div></div>", unsafe_allow_html=True)
-
-
-def _render_quick_nav_art_row(
-    st: Any,
-    session_state: Any,
-    *,
-    page_ids: list[str],
-    current: str,
-    rerun_fn: Any,
-    key_prefix: str,
-) -> None:
-    cols = st.columns(len(page_ids))
-    for col, page_id in zip(cols, page_ids):
-        is_active = page_id == current
-        nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
-        with col:
-            _label = _NAV_COMPACT_TITLE.get(page_id, page_id)
-            st.markdown(
-                f'<div class="ui-nav-art-cell nav-{html.escape(nav_class)}">'
-                f"{_nav_art_link_html(page_id, active=is_active)}",
-                unsafe_allow_html=True,
-            )
-            if st.button(
-                _label,
-                key=f"{key_prefix}_art_{page_id}",
-                use_container_width=True,
-                help=STUDIO_PAGE_META.get(page_id, {}).get("label", page_id),
-                label_visibility="collapsed",
-            ):
-                if page_id != current and navigate_studio_page(session_state, page_id):
-                    rerun_fn()
 
 
 def render_page_quick_nav(
