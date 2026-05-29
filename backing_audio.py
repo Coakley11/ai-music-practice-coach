@@ -1045,6 +1045,18 @@ def _song_backing_profile(
     if "blue bossa" in title or "bossa" in title:
         profile["latin_relaxed"] = True
         profile["cross_stick"] = True
+    if "wave" in title and "jobim" in title:
+        profile["latin_relaxed"] = True
+        profile["cross_stick"] = True
+        profile["jazz_ballad"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.40)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.018)
+        profile["outro_fade_bars"] = 8
+        if style == "Ballad":
+            profile["hat_soft"] = min(profile["hat_soft"], 0.36)
+        elif style == "Bossa nova":
+            profile["swing"] = max(profile["swing"], 0.04)
     if "take on me" in title and ("unplugged" in title or "mtv" in title):
         profile["acoustic_unplugged"] = True
         profile["hat_soft"] = min(profile["hat_soft"], 0.38)

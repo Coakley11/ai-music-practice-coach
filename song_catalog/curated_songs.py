@@ -3905,6 +3905,241 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
     }
 
 
+def _wave_chart_pack() -> dict[str, Any]:
+    """Wave — Antônio Carlos Jobim (D major, bossa nova, 4/4).
+
+    Full Jobim form with **Dm7 · G13** intro/outro turnaround, three verses,
+    two bridge passes, instrumental solo section, and gentle fade. Preserve
+    **Dmaj9**, **Bbdim7**, **D7b9**, **Gm6**, **F#7**, **B7b9**, **G13**,
+    **Am6**, **Ab6**, **Bb7b9**, and **A7#5** — do not simplify.
+    """
+    intro_outro = ["Dm7", "G13"] * 4
+
+    verse = [
+        "Dmaj9",
+        "Bbdim7",
+        "Am7",
+        "D7b9",
+        "Gmaj7",
+        "Gm6",
+        "F#7",
+        "B7b9",
+        "Bm7",
+        "E7",
+        "Bb7",
+        "A7",
+        "Dm7",
+        "G7",
+        "Dm7",
+        "G7",
+    ]
+
+    bridge = [
+        "Gm7",
+        "C7",
+        "Am7",
+        "Am6",
+        "Ab6",
+        "Bb7b9",
+        "Gm7",
+        "A7#5",
+    ]
+
+    instrumental = [
+        "Dmaj7",
+        "Bbdim7",
+        "Am7",
+        "D7b9",
+        "Gmaj7",
+        "Gm6",
+        "F#7",
+        "B7b9",
+        "Bm7",
+        "E7",
+        "Bb7",
+        "A7",
+        "Dm7",
+        "G7",
+        "Dm7",
+        "G13",
+    ]
+
+    intermediate = {
+        "Intro": list(intro_outro),
+        "Verse 1": list(verse),
+        "Verse 2": list(verse),
+        "Bridge": list(bridge),
+        "Verse 3": list(verse),
+        "Instrumental": list(instrumental),
+        "Bridge 2": list(bridge),
+        "Final Verse": list(verse),
+        "Outro": list(intro_outro),
+    }
+
+    def _beg(ch: str) -> str:
+        head = ch.split("/")[0].strip()
+        return (
+            head.replace("maj9", "")
+            .replace("maj7", "")
+            .replace("dim7", "dim")
+            .replace("m7", "m")
+            .replace("m6", "m")
+            .replace("b9", "")
+            .replace("b5", "")
+            .replace("#5", "")
+            .replace("13", "7")
+            .replace("6", "")
+        )
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+
+    scale_hints = {
+        "Dm7": ["D Dorian"],
+        "G13": ["G Mixolydian"],
+        "Dmaj9": ["D Ionian", "D Lydian"],
+        "Dmaj7": ["D Ionian", "D Lydian"],
+        "Bbdim7": ["Whole-Half Diminished"],
+        "Am7": ["A Dorian"],
+        "D7b9": ["D Half-Whole Diminished", "D Altered"],
+        "Gmaj7": ["G Ionian", "G Lydian"],
+        "Gm6": ["G Melodic Minor"],
+        "F#7": ["F# Mixolydian", "F# Altered"],
+        "B7b9": ["B Phrygian Dominant", "B Half-Whole Diminished"],
+        "Bm7": ["B Dorian"],
+        "E7": ["E Mixolydian"],
+        "Bb7": ["Bb Mixolydian"],
+        "A7": ["A Mixolydian", "A Altered"],
+        "A7#5": ["A Whole Tone", "A Altered"],
+        "Gm7": ["G Dorian"],
+        "C7": ["C Mixolydian", "C Altered"],
+        "Am6": ["A Dorian", "A Melodic Minor"],
+        "Ab6": ["Ab Lydian", "Ab Ionian"],
+        "Bb7b9": ["Bb Phrygian Dominant", "Bb Half-Whole Diminished"],
+        "G7": ["G Mixolydian", "G Altered"],
+    }
+
+    section_order = list(intermediate.keys())
+    return {
+        "key": "D",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Antônio Carlos Jobim",
+        "lyric_cues": {
+            "Intro": ["Bossa turnaround — Dm7 · G13 vamp (nylon guitar + brushes)"],
+            "Verse 1": ["So close your eyes for that's a lovely way to be…"],
+            "Verse 2": ["Second verse — same harmonic story, fuller bass movement"],
+            "Bridge": ["Richer harmony — Am6 · Ab6 · Bb7b9 tension"],
+            "Verse 3": ["Third verse before instrumental"],
+            "Instrumental": ["Solo section — ideal for jazz improvisation over the form"],
+            "Bridge 2": ["Second bridge — A7#5 lift back toward D"],
+            "Final Verse": ["Last vocal pass — gentle dynamic peak"],
+            "Outro": ["Dm7 · G13 fade — classic bossa ending"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**D major** bossa nova standard (**4/4**, ~120 BPM bossa default; "
+                "**Ballad** or **Jazz swing** in groove picker for alternate feel). "
+                "Authentic Jobim production: nylon-string guitar, acoustic bass, "
+                "brushes, light percussion, piano, soft strings — **not** rock drums "
+                "or heavy strumming. Verse: light bossa groove; bridge: richer "
+                "harmony and tension; instrumental: solo-friendly; outro: gentle "
+                "fade on **Dm7 · G13**. Preserve all listed chord colors exactly. "
+                "Core Brazilian jazz repertoire alongside Girl from Ipanema, "
+                "Corcovado, One Note Samba, Desafinado."
+            ),
+            default_bpm=120,
+            default_groove="Bossa nova",
+            time_signature="4/4",
+            form="Intro · Verse ×3 · Bridge ×2 · Instrumental · Outro",
+            repertoire_tags=[
+                "Jazz Standard",
+                "Bossa Nova",
+                "Antônio Carlos Jobim",
+                "Brazilian Jazz",
+                "Advanced Harmony",
+                "Improvisation",
+                "Essential Repertoire",
+            ],
+            jazz_standard_flagship=True,
+            harmonic_analysis={
+                "progression_summary": (
+                    "D major bossa with chromatic diminished approach, "
+                    "Gm6/F#7 color, and Dm7–G13 turnaround bookends"
+                ),
+                "key_centers": [
+                    {
+                        "section": "Intro / Outro",
+                        "center": "D major (turnaround)",
+                        "progression": "Dm7 → G13 (ii–V in D)",
+                    },
+                    {
+                        "section": "Verse",
+                        "center": "D major → G major",
+                        "progression": (
+                            "Dmaj9 → Bbdim7 → Am7 → D7b9 → Gmaj7 → Gm6 → F#7 → "
+                            "B7b9 → Bm7 → E7 → Bb7 → A7 → Dm7 → G7"
+                        ),
+                    },
+                    {
+                        "section": "Bridge",
+                        "center": "F / D major approach",
+                        "progression": "Gm7 → C7 → Am7 → Am6 → Ab6 → Bb7b9 → Gm7 → A7#5",
+                    },
+                    {
+                        "section": "Instrumental",
+                        "center": "D major (solo form)",
+                        "progression": "Same verse changes; ends on G13 pickup to outro",
+                    },
+                ],
+                "ii_v_i_groupings": [
+                    "Intro/Outro: Dm7 → G13 (ii–V in D)",
+                    "Verse bars 3–4: Am7 → D7b9 → Gmaj7 (ii–V–I in G)",
+                    "Verse bars 13–14: Dm7 → G7 (ii–V in D)",
+                    "Bridge bars 1–2: Gm7 → C7 (ii–V in F)",
+                    "Bridge bars 7–8: Gm7 → A7#5 (ii–V toward D)",
+                ],
+                "substitute_dominants": [
+                    "D7b9: altered dominant resolving to Gmaj7",
+                    "Bb7: tritone-sub color approaching A7 / D area",
+                    "B7b9: Phrygian-dominant tension before Bm7",
+                    "A7#5: altered dominant with #5 color into final verse/outro",
+                    "G13: extended dominant in turnaround and instrumental tag",
+                ],
+                "guide_tone_notes": (
+                    "Follow 3rds and 7ths through each Jobim change — e.g. "
+                    "Am7 (C,G) → D7b9 (F#,C) → Gmaj7 (B,F#); keep voice-leading "
+                    "smooth on nylon comp and walking bass."
+                ),
+                "improvisation_notes": (
+                    "Instrumental section is the primary solo canvas — outline "
+                    "guide tones, then use scale_suggestions per chord. Bossa "
+                    "eighths stay relaxed; save peak intensity for bridge A7#5 "
+                    "and final verse. Section-focus practice loops any verse or "
+                    "bridge for isolated improvisation work."
+                ),
+                "comping_notes": {
+                    "Guitar": "Nylon-string bossa comp — thumb bass notes, finger syncopation.",
+                    "Piano": "Shell voicings and rootless clusters; light left-hand bass.",
+                    "Bass": "Acoustic walking/quarter-note movement — light in verse, fuller in bridge.",
+                },
+                "scale_suggestions": scale_hints,
+            },
+            jazz_ballad=True,
+            backing_character="bossa_nova_jobim",
+        ),
+    }
+
+
 def _iris_chart_pack() -> dict[str, Any]:
     """Iris — Goo Goo Dolls (B minor, alt-rock ballad, 4/4).
 
@@ -4758,26 +4993,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Final A / Outro": ["Gm9", "C13", "Fmaj9", "F6add9"],
             },
         ),
-        ("Wave", "Antonio Carlos Jobim"): pack("D",
-            {
-                "Intro": ["D", "D", "D", "D"],
-                "A Section": ["D", "Bbdim7", "Am", "D7", "G", "Gm", "F#7", "B7"],
-                "B Section": ["Em", "A7", "D", "D", "Fm", "Bb7", "Eb", "A7"],
-                "Final A / Outro": ["D", "Bbdim7", "Am", "D7", "G", "Gm", "D", "A7"],
-            },
-            {
-                "Intro": ["Dmaj7", "Dmaj7", "Dmaj7", "Dmaj7"],
-                "A Section": ["Dmaj9", "Bbdim7", "Am9", "D13", "Gmaj9", "Gm6", "F#7", "B7b9"],
-                "B Section": ["Em9", "A13", "Dmaj9", "Dmaj9", "Fm9", "Bb13", "Ebmaj9", "A7b13"],
-                "Final A / Outro": ["Dmaj9", "Bbdim7", "Am9", "D13", "Gmaj9", "Gm6", "Dmaj9", "A13"],
-            },
-            {
-                "Intro": ["Dmaj9", "D6add9", "Dmaj9", "D6add9"],
-                "A Section": ["Dmaj9", "Bbdim7", "Am9", "D13", "Gmaj9", "Gm6", "F#13", "B7b9"],
-                "B Section": ["Em9", "A13", "Dmaj9", "D6add9", "Fm9", "Bb13", "Ebmaj9", "A7b13"],
-                "Final A / Outro": ["Dmaj9", "Bbdim7", "Am9", "D13", "Gmaj9", "Gm6", "Dmaj9", "A13"],
-            },
-        ),
+        ("Wave", "Antonio Carlos Jobim"): _wave_chart_pack(),
         ("Blue Bossa", "Kenny Dorham"): pack(
             "Cm",
             {
@@ -6879,11 +7095,23 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Last A (Recap)": ["Gm7", "C7", "Fmaj7", "Fmaj7"],
         }, composer="Antonio Carlos Jobim"),
         _s("Wave", "Antonio Carlos Jobim", "Jazz", "D", {
-            "Intro": ["Dmaj7", "Dmaj7", "Dmaj7", "Dmaj7"],
-            "Verse / A Section": ["Dmaj9", "Bbdim7", "Am9", "D13", "Gmaj9", "Gm6", "F#m7", "B7b9"],
-            "Bridge / B Section": ["Em9", "A13", "Dmaj9", "Dmaj9", "Fm9", "Bb13", "Ebmaj9", "A7b13"],
-            "Final A / Outro": ["Dmaj9", "Bbdim7", "Am9", "D13", "Gmaj9", "Gm6", "Dmaj9", "A13"],
-        }, composer="Antonio Carlos Jobim"),
+            "Intro": ["Dm7", "G13", "Dm7", "G13"],
+            "Verse 1": ["Dmaj9", "Bbdim7", "Am7", "D7b9"],
+        }, composer="Antônio Carlos Jobim",
+          extensions=_ext(
+              default_bpm=120,
+              default_groove="Bossa nova",
+              jazz_standard_flagship=True,
+              repertoire_tags=[
+                  "Jazz Standard",
+                  "Bossa Nova",
+                  "Antônio Carlos Jobim",
+                  "Brazilian Jazz",
+                  "Improvisation",
+                  "Essential Repertoire",
+              ],
+          ),
+          chart_status="practice_level_verified"),
         _s("One Note Samba", "Antonio Carlos Jobim", "Jazz", "Db", {
             "Verse": [
                 "Dbm7", "C7", "B7sus4", "Bb7b5",
