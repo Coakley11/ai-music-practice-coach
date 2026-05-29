@@ -1149,6 +1149,17 @@ def _song_backing_profile(
         profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
         profile["pocket_offset"] = max(profile["pocket_offset"], 0.008)
         profile["outro_fade_bars"] = 2
+    if "complicated" in title or "avril" in title or "lavigne" in title:
+        profile["acoustic_unplugged"] = True
+        profile["comp_stab"] = True
+        profile["kick_push"] = max(profile["kick_push"], 1.08)
+        profile["hat_soft"] = min(profile["hat_soft"], 0.65)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.010)
+        profile["outro_fade_bars"] = 8
+        if style == "Rock groove":
+            profile["kick_push"] = max(profile["kick_push"], 1.14)
+            profile["ghost_snare"] = True
     if "iris" in title or "goo goo" in title:
         profile["alt_rock_ballad"] = True
         profile["vocal_ballad"] = True

@@ -5530,6 +5530,167 @@ def _breakaway_chart_pack() -> dict[str, Any]:
     }
 
 
+def _complicated_chart_pack() -> dict[str, Any]:
+    """Complicated — Avril Lavigne (D minor, pop-rock, 4/4).
+
+    Early-2000s hook **Dm · Bb · F · C** with **Gm** color in the chorus tail.
+    One list item = one bar. Preserve **Gm** — do not substitute G major.
+    """
+    hook = ["Dm", "Bb", "F", "C"]
+
+    def _verse() -> list[str]:
+        return ["F", "Dm", "Bb", "C"] * 2
+
+    def _pre_chorus() -> list[str]:
+        return ["Bb", "Dm", "Bb", "C"]
+
+    def _chorus() -> list[str]:
+        return (
+            list(hook) * 2
+            + ["Dm", "Bb", "F", "C", "Gm", "Bb", "F"]
+        )
+
+    intermediate = {
+        "Intro": list(hook) * 4,
+        "Verse 1": _verse(),
+        "Pre-Chorus": _pre_chorus(),
+        "Chorus": _chorus(),
+        "Verse 2": _verse(),
+        "Pre-Chorus 2": _pre_chorus(),
+        "Chorus 2": _chorus(),
+        "Interlude": ["F", "Dm", "Bb", "C"],
+        "Verse 3": _verse()[:4],
+        "Pre-Chorus 3": _pre_chorus(),
+        "Final Chorus": _chorus(),
+        "Repeat Final Chorus": _chorus(),
+        "Outro": list(hook) * 2,
+    }
+
+    beginner = {name: list(chords) for name, chords in intermediate.items()}
+
+    def _adv(ch: str) -> str:
+        if ch in {"Dm", "Bb", "F", "C", "Gm"}:
+            return ch
+        return ch
+
+    advanced = {
+        name: [_adv(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "Dm": ["D Natural Minor", "D Minor Pentatonic"],
+        "Bb": ["Bb Major"],
+        "F": ["F Major"],
+        "C": ["C Major"],
+        "Gm": ["G Dorian", "G Natural Minor"],
+    }
+
+    return {
+        "key": "Dm",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Avril Lavigne · The Matrix (Lauren Christy · Scott Spock · Graham Edwards)",
+        "guitar_tabs": {
+            "Dm": "xx0231",
+            "Bb": "x13331",
+            "F": "133211",
+            "C": "x32010",
+            "Gm": "355333",
+        },
+        "lyric_cues": {
+            "Intro": [
+                "Dm · Bb · F · C hook — (breath) before 'Uh huh, life's like this…'",
+                "Acoustic strum driving the early-2000s feel",
+            ],
+            "Verse 1": [
+                "Verse: F · Dm · Bb · C — conversational, vocal-focused",
+                "(breath) between lines; lighter drums",
+            ],
+            "Pre-Chorus": [
+                "Build energy — Bb · Dm · Bb · C lift into chorus",
+            ],
+            "Chorus": [
+                "'Why'd you have to go and make things complicated?' — title hook",
+                "Full pop-rock band; land **Gm** color — not G major",
+                "Open vowels on the chorus peak",
+            ],
+            "Verse 2": ["Second verse — same F · Dm · Bb · C pattern"],
+            "Pre-Chorus 2": ["Second build — push into Chorus 2"],
+            "Chorus 2": ["Repeat chorus energy — wider guitars"],
+            "Interlude": ["Instrumental F · Dm · Bb · C breather"],
+            "Verse 3": ["Third verse — one pass before final lifts"],
+            "Pre-Chorus 3": ["Last pre-chorus — save peak for final choruses"],
+            "Final Chorus": [
+                "Biggest energy — fullest drums and backing vocals",
+            ],
+            "Repeat Final Chorus": [
+                "Second final pass — anthem singalong; repeat hook",
+            ],
+            "Outro": [
+                "Dm · Bb · F · C fade — natural hook outro",
+            ],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**D minor** early-2000s pop-rock (**4/4**, ~78 BPM). Primary hook "
+                "**Dm · Bb · F · C** (vi–IV–I–V in F major / D minor feel). "
+                "Preserve **Gm** in chorus tail — **not** G major. Verse lighter "
+                "and vocal-focused; pre-chorus builds; chorus full band; final "
+                "chorus ×2 = peak. **Acoustic** default: guitar-driven strum; "
+                "switch groove to **Rock groove** in picker for full-band feel. "
+                "**Not** jazz reharm, piano ballad, or metal. Beginner-friendly "
+                "open-chord strumming alongside Sk8er Boi / I'm With You category."
+            ),
+            default_bpm=78,
+            default_groove="Pop groove",
+            time_signature="4/4",
+            strumming_pattern=(
+                "Verse: down-strum on beats 1 and 3, light ups on 2 and 4. "
+                "Chorus: fuller eighth-note strum on Dm · Bb · F · C."
+            ),
+            repertoire_tags=[
+                "Avril Lavigne",
+                "Pop Rock",
+                "Pop Punk",
+                "2000s Pop",
+                "Female Vocal Showcase",
+                "Karaoke Friendly",
+                "Acoustic Pop Rock",
+            ],
+            vocal_showcase=True,
+            acoustic_unplugged=True,
+            vocal_range_notes=(
+                "Verse in mid chest; chorus opens with attitude on the title "
+                "line. Plan breaths before each chorus; final chorus passes "
+                "are the loudest sustained belts."
+            ),
+            vocal_harmony_hints=(
+                "Pop-punk attitude: bite the consonants lightly in verses, "
+                "then lean into the 'complicated' hook. The **Gm** bar is the "
+                "emotional color — don't flatten it to G major."
+            ),
+            harmonic_analysis={
+                "progression_summary": (
+                    "Dm–Bb–F–C main hook; verse F–Dm–Bb–C; chorus Gm color tag"
+                ),
+                "improvisation_notes": (
+                    "D minor pentatonic over hook; sparse fills in verse gaps."
+                ),
+                "scale_suggestions": scale_hints,
+            },
+            backing_character="pop_punk_acoustic_2000s",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -5620,6 +5781,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Imagine", "John Lennon"): _imagine_chart_pack(),
         ("Wonderwall", "Oasis"): _wonderwall_chart_pack(),
         ("Breakaway", "Kelly Clarkson"): _breakaway_chart_pack(),
+        ("Complicated", "Avril Lavigne"): _complicated_chart_pack(),
         (
             "Shalom Aleichem",
             "Traditional Jewish Sabbath Song",
@@ -6888,6 +7050,26 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "F#m9/G#m7/Amaj7/Bm9 colors without changing the tight loop. Not AI-verified."
             ),
             chart_status="user_corrected_reference",
+        ),
+        v(
+            "Complicated",
+            "Avril Lavigne",
+            "Pop",
+            "Dm",
+            {
+                "Intro": ["Dm", "Bb", "F", "C"],
+                "Verse 1": ["F", "Dm", "Bb", "C"],
+            },
+            {
+                "Intro": ["Dm", "Bb", "F", "C"],
+                "Verse 1": ["F", "Dm", "Bb", "C"],
+            },
+            composer="Avril Lavigne · The Matrix",
+            lyric_cues={"Intro": ["Dm · Bb · F · C pop-rock hook"]},
+            notes="D minor hook progression; full form with Gm chorus color in override.",
+            chart_status=status,
+            default_bpm=78,
+            default_groove="Pop groove",
         ),
         v(
             "Breakaway",

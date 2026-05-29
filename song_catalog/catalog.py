@@ -77,6 +77,7 @@ TRUSTED_CORE_KEYS = {
     ("Billie Jean", "Michael Jackson"),
     ("Love Story", "Taylor Swift"),
     ("Breakaway", "Kelly Clarkson"),
+    ("Complicated", "Avril Lavigne"),
     ("Imagine", "John Lennon"),
     ("Wonderwall", "Oasis"),
     ("You've Got a Friend in Me", "Randy Newman"),
