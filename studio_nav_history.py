@@ -143,7 +143,7 @@ def render_sidebar_nav_history(
             disabled=not back_ok,
             use_container_width=False,
             type="secondary",
-            help="Previous page",
+            help="Previous page in history",
         ):
             if go_back(session_state):
                 rerun_fn()
@@ -154,7 +154,7 @@ def render_sidebar_nav_history(
             disabled=not fwd_ok,
             use_container_width=False,
             type="secondary",
-            help="Forward",
+            help="Next page in history",
         ):
             if go_forward(session_state):
                 rerun_fn()

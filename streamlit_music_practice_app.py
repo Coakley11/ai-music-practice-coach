@@ -199,6 +199,11 @@ from studio_nav_history import (
     navigate_studio_page,
     render_sidebar_nav_history,
 )
+from studio_cache import (
+    invalidate_session_cache,
+    sections_tuple_signature,
+    session_cache_get_or_set,
+)
 from studio_scroll_anchors import (
     ANCHOR_BACKING_MAIN_CONTROLS,
     ANCHOR_CHOOSE_ACTIVE_SONG,
@@ -939,13 +944,7 @@ def _normalize_chart_filter(mode: str) -> str:
 
 
 try:
-    # Defensive: force a fresh load on every startup so an edited catalog file
-    # is picked up even if Streamlit hot-reload skipped a transitive import.
-    try:
-        from song_catalog.catalog import clear_catalog_cache as _cc
-        _cc()
-    except Exception:
-        pass
+    # Load once per process; ``CATALOG_REVISION`` below handles hot data bumps.
     SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = load_song_catalog()
 except Exception as _catalog_load_err:
     CATALOG_LOAD_ERROR = _catalog_load_err
@@ -981,6 +980,8 @@ if hasattr(st, "session_state") and st.session_state.get("_catalog_revision") !=
         st.session_state["_catalog_backup_library"] = SONG_LIBRARY
         st.session_state["_catalog_backup_picker"] = SONG_PICKER_CATALOG
         st.session_state["_catalog_backup_genres"] = list(GENRES)
+        if hasattr(st, "session_state"):
+            invalidate_session_cache(st.session_state)
     except Exception:
         pass
 
@@ -989,6 +990,15 @@ TRUSTED_CORE_RECORDS = [
     if r.get("trusted_core") or r.get("chart_status") in {"verified", "practice_level_verified"}
 ]
 DEFAULT_SONG_RECORDS = TRUSTED_CORE_RECORDS or ALL_SONG_RECORDS
+
+if hasattr(st, "session_state"):
+    _cat_rev = st.session_state.get("_catalog_revision")
+    if st.session_state.get("_trusted_core_revision") != _cat_rev:
+        st.session_state["_trusted_core_records"] = TRUSTED_CORE_RECORDS
+        st.session_state["_default_song_records"] = DEFAULT_SONG_RECORDS
+        st.session_state["_trusted_core_revision"] = _cat_rev
+    TRUSTED_CORE_RECORDS = st.session_state.get("_trusted_core_records", TRUSTED_CORE_RECORDS)
+    DEFAULT_SONG_RECORDS = st.session_state.get("_default_song_records", DEFAULT_SONG_RECORDS)
 
 ensure_master_song_initialized(
     st,
@@ -1255,18 +1265,39 @@ def _humanized_backing_sections(
     lyric_cues: dict | None = None,
 ) -> tuple[dict[str, list[str]], dict[tuple[str, int], object]]:
     """Apply performance-feel inference for backing playback and chart preview."""
-    result = apply_harmonic_rhythm_intelligence(
-        sections,
-        groove_style=groove_style,
-        time_signature=time_signature,
-        humanize_level=humanize_level,
-        preserve_exact_timing=preserve_exact_timing,
-        section_names=section_names_from_song(song_data),
-        song_data=song_data,
-        section_lyrics=section_lyrics,
-        lyric_cues=lyric_cues,
+    song_id = str((song_data or {}).get("title") or (song_data or {}).get("id") or "song")
+    sig = (
+        sections_tuple_signature(sections),
+        groove_style,
+        time_signature,
+        humanize_level,
+        preserve_exact_timing,
+        song_id,
+        tuple(sorted((section_lyrics or {}).keys())),
+        tuple(sorted((lyric_cues or {}).keys())),
     )
-    return result.sections, annotations_lookup(result.annotations)
+
+    def _build():
+        result = apply_harmonic_rhythm_intelligence(
+            sections,
+            groove_style=groove_style,
+            time_signature=time_signature,
+            humanize_level=humanize_level,
+            preserve_exact_timing=preserve_exact_timing,
+            section_names=section_names_from_song(song_data),
+            song_data=song_data,
+            section_lyrics=section_lyrics,
+            lyric_cues=lyric_cues,
+        )
+        return result.sections, annotations_lookup(result.annotations)
+
+    return session_cache_get_or_set(
+        st.session_state,
+        "hri_sections",
+        sig,
+        _build,
+        copy_result=True,
+    )
 
 
 def compact_bar_summary(chords):
@@ -7421,7 +7452,9 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             _picker_navigate("backing")
     with b3:
         if st.button("Karaoke", key="picker_card_karaoke", use_container_width=True):
-            _picker_navigate("practice", anchor=ANCHOR_LYRICS_EDITOR)
+            set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
+            st.session_state["_pending_open_lyrics_editor"] = True
+            st.rerun()
     with b4:
         if st.button("Chord Coach", key="picker_card_chord_coach", use_container_width=True):
             _picker_navigate("practice", open_chord_coach=True)
@@ -8735,9 +8768,10 @@ if _master_pk:
     st.session_state.setdefault("global_quick_song", _master_pk)
 else:
     st.session_state.setdefault("global_quick_genre", _catalog_genre)
-    _fallback_opts = _global_quick_songs_for_genre(_catalog_genre)
-    if _fallback_opts:
-        st.session_state.setdefault("global_quick_song", _fallback_opts[0])
+    if "global_quick_song" not in st.session_state:
+        _fallback_opts = _global_quick_songs_for_genre(_catalog_genre)
+        if _fallback_opts:
+            st.session_state["global_quick_song"] = _fallback_opts[0]
 
 _apply_catalog_filter_defaults()
 
@@ -8785,16 +8819,31 @@ if instrument == "Guitar":
     sidebar_section("Guitar capo", icon="🎸", tone="session")
     render_guitar_capo_sidebar(st.sidebar, st.session_state, concert_key=concert_key)
 
-_chart_bundle = build_active_chart_bundle(
+_chart_bundle = session_cache_get_or_set(
     st.session_state,
-    catalog_genre=_catalog_genre,
-    catalog_song=_catalog_song,
-    catalog_song_data=_catalog_song_data,
-    level=level,
-    display_key=chart_key,
-    cpl_active_key=CPL_ACTIVE_KEY,
-    sections_for_level=sections_for_level,
-    transpose_sections=transpose_sections,
+    "chart_bundle",
+    (
+        st.session_state.get(ACTIVE_CATALOG_PICK_KEY),
+        st.session_state.get(ACTIVE_MUSIC_SOURCE_KEY),
+        str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("id", ""))
+        if is_custom_progression(st.session_state)
+        else "",
+        level,
+        chart_key,
+        st.session_state.get("_catalog_revision"),
+    ),
+    lambda: build_active_chart_bundle(
+        st.session_state,
+        catalog_genre=_catalog_genre,
+        catalog_song=_catalog_song,
+        catalog_song_data=_catalog_song_data,
+        level=level,
+        display_key=chart_key,
+        cpl_active_key=CPL_ACTIVE_KEY,
+        sections_for_level=sections_for_level,
+        transpose_sections=transpose_sections,
+    ),
+    copy_result=True,
 )
 genre = _chart_bundle["genre"]
 song = _chart_bundle["song"]
@@ -9113,21 +9162,39 @@ if _studio_page == "practice":
     _focus_chords = sections_for_practice.get(_active_section) or [] if _active_section else []
 
     _chart_current = None if _is_full_song else _active_section
-    _chart_html = full_chord_markdown(
+    _practice_chart_sig = (
         song,
-        song_data,
-        _view_sections,
+        _practice_chart_key,
+        level,
         instrument,
-        display_key=_practice_chart_key,
-        level=level,
-        lyric_cues=lyric_cues,
-        section_lyrics=section_lyrics,
-        groove_style=_practice_groove,
-        bpm=_practice_bpm,
-        time_signature=_time_sig,
-        current_section=_chart_current,
-        focus=focus,
-        chart_mode="practice",
+        focus,
+        _practice_groove,
+        _practice_bpm,
+        _time_sig,
+        _chart_current or "full",
+        tuple(sorted(_view_sections.keys())),
+        sections_tuple_signature(_view_sections),
+    )
+    _chart_html = session_cache_get_or_set(
+        st.session_state,
+        "practice_chart_html",
+        _practice_chart_sig,
+        lambda: full_chord_markdown(
+            song,
+            song_data,
+            _view_sections,
+            instrument,
+            display_key=_practice_chart_key,
+            level=level,
+            lyric_cues=lyric_cues,
+            section_lyrics=section_lyrics,
+            groove_style=_practice_groove,
+            bpm=_practice_bpm,
+            time_signature=_time_sig,
+            current_section=_chart_current,
+            focus=focus,
+            chart_mode="practice",
+        ),
     )
     _chart_scope = "full song" if _is_full_song else (_active_section_display or "section")
     _chart_key_note = ""
@@ -10050,12 +10117,6 @@ elif _studio_page == "backing":
         lyric_cues=lyric_cues,
     )
     st.session_state["_backing_hri_annotations"] = _hri_annotations
-    backing_chords = chord_blocks_for_selected_sections(
-        performed_sections, selected_section_names, song_data=song_data
-    )
-    backing_events = chord_events_for_selected_sections(
-        performed_sections, selected_section_names, song_data=song_data
-    )
     section_scope_label = (
         "full form"
         if not selected_section_names
@@ -10120,23 +10181,10 @@ elif _studio_page == "backing":
             "to rebuild the backing track in the new settings."
         )
 
-    if not backing_chords:
-        st.warning("Choose at least one section to generate a backing track.")
-
     chart_display_key = (
         _capo_ctx.sounding_key if _capo_ctx.enabled else chart_key
     )
     chart_sections = performed_sections
-    chart_backing_chords = chord_blocks_for_selected_sections(
-        chart_sections,
-        selected_section_names,
-        song_data=song_data,
-    )
-    chart_backing_events = chord_events_for_selected_sections(
-        chart_sections,
-        selected_section_names,
-        song_data=song_data,
-    )
 
     coach_section = (
         selected_section_names[0]
@@ -10184,11 +10232,8 @@ elif _studio_page == "backing":
     backing_events = chord_events_for_selected_sections(
         performed_sections, selected_section_names, song_data=song_data
     )
-    section_scope_label = (
-        "full form"
-        if not selected_section_names
-        else " + ".join(selected_section_names)
-    )
+    if not backing_chords:
+        st.warning("Choose at least one section to generate a backing track.")
     backing_time_signature = str(
         st.session_state.get("backing_time_signature", backing_time_signature)
     )
@@ -10355,40 +10400,63 @@ elif _studio_page == "backing":
         time_signature=backing_time_signature,
     )
 
-    chart_html = full_chord_markdown(
-        song,
-        song_data,
-        chart_sections,
-        instrument,
-        display_key=chart_display_key,
-        level=level,
-        section_lyrics=section_lyrics,
-        groove_style=resolved_groove,
-        bpm=bpm,
-        time_signature=backing_time_signature,
-        current_section=None,
-        current_bar=None,
-        focus=focus,
-        chart_mode="backing",
-        selected_section_names=selected_section_names,
-        shape_sections=_capo_ctx.shape_sections if _capo_ctx.enabled else None,
-        capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
-        capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
-        auto_inferences=_hri_annotations,
-    )
-
     # ---- Lead sheet open-state handling ------------------------------------
     # Apply the non-widget pending flag set by the Generate handler. Doing this
     # BEFORE the lead-sheet block renders avoids the Streamlit "cannot mutate
     # a widget key after the widget was rendered" footgun.
     if st.session_state.pop("_pending_open_backing_lead_sheet", False):
         st.session_state["backing_lead_sheet_open"] = True
+    _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
+
+    _backing_chart_sig = (
+        song,
+        chart_key,
+        level,
+        resolved_groove,
+        bpm,
+        backing_time_signature,
+        tuple(selected_section_names),
+        tuple(backing_chords),
+        instrument,
+        focus,
+        _capo_ctx.enabled,
+        _capo_ctx.capo_fret if _capo_ctx.enabled else 0,
+        tuple(_hri_annotations.keys()) if _hri_annotations else (),
+    )
+    chart_html = ""
+    if _leadsheet_open:
+        chart_html = session_cache_get_or_set(
+            st.session_state,
+            "backing_chart_html",
+            _backing_chart_sig,
+            lambda: full_chord_markdown(
+                song,
+                song_data,
+                chart_sections,
+                instrument,
+                display_key=chart_display_key,
+                level=level,
+                section_lyrics=section_lyrics,
+                groove_style=resolved_groove,
+                bpm=bpm,
+                time_signature=backing_time_signature,
+                current_section=None,
+                current_bar=None,
+                focus=focus,
+                chart_mode="backing",
+                selected_section_names=selected_section_names,
+                shape_sections=_capo_ctx.shape_sections if _capo_ctx.enabled else None,
+                capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
+                capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
+                auto_inferences=_hri_annotations,
+            ),
+        )
+
     # The lead-sheet visibility is *purely* driven by ``backing_lead_sheet_open``
     # so the user's "Hide chart" / "Show chart" clicks always win. Generate
     # auto-opens by toggling the flag above; from then on it's a plain
     # session_state boolean that survives reruns without resetting playback,
     # audio, scroll position, song, karaoke queue, or section selection.
-    _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
 
     if _backing_audio_ready and _leadsheet_open:
         # When the backing track is ready, render the lead sheet inline (no
@@ -10850,6 +10918,7 @@ elif _studio_page == "custom":
 
     ensure_page_initialized(st.session_state, "custom")
     note_page_visit(st.session_state, "custom")
+    _render_page_quick_nav("custom")
     try:
         from app_ui import inject_custom_builder_styles, inject_studio_ui_release_marker
 

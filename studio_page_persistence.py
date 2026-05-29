@@ -56,7 +56,6 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "workspace_genre_filter",
             "workspace_genre_filters",
             "song_search_text",
-            "picker_open_chord_coach",
             "song_picker_active_source",
         }
     ),
@@ -450,7 +449,9 @@ def ensure_creative_improv_initialized(session_state: dict, *, is_custom_active:
 
 def handle_studio_page_transition(session_state: dict) -> None:
     """On page change, snapshot the page left and restore page-local state only."""
-    sanitize_persisted_snapshots(session_state)
+    if not session_state.get("_snapshots_sanitized_once"):
+        sanitize_persisted_snapshots(session_state)
+        session_state["_snapshots_sanitized_once"] = True
     current = str(session_state.get("studio_page", "practice"))
     last = session_state.get(_ACTIVE_PAGE_TRACKER)
     if last and last != current:

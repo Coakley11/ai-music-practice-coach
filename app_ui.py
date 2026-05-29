@@ -6358,14 +6358,14 @@ _NAV_COMPACT_TITLE: dict[str, str] = {
 }
 
 _NAV_COMPACT_ICON: dict[str, str] = {
-    "practice": "🎹",
-    "picker": "🎵",
+    "practice": "🎯",
+    "picker": "🎼",
     "backing": "🎧",
     "custom": "✏️",
     "creative": "🧠",
     "multitrack": "🎚️",
-    "analysis": "📤",
-    "log": "📋",
+    "analysis": "🎙️",
+    "log": "📓",
 }
 
 
