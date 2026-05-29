@@ -1120,6 +1120,21 @@ def _song_backing_profile(
         profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
         profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
         profile["outro_fade_bars"] = 8
+    if "imagine" in title and "lennon" in title:
+        profile["piano_centric"] = True
+        profile["vocal_ballad"] = True
+        profile["cross_stick"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.38)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.020)
+        profile["outro_fade_bars"] = 6
+    if "wonderwall" in title or "oasis" in title:
+        profile["acoustic_unplugged"] = True
+        profile["comp_stab"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.58)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.012)
+        profile["outro_fade_bars"] = 8
     if "iris" in title or "goo goo" in title:
         profile["alt_rock_ballad"] = True
         profile["vocal_ballad"] = True

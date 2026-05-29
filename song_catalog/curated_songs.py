@@ -4782,6 +4782,378 @@ def _love_story_chart_pack() -> dict[str, Any]:
     }
 
 
+def _imagine_chart_pack() -> dict[str, Any]:
+    """Imagine — John Lennon (C major, piano ballad, 4/4).
+
+    Piano-centric ballad with **C · Cmaj7 · F** verses, descending-bass
+    bridges (**Am/E · Dm7 · F/C · C/G**), and anthem chorus with **E7**.
+    Preserve all slash chords and color tones exactly.
+    """
+    intro = ["C", "Cmaj7", "F", "C", "Cmaj7", "F"]
+
+    def _verse() -> list[str]:
+        return ["C", "Cmaj7", "F"] * 4
+
+    def _bridge() -> list[str]:
+        return ["F", "Am/E", "Dm7", "F/C", "G", "C/G", "G7"]
+
+    def _chorus() -> list[str]:
+        return (
+            ["F", "G"]
+            + ["C", "Cmaj7", "E", "E7"]
+            + ["F", "G"]
+            + ["C", "Cmaj7", "E", "E7"]
+            + ["F", "G"]
+            + ["C", "Cmaj7", "E", "E7"]
+            + ["F", "G"]
+            + ["C"]
+        )
+
+    outro = ["C", "Cmaj7", "F", "C"]
+
+    intermediate = {
+        "Intro": list(intro),
+        "Verse 1": _verse(),
+        "Bridge 1": _bridge(),
+        "Verse 2": _verse(),
+        "Bridge 2": _bridge(),
+        "Chorus": _chorus(),
+        "Verse 3": _verse(),
+        "Bridge 3": _bridge(),
+        "Final Chorus": _chorus(),
+        "Outro": list(outro),
+    }
+
+    _preserve = {"Cmaj7", "Am/E", "Dm7", "F/C", "C/G", "G7", "E7"}
+
+    def _beg(ch: str) -> str:
+        if ch in _preserve or "/" in ch:
+            return ch
+        return ch.replace("maj7", "").replace("m7", "m")
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+
+    def _adv(ch: str) -> str:
+        if ch in _preserve or "/" in ch or ch in {"E", "F", "G"}:
+            return ch
+        if ch == "C":
+            return "Cadd9"
+        return ch
+
+    advanced = {
+        name: [_adv(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "C": ["C Major", "C Major Pentatonic"],
+        "Cmaj7": ["C Ionian", "C Lydian"],
+        "Cadd9": ["C Major", "C Major Pentatonic"],
+        "F": ["F Major"],
+        "G": ["G Mixolydian"],
+        "Am/E": ["A Natural Minor"],
+        "Dm7": ["D Dorian"],
+        "F/C": ["F Major"],
+        "C/G": ["C Major"],
+        "G7": ["G Mixolydian", "G Altered (advanced)"],
+        "E": ["E Mixolydian"],
+        "E7": ["E Mixolydian", "E Altered (advanced)"],
+    }
+
+    return {
+        "key": "C",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "John Lennon",
+        "guitar_tabs": {
+            "C": "x32010",
+            "Cadd9": "x32030",
+            "Cmaj7": "x32000",
+            "F": "133211",
+            "G": "320003",
+            "Am/E": "002210",
+            "Dm7": "xx0211",
+            "F/C": "x33211",
+            "C/G": "332010",
+            "G7": "320001",
+            "E": "022100",
+            "E7": "020100",
+        },
+        "lyric_cues": {
+            "Intro": [
+                "Intimate piano — (breath) before 'Imagine there's no heaven…'",
+                "C · Cmaj7 · F sets the reflective tone",
+            ],
+            "Verse 1": [
+                "Sparse verse — let each C · Cmaj7 · F cell breathe",
+                "(breath) between phrases; conversational delivery",
+            ],
+            "Bridge 1": [
+                "Gradual build — follow descending bass F → Am/E → Dm7 → F/C",
+                "Land C/G · G7 turnaround cleanly",
+            ],
+            "Verse 2": ["Second verse — same intimate pacing as Verse 1"],
+            "Bridge 2": ["Second bridge lift — slightly fuller than Bridge 1"],
+            "Chorus": [
+                "'Imagine all the people…' — open vowels, gentle dynamic lift",
+                "(breath) before each F · G pickup",
+                "E · E7 color is the emotional punctuation — don't rush it",
+            ],
+            "Verse 3": ["Third verse — stay intimate before final bridge"],
+            "Bridge 3": ["Last bridge — build toward richest final chorus"],
+            "Final Chorus": [
+                "Emotional peak — widest arrangement, warmest vocal tone",
+                "Same harmony as chorus; save your fullest sound here",
+            ],
+            "Outro": [
+                "Reduce instrumentation — let final C ring",
+                "Gentle fade on C · Cmaj7 · F · C",
+            ],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**C major** piano ballad (**4/4**, ~76 BPM). **Piano-led** "
+                "singer-songwriter arrangement — intimate verses on **C · Cmaj7 · F**, "
+                "bridges with descending bass (**Am/E · Dm7 · F/C · C/G · G7**), "
+                "chorus lift on **F · G · C · Cmaj7 · E · E7**. Preserve **Cadd9** "
+                "(optional voicing on open C bars), **Cmaj7**, all slash chords, "
+                "**Dm7**, **G7**, and **E7** — do not simplify. Backing: piano primary, "
+                "light bass, subtle strings, soft brushes — **not** rock drums or "
+                "distorted guitar. Verse sparse; bridge builds; chorus wider; final "
+                "chorus = peak; outro thins to ringing C."
+            ),
+            default_bpm=76,
+            default_groove="Ballad",
+            time_signature="4/4",
+            repertoire_tags=[
+                "John Lennon",
+                "Piano Ballad",
+                "Singer-Songwriter",
+                "Classic Rock",
+                "Karaoke Friendly",
+                "Vocal Showcase",
+            ],
+            vocal_showcase=True,
+            piano_centric=True,
+            optional_voicings={"C": "Cadd9"},
+            vocal_range_notes=(
+                "Verse sits in comfortable mid chest; chorus asks for a gentle mix "
+                "lift without forcing. Plan breaths before each chorus entrance and "
+                "the E · E7 lifts; final chorus is the warmest sustained peak."
+            ),
+            vocal_harmony_hints=(
+                "Reflective piano ballad: soften consonants in verses, open vowels on "
+                "'Imagine', and breathe before each bridge descent. Follow the "
+                "descending bass in the bridges with your phrasing — don't rush "
+                "Am/E → Dm7 → F/C."
+            ),
+            harmonic_analysis={
+                "progression_summary": (
+                    "C major piano ballad; verse I–maj7–IV; bridge descending bass "
+                    "to V; chorus F–G–I with E/E7 color"
+                ),
+                "descending_bass_line": (
+                    "Bridge signature: F → Am/E → Dm7 → F/C → G → C/G → G7"
+                ),
+                "voice_leading_notes": (
+                    "Piano comping follows slash basses: Am/E keeps E in the bass "
+                    "under A minor color; F/C and C/G maintain stepwise descent; "
+                    "E7 resolves toward Am in the next verse cycle."
+                ),
+                "piano_voicing_notes": (
+                    "Use rootless left-hand shells on slashes; optional **Cadd9** "
+                    "right-hand color on open C bars in intro/verse/outro."
+                ),
+                "improvisation_notes": (
+                    "C major pentatonic over verses; Dorian on Dm7 in bridges; "
+                    "Mixolydian or altered on E7 at chorus peaks."
+                ),
+                "scale_suggestions": scale_hints,
+            },
+            backing_character="piano_ballad_lennon",
+        ),
+    }
+
+
+def _wonderwall_chart_pack() -> dict[str, Any]:
+    """Wonderwall — Oasis (Em shapes / capo 2, F# minor concert, 4/4).
+
+    Britpop acoustic anthem on **Em7 · G · Dsus4 · A7sus4** with **Cadd9**
+    and **G/F#** in bridge/chorus. Preserve all sus/add9 voicings exactly.
+    """
+    loop = ["Em7", "G", "Dsus4", "A7sus4"]
+    intro = list(loop) * 4
+
+    def _verse_12() -> list[str]:
+        return list(loop) * 3 + ["Cadd9", "Dsus4", "A7sus4"]
+
+    verse_3 = list(loop) * 4
+
+    def _bridge() -> list[str]:
+        return [
+            "Cadd9",
+            "Dsus4",
+            "Em7",
+            "Cadd9",
+            "Dsus4",
+            "Em7",
+            "Cadd9",
+            "Dsus4",
+            "G",
+            "G/F#",
+            "Em7",
+            "G",
+            "A7sus4",
+        ]
+
+    def _chorus() -> list[str]:
+        return (
+            ["Cadd9", "Em7", "G"]
+            + ["Em7", "Cadd9", "Em7", "G"]
+            + ["Em7", "Cadd9", "Em7", "G"]
+            + ["Em7"]
+        )
+
+    outro = ["Cadd9", "Em7", "G", "Em7"] * 4
+
+    intermediate = {
+        "Intro": list(intro),
+        "Verse 1": _verse_12(),
+        "Verse 2": _verse_12(),
+        "Chorus Prep / Bridge": _bridge(),
+        "Chorus": _chorus(),
+        "Verse 3": list(verse_3),
+        "Bridge 2": _bridge(),
+        "Final Chorus": _chorus(),
+        "Outro": list(outro),
+    }
+
+    beginner = {name: list(chords) for name, chords in intermediate.items()}
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "Em7": ["E Minor Pentatonic", "E Natural Minor"],
+        "G": ["G Major"],
+        "Dsus4": ["D Major"],
+        "A7sus4": ["A Mixolydian"],
+        "Cadd9": ["C Major"],
+        "G/F#": ["G Major"],
+    }
+
+    return {
+        "key": "Em",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Noel Gallagher",
+        "guitar_tabs": {
+            "Em7": "022030",
+            "G": "320003",
+            "Dsus4": "xx0233",
+            "A7sus4": "x02030",
+            "Cadd9": "x32030",
+            "G/F#": "2x0033",
+        },
+        "lyric_cues": {
+            "Intro": [
+                "Iconic Em7 · G · Dsus4 · A7sus4 vamp — let chords ring",
+                "(breath) before 'Today is gonna be the day…'",
+            ],
+            "Verse 1": [
+                "Steady acoustic strumming — intimate, singalong delivery",
+                "Land Cadd9 · Dsus4 · A7sus4 tag at end of verse",
+            ],
+            "Verse 2": ["Second verse — same groove, slightly fuller feel"],
+            "Chorus Prep / Bridge": [
+                "Gradual build — Cadd9 · Dsus4 · Em7 lifts",
+                "G · G/F# · Em7 walkdown is the signature Oasis moment",
+            ],
+            "Chorus": [
+                "'Maybe you're gonna be the one…' — open vowels, full strum",
+                "(breath) before title hook 'Wonderwall'",
+                "Fuller drums and wider guitars",
+            ],
+            "Verse 3": ["Third verse — four full loops, no Cadd9 tag"],
+            "Bridge 2": ["Second bridge — stronger bass, build to final chorus"],
+            "Final Chorus": [
+                "Biggest energy — strongest singalong pass",
+                "Repeat feel; belt the title hook with ringing open chords",
+            ],
+            "Outro": [
+                "Cadd9 · Em7 · G · Em7 repeat and fade",
+                "Gradually release strumming intensity",
+            ],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**F# minor** concert; chart in **Em shapes** (capo **2**). "
+                "**4/4**, ~88 BPM britpop / acoustic rock. Core vamp "
+                "**Em7 · G · Dsus4 · A7sus4** — preserve **Em7**, **Dsus4**, "
+                "**A7sus4**, **Cadd9**, and **G/F#** exactly (no plain D or A7 "
+                "substitutions). Verse: steady acoustic strum; bridge: gradual "
+                "build with G/F# bass; chorus: fuller drums and guitars; outro "
+                "repeats and fades. **Not** piano ballad or jazz reharm. "
+                "Classic singalong karaoke repertoire."
+            ),
+            default_bpm=88,
+            default_groove="Pop groove",
+            time_signature="4/4",
+            capo_note="Capo 2 (Em-shape chart) · concert key F# minor",
+            strumming_pattern=(
+                "Typical feel: down-strokes on beats 1–3, lighter ups on 2 & 4; "
+                "or D · DU · UDU per bar — keep open strings ringing."
+            ),
+            repertoire_tags=[
+                "Britpop",
+                "Oasis",
+                "Acoustic Rock",
+                "90s Rock",
+                "Karaoke Friendly",
+                "Vocal Showcase",
+            ],
+            vocal_showcase=True,
+            vocal_range_notes=(
+                "Verse sits in comfortable chest/mix; chorus opens slightly on "
+                "the title hook. Plan breaths before each chorus and the bridge "
+                "G/F# walk — don't rush the suspended chords."
+            ),
+            vocal_harmony_hints=(
+                "Britpop singalong: conversational verses, open vowels on "
+                "'Wonderwall', and let Dsus4 · A7sus4 ring between phrases."
+            ),
+            harmonic_analysis={
+                "progression_summary": (
+                    "Em-centric britpop loop with sus/add9 colors; bridge "
+                    "Cadd9–Dsus4–Em7 and G/F# bass walk"
+                ),
+                "improvisation_notes": (
+                    "E minor pentatonic over the main loop; C major over "
+                    "Cadd9 bridge figures; keep fills sparse and ringing."
+                ),
+                "scale_suggestions": scale_hints,
+            },
+            acoustic_unplugged=True,
+            backing_character="britpop_acoustic_oasis",
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -4868,6 +5240,8 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Iris", "Goo Goo Dolls"): _iris_chart_pack(),
         ("All of Me", "John Legend"): _all_of_me_chart_pack(),
         ("Love Story", "Taylor Swift"): _love_story_chart_pack(),
+        ("Imagine", "John Lennon"): _imagine_chart_pack(),
+        ("Wonderwall", "Oasis"): _wonderwall_chart_pack(),
         (
             "Shalom Aleichem",
             "Traditional Jewish Sabbath Song",
@@ -6156,6 +6530,46 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             chart_status=status,
             default_bpm=119,
             default_groove="Ballad",
+        ),
+        v(
+            "Imagine",
+            "John Lennon",
+            "Rock",
+            "C",
+            {
+                "Intro": ["C", "Cmaj7", "F"],
+                "Verse 1": ["C", "Cmaj7", "F"],
+            },
+            {
+                "Intro": ["C", "Cmaj7", "F"],
+                "Verse 1": ["C", "Cmaj7", "F"],
+            },
+            composer="John Lennon",
+            lyric_cues={"Intro": ["C · Cmaj7 · F piano pickup"]},
+            notes="C major piano ballad; full form with slash-bridge in override.",
+            chart_status=status,
+            default_bpm=76,
+            default_groove="Ballad",
+        ),
+        v(
+            "Wonderwall",
+            "Oasis",
+            "Rock",
+            "Em",
+            {
+                "Intro": ["Em7", "G", "Dsus4", "A7sus4"],
+                "Verse 1": ["Em7", "G", "Dsus4", "A7sus4"],
+            },
+            {
+                "Intro": ["Em7", "G", "Dsus4", "A7sus4"],
+                "Verse 1": ["Em7", "G", "Dsus4", "A7sus4"],
+            },
+            composer="Noel Gallagher",
+            lyric_cues={"Intro": ["Em7 · G · Dsus4 · A7sus4 britpop vamp"]},
+            notes="Em-shape chart (capo 2 = F#m concert); full form in override.",
+            chart_status=status,
+            default_bpm=88,
+            default_groove="Pop groove",
         ),
         v(
             "You've Got a Friend in Me",
