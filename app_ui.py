@@ -5594,7 +5594,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v10"
+STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v11"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-28-studio-v9"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -6357,6 +6357,24 @@ _NAV_COMPACT_TITLE: dict[str, str] = {
     "log": "Log",
 }
 
+_NAV_COMPACT_ICON: dict[str, str] = {
+    "practice": "🎹",
+    "picker": "🎵",
+    "backing": "🎧",
+    "custom": "✏️",
+    "creative": "🧠",
+    "multitrack": "🎚️",
+    "analysis": "📤",
+    "log": "📋",
+}
+
+
+def nav_compact_button_label(page_id: str) -> str:
+    """Single-line nav label: icon + script-style word (one clickable control)."""
+    icon = _NAV_COMPACT_ICON.get(page_id, STUDIO_PAGE_META.get(page_id, {}).get("icon", ""))
+    title = _NAV_COMPACT_TITLE.get(page_id, STUDIO_PAGE_META.get(page_id, {}).get("label", page_id))
+    return f"{icon} {title}".strip() if icon else title
+
 
 def nav_two_line_label(page_id: str) -> str:
     """Two-line labels — same structure on every segment (icon + title)."""
@@ -6398,28 +6416,44 @@ def _quick_nav_artistic_css() -> str:
   width: 100% !important;
 }
 .ui-nav-art-cell .stButton > button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.24rem !important;
   width: 100% !important;
-  min-height: 1.85rem !important;
+  min-height: 2rem !important;
   margin: 0 !important;
-  padding: 0.12rem 0.22rem 0.18rem !important;
+  padding: 0.14rem 0.28rem 0.2rem !important;
   border-radius: 7px !important;
   border: none !important;
   border-bottom: 2px solid transparent !important;
   background: transparent !important;
   box-shadow: none !important;
   font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive !important;
-  font-size: 1.14rem !important;
+  font-size: 1.16rem !important;
   font-weight: 600 !important;
   color: #475569 !important;
   letter-spacing: 0.015em !important;
-  line-height: 1 !important;
+  line-height: 1.05 !important;
   white-space: nowrap !important;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease !important;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease !important;
+}
+.ui-nav-art-cell .stButton > button p {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  color: inherit !important;
+  line-height: inherit !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.24rem !important;
 }
 .ui-nav-art-cell .stButton > button:hover {
   background: rgba(15, 23, 42, 0.045) !important;
   color: #1e293b !important;
   border-color: transparent !important;
+  transform: translateY(-1px) !important;
 }
 .ui-nav-art-cell .stButton > button:focus-visible {
   outline: 2px solid rgba(59, 130, 246, 0.35) !important;
@@ -6474,7 +6508,7 @@ def _render_quick_nav_art_row(
     for col, page_id in zip(cols, page_ids):
         is_active = page_id == current
         nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
-        _label = _NAV_COMPACT_TITLE.get(page_id, page_id)
+        _label = nav_compact_button_label(page_id)
         _active_cls = " is-active" if is_active else ""
         with col:
             st.markdown(
