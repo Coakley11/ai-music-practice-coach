@@ -881,6 +881,7 @@ _PRIMARY_GENRE_PILLS: tuple[str, ...] = (
     "Rock",
     "Jazz",
     "Jewish",
+    "Jewish Traditional",
     "Blues",
     "Funk",
     "Classical",
@@ -962,7 +963,7 @@ if hasattr(st, "session_state"):
     st.session_state["_catalog_backup_genres"] = list(GENRES)
 
 # Hot-reload catalog when song data changes without a full process restart.
-CATALOG_REVISION = "2026-05-27-jewish-v3"
+CATALOG_REVISION = "2026-05-28-jewish-traditional-v1"
 if hasattr(st, "session_state") and st.session_state.get("_catalog_revision") != CATALOG_REVISION:
     try:
         from song_catalog.catalog import reload_song_catalog as _reload_catalog
@@ -1805,6 +1806,39 @@ def lyric_cue_markdown(section_name, chords, lyric_cues, instrument, full_sectio
         out.append(f"- {section_name}: phrase/section entry starts around **{entry}**. Add your own lyric cue on **Song Selection** for tighter alignment.")
 
     return "\n".join(out)
+
+
+def _render_jewish_traditional_lyrics_panel(song_data: dict | None) -> None:
+    """Show catalog Hebrew + transliteration for Shabbat / congregational songs."""
+    ext = (song_data or {}).get("extensions") or {}
+    if not ext.get("jewish_traditional"):
+        return
+    hebrew = ext.get("hebrew_lyrics") or {}
+    translit = ext.get("transliteration") or {}
+    if not hebrew and not translit:
+        return
+    section_order = list((song_data or {}).get("section_order") or [])
+    if not section_order:
+        section_order = sorted(set(hebrew.keys()) | set(translit.keys()))
+    with st.expander("Hebrew & transliteration", expanded=True):
+        st.caption(
+            "Congregational Shabbat text — sing in Hebrew or follow the transliteration. "
+            "Backing stays warm and acoustic (guitar, piano, strings, light percussion)."
+        )
+        for section_name in section_order:
+            heb = str(hebrew.get(section_name) or "").strip()
+            tr = str(translit.get(section_name) or "").strip()
+            if not heb and not tr:
+                continue
+            st.markdown(f"**{_html.escape(section_name)}**")
+            if heb:
+                st.markdown(
+                    f"<p dir='rtl' style='font-size:1.15rem;line-height:1.6;margin:0.25rem 0;'>"
+                    f"{_html.escape(heb)}</p>",
+                    unsafe_allow_html=True,
+                )
+            if tr:
+                st.markdown(f"*{_html.escape(tr)}*")
 
 
 def _lyric_lines_for_section(
@@ -9542,6 +9576,7 @@ if _studio_page == "practice":
                 level_options=["Beginner", "Intermediate", "Advanced"],
                 expanded=False,
             )
+        _render_jewish_traditional_lyrics_panel(song_data)
         if has_lyric_chord_sheet(song_data):
             _ug_sections = lyric_chord_chart_sections(song_data)
             if _ug_sections:

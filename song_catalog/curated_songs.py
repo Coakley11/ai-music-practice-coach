@@ -3785,6 +3785,149 @@ def _iris_chart_pack() -> dict[str, Any]:
     }
 
 
+def _shalom_aleichem_chart_pack() -> dict[str, Any]:
+    """Shalom Aleichem — Traditional Jewish Sabbath Song (Dm, 4/4).
+
+    Warm Friday-night Shabbat welcome; one list item = one bar.
+    Simple Dm · Gm · A · F · C harmony — no jazz reharmonization.
+    """
+    def _verse_full() -> list[str]:
+        return (
+            ["Dm", "A", "Dm", "A"]
+            + ["Dm", "A", "Gm", "A"]
+            + ["Dm", "F", "C", "Dm", "A"]
+            + ["Gm", "A", "Dm", "A", "Dm"]
+        )
+
+    def _verse_short() -> list[str]:
+        return ["Dm", "A", "Dm", "A"] + ["Dm", "A", "Gm", "A"]
+
+    instrumental = [
+        "Dm",
+        "F",
+        "C",
+        "C",
+        "Dm",
+        "Dm",
+        "A",
+        "A",
+        "Gm",
+        "Gm",
+        "A",
+        "Dm",
+        "Dm",
+        "A",
+        "Dm",
+        "Dm",
+    ]
+
+    intermediate = {
+        "Verse 1": _verse_full(),
+        "Verse 2": _verse_full(),
+        "Verse 3": _verse_short(),
+        "Instrumental": instrumental,
+        "Verse 4": _verse_full(),
+        "Outro": ["Dm", "A", "Dm"],
+    }
+    beginner = {name: list(chords) for name, chords in intermediate.items()}
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+    section_order = list(intermediate.keys())
+
+    hebrew_lyrics = {
+        "Verse 1": "שלום עליכם מלאכי השלום",
+        "Verse 2": "באוכם לשלום מלאכי השלום",
+        "Verse 3": "ברכוני לשלום מלאכי השלום",
+        "Verse 4": "צאתכם לשלום מלאכי השלום",
+    }
+    transliteration = {
+        "Verse 1": "Shalom aleichem, mal'achei hashalom",
+        "Verse 2": "Bo'achem leshalom, mal'achei hashalom",
+        "Verse 3": "Barchuni leshalom, mal'achei hashalom",
+        "Verse 4": "Tzeitchem leshalom, mal'achei hashalom",
+    }
+    scale_hints = {
+        "Dm": ["D natural minor", "D minor pentatonic"],
+        "Gm": ["G natural minor"],
+        "A": ["A major", "A Mixolydian"],
+        "F": ["F major"],
+        "C": ["C major"],
+    }
+
+    return {
+        "key": "Dm",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "guitar_tabs": {
+            "Dm": "xx0231",
+            "Gm": "355333",
+            "A": "x02220",
+            "F": "133211",
+            "C": "x32010",
+        },
+        "lyric_cues": {
+            "Verse 1": [
+                "Shalom aleichem — soft congregational welcome",
+                "breath before each four-bar phrase",
+            ],
+            "Verse 2": [
+                "Bo'achem leshalom — answer phrase, same warmth",
+                "keep vowels open and unhurried",
+            ],
+            "Verse 3": [
+                "Barchuni leshalom — shorter verse before interlude",
+                "gentle lift into instrumental",
+            ],
+            "Instrumental": [
+                "simple melodic interlude — let the Dm cadence breathe",
+                "strings / clarinet color optional",
+            ],
+            "Verse 4": [
+                "Tzeitchem leshalom — slightly fuller than earlier verses",
+                "farewell blessing tone",
+            ],
+            "Outro": [
+                "gentle cadence on Dm — let the final minor chord ring",
+                "Shabbat-table hush on the last Dm",
+            ],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**D minor** Shabbat welcome (**4/4**, slow congregational pulse). "
+                "Warm Friday-night table or synagogue singalong — acoustic guitar, "
+                "piano, strings pad, light percussion; optional clarinet and violin. "
+                "**Not** heavy drums, rock guitar, jazz reharmonization, or pop "
+                "production. Verse: soft accompaniment; instrumental: simple "
+                "melodic interlude; Verse 4: slightly fuller; outro: gentle Dm cadence."
+            ),
+            default_bpm=72,
+            default_groove="Jewish ballad",
+            time_signature="4/4",
+            repertoire_tags=[
+                "Jewish",
+                "Shabbat",
+                "Hebrew",
+                "Traditional",
+                "Congregational",
+                "Family Singing",
+            ],
+            hebrew_lyrics=hebrew_lyrics,
+            transliteration=transliteration,
+            jewish_traditional=True,
+            backing_character="jewish_traditional_congregational",
+            harmonic_analysis={
+                "progression_summary": "Dm-centered Shabbat welcome — Gm subdominant, A major dominant",
+                "scale_suggestions": scale_hints,
+            },
+        ),
+    }
+
+
 def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     """UG-style lyric charts for John Mayer Say / Waiting (main catalog versions)."""
     from song_catalog.lyric_chord_charts import LYRIC_CHORD_CHARTS
@@ -3867,6 +4010,10 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("All the Things You Are", "Jerome Kern"): _attya_chart_pack(),
         ("Satin Doll", "Duke Ellington"): _satin_doll_chart_pack(),
         ("Iris", "Goo Goo Dolls"): _iris_chart_pack(),
+        (
+            "Shalom Aleichem",
+            "Traditional Jewish Sabbath Song",
+        ): _shalom_aleichem_chart_pack(),
         ("Waiting on the World to Change", "John Mayer"): _say_waiting_lyric_pack(
             "Waiting on the World to Change"
         ),
@@ -5334,6 +5481,89 @@ def _apply_core_chart_overrides(records: list[dict[str, Any]]) -> list[dict[str,
     return out
 
 
+def _jewish_traditional_catalog_songs() -> list[dict[str, Any]]:
+    """Shabbat / congregational Jewish repertoire — warm acoustic singalong."""
+
+    def _jt(
+        title: str,
+        key: str,
+        sections: dict[str, list[str]],
+        *,
+        bpm: int,
+        groove: str = "Jewish ballad",
+        meter: str = "4/4",
+        lyric_cues: dict[str, list[str]] | None = None,
+        section_order: list[str] | None = None,
+        guitar_tabs: dict[str, str] | None = None,
+        beginner: dict[str, list[str]] | None = None,
+        advanced: dict[str, list[str]] | None = None,
+        artist: str = "Traditional Jewish Sabbath Song",
+        hebrew_lyrics: dict[str, str] | None = None,
+        transliteration: dict[str, str] | None = None,
+        repertoire_tags: list[str] | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        inter = sections
+        beg = beginner or sections
+        adv = advanced or sections
+        tags = repertoire_tags or [
+            "Jewish",
+            "Shabbat",
+            "Hebrew",
+            "Traditional",
+            "Congregational",
+        ]
+        ext = _ext(
+            default_bpm=bpm,
+            default_groove=groove,
+            time_signature=meter,
+            arrangement_notes=notes
+            or (
+                f"{title}: Jewish Traditional Shabbat chart; Hebrew + transliteration "
+                "supported; congregational acoustic backing."
+            ),
+            repertoire_tags=tags,
+            hebrew_lyrics=hebrew_lyrics,
+            transliteration=transliteration,
+            jewish_traditional=True,
+            backing_character="jewish_traditional_congregational",
+        )
+        row = _s(
+            title,
+            artist,
+            "Jewish Traditional",
+            key,
+            inter,
+            lyric_cues=lyric_cues or {},
+            guitar_tabs=guitar_tabs or {},
+            chart_status="practice_level_verified",
+            chart_versions=_levels(beginner=beg, intermediate=inter, advanced=adv),
+            extensions=ext,
+        )
+        row["section_order"] = section_order or list(sections.keys())
+        return row
+
+    _dm_tabs = {"Dm": "xx0231", "Gm": "355333", "A": "x02220", "F": "133211", "C": "x32010"}
+
+    return [
+        _jt(
+            "Shalom Aleichem",
+            "Dm",
+            {
+                "Verse 1": ["Dm", "A", "Dm", "A"],
+                "Verse 2": ["Dm", "A", "Dm", "A"],
+            },
+            bpm=72,
+            lyric_cues={
+                "Verse 1": ["Shabbat welcome — full chart in override"],
+                "Verse 2": ["congregational answer phrase"],
+            },
+            guitar_tabs=_dm_tabs,
+            notes="Full Shabbat form (Verses 1–4, instrumental, outro) in chart override.",
+        ),
+    ]
+
+
 def _jewish_catalog_songs() -> list[dict[str, Any]]:
     """Traditional Jewish repertoire — hora/klezmer dance tunes and prayer ballads."""
 
@@ -5532,25 +5762,6 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
             beginner={
                 "Round A": ["D", "D", "A", "D", "Bm", "G", "A", "D"],
                 "Round B": ["D", "D", "A", "D", "Bm", "G", "A", "D"],
-            },
-        ),
-        _j(
-            "Shalom Aleichem",
-            "Dm",
-            {
-                "Verse (Peace unto you)": ["Dm", "Gm", "A7", "Dm"] * 2,
-                "Verse (Return in peace)": ["Dm", "Gm", "A7", "Dm"] * 2,
-            },
-            bpm=70,
-            groove="Jewish ballad",
-            lyric_cues={
-                "Verse (Peace unto you)": ["Shabbat welcome — very soft", "four-bar phrase breathing"],
-                "Verse (Return in peace)": ["answer phrase", "gentle A7 resolution"],
-            },
-            guitar_tabs=_dm_tabs,
-            beginner={
-                "Verse (Peace unto you)": ["Dm", "Dm", "A7", "Dm", "Dm", "Dm", "A7", "Dm"],
-                "Verse (Return in peace)": ["Dm", "Dm", "A7", "Dm", "Dm", "Dm", "A7", "Dm"],
             },
         ),
         _j(
@@ -6486,6 +6697,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Bars 9-12": ["C7", "Bb7", "F7", "C7"],
         }),
         *_jewish_catalog_songs(),
+        *_jewish_traditional_catalog_songs(),
         _s("Ode to Joy", "Beethoven", "Classical", "D", {
             "Main Theme": ["D", "A", "D", "G", "D", "A", "D"],
             "Practice Variation": ["D", "G", "A", "D"],

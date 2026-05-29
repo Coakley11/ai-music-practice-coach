@@ -194,6 +194,8 @@ def infer_groove_style(song_data, selected_style="Auto"):
         return "Rock groove"
     if genre_name == "Jewish":
         return "Jewish groove"
+    if genre_name == "Jewish Traditional":
+        return "Jewish ballad"
     return "Pop groove"
 
 
@@ -891,6 +893,7 @@ def _song_backing_profile(
         "piano_centric": False,
         "jazz_ballad": False,
         "alt_rock_ballad": False,
+        "jewish_traditional": False,
         # ---- Arrangement-level character (new) ----
         # ``pocket_offset`` is in *beats* and applied to off-beats by
         # ``_groove_time``. Negative = pushed/ahead, positive =
@@ -1083,6 +1086,13 @@ def _song_backing_profile(
         profile["kick_push"] = max(profile["kick_push"], 1.06)
         profile["pocket_offset"] = max(profile["pocket_offset"], 0.012)
         profile["outro_fade_bars"] = 6
+    if "shalom aleichem" in title and "hevenu" not in title:
+        profile["jewish_traditional"] = True
+        profile["cross_stick"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.32)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.020)
+        profile["outro_fade_bars"] = 3
     if "take the a train" in title or "ellington" in title:
         profile["ride_jazz"] = True
         profile["swing"] = 0.12
@@ -1323,6 +1333,16 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "kick_beats": [0, 2.5],
             "comp_dur": 0.52,
         })
+    if profile.get("jewish_traditional"):
+        return _fit({
+            "bass_beats": [0, 2],
+            "comp_beats": [0, 2.5, 3.5],
+            "hat_beats": [0, 2],
+            "snare_beats": [3.0],
+            "kick_beats": [0],
+            "cross_stick": [1.0],
+            "comp_dur": 1.05,
+        })
     return _fit({
         "bass_beats": [0, 2],
         "comp_beats": [0, 1.5, 2.5, 3.5],
@@ -1422,6 +1442,14 @@ def synthesize_chords_to_numpy(
         is_final_chorus_bar = arr_ctx.is_final_chorus_event(idx)
         if song_profile.get("alt_rock_ballad") and is_final_chorus_bar:
             intensity *= 1.06
+        if song_profile.get("jewish_traditional") and role == "verse":
+            intensity *= 0.88
+        if song_profile.get("jewish_traditional") and "instrumental" in str(section_name).lower():
+            intensity *= 0.94
+        if song_profile.get("jewish_traditional") and (
+            "verse 4" in str(section_name).lower() or "outro" in str(section_name).lower()
+        ):
+            intensity *= 1.04
         # Loop pass index — used to seed humanization so loop 2 of a
         # repeated section is *slightly* different from loop 1
         # (different micro-timing + velocity jitter). Keeps the take
@@ -1648,6 +1676,15 @@ def synthesize_chords_to_numpy(
                     ):
                         comp_vol *= 1.05
                     dur *= 1.02 if role == "chorus" else 0.96
+                if song_profile.get("jewish_traditional"):
+                    comp_vol *= 0.62 if role == "verse" else 0.74
+                    if "instrumental" in str(section_name).lower():
+                        comp_vol *= 0.88
+                    if "verse 4" in str(section_name).lower():
+                        comp_vol *= 1.06
+                    if "outro" in str(section_name).lower():
+                        comp_vol *= 0.92
+                    dur *= 1.10
                 if song_profile.get("comp_stab"):
                     dur *= 0.55
                     comp_vol *= 1.2

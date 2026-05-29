@@ -81,7 +81,7 @@ TRUSTED_CORE_KEYS = {
     ("Siman Tov U'Mazal Tov", "Traditional"),
     ("Yerushalayim Shel Zahav", "Traditional"),
     ("Hinei Ma Tov", "Traditional"),
-    ("Shalom Aleichem", "Traditional"),
+    ("Shalom Aleichem", "Traditional Jewish Sabbath Song"),
     ("Adon Olam", "Traditional"),
 }
 
@@ -174,7 +174,7 @@ def build_libraries(records: list[dict[str, Any]]):
 
         library.setdefault(g, {})[title] = dict(_row_common)
 
-    genres_preferred = ["Jazz", "Pop", "Rock", "Funk", "Blues", "Jewish", "Classical"]
+    genres_preferred = ["Jazz", "Pop", "Rock", "Funk", "Blues", "Jewish", "Jewish Traditional", "Classical"]
     genres = [g for g in genres_preferred if g in library]
     genres.extend(sorted(g for g in library if g not in genres))
     return library, picker, genres, records
@@ -204,6 +204,8 @@ def build_search_blob(r: dict[str, Any]) -> str:
         ext.get("time_signature") or "",
         r.get("chart_status") or "",
         " ".join(str(t) for t in rep_tags),
+        " ".join(str(v) for v in (ext.get("transliteration") or {}).values()),
+        " ".join(str(v) for v in (ext.get("hebrew_lyrics") or {}).values()),
         "jazz standard flagship" if ext.get("jazz_standard_flagship") else "",
         " ".join(levels),
         "beginner" if "Beginner" in levels else "",

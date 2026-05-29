@@ -353,6 +353,8 @@ def practice_focus_hints(
         feel_bit = "rock pulse"
     elif "ballad" in groove:
         feel_bit = "ballad pacing"
+    elif "jewish traditional" in genre or "shabbat" in genre:
+        feel_bit = "congregational Shabbat singalong"
     elif "jewish" in genre or "jewish" in groove or "klezmer" in groove:
         feel_bit = "hora / klezmer dance feel"
 
