@@ -979,7 +979,7 @@ def _song_backing_profile(
     if "champions" in title or "queen" in title:
         profile["anthem_rock"] = True
         profile["kick_push"] = 1.28
-    if "come together" in title:
+    if "come together" in title or "day tripper" in title:
         profile["riff_driven"] = True
         profile["comp_stab"] = True
         profile["ghost_snare"] = True
@@ -988,6 +988,9 @@ def _song_backing_profile(
         profile["humanize_ms"] = 0.014
         profile["pocket_offset"] = 0.016
         profile["outro_fade_bars"] = 4
+    if "day tripper" in title:
+        profile["kick_push"] = 1.22
+        profile["anthem_rock"] = True
     if "autumn leaves" in title:
         profile["cross_stick"] = True
         profile["hat_soft"] = min(profile["hat_soft"], 0.48)

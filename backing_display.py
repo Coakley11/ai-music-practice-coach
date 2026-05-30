@@ -189,3 +189,29 @@ def render_backing_defaults_debug(
         return
     with st.expander("Developer Debug: Playback Defaults", expanded=False):
         st.markdown("\n".join(lines))
+
+
+def render_backing_generation_debug(
+    st: Any,
+    *,
+    profile: dict | None,
+    developer_mode: bool = False,
+) -> None:
+    if not developer_mode or not profile:
+        return
+    with st.expander("Developer Debug: Backing generation", expanded=False):
+        st.markdown(
+            "\n".join(
+                [
+                    f"- Timeline build: **{profile.get('timeline_ms', 0):.1f} ms**"
+                    + (" (cache hit)" if profile.get("cache_hit_timeline") else ""),
+                    f"- Synthesis: **{profile.get('synthesis_ms', 0):.1f} ms**"
+                    + (" (cache hit)" if profile.get("cache_hit_wav") else ""),
+                    f"- Base64 prep: **{profile.get('b64_ms', 0):.1f} ms**"
+                    + (" (cache hit)" if profile.get("cache_hit_b64") else ""),
+                    f"- Total: **{profile.get('total_ms', 0):.1f} ms**",
+                    f"- Bars rendered: **{profile.get('bar_count', 0)}**",
+                    f"- WAV size: **{profile.get('wav_kb', 0):.0f} KB**",
+                ]
+            )
+        )

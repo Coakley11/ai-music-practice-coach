@@ -79,6 +79,8 @@ TRUSTED_CORE_KEYS = {
     ("Love Story", "Taylor Swift"),
     ("Breakaway", "Kelly Clarkson"),
     ("Complicated", "Avril Lavigne"),
+    ("Come Together", "The Beatles"),
+    ("Day Tripper", "The Beatles"),
     ("Imagine", "John Lennon"),
     ("Wonderwall", "Oasis"),
     ("You've Got a Friend in Me", "Randy Newman"),

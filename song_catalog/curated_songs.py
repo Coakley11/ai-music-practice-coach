@@ -2128,6 +2128,132 @@ def _come_together_chart_pack() -> dict[str, Any]:
     }
 
 
+def _day_tripper_chart_pack() -> dict[str, Any]:
+    """Day Tripper — The Beatles (E major, driving blues-rock, 4/4).
+
+    Riff-driven British Invasion rock: preserve **E7 · A7 · F# · G# · C# · B**
+    dominant colors; main riff sections dominate the arrangement.
+    """
+    riff_cell = ["E7", "E", "E7", "E"]
+    verse_stanza = ["E7", "E", "E7", "A7", "E", "E7"]
+    pre_chorus = ["F#", "A", "G#", "C#", "B"]
+    outro = ["E7", "E", "E7", "E", "E7", "E", "E7"]
+
+    intermediate = {
+        "Intro Riff": riff_cell * 5,
+        "Verse 1": verse_stanza * 4,
+        "Pre-Chorus": list(pre_chorus),
+        "Riff Return": riff_cell * 2,
+        "Verse 2": verse_stanza * 4,
+        "Pre-Chorus 2": list(pre_chorus),
+        "Vocal Break": ["B"],
+        "Guitar Break": riff_cell * 3,
+        "Riff Return 2": riff_cell * 2,
+        "Verse 3": verse_stanza * 4,
+        "Pre-Chorus 3": list(pre_chorus),
+        "Riff Return 3": riff_cell * 4,
+        "Outro": list(outro),
+    }
+
+    _signature = {"E7", "A7", "F#", "G#", "C#", "B", "E"}
+
+    def _beg(ch: str) -> str:
+        if ch in _signature:
+            return ch
+        return ch.replace("7", "").replace("m7", "m")
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "E7": ["E Mixolydian", "E Blues Scale"],
+        "A7": ["A Mixolydian"],
+        "F#": ["F# Major Pentatonic"],
+        "G#": ["G# Major Pentatonic"],
+        "C#": ["C# Major Pentatonic"],
+        "B": ["B Mixolydian"],
+        "E": ["E Major"],
+    }
+
+    return {
+        "key": "E",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=intermediate,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Lennon–McCartney",
+        "guitar_tabs": {
+            "E7": "020100",
+            "E": "022100",
+            "A7": "x02020",
+            "F#": "244322",
+            "A": "x02220",
+            "G#": "466544",
+            "C#": "x46664",
+            "B": "x24442",
+        },
+        "lyric_cues": {
+            "Intro Riff": [
+                "Iconic Day Tripper riff — guitar hook ×5 before vocal",
+                "Drums lock to the riff; bass doubles the figure",
+            ],
+            "Verse 1": [
+                "'Got a good reason…' — driving verse on E7 colors",
+                "Keep the riff energy under the vocal",
+            ],
+            "Pre-Chorus": [
+                "Rising tension — F# · A · G# · C# · B",
+                "Build into the next riff return",
+            ],
+            "Riff Return": ["Main riff ×2 — instrumental hook"],
+            "Guitar Break": ["Secondary guitar riff ×3 — solo break"],
+            "Outro": ["Classic Beatles fade on E7 · E riff"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**E major** driving blues-rock / British Invasion (**4/4**, ~138 BPM). "
+                "**Riff-driven** — the famous Day Tripper guitar riff is the core hook; "
+                "preserve **E7 · A7 · F# · G# · C# · B** exactly. Verse: strong riff + "
+                "punchy rhythm section; pre-chorus: rising harmony; riff sections dominate; "
+                "outro fades on the riff. Electric guitar, bass, rock drums — **not** "
+                "acoustic campfire or jazz reharmonization. Supports riff practice mode, "
+                "isolated riff looping, and guitar/bass/full-band backing."
+            ),
+            default_bpm=138,
+            default_groove="Rock groove",
+            time_signature="4/4",
+            riff_driven=True,
+            riff_practice_mode=True,
+            loop_riff_mode=True,
+            backing_character="blues_rock_riff",
+            repertoire_tags=[
+                "The Beatles",
+                "British Invasion",
+                "Classic Rock",
+                "Guitar Riff Song",
+                "Karaoke Friendly",
+            ],
+            guitar_showcase=True,
+            harmonic_analysis={
+                "progression_summary": (
+                    "E major riff rock; E7–A7 verse colors; pre-chorus F#–A–G#–C#–B lift"
+                ),
+                "improvisation_notes": (
+                    "E Mixolydian / blues over E7; A Mixolydian on A7; pentatonics on "
+                    "F#, G#, C#; sparse fills in riff gaps."
+                ),
+                "scale_suggestions": scale_hints,
+            },
+        ),
+    }
+
+
 def _autumn_leaves_chart_pack() -> dict[str, Any]:
     """Autumn Leaves — jazz standard in B minor (4/4).
 
@@ -5982,6 +6108,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("New York State of Mind", "Billy Joel"): _nysom_chart_pack(),
         ("Just the Way You Are", "Billy Joel"): _jtway_chart_pack(),
         ("Come Together", "The Beatles"): _come_together_chart_pack(),
+        ("Day Tripper", "The Beatles"): _day_tripper_chart_pack(),
         ("Autumn Leaves", "Jazz Standard"): _autumn_leaves_chart_pack(),
         ("Autumn Leaves", "Eric Clapton"): _autumn_leaves_chart_pack(),
         ("Attention", "Charlie Puth"): _attention_chart_pack(),
@@ -8489,6 +8616,26 @@ def curated_song_records() -> list[dict[str, Any]]:
             ],
             extensions=_ext(
                 default_bpm=82,
+                default_groove="Rock groove",
+                time_signature="4/4",
+                riff_driven=True,
+            ),
+        ),
+        _s(
+            "Day Tripper",
+            "The Beatles",
+            "Rock",
+            "E",
+            {
+                "Intro Riff": ["E7", "E", "E7", "E"],
+                "Verse 1": ["E7", "E", "E7", "A7", "E", "E7"],
+                "Pre-Chorus": ["F#", "A", "G#", "C#", "B"],
+            },
+            composer="Lennon–McCartney",
+            chart_status="practice_level_verified",
+            section_order=["Intro Riff", "Verse 1", "Pre-Chorus"],
+            extensions=_ext(
+                default_bpm=138,
                 default_groove="Rock groove",
                 time_signature="4/4",
                 riff_driven=True,

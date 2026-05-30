@@ -14,6 +14,7 @@ BACKING_NEEDS_REGEN = "_backing_needs_regen"
 
 _BACKING_CACHE_KEYS = (
     "_last_backing_wav",
+    "_last_backing_wav_b64",
     "_last_backing_signature",
     "_last_backing_timeline",
     "current_chord_timeline",
@@ -24,6 +25,12 @@ _BACKING_CACHE_KEYS = (
 def invalidate_backing_cache(st: Any) -> None:
     for key in _BACKING_CACHE_KEYS:
         st.session_state.pop(key, None)
+    try:
+        from studio_cache import invalidate_session_cache
+
+        invalidate_session_cache(st.session_state, "backing_wav_b64")
+    except Exception:
+        pass
 
 
 def clear_backing_needs_regen(st: Any) -> None:

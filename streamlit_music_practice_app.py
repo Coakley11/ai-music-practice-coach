@@ -137,9 +137,11 @@ from songs.playback_defaults import (
     sync_backing_bpm_from_slider,
     sync_playback_defaults_for_active_song,
 )
+from backing_generation import BackingGenProfile, prepare_wav_b64, profile_elapsed_ms
 from backing_display import (
     render_backing_active_song_card,
     render_backing_defaults_debug,
+    render_backing_generation_debug,
     render_backing_meter_selector,
 )
 from harmonic_rhythm_intelligence import (
@@ -3672,10 +3674,10 @@ def _cached_backing_wav(
     song_title,
     song_artist,
     time_signature,
-) -> bytes:
+) -> tuple[bytes, bool]:
     cached = _BACKING_WAV_CACHE.get(signature)
     if cached is not None:
-        return cached
+        return cached, True
     wav = generate_backing_track(
         backing_events,
         bpm=bpm,
@@ -3688,7 +3690,7 @@ def _cached_backing_wav(
     )
     _BACKING_WAV_CACHE[signature] = wav
     _evict_oldest(_BACKING_WAV_CACHE)
-    return wav
+    return wav, False
 
 
 def _cached_backing_timeline(
@@ -3698,13 +3700,10 @@ def _cached_backing_timeline(
     bpm,
     loops,
     time_signature,
-) -> list[dict]:
+) -> tuple[list[dict], bool]:
     cached = _BACKING_TIMELINE_CACHE.get(signature)
     if cached is not None:
-        # Return a shallow copy so downstream mutations don't poison the
-        # cached entry. Each event dict is treated read-only by the
-        # follow-along code, so a shallow copy is enough.
-        return list(cached)
+        return list(cached), True
     timeline = build_chord_event_timeline(
         backing_events,
         bpm,
@@ -3713,7 +3712,7 @@ def _cached_backing_timeline(
     )
     _BACKING_TIMELINE_CACHE[signature] = timeline
     _evict_oldest(_BACKING_TIMELINE_CACHE)
-    return list(timeline)
+    return list(timeline), False
 
 
 def playback_follow_position(timeline, playback_start_time=None, manual_index=0):
@@ -4287,6 +4286,7 @@ def live_follow_along_component_html(
     chart_html,
     *,
     autoplay: bool = True,
+    audio_b64: str | None = None,
     karaoke_auto_advance: bool = False,
     karaoke_continue_button_text: str = "Continue to next song",
     karaoke_countdown: bool = False,
@@ -4297,7 +4297,7 @@ def live_follow_along_component_html(
     karaoke_display_labels: dict | None = None,
     karaoke_lyric_color: str = "white",
 ):
-    audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
+    audio_b64 = audio_b64 or base64.b64encode(wav_bytes).decode("ascii")
     timeline_json = json.dumps(timeline)
     # When a karaoke countdown is queued we suppress native autoplay - the
     # countdown JS itself calls audio.play() when the 5-4-3-2-1 finishes
@@ -8412,6 +8412,8 @@ def _backing_transport_status_message(
     explicit = str(st.session_state.get(BACKING_TRANSPORT_STATUS, "") or "").strip().lower()
     if explicit == "generating":
         return "Generating backing track…", "active"
+    if explicit == "preparing":
+        return "Preparing audio for playback…", "active"
     if explicit == "ready":
         return (
             "Audio ready — press Play or use the player below to start playback.",
@@ -10202,6 +10204,21 @@ elif _studio_page == "backing":
         and st.session_state.get("_last_backing_signature") == _current_backing_signature
     )
 
+    _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
+    if _backing_audio_ready and not _leadsheet_open:
+        st.markdown("#### Audio player")
+        st.audio(
+            st.session_state["_last_backing_wav"],
+            format="audio/wav",
+            autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+        )
+        if st.session_state.get(BACKING_AUTOPLAY, False):
+            st.caption("Playback started — use the player controls above.")
+        else:
+            st.caption(
+                "Audio ready — press **▶ Play** in Step 2 or use the player **Play** button above."
+            )
+
     # Voice mode: when the active karaoke song has no lyric cues yet,
     # surface a friendly "Add lyrics" prompt so the singer can fill them
     # in before performing. The CTA only renders for Voice / Vocals /
@@ -10226,6 +10243,11 @@ elif _studio_page == "backing":
         song_meter=_default_meter,
         applied_meter=_applied_meter_pre,
         meter_override=_meter_override_pre,
+        developer_mode=_developer_mode_enabled(),
+    )
+    render_backing_generation_debug(
+        st,
+        profile=st.session_state.get("_backing_last_gen_profile"),
         developer_mode=_developer_mode_enabled(),
     )
 
@@ -10299,11 +10321,22 @@ elif _studio_page == "backing":
 
     if _gen_clicked or _karaoke_auto_gen:
         st.session_state[BACKING_TRANSPORT_STATUS] = "generating"
-        # Inline spinner so the click feels instant - users see UI
-        # feedback while the WAV synthesizes. Cached signatures hit in
-        # well under 100ms, so repeat-generate feels effectively free.
-        with st.spinner("Generating backing track..."):
-            wav = _cached_backing_wav(
+        _gen_profile = BackingGenProfile(bar_count=len(backing_events) * max(1, form_loops))
+        _gen_t0 = time.perf_counter()
+        with st.spinner("Generating backing track…"):
+            _tl_t0 = time.perf_counter()
+            timeline, _tl_hit = _cached_backing_timeline(
+                _current_backing_signature,
+                backing_events=backing_events,
+                bpm=bpm,
+                loops=form_loops,
+                time_signature=backing_time_signature,
+            )
+            _gen_profile.timeline_ms = profile_elapsed_ms(_tl_t0)
+            _gen_profile.cache_hit_timeline = _tl_hit
+
+            _syn_t0 = time.perf_counter()
+            wav, _wav_hit = _cached_backing_wav(
                 _current_backing_signature,
                 backing_events=backing_events,
                 bpm=bpm,
@@ -10314,13 +10347,20 @@ elif _studio_page == "backing":
                 song_artist=str(song_data.get("artist", "")),
                 time_signature=backing_time_signature,
             )
-            timeline = _cached_backing_timeline(
-                _current_backing_signature,
-                backing_events=backing_events,
-                bpm=bpm,
-                loops=form_loops,
-                time_signature=backing_time_signature,
+            _gen_profile.synthesis_ms = profile_elapsed_ms(_syn_t0)
+            _gen_profile.cache_hit_wav = _wav_hit
+            _gen_profile.wav_kb = len(wav) / 1024.0
+
+            st.session_state[BACKING_TRANSPORT_STATUS] = "preparing"
+            _b64, _b64_ms, _b64_hit = prepare_wav_b64(
+                st.session_state, _current_backing_signature, wav
             )
+            _gen_profile.b64_ms = _b64_ms
+            _gen_profile.cache_hit_b64 = _b64_hit
+
+        _gen_profile.total_ms = profile_elapsed_ms(_gen_t0)
+        st.session_state["_backing_last_gen_profile"] = _gen_profile.as_dict()
+        st.session_state["_last_backing_wav_b64"] = _b64
 
         st.session_state["_last_backing_wav"] = wav
         st.session_state["_last_backing_signature"] = _current_backing_signature
@@ -10332,15 +10372,7 @@ elif _studio_page == "backing":
         st.session_state["beats_per_bar"] = beats_per_bar_from_signature(backing_time_signature)
         st.session_state["backing_time_signature_applied"] = backing_time_signature
         st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
-        # During a karaoke transition, jump straight into autoplay so the
-        # countdown overlay can run and the next song starts cleanly.
-        # Otherwise keep the normal manual-Play UX.
         st.session_state[BACKING_AUTOPLAY] = bool(_karaoke_auto_gen)
-        # Non-widget pending flag - safe to set here because the lead-sheet
-        # block is rendered later in the page (after this st.rerun()), so we
-        # never touch a widget key after the widget was already rendered.
-        # Consumed by the lead-sheet section to force-open the chart card.
-        st.session_state["_pending_open_backing_lead_sheet"] = True
         st.session_state[BACKING_TRANSPORT_STATUS] = "ready"
         clear_backing_needs_regen(st)
         st.rerun()
@@ -10363,12 +10395,11 @@ elif _studio_page == "backing":
     )
 
     # ---- Lead sheet open-state handling ------------------------------------
-    # Apply the non-widget pending flag set by the Generate handler. Doing this
-    # BEFORE the lead-sheet block renders avoids the Streamlit "cannot mutate
-    # a widget key after the widget was rendered" footgun.
-    if st.session_state.pop("_pending_open_backing_lead_sheet", False):
+    if _leadsheet_open:
+        pass  # resolved above for inline player vs chart player split
+    elif st.session_state.pop("_pending_open_backing_lead_sheet", False):
         st.session_state["backing_lead_sheet_open"] = True
-    _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
+        _leadsheet_open = True
 
     _backing_chart_sig = (
         song,
@@ -10513,12 +10544,21 @@ elif _studio_page == "backing":
         _karaoke_display_labels = dict(
             song_data.get("_beginner_display_labels") or {}
         )
+        _player_b64 = st.session_state.get("_last_backing_wav_b64")
+        if not _player_b64 and st.session_state.get("_last_backing_wav"):
+            _player_b64, _, _ = prepare_wav_b64(
+                st.session_state,
+                _current_backing_signature,
+                st.session_state["_last_backing_wav"],
+            )
+            st.session_state["_last_backing_wav_b64"] = _player_b64
         components.html(
             live_follow_along_component_html(
                 st.session_state["_last_backing_wav"],
                 _follow_timeline,
                 chart_html,
                 autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, True)),
+                audio_b64=_player_b64,
                 karaoke_auto_advance=(
                     _karaoke_engaged and km.auto_advance_enabled(st.session_state)
                 ),
@@ -10538,8 +10578,6 @@ elif _studio_page == "backing":
         )
         st.markdown("</div>", unsafe_allow_html=True)
     elif _backing_audio_ready and not _leadsheet_open:
-        # User collapsed the chart manually; give them a one-click "Show chart"
-        # affordance without losing the generated audio.
         _show_col, _info_col = st.columns([1, 5])
         with _show_col:
             if st.button(
@@ -10552,8 +10590,7 @@ elif _studio_page == "backing":
                 st.rerun()
         with _info_col:
             st.caption(
-                "Lead sheet collapsed. Press **Show chart** to bring back the "
-                "chord chart and live chord follow."
+                "Open the lead sheet for live chord follow-along while the track plays."
             )
     else:
         with st.expander(
