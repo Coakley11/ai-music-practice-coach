@@ -7167,6 +7167,15 @@ def request_backing_quick_section_change(
         st.session_state[PENDING_BACKING_SINGLE_SECTION] = choice
 
 
+def request_backing_loops_adjust(delta: int) -> None:
+    """Queue loop count change before ``backing_track_loops`` widget is built."""
+    try:
+        current = int(st.session_state.get("backing_track_loops", 2))
+    except (TypeError, ValueError):
+        current = 2
+    st.session_state[PENDING_BACKING_LOOPS] = max(1, min(10, current + int(delta)))
+
+
 def _stop_backing_playback() -> None:
     """Stop follow-along playback without clearing the generated WAV."""
     st.session_state[BACKING_AUTOPLAY] = False
@@ -8524,9 +8533,13 @@ def _render_backing_step2_playback_action(
             _loops_val = int(st.session_state.get("backing_track_loops", 2))
             _lq1, _lq2, _lq3 = st.columns([1, 1.4, 1])
             with _lq1:
-                if st.button("−", key="backing_loops_dec", use_container_width=True):
-                    st.session_state["backing_track_loops"] = max(1, _loops_val - 1)
-                    st.rerun()
+                st.button(
+                    "−",
+                    key="backing_loops_dec",
+                    use_container_width=True,
+                    on_click=request_backing_loops_adjust,
+                    args=(-1,),
+                )
             with _lq2:
                 st.markdown(
                     f'<p style="margin:0.35rem 0 0;text-align:center;font-weight:800;color:#0f172a;">'
@@ -8534,9 +8547,13 @@ def _render_backing_step2_playback_action(
                     unsafe_allow_html=True,
                 )
             with _lq3:
-                if st.button("+", key="backing_loops_inc", use_container_width=True):
-                    st.session_state["backing_track_loops"] = min(10, _loops_val + 1)
-                    st.rerun()
+                st.button(
+                    "+",
+                    key="backing_loops_inc",
+                    use_container_width=True,
+                    on_click=request_backing_loops_adjust,
+                    args=(1,),
+                )
         st.markdown("</div>", unsafe_allow_html=True)
 
         with st.expander("Advanced playback settings", expanded=False):

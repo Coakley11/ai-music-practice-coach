@@ -3517,6 +3517,131 @@ def _how_far_ill_go_chart_pack() -> dict[str, Any]:
     }
 
 
+def _viva_la_vida_chart_pack() -> dict[str, Any]:
+    """Viva La Vida — Coldplay (C guitar-friendly chart · Ab concert, 4/4, ~138 BPM).
+
+    Main loop **C · Dadd11 · G · Em** — preserve **Dadd11** (do not simplify to D
+    except beginner charts). Orchestral arena-pop backing — strings ostinato,
+    cinematic percussion, not acoustic strumming.
+    """
+
+    def _four() -> list[str]:
+        return ["C", "Dadd11", "G", "Em"]
+
+    def _chorus_with_bm() -> list[str]:
+        return _four() * 3 + ["C", "Dadd11", "Bm", "Em"]
+
+    oh_section = (
+        ["C", "Em", "C", "Em", "C", "Em", "Dadd11", "Dadd11"]
+        + _four()
+        + _four()
+    )
+
+    intermediate = {
+        "Intro": _four() + _four(),
+        "Verse 1": _four() + _four(),
+        "Interlude": _four() + _four(),
+        "Verse 2": _four() * 4,
+        "Chorus 1": _chorus_with_bm(),
+        "Interlude 2": _four() + _four(),
+        "Verse 3": _four() * 4,
+        "Chorus 2": _chorus_with_bm(),
+        "Bridge / Oh Section": oh_section,
+        "Final Chorus": _chorus_with_bm(),
+        "Outro": ["C", "Dadd11", "Bm", "Em"] * 2,
+    }
+
+    def _beg_line(chords: list[str]) -> list[str]:
+        return [c.replace("Dadd11", "D") for c in chords]
+
+    beginner = {name: _beg_line(chords) for name, chords in intermediate.items()}
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+
+    section_order = list(intermediate.keys())
+    return {
+        "key": "C",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Coldplay",
+        "lyric_cues": {
+            "Intro": [
+                "Strings establish the pulse — (breath) before the vocal enters",
+                "Orchestral pop — keep time with the ostinato, not a folk strum",
+            ],
+            "Verse 1": [
+                "I used to rule the world — narrative, restrained drums",
+                "Steady string movement under the vocal",
+            ],
+            "Chorus 1": [
+                "Arena lift — fuller percussion and bigger strings",
+                "Bm → Em tag at the end — don't rush the handoff",
+            ],
+            "Bridge / Oh Section": [
+                "Dynamic contrast — expansive 'oh' moment",
+                "Dadd11 hold bars — let the harmony ring",
+            ],
+            "Final Chorus": [
+                "Biggest arrangement — anthem climax",
+                "Open vowels; ride the orchestral build",
+            ],
+            "Outro": [
+                "Resolve with anthem feel — gradual release",
+            ],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**Viva La Vida** — Coldplay (**Ab major** concert · **C** guitar-friendly "
+                "shapes, **4/4**, ~**138 BPM**). Core loop: **C · Dadd11 · G · Em** "
+                "(preserve **Dadd11** on intermediate/advanced). **Bm** appears at "
+                "chorus/outro tags. Backing: orchestral strings, pizzicato/driving "
+                "ostinato, cinematic percussion, bass, light piano, arena drums — "
+                "not plain acoustic strumming or jazz reharm. Intro sets pulse; "
+                "verses restrained; choruses widen; bridge/oh expands; final chorus "
+                "is the climax. Tags: Coldplay · Orchestral Pop · Arena Pop · "
+                "Britpop · Karaoke Friendly · Vocal Showcase."
+            ),
+            default_bpm=138,
+            default_groove="Pop groove",
+            time_signature="4/4",
+            repertoire_tags=[
+                "Coldplay",
+                "Orchestral Pop",
+                "Baroque Pop",
+                "Arena Pop",
+                "Britpop",
+                "Karaoke Friendly",
+                "Vocal Showcase",
+            ],
+            vocal_showcase=True,
+            concert_key="Ab",
+            guitar_friendly_key="C",
+            vocal_harmony_hints={
+                "Verse 1": "Storytelling tone — let strings carry momentum; stay inside the pulse.",
+                "Chorus 1": "Brighter, declarative — save peak energy for Final Chorus.",
+                "Bridge / Oh Section": "Widest dynamic — long vowels on the 'oh' lifts.",
+                "Final Chorus": "Full arena delivery — commit to the Bm → Em cadence.",
+            },
+            harmonic_analysis={
+                "progression_summary": "C major loop C–Dadd11–G–Em with Bm color in chorus tags",
+                "scale_suggestions": {
+                    "C": ["C major", "C major pentatonic"],
+                    "Dadd11": ["D mixolydian", "G major"],
+                    "G": ["G major"],
+                    "Em": ["E natural minor", "G major"],
+                    "Bm": ["B natural minor"],
+                },
+            },
+            backing_character="disney_cinematic",
+        ),
+    }
+
+
 def _vienna_chart_pack() -> dict[str, Any]:
     """Vienna — Billy Joel (G major, piano ballad, 4/4).
 
@@ -6296,29 +6421,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Bridge": ["Bm9", "A13", "Gmaj9", "D/F#", "Em9", "A13", "Dmaj9", "A13"],
             },
         ),
-        ("Viva La Vida", "Coldplay"): pack("Ab",
-            {
-                "Intro": ["Db", "Eb", "Ab", "Fm"],
-                "Verse": ["Db", "Eb", "Ab", "Fm", "Db", "Eb", "Ab", "Fm"],
-                "Chorus": ["Db", "Eb", "Ab", "Fm", "Db", "Eb", "Ab", "Fm"],
-                "Bridge": ["Db", "Eb", "Ab", "Ab", "Db", "Eb", "Ab", "Fm"],
-                "Outro": ["Db", "Eb", "Ab", "Fm"],
-            },
-            {
-                "Intro": ["Db", "Eb", "Ab/C", "Fm"],
-                "Verse": ["Db", "Eb", "Ab/C", "Fm", "Db", "Eb", "Ab/C", "Fm"],
-                "Chorus": ["Db", "Eb", "Ab/C", "Fm", "Db", "Eb", "Ab/C", "Fm"],
-                "Bridge": ["Db", "Eb", "Ab", "Ab", "Db", "Eb", "Ab/C", "Fm"],
-                "Outro": ["Db", "Eb", "Ab/C", "Fm"],
-            },
-            {
-                "Intro": ["Dbmaj9", "Eb13sus", "Ab/C", "Fm9"],
-                "Verse": ["Dbmaj9", "Eb13sus", "Ab/C", "Fm9", "Dbmaj9", "Eb13sus", "Ab/C", "Fm9"],
-                "Chorus": ["Dbmaj9", "Eb13sus", "Ab/C", "Fm9", "Dbmaj9", "Eb13sus", "Ab/C", "Fm9"],
-                "Bridge": ["Dbmaj9", "Eb13sus", "Abadd9", "Abadd9", "Dbmaj9", "Eb13sus", "Ab/C", "Fm9"],
-                "Outro": ["Dbmaj9", "Eb13sus", "Ab/C", "Fm9"],
-            },
-        ),
+        ("Viva La Vida", "Coldplay"): _viva_la_vida_chart_pack(),
         ("Piano Man", "Billy Joel"): _piano_man_chart_pack(),
         ("Photograph", "Ed Sheeran"): _photograph_chart_pack(),
         ("Turn the Lights Back On", "Billy Joel"): pack("C",
@@ -8203,13 +8306,8 @@ def curated_song_records() -> list[dict[str, Any]]:
         }),
 
         # --- Coldplay (guitar-friendly, rehearsal-level form) ---
-        _s("Viva La Vida", "Coldplay", "Pop", "Ab", {
-            "Intro (Strings Figure)": ["Ab", "Fm", "Db", "Eb"],
-            "Verse": ["Db", "Eb", "Ab/C", "Fm"],
-            "Pre-Chorus (Lift)": ["Db", "Ab/C", "Eb", "Fm"],
-            "Chorus": ["Db", "Eb", "Ab/C", "Fm"],
-            "Bridge (Breakdown)": ["Db", "Eb", "Ab", "Ab"],
-            "Final Chorus / Outro": ["Db", "Eb", "Ab/C", "Fm"],
+        _s("Viva La Vida", "Coldplay", "Pop", "C", {
+            "Placeholder": ["C"],
         }),
         _s("Yellow", "Coldplay", "Pop", "B", {
             "Intro": ["B", "B", "F#", "E"],

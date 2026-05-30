@@ -1103,6 +1103,9 @@ def _song_backing_profile(
             "let it go",
             "part of your world",
             "reflection",
+            "viva la vida",
+            "clocks",
+            "fix you",
         )
     ):
         profile["disney_cinematic"] = True
