@@ -5,9 +5,12 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from .bpm_state import (
+    BACKING_BPM_MAX,
+    BACKING_BPM_MIN,
     BPM_WIDGET_KEY,
     LAST_BPM_SONG,
     PENDING_BACKING_TRACK_BPM,
+    normalize_backing_bpm,
 )
 
 BACKING_GROOVE_KEY = "backing_groove_style"
@@ -47,7 +50,7 @@ def _heuristic_bpm_for_song_data(song_data: dict[str, Any] | None) -> int:
     title = (song_data.get("title") or "").lower()
     genre = str(song_data.get("genre") or "").lower()
     if "blue bossa" in title:
-        return 100
+        return 135
     if "bossa" in title or "samba" in title:
         return 120
     if "how deep" in title:
@@ -108,7 +111,7 @@ def resolve_backing_bpm_for_slider(
 ) -> int:
     """BPM for the slider *before* it renders — never clobber a user edit on rerun."""
     slider_key = backing_bpm_slider_widget_key(sync_id)
-    canonical = int(st.session_state.get(BPM_WIDGET_KEY, default_bpm))
+    canonical = normalize_backing_bpm(st.session_state.get(BPM_WIDGET_KEY, default_bpm))
 
     if song_just_reset:
         st.session_state[slider_key] = canonical
@@ -116,7 +119,8 @@ def resolve_backing_bpm_for_slider(
         return canonical
 
     if slider_key in st.session_state:
-        slider_val = int(st.session_state[slider_key])
+        slider_val = normalize_backing_bpm(st.session_state[slider_key])
+        st.session_state[slider_key] = slider_val
         st.session_state[BPM_WIDGET_KEY] = slider_val
         st.session_state["bpm"] = slider_val
         return slider_val
@@ -540,6 +544,8 @@ __all__ = [
     "PENDING_BACKING_GROOVE",
     "PENDING_BACKING_TRACK_BPM",
     "PRACTICE_GROOVE_KEY",
+    "BACKING_BPM_MAX",
+    "BACKING_BPM_MIN",
     "active_song_sync_id",
     "apply_backing_bpm_defaults",
     "apply_backing_defaults_for_song",
@@ -557,6 +563,7 @@ __all__ = [
     "get_song_default_meter",
     "invalidate_backing_audio_if_defaults_change",
     "invalidate_backing_page_snapshots",
+    "normalize_backing_bpm",
     "normalize_groove_label",
     "normalize_groove_style",
     "playback_song_id",

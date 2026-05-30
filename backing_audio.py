@@ -978,7 +978,17 @@ def _song_backing_profile(
         profile["outro_fade_bars"] = 8
     if "champions" in title or "queen" in title:
         profile["anthem_rock"] = True
+        profile["vocal_ballad"] = True
         profile["kick_push"] = 1.28
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
+        profile["outro_fade_bars"] = 6
+    if "thinking out loud" in title:
+        profile["acoustic_unplugged"] = True
+        profile["vocal_ballad"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.45)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.014)
+        profile["outro_fade_bars"] = 4
     if "come together" in title or "day tripper" in title:
         profile["riff_driven"] = True
         profile["comp_stab"] = True
@@ -1095,6 +1105,14 @@ def _song_backing_profile(
         profile["hat_soft"] = min(profile["hat_soft"], 0.44)
         profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
         profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
+    if "scientist" in title:
+        profile["vocal_ballad"] = True
+        profile["piano_centric"] = True
+        profile["cross_stick"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.38)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.012)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.018)
+        profile["outro_fade_bars"] = 6
     if any(
         k in title
         for k in (

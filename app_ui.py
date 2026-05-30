@@ -6921,7 +6921,17 @@ def render_global_studio_bar(
         st.selectbox("Focus", focus_options, key="focus")
     with row1[5]:
         if show_bpm:
-            st.slider("Tempo", 50, 180, 100, 5, key=bpm_key, help="Backing track BPM")
+            from songs.playback_defaults import BACKING_BPM_MAX, BACKING_BPM_MIN
+
+            st.slider(
+                "Tempo",
+                BACKING_BPM_MIN,
+                BACKING_BPM_MAX,
+                100,
+                5,
+                key=bpm_key,
+                help="Backing track BPM (20–180)",
+            )
         elif backing_ready:
             st.markdown(
                 '<span class="ui-backing-pill ready">● Backing ready</span>',

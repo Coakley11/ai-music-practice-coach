@@ -1,10 +1,10 @@
-"""We Are the Champions — Queen (Cm). Screenshot-aligned practice chart."""
+"""We Are the Champions — Queen (Cm verse, F-centered chorus, 4/4)."""
 
 from __future__ import annotations
 
 from typing import Any
 
-# One list item = one bar (backing track + block chart).
+# One list item = one bar. Use ``|`` for in-bar splits (e.g. ``Bb|C7``).
 
 CHAMPIONS_VERSE: list[str] = [
     "Cm",
@@ -30,12 +30,11 @@ CHAMPIONS_VERSE: list[str] = [
     "C7",
 ]
 
-CHAMPIONS_CHORUS: list[str] = [
+CHAMPIONS_CHORUS_MAIN: list[str] = [
     "F",
     "Am",
     "Dm",
-    "Bb",
-    "C7",
+    "Bb|C7",
     "F",
     "Am",
     "Bb",
@@ -51,6 +50,9 @@ CHAMPIONS_CHORUS: list[str] = [
     "Ab6",
     "Bb",
     "Cm7add4",
+]
+
+CHAMPIONS_ENDING_TAG: list[str] = [
     "Fm",
     "Gm7",
     "Fm",
@@ -59,79 +61,32 @@ CHAMPIONS_CHORUS: list[str] = [
     "Gm7/C",
 ]
 
-CHAMPIONS_OUTRO: list[str] = list(CHAMPIONS_CHORUS) + [
-    "Cm",
-    "Gm7/C",
-    "Cm",
-    "Gm7/C",
-]
-
 CHAMPIONS_SECTIONS: dict[str, list[str]] = {
-    "Verse": list(CHAMPIONS_VERSE),
-    "Chorus": list(CHAMPIONS_CHORUS),
-    "Outro": list(CHAMPIONS_OUTRO),
+    "Verse 1": list(CHAMPIONS_VERSE),
+    "Chorus 1": list(CHAMPIONS_CHORUS_MAIN),
+    "Ending Tag": list(CHAMPIONS_ENDING_TAG),
+    "Verse 2": list(CHAMPIONS_VERSE),
+    "Chorus 2": list(CHAMPIONS_CHORUS_MAIN),
+    "Final Chorus": list(CHAMPIONS_CHORUS_MAIN),
+    "Outro": list(CHAMPIONS_CHORUS_MAIN),
 }
 
 CHAMPIONS_BEGINNER: dict[str, list[str]] = {
-    "Verse": [
-        "Cm",
-        "Gm7/C",
-        "Cm",
-        "Gm7/C",
-        "Cm",
-        "Gm7/C",
-        "Cm",
-        "Gm7/C",
-        "Eb",
-        "Ab",
-        "Eb",
-        "Ab",
-        "Eb",
-        "Bb/D",
-        "Cm",
-        "F7",
-        "Bb",
-        "Ab",
-        "Bbm7b5",
-        "Bb7",
-        "C7",
-    ],
-    "Chorus": [
-        "F",
-        "Am",
-        "Dm",
-        "Bb",
-        "C7",
-        "F",
-        "Am",
-        "Bb",
-        "F#dim",
-        "Gm7",
-        "C7/G",
-        "Bbm",
-        "Bbm/Db",
-        "Edim",
-        "Gdim",
-        "F",
-        "Eb/G",
-        "Ab",
-        "Bb",
-        "Cm7",
-        "Fm",
-        "Gm7",
-        "Fm",
-        "Gm7/F",
-        "Fm",
-        "Gm7/C",
-    ],
+    name: [
+        c.replace("Bb|C7", "Bb")
+        .replace("Ab/Eb", "Ab")
+        .replace("Ab/Bb", "Ab")
+        .replace("F#dim7", "F#dim")
+        .replace("Bbm6/Db", "Bbm")
+        .replace("Bbm6", "Bbm")
+        .replace("Edim7", "Edim")
+        .replace("Gdim7", "Gdim")
+        .replace("Ebadd9/G", "Eb/G")
+        .replace("Cm7add4", "Cm7")
+        for c in chords
+    ]
+    for name, chords in CHAMPIONS_SECTIONS.items()
 }
-
-CHAMPIONS_BEGINNER["Outro"] = list(CHAMPIONS_BEGINNER["Chorus"]) + [
-    "Cm",
-    "Gm7/C",
-    "Cm",
-    "Gm7/C",
-]
 
 CHAMPIONS_GUITAR_TABS: dict[str, str] = {
     "Cm": "x35543",
@@ -148,7 +103,6 @@ CHAMPIONS_GUITAR_TABS: dict[str, str] = {
     "F": "133211",
     "Am": "x02210",
     "Dm": "xx0231",
-    "C7": "x35353",
     "F#dim7": "2x120x",
     "Gm7": "353333",
     "C7/G": "332010",
@@ -163,7 +117,6 @@ CHAMPIONS_GUITAR_TABS: dict[str, str] = {
     "Gm7/F": "1x0033",
 }
 
-# Lyric/chord sheet (practice only) — chord pills; no auto lyric dump in backing.
 _CHAMPIONS_VERSE_ROWS: list[dict[str, Any]] = [
     {"chords": ["Cm", "Gm7/C"]},
     {"chords": ["Cm", "Gm7/C"]},
@@ -184,19 +137,30 @@ _CHAMPIONS_CHORUS_ROWS: list[dict[str, Any]] = [
     {"chords": ["Edim7", "Gdim7"]},
     {"chords": ["F", "Ebadd9/G", "Ab6"]},
     {"chords": ["Bb", "Cm7add4"]},
-    {"chords": ["Fm", "Gm7", "Fm", "Gm7/F", "Fm"]},
-    {"chords": ["Gm7/C"]},
+]
+
+_CHAMPIONS_TAG_ROWS: list[dict[str, Any]] = [
+    {"chords": ["Fm", "Gm7", "Fm", "Gm7/F", "Fm", "Gm7/C"]},
 ]
 
 CHAMPIONS_LYRIC_CHART: list[dict[str, Any]] = [
-    {"section": "Verse", "lines": list(_CHAMPIONS_VERSE_ROWS)},
-    {"section": "Chorus", "lines": list(_CHAMPIONS_CHORUS_ROWS)},
-    {"section": "Outro", "lines": list(_CHAMPIONS_CHORUS_ROWS) + [{"chords": ["Cm", "Gm7/C"]}, {"chords": ["Cm", "Gm7/C"]}]},
+    {"section": "Verse 1", "lines": list(_CHAMPIONS_VERSE_ROWS)},
+    {"section": "Chorus 1", "lines": list(_CHAMPIONS_CHORUS_ROWS)},
+    {"section": "Ending Tag", "lines": list(_CHAMPIONS_TAG_ROWS)},
+    {"section": "Verse 2", "lines": list(_CHAMPIONS_VERSE_ROWS)},
+    {"section": "Chorus 2", "lines": list(_CHAMPIONS_CHORUS_ROWS)},
+    {"section": "Final Chorus", "lines": list(_CHAMPIONS_CHORUS_ROWS)},
+    {"section": "Outro", "lines": list(_CHAMPIONS_CHORUS_ROWS)},
 ]
 
 CHAMPIONS_ARRANGEMENT_NOTES = (
-    "Original key Cm (6/8 ballad feel ~107 BPM). Verse: Cm–Gm7/C vamp, Eb–Ab/Eb, "
-    "Bb/D–Cm, F7–Bb turnaround, Ab/Bb–Bbm7b5–Bb7–C7 cadence. Chorus in F: "
-    "F–Am–Dm–Bb–C7, F#dim7 passing, Gm7–C7/G–Bbm6–Edim7–Gdim7 color, "
-    "Ebadd9/G–Ab6, then Fm–Gm7 tag and Gm7/C return."
+    "**C minor** verse / **F major**-centered chorus (**4/4**, ~65 BPM). "
+    "Preserve Queen slash colors: **Gm7/C · Ab/Eb · Bb/D · Ab/Bb · "
+    "Bbm7b5 · C7/G · Bbm6/Db · F#dim7 · Ebadd9/G · Cm7add4**. "
+    "Chorus bar 4 uses **Bb|C7** (half-bar split). **Ending Tag** is "
+    "**Fm–Gm7–Gm7/F–Gm7/C** after the first chorus lift. Backing: "
+    "grand piano, bass, stadium drums, layered vocals, orchestral support — "
+    "arena anthem dynamics, not acoustic or jazz trio. **Final Chorus** "
+    "same harmony with biggest arrangement; **Outro** repeats the "
+    "full chorus progression for singalong close."
 )

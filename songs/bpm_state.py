@@ -8,6 +8,18 @@ PENDING_BACKING_TRACK_BPM = "_pending_backing_track_bpm"
 LAST_BPM_SONG = "_last_bpm_song"
 BPM_WIDGET_KEY = "backing_track_bpm"
 
+BACKING_BPM_MIN = 20
+BACKING_BPM_MAX = 180
+
+
+def normalize_backing_bpm(bpm: int | float) -> int:
+    """Clamp tempo to the backing-track slider range without resetting to song default."""
+    try:
+        val = int(round(float(bpm)))
+    except (TypeError, ValueError):
+        return 100
+    return max(BACKING_BPM_MIN, min(BACKING_BPM_MAX, val))
+
 
 def sync_backing_bpm_before_widget(st: Any, song_title: str, default_bpm: int) -> int:
     """Apply pending BPM or song-change defaults before ``backing_track_bpm`` widget exists."""
@@ -27,4 +39,4 @@ def sync_backing_bpm_before_widget(st: Any, song_title: str, default_bpm: int) -
 
 def request_backing_bpm(st: Any, bpm: int) -> None:
     """Queue a BPM change for the next run (safe after the widget exists)."""
-    st.session_state[PENDING_BACKING_TRACK_BPM] = int(bpm)
+    st.session_state[PENDING_BACKING_TRACK_BPM] = normalize_backing_bpm(bpm)

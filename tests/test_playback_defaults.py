@@ -179,6 +179,43 @@ def test_slider_bpm_not_clobbered_on_rerun():
     assert st.session_state["bpm"] == 132
 
 
+def test_slow_bpm_preserved_for_same_song():
+    """User tempo below 50 BPM must not reset to the song default on rerun."""
+    st = _FakeSession()
+    sync_id = "pk::Pop::Slow Ballad — Artist"
+    apply_backing_defaults_for_song(
+        st,
+        song_id=sync_id,
+        default_bpm=73,
+        default_groove="Ballad",
+    )
+    slider_key = backing_bpm_slider_widget_key(sync_id)
+    st.session_state[slider_key] = 30
+    st.session_state[BPM_WIDGET_KEY] = 30
+    bpm, _ = apply_backing_defaults_for_song(
+        st,
+        song_id=sync_id,
+        default_bpm=73,
+        default_groove="Ballad",
+    )
+    assert bpm == 30
+    resolved = resolve_backing_bpm_for_slider(
+        st,
+        sync_id=sync_id,
+        default_bpm=73,
+        song_just_reset=False,
+    )
+    assert resolved == 30
+
+
+def test_normalize_backing_bpm_clamps_extremes():
+    from songs.bpm_state import BACKING_BPM_MAX, BACKING_BPM_MIN, normalize_backing_bpm
+
+    assert normalize_backing_bpm(30) == 30
+    assert normalize_backing_bpm(15) == BACKING_BPM_MIN
+    assert normalize_backing_bpm(200) == BACKING_BPM_MAX
+
+
 def test_sync_backing_bpm_from_slider_updates_canonical_keys():
     st = _FakeSession({BPM_WIDGET_KEY: 100})
     sync_id = "pk::Pop::Song — Artist"
@@ -196,7 +233,7 @@ def test_canonicalize_song_card_matches_playback_for_known_songs():
     test_cases = [
         ("pk::Pop::Shallow — Lady Gaga / Bradley Cooper", 96, "Ballad", "4/4"),
         ("pk::Pop::Perfect — Ed Sheeran", 95, "Pop groove", "6/8"),
-        ("pk::Jazz::Blue Bossa — Kenny Dorham", 100, "Bossa nova", "4/4"),
+        ("pk::Jazz::Blue Bossa — Kenny Dorham", 135, "Bossa nova", "4/4"),
         ("pk::Rock::We Are the Champions — Queen", 65, "Rock groove", "4/4"),
     ]
     for sync_id, bpm, groove, meter in test_cases:

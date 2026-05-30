@@ -164,17 +164,157 @@ def _champions_chart_pack() -> dict[str, Any]:
 
     inter = dict(CHAMPIONS_SECTIONS)
     beg = dict(CHAMPIONS_BEGINNER)
+    section_order = list(inter.keys())
+    scale_hints = {
+        "Cm": ["C Natural Minor", "C Minor Pentatonic"],
+        "F7": ["F Mixolydian"],
+        "Bb7": ["Bb Mixolydian"],
+        "C7": ["C Mixolydian"],
+        "Dm": ["D Dorian"],
+        "Ab6": ["Ab Major"],
+    }
     return {
         "key": "Cm",
         "sections": inter,
         "chart_versions": _levels(beginner=beg, intermediate=inter, advanced=inter),
         "chart_status": "practice_level_verified",
+        "section_order": section_order,
         "guitar_tabs": CHAMPIONS_GUITAR_TABS,
+        "composer": "Freddie Mercury",
+        "lyric_cues": {
+            "Verse 1": ["Piano-driven verse — Cm · Gm7/C vamp"],
+            "Chorus 1": ["Anthem lift — F major center, Bb|C7 push"],
+            "Ending Tag": ["Fm · Gm7 tag before verse 2"],
+            "Verse 2": ["Second verse — same Cm harmony"],
+            "Chorus 2": ["Chorus return — layered vocals"],
+            "Final Chorus": ["Biggest stadium singalong chorus"],
+            "Outro": ["Sustained anthem outro — full chorus harmony"],
+        },
         "extensions": _ext(
             arrangement_notes=CHAMPIONS_ARRANGEMENT_NOTES,
-            default_bpm=107,
+            default_bpm=65,
             default_groove="Rock groove",
+            time_signature="4/4",
+            vocal_showcase=True,
+            queen_arena_anthem=True,
+            repertoire_tags=[
+                "Queen",
+                "Freddie Mercury",
+                "Arena Rock",
+                "Power Ballad",
+                "Anthem",
+                "Karaoke Friendly",
+                "Vocal Showcase",
+            ],
+            harmonic_analysis={
+                "progression_summary": (
+                    "Cm verse with slash bass motion; F-centered chorus "
+                    "with diminished passing chords and Fm tag"
+                ),
+                "scale_suggestions": scale_hints,
+            },
             lyric_chord_chart=CHAMPIONS_LYRIC_CHART,
+        ),
+    }
+
+
+def _thinking_out_loud_chart_pack() -> dict[str, Any]:
+    """Thinking Out Loud — Ed Sheeran (C guitar chart · D concert, 4/4)."""
+    verse = ["C", "C/E", "F", "G"] * 4
+    turnaround = ["C", "C/E", "F", "G", "C", "C/E", "F", "G"]
+    pre_chorus = (
+        ["Dm", "G", "C"]
+        + ["Dm", "G"]
+        + ["Dm", "G", "Am"]
+        + ["Dm", "G"]
+        + ["C", "C/E"]
+    )
+    chorus = ["F", "G", "C", "C/E"] * 3 + ["F", "G"]
+    ending_tag = ["Am", "G", "F", "C/E", "Dm", "G", "C"]
+
+    intermediate = {
+        "Verse 1": list(verse),
+        "Turnaround": list(turnaround),
+        "Pre-Chorus 1": list(pre_chorus),
+        "Chorus 1": list(chorus),
+        "Ending Tag": list(ending_tag),
+        "Verse 2": list(verse),
+        "Pre-Chorus 2": list(pre_chorus),
+        "Chorus 2": list(chorus),
+        "Instrumental": list(verse),
+        "Final Chorus": list(chorus),
+        "Outro": list(ending_tag) * 2,
+    }
+
+    def _beg(ch: str) -> str:
+        return ch.replace("C/E", "C").replace("Dm", "Dm").replace("Am", "Am")
+
+    beginner = {
+        name: [_beg(c) for c in chords]
+        for name, chords in intermediate.items()
+    }
+    advanced = dict(intermediate)
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "C": ["C Major", "C Pentatonic"],
+        "C/E": ["C Major"],
+        "F": ["F Lydian", "F Major Pentatonic"],
+        "G": ["G Mixolydian"],
+        "Dm": ["D Dorian"],
+        "Am": ["A Aeolian", "A Minor Pentatonic"],
+    }
+    return {
+        "key": "C",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Ed Sheeran",
+        "lyric_cues": {
+            "Verse 1": ["Intimate acoustic — C · C/E · F · G"],
+            "Turnaround": ["Turnaround — hold the C/E bass line"],
+            "Pre-Chorus 1": ["Gradual build into chorus"],
+            "Chorus 1": ["Romantic lift — F · G · C · C/E"],
+            "Ending Tag": ["Tag — Am · G · F · C/E · Dm · G · C"],
+            "Verse 2": ["Second verse — same loop"],
+            "Pre-Chorus 2": ["Pre-chorus 2 — fuller feel"],
+            "Chorus 2": ["Chorus return"],
+            "Instrumental": ["Instrumental — maintain groove"],
+            "Final Chorus": ["Final chorus — warmest dynamics"],
+            "Outro": ["Outro — let chords breathe"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**C-shape guitar chart** (concert/recording **D major**, "
+                "capo-friendly). **4/4**, ~75 BPM soul-pop ballad. Preserve "
+                "**C/E** for smooth bass movement — do not drop the slash. "
+                "Verse: intimate acoustic; pre-chorus: gradual build; chorus: "
+                "fuller rhythm. Backing: acoustic guitar, light percussion, "
+                "bass, subtle electric piano, warm pads — no heavy rock or "
+                "jazz reharm. Wedding / singer-songwriter practice friendly."
+            ),
+            default_bpm=75,
+            default_groove="Ballad",
+            time_signature="4/4",
+            vocal_showcase=True,
+            ed_sheeran_acoustic=True,
+            repertoire_tags=[
+                "Ed Sheeran",
+                "Acoustic Pop",
+                "Wedding Song",
+                "Romantic Ballad",
+                "Karaoke Friendly",
+                "Guitar/Vocal Performance",
+            ],
+            harmonic_analysis={
+                "progression_summary": "I–I/3–IV–V verse; Dm–G–C pre-chorus; F–G–I chorus",
+                "scale_suggestions": scale_hints,
+                "concert_key": "D",
+            },
         ),
     }
 
@@ -1465,10 +1605,11 @@ def _say_chart_pack() -> dict[str, Any]:
 
 
 def _scientist_chart_pack() -> dict[str, Any]:
-    """The Scientist — Coldplay (D major, piano ballad, 4/4).
+    """The Scientist — Coldplay (D minor concert, piano ballad, 4/4).
 
     One list item = one bar unless token uses ``|`` for an in-bar split
     (e.g. ``D|Dmaj7`` = two beats each). **N.C.** bars are true tacet.
+    Preserve slash colors: **A/D · D6/9 · A/E · Asus4 · Dsus2/C#**.
     """
     verse_loop = ["Bm7", "G", "D", "Dsus2"]
     chorus = [
@@ -1523,8 +1664,21 @@ def _scientist_chart_pack() -> dict[str, Any]:
         for name, chords in intermediate.items()
     }
     section_order = list(intermediate.keys())
+    scale_hints = {
+        "Bm7": ["B Dorian", "B Minor Pentatonic"],
+        "G": ["G Major"],
+        "D": ["D Major"],
+        "Dsus2": ["D Major"],
+        "Dsus2/C#": ["D Major"],
+        "A/D": ["A Mixolydian"],
+        "D6/9": ["D Major"],
+        "A/E": ["A Mixolydian"],
+        "Asus4": ["A Mixolydian"],
+        "A": ["A Mixolydian"],
+        "Dmaj7": ["D Ionian", "D Lydian"],
+    }
     return {
-        "key": "D",
+        "key": "Dm",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -1533,32 +1687,164 @@ def _scientist_chart_pack() -> dict[str, Any]:
         ),
         "chart_status": "practice_level_verified",
         "section_order": section_order,
+        "composer": "Coldplay",
         "lyric_cues": {
             "Intro": ["Piano intro — Bm7 · G · D · Dsus2"],
             "Verse 1": ["Come up to meet you, tell you I'm sorry…"],
             "Chorus 1": ["Nobody said it was easy…"],
-            "N.C. 1": ["Oh, take me back to the start"],
+            "N.C. 1": ['N.C. — "Take me back to the start"'],
             "Instrumental 1": ["Instrumental — D · G · D · D/Dmaj7"],
             "Verse 2": ["Second verse — walk down to Dsus2/C#"],
-            "Chorus 2": ["Chorus lift — fuller bass and drums"],
-            "N.C. 2": ["I'm going back to the start"],
-            "Instrumental 2": ["Short instrumental pad"],
-            "Ending": ["Outro loop — gradually thin"],
-            "Final Tag": ["Final Bm7 · G · D tag"],
+            "Chorus 2": ["Chorus lift — wider strings, gentle drums"],
+            "N.C. 2": ['N.C. — "I\'m going back to the start"'],
+            "Instrumental 2": ["Short instrumental — emotional piano focus"],
+            "Ending": ["Outro loop — gradually thin instrumentation"],
+            "Final Tag": ["Final Bm7 · G · D — let the chord ring"],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**D major** piano ballad (**4/4**, ~75 BPM, straight 8ths). "
-                "Verse loop **Bm7–G–D–Dsus2** (one chord per bar). Chorus "
-                "preserves the slash walk **A/D → D6/9 → A/E → Asus4 → A**. "
-                "**N.C.** bars are brief tacet pauses before vocal pickups. "
-                "Instrumental uses **D|Dmaj7** half-bar split. Piano-led; "
-                "chorus adds bass and drums; ending thins out over repeated "
-                "**Bm7–G–D–D** then **Bm7–G–D** tag."
+                "**D minor** (concert) piano ballad (**4/4**, ~73 BPM). "
+                "Common guitar reading uses capo + open-position shapes; "
+                "preserve **Bm7 · G · D · Dsus2 · A/D · D6/9 · A/E · Asus4 · "
+                "A · Dmaj7 · Dsus2/C#** — do not simplify slash colors. "
+                "Verse: sparse piano; chorus: gentle lift with soft strings; "
+                "ending fades to **Bm7–G–D** tag. Backing: piano primary, "
+                "soft strings, bass, light brushes, ambient pads — avoid "
+                "heavy rock guitars. Karaoke- and lyric-focused practice "
+                "friendly; emotional dynamic shaping for performance mode."
             ),
-            default_bpm=75,
+            default_bpm=73,
             default_groove="Ballad",
             time_signature="4/4",
+            vocal_showcase=True,
+            coldplay_piano_ballad=True,
+            repertoire_tags=[
+                "Coldplay",
+                "Piano Ballad",
+                "Alternative Rock",
+                "Emotional Ballad",
+                "Karaoke Friendly",
+                "Vocal Showcase",
+            ],
+            harmonic_analysis={
+                "progression_summary": (
+                    "Bm7–G–D–Dsus2 verse loop; chorus slash walk "
+                    "A/D → D6/9 → A/E → Asus4 → A"
+                ),
+                "scale_suggestions": scale_hints,
+            },
+        ),
+    }
+
+
+def _blue_bossa_chart_pack() -> dict[str, Any]:
+    """Blue Bossa — Kenny Dorham (C minor, bossa nova, 4/4, 16-bar).
+
+    Classic A/B: **Cm7–Fm7–Dm7b5–G7(♯5)–Cm7** then
+    **Ebm7–Ab7–Dbmaj7–Dm7b5–G7–Cm7**. One list item = one bar.
+    """
+    section_a = ["Cm7", "Cm7", "Fm7", "Fm7", "Dm7b5", "G7#5", "Cm7", "Cm7"]
+    section_b = ["Ebm7", "Ab7", "Dbmaj7", "Dbmaj7", "Dm7b5", "G7", "Cm7", "Cm7"]
+    head = list(section_a) + list(section_b)
+
+    intermediate = {
+        "Section A": list(section_a),
+        "Section B": list(section_b),
+        "Head": list(head),
+        "Solo": list(head) * 2,
+        "Outro": ["Dm7b5", "G7", "Cm7", "Cm7"],
+    }
+
+    def _beg(ch: str) -> str:
+        return (
+            ch.replace("G7#5", "G7")
+            .replace("Dm7b5", "Dm")
+            .replace("Dbmaj7", "Db")
+            .replace("Ebm7", "Ebm")
+            .replace("Fm7", "Fm")
+            .replace("Cm7", "Cm")
+            .replace("Ab7", "Ab")
+        )
+
+    beginner = {name: [_beg(c) for c in chords] for name, chords in intermediate.items()}
+
+    def _adv(ch: str) -> str:
+        mapping = {
+            "Cm7": "Cm9",
+            "Fm7": "Fm9",
+            "Dm7b5": "Dm7b5",
+            "G7#5": "G7#5",
+            "G7": "G7b9",
+            "Ebm7": "Ebm9",
+            "Ab7": "Ab13",
+            "Dbmaj7": "Dbmaj9",
+        }
+        return mapping.get(ch, ch)
+
+    advanced = {name: [_adv(c) for c in chords] for name, chords in intermediate.items()}
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "Cm7": ["C Dorian", "C Minor Pentatonic", "C Blues Scale"],
+        "Fm7": ["F Dorian"],
+        "Dm7b5": ["D Locrian", "D Locrian ♮2"],
+        "G7#5": ["G Whole Tone", "G Altered"],
+        "G7": ["G Mixolydian", "G Altered", "G Half-Whole Diminished"],
+        "Ebm7": ["Eb Dorian"],
+        "Ab7": ["Ab Mixolydian"],
+        "Dbmaj7": ["Db Ionian", "Db Lydian"],
+    }
+    return {
+        "key": "Cm",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Kenny Dorham",
+        "lyric_cues": {
+            "Section A": ["Head — lighter comping, melody space"],
+            "Section B": ["Bridge — major ii–V–I to Dbmaj7"],
+            "Head": ["Full 16-bar head — bossa ~135 BPM"],
+            "Solo": ["Solo — stronger rhythm section, active bass"],
+            "Outro": ["ii–V–i turnaround tag on Cm7"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**C minor** jazz standard (**4/4**). Bossa feel **130–140 BPM** "
+                "(default **135**); **Jazz swing** groove for **160–180** readings. "
+                "Preserve **Cm7 · Dm7b5 · G7 · G7#5 · Fm7 · Ebm7 · Ab7 · Dbmaj7**. "
+                "Recognize **Dm7b5–G7–Cm7** as minor **ii–V–i** and "
+                "**Ebm7–Ab7–Dbmaj7** as major **ii–V–I**. Backing styles: "
+                "bossa (nylon guitar, shaker, piano comp), jazz trio, or "
+                "Latin combo. Core repertoire alongside Autumn Leaves, "
+                "Satin Doll, ATTYA, Fly Me to the Moon, Take the A Train."
+            ),
+            default_bpm=135,
+            default_groove="Bossa nova",
+            time_signature="4/4",
+            form="16-bar AABA-style (8 + 8)",
+            jazz_standard_flagship=True,
+            repertoire_tags=[
+                "Jazz Standard",
+                "Bossa Nova",
+                "Latin Jazz",
+                "Saxophone Friendly",
+                "Piano Friendly",
+                "Guitar Friendly",
+                "Improvisation Study",
+                "Essential Jazz Repertoire",
+            ],
+            harmonic_analysis={
+                "progression_summary": (
+                    "Minor ii–V–i (Dm7b5–G7–Cm7); major ii–V–I "
+                    "(Ebm7–Ab7–Dbmaj7)"
+                ),
+                "scale_suggestions": scale_hints,
+                "turnarounds": ["Dm7b5–G7–Cm7", "Ebm7–Ab7–Dbmaj7"],
+            },
         ),
     }
 
@@ -6398,29 +6684,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
             ],
         ),
         ("Perfect", "Ed Sheeran"): _perfect_chart_pack(),
-        ("Thinking Out Loud", "Ed Sheeran"): pack("D",
-            {
-                "Intro": ["D", "D/F#", "G", "A"],
-                "Verse": ["D", "D/F#", "G", "A", "D", "D/F#", "G", "A"],
-                "Pre-Chorus": ["Em", "A", "D", "Bm", "Em", "A", "D", "A"],
-                "Chorus": ["D", "D/F#", "G", "A", "D", "D/F#", "G", "A"],
-                "Bridge": ["Bm", "A", "G", "D/F#", "Em", "A", "D", "A"],
-            },
-            {
-                "Intro": ["D", "D/F#", "G", "A7"],
-                "Verse": ["D", "D/F#", "G", "A7", "D", "D/F#", "G", "A7"],
-                "Pre-Chorus": ["Em7", "A7", "D", "Bm7", "Em7", "A7", "D", "A7"],
-                "Chorus": ["D", "D/F#", "G", "A7", "D", "D/F#", "G", "A7"],
-                "Bridge": ["Bm7", "A", "G", "D/F#", "Em7", "A7", "D", "A7"],
-            },
-            {
-                "Intro": ["Dmaj9", "D/F#", "Gmaj9", "A13"],
-                "Verse": ["Dmaj9", "D/F#", "Gmaj9", "A13", "Dmaj9", "D/F#", "Gmaj9", "A13"],
-                "Pre-Chorus": ["Em9", "A13", "Dmaj9", "Bm9", "Em9", "A13", "Dmaj9", "A13"],
-                "Chorus": ["Dmaj9", "D/F#", "Gmaj9", "A13", "Dmaj9", "D/F#", "Gmaj9", "A13"],
-                "Bridge": ["Bm9", "A13", "Gmaj9", "D/F#", "Em9", "A13", "Dmaj9", "A13"],
-            },
-        ),
+        ("Thinking Out Loud", "Ed Sheeran"): _thinking_out_loud_chart_pack(),
         ("Viva La Vida", "Coldplay"): _viva_la_vida_chart_pack(),
         ("Piano Man", "Billy Joel"): _piano_man_chart_pack(),
         ("Photograph", "Ed Sheeran"): _photograph_chart_pack(),
@@ -6557,26 +6821,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
             },
         ),
         ("Wave", "Antonio Carlos Jobim"): _wave_chart_pack(),
-        ("Blue Bossa", "Kenny Dorham"): pack(
-            "Cm",
-            {
-                "A Section": ["Cm", "Cm", "Fm", "Fm", "Dm7b5", "G7", "Cm", "Cm"],
-                "B Section": ["Ebm", "Ab7", "Db", "Db", "Dm7b5", "G7", "Cm", "G7"],
-            },
-            {
-                "A Section": ["Cm7", "Cm7", "Fm7", "Fm7", "Dm7b5", "G7", "Cm7", "Cm7"],
-                "B Section": ["Ebm7", "Ab7", "Dbmaj7", "Dbmaj7", "Dm7b5", "G7", "Cm7", "G7"],
-            },
-            {
-                "A Section": ["Cm9", "Cm9", "Fm9", "Fm9", "Dm7b5", "G7b9", "Cm9", "Cm9"],
-                "B Section": ["Ebm9", "Ab13", "Dbmaj9", "Dbmaj9", "Dm7b5", "G7b9", "Cm9", "G7b9"],
-            },
-            extensions=_ext(
-                default_bpm=100,
-                default_groove="Bossa nova",
-                arrangement_notes="Latin jazz bossa — ~100 BPM; A/B sections, one chord per bar.",
-            ),
-        ),
+        ("Blue Bossa", "Kenny Dorham"): _blue_bossa_chart_pack(),
         ("Fly Me to the Moon", "Bart Howard"): pack("C",
             {
                 "A1": ["Am", "Dm", "G7", "C", "F", "Bm7b5", "E7", "Am"],
@@ -8270,13 +8515,36 @@ def curated_song_records() -> list[dict[str, Any]]:
                 "Final Chorus",
             ],
         ),
-        _s("Thinking Out Loud", "Ed Sheeran", "Pop", "D", {
-            "Intro": ["D", "D/F#", "G", "A7"],
-            "Verse": ["D", "D/F#", "G", "A7", "D", "D/F#", "G", "A7"],
-            "Pre-Chorus": ["Em7", "A7", "D", "Bm7", "Em7", "A7", "D", "A7"],
-            "Chorus": ["D", "D/F#", "G", "A7", "D", "D/F#", "G", "A7"],
-            "Bridge": ["Bm7", "A", "G", "D/F#", "Em7", "A7", "D", "A7"],
-        }),
+        _s(
+            "Thinking Out Loud",
+            "Ed Sheeran",
+            "Pop",
+            "C",
+            {
+                "Verse 1": ["C", "C/E", "F", "G"] * 4,
+                "Turnaround": ["C", "C/E", "F", "G", "C", "C/E", "F", "G"],
+                "Pre-Chorus 1": ["Dm", "G", "C", "Dm", "G", "Dm", "G", "Am", "Dm", "G", "C", "C/E"],
+                "Chorus 1": ["F", "G", "C", "C/E"] * 3 + ["F", "G"],
+                "Verse 2": ["C", "C/E", "F", "G"] * 4,
+                "Chorus 2": ["F", "G", "C", "C/E"] * 3 + ["F", "G"],
+                "Outro": ["Am", "G", "F", "C/E", "Dm", "G", "C"],
+            },
+            extensions=_ext(
+                default_bpm=75,
+                default_groove="Ballad",
+                time_signature="4/4",
+                vocal_showcase=True,
+                ed_sheeran_acoustic=True,
+                repertoire_tags=[
+                    "Ed Sheeran",
+                    "Acoustic Pop",
+                    "Wedding Song",
+                    "Romantic Ballad",
+                    "Karaoke Friendly",
+                ],
+            ),
+            chart_status="practice_level_verified",
+        ),
         _s("Photograph", "Ed Sheeran", "Pop", "E", {
             "Verse": ["E", "C#m", "B", "A"],
             "Chorus": ["E", "B", "C#m", "A"],
@@ -8329,7 +8597,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "The Scientist",
             "Coldplay",
             "Pop",
-            "D",
+            "Dm",
             {
                 "Intro": ["Bm7", "G", "D", "Dsus2"] * 2,
                 "Verse 1": ["Bm7", "G", "D", "Dsus2"] * 4,
@@ -8385,7 +8653,21 @@ def curated_song_records() -> list[dict[str, Any]]:
                 "Ending",
                 "Final Tag",
             ],
-            extensions=_ext(default_bpm=75, default_groove="Ballad", time_signature="4/4"),
+            extensions=_ext(
+                default_bpm=73,
+                default_groove="Ballad",
+                time_signature="4/4",
+                vocal_showcase=True,
+                coldplay_piano_ballad=True,
+                repertoire_tags=[
+                    "Coldplay",
+                    "Piano Ballad",
+                    "Alternative Rock",
+                    "Emotional Ballad",
+                    "Karaoke Friendly",
+                    "Vocal Showcase",
+                ],
+            ),
         ),
         _s("Clocks", "Coldplay", "Pop", "Eb", {
             "Intro / Piano Riff": ["Eb", "Bbm", "Fm", "Fm"],
@@ -8660,28 +8942,72 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Verse": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
             "Chorus": ["F#m", "D", "E", "A", "F#m", "B7", "E", "E"],
         }, composer="Lennon–McCartney"),
-        _s("We Are the Champions", "Queen", "Rock", "Cm", {
-            "Verse": [
-                "Cm", "Gm7/C", "Cm", "Gm7/C", "Cm", "Gm7/C", "Cm", "Gm7/C",
-                "Eb", "Ab/Eb", "Eb", "Ab/Eb", "Eb", "Bb/D", "Cm", "F7", "Bb",
-                "Ab/Bb", "Bbm7b5", "Bb7", "C7",
+        _s(
+            "We Are the Champions",
+            "Queen",
+            "Rock",
+            "Cm",
+            {
+                "Verse 1": [
+                    "Cm", "Gm7/C", "Cm", "Gm7/C", "Cm", "Gm7/C", "Cm", "Gm7/C",
+                    "Eb", "Ab/Eb", "Eb", "Ab/Eb", "Eb", "Bb/D", "Cm", "F7", "Bb",
+                    "Ab/Bb", "Bbm7b5", "Bb7", "C7",
+                ],
+                "Chorus 1": [
+                    "F", "Am", "Dm", "Bb|C7", "F", "Am", "Bb", "F#dim7",
+                    "Gm7", "C7/G", "Bbm6", "Bbm6/Db", "Edim7", "Gdim7",
+                    "F", "Ebadd9/G", "Ab6", "Bb", "Cm7add4",
+                ],
+                "Ending Tag": ["Fm", "Gm7", "Fm", "Gm7/F", "Fm", "Gm7/C"],
+                "Verse 2": [
+                    "Cm", "Gm7/C", "Cm", "Gm7/C", "Cm", "Gm7/C", "Cm", "Gm7/C",
+                    "Eb", "Ab/Eb", "Eb", "Ab/Eb", "Eb", "Bb/D", "Cm", "F7", "Bb",
+                    "Ab/Bb", "Bbm7b5", "Bb7", "C7",
+                ],
+                "Chorus 2": [
+                    "F", "Am", "Dm", "Bb|C7", "F", "Am", "Bb", "F#dim7",
+                    "Gm7", "C7/G", "Bbm6", "Bbm6/Db", "Edim7", "Gdim7",
+                    "F", "Ebadd9/G", "Ab6", "Bb", "Cm7add4",
+                ],
+                "Final Chorus": [
+                    "F", "Am", "Dm", "Bb|C7", "F", "Am", "Bb", "F#dim7",
+                    "Gm7", "C7/G", "Bbm6", "Bbm6/Db", "Edim7", "Gdim7",
+                    "F", "Ebadd9/G", "Ab6", "Bb", "Cm7add4",
+                ],
+                "Outro": [
+                    "F", "Am", "Dm", "Bb|C7", "F", "Am", "Bb", "F#dim7",
+                    "Gm7", "C7/G", "Bbm6", "Bbm6/Db", "Edim7", "Gdim7",
+                    "F", "Ebadd9/G", "Ab6", "Bb", "Cm7add4",
+                ],
+            },
+            composer="Freddie Mercury",
+            chart_status="practice_level_verified",
+            section_order=[
+                "Verse 1",
+                "Chorus 1",
+                "Ending Tag",
+                "Verse 2",
+                "Chorus 2",
+                "Final Chorus",
+                "Outro",
             ],
-            "Chorus": [
-                "F", "Am", "Dm", "Bb", "C7", "F", "Am", "Bb", "F#dim7",
-                "Gm7", "C7/G", "Bbm6", "Bbm6/Db", "Edim7", "Gdim7",
-                "F", "Ebadd9/G", "Ab6", "Bb", "Cm7add4",
-                "Fm", "Gm7", "Fm", "Gm7/F", "Fm", "Gm7/C",
-            ],
-            "Outro": [
-                "F", "Am", "Dm", "Bb", "C7", "F", "Am", "Bb", "F#dim7",
-                "Gm7", "C7/G", "Bbm6", "Bbm6/Db", "Edim7", "Gdim7",
-                "F", "Ebadd9/G", "Ab6", "Bb", "Cm7add4",
-                "Fm", "Gm7", "Fm", "Gm7/F", "Fm", "Gm7/C",
-                "Cm", "Gm7/C", "Cm", "Gm7/C",
-            ],
-        }, composer="Freddie Mercury", guitar_tabs={
-            "Cm": "x35543", "Gm7/C": "x30303", "F": "133211", "Bb": "x13331",
-        }),
+            extensions=_ext(
+                default_bpm=65,
+                default_groove="Rock groove",
+                time_signature="4/4",
+                vocal_showcase=True,
+                queen_arena_anthem=True,
+                repertoire_tags=[
+                    "Queen",
+                    "Freddie Mercury",
+                    "Arena Rock",
+                    "Power Ballad",
+                    "Anthem",
+                    "Karaoke Friendly",
+                    "Vocal Showcase",
+                ],
+            ),
+        ),
         _s(
             "Come Together",
             "The Beatles",
@@ -8971,10 +9297,30 @@ def curated_song_records() -> list[dict[str, Any]]:
             ),
             chart_status="practice_level_verified",
         ),
-        _s("Blue Bossa", "Kenny Dorham", "Jazz", "Cm", {
-            "A Section": ["Cm9", "Fm9", "Dm7b5", "G7b9", "Cm9", "Cm9"],
-            "B Section": ["Ebm9", "Ab13", "Dbmaj9", "Dbmaj9", "Dm7b5", "G7b9", "Cm9", "G7b9"],
-        }, composer="Kenny Dorham"),
+        _s(
+            "Blue Bossa",
+            "Kenny Dorham",
+            "Jazz",
+            "Cm",
+            {
+                "Section A": ["Cm7", "Cm7", "Fm7", "Fm7", "Dm7b5", "G7#5", "Cm7", "Cm7"],
+                "Section B": ["Ebm7", "Ab7", "Dbmaj7", "Dbmaj7", "Dm7b5", "G7", "Cm7", "Cm7"],
+            },
+            composer="Kenny Dorham",
+            extensions=_ext(
+                default_bpm=135,
+                default_groove="Bossa nova",
+                jazz_standard_flagship=True,
+                repertoire_tags=[
+                    "Jazz Standard",
+                    "Bossa Nova",
+                    "Latin Jazz",
+                    "Improvisation Study",
+                    "Essential Jazz Repertoire",
+                ],
+            ),
+            chart_status="practice_level_verified",
+        ),
         _s("All of Me", "Jazz Standard", "Jazz", "C", {
             "A Section": ["Cmaj7", "E7", "A7", "Dm7", "E7", "Am7", "D7", "G7"],
             "B Section": ["Cmaj7", "E7", "A7", "Dm7", "Fmaj7", "Fm7", "Cmaj7", "A7"],

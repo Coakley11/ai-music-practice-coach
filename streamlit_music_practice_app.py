@@ -122,6 +122,8 @@ from songs import (
 )
 from songs.key_state import mark_display_key_changed
 from songs.playback_defaults import (
+    BACKING_BPM_MAX,
+    BACKING_BPM_MIN,
     GROOVE_STYLE_CHOICES,
     active_song_sync_id,
     apply_backing_defaults_for_song,
@@ -819,7 +821,14 @@ if not _APP_UI_LOADED:
         with c5:
             st.selectbox("Focus", focus_options, key="focus")
         if kwargs.get("show_bpm"):
-            st.slider("BPM", 50, 180, 100, 5, key=kwargs.get("bpm_key", "backing_track_bpm"))
+            st.slider(
+                "BPM",
+                BACKING_BPM_MIN,
+                BACKING_BPM_MAX,
+                100,
+                5,
+                key=kwargs.get("bpm_key", "backing_track_bpm"),
+            )
 
     def render_section_jump_bar(section_names, session_state, *, state_key="practice_focus_section", rerun_fn=None):
         options = [n for n in section_names if n]
@@ -6499,8 +6508,8 @@ def _render_multitrack_session_setup_panel(
     with _kbpm_c1:
         mt_bpm = st.slider(
             "Session BPM",
-            50,
-            180,
+            BACKING_BPM_MIN,
+            BACKING_BPM_MAX,
             _mt_bpm_default,
             5,
             key="multitrack_bpm",
@@ -8496,13 +8505,13 @@ def _render_backing_step2_playback_action(
             st.markdown('<span class="ui-backing-inline-label">Tempo (BPM)</span>', unsafe_allow_html=True)
             bpm = st.slider(
                 "Quick BPM",
-                50,
-                180,
+                BACKING_BPM_MIN,
+                BACKING_BPM_MAX,
                 widget_bpm,
                 5,
                 key=slider_key,
                 label_visibility="collapsed",
-                help="Your tempo is kept until you change songs.",
+                help="Your tempo is kept until you change songs (20–180 BPM).",
             )
             bpm = sync_backing_bpm_from_slider(st, slider_bpm=int(bpm))
         with _tc2:

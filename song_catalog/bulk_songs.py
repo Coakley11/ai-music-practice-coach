@@ -214,7 +214,7 @@ def bulk_song_records() -> list[dict[str, Any]]:
         ("Somebody Told Me", "The Killers", "Ab", None),
         ("Human", "The Killers", "A", None),
         ("Clocks", "Coldplay", "Eb", None),
-        ("The Scientist", "Coldplay", "F", None),
+        ("The Scientist", "Coldplay", "Dm", None),
         ("Paradise", "Coldplay", "F", None),
     ]
     _add_pop_pack(out, pop_vi, "vi_iv")
