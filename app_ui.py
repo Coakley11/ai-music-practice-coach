@@ -5469,7 +5469,7 @@ def render_active_song_hub_open(st: Any, *, extra_class: str = "") -> None:
         """
 <div class="ui-active-song-hub-head">
   <span class="ui-active-song-hub-label">Current active song</span>
-  <span class="ui-active-song-hub-sub">Main selector — chart, lyrics, backing &amp; practice follow this track</span>
+  <span class="ui-active-song-hub-sub">Pick a song here — then <strong>Edit Song Chart</strong>, Practice, or Backing Track</span>
 </div>
         """,
         unsafe_allow_html=True,
@@ -5544,8 +5544,8 @@ def render_song_library_panel_header(
   <p class="ui-song-library-kicker">Catalog</p>
   <h3 class="ui-song-library-title">Browse Library</h3>
   <p class="ui-song-library-sub">
-    Filter by genre or search below — load your pick in the
-    <strong>Active Song</strong> panel above.
+    Filter by genre or search below — your pick loads in
+    <strong>Active Song</strong> above. Use <strong>Edit Song Chart</strong> there to fix chords.
   </p>
   {count_html}
 </div>

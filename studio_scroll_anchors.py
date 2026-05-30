@@ -51,6 +51,9 @@ ANCHOR_CHOOSE_ACTIVE_SONG = "anchor_choose_active_song"
 ANCHOR_LYRICS_EDITOR = "anchor_lyrics_editor"
 """Song Selection page → just above the Lyrics & Cues editor card."""
 
+ANCHOR_CHART_EDITOR = "anchor_chart_editor"
+"""Song Selection page → Edit Song Chart panel (chord bar editor)."""
+
 ANCHOR_BACKING_MAIN_CONTROLS = "anchor_backing_main_controls"
 """Backing Track page → just above the Generate / Play / Stop card."""
 
@@ -71,6 +74,7 @@ KNOWN_ANCHORS: frozenset[str] = frozenset(
     {
         ANCHOR_CHOOSE_ACTIVE_SONG,
         ANCHOR_LYRICS_EDITOR,
+        ANCHOR_CHART_EDITOR,
         ANCHOR_BACKING_MAIN_CONTROLS,
         ANCHOR_PRACTICE_COACH,
         ANCHOR_CHORD_COACH,

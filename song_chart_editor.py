@@ -67,26 +67,107 @@ def collect_draft_from_widgets(
     artist: str,
     draft: dict[str, list[str]],
 ) -> dict[str, list[str]]:
-    """Read latest chord cell values from session state before save."""
+    """Read latest chord values from per-bar widgets before save.
+
+    Quick-edit lines are initialized with ``|`` separators; preferring them on
+    save would ignore bar-box edits. Use bar widgets (and the in-memory draft).
+    """
     collected: dict[str, list[str]] = {}
-    for sec_name, template in draft.items():
-        quick_key = f"chart_edit_quick::{title}::{artist}::{sec_name}"
-        quick_val = st.session_state.get(quick_key)
-        if quick_val and "|" in str(quick_val):
-            parsed = parse_pipe_chord_line(str(quick_val))
-            if parsed:
-                collected[sec_name] = parsed
-                continue
+    for sec_name, bars in draft.items():
         chords: list[str] = []
-        for idx in range(len(template)):
+        for idx in range(len(bars)):
             key = f"chart_edit_cell::{title}::{artist}::{sec_name}::{idx}"
-            raw = st.session_state.get(key, template[idx])
+            raw = st.session_state.get(key, bars[idx])
             token = normalize_sections({sec_name: [str(raw)]}).get(sec_name, [])
             if token:
                 chords.append(token[0])
+            elif bars[idx]:
+                chords.append(str(bars[idx]).strip())
         if chords:
             collected[sec_name] = chords
     return collected
+
+
+CHART_SAVE_NOTICE_KEY = "chart_last_save_notice"
+
+
+def chart_save_preview_lines(
+    saved: dict[str, list[str]],
+    *,
+    before: dict[str, list[str]] | None = None,
+    section_order: list[str] | None = None,
+    max_edits: int = 8,
+    max_fallback_sections: int = 4,
+) -> list[str]:
+    """Lines for post-save confirmation (edited bars first, else first bar per section)."""
+    ordered = list(section_order or saved.keys())
+    for name in saved.keys():
+        if name not in ordered:
+            ordered.append(name)
+
+    edits: list[str] = []
+    for sec in ordered:
+        saved_bars = list(saved.get(sec) or [])
+        before_bars = list((before or {}).get(sec) or [])
+        max_len = max(len(saved_bars), len(before_bars))
+        for idx in range(max_len):
+            new_chord = saved_bars[idx] if idx < len(saved_bars) else None
+            old_chord = before_bars[idx] if idx < len(before_bars) else None
+            if new_chord is None:
+                continue
+            new_chord = str(new_chord).strip()
+            old_chord = str(old_chord).strip() if old_chord is not None else None
+            if new_chord != old_chord:
+                edits.append(f"{sec} bar {idx + 1}: {new_chord}")
+                if len(edits) >= max_edits:
+                    return edits
+
+    if edits:
+        return edits
+
+    fallback: list[str] = []
+    for sec in ordered:
+        bars = saved.get(sec) or []
+        if bars:
+            fallback.append(f"{sec} bar 1: {bars[0]}")
+        if len(fallback) >= max_fallback_sections:
+            break
+    return fallback
+
+
+def chart_active_source_label(song_data: dict[str, Any]) -> tuple[str, str]:
+    """Return (banner text, kind) where kind is ``override`` or ``catalog``."""
+    user_ov = song_data.get("user_override") or {}
+    if not user_ov:
+        return ("Using Catalog Chart", "catalog")
+    if user_ov.get("status") == USER_VERIFIED:
+        return ("Using User Override Chart (user verified)", "override")
+    return ("Using User Override Chart", "override")
+
+
+def _render_chart_source_banner(st: Any, song_data: dict[str, Any]) -> None:
+    label, kind = chart_active_source_label(song_data)
+    user_ov = song_data.get("user_override") or {}
+    if kind == "override":
+        saved_at = user_ov.get("saved_at", "?")
+        st.success(f"✅ {label} · saved {saved_at}")
+    else:
+        st.info(label)
+
+
+def _pop_chart_save_notice(
+    st: Any,
+    *,
+    title: str,
+    artist: str,
+) -> dict[str, Any] | None:
+    notice = st.session_state.get(CHART_SAVE_NOTICE_KEY)
+    if not notice:
+        return None
+    if notice.get("title") != title or notice.get("artist") != artist:
+        return None
+    st.session_state.pop(CHART_SAVE_NOTICE_KEY, None)
+    return notice
 
 
 def init_draft(
@@ -166,27 +247,41 @@ def render_chart_editor_panel(
     user_ov = song_data.get("user_override")
     catalog_row = _catalog_record_without_override(all_records, title, artist)
 
-    st.markdown("### ✏️ Edit Song Chart")
+    st.markdown("### Edit Song Chart")
+    save_notice = _pop_chart_save_notice(st, title=title, artist=artist)
+    if save_notice:
+        st.success(str(save_notice.get("message") or "✅ Chart saved successfully"))
+        detail = str(save_notice.get("detail") or "").strip()
+        if detail:
+            st.caption(detail)
+        preview_lines = save_notice.get("preview_lines") or []
+        if preview_lines:
+            st.markdown("**Saved preview:**")
+            for line in preview_lines:
+                st.markdown(f"- {line}")
+
+    _render_chart_source_banner(st, song_data)
+
     edit_on = st.toggle(
-        "Edit Song Chart mode",
+        "Enable editing",
         value=bool(st.session_state.get("chart_edit_mode")),
         key="chart_edit_mode_toggle",
-        help="Edit chords bar-by-bar in written (home) key. Save to override the catalog everywhere.",
+        help="Turn on to edit chords bar-by-bar in the song's written (home) key, then Save.",
     )
     st.session_state["chart_edit_mode"] = edit_on
 
-    if user_ov:
-        st.info(
-            f"**Your chord chart** is active (saved {user_ov.get('saved_at', '?')}). "
-            "Changes apply across Practice, Backing Track, and analysis."
-        )
-    else:
+    if not user_ov:
         st.caption(
-            "Edit chords below and **Save** to store your chart in "
-            "`data/user_chart_overrides.json`."
+            "Turn **Enable editing** on, change chords below, then click "
+            "**Save corrected chart** or **Save as user verified**. "
+            "Your version is kept for this song across sessions."
         )
 
     if not edit_on:
+        st.info(
+            "Toggle **Enable editing** above to change chords, add bars, or add sections "
+            "(Verse, Chorus, Bridge, etc.)."
+        )
         return
 
     home_sections = sections_for_level(song_data, level)
@@ -366,7 +461,28 @@ def render_chart_editor_panel(
         else:
             snapshot = catalog_snapshot_from_record(catalog_row or song_data)
 
-        save_user_override(
+        if existing:
+            prior_versions = existing.get("chart_versions") or {}
+            if level in prior_versions and prior_versions[level]:
+                before_sections = copy.deepcopy(prior_versions[level])
+            else:
+                before_sections = copy.deepcopy(existing.get("sections") or {})
+        elif catalog_row:
+            before_sections = sections_for_level(catalog_row, level)
+        else:
+            snap_versions = (snapshot or {}).get("chart_versions") or {}
+            if level in snap_versions and snap_versions[level]:
+                before_sections = copy.deepcopy(snap_versions[level])
+            else:
+                before_sections = copy.deepcopy((snapshot or {}).get("sections") or {})
+
+        preview_lines = chart_save_preview_lines(
+            cleaned,
+            before=normalize_sections(before_sections),
+            section_order=list(cleaned.keys()),
+        )
+
+        saved_entry = save_user_override(
             title=title,
             artist=artist,
             genre=genre,
@@ -381,10 +497,24 @@ def render_chart_editor_panel(
         refresh_app_catalog_globals(module_globals)
         invalidate_backing(st)
         st.session_state.pop(_draft_key(title, artist, level), None)
-        st.success(
-            "Saved — your chart is now used in Practice, Backing Track, Creative Lab, "
-            "Chord Finder, follow-along, transpose, and exercises."
+        status_label = (
+            "user verified"
+            if status == USER_VERIFIED
+            else "corrected chart"
         )
+        st.session_state[CHART_SAVE_NOTICE_KEY] = {
+            "title": title,
+            "artist": artist,
+            "message": "✅ Chart saved successfully",
+            "detail": (
+                f"Saved as **{status_label}** to disk · "
+                f"{len(cleaned)} section(s) · "
+                "Practice, Backing Track, Karaoke, and Creative Lab will use this chart."
+            ),
+            "preview_lines": preview_lines,
+            "override_status": status,
+            "saved_at": saved_entry.get("saved_at"),
+        }
         st.rerun()
 
     with st.expander("Backup / restore overrides", expanded=False):

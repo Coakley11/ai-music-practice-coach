@@ -219,6 +219,7 @@ from studio_scroll_anchors import (
     ANCHOR_CHOOSE_ACTIVE_SONG,
     ANCHOR_CHORD_COACH,
     ANCHOR_LYRICS_EDITOR,
+    ANCHOR_CHART_EDITOR,
     ANCHOR_PRACTICE_COACH,
     render_pending_scroll_script,
     render_scroll_anchor_marker,
@@ -1196,10 +1197,12 @@ def chart_status_label(song_data):
 
 def chart_source_caption(song_data) -> str:
     """User-facing chord chart line (no catalog quality labels)."""
-    user_ov = song_data.get("user_override") or {}
-    if user_ov:
-        return "**Chord chart:** Your saved edits apply everywhere in the studio."
-    return "**Chord chart:** Open **Edit Song Chart** below to refine chords if needed."
+    from song_chart_editor import chart_active_source_label
+
+    label, kind = chart_active_source_label(song_data)
+    if kind == "override":
+        return f"**Chord chart:** ✅ {label}"
+    return "**Chord chart:** Using Catalog Chart — open **Edit Song Chart** to customize."
 
 
 def trusted_core_records(records):
@@ -7209,6 +7212,18 @@ _PICKER_NAV_ANCHORS: dict[str, str] = {
 
 _CATALOG_RECENT_KEY = "catalog_recent_pick_keys"
 _CATALOG_FAVORITES_KEY = "catalog_favorite_pick_keys"
+PICKER_EDITOR_TAB_KEY = "picker_editor_tab"
+_JUMP_TO_CHART_EDITOR_KEY = "_jump_to_chart_editor"
+
+
+def _open_chart_editor_on_picker() -> None:
+    """Jump to Song Selection chart editor for the active catalog song."""
+    st.session_state[PICKER_EDITOR_TAB_KEY] = "Edit Song Chart"
+    st.session_state["chart_edit_mode"] = True
+    st.session_state[_JUMP_TO_CHART_EDITOR_KEY] = True
+    set_pending_anchor(st.session_state, ANCHOR_CHART_EDITOR)
+    navigate_studio_page(st.session_state, "picker")
+    st.rerun()
 
 
 def _push_recent_pick_key(session_state, pick_key: str) -> None:
@@ -7434,12 +7449,18 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         active_song_key_row_html(_original_key, _practice_key) if show_key_row else ""
     )
     _genre_label = html.escape(str(rec.get("genre") or details.get("visual_genre") or "Song"))
+    _user_ov = rec.get("user_override") or {}
+    _chart_source_note = (
+        " · <strong>Using User Override Chart</strong>"
+        if _user_ov
+        else " · Using Catalog Chart"
+    )
     _meta_row = (
         f'<p class="ui-active-song-meta-row">{_genre_label} · '
         f"<strong>{int(details.get('bpm') or 100)} BPM</strong> · "
         f"{html.escape(details.get('time_signature', '4/4'))} · "
         f"{_section_count} sections · {_bar_count} bars · "
-        f"{html.escape(_groove_label)}</p>"
+        f"{html.escape(_groove_label)}{_chart_source_note}</p>"
     )
     card_html = (
         f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}">'
@@ -7472,6 +7493,23 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             "issue is logged here so we don't render blank rows silently."
         )
     _render_v2_chart_debug_pill(rec)
+    st.markdown(
+        '<div class="ui-chart-edit-cta">'
+        '<p class="ui-chart-edit-cta-label">Chord chart</p>'
+        '<p class="ui-chart-edit-cta-hint">'
+        "Edit Verse, Chorus, Bridge, and other sections bar-by-bar — "
+        "saved permanently for this song."
+        "</p></div>",
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        "Edit Song Chart",
+        key="picker_card_edit_chart",
+        type="primary",
+        use_container_width=True,
+        help="Jump to the chord chart editor below (enable editing, change bars, then Save corrected chart).",
+    ):
+        _open_chart_editor_on_picker()
     st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
     fav_col, b1, b2, b3, b4 = st.columns([0.55, 1, 1, 1, 1])
     with fav_col:
@@ -9886,13 +9924,13 @@ elif _studio_page == "picker":
         _studio_page_header(
             "🎤",
             "Song Selection",
-            "Build your **Karaoke Performance Setlist** below the active song. Add multiple songs, reorder, then start the karaoke set.",
+            "Pick songs in **Active Song**, use **Edit Song Chart** for chords, or build your **Karaoke Performance Setlist** below.",
         )
     else:
         _studio_page_header(
             "📚",
             "Song Selection",
-            "The **Active Song** panel is your main control — pick a song there, then open Practice or Backing Track.",
+            "Pick a song in **Active Song**, then use **Edit Song Chart** to fix chords, or open **Practice** / **Backing Track**.",
         )
 
     _render_catalog_song_picker_block(
@@ -9978,9 +10016,26 @@ elif _studio_page == "picker":
         selected_data = SONG_PICKER_CATALOG[pick_genre][pick_label]
 
         _picker_level_sections = sections_for_level(selected_data, level)
+        if st.session_state.pop(_JUMP_TO_CHART_EDITOR_KEY, False):
+            st.session_state[PICKER_EDITOR_TAB_KEY] = "Edit Song Chart"
+            st.session_state["chart_edit_mode"] = True
+
         render_scroll_anchor_marker(st, ANCHOR_LYRICS_EDITOR)
-        _tab_lyrics, _tab_chart = st.tabs(["Lyrics & Cues", "Edit Song Chart"])
-        with _tab_lyrics:
+        render_scroll_anchor_marker(st, ANCHOR_CHART_EDITOR)
+
+        st.markdown("### Song content editor")
+        st.caption(
+            "Edit **lyrics & phrasing cues** or **chords bar-by-bar** for the active song. "
+            "Use **Edit Song Chart** to change Verse, Chorus, Bridge, and other sections."
+        )
+        _editor_tab = st.radio(
+            "Editor section",
+            ["Lyrics & Cues", "Edit Song Chart"],
+            horizontal=True,
+            key=PICKER_EDITOR_TAB_KEY,
+            label_visibility="collapsed",
+        )
+        if _editor_tab == "Lyrics & Cues":
             _render_lyrics_and_cues_panel(
                 song_title=str(selected_data.get("title", "")),
                 song_artist=str(selected_data.get("artist", "")),
@@ -9989,7 +10044,7 @@ elif _studio_page == "picker":
                 chart_sections=_picker_level_sections,
                 prominent=True,
             )
-        with _tab_chart:
+        else:
             st.caption(chart_source_caption(selected_data))
             render_chart_editor_panel(
                 st,
