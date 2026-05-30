@@ -13,14 +13,12 @@ from instrument_transposition import (
     selected_transposing_type,
     written_key_for_instrument,
 )
+from tuner_live import render_live_tuner
 from tuner_tone import (
     InstrumentTunerProfile,
     _profile_for_instrument,
     analyze_tone_practice,
-    cents_meter_html,
-    detect_pitch_from_audio,
     librosa_available,
-    note_label,
     parse_note_token,
     pitch_trace_svg,
 )
@@ -35,10 +33,13 @@ def tuner_key_prefix_for_song(song_title: str) -> str:
     return f"practice_tuner_{_safe_key_part(song_title)}"
 
 
-def _clear_stale_tuner_audio_widget(session_state: dict, key_prefix: str) -> None:
-    """Drop restored snapshot values — Streamlit owns audio_input widget keys."""
-    audio_key = f"{key_prefix}::audio_in"
-    session_state.pop(audio_key, None)
+def _practice_expected_note(session_state: dict) -> str | None:
+    """Optional hook: expected pitch from practice session (future-friendly)."""
+    raw = session_state.get("tuner_expected_note") or session_state.get("practice_expected_note")
+    if not raw:
+        return None
+    token = str(raw).strip()
+    return token if parse_note_token(token) is not None else None
 
 
 def render_tuner_tone_section(
@@ -50,7 +51,6 @@ def render_tuner_tone_section(
 ) -> None:
     """Collapsible Tuner & Tone Development block for the Practice page."""
     if "::" in key_prefix:
-        # Legacy prefix practice_tuner::{song} — normalize to a safe widget namespace.
         parts = key_prefix.split("::", 1)
         key_prefix = tuner_key_prefix_for_song(parts[-1] if len(parts) > 1 else "song")
     elif not key_prefix.startswith("practice_tuner_"):
@@ -66,13 +66,6 @@ def render_tuner_tone_section(
     profile = _profile_for_instrument(instrument, sax_type=transposing_type)
 
     with st_module.expander("🎵 Tuner & Tone Development", expanded=False):
-        if not librosa_available():
-            st_module.warning(
-                "Install **librosa** and **soundfile** (see requirements.txt) to enable "
-                "microphone tuning and tone analysis."
-            )
-            return
-
         st_module.caption(profile.hint)
         if profile.tone_focus:
             st_module.markdown(
@@ -92,7 +85,7 @@ def render_tuner_tone_section(
 
         mode = st_module.radio(
             "Mode",
-            ["Tune", "Tone practice (sustain)"],
+            ["Tune (live)", "Tone practice (sustain)"],
             horizontal=True,
             key=f"{key_prefix}::mode",
         )
@@ -126,100 +119,79 @@ def render_tuner_tone_section(
         if target_note == "":
             target_note = None
 
-        st_module.markdown("##### Microphone")
-        st_module.caption(
-            "Record a short clip (pluck, long tone, or hum). "
-            "Works best in a quiet room with the mic close to the instrument."
-        )
-        audio_widget_key = f"{key_prefix}::audio_in"
-        analysis_key = f"{key_prefix}::analysis_result"
-        _clear_stale_tuner_audio_widget(st_module.session_state, key_prefix)
-        audio_clip = st_module.audio_input(
-            "Listen & analyze",
-            key=audio_widget_key,
-        )
-
-        if audio_clip is None:
-            st_module.session_state.pop(analysis_key, None)
-            st_module.markdown(
-                '<div style="text-align:center;padding:1.5rem;color:#64748b;">'
-                "🎤 Waiting for audio — record above to tune or check tone."
-                "</div>",
-                unsafe_allow_html=True,
-            )
-            return
-
-        raw = audio_clip.getvalue() if hasattr(audio_clip, "getvalue") else audio_clip.read()
-        if not raw:
-            return
-
-        st_module.session_state[analysis_key] = {
-            "mode": mode,
-            "target_note": target_note,
-            "byte_len": len(raw),
-        }
+        expected_note = _practice_expected_note(st_module.session_state)
 
         if mode.startswith("Tune"):
-            _render_tune_result(st_module, raw, target_note=target_note, profile=profile)
-        else:
-            _render_tone_practice_result(
-                st_module,
-                raw,
-                target_note=target_note,
-                profile=profile,
+            st_module.markdown("##### Live tuner")
+            st_module.caption(
+                "Press **Start Tuner** — your browser listens continuously and "
+                "updates pitch instantly. Play one note at a time for best results."
             )
+            render_live_tuner(
+                st_module,
+                key_prefix=key_prefix,
+                target_note=target_note,
+                expected_note=expected_note,
+            )
+            if expected_note:
+                st_module.caption(
+                    f"Practice target: **{html.escape(expected_note)}** — "
+                    "match this note while the tuner listens."
+                )
+            return
+
+        _render_tone_practice_mode(
+            st_module,
+            key_prefix=key_prefix,
+            target_note=target_note,
+            profile=profile,
+        )
 
 
-def _render_tune_result(
+def _render_tone_practice_mode(
     st_module: Any,
-    audio_bytes: bytes,
     *,
+    key_prefix: str,
     target_note: str | None,
     profile: InstrumentTunerProfile,
 ) -> None:
-    try:
-        reading = detect_pitch_from_audio(audio_bytes, target_note=target_note)
-    except Exception as exc:
-        st_module.error(f"Could not analyze audio: {exc}")
-        return
-
-    if reading is None:
+    """Sustain / tone analysis — still uses recorded clip + librosa."""
+    if not librosa_available():
         st_module.warning(
-            "No clear pitch detected. Play one note at a time, closer to the mic, "
-            "and reduce background noise."
+            "Install **librosa** and **soundfile** (see requirements.txt) to enable "
+            "tone sustain analysis."
         )
         return
 
-    note_big = html.escape(reading.note_name)
-    cents = reading.cents_offset
-    st_module.markdown(
-        f'<div style="text-align:center;padding:0.5rem 0;">'
-        f'<div style="font-size:2.8rem;font-weight:700;line-height:1.1;">{note_big}</div>'
-        f'<div style="font-size:1rem;color:#64748b;">{reading.frequency_hz:.1f} Hz</div>'
-        f"</div>",
-        unsafe_allow_html=True,
+    st_module.markdown("##### Tone practice (recorded)")
+    st_module.caption(
+        "Record a **3–5 second** steady long tone. The app analyzes sustain, "
+        "pitch drift, and volume after you finish recording."
+    )
+    audio_clip = st_module.audio_input(
+        "Record long tone",
+        key=f"{key_prefix}::audio_in",
     )
 
-    if target_note:
+    if audio_clip is None:
         st_module.markdown(
-            f"**Target:** {html.escape(target_note)} · "
-            f"**Offset:** {cents:+.0f} cents"
+            '<div style="text-align:center;padding:1.5rem;color:#64748b;">'
+            "🎤 Record a sustained note above for tone feedback."
+            "</div>",
+            unsafe_allow_html=True,
         )
-    else:
-        st_module.markdown(f"**Cents from nearest pitch:** {cents:+.0f}")
+        return
 
-    st_module.markdown(cents_meter_html(cents), unsafe_allow_html=True)
+    raw = audio_clip.getvalue() if hasattr(audio_clip, "getvalue") else audio_clip.read()
+    if not raw:
+        return
 
-    if reading.in_tune:
-        st_module.success("In tune — good to move on or check the next string.")
-    elif profile.mode == "strings" and target_note:
-        st_module.info(
-            "If the wrong string lights up, you may be on a different octave — "
-            "mute other strings and pluck again."
-        )
-    else:
-        direction = "sharp" if cents > 0 else "flat"
-        st_module.info(f"Adjust tuning — you're slightly **{direction}**.")
+    _render_tone_practice_result(
+        st_module,
+        raw,
+        target_note=target_note,
+        profile=profile,
+    )
 
 
 def _render_tone_practice_result(
