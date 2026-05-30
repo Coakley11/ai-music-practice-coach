@@ -1199,6 +1199,21 @@ def _song_backing_profile(
         profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
         profile["pocket_offset"] = max(profile["pocket_offset"], 0.020)
         profile["outro_fade_bars"] = 3
+    if "heal the world" in title:
+        profile["vocal_ballad"] = True
+        profile["disney_cinematic"] = True
+        profile["cross_stick"] = True
+        profile["hat_soft"] = min(profile["hat_soft"], 0.38)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
+        profile["pocket_offset"] = max(profile["pocket_offset"], 0.018)
+        profile["outro_fade_bars"] = 6
+    if "beat it" in title and "legend" not in title:
+        profile["riff_driven"] = True
+        profile["groove_based"] = True
+        profile["kick_push"] = max(profile["kick_push"], 1.22)
+        profile["hat_soft"] = min(profile["hat_soft"], 0.72)
+        profile["humanize_ms"] = max(profile["humanize_ms"], 0.008)
+        profile["pocket_offset"] = 0.0
     if "take the a train" in title or "ellington" in title:
         profile["ride_jazz"] = True
         profile["swing"] = 0.12
@@ -1528,6 +1543,18 @@ def synthesize_chords_to_numpy(
             or "key change" in str(section_name).lower()
         ):
             intensity *= 1.14
+        if song_profile.get("disney_cinematic") and "heal the world" in f"{song_title} {song_artist}".lower():
+            if role == "verse":
+                intensity *= 0.90
+            if role == "chorus" or "final" in str(section_name).lower():
+                intensity *= 1.10
+            if "ending" in str(section_name).lower():
+                intensity *= 0.88
+        if song_profile.get("groove_based") and "beat it" in f"{song_title} {song_artist}".lower():
+            if role == "chorus":
+                intensity *= 1.12
+            if "solo" in str(section_name).lower():
+                intensity *= 1.08
         if song_profile.get("piano_centric") and role == "verse":
             intensity *= 0.86
         if song_profile.get("piano_centric") and (

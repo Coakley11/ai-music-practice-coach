@@ -99,6 +99,7 @@ from songs import (
     ensure_master_song_initialized,
     form_timeline_rows,
     get_song_context,
+    PICK_KEY_RECOVERY_NOTICE_KEY,
     invalidate_backing_cache,
     is_custom_progression,
     note_active_source_change,
@@ -1070,6 +1071,9 @@ _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
     song_library=SONG_LIBRARY,
     song_picker_catalog=SONG_PICKER_CATALOG,
 )
+_pick_key_recovery = st.session_state.pop(PICK_KEY_RECOVERY_NOTICE_KEY, None)
+if _pick_key_recovery:
+    st.warning(_pick_key_recovery)
 
 if CPL_ACTIVE_KEY not in st.session_state:
     st.session_state[CPL_ACTIVE_KEY] = default_active_progression()

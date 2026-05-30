@@ -5124,6 +5124,219 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
     }
 
 
+def _heal_the_world_chart_pack() -> dict[str, Any]:
+    """Heal The World — Michael Jackson (G major, inspirational ballad, 4/4).
+
+    Humanitarian singalong anthem. Preserve **G · Am · Bm · C · D · Em** exactly;
+    one list item = one bar.
+    """
+    intro = ["G", "Am", "Bm", "Am"] * 2
+
+    def _verse() -> list[str]:
+        return ["G", "Am", "Bm", "Am"] * 4
+
+    def _bridge() -> list[str]:
+        return ["C", "Bm", "Am", "G", "Am", "D"]
+
+    def _chorus() -> list[str]:
+        return [
+            "G",
+            "C",
+            "D",
+            "Am",
+            "G",
+            "Em",
+            "Bm",
+            "C",
+            "G",
+            "D",
+            "C",
+            "G",
+        ]
+
+    turnaround = ["Am", "Bm", "Am"]
+    ending = ["G", "Am", "Bm", "Am"] * 4
+
+    intermediate = {
+        "Intro": list(intro),
+        "Verse 1": _verse(),
+        "Bridge 1": _bridge(),
+        "Chorus 1": _chorus(),
+        "Turnaround": list(turnaround),
+        "Verse 2": _verse(),
+        "Bridge 2": _bridge(),
+        "Chorus 2": _chorus(),
+        "Bridge 3": _bridge(),
+        "Final Chorus": _chorus(),
+        "Ending": list(ending),
+    }
+    beginner = {name: list(chords) for name, chords in intermediate.items()}
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "G": ["G major", "G major pentatonic"],
+        "Am": ["A Dorian", "A minor pentatonic"],
+        "Bm": ["B Phrygian", "B minor pentatonic"],
+        "C": ["C Lydian", "C major pentatonic"],
+        "D": ["D Mixolydian"],
+        "Em": ["E natural minor", "E minor pentatonic"],
+    }
+    return {
+        "key": "G",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Michael Jackson",
+        "guitar_tabs": {
+            "G": "320003",
+            "Am": "x02210",
+            "Bm": "x24432",
+            "C": "x32010",
+            "D": "xx0232",
+            "Em": "022000",
+        },
+        "lyric_cues": {
+            "Intro": ["Gentle piano/pads — (breath) before 'Think about the babies'"],
+            "Verse 1": ["Intimate, warm delivery — light accompaniment"],
+            "Bridge 1": ["Gradual emotional lift into the chorus"],
+            "Chorus 1": [
+                "Heal the world — (breath) inspirational singalong",
+                "Open vowels; choir-style blend on title line",
+            ],
+            "Verse 2": ["Deepen the message — same warmth as Verse 1"],
+            "Bridge 3": ["Final lift before the peak chorus"],
+            "Final Chorus": [
+                "Biggest arrangement — fullest strings and vocal support",
+                "Anthem energy; audience singalong",
+            ],
+            "Ending": ["Peaceful fade — hopeful resolution on G · Am · Bm · Am"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**G major** inspirational pop/gospel ballad (**4/4**, ~82 BPM). "
+                "Piano-led with warm strings, soft bass, inspirational drums, and "
+                "choir-style backing. Verse intimate; bridge lifts; chorus anthemic; "
+                "final chorus = peak. **Not** rock distortion or jazz reharm. Core "
+                "Michael Jackson vocal-showcase humanitarian repertoire."
+            ),
+            default_bpm=82,
+            default_groove="Ballad",
+            time_signature="4/4",
+            repertoire_tags=[
+                "Michael Jackson",
+                "Inspirational Ballad",
+                "Pop Ballad",
+                "Humanitarian Anthem",
+                "Karaoke Friendly",
+                "Vocal Showcase",
+            ],
+            vocal_showcase=True,
+            vocal_range_notes=(
+                "Verse in comfortable mid chest; chorus asks for mixed/head blend "
+                "on sustained 'heal the world'. Plan breaths before each chorus and "
+                "the final anthem pass."
+            ),
+            harmonic_analysis={
+                "progression_summary": "G major humanitarian anthem with Am/Bm color and D lift",
+                "scale_suggestions": scale_hints,
+            },
+            backing_character="inspirational_pop_anthem",
+        ),
+    }
+
+
+def _beat_it_chart_pack() -> dict[str, Any]:
+    """Beat It — Michael Jackson (Ebm, pop-rock groove, 4/4).
+
+    Iconic 80s arena-rock groove. Preserve **Ebm · Db · B** exactly;
+    one list item = one bar. Groove-driven, not chord-complexity driven.
+    """
+    intro = ["Ebm", "Ebm", "Db", "Ebm", "Db", "Ebm", "Db", "Ebm"]
+
+    def _verse() -> list[str]:
+        return ["Ebm", "Db", "Ebm", "Db", "B", "Db", "Ebm", "Db"]
+
+    chorus = ["Ebm", "Db"] * 8
+    interlude = ["Ebm"]
+    solo = _verse() * 2
+    fade_out = ["Ebm", "Db"] * 4
+
+    intermediate = {
+        "Intro": list(intro),
+        "Verse 1": _verse(),
+        "Chorus 1": list(chorus),
+        "Verse 2": _verse(),
+        "Chorus 2": list(chorus),
+        "Interlude": list(interlude),
+        "Solo": list(solo),
+        "Outro Chorus": list(chorus),
+        "Fade Out": list(fade_out),
+    }
+    beginner = {name: list(chords) for name, chords in intermediate.items()}
+    advanced = {name: list(chords) for name, chords in intermediate.items()}
+    section_order = list(intermediate.keys())
+    scale_hints = {
+        "Ebm": ["Eb minor pentatonic", "Eb natural minor", "Eb blues scale"],
+        "Db": ["Db major pentatonic"],
+        "B": ["B major pentatonic"],
+    }
+    return {
+        "key": "Ebm",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Michael Jackson",
+        "guitar_tabs": {
+            "Ebm": "x68876",
+            "Db": "x46664",
+            "B": "x24442",
+        },
+        "lyric_cues": {
+            "Intro": ["Groove hits immediately — tight Ebm · Db vamp"],
+            "Verse 1": ["They told him don't you ever come around here — punchy delivery"],
+            "Chorus 1": ["Beat it, beat it — (breath) stadium hook"],
+            "Solo": ["Lead guitar spotlight — EVH-style energy"],
+            "Outro Chorus": ["Maintain intensity — increasing energy"],
+            "Fade Out": ["Chorus vamp fade — keep the pocket locked"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**Eb minor** 80s pop-rock anthem (**4/4**, ~139 BPM). "
+                "Harmonically simple (**Ebm · Db · B**) but groove-iconic: "
+                "driving bass, punchy drums, rock rhythm guitar, synth support. "
+                "**Not** acoustic strumming or ballad treatment. Intro establishes "
+                "groove; chorus bigger; solo = peak guitar; outro stadium intensity."
+            ),
+            default_bpm=139,
+            default_groove="Rock groove",
+            time_signature="4/4",
+            repertoire_tags=[
+                "Michael Jackson",
+                "Pop Rock",
+                "Arena Rock",
+                "80s Pop",
+                "Groove",
+            ],
+            groove_based=True,
+            harmonic_analysis={
+                "progression_summary": "Ebm-centric three-chord pop-rock loop",
+                "scale_suggestions": scale_hints,
+            },
+            backing_character="mj_pop_rock_groove",
+        ),
+    }
+
+
 def _love_story_chart_pack() -> dict[str, Any]:
     """Love Story — Taylor Swift (C guitar shapes / capo 2, D concert, 4/4).
 
@@ -6538,6 +6751,8 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Satin Doll", "Duke Ellington"): _satin_doll_chart_pack(),
         ("Iris", "Goo Goo Dolls"): _iris_chart_pack(),
         ("All of Me", "John Legend"): _all_of_me_chart_pack(),
+        ("Heal The World", "Michael Jackson"): _heal_the_world_chart_pack(),
+        ("Beat It", "Michael Jackson"): _beat_it_chart_pack(),
         ("Love Story", "Taylor Swift"): _love_story_chart_pack(),
         ("Imagine", "John Lennon"): _imagine_chart_pack(),
         ("Wonderwall", "Oasis"): _wonderwall_chart_pack(),
@@ -7748,6 +7963,48 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 "F#m9/G#m7/Amaj7/Bm9 colors without changing the tight loop. Not AI-verified."
             ),
             chart_status="user_corrected_reference",
+        ),
+        v(
+            "Heal The World",
+            "Michael Jackson",
+            "Pop",
+            "G",
+            {
+                "Intro": ["G", "Am", "Bm", "Am"] * 2,
+                "Verse": ["G", "Am", "Bm", "Am"] * 4,
+                "Chorus": ["G", "C", "D", "Am", "G", "Em", "Bm", "C", "G"],
+            },
+            {
+                "Intro": ["G", "Am", "Bm", "Am"] * 2,
+                "Verse": ["G", "Am", "Bm", "Am"] * 4,
+                "Chorus": ["G", "C", "D", "Am", "G", "Em", "Bm", "C", "G", "D", "C", "G"],
+            },
+            composer="Michael Jackson",
+            lyric_cues={"Intro": ["inspirational ballad — full chart in override"]},
+            notes="G major humanitarian anthem; full form in chart override.",
+            default_bpm=82,
+            default_groove="Ballad",
+        ),
+        v(
+            "Beat It",
+            "Michael Jackson",
+            "Rock",
+            "Ebm",
+            {
+                "Intro": ["Ebm", "Ebm", "Db", "Ebm", "Db", "Ebm", "Db", "Ebm"],
+                "Verse": ["Ebm", "Db", "Ebm", "Db", "B", "Db", "Ebm", "Db"],
+                "Chorus": ["Ebm", "Db"] * 8,
+            },
+            {
+                "Intro": ["Ebm", "Ebm", "Db", "Ebm", "Db", "Ebm", "Db", "Ebm"],
+                "Verse": ["Ebm", "Db", "Ebm", "Db", "B", "Db", "Ebm", "Db"],
+                "Chorus": ["Ebm", "Db"] * 8,
+            },
+            composer="Michael Jackson",
+            lyric_cues={"Intro": ["groove-driven — full chart in override"]},
+            notes="Ebm pop-rock groove chart; full form in chart override.",
+            default_bpm=139,
+            default_groove="Rock groove",
         ),
         v(
             "Complicated",

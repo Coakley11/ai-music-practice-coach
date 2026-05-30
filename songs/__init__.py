@@ -47,6 +47,7 @@ from .picker_session import (
 from .state import (
     ACTIVE_CATALOG_PICK_KEY,
     PENDING_MATCHING_SONG_DROPDOWN,
+    PICK_KEY_RECOVERY_NOTICE_KEY,
     SELECTED_SONG_STATE_KEY,
     apply_pick_key,
     ensure_master_song_initialized,
@@ -58,6 +59,7 @@ __all__ = [
     # Catalog pick / master song (songs/state.py)
     "ACTIVE_CATALOG_PICK_KEY",
     "PENDING_MATCHING_SONG_DROPDOWN",
+    "PICK_KEY_RECOVERY_NOTICE_KEY",
     "SELECTED_SONG_STATE_KEY",
     "apply_pick_key",
     "ensure_master_song_initialized",

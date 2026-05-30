@@ -144,3 +144,87 @@ def test_apply_pick_key_does_not_crash_on_plain_label():
     assert st.session_state["selected_song"]["pick_key"] == format_pick_key(
         "Pop", "Shallow — Lady Gaga / Bradley Cooper"
     )
+
+
+def test_parse_pick_key_empty_and_none():
+    assert parse_pick_key("") == ("", "")
+    assert parse_pick_key(None) == ("", "")  # type: ignore[arg-type]
+
+
+def test_resolve_pick_key_stale_genre_same_label():
+    stale = format_pick_key("DeletedGenre", "Shallow — Lady Gaga / Bradley Cooper")
+    resolved = resolve_pick_key(stale, song_picker_catalog=_SAMPLE_CATALOG)
+    assert resolved == format_pick_key("Pop", "Shallow — Lady Gaga / Bradley Cooper")
+
+
+def _sample_library() -> dict:
+    library: dict = {}
+    for g, labels in _SAMPLE_CATALOG.items():
+        library[g] = {}
+        for _lab, data in labels.items():
+            library[g][data["title"]] = {
+                **data,
+                "sections": {"A": ["C"]},
+                "chart_status": "verified",
+            }
+    return library
+
+
+def test_get_song_context_recovers_deleted_song():
+    from songs.state import SELECTED_SONG_STATE_KEY, get_song_context
+
+    stale = format_pick_key("Pop", "Removed Song — Nobody")
+
+    class _FakeSt:
+        session_state = {
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": stale,
+                "title": "Removed Song",
+                "artist": "Nobody",
+            }
+        }
+
+    genre, title, data = get_song_context(
+        _FakeSt(),
+        song_library=_sample_library(),
+        song_picker_catalog=_SAMPLE_CATALOG,
+    )
+    assert title in {"Shallow", "Shalom Aleichem"}
+    assert _FakeSt.session_state.get("_pick_key_recovery_notice")
+
+
+def test_get_song_context_empty_pick_key_uses_default():
+    from songs.state import SELECTED_SONG_STATE_KEY, get_song_context
+
+    class _FakeSt:
+        session_state = {SELECTED_SONG_STATE_KEY: {"pick_key": ""}}
+
+    genre, title, data = get_song_context(
+        _FakeSt(),
+        song_library=_sample_library(),
+        song_picker_catalog=_SAMPLE_CATALOG,
+    )
+    assert genre and title and data
+
+
+def test_get_song_context_recovers_by_title_after_rename():
+    from songs.state import SELECTED_SONG_STATE_KEY, get_song_context
+
+    stale = format_pick_key("Jewish", "Shalom Aleichem — Traditional")
+
+    class _FakeSt:
+        session_state = {
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": stale,
+                "title": "Shalom Aleichem",
+                "artist": "Traditional",
+            }
+        }
+
+    genre, title, _data = get_song_context(
+        _FakeSt(),
+        song_library=_sample_library(),
+        song_picker_catalog=_SAMPLE_CATALOG,
+    )
+    assert title == "Shalom Aleichem"
+    assert genre == "Jewish Traditional"

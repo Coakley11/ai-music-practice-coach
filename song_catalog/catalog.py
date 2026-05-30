@@ -76,6 +76,8 @@ TRUSTED_CORE_KEYS = {
     ("I Won't Say (I'm in Love)", "Disney · Hercules"),
     ("How Far I'll Go", "Disney · Moana"),
     ("Billie Jean", "Michael Jackson"),
+    ("Heal The World", "Michael Jackson"),
+    ("Beat It", "Michael Jackson"),
     ("Love Story", "Taylor Swift"),
     ("Breakaway", "Kelly Clarkson"),
     ("Complicated", "Avril Lavigne"),
@@ -365,6 +367,10 @@ def resolve_pick_key(
             labels = song_picker_catalog.get(genre_hint) or {}
             if label_part in labels:
                 return format_pick_key(genre_hint, label_part)
+            # Stale/renamed genre — same display label may live under a new genre.
+            for g, labels in song_picker_catalog.items():
+                if label_part in labels:
+                    return format_pick_key(g, label_part)
 
         exact: list[tuple[str, str]] = []
         for g, labels in song_picker_catalog.items():
@@ -392,12 +398,35 @@ def resolve_pick_key(
             g, lab = by_row[0]
             return format_pick_key(g, lab)
 
+        if title:
+            by_title: list[tuple[str, str]] = []
+            for g, labels in song_picker_catalog.items():
+                for lab, data in labels.items():
+                    if str(data.get("title") or "") == title:
+                        by_title.append((g, lab))
+            if len(by_title) == 1:
+                g, lab = by_title[0]
+                return format_pick_key(g, lab)
+
     if records:
         rec = _match_record_from_plain(records, search_text)
         if rec:
             lab = f"{rec['title']} — {rec['artist']}"
             return format_pick_key(str(rec.get("genre") or ""), lab)
 
+    return None
+
+
+def first_valid_pick_key(
+    song_picker_catalog: dict[str, dict[str, dict]] | None,
+) -> str | None:
+    """Return the first stable pick key in *song_picker_catalog*, or ``None``."""
+    if not song_picker_catalog:
+        return None
+    for genre, labels in song_picker_catalog.items():
+        if labels:
+            label = next(iter(labels))
+            return format_pick_key(genre, label)
     return None
 
 

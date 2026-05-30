@@ -57,6 +57,18 @@ def vocal_showcase_harmony_blurb(song_data: dict[str, Any] | None) -> str:
         if cr:
             return cr
     title = str(song_data.get("title") or "").lower()
+    if "all of me" in title and ext.get("piano_centric"):
+        return (
+            "Piano wedding ballad: conversational verses, open vowels on the "
+            "title hook, and breath before each **C/D → D** lift. Final chorus "
+            "is the peak — save your warmest mix voice for 'all of me'."
+        )
+    if "heal the world" in title:
+        return (
+            "Inspirational anthem: warm verse storytelling, open vowels on the "
+            "title hook, and choir-style blend in the chorus. Final chorus is the "
+            "peak — breathe before each 'heal the world' entrance."
+        )
     if ext.get("disney_ballad") or any(t in title for t in _DISNEY_PRINCESS_BALLAD_TITLES):
         return (
             "Disney ballad: prioritize storytelling, breath before long phrases, "

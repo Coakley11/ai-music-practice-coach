@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from song_catalog import format_pick_key, parse_pick_key, resolve_pick_key
+from song_catalog import (
+    first_valid_pick_key,
+    format_pick_key,
+    parse_pick_key,
+    resolve_pick_key,
+)
 
 from .key_state import (
     BACKING_NEEDS_REGEN,
@@ -24,6 +29,7 @@ from .playback_defaults import (
 SELECTED_SONG_STATE_KEY = "selected_song"
 ACTIVE_CATALOG_PICK_KEY = "active_catalog_pick_key"
 PENDING_MATCHING_SONG_DROPDOWN = "_pending_matching_song_dropdown"
+PICK_KEY_RECOVERY_NOTICE_KEY = "_pick_key_recovery_notice"
 _LAST_PICK_KEY = "_master_song_pick_key"
 
 
@@ -58,6 +64,49 @@ def sync_matching_song_dropdown_before_widget(
 def _label_for_library_entry(genre: str, title: str, song_library: dict) -> str:
     artist = song_library[genre][title]["artist"]
     return f"{title} — {artist}"
+
+
+def _build_library_from_picker(
+    genre: str,
+    label: str,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]],
+) -> tuple[str, dict] | None:
+    """Resolve (title, song_data) from picker keys, with library fallback."""
+    picker = (song_picker_catalog.get(genre) or {}).get(label)
+    if not picker:
+        return None
+    title = picker["title"]
+    song_data = (song_library.get(genre) or {}).get(title)
+    if song_data is None:
+        song_data = picker
+    return title, song_data
+
+
+def _recover_pick_key_by_title(
+    sel: dict[str, Any],
+    song_picker_catalog: dict[str, dict[str, dict]],
+) -> str | None:
+    """Match a stale session row by stored title (and artist when unique)."""
+    title = str(sel.get("title") or "").strip()
+    artist = str(sel.get("artist") or "").strip()
+    if not title:
+        return None
+
+    if artist:
+        for g, labels in song_picker_catalog.items():
+            for lab, data in labels.items():
+                if data.get("title") == title and str(data.get("artist") or "") == artist:
+                    return format_pick_key(g, lab)
+
+    matches: list[str] = []
+    for g, labels in song_picker_catalog.items():
+        for lab, data in labels.items():
+            if data.get("title") == title:
+                matches.append(format_pick_key(g, lab))
+    if len(matches) == 1:
+        return matches[0]
+    return None
 
 
 def ensure_master_song_initialized(
@@ -107,12 +156,10 @@ def apply_pick_key(
         existing = st.session_state.get(SELECTED_SONG_STATE_KEY)
         if isinstance(existing, dict) and existing.get("title"):
             return existing
-        for genre, labels in song_picker_catalog.items():
-            if labels:
-                first_label = next(iter(labels))
-                resolved = format_pick_key(genre, first_label)
-                break
-        if not resolved:
+        fallback = first_valid_pick_key(song_picker_catalog)
+        if fallback:
+            resolved = fallback
+        else:
             return {}
     pick_key = resolved
     genre, label = parse_pick_key(pick_key)
@@ -168,15 +215,68 @@ def get_song_context(
     song_library: dict[str, dict[str, dict]],
     song_picker_catalog: dict[str, dict[str, dict]],
 ) -> tuple[str, str, dict]:
-    """Return (genre, title, song_data) for the master selection."""
+    """Return (genre, title, song_data) for the master selection.
+
+    Never raises for stale/renamed/missing pick keys — falls back to title match,
+    then the first catalog song, and stores a one-run recovery notice.
+    """
     sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
-    pk = sel.get("pick_key")
+    pk = str(sel.get("pick_key") or "").strip()
+
+    def _commit(resolved_pk: str, *, notice: str | None = None) -> tuple[str, str, dict]:
+        if notice:
+            st.session_state[PICK_KEY_RECOVERY_NOTICE_KEY] = notice
+        if resolved_pk != pk or not sel.get("title"):
+            apply_pick_key(
+                st,
+                resolved_pk,
+                song_picker_catalog,
+                song_library=song_library,
+            )
+        genre, label = parse_pick_key(resolved_pk)
+        resolved = _build_library_from_picker(genre, label, song_picker_catalog, song_library)
+        if resolved is None:
+            fallback = first_valid_pick_key(song_picker_catalog)
+            if not fallback:
+                raise RuntimeError("Song catalog is empty — cannot select a default song.")
+            return _commit(
+                fallback,
+                notice=notice or "Restored default song selection.",
+            )
+        title, song_data = resolved
+        return genre, title, song_data
+
     if not pk:
-        raise RuntimeError("Master song not initialized — call ensure_master_song_initialized first.")
-    resolved = resolve_pick_key(pk, song_picker_catalog=song_picker_catalog) or pk
-    genre, label = parse_pick_key(resolved)
-    if genre not in song_picker_catalog or label not in song_picker_catalog[genre]:
-        raise RuntimeError(f"Master song pick key could not be resolved: {pk!r}")
-    title = song_picker_catalog[genre][label]["title"]
-    song_data = song_library[genre][title]
-    return genre, title, song_data
+        fallback = first_valid_pick_key(song_picker_catalog)
+        if not fallback:
+            raise RuntimeError("Master song not initialized — call ensure_master_song_initialized first.")
+        return _commit(fallback, notice="No saved song selection; restored default catalog song.")
+
+    resolved_pk = resolve_pick_key(pk, song_picker_catalog=song_picker_catalog)
+    if resolved_pk:
+        genre, label = parse_pick_key(resolved_pk)
+        if genre in song_picker_catalog and label in song_picker_catalog[genre]:
+            if resolved_pk != pk:
+                old = sel.get("title") or pk
+                return _commit(
+                    resolved_pk,
+                    notice=f'Updated song selection for "{old}" after a catalog change.',
+                )
+            return _commit(resolved_pk)
+
+    by_title = _recover_pick_key_by_title(sel, song_picker_catalog)
+    if by_title:
+        old = sel.get("title") or pk
+        return _commit(
+            by_title,
+            notice=f'"{old}" was moved or renamed in the catalog; selection updated.',
+        )
+
+    fallback = first_valid_pick_key(song_picker_catalog)
+    if not fallback:
+        raise RuntimeError("Song catalog is empty — cannot recover from stale pick key.")
+    old = sel.get("title") or sel.get("label") or pk
+    return _commit(
+        fallback,
+        notice=f'Previous song "{old}" is no longer in the catalog; switched to a default song.',
+    )
