@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import base64
+import html
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from studio_cache import session_cache_get, session_cache_get_or_set
+
+__all__ = (
+    "BackingGenProfile",
+    "prepare_wav_b64",
+    "profile_elapsed_ms",
+    "render_backing_generation_debug",
+)
 
 
 @dataclass
@@ -51,3 +59,30 @@ def prepare_wav_b64(session_state: dict, signature: tuple, wav: bytes) -> tuple[
 
 def profile_elapsed_ms(start: float) -> float:
     return (time.perf_counter() - start) * 1000.0
+
+
+def render_backing_generation_debug(
+    st: Any,
+    *,
+    profile: dict | None,
+    developer_mode: bool = False,
+) -> None:
+    """Developer expander for last backing generation timing profile."""
+    if not developer_mode or not profile:
+        return
+    with st.expander("Developer Debug: Backing generation", expanded=False):
+        st.markdown(
+            "\n".join(
+                [
+                    f"- Timeline build: **{profile.get('timeline_ms', 0):.1f} ms**"
+                    + (" (cache hit)" if profile.get("cache_hit_timeline") else ""),
+                    f"- Synthesis: **{profile.get('synthesis_ms', 0):.1f} ms**"
+                    + (" (cache hit)" if profile.get("cache_hit_wav") else ""),
+                    f"- Base64 prep: **{profile.get('b64_ms', 0):.1f} ms**"
+                    + (" (cache hit)" if profile.get("cache_hit_b64") else ""),
+                    f"- Total: **{profile.get('total_ms', 0):.1f} ms**",
+                    f"- Bars rendered: **{profile.get('bar_count', 0)}**",
+                    f"- WAV size: **{profile.get('wav_kb', 0):.0f} KB**",
+                ]
+            )
+        )

@@ -137,11 +137,15 @@ from songs.playback_defaults import (
     sync_backing_bpm_from_slider,
     sync_playback_defaults_for_active_song,
 )
-from backing_generation import BackingGenProfile, prepare_wav_b64, profile_elapsed_ms
+from backing_generation import (
+    BackingGenProfile,
+    prepare_wav_b64,
+    profile_elapsed_ms,
+    render_backing_generation_debug,
+)
 from backing_display import (
     render_backing_active_song_card,
     render_backing_defaults_debug,
-    render_backing_generation_debug,
     render_backing_meter_selector,
 )
 from harmonic_rhythm_intelligence import (
