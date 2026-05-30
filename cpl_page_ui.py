@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app_ui import nav_icon_button_label
+
 
 def _pending_chord_key(section: str) -> str:
     return f"cpl_pending_chord_{section}"
@@ -441,7 +443,7 @@ def render_custom_progression_lab_page() -> None:
                     _activate_custom_song()
             with launch[1]:
                 if st.button(
-                    "Open Backing Track",
+                    nav_icon_button_label("backing"),
                     key="cpl_to_backing_finish",
                     use_container_width=True,
                     disabled=not has_chords,
@@ -839,7 +841,7 @@ def render_custom_progression_lab_page() -> None:
                 _activate_custom_song()
         with setup[1]:
             if st.button(
-                "Open Backing Track",
+                nav_icon_button_label("backing"),
                 key="cpl_open_backing_bottom",
                 use_container_width=True,
                 disabled=not has_chords,
@@ -847,7 +849,7 @@ def render_custom_progression_lab_page() -> None:
                 _open_backing()
         with setup[2]:
             if st.button(
-                "Open Practice",
+                nav_icon_button_label("practice"),
                 key="cpl_open_practice_bottom",
                 use_container_width=True,
                 disabled=not has_chords,

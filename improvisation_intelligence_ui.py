@@ -6,6 +6,8 @@ import html
 import re
 from typing import Any, Callable
 
+from app_ui import nav_icon_button_label
+
 II_SELECTED_CHORD = "ii_selected_chord"
 II_SELECTED_SECTION = "ii_selected_section"
 II_SELECTED_CHORD_INDEX = "ii_selected_chord_index"
@@ -439,7 +441,7 @@ def _render_open_practice_backing_row(
     c1, c2 = st.columns(2)
     with c1:
         if on_open_backing and st.button(
-            "Open Backing Track",
+            nav_icon_button_label("backing"),
             key="improv_to_backing",
             type="primary",
             use_container_width=True,
@@ -447,7 +449,7 @@ def _render_open_practice_backing_row(
             on_open_backing()
     with c2:
         if on_open_practice and st.button(
-            "Open Practice",
+            nav_icon_button_label("practice"),
             key="improv_to_practice",
             use_container_width=True,
         ):
@@ -960,14 +962,14 @@ def _tab_missions(
         nav1, nav2 = st.columns(2)
         with nav1:
             if on_open_practice and st.button(
-                "Open Practice page",
+                nav_icon_button_label("practice"),
                 key="improv_mission_practice",
                 use_container_width=True,
             ):
                 on_open_practice()
         with nav2:
             if on_open_backing and st.button(
-                "Practice over backing",
+                nav_icon_button_label("backing") + " Jam",
                 key="improv_mission_over_backing",
                 type="primary",
                 use_container_width=True,
@@ -1082,14 +1084,14 @@ def _tab_missions(
     nav1, nav2 = st.columns(2)
     with nav1:
         if on_open_practice and st.button(
-            "Open Practice page",
+            nav_icon_button_label("practice"),
             key="improv_mission_practice_bottom",
             use_container_width=True,
         ):
             on_open_practice()
     with nav2:
         if on_open_backing and st.button(
-            "Practice over backing",
+            nav_icon_button_label("backing") + " Jam",
             key="improv_mission_over_backing_bottom",
             type="primary",
             use_container_width=True,

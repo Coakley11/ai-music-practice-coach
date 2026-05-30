@@ -458,6 +458,7 @@ try:
         open_control_section,
         render_cross_page_links,
         render_global_studio_bar,
+        nav_icon_button_label,
         render_page_quick_nav,
         render_section_jump_bar,
         render_studio_brand_header,
@@ -525,6 +526,7 @@ except Exception as _app_ui_first_err:
                 open_control_section = _app_ui_mod.open_control_section
                 render_cross_page_links = getattr(_app_ui_mod, "render_cross_page_links", None)
                 render_global_studio_bar = _app_ui_mod.render_global_studio_bar
+                nav_icon_button_label = getattr(_app_ui_mod, "nav_icon_button_label", lambda pid: pid)
                 render_page_quick_nav = getattr(_app_ui_mod, "render_page_quick_nav", None)
                 render_section_jump_bar = getattr(_app_ui_mod, "render_section_jump_bar", None)
                 render_studio_brand_header = _app_ui_mod.render_studio_brand_header
@@ -7456,18 +7458,18 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             st.session_state[_CATALOG_FAVORITES_KEY] = sorted(favs)
             st.rerun()
     with b1:
-        if st.button("Practice", key="picker_card_practice", use_container_width=True):
+        if st.button(nav_icon_button_label("practice"), key="picker_card_practice", use_container_width=True):
             _picker_navigate("practice")
     with b2:
-        if st.button("Backing Track", key="picker_card_backing", use_container_width=True):
+        if st.button(nav_icon_button_label("backing"), key="picker_card_backing", use_container_width=True):
             _picker_navigate("backing")
     with b3:
-        if st.button("Karaoke", key="picker_card_karaoke", use_container_width=True):
+        if st.button("🎤 Karaoke", key="picker_card_karaoke", use_container_width=True):
             set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
             st.session_state["_pending_open_lyrics_editor"] = True
             st.rerun()
     with b4:
-        if st.button("Chord Coach", key="picker_card_chord_coach", use_container_width=True):
+        if st.button("🎸 Chord Coach", key="picker_card_chord_coach", use_container_width=True):
             _picker_navigate("practice", open_chord_coach=True)
     st.markdown("</div>", unsafe_allow_html=True)
     # Karaoke "Add to Setlist" CTA - only visible when the active
@@ -7665,13 +7667,13 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
         st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
         b1, b2, b3 = st.columns(3)
         with b1:
-            if st.button("Practice", key="custom_hub_practice", use_container_width=True):
+            if st.button(nav_icon_button_label("practice"), key="custom_hub_practice", use_container_width=True):
                 _picker_navigate("practice")
         with b2:
-            if st.button("Backing Track", key="custom_hub_backing", use_container_width=True):
+            if st.button(nav_icon_button_label("backing"), key="custom_hub_backing", use_container_width=True):
                 _picker_navigate("backing")
         with b3:
-            if st.button("Edit Custom Song", key="custom_hub_edit", use_container_width=True):
+            if st.button(nav_icon_button_label("custom") + " Edit", key="custom_hub_edit", use_container_width=True):
                 navigate_studio_page(st.session_state, "custom")
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -8238,7 +8240,7 @@ def _render_practice_setup_panel(
             rerun_fn=st.rerun,
             key_prefix="practice_nav",
             pages=PRACTICE_QUICK_LINKS,
-            wrapper_class="ui-cross-links ui-practice-quicklinks",
+            wrapper_class="ui-cross-nav-art ui-practice-quicklinks",
         )
 
         if section_choices:
@@ -8358,7 +8360,7 @@ def _render_backing_scope_controls(
             rerun_fn=st.rerun,
             key_prefix="backing_scope",
             pages=BACKING_SCOPE_QUICK_LINKS,
-            wrapper_class="ui-cross-links ui-backing-scope-quicklinks",
+            wrapper_class="ui-cross-nav-art ui-backing-scope-quicklinks",
         )
 
 
@@ -11609,7 +11611,7 @@ elif _studio_page == "log":
                 if _plan.get(label):
                     st.markdown(f"{icon} **{label.title()}** — {_plan[label]}")
             st.markdown("</div>", unsafe_allow_html=True)
-            if st.button("Start warmup on Practice page", key="session_go_practice"):
+            if st.button(nav_icon_button_label("practice") + " warmup", key="session_go_practice"):
                 set_pending_anchor(st.session_state, ANCHOR_PRACTICE_COACH)
                 navigate_studio_page(st.session_state, "practice")
                 st.rerun()

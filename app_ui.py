@@ -28,6 +28,8 @@ __all__ = [
     "render_sidebar_studio_nav",
     "render_studio_nav",
     "STUDIO_PAGE_META",
+    "nav_icon_button_label",
+    "nav_compact_button_label",
     "session_badges",
     "sidebar_section",
     "sidebar_source_banner",
@@ -547,27 +549,17 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border-width: 1px !important;
   border-style: solid !important;
 }
-.ui-sb-nav-wrap .sb-nav-practice button { background:linear-gradient(180deg,rgba(14,165,233,.22),rgba(20,184,166,.14))!important; color:#e0f2fe!important; border-color:rgba(56,189,248,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-practice.nav-btn-active button { background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important; color:#fff!important; border-color:rgba(56,189,248,.55)!important; }
-.ui-sb-nav-wrap .sb-nav-picker button { background:linear-gradient(180deg,rgba(139,92,246,.22),rgba(168,85,247,.12))!important; color:#ede9fe!important; border-color:rgba(167,139,250,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-picker.nav-btn-active button { background:linear-gradient(135deg,#8b5cf6,#a855f7)!important; color:#fff!important; border-color:rgba(167,139,250,.55)!important; }
-.ui-sb-nav-wrap .sb-nav-backing button { background:linear-gradient(180deg,rgba(34,197,94,.2),rgba(16,185,129,.12))!important; color:#dcfce7!important; border-color:rgba(74,222,128,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-backing.nav-btn-active button { background:linear-gradient(135deg,#22c55e,#10b981)!important; color:#fff!important; border-color:rgba(74,222,128,.55)!important; }
-.ui-sb-nav-wrap .sb-nav-creative button { background:linear-gradient(180deg,rgba(245,158,11,.2),rgba(251,191,36,.12))!important; color:#fef3c7!important; border-color:rgba(251,191,36,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-creative.nav-btn-active button { background:linear-gradient(135deg,#f59e0b,#fbbf24)!important; color:#422006!important; border-color:rgba(251,191,36,.55)!important; }
-.ui-sb-nav-wrap .sb-nav-custom button { background:linear-gradient(180deg,rgba(99,102,241,.22),rgba(79,70,229,.12))!important; color:#e0e7ff!important; border-color:rgba(129,140,248,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-custom.nav-btn-active button { background:linear-gradient(135deg,#6366f1,#4f46e5)!important; color:#fff!important; border-color:rgba(129,140,248,.55)!important; }
-.ui-sb-nav-wrap .sb-nav-multitrack button { background:linear-gradient(180deg,rgba(244,63,94,.2),rgba(251,113,133,.12))!important; color:#ffe4e6!important; border-color:rgba(251,113,133,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-multitrack.nav-btn-active button { background:linear-gradient(135deg,#f43f5e,#fb7185)!important; color:#fff!important; border-color:rgba(251,113,133,.55)!important; }
-.ui-sb-nav-wrap .sb-nav-analysis button { background:linear-gradient(180deg,rgba(6,182,212,.2),rgba(34,211,238,.12))!important; color:#cffafe!important; border-color:rgba(34,211,238,.35)!important; }
-.ui-sb-nav-wrap .sb-nav-analysis.nav-btn-active button { background:linear-gradient(135deg,#06b6d4,#22d3ee)!important; color:#fff!important; border-color:rgba(34,211,238,.55)!important; }
-.ui-sb-nav-wrap .sb-nav-log button { background:linear-gradient(180deg,rgba(100,116,139,.18),rgba(71,85,105,.1))!important; color:#e2e8f0!important; border-color:rgba(148,163,184,.3)!important; }
-.ui-sb-nav-wrap .sb-nav-log.nav-btn-active button { background:linear-gradient(135deg,#64748b,#475569)!important; color:#fff!important; border-color:rgba(148,163,184,.55)!important; }
-.cross-practice button { background:linear-gradient(135deg,#0ea5e9,#14b8a6)!important; color:#fff!important; border:none!important; }
-.cross-picker button { background:linear-gradient(135deg,#8b5cf6,#a855f7)!important; color:#fff!important; border:none!important; }
-.cross-backing button { background:linear-gradient(135deg,#22c55e,#10b981)!important; color:#fff!important; border:none!important; }
-.cross-creative button { background:linear-gradient(135deg,#f59e0b,#fbbf24)!important; color:#422006!important; border:none!important; }
-.cross-custom button { background:linear-gradient(135deg,#6366f1,#4f46e5)!important; color:#fff!important; border:none!important; }
+.ui-sb-nav-wrap .studio-nav-item button {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #e2e8f0 !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+}
+.ui-sb-nav-wrap .nav-btn-active button {
+  background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+  color: #fff !important;
+  border-color: rgba(220, 38, 38, 0.65) !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35) !important;
+}
 .ui-global-bar {
   border: none;
   border-radius: 0;
@@ -736,11 +728,25 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   z-index: 88;
   box-shadow: 0 3px 12px rgba(15, 23, 42, 0.05);
 }
-.ui-section-jump .ui-bar-label { margin-bottom: 0.35rem; color: #15803d; }
+.ui-section-jump .ui-bar-label { margin-bottom: 0.35rem; color: #64748b; }
 .ui-section-jump .jump-btn button {
   font-size: 0.76rem !important;
   padding: 0.32rem 0.45rem !important;
   min-height: 1.85rem !important;
+}
+.ui-section-jump [data-testid="stRadio"] label[data-baseweb="radio"] {
+  border-radius: 999px !important;
+  padding: 0.28rem 0.55rem !important;
+  font-size: 0.74rem !important;
+  font-weight: 700 !important;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease !important;
+}
+.ui-section-jump [data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked),
+.ui-section-jump [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
+  background: rgba(220, 38, 38, 0.1) !important;
+  border-color: rgba(220, 38, 38, 0.55) !important;
+  color: #dc2626 !important;
 }
 .ui-practice-top {
   border: 1px solid rgba(109, 40, 217, 0.12);
@@ -2895,22 +2901,6 @@ def _backing_scope_panel_css() -> str:
   font-size: 0.78rem !important;
   border-radius: 10px !important;
 }
-.ui-backing-scope-quicklinks.ui-cross-links {
-  margin: 0.55rem 0 0 !important;
-  padding-top: 0.55rem;
-  border-top: 1px dashed rgba(148, 163, 184, 0.32);
-}
-.ui-backing-scope-quicklinks.ui-cross-links .stButton > button {
-  font-size: 0.68rem !important;
-  font-weight: 750 !important;
-  min-height: 1.85rem !important;
-  padding: 0.28rem 0.45rem !important;
-  border-radius: 999px !important;
-  letter-spacing: 0.01em !important;
-}
-.ui-backing-scope-quicklinks .cross-practice button {
-  background: linear-gradient(135deg, #0ea5e9, #14b8a6) !important;
-}
 .st-key-backing_scope_panel [data-testid="stSelectbox"] > div > div,
 .st-key-backing_scope_panel [data-testid="stMultiSelect"] > div > div {
   border-radius: 10px !important;
@@ -3101,29 +3091,6 @@ body[data-practice-setup-ui] .st-key-practice_control_panel {
   border-color: rgba(14, 165, 233, 0.4) !important;
   background: #fff !important;
   min-height: 2.45rem !important;
-}
-.ui-practice-quicklinks.ui-cross-links {
-  margin: 0.45rem 0 0 !important;
-  padding-top: 0.5rem;
-  border-top: 1px dashed rgba(148, 163, 184, 0.32);
-}
-.ui-practice-quicklinks.ui-cross-links .stButton > button {
-  font-size: 0.68rem !important;
-  font-weight: 750 !important;
-  min-height: 1.85rem !important;
-  padding: 0.28rem 0.45rem !important;
-  border-radius: 999px !important;
-  border: 1px solid rgba(14, 165, 233, 0.35) !important;
-  background: rgba(255, 255, 255, 0.95) !important;
-}
-.st-key-practice_control_panel [class*="st-key-practice_nav_to_"] .stButton > button {
-  background: linear-gradient(135deg, #f8fafc, #ffffff) !important;
-  color: #0f172a !important;
-}
-.st-key-practice_control_panel .st-key-practice_nav_to_picker .stButton > button {
-  background: linear-gradient(135deg, #0ea5e9, #0284c7) !important;
-  color: #fff !important;
-  border: none !important;
 }
 .st-key-practice_control_panel [data-testid="column"] {
   padding: 0 0.35rem !important;
@@ -4290,9 +4257,9 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   transition: background 140ms var(--ease), color 140ms var(--ease), box-shadow 140ms var(--ease) !important;
 }
 .ui-studio-nav-segmented [data-testid="stBaseButton-segmented_controlActive"] {
-  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%) !important;
-  color: #f8fafc !important;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), 0 4px 12px rgba(15, 23, 42, 0.18) !important;
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+  color: #fff !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08), 0 4px 12px rgba(220, 38, 38, 0.28) !important;
 }
 
 /* ---- Sidebar — slightly cleaner gradient + spacing ---- */
@@ -4314,7 +4281,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   opacity: 0.88;
 }
 .ui-sb-nav-wrap .nav-btn-active button {
-  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.28) !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35) !important;
 }
 
 /* ---- Page header — calmer top spacing ---- */
@@ -5711,12 +5678,7 @@ CUSTOM_BUILDER_UI_VERSION = "2026-05-28-custom-v2"
 UPLOAD_STUDIO_UI_VERSION = "2026-05-28-upload-v1"
 MULTITRACK_STUDIO_UI_VERSION = "2026-05-28-multitrack-v3"
 
-PRACTICE_QUICK_LINKS: list[tuple[str, str]] = [
-    ("picker", "Songs"),
-    ("backing", "Backing Track"),
-    ("creative", "Creative Lab"),
-    ("custom", "Custom"),
-]
+PRACTICE_QUICK_LINKS: list[str] = ["picker", "backing", "creative", "custom"]
 
 
 def inject_backing_studio_styles(st: Any) -> None:
@@ -6433,7 +6395,7 @@ def sidebar_goto_song_selection(*, on_navigate: Any) -> None:
     import streamlit as st
 
     st.sidebar.button(
-        "🎼 Song Selection",
+        nav_icon_button_label("picker"),
         key="sidebar_goto_song_selection",
         use_container_width=True,
         help="Jump to Song Selection — keeps instrument, level, key, and active song settings.",
@@ -6497,6 +6459,13 @@ def nav_compact_button_label(page_id: str) -> str:
     return _NAV_COMPACT_TITLE.get(
         page_id, STUDIO_PAGE_META.get(page_id, {}).get("label", page_id)
     )
+
+
+def nav_icon_button_label(page_id: str) -> str:
+    """Icon + compact label for standard Streamlit buttons."""
+    icon = _nav_compact_icon(page_id)
+    label = nav_compact_button_label(page_id)
+    return f"{icon} {label}" if icon else label
 
 
 def _nav_compact_icon(page_id: str) -> str:
@@ -6597,35 +6566,44 @@ def _quick_nav_artistic_css() -> str:
   color: #1e293b !important;
 }
 .ui-nav-art-cell.is-active .ui-nav-art-face {
-  background: rgba(248, 250, 252, 0.92);
+  background: rgba(220, 38, 38, 0.08);
+  border-bottom-color: rgba(220, 38, 38, 0.85);
 }
 .ui-nav-art-cell.is-active .ui-nav-script-label {
   font-weight: 700 !important;
-  color: #0f172a !important;
+  color: #dc2626 !important;
 }
-.ui-nav-art-cell.nav-practice.is-active .ui-nav-art-face {
-  border-bottom-color: rgba(14, 165, 233, 0.75);
+.ui-nav-art-cell.ui-nav-compact {
+  min-height: 1.75rem;
 }
-.ui-nav-art-cell.nav-picker.is-active .ui-nav-art-face {
-  border-bottom-color: rgba(139, 92, 246, 0.75);
+.ui-nav-art-cell.ui-nav-compact .ui-nav-art-face {
+  min-height: 1.75rem;
+  padding: 0.1rem 0.2rem 0.14rem;
+  gap: 0.18rem;
 }
-.ui-nav-art-cell.nav-backing.is-active .ui-nav-art-face {
-  border-bottom-color: rgba(34, 197, 94, 0.75);
+.ui-nav-art-cell.ui-nav-compact .ui-nav-icon {
+  font-size: 0.92rem;
 }
-.ui-nav-art-cell.nav-custom.is-active .ui-nav-art-face {
-  border-bottom-color: rgba(99, 102, 241, 0.75);
+.ui-nav-art-cell.ui-nav-compact .ui-nav-script-label {
+  font-size: 1.05rem !important;
 }
-.ui-nav-art-cell.nav-creative.is-active .ui-nav-art-face {
-  border-bottom-color: rgba(245, 158, 11, 0.8);
+.ui-cross-nav-art {
+  margin: 0.35rem 0 0.75rem 0;
 }
-.ui-nav-art-cell.nav-multitrack.is-active .ui-nav-art-face {
-  border-bottom-color: rgba(244, 63, 94, 0.7);
+.ui-cross-nav-art [data-testid="stHorizontalBlock"] {
+  gap: 0.12rem 0.18rem !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
 }
-.ui-nav-art-cell.nav-analysis.is-active .ui-nav-art-face {
-  border-bottom-color: rgba(6, 182, 212, 0.75);
+.ui-cross-nav-art [data-testid="column"] {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
 }
-.ui-nav-art-cell.nav-log.is-active .ui-nav-art-face {
-  border-bottom-color: rgba(100, 116, 139, 0.75);
+.ui-practice-quicklinks.ui-cross-nav-art,
+.ui-backing-scope-quicklinks.ui-cross-nav-art {
+  margin-top: 0.45rem !important;
+  padding-top: 0.5rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.32);
 }
 .ui-nav-art-cell .stButton {
   position: absolute !important;
@@ -6671,6 +6649,39 @@ def _quick_nav_artistic_css() -> str:
 """
 
 
+def _render_nav_art_cell(
+    st: Any,
+    session_state: Any,
+    *,
+    page_id: str,
+    current: str | None,
+    rerun_fn: Any,
+    button_key: str,
+    compact: bool = False,
+) -> None:
+    is_active = current is not None and page_id == current
+    nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
+    _label = nav_compact_button_label(page_id)
+    _active_cls = " is-active" if is_active else ""
+    _compact_cls = " ui-nav-compact" if compact else ""
+    st.markdown(
+        f'<div class="ui-nav-art-cell nav-{html.escape(nav_class)}{_active_cls}{_compact_cls}">'
+        f"{_nav_art_face_html(page_id, active=is_active)}",
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        _label,
+        key=button_key,
+        use_container_width=True,
+        help=STUDIO_PAGE_META.get(page_id, {}).get("label", page_id),
+    ):
+        if (current is None or page_id != current) and navigate_studio_page(
+            session_state, page_id
+        ):
+            rerun_fn()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def _render_quick_nav_art_row(
     st: Any,
     session_state: Any,
@@ -6679,28 +6690,20 @@ def _render_quick_nav_art_row(
     current: str,
     rerun_fn: Any,
     key_prefix: str,
+    compact: bool = False,
 ) -> None:
     cols = st.columns(len(page_ids))
     for col, page_id in zip(cols, page_ids):
-        is_active = page_id == current
-        nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
-        _label = nav_compact_button_label(page_id)
-        _active_cls = " is-active" if is_active else ""
         with col:
-            st.markdown(
-                f'<div class="ui-nav-art-cell nav-{html.escape(nav_class)}{_active_cls}">'
-                f"{_nav_art_face_html(page_id, active=is_active)}",
-                unsafe_allow_html=True,
+            _render_nav_art_cell(
+                st,
+                session_state,
+                page_id=page_id,
+                current=current,
+                rerun_fn=rerun_fn,
+                button_key=f"{key_prefix}_art_{page_id}",
+                compact=compact,
             )
-            if st.button(
-                _label,
-                key=f"{key_prefix}_art_{page_id}",
-                use_container_width=True,
-                help=STUDIO_PAGE_META.get(page_id, {}).get("label", page_id),
-            ):
-                if page_id != current and navigate_studio_page(session_state, page_id):
-                    rerun_fn()
-            st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _sync_studio_page_nav_widget(
@@ -6717,20 +6720,23 @@ def _sync_studio_page_nav_widget(
 
 
 # Compact cross-page shortcuts (subset for inline link rows).
-CROSS_PAGE_LINKS: list[tuple[str, str]] = [
-    ("practice", "Go to Practice"),
-    ("picker", "Go to Song Selection"),
-    ("backing", "Go to Backing Track"),
-    ("creative", "Go to Creative Lab"),
-    ("custom", "Go to Custom Progression"),
-]
+CROSS_PAGE_LINKS: list[str] = ["practice", "picker", "backing", "creative", "custom"]
 
-BACKING_SCOPE_QUICK_LINKS: list[tuple[str, str]] = [
-    ("practice", "Practice"),
-    ("picker", "Songs"),
-    ("creative", "Creative Lab"),
-    ("custom", "Custom"),
-]
+BACKING_SCOPE_QUICK_LINKS: list[str] = ["practice", "picker", "creative", "custom"]
+
+
+def _resolve_nav_page_ids(
+    pages: list[str] | list[tuple[str, str]] | None,
+    *,
+    exclude: str | None = None,
+) -> list[str]:
+    raw = pages if pages is not None else CROSS_PAGE_LINKS
+    page_ids: list[str] = []
+    for item in raw:
+        page_ids.append(item if isinstance(item, str) else item[0])
+    if exclude:
+        page_ids = [page_id for page_id in page_ids if page_id != exclude]
+    return page_ids
 
 
 def ensure_studio_page(session_state: dict[str, Any], default: str = "practice") -> str:
@@ -6820,31 +6826,29 @@ def render_cross_page_links(
     current_page: str,
     rerun_fn: Any,
     key_prefix: str = "cross",
-    pages: Optional[list[tuple[str, str]]] = None,
-    wrapper_class: str = "ui-cross-links",
+    pages: list[str] | list[tuple[str, str]] | None = None,
+    wrapper_class: str = "ui-cross-nav-art",
+    compact: bool = True,
 ) -> None:
-    """Small shortcut buttons to other workspaces (excludes current page)."""
+    """Icon + label shortcuts to other workspaces (excludes current page)."""
     import streamlit as st
 
-    link_pages = pages if pages is not None else CROSS_PAGE_LINKS
-    targets = [(pid, label) for pid, label in link_pages if pid != current_page]
+    targets = _resolve_nav_page_ids(pages, exclude=current_page)
     if not targets:
         return
     st.markdown(f'<div class="{html.escape(wrapper_class)}">', unsafe_allow_html=True)
     cols = st.columns(len(targets))
-    for col, (page_id, label) in zip(cols, targets):
-        nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
-        button_key = f"{key_prefix}_to_{page_id}"
+    for col, page_id in zip(cols, targets):
         with col:
-            st.markdown(f'<div class="cross-{nav_class}">', unsafe_allow_html=True)
-            if st.button(
-                label,
-                key=button_key,
-                use_container_width=True,
-            ):
-                if navigate_studio_page(session_state, page_id):
-                    rerun_fn()
-            st.markdown("</div>", unsafe_allow_html=True)
+            _render_nav_art_cell(
+                st,
+                session_state,
+                page_id=page_id,
+                current=None,
+                rerun_fn=rerun_fn,
+                button_key=f"{key_prefix}_to_{page_id}",
+                compact=compact,
+            )
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -6983,24 +6987,40 @@ def render_global_studio_bar(
         else:
             st.caption("Song")
             st.markdown(f"**{html.escape(song)}**")
+    _studio = ensure_studio_page(ss)
     with row2[3]:
-        st.markdown('<div class="ui-quick-nav">', unsafe_allow_html=True)
-        if rerun_fn and st.button("Songs", key="global_nav_picker", use_container_width=True, help="Song library"):
-            navigate_studio_page(ss, "picker")
-            rerun_fn()
-        st.markdown("</div>", unsafe_allow_html=True)
+        if rerun_fn:
+            _render_nav_art_cell(
+                st,
+                ss,
+                page_id="picker",
+                current=_studio,
+                rerun_fn=rerun_fn,
+                button_key="global_nav_picker",
+                compact=True,
+            )
     with row2[4]:
-        st.markdown('<div class="ui-quick-nav">', unsafe_allow_html=True)
-        if rerun_fn and st.button("Practice", key="global_nav_practice", use_container_width=True, help="Practice page"):
-            navigate_studio_page(ss, "practice")
-            rerun_fn()
-        st.markdown("</div>", unsafe_allow_html=True)
+        if rerun_fn:
+            _render_nav_art_cell(
+                st,
+                ss,
+                page_id="practice",
+                current=_studio,
+                rerun_fn=rerun_fn,
+                button_key="global_nav_practice",
+                compact=True,
+            )
     with row2[5]:
-        st.markdown('<div class="ui-quick-nav">', unsafe_allow_html=True)
-        if rerun_fn and st.button("Backing", key="global_nav_backing", use_container_width=True, help="Backing track"):
-            navigate_studio_page(ss, "backing")
-            rerun_fn()
-        st.markdown("</div>", unsafe_allow_html=True)
+        if rerun_fn:
+            _render_nav_art_cell(
+                st,
+                ss,
+                page_id="backing",
+                current=_studio,
+                rerun_fn=rerun_fn,
+                button_key="global_nav_backing",
+                compact=True,
+            )
     st.markdown("</div>", unsafe_allow_html=True)
 
 
