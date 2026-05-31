@@ -9776,8 +9776,8 @@ elif _studio_page == "picker":
 
         st.markdown("### Song content editor")
         st.caption(
-            "Edit **lyrics & phrasing cues** or **chords bar-by-bar** for the active song. "
-            "Use **Edit Song Chart** to change Verse, Chorus, Bridge, and other sections."
+            "**Lyrics & Cues** — lyrics and short cues per section, then **Save Lyrics & Cues**. "
+            "**Edit Song Chart** — chords bar-by-bar, like the chart editor."
         )
         _editor_tab = st.radio(
             "Editor section",

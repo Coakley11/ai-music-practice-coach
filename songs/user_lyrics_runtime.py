@@ -77,11 +77,31 @@ def lyrics_save_status(session_state: dict, *, slug: str, title: str, artist: st
 def lyrics_status_label(status: str) -> str:
     return {
         "unsaved": "Unsaved changes",
-        "session": "Saved to session (until refresh)",
-        "my_version": "Saved permanently (My Song Version)",
-        "user_verified": "User verified version active",
-        "catalog": "Using catalog chart only (no saved lyrics)",
+        "session": "Saved for this session only",
+        "my_version": "Using User Lyrics",
+        "user_verified": "Using User Verified Lyrics",
+        "catalog": "No saved lyrics yet",
     }.get(status, status)
+
+
+def lyrics_active_source_label(
+    session_state: dict,
+    *,
+    title: str,
+    artist: str,
+) -> tuple[str, str]:
+    """Return (banner text, kind) where kind is ``user`` or ``empty``."""
+    status = lyrics_save_status(
+        session_state,
+        slug=song_lyrics_slug(title, artist),
+        title=title,
+        artist=artist,
+    )
+    if status in {"my_version", "user_verified", "session"}:
+        if status == "user_verified":
+            return ("Using User Verified Lyrics", "user")
+        return ("Using User Lyrics", "user")
+    return ("No saved lyrics yet", "empty")
 
 
 def hydrate_user_lyrics_session(
@@ -208,7 +228,7 @@ def save_lyrics_my_version(
     session_state[keys["hydrated_at"]] = entry.get("saved_at")
     session_state.pop(f"{_LYRICS_DIRTY}::{slug}", None)
     session_state[f"{_LYRICS_SAVE_NOTICE}::{slug}"] = (
-        "Saved to My Song Version — loads automatically when you open this song."
+        "✅ Lyrics & cues saved successfully — loads when you open this song again."
     )
     return entry
 
@@ -272,9 +292,39 @@ def save_lyrics_user_verified(
     session_state[keys["hydrated_at"]] = entry.get("saved_at")
     session_state.pop(f"{_LYRICS_DIRTY}::{slug}", None)
     session_state[f"{_LYRICS_SAVE_NOTICE}::{slug}"] = (
-        "Saved as User Verified Version — your preferred lyrics, cues, and chart status."
+        "✅ Saved as user verified — your preferred lyrics, cues, and chart."
     )
     return entry
+
+
+def revert_user_lyrics(
+    session_state: dict,
+    *,
+    title: str,
+    artist: str,
+) -> bool:
+    """Remove saved user lyrics/cues from disk and clear the editor session."""
+    from song_catalog.user_song_content import delete_user_song_content
+
+    deleted = delete_user_song_content(title, artist)
+    keys = lyrics_session_keys(title, artist)
+    slug = keys["slug"]
+    for key in (
+        keys["section_lyrics"],
+        keys["lyric_cues"],
+        keys["song_lyrics"],
+        keys["performance_notes"],
+        keys["karaoke_markers"],
+        keys["section_layout"],
+        keys["save_tier"],
+        keys["hydrated_at"],
+    ):
+        session_state.pop(key, None)
+    session_state.pop(f"{_LYRICS_DIRTY}::{slug}", None)
+    session_state[f"{_LYRICS_SAVE_NOTICE}::{slug}"] = (
+        "Reverted — your saved lyrics and cues were removed for this song."
+    )
+    return deleted
 
 
 def pop_lyrics_save_notice(session_state: dict, *, title: str, artist: str) -> str | None:
