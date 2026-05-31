@@ -206,6 +206,17 @@ def apply_pick_key(
         st.session_state[PENDING_DISPLAY_KEY] = data["key"]
     st.session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
     st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = pick_key
+    try:
+        from songs.user_lyrics_runtime import hydrate_user_lyrics_session
+
+        hydrate_user_lyrics_session(
+            st.session_state,
+            title=str(data.get("title", "")),
+            artist=str(data.get("artist", "")),
+            force=bool(prev is not None and prev != pick_key),
+        )
+    except Exception:
+        pass
     return data
 
 

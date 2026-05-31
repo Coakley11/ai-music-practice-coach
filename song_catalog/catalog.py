@@ -17,6 +17,7 @@ from typing import Any
 from .bulk_songs import bulk_song_records
 from .curated_songs import curated_song_records
 from .user_overrides import apply_user_overrides_to_records
+from .user_song_content import apply_user_song_content_to_records
 
 INCLUDE_PLACEHOLDER_CHARTS = False
 
@@ -142,7 +143,7 @@ def _merge_records() -> list[dict[str, Any]]:
         seen_ta.add(ta)
         seen_gt.add(gt)
         out.append(row)
-    return apply_user_overrides_to_records(out)
+    return apply_user_song_content_to_records(apply_user_overrides_to_records(out))
 
 
 def clear_catalog_cache() -> None:
@@ -180,6 +181,7 @@ def build_libraries(records: list[dict[str, Any]]):
             "lyric_cues": r.get("lyric_cues") or {},
             "extensions": r.get("extensions") or {},
             "user_override": r.get("user_override"),
+            "user_song_content": r.get("user_song_content"),
             "section_order": r.get("section_order"),
         }
         picker.setdefault(g, {})[label] = dict(_row_common)

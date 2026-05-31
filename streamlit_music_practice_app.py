@@ -1584,290 +1584,23 @@ def _render_lyrics_and_cues_panel(
     chart_sections: dict | None = None,
     expanded: bool | None = None,
     prominent: bool = False,
+    module_globals: dict | None = None,
 ) -> None:
-    """Lyrics & cues editor — Song Selection; persists for Practice and Backing Track."""
-    import html as _html
+    """Lyrics and cues editor on Song Selection (session + permanent user saves)."""
+    from lyrics_cues_panel import render_lyrics_and_cues_panel
 
-    from songs.lyrics_editor import (
-        add_lyrics_section,
-        filter_lyric_bearing_sections,
-        move_lyrics_section,
-        optional_sections_to_add,
-        remove_lyrics_section,
-        rename_lyrics_section,
-        reset_lyrics_section_layout,
-        apply_auto_assign_lyrics,
-        lyrics_paste_placeholder,
-        resolve_lyrics_editor_sections,
-        section_lyrics_widget_key,
+    render_lyrics_and_cues_panel(
+        st,
+        song_title=song_title,
+        song_artist=song_artist,
+        section_names=section_names,
+        song_data=song_data,
+        chart_sections=chart_sections,
+        expanded=expanded,
+        prominent=prominent,
+        module_globals=module_globals,
     )
 
-    slug, song_lyrics_key, section_lyrics_state_key = _lyrics_cues_session_keys(
-        song_title,
-        song_artist,
-    )
-
-    has_saved = bool(
-        st.session_state.get(song_lyrics_key)
-        or st.session_state.get(section_lyrics_state_key)
-    )
-    if expanded is None:
-        expanded = True if prominent else has_saved
-
-    def _body() -> None:
-        if song_data is not None and chart_sections is not None:
-            ordered_all = resolve_lyrics_editor_sections(
-                st.session_state,
-                slug,
-                song_data,
-                chart_sections,
-            )
-        else:
-            ordered_all = _ordered_section_names_for_lyrics(section_names)
-        if not ordered_all:
-            ordered_all = ["Full song"]
-
-        st.caption(
-            "Paste lyrics and performance cues you provide — saved per song, "
-            "used on **Practice** and **Backing Track**."
-        )
-
-        # The lyrics editor only ever shows lyric-bearing sections
-        # (Verse / Pre-Chorus / Chorus / Bridge / Refrain, plus any
-        # section that already has lyrics typed for it). Intros / Outros
-        # / Solos / Interludes / Harmonica / Turnaround sections never
-        # appear in the lyric typing area - they aren't sung. Section
-        # management (add / reorder / remove) below still operates on
-        # the full chart layout.
-        _catalog_cues = (
-            (song_data or {}).get("lyric_cues") if isinstance(song_data, dict) else None
-        )
-        _existing_user = st.session_state.get(section_lyrics_state_key) or {}
-        ordered = filter_lyric_bearing_sections(
-            ordered_all,
-            show_instrumental=False,
-            catalog_lyric_cues=_catalog_cues,
-            user_section_lyrics=_existing_user,
-        )
-
-        st.markdown("**Paste all lyrics or cues (optional)**")
-        st.caption(
-            "Paste lyrics/cues with section headers like **[Verse 1]**, **[Chorus 1]**, "
-            "or **Verse 1:** line — or separate each section with a **blank line**. "
-            "Then press **Auto-assign to sections**."
-        )
-        st.text_area(
-            "Paste all lyrics or cues (optional)",
-            value=st.session_state.get(song_lyrics_key, ""),
-            placeholder=lyrics_paste_placeholder(ordered),
-            key=song_lyrics_key,
-            height=min(120 + max(0, len(ordered) - 4) * 18, 320),
-            label_visibility="collapsed",
-        )
-
-        section_lyrics_state = st.session_state.setdefault(section_lyrics_state_key, {})
-
-        assign_notice = st.session_state.pop(f"_lyrics_assign_notice::{slug}", None)
-        if assign_notice:
-            st.success(assign_notice)
-
-        if st.session_state.pop(f"_lyrics_assign_warn::{slug}", None):
-            st.warning(
-                "Use blank lines (empty line between sections) or **[Section]** headers "
-                "to split the text."
-            )
-
-        if _developer_mode_enabled() and st.session_state.get(f"_lyrics_assign_debug::{slug}"):
-            with st.expander("Lyrics auto-assign debug", expanded=True):
-                st.json(st.session_state[f"_lyrics_assign_debug::{slug}"])
-
-        if song_data is not None and chart_sections is not None:
-            _editor_caption_sections = ordered if ordered else ordered_all
-            st.caption(
-                "Editing sections from **this song's chart** — "
-                + ", ".join(_editor_caption_sections)
-                + ". Add or reorder optional sections below."
-            )
-            with st.expander("Manage song sections", expanded=False):
-                # Use the full (unfiltered) layout when deciding which optional
-                # section types are missing, so adding "Intro" / "Outro" still
-                # works correctly even when those are hidden by the filter.
-                add_opts = optional_sections_to_add(ordered_all)
-                if add_opts:
-                    ac1, ac2 = st.columns([2, 1])
-                    with ac1:
-                        pick_add = st.selectbox(
-                            "Add optional section",
-                            add_opts,
-                            key=f"lyrics_add_pick::{slug}",
-                            label_visibility="collapsed",
-                        )
-                    with ac2:
-                        if st.button(
-                            "Add section",
-                            key=f"lyrics_add_btn::{slug}",
-                            use_container_width=True,
-                        ):
-                            ordered = add_lyrics_section(
-                                st.session_state, slug, pick_add
-                            )
-                            st.rerun()
-                else:
-                    st.caption("All standard section types are already in the list.")
-
-                custom_name = st.text_input(
-                    "Custom section name",
-                    placeholder="e.g. Verse 3, Tag, Breakdown",
-                    key=f"lyrics_custom_name::{slug}",
-                )
-                if st.button(
-                    "Add custom section",
-                    key=f"lyrics_add_custom::{slug}",
-                    use_container_width=True,
-                ) and custom_name.strip():
-                    ordered = add_lyrics_section(
-                        st.session_state, slug, custom_name.strip()
-                    )
-                    st.rerun()
-
-                if st.button(
-                    "Reset sections to song chart",
-                    key=f"lyrics_reset_layout::{slug}",
-                    use_container_width=True,
-                ):
-                    ordered_all = reset_lyrics_section_layout(
-                        st.session_state, slug, song_data, chart_sections
-                    )
-                    ordered = filter_lyric_bearing_sections(
-                        ordered_all,
-                        show_instrumental=False,
-                        catalog_lyric_cues=_catalog_cues,
-                        user_section_lyrics=_existing_user,
-                    )
-                    st.rerun()
-
-                # Always iterate the full chart layout here so users can
-                # reorder / rename / remove instrumental sections too -
-                # the filter only affects the lyric editing area below.
-                for sec in list(ordered_all):
-                    st.markdown(f"**{_html.escape(sec)}**")
-                    rc1, rc2, rc3, rc4 = st.columns([1, 1, 1, 2])
-                    with rc1:
-                        if st.button("↑", key=f"lyrics_up::{slug}::{_song_slug(sec)}"):
-                            move_lyrics_section(st.session_state, slug, sec, -1)
-                            st.rerun()
-                    with rc2:
-                        if st.button("↓", key=f"lyrics_dn::{slug}::{_song_slug(sec)}"):
-                            move_lyrics_section(st.session_state, slug, sec, 1)
-                            st.rerun()
-                    with rc3:
-                        if st.button("Remove", key=f"lyrics_rm::{slug}::{_song_slug(sec)}"):
-                            remove_lyrics_section(st.session_state, slug, sec)
-                            section_lyrics_state.pop(sec, None)
-                            st.rerun()
-                    with rc4:
-                        new_label = st.text_input(
-                            "Rename",
-                            value=sec,
-                            key=f"lyrics_rename::{slug}::{_song_slug(sec)}",
-                            label_visibility="collapsed",
-                        )
-                        if new_label.strip() and new_label.strip() != sec:
-                            if st.button(
-                                "Apply rename",
-                                key=f"lyrics_rename_go::{slug}::{_song_slug(sec)}",
-                            ):
-                                ordered, section_lyrics_state = rename_lyrics_section(
-                                    st.session_state,
-                                    slug,
-                                    sec,
-                                    new_label.strip(),
-                                    section_lyrics_state,
-                                )
-                                st.session_state[section_lyrics_state_key] = (
-                                    section_lyrics_state
-                                )
-                                st.rerun()
-
-        if st.button(
-            "Auto-assign to sections",
-            key=f"auto_assign_lyrics::{slug}",
-            use_container_width=True,
-        ):
-            raw_paste = str(st.session_state.get(song_lyrics_key) or "")
-            assigned, blocks, debug = apply_auto_assign_lyrics(
-                st.session_state,
-                song_slug=slug,
-                section_lyrics_store_key=section_lyrics_state_key,
-                section_names=ordered,
-                raw_paste=raw_paste,
-            )
-            st.session_state[f"_lyrics_assign_debug::{slug}"] = debug
-            if len(blocks) <= 1 and len(assigned) <= 1:
-                st.session_state[f"_lyrics_assign_warn::{slug}"] = True
-            elif assigned:
-                st.session_state[f"_lyrics_assign_notice::{slug}"] = (
-                    f"Assigned {len(assigned)} section(s)."
-                )
-            else:
-                st.session_state[f"_lyrics_assign_warn::{slug}"] = True
-            st.rerun()
-
-        st.markdown("---")
-        for section_name in ordered:
-            widget_key = section_lyrics_widget_key(slug, section_name)
-            if widget_key not in st.session_state:
-                st.session_state[widget_key] = str(
-                    section_lyrics_state.get(section_name, "")
-                )
-            st.markdown(f"**{_html.escape(section_name)}**")
-            st.text_area(
-                f"{section_name} lyrics / cues",
-                key=widget_key,
-                height=88,
-                placeholder="Lyrics, cue, or note for this section…",
-                label_visibility="collapsed",
-            )
-            section_lyrics_state[section_name] = st.session_state.get(
-                widget_key,
-                section_lyrics_state.get(section_name, ""),
-            )
-
-        st.session_state[section_lyrics_state_key] = dict(section_lyrics_state)
-
-        if st.button(
-            "Save Lyrics & Cues",
-            key=f"save_lyrics_cues::{slug}",
-            type="primary",
-            use_container_width=True,
-        ):
-            st.session_state[f"_lyrics_saved::{slug}"] = True
-            try:
-                st.toast("Lyrics & cues saved for this song.", icon="🎤")
-            except Exception:
-                pass
-            st.success(
-                "Lyrics & cues saved — available on **Practice** and **Backing Track**."
-            )
-
-        if st.session_state.get(f"_lyrics_saved::{slug}") or has_saved:
-            st.caption("Saved for this song — charts, section focus, and coach tools use these cues.")
-
-    if prominent:
-        st.markdown(
-            '<div class="ui-card soft" style="margin:1rem 0 1.25rem 0;border:2px solid #c7d2fe;">',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'<p class="ui-card-title" style="font-size:1.05rem;">🎤 Lyrics & Cues'
-            f' — {_html.escape(song_title)}</p>',
-            unsafe_allow_html=True,
-        )
-        _body()
-        st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        with st.expander("🎤 Lyrics & Cues", expanded=bool(expanded)):
-            _body()
 
 
 def lyric_cue_markdown(section_name, chords, lyric_cues, instrument, full_section_lyrics=None):
@@ -9094,12 +8827,24 @@ else:
 
 _render_sidebar_developer_library_panel()
 
-section_lyrics = st.session_state.get(section_lyrics_state_key, {})
-catalog_lyric_cues = song_data.get("lyric_cues") or {}
-lyric_cues = {
-    **catalog_lyric_cues,
-    **lyric_cues_from_section_lyrics(section_lyrics),
-}
+from songs.user_lyrics_runtime import hydrate_user_lyrics_session, resolve_user_lyrics_and_cues
+
+hydrate_user_lyrics_session(
+    st.session_state,
+    title=str(song_data.get("title", "")),
+    artist=str(song_data.get("artist", "")),
+)
+section_lyrics, _user_cue_lists, _performance_notes = resolve_user_lyrics_and_cues(
+    st.session_state,
+    title=str(song_data.get("title", "")),
+    artist=str(song_data.get("artist", "")),
+    song_data=song_data,
+    include_catalog_cues=bool(song_data.get("trusted_core")),
+)
+lyric_cues = dict(_user_cue_lists)
+for _sec, _lines in lyric_cues_from_section_lyrics(section_lyrics).items():
+    if _sec not in lyric_cues and _lines:
+        lyric_cues[_sec] = _lines
 
 _practice_bpm = int(st.session_state.get("backing_track_bpm", _default_song_bpm))
 _practice_groove = str(
@@ -9891,6 +9636,12 @@ if _studio_page == "practice":
             "Lyric phrasing guide",
             expanded=(instrument == "Voice" or _vocal_showcase_song),
         ):
+            if _performance_notes:
+                st.markdown(
+                    f'<p class="ui-performance-notes"><strong>Your performance notes:</strong> '
+                    f'{_html.escape(_performance_notes)}</p>',
+                    unsafe_allow_html=True,
+                )
             st.markdown(
                 lyric_guide_html(
                     sections_for_practice,
@@ -10043,6 +9794,7 @@ elif _studio_page == "picker":
                 song_data=selected_data,
                 chart_sections=_picker_level_sections,
                 prominent=True,
+                module_globals=globals(),
             )
         else:
             st.caption(chart_source_caption(selected_data))

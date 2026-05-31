@@ -912,14 +912,29 @@ def render_karaoke_missing_lyrics_cta(
     if not isinstance(song_data, Mapping):
         return False
 
-    lyric_cues = song_data.get("lyric_cues") or {}
-    section_lyrics_user = (
-        st.session_state.get("section_lyrics_overrides") or {}
-        if hasattr(st, "session_state")
-        else {}
-    )
-    if isinstance(lyric_cues, Mapping) and any(
-        (str(v) or "").strip() for v in lyric_cues.values()
+    section_lyrics_user: dict = {}
+    lyric_cues_user: dict = {}
+    if hasattr(st, "session_state"):
+        try:
+            from songs.user_lyrics_runtime import (
+                hydrate_user_lyrics_session,
+                resolve_user_lyrics_and_cues,
+            )
+
+            _title = str(song_data.get("title", "") or "")
+            _artist = str(song_data.get("artist", "") or "")
+            hydrate_user_lyrics_session(st.session_state, title=_title, artist=_artist)
+            section_lyrics_user, lyric_cues_user, _notes = resolve_user_lyrics_and_cues(
+                st.session_state,
+                title=_title,
+                artist=_artist,
+                song_data=dict(song_data),
+            )
+        except Exception:
+            section_lyrics_user = {}
+            lyric_cues_user = {}
+    if isinstance(lyric_cues_user, Mapping) and any(
+        (str(v) or "").strip() for v in lyric_cues_user.values()
     ):
         return False
     if isinstance(section_lyrics_user, Mapping) and any(

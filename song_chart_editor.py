@@ -494,6 +494,30 @@ def render_chart_editor_panel(
             edited_level=level,
             catalog_snapshot=snapshot,
         )
+        try:
+            from song_catalog.user_song_content import CONTENT_MY_VERSION, CONTENT_USER_VERIFIED
+            from songs.user_lyrics_runtime import collect_lyrics_payload, save_user_song_content
+
+            payload = collect_lyrics_payload(
+                st,
+                title=title,
+                artist=artist,
+                section_names=list(cleaned.keys()),
+            )
+            if (
+                payload.get("section_lyrics")
+                or payload.get("lyric_cues")
+                or payload.get("performance_notes")
+            ):
+                save_user_song_content(
+                    title=title,
+                    artist=artist,
+                    genre=genre,
+                    content_status=CONTENT_USER_VERIFIED if save_verified else CONTENT_MY_VERSION,
+                    **payload,
+                )
+        except Exception:
+            pass
         refresh_app_catalog_globals(module_globals)
         invalidate_backing(st)
         st.session_state.pop(_draft_key(title, artist, level), None)
