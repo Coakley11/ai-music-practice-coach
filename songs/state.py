@@ -54,7 +54,7 @@ def build_music_local_state(st: Any) -> dict[str, str]:
     }
 
 
-def persist_music_local_state(st: Any, **extra: str) -> None:
+def persist_music_local_state(st: Any, **extra: Any) -> None:
     """Write the current music session snapshot without logging an activity event."""
     try:
         from suite_activity_client import save_local_app_state
