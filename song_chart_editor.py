@@ -89,6 +89,61 @@ def collect_draft_from_widgets(
 
 
 CHART_SAVE_NOTICE_KEY = "chart_last_save_notice"
+CHART_OVERRIDE_DEBUG_KEY = "chart_override_debug"
+USER_CHART_OVERRIDES_REVISION_KEY = "_user_chart_overrides_revision"
+
+
+def chart_override_bar_preview(
+    entry: dict[str, Any] | None,
+    *,
+    section: str = "Verse",
+    bar_index: int = 0,
+    level: str | None = None,
+) -> str:
+    """One-line summary for save/load debug (e.g. ``Verse bar 1 = Gmaj7``)."""
+    if not entry:
+        return f"{section} bar {bar_index + 1} = (none)"
+    sections: dict[str, list[str]] = {}
+    versions = entry.get("chart_versions") or {}
+    use_level = level or entry.get("edited_level")
+    if use_level and versions.get(use_level):
+        sections = versions[use_level]
+    if not sections:
+        sections = entry.get("sections") or {}
+    bars = list(sections.get(section) or [])
+    if bar_index < len(bars):
+        chord = str(bars[bar_index]).strip()
+    elif bars:
+        chord = str(bars[0]).strip()
+        section = next(iter(sections.keys()), section)
+        bar_index = 0
+    else:
+        first_sec = next(iter(sections.keys()), None)
+        if first_sec:
+            section = first_sec
+            bars = list(sections.get(first_sec) or [])
+            chord = str(bars[0]).strip() if bars else "(empty)"
+            bar_index = 0
+        else:
+            chord = "(empty)"
+    return f"{section} bar {bar_index + 1} = {chord}"
+
+
+def invalidate_chart_session_caches(st: Any) -> None:
+    """Drop cached chart bundles/HTML so overrides appear immediately."""
+    try:
+        st.session_state[USER_CHART_OVERRIDES_REVISION_KEY] = (
+            int(st.session_state.get(USER_CHART_OVERRIDES_REVISION_KEY) or 0) + 1
+        )
+    except Exception:
+        pass
+    try:
+        from studio_cache import invalidate_session_cache
+
+        invalidate_session_cache(st.session_state, "chart_bundle")
+        invalidate_session_cache(st.session_state, "backing_chart_html")
+    except Exception:
+        pass
 
 
 def chart_save_preview_lines(
@@ -223,6 +278,7 @@ def refresh_app_catalog_globals(module_globals: dict[str, Any]) -> None:
     try:
         st_obj = module_globals.get("st")
         if st_obj is not None and hasattr(st_obj, "session_state"):
+            invalidate_chart_session_caches(st_obj)
             st_obj.session_state["_catalog_backup_records"] = records
             st_obj.session_state["_catalog_backup_library"] = library
             st_obj.session_state["_catalog_backup_picker"] = picker
@@ -259,6 +315,23 @@ def render_chart_editor_panel(
             st.markdown("**Saved preview:**")
             for line in preview_lines:
                 st.markdown(f"- {line}")
+        debug = save_notice.get("override_debug") or {}
+        if debug:
+            st.markdown("**Override debug (temporary):**")
+            if debug.get("saved_line"):
+                st.markdown(f"- Saved override: {debug['saved_line']}")
+            if debug.get("loaded_line"):
+                st.markdown(f"- Loaded override: {debug['loaded_line']}")
+            if debug.get("disk_path"):
+                st.caption(f"Override file: `{debug['disk_path']}`")
+
+    _debug_live = st.session_state.get(CHART_OVERRIDE_DEBUG_KEY)
+    if _debug_live and _debug_live.get("title") == title and _debug_live.get("artist") == artist:
+        st.markdown("**Override debug (last save):**")
+        if _debug_live.get("saved_line"):
+            st.markdown(f"- Saved override: {_debug_live['saved_line']}")
+        if _debug_live.get("loaded_line"):
+            st.markdown(f"- Loaded override: {_debug_live['loaded_line']}")
 
     _render_chart_source_banner(st, song_data)
 
@@ -482,6 +555,8 @@ def render_chart_editor_panel(
             section_order=list(cleaned.keys()),
         )
 
+        from song_catalog.user_overrides import OVERRIDES_PATH
+
         saved_entry = save_user_override(
             title=title,
             artist=artist,
@@ -493,6 +568,14 @@ def render_chart_editor_panel(
             override_status=status,
             edited_level=level,
             catalog_snapshot=snapshot,
+        )
+        loaded_entry = get_user_override(title, artist)
+        _debug_section = next(iter(cleaned.keys()), "Verse")
+        saved_line = chart_override_bar_preview(
+            saved_entry, section=_debug_section, bar_index=0, level=level
+        )
+        loaded_line = chart_override_bar_preview(
+            loaded_entry, section=_debug_section, bar_index=0, level=level
         )
         try:
             from song_catalog.user_song_content import CONTENT_MY_VERSION, CONTENT_USER_VERIFIED
@@ -520,12 +603,39 @@ def render_chart_editor_panel(
             pass
         refresh_app_catalog_globals(module_globals)
         invalidate_backing(st)
+        invalidate_chart_session_caches(st)
+        try:
+            from songs.state import ACTIVE_CATALOG_PICK_KEY, apply_pick_key
+
+            pick_key = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+            picker = module_globals.get("SONG_PICKER_CATALOG") or {}
+            library = module_globals.get("SONG_LIBRARY")
+            if pick_key and picker:
+                apply_pick_key(
+                    st,
+                    pick_key,
+                    picker,
+                    song_library=library,
+                    skip_activity_log=True,
+                )
+        except Exception:
+            pass
         st.session_state.pop(_draft_key(title, artist, level), None)
         status_label = (
             "user verified"
             if status == USER_VERIFIED
             else "corrected chart"
         )
+        override_debug = {
+            "saved_line": saved_line,
+            "loaded_line": loaded_line,
+            "disk_path": str(OVERRIDES_PATH),
+        }
+        st.session_state[CHART_OVERRIDE_DEBUG_KEY] = {
+            "title": title,
+            "artist": artist,
+            **override_debug,
+        }
         st.session_state[CHART_SAVE_NOTICE_KEY] = {
             "title": title,
             "artist": artist,
@@ -538,6 +648,7 @@ def render_chart_editor_panel(
             "preview_lines": preview_lines,
             "override_status": status,
             "saved_at": saved_entry.get("saved_at"),
+            "override_debug": override_debug,
         }
         st.rerun()
 

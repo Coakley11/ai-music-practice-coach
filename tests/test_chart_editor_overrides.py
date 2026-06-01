@@ -3,11 +3,24 @@
 from __future__ import annotations
 
 from song_catalog import user_overrides as uo
-from song_chart_editor import chart_save_preview_lines, collect_draft_from_widgets
+from song_chart_editor import (
+    chart_override_bar_preview,
+    chart_save_preview_lines,
+    collect_draft_from_widgets,
+)
 
 
 class _FakeSessionState(dict):
     """Minimal stand-in for Streamlit session_state."""
+
+
+def test_chart_override_bar_preview():
+    entry = {
+        "sections": {"Verse": ["G", "D"]},
+        "chart_versions": {"Intermediate": {"Verse": ["Gmaj7", "D"]}},
+        "edited_level": "Intermediate",
+    }
+    assert chart_override_bar_preview(entry, section="Verse") == "Verse bar 1 = Gmaj7"
 
 
 def test_chart_save_preview_shows_edited_bars_first():

@@ -8704,6 +8704,8 @@ _chart_bundle = session_cache_get_or_set(
         level,
         chart_key,
         st.session_state.get("_catalog_revision"),
+        st.session_state.get("_user_chart_overrides_revision", 0),
+        ((_catalog_song_data.get("user_override") or {}).get("saved_at")),
     ),
     lambda: build_active_chart_bundle(
         st.session_state,
@@ -10584,7 +10586,10 @@ elif _studio_page == "analysis":
                     unsafe_allow_html=True,
                 )
                 st.markdown(upload_format_chips_html(), unsafe_allow_html=True)
-                st.caption("Drag and drop a take, or record live. WAV gives the most accurate timing analysis.")
+                st.caption(
+                    "Drag and drop a take, or record live. WAV gives the most accurate timing analysis. "
+                    "MP4/MOV uploads extract audio automatically."
+                )
 
                 if is_analysis_criteria_locked(st.session_state):
                     mission_ids = render_analysis_criteria_summary(st, st.session_state)
@@ -10592,9 +10597,15 @@ elif _studio_page == "analysis":
                     mission_ids = render_mission_goals_selector(st, st.session_state)
                     render_mission_history_panel(st)
 
+                from upload_media import (
+                    PreparedUpload,
+                    UPLOAD_ACCEPT_TYPES,
+                    is_video_filename,
+                )
+
                 analysis_audio = st.file_uploader(
                     "Drop your recording here",
-                    type=["wav", "mp3", "m4a", "ogg", "flac"],
+                    type=UPLOAD_ACCEPT_TYPES,
                     key="analysis_audio_upload",
                 )
                 try:
@@ -10603,7 +10614,56 @@ elif _studio_page == "analysis":
                     mic_audio = None
                     st.caption("Live mic may be unavailable in this build — file upload still works.")
 
-                audio_obj = mic_audio if mic_audio is not None else analysis_audio
+                audio_obj = None
+                if mic_audio is not None:
+                    audio_obj = PreparedUpload(
+                        mic_audio.getvalue(),
+                        str(getattr(mic_audio, "name", None) or "recording.wav"),
+                    )
+                elif analysis_audio is not None:
+                    import hashlib
+
+                    _raw = analysis_audio.getvalue()
+                    _raw_name = str(getattr(analysis_audio, "name", None) or "upload.wav")
+                    _sig = (
+                        hashlib.sha256(_raw[:65536] + str(len(_raw)).encode()).hexdigest()[:20],
+                        _raw_name,
+                    )
+                    if st.session_state.get("_analysis_upload_prep_sig") != _sig:
+                        if is_video_filename(_raw_name):
+                            with st.spinner("Video detected. Extracting audio…"):
+                                try:
+                                    audio_obj = PreparedUpload.from_uploaded(analysis_audio)
+                                except Exception as _vid_exc:
+                                    st.error(f"Could not extract audio from video: {_vid_exc}")
+                                    audio_obj = None
+                        else:
+                            audio_obj = PreparedUpload(_raw, _raw_name)
+                        if audio_obj is not None:
+                            st.session_state["_analysis_upload_prep_sig"] = _sig
+                            st.session_state["_analysis_prepared_upload"] = audio_obj
+                    else:
+                        audio_obj = st.session_state.get("_analysis_prepared_upload")
+
+                    if audio_obj is not None and is_video_filename(_raw_name):
+                        _meta = getattr(audio_obj, "meta", {}) or {}
+                        if _meta.get("ok"):
+                            st.success("Audio extracted successfully.")
+                            _detail_bits: list[str] = []
+                            if _meta.get("video_duration_sec") is not None:
+                                _detail_bits.append(
+                                    f"video {_meta['video_duration_sec']:.1f}s"
+                                )
+                            if _meta.get("audio_duration_sec") is not None:
+                                _detail_bits.append(
+                                    f"audio {_meta['audio_duration_sec']:.1f}s"
+                                )
+                            if _meta.get("extracted_wav_bytes"):
+                                _kb = int(_meta["extracted_wav_bytes"]) / 1024
+                                _detail_bits.append(f"extracted WAV {_kb:.0f} KB")
+                            if _detail_bits:
+                                st.caption(" · ".join(_detail_bits))
+
                 if audio_obj is not None:
                     st.markdown("**Preview**")
                     st.audio(audio_obj.getvalue(), format="audio/wav")

@@ -29,6 +29,8 @@ def invalidate_backing_cache(st: Any) -> None:
         from studio_cache import invalidate_session_cache
 
         invalidate_session_cache(st.session_state, "backing_wav_b64")
+        invalidate_session_cache(st.session_state, "chart_bundle")
+        invalidate_session_cache(st.session_state, "backing_chart_html")
     except Exception:
         pass
 

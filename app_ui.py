@@ -5848,7 +5848,7 @@ def upload_session_context_html(
 
 
 def upload_format_chips_html() -> str:
-    formats = ("WAV", "MP3", "M4A", "OGG", "FLAC")
+    formats = ("WAV", "MP3", "M4A", "MP4", "MOV", "OGG", "FLAC")
     chips = "".join(
         f'<span class="ui-upload-format-chip">{html.escape(fmt)}</span>' for fmt in formats
     )
