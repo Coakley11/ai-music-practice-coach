@@ -11500,6 +11500,26 @@ elif _studio_page == "log":
                 }
             )
             save_logs(logs)
+            try:
+                from suite_activity_client import record_activity
+
+                record_activity(
+                    "music",
+                    "practice",
+                    page="Practice Log",
+                    metrics={
+                        "song": song,
+                        "artist": str((song_data or {}).get("artist") or ""),
+                        "minutes": int(duration_mins),
+                        "focus": focus,
+                    },
+                    summary=f"Practice {song}",
+                    resume_key=f"song:{st.session_state.get('active_catalog_pick_key', song)}",
+                    resume_title=f"Continue: {song}",
+                    resume_subtitle=focus or instrument,
+                )
+            except Exception:
+                pass
             st.success("Practice log saved.")
 
     with st.container(key="log_summary_panel", border=False):

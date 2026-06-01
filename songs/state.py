@@ -217,6 +217,36 @@ def apply_pick_key(
         )
     except Exception:
         pass
+    try:
+        from suite_activity_client import record_activity
+
+        song_label = f"{data.get('title', '')} — {data.get('artist', '')}".strip(" —")
+        record_activity(
+            "music",
+            "song_selected",
+            page=str(st.session_state.get("studio_page") or "Song Picker"),
+            metrics={
+                "song": str(data.get("title") or ""),
+                "artist": str(data.get("artist") or ""),
+                "genre": genre,
+                "pick_key": pick_key,
+                "focus": str(st.session_state.get("focus") or ""),
+            },
+            summary=f"Practice {song_label}" if song_label else "Music practice",
+            resume_key=f"song:{pick_key}",
+            resume_title=f"Continue: {data.get('title', 'song')}",
+            resume_subtitle=str(data.get("artist") or ""),
+            local_state={
+                "song": str(data.get("title") or ""),
+                "artist": str(data.get("artist") or ""),
+                "pick_key": pick_key,
+                "page": str(st.session_state.get("studio_page") or ""),
+                "focus": str(st.session_state.get("focus") or ""),
+                "instrument": str(st.session_state.get("instrument") or ""),
+            },
+        )
+    except Exception:
+        pass
     return data
 
 
