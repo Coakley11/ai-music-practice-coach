@@ -1,0 +1,15 @@
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+.env
+.streamlit/secrets.toml
+data/app_state.json
+data/*activity_fallback.json
+data/*_activity_fallback.json
+*.db
+*.sqlite
+*.sqlite3
