@@ -225,6 +225,7 @@ from studio_cache import (
     session_cache_get_or_set,
 )
 from studio_scroll_anchors import (
+    ANCHOR_BACKING_FOLLOW_ALONG,
     ANCHOR_BACKING_MAIN_CONTROLS,
     ANCHOR_CHOOSE_ACTIVE_SONG,
     ANCHOR_CHORD_COACH,
@@ -234,6 +235,15 @@ from studio_scroll_anchors import (
     render_pending_scroll_script,
     render_scroll_anchor_marker,
     set_pending_anchor,
+)
+from picker_song_editor import (
+    PICKER_EDITOR_NOTICE_KEY,
+    PICKER_EDITOR_OPEN_KEY,
+    PICKER_EDITOR_TAB_KEY,
+    collapse_picker_editor,
+    consume_jump_to_chart_editor,
+    consume_open_lyrics_request,
+    open_picker_editor,
 )
 from studio_page_state import (
     apply_improv_song_source,
@@ -929,7 +939,6 @@ _PRIMARY_GENRE_PILLS: tuple[str, ...] = (
     "Rock",
     "Jazz",
     "Jewish",
-    "Jewish Traditional",
     "Blues",
     "Funk",
     "Classical",
@@ -1036,11 +1045,22 @@ if hasattr(st, "session_state"):
     TRUSTED_CORE_RECORDS = st.session_state.get("_trusted_core_records", TRUSTED_CORE_RECORDS)
     DEFAULT_SONG_RECORDS = st.session_state.get("_default_song_records", DEFAULT_SONG_RECORDS)
 
-    restore_saved_app_state_once(
-        st,
-        song_picker_catalog=SONG_PICKER_CATALOG,
-        song_library=SONG_LIBRARY,
-    )
+    try:
+        from music_persistent_state import restore_music_disk_state_once
+        from suite_user_persistence import show_persistence_messages
+
+        restore_music_disk_state_once(
+            st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+        )
+        show_persistence_messages(st)
+    except Exception:
+        restore_saved_app_state_once(
+            st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+        )
 
 ensure_master_song_initialized(
     st,
@@ -3932,14 +3952,19 @@ def _build_karaoke_lyrics_panel_script(
           lines.length - 1,
           Math.floor(fraction * lines.length)
         );
+        let activeLine = null;
         lines.forEach((line, idx) => {{
           line.classList.remove("active", "before-active");
           if (idx === activeIdx) {{
             line.classList.add("active");
+            activeLine = line;
           }} else if (idx < activeIdx) {{
             line.classList.add("before-active");
           }}
         }});
+        if (activeLine && !audio.paused) {{
+          activeLine.scrollIntoView({{ behavior: "smooth", block: "center", inline: "nearest" }});
+        }}
       }}
 
       let lastSection = null;
@@ -6870,6 +6895,7 @@ PENDING_BACKING_LOOPS = "_pending_backing_loops"
 BACKING_QUICK_SECTION_KEY = "backing_quick_section"
 BACKING_AUTOPLAY = "_backing_autoplay"
 BACKING_TRANSPORT_STATUS = "backing_transport_status"
+BACKING_PLAY_FEEDBACK_KEY = "_backing_play_feedback"
 
 
 def _prepare_backing_from_practice(focus: str | None) -> None:
@@ -6945,12 +6971,38 @@ def _stop_backing_playback() -> None:
     """Stop follow-along playback without clearing the generated WAV."""
     st.session_state[BACKING_AUTOPLAY] = False
     st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
+    st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback stopped"
     st.session_state.pop("playback_start_time", None)
     for key in list(st.session_state.keys()):
         if str(key).endswith("::follow_start_time"):
             st.session_state.pop(key, None)
         if str(key).endswith("::follow_manual_index"):
             st.session_state[key] = 0
+
+
+def _begin_backing_performance_follow_along(
+    st: Any,
+    *,
+    follow_key_prefix: str,
+    karaoke_voice: bool,
+) -> None:
+    """Open follow-along UI, scroll to it, and arm playback + timeline."""
+    import time
+
+    st.session_state[BACKING_AUTOPLAY] = True
+    st.session_state[BACKING_TRANSPORT_STATUS] = "playing"
+    st.session_state["backing_lead_sheet_open"] = True
+    st.session_state["playback_start_time"] = time.time()
+    st.session_state[f"{follow_key_prefix}::follow_manual_index"] = 0
+    set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
+    if karaoke_voice:
+        st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+            "Karaoke starting — opening lyrics screen"
+        )
+    else:
+        st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+            "Playback starting — opening lead sheet"
+        )
 
 
 _PICKER_NAV_ANCHORS: dict[str, str] = {
@@ -6961,16 +7013,22 @@ _PICKER_NAV_ANCHORS: dict[str, str] = {
 
 _CATALOG_RECENT_KEY = "catalog_recent_pick_keys"
 _CATALOG_FAVORITES_KEY = "catalog_favorite_pick_keys"
-PICKER_EDITOR_TAB_KEY = "picker_editor_tab"
-_JUMP_TO_CHART_EDITOR_KEY = "_jump_to_chart_editor"
 
 
 def _open_chart_editor_on_picker() -> None:
     """Jump to Song Selection chart editor for the active catalog song."""
-    st.session_state[PICKER_EDITOR_TAB_KEY] = "Edit Song Chart"
-    st.session_state["chart_edit_mode"] = True
-    st.session_state[_JUMP_TO_CHART_EDITOR_KEY] = True
-    set_pending_anchor(st.session_state, ANCHOR_CHART_EDITOR)
+    open_picker_editor(
+        st.session_state,
+        "Edit Song Chart",
+        enable_chart_editing=True,
+    )
+    navigate_studio_page(st.session_state, "picker")
+    st.rerun()
+
+
+def _open_lyrics_editor_on_picker() -> None:
+    """Jump to Song Selection lyrics & cues editor."""
+    open_picker_editor(st.session_state, "Lyrics & Cues")
     navigate_studio_page(st.session_state, "picker")
     st.rerun()
 
@@ -7278,9 +7336,7 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             _picker_navigate("backing")
     with b3:
         if st.button("🎤 Karaoke", key="picker_card_karaoke", use_container_width=True):
-            set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
-            st.session_state["_pending_open_lyrics_editor"] = True
-            st.rerun()
+            _picker_navigate("backing")
     with b4:
         if st.button("🎸 Chord Coach", key="picker_card_chord_coach", use_container_width=True):
             _picker_navigate("practice", open_chord_coach=True)
@@ -7348,13 +7404,23 @@ def _picker_visible_records() -> list[dict]:
 def _migrate_workspace_genre_filters(available_genres: set[str]) -> list[str]:
     """Migrate legacy single-genre dropdown to multi-select pill state."""
     available = {g for g in available_genres if g}
+    if "Jewish Traditional" in available:
+        available.discard("Jewish Traditional")
     if WORKSPACE_GENRE_FILTERS_KEY not in st.session_state:
         legacy = st.session_state.get("workspace_genre_filter", _ALL_GENRE_FILTER)
+        if legacy == "Jewish Traditional":
+            legacy = "Jewish"
         if legacy and legacy != _ALL_GENRE_FILTER and legacy in available:
             st.session_state[WORKSPACE_GENRE_FILTERS_KEY] = [legacy]
         else:
             st.session_state[WORKSPACE_GENRE_FILTERS_KEY] = []
-    filters = [g for g in (st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or []) if g in available]
+    raw_filters = list(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
+    filters: list[str] = []
+    for g in raw_filters:
+        if g == "Jewish Traditional":
+            g = "Jewish"
+        if g in available and g not in filters:
+            filters.append(g)
     st.session_state[WORKSPACE_GENRE_FILTERS_KEY] = filters
     return filters
 
@@ -8224,6 +8290,12 @@ def _backing_transport_status_message(
     autoplay: bool,
 ) -> tuple[str, str]:
     """Return (message, ui_state) for the transport feedback strip."""
+    play_feedback = str(st.session_state.get(BACKING_PLAY_FEEDBACK_KEY, "") or "").strip()
+    if play_feedback:
+        state = "active" if autoplay else "stopped"
+        if "stopped" in play_feedback.lower():
+            state = "stopped"
+        return play_feedback, state
     explicit = str(st.session_state.get(BACKING_TRANSPORT_STATUS, "") or "").strip().lower()
     if explicit == "generating":
         return "Generating backing track…", "active"
@@ -8482,6 +8554,22 @@ from app_tutorial import (
 init_tutorial_state(st.session_state)
 init_nav_history(st.session_state)
 render_sidebar_nav_history(st.sidebar, st.session_state, rerun_fn=st.rerun)
+
+try:
+    from music_persistent_state import autosave_music_state, default_reset_music_session
+    from suite_user_persistence import render_reset_controls
+
+    render_reset_controls(
+        st,
+        "music",
+        on_reset=default_reset_music_session,
+        help_text=(
+            "Clears saved page, instrument, and filter preferences. "
+            "Does not delete chord-chart overrides in data/user_chart_overrides.json."
+        ),
+    )
+except Exception:
+    pass
 
 _brand_t1, _brand_t2 = st.columns([5, 1])
 with _brand_t2:
@@ -9770,7 +9858,7 @@ elif _studio_page == "picker":
             # the editing song mid-setlist (filling in lyrics for the
             # whole performance set). The page re-renders on rerun
             # with the new song card up top + editor pre-positioned.
-            set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
+            open_picker_editor(st.session_state, "Lyrics & Cues")
 
         render_karaoke_setlist_panel(
             st,
@@ -9788,52 +9876,81 @@ elif _studio_page == "picker":
         selected_data = SONG_PICKER_CATALOG[pick_genre][pick_label]
 
         _picker_level_sections = sections_for_level(selected_data, level)
-        if st.session_state.pop(_JUMP_TO_CHART_EDITOR_KEY, False):
-            st.session_state[PICKER_EDITOR_TAB_KEY] = "Edit Song Chart"
-            st.session_state["chart_edit_mode"] = True
+        if consume_open_lyrics_request(st.session_state):
+            open_picker_editor(st.session_state, "Lyrics & Cues")
+        consume_jump_to_chart_editor(st.session_state)
+
+        _editor_open = bool(st.session_state.get(PICKER_EDITOR_OPEN_KEY, False))
+        _editor_notice = st.session_state.get(PICKER_EDITOR_NOTICE_KEY) or {}
+        if (
+            _editor_notice.get("title") == selected_data.get("title")
+            and _editor_notice.get("artist") == selected_data.get("artist")
+        ):
+            st.success(str(_editor_notice.get("message") or "Saved successfully."))
+            _cap = str(_editor_notice.get("chart_caption") or "").strip()
+            if _cap:
+                st.caption(_cap)
 
         render_scroll_anchor_marker(st, ANCHOR_LYRICS_EDITOR)
         render_scroll_anchor_marker(st, ANCHOR_CHART_EDITOR)
 
-        st.markdown("### Song content editor")
-        st.caption(
-            "**Lyrics & Cues** — lyrics and short cues per section, then **Save Lyrics & Cues**. "
-            "**Edit Song Chart** — chords bar-by-bar, like the chart editor."
-        )
-        _editor_tab = st.radio(
-            "Editor section",
-            ["Lyrics & Cues", "Edit Song Chart"],
-            horizontal=True,
-            key=PICKER_EDITOR_TAB_KEY,
-            label_visibility="collapsed",
-        )
-        if _editor_tab == "Lyrics & Cues":
-            _render_lyrics_and_cues_panel(
-                song_title=str(selected_data.get("title", "")),
-                song_artist=str(selected_data.get("artist", "")),
-                section_names=list(_picker_level_sections.keys()),
-                song_data=selected_data,
-                chart_sections=_picker_level_sections,
-                prominent=True,
-                module_globals=globals(),
-            )
-        else:
-            st.caption(chart_source_caption(selected_data))
-            render_chart_editor_panel(
-                st,
-                module_globals=globals(),
-                all_records=ALL_SONG_RECORDS,
-                song_data=selected_data,
-                genre=pick_genre,
-                level=level,
-                sections_for_level=sections_for_level,
-                invalidate_backing=invalidate_backing_cache,
-            )
-            if chart_key != selected_data.get("key"):
+        with st.container(border=True):
+            st.markdown("#### Song content editor")
+            if not _editor_open and not _editor_notice:
                 st.caption(
-                    f"Practice and Backing use **{global_display_key}** "
-                    f"(+{semitone_distance(selected_data.get('key', 'C'), chart_key)} semitones from catalog key)."
+                    "Open **Lyrics & Cues** or **Edit Song Chart** from the active song card above when you want to edit."
                 )
+            _editor_tab = st.radio(
+                "Editor section",
+                ["Lyrics & Cues", "Edit Song Chart"],
+                horizontal=True,
+                key=PICKER_EDITOR_TAB_KEY,
+                label_visibility="collapsed",
+            )
+            if st.button(
+                "Open editor" if not _editor_open else "Close editor",
+                key="picker_toggle_song_editor",
+                use_container_width=False,
+            ):
+                st.session_state[PICKER_EDITOR_OPEN_KEY] = not _editor_open
+                if not _editor_open:
+                    if _editor_tab == "Edit Song Chart":
+                        st.session_state["chart_edit_mode"] = True
+                        set_pending_anchor(st.session_state, ANCHOR_CHART_EDITOR)
+                    else:
+                        set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
+                else:
+                    st.session_state["chart_edit_mode"] = False
+                st.rerun()
+
+            if _editor_open:
+                if _editor_tab == "Lyrics & Cues":
+                    _render_lyrics_and_cues_panel(
+                        song_title=str(selected_data.get("title", "")),
+                        song_artist=str(selected_data.get("artist", "")),
+                        section_names=list(_picker_level_sections.keys()),
+                        song_data=selected_data,
+                        chart_sections=_picker_level_sections,
+                        prominent=True,
+                        module_globals=globals(),
+                    )
+                else:
+                    st.caption(chart_source_caption(selected_data))
+                    render_chart_editor_panel(
+                        st,
+                        module_globals=globals(),
+                        all_records=ALL_SONG_RECORDS,
+                        song_data=selected_data,
+                        genre=pick_genre,
+                        level=level,
+                        sections_for_level=sections_for_level,
+                        invalidate_backing=invalidate_backing_cache,
+                    )
+                    if chart_key != selected_data.get("key"):
+                        st.caption(
+                            f"Practice and Backing use **{global_display_key}** "
+                            f"(+{semitone_distance(selected_data.get('key', 'C'), chart_key)} semitones from catalog key)."
+                        )
 
 # -------------------------------------------------
 # BACKING TRACK
@@ -10238,12 +10355,24 @@ elif _studio_page == "backing":
         st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
         st.session_state[BACKING_AUTOPLAY] = bool(_karaoke_auto_gen)
         st.session_state[BACKING_TRANSPORT_STATUS] = "ready"
+        st.session_state["backing_lead_sheet_open"] = True
+        set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
+        if _karaoke_auto_gen:
+            st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                "Karaoke starting — opening lyrics screen"
+                if km.is_voice_mode(st.session_state)
+                else "Playback starting — opening lead sheet"
+            )
         clear_backing_needs_regen(st)
         st.rerun()
 
     if _play_clicked:
-        st.session_state[BACKING_AUTOPLAY] = True
-        st.session_state[BACKING_TRANSPORT_STATUS] = "playing"
+        _karaoke_voice_play = bool(km.is_voice_mode(st.session_state))
+        _begin_backing_performance_follow_along(
+            st,
+            follow_key_prefix=_follow_key_prefix,
+            karaoke_voice=_karaoke_voice_play,
+        )
         st.rerun()
 
     _stored_timeline = (
@@ -10416,6 +10545,12 @@ elif _studio_page == "backing":
                 st.session_state["_last_backing_wav"],
             )
             st.session_state["_last_backing_wav_b64"] = _player_b64
+        render_scroll_anchor_marker(st, ANCHOR_BACKING_FOLLOW_ALONG)
+        _play_feedback = str(
+            st.session_state.get(BACKING_PLAY_FEEDBACK_KEY, "") or ""
+        ).strip()
+        if _play_feedback:
+            st.info(_play_feedback)
         components.html(
             live_follow_along_component_html(
                 st.session_state["_last_backing_wav"],
@@ -11678,3 +11813,10 @@ elif _studio_page == "log":
         save_logs([])
         st.session_state.pop("practice_log_insights", None)
         st.success("Practice log cleared.")
+
+try:
+    from music_persistent_state import autosave_music_state
+
+    autosave_music_state(st)
+except Exception:
+    pass

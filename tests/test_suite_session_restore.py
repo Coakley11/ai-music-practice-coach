@@ -86,12 +86,15 @@ def test_restore_runs_once_and_applies_saved_state(mini_catalog, tmp_path: Path)
         "practice_focus_section": "Chorus",
         "level": "Advanced",
     }
-    state_path = tmp_path / "app_state.json"
-    state_path.write_text(json.dumps({"music": saved}), encoding="utf-8")
+    state_path = tmp_path / "music_user_state.json"
+    state_path.write_text(
+        json.dumps({"version": 1, "app": "music", "state": {"core": saved, "session": {}}}),
+        encoding="utf-8",
+    )
 
     st = _FakeSession({})
 
-    with patch("suite_activity_client.LOCAL_FALLBACK_DIR", tmp_path):
+    with patch("suite_user_persistence.DATA_DIR", tmp_path):
         restore_saved_app_state_once(
             st,
             song_picker_catalog=song_picker_catalog,
@@ -107,7 +110,7 @@ def test_restore_runs_once_and_applies_saved_state(mini_catalog, tmp_path: Path)
     assert st[PENDING_DISPLAY_KEY] == "E minor"
 
     before = dict(st)
-    with patch("suite_activity_client.LOCAL_FALLBACK_DIR", tmp_path):
+    with patch("suite_user_persistence.DATA_DIR", tmp_path):
         restore_saved_app_state_once(
             st,
             song_picker_catalog=song_picker_catalog,
@@ -123,12 +126,15 @@ def test_restore_missing_song_shows_neutral_notice(mini_catalog, tmp_path: Path)
         "song": "Missing Song",
         "artist": "Nobody",
     }
-    state_path = tmp_path / "app_state.json"
-    state_path.write_text(json.dumps({"music": saved}), encoding="utf-8")
+    state_path = tmp_path / "music_user_state.json"
+    state_path.write_text(
+        json.dumps({"version": 1, "app": "music", "state": {"core": saved, "session": {}}}),
+        encoding="utf-8",
+    )
 
     st = _FakeSession({})
 
-    with patch("suite_activity_client.LOCAL_FALLBACK_DIR", tmp_path):
+    with patch("suite_user_persistence.DATA_DIR", tmp_path):
         restore_saved_app_state_once(
             st,
             song_picker_catalog=song_picker_catalog,

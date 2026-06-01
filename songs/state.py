@@ -57,15 +57,24 @@ def build_music_local_state(st: Any) -> dict[str, str]:
 def persist_music_local_state(st: Any, **extra: Any) -> None:
     """Write the current music session snapshot without logging an activity event."""
     try:
-        from suite_activity_client import save_local_app_state
+        from music_persistent_state import build_music_disk_state, persist_music_disk_state
 
-        payload = build_music_local_state(st)
-        for key, value in extra.items():
-            if value:
-                payload[key] = str(value)
-        save_local_app_state("music", payload)
+        if extra:
+            for key, value in extra.items():
+                if value:
+                    st.session_state[key] = str(value)
+        persist_music_disk_state(st)
     except Exception:
-        pass
+        try:
+            from suite_activity_client import save_local_app_state
+
+            payload = build_music_local_state(st)
+            for key, value in extra.items():
+                if value:
+                    payload[key] = str(value)
+            save_local_app_state("music", payload)
+        except Exception:
+            pass
 
 
 def restore_saved_app_state_once(
@@ -339,6 +348,14 @@ def apply_pick_key(
     st.session_state["active_genre"] = genre
     st.session_state["active_song_title"] = data["title"]
     if prev is not None and prev != pick_key:
+        try:
+            from picker_song_editor import PICKER_EDITOR_OPEN_KEY, PICKER_EDITOR_NOTICE_KEY
+
+            st.session_state[PICKER_EDITOR_OPEN_KEY] = False
+            st.session_state.pop(PICKER_EDITOR_NOTICE_KEY, None)
+            st.session_state["chart_edit_mode"] = False
+        except Exception:
+            pass
         st.session_state[PENDING_DISPLAY_KEY] = data["key"]
         st.session_state[IDENTITY_KEY] = (data["title"], data["artist"], data["key"])
         st.session_state[LAST_DISPLAY_KEY] = data["key"]
