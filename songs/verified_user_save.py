@@ -49,9 +49,10 @@ def record_verified_user_activity(
         if "lyrics" in fields:
             summary_parts.append(f"Updated lyrics for {title}")
         summary = " · ".join(summary_parts) if summary_parts else f"Verified save for {title}"
+        event = "lyrics_saved" if set(fields) == {"lyrics"} else "verified_chart_saved"
         record_activity(
             "music",
-            "verified_chart_saved",
+            event,
             page=str(st.session_state.get("studio_page") or "Song Picker"),
             metrics={
                 "song": title,
@@ -66,8 +67,10 @@ def record_verified_user_activity(
             resume_subtitle=artist,
             local_state=local_state,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        import streamlit as st_mod
+
+        st_mod.warning(f"Activity log could not reach Command Center: {exc}")
 
 
 def save_verified_chart(

@@ -152,6 +152,10 @@ def record_activity(
     else:
         _fallback_append(app, event, page, metrics, summary)
 
+    # Always mirror music events to JSON so Command Center can ingest sibling-repo fallbacks locally.
+    if app == "music":
+        _fallback_append(app, event, page, metrics, summary)
+
     if local_state is not None:
         save_local_app_state(app, local_state)
 
