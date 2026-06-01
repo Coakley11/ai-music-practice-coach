@@ -5,7 +5,11 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from song_catalog.user_overrides import USER_VERIFIED, catalog_snapshot_from_record
+from song_catalog.user_overrides import (
+    USER_VERIFIED,
+    catalog_snapshot_from_record,
+    get_user_override,
+)
 from song_catalog.user_song_content import CONTENT_USER_VERIFIED, get_user_song_content
 from songs.user_lyrics_runtime import (
     hydrate_user_lyrics_session,
@@ -328,15 +332,35 @@ def render_lyrics_and_cues_panel(
                 use_container_width=True,
                 help="Mark as your preferred lyrics/cues (and verified chart if present).",
             ):
+                from songs.verified_user_save import (
+                    canonical_song_identity,
+                    record_verified_user_activity,
+                )
+
+                save_title, save_artist, save_genre = canonical_song_identity(
+                    st.session_state, song_data or {}
+                )
                 snap = catalog_snapshot_from_record(song_data) if song_data else None
                 save_lyrics_user_verified(
                     st.session_state,
-                    title=title,
-                    artist=artist,
-                    genre=genre,
+                    title=save_title,
+                    artist=save_artist,
+                    genre=save_genre or genre,
                     section_names=section_list,
                     song_data=song_data or {},
                     catalog_snapshot=snap,
+                )
+                edited: list[str] = ["lyrics"]
+                if get_user_override(save_title, save_artist):
+                    edited.append("chords")
+                from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+                record_verified_user_activity(
+                    st,
+                    title=save_title,
+                    artist=save_artist,
+                    edited_fields=edited,
+                    pick_key=str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""),
                 )
                 _refresh_catalog()
                 try:

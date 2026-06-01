@@ -8,6 +8,8 @@ venv/
 .env
 .streamlit/secrets.toml
 data/app_state.json
+data/user_chart_overrides.json
+data/user_song_content.json
 data/*_user_state.json
 data/*activity_fallback.json
 data/*_activity_fallback.json

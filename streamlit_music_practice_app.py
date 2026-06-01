@@ -1012,6 +1012,14 @@ if hasattr(st, "session_state"):
     st.session_state["_catalog_backup_library"] = SONG_LIBRARY
     st.session_state["_catalog_backup_picker"] = SONG_PICKER_CATALOG
     st.session_state["_catalog_backup_genres"] = list(GENRES)
+    try:
+        from song_catalog.user_overrides import overrides_disk_revision
+
+        st.session_state["_user_chart_overrides_revision"] = int(
+            overrides_disk_revision() or "0"
+        )
+    except (TypeError, ValueError):
+        pass
 
 # Hot-reload catalog when song data changes without a full process restart.
 CATALOG_REVISION = "2026-05-28-jewish-traditional-v1"

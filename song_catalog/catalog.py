@@ -157,8 +157,9 @@ def _merge_records() -> list[dict[str, Any]]:
 
 
 def clear_catalog_cache() -> None:
-    global _CACHE
+    global _CACHE, _CACHE_DISK_REV
     _CACHE = None
+    _CACHE_DISK_REV = None
 
 
 def reload_song_catalog():
@@ -205,13 +206,30 @@ def build_libraries(records: list[dict[str, Any]]):
 
 
 _CACHE: tuple | None = None
+_CACHE_DISK_REV: tuple[str, str] | None = None
+
+
+def _user_disk_revision() -> tuple[str, str]:
+    """Invalidate in-process catalog cache when user override files change on disk."""
+    from .user_overrides import OVERRIDES_PATH
+    from .user_song_content import USER_CONTENT_PATH
+
+    def _mtime_ns(path) -> str:
+        try:
+            return str(path.stat().st_mtime_ns)
+        except OSError:
+            return "0"
+
+    return _mtime_ns(OVERRIDES_PATH), _mtime_ns(USER_CONTENT_PATH)
 
 
 def load_song_catalog():
-    global _CACHE
-    if _CACHE is None:
+    global _CACHE, _CACHE_DISK_REV
+    disk_rev = _user_disk_revision()
+    if _CACHE is None or _CACHE_DISK_REV != disk_rev:
         records = _merge_records()
         _CACHE = build_libraries(records)
+        _CACHE_DISK_REV = disk_rev
     return _CACHE
 
 

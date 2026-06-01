@@ -506,6 +506,14 @@ def render_chart_editor_panel(
             st.warning("No saved override for this song.")
 
     if save_corrected or save_verified:
+        from songs.verified_user_save import (
+            canonical_song_identity,
+            record_verified_user_activity,
+            save_verified_chart,
+            save_verified_lyrics,
+        )
+
+        title, artist, genre = canonical_song_identity(st.session_state, song_data)
         status = USER_VERIFIED if save_verified else USER_CORRECTED
         draft = collect_draft_from_widgets(
             st,
@@ -557,18 +565,31 @@ def render_chart_editor_panel(
 
         from song_catalog.user_overrides import OVERRIDES_PATH
 
-        saved_entry = save_user_override(
-            title=title,
-            artist=artist,
-            genre=genre,
-            key=song_data.get("key", "C"),
-            sections=cleaned,
-            chart_versions=chart_versions,
-            section_order=list(cleaned.keys()),
-            override_status=status,
-            edited_level=level,
-            catalog_snapshot=snapshot,
-        )
+        if save_verified:
+            saved_entry = save_verified_chart(
+                title=title,
+                artist=artist,
+                genre=genre,
+                key=song_data.get("key", "C"),
+                sections=cleaned,
+                chart_versions=chart_versions,
+                section_order=list(cleaned.keys()),
+                edited_level=level,
+                catalog_snapshot=snapshot,
+            )
+        else:
+            saved_entry = save_user_override(
+                title=title,
+                artist=artist,
+                genre=genre,
+                key=song_data.get("key", "C"),
+                sections=cleaned,
+                chart_versions=chart_versions,
+                section_order=list(cleaned.keys()),
+                override_status=status,
+                edited_level=level,
+                catalog_snapshot=snapshot,
+            )
         loaded_entry = get_user_override(title, artist)
         _debug_section = next(iter(cleaned.keys()), "Verse")
         saved_line = chart_override_bar_preview(
@@ -577,8 +598,9 @@ def render_chart_editor_panel(
         loaded_line = chart_override_bar_preview(
             loaded_entry, section=_debug_section, bar_index=0, level=level
         )
+        edited_fields: list[str] = ["chords"]
         try:
-            from song_catalog.user_song_content import CONTENT_MY_VERSION, CONTENT_USER_VERIFIED
+            from song_catalog.user_song_content import CONTENT_MY_VERSION
             from songs.user_lyrics_runtime import collect_lyrics_payload, save_user_song_content
 
             payload = collect_lyrics_payload(
@@ -587,7 +609,15 @@ def render_chart_editor_panel(
                 artist=artist,
                 section_names=list(cleaned.keys()),
             )
-            if (
+            if save_verified:
+                if save_verified_lyrics(
+                    title=title,
+                    artist=artist,
+                    genre=genre,
+                    payload=payload,
+                ):
+                    edited_fields.append("lyrics")
+            elif (
                 payload.get("section_lyrics")
                 or payload.get("lyric_cues")
                 or payload.get("performance_notes")
@@ -596,11 +626,24 @@ def render_chart_editor_panel(
                     title=title,
                     artist=artist,
                     genre=genre,
-                    content_status=CONTENT_USER_VERIFIED if save_verified else CONTENT_MY_VERSION,
+                    content_status=CONTENT_MY_VERSION,
                     **payload,
                 )
-        except Exception:
-            pass
+                edited_fields.append("lyrics")
+        except Exception as exc:
+            if save_verified:
+                st.warning(f"Chart saved, but lyrics could not be saved: {exc}")
+        if save_verified:
+            from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+            pick_key = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+            record_verified_user_activity(
+                st,
+                title=title,
+                artist=artist,
+                edited_fields=edited_fields,
+                pick_key=pick_key,
+            )
         refresh_app_catalog_globals(module_globals)
         invalidate_backing(st)
         invalidate_chart_session_caches(st)
@@ -661,7 +704,8 @@ def render_chart_editor_panel(
             "detail": (
                 f"Saved as **{status_label}** to disk · "
                 f"{len(cleaned)} section(s) · "
-                "Practice, Backing Track, Karaoke, and Creative Lab will use this chart."
+                "Practice, Backing Track, Karaoke, and Creative Lab will use this chart. "
+                "On Streamlit Cloud, redeploys can reset local JSON unless you export a backup."
             ),
             "preview_lines": preview_lines,
             "override_status": status,

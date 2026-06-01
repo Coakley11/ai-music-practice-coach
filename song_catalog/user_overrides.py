@@ -23,6 +23,14 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def overrides_disk_revision() -> str:
+    """Revision token for catalog cache invalidation (mtime of overrides file)."""
+    try:
+        return str(OVERRIDES_PATH.stat().st_mtime_ns)
+    except OSError:
+        return "0"
+
+
 def load_overrides_document() -> dict[str, Any]:
     if not OVERRIDES_PATH.is_file():
         return {"version": 1, "overrides": {}}
@@ -150,7 +158,10 @@ def save_user_override(
 
 
 def apply_user_override_to_record(record: dict[str, Any]) -> dict[str, Any]:
-    entry = get_user_override(record.get("title", ""), record.get("artist", ""))
+    """Merge saved user chart onto catalog row (verified/corrected override wins over catalog)."""
+    title = str(record.get("title") or "")
+    artist = str(record.get("artist") or "")
+    entry = get_user_override(title, artist)
     if not entry:
         return record
 
