@@ -92,6 +92,7 @@ from songs import (
     unpack_active_source_banner,
     apply_pick_key,
     build_active_chart_bundle,
+    build_music_local_state,
     chord_blocks_for_backing,
     clear_backing_needs_regen,
     display_key_context,
@@ -100,6 +101,8 @@ from songs import (
     form_timeline_rows,
     get_song_context,
     PICK_KEY_RECOVERY_NOTICE_KEY,
+    persist_music_local_state,
+    restore_saved_app_state_once,
     invalidate_backing_cache,
     is_custom_progression,
     note_active_source_change,
@@ -1025,6 +1028,12 @@ if hasattr(st, "session_state"):
         st.session_state["_trusted_core_revision"] = _cat_rev
     TRUSTED_CORE_RECORDS = st.session_state.get("_trusted_core_records", TRUSTED_CORE_RECORDS)
     DEFAULT_SONG_RECORDS = st.session_state.get("_default_song_records", DEFAULT_SONG_RECORDS)
+
+    restore_saved_app_state_once(
+        st,
+        song_picker_catalog=SONG_PICKER_CATALOG,
+        song_library=SONG_LIBRARY,
+    )
 
 ensure_master_song_initialized(
     st,
@@ -8568,18 +8577,21 @@ def _on_global_instrument_change() -> None:
     new_value = st.session_state.get("instrument", "Piano")
     set_active_instrument(st.session_state, new_value)
     request_transposing_instrument_sync(st.session_state, new_value)
+    persist_music_local_state(st)
 
 
 def _on_global_focus_change() -> None:
     from practice_setup_globals import set_active_focus
 
     set_active_focus(st.session_state, st.session_state.get("focus"))
+    persist_music_local_state(st)
 
 
 def _on_global_level_change() -> None:
     from practice_setup_globals import set_active_level
 
     set_active_level(st.session_state, st.session_state.get("level"))
+    persist_music_local_state(st)
 
 
 sidebar_section("Your practice setup", icon="🎸", tone="session")
@@ -11503,6 +11515,8 @@ elif _studio_page == "log":
             try:
                 from suite_activity_client import record_activity
 
+                local_state = build_music_local_state(st)
+                local_state["mode"] = str(mode)
                 record_activity(
                     "music",
                     "practice",
@@ -11517,7 +11531,9 @@ elif _studio_page == "log":
                     resume_key=f"song:{st.session_state.get('active_catalog_pick_key', song)}",
                     resume_title=f"Continue: {song}",
                     resume_subtitle=focus or instrument,
+                    local_state=local_state,
                 )
+                st.session_state["last_practice_mode"] = str(mode)
             except Exception:
                 pass
             st.success("Practice log saved.")

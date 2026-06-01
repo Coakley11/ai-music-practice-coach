@@ -46,6 +46,12 @@ def mark_display_key_changed(st: Any) -> None:
     dk = st.session_state.get("display_key")
     if dk:
         on_global_display_key_change(st.session_state, dk)
+    try:
+        from songs.state import persist_music_local_state
+
+        persist_music_local_state(st)
+    except Exception:
+        pass
 
 
 def _apply_display_key_before_widget(st: Any, key: str) -> None:

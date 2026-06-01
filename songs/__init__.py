@@ -50,8 +50,11 @@ from .state import (
     PICK_KEY_RECOVERY_NOTICE_KEY,
     SELECTED_SONG_STATE_KEY,
     apply_pick_key,
+    build_music_local_state,
     ensure_master_song_initialized,
     get_song_context,
+    persist_music_local_state,
+    restore_saved_app_state_once,
     sync_matching_song_dropdown_before_widget,
 )
 
@@ -62,8 +65,11 @@ __all__ = [
     "PICK_KEY_RECOVERY_NOTICE_KEY",
     "SELECTED_SONG_STATE_KEY",
     "apply_pick_key",
+    "build_music_local_state",
     "ensure_master_song_initialized",
     "get_song_context",
+    "persist_music_local_state",
+    "restore_saved_app_state_once",
     "sync_matching_song_dropdown_before_widget",
     # Picker filters (songs/picker_session.py)
     "WORKSPACE_GENRE_FILTERS_KEY",

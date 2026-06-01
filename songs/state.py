@@ -31,6 +31,165 @@ ACTIVE_CATALOG_PICK_KEY = "active_catalog_pick_key"
 PENDING_MATCHING_SONG_DROPDOWN = "_pending_matching_song_dropdown"
 PICK_KEY_RECOVERY_NOTICE_KEY = "_pick_key_recovery_notice"
 _LAST_PICK_KEY = "_master_song_pick_key"
+SUITE_LOCAL_STATE_RESTORED_KEY = "_suite_local_state_restored"
+
+
+def build_music_local_state(st: Any) -> dict[str, str]:
+    """Snapshot musician context for reload persistence."""
+    ss = st.session_state
+    sel = ss.get(SELECTED_SONG_STATE_KEY) or {}
+    page = str(ss.get("studio_page") or ss.get("page") or "")
+    return {
+        "song": str(sel.get("title") or ss.get("active_song_title") or ""),
+        "artist": str(sel.get("artist") or ""),
+        "pick_key": str(ss.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or ""),
+        "page": page,
+        "studio_page": page,
+        "focus": str(ss.get("focus") or ""),
+        "instrument": str(ss.get("instrument") or ""),
+        "display_key": str(ss.get("display_key") or ""),
+        "practice_focus_section": str(ss.get("practice_focus_section") or ""),
+        "level": str(ss.get("level") or ""),
+        "mode": str(ss.get("last_practice_mode") or ""),
+    }
+
+
+def persist_music_local_state(st: Any, **extra: str) -> None:
+    """Write the current music session snapshot without logging an activity event."""
+    try:
+        from suite_activity_client import save_local_app_state
+
+        payload = build_music_local_state(st)
+        for key, value in extra.items():
+            if value:
+                payload[key] = str(value)
+        save_local_app_state("music", payload)
+    except Exception:
+        pass
+
+
+def restore_saved_app_state_once(
+    st: Any,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]] | None = None,
+) -> None:
+    """Restore last saved musician context once per browser session."""
+    if st.session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY):
+        return
+    st.session_state[SUITE_LOCAL_STATE_RESTORED_KEY] = True
+
+    try:
+        from suite_activity_client import load_local_app_state
+
+        saved = load_local_app_state("music")
+    except Exception:
+        return
+
+    if not isinstance(saved, dict) or not saved:
+        return
+
+    saved_display_key = str(saved.get("display_key") or "").strip()
+    try:
+        from practice_setup_globals import (
+            get_active_instrument,
+            set_active_focus,
+            set_active_instrument,
+            set_active_level,
+            valid_focus_for,
+        )
+        from studio_nav_history import STUDIO_PAGE_IDS
+
+        instrument = str(saved.get("instrument") or "").strip()
+        if instrument:
+            set_active_instrument(st.session_state, instrument)
+
+        level = str(saved.get("level") or "").strip()
+        if level:
+            set_active_level(st.session_state, level)
+
+        focus = str(saved.get("focus") or "").strip()
+        if focus:
+            set_active_focus(
+                st.session_state,
+                valid_focus_for(get_active_instrument(st.session_state), focus),
+            )
+
+        page = str(saved.get("studio_page") or saved.get("page") or "").strip()
+        if page in STUDIO_PAGE_IDS:
+            st.session_state["studio_page"] = page
+
+        section = str(saved.get("practice_focus_section") or "").strip()
+        if section:
+            st.session_state["practice_focus_section"] = section
+
+        mode = str(saved.get("mode") or "").strip()
+        if mode:
+            st.session_state["last_practice_mode"] = mode
+    except Exception:
+        pass
+
+    pick_key = str(saved.get("pick_key") or "").strip()
+    if not pick_key:
+        title = str(saved.get("song") or "").strip()
+        if title:
+            pick_key = _recover_pick_key_by_title(
+                {"title": title, "artist": str(saved.get("artist") or "")},
+                song_picker_catalog,
+            ) or ""
+
+    if not pick_key:
+        return
+
+    resolved = resolve_pick_key(pick_key, song_picker_catalog=song_picker_catalog)
+    target = resolved or pick_key
+    genre, label = parse_pick_key(target)
+    in_catalog = (
+        genre in song_picker_catalog
+        and label in song_picker_catalog[genre]
+    )
+
+    if resolved or in_catalog:
+        try:
+            apply_pick_key(
+                st,
+                target,
+                song_picker_catalog,
+                song_library=song_library,
+                skip_activity_log=True,
+            )
+        except Exception:
+            pass
+        if saved_display_key:
+            st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
+        return
+
+    by_title = _recover_pick_key_by_title(
+        {
+            "title": str(saved.get("song") or ""),
+            "artist": str(saved.get("artist") or ""),
+        },
+        song_picker_catalog,
+    )
+    if by_title:
+        try:
+            apply_pick_key(
+                st,
+                by_title,
+                song_picker_catalog,
+                song_library=song_library,
+                skip_activity_log=True,
+            )
+        except Exception:
+            pass
+        if saved_display_key:
+            st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
+        return
+
+    label = str(saved.get("song") or pick_key).strip() or "your last song"
+    st.session_state[PICK_KEY_RECOVERY_NOTICE_KEY] = (
+        f'Your last session song (“{label}”) is no longer available; showing the default catalog song.'
+    )
 
 
 def sync_matching_song_dropdown_before_widget(
@@ -150,6 +309,7 @@ def apply_pick_key(
     song_picker_catalog: dict[str, dict[str, dict]],
     *,
     song_library: dict[str, dict[str, dict]] | None = None,
+    skip_activity_log: bool = False,
 ) -> dict[str, Any]:
     resolved = resolve_pick_key(pick_key, song_picker_catalog=song_picker_catalog)
     if not resolved:
@@ -217,36 +377,33 @@ def apply_pick_key(
         )
     except Exception:
         pass
-    try:
-        from suite_activity_client import record_activity
+    if not skip_activity_log:
+        try:
+            from suite_activity_client import record_activity
 
-        song_label = f"{data.get('title', '')} — {data.get('artist', '')}".strip(" —")
-        record_activity(
-            "music",
-            "song_selected",
-            page=str(st.session_state.get("studio_page") or "Song Picker"),
-            metrics={
-                "song": str(data.get("title") or ""),
-                "artist": str(data.get("artist") or ""),
-                "genre": genre,
-                "pick_key": pick_key,
-                "focus": str(st.session_state.get("focus") or ""),
-            },
-            summary=f"Practice {song_label}" if song_label else "Music practice",
-            resume_key=f"song:{pick_key}",
-            resume_title=f"Continue: {data.get('title', 'song')}",
-            resume_subtitle=str(data.get("artist") or ""),
-            local_state={
-                "song": str(data.get("title") or ""),
-                "artist": str(data.get("artist") or ""),
-                "pick_key": pick_key,
-                "page": str(st.session_state.get("studio_page") or ""),
-                "focus": str(st.session_state.get("focus") or ""),
-                "instrument": str(st.session_state.get("instrument") or ""),
-            },
-        )
-    except Exception:
-        pass
+            song_label = f"{data.get('title', '')} — {data.get('artist', '')}".strip(" —")
+            local_state = build_music_local_state(st)
+            record_activity(
+                "music",
+                "song_selected",
+                page=str(st.session_state.get("studio_page") or "Song Picker"),
+                metrics={
+                    "song": str(data.get("title") or ""),
+                    "artist": str(data.get("artist") or ""),
+                    "genre": genre,
+                    "pick_key": pick_key,
+                    "focus": str(st.session_state.get("focus") or ""),
+                },
+                summary=f"Practice {song_label}" if song_label else "Music practice",
+                resume_key=f"song:{pick_key}",
+                resume_title=f"Continue: {data.get('title', 'song')}",
+                resume_subtitle=str(data.get("artist") or ""),
+                local_state=local_state,
+            )
+        except Exception:
+            pass
+    else:
+        persist_music_local_state(st)
     return data
 
 
