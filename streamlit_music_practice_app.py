@@ -1015,9 +1015,17 @@ if hasattr(st, "session_state"):
     try:
         from song_catalog.user_overrides import overrides_disk_revision
 
-        st.session_state["_user_chart_overrides_revision"] = int(
-            overrides_disk_revision() or "0"
-        )
+        _ov_disk_rev = overrides_disk_revision()
+        st.session_state["_user_chart_overrides_revision"] = int(_ov_disk_rev or "0")
+        if st.session_state.get("_overrides_disk_revision") != _ov_disk_rev:
+            from song_catalog.catalog import reload_song_catalog as _reload_for_overrides
+
+            SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = _reload_for_overrides()
+            st.session_state["_catalog_backup_records"] = ALL_SONG_RECORDS
+            st.session_state["_catalog_backup_library"] = SONG_LIBRARY
+            st.session_state["_catalog_backup_picker"] = SONG_PICKER_CATALOG
+            st.session_state["_catalog_backup_genres"] = list(GENRES)
+            st.session_state["_overrides_disk_revision"] = _ov_disk_rev
     except (TypeError, ValueError):
         pass
 

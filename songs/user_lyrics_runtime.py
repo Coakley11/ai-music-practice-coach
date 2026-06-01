@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from song_catalog.user_overrides import USER_VERIFIED, get_user_override, save_user_override
+from song_catalog.user_overrides import USER_VERIFIED
 from song_catalog.user_song_content import (
     CONTENT_MY_VERSION,
     CONTENT_SESSION,
@@ -255,36 +255,15 @@ def save_lyrics_user_verified(
         **payload,
     )
 
-    chart_entry = get_user_override(title, artist)
-    if chart_entry:
-        from song_catalog.user_overrides import catalog_snapshot_from_record
+    from songs.verified_user_save import mark_chart_verified_from_disk
 
-        snap = chart_entry.get("catalog_snapshot") or catalog_snapshot_from_record(song_data)
-        save_user_override(
-            title=title,
-            artist=artist,
-            genre=chart_entry.get("genre", genre),
-            key=chart_entry.get("key", song_data.get("key", "C")),
-            sections=chart_entry.get("sections") or song_data.get("sections") or {},
-            chart_versions=chart_entry.get("chart_versions"),
-            section_order=chart_entry.get("section_order"),
-            override_status=USER_VERIFIED,
-            edited_level=chart_entry.get("edited_level"),
-            catalog_snapshot=snap,
-        )
-    elif catalog_snapshot is not None:
-        save_user_override(
-            title=title,
-            artist=artist,
-            genre=genre,
-            key=song_data.get("key", "C"),
-            sections=song_data.get("sections") or {},
-            chart_versions=song_data.get("chart_versions"),
-            section_order=song_data.get("section_order"),
-            override_status=USER_VERIFIED,
-            edited_level=None,
-            catalog_snapshot=catalog_snapshot,
-        )
+    mark_chart_verified_from_disk(
+        title=title,
+        artist=artist,
+        genre=genre,
+        song_data=song_data,
+        catalog_snapshot=catalog_snapshot,
+    )
 
     keys = lyrics_session_keys(title, artist)
     slug = keys["slug"]

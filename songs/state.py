@@ -234,6 +234,27 @@ def _label_for_library_entry(genre: str, title: str, song_library: dict) -> str:
     return f"{title} — {artist}"
 
 
+def resolve_library_song_data(
+    song_library: dict[str, dict[str, dict]],
+    *,
+    genre: str,
+    title: str,
+    artist: str,
+    fallback: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Resolve a catalog row from SONG_LIBRARY without title-only collisions.
+
+    SONG_LIBRARY is keyed by title per genre; duplicate titles (e.g. two
+    "Autumn Leaves" rows) must match artist or fall back to the picker row.
+    """
+    lib_row = (song_library.get(genre) or {}).get(title)
+    if lib_row is not None and str(lib_row.get("artist") or "") == str(artist or ""):
+        return lib_row
+    if fallback is not None:
+        return fallback
+    return lib_row if lib_row is not None else {}
+
+
 def _build_library_from_picker(
     genre: str,
     label: str,
@@ -245,9 +266,14 @@ def _build_library_from_picker(
     if not picker:
         return None
     title = picker["title"]
-    song_data = (song_library.get(genre) or {}).get(title)
-    if song_data is None:
-        song_data = picker
+    artist = str(picker.get("artist") or "")
+    song_data = resolve_library_song_data(
+        song_library,
+        genre=genre,
+        title=title,
+        artist=artist,
+        fallback=picker,
+    )
     return title, song_data
 
 
@@ -367,7 +393,13 @@ def apply_pick_key(
         st.session_state.pop("mixed_track_wav", None)
         lib_record = data
         if song_library is not None:
-            lib_record = song_library.get(genre, {}).get(data["title"], data)
+            lib_record = resolve_library_song_data(
+                song_library,
+                genre=genre,
+                title=str(data.get("title") or ""),
+                artist=str(data.get("artist") or ""),
+                fallback=data,
+            )
         _pid = playback_song_id(
             is_custom=False,
             song_title=data["title"],

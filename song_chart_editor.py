@@ -225,6 +225,14 @@ def _pop_chart_save_notice(
     return notice
 
 
+def clear_chart_drafts_for_song(st: Any, *, title: str, artist: str) -> None:
+    """Drop in-memory chart editor drafts after a verified/corrected save."""
+    prefix = f"chart_edit_draft::{title}::{artist}::"
+    for key in list(st.session_state.keys()):
+        if str(key).startswith(prefix):
+            st.session_state.pop(key, None)
+
+
 def init_draft(
     st: Any,
     *,
@@ -235,6 +243,12 @@ def init_draft(
     section_order: list[str] | None,
 ) -> dict[str, list[str]]:
     key = _draft_key(title, artist, level)
+    stamp_key = f"{key}::override_saved_at"
+    override = get_user_override(title, artist)
+    override_saved_at = (override or {}).get("saved_at")
+    if key in st.session_state and override_saved_at:
+        if st.session_state.get(stamp_key) != override_saved_at:
+            st.session_state.pop(key, None)
     if key not in st.session_state:
         ordered = list(section_order or sections.keys())
         st.session_state[key] = {
@@ -245,6 +259,8 @@ def init_draft(
         for name, chords in sections.items():
             if name not in st.session_state[key]:
                 st.session_state[key][name] = list(chords)
+    if override_saved_at:
+        st.session_state[stamp_key] = override_saved_at
     return st.session_state[key]
 
 
@@ -298,8 +314,9 @@ def render_chart_editor_panel(
     sections_for_level: Callable[[dict, str], dict],
     invalidate_backing: Callable[[Any], None],
 ) -> None:
-    title = song_data.get("title", "")
-    artist = song_data.get("artist", "")
+    from songs.verified_user_save import canonical_song_identity
+
+    title, artist, _sel_genre = canonical_song_identity(st.session_state, song_data)
     user_ov = song_data.get("user_override")
     catalog_row = _catalog_record_without_override(all_records, title, artist)
 
@@ -663,7 +680,7 @@ def render_chart_editor_panel(
                 )
         except Exception:
             pass
-        st.session_state.pop(_draft_key(title, artist, level), None)
+        clear_chart_drafts_for_song(st, title=title, artist=artist)
         status_label = (
             "user verified"
             if status == USER_VERIFIED

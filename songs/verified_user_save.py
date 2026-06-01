@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from song_catalog.user_overrides import USER_VERIFIED, save_user_override
+from song_catalog.user_overrides import (
+    USER_VERIFIED,
+    catalog_snapshot_from_record,
+    get_user_override,
+    save_user_override,
+)
 from song_catalog.user_song_content import CONTENT_USER_VERIFIED, save_user_song_content
 from songs.state import SELECTED_SONG_STATE_KEY
 
@@ -53,6 +58,7 @@ def record_verified_user_activity(
                 "artist": artist,
                 "edited_fields": fields,
                 "pick_key": pick_key,
+                "last_edited_song": title,
             },
             summary=summary,
             resume_key=f"song:{pick_key or title}",
@@ -101,6 +107,7 @@ def save_verified_lyrics(
         payload.get("section_lyrics")
         or payload.get("lyric_cues")
         or payload.get("performance_notes")
+        or payload.get("karaoke_markers")
     ):
         return None
     return save_user_song_content(
@@ -109,4 +116,46 @@ def save_verified_lyrics(
         genre=genre,
         content_status=CONTENT_USER_VERIFIED,
         **payload,
+    )
+
+
+def mark_chart_verified_from_disk(
+    *,
+    title: str,
+    artist: str,
+    genre: str,
+    song_data: dict[str, Any],
+    catalog_snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Promote an existing chart override to user verified (lyrics-only save path)."""
+    existing = get_user_override(title, artist)
+    if existing:
+        snap = existing.get("catalog_snapshot") or catalog_snapshot
+        return save_user_override(
+            title=title,
+            artist=artist,
+            genre=existing.get("genre", genre),
+            key=existing.get("key", song_data.get("key", "C")),
+            sections=existing.get("sections") or song_data.get("sections") or {},
+            chart_versions=existing.get("chart_versions"),
+            section_order=existing.get("section_order"),
+            override_status=USER_VERIFIED,
+            edited_level=existing.get("edited_level"),
+            catalog_snapshot=snap,
+        )
+    snap = catalog_snapshot or catalog_snapshot_from_record(song_data)
+    sections = song_data.get("sections") or {}
+    if not sections:
+        return None
+    return save_user_override(
+        title=title,
+        artist=artist,
+        genre=genre,
+        key=song_data.get("key", "C"),
+        sections=sections,
+        chart_versions=song_data.get("chart_versions"),
+        section_order=song_data.get("section_order"),
+        override_status=USER_VERIFIED,
+        edited_level=None,
+        catalog_snapshot=snap,
     )
