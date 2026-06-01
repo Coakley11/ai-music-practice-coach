@@ -977,7 +977,9 @@ def render_karaoke_missing_lyrics_cta(
             except Exception:
                 # Last-resort legacy fallback so the button is never a no-op.
                 st.session_state["studio_page"] = "picker"
-            st.session_state["_pending_open_lyrics_editor"] = True
+            from picker_song_editor import open_picker_editor
+
+            open_picker_editor(st.session_state, "Lyrics & Cues")
             try:
                 st.rerun()
             except Exception:

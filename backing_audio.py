@@ -192,10 +192,10 @@ def infer_groove_style(song_data, selected_style="Auto"):
         return "Funk groove"
     if genre_name == "Rock":
         return "Rock groove"
-    if genre_name == "Jewish":
-        return "Jewish groove"
     if genre_name == "Jewish Traditional":
         return "Jewish ballad"
+    if genre_name == "Jewish":
+        return "Jewish groove"
     return "Pop groove"
 
 

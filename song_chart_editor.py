@@ -636,6 +636,24 @@ def render_chart_editor_panel(
             "artist": artist,
             **override_debug,
         }
+        try:
+            from picker_song_editor import collapse_picker_editor
+
+            _status = saved_entry.get("override_status", status)
+            _cap = ""
+            if _status == USER_VERIFIED:
+                _cap = "Using User Override Chart (user verified)."
+            elif _status == USER_CORRECTED:
+                _cap = "Using User Override Chart."
+            collapse_picker_editor(
+                st.session_state,
+                title=title,
+                artist=artist,
+                message="Saved successfully.",
+                chart_caption=_cap,
+            )
+        except Exception:
+            pass
         st.session_state[CHART_SAVE_NOTICE_KEY] = {
             "title": title,
             "artist": artist,

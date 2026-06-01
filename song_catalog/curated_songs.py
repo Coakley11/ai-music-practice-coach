@@ -8377,7 +8377,7 @@ def _jewish_traditional_catalog_songs() -> list[dict[str, Any]]:
         row = _s(
             title,
             artist,
-            "Jewish Traditional",
+            "Jewish",
             key,
             inter,
             lyric_cues=lyric_cues or {},

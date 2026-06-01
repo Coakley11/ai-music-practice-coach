@@ -306,6 +306,17 @@ def render_lyrics_and_cues_panel(
                 )
                 _refresh_catalog()
                 try:
+                    from picker_song_editor import collapse_picker_editor
+
+                    collapse_picker_editor(
+                        st.session_state,
+                        title=title,
+                        artist=artist,
+                        message="Saved successfully.",
+                    )
+                except Exception:
+                    pass
+                try:
                     st.toast("Lyrics & cues saved.", icon="🎤")
                 except Exception:
                     pass
@@ -328,6 +339,18 @@ def render_lyrics_and_cues_panel(
                     catalog_snapshot=snap,
                 )
                 _refresh_catalog()
+                try:
+                    from picker_song_editor import collapse_picker_editor
+
+                    collapse_picker_editor(
+                        st.session_state,
+                        title=title,
+                        artist=artist,
+                        message="Saved successfully.",
+                        chart_caption="Using User Verified Lyrics.",
+                    )
+                except Exception:
+                    pass
                 try:
                     st.toast("User verified version saved.", icon="✅")
                 except Exception:

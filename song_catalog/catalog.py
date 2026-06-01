@@ -107,8 +107,18 @@ def _is_trusted_core(row: dict[str, Any]) -> bool:
     return (row.get("title"), row.get("artist")) in TRUSTED_CORE_KEYS
 
 
+def _normalize_genre_name(genre: str) -> str:
+    """Single Jewish genre in the UI (legacy rows may say Jewish Traditional)."""
+    g = str(genre or "").strip()
+    if g == "Jewish Traditional":
+        return "Jewish"
+    return g
+
+
 def _with_reliability(row: dict[str, Any]) -> dict[str, Any]:
     out = dict(row)
+    if out.get("genre"):
+        out["genre"] = _normalize_genre_name(out["genre"])
     trusted = _is_trusted_core(out)
     out["trusted_core"] = trusted
     return out
@@ -188,7 +198,7 @@ def build_libraries(records: list[dict[str, Any]]):
 
         library.setdefault(g, {})[title] = dict(_row_common)
 
-    genres_preferred = ["Jazz", "Pop", "Rock", "Funk", "Blues", "Jewish", "Jewish Traditional", "Classical"]
+    genres_preferred = ["Jazz", "Pop", "Rock", "Funk", "Blues", "Jewish", "Classical"]
     genres = [g for g in genres_preferred if g in library]
     genres.extend(sorted(g for g in library if g not in genres))
     return library, picker, genres, records

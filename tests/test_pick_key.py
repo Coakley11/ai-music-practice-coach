@@ -12,7 +12,7 @@ from song_catalog.catalog import (
 )
 
 _SAMPLE_CATALOG = {
-    "Jewish Traditional": {
+    "Jewish": {
         "Shalom Aleichem — Traditional Jewish Sabbath Song": {
             "title": "Shalom Aleichem",
             "artist": "Traditional Jewish Sabbath Song",
@@ -30,7 +30,7 @@ _SAMPLE_CATALOG = {
 
 _SAMPLE_RECORDS = [
     {
-        "genre": "Jewish Traditional",
+        "genre": "Jewish",
         "title": "Shalom Aleichem",
         "artist": "Traditional Jewish Sabbath Song",
         "composer": "Traditional",
@@ -78,7 +78,7 @@ def test_resolve_pick_key_title_only():
         records=_SAMPLE_RECORDS,
     )
     assert resolved == format_pick_key(
-        "Jewish Traditional", "Shalom Aleichem — Traditional Jewish Sabbath Song"
+        "Jewish", "Shalom Aleichem — Traditional Jewish Sabbath Song"
     )
 
 
@@ -94,7 +94,7 @@ def test_resolve_pick_key_custom_title_returns_none():
 
 
 def test_resolve_pick_key_filtered_genre_search_dropdown_options():
-    filtered = search_records(_SAMPLE_RECORDS, "shalom", genres=["Jewish Traditional"])
+    filtered = search_records(_SAMPLE_RECORDS, "shalom", genres=["Jewish"])
     assert len(filtered) == 1
     pick_options = [
         format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered
@@ -227,4 +227,4 @@ def test_get_song_context_recovers_by_title_after_rename():
         song_picker_catalog=_SAMPLE_CATALOG,
     )
     assert title == "Shalom Aleichem"
-    assert genre == "Jewish Traditional"
+    assert genre == "Jewish"

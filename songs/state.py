@@ -410,6 +410,8 @@ def apply_pick_key(
                     "genre": genre,
                     "pick_key": pick_key,
                     "focus": str(st.session_state.get("focus") or ""),
+                    "instrument": local_state.get("instrument", ""),
+                    "display_key": local_state.get("display_key", ""),
                 },
                 summary=f"Practice {song_label}" if song_label else "Music practice",
                 resume_key=f"song:{pick_key}",

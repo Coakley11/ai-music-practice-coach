@@ -33,6 +33,33 @@ def tuner_key_prefix_for_song(song_title: str) -> str:
     return f"practice_tuner_{_safe_key_part(song_title)}"
 
 
+TUNER_TARGET_KEY = "tuner_target_note"
+
+
+def _target_storage_key(key_prefix: str) -> str:
+    return f"{key_prefix}::tuner_target_note"
+
+
+def _get_persisted_target(session_state: dict, key_prefix: str) -> str | None:
+    """Read target note from session (scoped per song, then global)."""
+    raw = session_state.get(_target_storage_key(key_prefix)) or session_state.get(TUNER_TARGET_KEY)
+    if not raw:
+        return None
+    token = str(raw).strip()
+    if not token:
+        return None
+    return token if parse_note_token(token) is not None else None
+
+
+def _set_persisted_target(session_state: dict, key_prefix: str, note: str | None) -> None:
+    if note and parse_note_token(note) is not None:
+        session_state[TUNER_TARGET_KEY] = note
+        session_state[_target_storage_key(key_prefix)] = note
+    else:
+        session_state.pop(TUNER_TARGET_KEY, None)
+        session_state.pop(_target_storage_key(key_prefix), None)
+
+
 def _practice_expected_note(session_state: dict) -> str | None:
     """Optional hook: expected pitch from practice session (future-friendly)."""
     raw = session_state.get("tuner_expected_note") or session_state.get("practice_expected_note")
@@ -90,48 +117,45 @@ def render_tuner_tone_section(
             key=f"{key_prefix}::mode",
         )
 
-        target_note = st_module.session_state.get("tuner_target_note")
+        target_note = _get_persisted_target(st_module.session_state, key_prefix)
+        string_targets: list[str] | None = None
+
         if profile.mode == "strings" and profile.string_targets:
-            st_module.markdown("**String targets** (tap to set target)")
-            cols = st_module.columns(min(len(profile.string_targets), 6))
-            for i, s in enumerate(profile.string_targets):
-                with cols[i % len(cols)]:
-                    if st_module.button(
-                        s,
-                        key=f"{key_prefix}::str::{s}",
-                        use_container_width=True,
-                    ):
-                        st_module.session_state["tuner_target_note"] = s
-                        target_note = s
-            if target_note:
-                st_module.caption(f"Target: **{target_note}**")
+            string_targets = list(profile.string_targets)
+            st_module.caption(
+                "Tap a string inside the tuner — the active string lights up **red** "
+                "and tuning is judged against that note while you play."
+            )
         elif profile.mode in ("wind", "voice", "chromatic"):
-            target_note = st_module.text_input(
+            st_module.text_input(
                 "Target note (optional)",
-                value=st_module.session_state.get("tuner_target_note", ""),
+                value=_get_persisted_target(st_module.session_state, key_prefix) or "",
                 placeholder="e.g. A4, concert D4",
                 key=f"{key_prefix}::target_input",
             )
+            raw = str(st_module.session_state.get(f"{key_prefix}::target_input", "") or "").strip()
+            if raw and parse_note_token(raw):
+                _set_persisted_target(st_module.session_state, key_prefix, raw)
+            elif not raw:
+                _set_persisted_target(st_module.session_state, key_prefix, None)
+            target_note = _get_persisted_target(st_module.session_state, key_prefix)
             if target_note:
-                st_module.session_state["tuner_target_note"] = target_note.strip()
-
-        target_note = st_module.session_state.get("tuner_target_note") or None
-        if target_note == "":
-            target_note = None
+                st_module.caption(f"Target locked: **{target_note}** — needle centered on this pitch.")
 
         expected_note = _practice_expected_note(st_module.session_state)
 
         if mode.startswith("Tune"):
             st_module.markdown("##### Live tuner")
             st_module.caption(
-                "Press **Start Tuner** — your browser listens continuously and "
-                "updates pitch instantly. Play one note at a time for best results."
+                "Press **Start Tuner** — your browser listens continuously. "
+                "Play one note at a time; the needle shows flat ← in tune → sharp."
             )
             render_live_tuner(
                 st_module,
                 key_prefix=key_prefix,
                 target_note=target_note,
                 expected_note=expected_note,
+                string_targets=string_targets,
             )
             if expected_note:
                 st_module.caption(

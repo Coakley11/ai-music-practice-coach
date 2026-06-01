@@ -22,6 +22,7 @@ def live_tuner_config(
     key_prefix: str = "practice_tuner",
     target_note: str | None = None,
     expected_note: str | None = None,
+    string_targets: list[str] | None = None,
     reference_hz: float = 440.0,
     in_tune_cents: float = 5.0,
     yellow_cents: float = 15.0,
@@ -29,12 +30,19 @@ def live_tuner_config(
     """Build config passed into the embedded live tuner component."""
     target_midi = parse_note_token(target_note) if target_note else None
     expected_midi = parse_note_token(expected_note) if expected_note else None
+    strings = list(string_targets or [])
+    string_midis: dict[str, int | None] = {
+        s: parse_note_token(s) for s in strings
+    }
     return {
         "domId": _safe_dom_id(key_prefix),
+        "storageKey": _safe_dom_id(key_prefix) + "_target",
         "targetNote": target_note or "",
         "expectedNote": expected_note or "",
         "targetMidi": target_midi,
         "expectedMidi": expected_midi,
+        "stringTargets": strings,
+        "stringTargetMidis": string_midis,
         "referenceHz": float(reference_hz),
         "inTuneCents": float(in_tune_cents),
         "yellowCents": float(yellow_cents),
@@ -188,10 +196,81 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
     color: #334155;
   }}
   #{dom_id} .lt-target strong {{ color: #0f172a; }}
+  #{dom_id} .lt-strings {{
+    margin-bottom: 12px;
+  }}
+  #{dom_id} .lt-strings-label {{
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #334155;
+    margin-bottom: 8px;
+  }}
+  #{dom_id} .lt-strings-row {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }}
+  #{dom_id} .lt-str-btn {{
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #0f172a;
+    font-weight: 700;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  }}
+  #{dom_id} .lt-str-btn:hover {{
+    border-color: #f87171;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.15);
+  }}
+  #{dom_id} .lt-str-btn.active {{
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 55%, #b91c1c 100%);
+    border-color: #b91c1c;
+    color: #fff;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12) inset, 0 4px 14px rgba(220, 38, 38, 0.35);
+  }}
+  #{dom_id} .lt-feedback {{
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: #334155;
+  }}
+  #{dom_id} .lt-feedback .lt-row {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin: 2px 0;
+  }}
+  #{dom_id} .lt-feedback .lt-k {{
+    color: #64748b;
+    font-weight: 600;
+    min-width: 72px;
+  }}
+  #{dom_id} .lt-feedback .lt-v {{
+    color: #0f172a;
+    font-weight: 700;
+  }}
+  #{dom_id} .lt-feedback .lt-v.ok {{ color: #15803d; }}
+  #{dom_id} .lt-feedback .lt-v.warn {{ color: #c2410c; }}
+  #{dom_id} .lt-feedback .lt-v.bad {{ color: #b91c1c; }}
+  #{dom_id} .lt-feedback-idle {{
+    color: #64748b;
+    font-style: italic;
+  }}
 </style>
 </head>
 <body>
 <div id="{dom_id}">
+  <div class="lt-strings" id="{dom_id}-strings" style="display:none;">
+    <div class="lt-strings-label">String targets (tap to set target)</div>
+    <div class="lt-strings-row" id="{dom_id}-strings-row"></div>
+  </div>
   <div class="lt-toolbar">
     <button type="button" class="lt-btn primary" id="{dom_id}-start">Start Tuner</button>
     <button type="button" class="lt-btn danger" id="{dom_id}-stop" disabled>Stop Tuner</button>
@@ -208,18 +287,22 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
     <div class="lt-needle" id="{dom_id}-needle" style="left:50%;background:#94a3b8;"></div>
   </div>
   <div class="lt-signal"><div class="lt-signal-fill" id="{dom_id}-signal"></div></div>
-  <div class="lt-target" id="{dom_id}-target" style="display:none;"></div>
+  <div class="lt-feedback" id="{dom_id}-feedback">
+    <div class="lt-feedback-idle" id="{dom_id}-feedback-body">Select a string target or press Start Tuner.</div>
+  </div>
 </div>
 <script>
 (() => {{
   const CFG = {cfg_json};
   const DOM_ID = {json.dumps(config.get("domId", "live_tuner_default"))};
+  const STORAGE_KEY = CFG.storageKey || (DOM_ID + "_target");
   const NOTE_NAMES = CFG.noteNames || ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
   const REF = CFG.referenceHz || 440;
   const IN_TUNE = CFG.inTuneCents ?? 5;
   const YELLOW = CFG.yellowCents ?? 15;
-  const TARGET_MIDI = CFG.targetMidi;
+  let targetMidi = CFG.targetMidi;
   const EXPECTED_MIDI = CFG.expectedMidi;
+  const STRING_MIDIS = CFG.stringTargetMidis || {{}};
 
   const el = (suffix) => document.getElementById(DOM_ID + suffix);
   const noteEl = el("-note");
@@ -228,7 +311,9 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
   const needleEl = el("-needle");
   const statusEl = el("-status");
   const signalEl = el("-signal");
-  const targetEl = el("-target");
+  const feedbackEl = el("-feedback-body");
+  const stringsWrap = el("-strings");
+  const stringsRow = el("-strings-row");
   const startBtn = el("-start");
   const stopBtn = el("-stop");
 
@@ -239,8 +324,70 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
   let rafId = null;
   let buf = null;
 
-  function midiToHz(midi) {{
-    return REF * Math.pow(2, (midi - 69) / 12);
+  function hasTarget() {{
+    return targetMidi != null && targetMidi !== undefined && !Number.isNaN(targetMidi);
+  }}
+
+  function targetLabel() {{
+    return CFG.targetNote || (hasTarget() ? midiToLabel(targetMidi) : "");
+  }}
+
+  function midiToLabel(midi) {{
+    const midiRound = Math.round(midi);
+    const name = NOTE_NAMES[((midiRound % 12) + 12) % 12];
+    const octave = Math.floor(midiRound / 12) - 1;
+    return name + octave;
+  }}
+
+  function persistTarget(note, midi) {{
+    try {{
+      sessionStorage.setItem(STORAGE_KEY, note || "");
+    }} catch (e) {{}}
+    CFG.targetNote = note || "";
+    targetMidi = midi;
+    CFG.targetMidi = midi;
+  }}
+
+  function setActiveStringButton(note) {{
+    if (!stringsRow) return;
+    stringsRow.querySelectorAll(".lt-str-btn").forEach((btn) => {{
+      btn.classList.toggle("active", btn.dataset.note === note);
+    }});
+  }}
+
+  function selectTarget(note, midi) {{
+    if (!note || midi == null || midi === undefined) return;
+    persistTarget(note, midi);
+    setActiveStringButton(note);
+    renderFeedbackIdle();
+  }}
+
+  function initStringButtons() {{
+    const targets = CFG.stringTargets || [];
+    if (!targets.length || !stringsWrap || !stringsRow) return;
+    stringsWrap.style.display = "block";
+    stringsRow.innerHTML = "";
+    targets.forEach((note) => {{
+      const midi = STRING_MIDIS[note];
+      if (midi == null || midi === undefined) return;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "lt-str-btn";
+      btn.dataset.note = note;
+      btn.textContent = note;
+      btn.addEventListener("click", () => selectTarget(note, midi));
+      stringsRow.appendChild(btn);
+    }});
+    let initial = CFG.targetNote || "";
+    try {{
+      const stored = sessionStorage.getItem(STORAGE_KEY);
+      if (stored && STRING_MIDIS[stored] != null) initial = stored;
+    }} catch (e) {{}}
+    if (initial && STRING_MIDIS[initial] != null) {{
+      selectTarget(initial, STRING_MIDIS[initial]);
+    }} else if (CFG.targetNote && STRING_MIDIS[CFG.targetNote] != null) {{
+      selectTarget(CFG.targetNote, STRING_MIDIS[CFG.targetNote]);
+    }}
   }}
 
   function hzToNoteParts(hz) {{
@@ -249,11 +396,23 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
     const midiRound = Math.round(midi);
     const name = NOTE_NAMES[((midiRound % 12) + 12) % 12];
     const octave = Math.floor(midiRound / 12) - 1;
-    let cents = (midi - midiRound) * 100;
-    if (TARGET_MIDI != null && TARGET_MIDI !== undefined) {{
-      cents = (midi - TARGET_MIDI) * 100;
+    const nearestCents = (midi - midiRound) * 100;
+    const label = name + octave;
+    let cents = nearestCents;
+    if (hasTarget()) {{
+      cents = (midi - targetMidi) * 100;
     }}
-    return {{ name, octave, label: name + octave, midi, cents, hz }};
+    const wrongNote = hasTarget() && Math.round(midi) !== Math.round(targetMidi);
+    return {{
+      name,
+      octave,
+      label,
+      midi,
+      cents,
+      nearestCents,
+      hz,
+      wrongNote,
+    }};
   }}
 
   function autoCorrelate(samples, sampleRate) {{
@@ -323,42 +482,81 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
     return "#ef4444";
   }}
 
-  function updateTargetPanel(parts) {{
-    const bits = [];
-    if (CFG.targetNote) {{
-      bits.push("<strong>Target:</strong> " + CFG.targetNote);
+  function feedbackLine(key, value, cls) {{
+    return '<div class="lt-row"><span class="lt-k">' + key + '</span><span class="lt-v' + (cls ? ' ' + cls : '') + '">' + value + '</span></div>';
+  }}
+
+  function renderFeedbackIdle() {{
+    if (!feedbackEl) return;
+    if (hasTarget()) {{
+      feedbackEl.className = "";
+      feedbackEl.innerHTML =
+        feedbackLine("Target", targetLabel(), "") +
+        feedbackLine("Mode", "Fixed target — needle centered on " + targetLabel(), "") +
+        '<div class="lt-row"><span class="lt-k">Status</span><span class="lt-v">Press Start and play this string</span></div>';
+    }} else {{
+      feedbackEl.className = "lt-feedback-idle";
+      feedbackEl.textContent =
+        "No fixed target — chromatic mode (nearest note). Tap a string above or enter a target.";
     }}
-    if (CFG.expectedNote) {{
-      bits.push("<strong>Expected:</strong> " + CFG.expectedNote);
+  }}
+
+  function tuningFeedback(parts) {{
+    if (parts.wrongNote) {{
+      return {{ text: "Wrong note — play " + targetLabel(), cls: "bad" }};
     }}
-    if (!bits.length) {{
-      targetEl.style.display = "none";
+    if (Math.abs(parts.cents) <= IN_TUNE) {{
+      return {{ text: "In tune", cls: "ok" }};
+    }}
+    if (parts.cents > 0) {{
+      return {{ text: "Sharp — tune down", cls: "warn" }};
+    }}
+    return {{ text: "Flat — tune up", cls: "warn" }};
+  }}
+
+  function updateFeedbackPanel(parts) {{
+    if (!feedbackEl) return;
+    if (!parts) {{
+      renderFeedbackIdle();
       return;
     }}
-    targetEl.style.display = "block";
-    let extra = "";
-    if (parts && EXPECTED_MIDI != null && EXPECTED_MIDI !== undefined) {{
-      const diff = Math.round(parts.midi - EXPECTED_MIDI);
-      if (diff === 0) {{
-        extra = parts.cents > IN_TUNE || parts.cents < -IN_TUNE
-          ? " · Correct note — adjust tuning"
-          : " · Correct note — in tune";
-      }} else {{
-        extra = " · Wrong note (expected " + CFG.expectedNote + ")";
-      }}
+    const cents = parts.cents;
+    const fb = tuningFeedback(parts);
+    const centsLabel = (cents >= 0 ? "+" : "") + cents.toFixed(0) + (hasTarget() ? "" : " (nearest)");
+    let html = "";
+    if (hasTarget()) {{
+      html += feedbackLine("Target", targetLabel(), "");
+    }} else {{
+      html += feedbackLine("Target", "None (chromatic)", "");
     }}
-    targetEl.innerHTML = bits.join(" · ") + (extra ? "<br/>" + extra : "");
+    html += feedbackLine("Detected", parts.label, parts.wrongNote ? "bad" : "");
+    html += feedbackLine("Frequency", parts.hz.toFixed(1) + " Hz", "");
+    html += feedbackLine("Cents", centsLabel, fb.cls);
+    html += feedbackLine("Feedback", fb.text, fb.cls);
+    if (CFG.expectedNote) {{
+      const match = Math.round(parts.midi) === Math.round(EXPECTED_MIDI);
+      html += feedbackLine(
+        "Practice",
+        match ? "Expected " + CFG.expectedNote : "Expected " + CFG.expectedNote + " (mismatch)",
+        match ? "ok" : "bad"
+      );
+    }}
+    feedbackEl.className = "";
+    feedbackEl.innerHTML = html;
   }}
 
   function renderIdle(msg) {{
     noteEl.textContent = "—";
     noteEl.className = "lt-note idle";
-    metaEl.textContent = msg || "Play or sing a single note";
-    dirEl.textContent = "";
+    metaEl.textContent = msg || (hasTarget()
+      ? "Listening for " + targetLabel()
+      : "Chromatic — play a single note");
+    dirEl.textContent = hasTarget() ? "Target: " + targetLabel() : "No fixed target";
     dirEl.style.color = "#64748b";
     needleEl.style.left = "50%";
     needleEl.style.background = "#94a3b8";
     signalEl.style.width = "0%";
+    renderFeedbackIdle();
   }}
 
   function renderPitch(hz, rms) {{
@@ -369,10 +567,18 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
       return;
     }}
     const cents = parts.cents;
-    noteEl.textContent = parts.label;
+    const displayNote = hasTarget() && !parts.wrongNote ? targetLabel() : parts.label;
+    noteEl.textContent = displayNote;
     noteEl.className = "lt-note";
-    metaEl.textContent =
-      parts.hz.toFixed(1) + " Hz · " + (cents >= 0 ? "+" : "") + cents.toFixed(0) + " cents";
+    if (hasTarget()) {{
+      metaEl.textContent =
+        "Detected " + parts.label + " · " + parts.hz.toFixed(1) + " Hz · " +
+        (cents >= 0 ? "+" : "") + cents.toFixed(0) + "¢ vs " + targetLabel();
+    }} else {{
+      metaEl.textContent =
+        parts.hz.toFixed(1) + " Hz · " + (parts.nearestCents >= 0 ? "+" : "") +
+        parts.nearestCents.toFixed(0) + "¢ from nearest pitch";
+    }}
     const clamped = Math.max(-50, Math.min(50, cents));
     const leftPct = 50 + (clamped / 50) * 45;
     needleEl.style.left = leftPct.toFixed(1) + "%";
@@ -381,7 +587,11 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
     const conf = Math.min(100, Math.round(rms * 400));
     signalEl.style.width = conf + "%";
 
-    if (Math.abs(cents) <= IN_TUNE) {{
+    if (parts.wrongNote) {{
+      dirEl.textContent = "Wrong note";
+      dirEl.style.color = "#b91c1c";
+      statusEl.textContent = "Expected " + targetLabel() + " · heard " + parts.label;
+    }} else if (Math.abs(cents) <= IN_TUNE) {{
       dirEl.textContent = "In tune";
       dirEl.style.color = "#15803d";
       statusEl.textContent = "In tune · signal " + conf + "%";
@@ -394,7 +604,7 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
       dirEl.style.color = "#1d4ed8";
       statusEl.textContent = Math.abs(cents).toFixed(0) + "¢ flat · signal " + conf + "%";
     }}
-    updateTargetPanel(parts);
+    updateFeedbackPanel(parts);
   }}
 
   function tick() {{
@@ -460,7 +670,8 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
 
   startBtn.addEventListener("click", startTuner);
   stopBtn.addEventListener("click", stopTuner);
-  updateTargetPanel(null);
+  initStringButtons();
+  renderFeedbackIdle();
 }})();
 </script>
 </body>
@@ -473,7 +684,8 @@ def render_live_tuner(
     key_prefix: str = "practice_tuner",
     target_note: str | None = None,
     expected_note: str | None = None,
-    height: int = 460,
+    string_targets: list[str] | None = None,
+    height: int = 520,
 ) -> None:
     """Embed the real-time tuner via Streamlit ``components.html``."""
     import streamlit.components.v1 as components
@@ -482,6 +694,7 @@ def render_live_tuner(
         key_prefix=key_prefix,
         target_note=target_note,
         expected_note=expected_note,
+        string_targets=string_targets,
     )
     widget_html = build_live_tuner_html(config)
     components.html(widget_html, height=height, scrolling=False)
