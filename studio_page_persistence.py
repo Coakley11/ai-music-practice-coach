@@ -214,6 +214,7 @@ _GLOBAL_APP_STATE_KEYS = frozenset(
         "selected_transposing_instrument",
         "_pending_selected_transposing_instrument",
         "show_chart_in_instrument_key",
+        "_chart_written_key_instrument_anchor",
         "concert_practice_key",
         "saxophone_type",
         "_display_key_song_identity",

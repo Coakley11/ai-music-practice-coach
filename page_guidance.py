@@ -34,9 +34,11 @@ def sidebar_context_hints(
 
             if is_transposing_instrument(instrument):
                 if session_state.get(CHART_IN_INSTRUMENT_KEY_KEY):
-                    return ["Charts use your written instrument key."]
+                    return [
+                        "Charts stay in your written key when you change Practice Key.",
+                    ]
                 return [
-                    "Enable “Show charts in my instrument key” to transpose all charts.",
+                    "Enable “Show chart in written key for instrument” in the sidebar.",
                 ]
         except ImportError:
             pass

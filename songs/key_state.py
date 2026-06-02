@@ -41,6 +41,12 @@ def clear_backing_needs_regen(st: Any) -> None:
 
 def mark_display_key_changed(st: Any) -> None:
     """Sidebar widget callback — invalidate derived audio/analysis."""
+    try:
+        from instrument_transposition import preserve_written_key_on_display_key_change
+
+        preserve_written_key_on_display_key_change(st.session_state)
+    except Exception:
+        pass
     invalidate_backing_cache(st)
     st.session_state[BACKING_NEEDS_REGEN] = True
     from custom_progression_lab import on_global_display_key_change
@@ -138,6 +144,12 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
 
     previous = str(last or "")
     st.session_state[LAST_DISPLAY_KEY] = display_key
+    try:
+        from instrument_transposition import preserve_written_key_on_display_key_change
+
+        preserve_written_key_on_display_key_change(st.session_state)
+    except Exception:
+        pass
     invalidate_backing_cache(st)
     st.session_state[BACKING_NEEDS_REGEN] = True
     from custom_progression_lab import on_global_display_key_change

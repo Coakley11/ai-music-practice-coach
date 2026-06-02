@@ -265,11 +265,13 @@ from instrument_transposition import (
     instrument_display_name,
     is_transposing_instrument,
     options_for_instrument,
+    chart_transpose_cache_signature,
     render_practice_transposing_controls,
-    render_sidebar_transposing_recap,
+    render_sidebar_transposing_controls,
     render_transposing_info_card,
     request_transposing_instrument_sync,
     resolve_practice_keys,
+    sync_written_key_instrument_anchor,
     selected_saxophone_type,
     selected_transposing_type,
     semitone_steps_for_label,
@@ -3166,7 +3168,8 @@ def render_transposition_helper(concert_key, instrument, key_prefix, wrap_expand
             if not wrap_expander:
                 st.markdown("#### Transposing instrument helper")
             st.caption(
-                "Use the **sidebar** for instrument type and “Show charts in instrument key” (app-wide)."
+                "Use the **sidebar** for saxophone type and "
+                "“Show chart in written key for instrument” (app-wide)."
             )
             written_key = written_key_for_instrument(concert_key, instrument, st.session_state)
             st.write(f"Concert key: **{concert_key}**")
@@ -7205,11 +7208,15 @@ def _render_v2_chart_debug_pill(rec: dict) -> None:
 
 
 def _active_song_key_pair(rec: dict | None = None) -> tuple[str, str]:
-    """Catalog original key and sidebar display/practice key for the active song."""
+    """Catalog original key and the key shown on charts (written or concert practice key)."""
     record = rec or {}
     original = str(record.get("key") or "C")
-    practice = str(st.session_state.get("display_key") or original)
-    return original, practice
+    concert = str(st.session_state.get("display_key") or original)
+    inst = str(st.session_state.get("instrument") or "Piano")
+    if is_transposing_instrument(inst) and chart_in_instrument_key(st.session_state):
+        chart_k, _ = effective_chart_key(concert, inst, st.session_state)
+        return original, chart_k
+    return original, concert
 
 
 def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
@@ -8740,6 +8747,7 @@ def _on_global_instrument_change() -> None:
 
     new_value = st.session_state.get("instrument", "Piano")
     set_active_instrument(st.session_state, new_value)
+    sync_written_key_instrument_anchor(st.session_state, new_value)
     request_transposing_instrument_sync(st.session_state, new_value)
     persist_music_local_state(st)
 
@@ -8808,6 +8816,7 @@ _apply_catalog_filter_defaults()
 minutes = int(st.session_state.get("practice_minutes", 30))
 
 instrument = st.session_state.get("instrument", "Piano")
+sync_written_key_instrument_anchor(st.session_state, instrument)
 level = st.session_state.get("level", "Intermediate")
 focus = st.session_state.get("focus", _focus_options[0])
 display_key = st.session_state.get("display_key", original_key)
@@ -8821,7 +8830,7 @@ if display_key not in _display_key_options:
 key_changed_this_run = note_display_key_change(st, display_key)
 
 apply_pending_transposing_instrument(st.session_state, instrument)
-render_sidebar_transposing_recap(
+render_sidebar_transposing_controls(
     st,
     concert_key=display_key,
     instrument=instrument,
@@ -8860,6 +8869,8 @@ _chart_bundle = session_cache_get_or_set(
         else "",
         level,
         chart_key,
+        chart_key_mode,
+        chart_transpose_cache_signature(st.session_state, instrument),
         st.session_state.get("_catalog_revision"),
         st.session_state.get("_user_chart_overrides_revision", 0),
         ((_catalog_song_data.get("user_override") or {}).get("saved_at")),
@@ -9197,6 +9208,8 @@ if _studio_page == "practice":
     _practice_chart_sig = (
         song,
         _practice_chart_key,
+        _chart_key_mode,
+        chart_transpose_cache_signature(st.session_state, instrument),
         level,
         instrument,
         focus,
@@ -9711,7 +9724,7 @@ if _studio_page == "practice":
             if is_transposing_instrument(instrument):
                 st.divider()
                 st.caption(
-                    "Transposing type and **Show all charts in my instrument key** are in the sidebar."
+                    "Saxophone type and **Show chart in written key for instrument** are in the sidebar."
                 )
             elif instrument == "Flute":
                 st.divider()

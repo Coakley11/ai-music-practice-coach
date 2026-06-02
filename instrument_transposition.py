@@ -21,6 +21,7 @@ BB_INSTRUMENT_TYPES: tuple[str, ...] = (
 SELECTED_TRANSPOSING_INSTRUMENT_KEY = "selected_transposing_instrument"
 PENDING_SELECTED_TRANSPOSING_INSTRUMENT = "_pending_selected_transposing_instrument"
 CHART_IN_INSTRUMENT_KEY_KEY = "show_chart_in_instrument_key"
+WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY = "_chart_written_key_instrument_anchor"
 CONCERT_KEY_SESSION_KEY = "concert_practice_key"
 SAX_TYPE_SESSION_KEY = "saxophone_type"
 
@@ -172,6 +173,42 @@ def selected_transposing_type(session_state: dict, instrument: str) -> str:
 
 def chart_in_instrument_key(session_state: dict) -> bool:
     return bool(session_state.get(CHART_IN_INSTRUMENT_KEY_KEY, False))
+
+
+def sync_written_key_instrument_anchor(session_state: dict, instrument: str) -> None:
+    """Keep written-key preference across practice-key changes; reset only on instrument change.
+
+  When switching to a non-transposing instrument, written-key mode is turned off.
+  When switching between transposing instruments, the user's checkbox stays as-is.
+    """
+    instrument = str(instrument or "").strip()
+    anchor = str(session_state.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+    if not anchor:
+        session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = instrument
+        return
+    if anchor == instrument:
+        return
+    if is_transposing_instrument(anchor) and not is_transposing_instrument(instrument):
+        session_state[CHART_IN_INSTRUMENT_KEY_KEY] = False
+    session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = instrument
+
+
+def preserve_written_key_on_display_key_change(session_state: dict) -> None:
+    """Display / practice key changes must never clear written-key mode (explicit no-op)."""
+    _ = session_state
+
+
+def chart_transpose_cache_signature(
+    session_state: dict,
+    instrument: str,
+) -> tuple[bool, str]:
+    """Extra tuple fields for chart caches when concert or written mode changes."""
+    if not is_transposing_instrument(instrument):
+        return False, ""
+    return (
+        chart_in_instrument_key(session_state),
+        selected_transposing_type(session_state, instrument),
+    )
 
 
 def written_key_for_type(concert_key: str, transposing_type: str) -> str:
@@ -353,13 +390,41 @@ def sax_transposition_blurb(
     return " ".join(lines)
 
 
+def render_sidebar_transposing_widgets(
+    st: Any,
+    *,
+    concert_key: str,
+    instrument: str,
+) -> None:
+    """App-wide transposing controls (sidebar) — persist across all studio pages."""
+    if not is_transposing_instrument(instrument):
+        return
+    apply_pending_transposing_instrument(st.session_state, instrument)
+    if instrument == "Saxophone":
+        st.sidebar.selectbox(
+            "Saxophone type",
+            list(SAXOPHONE_TYPES),
+            format_func=lambda t: instrument_display_name(str(t), "Saxophone"),
+            key=SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+            help="Applies to charts, backing chord view, and notation on every page.",
+        )
+    st.sidebar.checkbox(
+        "Show chart in written key for instrument",
+        key=CHART_IN_INSTRUMENT_KEY_KEY,
+        help=(
+            "When on, charts stay in your instrument's written key while you change "
+            "Practice / Display Key. Turn off to read charts in concert pitch."
+        ),
+    )
+
+
 def render_sidebar_transposing_recap(
     st: Any,
     *,
     concert_key: str,
     instrument: str,
 ) -> None:
-    """Read-only transposing summary in sidebar (widgets live on Practice page)."""
+    """Read-only transposing summary in sidebar."""
     import html
 
     if not is_transposing_instrument(instrument):
@@ -382,7 +447,6 @@ def render_sidebar_transposing_recap(
         f"</div>",
         unsafe_allow_html=True,
     )
-    st.sidebar.caption("Change type & chart key on the **Practice** page.")
 
 
 def render_sidebar_transposing_controls(
@@ -391,7 +455,8 @@ def render_sidebar_transposing_controls(
     concert_key: str,
     instrument: str,
 ) -> None:
-    """Alias — sidebar stays read-only so Practice owns the widgets."""
+    """Sidebar type selector, written-key toggle, and recap (all pages)."""
+    render_sidebar_transposing_widgets(st, concert_key=concert_key, instrument=instrument)
     render_sidebar_transposing_recap(st, concert_key=concert_key, instrument=instrument)
 
 
@@ -461,7 +526,7 @@ def render_practice_transposing_controls(
     concert_key: str,
     instrument: str,
 ) -> None:
-    """Practice-page transposing UI only (type + instrument-key charts toggle)."""
+    """Practice-page transposing recap (controls live in the sidebar for all pages)."""
     if not is_transposing_instrument(instrument):
         return
 
@@ -469,27 +534,26 @@ def render_practice_transposing_controls(
         "🎷 Transposing instrument / instrument key helper",
         expanded=True,
     ):
-        if instrument == "Saxophone":
-            st.markdown("**Which saxophone are you playing?**")
-            st.selectbox(
-                "Saxophone type",
-                list(SAXOPHONE_TYPES),
-                format_func=lambda t: instrument_display_name(str(t), "Saxophone"),
-                key=SELECTED_TRANSPOSING_INSTRUMENT_KEY,
-                label_visibility="collapsed",
-            )
-        elif instrument == "Trumpet":
+        if instrument == "Trumpet":
             st.markdown("**Trumpet** — **Bb instrument** (reads in written key above concert pitch).")
         elif instrument == "Clarinet":
             st.markdown("**Clarinet** — **Bb instrument** (reads in written key above concert pitch).")
-
-        st.checkbox(
-            "Show all charts in my instrument key",
-            key=CHART_IN_INSTRUMENT_KEY_KEY,
-            help=(
-                "When on: practice chart, notation, coach, scales, exercises, and backing "
-                "chord view use your written key. When off: charts stay in concert key."
-            ),
+        else:
+            st.markdown(
+                "**Saxophone type** and **Show chart in written key for instrument** "
+                "are in the **sidebar** and stay on while you change Practice Key."
+            )
+        show_written = chart_in_instrument_key(st.session_state)
+        written = written_key_for_instrument(concert_key, instrument, st.session_state)
+        chart_k, mode = effective_chart_key(concert_key, instrument, st.session_state)
+        st.caption(
+            f"Charts now use **{chart_k}** ({mode}). "
+            f"Concert **{concert_key}** · written **{written}**."
+            + (
+                " Written-key mode stays on when you change Practice / Display Key."
+                if show_written
+                else " Enable written-key mode in the sidebar to transpose all charts."
+            )
         )
 
     render_transposing_key_summary_card(
@@ -611,6 +675,7 @@ def apply_instrument_key_display(
 __all__ = [
     "BB_INSTRUMENT_TYPES",
     "CHART_IN_INSTRUMENT_KEY_KEY",
+    "WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY",
     "CONCERT_KEY_SESSION_KEY",
     "PENDING_SELECTED_TRANSPOSING_INSTRUMENT",
     "SAXOPHONE_TYPES",
@@ -623,6 +688,7 @@ __all__ = [
     "apply_instrument_key_display",
     "apply_pending_transposing_instrument",
     "chart_in_instrument_key",
+    "chart_transpose_cache_signature",
     "charts_shown_in_key",
     "default_transposing_type",
     "effective_chart_key",
@@ -640,6 +706,9 @@ __all__ = [
     "render_transposing_key_summary_card",
     "render_sidebar_transposing_controls",
     "render_sidebar_transposing_recap",
+    "render_sidebar_transposing_widgets",
+    "preserve_written_key_on_display_key_change",
+    "sync_written_key_instrument_anchor",
     "render_transposing_info_card",
     "request_transposing_instrument_sync",
     "resolve_practice_keys",
