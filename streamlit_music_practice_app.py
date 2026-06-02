@@ -495,6 +495,8 @@ try:
         render_studio_nav,
         render_sidebar_studio_nav,
         render_main_sidebar_nav_expand_chip,
+        ensure_sidebar_nav_defaults,
+        sync_sidebar_nav_body_dataset,
         ensure_studio_page,
         session_badges,
         sidebar_section,
@@ -8579,6 +8581,12 @@ try:
 except Exception:
     pass
 
+try:
+    ensure_sidebar_nav_defaults(st.session_state)
+    sync_sidebar_nav_body_dataset(st.session_state, st)
+except Exception:
+    pass
+
 # Voice / Karaoke body class - applied globally so the larger-lyric +
 # vocal-focused CSS in app_ui.py (`[data-vocal-focus="true"]` selectors)
 # is active on every page when the user's instrument is Voice. Set
@@ -8654,6 +8662,11 @@ def _active_song_artist_label() -> str:
 # SIDEBAR
 
 _studio_page = ensure_studio_page(st.session_state)
+
+try:
+    ensure_sidebar_nav_defaults(st.session_state)
+except Exception:
+    pass
 
 migrate_legacy_session_keys(st.session_state)
 sanitize_persisted_snapshots(st.session_state)

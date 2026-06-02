@@ -29,7 +29,9 @@ __all__ = [
     "render_main_sidebar_nav_expand_chip",
     "render_studio_nav",
     "SIDEBAR_NAV_COLLAPSED_KEY",
+    "ensure_sidebar_nav_defaults",
     "sidebar_nav_is_collapsed",
+    "sync_sidebar_nav_body_dataset",
     "STUDIO_PAGE_META",
     "nav_icon_button_label",
     "nav_compact_button_label",
@@ -219,6 +221,24 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
 }
 body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] .ui-sb-section.tone-nav {
   margin-bottom: 0.15rem !important;
+}
+body[data-sidebar-nav-collapsed="true"] section[data-testid="stMain"] .block-container {
+  max-width: min(1320px, calc(100vw - 17.5rem)) !important;
+}
+body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] .ui-sb-nav-panel {
+  margin-bottom: 0.35rem !important;
+}
+body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] .ui-sb-nav-collapsed-rail {
+  margin-bottom: 0.25rem !important;
+}
+/* Hide Streamlit blocks for page nav buttons when collapsed (not rendered, but guard legacy DOM) */
+body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-key-sb_nav_"] {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
 }
 .ui-sb-nav-wrap {
   margin: 0.25rem 0 0.85rem 0;
@@ -6506,7 +6526,33 @@ SIDEBAR_NAV_COLLAPSED_KEY = "studio_sidebar_nav_collapsed"
 
 
 def sidebar_nav_is_collapsed(session_state: dict) -> bool:
-    return bool(session_state.get(SIDEBAR_NAV_COLLAPSED_KEY, False))
+    """Default True — Music App page list starts collapsed on first load."""
+    if SIDEBAR_NAV_COLLAPSED_KEY not in session_state:
+        return True
+    return bool(session_state[SIDEBAR_NAV_COLLAPSED_KEY])
+
+
+def ensure_sidebar_nav_defaults(session_state: dict) -> bool:
+    """Initialize Music App sidebar page nav as collapsed when the key is unset."""
+    if SIDEBAR_NAV_COLLAPSED_KEY not in session_state:
+        session_state[SIDEBAR_NAV_COLLAPSED_KEY] = True
+    return sidebar_nav_is_collapsed(session_state)
+
+
+def sync_sidebar_nav_body_dataset(session_state: dict, st_module: Any) -> None:
+    """Drive layout CSS in the main area (Music App only — call from streamlit_music_practice_app)."""
+    collapsed = sidebar_nav_is_collapsed(session_state)
+    flag = "true" if collapsed else "false"
+    st_module.markdown(
+        f"""
+        <script>
+          try {{
+            document.body.dataset.sidebarNavCollapsed = "{flag}";
+          }} catch (e) {{}}
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def navigate_studio_page(session_state: Any, page_id: str) -> bool:
@@ -6882,55 +6928,46 @@ def render_sidebar_studio_nav(
     rerun_fn: Any,
     ai_enabled: bool = False,
 ) -> str:
-    """Colorful vertical studio navigation in the sidebar (collapsible)."""
+    """Colorful vertical studio navigation in the sidebar (collapsible, default collapsed)."""
     import streamlit as st
 
     current = ensure_studio_page(session_state, default=current_page)
+    ensure_sidebar_nav_defaults(session_state)
     collapsed = sidebar_nav_is_collapsed(session_state)
     collapsed_attr = "true" if collapsed else "false"
-
-    _header = st.sidebar.columns([5, 1])
-    with _header[0]:
-        sidebar_section("Pages", icon="🧭", tone="nav")
-    with _header[1]:
-        _toggle_label = "▶" if collapsed else "◀"
-        _toggle_help = (
-            "Expand page navigation"
-            if collapsed
-            else "Collapse page navigation for more chart and practice space"
-        )
-        if st.button(
-            _toggle_label,
-            key="sidebar_nav_collapse_toggle",
-            help=_toggle_help,
-            use_container_width=True,
-        ):
-            session_state[SIDEBAR_NAV_COLLAPSED_KEY] = not collapsed
-            rerun_fn()
 
     st.sidebar.markdown(
         f'<div class="ui-sb-nav-panel" data-collapsed="{collapsed_attr}">',
         unsafe_allow_html=True,
     )
 
-    st.sidebar.markdown('<div class="ui-sb-nav-collapsed-rail">', unsafe_allow_html=True)
-    _cur_meta = STUDIO_PAGE_META.get(current, {})
-    _cur_icon = html.escape(str(_cur_meta.get("icon") or "🎵"))
-    st.sidebar.markdown(
-        f'<div class="ui-sb-nav-current-pill" title="{html.escape(_cur_meta.get("label", current))}">'
-        f"{_cur_icon}</div>",
-        unsafe_allow_html=True,
-    )
-    if st.sidebar.button(
-        "☰\nPages",
-        key="sidebar_nav_expand_rail",
-        use_container_width=True,
-        type="secondary",
-        help="Show full page list",
-    ):
-        session_state[SIDEBAR_NAV_COLLAPSED_KEY] = False
-        rerun_fn()
-    st.sidebar.markdown("</div>", unsafe_allow_html=True)
+    if collapsed:
+        st.sidebar.markdown('<div class="ui-sb-nav-collapsed-rail">', unsafe_allow_html=True)
+        if st.sidebar.button(
+            "☰  Pages",
+            key="sidebar_nav_expand_rail",
+            use_container_width=True,
+            type="primary",
+            help="Show full page list (Practice, Backing Track, Song Selection, …)",
+        ):
+            session_state[SIDEBAR_NAV_COLLAPSED_KEY] = False
+            rerun_fn()
+        st.sidebar.markdown("</div>", unsafe_allow_html=True)
+        st.sidebar.markdown("</div>", unsafe_allow_html=True)
+        return session_state.get("studio_page", current)
+
+    _header = st.sidebar.columns([5, 1])
+    with _header[0]:
+        sidebar_section("Pages", icon="🧭", tone="nav")
+    with _header[1]:
+        if st.button(
+            "◀",
+            key="sidebar_nav_collapse_toggle",
+            help="Collapse page navigation for more chart and practice space",
+            use_container_width=True,
+        ):
+            session_state[SIDEBAR_NAV_COLLAPSED_KEY] = True
+            rerun_fn()
 
     st.sidebar.markdown('<div class="ui-sb-nav-wrap">', unsafe_allow_html=True)
     for page_id, label in sidebar_studio_page_items(ai_enabled=ai_enabled):
