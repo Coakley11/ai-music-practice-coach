@@ -198,7 +198,6 @@ _GLOBAL_APP_STATE_KEYS = frozenset(
         "level",
         "focus",
         "display_key",
-        "openai_api_key_box",
         "selected_song",
         "active_catalog_pick_key",
         "matching_song_dropdown",
