@@ -1012,22 +1012,6 @@ if hasattr(st, "session_state"):
     st.session_state["_catalog_backup_library"] = SONG_LIBRARY
     st.session_state["_catalog_backup_picker"] = SONG_PICKER_CATALOG
     st.session_state["_catalog_backup_genres"] = list(GENRES)
-    try:
-        from song_catalog.user_overrides import overrides_disk_revision
-
-        _ov_disk_rev = overrides_disk_revision()
-        st.session_state["_user_chart_overrides_revision"] = int(_ov_disk_rev or "0")
-        if st.session_state.get("_overrides_disk_revision") != _ov_disk_rev:
-            from song_catalog.catalog import reload_song_catalog as _reload_for_overrides
-
-            SONG_LIBRARY, SONG_PICKER_CATALOG, GENRES, ALL_SONG_RECORDS = _reload_for_overrides()
-            st.session_state["_catalog_backup_records"] = ALL_SONG_RECORDS
-            st.session_state["_catalog_backup_library"] = SONG_LIBRARY
-            st.session_state["_catalog_backup_picker"] = SONG_PICKER_CATALOG
-            st.session_state["_catalog_backup_genres"] = list(GENRES)
-            st.session_state["_overrides_disk_revision"] = _ov_disk_rev
-    except (TypeError, ValueError):
-        pass
 
 # Hot-reload catalog when song data changes without a full process restart.
 CATALOG_REVISION = "2026-05-28-jewish-traditional-v1"
@@ -10793,6 +10777,20 @@ elif _studio_page == "analysis":
                         if audio_obj is not None:
                             st.session_state["_analysis_upload_prep_sig"] = _sig
                             st.session_state["_analysis_prepared_upload"] = audio_obj
+                            try:
+                                from music_activity import log_media_upload
+
+                                log_media_upload(
+                                    st,
+                                    media_type=(
+                                        "video"
+                                        if is_video_filename(_raw_name)
+                                        else "audio"
+                                    ),
+                                    filename=_raw_name,
+                                )
+                            except Exception:
+                                pass
                     else:
                         audio_obj = st.session_state.get("_analysis_prepared_upload")
 
@@ -10858,6 +10856,12 @@ elif _studio_page == "analysis":
                     st.session_state["last_analysis_result"] = result
                     st.session_state["last_analysis_audio"] = audio_obj.getvalue()
                     if result.get("ok"):
+                        try:
+                            from music_activity import log_recording_reviewed
+
+                            log_recording_reviewed(st)
+                        except Exception:
+                            pass
                         from ai_performance_history import (
                             SOURCE_METRICS_UPLOAD,
                             append_performance_record,
@@ -11317,6 +11321,19 @@ elif _studio_page == "multitrack":
                                     audio_obj, "name", f"{slot}.wav"
                                 )
                                 st.session_state[f"mt_name_{slot}"] = layer_name
+                                try:
+                                    from music_activity import log_media_upload
+
+                                    log_media_upload(
+                                        st,
+                                        media_type="audio",
+                                        filename=str(
+                                            getattr(audio_obj, "name", None) or f"{slot}.wav"
+                                        ),
+                                        page="Multitrack",
+                                    )
+                                except Exception:
+                                    pass
                                 st.success(f"{layer_name} saved.")
                                 st.rerun()
                             st.warning("Record or upload audio first.")

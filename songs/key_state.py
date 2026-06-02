@@ -49,6 +49,16 @@ def mark_display_key_changed(st: Any) -> None:
     if dk:
         on_global_display_key_change(st.session_state, dk)
     try:
+        from music_activity import log_display_key_changed
+
+        log_display_key_changed(
+            st,
+            display_key=str(dk or ""),
+            previous_key=str(st.session_state.get(LAST_DISPLAY_KEY) or ""),
+        )
+    except Exception:
+        pass
+    try:
         from songs.state import persist_music_local_state
 
         persist_music_local_state(st)
@@ -126,10 +136,17 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
     if last == display_key:
         return False
 
+    previous = str(last or "")
     st.session_state[LAST_DISPLAY_KEY] = display_key
     invalidate_backing_cache(st)
     st.session_state[BACKING_NEEDS_REGEN] = True
     from custom_progression_lab import on_global_display_key_change
 
     on_global_display_key_change(st.session_state, display_key)
+    try:
+        from music_activity import log_display_key_changed
+
+        log_display_key_changed(st, display_key=display_key, previous_key=previous)
+    except Exception:
+        pass
     return True
