@@ -8923,16 +8923,11 @@ song_lyrics_key = f"song_lyrics::{song_lyrics_slug}"
 section_lyrics_state_key = f"section_lyrics::{song_lyrics_slug}"
 
 sidebar_section("Optional AI", icon="🔑", tone="ai")
-user_api_key = st.sidebar.text_input(
-    "OpenAI API key",
-    type="password",
-    help="Optional — for AI-powered suggestions only.",
-    key="openai_api_key_box",
-)
-if user_api_key:
-    st.sidebar.caption("API key loaded.")
+_openai_api_key = str(st.secrets.get("OPENAI_API_KEY", "") or "").strip()
+if _openai_api_key:
+    st.sidebar.caption("AI features are configured.")
 else:
-    st.sidebar.caption("Local features work without a key.")
+    st.sidebar.caption("AI features are not configured yet.")
 
 _render_sidebar_developer_library_panel()
 
@@ -11653,7 +11648,7 @@ elif _studio_page == "log":
                         all_song_records=ALL_SONG_RECORDS,
                         session_minutes=int(st.session_state.get("ai_session_builder_minutes", 45)),
                     )
-                    _api_key = str(st.session_state.get("openai_api_key_box") or user_api_key or "")
+                    _api_key = _openai_api_key
                     if _api_key.strip():
                         _insights = maybe_enhance_insights_with_openai(
                             _insights,
