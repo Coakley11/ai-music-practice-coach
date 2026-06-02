@@ -35,6 +35,13 @@ st.set_page_config(
     layout="wide"
 )
 
+try:
+    from suite_resume_launch import apply_suite_resume_launch
+
+    apply_suite_resume_launch(st, "music")
+except Exception:
+    pass
+
 # -------------------------------------------------
 # GLOBAL CONSTANTS + SONG CATALOG
 # -------------------------------------------------
