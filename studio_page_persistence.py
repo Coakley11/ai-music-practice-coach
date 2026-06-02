@@ -164,6 +164,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "_ai_practice_session_plan",
         }
     ),
+    "openai": frozenset(),
 }
 
 # Safe dynamic prefixes (scoped widget namespaces — never plain ``practice_`` / ``improv_``).

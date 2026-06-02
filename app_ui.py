@@ -6412,16 +6412,30 @@ STUDIO_PAGE_META: dict[str, dict[str, str]] = {
     "multitrack": {"label": "Multitrack", "icon": "🎚️", "nav_class": "multitrack"},
     "analysis": {"label": "Upload Analysis", "icon": "🎙️", "nav_class": "analysis"},
     "log": {"label": "Practice Log", "icon": "📓", "nav_class": "log"},
+    "openai": {"label": "OpenAI", "icon": "✨", "nav_class": "openai"},
 }
+
+OPENAI_PAGE_ID = "openai"
 
 STUDIO_PAGES: list[tuple[str, str]] = [
     (page_id, f"{meta['icon']} {meta['label']}")
     for page_id, meta in STUDIO_PAGE_META.items()
 ]
 
-# Single source for top navigation — Practice is first, same widget as all others.
-TOP_NAV_ITEMS: list[tuple[str, str]] = list(STUDIO_PAGES)
+# Top quick nav — core workspaces only (OpenAI lives in the sidebar when configured).
+TOP_NAV_ITEMS: list[tuple[str, str]] = [
+    (page_id, label) for page_id, label in STUDIO_PAGES if page_id != OPENAI_PAGE_ID
+]
 TOP_NAV_PAGE_IDS: list[str] = [page_id for page_id, _label in TOP_NAV_ITEMS]
+
+
+def sidebar_studio_page_items(*, ai_enabled: bool) -> list[tuple[str, str]]:
+    """Sidebar page list — includes OpenAI only when the API key is configured."""
+    items = list(TOP_NAV_ITEMS)
+    if ai_enabled:
+        meta = STUDIO_PAGE_META[OPENAI_PAGE_ID]
+        items.append((OPENAI_PAGE_ID, f"{meta['icon']} {meta['label']}"))
+    return items
 STUDIO_PAGE_NAV_KEY = "studio_page_nav"
 
 
@@ -6440,6 +6454,7 @@ _NAV_COMPACT_TITLE: dict[str, str] = {
     "multitrack": "Multi",
     "analysis": "Upload",
     "log": "Log",
+    "openai": "OpenAI",
 }
 
 _NAV_COMPACT_ICON: dict[str, str] = {
@@ -6451,6 +6466,7 @@ _NAV_COMPACT_ICON: dict[str, str] = {
     "multitrack": "🎚️",
     "analysis": "🎙️",
     "log": "📓",
+    "openai": "✨",
 }
 
 
@@ -6794,13 +6810,14 @@ def render_sidebar_studio_nav(
     *,
     current_page: str,
     rerun_fn: Any,
+    ai_enabled: bool = False,
 ) -> str:
     """Colorful vertical studio navigation in the sidebar."""
     import streamlit as st
 
     current = ensure_studio_page(session_state, default=current_page)
     st.sidebar.markdown('<div class="ui-sb-nav-wrap">', unsafe_allow_html=True)
-    for page_id, label in STUDIO_PAGES:
+    for page_id, label in sidebar_studio_page_items(ai_enabled=ai_enabled):
         nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
         active_cls = " nav-btn-active" if page_id == current else ""
         st.sidebar.markdown(

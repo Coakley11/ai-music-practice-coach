@@ -25,6 +25,7 @@ STUDIO_PAGE_IDS: frozenset[str] = frozenset(
         "multitrack",
         "analysis",
         "log",
+        "openai",
     }
 )
 

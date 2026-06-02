@@ -1,5 +1,6 @@
 """Smoke tests for studio page navigation and history stacks."""
 
+from app_ui import OPENAI_PAGE_ID, sidebar_studio_page_items
 from studio_nav_history import (
     STUDIO_PAGE_IDS,
     go_back,
@@ -8,6 +9,14 @@ from studio_nav_history import (
     navigate_studio_page,
 )
 from studio_page_persistence import handle_studio_page_transition
+
+
+def test_sidebar_openai_page_only_when_ai_enabled():
+    without = [pid for pid, _ in sidebar_studio_page_items(ai_enabled=False)]
+    with_ai = [pid for pid, _ in sidebar_studio_page_items(ai_enabled=True)]
+    assert OPENAI_PAGE_ID not in without
+    assert OPENAI_PAGE_ID in with_ai
+    assert "practice" in without and "practice" in with_ai
 
 
 def test_studio_page_order_includes_all_pages():
@@ -20,6 +29,7 @@ def test_studio_page_order_includes_all_pages():
         "multitrack",
         "analysis",
         "log",
+        "openai",
     }
     assert expected == set(STUDIO_PAGE_IDS)
 

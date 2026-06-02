@@ -491,6 +491,7 @@ try:
         render_section_jump_bar,
         render_studio_brand_header,
         render_studio_nav,
+        render_sidebar_studio_nav,
         ensure_studio_page,
         session_badges,
         sidebar_section,
@@ -5858,6 +5859,38 @@ def _log_mode_options() -> list[str]:
     ]
 
 
+def _refresh_practice_log_coach(
+    session_state: dict,
+    *,
+    highlight_entry: dict | None = None,
+    openai_api_key: str = "",
+) -> None:
+    """Rebuild Phase B coach view from disk logs and recording history."""
+    from practice_log_coach import (
+        build_practice_log_coach_view,
+        maybe_enhance_coach_view_with_openai,
+    )
+    from practice_log_insights import load_analysis_history
+
+    logs = load_logs()
+    analysis_history = load_analysis_history()
+    coach = build_practice_log_coach_view(
+        logs,
+        analysis_history=analysis_history,
+        all_song_records=ALL_SONG_RECORDS,
+        session_minutes=int(session_state.get("ai_session_builder_minutes", 30)),
+        highlight_entry=highlight_entry,
+    )
+    if str(openai_api_key or "").strip():
+        coach = maybe_enhance_coach_view_with_openai(
+            coach,
+            api_key=openai_api_key,
+            logs=logs,
+            analysis_history=analysis_history,
+        )
+    session_state["practice_log_coach"] = coach
+
+
 def _render_practice_session_card(entry: dict) -> None:
     _song_name = str(entry.get("song") or "Untitled session")
     _artist = str(entry.get("artist") or "")
@@ -6842,6 +6875,19 @@ def _render_sidebar_developer_library_panel() -> None:
             key="developer_mode",
             help="Shows advanced library filters on Song Selection (hidden for normal users).",
         )
+        if st.session_state.get("developer_mode"):
+            try:
+                from openai_secrets_config import (
+                    format_openai_secrets_diagnostics,
+                    resolve_openai_api_key,
+                )
+
+                _probe = resolve_openai_api_key()[1]
+                with st.expander("OpenAI secrets (admin diagnostics)", expanded=False):
+                    for _line in format_openai_secrets_diagnostics(_probe):
+                        st.caption(_line)
+            except Exception as _openai_diag_err:
+                st.caption(f"OpenAI diagnostics unavailable: {_openai_diag_err!r}")
         if CATALOG_LOAD_ERROR:
             st.caption(f"Load error: {CATALOG_LOAD_ERROR!r}")
 
@@ -8555,6 +8601,10 @@ init_tutorial_state(st.session_state)
 init_nav_history(st.session_state)
 render_sidebar_nav_history(st.sidebar, st.session_state, rerun_fn=st.rerun)
 
+from openai_secrets_config import resolve_openai_api_key
+
+_openai_api_key, _openai_secrets_probe = resolve_openai_api_key()
+
 try:
     from music_persistent_state import autosave_music_state, default_reset_music_session
     from suite_user_persistence import render_reset_controls
@@ -8601,6 +8651,25 @@ migrate_legacy_session_keys(st.session_state)
 sanitize_persisted_snapshots(st.session_state)
 handle_studio_page_transition(st.session_state)
 note_page_visit(st.session_state, _studio_page)
+
+if _studio_page == "openai" and not _openai_api_key:
+    navigate_studio_page(st.session_state, "practice")
+    st.rerun()
+
+sidebar_section("Pages", icon="🧭", tone="nav")
+try:
+    render_sidebar_studio_nav(
+        st.session_state,
+        current_page=_studio_page,
+        rerun_fn=st.rerun,
+        ai_enabled=bool(_openai_api_key),
+    )
+except Exception:
+    pass
+if _openai_api_key:
+    st.sidebar.caption("AI features are configured.")
+else:
+    st.sidebar.caption("AI features are not configured yet.")
 
 sidebar_section("Active source", icon="🎼", tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
@@ -8921,27 +8990,6 @@ song_lyrics_slug = _song_slug(
 )
 song_lyrics_key = f"song_lyrics::{song_lyrics_slug}"
 section_lyrics_state_key = f"section_lyrics::{song_lyrics_slug}"
-
-sidebar_section("Optional AI", icon="🔑", tone="ai")
-from openai_secrets_config import format_openai_secrets_diagnostics, resolve_openai_api_key
-
-_openai_api_key, _openai_secrets_probe = resolve_openai_api_key()
-if _openai_api_key:
-    st.sidebar.caption("AI features are configured.")
-else:
-    st.sidebar.caption("AI features are not configured yet.")
-
-with st.sidebar.expander(
-    "AI secrets status (safe diagnostics)",
-    expanded=not bool(_openai_api_key),
-):
-    for _diag_line in format_openai_secrets_diagnostics(_openai_secrets_probe):
-        st.caption(_diag_line)
-    st.caption(
-        "Deploy branch should be **dev** with code marker **ae48b7e+**. "
-        "After saving Streamlit Secrets, reboot the app "
-        "(Manage app → Reboot)."
-    )
 
 _render_sidebar_developer_library_panel()
 
@@ -11489,6 +11537,66 @@ elif _studio_page == "multitrack":
                 st.rerun()
 
 # -------------------------------------------------
+# OPENAI COACHING HUB
+# -------------------------------------------------
+
+elif _studio_page == "openai":
+
+    ensure_page_initialized(st.session_state, "openai")
+    note_page_visit(st.session_state, "openai")
+    _render_page_quick_nav("openai")
+
+    _studio_page_header(
+        "✨",
+        "OpenAI Coaching",
+        "AI-powered practice tools for your active song and session history.",
+    )
+
+    st.markdown(
+        '<div class="ui-card soft" style="margin:0 0 1rem 0;">'
+        "<strong>Your AI coach is ready.</strong> "
+        "Use the tools below for insights, analysis, and creative guidance. "
+        "More features will land here over time."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    _ai_c1, _ai_c2 = st.columns(2)
+    with _ai_c1:
+        st.markdown("#### Available now")
+        if st.button(
+            "Practice log insights",
+            key="openai_hub_log",
+            use_container_width=True,
+            help="AI review of your practice history and session patterns.",
+        ):
+            navigate_studio_page(st.session_state, "log")
+            st.rerun()
+        if st.button(
+            "Upload analysis",
+            key="openai_hub_analysis",
+            use_container_width=True,
+            help="Analyze a recording with AI-assisted feedback.",
+        ):
+            navigate_studio_page(st.session_state, "analysis")
+            st.rerun()
+        if st.button(
+            "Creative Lab",
+            key="openai_hub_creative",
+            use_container_width=True,
+            help="Harmony, improvisation, and growth tools.",
+        ):
+            navigate_studio_page(st.session_state, "creative")
+            st.rerun()
+    with _ai_c2:
+        st.markdown("#### Coming soon")
+        st.caption("Practice coaching on the active song")
+        st.caption("Personalized song recommendations")
+        st.caption("Recording comparisons")
+        st.caption("Practice summaries")
+        st.caption("AI-generated next-session plans")
+
+# -------------------------------------------------
 # PRACTICE LOG
 # -------------------------------------------------
 
@@ -11498,26 +11606,107 @@ elif _studio_page == "log":
     note_page_visit(st.session_state, "log")
     _render_page_quick_nav("log")
 
-    _studio_page_header("📓", "Practice & Progress Log", "Review sessions, patterns, and progress like a studio dashboard.")
+    _studio_page_header(
+        "📓",
+        "Practice Log",
+        "Log sessions and get specific coaching — what to keep working on next.",
+    )
     _inject_practice_log_studio_styles()
 
-    with st.container(key="practice_log_dashboard_panel", border=False):
-        st.markdown(
-            '<div class="ui-log-banner"><strong>Practice Log Studio</strong><br>'
-            'Track your history, spot momentum, and build smarter next sessions from real activity.</div>',
-            unsafe_allow_html=True,
-        )
-
-    from practice_log_insights import (
-        generate_practice_log_insights,
-        load_analysis_history,
-        maybe_enhance_insights_with_openai,
-        render_practice_log_insights_ui,
-    )
+    from practice_log_coach import render_practice_log_coach_ui
+    from practice_log_insights import load_analysis_history
 
     _analysis_history = load_analysis_history()
     _all_logs = load_logs()
     _today = date.today()
+    st.session_state.setdefault("ai_session_builder_minutes", 30)
+
+    with st.container(key="log_add_session_panel", border=False):
+        st.markdown('<p class="ui-log-section-title">Log today\'s practice</p>', unsafe_allow_html=True)
+        with st.form("practice_form"):
+            c1, c2 = st.columns([1.2, 1])
+            with c1:
+                practice_text_input = st.text_area(
+                    "What did you practice today?",
+                    value=f"{genre} practice — {song}",
+                )
+                mode = st.selectbox("Practice mode", _log_mode_options(), index=0)
+                groove = st.text_input(
+                    "Groove / style",
+                    value=str(st.session_state.get("practice_groove_style") or genre or "Auto"),
+                )
+            with c2:
+                duration_mins = st.slider("Duration (minutes)", 10, 180, 30, 5)
+                rating = st.slider("How did it go?", 1, 10, 6)
+                time_sig = st.selectbox("Time signature", ["4/4", "3/4", "6/8", "2/4", "5/4", "7/8"], index=0)
+                section_count = st.number_input("Sections practiced", min_value=0, max_value=24, value=0, step=1)
+
+            submitted = st.form_submit_button("Save Practice Log", type="primary", use_container_width=True)
+
+        if submitted:
+            logs = load_logs()
+            _saved_entry = {
+                "date": str(date.today()),
+                "genre": genre,
+                "song": song,
+                "artist": str((song_data or {}).get("artist") or ""),
+                "instrument": instrument,
+                "level": level,
+                "focus": focus,
+                "mode": mode,
+                "groove": groove,
+                "minutes": int(duration_mins),
+                "time_signature": time_sig,
+                "section_count": int(section_count),
+                "practice": practice_text_input,
+                "rating": rating,
+            }
+            logs.append(_saved_entry)
+            save_logs(logs)
+            try:
+                from suite_activity_client import record_activity
+
+                local_state = build_music_local_state(st)
+                local_state["mode"] = str(mode)
+                record_activity(
+                    "music",
+                    "practice",
+                    page="Practice Log",
+                    metrics={
+                        "song": song,
+                        "artist": str((song_data or {}).get("artist") or ""),
+                        "minutes": int(duration_mins),
+                        "focus": focus,
+                        "instrument": local_state.get("instrument", ""),
+                        "display_key": local_state.get("display_key", ""),
+                        "practice_focus_section": local_state.get("practice_focus_section", ""),
+                    },
+                    summary=f"Practiced {song}",
+                    resume_key=f"song:{st.session_state.get('active_catalog_pick_key', song)}",
+                    resume_title=f"Continue: {song}",
+                    resume_subtitle=focus or instrument,
+                    local_state=local_state,
+                )
+                st.session_state["last_practice_mode"] = str(mode)
+            except Exception:
+                pass
+            _refresh_practice_log_coach(
+                st.session_state,
+                highlight_entry=_saved_entry,
+                openai_api_key=_openai_api_key,
+            )
+            st.success("Practice log saved.")
+
+    if st.session_state.get("practice_log_coach") is None and (_all_logs or _analysis_history):
+        _refresh_practice_log_coach(st.session_state, openai_api_key=_openai_api_key)
+
+    _coach_view = st.session_state.get("practice_log_coach")
+    if _coach_view is not None:
+        with st.container(key="log_coach_panel", border=False):
+            render_practice_log_coach_ui(st, _coach_view)
+        if st.button("Refresh coach notes", key="refresh_practice_log_coach_main"):
+            _refresh_practice_log_coach(st.session_state, openai_api_key=_openai_api_key)
+            st.rerun()
 
     _enriched_logs: list[dict] = []
     for _entry in _all_logs:
@@ -11541,162 +11730,113 @@ elif _studio_page == "log":
         "Last 90 days": 90,
     }
 
-    with st.container(key="log_filter_panel", border=False):
-        st.markdown('<p class="ui-log-section-title">Filters</p>', unsafe_allow_html=True)
-        st.markdown(
-            '<p class="ui-log-section-sub">Refine by song, date, instrument, and practice mode.</p>',
-            unsafe_allow_html=True,
-        )
-        _f1, _f2, _f3, _f4 = st.columns([1.35, 1, 1, 1])
-        with _f1:
-            _search = st.text_input(
-                "Search",
-                placeholder="Song, notes, groove, or genre…",
-                key="log_filter_search",
-                label_visibility="collapsed",
-            ).strip().lower()
-        with _f2:
-            _window = st.selectbox(
-                "Date range",
-                _date_windows,
-                key="log_filter_window",
-                label_visibility="collapsed",
-            )
-        with _f3:
-            _inst_opts = ["All instruments"] + sorted(
-                {str(r.get("instrument") or "Piano") for r in _enriched_logs}
-            )
-            _instrument_filter = st.selectbox(
-                "Instrument",
-                _inst_opts,
-                key="log_filter_instrument",
-                label_visibility="collapsed",
-            )
-        with _f4:
-            _mode_opts = ["All modes"] + _log_mode_options()
-            _mode_filter = st.selectbox(
-                "Mode",
-                _mode_opts,
-                key="log_filter_mode",
-                label_visibility="collapsed",
-            )
-
-    _days = _window_map.get(_window)
-    _start_date = (_today - timedelta(days=_days - 1)) if _days else None
-    _filtered_logs = []
-    for _entry in _enriched_logs:
-        _log_date = _entry.get("_parsed_date")
-        if _start_date and (_log_date is None or _log_date < _start_date):
-            continue
-        if _instrument_filter != "All instruments" and str(_entry.get("instrument")) != _instrument_filter:
-            continue
-        if _mode_filter != "All modes" and str(_entry.get("mode")) != _mode_filter:
-            continue
-        if _search:
-            _blob = " ".join(
-                str(_entry.get(k, ""))
-                for k in ("song", "artist", "practice", "genre", "groove", "mode")
-            ).lower()
-            if _search not in _blob:
-                continue
-        _filtered_logs.append(_entry)
-
-    _sorted_filtered = sorted(
-        _filtered_logs,
-        key=lambda x: (x.get("_parsed_date") or date.min, str(x.get("song") or "")),
-        reverse=True,
-    )
-
-    _total_sessions = len(_sorted_filtered)
-    _total_minutes = sum(_to_int(x.get("minutes"), 0) for x in _sorted_filtered)
-    _avg_rating = (
-        round(sum(_to_int(x.get("rating"), 6) for x in _sorted_filtered) / _total_sessions, 1)
-        if _total_sessions
-        else 0.0
-    )
-    _unique_songs = len({str(x.get("song") or "").strip() for x in _sorted_filtered if str(x.get("song") or "").strip()})
-    _this_week_start = _today - timedelta(days=_today.weekday())
-    _week_sessions = sum(
-        1 for x in _sorted_filtered if (x.get("_parsed_date") and x.get("_parsed_date") >= _this_week_start)
-    )
-    _active_days = len({x.get("_parsed_date") for x in _sorted_filtered if x.get("_parsed_date")})
-
-    st.markdown(
-        '<div class="ui-log-kpis">'
-        f'<div class="ui-log-kpi"><p class="ui-log-kpi-label">Sessions</p><p class="ui-log-kpi-value">{_total_sessions}</p><p class="ui-log-kpi-sub">{_week_sessions} this week</p></div>'
-        f'<div class="ui-log-kpi"><p class="ui-log-kpi-label">Practice Time</p><p class="ui-log-kpi-value">{_total_minutes} min</p><p class="ui-log-kpi-sub">{round(_total_minutes/60, 1)} hours total</p></div>'
-        f'<div class="ui-log-kpi"><p class="ui-log-kpi-label">Average Session Score</p><p class="ui-log-kpi-value">{_avg_rating}/10</p><p class="ui-log-kpi-sub">Self-rated progress</p></div>'
-        f'<div class="ui-log-kpi"><p class="ui-log-kpi-label">Songs Practiced</p><p class="ui-log-kpi-value">{_unique_songs}</p><p class="ui-log-kpi-sub">{_active_days} active day(s)</p></div>'
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    if st.session_state.get("last_analysis_result", {}).get("ok") and not _analysis_history:
-        st.caption(
-            "Tip: run **Upload Analysis** on a take — results are saved for future insights."
-        )
-    elif _analysis_history:
-        scored = sum(1 for h in _analysis_history if h.get("mission_results"))
-        st.caption(
-            f"Connected to **{len(_analysis_history)}** saved AI performance analysis(es) "
-            f"({scored} with improvisation metrics)."
-        )
-
-    st.session_state.setdefault("ai_session_builder_minutes", 45)
-    with st.container(key="log_insights_panel", border=False):
-        st.markdown('<p class="ui-log-section-title">AI Insights & Session Builder</p>', unsafe_allow_html=True)
-        _c1, _c2 = st.columns([1.2, 1])
-        with _c1:
-            if st.button(
-                "Analyze My Practice History",
-                type="primary",
-                key="practice_log_insights_btn",
-                use_container_width=True,
-            ):
-                _logs_for_insights = load_logs()
-                with st.spinner("Your AI coach is reviewing logs, patterns, and recordings…"):
-                    _insights = generate_practice_log_insights(
-                        _logs_for_insights,
-                        analysis_history=_analysis_history,
-                        session_analysis=st.session_state.get("last_analysis_result"),
-                        all_song_records=ALL_SONG_RECORDS,
-                        session_minutes=int(st.session_state.get("ai_session_builder_minutes", 45)),
-                    )
-                    _api_key = _openai_api_key
-                    if _api_key.strip():
-                        _insights = maybe_enhance_insights_with_openai(
-                            _insights,
-                            api_key=_api_key,
-                            logs=_logs_for_insights,
-                            analysis_history=_analysis_history,
-                        )
-                    st.session_state["practice_log_insights"] = _insights
-        with _c2:
-            _session_mins = st.slider(
-                "Target session length (minutes)",
-                20,
-                90,
-                45,
-                5,
-                key="ai_session_builder_minutes",
-            )
-            if st.button("Build session from history", key="build_session_from_logs", use_container_width=True):
-                st.session_state["_ai_practice_session_plan"] = build_practice_session_from_logs(
-                    load_logs(),
-                    ALL_SONG_RECORDS,
-                    minutes=int(_session_mins),
-                )
-
-        _stored_insights = st.session_state.get("practice_log_insights")
-        if _stored_insights is not None:
-            render_practice_log_insights_ui(st, _stored_insights)
-
-        _plan = st.session_state.get("_ai_practice_session_plan")
-        if _plan:
+    with st.expander("Session history & stats", expanded=False):
+        with st.container(key="log_filter_panel", border=False):
+            st.markdown('<p class="ui-log-section-title">Filters</p>', unsafe_allow_html=True)
             st.markdown(
-                '<div class="ui-card soft"><div class="ui-card-title">Suggested session</div>',
+                '<p class="ui-log-section-sub">Refine by song, date, instrument, and practice mode.</p>',
                 unsafe_allow_html=True,
             )
+            _f1, _f2, _f3, _f4 = st.columns([1.35, 1, 1, 1])
+            with _f1:
+                _search = st.text_input(
+                    "Search",
+                    placeholder="Song, notes, groove, or genre…",
+                    key="log_filter_search",
+                    label_visibility="collapsed",
+                ).strip().lower()
+            with _f2:
+                _window = st.selectbox(
+                    "Date range",
+                    _date_windows,
+                    key="log_filter_window",
+                    label_visibility="collapsed",
+                )
+            with _f3:
+                _inst_opts = ["All instruments"] + sorted(
+                    {str(r.get("instrument") or "Piano") for r in _enriched_logs}
+                )
+                _instrument_filter = st.selectbox(
+                    "Instrument",
+                    _inst_opts,
+                    key="log_filter_instrument",
+                    label_visibility="collapsed",
+                )
+            with _f4:
+                _mode_opts = ["All modes"] + _log_mode_options()
+                _mode_filter = st.selectbox(
+                    "Mode",
+                    _mode_opts,
+                    key="log_filter_mode",
+                    label_visibility="collapsed",
+                )
+
+        _days = _window_map.get(_window)
+        _start_date = (_today - timedelta(days=_days - 1)) if _days else None
+        _filtered_logs = []
+        for _entry in _enriched_logs:
+            _log_date = _entry.get("_parsed_date")
+            if _start_date and (_log_date is None or _log_date < _start_date):
+                continue
+            if _instrument_filter != "All instruments" and str(_entry.get("instrument")) != _instrument_filter:
+                continue
+            if _mode_filter != "All modes" and str(_entry.get("mode")) != _mode_filter:
+                continue
+            if _search:
+                _blob = " ".join(
+                    str(_entry.get(k, ""))
+                    for k in ("song", "artist", "practice", "genre", "groove", "mode")
+                ).lower()
+                if _search not in _blob:
+                    continue
+            _filtered_logs.append(_entry)
+
+        _sorted_filtered = sorted(
+            _filtered_logs,
+            key=lambda x: (x.get("_parsed_date") or date.min, str(x.get("song") or "")),
+            reverse=True,
+        )
+
+        _total_sessions = len(_sorted_filtered)
+        _total_minutes = sum(_to_int(x.get("minutes"), 0) for x in _sorted_filtered)
+        _avg_rating = (
+            round(sum(_to_int(x.get("rating"), 6) for x in _sorted_filtered) / _total_sessions, 1)
+            if _total_sessions
+            else 0.0
+        )
+        _unique_songs = len({str(x.get("song") or "").strip() for x in _sorted_filtered if str(x.get("song") or "").strip()})
+        _this_week_start = _today - timedelta(days=_today.weekday())
+        _week_sessions = sum(
+            1 for x in _sorted_filtered if (x.get("_parsed_date") and x.get("_parsed_date") >= _this_week_start)
+        )
+        _active_days = len({x.get("_parsed_date") for x in _sorted_filtered if x.get("_parsed_date")})
+
+        st.markdown(
+            '<div class="ui-log-kpis">'
+            f'<div class="ui-log-kpi"><p class="ui-log-kpi-label">Sessions</p><p class="ui-log-kpi-value">{_total_sessions}</p><p class="ui-log-kpi-sub">{_week_sessions} this week</p></div>'
+            f'<div class="ui-log-kpi"><p class="ui-log-kpi-label">Practice Time</p><p class="ui-log-kpi-value">{_total_minutes} min</p><p class="ui-log-kpi-sub">{round(_total_minutes/60, 1)} hours total</p></div>'
+            f'<div class="ui-log-kpi"><p class="ui-log-kpi-label">Average Session Score</p><p class="ui-log-kpi-value">{_avg_rating}/10</p><p class="ui-log-kpi-sub">Self-rated progress</p></div>'
+            f'<div class="ui-log-kpi"><p class="ui-log-kpi-label">Songs Practiced</p><p class="ui-log-kpi-value">{_unique_songs}</p><p class="ui-log-kpi-sub">{_active_days} active day(s)</p></div>'
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        _session_mins = st.slider(
+            "Target session length (minutes)",
+            20,
+            90,
+            int(st.session_state.get("ai_session_builder_minutes", 30)),
+            5,
+            key="ai_session_builder_minutes",
+        )
+        if st.button("Build timed session plan", key="build_session_from_logs", use_container_width=False):
+            st.session_state["_ai_practice_session_plan"] = build_practice_session_from_logs(
+                load_logs(),
+                ALL_SONG_RECORDS,
+                minutes=int(_session_mins),
+            )
+        _plan = st.session_state.get("_ai_practice_session_plan")
+        if _plan:
             st.caption(_plan.get("summary", ""))
             for label, icon in (
                 ("warmup", "🌅"),
@@ -11707,157 +11847,78 @@ elif _studio_page == "log":
             ):
                 if _plan.get(label):
                     st.markdown(f"{icon} **{label.title()}** — {_plan[label]}")
-            st.markdown("</div>", unsafe_allow_html=True)
-            if st.button(nav_icon_button_label("practice") + " warmup", key="session_go_practice"):
-                set_pending_anchor(st.session_state, ANCHOR_PRACTICE_COACH)
-                navigate_studio_page(st.session_state, "practice")
-                st.rerun()
 
-    with st.container(key="log_add_session_panel", border=False):
-        st.markdown('<p class="ui-log-section-title">Add Session Entry</p>', unsafe_allow_html=True)
-        with st.form("practice_form"):
-            c1, c2 = st.columns([1.2, 1])
-            with c1:
-                practice_text_input = st.text_area(
-                    "What did you practice today?",
-                    value=f"{genre} practice — {song}",
-                )
-                mode = st.selectbox("Practice mode", _log_mode_options(), index=0)
-                groove = st.text_input(
-                    "Groove / style",
-                    value=str(st.session_state.get("practice_groove_style") or genre or "Auto"),
-                )
-            with c2:
-                duration_mins = st.slider("Duration (minutes)", 10, 180, 30, 5)
-                rating = st.slider("How did it go?", 1, 10, 6)
-                time_sig = st.selectbox("Time signature", ["4/4", "3/4", "6/8", "2/4", "5/4", "7/8"], index=0)
-                section_count = st.number_input("Sections practiced", min_value=0, max_value=24, value=0, step=1)
-
-            submitted = st.form_submit_button("Save Practice Log", type="primary", use_container_width=True)
-
-        if submitted:
-            logs = load_logs()
-            logs.append(
-                {
-                    "date": str(date.today()),
-                    "genre": genre,
-                    "song": song,
-                    "artist": str((song_data or {}).get("artist") or ""),
-                    "instrument": instrument,
-                    "level": level,
-                    "focus": focus,
-                    "mode": mode,
-                    "groove": groove,
-                    "minutes": int(duration_mins),
-                    "time_signature": time_sig,
-                    "section_count": int(section_count),
-                    "practice": practice_text_input,
-                    "rating": rating,
-                }
-            )
-            save_logs(logs)
-            try:
-                from suite_activity_client import record_activity
-
-                local_state = build_music_local_state(st)
-                local_state["mode"] = str(mode)
-                record_activity(
-                    "music",
-                    "practice",
-                    page="Practice Log",
-                    metrics={
-                        "song": song,
-                        "artist": str((song_data or {}).get("artist") or ""),
-                        "minutes": int(duration_mins),
-                        "focus": focus,
-                        "instrument": local_state.get("instrument", ""),
-                        "display_key": local_state.get("display_key", ""),
-                        "practice_focus_section": local_state.get("practice_focus_section", ""),
-                    },
-                    summary=f"Practice {song}",
-                    resume_key=f"song:{st.session_state.get('active_catalog_pick_key', song)}",
-                    resume_title=f"Continue: {song}",
-                    resume_subtitle=focus or instrument,
-                    local_state=local_state,
-                )
-                st.session_state["last_practice_mode"] = str(mode)
-            except Exception:
-                pass
-            st.success("Practice log saved.")
-
-    with st.container(key="log_summary_panel", border=False):
-        st.markdown('<p class="ui-log-section-title">Progress Trends</p>', unsafe_allow_html=True)
-        _df = pd.DataFrame(_sorted_filtered)
-        if not _df.empty:
-            if "_parsed_date" in _df.columns:
-                _df["parsed_date"] = pd.to_datetime(_df["_parsed_date"], errors="coerce")
-            else:
-                _df["parsed_date"] = pd.to_datetime(_df["date"], errors="coerce")
-            _df["minutes"] = pd.to_numeric(_df.get("minutes", 0), errors="coerce").fillna(0).astype(int)
-            _df["song"] = _df.get("song", "").astype(str)
-            _df["mode"] = _df.get("mode", "Song Work").astype(str)
-            _df = _df.dropna(subset=["parsed_date"])
-
+        with st.container(key="log_summary_panel", border=False):
+            st.markdown('<p class="ui-log-section-title">Progress trends</p>', unsafe_allow_html=True)
+            _df = pd.DataFrame(_sorted_filtered)
             if not _df.empty:
-                _weekly = (
-                    _df.assign(period=_df["parsed_date"].dt.to_period("W").dt.start_time)
-                    .groupby("period", as_index=False)["minutes"]
-                    .sum()
-                    .rename(columns={"minutes": "weekly_minutes"})
-                    .sort_values("period")
-                )
-                _monthly = (
-                    _df.assign(period=_df["parsed_date"].dt.to_period("M").dt.start_time)
-                    .groupby("period", as_index=False)["minutes"]
-                    .sum()
-                    .rename(columns={"minutes": "monthly_minutes"})
-                    .sort_values("period")
-                )
-                _songs = (
-                    _df.groupby("song", as_index=False)
-                    .size()
-                    .rename(columns={"size": "sessions"})
-                    .sort_values("sessions", ascending=False)
-                    .head(8)
-                )
-                _modes = (
-                    _df.groupby("mode", as_index=False)
-                    .size()
-                    .rename(columns={"size": "sessions"})
-                    .sort_values("sessions", ascending=False)
-                )
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.caption("Weekly minutes")
-                    st.bar_chart(_weekly.set_index("period"))
-                    st.caption("Top repeated songs")
-                    if not _songs.empty:
-                        st.bar_chart(_songs.set_index("song"))
-                with c2:
-                    st.caption("Monthly minutes")
-                    st.bar_chart(_monthly.set_index("period"))
-                    st.caption("Practice mode mix")
-                    if not _modes.empty:
-                        st.bar_chart(_modes.set_index("mode"))
-        else:
-            st.info("Log your first session to unlock weekly/monthly summaries.")
+                if "_parsed_date" in _df.columns:
+                    _df["parsed_date"] = pd.to_datetime(_df["_parsed_date"], errors="coerce")
+                else:
+                    _df["parsed_date"] = pd.to_datetime(_df["date"], errors="coerce")
+                _df["minutes"] = pd.to_numeric(_df.get("minutes", 0), errors="coerce").fillna(0).astype(int)
+                _df["song"] = _df.get("song", "").astype(str)
+                _df["mode"] = _df.get("mode", "Song Work").astype(str)
+                _df = _df.dropna(subset=["parsed_date"])
 
-    with st.container(key="log_history_panel", border=False):
-        st.markdown('<p class="ui-log-section-title">Session History</p>', unsafe_allow_html=True)
-        st.markdown(
-            '<p class="ui-log-section-sub">Most recent sessions first. Use filters above to focus your review.</p>',
-            unsafe_allow_html=True,
-        )
-        if _sorted_filtered:
-            for _entry in _sorted_filtered[:120]:
-                _render_practice_session_card(_entry)
-        else:
-            st.info("No practice sessions match your current filters.")
+                if not _df.empty:
+                    _weekly = (
+                        _df.assign(period=_df["parsed_date"].dt.to_period("W").dt.start_time)
+                        .groupby("period", as_index=False)["minutes"]
+                        .sum()
+                        .rename(columns={"minutes": "weekly_minutes"})
+                        .sort_values("period")
+                    )
+                    _monthly = (
+                        _df.assign(period=_df["parsed_date"].dt.to_period("M").dt.start_time)
+                        .groupby("period", as_index=False)["minutes"]
+                        .sum()
+                        .rename(columns={"minutes": "monthly_minutes"})
+                        .sort_values("period")
+                    )
+                    _songs = (
+                        _df.groupby("song", as_index=False)
+                        .size()
+                        .rename(columns={"size": "sessions"})
+                        .sort_values("sessions", ascending=False)
+                        .head(8)
+                    )
+                    _modes = (
+                        _df.groupby("mode", as_index=False)
+                        .size()
+                        .rename(columns={"size": "sessions"})
+                        .sort_values("sessions", ascending=False)
+                    )
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.caption("Weekly minutes")
+                        st.bar_chart(_weekly.set_index("period"))
+                        st.caption("Top repeated songs")
+                        if not _songs.empty:
+                            st.bar_chart(_songs.set_index("song"))
+                    with c2:
+                        st.caption("Monthly minutes")
+                        st.bar_chart(_monthly.set_index("period"))
+                        st.caption("Practice mode mix")
+                        if not _modes.empty:
+                            st.bar_chart(_modes.set_index("mode"))
+            else:
+                st.info("Log your first session to unlock weekly/monthly summaries.")
 
-    if st.button("Clear practice log", type="secondary"):
-        save_logs([])
-        st.session_state.pop("practice_log_insights", None)
-        st.success("Practice log cleared.")
+        with st.container(key="log_history_panel", border=False):
+            st.markdown('<p class="ui-log-section-title">Session history</p>', unsafe_allow_html=True)
+            if _sorted_filtered:
+                for _entry in _sorted_filtered[:120]:
+                    _render_practice_session_card(_entry)
+            else:
+                st.info("No practice sessions match your current filters.")
+
+        if st.button("Clear practice log", type="secondary", key="clear_practice_log_btn"):
+            save_logs([])
+            st.session_state.pop("practice_log_coach", None)
+            st.session_state.pop("practice_log_insights", None)
+            st.success("Practice log cleared.")
+            st.rerun()
 
 try:
     from music_persistent_state import autosave_music_state
