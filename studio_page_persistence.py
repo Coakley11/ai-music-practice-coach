@@ -179,6 +179,7 @@ _PAGE_LOCAL_PREFIXES: dict[str, tuple[str, ...]] = {
 _NAV_META_KEYS = frozenset(
     {
         "studio_page",
+        "studio_sidebar_nav_collapsed",
         "studio_nav_back",
         "studio_nav_forward",
         "_studio_nav_from_history",

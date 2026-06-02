@@ -26,7 +26,10 @@ __all__ = [
     "TOP_NAV_ITEMS",
     "STUDIO_PAGE_NAV_KEY",
     "render_sidebar_studio_nav",
+    "render_main_sidebar_nav_expand_chip",
     "render_studio_nav",
+    "SIDEBAR_NAV_COLLAPSED_KEY",
+    "sidebar_nav_is_collapsed",
     "STUDIO_PAGE_META",
     "nav_icon_button_label",
     "nav_compact_button_label",
@@ -154,6 +157,68 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   border: 1px solid rgba(167, 139, 250, 0.28);
   font-size: 0.82rem;
   line-height: 1.4;
+}
+.ui-sb-nav-panel { margin: 0.1rem 0 0.75rem 0; }
+.ui-sb-nav-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin: 0 0 0.35rem 0;
+}
+.ui-sb-nav-panel-header .ui-sb-section {
+  margin: 0 !important;
+  padding-top: 0 !important;
+  border-top: none !important;
+  flex: 1 1 auto;
+}
+.ui-sb-nav-panel[data-collapsed="true"] .ui-sb-nav-wrap { display: none !important; }
+.ui-sb-nav-panel[data-collapsed="false"] .ui-sb-nav-collapsed-rail { display: none !important; }
+.ui-sb-nav-collapsed-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  padding: 0.35rem 0.2rem 0.5rem;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.ui-sb-nav-current-pill {
+  text-align: center;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  padding: 0.25rem 0;
+  opacity: 0.95;
+}
+.ui-sb-nav-collapsed-rail .stButton > button {
+  min-height: 2.35rem !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+}
+.ui-main-nav-expand-chip {
+  position: fixed;
+  left: 0.4rem;
+  top: 3.65rem;
+  z-index: 999;
+  max-width: 5.5rem;
+}
+.ui-main-nav-expand-chip .stButton > button {
+  min-height: 2.1rem !important;
+  padding: 0.35rem 0.55rem !important;
+  font-size: 0.78rem !important;
+  font-weight: 800 !important;
+  border-radius: 0 10px 10px 0 !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.22) !important;
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%) !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(148, 163, 184, 0.45) !important;
+}
+@media (max-width: 1100px) {
+  .ui-main-nav-expand-chip { top: 3.35rem; left: 0.25rem; }
+}
+body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] .ui-sb-section.tone-nav {
+  margin-bottom: 0.15rem !important;
 }
 .ui-sb-nav-wrap {
   margin: 0.25rem 0 0.85rem 0;
@@ -6437,6 +6502,11 @@ def sidebar_studio_page_items(*, ai_enabled: bool) -> list[tuple[str, str]]:
         items.append((OPENAI_PAGE_ID, f"{meta['icon']} {meta['label']}"))
     return items
 STUDIO_PAGE_NAV_KEY = "studio_page_nav"
+SIDEBAR_NAV_COLLAPSED_KEY = "studio_sidebar_nav_collapsed"
+
+
+def sidebar_nav_is_collapsed(session_state: dict) -> bool:
+    return bool(session_state.get(SIDEBAR_NAV_COLLAPSED_KEY, False))
 
 
 def navigate_studio_page(session_state: Any, page_id: str) -> bool:
@@ -6812,10 +6882,56 @@ def render_sidebar_studio_nav(
     rerun_fn: Any,
     ai_enabled: bool = False,
 ) -> str:
-    """Colorful vertical studio navigation in the sidebar."""
+    """Colorful vertical studio navigation in the sidebar (collapsible)."""
     import streamlit as st
 
     current = ensure_studio_page(session_state, default=current_page)
+    collapsed = sidebar_nav_is_collapsed(session_state)
+    collapsed_attr = "true" if collapsed else "false"
+
+    _header = st.sidebar.columns([5, 1])
+    with _header[0]:
+        sidebar_section("Pages", icon="🧭", tone="nav")
+    with _header[1]:
+        _toggle_label = "▶" if collapsed else "◀"
+        _toggle_help = (
+            "Expand page navigation"
+            if collapsed
+            else "Collapse page navigation for more chart and practice space"
+        )
+        if st.button(
+            _toggle_label,
+            key="sidebar_nav_collapse_toggle",
+            help=_toggle_help,
+            use_container_width=True,
+        ):
+            session_state[SIDEBAR_NAV_COLLAPSED_KEY] = not collapsed
+            rerun_fn()
+
+    st.sidebar.markdown(
+        f'<div class="ui-sb-nav-panel" data-collapsed="{collapsed_attr}">',
+        unsafe_allow_html=True,
+    )
+
+    st.sidebar.markdown('<div class="ui-sb-nav-collapsed-rail">', unsafe_allow_html=True)
+    _cur_meta = STUDIO_PAGE_META.get(current, {})
+    _cur_icon = html.escape(str(_cur_meta.get("icon") or "🎵"))
+    st.sidebar.markdown(
+        f'<div class="ui-sb-nav-current-pill" title="{html.escape(_cur_meta.get("label", current))}">'
+        f"{_cur_icon}</div>",
+        unsafe_allow_html=True,
+    )
+    if st.sidebar.button(
+        "☰\nPages",
+        key="sidebar_nav_expand_rail",
+        use_container_width=True,
+        type="secondary",
+        help="Show full page list",
+    ):
+        session_state[SIDEBAR_NAV_COLLAPSED_KEY] = False
+        rerun_fn()
+    st.sidebar.markdown("</div>", unsafe_allow_html=True)
+
     st.sidebar.markdown('<div class="ui-sb-nav-wrap">', unsafe_allow_html=True)
     for page_id, label in sidebar_studio_page_items(ai_enabled=ai_enabled):
         nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
@@ -6834,7 +6950,29 @@ def render_sidebar_studio_nav(
                 rerun_fn()
         st.sidebar.markdown("</div>", unsafe_allow_html=True)
     st.sidebar.markdown("</div>", unsafe_allow_html=True)
+    st.sidebar.markdown("</div>", unsafe_allow_html=True)
     return session_state.get("studio_page", current)
+
+
+def render_main_sidebar_nav_expand_chip(
+    session_state: Any,
+    *,
+    rerun_fn: Any,
+) -> None:
+    """Fixed chip in the main area when sidebar page nav is collapsed."""
+    import streamlit as st
+
+    if not sidebar_nav_is_collapsed(session_state):
+        return
+    st.markdown('<div class="ui-main-nav-expand-chip">', unsafe_allow_html=True)
+    if st.button(
+        "☰ Pages",
+        key="main_sidebar_nav_expand",
+        help="Expand page navigation in the sidebar",
+    ):
+        session_state[SIDEBAR_NAV_COLLAPSED_KEY] = False
+        rerun_fn()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_cross_page_links(

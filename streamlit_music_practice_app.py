@@ -494,6 +494,7 @@ try:
         render_studio_brand_header,
         render_studio_nav,
         render_sidebar_studio_nav,
+        render_main_sidebar_nav_expand_chip,
         ensure_studio_page,
         session_badges,
         sidebar_section,
@@ -8663,7 +8664,6 @@ if _studio_page == "openai" and not _openai_api_key:
     navigate_studio_page(st.session_state, "practice")
     st.rerun()
 
-sidebar_section("Pages", icon="🧭", tone="nav")
 try:
     render_sidebar_studio_nav(
         st.session_state,
@@ -9027,6 +9027,11 @@ _practice_bpm = int(st.session_state.get("backing_track_bpm", _default_song_bpm)
 _practice_groove = str(
     st.session_state.get("practice_groove_style", default_groove_style)
 )
+
+try:
+    render_main_sidebar_nav_expand_chip(st.session_state, rerun_fn=st.rerun)
+except Exception:
+    pass
 
 if st.session_state.get("tutorial_open"):
 
