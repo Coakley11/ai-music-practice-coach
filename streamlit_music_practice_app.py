@@ -8923,11 +8923,19 @@ song_lyrics_key = f"song_lyrics::{song_lyrics_slug}"
 section_lyrics_state_key = f"section_lyrics::{song_lyrics_slug}"
 
 sidebar_section("Optional AI", icon="🔑", tone="ai")
-_openai_api_key = str(st.secrets.get("OPENAI_API_KEY", "") or "").strip()
+from openai_secrets_config import format_openai_secrets_diagnostics, resolve_openai_api_key
+
+_openai_api_key, _openai_secrets_probe = resolve_openai_api_key()
 if _openai_api_key:
     st.sidebar.caption("AI features are configured.")
 else:
     st.sidebar.caption("AI features are not configured yet.")
+    for _diag_line in format_openai_secrets_diagnostics(_openai_secrets_probe):
+        st.sidebar.caption(_diag_line)
+    st.sidebar.caption(
+        "After saving Streamlit Secrets, reboot the app "
+        "(Manage app → Reboot) so the container reloads secrets."
+    )
 
 _render_sidebar_developer_library_panel()
 
