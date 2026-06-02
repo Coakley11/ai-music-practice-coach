@@ -8930,11 +8930,17 @@ if _openai_api_key:
     st.sidebar.caption("AI features are configured.")
 else:
     st.sidebar.caption("AI features are not configured yet.")
+
+with st.sidebar.expander(
+    "AI secrets status (safe diagnostics)",
+    expanded=not bool(_openai_api_key),
+):
     for _diag_line in format_openai_secrets_diagnostics(_openai_secrets_probe):
-        st.sidebar.caption(_diag_line)
-    st.sidebar.caption(
+        st.caption(_diag_line)
+    st.caption(
+        "Deploy branch should be **dev** with code marker **ae48b7e+**. "
         "After saving Streamlit Secrets, reboot the app "
-        "(Manage app → Reboot) so the container reloads secrets."
+        "(Manage app → Reboot)."
     )
 
 _render_sidebar_developer_library_panel()

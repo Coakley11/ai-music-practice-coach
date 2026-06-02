@@ -16,8 +16,14 @@ class _SecretsLike:
     def get(self, name: str, default=None):
         return self._data.get(name, default)
 
+    def keys(self):
+        return self._data.keys()
+
     def __getitem__(self, name: str):
         return self._data[name]
+
+    def __iter__(self):
+        return iter(self._data)
 
 
 class _AttrSecrets:
@@ -78,6 +84,25 @@ def test_diagnostics_never_include_key():
         resolved_source="secrets",
         secrets_error="",
         loader_version=OPENAI_SECRETS_LOADER_VERSION,
+        top_level_secret_key_names=("OPENAI_API_KEY", "suite_activity"),
+        openai_key_name_in_secret_list=True,
     )
     text = "\n".join(format_openai_secrets_diagnostics(probe))
     assert "sk-" not in text
+    assert "OPENAI_API_KEY found = true" in text
+    assert "deploy code marker" in text
+
+
+def test_lists_top_level_key_names_without_values(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    class _St:
+        secrets = _SecretsLike(
+            {"suite_activity": {"x": 1}, "OPENAI_API_KEY": "sk-hidden"}
+        )
+
+    monkeypatch.setitem(__import__("sys").modules, "streamlit", _St)
+    _key, probe = resolve_openai_api_key()
+    assert _key == "sk-hidden"
+    assert "OPENAI_API_KEY" in probe.top_level_secret_key_names
+    assert "sk-hidden" not in format_openai_secrets_diagnostics(probe)
