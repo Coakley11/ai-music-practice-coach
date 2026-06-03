@@ -224,7 +224,7 @@ from guitar_capo import (
 from studio_nav_history import (
     init_nav_history,
     navigate_studio_page,
-    render_sidebar_nav_history,
+    render_floating_nav_history,
 )
 from studio_cache import (
     invalidate_session_cache,
@@ -8622,7 +8622,6 @@ from app_tutorial import (
 
 init_tutorial_state(st.session_state)
 init_nav_history(st.session_state)
-render_sidebar_nav_history(st.sidebar, st.session_state, rerun_fn=st.rerun)
 
 from openai_secrets_config import resolve_openai_api_key
 
@@ -8693,11 +8692,6 @@ try:
     )
 except Exception:
     pass
-if _openai_api_key:
-    st.sidebar.caption("AI features are configured.")
-else:
-    st.sidebar.caption("AI features are not configured yet.")
-
 sidebar_section("Active source", icon="🎼", tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
 _src_kind, _src_detail = unpack_active_source_banner(
@@ -9048,6 +9042,10 @@ _practice_groove = str(
     st.session_state.get("practice_groove_style", default_groove_style)
 )
 
+try:
+    render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
+except Exception:
+    pass
 try:
     render_main_sidebar_nav_expand_chip(st.session_state, rerun_fn=st.rerun)
 except Exception:

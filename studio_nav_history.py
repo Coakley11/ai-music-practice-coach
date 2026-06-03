@@ -118,44 +118,45 @@ def go_forward(session_state: dict) -> bool:
     return True
 
 
+def render_floating_nav_history(
+    st_module: Any,
+    session_state: dict,
+    *,
+    rerun_fn: Callable[[], None],
+) -> None:
+    """Fixed back / forward controls at the left and right edges of the main viewport."""
+    import streamlit as st
+
+    init_nav_history(session_state)
+    back_ok = can_go_back(session_state)
+    fwd_ok = can_go_forward(session_state)
+    if st_module.button(
+        "← Back",
+        key="studio_nav_back_btn",
+        disabled=not back_ok,
+        use_container_width=False,
+        type="secondary",
+        help="Previous page in history",
+    ):
+        if go_back(session_state):
+            rerun_fn()
+    if st_module.button(
+        "Forward →",
+        key="studio_nav_forward_btn",
+        disabled=not fwd_ok,
+        use_container_width=False,
+        type="secondary",
+        help="Next page in history",
+    ):
+        if go_forward(session_state):
+            rerun_fn()
+
+
 def render_sidebar_nav_history(
     sidebar: Any,
     session_state: dict,
     *,
     rerun_fn: Callable[[], None],
 ) -> None:
-    """Compact browser-style back / forward arrows at the top of the sidebar."""
-    import streamlit as st
-
-    init_nav_history(session_state)
-    back_ok = can_go_back(session_state)
-    fwd_ok = can_go_forward(session_state)
-    sidebar.markdown(
-        '<div class="ui-studio-history-nav">'
-        '<span class="ui-sb-nav-label">Navigate</span>'
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    c1, c2 = sidebar.columns([1, 1], gap="small")
-    with c1:
-        if st.button(
-            "←",
-            key="studio_nav_back_btn",
-            disabled=not back_ok,
-            use_container_width=False,
-            type="secondary",
-            help="Previous page in history",
-        ):
-            if go_back(session_state):
-                rerun_fn()
-    with c2:
-        if st.button(
-            "→",
-            key="studio_nav_forward_btn",
-            disabled=not fwd_ok,
-            use_container_width=False,
-            type="secondary",
-            help="Next page in history",
-        ):
-            if go_forward(session_state):
-                rerun_fn()
+    """Deprecated: use ``render_floating_nav_history`` in the main area instead."""
+    render_floating_nav_history(sidebar, session_state, rerun_fn=rerun_fn)

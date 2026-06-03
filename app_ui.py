@@ -1441,77 +1441,97 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 .ui-instrument-strip-icon { font-size: 1.05rem; line-height: 1.2; }
 .ui-instrument-strip-body strong { color: #0f172a; font-weight: 800; }
 .ui-instrument-strip-muted { color: #64748b; }
-.ui-studio-history-nav {
-  margin: 0.05rem 0 0.15rem 0;
-  padding: 0;
-  line-height: 1;
-}
-.ui-sb-nav-label {
-  display: block;
-  font-size: 0.58rem !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.09em !important;
-  text-transform: uppercase !important;
-  color: #94a3b8 !important;
-  margin: 0 0 0.18rem 0 !important;
-  padding: 0 !important;
-  opacity: 0.9;
-}
-/* Compact [←] [→] row directly under the Navigate label */
-[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] {
-  margin-top: -0.1rem !important;
-  margin-bottom: 0.35rem !important;
-}
-[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"] {
-  gap: 0.28rem !important;
+/* Floating back / forward — main viewport edges, vertically centered */
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"],
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] {
+  position: fixed !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  z-index: 850 !important;
   width: auto !important;
-  max-width: 4.6rem !important;
-}
-[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] div[data-testid="column"] {
-  flex: 0 0 auto !important;
-  width: auto !important;
-  min-width: 0 !important;
-}
-[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] .stButton {
+  max-width: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
   margin: 0 !important;
-}
-[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] .stButton > button {
-  min-height: 1.28rem !important;
-  height: 1.28rem !important;
-  width: 2.05rem !important;
-  min-width: 2.05rem !important;
-  max-width: 2.05rem !important;
   padding: 0 !important;
+  overflow: visible !important;
+  pointer-events: none !important;
+  border: none !important;
+  background: transparent !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] {
+  left: max(0.45rem, env(safe-area-inset-left, 0px)) !important;
+  right: auto !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] {
+  right: max(0.45rem, env(safe-area-inset-right, 0px)) !important;
+  left: auto !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton,
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton {
   margin: 0 !important;
-  font-size: 0.88rem !important;
+  pointer-events: auto !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+  min-height: 2.65rem !important;
+  height: auto !important;
+  min-width: 2.65rem !important;
+  padding: 0.4rem 0.65rem !important;
+  margin: 0 !important;
+  font-size: 0.82rem !important;
   font-weight: 700 !important;
-  line-height: 1 !important;
-  border-radius: 6px !important;
-  border: 1px solid rgba(148, 163, 184, 0.35) !important;
-  background: rgba(30, 41, 59, 0.55) !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0.01em !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(148, 163, 184, 0.42) !important;
+  background: rgba(15, 23, 42, 0.52) !important;
   color: #e2e8f0 !important;
-  box-shadow: none !important;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.22) !important;
+  opacity: 0.58 !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: opacity 0.16s ease, background 0.16s ease, border-color 0.16s ease,
+    box-shadow 0.16s ease, transform 0.12s ease !important;
 }
-[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] .stButton > button:hover:not(:disabled) {
-  background: rgba(51, 65, 85, 0.85) !important;
-  border-color: rgba(148, 163, 184, 0.55) !important;
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:hover:not(:disabled),
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:hover:not(:disabled) {
+  opacity: 1 !important;
+  background: rgba(30, 41, 59, 0.92) !important;
+  border-color: rgba(148, 163, 184, 0.62) !important;
   color: #f8fafc !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.32) !important;
+  transform: scale(1.03);
 }
-[data-testid="stSidebar"] .ui-studio-history-nav + div[data-testid="stVerticalBlock"] .stButton > button:disabled {
-  opacity: 0.35 !important;
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:disabled,
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:disabled {
+  opacity: 0.28 !important;
   cursor: default !important;
+  box-shadow: none !important;
+  transform: none !important;
 }
-[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
-[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
-  min-height: 1.28rem !important;
-  height: 1.28rem !important;
-  width: 2.05rem !important;
-  min-width: 2.05rem !important;
-  max-width: 2.05rem !important;
-  padding: 0 !important;
-  font-size: 0.88rem !important;
-  font-weight: 700 !important;
-  border-radius: 6px !important;
+@media (max-width: 640px) {
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+    min-height: 2.85rem !important;
+    min-width: 2.85rem !important;
+    padding: 0.45rem 0.55rem !important;
+    font-size: 1.05rem !important;
+  }
+}
+@media (max-width: 420px) {
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+    font-size: 0 !important;
+  }
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button::after {
+    content: "←" !important;
+    font-size: 1.15rem !important;
+  }
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button::after {
+    content: "→" !important;
+    font-size: 1.15rem !important;
+  }
 }
 .live-player-toolbar {
   display: flex;
