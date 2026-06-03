@@ -198,26 +198,17 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   font-size: 0.72rem !important;
   font-weight: 700 !important;
 }
-.ui-main-nav-expand-chip {
-  position: fixed;
-  left: 0.4rem;
-  top: 3.65rem;
-  z-index: 999;
-  max-width: 5.5rem;
-}
-.ui-main-nav-expand-chip .stButton > button {
-  min-height: 2.1rem !important;
-  padding: 0.35rem 0.55rem !important;
-  font-size: 0.78rem !important;
-  font-weight: 800 !important;
-  border-radius: 0 10px 10px 0 !important;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.22) !important;
-  background: linear-gradient(135deg, #1e293b 0%, #334155 100%) !important;
-  color: #f8fafc !important;
-  border: 1px solid rgba(148, 163, 184, 0.45) !important;
-}
-@media (max-width: 1100px) {
-  .ui-main-nav-expand-chip { top: 3.35rem; left: 0.25rem; }
+/* Main-area ☰ Pages chip removed — Pages menu lives in sidebar only */
+.ui-main-nav-expand-chip,
+section[data-testid="stMain"] [class*="st-key-main_sidebar_nav_expand"] {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] .ui-sb-section.tone-nav {
   margin-bottom: 0.15rem !important;
@@ -1462,15 +1453,13 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border: 1px solid #86efac !important;
   pointer-events: none !important;
 }
-/* Floating back / forward — pinned to main content band (JS sets left/right; see pin script) */
-[class*="st-key-studio_nav_back_btn"],
-[class*="st-key-studio_nav_forward_btn"] {
-  position: fixed !important;
-  top: 50vh !important;
-  transform: translateY(-50%) !important;
-  z-index: 850 !important;
-  width: auto !important;
-  max-width: none !important;
+/* Floating back / forward — main panel only (JS sets --studio-history-* on :root) */
+[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"],
+[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] {
+  display: none !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"],
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] {
   height: 0 !important;
   min-height: 0 !important;
   margin: 0 !important;
@@ -1480,21 +1469,26 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border: none !important;
   background: transparent !important;
 }
-[class*="st-key-studio_nav_back_btn"] {
-  left: var(--studio-history-back-left, 1rem) !important;
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton,
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton {
+  position: fixed !important;
+  top: 50vh !important;
+  transform: translateY(-50%) !important;
+  z-index: 900 !important;
+  margin: 0 !important;
+  width: auto !important;
+  pointer-events: auto !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton {
+  left: var(--studio-history-back-left, 22rem) !important;
   right: auto !important;
 }
-[class*="st-key-studio_nav_forward_btn"] {
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton {
   right: var(--studio-history-fwd-right, 1rem) !important;
   left: auto !important;
 }
-[class*="st-key-studio_nav_back_btn"] .stButton,
-[class*="st-key-studio_nav_forward_btn"] .stButton {
-  margin: 0 !important;
-  pointer-events: auto !important;
-}
-[class*="st-key-studio_nav_back_btn"] .stButton > button,
-[class*="st-key-studio_nav_forward_btn"] .stButton > button {
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
   min-height: 2.65rem !important;
   height: auto !important;
   min-width: 2.65rem !important;
@@ -1515,8 +1509,8 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   transition: opacity 0.16s ease, background 0.16s ease, border-color 0.16s ease,
     box-shadow 0.16s ease, transform 0.12s ease !important;
 }
-[class*="st-key-studio_nav_back_btn"] .stButton > button:hover:not(:disabled),
-[class*="st-key-studio_nav_forward_btn"] .stButton > button:hover:not(:disabled) {
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:hover:not(:disabled),
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:hover:not(:disabled) {
   opacity: 1 !important;
   background: rgba(30, 41, 59, 0.92) !important;
   border-color: rgba(148, 163, 184, 0.62) !important;
@@ -1524,16 +1518,16 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.32) !important;
   transform: scale(1.03);
 }
-[class*="st-key-studio_nav_back_btn"] .stButton > button:disabled,
-[class*="st-key-studio_nav_forward_btn"] .stButton > button:disabled {
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:disabled,
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:disabled {
   opacity: 0.28 !important;
   cursor: default !important;
   box-shadow: none !important;
   transform: none !important;
 }
 @media (max-width: 640px) {
-  [class*="st-key-studio_nav_back_btn"] .stButton > button,
-  [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
     min-height: 2.85rem !important;
     min-width: 2.85rem !important;
     padding: 0.45rem 0.55rem !important;
@@ -1541,15 +1535,15 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   }
 }
 @media (max-width: 420px) {
-  [class*="st-key-studio_nav_back_btn"] .stButton > button,
-  [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
     font-size: 0 !important;
   }
-  [class*="st-key-studio_nav_back_btn"] .stButton > button::after {
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button::after {
     content: "←" !important;
     font-size: 1.15rem !important;
   }
-  [class*="st-key-studio_nav_forward_btn"] .stButton > button::after {
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button::after {
     content: "→" !important;
     font-size: 1.15rem !important;
   }
@@ -2344,30 +2338,24 @@ def _inject_studio_history_nav_pin_script() -> None:
     if (!main) return;
     var rect = main.getBoundingClientRect();
     var midY = window.innerHeight * 0.5;
-    var backLeft = Math.max(8, rect.left + 10);
-    var fwdRight = Math.max(8, window.innerWidth - rect.right + 10);
+    var backLeft = Math.max(12, rect.left + 14);
+    var fwdRight = Math.max(12, window.innerWidth - rect.right + 14);
     document.documentElement.style.setProperty(
       '--studio-history-back-left', backLeft + 'px'
     );
     document.documentElement.style.setProperty(
       '--studio-history-fwd-right', fwdRight + 'px'
     );
-    var base =
+    var btnBase =
       'position:fixed!important;top:' + midY + 'px!important;' +
-      'transform:translateY(-50%)!important;z-index:850!important;' +
-      'height:0!important;min-height:0!important;overflow:visible!important;' +
-      'pointer-events:none!important;margin:0!important;padding:0!important;' +
-      'width:auto!important;border:none!important;background:transparent!important;';
-    document.querySelectorAll('[class*="st-key-studio_nav_back_btn"]').forEach(function (el) {
-      el.style.cssText = base + 'left:' + backLeft + 'px!important;right:auto!important;';
-      var btn = el.querySelector('.stButton');
-      if (btn) btn.style.pointerEvents = 'auto';
+      'transform:translateY(-50%)!important;z-index:900!important;' +
+      'margin:0!important;width:auto!important;pointer-events:auto!important;';
+    main.querySelectorAll('[class*="st-key-studio_nav_back_btn"] .stButton').forEach(function (btn) {
+      btn.style.cssText = btnBase + 'left:' + backLeft + 'px!important;right:auto!important;';
     });
-    document.querySelectorAll('[class*="st-key-studio_nav_forward_btn"]').forEach(function (el) {
-      el.style.cssText =
-        base + 'right:' + fwdRight + 'px!important;left:auto!important;';
-      var btn = el.querySelector('.stButton');
-      if (btn) btn.style.pointerEvents = 'auto';
+    main.querySelectorAll('[class*="st-key-studio_nav_forward_btn"] .stButton').forEach(function (btn) {
+      btn.style.cssText =
+        btnBase + 'right:' + fwdRight + 'px!important;left:auto!important;';
     });
   }
   pinStudioHistoryNav();

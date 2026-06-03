@@ -9069,11 +9069,6 @@ _practice_groove = str(
     st.session_state.get("practice_groove_style", default_groove_style)
 )
 
-try:
-    render_main_sidebar_nav_expand_chip(st.session_state, rerun_fn=st.rerun)
-except Exception:
-    pass
-
 if st.session_state.get("tutorial_open"):
 
     def _tutorial_navigate(page_id: str) -> None:
