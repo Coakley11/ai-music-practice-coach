@@ -19,6 +19,19 @@ def test_sidebar_openai_page_only_when_ai_enabled():
     assert "practice" in without and "practice" in with_ai
 
 
+def test_nav_history_public_exports():
+    import studio_nav_history as mod
+
+    for name in (
+        "init_nav_history",
+        "navigate_studio_page",
+        "render_floating_nav_history",
+        "render_sidebar_nav_history",
+    ):
+        assert hasattr(mod, name), name
+        assert callable(getattr(mod, name))
+
+
 def test_studio_page_order_includes_all_pages():
     expected = {
         "practice",

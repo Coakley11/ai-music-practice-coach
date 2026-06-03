@@ -221,10 +221,14 @@ from guitar_capo import (
     render_guitar_capo_practice_panel,
     render_guitar_capo_sidebar,
 )
-from studio_nav_history import (
-    init_nav_history,
-    navigate_studio_page,
-    render_floating_nav_history,
+import studio_nav_history as _studio_nav_history
+
+init_nav_history = _studio_nav_history.init_nav_history
+navigate_studio_page = _studio_nav_history.navigate_studio_page
+render_floating_nav_history = getattr(
+    _studio_nav_history,
+    "render_floating_nav_history",
+    _studio_nav_history.render_sidebar_nav_history,
 )
 from studio_cache import (
     invalidate_session_cache,

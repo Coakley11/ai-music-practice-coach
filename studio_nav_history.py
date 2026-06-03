@@ -33,6 +33,20 @@ NAV_BACK_STACK = "studio_nav_back"
 NAV_FORWARD_STACK = "studio_nav_forward"
 _NAV_FROM_HISTORY = "_studio_nav_from_history"
 
+__all__ = (
+    "STUDIO_PAGE_IDS",
+    "NAV_BACK_STACK",
+    "NAV_FORWARD_STACK",
+    "init_nav_history",
+    "can_go_back",
+    "can_go_forward",
+    "navigate_studio_page",
+    "go_back",
+    "go_forward",
+    "render_floating_nav_history",
+    "render_sidebar_nav_history",
+)
+
 
 def init_nav_history(session_state: dict) -> None:
     session_state.setdefault(NAV_BACK_STACK, [])
@@ -160,3 +174,7 @@ def render_sidebar_nav_history(
 ) -> None:
     """Deprecated: use ``render_floating_nav_history`` in the main area instead."""
     render_floating_nav_history(sidebar, session_state, rerun_fn=rerun_fn)
+
+
+# Backward-compatible alias if an older deploy imported only this name.
+render_main_nav_history = render_floating_nav_history
