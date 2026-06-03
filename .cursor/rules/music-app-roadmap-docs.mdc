@@ -1,0 +1,37 @@
+---
+description: Keep cursor-prompts roadmap docs updated when planning features
+globs:
+  - cursor-prompts/**/*.md
+  - streamlit_music_practice_app.py
+  - app_ui.py
+alwaysApply: true
+---
+
+# Music app roadmap documentation
+
+When the user asks for a **roadmap**, **feature plan**, **implementation plan**, **future enhancement**, **backlog update**, or **what to build next**:
+
+1. Read and update all four files under `cursor-prompts/`:
+   - `music_app_roadmap.md` (master summary)
+   - `music_app_tasks.md` (active priorities)
+   - `music_app_feature_backlog.md` (queued ideas)
+   - `music_app_completed_features.md` (shipped work)
+
+2. Each file must keep these sections (use `N/A` or pointers if empty):
+   - `# Current Priorities`
+   - `# Next Features`
+   - `# Long-Term Vision`
+   - `# Completed Features`
+   - `# Notes`
+
+3. After implementing a feature, move bullets from tasks/backlog → completed; refresh roadmap status and known bugs.
+
+4. For **long implementation plans**:
+   - Put the full plan in a single markdown code block in the chat response, **and**
+   - Save the same content to `cursor-prompts/plans/YYYY-MM-DD-short-title.md` (create `plans/` if needed), linked from `music_app_tasks.md`.
+
+5. Document these product areas when relevant: Practice, Backing Track Studio, Karaoke, Upload & Multitrack, Song Selection, Active Song Hub, Creative Progressions, Instrument Modes, Written Key Mode, Performance Setlists.
+
+6. Work on branch `dev`; do not update production `main` unless the user explicitly requests a release.
+
+7. Bump **Last updated** dates in edited roadmap files.
