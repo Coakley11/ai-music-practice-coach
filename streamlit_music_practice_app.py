@@ -8631,6 +8631,36 @@ from openai_secrets_config import resolve_openai_api_key
 
 _openai_api_key, _openai_secrets_probe = resolve_openai_api_key()
 
+# Studio page + sidebar Pages nav early so navigation is always available.
+_studio_page = ensure_studio_page(st.session_state)
+try:
+    ensure_sidebar_nav_defaults(st.session_state)
+except Exception:
+    pass
+migrate_legacy_session_keys(st.session_state)
+sanitize_persisted_snapshots(st.session_state)
+handle_studio_page_transition(st.session_state)
+note_page_visit(st.session_state, _studio_page)
+
+if _studio_page == "openai" and not _openai_api_key:
+    navigate_studio_page(st.session_state, "practice")
+    st.rerun()
+
+try:
+    render_sidebar_studio_nav(
+        st.session_state,
+        current_page=_studio_page,
+        rerun_fn=st.rerun,
+        ai_enabled=bool(_openai_api_key),
+    )
+except Exception:
+    pass
+
+try:
+    render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
+except Exception:
+    pass
+
 try:
     from music_persistent_state import autosave_music_state, default_reset_music_session
     from suite_user_persistence import render_reset_controls
@@ -8671,31 +8701,6 @@ def _active_song_artist_label() -> str:
 
 # SIDEBAR
 
-_studio_page = ensure_studio_page(st.session_state)
-
-try:
-    ensure_sidebar_nav_defaults(st.session_state)
-except Exception:
-    pass
-
-migrate_legacy_session_keys(st.session_state)
-sanitize_persisted_snapshots(st.session_state)
-handle_studio_page_transition(st.session_state)
-note_page_visit(st.session_state, _studio_page)
-
-if _studio_page == "openai" and not _openai_api_key:
-    navigate_studio_page(st.session_state, "practice")
-    st.rerun()
-
-try:
-    render_sidebar_studio_nav(
-        st.session_state,
-        current_page=_studio_page,
-        rerun_fn=st.rerun,
-        ai_enabled=bool(_openai_api_key),
-    )
-except Exception:
-    pass
 sidebar_section("Active source", icon="🎼", tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
 _src_kind, _src_detail = unpack_active_source_banner(
@@ -9046,10 +9051,6 @@ _practice_groove = str(
     st.session_state.get("practice_groove_style", default_groove_style)
 )
 
-try:
-    render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
-except Exception:
-    pass
 try:
     render_main_sidebar_nav_expand_chip(st.session_state, rerun_fn=st.rerun)
 except Exception:

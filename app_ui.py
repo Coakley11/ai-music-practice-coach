@@ -1441,11 +1441,11 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 .ui-instrument-strip-icon { font-size: 1.05rem; line-height: 1.2; }
 .ui-instrument-strip-body strong { color: #0f172a; font-weight: 800; }
 .ui-instrument-strip-muted { color: #64748b; }
-/* Floating back / forward — main viewport edges, vertically centered */
-section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"],
-section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] {
+/* Floating back / forward — pinned to main content band (JS sets left/right; see pin script) */
+[class*="st-key-studio_nav_back_btn"],
+[class*="st-key-studio_nav_forward_btn"] {
   position: fixed !important;
-  top: 50% !important;
+  top: 50vh !important;
   transform: translateY(-50%) !important;
   z-index: 850 !important;
   width: auto !important;
@@ -1459,21 +1459,21 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] {
   border: none !important;
   background: transparent !important;
 }
-section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] {
-  left: max(0.45rem, env(safe-area-inset-left, 0px)) !important;
+[class*="st-key-studio_nav_back_btn"] {
+  left: var(--studio-history-back-left, 1rem) !important;
   right: auto !important;
 }
-section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] {
-  right: max(0.45rem, env(safe-area-inset-right, 0px)) !important;
+[class*="st-key-studio_nav_forward_btn"] {
+  right: var(--studio-history-fwd-right, 1rem) !important;
   left: auto !important;
 }
-section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton,
-section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton {
+[class*="st-key-studio_nav_back_btn"] .stButton,
+[class*="st-key-studio_nav_forward_btn"] .stButton {
   margin: 0 !important;
   pointer-events: auto !important;
 }
-section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
-section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+[class*="st-key-studio_nav_back_btn"] .stButton > button,
+[class*="st-key-studio_nav_forward_btn"] .stButton > button {
   min-height: 2.65rem !important;
   height: auto !important;
   min-width: 2.65rem !important;
@@ -1494,8 +1494,8 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   transition: opacity 0.16s ease, background 0.16s ease, border-color 0.16s ease,
     box-shadow 0.16s ease, transform 0.12s ease !important;
 }
-section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:hover:not(:disabled),
-section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:hover:not(:disabled) {
+[class*="st-key-studio_nav_back_btn"] .stButton > button:hover:not(:disabled),
+[class*="st-key-studio_nav_forward_btn"] .stButton > button:hover:not(:disabled) {
   opacity: 1 !important;
   background: rgba(30, 41, 59, 0.92) !important;
   border-color: rgba(148, 163, 184, 0.62) !important;
@@ -1503,16 +1503,16 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.32) !important;
   transform: scale(1.03);
 }
-section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:disabled,
-section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:disabled {
+[class*="st-key-studio_nav_back_btn"] .stButton > button:disabled,
+[class*="st-key-studio_nav_forward_btn"] .stButton > button:disabled {
   opacity: 0.28 !important;
   cursor: default !important;
   box-shadow: none !important;
   transform: none !important;
 }
 @media (max-width: 640px) {
-  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
-  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+  [class*="st-key-studio_nav_back_btn"] .stButton > button,
+  [class*="st-key-studio_nav_forward_btn"] .stButton > button {
     min-height: 2.85rem !important;
     min-width: 2.85rem !important;
     padding: 0.45rem 0.55rem !important;
@@ -1520,15 +1520,15 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   }
 }
 @media (max-width: 420px) {
-  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
-  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+  [class*="st-key-studio_nav_back_btn"] .stButton > button,
+  [class*="st-key-studio_nav_forward_btn"] .stButton > button {
     font-size: 0 !important;
   }
-  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button::after {
+  [class*="st-key-studio_nav_back_btn"] .stButton > button::after {
     content: "←" !important;
     font-size: 1.15rem !important;
   }
-  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button::after {
+  [class*="st-key-studio_nav_forward_btn"] .stButton > button::after {
     content: "→" !important;
     font-size: 1.15rem !important;
   }
@@ -2305,6 +2305,62 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
         unsafe_allow_html=True,
     )
     _inject_app_theme_polish()
+    _inject_studio_history_nav_pin_script()
+
+
+def _inject_studio_history_nav_pin_script() -> None:
+    """Keep back/forward controls fixed at the main area edges while scrolling."""
+    import streamlit as st
+
+    st.markdown(
+        """
+<script>
+(function () {
+  if (window.__studioHistoryNavPinInit) return;
+  window.__studioHistoryNavPinInit = true;
+  function pinStudioHistoryNav() {
+    var main = document.querySelector('section[data-testid="stMain"]');
+    if (!main) return;
+    var rect = main.getBoundingClientRect();
+    var midY = window.innerHeight * 0.5;
+    var backLeft = Math.max(8, rect.left + 10);
+    var fwdRight = Math.max(8, window.innerWidth - rect.right + 10);
+    document.documentElement.style.setProperty(
+      '--studio-history-back-left', backLeft + 'px'
+    );
+    document.documentElement.style.setProperty(
+      '--studio-history-fwd-right', fwdRight + 'px'
+    );
+    var base =
+      'position:fixed!important;top:' + midY + 'px!important;' +
+      'transform:translateY(-50%)!important;z-index:850!important;' +
+      'height:0!important;min-height:0!important;overflow:visible!important;' +
+      'pointer-events:none!important;margin:0!important;padding:0!important;' +
+      'width:auto!important;border:none!important;background:transparent!important;';
+    document.querySelectorAll('[class*="st-key-studio_nav_back_btn"]').forEach(function (el) {
+      el.style.cssText = base + 'left:' + backLeft + 'px!important;right:auto!important;';
+      var btn = el.querySelector('.stButton');
+      if (btn) btn.style.pointerEvents = 'auto';
+    });
+    document.querySelectorAll('[class*="st-key-studio_nav_forward_btn"]').forEach(function (el) {
+      el.style.cssText =
+        base + 'right:' + fwdRight + 'px!important;left:auto!important;';
+      var btn = el.querySelector('.stButton');
+      if (btn) btn.style.pointerEvents = 'auto';
+    });
+  }
+  pinStudioHistoryNav();
+  window.addEventListener('scroll', pinStudioHistoryNav, { passive: true });
+  window.addEventListener('resize', pinStudioHistoryNav);
+  var obs = new MutationObserver(function () {
+    requestAnimationFrame(pinStudioHistoryNav);
+  });
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+})();
+</script>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 _UI_POLISH_VERSION = "v2-2026-05-24"
@@ -6980,7 +7036,7 @@ def render_sidebar_studio_nav(
     with _header[0]:
         sidebar_section("Pages", icon="🧭", tone="nav")
     with _header[1]:
-        if st.button(
+        if st.sidebar.button(
             "◀",
             key="sidebar_nav_collapse_toggle",
             help="Collapse page navigation for more chart and practice space",
