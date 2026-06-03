@@ -50,6 +50,31 @@ Point the **dev** app at branch **`dev`** in the dashboard (**Settings → Gener
 4. **Manual redeploy:** Streamlit Cloud → **Manage app** → **Reboot app** (or delete + redeploy) if pushes do not appear after several minutes.
 5. **Browser:** hard refresh after redeploy; optional private window to avoid cached HTML.
 
+### Exact steps to redeploy the dev app (Streamlit Cloud)
+
+1. Open [share.streamlit.io](https://share.streamlit.io) and sign in.
+2. Select the **development** app (not production if you have two).
+3. **Manage app** (bottom-right) → **Settings** → **General**.
+4. Set **Branch** to `dev` → **Save** (if it was `main`, this alone fixes “unchanged” UI).
+5. **Manage app** → **⋮** menu → **Reboot app** (forces a fresh deploy from the current `dev` tip).
+6. Watch **Activity** / logs until the run finishes (often 1–3 minutes).
+7. Open the app URL → hard refresh (`Ctrl+Shift+R` / `Cmd+Shift+R`).
+8. Confirm **GitHub `dev` tip** matches what you expect:  
+   `git fetch origin dev && git log -1 --oneline origin/dev`  
+   (public API: `https://api.github.com/repos/Coakley11/ai-music-practice-coach/commits/dev`).
+
+**Latest navigation stack on `origin/dev` (as of last doc update):**
+
+| Commit     | Summary                                      |
+|------------|----------------------------------------------|
+| `0698a8c`  | Tip — test fix                               |
+| `205c0b7`  | Deploy marker banner                         |
+| `c28e946`  | Floating nav position + sidebar Pages        |
+| `dcb5ad3`  | Import fix                                   |
+| `5ed9d93`  | Floating page history navigation             |
+
+`origin/main` remains `c86e1e6` — no navigation UI changes there.
+
 ## Merge to production (manual, later)
 
 ```bash
