@@ -28,10 +28,10 @@ def test_nav_history_public_exports():
         "render_floating_nav_history",
         "render_sidebar_nav_history",
         "render_nav_deploy_marker",
-        "NAVIGATION_UI_DEPLOY_MARKER",
     ):
         assert hasattr(mod, name), name
         assert callable(getattr(mod, name))
+    assert getattr(mod, "NAVIGATION_UI_DEPLOY_MARKER", "")
 
 
 def test_studio_page_order_includes_all_pages():
