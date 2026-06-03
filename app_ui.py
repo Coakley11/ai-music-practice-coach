@@ -1441,6 +1441,27 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 .ui-instrument-strip-icon { font-size: 1.05rem; line-height: 1.2; }
 .ui-instrument-strip-body strong { color: #0f172a; font-weight: 800; }
 .ui-instrument-strip-muted { color: #64748b; }
+/* Temporary deploy verification — remove after confirming Streamlit Cloud runs dev */
+.ui-nav-deploy-marker {
+  position: fixed !important;
+  bottom: max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 9600 !important;
+  margin: 0 !important;
+  padding: 0.4rem 0.9rem !important;
+  border-radius: 8px !important;
+  background: #15803d !important;
+  color: #f0fdf4 !important;
+  font-size: 0.78rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.02em !important;
+  line-height: 1.3 !important;
+  text-align: center !important;
+  box-shadow: 0 6px 18px rgba(21, 128, 61, 0.45) !important;
+  border: 1px solid #86efac !important;
+  pointer-events: none !important;
+}
 /* Floating back / forward — pinned to main content band (JS sets left/right; see pin script) */
 [class*="st-key-studio_nav_back_btn"],
 [class*="st-key-studio_nav_forward_btn"] {

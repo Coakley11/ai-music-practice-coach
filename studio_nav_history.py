@@ -33,10 +33,14 @@ NAV_BACK_STACK = "studio_nav_back"
 NAV_FORWARD_STACK = "studio_nav_forward"
 _NAV_FROM_HISTORY = "_studio_nav_from_history"
 
+# Bump when verifying Streamlit Cloud picked up navigation UI changes.
+NAVIGATION_UI_DEPLOY_MARKER = "c28e946+deploy-marker-1"
+
 __all__ = (
     "STUDIO_PAGE_IDS",
     "NAV_BACK_STACK",
     "NAV_FORWARD_STACK",
+    "NAVIGATION_UI_DEPLOY_MARKER",
     "init_nav_history",
     "can_go_back",
     "can_go_forward",
@@ -45,6 +49,7 @@ __all__ = (
     "go_forward",
     "render_floating_nav_history",
     "render_sidebar_nav_history",
+    "render_nav_deploy_marker",
 )
 
 
@@ -130,6 +135,16 @@ def go_forward(session_state: dict) -> bool:
     target = restore_history_entry(session_state, entry)
     session_state["studio_page"] = target
     return True
+
+
+def render_nav_deploy_marker(st_module: Any) -> None:
+    """Temporary visible proof that navigation UI code from ``dev`` is running."""
+    label = f"Navigation UI version {NAVIGATION_UI_DEPLOY_MARKER} loaded"
+    st_module.markdown(
+        f'<p class="ui-nav-deploy-marker" title="Streamlit Cloud branch should be dev">'
+        f"{label}</p>",
+        unsafe_allow_html=True,
+    )
 
 
 def render_floating_nav_history(

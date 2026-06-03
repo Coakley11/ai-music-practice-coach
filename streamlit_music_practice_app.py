@@ -230,6 +230,16 @@ render_floating_nav_history = getattr(
     "render_floating_nav_history",
     _studio_nav_history.render_sidebar_nav_history,
 )
+render_nav_deploy_marker = getattr(
+    _studio_nav_history,
+    "render_nav_deploy_marker",
+    lambda _st: None,
+)
+NAVIGATION_UI_DEPLOY_MARKER = getattr(
+    _studio_nav_history,
+    "NAVIGATION_UI_DEPLOY_MARKER",
+    "unknown",
+)
 from studio_cache import (
     invalidate_session_cache,
     sections_tuple_signature,
@@ -8588,7 +8598,15 @@ inject_app_theme()
 try:
     from app_ui import STUDIO_UI_RELEASE
 
-    st.sidebar.caption(f"Studio UI · `{STUDIO_UI_RELEASE}`")
+    st.sidebar.caption(
+        f"Studio UI · `{STUDIO_UI_RELEASE}`  \n"
+        f"Nav UI · `{NAVIGATION_UI_DEPLOY_MARKER}`"
+    )
+except Exception:
+    pass
+
+try:
+    render_nav_deploy_marker(st)
 except Exception:
     pass
 
