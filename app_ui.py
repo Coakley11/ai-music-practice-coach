@@ -295,16 +295,13 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
 }
 .ui-brand-header {
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px 10px 0 0;
-  padding: 0.28rem 0.65rem 0.26rem 0.65rem;
+  border-radius: 16px 16px 0 0;
+  padding: 0.45rem 0.85rem 0.4rem 0.85rem;
   margin-bottom: 0;
   overflow: visible;
   background: linear-gradient(128deg, #0f172a 0%, #1e3a5f 42%, #312e81 88%);
   color: #f8fafc;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.10);
-}
-.ui-brand-header.ui-brand-header-compact {
-  padding: 0.26rem 0.6rem 0.24rem 0.6rem;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.12);
 }
 .ui-brand-header + .ui-studio-deck {
   border-radius: 0 0 16px 16px;
@@ -313,19 +310,14 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
 }
 .ui-brand-row {
   display: flex;
-  align-items: center;
-  gap: 0.45rem;
+  align-items: flex-start;
+  gap: 0.65rem;
 }
 .ui-brand-icon {
-  font-size: 1.1rem;
+  font-size: 1.55rem;
   line-height: 1;
-  margin-top: 0;
-  flex-shrink: 0;
+  margin-top: 0.12rem;
   filter: drop-shadow(0 2px 8px rgba(147, 197, 253, 0.45));
-}
-.ui-brand-text {
-  min-width: 0;
-  flex: 1 1 auto;
 }
 .ui-brand-note {
   font-size: 1.05em;
@@ -346,21 +338,21 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
   line-height: 1.2;
 }
 .ui-brand-main-title {
-  font-size: 1.02rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-size: 1.48rem;
+  font-weight: 900;
+  letter-spacing: -0.025em;
   color: #f8fafc;
   margin: 0;
   padding: 0;
-  line-height: 1.28;
+  line-height: 1.2;
   overflow: visible;
 }
 .ui-brand-tagline {
-  font-size: 0.68rem;
+  font-size: 0.84rem;
   color: #cbd5e1;
-  margin: 0.08rem 0 0 0;
+  margin: 0.4rem 0 0 0;
   padding: 0;
-  line-height: 1.32;
+  line-height: 1.45;
   max-width: 52rem;
   overflow: visible;
 }
@@ -2316,10 +2308,9 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   display: none;
 }
 @media (max-width: 900px) {
-  .ui-brand-header { border-radius: 8px 8px 0 0; padding: 0.24rem 0.55rem 0.22rem 0.55rem; }
-  .ui-brand-main-title { font-size: 0.94rem; line-height: 1.26; }
-  .ui-brand-tagline { font-size: 0.62rem; margin-top: 0.06rem; }
-  .ui-brand-icon { font-size: 1rem; }
+  .ui-brand-header { border-radius: 12px 12px 0 0; padding: 0.6rem 0.75rem; }
+  .ui-brand-main-title { font-size: 1.12rem; line-height: 1.2; }
+  .ui-brand-tagline { font-size: 0.78rem; }
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
   .ui-studio-nav { padding: 0.4rem 0.45rem; }
@@ -2340,7 +2331,6 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
     )
     _inject_app_theme_polish()
     _inject_page_shell_layout_css()
-    _inject_page_shell_layout_debug()
     _inject_studio_history_nav_pin_script()
 
 
@@ -2366,30 +2356,30 @@ section[data-testid="stMain"] section.main {
   margin-top: 0 !important;
 }
 
-/* ---- Page shell: no outer margin (brand keeps compact padding — do not zero it) ---- */
+/* ---- Page shell: no outer margin; brand keeps normal padding (never zero it) ---- */
 .ui-page-shell-top,
 .ui-page-shell-part {
   margin: 0 !important;
   padding: 0 !important;
 }
-section[data-testid="stMain"] .ui-brand-header,
-section[data-testid="stMain"] .ui-brand-header.ui-brand-header-compact {
-  margin: 0 !important;
-  padding: 0.28rem 0.65rem 0.24rem 0.65rem !important;
+section[data-testid="stMain"] .ui-brand-header {
+  margin-bottom: 0 !important;
   overflow: visible !important;
-  min-height: 0 !important;
   height: auto !important;
   max-height: none !important;
 }
-section[data-testid="stMain"] .ui-brand-main-title,
-section[data-testid="stMain"] .ui-brand-tagline {
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
+section[data-testid="stMain"] .ui-brand-header .ui-brand-main-title,
+section[data-testid="stMain"] .ui-brand-header h1.ui-brand-main-title {
+  margin: 0 !important;
   overflow: visible !important;
-  line-height: 1.28 !important;
+  font-size: 1.48rem !important;
+  line-height: 1.2 !important;
+  font-weight: 900 !important;
 }
 section[data-testid="stMain"] .ui-brand-tagline {
-  line-height: 1.3 !important;
+  margin-top: 0.4rem !important;
+  margin-bottom: 0 !important;
+  overflow: visible !important;
 }
 section[data-testid="stMain"] .ui-page-shell-top .ui-compact-title,
 section[data-testid="stMain"] .ui-compact-title[data-layout-zone="page-title"],
@@ -2400,13 +2390,15 @@ section[data-testid="stMain"] .ui-page-shell-top .ui-compact-sub {
 section[data-testid="stMain"] .ui-page-shell-part .ui-instrument-strip,
 section[data-testid="stMain"] .ui-instrument-strip[data-layout-zone="instrument-strip"] {
   margin-top: 0 !important;
-  margin-bottom: 0.3rem !important;
-  padding-top: 0.25rem !important;
-  padding-bottom: 0.25rem !important;
+  margin-bottom: 0.5rem !important;
+  padding-top: 0.35rem !important;
+  padding-bottom: 0.35rem !important;
 }
-section[data-testid="stMain"] [class*="st-key-main_"][class*="_quick_nav_art_panel"] {
-  margin-top: 0 !important;
-  padding-top: 0 !important;
+section[data-testid="stMain"] [class*="st-key-main_"][class*="_quick_nav_art_panel"],
+section[data-testid="stMain"] [class*="quick_nav_art_panel"] {
+  margin-top: 0.35rem !important;
+  margin-bottom: 0.55rem !important;
+  padding-top: 0.25rem !important;
 }
 
 /* ---- Collapse Streamlit element wrappers in the page-head zone ---- */
@@ -2495,102 +2487,12 @@ section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-brand-h
 }
 
 @media (max-width: 900px) {
-  section[data-testid="stMain"] .ui-brand-header {
-    padding: 0.24rem 0.55rem 0.22rem 0.55rem !important;
-  }
-  section[data-testid="stMain"] .ui-brand-main-title {
-    font-size: 0.94rem !important;
-  }
-  section[data-testid="stMain"] .ui-brand-tagline {
-    font-size: 0.62rem !important;
+  section[data-testid="stMain"] .ui-brand-header .ui-brand-main-title,
+  section[data-testid="stMain"] .ui-brand-header h1.ui-brand-main-title {
+    font-size: 1.12rem !important;
   }
 }
 </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _inject_page_shell_layout_debug() -> None:
-    """Temporary layout debug outlines + measured brand→title gap (remove after verify)."""
-    import streamlit as st
-
-    st.markdown(
-        """
-<style data-ui-page-shell-debug="temp">
-body[data-page-shell-layout-debug="true"] .ui-brand-header[data-layout-zone="brand-header"] {
-  outline: 3px solid #ef4444 !important;
-  outline-offset: 0 !important;
-}
-body[data-page-shell-layout-debug="true"] .ui-page-shell-top[data-layout-zone="page-shell-top"] {
-  outline: 3px solid #3b82f6 !important;
-  outline-offset: 0 !important;
-}
-body[data-page-shell-layout-debug="true"] .ui-compact-title[data-layout-zone="page-title"],
-body[data-page-shell-layout-debug="true"] .ui-page-shell-top .ui-compact-title {
-  outline: 2px dashed #22c55e !important;
-  outline-offset: 1px !important;
-}
-body[data-page-shell-layout-debug="true"] .ui-instrument-strip[data-layout-zone="instrument-strip"] {
-  outline: 2px dotted #a855f7 !important;
-}
-.ui-layout-debug-legend {
-  position: fixed !important;
-  top: max(0.35rem, env(safe-area-inset-top, 0px)) !important;
-  left: 50% !important;
-  transform: translateX(-50%) !important;
-  z-index: 99999 !important;
-  margin: 0 !important;
-  padding: 0.35rem 0.65rem !important;
-  font-size: 0.68rem !important;
-  font-weight: 700 !important;
-  line-height: 1.35 !important;
-  color: #0f172a !important;
-  background: rgba(254, 249, 195, 0.96) !important;
-  border: 1px solid #eab308 !important;
-  border-radius: 8px !important;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18) !important;
-  pointer-events: none !important;
-  white-space: nowrap !important;
-}
-</style>
-<div id="ui-layout-debug-legend" class="ui-layout-debug-legend" aria-hidden="true">
-  Layout debug: red=brand · blue=shell · green=title · <span id="ui-layout-debug-gap">measuring…</span> · <span id="ui-layout-debug-brand-h">brand h</span>
-</div>
-<script>
-(function () {
-  try { document.body.dataset.pageShellLayoutDebug = "true"; } catch (e) {}
-  function measurePageShellGap() {
-    var brand = document.querySelector('.ui-brand-header[data-layout-zone="brand-header"]')
-      || document.querySelector('.ui-brand-header');
-    var title = document.querySelector('.ui-compact-title[data-layout-zone="page-title"]')
-      || document.querySelector('.ui-page-shell-top .ui-compact-title');
-    var gapEl = document.getElementById('ui-layout-debug-gap');
-    var brandHEl = document.getElementById('ui-layout-debug-brand-h');
-    if (!gapEl) return;
-    if (!brand || !title) {
-      gapEl.textContent = 'brand→title: (elements not found)';
-      if (brandHEl) brandHEl.textContent = 'brand h: ?';
-      return;
-    }
-    var px = Math.round(title.getBoundingClientRect().top - brand.getBoundingClientRect().bottom);
-    gapEl.textContent = 'brand→title gap: ' + px + 'px';
-    gapEl.style.color = px <= 2 ? '#15803d' : (px <= 8 ? '#b45309' : '#b91c1c');
-    if (brandHEl) {
-      var bh = Math.round(brand.getBoundingClientRect().height);
-      brandHEl.textContent = 'brand h: ' + bh + 'px';
-      brandHEl.style.color = bh <= 52 ? '#15803d' : (bh <= 72 ? '#b45309' : '#b91c1c');
-    }
-  }
-  measurePageShellGap();
-  window.addEventListener('resize', measurePageShellGap);
-  try {
-    var obs = new MutationObserver(function () { measurePageShellGap(); });
-    obs.observe(document.body, { childList: true, subtree: true });
-  } catch (e) {}
-  setInterval(measurePageShellGap, 1200);
-})();
-</script>
         """,
         unsafe_allow_html=True,
     )
@@ -4536,19 +4438,9 @@ html, body, .block-container, [data-testid="stSidebar"] {
   margin: 0 !important;
   padding: 0 !important;
 }
-section[data-testid="stMain"] .ui-brand-header,
-section[data-testid="stMain"] .ui-brand-header.ui-brand-header-compact {
+section[data-testid="stMain"] .ui-brand-header {
   margin-bottom: 0 !important;
-  padding: 0.28rem 0.65rem 0.24rem 0.65rem !important;
   overflow: visible !important;
-}
-section[data-testid="stMain"] .ui-brand-main-title {
-  font-size: 1.02rem !important;
-  line-height: 1.28 !important;
-}
-section[data-testid="stMain"] .ui-brand-tagline {
-  font-size: 0.68rem !important;
-  margin-top: 0.08rem !important;
 }
 section[data-testid="stMain"] .ui-page-shell-top .ui-compact-title {
   margin-top: 0 !important;
@@ -4574,13 +4466,14 @@ section[data-testid="stMain"] div:has(.ui-brand-header) + div {
   margin-top: 0 !important;
   padding-top: 0 !important;
 }
-section[data-testid="stMain"] [class*="st-key-main_"][class*="_quick_nav_art_panel"] {
-  margin-top: 0 !important;
-  padding-top: 0 !important;
+section[data-testid="stMain"] [class*="st-key-main_"][class*="_quick_nav_art_panel"],
+section[data-testid="stMain"] [class*="quick_nav_art_panel"] {
+  margin-top: 0.35rem !important;
+  margin-bottom: 0.55rem !important;
 }
-/* Tighter vertical rhythm above page titles (phone + laptop) */
+/* Tight gap only between brand and page title; small rhythm below */
 section[data-testid="stMain"] [data-testid="stVerticalBlock"] {
-  gap: 0.25rem !important;
+  gap: 0.2rem !important;
 }
 section[data-testid="stMain"] .ui-compact-title,
 section[data-testid="stMain"] .ui-page-title,
@@ -5928,7 +5821,7 @@ def render_studio_brand_header(
         "improvisation, recording, and instrument-specific coaching."
     ),
 ) -> None:
-    """Compact branded title block — visible above workspace controls."""
+    """Full blue brand banner — page shell renders directly underneath."""
     import streamlit as st
 
     st.markdown(
@@ -6181,7 +6074,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-03-brand-compact-1"
+STUDIO_UI_RELEASE = "2026-06-03-brand-restore-1"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
