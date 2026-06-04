@@ -10,7 +10,6 @@ __all__ = [
     "app_hero",
     "render_studio_brand_header",
     "compact_page_title",
-    "render_page_shell_title_block",
     "ensure_studio_page",
     "navigate_studio_page",
     "follow_along_status_html",
@@ -114,14 +113,10 @@ def inject_app_theme() -> None:
   --studio-soft: #f8fafc;
   --studio-radius: 14px;
 }
-section[data-testid="stMain"] .block-container {
-  padding-top: 0 !important;
+.block-container {
+  padding-top: 0.65rem;
   max-width: 1180px;
   background: linear-gradient(180deg, #fafbff 0%, #ffffff 120px);
-}
-.block-container {
-  padding-top: 0;
-  max-width: 1180px;
 }
 [data-testid="stVerticalBlock"] > div:empty { display: none; }
 header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-filter: blur(8px); }
@@ -296,9 +291,8 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
 .ui-brand-header {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px 16px 0 0;
-  padding: 0.45rem 0.85rem 0.4rem 0.85rem;
+  padding: 0.7rem 1rem 0.65rem 1rem;
   margin-bottom: 0;
-  overflow: visible;
   background: linear-gradient(128deg, #0f172a 0%, #1e3a5f 42%, #312e81 88%);
   color: #f8fafc;
   box-shadow: 0 4px 18px rgba(15, 23, 42, 0.12);
@@ -343,18 +337,14 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
   letter-spacing: -0.025em;
   color: #f8fafc;
   margin: 0;
-  padding: 0;
-  line-height: 1.2;
-  overflow: visible;
+  line-height: 1.15;
 }
 .ui-brand-tagline {
   font-size: 0.84rem;
   color: #cbd5e1;
   margin: 0.4rem 0 0 0;
-  padding: 0;
   line-height: 1.45;
   max-width: 52rem;
-  overflow: visible;
 }
 .ui-ctrl-section {
   border: 1px solid var(--studio-line);
@@ -437,8 +427,8 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
 .ui-page-head {
   border: 1px solid var(--studio-line);
   border-radius: var(--studio-radius);
-  padding: 0.75rem 1rem;
-  margin: 0 0 0.65rem 0;
+  padding: 0.95rem 1.05rem;
+  margin: 0 0 1rem 0;
   background: linear-gradient(180deg, #ffffff, #f8fafc);
 }
 .ui-page-title {
@@ -792,16 +782,16 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border-radius: 10px !important;
 }
 .ui-compact-title {
-  font-size: 1.2rem;
+  font-size: 1.12rem;
   font-weight: 850;
   color: var(--studio-ink);
-  margin: 0 0 0.2rem 0;
-  line-height: 1.2;
+  margin: -0.25rem 0 0.5rem 0;
+  line-height: 1.25;
 }
 .ui-compact-sub {
   color: var(--studio-muted);
   font-size: 0.84rem;
-  margin: 0 0 0.35rem 0;
+  margin: -0.25rem 0 0.65rem 0;
 }
 .ui-section-jump {
   border: 1px solid var(--studio-line);
@@ -1431,8 +1421,8 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   align-items: flex-start;
   gap: 0.55rem;
   border-left: 3px solid #64748b;
-  padding: 0.35rem 0.6rem;
-  margin: 0 0 0.4rem 0;
+  padding: 0.45rem 0.65rem;
+  margin: -0.15rem 0 0.75rem 0;
   background: linear-gradient(90deg, rgba(248, 250, 252, 0.95) 0%, rgba(255, 255, 255, 0) 100%);
   border-radius: 0 10px 10px 0;
   font-size: 0.78rem;
@@ -2309,7 +2299,7 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
 }
 @media (max-width: 900px) {
   .ui-brand-header { border-radius: 12px 12px 0 0; padding: 0.6rem 0.75rem; }
-  .ui-brand-main-title { font-size: 1.12rem; line-height: 1.2; }
+  .ui-brand-main-title { font-size: 1.12rem; }
   .ui-brand-tagline { font-size: 0.78rem; }
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
@@ -2330,172 +2320,7 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
         unsafe_allow_html=True,
     )
     _inject_app_theme_polish()
-    _inject_page_shell_layout_css()
     _inject_studio_history_nav_pin_script()
-
-
-def _inject_page_shell_layout_css() -> None:
-    """Aggressive collapse of Streamlit wrapper gaps between brand header and page shell."""
-    import streamlit as st
-
-    st.markdown(
-        """
-<style data-ui-page-shell-layout="2026-06-03-v2">
-/* ---- Main column: zero top padding ---- */
-section[data-testid="stMain"] .block-container {
-  padding-top: 0 !important;
-  margin-top: 0 !important;
-}
-section[data-testid="stMain"] .main .block-container {
-  padding-top: 0 !important;
-}
-section[data-testid="stMain"] > div,
-section[data-testid="stMain"] [data-testid="stAppViewContainer"],
-section[data-testid="stMain"] section.main {
-  padding-top: 0 !important;
-  margin-top: 0 !important;
-}
-
-/* ---- Page shell: no outer margin; brand keeps normal padding (never zero it) ---- */
-.ui-page-shell-top,
-.ui-page-shell-part {
-  margin: 0 !important;
-  padding: 0 !important;
-}
-section[data-testid="stMain"] .ui-brand-header {
-  margin-bottom: 0 !important;
-  overflow: visible !important;
-  height: auto !important;
-  max-height: none !important;
-}
-section[data-testid="stMain"] .ui-brand-header .ui-brand-main-title,
-section[data-testid="stMain"] .ui-brand-header h1.ui-brand-main-title {
-  margin: 0 !important;
-  overflow: visible !important;
-  font-size: 1.48rem !important;
-  line-height: 1.2 !important;
-  font-weight: 900 !important;
-}
-section[data-testid="stMain"] .ui-brand-tagline {
-  margin-top: 0.4rem !important;
-  margin-bottom: 0 !important;
-  overflow: visible !important;
-}
-section[data-testid="stMain"] .ui-page-shell-top .ui-compact-title,
-section[data-testid="stMain"] .ui-compact-title[data-layout-zone="page-title"],
-section[data-testid="stMain"] .ui-page-shell-top .ui-compact-sub {
-  margin: 0 !important;
-  padding: 0 !important;
-}
-section[data-testid="stMain"] .ui-page-shell-part .ui-instrument-strip,
-section[data-testid="stMain"] .ui-instrument-strip[data-layout-zone="instrument-strip"] {
-  margin-top: 0 !important;
-  margin-bottom: 0.5rem !important;
-  padding-top: 0.35rem !important;
-  padding-bottom: 0.35rem !important;
-}
-section[data-testid="stMain"] [class*="st-key-main_"][class*="_quick_nav_art_panel"],
-section[data-testid="stMain"] [class*="quick_nav_art_panel"] {
-  margin-top: 0.35rem !important;
-  margin-bottom: 0.55rem !important;
-  padding-top: 0.25rem !important;
-}
-
-/* ---- Collapse Streamlit element wrappers in the page-head zone ---- */
-section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-brand-header),
-section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-brand-header) {
-  margin: 0 !important;
-  padding: 0 !important;
-  min-height: auto !important;
-  height: auto !important;
-  max-height: none !important;
-  overflow: visible !important;
-  gap: 0 !important;
-}
-section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-page-shell-top),
-section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-page-shell-top),
-section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-page-shell-part),
-section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-page-shell-part),
-section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-instrument-strip),
-section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-instrument-strip),
-section[data-testid="stMain"] [data-testid="element-container"]:has([class*="st-key-main_"][class*="_quick_nav_art_panel"]),
-section[data-testid="stMain"] [data-testid="stElementContainer"]:has([class*="st-key-main_"][class*="_quick_nav_art_panel"]) {
-  margin: 0 !important;
-  padding: 0 !important;
-  min-height: 0 !important;
-  gap: 0 !important;
-}
-section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-brand-header) {
-  margin: 0 !important;
-  padding: 0 !important;
-  gap: 0 !important;
-  overflow: visible !important;
-  min-height: auto !important;
-  height: auto !important;
-  max-height: none !important;
-}
-section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-page-shell-top),
-section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-page-shell-part),
-section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-instrument-strip) {
-  margin: 0 !important;
-  padding: 0 !important;
-  gap: 0 !important;
-}
-section[data-testid="stMain"] [data-testid="stMarkdownContainer"] p {
-  margin-top: 0 !important;
-}
-section[data-testid="stMain"] [data-testid="stMarkdownContainer"] h1,
-section[data-testid="stMain"] [data-testid="stMarkdownContainer"] h2,
-section[data-testid="stMain"] [data-testid="stMarkdownContainer"] h3 {
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-}
-
-/* ---- Tight vertical stack at top of main (brand → shell → quick nav) ---- */
-section[data-testid="stMain"] .block-container > div > [data-testid="stVerticalBlock"] {
-  gap: 0 !important;
-}
-section[data-testid="stMain"] [data-testid="stVerticalBlock"] {
-  gap: 0 !important;
-}
-section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div {
-  gap: 0 !important;
-}
-section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"] {
-  padding: 0 !important;
-  margin: 0 !important;
-  gap: 0 !important;
-}
-
-/* Hide zero-height script-only blocks above the brand (vocal/karaoke dataset) */
-section[data-testid="stMain"] [data-testid="element-container"]:has(script):not(:has(.ui-brand-header)):not(:has(.ui-page-shell-top)),
-section[data-testid="stMain"] [data-testid="stElementContainer"]:has(script):not(:has(.ui-brand-header)):not(:has(.ui-page-shell-top)) {
-  height: 0 !important;
-  min-height: 0 !important;
-  max-height: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  border: none !important;
-}
-
-/* Adjacent wrapper collapse (brand block → next block) */
-section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-brand-header) + [data-testid="element-container"],
-section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-brand-header) + [data-testid="stElementContainer"] {
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-}
-
-@media (max-width: 900px) {
-  section[data-testid="stMain"] .ui-brand-header .ui-brand-main-title,
-  section[data-testid="stMain"] .ui-brand-header h1.ui-brand-main-title {
-    font-size: 1.12rem !important;
-  }
-}
-</style>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def _inject_studio_history_nav_pin_script() -> None:
@@ -4430,68 +4255,8 @@ html, body, .block-container, [data-testid="stSidebar"] {
   text-rendering: optimizeLegibility;
 }
 .block-container {
-  padding-top: 0.1rem;
+  padding-top: 0.75rem;
   padding-bottom: 2.5rem;
-}
-/* Page shell sits flush under the blue brand header */
-.ui-page-shell-top {
-  margin: 0 !important;
-  padding: 0 !important;
-}
-section[data-testid="stMain"] .ui-brand-header {
-  margin-bottom: 0 !important;
-  overflow: visible !important;
-}
-section[data-testid="stMain"] .ui-page-shell-top .ui-compact-title {
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-}
-section[data-testid="stMain"] .ui-page-shell-top .ui-compact-sub {
-  margin-bottom: 0.3rem !important;
-}
-section[data-testid="stMain"] .ui-page-shell-top .ui-instrument-strip {
-  margin-top: 0 !important;
-  margin-bottom: 0.35rem !important;
-}
-section[data-testid="stMain"] .ui-page-shell-top .ui-quick-nav {
-  margin-top: 0 !important;
-  margin-bottom: 0.45rem !important;
-}
-/* Collapse Streamlit block gap between brand header and page shell */
-section[data-testid="stMain"] div:has(.ui-brand-header) {
-  margin-bottom: 0 !important;
-  padding-bottom: 0 !important;
-}
-section[data-testid="stMain"] div:has(.ui-brand-header) + div {
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-}
-section[data-testid="stMain"] [class*="st-key-main_"][class*="_quick_nav_art_panel"],
-section[data-testid="stMain"] [class*="quick_nav_art_panel"] {
-  margin-top: 0.35rem !important;
-  margin-bottom: 0.55rem !important;
-}
-/* Tight gap only between brand and page title; small rhythm below */
-section[data-testid="stMain"] [data-testid="stVerticalBlock"] {
-  gap: 0.2rem !important;
-}
-section[data-testid="stMain"] .ui-compact-title,
-section[data-testid="stMain"] .ui-page-title,
-section[data-testid="stMain"] .ui-custom-builder-title,
-section[data-testid="stMain"] .ui-upload-studio-title,
-section[data-testid="stMain"] .ui-multitrack-studio-title {
-  margin-top: 0 !important;
-}
-section[data-testid="stMain"] .ui-custom-builder-head,
-section[data-testid="stMain"] .ui-upload-studio-head,
-section[data-testid="stMain"] .ui-multitrack-studio-head {
-  margin-top: 0 !important;
-  margin-bottom: 0.4rem !important;
-  padding-bottom: 0.35rem !important;
-}
-section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"],
-section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] {
-  margin-top: 0 !important;
 }
 .ui-page-title,
 .ui-brand-main-title,
@@ -4691,8 +4456,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 
 /* ---- Page header — calmer top spacing ---- */
 .ui-page-head {
-  padding: 0.7rem 1rem 0.8rem;
-  margin-bottom: 0.6rem;
+  padding: 0.85rem 1.05rem 0.95rem;
   box-shadow: var(--shadow-1);
 }
 .ui-page-title {
@@ -5821,7 +5585,7 @@ def render_studio_brand_header(
         "improvisation, recording, and instrument-specific coaching."
     ),
 ) -> None:
-    """Full blue brand banner — page shell renders directly underneath."""
+    """Compact branded title block — visible above workspace controls."""
     import streamlit as st
 
     st.markdown(
@@ -6074,7 +5838,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-03-brand-restore-1"
+STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v12"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -6955,8 +6719,8 @@ def _quick_nav_artistic_css() -> str:
 
 .st-key-quick_nav_art_panel,
 [class*="st-key-"][class*="quick_nav_art_panel"] {
-  margin: 0.1rem 0 0.35rem !important;
-  padding: 0.2rem 0.4rem 0.22rem !important;
+  margin: 0 0 0.45rem !important;
+  padding: 0.28rem 0.45rem 0.32rem !important;
   border-radius: 10px !important;
   border: 1px solid rgba(15, 23, 42, 0.1) !important;
   background: linear-gradient(180deg, #fffdf9 0%, #ffffff 100%) !important;
@@ -7553,21 +7317,6 @@ def compact_page_title(icon: str, title: str, subtitle: str = "") -> None:
     sub = f'<p class="ui-compact-sub">{html.escape(subtitle)}</p>' if subtitle else ""
     st.markdown(
         f'<p class="ui-compact-title">{html.escape(icon)} {html.escape(title)}</p>{sub}',
-        unsafe_allow_html=True,
-    )
-
-
-def render_page_shell_title_block(icon: str, title: str, subtitle: str = "") -> None:
-    """Single Streamlit widget for page shell title — avoids extra vertical gap from split divs."""
-    import streamlit as st
-
-    sub = (
-        f'<p class="ui-compact-sub">{html.escape(subtitle)}</p>' if subtitle else ""
-    )
-    st.markdown(
-        f'<div class="ui-page-shell-top" data-layout-zone="page-shell-top">'
-        f'<p class="ui-compact-title" data-layout-zone="page-title">'
-        f"{html.escape(icon)} {html.escape(title)}</p>{sub}</div>",
         unsafe_allow_html=True,
     )
 

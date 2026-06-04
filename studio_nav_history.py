@@ -34,7 +34,7 @@ NAV_FORWARD_STACK = "studio_nav_forward"
 _NAV_FROM_HISTORY = "_studio_nav_from_history"
 
 # Bump when verifying Streamlit Cloud picked up navigation UI changes.
-NAVIGATION_UI_DEPLOY_MARKER = "brand-restore-1"
+NAVIGATION_UI_DEPLOY_MARKER = "layout-revert-min-1"
 
 __all__ = (
     "STUDIO_PAGE_IDS",

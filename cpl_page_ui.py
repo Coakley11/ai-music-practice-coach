@@ -167,6 +167,7 @@ def render_custom_progression_lab_page() -> None:
     from progression_helpers import (
         default_active_progression,
         invalidate_backing_cache,
+        render_cpl_page_header,
         session_display_key,
     )
     from jazz_demo_charts import build_demo_progression, demo_presets_for_style
@@ -176,13 +177,16 @@ def render_custom_progression_lab_page() -> None:
         set_custom_source,
     )
 
+    render_cpl_page_header()
     try:
         from app_ui import (
             custom_song_preview_card_html,
             inject_custom_builder_styles,
+            render_custom_builder_panel_header,
         )
     except Exception:
         inject_custom_builder_styles = lambda _st: None  # type: ignore
+        render_custom_builder_panel_header = lambda *_a, **_k: None  # type: ignore
         custom_song_preview_card_html = lambda **_k: ""  # type: ignore
 
     inject_custom_builder_styles(st)
@@ -257,6 +261,7 @@ def render_custom_progression_lab_page() -> None:
         st.rerun()
 
     with st.container(key="custom_song_builder_panel", border=False):
+        render_custom_builder_panel_header(st, working_title=prog_title)
         st.markdown('<div class="cpl-title-panel">', unsafe_allow_html=True)
         info_a, info_b = st.columns([2, 1])
         with info_a:
