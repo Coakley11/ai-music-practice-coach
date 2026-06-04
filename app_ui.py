@@ -4255,12 +4255,48 @@ html, body, .block-container, [data-testid="stSidebar"] {
   text-rendering: optimizeLegibility;
 }
 .block-container {
-  padding-top: 0.25rem;
+  padding-top: 0.1rem;
   padding-bottom: 2.5rem;
+}
+/* Page shell sits flush under the blue brand header */
+.ui-page-shell-top {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+section[data-testid="stMain"] .ui-brand-header {
+  margin-bottom: 0 !important;
+}
+section[data-testid="stMain"] .ui-page-shell-top .ui-compact-title {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+section[data-testid="stMain"] .ui-page-shell-top .ui-compact-sub {
+  margin-bottom: 0.3rem !important;
+}
+section[data-testid="stMain"] .ui-page-shell-top .ui-instrument-strip {
+  margin-top: 0 !important;
+  margin-bottom: 0.35rem !important;
+}
+section[data-testid="stMain"] .ui-page-shell-top .ui-quick-nav {
+  margin-top: 0 !important;
+  margin-bottom: 0.45rem !important;
+}
+/* Collapse Streamlit block gap between brand header and page shell */
+section[data-testid="stMain"] div:has(.ui-brand-header) {
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+section[data-testid="stMain"] div:has(.ui-brand-header) + div {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+section[data-testid="stMain"] [class*="st-key-main_"][class*="_quick_nav_art_panel"] {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
 }
 /* Tighter vertical rhythm above page titles (phone + laptop) */
 section[data-testid="stMain"] [data-testid="stVerticalBlock"] {
-  gap: 0.45rem !important;
+  gap: 0.25rem !important;
 }
 section[data-testid="stMain"] .ui-compact-title,
 section[data-testid="stMain"] .ui-page-title,
@@ -5861,7 +5897,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v12"
+STUDIO_UI_RELEASE = "2026-06-03-page-shell-top-1"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"

@@ -224,7 +224,7 @@ from guitar_capo import (
 from studio_nav_history import (
     init_nav_history,
     navigate_studio_page,
-    render_sidebar_nav_history,
+    render_floating_nav_history,
 )
 from studio_cache import (
     invalidate_session_cache,
@@ -8207,15 +8207,75 @@ def _render_practice_setup_panel(
                 section_focus_after_jump()
 
 
-def _studio_page_header(icon: str, title: str, subtitle: str = "") -> None:
-    """Page title plus subtle instrument-aware context strip."""
-    compact_page_title(icon, title, subtitle)
-    try:
-        from instrument_aware import render_instrument_context_strip
-
-        render_instrument_context_strip(st, instrument, _studio_page)
-    except Exception:
-        pass
+def _page_shell_meta(page_id: str) -> tuple[str, str, str] | None:
+    """Icon, title, subtitle for the active studio page (None = page renders its own head)."""
+    if page_id == "custom":
+        return (
+            "🎹",
+            "Custom Progression",
+            "Build a chord chart, set it as your active song, then open Practice or Backing Track.",
+        )
+    if page_id == "practice":
+        return (
+            "🎯",
+            "Song Practice",
+            "Set up your session below — change key in the sidebar; pick songs on **Song Selection**.",
+        )
+    if page_id == "picker":
+        if km.is_voice_mode(st.session_state):
+            return (
+                "🎤",
+                "Song Selection",
+                "Pick songs in **Active Song**, use **Edit Song Chart** for chords, or build your **Karaoke Performance Setlist** below.",
+            )
+        return (
+            "📚",
+            "Song Selection",
+            "Pick a song in **Active Song**, then use **Edit Song Chart** to fix chords, or open **Practice** / **Backing Track**.",
+        )
+    if page_id == "backing":
+        if km.is_voice_mode(st.session_state):
+            return (
+                "🎤",
+                km.voice_wording("backing_page_title", voice=True),
+                km.voice_wording("backing_page_subtitle", voice=True),
+            )
+        return (
+            "🎧",
+            "Backing Track",
+            "Generate accompaniment matched to your active song — then play along.",
+        )
+    if page_id == "creative":
+        return (
+            "🧠",
+            "Creative Lab",
+            "Harmony, improvisation, and growth tools.",
+        )
+    if page_id == "analysis":
+        return (
+            "🎙️",
+            "Upload Analysis",
+            "Drop a take, get timing and pitch feedback, then jump to practice or multitrack.",
+        )
+    if page_id == "multitrack":
+        return (
+            "🎚️",
+            "Multitrack",
+            "Layer guitar, bass, vocals, and more — mix, monitor, and export.",
+        )
+    if page_id == "openai":
+        return (
+            "✨",
+            "OpenAI Coaching",
+            "AI-powered practice tools for your active song and session history.",
+        )
+    if page_id == "log":
+        return (
+            "📓",
+            "Practice Log",
+            "Log sessions and get specific coaching — what to keep working on next.",
+        )
+    return None
 
 
 def _render_studio_page_shell(
@@ -8224,9 +8284,31 @@ def _render_studio_page_shell(
     title: str,
     subtitle: str = "",
 ) -> str:
-    """Title and context strip first, then quick nav — keeps headings high on the page."""
-    _studio_page_header(icon, title, subtitle)
-    return _render_page_quick_nav(current_page)
+    """Page title, instructions, instrument strip, then quick nav — directly under brand header."""
+    st.markdown('<div class="ui-page-shell-top">', unsafe_allow_html=True)
+    compact_page_title(icon, title, subtitle)
+    try:
+        from instrument_aware import render_instrument_context_strip
+
+        render_instrument_context_strip(
+            st,
+            str(st.session_state.get("instrument", "Piano")),
+            current_page,
+        )
+    except Exception:
+        pass
+    nav_page = _render_page_quick_nav(current_page)
+    st.markdown("</div>", unsafe_allow_html=True)
+    return nav_page
+
+
+def _render_early_page_shell(page_id: str) -> None:
+    """Render page heading block once, immediately below the blue brand header."""
+    meta = _page_shell_meta(page_id)
+    if meta is None:
+        return
+    icon, title, subtitle = meta
+    _render_studio_page_shell(page_id, icon, title, subtitle)
 
 
 def _render_backing_scope_controls(
@@ -8633,11 +8715,22 @@ from app_tutorial import (
 
 init_tutorial_state(st.session_state)
 init_nav_history(st.session_state)
-render_sidebar_nav_history(st.sidebar, st.session_state, rerun_fn=st.rerun)
 
 from openai_secrets_config import resolve_openai_api_key
 
 _openai_api_key, _openai_secrets_probe = resolve_openai_api_key()
+
+_studio_page = ensure_studio_page(st.session_state)
+
+if _studio_page == "openai" and not _openai_api_key:
+    navigate_studio_page(st.session_state, "practice")
+    st.rerun()
+
+_render_early_page_shell(_studio_page)
+try:
+    render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
+except Exception:
+    pass
 
 try:
     from music_persistent_state import autosave_music_state, default_reset_music_session
@@ -8655,9 +8748,9 @@ try:
 except Exception:
     pass
 
-_brand_t1, _brand_t2 = st.columns([5, 1])
-with _brand_t2:
-    if tutorial_entry_visible(st.session_state):
+if tutorial_entry_visible(st.session_state):
+    _brand_t1, _brand_t2 = st.columns([5, 1])
+    with _brand_t2:
         if st.button("📖 Tutorial", key="tutorial_header_btn", use_container_width=True):
             open_tutorial(st.session_state)
             st.rerun()
@@ -8690,10 +8783,6 @@ migrate_legacy_session_keys(st.session_state)
 sanitize_persisted_snapshots(st.session_state)
 handle_studio_page_transition(st.session_state)
 note_page_visit(st.session_state, _studio_page)
-
-if _studio_page == "openai" and not _openai_api_key:
-    navigate_studio_page(st.session_state, "practice")
-    st.rerun()
 
 try:
     render_sidebar_studio_nav(
@@ -9101,13 +9190,6 @@ if _studio_page == "practice":
         inject_studio_ui_release_marker(st, page="practice")
     except Exception:
         pass
-    _render_page_quick_nav("practice")
-
-    _studio_page_header(
-        "🎯",
-        "Song Practice",
-        "Set up your session below — change key in the sidebar; pick songs on **Song Selection**.",
-    )
     _inject_practice_toolkit_styles()
 
     render_scroll_anchor_marker(st, ANCHOR_PRACTICE_COACH)
@@ -9879,21 +9961,6 @@ elif _studio_page == "picker":
         inject_studio_ui_release_marker(st, page="picker")
     except Exception:
         pass
-    if km.is_voice_mode(st.session_state):
-        _render_studio_page_shell(
-            "picker",
-            "🎤",
-            "Song Selection",
-            "Pick songs in **Active Song**, use **Edit Song Chart** for chords, or build your **Karaoke Performance Setlist** below.",
-        )
-    else:
-        _render_studio_page_shell(
-            "picker",
-            "📚",
-            "Song Selection",
-            "Pick a song in **Active Song**, then use **Edit Song Chart** to fix chords, or open **Practice** / **Backing Track**.",
-        )
-
     _render_catalog_song_picker_block(
         show_source_toggle=True,
         filters_in_expander=False,
@@ -10061,8 +10128,6 @@ elif _studio_page == "backing":
 
     ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
-    _render_page_quick_nav("backing")
-
     # === CANONICAL SONG DEFAULTS - single source of truth ===================
     # Runs BEFORE any backing widget renders. When the active song changes,
     # this force-resets BPM, groove, meter, and override flags so the active
@@ -10078,21 +10143,6 @@ elif _studio_page == "backing":
     _synced_bpm = int(_backing_canon["applied_bpm"])
     default_groove_style = str(_backing_canon["applied_groove"])
     _backing_song_just_reset = bool(_backing_canon["did_reset"])
-
-    if km.is_voice_mode(st.session_state):
-        _render_studio_page_shell(
-            "backing",
-            "🎤",
-            km.voice_wording("backing_page_title", voice=True),
-            km.voice_wording("backing_page_subtitle", voice=True),
-        )
-    else:
-        _render_studio_page_shell(
-            "backing",
-            "🎧",
-            "Backing Track",
-            "Generate accompaniment matched to your active song — then play along.",
-        )
 
     # The voice-mode `data-vocal-focus="true"` body attribute is set
     # globally at app init (search for `dataset.vocalFocus` upstream),
@@ -10769,14 +10819,6 @@ elif _studio_page == "analysis":
     _song_artist = _active_song_artist_label()
 
     with st.container(key="upload_studio_panel", border=False):
-        render_upload_studio_panel_header(st, song_title=_song_title, artist=_song_artist)
-        _render_page_quick_nav("analysis")
-        try:
-            from instrument_aware import render_instrument_context_strip
-
-            render_instrument_context_strip(st, instrument, "analysis")
-        except Exception:
-            pass
         st.markdown(
             upload_session_context_html(
                 song_title=_song_title,
@@ -11125,12 +11167,6 @@ elif _studio_page == "creative":
         inject_studio_ui_release_marker(st, page="creative")
     except Exception:
         pass
-    _render_studio_page_shell(
-        "creative",
-        "🧠",
-        "Creative Lab",
-        "Harmony, improvisation, and growth tools.",
-    )
 
     ctx = current_song_context_lab()
 
@@ -11331,15 +11367,6 @@ elif _studio_page == "multitrack":
     ]
 
     with st.container(key="multitrack_studio_panel", border=False):
-        render_multitrack_studio_panel_header(st, song_title=str(song or "Your song"))
-        _render_page_quick_nav("multitrack")
-        try:
-            from instrument_aware import render_instrument_context_strip
-
-            render_instrument_context_strip(st, instrument, "multitrack")
-        except Exception:
-            pass
-
         with st.container(key="multitrack_session_panel", border=False):
             (
                 mt_bpm,
@@ -11591,13 +11618,6 @@ elif _studio_page == "openai":
 
     ensure_page_initialized(st.session_state, "openai")
     note_page_visit(st.session_state, "openai")
-    _render_studio_page_shell(
-        "openai",
-        "✨",
-        "OpenAI Coaching",
-        "AI-powered practice tools for your active song and session history.",
-    )
-
     st.markdown(
         '<div class="ui-card soft" style="margin:0 0 1rem 0;">'
         "<strong>Your AI coach is ready.</strong> "
@@ -11650,12 +11670,6 @@ elif _studio_page == "log":
 
     ensure_page_initialized(st.session_state, "log")
     note_page_visit(st.session_state, "log")
-    _render_studio_page_shell(
-        "log",
-        "📓",
-        "Practice Log",
-        "Log sessions and get specific coaching — what to keep working on next.",
-    )
     _inject_practice_log_studio_styles()
 
     from practice_log_coach import render_practice_log_coach_ui
