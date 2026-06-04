@@ -88,7 +88,8 @@ def render_instrument_context_strip(
     page = _PAGE_HINTS.get(page_id, {})
     lead = page.get("lead", "")
     st.markdown(
-        f'<div class="ui-instrument-strip" style="border-left-color:{html.escape(theme["accent"])};">'
+        f'<div class="ui-instrument-strip" data-layout-zone="instrument-strip" '
+        f'style="border-left-color:{html.escape(theme["accent"])};">'
         f'<span class="ui-instrument-strip-icon">{html.escape(theme["icon"])}</span>'
         f'<span class="ui-instrument-strip-body">'
         f'<strong>{html.escape(theme["label"])}</strong>'

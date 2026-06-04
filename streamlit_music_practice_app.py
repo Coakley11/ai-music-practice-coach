@@ -8285,8 +8285,12 @@ def _render_studio_page_shell(
     subtitle: str = "",
 ) -> str:
     """Page title, instructions, instrument strip, then quick nav — directly under brand header."""
-    st.markdown('<div class="ui-page-shell-top">', unsafe_allow_html=True)
-    compact_page_title(icon, title, subtitle)
+    try:
+        from app_ui import render_page_shell_title_block
+
+        render_page_shell_title_block(icon, title, subtitle)
+    except Exception:
+        compact_page_title(icon, title, subtitle)
     try:
         from instrument_aware import render_instrument_context_strip
 
@@ -8297,9 +8301,7 @@ def _render_studio_page_shell(
         )
     except Exception:
         pass
-    nav_page = _render_page_quick_nav(current_page)
-    st.markdown("</div>", unsafe_allow_html=True)
-    return nav_page
+    return _render_page_quick_nav(current_page)
 
 
 def _render_early_page_shell(page_id: str) -> None:
@@ -8687,23 +8689,6 @@ try:
 except Exception:
     pass
 
-# Voice / Karaoke body class - applied globally so the larger-lyric +
-# vocal-focused CSS in app_ui.py (`[data-vocal-focus="true"]` selectors)
-# is active on every page when the user's instrument is Voice. Set
-# unconditionally on each rerun so toggling instruments instantly flips
-# the styling without a hard page reload.
-st.markdown(
-    f"""
-    <script>
-      try {{
-        document.body.dataset.vocalFocus = "{ 'true' if km.is_voice_mode(st.session_state) else 'false' }";
-        document.body.dataset.karaokeSession = "{ 'true' if (km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)) else 'false' }";
-      }} catch (e) {{}}
-    </script>
-    """,
-    unsafe_allow_html=True,
-)
-
 render_studio_brand_header()
 
 from app_tutorial import (
@@ -8731,6 +8716,19 @@ try:
     render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
 except Exception:
     pass
+
+# Voice / Karaoke body class — after page shell so the script block does not sit between brand and title.
+st.markdown(
+    f"""
+    <script>
+      try {{
+        document.body.dataset.vocalFocus = "{ 'true' if km.is_voice_mode(st.session_state) else 'false' }";
+        document.body.dataset.karaokeSession = "{ 'true' if (km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)) else 'false' }";
+      }} catch (e) {{}}
+    </script>
+    """,
+    unsafe_allow_html=True,
+)
 
 try:
     from music_persistent_state import autosave_music_state, default_reset_music_session

@@ -10,6 +10,7 @@ __all__ = [
     "app_hero",
     "render_studio_brand_header",
     "compact_page_title",
+    "render_page_shell_title_block",
     "ensure_studio_page",
     "navigate_studio_page",
     "follow_along_status_html",
@@ -113,10 +114,14 @@ def inject_app_theme() -> None:
   --studio-soft: #f8fafc;
   --studio-radius: 14px;
 }
-.block-container {
-  padding-top: 0.25rem;
+section[data-testid="stMain"] .block-container {
+  padding-top: 0 !important;
   max-width: 1180px;
   background: linear-gradient(180deg, #fafbff 0%, #ffffff 120px);
+}
+.block-container {
+  padding-top: 0;
+  max-width: 1180px;
 }
 [data-testid="stVerticalBlock"] > div:empty { display: none; }
 header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-filter: blur(8px); }
@@ -2320,7 +2325,222 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
         unsafe_allow_html=True,
     )
     _inject_app_theme_polish()
+    _inject_page_shell_layout_css()
+    _inject_page_shell_layout_debug()
     _inject_studio_history_nav_pin_script()
+
+
+def _inject_page_shell_layout_css() -> None:
+    """Aggressive collapse of Streamlit wrapper gaps between brand header and page shell."""
+    import streamlit as st
+
+    st.markdown(
+        """
+<style data-ui-page-shell-layout="2026-06-03-v2">
+/* ---- Main column: zero top padding ---- */
+section[data-testid="stMain"] .block-container {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+section[data-testid="stMain"] .main .block-container {
+  padding-top: 0 !important;
+}
+section[data-testid="stMain"] > div,
+section[data-testid="stMain"] [data-testid="stAppViewContainer"],
+section[data-testid="stMain"] section.main {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+
+/* ---- Page shell + brand: no outer margin ---- */
+.ui-brand-header,
+.ui-page-shell-top,
+.ui-page-shell-part {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+section[data-testid="stMain"] .ui-brand-header {
+  margin-bottom: 0 !important;
+  padding-bottom: 0.35rem !important;
+}
+section[data-testid="stMain"] .ui-brand-main-title,
+section[data-testid="stMain"] .ui-brand-tagline {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+section[data-testid="stMain"] .ui-page-shell-top .ui-compact-title,
+section[data-testid="stMain"] .ui-compact-title[data-layout-zone="page-title"],
+section[data-testid="stMain"] .ui-page-shell-top .ui-compact-sub {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+section[data-testid="stMain"] .ui-page-shell-part .ui-instrument-strip,
+section[data-testid="stMain"] .ui-instrument-strip[data-layout-zone="instrument-strip"] {
+  margin-top: 0 !important;
+  margin-bottom: 0.3rem !important;
+  padding-top: 0.25rem !important;
+  padding-bottom: 0.25rem !important;
+}
+section[data-testid="stMain"] [class*="st-key-main_"][class*="_quick_nav_art_panel"] {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* ---- Collapse Streamlit element wrappers in the page-head zone ---- */
+section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-brand-header),
+section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-brand-header),
+section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-page-shell-top),
+section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-page-shell-top),
+section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-page-shell-part),
+section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-page-shell-part),
+section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-instrument-strip),
+section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-instrument-strip),
+section[data-testid="stMain"] [data-testid="element-container"]:has([class*="st-key-main_"][class*="_quick_nav_art_panel"]),
+section[data-testid="stMain"] [data-testid="stElementContainer"]:has([class*="st-key-main_"][class*="_quick_nav_art_panel"]) {
+  margin: 0 !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+  gap: 0 !important;
+}
+section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-brand-header),
+section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-page-shell-top),
+section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-page-shell-part),
+section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-instrument-strip) {
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 0 !important;
+}
+section[data-testid="stMain"] [data-testid="stMarkdownContainer"] p {
+  margin-top: 0 !important;
+}
+section[data-testid="stMain"] [data-testid="stMarkdownContainer"] h1,
+section[data-testid="stMain"] [data-testid="stMarkdownContainer"] h2,
+section[data-testid="stMain"] [data-testid="stMarkdownContainer"] h3 {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* ---- Tight vertical stack at top of main (brand → shell → quick nav) ---- */
+section[data-testid="stMain"] .block-container > div > [data-testid="stVerticalBlock"] {
+  gap: 0 !important;
+}
+section[data-testid="stMain"] [data-testid="stVerticalBlock"] {
+  gap: 0 !important;
+}
+section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div {
+  gap: 0 !important;
+}
+section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"] {
+  padding: 0 !important;
+  margin: 0 !important;
+  gap: 0 !important;
+}
+
+/* Hide zero-height script-only blocks above the brand (vocal/karaoke dataset) */
+section[data-testid="stMain"] [data-testid="element-container"]:has(script):not(:has(.ui-brand-header)):not(:has(.ui-page-shell-top)),
+section[data-testid="stMain"] [data-testid="stElementContainer"]:has(script):not(:has(.ui-brand-header)):not(:has(.ui-page-shell-top)) {
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: none !important;
+}
+
+/* Adjacent wrapper collapse (brand block → next block) */
+section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-brand-header) + [data-testid="element-container"],
+section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-brand-header) + [data-testid="stElementContainer"] {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+@media (max-width: 900px) {
+  section[data-testid="stMain"] .ui-brand-header {
+    padding-bottom: 0.3rem !important;
+  }
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _inject_page_shell_layout_debug() -> None:
+    """Temporary layout debug outlines + measured brand→title gap (remove after verify)."""
+    import streamlit as st
+
+    st.markdown(
+        """
+<style data-ui-page-shell-debug="temp">
+body[data-page-shell-layout-debug="true"] .ui-brand-header[data-layout-zone="brand-header"] {
+  outline: 3px solid #ef4444 !important;
+  outline-offset: 0 !important;
+}
+body[data-page-shell-layout-debug="true"] .ui-page-shell-top[data-layout-zone="page-shell-top"] {
+  outline: 3px solid #3b82f6 !important;
+  outline-offset: 0 !important;
+}
+body[data-page-shell-layout-debug="true"] .ui-compact-title[data-layout-zone="page-title"],
+body[data-page-shell-layout-debug="true"] .ui-page-shell-top .ui-compact-title {
+  outline: 2px dashed #22c55e !important;
+  outline-offset: 1px !important;
+}
+body[data-page-shell-layout-debug="true"] .ui-instrument-strip[data-layout-zone="instrument-strip"] {
+  outline: 2px dotted #a855f7 !important;
+}
+.ui-layout-debug-legend {
+  position: fixed !important;
+  top: max(0.35rem, env(safe-area-inset-top, 0px)) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 99999 !important;
+  margin: 0 !important;
+  padding: 0.35rem 0.65rem !important;
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+  line-height: 1.35 !important;
+  color: #0f172a !important;
+  background: rgba(254, 249, 195, 0.96) !important;
+  border: 1px solid #eab308 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18) !important;
+  pointer-events: none !important;
+  white-space: nowrap !important;
+}
+</style>
+<div id="ui-layout-debug-legend" class="ui-layout-debug-legend" aria-hidden="true">
+  Layout debug: red=brand · blue=shell · green=title · purple=strip · <span id="ui-layout-debug-gap">measuring…</span>
+</div>
+<script>
+(function () {
+  try { document.body.dataset.pageShellLayoutDebug = "true"; } catch (e) {}
+  function measurePageShellGap() {
+    var brand = document.querySelector('.ui-brand-header[data-layout-zone="brand-header"]');
+    var title = document.querySelector('.ui-compact-title[data-layout-zone="page-title"]')
+      || document.querySelector('.ui-page-shell-top .ui-compact-title');
+    var gapEl = document.getElementById('ui-layout-debug-gap');
+    if (!gapEl) return;
+    if (!brand || !title) {
+      gapEl.textContent = 'brand→title: (elements not found)';
+      return;
+    }
+    var px = Math.round(title.getBoundingClientRect().top - brand.getBoundingClientRect().bottom);
+    gapEl.textContent = 'brand→title gap: ' + px + 'px';
+    gapEl.style.color = px <= 2 ? '#15803d' : (px <= 8 ? '#b45309' : '#b91c1c');
+  }
+  measurePageShellGap();
+  window.addEventListener('resize', measurePageShellGap);
+  try {
+    var obs = new MutationObserver(function () { measurePageShellGap(); });
+    obs.observe(document.body, { childList: true, subtree: true });
+  } catch (e) {}
+  setInterval(measurePageShellGap, 1200);
+})();
+</script>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _inject_studio_history_nav_pin_script() -> None:
@@ -5897,7 +6117,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-03-page-shell-top-1"
+STUDIO_UI_RELEASE = "2026-06-03-page-shell-top-2"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -7376,6 +7596,21 @@ def compact_page_title(icon: str, title: str, subtitle: str = "") -> None:
     sub = f'<p class="ui-compact-sub">{html.escape(subtitle)}</p>' if subtitle else ""
     st.markdown(
         f'<p class="ui-compact-title">{html.escape(icon)} {html.escape(title)}</p>{sub}',
+        unsafe_allow_html=True,
+    )
+
+
+def render_page_shell_title_block(icon: str, title: str, subtitle: str = "") -> None:
+    """Single Streamlit widget for page shell title — avoids extra vertical gap from split divs."""
+    import streamlit as st
+
+    sub = (
+        f'<p class="ui-compact-sub">{html.escape(subtitle)}</p>' if subtitle else ""
+    )
+    st.markdown(
+        f'<div class="ui-page-shell-top" data-layout-zone="page-shell-top">'
+        f'<p class="ui-compact-title" data-layout-zone="page-title">'
+        f"{html.escape(icon)} {html.escape(title)}</p>{sub}</div>",
         unsafe_allow_html=True,
     )
 
