@@ -177,7 +177,6 @@ def render_custom_progression_lab_page() -> None:
         set_custom_source,
     )
 
-    render_cpl_page_header()
     try:
         from app_ui import (
             custom_song_preview_card_html,
@@ -203,6 +202,11 @@ def render_custom_progression_lab_page() -> None:
     display_key = session_display_key(st.session_state)
     active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
     active = ensure_cpl_editing_in_display_key(st, active, display_key)
+
+    render_custom_builder_panel_header(
+        st, working_title=str(active.get("name") or "My Progression")
+    )
+    render_cpl_page_header()
 
     original_key = written_home_key(active)
     display_label = format_key_label(display_key)
@@ -261,7 +265,6 @@ def render_custom_progression_lab_page() -> None:
         st.rerun()
 
     with st.container(key="custom_song_builder_panel", border=False):
-        render_custom_builder_panel_header(st, working_title=prog_title)
         st.markdown('<div class="cpl-title-panel">', unsafe_allow_html=True)
         info_a, info_b = st.columns([2, 1])
         with info_a:

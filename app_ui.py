@@ -114,7 +114,7 @@ def inject_app_theme() -> None:
   --studio-radius: 14px;
 }
 .block-container {
-  padding-top: 0.65rem;
+  padding-top: 0.25rem;
   max-width: 1180px;
   background: linear-gradient(180deg, #fafbff 0%, #ffffff 120px);
 }
@@ -291,7 +291,7 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
 .ui-brand-header {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px 16px 0 0;
-  padding: 0.7rem 1rem 0.65rem 1rem;
+  padding: 0.45rem 0.85rem 0.4rem 0.85rem;
   margin-bottom: 0;
   background: linear-gradient(128deg, #0f172a 0%, #1e3a5f 42%, #312e81 88%);
   color: #f8fafc;
@@ -427,8 +427,8 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
 .ui-page-head {
   border: 1px solid var(--studio-line);
   border-radius: var(--studio-radius);
-  padding: 0.95rem 1.05rem;
-  margin: 0 0 1rem 0;
+  padding: 0.75rem 1rem;
+  margin: 0 0 0.65rem 0;
   background: linear-gradient(180deg, #ffffff, #f8fafc);
 }
 .ui-page-title {
@@ -782,16 +782,16 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border-radius: 10px !important;
 }
 .ui-compact-title {
-  font-size: 1.12rem;
+  font-size: 1.2rem;
   font-weight: 850;
   color: var(--studio-ink);
-  margin: 0 0 0.5rem 0;
-  line-height: 1.25;
+  margin: 0 0 0.2rem 0;
+  line-height: 1.2;
 }
 .ui-compact-sub {
   color: var(--studio-muted);
   font-size: 0.84rem;
-  margin: -0.25rem 0 0.65rem 0;
+  margin: 0 0 0.35rem 0;
 }
 .ui-section-jump {
   border: 1px solid var(--studio-line);
@@ -1421,8 +1421,8 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   align-items: flex-start;
   gap: 0.55rem;
   border-left: 3px solid #64748b;
-  padding: 0.45rem 0.65rem;
-  margin: -0.15rem 0 0.75rem 0;
+  padding: 0.35rem 0.6rem;
+  margin: 0 0 0.4rem 0;
   background: linear-gradient(90deg, rgba(248, 250, 252, 0.95) 0%, rgba(255, 255, 255, 0) 100%);
   border-radius: 0 10px 10px 0;
   font-size: 0.78rem;
@@ -4255,8 +4255,30 @@ html, body, .block-container, [data-testid="stSidebar"] {
   text-rendering: optimizeLegibility;
 }
 .block-container {
-  padding-top: 0.75rem;
+  padding-top: 0.25rem;
   padding-bottom: 2.5rem;
+}
+/* Tighter vertical rhythm above page titles (phone + laptop) */
+section[data-testid="stMain"] [data-testid="stVerticalBlock"] {
+  gap: 0.45rem !important;
+}
+section[data-testid="stMain"] .ui-compact-title,
+section[data-testid="stMain"] .ui-page-title,
+section[data-testid="stMain"] .ui-custom-builder-title,
+section[data-testid="stMain"] .ui-upload-studio-title,
+section[data-testid="stMain"] .ui-multitrack-studio-title {
+  margin-top: 0 !important;
+}
+section[data-testid="stMain"] .ui-custom-builder-head,
+section[data-testid="stMain"] .ui-upload-studio-head,
+section[data-testid="stMain"] .ui-multitrack-studio-head {
+  margin-top: 0 !important;
+  margin-bottom: 0.4rem !important;
+  padding-bottom: 0.35rem !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"],
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] {
+  margin-top: 0 !important;
 }
 .ui-page-title,
 .ui-brand-main-title,
@@ -4456,7 +4478,8 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 
 /* ---- Page header — calmer top spacing ---- */
 .ui-page-head {
-  padding: 0.85rem 1.05rem 0.95rem;
+  padding: 0.7rem 1rem 0.8rem;
+  margin-bottom: 0.6rem;
   box-shadow: var(--shadow-1);
 }
 .ui-page-title {
@@ -6719,8 +6742,8 @@ def _quick_nav_artistic_css() -> str:
 
 .st-key-quick_nav_art_panel,
 [class*="st-key-"][class*="quick_nav_art_panel"] {
-  margin: 0 0 0.45rem !important;
-  padding: 0.28rem 0.45rem 0.32rem !important;
+  margin: 0.1rem 0 0.35rem !important;
+  padding: 0.2rem 0.4rem 0.22rem !important;
   border-radius: 10px !important;
   border: 1px solid rgba(15, 23, 42, 0.1) !important;
   background: linear-gradient(180deg, #fffdf9 0%, #ffffff 100%) !important;

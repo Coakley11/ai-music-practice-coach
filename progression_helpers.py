@@ -42,9 +42,10 @@ def session_focus(session_state: dict[str, Any]) -> str:
 
 
 def render_cpl_page_header() -> None:
+    """Quick nav + instrument strip below the Custom Progression title."""
     import streamlit as st
 
-    from app_ui import compact_page_title, render_page_quick_nav
+    from app_ui import render_page_quick_nav
 
     render_page_quick_nav(
         st.session_state,
