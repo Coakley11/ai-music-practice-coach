@@ -295,12 +295,16 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
 }
 .ui-brand-header {
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 16px 16px 0 0;
-  padding: 0.45rem 0.85rem 0.4rem 0.85rem;
+  border-radius: 10px 10px 0 0;
+  padding: 0.28rem 0.65rem 0.26rem 0.65rem;
   margin-bottom: 0;
+  overflow: visible;
   background: linear-gradient(128deg, #0f172a 0%, #1e3a5f 42%, #312e81 88%);
   color: #f8fafc;
-  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.10);
+}
+.ui-brand-header.ui-brand-header-compact {
+  padding: 0.26rem 0.6rem 0.24rem 0.6rem;
 }
 .ui-brand-header + .ui-studio-deck {
   border-radius: 0 0 16px 16px;
@@ -309,14 +313,19 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
 }
 .ui-brand-row {
   display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
+  align-items: center;
+  gap: 0.45rem;
 }
 .ui-brand-icon {
-  font-size: 1.55rem;
+  font-size: 1.1rem;
   line-height: 1;
-  margin-top: 0.12rem;
+  margin-top: 0;
+  flex-shrink: 0;
   filter: drop-shadow(0 2px 8px rgba(147, 197, 253, 0.45));
+}
+.ui-brand-text {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .ui-brand-note {
   font-size: 1.05em;
@@ -337,19 +346,23 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
   line-height: 1.2;
 }
 .ui-brand-main-title {
-  font-size: 1.48rem;
-  font-weight: 900;
-  letter-spacing: -0.025em;
+  font-size: 1.02rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   color: #f8fafc;
   margin: 0;
-  line-height: 1.15;
+  padding: 0;
+  line-height: 1.28;
+  overflow: visible;
 }
 .ui-brand-tagline {
-  font-size: 0.84rem;
+  font-size: 0.68rem;
   color: #cbd5e1;
-  margin: 0.4rem 0 0 0;
-  line-height: 1.45;
+  margin: 0.08rem 0 0 0;
+  padding: 0;
+  line-height: 1.32;
   max-width: 52rem;
+  overflow: visible;
 }
 .ui-ctrl-section {
   border: 1px solid var(--studio-line);
@@ -2303,9 +2316,10 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   display: none;
 }
 @media (max-width: 900px) {
-  .ui-brand-header { border-radius: 12px 12px 0 0; padding: 0.6rem 0.75rem; }
-  .ui-brand-main-title { font-size: 1.12rem; }
-  .ui-brand-tagline { font-size: 0.78rem; }
+  .ui-brand-header { border-radius: 8px 8px 0 0; padding: 0.24rem 0.55rem 0.22rem 0.55rem; }
+  .ui-brand-main-title { font-size: 0.94rem; line-height: 1.26; }
+  .ui-brand-tagline { font-size: 0.62rem; margin-top: 0.06rem; }
+  .ui-brand-icon { font-size: 1rem; }
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
   .ui-studio-nav { padding: 0.4rem 0.45rem; }
@@ -2352,21 +2366,30 @@ section[data-testid="stMain"] section.main {
   margin-top: 0 !important;
 }
 
-/* ---- Page shell + brand: no outer margin ---- */
-.ui-brand-header,
+/* ---- Page shell: no outer margin (brand keeps compact padding — do not zero it) ---- */
 .ui-page-shell-top,
 .ui-page-shell-part {
   margin: 0 !important;
   padding: 0 !important;
 }
-section[data-testid="stMain"] .ui-brand-header {
-  margin-bottom: 0 !important;
-  padding-bottom: 0.35rem !important;
+section[data-testid="stMain"] .ui-brand-header,
+section[data-testid="stMain"] .ui-brand-header.ui-brand-header-compact {
+  margin: 0 !important;
+  padding: 0.28rem 0.65rem 0.24rem 0.65rem !important;
+  overflow: visible !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
 }
 section[data-testid="stMain"] .ui-brand-main-title,
 section[data-testid="stMain"] .ui-brand-tagline {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
+  overflow: visible !important;
+  line-height: 1.28 !important;
+}
+section[data-testid="stMain"] .ui-brand-tagline {
+  line-height: 1.3 !important;
 }
 section[data-testid="stMain"] .ui-page-shell-top .ui-compact-title,
 section[data-testid="stMain"] .ui-compact-title[data-layout-zone="page-title"],
@@ -2388,7 +2411,15 @@ section[data-testid="stMain"] [class*="st-key-main_"][class*="_quick_nav_art_pan
 
 /* ---- Collapse Streamlit element wrappers in the page-head zone ---- */
 section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-brand-header),
-section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-brand-header),
+section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-brand-header) {
+  margin: 0 !important;
+  padding: 0 !important;
+  min-height: auto !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  gap: 0 !important;
+}
 section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-page-shell-top),
 section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-page-shell-top),
 section[data-testid="stMain"] [data-testid="element-container"]:has(.ui-page-shell-part),
@@ -2402,7 +2433,15 @@ section[data-testid="stMain"] [data-testid="stElementContainer"]:has([class*="st
   min-height: 0 !important;
   gap: 0 !important;
 }
-section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-brand-header),
+section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-brand-header) {
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  overflow: visible !important;
+  min-height: auto !important;
+  height: auto !important;
+  max-height: none !important;
+}
 section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-page-shell-top),
 section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-page-shell-part),
 section[data-testid="stMain"] [data-testid="stMarkdownContainer"]:has(.ui-instrument-strip) {
@@ -2457,7 +2496,13 @@ section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.ui-brand-h
 
 @media (max-width: 900px) {
   section[data-testid="stMain"] .ui-brand-header {
-    padding-bottom: 0.3rem !important;
+    padding: 0.24rem 0.55rem 0.22rem 0.55rem !important;
+  }
+  section[data-testid="stMain"] .ui-brand-main-title {
+    font-size: 0.94rem !important;
+  }
+  section[data-testid="stMain"] .ui-brand-tagline {
+    font-size: 0.62rem !important;
   }
 }
 </style>
@@ -2510,24 +2555,32 @@ body[data-page-shell-layout-debug="true"] .ui-instrument-strip[data-layout-zone=
 }
 </style>
 <div id="ui-layout-debug-legend" class="ui-layout-debug-legend" aria-hidden="true">
-  Layout debug: red=brand · blue=shell · green=title · purple=strip · <span id="ui-layout-debug-gap">measuring…</span>
+  Layout debug: red=brand · blue=shell · green=title · <span id="ui-layout-debug-gap">measuring…</span> · <span id="ui-layout-debug-brand-h">brand h</span>
 </div>
 <script>
 (function () {
   try { document.body.dataset.pageShellLayoutDebug = "true"; } catch (e) {}
   function measurePageShellGap() {
-    var brand = document.querySelector('.ui-brand-header[data-layout-zone="brand-header"]');
+    var brand = document.querySelector('.ui-brand-header[data-layout-zone="brand-header"]')
+      || document.querySelector('.ui-brand-header');
     var title = document.querySelector('.ui-compact-title[data-layout-zone="page-title"]')
       || document.querySelector('.ui-page-shell-top .ui-compact-title');
     var gapEl = document.getElementById('ui-layout-debug-gap');
+    var brandHEl = document.getElementById('ui-layout-debug-brand-h');
     if (!gapEl) return;
     if (!brand || !title) {
       gapEl.textContent = 'brand→title: (elements not found)';
+      if (brandHEl) brandHEl.textContent = 'brand h: ?';
       return;
     }
     var px = Math.round(title.getBoundingClientRect().top - brand.getBoundingClientRect().bottom);
     gapEl.textContent = 'brand→title gap: ' + px + 'px';
     gapEl.style.color = px <= 2 ? '#15803d' : (px <= 8 ? '#b45309' : '#b91c1c');
+    if (brandHEl) {
+      var bh = Math.round(brand.getBoundingClientRect().height);
+      brandHEl.textContent = 'brand h: ' + bh + 'px';
+      brandHEl.style.color = bh <= 52 ? '#15803d' : (bh <= 72 ? '#b45309' : '#b91c1c');
+    }
   }
   measurePageShellGap();
   window.addEventListener('resize', measurePageShellGap);
@@ -4483,8 +4536,19 @@ html, body, .block-container, [data-testid="stSidebar"] {
   margin: 0 !important;
   padding: 0 !important;
 }
-section[data-testid="stMain"] .ui-brand-header {
+section[data-testid="stMain"] .ui-brand-header,
+section[data-testid="stMain"] .ui-brand-header.ui-brand-header-compact {
   margin-bottom: 0 !important;
+  padding: 0.28rem 0.65rem 0.24rem 0.65rem !important;
+  overflow: visible !important;
+}
+section[data-testid="stMain"] .ui-brand-main-title {
+  font-size: 1.02rem !important;
+  line-height: 1.28 !important;
+}
+section[data-testid="stMain"] .ui-brand-tagline {
+  font-size: 0.68rem !important;
+  margin-top: 0.08rem !important;
 }
 section[data-testid="stMain"] .ui-page-shell-top .ui-compact-title {
   margin-top: 0 !important;
@@ -6117,7 +6181,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-03-page-shell-top-2"
+STUDIO_UI_RELEASE = "2026-06-03-brand-compact-1"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
