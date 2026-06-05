@@ -13,6 +13,10 @@ __all__ = (
     "is_screenshot_mode",
     "is_demo_mode",
     "is_capture_mode",
+    "skip_heavy_work",
+    "prefer_cached_demo",
+    "skip_api_refresh",
+    "skip_background_persistence",
     "show_quick_nav",
     "show_tutorial_entry",
     "show_developer_sidebar",
@@ -41,6 +45,22 @@ def is_demo_mode(st) -> bool:
 def is_capture_mode(st) -> bool:
     """Screenshot or demo — portfolio presentation layout."""
     return is_screenshot_mode(st) or is_demo_mode(st)
+
+
+def skip_heavy_work(st) -> bool:
+    return is_capture_mode(st)
+
+
+def prefer_cached_demo(st) -> bool:
+    return is_capture_mode(st)
+
+
+def skip_api_refresh(st) -> bool:
+    return is_capture_mode(st)
+
+
+def skip_background_persistence(st) -> bool:
+    return is_capture_mode(st)
 
 
 def show_quick_nav(st) -> bool:
@@ -82,6 +102,8 @@ def render_sidebar_toggle(st) -> None:
         st.sidebar.caption("Screenshot mode — layout optimized for captures")
     if is_demo_mode(st):
         st.sidebar.caption("Demo mode — curated portfolio examples active")
+    if is_capture_mode(st):
+        st.sidebar.caption("Capture perf — cached audio/charts, minimal reruns")
 
 
 def inject_polish_css(st, *, app_slug: str = "app") -> None:

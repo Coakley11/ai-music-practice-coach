@@ -10405,27 +10405,28 @@ elif _studio_page == "backing":
         active_song_title=str(song_data.get("title") or song),
         on_open_editor=_open_lyrics_editor_from_backing,
     )
-    render_backing_defaults_debug(
-        st,
-        song_bpm=_default_bpm,
-        applied_bpm=_synced_bpm,
-        song_groove=_default_groove,
-        applied_groove=default_groove_style,
-        song_meter=_default_meter,
-        applied_meter=_applied_meter_pre,
-        meter_override=_meter_override_pre,
-        developer_mode=_developer_mode_enabled(),
-    )
-    render_backing_generation_debug(
-        st,
-        profile=st.session_state.get("_backing_last_gen_profile"),
-        developer_mode=_developer_mode_enabled(),
-    )
+    if pp.show_developer_sidebar(st):
+        render_backing_defaults_debug(
+            st,
+            song_bpm=_default_bpm,
+            applied_bpm=_synced_bpm,
+            song_groove=_default_groove,
+            applied_groove=default_groove_style,
+            song_meter=_default_meter,
+            applied_meter=_applied_meter_pre,
+            meter_override=_meter_override_pre,
+            developer_mode=_developer_mode_enabled(),
+        )
+        render_backing_generation_debug(
+            st,
+            profile=st.session_state.get("_backing_last_gen_profile"),
+            developer_mode=_developer_mode_enabled(),
+        )
 
     if _capo_ctx.enabled and instrument == "Guitar":
         st.markdown(capo_status_banner_html(_capo_ctx), unsafe_allow_html=True)
 
-    if key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN):
+    if not pp.skip_heavy_work(st) and (key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN)):
         _regen_reasons = []
         if st.session_state.get(BACKING_METER_OVERRIDE_KEY):
             _regen_reasons.append(
@@ -12069,9 +12070,10 @@ elif _studio_page == "log":
             st.success("Practice log cleared.")
             st.rerun()
 
-try:
-    from music_persistent_state import autosave_music_state
+if not pp.skip_background_persistence(st):
+    try:
+        from music_persistent_state import autosave_music_state
 
-    autosave_music_state(st)
-except Exception:
-    pass
+        autosave_music_state(st)
+    except Exception:
+        pass

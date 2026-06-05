@@ -23,12 +23,16 @@ _REQUIRED_PORTFOLIO_POLISH_SYMBOLS = frozenset({
     "is_demo_mode",
     "is_screenshot_mode",
     "mark_demo_applied",
+    "prefer_cached_demo",
     "render_executive_summary",
     "render_hero_banner",
     "render_sidebar_toggle",
     "show_developer_sidebar",
     "show_quick_nav",
     "show_tutorial_entry",
+    "skip_api_refresh",
+    "skip_background_persistence",
+    "skip_heavy_work",
 })
 
 
@@ -55,6 +59,8 @@ def test_capture_mode_helpers():
     assert not show_quick_nav(st)
     assert not show_tutorial_entry(st)
     assert not show_developer_sidebar(st)
+    assert pp.skip_heavy_work(st)
+    assert pp.skip_background_persistence(st)
 
 
 def test_tutorial_and_quick_nav_enabled_in_normal_mode():
