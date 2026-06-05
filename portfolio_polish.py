@@ -7,6 +7,28 @@ import html
 SESSION_KEY = "portfolio_screenshot_mode"
 DEMO_SESSION_KEY = "portfolio_demo_mode"
 
+__all__ = (
+    "SESSION_KEY",
+    "DEMO_SESSION_KEY",
+    "is_screenshot_mode",
+    "is_demo_mode",
+    "is_capture_mode",
+    "show_quick_nav",
+    "show_tutorial_entry",
+    "show_developer_sidebar",
+    "render_sidebar_toggle",
+    "inject_polish_css",
+    "render_executive_summary",
+    "render_hero_banner",
+    "render_professional_empty",
+    "instructional_caption",
+    "expander_default",
+    "feature_expander_default",
+    "chart_default_visible",
+    "demo_applied",
+    "mark_demo_applied",
+)
+
 
 def is_screenshot_mode(st) -> bool:
     return bool(st.session_state.get(SESSION_KEY, False))

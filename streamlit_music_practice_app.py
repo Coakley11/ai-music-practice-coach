@@ -8005,6 +8005,8 @@ def _render_catalog_song_picker_block(
 
 def _render_page_quick_nav(current_page: str) -> str:
     """Top-of-page navigation bar."""
+    if not pp.show_quick_nav(st):
+        return current_page
     return render_page_quick_nav(
         st.session_state,
         current_page=current_page,
