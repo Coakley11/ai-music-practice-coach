@@ -8665,6 +8665,13 @@ if _studio_page == "openai" and not _openai_api_key:
     st.rerun()
 
 try:
+    from suite_command_center_link import render_command_center_sidebar_link
+
+    render_command_center_sidebar_link(st)
+except Exception:
+    pass
+
+try:
     render_sidebar_studio_nav(
         st.session_state,
         current_page=_studio_page,
