@@ -137,8 +137,10 @@ def go_forward(session_state: dict) -> bool:
     return True
 
 
-def render_nav_deploy_marker(st_module: Any) -> None:
-    """Temporary visible proof that navigation UI code from ``dev`` is running."""
+def render_nav_deploy_marker(st_module: Any, *, developer_mode: bool = False) -> None:
+    """Dev-only deploy marker — hidden from normal use and portfolio screenshots."""
+    if not developer_mode:
+        return
     label = f"Navigation UI version {NAVIGATION_UI_DEPLOY_MARKER} loaded"
     st_module.markdown(
         f'<p class="ui-nav-deploy-marker" title="Streamlit Cloud branch should be dev">'

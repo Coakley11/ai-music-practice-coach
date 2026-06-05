@@ -7163,14 +7163,9 @@ def _render_backing_defaults_verification_pill(
     meter_override: bool,
     did_reset: bool,
 ) -> None:
-    """Temporary debug pill - verifies song-card defaults match playback engine.
-
-    Renders a single inline pill near the top of the Backing page so the user
-    can confirm that the same BPM / groove / meter that the active song card
-    displays is the value the playback engine actually consumes. The pill goes
-    green when everything matches and amber when the user has overridden one
-    of the defaults.
-    """
+    """Temporary debug pill - verifies song-card defaults match playback engine."""
+    if not _developer_mode_enabled():
+        return
     bpm_match = int(song_card_bpm) == int(applied_bpm)
     groove_match = (
         normalize_groove_label(song_card_groove)
@@ -7218,6 +7213,8 @@ def _render_backing_defaults_verification_pill(
 
 
 def _render_v2_chart_debug_pill(rec: dict) -> None:
+    if not _developer_mode_enabled():
+        return
     title = str(rec.get("title") or "")
     artist = str(rec.get("artist") or "")
     label = _DEBUG_V2_CHART_TITLES.get((title, artist))
@@ -8604,20 +8601,21 @@ def _render_backing_step2_playback_action(
 # -------------------------------------------------
 
 inject_app_theme()
-try:
-    from app_ui import STUDIO_UI_RELEASE
+if _developer_mode_enabled():
+    try:
+        from app_ui import STUDIO_UI_RELEASE
 
-    st.sidebar.caption(
-        f"Studio UI · `{STUDIO_UI_RELEASE}`  \n"
-        f"Nav UI · `{NAVIGATION_UI_DEPLOY_MARKER}`"
-    )
-except Exception:
-    pass
+        st.sidebar.caption(
+            f"Studio UI · `{STUDIO_UI_RELEASE}`  \n"
+            f"Nav UI · `{NAVIGATION_UI_DEPLOY_MARKER}`"
+        )
+    except Exception:
+        pass
 
-try:
-    render_nav_deploy_marker(st)
-except Exception:
-    pass
+    try:
+        render_nav_deploy_marker(st, developer_mode=True)
+    except Exception:
+        pass
 
 try:
     ensure_sidebar_nav_defaults(st.session_state)
@@ -8713,7 +8711,7 @@ try:
 except Exception:
     pass
 
-if tutorial_entry_visible(st.session_state):
+if pp.show_tutorial_entry(st) and tutorial_entry_visible(st.session_state):
     _brand_t1, _brand_t2 = st.columns([5, 1])
     with _brand_t2:
         if st.button("📖 Tutorial", key="tutorial_header_btn", use_container_width=True):
@@ -9061,7 +9059,8 @@ song_lyrics_slug = _song_slug(
 song_lyrics_key = f"song_lyrics::{song_lyrics_slug}"
 section_lyrics_state_key = f"section_lyrics::{song_lyrics_slug}"
 
-_render_sidebar_developer_library_panel()
+if pp.show_developer_sidebar(st):
+    _render_sidebar_developer_library_panel()
 
 from songs.user_lyrics_runtime import hydrate_user_lyrics_session, resolve_user_lyrics_and_cues
 
@@ -9403,7 +9402,7 @@ if _studio_page == "practice":
                 ) or ""
             except Exception as _rhythm_exc:
                 _rhythm_error = _rhythm_exc
-            with st.expander("Rhythm guide", expanded=False):
+            with st.expander("Rhythm guide", expanded=pp.expander_default(st)):
                 if _rhythm_md.strip():
                     st.markdown(_rhythm_md)
                 else:
@@ -9440,7 +9439,10 @@ if _studio_page == "practice":
                 ) or ""
             except Exception as _deep_focus_exc:
                 _deep_focus_error = _deep_focus_exc
-            with st.expander(f"Section deep focus — {_active_section_display}", expanded=True):
+            with st.expander(
+                f"Section deep focus — {_active_section_display}",
+                expanded=pp.feature_expander_default(st, default=True),
+            ):
                 if _deep_focus_md.strip() and not _deep_focus_md.strip().lower().startswith(
                     "no chords"
                 ):
@@ -9467,7 +9469,10 @@ if _studio_page == "practice":
                             )
                         )
 
-            with st.expander("Scales & approaches", expanded=False):
+            with st.expander(
+                "Scales & approaches",
+                expanded=pp.feature_expander_default(st, default=False),
+            ):
                 if _focus_chords:
                     _scales_rendered = 0
                     _scales_errors: list[tuple[str, Exception]] = []
@@ -9527,7 +9532,7 @@ if _studio_page == "practice":
                         "Pick **Full Song** above or choose a different section."
                     )
 
-        with st.expander("Practice coach & session", expanded=False):
+        with st.expander("Practice coach & session", expanded=pp.expander_default(st)):
             _coach_inst, _coach_lvl, _coach_focus = render_setup_quick_controls(
                 st,
                 session_state=st.session_state,
@@ -9922,7 +9927,19 @@ elif _studio_page == "picker":
         pass
     _render_page_quick_nav("picker")
 
-    if km.is_voice_mode(st.session_state):
+    if pp.is_capture_mode(st):
+        pp.render_hero_banner(
+            st,
+            "Song Library & Selection",
+            "Search, filter, and browse the catalog — pick your active song and open practice or backing tracks.",
+        )
+        pp.render_executive_summary(
+            st,
+            "Browse and select songs from a searchable, filterable catalog with rich metadata cards.",
+            "Gives every downstream tool — practice, backing, karaoke — a concrete song to work with.",
+            "Song cards, genre filters, search, active-song picker, and optional chart/lyrics editor.",
+        )
+    elif km.is_voice_mode(st.session_state):
         _studio_page_header(
             "🎤",
             "Song Selection",
@@ -10036,63 +10053,65 @@ elif _studio_page == "picker":
         render_scroll_anchor_marker(st, ANCHOR_LYRICS_EDITOR)
         render_scroll_anchor_marker(st, ANCHOR_CHART_EDITOR)
 
-        with st.container(border=True):
-            st.markdown("#### Song content editor")
-            if not _editor_open and not _editor_notice:
-                st.caption(
-                    "Open **Lyrics & Cues** or **Edit Song Chart** from the active song card above when you want to edit."
+        if not (pp.is_screenshot_mode(st) and not _editor_open):
+            with st.container(border=True):
+                st.markdown("#### Song content editor")
+                if not _editor_open and not _editor_notice and not pp.is_capture_mode(st):
+                    st.caption(
+                        "Open **Lyrics & Cues** or **Edit Song Chart** from the active song card above when you want to edit."
+                    )
+                _editor_tab = st.radio(
+                    "Editor section",
+                    ["Lyrics & Cues", "Edit Song Chart"],
+                    horizontal=True,
+                    key=PICKER_EDITOR_TAB_KEY,
+                    label_visibility="collapsed",
                 )
-            _editor_tab = st.radio(
-                "Editor section",
-                ["Lyrics & Cues", "Edit Song Chart"],
-                horizontal=True,
-                key=PICKER_EDITOR_TAB_KEY,
-                label_visibility="collapsed",
-            )
-            if st.button(
-                "Open editor" if not _editor_open else "Close editor",
-                key="picker_toggle_song_editor",
-                use_container_width=False,
-            ):
-                st.session_state[PICKER_EDITOR_OPEN_KEY] = not _editor_open
-                if not _editor_open:
-                    if _editor_tab == "Edit Song Chart":
-                        st.session_state["chart_edit_mode"] = True
-                        set_pending_anchor(st.session_state, ANCHOR_CHART_EDITOR)
+                if st.button(
+                    "Open editor" if not _editor_open else "Close editor",
+                    key="picker_toggle_song_editor",
+                    use_container_width=False,
+                ):
+                    st.session_state[PICKER_EDITOR_OPEN_KEY] = not _editor_open
+                    if not _editor_open:
+                        if _editor_tab == "Edit Song Chart":
+                            st.session_state["chart_edit_mode"] = True
+                            set_pending_anchor(st.session_state, ANCHOR_CHART_EDITOR)
+                        else:
+                            set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
                     else:
-                        set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
-                else:
-                    st.session_state["chart_edit_mode"] = False
-                st.rerun()
+                        st.session_state["chart_edit_mode"] = False
+                    st.rerun()
 
-            if _editor_open:
-                if _editor_tab == "Lyrics & Cues":
-                    _render_lyrics_and_cues_panel(
-                        song_title=str(selected_data.get("title", "")),
-                        song_artist=str(selected_data.get("artist", "")),
-                        section_names=list(_picker_level_sections.keys()),
-                        song_data=selected_data,
-                        chart_sections=_picker_level_sections,
-                        prominent=True,
-                        module_globals=globals(),
-                    )
-                else:
-                    st.caption(chart_source_caption(selected_data))
-                    render_chart_editor_panel(
-                        st,
-                        module_globals=globals(),
-                        all_records=ALL_SONG_RECORDS,
-                        song_data=selected_data,
-                        genre=pick_genre,
-                        level=level,
-                        sections_for_level=sections_for_level,
-                        invalidate_backing=invalidate_backing_cache,
-                    )
-                    if chart_key != selected_data.get("key"):
-                        st.caption(
-                            f"Practice and Backing use **{global_display_key}** "
-                            f"(+{semitone_distance(selected_data.get('key', 'C'), chart_key)} semitones from catalog key)."
+                if _editor_open:
+                    if _editor_tab == "Lyrics & Cues":
+                        _render_lyrics_and_cues_panel(
+                            song_title=str(selected_data.get("title", "")),
+                            song_artist=str(selected_data.get("artist", "")),
+                            section_names=list(_picker_level_sections.keys()),
+                            song_data=selected_data,
+                            chart_sections=_picker_level_sections,
+                            prominent=True,
+                            module_globals=globals(),
                         )
+                    else:
+                        if not pp.is_capture_mode(st):
+                            st.caption(chart_source_caption(selected_data))
+                        render_chart_editor_panel(
+                            st,
+                            module_globals=globals(),
+                            all_records=ALL_SONG_RECORDS,
+                            song_data=selected_data,
+                            genre=pick_genre,
+                            level=level,
+                            sections_for_level=sections_for_level,
+                            invalidate_backing=invalidate_backing_cache,
+                        )
+                        if chart_key != selected_data.get("key") and not pp.is_capture_mode(st):
+                            st.caption(
+                                f"Practice and Backing use **{global_display_key}** "
+                                f"(+{semitone_distance(selected_data.get('key', 'C'), chart_key)} semitones from catalog key)."
+                            )
 
 # -------------------------------------------------
 # BACKING TRACK
@@ -10103,6 +10122,32 @@ elif _studio_page == "backing":
     ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
     _render_page_quick_nav("backing")
+
+    if pp.is_capture_mode(st):
+        if km.is_voice_mode(st.session_state):
+            pp.render_hero_banner(
+                st,
+                "Karaoke & Performance Mode",
+                "Lyrics, chord follow-along, and backing playback for live vocal performance.",
+            )
+            pp.render_executive_summary(
+                st,
+                "Full-screen karaoke experience with lyrics, queue controls, and generated backing tracks.",
+                "Demonstrates performance UX — not just practice tools — with song-aware playback.",
+                "Lyric panel, performance controls, backing generation, style/BPM settings, and lead sheet.",
+            )
+        else:
+            pp.render_hero_banner(
+                st,
+                "Backing Track Studio",
+                "Arrangement controls, style settings, and one-click playback matched to your active song.",
+            )
+            pp.render_executive_summary(
+                st,
+                "Generate and play AI-backed accompaniment aligned to chord charts and section scope.",
+                "Shows audio + music-theory product engineering beyond static chord sheets.",
+                "BPM/groove/meter controls, section scope, generate & play, lead sheet, and coaching overlay.",
+            )
 
     # === CANONICAL SONG DEFAULTS - single source of truth ===================
     # Runs BEFORE any backing widget renders. When the active song changes,
@@ -10120,18 +10165,19 @@ elif _studio_page == "backing":
     default_groove_style = str(_backing_canon["applied_groove"])
     _backing_song_just_reset = bool(_backing_canon["did_reset"])
 
-    if km.is_voice_mode(st.session_state):
-        _studio_page_header(
-            "🎤",
-            km.voice_wording("backing_page_title", voice=True),
-            km.voice_wording("backing_page_subtitle", voice=True),
-        )
-    else:
-        _studio_page_header(
-            "🎧",
-            "Backing Track",
-            "Generate accompaniment matched to your active song — then play along.",
-        )
+    if not pp.is_capture_mode(st):
+        if km.is_voice_mode(st.session_state):
+            _studio_page_header(
+                "🎤",
+                km.voice_wording("backing_page_title", voice=True),
+                km.voice_wording("backing_page_subtitle", voice=True),
+            )
+        else:
+            _studio_page_header(
+                "🎧",
+                "Backing Track",
+                "Generate accompaniment matched to your active song — then play along.",
+            )
 
     # The voice-mode `data-vocal-focus="true"` body attribute is set
     # globally at app init (search for `dataset.vocalFocus` upstream),
@@ -10416,7 +10462,10 @@ elif _studio_page == "backing":
     coach_chords = chart_sections.get(coach_section, []) if coach_section else []
 
     if coach_chords:
-        with st.expander(f"💡 Quick coaching — {coach_section}", expanded=False):
+        with st.expander(
+            f"💡 Quick coaching — {coach_section}",
+            expanded=pp.expander_default(st),
+        ):
             st.markdown(
                 _section_overlay(
                     instrument,
@@ -11167,7 +11216,20 @@ elif _studio_page == "creative":
         pass
     _render_page_quick_nav("creative")
 
-    _studio_page_header("🧠", "Creative Lab", "Harmony, improvisation, and growth tools.")
+    if pp.is_capture_mode(st):
+        pp.render_hero_banner(
+            st,
+            "Creative Lab",
+            "Deep harmonic analysis, improvisation intelligence, and adaptive musical development tools.",
+        )
+        pp.render_executive_summary(
+            st,
+            "Analyze harmony, generate improvisation ideas, and track musical growth from your active song.",
+            "Shows AI-assisted music education and analytics applied to real repertoire.",
+            "Harmonic analyzer, improvisation coach, arrangement assistant, weakness detection, and progress tracking.",
+        )
+    else:
+        _studio_page_header("🧠", "Creative Lab", "Harmony, improvisation, and growth tools.")
 
     ctx = current_song_context_lab()
 
@@ -11265,7 +11327,7 @@ elif _studio_page == "creative":
             on_go_custom_progression=_improv_go_custom_progression,
         )
     else:
-        with st.expander(lab_mode, expanded=True):
+        with st.expander(lab_mode, expanded=pp.feature_expander_default(st, default=True)):
             if lab_mode == "Deep Harmonic Analyzer":
                 st.markdown(deep_harmonic_analysis_text(ctx))
             elif lab_mode == "Creative Arrangement Assistant":

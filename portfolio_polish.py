@@ -16,6 +16,23 @@ def is_demo_mode(st) -> bool:
     return bool(st.session_state.get(DEMO_SESSION_KEY, False))
 
 
+def is_capture_mode(st) -> bool:
+    """Screenshot or demo — portfolio presentation layout."""
+    return is_screenshot_mode(st) or is_demo_mode(st)
+
+
+def show_quick_nav(st) -> bool:
+    return not is_capture_mode(st)
+
+
+def show_tutorial_entry(st) -> bool:
+    return not is_capture_mode(st)
+
+
+def show_developer_sidebar(st) -> bool:
+    return not is_screenshot_mode(st)
+
+
 def _clear_demo_flags(st) -> None:
     for key in list(st.session_state.keys()):
         if isinstance(key, str) and key.startswith("_pp_demo_"):
@@ -47,14 +64,17 @@ def render_sidebar_toggle(st) -> None:
 
 def inject_polish_css(st, *, app_slug: str = "app") -> None:
     screenshot = is_screenshot_mode(st)
-    ss = ""
+    ss = """
+        .ui-nav-deploy-marker { display: none !important; }
+        """
     if screenshot or is_demo_mode(st):
-        ss = """
+        ss += """
         .page-guide, .small-note, .pp-instructional { display: none !important; }
         .block-container { padding-top: 0.6rem !important; padding-bottom: 1.25rem !important; }
         [data-testid="stSidebar"] .stCaption { opacity: 0.85; }
         .hero-badges { display: none !important; }
         .pp-hero-screenshot .section-title { font-size: 1.35rem !important; }
+        .pp-hide-in-capture { display: none !important; }
         """
     st.markdown(
         f"""
@@ -184,6 +204,13 @@ def instructional_caption(st, text: str) -> None:
 def expander_default(st, *, default: bool = False) -> bool:
     if is_screenshot_mode(st) or is_demo_mode(st):
         return False
+    return default
+
+
+def feature_expander_default(st, *, default: bool = True) -> bool:
+    """Hero expanders (section focus, scales) stay open in capture mode."""
+    if is_capture_mode(st):
+        return True
     return default
 
 

@@ -29,9 +29,15 @@ def _render_subbar_timing_panel(
     if not home_entries:
         return
 
-    with st.expander("Sub-bar timing (half-bar, beats, pushed chord)", expanded=False):
-        st.caption(
-            "Add a chord, then click one of these to fold it into the LAST bar."
+    import portfolio_polish as pp
+
+    with st.expander(
+        "Sub-bar timing (half-bar, beats, pushed chord)",
+        expanded=pp.expander_default(st),
+    ):
+        pp.instructional_caption(
+            st,
+            "Add a chord, then click one of these to fold it into the LAST bar.",
         )
         pending = st.session_state.get(pending_key)
         if not pending:
