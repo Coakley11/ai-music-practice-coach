@@ -35,6 +35,11 @@ st.set_page_config(
     layout="wide"
 )
 
+import portfolio_polish as pp
+import portfolio_demo as pdemo
+
+pp.inject_polish_css(st, app_slug="music")
+
 try:
     from suite_resume_launch import apply_suite_resume_launch
 
@@ -1095,6 +1100,10 @@ ensure_master_song_initialized(
     song_library=SONG_LIBRARY,
     song_picker_catalog=SONG_PICKER_CATALOG,
 )
+
+if pp.is_demo_mode(st) and not pp.demo_applied(st, "practice"):
+    pdemo.load_practice_demo(st, SONG_PICKER_CATALOG, SONG_LIBRARY, ALL_SONG_RECORDS)
+    st.rerun()
 
 # === KARAOKE SESSION ACTIVE-SONG OVERRIDE ====================================
 # When a karaoke set is running AND the active instrument is Voice,
@@ -8671,6 +8680,8 @@ try:
 except Exception:
     pass
 
+pp.render_sidebar_toggle(st)
+
 try:
     render_sidebar_studio_nav(
         st.session_state,
@@ -9111,6 +9122,18 @@ if _studio_page == "practice":
 
     ensure_page_initialized(st.session_state, "practice")
     note_page_visit(st.session_state, "practice")
+    if pp.is_screenshot_mode(st) or pp.is_demo_mode(st):
+        pp.render_hero_banner(
+            st,
+            "Active Song Practice Studio",
+            "Adaptive practice sheets, section focus, chord charts, and backing tracks for your current song.",
+        )
+    pp.render_executive_summary(
+        st,
+        "Practice the active song with section-aware chord charts, tempo controls, and coaching cues.",
+        "Turns song context into a focused practice session instead of generic exercises.",
+        "Section selector, chord chart, practice cues, backing track integration, and key/instrument controls.",
+    )
     inject_practice_page_styles(st)
     try:
         from app_ui import inject_studio_ui_release_marker
@@ -9120,11 +9143,12 @@ if _studio_page == "practice":
         pass
     _render_page_quick_nav("practice")
 
-    _studio_page_header(
-        "🎯",
-        "Song Practice",
-        "Set up your session below — change key in the sidebar; pick songs on **Song Selection**.",
-    )
+    if not pp.is_screenshot_mode(st) and not pp.is_demo_mode(st):
+        _studio_page_header(
+            "🎯",
+            "Song Practice",
+            "Set up your session below — change key in the sidebar; pick songs on Song Selection.",
+        )
     _inject_practice_toolkit_styles()
 
     render_scroll_anchor_marker(st, ANCHOR_PRACTICE_COACH)
