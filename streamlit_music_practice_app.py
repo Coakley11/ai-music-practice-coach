@@ -127,9 +127,14 @@ from songs.music_source import (
     unpack_active_source_banner,
 )
 from songs.picker_session import (
+    CATALOG_FAVORITES_KEY,
+    SONG_PICKER_FAVORITES_ONLY_KEY,
     WORKSPACE_GENRE_FILTERS_KEY,
     apply_picker_session_resets,
+    prune_catalog_pick_keys,
     request_clear_browse_filters,
+    toggle_catalog_favorite,
+    toggle_favorites_filter,
     toggle_genre_filter,
 )
 from songs.state import (
@@ -7094,7 +7099,7 @@ _PICKER_NAV_ANCHORS: dict[str, str] = {
 
 
 _CATALOG_RECENT_KEY = "catalog_recent_pick_keys"
-_CATALOG_FAVORITES_KEY = "catalog_favorite_pick_keys"
+FAVORITES_V1_DEPLOY_MARKER = "favorites-v1-1"
 
 
 def _open_chart_editor_on_picker() -> None:
@@ -7330,7 +7335,7 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     _section_count = len(_section_keys)
     _bar_count = sum(len(v or []) for v in (rec.get("sections") or {}).values())
     _active_pk = st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""
-    _favorites = set(st.session_state.get(_CATALOG_FAVORITES_KEY) or [])
+    _favorites = set(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
     _is_fav = _active_pk in _favorites
     _fav_icon = "★" if _is_fav else "☆"
     _fav_title = "Remove from favorites" if _is_fav else "Add to favorites"
@@ -7404,12 +7409,7 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     fav_col, b1, b2, b3, b4 = st.columns([0.55, 1, 1, 1, 1])
     with fav_col:
         if _active_pk and st.button(_fav_icon, key="picker_card_favorite", help=_fav_title):
-            favs = set(st.session_state.get(_CATALOG_FAVORITES_KEY) or [])
-            if _active_pk in favs:
-                favs.discard(_active_pk)
-            else:
-                favs.add(_active_pk)
-            st.session_state[_CATALOG_FAVORITES_KEY] = sorted(favs)
+            toggle_catalog_favorite(st.session_state, _active_pk)
             st.rerun()
     with b1:
         if st.button(nav_icon_button_label("practice"), key="picker_card_practice", use_container_width=True):
@@ -7437,6 +7437,57 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             key_suffix=f"card_{_active_pick_key}",
             use_container_width=True,
         )
+
+
+def _picker_song_dropdown_label(pick_key: str, *, favorites: set[str] | None = None) -> str:
+    """Dropdown label with optional favorite star prefix."""
+    genre, title = parse_pick_key(pick_key)
+    base = f"{title}  ·  {genre}"
+    if favorites and pick_key in favorites:
+        return f"★ {base}"
+    return base
+
+
+def _ensure_catalog_favorites_pruned(valid_pick_keys: set[str]) -> None:
+    """Drop stale favorite pick keys after catalog changes."""
+    raw = list(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
+    pruned = prune_catalog_pick_keys(raw, valid_pick_keys)
+    if pruned != raw:
+        st.session_state[CATALOG_FAVORITES_KEY] = pruned
+
+
+def _render_active_song_favorites_switch(
+    visible_records: list[dict],
+    valid_pick_keys: set[str],
+    active_pick_key: str,
+) -> None:
+    """Quick-switch chips for favorited catalog songs."""
+    _ensure_catalog_favorites_pruned(valid_pick_keys)
+    favorites = [
+        k for k in (st.session_state.get(CATALOG_FAVORITES_KEY) or [])
+        if k in valid_pick_keys
+    ]
+    if not favorites:
+        return
+    st.markdown(
+        '<p class="ui-active-song-recent-label">Favorites</p>',
+        unsafe_allow_html=True,
+    )
+    for row_start in range(0, len(favorites), 4):
+        chunk = favorites[row_start : row_start + 4]
+        cols = st.columns(len(chunk))
+        for col, pk in zip(cols, chunk):
+            rec = record_for_pick_key(visible_records, pk)
+            title = str(rec.get("title", parse_pick_key(pk)[1])) if rec else parse_pick_key(pk)[1]
+            label = f"★ {title}" if pk == active_pick_key else title
+            with col:
+                if st.button(label, key=f"favorite_pick_{pk}", use_container_width=True):
+                    st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = pk
+                    set_catalog_source(st.session_state)
+                    apply_pick_key(st, pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
+                    _push_recent_pick_key(st.session_state, pk)
+                    note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+                    st.rerun()
 
 
 def _render_active_song_recent_switch(
@@ -7544,6 +7595,11 @@ def _apply_picker_catalog_filters(
     visible_song_records: list[dict],
 ) -> tuple[list[dict], list[str], str]:
     """Return filtered rows, pick keys, and active pick key (strict — no out-of-filter rows)."""
+    all_pick_keys = {
+        format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
+        for r in visible_song_records
+    }
+    _ensure_catalog_favorites_pruned(all_pick_keys)
     genres = list(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
     query = str(st.session_state.get("song_search_text") or "")
     filtered = search_records(
@@ -7552,6 +7608,13 @@ def _apply_picker_catalog_filters(
         genres=genres if genres else None,
         limit=max(500, len(ALL_SONG_RECORDS)),
     )
+    if st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY):
+        favorites = set(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
+        filtered = [
+            r
+            for r in filtered
+            if format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") in favorites
+        ]
     pick_options = [
         format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered
     ]
@@ -7715,14 +7778,15 @@ def _render_catalog_active_song_hub(
             unsafe_allow_html=True,
         )
         if pick_options:
+            _fav_set = set(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
             st.selectbox(
                 "Active song",
                 pick_options,
-                format_func=lambda opt: f"{parse_pick_key(opt)[1]}  ·  {parse_pick_key(opt)[0]}",
+                format_func=lambda opt: _picker_song_dropdown_label(opt, favorites=_fav_set),
                 key="matching_song_dropdown",
                 on_change=on_song_change,
                 label_visibility="collapsed",
-                help="Filtered by your genre pills and search — updates Practice, Backing, and Karaoke.",
+                help="Filtered by your genre pills, favorites, and search — updates Practice, Backing, and Karaoke.",
             )
         else:
             st.info(empty_message)
@@ -7740,7 +7804,16 @@ def _render_catalog_active_song_hub(
                     instrument=st.session_state.get("instrument", ""),
                     expanded=False,
                 )
+            _catalog_pick_keys = {
+                format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
+                for r in visible_song_records
+            }
             st.markdown('<div class="ui-active-song-recent">', unsafe_allow_html=True)
+            _render_active_song_favorites_switch(
+                visible_song_records,
+                _catalog_pick_keys,
+                active_pick_key,
+            )
             _render_active_song_recent_switch(
                 visible_song_records,
                 pick_options,
@@ -7849,7 +7922,11 @@ def _render_catalog_song_picker_block(
             active_pick_key=active_pick_key,
             visible_song_records=visible_song_records,
             on_song_change=_on_song_dropdown_change,
-            empty_message="No songs match your genre/search filters — adjust filters below.",
+            empty_message=(
+                "No favorites yet — star a song on the Active Song card, or turn off the Favorites filter."
+                if st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY)
+                else "No songs match your genre/search filters — adjust filters below."
+            ),
         )
 
     def _render_browse_filters_legacy() -> str:
@@ -7892,11 +7969,46 @@ def _render_catalog_song_picker_block(
                     key="song_search_text",
                     label_visibility="collapsed",
                 )
+                _fav_count = len(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
+                _fav_filter_on = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
+                _fav_btn_cols = st.columns([1.35, 2.65])
+                with _fav_btn_cols[0]:
+                    _fav_label = (
+                        f"★ Favorites ({_fav_count})"
+                        if _fav_count
+                        else "★ Favorites"
+                    )
+                    st.button(
+                        _fav_label,
+                        key="song_picker_favorites_filter",
+                        use_container_width=True,
+                        type="primary" if _fav_filter_on else "secondary",
+                        on_click=toggle_favorites_filter,
+                        kwargs={"session_state": st.session_state},
+                        help="Show only songs you have starred on the Active Song card.",
+                    )
+                with _fav_btn_cols[1]:
+                    if _fav_filter_on:
+                        st.markdown(
+                            '<p class="ui-genre-filter-active-summary" style="margin-top:0.55rem;">'
+                            "Showing <strong>favorites only</strong></p>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            f'<p class="ui-favorites-deploy-marker" style="margin-top:0.55rem;'
+                            f'font-size:0.72rem;color:#64748b;">'
+                            f"Favorites UI · <strong>{FAVORITES_V1_DEPLOY_MARKER}</strong></p>",
+                            unsafe_allow_html=True,
+                        )
                 _render_genre_filter_pills(available_genres)
+                _filter_bits = ["genre pills", "search"]
+                if _fav_filter_on:
+                    _filter_bits.insert(0, "favorites")
                 st.markdown(
                     f'<p class="ui-song-library-foot">'
                     f"<strong>{len(filtered)}</strong> songs match your filters "
-                    f"· genre pills and search both update the <strong>Active Song</strong> dropdown above</p>",
+                    f"· {', '.join(_filter_bits)} update the <strong>Active Song</strong> dropdown above</p>",
                     unsafe_allow_html=True,
                 )
     else:
@@ -7914,12 +8026,25 @@ def _render_catalog_song_picker_block(
             genre=filter_genre,
             limit=max(500, len(ALL_SONG_RECORDS)),
         )
+        if st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY):
+            favorites = set(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
+            filtered = [
+                r
+                for r in filtered
+                if format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") in favorites
+            ]
         pick_options = [
             format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered
         ]
 
         if not pick_options:
-            st.warning("No songs match your search — try another genre or clear the search box.")
+            if st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY):
+                st.warning(
+                    "No favorites match your search — star a song on the Active Song card "
+                    "or turn off the Favorites filter."
+                )
+            else:
+                st.warning("No songs match your search — try another genre or clear the search box.")
             if wrap_section:
                 close_control_section()
             return
@@ -7936,10 +8061,17 @@ def _render_catalog_song_picker_block(
             pick_options,
             default_pk,
         )
+        _legacy_fav_set = set(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
+
+        def _legacy_picker_label(opt: str) -> str:
+            genre, title = parse_pick_key(opt)
+            base = f"{title}  [{genre}]"
+            return f"★ {base}" if opt in _legacy_fav_set else base
+
         st.selectbox(
             "Select song",
             pick_options,
-            format_func=lambda opt: f"{parse_pick_key(opt)[1]}  [{parse_pick_key(opt)[0]}]",
+            format_func=_legacy_picker_label,
             key="matching_song_dropdown",
             on_change=_on_song_dropdown_change,
             help="Primary selector — updates Practice, Backing Track, Creative Lab, and all coach tools.",

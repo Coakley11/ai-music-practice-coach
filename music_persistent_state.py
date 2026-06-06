@@ -47,9 +47,15 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "improv_song_source",
     "creative_lab_analysis_mode",
     "improv_intelligence_tab",
+    "song_picker_favorites_only",
 )
 
-_LIST_KEYS = ("workspace_genre_filters", "backing_track_multi_sections", "karaoke_queue")
+_LIST_KEYS = (
+    "workspace_genre_filters",
+    "backing_track_multi_sections",
+    "karaoke_queue",
+    "catalog_favorite_pick_keys",
+)
 
 
 def build_music_disk_state(st: Any) -> dict[str, Any]:
@@ -143,10 +149,11 @@ def reset_music_disk_state(st: Any) -> None:
             st.session_state.pop(key, None)
 
 
-def default_reset_music_session(st: Any) -> None:
-    """Clear session keys that should return to app defaults (not user data files)."""
+def apply_music_session_defaults(st: Any) -> None:
+    """Return music session to first-run defaults (not user chart override files)."""
     from picker_song_editor import PICKER_EDITOR_OPEN_KEY
 
+    ss = st.session_state
     for key in (
         "studio_page",
         "instrument",
@@ -159,7 +166,56 @@ def default_reset_music_session(st: Any) -> None:
         PICKER_EDITOR_OPEN_KEY,
         "chart_edit_mode",
         "_studio_page_snapshots",
+        "chart_library_mode",
+        "song_search_text",
+        "song_search_scope",
+        "song_picker_level_filter",
+        "workspace_genre_filter",
+        "backing_track_loops",
+        "backing_track_single_section",
+        "backing_groove_style",
+        "backing_track_bpm",
+        "karaoke_countdown_enabled",
+        "karaoke_auto_advance",
+        "active_music_source",
+        "picker_editor_tab",
+        "picker_song_editor_open",
+        "last_practice_mode",
+        "improv_song_source",
+        "creative_lab_analysis_mode",
+        "improv_intelligence_tab",
+        "workspace_genre_filters",
+        "backing_track_multi_sections",
+        "karaoke_queue",
+        "catalog_favorite_pick_keys",
+        "song_picker_favorites_only",
     ):
-        st.session_state.pop(key, None)
-    st.session_state.pop(ACTIVE_CATALOG_PICK_KEY, None)
-    st.session_state.pop(SELECTED_SONG_STATE_KEY, None)
+        ss.pop(key, None)
+    ss.pop(ACTIVE_CATALOG_PICK_KEY, None)
+    ss.pop(SELECTED_SONG_STATE_KEY, None)
+    ss.pop(SUITE_LOCAL_STATE_RESTORED_KEY, None)
+    for key in list(ss.keys()):
+        if str(key).startswith("_suite_") or str(key).startswith("_page_initialized"):
+            ss.pop(key, None)
+
+
+def default_reset_music_session(st: Any) -> None:
+    """Full music reset: session, disk, and cloud ``full_session`` when available."""
+    apply_music_session_defaults(st)
+    reset_user_state(APP_ID)
+    fresh = build_music_disk_state(st)
+    save_user_state(APP_ID, fresh)
+    try:
+        from suite_cloud_state import save_cloud_full_session, session_page_summary
+
+        page, summary = session_page_summary(APP_ID, fresh)
+        save_cloud_full_session(
+            APP_ID,
+            fresh,
+            page=page,
+            summary=summary or "Reset to defaults",
+        )
+    except Exception:
+        pass
+    st.session_state.pop(SUITE_LOCAL_STATE_RESTORED_KEY, None)
+    st.session_state.pop(f"_suite_autosave_fp::{APP_ID}", None)
