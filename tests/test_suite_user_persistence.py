@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from suite_user_persistence import (
+    _SESSION_BANNER_KEY,
+    clear_reset_confirm_state,
+    execute_suite_reset,
     load_user_state,
+    request_reset_confirm_state,
+    reset_confirm_session_key,
     reset_user_state,
     save_user_state,
     state_file_path,
@@ -46,3 +51,29 @@ def test_reset_removes_file(persist_dir):
     assert state_file_path("nba").is_file()
     reset_user_state("nba")
     assert not state_file_path("nba").is_file()
+
+
+def test_reset_confirm_state_request_and_clear():
+    state: dict = {}
+    request_reset_confirm_state(state, "music")
+    assert state[reset_confirm_session_key("music")] is True
+    clear_reset_confirm_state(state, "music")
+    assert reset_confirm_session_key("music") not in state
+
+
+def test_execute_suite_reset_clears_confirm_and_sets_banner(persist_dir):
+    class _FakeSt:
+        def __init__(self, session_state: dict):
+            self.session_state = session_state
+
+    state = {reset_confirm_session_key("music"): True}
+    st = _FakeSt(state)
+    called: list[str] = []
+
+    def _on_reset(fake_st):
+        called.append("reset")
+
+    execute_suite_reset(st, "music", _on_reset)
+    assert called == ["reset"]
+    assert reset_confirm_session_key("music") not in st.session_state
+    assert st.session_state[_SESSION_BANNER_KEY] == "Reset to defaults"
