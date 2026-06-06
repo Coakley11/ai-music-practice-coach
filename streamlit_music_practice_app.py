@@ -11950,6 +11950,7 @@ elif _studio_page == "log":
                     metrics={
                         "song": song,
                         "artist": str((song_data or {}).get("artist") or ""),
+                        "pick_key": str(local_state.get("pick_key") or st.session_state.get("active_catalog_pick_key") or ""),
                         "minutes": int(duration_mins),
                         "focus": focus,
                         "instrument": local_state.get("instrument", ""),
