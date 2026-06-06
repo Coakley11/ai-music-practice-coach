@@ -459,6 +459,14 @@ def handle_studio_page_transition(session_state: dict) -> None:
     if last and last != current:
         save_page_snapshot(session_state, str(last))
         restore_page_snapshot(session_state, current)
+        try:
+            import streamlit as st
+
+            from music_activity import log_studio_page_entered
+
+            log_studio_page_entered(st, current)
+        except Exception:
+            pass
     session_state[_ACTIVE_PAGE_TRACKER] = current
 
 

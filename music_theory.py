@@ -5,8 +5,10 @@ COMMON_KEYS = [
     "Gb", "G", "Ab", "A", "Bb", "B",
 ]
 
-# Major + parallel minor centers for the global practice-key selector.
+# Major + parallel minor centers (legacy combined list).
 PRACTICE_KEYS = [k for pair in zip(COMMON_KEYS, [f"{k}m" for k in COMMON_KEYS]) for k in pair]
+MAJOR_PRACTICE_KEYS = list(COMMON_KEYS)
+MINOR_PRACTICE_KEYS = [f"{k}m" for k in COMMON_KEYS]
 
 CHROMATIC = [
     "C", "C#", "D", "D#", "E", "F",
@@ -70,16 +72,77 @@ def split_chord(chord):
     return chord[:1], chord[1:]
 
 
+def key_is_minor(key: str) -> bool:
+    """True when the key center is minor (e.g. Dm, F#m), not major or maj7-style."""
+    _, suffix = split_chord(str(key or "").strip() or "C")
+    sl = suffix.lower()
+    if not sl:
+        return False
+    if sl.startswith("maj"):
+        return False
+    return sl.startswith("m")
+
+
+def key_mode(key: str) -> str:
+    """Return ``major`` or ``minor`` for a key center string."""
+    return "minor" if key_is_minor(key) else "major"
+
+
+def practice_keys_for_mode(mode: str) -> list[str]:
+    """Twelve major or twelve minor key centers."""
+    return list(MINOR_PRACTICE_KEYS if str(mode or "").lower() == "minor" else MAJOR_PRACTICE_KEYS)
+
+
+def _practice_key_for_pitch_class(key: str, mode: str) -> str:
+    """Pick the catalog spelling (Eb vs D#) for a pitch class in major or minor."""
+    root, _ = split_chord(str(key or "C").strip() or "C")
+    nr = normalize_root(root)
+    if nr not in CHROMATIC:
+        return str(key or "C").strip() or "C"
+    want_minor = str(mode or "").lower() == "minor"
+    for candidate in practice_keys_for_mode(mode):
+        cr, _ = split_chord(candidate)
+        if normalize_root(cr) != nr:
+            continue
+        if want_minor == key_is_minor(candidate):
+            return candidate
+    return (nr + "m") if want_minor else nr
+
+
+def coerce_key_to_mode(key: str, mode: str) -> str:
+    """Normalize a key to the nearest center in the requested mode."""
+    return _practice_key_for_pitch_class(key, mode)
+
+
+def _enharmonic_in_options(key: str, options: list[str]) -> str | None:
+    root, _ = split_chord(str(key or "C"))
+    nr = normalize_root(root)
+    for opt in options:
+        cr, _ = split_chord(opt)
+        if normalize_root(cr) == nr:
+            return opt
+    return None
+
+
 def display_key_options(original_key: str) -> list[str]:
-    """Sidebar key choices: 12 major + 12 minor centers, original key first."""
+    """Key choices for the active song mode — major songs show major keys only."""
     original_key = str(original_key or "C").strip() or "C"
-    options = list(PRACTICE_KEYS)
-    if original_key not in options:
-        options.insert(0, original_key)
+    mode = key_mode(original_key)
+    options = list(practice_keys_for_mode(mode))
+
+    if key_mode(original_key) == mode:
+        canonical = original_key
     else:
-        options.remove(original_key)
-        options.insert(0, original_key)
-    return options
+        canonical = coerce_key_to_mode(original_key, mode)
+
+    if canonical in options:
+        return [canonical] + [k for k in options if k != canonical]
+
+    twin = _enharmonic_in_options(canonical, options)
+    if twin:
+        return [canonical] + [k for k in options if k != twin]
+
+    return [canonical] + options
 
 
 def semitone_distance(from_key, to_key):

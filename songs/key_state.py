@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from music_theory import display_key_options
+from music_theory import coerce_key_to_mode, display_key_options, key_mode
 
 IDENTITY_KEY = "_display_key_song_identity"
 LAST_DISPLAY_KEY = "_last_app_display_key"
@@ -103,10 +103,13 @@ def sync_display_key_before_widget(
 
     current = st.session_state.get("display_key", original_key)
     if current not in options:
-        _apply_display_key_before_widget(
-            st,
-            original_key if original_key in options else options[0],
+        mode = key_mode(original_key)
+        fallback = (
+            coerce_key_to_mode(original_key, mode)
+            if coerce_key_to_mode(original_key, mode) in options
+            else options[0]
         )
+        _apply_display_key_before_widget(st, fallback)
 
     return options
 

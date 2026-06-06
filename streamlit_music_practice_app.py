@@ -8929,11 +8929,20 @@ def _on_global_instrument_change() -> None:
     # is *also* clamped before downstream code reads it on this rerun.
     from practice_setup_globals import set_active_instrument
 
+    previous = st.session_state.get("_activity_last_logged_instrument") or st.session_state.get(
+        "instrument"
+    )
     new_value = st.session_state.get("instrument", "Piano")
     set_active_instrument(st.session_state, new_value)
     sync_written_key_instrument_anchor(st.session_state, new_value)
     request_transposing_instrument_sync(st.session_state, new_value)
     persist_music_local_state(st)
+    try:
+        from music_activity import log_instrument_changed
+
+        log_instrument_changed(st, instrument=str(new_value), previous=str(previous or ""))
+    except Exception:
+        pass
 
 
 def _on_global_focus_change() -> None:
@@ -10664,6 +10673,17 @@ elif _studio_page == "backing":
 
         st.session_state["_last_backing_wav"] = wav
         st.session_state["_last_backing_signature"] = _current_backing_signature
+        try:
+            from music_activity import log_backing_track_started
+
+            log_backing_track_started(
+                st,
+                bpm=int(bpm),
+                loops=int(form_loops),
+                scope=section_scope_label,
+            )
+        except Exception:
+            pass
         st.session_state["_last_backing_timeline"] = timeline
         st.session_state["playback_start_time"] = time.time()
         st.session_state["current_chord_timeline"] = timeline

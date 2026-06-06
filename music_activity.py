@@ -36,6 +36,25 @@ def _song_context(st: Any) -> dict[str, str]:
     }
 
 
+def _workflow_resume_key(st: Any, ctx: dict[str, str]) -> str:
+    page = str(st.session_state.get("studio_page") or "practice").strip()
+    pick = str(ctx.get("pick_key") or "").strip()
+    if page == "backing":
+        return f"backing:{pick}" if pick else "backing:"
+    return f"song:{pick}" if pick else ""
+
+
+def _workflow_page_label(st: Any) -> str:
+    page = str(st.session_state.get("studio_page") or "practice").strip()
+    return {
+        "practice": "practice",
+        "backing": "backing",
+        "picker": "picker",
+        "analysis": "recording",
+        "log": "Practice Log",
+    }.get(page, page or "practice")
+
+
 def _record(
     event: str,
     *,
@@ -52,12 +71,23 @@ def _record(
 
         ctx = _song_context(st)
         merged = {**ctx, **(metrics or {})}
-        if not resume_key and ctx.get("pick_key"):
-            resume_key = f"song:{ctx['pick_key']}"
+        merged.setdefault("studio_page", str(st.session_state.get("studio_page") or ""))
+        merged.setdefault(
+            "practice_focus_section",
+            str(st.session_state.get("practice_focus_section") or ""),
+        )
+        page_resolved = page or _workflow_page_label(st)
+        if not resume_key:
+            resume_key = _workflow_resume_key(st, ctx)
         if not resume_title and ctx.get("song"):
             resume_title = f"Continue: {ctx['song']}"
-        if not resume_subtitle and ctx.get("artist"):
-            resume_subtitle = ctx["artist"]
+        if not resume_subtitle:
+            parts = [
+                str(ctx.get("display_key") or "").strip(),
+                str(ctx.get("instrument") or "").strip(),
+                page_resolved,
+            ]
+            resume_subtitle = " · ".join(p for p in parts if p) or str(ctx.get("artist") or "")
         local_state = None
         try:
             from songs.state import build_music_local_state
@@ -98,13 +128,70 @@ def log_display_key_changed(
     _record(
         "display_key_changed",
         st=st,
-        page="Practice Studio",
         metrics={
             "display_key": display_key,
             "previous_key": prev,
             "original_key": str(st.session_state.get("original_key") or ""),
         },
         summary=summary,
+    )
+
+
+def log_instrument_changed(
+    st: Any,
+    *,
+    instrument: str,
+    previous: str = "",
+) -> None:
+    inst = str(instrument or "").strip()
+    if not inst:
+        return
+    prev = str(previous or st.session_state.get("_activity_last_logged_instrument") or "").strip()
+    if prev == inst:
+        return
+    st.session_state["_activity_last_logged_instrument"] = inst
+    ctx = _song_context(st)
+    song = ctx.get("song") or "song"
+    _record(
+        "instrument_changed",
+        st=st,
+        metrics={"instrument": inst, "previous_instrument": prev},
+        summary=f"Switched {song} to {inst}",
+    )
+
+
+def log_studio_page_entered(st: Any, page_id: str) -> None:
+    """Log meaningful studio page work — practice, backing, recording, etc."""
+    page = str(page_id or "").strip()
+    if page not in {"practice", "backing", "picker", "analysis", "log"}:
+        return
+    flag = f"_activity_logged_page::{page}"
+    ctx = _song_context(st)
+    song = ctx.get("song") or ""
+    if not song:
+        return
+    sig = (
+        page,
+        str(ctx.get("pick_key") or ""),
+        str(ctx.get("display_key") or ""),
+        str(ctx.get("instrument") or ""),
+    )
+    if st.session_state.get(flag) == sig:
+        return
+    st.session_state[flag] = sig
+    label = {
+        "practice": "Practice",
+        "backing": "Backing Track Studio",
+        "analysis": "Recording Analysis",
+        "log": "Practice Log",
+        "picker": "Song Selection",
+    }.get(page, page)
+    _record(
+        "studio_page_entered",
+        st=st,
+        page=label,
+        metrics={"studio_page": page},
+        summary=f"Working on {song} — {label}",
     )
 
 

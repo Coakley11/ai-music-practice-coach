@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from music_theory import (
-    PRACTICE_KEYS,
     display_key_options,
+    key_mode,
+    practice_keys_for_mode,
     semitone_distance,
     transpose_sections_dict,
 )
@@ -188,7 +189,7 @@ def render_guitar_capo_sidebar(st: Any, session_state: dict, *, concert_key: str
             key="guitar_capo_sounding_widget",
         )
     with c2:
-        shape_opts = list(PRACTICE_KEYS)
+        shape_opts = practice_keys_for_mode(key_mode(concert_key))
         cur_shape = str(session_state.get(CAPO_SHAPE_KEY, default_shape_key_for_sounding(concert_key)))
         if cur_shape not in shape_opts:
             shape_opts = [cur_shape] + shape_opts
