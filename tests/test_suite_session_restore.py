@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from song_catalog import format_pick_key
+from music_persistent_state import apply_music_disk_state
 from songs.state import (
     ACTIVE_CATALOG_PICK_KEY,
     PENDING_DISPLAY_KEY,
@@ -117,6 +118,34 @@ def test_restore_runs_once_and_applies_saved_state(mini_catalog, tmp_path: Path)
             song_library=song_library,
         )
     assert st == before
+
+
+def test_apply_music_disk_state_restores_core_pick_key(mini_catalog):
+    song_picker_catalog, song_library = mini_catalog
+    pick_key = format_pick_key("Jazz", "Autumn Leaves — Joseph Kosma")
+    st = _FakeSession({})
+    payload = {
+        "core": {
+            "pick_key": pick_key,
+            "song": "Autumn Leaves",
+            "artist": "Joseph Kosma",
+            "instrument": "Piano",
+            "display_key": "Eb",
+            "studio_page": "backing",
+        },
+        "session": {},
+    }
+    apply_music_disk_state(
+        st,
+        payload,
+        song_picker_catalog=song_picker_catalog,
+        song_library=song_library,
+    )
+    assert st[ACTIVE_CATALOG_PICK_KEY] == pick_key
+    assert st[SELECTED_SONG_STATE_KEY]["title"] == "Autumn Leaves"
+    assert st["instrument"] == "Piano"
+    assert st["studio_page"] == "backing"
+    assert st[PENDING_DISPLAY_KEY] == "Eb"
 
 
 def test_restore_missing_song_shows_neutral_notice(mini_catalog, tmp_path: Path):

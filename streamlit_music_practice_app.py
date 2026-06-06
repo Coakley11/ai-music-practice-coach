@@ -1099,6 +1099,18 @@ if hasattr(st, "session_state"):
             song_library=SONG_LIBRARY,
         )
 
+    try:
+        from suite_resume_launch import finalize_suite_resume_launch
+
+        finalize_suite_resume_launch(
+            st,
+            "music",
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+        )
+    except Exception:
+        pass
+
 ensure_master_song_initialized(
     st,
     all_records=DEFAULT_SONG_RECORDS,

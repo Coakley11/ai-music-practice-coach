@@ -77,26 +77,16 @@ def persist_music_local_state(st: Any, **extra: Any) -> None:
             pass
 
 
-def restore_saved_app_state_once(
+def apply_saved_music_context(
     st: Any,
+    saved: dict[str, Any],
     *,
     song_picker_catalog: dict[str, dict[str, dict]],
     song_library: dict[str, dict[str, dict]] | None = None,
-) -> None:
-    """Restore last saved musician context once per browser session."""
-    if st.session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY):
-        return
-    st.session_state[SUITE_LOCAL_STATE_RESTORED_KEY] = True
-
-    try:
-        from suite_activity_client import load_local_app_state
-
-        saved = load_local_app_state("music")
-    except Exception:
-        return
-
+) -> bool:
+    """Apply pick_key, instrument, studio page, and related fields from a snapshot dict."""
     if not isinstance(saved, dict) or not saved:
-        return
+        return False
 
     saved_display_key = str(saved.get("display_key") or "").strip()
     try:
@@ -148,7 +138,7 @@ def restore_saved_app_state_once(
             ) or ""
 
     if not pick_key:
-        return
+        return False
 
     resolved = resolve_pick_key(pick_key, song_picker_catalog=song_picker_catalog)
     target = resolved or pick_key
@@ -168,10 +158,10 @@ def restore_saved_app_state_once(
                 skip_activity_log=True,
             )
         except Exception:
-            pass
+            return False
         if saved_display_key:
             st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
-        return
+        return True
 
     by_title = _recover_pick_key_by_title(
         {
@@ -190,14 +180,41 @@ def restore_saved_app_state_once(
                 skip_activity_log=True,
             )
         except Exception:
-            pass
+            return False
         if saved_display_key:
             st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
-        return
+        return True
 
     label = str(saved.get("song") or pick_key).strip() or "your last song"
     st.session_state[PICK_KEY_RECOVERY_NOTICE_KEY] = (
         f'Your last session song (“{label}”) is no longer available; showing the default catalog song.'
+    )
+    return False
+
+
+def restore_saved_app_state_once(
+    st: Any,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]] | None = None,
+) -> None:
+    """Restore last saved musician context once per browser session."""
+    if st.session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY):
+        return
+    st.session_state[SUITE_LOCAL_STATE_RESTORED_KEY] = True
+
+    try:
+        from suite_activity_client import load_local_app_state
+
+        saved = load_local_app_state("music")
+    except Exception:
+        return
+
+    apply_saved_music_context(
+        st,
+        saved,
+        song_picker_catalog=song_picker_catalog,
+        song_library=song_library,
     )
 
 
@@ -311,6 +328,21 @@ def ensure_master_song_initialized(
     song_picker_catalog: dict[str, dict[str, dict]],
 ) -> None:
     """Pick a default song once; migrate legacy sidebar session keys if present."""
+    sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
+    if isinstance(sel, dict) and sel.get("pick_key"):
+        return
+
+    pending_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if pending_pk and resolve_pick_key(pending_pk, song_picker_catalog=song_picker_catalog):
+        apply_pick_key(
+            st,
+            pending_pk,
+            song_picker_catalog,
+            song_library=song_library,
+            skip_activity_log=True,
+        )
+        return
+
     if (
         SELECTED_SONG_STATE_KEY in st.session_state
         and st.session_state[SELECTED_SONG_STATE_KEY]

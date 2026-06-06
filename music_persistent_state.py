@@ -9,6 +9,7 @@ from songs.state import (
     ACTIVE_CATALOG_PICK_KEY,
     SELECTED_SONG_STATE_KEY,
     SUITE_LOCAL_STATE_RESTORED_KEY,
+    apply_saved_music_context,
     build_music_local_state,
     restore_saved_app_state_once,
 )
@@ -87,25 +88,24 @@ def apply_music_disk_state(
     core = payload.get("core") if isinstance(payload.get("core"), dict) else payload
     session_extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
 
-    # Seed session_state for restore_saved_app_state_once from core fields.
-    if isinstance(core, dict):
-        for k, v in core.items():
-            if k in ("pick_key", "song", "artist", "instrument", "focus", "display_key", "level"):
-                if v:
-                    st.session_state[k] = v
-            if k in ("studio_page", "page") and v:
-                st.session_state["studio_page"] = v
-            if k == "practice_focus_section" and v:
-                st.session_state["practice_focus_section"] = v
-            if k == "mode" and v:
-                st.session_state["last_practice_mode"] = v
-
     st.session_state.pop(SUITE_LOCAL_STATE_RESTORED_KEY, None)
-    restore_saved_app_state_once(
-        st,
-        song_picker_catalog=song_picker_catalog,
-        song_library=song_library,
-    )
+    applied = False
+    if isinstance(core, dict) and core:
+        applied = apply_saved_music_context(
+            st,
+            core,
+            song_picker_catalog=song_picker_catalog,
+            song_library=song_library,
+        )
+        if applied:
+            st.session_state[SUITE_LOCAL_STATE_RESTORED_KEY] = True
+
+    if not applied:
+        restore_saved_app_state_once(
+            st,
+            song_picker_catalog=song_picker_catalog,
+            song_library=song_library,
+        )
 
     for key, val in session_extra.items():
         if key == "_studio_page_snapshots" and isinstance(val, dict):
