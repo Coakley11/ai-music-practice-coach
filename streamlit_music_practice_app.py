@@ -7384,7 +7384,21 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         f'<dt>Instruments</dt><dd>{html.escape(details["instruments"])}</dd>'
         f'<dt>Practice focus</dt><dd>{html.escape(details["practice_focus"])}</dd>'
         f"</dl>"
-        + (f'<p class="ui-active-song-blurb"><strong>Harmony:</strong> {concepts}</p>' if concepts else "")
+        + (
+            f'<p class="ui-active-song-blurb"><strong>Challenge:</strong> '
+            f'{html.escape(str((details.get("coaching") or {}).get("biggest_challenge") or ""))}</p>'
+            if str((details.get("coaching") or {}).get("biggest_challenge") or "").strip()
+            else ""
+        )
+        + (
+            f'<p class="ui-active-song-blurb"><strong>Harmony:</strong> {concepts}</p>'
+            if concepts and not (details.get("coaching") or {})
+            else (
+                f'<p class="ui-active-song-blurb ui-active-song-blurb-muted"><strong>Harmony:</strong> {concepts}</p>'
+                if concepts
+                else ""
+            )
+        )
         + f'<p class="ui-active-song-blurb">{html.escape(str(details.get("why_practice", "")))}</p>'
         + (f'<ul class="ui-active-song-goals">{goals_html}</ul>' if goals_html else "")
         + "</div></div>"
@@ -9565,6 +9579,22 @@ if _studio_page == "practice":
                         )
 
     with _tab_coach:
+        try:
+            from song_coaching import build_song_coaching, coaching_markdown, coaching_scale_summary
+
+            _song_coaching = build_song_coaching(
+                song_data,
+                song_data.get("sections") or {},
+                instrument=instrument,
+                level=level,
+            )
+            with st.expander("Song coach", expanded=pp.feature_expander_default(st, default=True)):
+                st.markdown(coaching_markdown(_song_coaching))
+            _coaching_scale_line = coaching_scale_summary(_song_coaching)
+        except Exception:
+            _song_coaching = {}
+            _coaching_scale_line = ""
+
         if not _is_full_song and _active_section:
             # ----- Section Deep Focus -----------------------------------
         # ``section_deep_practice_markdown`` returns "No chords in
@@ -9621,13 +9651,16 @@ if _studio_page == "practice":
                 "Scales & approaches",
                 expanded=pp.feature_expander_default(st, default=False),
             ):
-                if _focus_chords:
+                if _coaching_scale_line:
+                    st.markdown(_coaching_scale_line)
+                    st.caption("Chord-by-chord scale reference is in Chord Coach below.")
+                elif _focus_chords:
                     _scales_rendered = 0
                     _scales_errors: list[tuple[str, Exception]] = []
                     _seen_scale_suggestions: set[str] = set()
                     _scale_chord_cache: dict[str, str] = {}
                     _scale_repeats = 0
-                    _scale_unique_cap = 12
+                    _scale_unique_cap = 2
                     for ch in _focus_chords:
                         if _scales_rendered >= _scale_unique_cap:
                             break

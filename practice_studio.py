@@ -451,12 +451,24 @@ def active_song_card_details(
     if not section_summary.strip():
         section_summary = "Intro -> Verse -> Chorus -> Outro"
 
-    practice_focus_text = practice_focus_hints(
-        record,
-        sections,
-        level=level,
-        instrument=instrument,
-    )
+    try:
+        from song_coaching import build_song_coaching, coaching_practice_focus
+
+        coaching = build_song_coaching(
+            record,
+            sections,
+            instrument=instrument,
+            level=level,
+        )
+        practice_focus_text = coaching_practice_focus(coaching)
+    except Exception:
+        coaching = {}
+        practice_focus_text = practice_focus_hints(
+            record,
+            sections,
+            level=level,
+            instrument=instrument,
+        )
     if not str(practice_focus_text or "").strip():
         practice_focus_text = (
             "core chord changes · rhythm feel · clean transitions"
@@ -474,7 +486,8 @@ def active_song_card_details(
         # repetition (Verse ... Chorus ... Verse) is preserved.
         "section_summary": section_summary,
         "practice_focus": practice_focus_text,
-        "chord_concepts": concepts,
+        "coaching": coaching,
+        "chord_concepts": concepts[:2] if coaching else concepts,
         "practice_goals": practice_goals_for_record(record, sections),
         "why_practice": (
             ext.get("arrangement_notes")
