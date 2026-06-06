@@ -7099,7 +7099,6 @@ _PICKER_NAV_ANCHORS: dict[str, str] = {
 
 
 _CATALOG_RECENT_KEY = "catalog_recent_pick_keys"
-FAVORITES_V1_DEPLOY_MARKER = "favorites-v1-1"
 
 
 def _open_chart_editor_on_picker() -> None:
@@ -7994,13 +7993,6 @@ def _render_catalog_song_picker_block(
                             "Showing <strong>favorites only</strong></p>",
                             unsafe_allow_html=True,
                         )
-                    else:
-                        st.markdown(
-                            f'<p class="ui-favorites-deploy-marker" style="margin-top:0.55rem;'
-                            f'font-size:0.72rem;color:#64748b;">'
-                            f"Favorites UI · <strong>{FAVORITES_V1_DEPLOY_MARKER}</strong></p>",
-                            unsafe_allow_html=True,
-                        )
                 _render_genre_filter_pills(available_genres)
                 _filter_bits = ["genre pills", "search"]
                 if _fav_filter_on:
@@ -8812,6 +8804,23 @@ try:
 except Exception:
     pass
 
+try:
+    from music_persistent_state import default_reset_music_session
+    from suite_user_persistence import render_reset_controls
+
+    render_reset_controls(
+        st,
+        "music",
+        on_reset=default_reset_music_session,
+        label="Reset to default",
+        help_text=(
+            "Clears session, local saved state, and cloud session for this app. "
+            "Catalog data and user chart overrides are not deleted."
+        ),
+    )
+except Exception:
+    pass
+
 pp.render_sidebar_toggle(st)
 
 try:
@@ -8826,22 +8835,6 @@ except Exception:
 
 try:
     render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
-except Exception:
-    pass
-
-try:
-    from music_persistent_state import autosave_music_state, default_reset_music_session
-    from suite_user_persistence import render_reset_controls
-
-    render_reset_controls(
-        st,
-        "music",
-        on_reset=default_reset_music_session,
-        help_text=(
-            "Clears saved page, instrument, and filter preferences. "
-            "Does not delete chord-chart overrides in data/user_chart_overrides.json."
-        ),
-    )
 except Exception:
     pass
 

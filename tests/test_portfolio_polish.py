@@ -26,6 +26,7 @@ _REQUIRED_PORTFOLIO_POLISH_SYMBOLS = frozenset({
     "prefer_cached_demo",
     "render_executive_summary",
     "render_hero_banner",
+    "portfolio_sidebar_ui_enabled",
     "render_sidebar_toggle",
     "show_developer_sidebar",
     "show_quick_nav",
@@ -81,6 +82,11 @@ def test_nav_deploy_marker_shows_in_developer_mode():
     render_nav_deploy_marker(fake, developer_mode=True)
     assert len(fake.markdown_calls) == 1
     assert "Navigation UI version" in fake.markdown_calls[0]
+
+
+def test_portfolio_sidebar_toggle_hidden_by_default(monkeypatch):
+    monkeypatch.delenv("PORTFOLIO_CAPTURE_UI", raising=False)
+    assert not pp.portfolio_sidebar_ui_enabled()
 
 
 def test_portfolio_demo_import_smoke():
