@@ -49,6 +49,9 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "creative_lab_analysis_mode",
     "improv_intelligence_tab",
     "song_picker_favorites_only",
+    "cpl_active_progression",
+    "cpl_saved_progressions",
+    "cpl_builder_version",
 )
 
 _LIST_KEYS = (
@@ -111,6 +114,8 @@ def apply_music_disk_state(
         if key == "_studio_page_snapshots" and isinstance(val, dict):
             st.session_state[key] = copy.deepcopy(val)
         elif key in _LIST_KEYS and isinstance(val, list):
+            st.session_state[key] = copy.deepcopy(val)
+        elif key in _PERSIST_KEYS:
             st.session_state[key] = copy.deepcopy(val)
         else:
             st.session_state[key] = copy.deepcopy(val)
@@ -189,8 +194,20 @@ def apply_music_session_defaults(st: Any) -> None:
         "karaoke_queue",
         "catalog_favorite_pick_keys",
         "song_picker_favorites_only",
+        "cpl_active_progression",
+        "cpl_saved_progressions",
+        "cpl_builder_version",
+        "cpl_finished",
+        "_cpl_editing_display_key",
+        "cpl_last_display_key",
     ):
         ss.pop(key, None)
+    try:
+        from custom_progression_lab import clear_cpl_widget_state
+
+        clear_cpl_widget_state(ss)
+    except Exception:
+        pass
     ss.pop(ACTIVE_CATALOG_PICK_KEY, None)
     ss.pop(SELECTED_SONG_STATE_KEY, None)
     ss.pop(SUITE_LOCAL_STATE_RESTORED_KEY, None)

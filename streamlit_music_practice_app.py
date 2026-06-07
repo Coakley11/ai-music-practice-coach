@@ -141,6 +141,8 @@ from songs.state import (
     ACTIVE_CATALOG_PICK_KEY,
     PENDING_MATCHING_SONG_DROPDOWN,
     PICK_KEY_RECOVERY_NOTICE_KEY,
+    SELECTED_SONG_STATE_KEY,
+    SUITE_LOCAL_STATE_RESTORED_KEY,
     apply_pick_key,
     build_music_local_state,
     ensure_master_song_initialized,
@@ -1092,7 +1094,8 @@ if hasattr(st, "session_state"):
             song_library=SONG_LIBRARY,
         )
         show_persistence_messages(st)
-    except Exception:
+    except Exception as _music_restore_exc:
+        st.session_state["_music_restore_error"] = str(_music_restore_exc)
         restore_saved_app_state_once(
             st,
             song_picker_catalog=SONG_PICKER_CATALOG,
@@ -1171,8 +1174,17 @@ if CPL_SAVED_KEY not in st.session_state:
     st.session_state[CPL_SAVED_KEY] = {}
 ensure_active_music_source(st.session_state)
 
+_restored_pick_key = ""
+_sel = st.session_state.get(SELECTED_SONG_STATE_KEY)
+if isinstance(_sel, dict):
+    _restored_pick_key = str(_sel.get("pick_key") or "").strip()
+if not _restored_pick_key:
+    _restored_pick_key = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+_music_state_restored = bool(st.session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY)) or bool(_restored_pick_key)
+
 if (
-    DEFAULT_SONG_RECORDS
+    not _music_state_restored
+    and DEFAULT_SONG_RECORDS
     and _normalize_library_mode(st.session_state.get("chart_library_mode", DEFAULT_CHART_LIBRARY_MODE))
     == LIBRARY_MODE_CORE
     and not _catalog_song_data.get("trusted_core")
