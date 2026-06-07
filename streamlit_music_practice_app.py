@@ -1197,8 +1197,10 @@ if not _restored_pick_key:
     _restored_pick_key = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
 _music_state_restored = bool(st.session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY)) or bool(_restored_pick_key)
 
+# Pin to trusted-core default only on true first run — never replace restored or
+# user-selected songs (including non-core catalog entries).
 if (
-    not _music_state_restored
+    not _skip_master_song_init
     and DEFAULT_SONG_RECORDS
     and _normalize_library_mode(st.session_state.get("chart_library_mode", DEFAULT_CHART_LIBRARY_MODE))
     == LIBRARY_MODE_CORE

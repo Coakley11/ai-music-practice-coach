@@ -112,7 +112,8 @@ def apply_music_disk_state(
             song_picker_catalog=song_picker_catalog,
             song_library=song_library,
         )
-        st.session_state[SUITE_LOCAL_STATE_RESTORED_KEY] = True
+        if applied:
+            st.session_state[SUITE_LOCAL_STATE_RESTORED_KEY] = True
 
     if not applied and not (isinstance(core, dict) and core):
         restore_saved_app_state_once(

@@ -117,3 +117,93 @@ def test_pick_restore_session_keeps_disk_when_local_dirty():
         local_dirty=True,
     )
     assert picked.source == "disk"
+
+
+@pytest.fixture
+def non_core_catalog():
+    """Catalog song without trusted_core — highest-risk persistence case."""
+    label = "Blue Moon — Rodgers & Hart"
+    pick_key = format_pick_key("Jazz", label)
+    song_picker_catalog = {
+        "Jazz": {
+            label: {
+                "title": "Blue Moon",
+                "artist": "Rodgers & Hart",
+                "key": "C",
+                "chart_status": "user_verified",
+            }
+        }
+    }
+    song_library = {"Jazz": {"Blue Moon": song_picker_catalog["Jazz"][label]}}
+    return pick_key, song_picker_catalog, song_library
+
+
+def test_non_core_song_scenario_blob(non_core_catalog):
+    pick_key, song_picker_catalog, song_library = non_core_catalog
+    st = _FakeSession(
+        {
+            ACTIVE_CATALOG_PICK_KEY: pick_key,
+            "selected_song": {
+                "pick_key": pick_key,
+                "title": "Blue Moon",
+                "artist": "Rodgers & Hart",
+            },
+            "instrument": "Piano",
+            "display_key": "F Major",
+            "studio_page": "backing",
+            "backing_track_scope": "section",
+            "backing_track_single_section": "Verse",
+            "backing_track_bpm": 92,
+            "chart_library_mode": "core",
+        }
+    )
+    blob = build_music_disk_state(st)
+    core = blob["core"]
+    assert core["song"] == "Blue Moon"
+    assert core["pick_key"] == pick_key
+    assert core["instrument"] == "Piano"
+    assert core["display_key"] == "F Major"
+    assert core["studio_page"] == "backing"
+
+    restored = _FakeSession({})
+    apply_music_disk_state(
+        restored,
+        blob,
+        song_picker_catalog=song_picker_catalog,
+        song_library=song_library,
+    )
+    from songs.state import SUITE_LOCAL_STATE_RESTORED_KEY
+
+    assert restored[ACTIVE_CATALOG_PICK_KEY] == pick_key
+    assert restored["instrument"] == "Piano"
+    assert restored[PENDING_DISPLAY_KEY] == "F Major"
+    assert restored["studio_page"] == "backing"
+    assert restored["backing_track_single_section"] == "Verse"
+    assert restored.get(SUITE_LOCAL_STATE_RESTORED_KEY) is True
+    sel = restored.get("selected_song") or {}
+    assert sel.get("title") == "Blue Moon"
+
+
+def test_non_core_restore_failure_does_not_set_restored_flag(non_core_catalog):
+    pick_key, song_picker_catalog, song_library = non_core_catalog
+    blob = {
+        "core": {
+            "song": "Blue Moon",
+            "artist": "Rodgers & Hart",
+            "pick_key": pick_key,
+            "instrument": "Piano",
+        },
+        "session": {},
+    }
+    restored = _FakeSession({})
+    empty_catalog: dict = {}
+    apply_music_disk_state(
+        restored,
+        blob,
+        song_picker_catalog=empty_catalog,
+        song_library={},
+    )
+    from songs.state import SUITE_LOCAL_STATE_RESTORED_KEY
+
+    assert restored.get(SUITE_LOCAL_STATE_RESTORED_KEY) is None
+    assert restored.get(ACTIVE_CATALOG_PICK_KEY) is None
