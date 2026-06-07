@@ -374,3 +374,39 @@ def render_reset_controls(
                 on_click=request_reset_confirm_state,
                 kwargs={"session_state": st.session_state, "app_id": app_id},
             )
+
+
+def finalize_suite_reset(
+    st: Any,
+    app_id: str,
+    fresh_state: dict[str, Any],
+    *,
+    page: str = "",
+    summary: str = "Reset to defaults",
+) -> None:
+    """
+    Persist fresh defaults to disk and cloud after ``reset_user_state`` removed the local file.
+    """
+    save_user_state(app_id, fresh_state)
+    try:
+        from suite_cloud_state import (
+            clear_cloud_full_session,
+            save_cloud_full_session,
+            session_page_summary,
+        )
+
+        clear_cloud_full_session(app_id)
+        auto_page, auto_summary = session_page_summary(app_id, fresh_state)
+        save_cloud_full_session(
+            app_id,
+            fresh_state,
+            page=page or auto_page,
+            summary=summary or auto_summary or "Reset to defaults",
+        )
+    except Exception:
+        pass
+    st.session_state[f"{_SESSION_RESTORED_PREFIX}{app_id}"] = True
+    st.session_state.pop(f"_suite_autosave_fp::{app_id}", None)
+    st.session_state.pop(_local_dirty_key(app_id), None)
+    st.session_state.pop(_applied_cloud_ts_key(app_id), None)
+    st.session_state.pop(_restored_fp_key(app_id), None)

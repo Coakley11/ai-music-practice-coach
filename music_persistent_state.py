@@ -52,6 +52,10 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "cpl_active_progression",
     "cpl_saved_progressions",
     "cpl_builder_version",
+    "cpl_edit_section",
+    "cpl_finished",
+    "_cpl_editing_display_key",
+    "cpl_last_display_key",
 )
 
 _LIST_KEYS = (
@@ -77,6 +81,14 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     snapshots = ss.get("_studio_page_snapshots")
     if isinstance(snapshots, dict) and snapshots:
         extra["_studio_page_snapshots"] = copy.deepcopy(snapshots)
+    try:
+        from custom_progression_lab import export_cpl_widget_state
+
+        cpl_widgets = export_cpl_widget_state(ss)
+        if cpl_widgets:
+            extra["_cpl_widget_state"] = cpl_widgets
+    except Exception:
+        pass
     return {"core": core, "session": extra}
 
 
@@ -112,6 +124,13 @@ def apply_music_disk_state(
     for key, val in session_extra.items():
         if key == "_studio_page_snapshots" and isinstance(val, dict):
             st.session_state[key] = copy.deepcopy(val)
+        elif key == "_cpl_widget_state" and isinstance(val, dict):
+            try:
+                from custom_progression_lab import import_cpl_widget_state
+
+                import_cpl_widget_state(st.session_state, val)
+            except Exception:
+                pass
         elif key in _LIST_KEYS and isinstance(val, list):
             st.session_state[key] = copy.deepcopy(val)
         elif key in _PERSIST_KEYS:

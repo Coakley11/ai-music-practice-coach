@@ -6,6 +6,7 @@ import importlib.util
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 
 def _load_music_theory():
@@ -918,6 +919,52 @@ def clear_cpl_widget_state(session_state: dict) -> None:
     for key in list(session_state.keys()):
         if key.startswith("cpl_pending_chord_") or key.startswith("cpl_last_bars_"):
             session_state.pop(key, None)
+
+
+CPL_WIDGET_PERSIST_PREFIXES = (
+    "cpl_pending_chord_",
+    "cpl_last_bars_",
+    "cpl_sub_",
+    "_cpl_prev_bars_",
+)
+
+CPL_WIDGET_PERSIST_SCALAR_KEYS = (
+    "cpl_finished",
+    "_cpl_editing_display_key",
+    CPL_LAST_DISPLAY_KEY,
+    "cpl_edit_section",
+    "cpl_name",
+    "cpl_original_key",
+    "cpl_time_signature",
+    "cpl_progression_style",
+    "cpl_bpm",
+    "cpl_groove_style",
+)
+
+
+def export_cpl_widget_state(session_state: dict) -> dict[str, Any]:
+    """Persist CPL bar/subdivision widget keys for cross-refresh restore."""
+    import copy
+
+    out: dict[str, Any] = {}
+    for key in CPL_WIDGET_PERSIST_SCALAR_KEYS:
+        if key in session_state:
+            out[key] = copy.deepcopy(session_state[key])
+    for key in list(session_state.keys()):
+        sk = str(key)
+        if any(sk.startswith(prefix) for prefix in CPL_WIDGET_PERSIST_PREFIXES):
+            out[sk] = copy.deepcopy(session_state[key])
+    return out
+
+
+def import_cpl_widget_state(session_state: dict, blob: dict[str, Any]) -> None:
+    """Restore CPL widget keys before CPL widgets render."""
+    import copy
+
+    if not isinstance(blob, dict):
+        return
+    for key, val in blob.items():
+        session_state[key] = copy.deepcopy(val)
 
 
 def apply_cpl_session_progression(session_state: dict, active: dict) -> None:
