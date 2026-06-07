@@ -140,25 +140,76 @@ def apply_music_disk_state(
             st.session_state[key] = copy.deepcopy(val)
 
 
+def autosave_music_state(st: Any) -> None:
+    cloud_ok = False
+    try:
+        autosave_if_changed(st, APP_ID, build_state=build_music_disk_state)
+        cloud_ok = True
+    except Exception:
+        pass
+    try:
+        from music_persistence_trace import update_trace
+
+        update_trace(
+            st,
+            autosave_ran=True,
+            cloud_save_success=cloud_ok,
+        )
+        try:
+            from suite_cloud_state import load_cloud_full_session
+
+            _, cloud_ts = load_cloud_full_session(APP_ID)
+            if cloud_ts:
+                update_trace(st, last_cloud_ts=cloud_ts)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def restore_music_disk_state_once(
     st: Any,
     *,
     song_picker_catalog: dict,
     song_library: dict | None,
 ) -> bool:
+    trace_fields: dict = {
+        "cloud_restore_attempted": True,
+        "disk_restore_attempted": True,
+    }
+
     def _apply(st_obj: Any, state: dict[str, Any]) -> None:
+        core = state.get("core") if isinstance(state.get("core"), dict) else state
+        if isinstance(core, dict):
+            trace_fields["restored_pick_key"] = str(core.get("pick_key") or "")
+            trace_fields["restored_display_key"] = str(core.get("display_key") or "")
+            trace_fields["restored_instrument"] = str(core.get("instrument") or "")
+            trace_fields["restored_studio_page"] = str(core.get("studio_page") or core.get("page") or "")
         apply_music_disk_state(
             st_obj,
             state,
             song_picker_catalog=song_picker_catalog,
             song_library=song_library,
         )
+        trace_fields["apply_saved_result"] = bool(st_obj.session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY))
+        trace_fields["apply_pick_key_result"] = bool(
+            st_obj.session_state.get(ACTIVE_CATALOG_PICK_KEY) or st_obj.session_state.get(SELECTED_SONG_STATE_KEY)
+        )
 
-    return restore_once(st, APP_ID, apply_state=_apply)
+    try:
+        ok = restore_once(st, APP_ID, apply_state=_apply)
+        trace_fields["cloud_restore_success"] = ok
+        trace_fields["restore_source"] = "cloud/disk" if ok else "none"
+    except Exception as exc:
+        trace_fields["restore_error"] = str(exc)
+        ok = False
+    try:
+        from music_persistence_trace import update_trace
 
-
-def autosave_music_state(st: Any) -> None:
-    autosave_if_changed(st, APP_ID, build_state=build_music_disk_state)
+        update_trace(st, **trace_fields)
+    except Exception:
+        pass
+    return ok
 
 
 def persist_music_disk_state(st: Any) -> None:

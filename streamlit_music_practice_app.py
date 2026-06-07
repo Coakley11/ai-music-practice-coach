@@ -35,6 +35,13 @@ st.set_page_config(
     layout="wide"
 )
 
+try:
+    from music_persistence_trace import init_developer_mode_from_query, render_persistence_trace_sidebar
+
+    init_developer_mode_from_query(st)
+except Exception:
+    pass
+
 import portfolio_polish as pp
 import portfolio_demo as pdemo
 
@@ -1131,7 +1138,21 @@ if not _skip_master_song_init:
         song_library=SONG_LIBRARY,
         song_picker_catalog=SONG_PICKER_CATALOG,
     )
-elif st.session_state.get("_music_restore_error") and st.session_state.get("developer_mode"):
+    try:
+        from music_persistence_trace import update_trace
+
+        update_trace(st, trusted_core_init_ran=True)
+    except Exception:
+        pass
+else:
+    try:
+        from music_persistence_trace import update_trace
+
+        update_trace(st, trusted_core_init_ran=False)
+    except Exception:
+        pass
+
+if st.session_state.get("_music_restore_error") and st.session_state.get("developer_mode"):
     st.sidebar.warning(
         f"Music session restore error (developer): {st.session_state['_music_restore_error']}"
     )
@@ -8873,6 +8894,13 @@ try:
             "Catalog data and user chart overrides are not deleted."
         ),
     )
+except Exception:
+    pass
+
+try:
+    from music_persistence_trace import render_persistence_trace_sidebar
+
+    render_persistence_trace_sidebar(st)
 except Exception:
     pass
 

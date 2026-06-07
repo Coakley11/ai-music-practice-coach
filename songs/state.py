@@ -55,26 +55,35 @@ def build_music_local_state(st: Any) -> dict[str, str]:
 
 
 def persist_music_local_state(st: Any, **extra: Any) -> None:
-    """Write the current music session snapshot without logging an activity event."""
+    """Write disk + cloud session snapshot (Streamlit Cloud survives reboot via cloud)."""
     try:
-        from music_persistent_state import build_music_disk_state, persist_music_disk_state
+        from music_persistent_state import autosave_music_state
 
         if extra:
             for key, value in extra.items():
                 if value:
                     st.session_state[key] = str(value)
-        persist_music_disk_state(st)
+        autosave_music_state(st)
     except Exception:
         try:
-            from suite_activity_client import save_local_app_state
+            from music_persistent_state import build_music_disk_state, persist_music_disk_state
 
-            payload = build_music_local_state(st)
-            for key, value in extra.items():
-                if value:
-                    payload[key] = str(value)
-            save_local_app_state("music", payload)
+            if extra:
+                for key, value in extra.items():
+                    if value:
+                        st.session_state[key] = str(value)
+            persist_music_disk_state(st)
         except Exception:
-            pass
+            try:
+                from suite_activity_client import save_local_app_state
+
+                payload = build_music_local_state(st)
+                for key, value in extra.items():
+                    if value:
+                        payload[key] = str(value)
+                save_local_app_state("music", payload)
+            except Exception:
+                pass
 
 
 def apply_saved_music_context(
@@ -485,8 +494,7 @@ def apply_pick_key(
             )
         except Exception:
             pass
-    else:
-        persist_music_local_state(st)
+    persist_music_local_state(st)
     return data
 
 
