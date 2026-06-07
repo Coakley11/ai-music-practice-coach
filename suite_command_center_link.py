@@ -22,10 +22,16 @@ def command_center_url() -> str:
     return base.rstrip("/")
 
 
-def render_command_center_sidebar_link(st: Any, *, label: str = "← Command Center") -> None:
+def render_command_center_sidebar_link(
+    st: Any,
+    *,
+    label: str = "← Command Center",
+    show_divider: bool = True,
+) -> None:
     """Top-of-sidebar link back to the suite homepage."""
     url = command_center_url()
     if not url:
         return
     st.sidebar.link_button(label, url, use_container_width=True)
-    st.sidebar.divider()
+    if show_divider:
+        st.sidebar.divider()

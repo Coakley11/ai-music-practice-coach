@@ -5,15 +5,15 @@ from __future__ import annotations
 import subprocess
 from typing import Any
 
-MUSIC_SIDEBAR_LAYOUT_MARKER = "sidebar-order-v1"
+MUSIC_SIDEBAR_LAYOUT_MARKER = "sidebar-order-v2"
 
-# Primary sidebar blocks in render order (streamlit_music_practice_app.py ~8876–9060).
+# Primary sidebar blocks in render order (streamlit_music_practice_app.py ~8876–9070).
 MUSIC_SIDEBAR_SECTION_ORDER: tuple[str, ...] = (
     "command_center",
     "saved_session",
     "active_song",
-    "pages",
     "practice_setup",
+    "pages",
     "session",
 )
 

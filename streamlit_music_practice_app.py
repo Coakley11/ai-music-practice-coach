@@ -8876,9 +8876,21 @@ if _studio_page == "openai" and not _openai_api_key:
 try:
     from suite_command_center_link import render_command_center_sidebar_link
 
-    render_command_center_sidebar_link(st)
+    render_command_center_sidebar_link(st, show_divider=False)
 except Exception:
     pass
+
+if not st.session_state.get("_music_sidebar_suite_top_css"):
+    st.session_state["_music_sidebar_suite_top_css"] = True
+    st.sidebar.markdown(
+        """
+<style>
+[data-testid="stSidebar"] > div:first-child hr { margin: 0.15rem 0 !important; }
+[data-testid="stSidebar"] .stExpander { margin-top: 0.1rem !important; }
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 try:
     from music_persistent_state import default_reset_music_session
@@ -8919,7 +8931,7 @@ def _active_song_artist_label() -> str:
     return str((song_data or {}).get("artist") or "").strip()
 
 
-# SIDEBAR — suite order: Command Center → Saved Session → Active Song → Pages → Practice Setup → Session
+# SIDEBAR — suite order: Command Center → Saved Session → Active Song → Practice Setup → Pages → Session
 
 sidebar_section("Active Song", icon="🎼", tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
@@ -8976,16 +8988,6 @@ st.sidebar.selectbox(
     help="Concert-pitch center; charts may show your written key when transposing is enabled.",
     on_change=lambda: mark_display_key_changed(st),
 )
-
-try:
-    render_sidebar_studio_nav(
-        st.session_state,
-        current_page=_studio_page,
-        rerun_fn=st.rerun,
-        ai_enabled=bool(_openai_api_key),
-    )
-except Exception:
-    pass
 
 _instrument_options = DEFAULT_INSTRUMENT_OPTIONS
 
@@ -9050,6 +9052,16 @@ st.sidebar.selectbox(
     on_change=_on_global_focus_change,
     help="Applies on every page — drives practice goals, suggestions, and video matching.",
 )
+
+try:
+    render_sidebar_studio_nav(
+        st.session_state,
+        current_page=_studio_page,
+        rerun_fn=st.rerun,
+        ai_enabled=bool(_openai_api_key),
+    )
+except Exception:
+    pass
 
 sidebar_section("Session", icon="⏱️", tone="session")
 st.session_state.setdefault("practice_minutes", 30)
