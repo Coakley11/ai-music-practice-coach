@@ -1095,12 +1095,10 @@ if hasattr(st, "session_state"):
         )
         show_persistence_messages(st)
     except Exception as _music_restore_exc:
+        import traceback
+
         st.session_state["_music_restore_error"] = str(_music_restore_exc)
-        restore_saved_app_state_once(
-            st,
-            song_picker_catalog=SONG_PICKER_CATALOG,
-            song_library=SONG_LIBRARY,
-        )
+        st.session_state["_music_restore_error_trace"] = traceback.format_exc()
 
     try:
         from suite_resume_launch import finalize_suite_resume_launch
@@ -1114,12 +1112,29 @@ if hasattr(st, "session_state"):
     except Exception:
         pass
 
-ensure_master_song_initialized(
-    st,
-    all_records=DEFAULT_SONG_RECORDS,
-    song_library=SONG_LIBRARY,
-    song_picker_catalog=SONG_PICKER_CATALOG,
+def _music_has_saved_song_context(session_state) -> bool:
+    sel = session_state.get(SELECTED_SONG_STATE_KEY)
+    if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip():
+        return True
+    return bool(str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip())
+
+
+_skip_master_song_init = (
+    _music_has_saved_song_context(st.session_state)
+    or bool(st.session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY))
+    or bool(st.session_state.get("_music_restore_error"))
 )
+if not _skip_master_song_init:
+    ensure_master_song_initialized(
+        st,
+        all_records=DEFAULT_SONG_RECORDS,
+        song_library=SONG_LIBRARY,
+        song_picker_catalog=SONG_PICKER_CATALOG,
+    )
+elif st.session_state.get("_music_restore_error") and st.session_state.get("developer_mode"):
+    st.sidebar.warning(
+        f"Music session restore error (developer): {st.session_state['_music_restore_error']}"
+    )
 
 if pp.is_demo_mode(st) and not pp.demo_applied(st, "practice"):
     pdemo.load_practice_demo(st, SONG_PICKER_CATALOG, SONG_LIBRARY, ALL_SONG_RECORDS)

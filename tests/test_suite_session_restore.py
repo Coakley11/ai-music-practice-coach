@@ -10,14 +10,13 @@ from unittest.mock import patch
 import pytest
 
 from song_catalog import format_pick_key
-from music_persistent_state import apply_music_disk_state
+from music_persistent_state import apply_music_disk_state, restore_music_disk_state_once
 from songs.state import (
     ACTIVE_CATALOG_PICK_KEY,
     PENDING_DISPLAY_KEY,
     SELECTED_SONG_STATE_KEY,
     SUITE_LOCAL_STATE_RESTORED_KEY,
     build_music_local_state,
-    restore_saved_app_state_once,
 )
 
 
@@ -96,7 +95,7 @@ def test_restore_runs_once_and_applies_saved_state(mini_catalog, tmp_path: Path)
     st = _FakeSession({})
 
     with patch("suite_user_persistence.DATA_DIR", tmp_path):
-        restore_saved_app_state_once(
+        restore_music_disk_state_once(
             st,
             song_picker_catalog=song_picker_catalog,
             song_library=song_library,
@@ -112,7 +111,7 @@ def test_restore_runs_once_and_applies_saved_state(mini_catalog, tmp_path: Path)
 
     before = dict(st)
     with patch("suite_user_persistence.DATA_DIR", tmp_path):
-        restore_saved_app_state_once(
+        restore_music_disk_state_once(
             st,
             song_picker_catalog=song_picker_catalog,
             song_library=song_library,
@@ -149,7 +148,7 @@ def test_apply_music_disk_state_restores_core_pick_key(mini_catalog):
 
 
 def test_restore_missing_song_shows_neutral_notice(mini_catalog, tmp_path: Path):
-    song_picker_catalog, _song_library = mini_catalog
+    song_picker_catalog, song_library = mini_catalog
     saved = {
         "pick_key": "Jazz|Missing Song — Nobody",
         "song": "Missing Song",
@@ -164,9 +163,10 @@ def test_restore_missing_song_shows_neutral_notice(mini_catalog, tmp_path: Path)
     st = _FakeSession({})
 
     with patch("suite_user_persistence.DATA_DIR", tmp_path):
-        restore_saved_app_state_once(
+        restore_music_disk_state_once(
             st,
             song_picker_catalog=song_picker_catalog,
+            song_library=song_library,
         )
 
     from songs.state import PICK_KEY_RECOVERY_NOTICE_KEY
