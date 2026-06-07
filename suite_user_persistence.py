@@ -27,6 +27,19 @@ _SESSION_BANNER_KEY = "_suite_persist_banner"
 _SESSION_SAVED_FLASH_KEY = "_suite_persist_saved_flash"
 _SESSION_INVALID_WARN_KEY = "_suite_persist_invalid_warn"
 _SESSION_CLOUD_BANNER_KEY = "_suite_persist_cloud_banner"
+_PERSIST_OPS_KEY = "_suite_persist_ops"
+
+
+def record_persist_op(st: Any, app_id: str, **fields: Any) -> None:
+    root = st.session_state.get(_PERSIST_OPS_KEY)
+    if not isinstance(root, dict):
+        root = {}
+    block = root.get(app_id)
+    if not isinstance(block, dict):
+        block = {}
+    block.update({k: v for k, v in fields.items() if v is not None or k.endswith("_error")})
+    root[app_id] = block
+    st.session_state[_PERSIST_OPS_KEY] = root
 
 
 def _utc_now_iso() -> str:
@@ -160,19 +173,29 @@ def restore_once(
     cloud_state: dict[str, Any] = {}
     cloud_ts: str | None = None
     from_cloud = False
+    restore_source = "none"
     try:
-        from suite_cloud_state import load_cloud_full_session, pick_newer_session
+        from suite_cloud_state import load_cloud_full_session, pick_restore_session
 
         cloud_state, cloud_ts = load_cloud_full_session(app_id)
-        state = pick_newer_session(cloud_state, cloud_ts, disk_state, disk_ts)
-        if cloud_state and state is cloud_state:
-            from_cloud = True
-        elif cloud_state and disk_state and state is disk_state:
-            from_cloud = _parse_ts_simple(cloud_ts) > _parse_ts_simple(disk_ts)
+        pick = pick_restore_session(cloud_state, cloud_ts, disk_state, disk_ts)
+        state = pick.state
+        restore_source = pick.source if pick.state else "none"
+        from_cloud = pick.source == "cloud"
     except ImportError:
         state = disk_state
+        restore_source = "disk" if disk_state else "none"
     except Exception:
         state = disk_state
+        restore_source = "disk" if disk_state else "none"
+
+    record_persist_op(
+        st,
+        app_id,
+        last_restore_source=restore_source,
+        last_restore_attempted=True,
+        cloud_restore_had_blob=bool(cloud_state),
+    )
 
     if not state:
         return False
@@ -183,6 +206,7 @@ def restore_once(
         st.session_state[_SESSION_INVALID_WARN_KEY] = (
             "Some saved settings could not be restored; using defaults."
         )
+        record_persist_op(st, app_id, last_restore_error="apply_state failed")
         return False
 
     if from_cloud:
@@ -206,8 +230,15 @@ def autosave_if_changed(
     app_id: str,
     *,
     build_state: Callable[[Any], dict[str, Any]],
-) -> None:
+) -> dict[str, Any]:
     """Persist to disk and Supabase when the session snapshot changes."""
+    result: dict[str, Any] = {
+        "skipped": True,
+        "disk_ok": False,
+        "cloud_attempted": False,
+        "cloud_ok": False,
+        "cloud_error": None,
+    }
     try:
         import hashlib
 
@@ -216,22 +247,50 @@ def autosave_if_changed(
         fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
         key = f"_suite_autosave_fp::{app_id}"
         if st.session_state.get(key) == fp:
-            return
+            record_persist_op(st, app_id, last_save_source="unchanged")
+            return result
+        result["skipped"] = False
         saved_disk = save_user_state(app_id, state)
-        saved_cloud = False
+        result["disk_ok"] = saved_disk
+        cloud_error: str | None = None
+        cloud_ok = False
+        cloud_attempted = False
         try:
-            from suite_cloud_state import save_cloud_full_session, session_page_summary
+            from suite_cloud_state import save_cloud_full_session
 
-            page, summary = session_page_summary(app_id, state)
-            save_cloud_full_session(app_id, state, page=page, summary=summary)
-            saved_cloud = True
-        except Exception:
-            pass
-        if saved_disk or saved_cloud:
+            cloud_result = save_cloud_full_session(app_id, state)
+            cloud_attempted = cloud_result.attempted
+            cloud_ok = cloud_result.success
+            cloud_error = cloud_result.error
+        except Exception as exc:
+            cloud_error = str(exc)
+        result["cloud_attempted"] = cloud_attempted
+        result["cloud_ok"] = cloud_ok
+        result["cloud_error"] = cloud_error
+        save_source = []
+        if saved_disk:
+            save_source.append("disk")
+        if cloud_ok:
+            save_source.append("cloud")
+        elif cloud_attempted:
+            save_source.append("cloud_failed")
+        result["last_save_source"] = "+".join(save_source) if save_source else "none"
+        core = state.get("core") if isinstance(state.get("core"), dict) else state
+        record_persist_op(
+            st,
+            app_id,
+            last_save_source="+".join(save_source) if save_source else "none",
+            last_cloud_save_ok=cloud_ok,
+            last_cloud_save_attempted=cloud_attempted,
+            last_cloud_save_error=cloud_error,
+            last_saved_pick_key=str((core or {}).get("pick_key") or ""),
+        )
+        if saved_disk or cloud_ok:
             st.session_state[key] = fp
             st.session_state[_SESSION_SAVED_FLASH_KEY] = True
-    except Exception:
-        pass
+    except Exception as exc:
+        record_persist_op(st, app_id, last_save_error=str(exc))
+    return result
 
 
 def show_persistence_messages(st: Any) -> None:
@@ -245,7 +304,10 @@ def show_persistence_messages(st: Any) -> None:
         if banner:
             st.success(str(banner))
     if st.session_state.pop(_SESSION_SAVED_FLASH_KEY, False):
-        st.toast("Settings saved", icon="💾")
+        try:
+            st.toast("Settings saved", icon="💾")
+        except Exception:
+            pass
 
 
 def finalize_suite_reset(
@@ -374,39 +436,3 @@ def render_reset_controls(
                 on_click=request_reset_confirm_state,
                 kwargs={"session_state": st.session_state, "app_id": app_id},
             )
-
-
-def finalize_suite_reset(
-    st: Any,
-    app_id: str,
-    fresh_state: dict[str, Any],
-    *,
-    page: str = "",
-    summary: str = "Reset to defaults",
-) -> None:
-    """
-    Persist fresh defaults to disk and cloud after ``reset_user_state`` removed the local file.
-    """
-    save_user_state(app_id, fresh_state)
-    try:
-        from suite_cloud_state import (
-            clear_cloud_full_session,
-            save_cloud_full_session,
-            session_page_summary,
-        )
-
-        clear_cloud_full_session(app_id)
-        auto_page, auto_summary = session_page_summary(app_id, fresh_state)
-        save_cloud_full_session(
-            app_id,
-            fresh_state,
-            page=page or auto_page,
-            summary=summary or auto_summary or "Reset to defaults",
-        )
-    except Exception:
-        pass
-    st.session_state[f"{_SESSION_RESTORED_PREFIX}{app_id}"] = True
-    st.session_state.pop(f"_suite_autosave_fp::{app_id}", None)
-    st.session_state.pop(_local_dirty_key(app_id), None)
-    st.session_state.pop(_applied_cloud_ts_key(app_id), None)
-    st.session_state.pop(_restored_fp_key(app_id), None)

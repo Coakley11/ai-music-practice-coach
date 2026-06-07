@@ -8904,6 +8904,13 @@ try:
 except Exception:
     pass
 
+try:
+    from suite_deploy_probe import render_music_deploy_probe
+
+    render_music_deploy_probe(st)
+except Exception:
+    pass
+
 pp.render_sidebar_toggle(st)
 
 try:

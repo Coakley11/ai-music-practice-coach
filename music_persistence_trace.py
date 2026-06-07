@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from typing import Any
 
-MUSIC_PERSIST_DEPLOY_VERSION = "2026-06-08-music-persist-trace-v1"
+MUSIC_PERSIST_DEPLOY_VERSION = "2026-06-08-prod-persist-v2"
 TRACE_KEY = "_music_persist_trace"
 
 
@@ -57,14 +57,18 @@ def render_persistence_trace_sidebar(st: Any) -> None:
         return
     trace = get_trace(st)
     ss = st.session_state
+    ops = {}
+    raw_ops = ss.get("_suite_persist_ops")
+    if isinstance(raw_ops, dict):
+        ops = dict(raw_ops.get("music") or {})
     with st.sidebar.expander("Music persistence trace", expanded=False):
         st.caption(f"Deploy: {trace.get('deploy_version', MUSIC_PERSIST_DEPLOY_VERSION)}")
         st.caption(f"Commit: {trace.get('git_commit', 'unknown')}")
         rows = [
             ("cloud restore attempted", trace.get("cloud_restore_attempted")),
             ("cloud restore success", trace.get("cloud_restore_success")),
+            ("restore source", trace.get("restore_source") or ops.get("last_restore_source")),
             ("disk restore attempted", trace.get("disk_restore_attempted")),
-            ("restore source", trace.get("restore_source")),
             ("apply_saved result", trace.get("apply_saved_result")),
             ("apply_pick_key result", trace.get("apply_pick_key_result")),
             ("trusted-core init ran", trace.get("trusted_core_init_ran")),
@@ -72,15 +76,19 @@ def render_persistence_trace_sidebar(st: Any) -> None:
             ("restored display_key", trace.get("restored_display_key")),
             ("restored instrument", trace.get("restored_instrument")),
             ("restored studio_page", trace.get("restored_studio_page")),
+            ("autosave ran", trace.get("autosave_ran")),
+            ("cloud save attempted", trace.get("cloud_save_attempted") or ops.get("last_cloud_save_attempted")),
+            ("cloud save success", trace.get("cloud_save_success") or ops.get("last_cloud_save_ok")),
+            ("cloud save error", trace.get("cloud_save_error") or ops.get("last_cloud_save_error")),
+            ("last save source", trace.get("last_save_source") or ops.get("last_save_source")),
+            ("saved pick_key", trace.get("saved_pick_key") or ops.get("last_saved_pick_key")),
+            ("last cloud ts", trace.get("last_cloud_ts")),
+            ("restore error", trace.get("restore_error")),
             ("final pick_key", ss.get("active_catalog_pick_key")),
             ("final song", (ss.get("selected_song") or {}).get("title") if isinstance(ss.get("selected_song"), dict) else ""),
             ("final display_key", ss.get("display_key")),
             ("final instrument", ss.get("instrument")),
             ("final studio_page", ss.get("studio_page")),
-            ("autosave ran", trace.get("autosave_ran")),
-            ("cloud save success", trace.get("cloud_save_success")),
-            ("last cloud ts", trace.get("last_cloud_ts")),
-            ("restore error", trace.get("restore_error")),
         ]
         for label, val in rows:
             if val is not None and val != "":

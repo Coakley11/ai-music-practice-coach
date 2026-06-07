@@ -27,8 +27,16 @@ class RestorePickResult:
     disk_ts: str | None
 
 _RESUME_QUERY_KEYS: dict[str, tuple[str, ...]] = {
-    "music": ("suite_resume", "suite_page", "suite_pick_key", "suite_song"),
-    "baseball": ("suite_page",),
+    "music": (
+        "suite_resume",
+        "suite_page",
+        "suite_pick_key",
+        "suite_song",
+        "suite_display_key",
+        "suite_instrument",
+        "suite_section_focus",
+    ),
+    "baseball": ("suite_resume", "suite_page", "suite_trend_player", "suite_player_a", "suite_player_b"),
     "investment": ("suite_page",),
     "nba": ("suite_resume", "suite_page", "suite_team"),
     "future_lens": ("suite_resume", "suite_page", "suite_sim"),
@@ -189,28 +197,95 @@ def load_cloud_full_session(app_id: str) -> tuple[dict[str, Any], str | None]:
         return {}, None
 
 
+@dataclass(frozen=True)
+class CloudSaveResult:
+    attempted: bool
+    success: bool
+    error: str | None = None
+    storage_module: str = ""
+    cloud_enabled: bool = False
+
+
 def save_cloud_full_session(
     app_id: str,
     state: dict[str, Any],
     *,
     page: str = "",
     summary: str = "",
-) -> None:
+) -> CloudSaveResult:
     if not state:
-        return
+        return CloudSaveResult(attempted=False, success=False, error="empty state")
     try:
-        from suite_account import sync_local_state_to_cloud
-
-        sync_local_state_to_cloud(
-            app_id,
-            {
-                "page": page,
-                "summary": summary or "Last session",
-                FULL_SESSION_KEY: state,
-            },
+        from suite_storage_config import cloud_storage_enabled
+    except ImportError:
+        return CloudSaveResult(attempted=False, success=False, error="suite_storage_config missing")
+    if not cloud_storage_enabled():
+        return CloudSaveResult(
+            attempted=False,
+            success=False,
+            error="cloud disabled (missing [suite_activity] secrets?)",
+            cloud_enabled=False,
         )
-    except Exception:
-        pass
+    storage_module = ""
+    try:
+        storage, storage_module = _import_storage()
+        page_val, summary_val = session_page_summary(app_id, state)
+        page_val = page or page_val
+        summary_val = summary or summary_val or "Last session"
+        metrics = {FULL_SESSION_KEY: copy.deepcopy(state)}
+        storage.save_current_state(
+            app_id,
+            page=page_val,
+            summary=summary_val,
+            metrics=metrics,
+        )
+        return CloudSaveResult(
+            attempted=True,
+            success=True,
+            storage_module=storage_module,
+            cloud_enabled=True,
+        )
+    except Exception as exc:
+        return CloudSaveResult(
+            attempted=True,
+            success=False,
+            error=str(exc),
+            storage_module=storage_module,
+            cloud_enabled=True,
+        )
+
+
+def clear_cloud_full_session(app_id: str) -> CloudSaveResult:
+    """Overwrite cloud ``full_session`` with an empty blob after reset."""
+    try:
+        from suite_storage_config import cloud_storage_enabled
+    except ImportError:
+        return CloudSaveResult(attempted=False, success=False, error="suite_storage_config missing")
+    if not cloud_storage_enabled():
+        return CloudSaveResult(attempted=False, success=False, error="cloud disabled")
+    storage_module = ""
+    try:
+        storage, storage_module = _import_storage()
+        storage.save_current_state(
+            app_id,
+            page="",
+            summary="Reset to defaults",
+            metrics={FULL_SESSION_KEY: {}},
+        )
+        return CloudSaveResult(
+            attempted=True,
+            success=True,
+            storage_module=storage_module,
+            cloud_enabled=True,
+        )
+    except Exception as exc:
+        return CloudSaveResult(
+            attempted=True,
+            success=False,
+            error=str(exc),
+            storage_module=storage_module,
+            cloud_enabled=True,
+        )
 
 
 def pick_restore_session(

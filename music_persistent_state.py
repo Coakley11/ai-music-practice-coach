@@ -140,20 +140,36 @@ def apply_music_disk_state(
             st.session_state[key] = copy.deepcopy(val)
 
 
-def autosave_music_state(st: Any) -> None:
-    cloud_ok = False
+def autosave_music_state(st: Any) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "skipped": True,
+        "disk_ok": False,
+        "cloud_attempted": False,
+        "cloud_ok": False,
+        "cloud_error": None,
+    }
     try:
-        autosave_if_changed(st, APP_ID, build_state=build_music_disk_state)
-        cloud_ok = True
-    except Exception:
-        pass
+        result = autosave_if_changed(st, APP_ID, build_state=build_music_disk_state)
+    except Exception as exc:
+        result["error"] = str(exc)
     try:
         from music_persistence_trace import update_trace
 
+        core = build_music_disk_state(st).get("core", {})
+        if not isinstance(core, dict):
+            core = {}
         update_trace(
             st,
-            autosave_ran=True,
-            cloud_save_success=cloud_ok,
+            autosave_ran=not result.get("skipped", True),
+            cloud_save_success=result.get("cloud_ok"),
+            cloud_save_attempted=result.get("cloud_attempted"),
+            cloud_save_error=result.get("cloud_error"),
+            last_save_source=result.get("last_save_source"),
+            persist_calls_autosave=True,
+            saved_pick_key=str(core.get("pick_key") or ""),
+            saved_display_key=str(core.get("display_key") or ""),
+            saved_instrument=str(core.get("instrument") or ""),
+            saved_studio_page=str(core.get("studio_page") or core.get("page") or ""),
         )
         try:
             from suite_cloud_state import load_cloud_full_session
@@ -165,6 +181,7 @@ def autosave_music_state(st: Any) -> None:
             pass
     except Exception:
         pass
+    return result
 
 
 def restore_music_disk_state_once(
@@ -199,7 +216,11 @@ def restore_music_disk_state_once(
     try:
         ok = restore_once(st, APP_ID, apply_state=_apply)
         trace_fields["cloud_restore_success"] = ok
-        trace_fields["restore_source"] = "cloud/disk" if ok else "none"
+        ops = st.session_state.get("_suite_persist_ops")
+        if isinstance(ops, dict) and isinstance(ops.get("music"), dict):
+            trace_fields["restore_source"] = ops["music"].get("last_restore_source", trace_fields.get("restore_source"))
+        else:
+            trace_fields["restore_source"] = "cloud/disk" if ok else "none"
     except Exception as exc:
         trace_fields["restore_error"] = str(exc)
         ok = False
