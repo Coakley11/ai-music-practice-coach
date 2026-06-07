@@ -8858,7 +8858,7 @@ from openai_secrets_config import resolve_openai_api_key
 
 _openai_api_key, _openai_secrets_probe = resolve_openai_api_key()
 
-# Studio page + sidebar Pages nav early so navigation is always available.
+# Studio page bootstrap (sidebar order is rendered below Command Center link).
 _studio_page = ensure_studio_page(st.session_state)
 try:
     ensure_sidebar_nav_defaults(st.session_state)
@@ -8897,37 +8897,6 @@ try:
 except Exception:
     pass
 
-try:
-    from music_persistence_trace import render_persistence_trace_sidebar
-
-    render_persistence_trace_sidebar(st)
-except Exception:
-    pass
-
-try:
-    from suite_deploy_probe import render_music_deploy_probe
-
-    render_music_deploy_probe(st)
-except Exception:
-    pass
-
-pp.render_sidebar_toggle(st)
-
-try:
-    render_sidebar_studio_nav(
-        st.session_state,
-        current_page=_studio_page,
-        rerun_fn=st.rerun,
-        ai_enabled=bool(_openai_api_key),
-    )
-except Exception:
-    pass
-
-try:
-    render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
-except Exception:
-    pass
-
 if pp.show_tutorial_entry(st) and tutorial_entry_visible(st.session_state):
     _brand_t1, _brand_t2 = st.columns([5, 1])
     with _brand_t2:
@@ -8950,9 +8919,9 @@ def _active_song_artist_label() -> str:
     return str((song_data or {}).get("artist") or "").strip()
 
 
-# SIDEBAR
+# SIDEBAR — suite order: Command Center → Saved Session → Active Song → Pages → Practice Setup → Session
 
-sidebar_section("Active source", icon="🎼", tone="source")
+sidebar_section("Active Song", icon="🎼", tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
 _src_kind, _src_detail = unpack_active_source_banner(
     active_source_banner(
@@ -8995,7 +8964,6 @@ _display_key_options = sync_display_key_before_widget(
     _song_identity,
 )
 
-sidebar_section("Practice key", icon="🎹", tone="key")
 st.sidebar.markdown(
     '<p class="ui-key-global-hint">Practice / Display Key — concert pitch for the active song.</p>',
     unsafe_allow_html=True,
@@ -9008,6 +8976,16 @@ st.sidebar.selectbox(
     help="Concert-pitch center; charts may show your written key when transposing is enabled.",
     on_change=lambda: mark_display_key_changed(st),
 )
+
+try:
+    render_sidebar_studio_nav(
+        st.session_state,
+        current_page=_studio_page,
+        rerun_fn=st.rerun,
+        ai_enabled=bool(_openai_api_key),
+    )
+except Exception:
+    pass
 
 _instrument_options = DEFAULT_INSTRUMENT_OPTIONS
 
@@ -9079,6 +9057,34 @@ st.sidebar.caption(
     f"**Practice length:** {int(st.session_state.get('practice_minutes', 30))} min "
     "(adjust on the **Practice** page)"
 )
+
+try:
+    from music_sidebar_layout import render_sidebar_layout_dev_marker
+
+    render_sidebar_layout_dev_marker(st)
+except Exception:
+    pass
+
+pp.render_sidebar_toggle(st)
+
+try:
+    from music_persistence_trace import render_persistence_trace_sidebar
+
+    render_persistence_trace_sidebar(st)
+except Exception:
+    pass
+
+try:
+    from suite_deploy_probe import render_music_deploy_probe
+
+    render_music_deploy_probe(st)
+except Exception:
+    pass
+
+try:
+    render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
+except Exception:
+    pass
 
 note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
