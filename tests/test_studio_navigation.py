@@ -1,5 +1,7 @@
 """Smoke tests for studio page navigation and history stacks."""
 
+from unittest.mock import patch
+
 from app_ui import OPENAI_PAGE_ID, sidebar_studio_page_items
 from studio_nav_history import (
     STUDIO_PAGE_IDS,
@@ -49,16 +51,19 @@ def test_studio_page_order_includes_all_pages():
     assert expected == set(STUDIO_PAGE_IDS)
 
 
-def test_navigate_studio_page_records_history():
+@patch("music_persistent_state.after_studio_page_change")
+def test_navigate_studio_page_records_history(_mock_save):
     state: dict = {"studio_page": "practice"}
     init_nav_history(state)
     assert navigate_studio_page(state, "backing") is True
+    _mock_save.assert_called_once()
     assert state["studio_page"] == "backing"
     assert len(state["studio_nav_back"]) == 1
     assert state["studio_nav_forward"] == []
 
 
-def test_back_and_forward_restore_pages():
+@patch("music_persistent_state.after_studio_page_change")
+def test_back_and_forward_restore_pages(_mock_save):
     state: dict = {"studio_page": "practice"}
     init_nav_history(state)
     navigate_studio_page(state, "picker")

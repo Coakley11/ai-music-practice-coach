@@ -366,6 +366,7 @@ def _release_user_page_ownership_after_save(st: Any, saved_page: str) -> None:
     if owned and saved and owned == saved:
         st.session_state.pop(SESSION_USER_OWNED_PAGE_KEY, None)
         st.session_state["_suite_last_persisted_page"] = saved
+        st.session_state.pop("_suite_page_user_nav", None)
 
 
 def record_page_navigation_startup_diagnostics(st: Any, app_id: str) -> None:

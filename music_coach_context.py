@@ -112,7 +112,7 @@ def build_music_coach_context(page: str, session_state: dict[str, Any]) -> dict[
     coach_page = str(page or "").strip() or resolve_coach_source_page(session_state)
     ctx = build_source_state(coach_page, session_state)
     return {
-        "source_app": "Music Practice Coach",
+        "source_app": "Music",
         "page": coach_page_display_name(coach_page),
         "workflow": "Music practice coach",
         "pick_key": ctx.get("entity_params", {}).get("pick_key"),

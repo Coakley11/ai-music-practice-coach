@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from typing import Any
 
-MUSIC_PERSIST_DEPLOY_VERSION = "2026-06-08-prod-persist-v3"
+MUSIC_PERSIST_DEPLOY_VERSION = "2026-06-08-phase-b-page-sync-v4"
 TRACE_KEY = "_music_persist_trace"
 
 
@@ -89,6 +89,17 @@ def render_persistence_trace_sidebar(st: Any) -> None:
             ("final display_key", ss.get("display_key")),
             ("final instrument", ss.get("instrument")),
             ("final studio_page", ss.get("studio_page")),
+            ("studio_page raw", trace.get("studio_page_raw") or ss.get("studio_page")),
+            ("normalized studio_page", trace.get("normalized_studio_page")),
+            ("cloud_payload_studio_page", trace.get("cloud_payload_studio_page")),
+            ("last_save_cloud", trace.get("last_save_cloud")),
+            ("cloud_fetch_studio_page", trace.get("cloud_fetch_studio_page") or ss.get("_suite_cloud_fetch_studio_page")),
+            ("restore_decision", trace.get("restore_decision") or ss.get("_suite_restore_decision")),
+            ("page_owner flag", trace.get("page_owner_flag") if trace.get("page_owner_flag") is not None else ss.get("_suite_page_user_nav")),
+            ("page overwrite source", ss.get("_suite_page_overwrite_source")),
+            ("persist restore skip", ss.get("_suite_persist_restore_skip_reason")),
+            ("insight render skipped", ss.get("_ami_insight_render_skipped_reason")),
+            ("insight scope decision", ss.get("_ami_insight_scope_decision")),
         ]
         for label, val in rows:
             if val is not None and val != "":

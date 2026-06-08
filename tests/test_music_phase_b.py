@@ -173,6 +173,15 @@ class TestMusicCoachInsightScope(unittest.TestCase):
 
 
 class TestStudioPageCloudSave(unittest.TestCase):
+    def test_navigate_studio_page_triggers_cloud_save(self) -> None:
+        from studio_nav_history import init_nav_history, navigate_studio_page
+
+        state = {"studio_page": "practice"}
+        init_nav_history(state)
+        with patch("music_persistent_state.after_studio_page_change") as mock_after:
+            self.assertTrue(navigate_studio_page(state, "backing"))
+        mock_after.assert_called_once()
+
     def test_after_studio_page_change_force_saves(self) -> None:
         st = MagicMock()
         st.session_state = {"studio_page": "backing", "instrument": "Piano"}

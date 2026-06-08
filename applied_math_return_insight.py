@@ -81,6 +81,22 @@ _INSIGHT_PAGE_LABEL_TO_KEY: dict[str, str] = {
     "🧠 Fantasy Lineup Assistant": "Fantasy Lineup Assistant",
 }
 
+_MUSIC_COACH_PAGE_IDS: frozenset[str] = frozenset({"practice", "backing", "custom", "karaoke"})
+
+_MUSIC_COACH_PAGE_ALIASES: dict[str, str] = {
+    "practice": "practice",
+    "practice studio": "practice",
+    "song practice": "practice",
+    "backing": "backing",
+    "backing track": "backing",
+    "backing track studio": "backing",
+    "custom": "custom",
+    "creative progression": "custom",
+    "custom progression": "custom",
+    "karaoke": "karaoke",
+    "karaoke mode": "karaoke",
+}
+
 _INSIGHT_PAGE_ALIASES: dict[str, str] = {
     "trends": "Trend Value",
     "trend value": "Trend Value",
@@ -110,6 +126,26 @@ _INSIGHT_PAGE_ALIASES: dict[str, str] = {
     "karaoke": "Karaoke",
     "karaoke mode": "Karaoke",
 }
+
+
+def _normalize_music_coach_page(page: str) -> str:
+    """Canonical Music Coach page id for insight scope (practice/backing/custom/karaoke)."""
+    p = str(page or "").strip()
+    if not p:
+        return ""
+    low = p.lower()
+    if low in _MUSIC_COACH_PAGE_IDS:
+        return low
+    alias = _MUSIC_COACH_PAGE_ALIASES.get(low)
+    if alias:
+        return alias
+    normalized = _normalize_insight_page(p)
+    alias = _MUSIC_COACH_PAGE_ALIASES.get(normalized.lower())
+    if alias:
+        return alias
+    if normalized.lower() in _MUSIC_COACH_PAGE_IDS:
+        return normalized.lower()
+    return low if low in _MUSIC_COACH_PAGE_IDS else ""
 
 
 def _normalize_insight_page(page: str) -> str:
@@ -180,12 +216,28 @@ def insight_page_scope_decision(
     insight: dict[str, Any],
 ) -> dict[str, Any]:
     """Strict page scope decision with normalized fields for ?dev=1 diagnostics."""
-    app = str(source_app or insight.get("source_app") or "").strip().lower()
-    cur = _normalize_insight_page(current_page)
-    raw_source = str(insight.get("source_page") or "").strip()
-    insight_page = _resolve_insight_source_page(insight)
-    eligible = INSIGHT_ELIGIBLE_PAGES.get(app, frozenset())
-    cur_eligible = cur in eligible or any(_normalize_insight_page(x) == cur for x in eligible)
+    try:
+        from suite_analytical_question import normalize_source_app_id
+    except Exception:
+        normalize_source_app_id = lambda x, ctx=None: str(x or "").strip().lower()  # noqa: E731
+
+    ctx = insight.get("return_context") or insight.get("source_state")
+    app = normalize_source_app_id(
+        str(source_app or insight.get("source_app") or ""),
+        ctx if isinstance(ctx, dict) else None,
+    )
+    if app == "music":
+        cur = _normalize_music_coach_page(current_page)
+        raw_source = str(insight.get("source_page") or "").strip()
+        insight_page = _normalize_music_coach_page(_resolve_insight_source_page(insight))
+        eligible = _MUSIC_COACH_PAGE_IDS
+        cur_eligible = cur in eligible
+    else:
+        cur = _normalize_insight_page(current_page)
+        raw_source = str(insight.get("source_page") or "").strip()
+        insight_page = _resolve_insight_source_page(insight)
+        eligible = INSIGHT_ELIGIBLE_PAGES.get(app, frozenset())
+        cur_eligible = cur in eligible or any(_normalize_insight_page(x) == cur for x in eligible)
     should_render = False
     skip_reason = ""
     if not cur_eligible:

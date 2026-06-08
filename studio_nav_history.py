@@ -98,14 +98,26 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
     # page-local state on the next run while global settings stay untouched.
     session_state["studio_page"] = page_id
     try:
-        from music_persistent_state import claim_studio_page_ownership
+        from music_persistent_state import after_studio_page_change
+
+        _nav_ss = session_state
 
         class _St:
-            session_state = session_state
+            session_state = _nav_ss
 
-        claim_studio_page_ownership(_St(), page_id)
+        after_studio_page_change(_St(), session_state)
     except Exception:
-        pass
+        try:
+            from music_persistent_state import claim_studio_page_ownership
+
+            _nav_ss = session_state
+
+            class _St:
+                session_state = _nav_ss
+
+            claim_studio_page_ownership(_St(), page_id)
+        except Exception:
+            pass
     return True
 
 

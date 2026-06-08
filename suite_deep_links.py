@@ -407,6 +407,15 @@ def resume_metrics_from_item_key(app: str, item_key: str, *, subtitle: str = "")
                         if isinstance(parsed, dict):
                             metrics["context"] = parsed
                             metrics["context_json"] = ctx_part
+                            try:
+                                from suite_analytical_question import normalize_source_app_id
+
+                                metrics["source_app"] = normalize_source_app_id(
+                                    str(metrics.get("source_app") or ""),
+                                    parsed,
+                                )
+                            except Exception:
+                                pass
                     except Exception:
                         pass
                 elif subtitle.startswith("Question:"):

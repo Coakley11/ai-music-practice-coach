@@ -8899,6 +8899,20 @@ sanitize_persisted_snapshots(st.session_state)
 handle_studio_page_transition(st.session_state)
 note_page_visit(st.session_state, _studio_page)
 
+try:
+    from music_coach_context import is_coach_page_eligible, resolve_coach_source_page
+    from suite_analytical_question import render_suite_applied_math_insight
+
+    _insight_coach_page = resolve_coach_source_page(st.session_state)
+    if is_coach_page_eligible(_insight_coach_page):
+        render_suite_applied_math_insight(
+            st,
+            source_app="music",
+            source_page=_insight_coach_page,
+        )
+except Exception:
+    pass
+
 if _studio_page == "openai" and not _openai_api_key:
     navigate_studio_page(st.session_state, "practice")
     st.rerun()
