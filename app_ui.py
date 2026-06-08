@@ -6603,6 +6603,17 @@ STUDIO_QUICK_NAV_PANEL_KEY = "studio_quick_nav_panel"
 STUDIO_QUICK_NAV_KEY_PREFIX = "studio_quick_nav"
 _STUDIO_QUICK_NAV_OPEN_LABEL = "Open"
 
+# Diagnostic fallback — plain Streamlit buttons only (?simple_nav=1 or dev toggle).
+USE_SIMPLE_MUSIC_NAV_KEY = "use_simple_music_nav"
+STUDIO_SIMPLE_NAV_KEY_PREFIX = "studio_simple_nav"
+SIMPLE_NAV_PAGE_IDS: list[str] = [
+    "practice",
+    "picker",
+    "backing",
+    "custom",
+    "multitrack",
+]
+
 
 def sidebar_studio_page_items(*, ai_enabled: bool) -> list[tuple[str, str]]:
     """Sidebar page list — includes OpenAI only when the API key is configured."""
@@ -6704,8 +6715,35 @@ def nav_two_line_label(page_id: str) -> str:
     return f"{icon}\n{title}" if icon else title
 
 
+def init_simple_music_nav_from_query(st: Any) -> None:
+    """Enable plain nav diagnostic mode via ?simple_nav=1 (persists in session)."""
+    import os
+
+    try:
+        if os.environ.get("MUSIC_SIMPLE_NAV", "").strip().lower() in {"1", "true", "yes", "on"}:
+            st.session_state[USE_SIMPLE_MUSIC_NAV_KEY] = True
+            return
+        raw = st.query_params.get("simple_nav")
+        if isinstance(raw, list):
+            raw = raw[0] if raw else ""
+        if str(raw or "").strip().lower() in {"1", "true", "yes", "on"}:
+            st.session_state[USE_SIMPLE_MUSIC_NAV_KEY] = True
+        elif str(raw or "").strip().lower() in {"0", "false", "no", "off"}:
+            st.session_state[USE_SIMPLE_MUSIC_NAV_KEY] = False
+    except Exception:
+        pass
+
+
+def use_simple_music_nav(session_state: Any) -> bool:
+    return bool(session_state.get(USE_SIMPLE_MUSIC_NAV_KEY))
+
+
 def _studio_quick_nav_button_key(page_id: str) -> str:
     return f"{STUDIO_QUICK_NAV_KEY_PREFIX}_btn_{page_id}"
+
+
+def _studio_simple_nav_button_key(page_id: str) -> str:
+    return f"{STUDIO_SIMPLE_NAV_KEY_PREFIX}_btn_{page_id}"
 
 
 def _resolve_quick_nav_current_page(session_state: Any, current_page: str) -> str:
@@ -6729,9 +6767,22 @@ def _nav_art_face_html(page_id: str, *, active: bool) -> str:
     )
 
 
+def _simple_nav_css() -> str:
+    """Diagnostic nav — active red button only (no art/HTML styling)."""
+    return """
+[class*="st-key-studio_simple_nav_btn_"] .stButton > button[kind="primary"],
+[class*="st-key-studio_simple_nav_btn_"] .stButton > button[data-testid="baseButton-primary"] {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  border-color: #b91c1c !important;
+  font-weight: 700 !important;
+}
+"""
+
+
 def _quick_nav_artistic_css() -> str:
     """Quick nav — icon + Caveat script label, visible Open button (no overlay ghosts)."""
-    return """
+    return _simple_nav_css() + """
 @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap');
 
 [class*="st-key-studio_quick_nav_panel"] {
@@ -6997,23 +7048,30 @@ def render_page_quick_nav(
     rerun_fn: Any,
     key_prefix: str = STUDIO_QUICK_NAV_KEY_PREFIX,
 ) -> str:
-    """Top navigation — icon + script label with stable Open buttons."""
+    """Top navigation — art nav, or plain diagnostic buttons when simple mode is on."""
     import streamlit as st
 
     _ = key_prefix
     ensure_studio_page(session_state, default=current_page)
     current = _resolve_quick_nav_current_page(session_state, current_page)
 
-    with st.container(key=STUDIO_QUICK_NAV_PANEL_KEY):
-        _render_quick_nav_row(
+    if use_simple_music_nav(session_state):
+        _render_simple_nav_row(
             st,
             session_state,
-            page_ids=TOP_NAV_PAGE_IDS,
             current=current,
             rerun_fn=rerun_fn,
         )
-
-    _render_music_coach_insight_below_quick_nav(st, current_page=current)
+    else:
+        with st.container(key=STUDIO_QUICK_NAV_PANEL_KEY):
+            _render_quick_nav_row(
+                st,
+                session_state,
+                page_ids=TOP_NAV_PAGE_IDS,
+                current=current,
+                rerun_fn=rerun_fn,
+            )
+        _render_music_coach_insight_below_quick_nav(st, current_page=current)
 
     return session_state.get("studio_page", current)
 

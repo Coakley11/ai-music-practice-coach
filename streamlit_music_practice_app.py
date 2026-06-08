@@ -36,9 +36,11 @@ st.set_page_config(
 )
 
 try:
+    from app_ui import init_simple_music_nav_from_query
     from music_persistence_trace import init_developer_mode_from_query, render_persistence_trace_sidebar
 
     init_developer_mode_from_query(st)
+    init_simple_music_nav_from_query(st)
 except Exception:
     pass
 
@@ -8802,11 +8804,13 @@ def _render_backing_step2_playback_action(
 inject_app_theme()
 if _developer_mode_enabled():
     try:
-        from app_ui import STUDIO_UI_RELEASE
+        from app_ui import STUDIO_UI_RELEASE, use_simple_music_nav
 
+        _simple_nav_on = use_simple_music_nav(st.session_state)
         st.sidebar.caption(
             f"Studio UI · `{STUDIO_UI_RELEASE}`  \n"
-            f"Nav UI · `{NAVIGATION_UI_DEPLOY_MARKER}`"
+            f"Nav UI · `{NAVIGATION_UI_DEPLOY_MARKER}`  \n"
+            f"Simple nav · `{'on' if _simple_nav_on else 'off'}`"
         )
     except Exception:
         pass

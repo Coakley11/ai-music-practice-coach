@@ -126,3 +126,28 @@ def test_quick_nav_uses_one_stable_button_key_per_page():
     assert len(keys) == len(set(keys))
     assert all(key.startswith("studio_quick_nav_btn_") for key in keys)
     assert all("_art_" not in key for key in keys)
+
+
+def test_simple_nav_mode_uses_plain_button_keys():
+    from app_ui import (
+        SIMPLE_NAV_PAGE_IDS,
+        USE_SIMPLE_MUSIC_NAV_KEY,
+        _simple_nav_css,
+        _studio_simple_nav_button_key,
+        use_simple_music_nav,
+    )
+
+    css = _simple_nav_css().lower()
+    assert "caveat" not in css
+    assert "ui-nav-art" not in css
+    assert "studio_simple_nav_btn_" in css
+    assert use_simple_music_nav({USE_SIMPLE_MUSIC_NAV_KEY: True})
+    assert not use_simple_music_nav({})
+    keys = [_studio_simple_nav_button_key(page_id) for page_id in SIMPLE_NAV_PAGE_IDS]
+    assert keys == [
+        "studio_simple_nav_btn_practice",
+        "studio_simple_nav_btn_picker",
+        "studio_simple_nav_btn_backing",
+        "studio_simple_nav_btn_custom",
+        "studio_simple_nav_btn_multitrack",
+    ]
