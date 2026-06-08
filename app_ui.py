@@ -6691,19 +6691,6 @@ def _nav_compact_icon(page_id: str) -> str:
     )
 
 
-def _nav_art_face_html(page_id: str, *, active: bool) -> str:
-    """Visible nav face: emoji icon + Caveat script word (styled via CSS)."""
-    icon = html.escape(_nav_compact_icon(page_id))
-    title = html.escape(nav_compact_button_label(page_id))
-    active_cls = " is-active" if active else ""
-    return (
-        f'<div class="ui-nav-art-face{active_cls}" data-nav-page="{html.escape(page_id)}">'
-        f'<span class="ui-nav-icon" aria-hidden="true">{icon}</span>'
-        f'<span class="ui-nav-script-label">{title}</span>'
-        f"</div>"
-    )
-
-
 def nav_two_line_label(page_id: str) -> str:
     """Two-line labels — same structure on every segment (icon + title)."""
     meta = STUDIO_PAGE_META.get(page_id, {})
@@ -6712,12 +6699,9 @@ def nav_two_line_label(page_id: str) -> str:
     return f"{icon}\n{title}" if icon else title
 
 
-def _quick_nav_artistic_css() -> str:
-    """Quick Navigation — icon + Caveat script word, one invisible click target."""
+def _quick_nav_button_css() -> str:
+    """Quick navigation — visible labels and buttons (no hidden/ghost text)."""
     return """
-@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap');
-
-.st-key-quick_nav_art_panel,
 [class*="st-key-"][class*="quick_nav_art_panel"] {
   margin: 0 0 0.45rem !important;
   padding: 0.28rem 0.45rem 0.32rem !important;
@@ -6726,90 +6710,68 @@ def _quick_nav_artistic_css() -> str:
   background: linear-gradient(180deg, #fffdf9 0%, #ffffff 100%) !important;
   box-shadow: 0 1px 6px rgba(15, 23, 42, 0.05) !important;
 }
-.st-key-quick_nav_art_panel::before,
-[class*="st-key-"][class*="quick_nav_art_panel"]::before { display: none !important; }
-.st-key-quick_nav_art_panel [data-testid="stHorizontalBlock"],
 [class*="st-key-"][class*="quick_nav_art_panel"] [data-testid="stHorizontalBlock"] {
-  gap: 0.12rem 0.18rem !important;
-  align-items: center !important;
+  gap: 0.2rem 0.28rem !important;
+  align-items: stretch !important;
   flex-wrap: wrap !important;
 }
-.st-key-quick_nav_art_panel [data-testid="column"],
 [class*="st-key-"][class*="quick_nav_art_panel"] [data-testid="column"] {
   min-width: 0 !important;
   flex: 1 1 auto !important;
 }
-.ui-nav-art-cell {
-  position: relative;
-  min-width: 0;
-  min-height: 2rem;
-}
-.ui-nav-art-face {
+.ui-studio-nav-cell {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.26rem;
-  min-height: 2rem;
-  padding: 0.14rem 0.28rem 0.2rem;
-  border-radius: 7px;
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  pointer-events: none;
-  user-select: none;
-  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.18rem;
+  min-width: 0;
 }
-.ui-nav-icon {
-  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif !important;
-  font-size: 1.02rem;
-  line-height: 1;
-  flex-shrink: 0;
-}
-.ui-nav-script-label {
-  font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive !important;
-  font-size: 1.24rem !important;
-  font-weight: 600 !important;
-  color: #475569 !important;
-  letter-spacing: 0.02em !important;
-  line-height: 1 !important;
-  white-space: nowrap !important;
-  transition: color 120ms ease, font-weight 120ms ease;
-}
-.ui-nav-art-cell:hover .ui-nav-art-face {
-  background: rgba(15, 23, 42, 0.045);
-  transform: translateY(-1px);
-}
-.ui-nav-art-cell:hover .ui-nav-script-label {
-  color: #1e293b !important;
-}
-.ui-nav-art-cell.is-active .ui-nav-art-face {
-  background: rgba(220, 38, 38, 0.08);
-  border-bottom-color: rgba(220, 38, 38, 0.85);
-}
-.ui-nav-art-cell.is-active .ui-nav-script-label {
+.ui-studio-nav-label {
+  margin: 0 !important;
+  padding: 0 !important;
+  text-align: center;
+  font-size: 0.78rem !important;
   font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase;
+  color: #64748b !important;
+  line-height: 1.2 !important;
+}
+.ui-studio-nav-label.is-active {
   color: #dc2626 !important;
 }
-.ui-nav-art-cell.ui-nav-compact {
-  min-height: 1.75rem;
+.ui-studio-nav-label.is-compact {
+  font-size: 0.7rem !important;
 }
-.ui-nav-art-cell.ui-nav-compact .ui-nav-art-face {
-  min-height: 1.75rem;
-  padding: 0.1rem 0.2rem 0.14rem;
-  gap: 0.18rem;
+.ui-studio-nav-label-icon {
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  margin-right: 0.12rem;
 }
-.ui-nav-art-cell.ui-nav-compact .ui-nav-icon {
-  font-size: 0.92rem;
+[class*="st-key-"][class*="_art_"] .stButton > button,
+[class*="st-key-global_nav_"] .stButton > button,
+[class*="st-key-cross_to_"] .stButton > button {
+  min-height: 2.15rem !important;
+  padding: 0.38rem 0.45rem !important;
+  font-size: 0.86rem !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(148, 163, 184, 0.42) !important;
+  background: #ffffff !important;
+  color: #334155 !important;
+  box-shadow: none !important;
 }
-.ui-nav-art-cell.ui-nav-compact .ui-nav-script-label {
-  font-size: 1.05rem !important;
+[class*="st-key-global_nav_"] .stButton > button,
+[class*="st-key-cross_to_"] .stButton > button {
+  min-height: 1.9rem !important;
+  font-size: 0.8rem !important;
 }
 .ui-cross-nav-art {
   margin: 0.35rem 0 0.75rem 0;
 }
 .ui-cross-nav-art [data-testid="stHorizontalBlock"] {
   gap: 0.12rem 0.18rem !important;
-  align-items: center !important;
+  align-items: stretch !important;
   flex-wrap: wrap !important;
 }
 .ui-cross-nav-art [data-testid="column"] {
@@ -6822,50 +6784,29 @@ def _quick_nav_artistic_css() -> str:
   padding-top: 0.5rem;
   border-top: 1px dashed rgba(148, 163, 184, 0.32);
 }
-.ui-nav-art-cell .stButton {
-  position: absolute !important;
-  inset: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  z-index: 2 !important;
-}
-.ui-nav-art-cell .stButton > button {
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 2rem !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  opacity: 0 !important;
-  color: transparent !important;
-  font-size: 0 !important;
-  line-height: 0 !important;
-  text-indent: -9999px !important;
-  overflow: hidden !important;
-  cursor: pointer !important;
-}
-.ui-nav-art-cell .stButton > button p,
-.ui-nav-art-cell .stButton > button span,
-.ui-nav-art-cell .stButton > button div {
-  opacity: 0 !important;
-  font-size: 0 !important;
-  line-height: 0 !important;
-  color: transparent !important;
-}
-.ui-nav-art-cell:focus-within .ui-nav-art-face {
-  outline: 2px solid rgba(59, 130, 246, 0.35);
-  outline-offset: 1px;
-}
 @media (max-width: 720px) {
-  .ui-nav-script-label { font-size: 1.12rem !important; }
-  .st-key-quick_nav_art_panel [data-testid="stHorizontalBlock"],
-  [class*="st-key-"][class*="quick_nav_art_panel"] [data-testid="stHorizontalBlock"] { gap: 0.08rem !important; }
+  .ui-studio-nav-label { font-size: 0.72rem !important; }
+  [class*="st-key-"][class*="_art_"] .stButton > button { font-size: 0.8rem !important; }
 }
 """
+
+
+def _nav_button_active_css(button_key: str) -> str:
+    """Highlight the selected page button in red — visible text only."""
+    safe_key = html.escape(str(button_key or ""), quote=True)
+    return (
+        f"<style>[class*=\"st-key-{safe_key}\"] .stButton > button{{"
+        "border:2px solid #dc2626 !important;"
+        "color:#dc2626 !important;"
+        "background:rgba(220,38,38,0.08) !important;"
+        "font-weight:700 !important;"
+        "}}</style>"
+    )
+
+
+def _quick_nav_artistic_css() -> str:
+    """Backward-compatible alias for theme bundle."""
+    return _quick_nav_button_css()
 
 
 def _render_nav_art_cell(
@@ -6878,21 +6819,29 @@ def _render_nav_art_cell(
     button_key: str,
     compact: bool = False,
 ) -> None:
+    """Visible page label + normal Streamlit button (no overlay/ghost text)."""
+    title = nav_compact_button_label(page_id)
+    icon = _nav_compact_icon(page_id)
     is_active = current is not None and page_id == current
-    nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
-    _label = nav_compact_button_label(page_id)
-    _active_cls = " is-active" if is_active else ""
-    _compact_cls = " ui-nav-compact" if compact else ""
+    active_cls = " is-active" if is_active else ""
+    compact_cls = " is-compact" if compact else ""
+    help_text = STUDIO_PAGE_META.get(page_id, {}).get("label", page_id) or title
+
+    if is_active:
+        st.markdown(_nav_button_active_css(button_key), unsafe_allow_html=True)
+
     st.markdown(
-        f'<div class="ui-nav-art-cell nav-{html.escape(nav_class)}{_active_cls}{_compact_cls}">'
-        f"{_nav_art_face_html(page_id, active=is_active)}",
+        f'<p class="ui-studio-nav-label{active_cls}{compact_cls}">'
+        f'<span class="ui-studio-nav-label-icon">{html.escape(icon)}</span>'
+        f'<span class="ui-studio-nav-label-text">{html.escape(title)}</span>'
+        f"</p>",
         unsafe_allow_html=True,
     )
     if st.button(
-        "\u200b",
+        title,
         key=button_key,
         use_container_width=True,
-        help=STUDIO_PAGE_META.get(page_id, {}).get("label", page_id) or _label,
+        help=help_text,
     ):
         if (current is None or page_id != current) and navigate_studio_page(
             session_state, page_id
@@ -6904,7 +6853,6 @@ def _render_nav_art_cell(
             except Exception:
                 pass
             rerun_fn()
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _render_quick_nav_art_row(
@@ -6998,10 +6946,6 @@ def render_page_quick_nav(
 
     panel_key = f"{key_prefix}_quick_nav_art_panel"
     with st.container(key=panel_key):
-        st.markdown(
-            '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap">',
-            unsafe_allow_html=True,
-        )
         _render_quick_nav_art_row(
             st,
             session_state,

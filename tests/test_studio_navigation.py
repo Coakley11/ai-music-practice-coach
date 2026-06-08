@@ -89,3 +89,13 @@ def test_same_page_navigation_is_noop():
     init_nav_history(state)
     assert navigate_studio_page(state, "practice") is False
     assert state["studio_nav_back"] == []
+
+
+def test_quick_nav_css_has_no_hidden_button_labels():
+    from app_ui import _quick_nav_button_css
+
+    css = _quick_nav_button_css().lower()
+    assert "opacity: 0" not in css
+    assert "color: transparent" not in css
+    assert "text-indent: -9999" not in css
+    assert "ui-studio-nav-label" in css
