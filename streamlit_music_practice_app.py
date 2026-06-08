@@ -9417,6 +9417,14 @@ if st.session_state.get("tutorial_open"):
 # appear during the same render and the polling will find it.
 render_pending_scroll_script(st)
 
+# Canonical quick nav — exactly once per script run, every page, before page body.
+if pp.show_quick_nav(st):
+    _studio_page = render_page_quick_nav(
+        st.session_state,
+        current_page=_studio_page,
+        rerun_fn=st.rerun,
+    )
+
 # -------------------------------------------------
 # PRACTICE
 # -------------------------------------------------
@@ -10246,7 +10254,6 @@ elif _studio_page == "picker":
         inject_studio_ui_release_marker(st, page="picker")
     except Exception:
         pass
-    _render_page_quick_nav("picker")
 
     if pp.is_capture_mode(st):
         pp.render_hero_banner(
@@ -11183,7 +11190,6 @@ elif _studio_page == "analysis":
 
     inject_upload_studio_styles(st)
     inject_studio_ui_release_marker(st, page="analysis")
-    _render_page_quick_nav("analysis")
 
     try:
         from instrument_aware import render_instrument_context_strip
@@ -11545,7 +11551,6 @@ elif _studio_page == "creative":
         inject_studio_ui_release_marker(st, page="creative")
     except Exception:
         pass
-    _render_page_quick_nav("creative")
 
     if pp.is_capture_mode(st):
         pp.render_hero_banner(
@@ -12020,7 +12025,6 @@ elif _studio_page == "openai":
 
     ensure_page_initialized(st.session_state, "openai")
     note_page_visit(st.session_state, "openai")
-    _render_page_quick_nav("openai")
 
     _studio_page_header(
         "✨",

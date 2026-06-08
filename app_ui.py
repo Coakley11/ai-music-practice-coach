@@ -6607,7 +6607,7 @@ _STUDIO_QUICK_NAV_OPEN_LABEL = "Open"
 USE_SIMPLE_MUSIC_NAV_KEY = "use_simple_music_nav"
 STUDIO_SIMPLE_NAV_KEY_PREFIX = "studio_simple_nav"
 QUICK_NAV_DIAG_KEY = "_quick_nav_render_diag"
-_QUICK_NAV_RENDER_COUNT_RUN_KEY = "_quick_nav_render_count_run"
+_QUICK_NAV_RENDERED_THIS_EXEC = False
 SIMPLE_NAV_PAGE_IDS: list[str] = [
     "practice",
     "picker",
@@ -7044,8 +7044,10 @@ def end_studio_control_deck() -> None:
 
 
 def reset_quick_nav_render_diagnostics(session_state: Any) -> None:
-    """Clear per-run quick nav render counters (call once at top of each script run)."""
-    session_state[_QUICK_NAV_RENDER_COUNT_RUN_KEY] = 0
+    """Clear per-script-run quick nav counters (call once at top of each Streamlit run)."""
+    global _QUICK_NAV_RENDERED_THIS_EXEC
+
+    _QUICK_NAV_RENDERED_THIS_EXEC = False
     session_state["quick_nav_render_count"] = 0
     session_state["quick_nav_render_locations"] = []
     session_state["quick_nav_render_stack"] = []
@@ -7143,12 +7145,13 @@ def render_page_quick_nav(
     """Top navigation — art nav, or plain diagnostic buttons when simple mode is on."""
     import streamlit as st
 
+    global _QUICK_NAV_RENDERED_THIS_EXEC
+
     ensure_studio_page(session_state, default=current_page)
     current = _resolve_quick_nav_current_page(session_state, current_page)
     container_key = None if use_simple_music_nav(session_state) else STUDIO_QUICK_NAV_PANEL_KEY
 
-    run_count = int(session_state.get(_QUICK_NAV_RENDER_COUNT_RUN_KEY) or 0)
-    if run_count >= 1:
+    if _QUICK_NAV_RENDERED_THIS_EXEC:
         _record_quick_nav_render(
             session_state,
             current_page=current,
@@ -7157,7 +7160,7 @@ def render_page_quick_nav(
             skipped=True,
         )
         return session_state.get("studio_page", current)
-    session_state[_QUICK_NAV_RENDER_COUNT_RUN_KEY] = run_count + 1
+    _QUICK_NAV_RENDERED_THIS_EXEC = True
     _record_quick_nav_render(
         session_state,
         current_page=current,

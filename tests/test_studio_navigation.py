@@ -131,6 +131,7 @@ def test_quick_nav_uses_one_stable_button_key_per_page():
 def test_quick_nav_skips_duplicate_render_same_run():
     from unittest.mock import MagicMock, patch
 
+    import app_ui as nav_mod
     from app_ui import (
         STUDIO_QUICK_NAV_PANEL_KEY,
         render_page_quick_nav,
@@ -139,7 +140,6 @@ def test_quick_nav_skips_duplicate_render_same_run():
 
     state: dict = {"studio_page": "practice"}
     reset_quick_nav_render_diagnostics(state)
-    fake_st = MagicMock()
 
     with patch("app_ui.use_simple_music_nav", return_value=False), patch(
         "app_ui._render_quick_nav_row"
@@ -147,6 +147,7 @@ def test_quick_nav_skips_duplicate_render_same_run():
         render_page_quick_nav(state, current_page="practice", rerun_fn=lambda: None)
         render_page_quick_nav(state, current_page="practice", rerun_fn=lambda: None)
 
+    assert nav_mod._QUICK_NAV_RENDERED_THIS_EXEC is True
     assert state["quick_nav_render_count"] == 1
     assert mock_row.call_count == 1
     locations = state.get("quick_nav_render_locations") or []
@@ -154,6 +155,27 @@ def test_quick_nav_skips_duplicate_render_same_run():
     assert locations[0].get("skipped_duplicate") is False
     assert locations[1].get("skipped_duplicate") is True
     assert STUDIO_QUICK_NAV_PANEL_KEY in (state.get("quick_nav_container_keys") or [])
+
+
+def test_quick_nav_resets_between_script_runs():
+    from unittest.mock import patch
+
+    import app_ui as nav_mod
+    from app_ui import render_page_quick_nav, reset_quick_nav_render_diagnostics
+
+    state: dict = {"studio_page": "practice"}
+
+    with patch("app_ui.use_simple_music_nav", return_value=False), patch(
+        "app_ui._render_quick_nav_row"
+    ) as mock_row, patch("app_ui._render_music_coach_insight_below_quick_nav"):
+        reset_quick_nav_render_diagnostics(state)
+        render_page_quick_nav(state, current_page="practice", rerun_fn=lambda: None)
+        assert mock_row.call_count == 1
+
+        reset_quick_nav_render_diagnostics(state)
+        assert nav_mod._QUICK_NAV_RENDERED_THIS_EXEC is False
+        render_page_quick_nav(state, current_page="backing", rerun_fn=lambda: None)
+        assert mock_row.call_count == 2
 
 
 def test_simple_nav_mode_uses_plain_button_keys():
