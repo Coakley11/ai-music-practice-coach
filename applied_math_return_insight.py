@@ -1191,6 +1191,19 @@ def consume_ami_return_resume(st: Any, app_key: str) -> bool:
     return True
 
 
+def local_ami_insight_should_preserve(st: Any) -> bool:
+    """True while a pending insight should survive workspace restore (until dismiss)."""
+    pending = st.session_state.get(SESSION_PENDING_KEY)
+    if not isinstance(pending, dict) or not pending:
+        return False
+    iid = str(pending.get("insight_id") or "").strip()
+    if iid and _insight_is_dismissed(st, iid):
+        return False
+    if _pending_insight_valid(st):
+        return True
+    return bool(iid or pending.get("_ami_recovery_card"))
+
+
 def _finish_ami_return_after_insight_render(
     st: Any,
     app_key: str,
@@ -1204,6 +1217,12 @@ def _finish_ami_return_after_insight_render(
         st,
         str(st.session_state.get("_suite_persist_app_id") or key or "baseball"),
     )
+    try:
+        from music_persistent_state import force_save_music_state
+
+        force_save_music_state(st, reason="insight_persist")
+    except Exception:
+        pass
 
 
 def _record_insight_return_diagnostics(st: Any, *, phase: str, insight: dict[str, Any] | None = None) -> None:

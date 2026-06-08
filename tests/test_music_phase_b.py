@@ -61,7 +61,7 @@ class TestMusicCoachContext(unittest.TestCase):
 
 
 class TestMusicPageOwnership(unittest.TestCase):
-    def test_claim_studio_page_sets_owned_coach_page(self) -> None:
+    def test_claim_studio_page_sets_owned_studio_page(self) -> None:
         st = MagicMock()
         st.session_state = {"studio_page": "practice"}
         st.query_params = {}
@@ -69,6 +69,55 @@ class TestMusicPageOwnership(unittest.TestCase):
         self.assertEqual(st.session_state["studio_page"], "backing")
         self.assertEqual(st.session_state.get(SESSION_USER_OWNED_PAGE_KEY), "backing")
         self.assertEqual(st.session_state.get("_music_coach_workspace_page"), "backing")
+
+    def test_picker_ownership_uses_studio_page_not_coach_page(self) -> None:
+        st = MagicMock()
+        st.session_state = {"studio_page": "practice"}
+        st.query_params = {}
+        claim_studio_page_ownership(st, "picker")
+        self.assertEqual(st.session_state.get(SESSION_USER_OWNED_PAGE_KEY), "picker")
+        self.assertEqual(st.session_state.get("_music_coach_workspace_page"), "practice")
+
+    def test_workspace_blob_prefers_studio_page_over_coach_page(self) -> None:
+        from suite_user_persistence import _workspace_page_from_blob
+
+        blob = {
+            "core": {"studio_page": "picker"},
+            "session": {},
+            "music_workspace_state": {"page": "practice", "studio_page": "picker"},
+        }
+        self.assertEqual(_workspace_page_from_blob("music", blob), "picker")
+
+    def test_apply_preserves_local_insight_after_ami_consume(self) -> None:
+        from applied_math_return_insight import local_ami_insight_should_preserve
+
+        st = MagicMock()
+        insight = {
+            "insight_id": "mc-persist",
+            "source_app": "music",
+            "source_page": "backing",
+            "conclusion": "Slow down the chorus.",
+            "question": "How do I practice?",
+            "_ami_recovery_card": True,
+        }
+        st.session_state = {
+            SESSION_PENDING_KEY: insight,
+            "studio_page": "practice",
+        }
+        self.assertTrue(local_ami_insight_should_preserve(st))
+        payload = {
+            "core": {"studio_page": "practice"},
+            "session": {SESSION_PENDING_KEY: {}},
+            "music_workspace_state": {"studio_page": "practice"},
+        }
+        with patch("music_persistent_state.apply_saved_music_context", return_value=True):
+            apply_music_disk_state(
+                st,
+                payload,
+                song_picker_catalog={},
+                song_library={},
+            )
+        self.assertEqual(st.session_state[SESSION_PENDING_KEY]["insight_id"], "mc-persist")
 
     def test_user_owned_page_blocks_cloud_overwrite(self) -> None:
         st = MagicMock()

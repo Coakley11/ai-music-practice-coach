@@ -123,8 +123,12 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
         coach_page = str((core or {}).get("studio_page") or session_extra.get("studio_page") or "")
     active_song_meta = state.get("active_song_state") if isinstance(state.get("active_song_state"), dict) else {}
     studio_nav_meta = state.get("studio_nav_state") if isinstance(state.get("studio_nav_state"), dict) else {}
+    live_studio = ""
+    if hasattr(st, "session_state"):
+        live_studio = str(st.session_state.get("studio_page") or "").strip()
     studio_page = (
-        studio_nav_meta.get("studio_page")
+        live_studio
+        or studio_nav_meta.get("studio_page")
         or (core or {}).get("studio_page")
         or session_extra.get("studio_page")
     )
@@ -213,6 +217,12 @@ def apply_music_disk_state(
     session_extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
 
     preserve_insight = bool(ss.get("_ami_insight_return_preserve"))
+    try:
+        from applied_math_return_insight import local_ami_insight_should_preserve
+
+        preserve_insight = preserve_insight or local_ami_insight_should_preserve(st)
+    except ImportError:
+        pass
     for key in _INSIGHT_KEYS:
         if key in session_extra and not preserve_insight:
             ss[key] = copy.deepcopy(session_extra[key])
@@ -358,7 +368,6 @@ def apply_music_disk_state(
 
 def after_studio_page_change(st: Any, session_state: dict | None = None) -> None:
     """Persist studio_page to disk/cloud immediately after manual navigation."""
-    from music_coach_context import resolve_coach_source_page, sync_music_coach_workspace_page
     from suite_user_persistence import _release_user_page_ownership_after_save
 
     ss = session_state if session_state is not None else st.session_state
@@ -371,17 +380,21 @@ def after_studio_page_change(st: Any, session_state: dict | None = None) -> None
     except ImportError:
         pass
     claim_studio_page_ownership(st, page_id)
-    sync_music_coach_workspace_page(ss)
-    coach_page = resolve_coach_source_page(ss)
+    try:
+        from music_coach_context import sync_music_coach_workspace_page
+
+        sync_music_coach_workspace_page(ss)
+    except ImportError:
+        pass
     force_save_music_state(st, reason="page_change")
-    _release_user_page_ownership_after_save(st, coach_page)
-    ss["_suite_last_persisted_page"] = coach_page
+    _release_user_page_ownership_after_save(st, page_id)
+    ss["_suite_last_persisted_page"] = page_id
     ss.pop("_suite_page_user_nav", None)
 
 
 def claim_studio_page_ownership(st: Any, page_id: str) -> None:
     """Manual sidebar navigation wins over stale cloud studio_page restore."""
-    from music_coach_context import resolve_coach_source_page, sync_music_coach_workspace_page
+    from music_coach_context import sync_music_coach_workspace_page
     from suite_user_persistence import claim_user_page_ownership
 
     page = str(page_id or "").strip()
@@ -395,9 +408,8 @@ def claim_studio_page_ownership(st: Any, page_id: str) -> None:
     except ImportError:
         ss["studio_page"] = page
         sync_music_coach_workspace_page(ss)
-    coach_page = resolve_coach_source_page(ss)
-    claim_user_page_ownership(st, APP_ID, coach_page)
-    ss["_suite_last_persisted_page"] = coach_page
+    claim_user_page_ownership(st, APP_ID, page)
+    ss["_suite_last_persisted_page"] = page
 
 
 def prepare_music_workspace(
@@ -469,6 +481,7 @@ def autosave_music_state(st: Any) -> dict[str, Any]:
             normalized_studio_page=coach_page,
             cloud_payload_studio_page=saved_studio or None,
             last_save_cloud=bool(result.get("cloud_ok")),
+            force_save_reason=st.session_state.get("_suite_persist_last_save_reason"),
             page_owner_flag=bool(st.session_state.get("_suite_page_user_nav")),
         )
         try:

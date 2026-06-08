@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from typing import Any
 
-MUSIC_PERSIST_DEPLOY_VERSION = "2026-06-08-phase-b-nav-stable-v14"
+MUSIC_PERSIST_DEPLOY_VERSION = "2026-06-08-phase-c-nav-song-v1"
 TRACE_KEY = "_music_persist_trace"
 
 
@@ -95,6 +95,7 @@ def render_persistence_trace_sidebar(st: Any) -> None:
             ("last_save_cloud", trace.get("last_save_cloud")),
             ("cloud_fetch_studio_page", trace.get("cloud_fetch_studio_page") or ss.get("_suite_cloud_fetch_studio_page")),
             ("restore_decision", trace.get("restore_decision") or ss.get("_suite_restore_decision")),
+            ("force_save_reason", trace.get("force_save_reason") or ss.get("_suite_persist_last_save_reason")),
             ("page_owner flag", trace.get("page_owner_flag") if trace.get("page_owner_flag") is not None else ss.get("_suite_page_user_nav")),
             ("page overwrite source", ss.get("_suite_page_overwrite_source")),
             ("persist restore skip", ss.get("_suite_persist_restore_skip_reason")),
