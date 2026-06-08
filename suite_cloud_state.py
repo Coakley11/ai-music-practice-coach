@@ -39,8 +39,24 @@ _RESUME_QUERY_KEYS: dict[str, tuple[str, ...]] = {
     "baseball": ("suite_resume", "suite_page", "suite_trend_player", "suite_player_a", "suite_player_b"),
     "investment": ("suite_page",),
     "nba": ("suite_resume", "suite_page", "suite_team"),
-    "future_lens": ("suite_resume", "suite_page", "suite_sim"),
-    "applied_intelligence": ("suite_page", "suite_lesson"),
+    "future_lens": (
+        "suite_resume",
+        "suite_page",
+        "suite_sim",
+        "suite_fl_domain",
+        "suite_fl_area",
+        "suite_fl_timeline_year",
+        "suite_fl_sim_year",
+        "suite_fl_view",
+    ),
+    "applied_intelligence": (
+        "suite_page",
+        "suite_lesson",
+        "suite_ai_question",
+        "suite_ai_question_id",
+        "suite_ai_source_app",
+        "suite_ai_context",
+    ),
 }
 
 
@@ -56,11 +72,25 @@ def _qp_get(st: Any, name: str) -> str:
     return str(raw).strip()
 
 
+def _ami_resume_consumed_flag(app_key: str) -> str:
+    key = str(app_key or "").strip().lower()
+    if key == "math":
+        key = "applied_intelligence"
+    return f"_ami_resume_consumed_{key}"
+
+
+def ami_return_resume_consumed(st: Any, app_key: str) -> bool:
+    """True after AMI insight was hydrated+rendered once on the source page."""
+    return bool(st.session_state.get(_ami_resume_consumed_flag(app_key)))
+
+
 def has_resume_query_params(st: Any, app_key: str) -> bool:
     """True when the user opened via Continue / deep link (skip cloud restore)."""
     key = str(app_key or "").strip()
     if key == "math":
         key = "applied_intelligence"
+    if ami_return_resume_consumed(st, app_key):
+        return False
     if st.session_state.get(f"_suite_resume_launch_{key}"):
         return True
     for param in _RESUME_QUERY_KEYS.get(key, ("suite_resume", "suite_page")):
@@ -197,95 +227,55 @@ def load_cloud_full_session(app_id: str) -> tuple[dict[str, Any], str | None]:
         return {}, None
 
 
-@dataclass(frozen=True)
-class CloudSaveResult:
-    attempted: bool
-    success: bool
-    error: str | None = None
-    storage_module: str = ""
-    cloud_enabled: bool = False
-
-
 def save_cloud_full_session(
     app_id: str,
     state: dict[str, Any],
     *,
     page: str = "",
     summary: str = "",
-) -> CloudSaveResult:
+) -> bool:
+    """Persist full_session to Supabase. Returns True when cloud write succeeds."""
     if not state:
-        return CloudSaveResult(attempted=False, success=False, error="empty state")
+        return False
     try:
         from suite_storage_config import cloud_storage_enabled
     except ImportError:
-        return CloudSaveResult(attempted=False, success=False, error="suite_storage_config missing")
+        return False
     if not cloud_storage_enabled():
-        return CloudSaveResult(
-            attempted=False,
-            success=False,
-            error="cloud disabled (missing [suite_activity] secrets?)",
-            cloud_enabled=False,
-        )
-    storage_module = ""
+        return False
     try:
-        storage, storage_module = _import_storage()
-        page_val, summary_val = session_page_summary(app_id, state)
-        page_val = page or page_val
-        summary_val = summary or summary_val or "Last session"
-        metrics = {FULL_SESSION_KEY: copy.deepcopy(state)}
+        storage, _ = _import_storage()
+        app_key = storage.normalize_app_key(app_id)
         storage.save_current_state(
-            app_id,
-            page=page_val,
-            summary=summary_val,
-            metrics=metrics,
+            app_key,
+            page=page or "",
+            summary=summary or "Last session",
+            metrics={FULL_SESSION_KEY: copy.deepcopy(state)},
         )
-        return CloudSaveResult(
-            attempted=True,
-            success=True,
-            storage_module=storage_module,
-            cloud_enabled=True,
-        )
-    except Exception as exc:
-        return CloudSaveResult(
-            attempted=True,
-            success=False,
-            error=str(exc),
-            storage_module=storage_module,
-            cloud_enabled=True,
-        )
+        return True
+    except Exception:
+        return False
 
 
-def clear_cloud_full_session(app_id: str) -> CloudSaveResult:
-    """Overwrite cloud ``full_session`` with an empty blob after reset."""
+def clear_cloud_full_session(app_id: str) -> None:
+    """Remove persisted full_session blob from cloud (reset flows)."""
     try:
         from suite_storage_config import cloud_storage_enabled
     except ImportError:
-        return CloudSaveResult(attempted=False, success=False, error="suite_storage_config missing")
+        return
     if not cloud_storage_enabled():
-        return CloudSaveResult(attempted=False, success=False, error="cloud disabled")
-    storage_module = ""
+        return
     try:
-        storage, storage_module = _import_storage()
+        storage, _ = _import_storage()
+        app_key = storage.normalize_app_key(app_id)
         storage.save_current_state(
-            app_id,
+            app_key,
             page="",
-            summary="Reset to defaults",
+            summary="",
             metrics={FULL_SESSION_KEY: {}},
         )
-        return CloudSaveResult(
-            attempted=True,
-            success=True,
-            storage_module=storage_module,
-            cloud_enabled=True,
-        )
-    except Exception as exc:
-        return CloudSaveResult(
-            attempted=True,
-            success=False,
-            error=str(exc),
-            storage_module=storage_module,
-            cloud_enabled=True,
-        )
+    except Exception:
+        pass
 
 
 def pick_restore_session(
@@ -296,13 +286,15 @@ def pick_restore_session(
     *,
     local_dirty: bool = False,
     prefer_cloud_on_tie: bool = True,
+    cloud_first: bool = True,
 ) -> RestorePickResult:
     """
     Choose restore payload for direct open / cloud re-sync.
 
-    When ``local_dirty`` is False (fresh open, no unsaved edits on this device),
-    the newer timestamp wins; ties favor cloud for cross-device sync.
-    When ``local_dirty`` is True, keep local disk over remote cloud.
+    When ``local_dirty`` is False and ``cloud_first`` is True (default), cloud
+    ``full_session`` is the cross-device source of truth whenever it exists.
+    Local disk is a per-device cache used only when cloud is empty/unavailable
+    or this device has unsaved local edits.
     """
     cloud_epoch = _parse_ts(cloud_ts)
     disk_epoch = _parse_ts(disk_ts)
@@ -319,6 +311,15 @@ def pick_restore_session(
             disk_state,
             "disk",
             "local unsaved edits",
+            cloud_ts,
+            disk_ts,
+        )
+
+    if cloud_first and cloud_state:
+        return RestorePickResult(
+            cloud_state,
+            "cloud",
+            "cloud-first workspace sync",
             cloud_ts,
             disk_ts,
         )

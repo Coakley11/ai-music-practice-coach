@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from typing import Any
 
-MUSIC_PERSIST_DEPLOY_VERSION = "2026-06-08-phase-b-page-sync-v4"
+MUSIC_PERSIST_DEPLOY_VERSION = "2026-06-08-phase-b-deploy-v5"
 TRACE_KEY = "_music_persist_trace"
 
 

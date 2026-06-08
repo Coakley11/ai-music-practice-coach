@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-SUITE_BUILD_MARKER = "2026-06-08-prod-persist-v3"
+SUITE_BUILD_MARKER = "2026-06-08-phase-b-deploy-v5"
 
 
 def developer_mode(st: Any) -> bool:
@@ -76,10 +76,13 @@ def cloud_config_probe() -> dict[str, Any]:
     }
     try:
         from suite_storage_config import cloud_storage_enabled, get_cloud_config
+        from suite_user import get_external_user_id
 
         cfg = get_cloud_config()
         out["cloud_enabled"] = cloud_storage_enabled()
-        out["suite_user_id_set"] = bool(str(cfg.get("suite_user_id") or "").strip())
+        out["suite_user_id_set"] = bool(str(get_external_user_id() or "").strip())
+        if cfg is not None:
+            out["supabase_url_set"] = bool(str(cfg.url or "").strip())
     except Exception as exc:
         out["config_error"] = str(exc)
         return out
