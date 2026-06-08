@@ -6990,6 +6990,35 @@ def _render_quick_nav_row(
             )
 
 
+def _render_simple_nav_row(
+    st: Any,
+    session_state: Any,
+    *,
+    current: str,
+    rerun_fn: Any,
+) -> None:
+    """Plain Streamlit nav buttons (?simple_nav=1 diagnostic mode)."""
+    st.markdown(f"<style>{_simple_nav_css()}</style>", unsafe_allow_html=True)
+    cols = st.columns(len(SIMPLE_NAV_PAGE_IDS))
+    for col, page_id in zip(cols, SIMPLE_NAV_PAGE_IDS):
+        with col:
+            is_active = page_id == current
+            if st.button(
+                nav_compact_button_label(page_id),
+                key=_studio_simple_nav_button_key(page_id),
+                type="primary" if is_active else "secondary",
+                use_container_width=True,
+            ):
+                if page_id != current and navigate_studio_page(session_state, page_id):
+                    try:
+                        from music_persistent_state import after_studio_page_change
+
+                        after_studio_page_change(st, session_state)
+                    except Exception:
+                        pass
+                    rerun_fn()
+
+
 def _sync_studio_page_nav_widget(
     session_state: Any,
     current_page: str,
@@ -7184,7 +7213,7 @@ def render_page_quick_nav(
                 current=current,
                 rerun_fn=rerun_fn,
             )
-        _render_music_coach_insight_below_quick_nav(st, current_page=current)
+    _render_music_coach_insight_below_quick_nav(st, current_page=current)
 
     return session_state.get("studio_page", current)
 

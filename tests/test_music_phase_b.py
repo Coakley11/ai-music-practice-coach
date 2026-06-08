@@ -285,6 +285,17 @@ class TestMusicCoachInsightScope(unittest.TestCase):
         self.assertEqual(st.session_state.get("_navigate_to_studio_page"), "backing")
         self.assertNotIn("_navigate_to_page", st.session_state)
 
+    def test_simple_nav_still_renders_insight(self) -> None:
+        from app_ui import USE_SIMPLE_MUSIC_NAV_KEY, render_page_quick_nav
+
+        st = MagicMock()
+        st.session_state = {USE_SIMPLE_MUSIC_NAV_KEY: True, "studio_page": "backing"}
+        with patch("app_ui._render_simple_nav_row"), patch(
+            "app_ui._render_music_coach_insight_below_quick_nav",
+        ) as mock_insight:
+            render_page_quick_nav(st, current_page="backing", rerun_fn=lambda: None)
+        mock_insight.assert_called_once()
+
 
 class TestStudioPageCloudSave(unittest.TestCase):
     def test_navigate_studio_page_triggers_cloud_save(self) -> None:

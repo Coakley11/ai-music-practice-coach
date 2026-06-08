@@ -56,12 +56,12 @@ def apply_suite_resume_launch(st: Any, app_key: str) -> bool:
     Returns True when query params were applied.
     """
     flag = f"_suite_resume_launch_{app_key}"
-    if st.session_state.get(flag):
+    ami_insight = _qp_get(st, "suite_ami_insight")
+    if st.session_state.get(flag) and not ami_insight:
         return False
 
     resume = _qp_get(st, "suite_resume")
     page = _qp_get(st, "suite_page")
-    ami_insight = _qp_get(st, "suite_ami_insight")
     if not resume and not page and not ami_insight:
         return False
 

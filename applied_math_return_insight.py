@@ -666,15 +666,21 @@ def store_applied_math_insight(
         blob["return_context"] = rc
     if ss:
         blob["source_state"] = ss
+    store_app = _normalize_source_app_for_diagnostics(str(data.get("source_app") or ""), blob)
+    if store_app:
+        blob["source_app"] = store_app
     try:
         from suite_account import remember_saved_item
 
-        for store_app in (
-            str(data.get("source_app") or "applied_intelligence"),
-            "applied_intelligence",
+        for app_key in dict.fromkeys(
+            [store_app, "music", "applied_intelligence"]
+            if store_app
+            else ["music", "applied_intelligence"]
         ):
+            if not app_key:
+                continue
             remember_saved_item(
-                store_app,
+                app_key,
                 INSIGHT_ITEM_TYPE,
                 iid,
                 title=str(data.get("conclusion") or "Applied Math insight")[:120],
@@ -719,7 +725,16 @@ def load_applied_math_insight(insight_id: str, *, source_app: str = "") -> dict[
                 if str(row.get("item_key") or "") == iid:
                     payload = row.get("payload")
                     if isinstance(payload, dict):
-                        return dict(payload)
+                        out = dict(payload)
+                        out.setdefault("insight_id", iid)
+                        out.setdefault(
+                            "source_app",
+                            _normalize_source_app_for_diagnostics(
+                                str(out.get("source_app") or app_key or ""),
+                                out,
+                            ),
+                        )
+                        return out
     except Exception as exc:
         log.warning("load_applied_math_insight failed: %s", exc)
     return {}
@@ -1450,6 +1465,8 @@ def render_insight_sync_debug(st: Any) -> None:
         "render_attempted": ss.get("_ami_insight_render_attempted"),
         "render_success": ss.get("_ami_insight_render_success"),
         "render_skipped_reason": ss.get("_ami_insight_render_skipped_reason"),
+        "ami_insight_startup_error": ss.get("_ami_insight_startup_error"),
+        "ami_insight_render_error": ss.get("_ami_insight_render_error"),
     }
 
     with st.sidebar.expander("Insight sync trace", expanded=True):
@@ -1775,25 +1792,37 @@ def render_suite_applied_math_insight_for_page(
         st.session_state["_ami_insight_render_skipped_reason"] = "no pending insight"
         st.session_state["_ami_insight_render_success"] = False
         st.session_state["_ami_insight_card_rendered"] = False
+        _record_insight_return_diagnostics(st, phase="render_no_pending")
         return False
 
-    scope = insight_page_scope_decision(source_app, source_page, insight)
+    app_key = _normalize_source_app_for_diagnostics(source_app, insight)
+    scope_page = (
+        _music_studio_page_for_scope(st, source_page)
+        if app_key == "music"
+        else str(source_page or "").strip()
+    )
+    scope = insight_page_scope_decision(app_key, scope_page, insight)
     st.session_state["_ami_insight_scope_decision"] = scope
     _record_insight_return_diagnostics(st, phase="render_check", insight=insight)
     if not scope.get("should_render_insight_on_page"):
         st.session_state["_ami_insight_render_skipped_reason"] = (
             scope.get("render_skip_reason")
-            or f"page mismatch (current={source_page!r}, insight={insight.get('source_page')!r})"
+            or f"page mismatch (current={scope_page!r}, insight={insight.get('source_page')!r})"
         )
         st.session_state["_ami_insight_render_success"] = False
         st.session_state["_ami_insight_card_rendered"] = False
         return False
 
     if not _insight_has_displayable_content(insight):
-        st.session_state["_ami_insight_render_skipped_reason"] = "insight still loading"
-        st.session_state["_ami_insight_render_success"] = False
-        st.session_state["_ami_insight_card_rendered"] = False
-        return False
+        if app_key == "music":
+            _refresh_placeholder_insight_from_cloud(st, app_key)
+            insight = _pending_insight_valid(st)
+        if not insight or not _insight_has_displayable_content(insight):
+            st.session_state["_ami_insight_render_skipped_reason"] = "insight still loading"
+            st.session_state["_ami_insight_render_success"] = False
+            st.session_state["_ami_insight_card_rendered"] = False
+            _record_insight_return_diagnostics(st, phase="render_placeholder", insight=insight)
+            return False
 
     ok = render_applied_math_insight_panel(st)
     st.session_state["_ami_insight_render_success"] = ok
@@ -1802,10 +1831,14 @@ def render_suite_applied_math_insight_for_page(
         st.session_state["_ami_insight_render_skipped_reason"] = "panel render failed"
     else:
         st.session_state.pop("_ami_insight_render_skipped_reason", None)
-        maybe_consume_ami_return_on_page_match(st, source_app, current_page=source_page)
+        maybe_consume_ami_return_on_page_match(
+            st,
+            app_key,
+            current_page=scope_page,
+        )
         consume_ami_return_resume(
             st,
-            str(st.session_state.get("_suite_persist_app_id") or source_app or "baseball"),
+            str(st.session_state.get("_suite_persist_app_id") or app_key or "baseball"),
         )
     _record_insight_return_diagnostics(st, phase="render_done", insight=insight)
     return ok

@@ -8861,8 +8861,8 @@ try:
 
     hydrate_applied_math_insight_for_session(st, "music")
     finalize_ami_return_restore(st, "music")
-except Exception:
-    pass
+except Exception as exc:
+    st.session_state["_ami_insight_startup_error"] = str(exc)
 
 _nav_target = st.session_state.pop("_navigate_to_studio_page", None)
 if _nav_target:
@@ -9150,10 +9150,8 @@ except Exception:
 
 if _developer_mode_enabled():
     try:
-        from applied_math_return_insight import render_insight_sync_debug
         from app_ui import render_quick_nav_dev_diagnostics
 
-        render_insight_sync_debug(st)
         render_quick_nav_dev_diagnostics(st)
     except Exception:
         pass
@@ -9436,6 +9434,26 @@ if pp.show_quick_nav(st):
         current_page=_studio_page,
         rerun_fn=st.rerun,
     )
+
+if not st.session_state.get("_ami_insight_card_rendered"):
+    try:
+        from suite_analytical_question import render_suite_applied_math_insight
+
+        render_suite_applied_math_insight(
+            st,
+            source_app="music",
+            source_page=str(st.session_state.get("studio_page") or _studio_page or "practice"),
+        )
+    except Exception as exc:
+        st.session_state["_ami_insight_render_error"] = str(exc)
+
+if _developer_mode_enabled():
+    try:
+        from applied_math_return_insight import render_insight_sync_debug
+
+        render_insight_sync_debug(st)
+    except Exception:
+        pass
 
 # -------------------------------------------------
 # PRACTICE
