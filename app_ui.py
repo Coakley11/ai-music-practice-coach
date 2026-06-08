@@ -6606,6 +6606,8 @@ _STUDIO_QUICK_NAV_OPEN_LABEL = "Open"
 # Diagnostic fallback — plain Streamlit buttons only (?simple_nav=1 or dev toggle).
 USE_SIMPLE_MUSIC_NAV_KEY = "use_simple_music_nav"
 STUDIO_SIMPLE_NAV_KEY_PREFIX = "studio_simple_nav"
+QUICK_NAV_DIAG_KEY = "_quick_nav_render_diag"
+_QUICK_NAV_RENDER_COUNT_RUN_KEY = "_quick_nav_render_count_run"
 SIMPLE_NAV_PAGE_IDS: list[str] = [
     "practice",
     "picker",
@@ -7041,6 +7043,96 @@ def end_studio_control_deck() -> None:
     st.markdown("</div></div>", unsafe_allow_html=True)
 
 
+def reset_quick_nav_render_diagnostics(session_state: Any) -> None:
+    """Clear per-run quick nav render counters (call once at top of each script run)."""
+    session_state[_QUICK_NAV_RENDER_COUNT_RUN_KEY] = 0
+    session_state["quick_nav_render_count"] = 0
+    session_state["quick_nav_render_locations"] = []
+    session_state["quick_nav_render_stack"] = []
+    session_state["quick_nav_container_keys"] = []
+    session_state.pop(QUICK_NAV_DIAG_KEY, None)
+
+
+def _quick_nav_caller_label() -> str:
+    import inspect
+    from pathlib import Path
+
+    for frame in inspect.stack()[2:10]:
+        path = Path(frame.filename)
+        if path.name == "app_ui.py" and frame.function in {
+            "render_page_quick_nav",
+            "_render_page_quick_nav",
+            "_render_canonical_studio_quick_nav",
+        }:
+            continue
+        return f"{frame.function} ({path.name}:{frame.lineno})"
+    return "unknown"
+
+
+def _record_quick_nav_render(
+    session_state: Any,
+    *,
+    current_page: str,
+    key_prefix: str,
+    container_key: str | None,
+    skipped: bool = False,
+) -> None:
+    import traceback
+
+    stack_tail = [
+        line.strip()
+        for line in traceback.format_stack(limit=10)[:-1]
+        if "site-packages" not in line
+    ][-5:]
+    entry = {
+        "caller": _quick_nav_caller_label(),
+        "page": current_page,
+        "key_prefix": key_prefix,
+        "container_id": container_key,
+        "skipped_duplicate": skipped,
+        "stack_tail": stack_tail,
+    }
+    diag = session_state.get(QUICK_NAV_DIAG_KEY)
+    if not isinstance(diag, dict):
+        diag = {"count": 0, "locations": [], "container_keys": []}
+    if not skipped:
+        diag["count"] = int(diag.get("count") or 0) + 1
+    diag.setdefault("locations", []).append(entry)
+    if container_key and not skipped:
+        diag.setdefault("container_keys", []).append(container_key)
+    session_state[QUICK_NAV_DIAG_KEY] = diag
+    session_state["quick_nav_render_count"] = diag["count"]
+    session_state["quick_nav_render_locations"] = list(diag.get("locations") or [])
+    session_state["quick_nav_render_stack"] = stack_tail
+    session_state["quick_nav_container_keys"] = list(diag.get("container_keys") or [])
+
+
+def render_quick_nav_dev_diagnostics(st: Any) -> None:
+    """?dev=1 — show quick nav render count, callers, and container keys."""
+    ss = st.session_state
+    count = int(ss.get("quick_nav_render_count") or 0)
+    locations = ss.get("quick_nav_render_locations") or []
+    st.sidebar.caption(f"**quick_nav_render_count:** `{count}`")
+    if locations:
+        st.sidebar.caption("**quick_nav_render_locations:**")
+        for idx, loc in enumerate(locations, start=1):
+            if not isinstance(loc, dict):
+                continue
+            skipped = " (skipped duplicate)" if loc.get("skipped_duplicate") else ""
+            st.sidebar.caption(
+                f"{idx}. `{loc.get('caller', '?')}` page=`{loc.get('page', '')}` "
+                f"key_prefix=`{loc.get('key_prefix', '')}` "
+                f"container=`{loc.get('container_id') or 'none'}`{skipped}"
+            )
+    stack = ss.get("quick_nav_render_stack") or []
+    if stack:
+        with st.sidebar.expander("quick_nav_render_stack", expanded=False):
+            st.code("\n".join(str(line) for line in stack))
+    keys = ss.get("quick_nav_container_keys") or []
+    if keys:
+        st.sidebar.caption(f"**quick_nav_container_keys:** `{', '.join(keys)}`")
+
+
 def render_page_quick_nav(
     session_state: Any,
     *,
@@ -7051,9 +7143,27 @@ def render_page_quick_nav(
     """Top navigation — art nav, or plain diagnostic buttons when simple mode is on."""
     import streamlit as st
 
-    _ = key_prefix
     ensure_studio_page(session_state, default=current_page)
     current = _resolve_quick_nav_current_page(session_state, current_page)
+    container_key = None if use_simple_music_nav(session_state) else STUDIO_QUICK_NAV_PANEL_KEY
+
+    run_count = int(session_state.get(_QUICK_NAV_RENDER_COUNT_RUN_KEY) or 0)
+    if run_count >= 1:
+        _record_quick_nav_render(
+            session_state,
+            current_page=current,
+            key_prefix=key_prefix,
+            container_key=container_key,
+            skipped=True,
+        )
+        return session_state.get("studio_page", current)
+    session_state[_QUICK_NAV_RENDER_COUNT_RUN_KEY] = run_count + 1
+    _record_quick_nav_render(
+        session_state,
+        current_page=current,
+        key_prefix=key_prefix,
+        container_key=container_key,
+    )
 
     if use_simple_music_nav(session_state):
         _render_simple_nav_row(

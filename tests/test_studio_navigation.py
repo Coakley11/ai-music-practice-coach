@@ -128,6 +128,34 @@ def test_quick_nav_uses_one_stable_button_key_per_page():
     assert all("_art_" not in key for key in keys)
 
 
+def test_quick_nav_skips_duplicate_render_same_run():
+    from unittest.mock import MagicMock, patch
+
+    from app_ui import (
+        STUDIO_QUICK_NAV_PANEL_KEY,
+        render_page_quick_nav,
+        reset_quick_nav_render_diagnostics,
+    )
+
+    state: dict = {"studio_page": "practice"}
+    reset_quick_nav_render_diagnostics(state)
+    fake_st = MagicMock()
+
+    with patch("app_ui.use_simple_music_nav", return_value=False), patch(
+        "app_ui._render_quick_nav_row"
+    ) as mock_row, patch("app_ui._render_music_coach_insight_below_quick_nav"):
+        render_page_quick_nav(state, current_page="practice", rerun_fn=lambda: None)
+        render_page_quick_nav(state, current_page="practice", rerun_fn=lambda: None)
+
+    assert state["quick_nav_render_count"] == 1
+    assert mock_row.call_count == 1
+    locations = state.get("quick_nav_render_locations") or []
+    assert len(locations) == 2
+    assert locations[0].get("skipped_duplicate") is False
+    assert locations[1].get("skipped_duplicate") is True
+    assert STUDIO_QUICK_NAV_PANEL_KEY in (state.get("quick_nav_container_keys") or [])
+
+
 def test_simple_nav_mode_uses_plain_button_keys():
     from app_ui import (
         SIMPLE_NAV_PAGE_IDS,

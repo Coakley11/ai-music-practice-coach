@@ -42,18 +42,9 @@ def session_focus(session_state: dict[str, Any]) -> str:
 
 
 def render_cpl_page_header() -> None:
-    """Quick nav + instrument strip below the Custom Progression title."""
+    """Instrument strip below the Custom Progression title (quick nav is canonical/global)."""
     import streamlit as st
 
-    import portfolio_polish as pp
-    from app_ui import render_page_quick_nav
-
-    if pp.show_quick_nav(st):
-        render_page_quick_nav(
-            st.session_state,
-            current_page="custom",
-            rerun_fn=st.rerun,
-        )
     try:
         from instrument_aware import render_instrument_context_strip
 

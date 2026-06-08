@@ -41,6 +41,9 @@ try:
 
     init_developer_mode_from_query(st)
     init_simple_music_nav_from_query(st)
+    from app_ui import reset_quick_nav_render_diagnostics
+
+    reset_quick_nav_render_diagnostics(st.session_state)
 except Exception:
     pass
 
@@ -8517,15 +8520,6 @@ def _render_backing_scope_controls(
                 unsafe_allow_html=True,
             )
 
-        render_cross_page_links(
-            st.session_state,
-            current_page="backing",
-            rerun_fn=st.rerun,
-            key_prefix="backing_scope",
-            pages=BACKING_SCOPE_QUICK_LINKS,
-            wrapper_class="ui-cross-nav-art ui-backing-scope-quicklinks",
-        )
-
 
 def _render_backing_playback_setup_panel(
     *,
@@ -9450,8 +9444,6 @@ if _studio_page == "practice":
         inject_studio_ui_release_marker(st, page="practice")
     except Exception:
         pass
-    _render_page_quick_nav("practice")
-
     if not pp.is_screenshot_mode(st) and not pp.is_demo_mode(st):
         _studio_page_header(
             "🎯",
@@ -10450,8 +10442,6 @@ elif _studio_page == "backing":
 
     ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
-    _render_page_quick_nav("backing")
-
     if pp.is_capture_mode(st):
         if km.is_voice_mode(st.session_state):
             pp.render_hero_banner(
@@ -11742,8 +11732,6 @@ elif _studio_page == "multitrack":
 
     inject_multitrack_studio_styles(st)
     inject_studio_ui_release_marker(st, page="multitrack")
-    _render_page_quick_nav("multitrack")
-
     try:
         from instrument_aware import render_instrument_context_strip
 
@@ -12092,8 +12080,6 @@ elif _studio_page == "log":
 
     ensure_page_initialized(st.session_state, "log")
     note_page_visit(st.session_state, "log")
-    _render_page_quick_nav("log")
-
     _studio_page_header(
         "📓",
         "Practice Log",
