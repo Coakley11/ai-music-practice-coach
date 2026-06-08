@@ -17,4 +17,4 @@ render_page_quick_nav(
     current_page="practice",
     rerun_fn=st.rerun,
 )
-st.caption("All page buttons stay visible; active page button should be red.")
+st.caption("Icon + script labels with Open buttons; active page should be red/purple.")

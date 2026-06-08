@@ -6601,6 +6601,7 @@ TOP_NAV_PAGE_IDS: list[str] = [page_id for page_id, _label in TOP_NAV_ITEMS]
 # Single stable quick-nav widget tree (do not vary keys per page or deploy).
 STUDIO_QUICK_NAV_PANEL_KEY = "studio_quick_nav_panel"
 STUDIO_QUICK_NAV_KEY_PREFIX = "studio_quick_nav"
+_STUDIO_QUICK_NAV_OPEN_LABEL = "Open"
 
 
 def sidebar_studio_page_items(*, ai_enabled: bool) -> list[tuple[str, str]]:
@@ -6676,7 +6677,7 @@ _NAV_COMPACT_ICON: dict[str, str] = {
 
 
 def nav_compact_button_label(page_id: str) -> str:
-    """Short page name for quick-nav buttons."""
+    """Short script label for quick-nav art faces."""
     return _NAV_COMPACT_TITLE.get(
         page_id, STUDIO_PAGE_META.get(page_id, {}).get("label", page_id)
     )
@@ -6715,9 +6716,24 @@ def _resolve_quick_nav_current_page(session_state: Any, current_page: str) -> st
     return current_page if current_page in TOP_NAV_PAGE_IDS else "practice"
 
 
-def _quick_nav_button_css() -> str:
-    """Quick navigation — visible Streamlit buttons only (no overlay/hidden labels)."""
+def _nav_art_face_html(page_id: str, *, active: bool) -> str:
+    """Visible nav face: emoji icon + Caveat script word (pre-regression look)."""
+    icon = html.escape(_nav_compact_icon(page_id))
+    title = html.escape(nav_compact_button_label(page_id))
+    active_cls = " is-active" if active else ""
+    return (
+        f'<div class="ui-nav-art-face{active_cls}" data-nav-page="{html.escape(page_id)}">'
+        f'<span class="ui-nav-icon" aria-hidden="true">{icon}</span>'
+        f'<span class="ui-nav-script-label">{title}</span>'
+        f"</div>"
+    )
+
+
+def _quick_nav_artistic_css() -> str:
+    """Quick nav — icon + Caveat script label, visible Open button (no overlay ghosts)."""
     return """
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap');
+
 [class*="st-key-studio_quick_nav_panel"] {
   margin: 0 0 0.45rem !important;
   padding: 0.28rem 0.45rem 0.32rem !important;
@@ -6727,52 +6743,100 @@ def _quick_nav_button_css() -> str:
   box-shadow: 0 1px 6px rgba(15, 23, 42, 0.05) !important;
 }
 [class*="st-key-studio_quick_nav_panel"] [data-testid="stHorizontalBlock"] {
-  gap: 0.18rem 0.24rem !important;
-  align-items: stretch !important;
+  gap: 0.12rem 0.18rem !important;
+  align-items: flex-start !important;
   flex-wrap: wrap !important;
 }
 [class*="st-key-studio_quick_nav_panel"] [data-testid="column"] {
   min-width: 0 !important;
   flex: 1 1 auto !important;
 }
+.ui-nav-art-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.ui-nav-art-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.26rem;
+  min-height: 2rem;
+  padding: 0.14rem 0.28rem 0.16rem;
+  border-radius: 7px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  pointer-events: none;
+  user-select: none;
+}
+.ui-nav-icon {
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif !important;
+  font-size: 1.02rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.ui-nav-script-label {
+  font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive !important;
+  font-size: 1.18rem !important;
+  font-weight: 600 !important;
+  color: #475569 !important;
+  letter-spacing: 0.02em !important;
+  line-height: 1.05 !important;
+  white-space: nowrap !important;
+}
+.ui-nav-art-cell.is-active .ui-nav-art-face {
+  background: rgba(124, 58, 237, 0.08);
+  border-bottom-color: rgba(220, 38, 38, 0.85);
+}
+.ui-nav-art-cell.is-active .ui-nav-script-label {
+  font-weight: 700 !important;
+  color: #dc2626 !important;
+}
+.ui-nav-art-cell.ui-nav-compact {
+  gap: 0.08rem;
+}
+.ui-nav-art-cell.ui-nav-compact .ui-nav-art-face {
+  min-height: 1.75rem;
+  padding: 0.1rem 0.2rem 0.12rem;
+  gap: 0.18rem;
+}
+.ui-nav-art-cell.ui-nav-compact .ui-nav-icon {
+  font-size: 0.92rem;
+}
+.ui-nav-art-cell.ui-nav-compact .ui-nav-script-label {
+  font-size: 1.02rem !important;
+}
 [class*="st-key-studio_quick_nav_btn_"] .stButton > button,
 [class*="st-key-global_nav_"] .stButton > button,
 [class*="st-key-cross_to_"] .stButton > button {
-  min-height: 2rem !important;
-  padding: 0.34rem 0.42rem !important;
-  font-size: 0.84rem !important;
+  min-height: 1.55rem !important;
+  padding: 0.2rem 0.32rem !important;
+  font-size: 0.72rem !important;
   font-weight: 600 !important;
-  line-height: 1.15 !important;
-  border-radius: 8px !important;
-  white-space: nowrap !important;
+  line-height: 1.1 !important;
+  border-radius: 6px !important;
   box-shadow: none !important;
 }
 [class*="st-key-studio_quick_nav_btn_"] .stButton > button[kind="secondary"],
-[class*="st-key-studio_quick_nav_btn_"] .stButton > button[data-testid="baseButton-secondary"] {
+[class*="st-key-studio_quick_nav_btn_"] .stButton > button[data-testid="baseButton-secondary"],
+[class*="st-key-global_nav_"] .stButton > button[kind="secondary"],
+[class*="st-key-global_nav_"] .stButton > button[data-testid="baseButton-secondary"],
+[class*="st-key-cross_to_"] .stButton > button[kind="secondary"],
+[class*="st-key-cross_to_"] .stButton > button[data-testid="baseButton-secondary"] {
   border: 1px solid rgba(148, 163, 184, 0.42) !important;
   background: #ffffff !important;
-  color: #334155 !important;
+  color: #475569 !important;
 }
 [class*="st-key-studio_quick_nav_btn_"] .stButton > button[kind="primary"],
-[class*="st-key-studio_quick_nav_btn_"] .stButton > button[data-testid="baseButton-primary"] {
-  border: 2px solid #b91c1c !important;
-  background: #dc2626 !important;
-  color: #ffffff !important;
-  font-weight: 700 !important;
-}
-[class*="st-key-global_nav_"] .stButton > button,
-[class*="st-key-cross_to_"] .stButton > button {
-  min-height: 1.75rem !important;
-  font-size: 0.8rem !important;
-  border: 1px solid rgba(148, 163, 184, 0.42) !important;
-  background: #ffffff !important;
-  color: #334155 !important;
-}
+[class*="st-key-studio_quick_nav_btn_"] .stButton > button[data-testid="baseButton-primary"],
 [class*="st-key-global_nav_"] .stButton > button[kind="primary"],
 [class*="st-key-global_nav_"] .stButton > button[data-testid="baseButton-primary"],
 [class*="st-key-cross_to_"] .stButton > button[kind="primary"],
 [class*="st-key-cross_to_"] .stButton > button[data-testid="baseButton-primary"] {
-  border: 2px solid #b91c1c !important;
+  border: 2px solid #7c3aed !important;
   background: #dc2626 !important;
   color: #ffffff !important;
   font-weight: 700 !important;
@@ -6782,7 +6846,7 @@ def _quick_nav_button_css() -> str:
 }
 .ui-cross-nav-art [data-testid="stHorizontalBlock"] {
   gap: 0.12rem 0.18rem !important;
-  align-items: stretch !important;
+  align-items: flex-start !important;
   flex-wrap: wrap !important;
 }
 .ui-cross-nav-art [data-testid="column"] {
@@ -6796,51 +6860,12 @@ def _quick_nav_button_css() -> str:
   border-top: 1px dashed rgba(148, 163, 184, 0.32);
 }
 @media (max-width: 720px) {
-  [class*="st-key-studio_quick_nav_btn_"] .stButton > button {
-    font-size: 0.76rem !important;
-    padding: 0.28rem 0.24rem !important;
+  .ui-nav-script-label { font-size: 1.05rem !important; }
+  [class*="st-key-studio_quick_nav_panel"] [data-testid="stHorizontalBlock"] {
+    gap: 0.08rem !important;
   }
 }
 """
-
-
-def _quick_nav_artistic_css() -> str:
-    """Backward-compatible alias for theme bundle."""
-    return _quick_nav_button_css()
-
-
-def _render_nav_button_cell(
-    st: Any,
-    session_state: Any,
-    *,
-    page_id: str,
-    current: str | None,
-    rerun_fn: Any,
-    button_key: str,
-    button_label: str | None = None,
-) -> None:
-    """One visible Streamlit button — single label source, no HTML overlay."""
-    title = button_label or nav_compact_button_label(page_id)
-    is_active = current is not None and page_id == current
-    help_text = STUDIO_PAGE_META.get(page_id, {}).get("label", page_id) or title
-
-    if st.button(
-        title,
-        key=button_key,
-        type="primary" if is_active else "secondary",
-        use_container_width=True,
-        help=help_text,
-    ):
-        if (current is None or page_id != current) and navigate_studio_page(
-            session_state, page_id
-        ):
-            try:
-                from music_persistent_state import after_studio_page_change
-
-                after_studio_page_change(st, session_state)
-            except Exception:
-                pass
-            rerun_fn()
 
 
 def _render_nav_art_cell(
@@ -6853,17 +6878,38 @@ def _render_nav_art_cell(
     button_key: str,
     compact: bool = False,
 ) -> None:
-    """Cross-page / global bar shortcut — icon + label on the button only."""
-    _ = compact
-    _render_nav_button_cell(
-        st,
-        session_state,
-        page_id=page_id,
-        current=current,
-        rerun_fn=rerun_fn,
-        button_key=button_key,
-        button_label=nav_icon_button_label(page_id),
+    """Icon + script label above a small Open button — no duplicate page-name text."""
+    is_active = current is not None and page_id == current
+    nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
+    help_text = STUDIO_PAGE_META.get(page_id, {}).get("label", page_id) or nav_compact_button_label(
+        page_id
     )
+    active_cls = " is-active" if is_active else ""
+    compact_cls = " ui-nav-compact" if compact else ""
+
+    st.markdown(
+        f'<div class="ui-nav-art-cell nav-{html.escape(nav_class)}{active_cls}{compact_cls}">'
+        f"{_nav_art_face_html(page_id, active=is_active)}",
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        _STUDIO_QUICK_NAV_OPEN_LABEL,
+        key=button_key,
+        type="primary" if is_active else "secondary",
+        use_container_width=True,
+        help=f"Open {help_text}",
+    ):
+        if (current is None or page_id != current) and navigate_studio_page(
+            session_state, page_id
+        ):
+            try:
+                from music_persistent_state import after_studio_page_change
+
+                after_studio_page_change(st, session_state)
+            except Exception:
+                pass
+            rerun_fn()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _render_quick_nav_row(
@@ -6877,7 +6923,7 @@ def _render_quick_nav_row(
     cols = st.columns(len(page_ids))
     for col, page_id in zip(cols, page_ids):
         with col:
-            _render_nav_button_cell(
+            _render_nav_art_cell(
                 st,
                 session_state,
                 page_id=page_id,
@@ -6947,7 +6993,7 @@ def render_page_quick_nav(
     rerun_fn: Any,
     key_prefix: str = STUDIO_QUICK_NAV_KEY_PREFIX,
 ) -> str:
-    """Top navigation — plain visible buttons (one stable widget tree)."""
+    """Top navigation — icon + script label with stable Open buttons."""
     import streamlit as st
 
     _ = key_prefix

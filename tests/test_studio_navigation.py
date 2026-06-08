@@ -91,27 +91,31 @@ def test_same_page_navigation_is_noop():
     assert state["studio_nav_back"] == []
 
 
-def test_quick_nav_css_uses_visible_buttons_without_hidden_text():
+def test_quick_nav_css_restores_art_face_without_hidden_buttons():
     from app_ui import (
         STUDIO_QUICK_NAV_PANEL_KEY,
-        _quick_nav_button_css,
+        _nav_art_face_html,
+        _quick_nav_artistic_css,
         _resolve_quick_nav_current_page,
         _studio_quick_nav_button_key,
         nav_compact_button_label,
     )
 
-    css = _quick_nav_button_css().lower()
+    css = _quick_nav_artistic_css().lower()
     assert "opacity: 0" not in css
     assert "color: transparent" not in css
     assert "text-indent: -9999" not in css
-    assert "display: none" not in css
-    assert "caveat" not in css
-    assert "ui-studio-nav-script" not in css
-    assert "basebutton-primary" in css
+    assert "position: absolute" not in css
+    assert "caveat" in css
+    assert "ui-nav-script-label" in css
+    assert "ui-nav-art-face" in css
     assert STUDIO_QUICK_NAV_PANEL_KEY == "studio_quick_nav_panel"
     assert _studio_quick_nav_button_key("practice") == "studio_quick_nav_btn_practice"
     assert nav_compact_button_label("picker") == "Songs"
     assert _resolve_quick_nav_current_page({"studio_page": "backing"}, "practice") == "backing"
+    face = _nav_art_face_html("practice", active=True)
+    assert "Practice" in face
+    assert "ui-nav-icon" in face
     assert "_art_" not in _studio_quick_nav_button_key("picker")
 
 
