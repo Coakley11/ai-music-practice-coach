@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import datetime, timezone
 from typing import Any
 
 from songs.state import (
@@ -15,13 +16,18 @@ from songs.state import (
 )
 from suite_user_persistence import (
     autosave_if_changed,
+    clear_workspace_autosave_block,
+    finalize_suite_reset,
+    force_autosave,
     load_user_state,
     reset_user_state,
     restore_once,
     save_user_state,
+    sync_workspace_protocol,
 )
 
 APP_ID = "music"
+WORKSPACE_SCHEMA_VERSION = 1
 
 # JSON-serializable session keys (never large blobs / widget-only keys).
 _PERSIST_KEYS: tuple[str, ...] = (
@@ -65,6 +71,62 @@ _LIST_KEYS = (
     "catalog_favorite_pick_keys",
 )
 
+_INSIGHT_KEYS = (
+    "_ami_pending_insight",
+    "_ami_return_page",
+    "_ami_return_context",
+    "_ami_dismissed_insight_ids",
+    "_ami_dismissed_insight_at",
+)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _get_device_id(st: Any) -> str:
+    try:
+        from pathlib import Path
+
+        path = Path("data") / "music_device_id.txt"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.is_file():
+            return path.read_text(encoding="utf-8").strip() or "unknown"
+        import uuid
+
+        device_id = str(uuid.uuid4())
+        path.write_text(device_id, encoding="utf-8")
+        return device_id
+    except Exception:
+        return "unknown"
+
+
+def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: str) -> dict[str, Any]:
+    core = state.get("core") if isinstance(state.get("core"), dict) else {}
+    session_extra = state.get("session") if isinstance(state.get("session"), dict) else {}
+    coach_page = ""
+    try:
+        from music_coach_context import resolve_coach_source_page, sync_music_coach_workspace_page
+
+        merged = {**core, **session_extra}
+        if hasattr(st, "session_state"):
+            merged = {**dict(st.session_state), **merged}
+        sync_music_coach_workspace_page(merged)
+        coach_page = resolve_coach_source_page(merged)
+    except Exception:
+        coach_page = str((core or {}).get("studio_page") or session_extra.get("studio_page") or "")
+    return {
+        "schema_version": WORKSPACE_SCHEMA_VERSION,
+        "updated_at": _utc_now_iso(),
+        "device_id": _get_device_id(st),
+        "save_reason": save_reason or "autosave",
+        "page": coach_page or (core or {}).get("studio_page"),
+        "studio_page": (core or {}).get("studio_page") or session_extra.get("studio_page"),
+        "pick_key": (core or {}).get("pick_key"),
+        "instrument": (core or {}).get("instrument"),
+        "display_key": (core or {}).get("display_key"),
+    }
+
 
 def build_music_disk_state(st: Any) -> dict[str, Any]:
     ss = st.session_state
@@ -89,7 +151,13 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
             extra["_cpl_widget_state"] = cpl_widgets
     except Exception:
         pass
-    return {"core": core, "session": extra}
+    for key in _INSIGHT_KEYS:
+        if key in ss:
+            extra[key] = copy.deepcopy(ss[key])
+    state = {"core": core, "session": extra}
+    save_reason = str(ss.pop("_suite_pending_save_reason", None) or "autosave")
+    state["music_workspace_state"] = _build_workspace_envelope(st, state, save_reason=save_reason)
+    return state
 
 
 def apply_music_disk_state(
@@ -99,11 +167,21 @@ def apply_music_disk_state(
     song_picker_catalog: dict,
     song_library: dict | None,
 ) -> None:
-    """Apply disk payload after legacy restore hook."""
+    """Apply disk/cloud payload with studio_page ownership protection."""
+    ss = st.session_state
+    pre_restore_studio_page = str(ss.get("studio_page") or "").strip()
+    pre_restore_user_nav = bool(ss.get("_suite_page_user_nav"))
+    pre_restore_coach_page = str(ss.get("_music_coach_workspace_page") or "").strip()
+
     core = payload.get("core") if isinstance(payload.get("core"), dict) else payload
     session_extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
 
-    st.session_state.pop(SUITE_LOCAL_STATE_RESTORED_KEY, None)
+    preserve_insight = bool(ss.get("_ami_insight_return_preserve"))
+    for key in _INSIGHT_KEYS:
+        if key in session_extra and not preserve_insight:
+            ss[key] = copy.deepcopy(session_extra[key])
+
+    ss.pop(SUITE_LOCAL_STATE_RESTORED_KEY, None)
     applied = False
     if isinstance(core, dict) and core:
         applied = apply_saved_music_context(
@@ -113,7 +191,7 @@ def apply_music_disk_state(
             song_library=song_library,
         )
         if applied:
-            st.session_state[SUITE_LOCAL_STATE_RESTORED_KEY] = True
+            ss[SUITE_LOCAL_STATE_RESTORED_KEY] = True
 
     if not applied and not (isinstance(core, dict) and core):
         restore_saved_app_state_once(
@@ -123,21 +201,106 @@ def apply_music_disk_state(
         )
 
     for key, val in session_extra.items():
+        if key in _INSIGHT_KEYS and preserve_insight:
+            continue
         if key == "_studio_page_snapshots" and isinstance(val, dict):
-            st.session_state[key] = copy.deepcopy(val)
+            ss[key] = copy.deepcopy(val)
         elif key == "_cpl_widget_state" and isinstance(val, dict):
             try:
                 from custom_progression_lab import import_cpl_widget_state
 
-                import_cpl_widget_state(st.session_state, val)
+                import_cpl_widget_state(ss, val)
             except Exception:
                 pass
         elif key in _LIST_KEYS and isinstance(val, list):
-            st.session_state[key] = copy.deepcopy(val)
+            ss[key] = copy.deepcopy(val)
         elif key in _PERSIST_KEYS:
-            st.session_state[key] = copy.deepcopy(val)
-        else:
-            st.session_state[key] = copy.deepcopy(val)
+            ss[key] = copy.deepcopy(val)
+        elif not str(key).startswith("_ami_"):
+            ss[key] = copy.deepcopy(val)
+
+    blob_studio = str((core or {}).get("studio_page") or session_extra.get("studio_page") or "").strip()
+    meta = payload.get("music_workspace_state")
+    if isinstance(meta, dict) and meta.get("studio_page"):
+        blob_studio = str(meta.get("studio_page") or blob_studio).strip()
+
+    last_persisted = str(ss.get("_suite_last_persisted_page") or "").strip()
+    user_owns_page = bool(
+        pre_restore_user_nav
+        or (
+            pre_restore_coach_page
+            and last_persisted
+            and pre_restore_coach_page == last_persisted
+        )
+        or (
+            pre_restore_studio_page
+            and last_persisted
+            and pre_restore_studio_page == last_persisted
+        )
+    )
+    active_studio = blob_studio or pre_restore_studio_page
+    overwrite_source = "workspace_blob"
+    if user_owns_page and pre_restore_studio_page and blob_studio and pre_restore_studio_page != blob_studio:
+        active_studio = pre_restore_studio_page
+        overwrite_source = "user_page_preserved"
+    elif pre_restore_studio_page and not blob_studio:
+        active_studio = pre_restore_studio_page
+
+    ss["_suite_page_overwrite_source"] = overwrite_source
+    if active_studio:
+        ss["studio_page"] = active_studio
+
+    try:
+        from music_coach_context import sync_music_coach_workspace_page
+
+        sync_music_coach_workspace_page(ss)
+    except Exception:
+        pass
+
+    ss["_suite_cloud_workspace_applied"] = True
+
+
+def claim_studio_page_ownership(st: Any, page_id: str) -> None:
+    """Manual sidebar navigation wins over stale cloud studio_page restore."""
+    from music_coach_context import resolve_coach_source_page, sync_music_coach_workspace_page
+    from suite_user_persistence import claim_user_page_ownership
+
+    page = str(page_id or "").strip()
+    if not page:
+        return
+    ss = st.session_state
+    ss["studio_page"] = page
+    sync_music_coach_workspace_page(ss)
+    coach_page = resolve_coach_source_page(ss)
+    claim_user_page_ownership(st, APP_ID, coach_page)
+    ss["_suite_last_persisted_page"] = coach_page
+
+
+def prepare_music_workspace(
+    st: Any,
+    *,
+    song_picker_catalog: dict,
+    song_library: dict | None,
+) -> bool:
+    """Authoritative cloud/disk workspace sync before sidebar widgets."""
+    def _apply(st_obj: Any, state: dict[str, Any]) -> None:
+        apply_music_disk_state(
+            st_obj,
+            state,
+            song_picker_catalog=song_picker_catalog,
+            song_library=song_library,
+        )
+
+    return sync_workspace_protocol(
+        st,
+        APP_ID,
+        apply_state=_apply,
+        cloud_first=True,
+    )
+
+
+def force_save_music_state(st: Any, *, reason: str = "") -> bool:
+    return force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
 
 
 def autosave_music_state(st: Any) -> dict[str, Any]:
@@ -190,47 +353,12 @@ def restore_music_disk_state_once(
     song_picker_catalog: dict,
     song_library: dict | None,
 ) -> bool:
-    trace_fields: dict = {
-        "cloud_restore_attempted": True,
-        "disk_restore_attempted": True,
-    }
-
-    def _apply(st_obj: Any, state: dict[str, Any]) -> None:
-        core = state.get("core") if isinstance(state.get("core"), dict) else state
-        if isinstance(core, dict):
-            trace_fields["restored_pick_key"] = str(core.get("pick_key") or "")
-            trace_fields["restored_display_key"] = str(core.get("display_key") or "")
-            trace_fields["restored_instrument"] = str(core.get("instrument") or "")
-            trace_fields["restored_studio_page"] = str(core.get("studio_page") or core.get("page") or "")
-        apply_music_disk_state(
-            st_obj,
-            state,
-            song_picker_catalog=song_picker_catalog,
-            song_library=song_library,
-        )
-        trace_fields["apply_saved_result"] = bool(st_obj.session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY))
-        trace_fields["apply_pick_key_result"] = bool(
-            st_obj.session_state.get(ACTIVE_CATALOG_PICK_KEY) or st_obj.session_state.get(SELECTED_SONG_STATE_KEY)
-        )
-
-    try:
-        ok = restore_once(st, APP_ID, apply_state=_apply)
-        trace_fields["cloud_restore_success"] = ok
-        ops = st.session_state.get("_suite_persist_ops")
-        if isinstance(ops, dict) and isinstance(ops.get("music"), dict):
-            trace_fields["restore_source"] = ops["music"].get("last_restore_source", trace_fields.get("restore_source"))
-        else:
-            trace_fields["restore_source"] = "cloud/disk" if ok else "none"
-    except Exception as exc:
-        trace_fields["restore_error"] = str(exc)
-        ok = False
-    try:
-        from music_persistence_trace import update_trace
-
-        update_trace(st, **trace_fields)
-    except Exception:
-        pass
-    return ok
+    """Deprecated — use prepare_music_workspace() instead."""
+    return prepare_music_workspace(
+        st,
+        song_picker_catalog=song_picker_catalog,
+        song_library=song_library,
+    )
 
 
 def persist_music_disk_state(st: Any) -> None:
@@ -291,6 +419,7 @@ def apply_music_session_defaults(st: Any) -> None:
         "cpl_finished",
         "_cpl_editing_display_key",
         "cpl_last_display_key",
+        "_music_coach_workspace_page",
     ):
         ss.pop(key, None)
     try:
@@ -312,18 +441,10 @@ def default_reset_music_session(st: Any) -> None:
     apply_music_session_defaults(st)
     reset_user_state(APP_ID)
     fresh = build_music_disk_state(st)
-    save_user_state(APP_ID, fresh)
-    try:
-        from suite_cloud_state import save_cloud_full_session, session_page_summary
-
-        page, summary = session_page_summary(APP_ID, fresh)
-        save_cloud_full_session(
-            APP_ID,
-            fresh,
-            page=page,
-            summary=summary or "Reset to defaults",
-        )
-    except Exception:
-        pass
+    finalize_suite_reset(st, APP_ID, fresh)
     st.session_state.pop(SUITE_LOCAL_STATE_RESTORED_KEY, None)
     st.session_state.pop(f"_suite_autosave_fp::{APP_ID}", None)
+
+
+def clear_music_workspace_autosave_block(st: Any) -> None:
+    clear_workspace_autosave_block(st, APP_ID)

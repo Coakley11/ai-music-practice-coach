@@ -4,10 +4,11 @@ Build Continue / resume deep links for suite Streamlit apps.
 Query params (read by suite_resume_launch in each app):
   suite_resume  — resume item key (e.g. song:pick-123, compare:Judge:Soto)
   suite_page    — target page/tab label
-  suite_pick_key, suite_song, suite_display_key, suite_section_focus — music shortcuts
+  suite_pick_key, suite_song, suite_display_key, suite_instrument, suite_section_focus — music shortcuts
   suite_holdings_fp — investment portfolio fingerprint
   suite_player_a, suite_player_b — baseball comparison players
   suite_team — NBA favorite team
+  suite_sim, suite_fl_domain, suite_fl_area, suite_fl_timeline_year, suite_fl_sim_year — Future Lens
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ _NBA_PAGE_BY_RESUME: tuple[tuple[str, str], ...] = (
 
 _BASEBALL_PAGE_BY_RESUME: tuple[tuple[str, str], ...] = (
     ("compare:", "Comparison Tool"),
+    ("trendcompare:", "Trend Value"),
     ("trend:", "Trend Value"),
     ("baseball:draft", "Draft Simulation"),
     ("baseball:draft_prep", "Draft Simulation"),
@@ -59,11 +61,26 @@ _INVESTMENT_PAGE_BY_RESUME: tuple[tuple[str, str], ...] = (
 )
 
 _MUSIC_STUDIO_ALIASES: dict[str, str] = {
-    "practice log": "practice",
+    "practice log": "log",
     "practice studio": "practice",
+    "song selection": "picker",
+    "song picker": "picker",
+    "songs": "picker",
     "backing track studio": "backing",
-    "recording analysis": "recording",
+    "backing track": "backing",
+    "recording analysis": "analysis",
+    "recording": "analysis",
+    "upload analysis": "analysis",
+    "upload": "analysis",
+    "multitrack": "multitrack",
+    "creative progression": "custom",
+    "custom progression": "custom",
+    "creative lab": "creative",
+    "karaoke": "backing",
+    "karaoke mode": "backing",
     "chord coach": "practice",
+    "openai": "openai",
+    "openai hub": "openai",
 }
 
 
@@ -83,13 +100,28 @@ def _normalize_music_page(page: str, resume_key: str) -> str:
     alias = _MUSIC_STUDIO_ALIASES.get(raw.lower())
     if alias:
         return alias
-    if raw in {"practice", "backing", "recording", "picker", "custom"}:
+    if raw in {
+        "practice",
+        "backing",
+        "picker",
+        "custom",
+        "creative",
+        "multitrack",
+        "analysis",
+        "log",
+        "openai",
+    }:
         return raw
     return "practice"
 
 
 def _parse_compare_resume(resume_key: str) -> tuple[str, str]:
     rk = str(resume_key or "").strip()
+    if rk.startswith("trendcompare:"):
+        parts = rk.split(":", 2)
+        if len(parts) >= 3:
+            return parts[1].strip(), parts[2].strip()
+        return "", ""
     if not rk.startswith("compare:"):
         return "", ""
     parts = rk.split(":", 2)
@@ -174,6 +206,9 @@ def build_resume_action_url(
         display_key = str(m.get("display_key") or "").strip()
         if display_key:
             params["suite_display_key"] = display_key[:40]
+        instrument = str(m.get("instrument") or "").strip()
+        if instrument:
+            params["suite_instrument"] = instrument[:40]
         section = str(
             m.get("practice_focus_section") or m.get("focus") or ""
         ).strip()
@@ -193,6 +228,12 @@ def build_resume_action_url(
             trend_player = rk.split(":", 1)[-1].strip()
         if trend_player:
             params["suite_trend_player"] = trend_player[:120]
+        trend_players = m.get("trend_players")
+        if isinstance(trend_players, list) and trend_players:
+            params["suite_trend_players"] = "|".join(str(x) for x in trend_players[:4])[:240]
+        qid = str(m.get("question_id") or "").strip()
+        if qid:
+            params["suite_ai_question_id"] = qid[:40]
     elif app_key == "investment":
         hfp = str(m.get("holdings_fingerprint") or m.get("holdings_fp") or "").strip()
         if hfp:
@@ -207,18 +248,63 @@ def build_resume_action_url(
         if team:
             params["suite_team"] = team[:80]
     elif app_key == "future_lens":
-        sim = str(m.get("simulation") or m.get("project") or "").strip()
+        sim = str(m.get("simulation") or m.get("specific_skill") or m.get("project") or "").strip()
         if not sim and rk.startswith("sim:"):
+            sim = rk.split(":", 1)[-1].strip()
+        if not sim and rk.startswith("career:"):
             sim = rk.split(":", 1)[-1].strip()
         if sim:
             params["suite_sim"] = sim[:120]
+        domain = str(m.get("domain") or m.get("broad_domain") or "").strip()
+        if not domain and rk.startswith("timeline:"):
+            domain = str(m.get("project") or "").split(" / ")[0].strip()
+        if domain:
+            params["suite_fl_domain"] = domain[:80]
+        area = str(m.get("area") or "").strip()
+        if area:
+            params["suite_fl_area"] = area[:80]
+        timeline_year = m.get("timeline_year")
+        if timeline_year is not None and str(timeline_year).strip():
+            params["suite_fl_timeline_year"] = str(timeline_year)[:10]
+        sim_year = m.get("sim_year")
+        if sim_year is not None and str(sim_year).strip():
+            params["suite_fl_sim_year"] = str(sim_year)[:10]
+        fl_view = str(m.get("_suite_fl_view") or m.get("view") or "").strip()
+        if fl_view:
+            params["suite_fl_view"] = fl_view[:40]
     elif app_key == "applied_intelligence":
         lesson = str(m.get("lesson") or m.get("next_lesson") or "").strip()
         if lesson:
             params["suite_lesson"] = lesson[:120]
+        question = str(m.get("question") or "").strip()
+        if question:
+            params["suite_ai_question"] = question[:500]
+        qid = str(m.get("question_id") or m.get("dedupe_fingerprint") or "").strip()
+        if qid:
+            params["suite_ai_question_id"] = qid[:40]
+        source_app = str(m.get("source_app") or "").strip()
+        if source_app:
+            params["suite_ai_source_app"] = source_app[:40]
+        source_page = str(m.get("source_page") or "").strip()
+        if source_page:
+            params["suite_ai_source_page"] = source_page[:80]
+        area = str(m.get("quant_area") or m.get("area") or "").strip()
+        if area:
+            params["suite_ai_area"] = area[:40]
+        ctx = str(m.get("context_summary") or "").strip()
+        ctx_json = str(m.get("context_json") or "").strip()
+        if qid:
+            params["suite_ai_context"] = ctx_json[:400] if ctx_json else ""
+        elif ctx_json:
+            params["suite_ai_context"] = ctx_json[:800]
+        elif ctx:
+            params["suite_ai_context"] = ctx[:400]
 
     if not params:
         return f"{base}/"
+    ami_insight = str(m.get("ami_insight") or "").strip()
+    if ami_insight:
+        params["suite_ami_insight"] = ami_insight[:40]
     return f"{base}/?{urlencode(params, quote_via=quote)}"
 
 
@@ -245,6 +331,18 @@ def resume_metrics_from_item_key(app: str, item_key: str, *, subtitle: str = "")
             page = "Draft Simulation"
         elif "trade" in key.lower():
             page = "Fantasy Lineup Assistant"
+        elif key.startswith("trend:"):
+            metrics["player"] = key.split(":", 1)[-1].strip()
+            page = "Trend Value"
+        elif key.startswith("trendcompare:"):
+            pa, pb = _parse_compare_resume(key)
+            if pa:
+                metrics["player_a"] = pa
+            if pb:
+                metrics["player_b"] = pb
+            if pa and pb:
+                metrics["players"] = [pa, pb]
+            page = "Trend Value"
         elif "proj" in key.lower():
             page = "ML Projections"
     elif app_key == "investment":
@@ -265,5 +363,71 @@ def resume_metrics_from_item_key(app: str, item_key: str, *, subtitle: str = "")
             page = "🧠 Matchup Intelligence"
         elif key.startswith("nba:playoff:"):
             page = "🏆 Playoff Bracket"
+    elif app_key == "future_lens":
+        if key.startswith("career:"):
+            scenario = key.split(":", 1)[-1].strip()
+            metrics["simulation"] = scenario
+            metrics["scenario"] = scenario
+            page = page or "simulation"
+        elif key.startswith("sim:"):
+            metrics["simulation"] = key.split(":", 1)[-1].strip()
+            page = page or "simulation"
+        elif key.startswith("timeline:"):
+            metrics["timeline_year"] = key.split(":", 1)[-1].strip()
+            page = page or "timeline"
+        elif key.startswith("future:"):
+            page = page or "skills"
+    elif app_key == "applied_intelligence":
+        if key.startswith("ai:question:"):
+            page = "Solve a Problem"
+            qid = key.split(":", 2)[-1].strip() if key.count(":") >= 2 else ""
+            if qid:
+                metrics["question_id"] = qid
+                metrics["dedupe_fingerprint"] = qid
+            if subtitle:
+                if "__ctx_json__:" in subtitle:
+                    q_part, _, ctx_part = subtitle.partition("\n__ctx_json__:")
+                    metrics["question"] = q_part.strip()
+                    try:
+                        import json
+
+                        parsed = json.loads(ctx_part)
+                        if isinstance(parsed, dict):
+                            metrics["context"] = parsed
+                            metrics["context_json"] = ctx_part
+                    except Exception:
+                        pass
+                elif subtitle.startswith("Question:"):
+                    first_line, _, rest = subtitle.partition("\n")
+                    metrics["question"] = first_line.replace("Question:", "", 1).strip()
+                    metrics["context_summary"] = rest.strip() or subtitle
+                else:
+                    metrics["question"] = subtitle.split("\n", 1)[0].strip()[:500]
+                    if "\n" in subtitle:
+                        metrics["context_summary"] = subtitle
+                ctx: dict[str, Any] = dict(metrics.get("context") or {})
+                if not ctx:
+                    for line in subtitle.splitlines():
+                        stripped = line.strip().lstrip("•").strip()
+                        if ":" in stripped:
+                            label, _, val = stripped.partition(":")
+                            label_key = label.strip().lower().replace(" ", "_")
+                            val = val.strip()
+                            if label_key == "source_app":
+                                ctx["source_app"] = val
+                                metrics.setdefault("source_app", val.lower())
+                            elif label_key == "page":
+                                ctx["page"] = val
+                                metrics.setdefault("source_page", val)
+                            elif val:
+                                ctx[label_key] = val
+                if ctx and "context" not in metrics:
+                    metrics["context"] = ctx
+                    try:
+                        import json
+
+                        metrics["context_json"] = json.dumps(ctx, ensure_ascii=False)
+                    except Exception:
+                        pass
 
     return page, metrics

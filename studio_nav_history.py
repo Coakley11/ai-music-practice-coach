@@ -97,6 +97,15 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
     # Only change the page id here; ``handle_studio_page_transition`` restores
     # page-local state on the next run while global settings stay untouched.
     session_state["studio_page"] = page_id
+    try:
+        from music_persistent_state import claim_studio_page_ownership
+
+        class _St:
+            session_state = session_state
+
+        claim_studio_page_ownership(_St(), page_id)
+    except Exception:
+        pass
     return True
 
 

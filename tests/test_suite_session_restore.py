@@ -109,14 +109,23 @@ def test_restore_runs_once_and_applies_saved_state(mini_catalog, tmp_path: Path)
     assert st["practice_focus_section"] == "Chorus"
     assert st[PENDING_DISPLAY_KEY] == "E minor"
 
-    before = dict(st)
+    before_functional = {
+        k: v
+        for k, v in st.items()
+        if not str(k).startswith("_suite_") and not str(k).startswith("_cloud_")
+    }
     with patch("suite_user_persistence.DATA_DIR", tmp_path):
         restore_music_disk_state_once(
             st,
             song_picker_catalog=song_picker_catalog,
             song_library=song_library,
         )
-    assert st == before
+    after_functional = {
+        k: v
+        for k, v in st.items()
+        if not str(k).startswith("_suite_") and not str(k).startswith("_cloud_")
+    }
+    assert after_functional == before_functional
 
 
 def test_apply_music_disk_state_restores_core_pick_key(mini_catalog):

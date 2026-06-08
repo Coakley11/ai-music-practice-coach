@@ -1092,15 +1092,13 @@ if hasattr(st, "session_state"):
     DEFAULT_SONG_RECORDS = st.session_state.get("_default_song_records", DEFAULT_SONG_RECORDS)
 
     try:
-        from music_persistent_state import restore_music_disk_state_once
-        from suite_user_persistence import show_persistence_messages
+        from music_persistent_state import prepare_music_workspace
 
-        restore_music_disk_state_once(
+        prepare_music_workspace(
             st,
             song_picker_catalog=SONG_PICKER_CATALOG,
             song_library=SONG_LIBRARY,
         )
-        show_persistence_messages(st)
     except Exception as _music_restore_exc:
         import traceback
 
@@ -8858,6 +8856,38 @@ from openai_secrets_config import resolve_openai_api_key
 
 _openai_api_key, _openai_secrets_probe = resolve_openai_api_key()
 
+_studio_page_before_workspace = str(st.session_state.get("studio_page") or "practice")
+
+try:
+    from music_persistent_state import prepare_music_workspace
+    from suite_user_persistence import record_page_navigation_startup_diagnostics, show_persistence_messages
+
+    record_page_navigation_startup_diagnostics(st, "music")
+    prepare_music_workspace(
+        st,
+        song_picker_catalog=SONG_PICKER_CATALOG,
+        song_library=SONG_LIBRARY,
+    )
+    show_persistence_messages(st)
+except Exception:
+    pass
+
+try:
+    from suite_resume_launch import finalize_ami_return_restore
+
+    finalize_ami_return_restore(st, "music")
+except Exception:
+    pass
+
+_nav_target = st.session_state.pop("_navigate_to_studio_page", None)
+if _nav_target:
+    try:
+        from studio_nav_history import navigate_studio_page
+
+        navigate_studio_page(st.session_state, str(_nav_target))
+    except Exception:
+        st.session_state["studio_page"] = str(_nav_target)
+
 # Studio page bootstrap (sidebar order is rendered below Command Center link).
 _studio_page = ensure_studio_page(st.session_state)
 try:
@@ -9060,6 +9090,52 @@ try:
         rerun_fn=st.rerun,
         ai_enabled=bool(_openai_api_key),
     )
+except Exception:
+    pass
+
+_studio_page_after_nav = str(st.session_state.get("studio_page") or _studio_page)
+if _studio_page_after_nav != _studio_page_before_workspace:
+    try:
+        from music_persistent_state import force_save_music_state
+
+        force_save_music_state(st, reason="page_change")
+        st.session_state["_suite_last_persisted_page"] = str(
+            st.session_state.get("_music_coach_workspace_page") or _studio_page_after_nav
+        )
+        st.session_state.pop("_suite_page_user_nav", None)
+    except Exception:
+        pass
+
+try:
+    from music_coach_context import (
+        build_music_coach_context,
+        build_source_state,
+        resolve_coach_source_page,
+        sync_music_coach_workspace_page,
+    )
+    from music_persistent_state import force_save_music_state
+    from suite_analytical_question import render_music_coach_sidebar_entry
+
+    sync_music_coach_workspace_page(st.session_state)
+    _coach_page = resolve_coach_source_page(st.session_state)
+    render_music_coach_sidebar_entry(
+        st,
+        source_page=_coach_page,
+        session_state=st.session_state,
+        context_extra_builder=lambda: build_music_coach_context(_coach_page, st.session_state),
+        source_state_builder=lambda: build_source_state(_coach_page, st.session_state),
+        on_after_send=lambda: force_save_music_state(st, reason="music_coach_send"),
+    )
+except Exception:
+    pass
+
+try:
+    from applied_math_return_insight import hydrate_applied_math_insight_for_session
+    from music_persistent_state import force_save_music_state
+
+    hydrate_applied_math_insight_for_session(st, "music")
+    if st.session_state.pop("_suite_persist_insight_dirty", None):
+        force_save_music_state(st, reason="insight_hydrate")
 except Exception:
     pass
 
@@ -12345,8 +12421,11 @@ elif _studio_page == "log":
 
 if not pp.skip_background_persistence(st):
     try:
-        from music_persistent_state import autosave_music_state
+        from music_persistent_state import autosave_music_state, clear_music_workspace_autosave_block, force_save_music_state
 
         autosave_music_state(st)
+        if st.session_state.pop("_suite_persist_insight_dirty", None):
+            force_save_music_state(st, reason="insight_persist")
+        clear_music_workspace_autosave_block(st)
     except Exception:
         pass
