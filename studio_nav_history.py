@@ -179,6 +179,12 @@ def render_floating_nav_history(
         help="Previous page in history",
     ):
         if go_back(session_state):
+            try:
+                from music_persistent_state import after_studio_page_change
+
+                after_studio_page_change(st, session_state)
+            except Exception:
+                pass
             rerun_fn()
     if st_module.button(
         "Forward →",
@@ -189,6 +195,12 @@ def render_floating_nav_history(
         help="Next page in history",
     ):
         if go_forward(session_state):
+            try:
+                from music_persistent_state import after_studio_page_change
+
+                after_studio_page_change(st, session_state)
+            except Exception:
+                pass
             rerun_fn()
 
 

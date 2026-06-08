@@ -172,6 +172,20 @@ class TestMusicCoachInsightScope(unittest.TestCase):
         self.assertNotIn("_navigate_to_page", st.session_state)
 
 
+class TestStudioPageCloudSave(unittest.TestCase):
+    def test_after_studio_page_change_force_saves(self) -> None:
+        st = MagicMock()
+        st.session_state = {"studio_page": "backing", "instrument": "Piano"}
+        with patch("music_persistent_state.force_save_music_state") as mock_save, patch(
+            "music_persistent_state.claim_studio_page_ownership"
+        ), patch("suite_user_persistence._release_user_page_ownership_after_save"):
+            from music_persistent_state import after_studio_page_change
+
+            after_studio_page_change(st, st.session_state)
+        mock_save.assert_called_once()
+        self.assertEqual(mock_save.call_args.kwargs.get("reason"), "page_change")
+
+
 class TestMusicWorkspaceEnvelope(unittest.TestCase):
     def test_build_disk_state_includes_envelope(self) -> None:
         st = MagicMock()

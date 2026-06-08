@@ -225,19 +225,7 @@ def apply_music_disk_state(
         blob_studio = str(meta.get("studio_page") or blob_studio).strip()
 
     last_persisted = str(ss.get("_suite_last_persisted_page") or "").strip()
-    user_owns_page = bool(
-        pre_restore_user_nav
-        or (
-            pre_restore_coach_page
-            and last_persisted
-            and pre_restore_coach_page == last_persisted
-        )
-        or (
-            pre_restore_studio_page
-            and last_persisted
-            and pre_restore_studio_page == last_persisted
-        )
-    )
+    user_owns_page = bool(pre_restore_user_nav)
     active_studio = blob_studio or pre_restore_studio_page
     overwrite_source = "workspace_blob"
     if user_owns_page and pre_restore_studio_page and blob_studio and pre_restore_studio_page != blob_studio:
@@ -258,6 +246,22 @@ def apply_music_disk_state(
         pass
 
     ss["_suite_cloud_workspace_applied"] = True
+
+
+def after_studio_page_change(st: Any, session_state: dict | None = None) -> None:
+    """Persist studio_page to disk/cloud immediately after manual navigation."""
+    from music_coach_context import resolve_coach_source_page, sync_music_coach_workspace_page
+    from suite_user_persistence import _release_user_page_ownership_after_save
+
+    ss = session_state if session_state is not None else st.session_state
+    page_id = str(ss.get("studio_page") or "practice")
+    claim_studio_page_ownership(st, page_id)
+    sync_music_coach_workspace_page(ss)
+    coach_page = resolve_coach_source_page(ss)
+    force_save_music_state(st, reason="page_change")
+    _release_user_page_ownership_after_save(st, coach_page)
+    ss["_suite_last_persisted_page"] = coach_page
+    ss.pop("_suite_page_user_nav", None)
 
 
 def claim_studio_page_ownership(st: Any, page_id: str) -> None:

@@ -9093,19 +9093,6 @@ try:
 except Exception:
     pass
 
-_studio_page_after_nav = str(st.session_state.get("studio_page") or _studio_page)
-if _studio_page_after_nav != _studio_page_before_workspace:
-    try:
-        from music_persistent_state import force_save_music_state
-
-        force_save_music_state(st, reason="page_change")
-        st.session_state["_suite_last_persisted_page"] = str(
-            st.session_state.get("_music_coach_workspace_page") or _studio_page_after_nav
-        )
-        st.session_state.pop("_suite_page_user_nav", None)
-    except Exception:
-        pass
-
 try:
     from music_coach_context import (
         build_music_coach_context,

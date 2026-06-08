@@ -32,13 +32,21 @@ _SOURCE_AREA: dict[str, str] = {
     "baseball": "sports",
     "nba": "sports",
     "investment": "forecasting",
+    "music": "music",
 }
 
 _SOURCE_LABELS: dict[str, str] = {
     "baseball": "Baseball",
     "nba": "NBA",
     "investment": "Investment",
-    "music": "Music Practice Coach",
+    "music": "Music",
+}
+
+_MUSIC_COACH_PLACEHOLDERS: dict[str, str] = {
+    "practice": "e.g. How should I practice this song?",
+    "backing": "e.g. How do I use Backing Track Studio?",
+    "custom": "e.g. What scale works over this progression?",
+    "karaoke": "e.g. How do I use Karaoke mode?",
 }
 
 # Only these keys may appear in user-facing context output.
@@ -157,8 +165,29 @@ def default_area_for_source(source_app: str) -> str:
 
 
 def source_app_label(source_app: str) -> str:
-    key = str(source_app or "").strip()
+    key = str(source_app or "").strip().lower()
+    if key == "music":
+        return "Music Practice Coach"
     return _SOURCE_LABELS.get(key, key.replace("_", " ").title())
+
+
+def source_question_card_title(source_app: str) -> str:
+    """Normalized Continue / activity title for cross-app questions."""
+    app = str(source_app or "").strip().lower()
+    if app == "music":
+        return "Music Coach question from Music"
+    label = _SOURCE_LABELS.get(app, app.replace("_", " ").title())
+    if app in {"baseball", "nba", "investment"}:
+        return f"Applied Math question from {label}"
+    return f"Question from {label}"
+
+
+def music_coach_question_placeholder(source_page: str) -> str:
+    page = str(source_page or "").strip().lower()
+    return _MUSIC_COACH_PLACEHOLDERS.get(
+        page,
+        "e.g. What notes are in C minor?",
+    )
 
 
 def _normalize_question(text: str) -> str:
@@ -436,19 +465,11 @@ def format_context_lines(context: dict[str, Any] | None) -> list[str]:
 def analytical_question_continue_copy(payload: dict[str, Any]) -> tuple[str, str, str]:
     """Return (title, subtitle, button_label) for Command Center Continue cards."""
     app = str(payload.get("source_app") or "").strip().lower()
-    label = source_app_label(app)
     question = str(payload.get("question") or "").strip()
+    title = source_question_card_title(app)
     if app == "music":
-        return (
-            f"Music Coach question from {label}",
-            question,
-            "Continue with Music Coach →",
-        )
-    return (
-        f"Applied Math question from {label}",
-        question,
-        ANALYTICAL_QUESTION_BUTTON_LABEL,
-    )
+        return (title, question, "Continue with Music Coach →")
+    return (title, question, ANALYTICAL_QUESTION_BUTTON_LABEL)
 
 
 def analytical_question_storage_subtitle(payload: dict[str, Any]) -> str:
@@ -730,14 +751,21 @@ def render_analyze_with_applied_math_sidebar(
         and last.get("source_app") == source_app
         and _recent_duplicate_send(ss, str(last.get("question_id") or ""))
     ):
-        st.sidebar.success(
-            "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
+        sent_msg = (
+            "Question sent to Command Center. Open Command Center to continue with the Music Coach."
+            if is_music
+            else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
         )
+        st.sidebar.success(sent_msg)
 
     question = st.sidebar.text_area(
         "Question",
         value=str(ss.get(question_key) or default_question or "").strip(),
-        placeholder="e.g. Is this trend meaningful statistically?",
+        placeholder=(
+            music_coach_question_placeholder(source_page)
+            if is_music
+            else "e.g. Is this trend meaningful statistically?"
+        ),
         height=88,
         key=question_key,
         label_visibility="visible",

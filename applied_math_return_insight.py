@@ -374,9 +374,12 @@ def metrics_for_source_app_return(insight: AppliedMathInsight | dict[str, Any]) 
         or ent.get("player")
     )
     trend_players = ent.get("trend_players_multi") or chart.get("trend_players_multi")
-    return {
+    pick_key = ent.get("pick_key") or ctx.get("pick_key") or wp.get("pick_key")
+    studio_page = wp.get("studio_page") or ctx.get("studio_page")
+    metrics: dict[str, Any] = {
         "page": page,
         "source_page": page,
+        "source_app": data.get("source_app") or ss.get("source_app") or "",
         "player_a": pa,
         "player_b": pb,
         "player": player,
@@ -388,6 +391,20 @@ def metrics_for_source_app_return(insight: AppliedMathInsight | dict[str, Any]) 
         "ami_insight": data.get("insight_id") or "",
         "question_id": data.get("question_id") or "",
     }
+    if pick_key:
+        metrics["pick_key"] = pick_key
+    if studio_page:
+        metrics["studio_page"] = studio_page
+    display_key = wp.get("display_key") or ctx.get("display_key")
+    instrument = wp.get("instrument") or ctx.get("instrument")
+    if display_key:
+        metrics["display_key"] = display_key
+    if instrument:
+        metrics["instrument"] = instrument
+    song_title = ent.get("song_title") or ctx.get("song")
+    if song_title:
+        metrics["song"] = song_title
+    return metrics
 
 
 def build_return_resume_key(
@@ -428,6 +445,13 @@ def build_return_resume_key(
             pl = ent.get("player_label") or wp.get("single_trend_dashboard_player")
             if pl:
                 return f"trend:{pl}"
+    if app == "music":
+        pick = str(ent.get("pick_key") or wp.get("pick_key") or "").strip()
+        studio = str(wp.get("studio_page") or "").strip()
+        if pick and (page == "karaoke" or studio == "backing" or page == "backing"):
+            return f"backing:{pick}"
+        if pick:
+            return f"song:{pick}"
     if qid:
         return f"ai:question:{qid}"
     return str(data.get("resume_key") or "").strip()
@@ -1523,8 +1547,25 @@ def render_return_to_source_button(
         ent: dict[str, Any] = {
             k: v
             for k, v in return_context.items()
-            if k in ("player_a", "player_b", "player", "team", "opponent", "holdings", "compare_players")
+            if k
+            in (
+                "player_a",
+                "player_b",
+                "player",
+                "team",
+                "opponent",
+                "holdings",
+                "compare_players",
+                "pick_key",
+                "song_title",
+                "song",
+                "instrument",
+                "display_key",
+            )
         }
+        wp_ctx = return_context.get("widget_params")
+        if isinstance(wp_ctx, dict):
+            ent.setdefault("pick_key", wp_ctx.get("pick_key"))
         if page == "Comparison Tool":
             if ent.get("player_a") and not ent.get("player_a_label"):
                 ent["player_a_label"] = ent["player_a"]
@@ -1567,9 +1608,21 @@ def render_return_to_source_button(
         st.caption(f"Return link unavailable for {label}.")
         return
 
+    if app == "music":
+        button_label = "Return to Music Practice Coach with insight →"
+        help_text = (
+            "Opens Music Practice Coach on the page where you asked, "
+            "and shows this coach answer there — display only, no auto-changes."
+        )
+    else:
+        button_label = f"Return to {label} with insight →"
+        help_text = (
+            "Restores your page context and shows this conclusion in the source app "
+            "— display only, no auto-changes."
+        )
     st.link_button(
-        f"Return to {label} with insight →",
+        button_label,
         url,
         use_container_width=True,
-        help="Restores your page context and shows this conclusion in the source app — display only, no auto-changes.",
+        help=help_text,
     )
