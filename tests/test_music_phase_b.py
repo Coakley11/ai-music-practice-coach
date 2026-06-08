@@ -8,9 +8,13 @@ from unittest.mock import MagicMock, patch
 from applied_math_return_insight import (
     SESSION_PENDING_KEY,
     SESSION_RETURN_PAGE_KEY,
+    MUSIC_COACH_INSIGHT_PANEL_KEY,
+    _insight_has_displayable_content,
+    _insight_loaded_placeholder,
     hydrate_applied_math_insight_for_session,
     insight_page_scope_decision,
     reconcile_stale_page_navigation,
+    render_suite_applied_math_insight_for_page,
 )
 from music_coach_context import (
     build_source_state,
@@ -170,6 +174,46 @@ class TestMusicCoachInsightScope(unittest.TestCase):
         st.query_params = {}
         reconcile_stale_page_navigation(st, "music")
         self.assertNotIn("_navigate_to_page", st.session_state)
+
+    def test_placeholder_insight_is_not_displayable(self) -> None:
+        placeholder = _insight_loaded_placeholder("music")
+        insight = {
+            "source_app": "music",
+            "conclusion": placeholder,
+            "question": "",
+        }
+        self.assertFalse(_insight_has_displayable_content(insight))
+
+    def test_real_insight_is_displayable(self) -> None:
+        insight = {
+            "source_app": "music",
+            "conclusion": "Slow down the chorus.",
+            "question": "How should I practice?",
+        }
+        self.assertTrue(_insight_has_displayable_content(insight))
+
+    def test_insight_render_skips_wrong_page_without_card(self) -> None:
+        st = MagicMock()
+        st.session_state = {
+            SESSION_PENDING_KEY: {
+                "source_app": "music",
+                "source_page": "backing",
+                "conclusion": "Use a metronome.",
+                "question": "Backing tips?",
+            }
+        }
+        with patch("applied_math_return_insight.render_applied_math_insight_panel") as mock_panel:
+            ok = render_suite_applied_math_insight_for_page(
+                st,
+                source_app="music",
+                source_page="practice",
+            )
+        self.assertFalse(ok)
+        mock_panel.assert_not_called()
+        self.assertFalse(st.session_state.get("_ami_insight_card_rendered"))
+
+    def test_insight_panel_uses_stable_container_key(self) -> None:
+        self.assertEqual(MUSIC_COACH_INSIGHT_PANEL_KEY, "music_coach_insight_panel")
 
 
 class TestStudioPageCloudSave(unittest.TestCase):

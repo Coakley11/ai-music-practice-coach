@@ -19,6 +19,7 @@ SESSION_RETURN_CONTEXT_KEY = "_ami_return_context"
 SESSION_DISMISSED_KEY = "_ami_dismissed_insight_ids"
 SESSION_DISMISSED_AT_KEY = "_ami_dismissed_insight_at"
 SESSION_PERSIST_INSIGHT_DIRTY = "_suite_persist_insight_dirty"
+MUSIC_COACH_INSIGHT_PANEL_KEY = "music_coach_insight_panel"
 
 # Pages where the insight card may appear (display-only v1).
 INSIGHT_ELIGIBLE_PAGES: dict[str, frozenset[str]] = {
@@ -1553,13 +1554,26 @@ def _insight_loaded_placeholder(app_key: str) -> str:
     return "Applied Math insight loaded."
 
 
+def _insight_has_displayable_content(insight: dict[str, Any]) -> bool:
+    """Skip URL-hydrate placeholder cards until real question/conclusion is available."""
+    conclusion = str(insight.get("conclusion") or "").strip()
+    question = str(insight.get("question") or "").strip()
+    if not conclusion and not question:
+        return False
+    app = str(insight.get("source_app") or "")
+    placeholder = _insight_loaded_placeholder(app)
+    if conclusion == placeholder and not question:
+        return False
+    return True
+
+
 def render_applied_math_insight_panel(st: Any) -> bool:
     """Display-only insight card on source app pages. Returns True if rendered."""
     insight = _pending_insight_valid(st)
-    if not insight or not insight.get("conclusion"):
+    if not insight or not _insight_has_displayable_content(insight):
         return False
 
-    with st.container(border=True):
+    with st.container(key=MUSIC_COACH_INSIGHT_PANEL_KEY, border=True):
         st.markdown(f"#### {_insight_panel_title(insight)}")
         q = str(insight.get("question") or "").strip()
         if q:
@@ -1600,14 +1614,15 @@ def render_suite_applied_math_insight_for_page(
     source_app: str,
     source_page: str,
 ) -> bool:
-    """Render insight card when pending insight matches this page (source apps)."""
+    """Render insight card below quick nav when scope matches (no empty placeholders)."""
     st.session_state["_ami_insight_render_attempted"] = True
-    maybe_consume_ami_return_on_page_match(st, source_app, current_page=source_page)
     insight = _pending_insight_valid(st)
     if not insight:
         st.session_state["_ami_insight_render_skipped_reason"] = "no pending insight"
         st.session_state["_ami_insight_render_success"] = False
+        st.session_state["_ami_insight_card_rendered"] = False
         return False
+
     scope = insight_page_scope_decision(source_app, source_page, insight)
     st.session_state["_ami_insight_scope_decision"] = scope
     _record_insight_return_diagnostics(st, phase="render_check", insight=insight)
@@ -1619,6 +1634,14 @@ def render_suite_applied_math_insight_for_page(
         st.session_state["_ami_insight_render_success"] = False
         st.session_state["_ami_insight_card_rendered"] = False
         return False
+
+    if not _insight_has_displayable_content(insight):
+        st.session_state["_ami_insight_render_skipped_reason"] = "insight still loading"
+        st.session_state["_ami_insight_render_success"] = False
+        st.session_state["_ami_insight_card_rendered"] = False
+        maybe_consume_ami_return_on_page_match(st, source_app, current_page=source_page)
+        return False
+
     ok = render_applied_math_insight_panel(st)
     st.session_state["_ami_insight_render_success"] = ok
     st.session_state["_ami_insight_card_rendered"] = ok
@@ -1626,6 +1649,7 @@ def render_suite_applied_math_insight_for_page(
         st.session_state["_ami_insight_render_skipped_reason"] = "panel render failed"
     else:
         st.session_state.pop("_ami_insight_render_skipped_reason", None)
+        maybe_consume_ami_return_on_page_match(st, source_app, current_page=source_page)
         consume_ami_return_resume(
             st,
             str(st.session_state.get("_suite_persist_app_id") or source_app or "baseball"),

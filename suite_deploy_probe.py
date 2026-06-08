@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-SUITE_BUILD_MARKER = "2026-06-08-phase-b-nav-art-v10"
+SUITE_BUILD_MARKER = "2026-06-08-phase-b-nav-insight-v11"
 
 
 def developer_mode(st: Any) -> bool:

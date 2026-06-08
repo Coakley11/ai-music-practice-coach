@@ -6865,6 +6865,10 @@ def _quick_nav_artistic_css() -> str:
     gap: 0.08rem !important;
   }
 }
+[class*="st-key-music_coach_insight_panel"] {
+  margin: 0.4rem 0 0.55rem 0 !important;
+  clear: both;
+}
 """
 
 
@@ -7009,7 +7013,23 @@ def render_page_quick_nav(
             rerun_fn=rerun_fn,
         )
 
+    _render_music_coach_insight_below_quick_nav(st, current_page=current)
+
     return session_state.get("studio_page", current)
+
+
+def _render_music_coach_insight_below_quick_nav(st: Any, *, current_page: str) -> None:
+    """Music Coach insight — always below quick nav; scope-gated inside AMI module."""
+    try:
+        from suite_analytical_question import render_suite_applied_math_insight
+
+        render_suite_applied_math_insight(
+            st,
+            source_app="music",
+            source_page=current_page,
+        )
+    except Exception:
+        pass
 
 
 def render_sidebar_studio_nav(
