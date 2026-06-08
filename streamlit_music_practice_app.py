@@ -8208,7 +8208,7 @@ def _render_page_quick_nav(current_page: str) -> str:
     return render_page_quick_nav(
         st.session_state,
         current_page=current_page,
-        key_prefix=f"main_{current_page}_quick_nav",
+        key_prefix="main_studio_quick_nav",
         rerun_fn=st.rerun,
     )
 
@@ -8900,16 +8900,14 @@ handle_studio_page_transition(st.session_state)
 note_page_visit(st.session_state, _studio_page)
 
 try:
-    from music_coach_context import is_coach_page_eligible, resolve_coach_source_page
     from suite_analytical_question import render_suite_applied_math_insight
 
-    _insight_coach_page = resolve_coach_source_page(st.session_state)
-    if is_coach_page_eligible(_insight_coach_page):
-        render_suite_applied_math_insight(
-            st,
-            source_app="music",
-            source_page=_insight_coach_page,
-        )
+    _insight_studio_page = str(st.session_state.get("studio_page") or "practice").strip().lower()
+    render_suite_applied_math_insight(
+        st,
+        source_app="music",
+        source_page=_insight_studio_page,
+    )
 except Exception:
     pass
 

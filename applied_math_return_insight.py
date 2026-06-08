@@ -83,6 +83,14 @@ _INSIGHT_PAGE_LABEL_TO_KEY: dict[str, str] = {
 
 _MUSIC_COACH_PAGE_IDS: frozenset[str] = frozenset({"practice", "backing", "custom", "karaoke"})
 
+# Strict studio_page ids where a Music Coach insight may render (not coach aliases).
+_MUSIC_INSIGHT_STUDIO_BY_COACH: dict[str, frozenset[str]] = {
+    "practice": frozenset({"practice"}),
+    "backing": frozenset({"backing"}),
+    "custom": frozenset({"custom"}),
+    "karaoke": frozenset({"backing"}),
+}
+
 _MUSIC_COACH_PAGE_ALIASES: dict[str, str] = {
     "practice": "practice",
     "practice studio": "practice",
@@ -126,6 +134,36 @@ _INSIGHT_PAGE_ALIASES: dict[str, str] = {
     "karaoke": "Karaoke",
     "karaoke mode": "Karaoke",
 }
+
+
+def _is_music_insight_app(source_app: str, insight: dict[str, Any] | None = None) -> bool:
+    try:
+        from suite_analytical_question import normalize_source_app_id
+    except Exception:
+        normalize_source_app_id = lambda x, ctx=None: str(x or "").strip().lower()  # noqa: E731
+    ctx = None
+    if isinstance(insight, dict):
+        ctx = insight.get("return_context") or insight.get("source_state")
+        if not isinstance(ctx, dict):
+            ctx = insight.get("context") if isinstance(insight.get("context"), dict) else None
+    return normalize_source_app_id(source_app, ctx if isinstance(ctx, dict) else None) == "music"
+
+
+def _music_insight_allowed_studio_pages(insight: dict[str, Any]) -> frozenset[str]:
+    """Studio page ids where this insight may appear (strict — not coach aliases)."""
+    for container_key in ("source_state", "return_context"):
+        container = insight.get(container_key)
+        if not isinstance(container, dict):
+            continue
+        widgets = container.get("widget_params")
+        if isinstance(widgets, dict):
+            explicit = str(widgets.get("studio_page") or "").strip().lower()
+            if explicit:
+                return frozenset({explicit})
+    coach = _normalize_music_coach_page(_resolve_insight_source_page(insight))
+    if coach:
+        return _MUSIC_INSIGHT_STUDIO_BY_COACH.get(coach, frozenset({coach}))
+    return frozenset()
 
 
 def _normalize_music_coach_page(page: str) -> str:
@@ -227,11 +265,12 @@ def insight_page_scope_decision(
         ctx if isinstance(ctx, dict) else None,
     )
     if app == "music":
-        cur = _normalize_music_coach_page(current_page)
+        cur_studio = str(current_page or "").strip().lower()
         raw_source = str(insight.get("source_page") or "").strip()
         insight_page = _normalize_music_coach_page(_resolve_insight_source_page(insight))
-        eligible = _MUSIC_COACH_PAGE_IDS
-        cur_eligible = cur in eligible
+        allowed_studio = _music_insight_allowed_studio_pages(insight)
+        cur = cur_studio
+        cur_eligible = bool(cur_studio)
     else:
         cur = _normalize_insight_page(current_page)
         raw_source = str(insight.get("source_page") or "").strip()
@@ -244,13 +283,21 @@ def insight_page_scope_decision(
         skip_reason = f"current_page_not_eligible ({cur!r})"
     elif not insight_page:
         skip_reason = "missing_normalized_source_page"
+    elif app == "music":
+        if cur_studio in allowed_studio:
+            should_render = True
+        else:
+            skip_reason = (
+                f"studio_page_mismatch (insight_studio={sorted(allowed_studio)!r}, "
+                f"current={cur_studio!r})"
+            )
     elif insight_page == cur:
         should_render = True
     elif "draft" in insight_page.lower() and "draft" in cur.lower():
         should_render = True
     else:
         skip_reason = f"normalized_page_mismatch (insight={insight_page!r}, current={cur!r})"
-    return {
+    out = {
         "source_page_raw": raw_source or None,
         "source_page_normalized": insight_page or None,
         "current_page_raw": str(current_page or "").strip() or None,
@@ -258,6 +305,10 @@ def insight_page_scope_decision(
         "should_render_insight_on_page": should_render,
         "render_skip_reason": skip_reason or None,
     }
+    if app == "music":
+        out["insight_studio_pages"] = sorted(allowed_studio) if allowed_studio else None
+        out["current_studio_page"] = cur_studio or None
+    return out
 
 
 def should_render_insight_on_page(source_app: str, current_page: str, insight: dict[str, Any]) -> bool:
@@ -1251,7 +1302,13 @@ def render_insight_sync_debug(st: Any) -> None:
     }
 
     with st.sidebar.expander("Insight sync trace", expanded=True):
-        st.caption("Applied Math insight — cloud-backed, cross-device.")
+        app_key = str(st.session_state.get("_suite_persist_app_id") or "baseball")
+        caption = (
+            "Music Coach insight — cloud-backed, cross-device."
+            if _is_music_insight_app(app_key)
+            else "Applied Math insight — cloud-backed, cross-device."
+        )
+        st.caption(caption)
         st.markdown("**INSIGHT CLOUD**")
         for k, v in cloud_rows.items():
             if v is not None and v != "":
@@ -1395,7 +1452,12 @@ def apply_ami_insight_from_query(st: Any, app_key: str, *, force: bool = False) 
 
     insight = load_applied_math_insight(iid, source_app=app_key)
     if not insight:
-        insight = {"insight_id": iid, "conclusion": "Applied Math insight loaded.", "question": ""}
+        insight = {
+            "insight_id": iid,
+            "conclusion": _insight_loaded_placeholder(app_key),
+            "question": "",
+            "source_app": app_key,
+        }
 
     page = _normalize_insight_page(
         _query_param(st, "suite_page") or str(insight.get("source_page") or "")
@@ -1474,17 +1536,21 @@ def clear_pending_insight(st: Any) -> None:
 
 
 def _insight_panel_title(insight: dict[str, Any]) -> str:
-    app = str(insight.get("source_app") or "").strip().lower()
-    if app == "music":
+    if _is_music_insight_app(str(insight.get("source_app") or ""), insight):
         return "Music Coach Insight"
     return "Applied Math Insight"
 
 
 def _insight_method_heading(insight: dict[str, Any]) -> str:
-    app = str(insight.get("source_app") or "").strip().lower()
-    if app == "music":
+    if _is_music_insight_app(str(insight.get("source_app") or ""), insight):
         return "Coach guidance"
     return "Math used"
+
+
+def _insight_loaded_placeholder(app_key: str) -> str:
+    if _is_music_insight_app(app_key):
+        return "Music Coach insight loaded."
+    return "Applied Math insight loaded."
 
 
 def render_applied_math_insight_panel(st: Any) -> bool:
@@ -1517,7 +1583,12 @@ def render_applied_math_insight_panel(st: Any) -> bool:
             if url:
                 st.link_button("Open full analysis →", url, use_container_width=True)
         with c2:
-            if st.button("Dismiss insight", key="ami_insight_dismiss", use_container_width=True):
+            dismiss_label = (
+                "Dismiss coach insight"
+                if _is_music_insight_app(str(insight.get("source_app") or ""), insight)
+                else "Dismiss insight"
+            )
+            if st.button(dismiss_label, key="ami_insight_dismiss", use_container_width=True):
                 dismiss_applied_math_insight(st)
                 st.rerun()
     return True

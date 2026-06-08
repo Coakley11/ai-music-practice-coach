@@ -6844,6 +6844,8 @@ def _quick_nav_artistic_css() -> str:
   color: transparent !important;
   font-size: 0 !important;
   line-height: 0 !important;
+  text-indent: -9999px !important;
+  overflow: hidden !important;
   cursor: pointer !important;
 }
 .ui-nav-art-cell .stButton > button p,
@@ -6887,10 +6889,10 @@ def _render_nav_art_cell(
         unsafe_allow_html=True,
     )
     if st.button(
-        _label,
+        "\u200b",
         key=button_key,
         use_container_width=True,
-        help=STUDIO_PAGE_META.get(page_id, {}).get("label", page_id),
+        help=STUDIO_PAGE_META.get(page_id, {}).get("label", page_id) or _label,
     ):
         if (current is None or page_id != current) and navigate_studio_page(
             session_state, page_id
