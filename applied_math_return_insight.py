@@ -551,8 +551,9 @@ def build_return_resume_key(
                 return f"trend:{pl}"
     if app == "music":
         pick = str(ent.get("pick_key") or wp.get("pick_key") or "").strip()
-        studio = str(wp.get("studio_page") or "").strip()
-        if pick and (page == "karaoke" or studio == "backing" or page == "backing"):
+        studio = str(wp.get("studio_page") or "").strip().lower()
+        coach = _normalize_music_coach_page(page)
+        if pick and (coach in {"backing", "karaoke"} or studio == "backing"):
             return f"backing:{pick}"
         if pick:
             return f"song:{pick}"
@@ -568,21 +569,22 @@ def apply_return_source_state(st: Any, app_key: str, source_state: dict[str, Any
     ss = st.session_state
     key = _normalize_app_key(app_key or source_state.get("source_app") or "")
     ss[SESSION_RETURN_CONTEXT_KEY] = dict(source_state)
-    page = str(
+    page_raw = str(
         source_state.get("source_page")
         or source_state.get("page_params", {}).get("page")
         or ""
     ).strip()
+    page = _normalize_return_page_for_app(key, page_raw) or page_raw
     if page:
         ss[SESSION_RETURN_PAGE_KEY] = page
     schedule_navigation = _should_apply_ami_return_navigation(st, key, page)
     if page and schedule_navigation:
-        ss["_skip_page_restore_for"] = page
-        ss["ami_return_forced_page"] = page
+        _schedule_ami_return_navigation(st, key, page)
         ss["active_page_source"] = "ami_return_source_state"
     elif not schedule_navigation:
         ss.pop("_skip_page_restore_for", None)
         ss.pop("_navigate_to_page", None)
+        ss.pop("_navigate_to_studio_page", None)
 
     app = key
     try:
@@ -706,6 +708,7 @@ def load_applied_math_insight(insight_id: str, *, source_app: str = "") -> dict[
         from suite_account import load_saved_items
 
         for app_key in ([app] if app else []) + [
+            "music",
             "applied_intelligence",
             "baseball",
             "nba",
@@ -854,6 +857,123 @@ def _normalize_app_key(app_key: str) -> str:
     return key
 
 
+def _normalize_source_app_for_diagnostics(source_app: str, insight: dict[str, Any] | None = None) -> str:
+    try:
+        from suite_analytical_question import normalize_source_app_id
+    except Exception:
+        normalize_source_app_id = lambda x, ctx=None: str(x or "").strip().lower()  # noqa: E731
+    ctx = None
+    if isinstance(insight, dict):
+        ctx = insight.get("return_context") or insight.get("source_state")
+        if not isinstance(ctx, dict):
+            ctx = insight.get("context") if isinstance(insight.get("context"), dict) else None
+    return normalize_source_app_id(str(source_app or ""), ctx if isinstance(ctx, dict) else None)
+
+
+def _music_studio_page_for_scope(st: Any, current_page: str = "") -> str:
+    ss = st.session_state
+    return str(
+        current_page
+        or ss.get("studio_page")
+        or ss.get("_music_coach_workspace_page")
+        or ""
+    ).strip().lower()
+
+
+def _current_page_for_insight_scope(st: Any, app_key: str, current_page: str = "") -> str:
+    key = _normalize_app_key(app_key)
+    if key == "music":
+        return _music_studio_page_for_scope(st, current_page)
+    return str(
+        current_page
+        or st.session_state.get("active_page")
+        or st.session_state.get("main_sidebar_page")
+        or ""
+    ).strip()
+
+
+def _normalize_return_page_for_app(app_key: str, page: str) -> str:
+    key = _normalize_app_key(app_key)
+    raw = str(page or "").strip()
+    if not raw:
+        return ""
+    if key == "music":
+        return _normalize_music_coach_page(raw) or raw.lower()
+    return _normalize_insight_page(raw)
+
+
+def _schedule_ami_return_navigation(st: Any, app_key: str, return_page: str) -> None:
+    """Schedule page navigation for AMI return (music uses studio_page ids)."""
+    ss = st.session_state
+    key = _normalize_app_key(app_key)
+    page = _normalize_return_page_for_app(key, return_page)
+    if not page:
+        return
+    ss["_skip_page_restore_for"] = page
+    ss["ami_return_forced_page"] = page
+    ss["ami_return_force_active_page"] = True
+    ss["active_page_source"] = "ami_return_query"
+    if key == "music":
+        try:
+            from music_coach_context import _coach_page_to_studio_page
+
+            studio_target = _coach_page_to_studio_page(page)
+        except Exception:
+            studio_target = page if page in {"practice", "backing", "custom", "picker", "creative"} else "practice"
+        ss["_navigate_to_studio_page"] = studio_target
+        ss.pop("_navigate_to_page", None)
+    else:
+        ss["_navigate_to_page"] = page
+
+
+def _ami_return_pages_match(
+    app_key: str,
+    return_page: str,
+    current_page: str,
+    *,
+    insight: dict[str, Any] | None = None,
+    st: Any | None = None,
+) -> bool:
+    key = _normalize_app_key(app_key)
+    if key == "music":
+        coach = _normalize_music_coach_page(return_page)
+        if not coach and isinstance(insight, dict):
+            coach = _normalize_music_coach_page(_resolve_insight_source_page(insight))
+        current_studio = _music_studio_page_for_scope(st, current_page) if st is not None else str(current_page or "").strip().lower()
+        if not coach or not current_studio:
+            return False
+        if isinstance(insight, dict):
+            allowed = _music_insight_allowed_studio_pages(insight)
+            if allowed:
+                return current_studio in allowed
+        allowed = _MUSIC_INSIGHT_STUDIO_BY_COACH.get(coach, frozenset({coach}))
+        return current_studio in allowed
+    ret = _normalize_insight_page(return_page)
+    current = _normalize_insight_page(current_page)
+    return bool(ret and current and ret == current)
+
+
+def _refresh_placeholder_insight_from_cloud(st: Any, app_key: str) -> bool:
+    """Replace URL-hydrate placeholder with cloud-backed insight when available."""
+    pending = _pending_insight_valid(st)
+    if not pending or _insight_has_displayable_content(pending):
+        return False
+    iid = str(pending.get("insight_id") or insight_return_query_id(st) or "").strip()
+    if not iid:
+        return False
+    loaded = load_applied_math_insight(iid, source_app=app_key)
+    if not loaded or not _insight_has_displayable_content(loaded):
+        return False
+    page = _normalize_return_page_for_app(app_key, str(loaded.get("source_page") or pending.get("source_page") or ""))
+    if page:
+        loaded["source_page"] = page
+    st.session_state[SESSION_PENDING_KEY] = loaded
+    st.session_state[SESSION_RETURN_PAGE_KEY] = page or loaded.get("source_page") or ""
+    st.session_state["_ami_hydrated_insight_id"] = iid
+    st.session_state[SESSION_PERSIST_INSIGHT_DIRTY] = True
+    return True
+
+
 def _ami_resume_consumed_flag(app_key: str) -> str:
     return f"_ami_resume_consumed_{_normalize_app_key(app_key)}"
 
@@ -900,20 +1020,16 @@ def maybe_consume_ami_return_on_page_match(
     *,
     current_page: str = "",
 ) -> bool:
-    """Consume AMI return once the user is on the source page (even if insight card skipped)."""
+    """Consume AMI return once the user is on the source page (displayable insight only)."""
     key = _normalize_app_key(app_key)
     if ami_resume_consumed(st, key):
         return False
-    ret = _normalize_insight_page(str(st.session_state.get(SESSION_RETURN_PAGE_KEY) or ""))
-    current = _normalize_insight_page(
-        str(
-            current_page
-            or st.session_state.get("active_page")
-            or st.session_state.get("main_sidebar_page")
-            or ""
-        )
-    )
-    if not ret or not current or ret != current:
+    pending = _pending_insight_valid(st)
+    if pending and not _insight_has_displayable_content(pending):
+        return False
+    ret = str(st.session_state.get(SESSION_RETURN_PAGE_KEY) or "")
+    current = _current_page_for_insight_scope(st, key, current_page)
+    if not _ami_return_pages_match(key, ret, current, insight=pending, st=st):
         return False
     if not (
         ami_return_navigation_active(st, key)
@@ -989,6 +1105,7 @@ def consume_ami_return_resume(st: Any, app_key: str) -> bool:
     st.session_state.pop("_ami_insight_return_preserve", None)
     st.session_state.pop("_suite_resume_insight_hydration_only", None)
     st.session_state.pop("_navigate_to_page", None)
+    st.session_state.pop("_navigate_to_studio_page", None)
     st.session_state.pop("_skip_page_restore_for", None)
     st.session_state.pop("_suite_cloud_target_page", None)
     st.session_state.pop("ami_return_forced_page", None)
@@ -1004,29 +1121,49 @@ def _record_insight_return_diagnostics(st: Any, *, phase: str, insight: dict[str
     ss = st.session_state
     url_iid = insight_return_query_id(st)
     pending = insight if isinstance(insight, dict) else _pending_insight_valid(st)
+    app_raw = str(ss.get("_suite_persist_app_id") or (pending or {}).get("source_app") or "baseball")
+    app_norm = _normalize_source_app_for_diagnostics(app_raw, pending if isinstance(pending, dict) else None)
+    scope_page = _current_page_for_insight_scope(st, app_norm)
     scope = insight_page_scope_decision(
-        str(ss.get("_suite_persist_app_id") or pending.get("source_app") or "baseball"),
-        str(ss.get("active_page") or ""),
+        app_norm,
+        scope_page,
         pending,
     ) if pending else {}
     ss["_ami_insight_return_phase"] = phase
     ss["insight_return_detected"] = bool(url_iid)
-    ss["insight_source_page_raw"] = (
-        pending.get("source_page") if pending else scope.get("source_page_raw")
+    ss["source_app_raw"] = app_raw
+    ss["source_app_normalized"] = app_norm
+    ss["source_page_raw"] = pending.get("source_page") if pending else scope.get("source_page_raw")
+    ss["source_page_normalized"] = scope.get("source_page_normalized")
+    ss["insight_source_page_raw"] = ss["source_page_raw"]
+    ss["insight_source_page_normalized"] = ss["source_page_normalized"]
+    ss["current_studio_page"] = scope.get("current_studio_page") or (
+        _music_studio_page_for_scope(st) if app_norm == "music" else None
     )
-    ss["insight_source_page_normalized"] = scope.get("source_page_normalized")
     ss["current_page_normalized"] = scope.get("current_page_normalized")
     ss["should_render_insight_on_page"] = scope.get("should_render_insight_on_page")
     ss["render_skip_reason"] = scope.get("render_skip_reason")
     ss["hydrate_attempted"] = ss.get("_ami_insight_hydrate_attempted")
     ss["hydrate_success"] = ss.get("_ami_insight_hydrate_success")
     ss["hydrate_source"] = ss.get("_ami_insight_hydrate_source")
-    ss["pending_insight_exists"] = bool(pending.get("conclusion") or pending.get("question"))
+    ss["pending_insight_exists"] = bool(
+        pending and (pending.get("conclusion") or pending.get("question"))
+        and _insight_has_displayable_content(pending)
+    )
     ss["insight_card_rendered"] = bool(ss.get("_ami_insight_card_rendered"))
-    app_key = str(ss.get("_suite_persist_app_id") or (pending or {}).get("source_app") or "baseball")
+    app_key = app_norm
     consumed = ami_resume_consumed(st, app_key)
     url_params = _active_ami_return_query_param_keys(st)
-    forced_page = str(ss.get("_navigate_to_page") or ss.get("ami_return_forced_page") or "")
+    try:
+        ss["return_url_params"] = {k: _query_param(st, k) for k in url_params if _query_param(st, k)}
+    except Exception:
+        ss["return_url_params"] = {}
+    forced_page = str(
+        ss.get("_navigate_to_studio_page")
+        or ss.get("_navigate_to_page")
+        or ss.get("ami_return_forced_page")
+        or ""
+    )
     ss["ami_resume_consumed"] = consumed
     ss["ami_url_params_present"] = url_params
     ss["query_params_present"] = url_params
@@ -1175,6 +1312,9 @@ def hydrate_applied_math_insight_for_session(st: Any, app_key: str) -> bool:
 
     pending = _pending_insight_valid(st)
     if pending:
+        if not _insight_has_displayable_content(pending):
+            _refresh_placeholder_insight_from_cloud(st, key)
+            pending = _pending_insight_valid(st)
         url_iid = insight_return_query_id(st)
         pending_iid = str(pending.get("insight_id") or "").strip()
         if url_iid and pending_iid and pending_iid != url_iid and not ami_resume_consumed(st, key):
@@ -1250,12 +1390,13 @@ def render_insight_sync_debug(st: Any) -> None:
         "last_loaded_insight_id": ss.get("_ami_hydrated_insight_id"),
     }
     scope = ss.get("_ami_insight_scope_decision")
+    app_norm = _normalize_source_app_for_diagnostics(
+        str(ss.get("_suite_persist_app_id") or pending.get("source_app") or "music"),
+        pending,
+    )
+    scope_page = _current_page_for_insight_scope(st, app_norm)
     if not isinstance(scope, dict):
-        scope = insight_page_scope_decision(
-            str(ss.get("_suite_persist_app_id") or "baseball"),
-            str(ss.get("active_page") or ""),
-            pending,
-        )
+        scope = insight_page_scope_decision(app_norm, scope_page, pending)
     rc = ss.get(SESSION_RETURN_CONTEXT_KEY)
     if not isinstance(rc, dict):
         rc = pending.get("return_context") or pending.get("source_state") or {}
@@ -1263,17 +1404,26 @@ def render_insight_sync_debug(st: Any) -> None:
     rc_filters = rc.get("filter_params") if isinstance(rc.get("filter_params"), dict) else {}
     decision_rows = {
         "insight_return_detected": ss.get("insight_return_detected"),
+        "source_app_raw": ss.get("source_app_raw") or pending.get("source_app"),
+        "source_app_normalized": ss.get("source_app_normalized") or app_norm,
+        "source_page_raw": ss.get("source_page_raw") or scope.get("source_page_raw"),
+        "source_page_normalized": ss.get("source_page_normalized") or scope.get("source_page_normalized"),
         "insight_source_page_raw": ss.get("insight_source_page_raw") or scope.get("source_page_raw"),
         "insight_source_page_normalized": ss.get("insight_source_page_normalized") or scope.get("source_page_normalized"),
+        "current_studio_page": ss.get("current_studio_page") or scope.get("current_studio_page") or ss.get("studio_page"),
         "current_page_normalized": ss.get("current_page_normalized") or scope.get("current_page_normalized"),
         "should_render_insight_on_page": ss.get("should_render_insight_on_page", scope.get("should_render_insight_on_page")),
         "render_skip_reason": ss.get("render_skip_reason") or scope.get("render_skip_reason"),
         "hydrate_attempted": ss.get("hydrate_attempted", ss.get("_ami_insight_hydrate_attempted")),
         "hydrate_success": ss.get("hydrate_success", ss.get("_ami_insight_hydrate_success")),
         "hydrate_source": ss.get("hydrate_source", ss.get("_ami_insight_hydrate_source")),
-        "pending_insight_exists": ss.get("pending_insight_exists", bool(pending.get("conclusion"))),
+        "pending_insight_exists": ss.get(
+            "pending_insight_exists",
+            bool(pending.get("conclusion") or pending.get("question"))
+            and _insight_has_displayable_content(pending),
+        ),
         "insight_card_rendered": ss.get("insight_card_rendered", ss.get("_ami_insight_card_rendered")),
-        "return_context_source_page": rc.get("source_page"),
+        "return_url_params": ss.get("return_url_params"),
         "return_context_has_valuation_filters": any(str(k).startswith("value_") for k in rc_filters),
         "return_context_has_projections_filters": any(str(k).startswith("ml_") for k in rc_filters),
         "return_context_has_leaderboards_filters": any(str(k).startswith("leaders_") for k in rc_filters),
@@ -1323,8 +1473,11 @@ def render_insight_sync_debug(st: Any) -> None:
             if v is not None and v != "":
                 st.text(f"{k}: {v}")
         st.markdown("**FINAL**")
-        st.text(f"final_page: {ss.get('active_page')}")
-        st.text(f"final_has_insight_card: {bool(pending.get('conclusion'))}")
+        final_page = ss.get("studio_page") if app_norm == "music" else ss.get("active_page")
+        st.text(f"final_page: {final_page}")
+        st.text(
+            f"final_has_insight_card: {bool(pending.get('conclusion') and _insight_has_displayable_content(pending))}"
+        )
 
 
 def _resolve_return_source_state(
@@ -1460,8 +1613,9 @@ def apply_ami_insight_from_query(st: Any, app_key: str, *, force: bool = False) 
             "source_app": app_key,
         }
 
-    page = _normalize_insight_page(
-        _query_param(st, "suite_page") or str(insight.get("source_page") or "")
+    page = _normalize_return_page_for_app(
+        key,
+        _query_param(st, "suite_page") or str(insight.get("source_page") or ""),
     )
     if page:
         insight["source_page"] = page
@@ -1484,14 +1638,14 @@ def apply_ami_insight_from_query(st: Any, app_key: str, *, force: bool = False) 
     elif st.session_state.get(SESSION_RETURN_PAGE_KEY):
         ret_page = st.session_state[SESSION_RETURN_PAGE_KEY]
         if _should_apply_ami_return_navigation(st, key, ret_page):
-            st.session_state["_navigate_to_page"] = ret_page
-            st.session_state["_skip_page_restore_for"] = ret_page
-            st.session_state["ami_return_forced_page"] = ret_page
-            st.session_state["ami_return_force_active_page"] = True
-            st.session_state["active_page_source"] = "ami_return_query"
+            _schedule_ami_return_navigation(st, key, ret_page)
         else:
             st.session_state.pop("_navigate_to_page", None)
+            st.session_state.pop("_navigate_to_studio_page", None)
             st.session_state.pop("ami_return_force_active_page", None)
+
+    if not _insight_has_displayable_content(insight if isinstance(insight, dict) else {}):
+        _refresh_placeholder_insight_from_cloud(st, key)
 
     st.session_state["_ami_hydrated_insight_id"] = iid
     st.session_state[SESSION_PERSIST_INSIGHT_DIRTY] = True
@@ -1639,7 +1793,6 @@ def render_suite_applied_math_insight_for_page(
         st.session_state["_ami_insight_render_skipped_reason"] = "insight still loading"
         st.session_state["_ami_insight_render_success"] = False
         st.session_state["_ami_insight_card_rendered"] = False
-        maybe_consume_ami_return_on_page_match(st, source_app, current_page=source_page)
         return False
 
     ok = render_applied_math_insight_panel(st)
@@ -1668,7 +1821,7 @@ def render_return_to_source_button(
 ) -> None:
     """AMI button: return insight to originating source app."""
     data = insight.to_dict() if isinstance(insight, AppliedMathInsight) else dict(insight)
-    app = str(data.get("source_app") or "").strip().lower()
+    app = _normalize_source_app_for_diagnostics(str(data.get("source_app") or ""), data)
     if not app or app in ("unknown", "applied_intelligence", "math"):
         return
 

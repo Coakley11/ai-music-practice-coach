@@ -35,6 +35,8 @@ _RESUME_QUERY_KEYS: dict[str, tuple[str, ...]] = {
         "suite_display_key",
         "suite_instrument",
         "suite_section_focus",
+        "suite_ami_insight",
+        "suite_ai_question_id",
     ),
     "baseball": ("suite_resume", "suite_page", "suite_trend_player", "suite_player_a", "suite_player_b"),
     "investment": ("suite_page",),
@@ -72,25 +74,11 @@ def _qp_get(st: Any, name: str) -> str:
     return str(raw).strip()
 
 
-def _ami_resume_consumed_flag(app_key: str) -> str:
-    key = str(app_key or "").strip().lower()
-    if key == "math":
-        key = "applied_intelligence"
-    return f"_ami_resume_consumed_{key}"
-
-
-def ami_return_resume_consumed(st: Any, app_key: str) -> bool:
-    """True after AMI insight was hydrated+rendered once on the source page."""
-    return bool(st.session_state.get(_ami_resume_consumed_flag(app_key)))
-
-
 def has_resume_query_params(st: Any, app_key: str) -> bool:
     """True when the user opened via Continue / deep link (skip cloud restore)."""
     key = str(app_key or "").strip()
     if key == "math":
         key = "applied_intelligence"
-    if ami_return_resume_consumed(st, app_key):
-        return False
     if st.session_state.get(f"_suite_resume_launch_{key}"):
         return True
     for param in _RESUME_QUERY_KEYS.get(key, ("suite_resume", "suite_page")):

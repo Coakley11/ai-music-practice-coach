@@ -11,6 +11,7 @@ from applied_math_return_insight import (
     MUSIC_COACH_INSIGHT_PANEL_KEY,
     _insight_has_displayable_content,
     _insight_loaded_placeholder,
+    apply_ami_insight_from_query,
     hydrate_applied_math_insight_for_session,
     insight_page_scope_decision,
     reconcile_stale_page_navigation,
@@ -214,6 +215,75 @@ class TestMusicCoachInsightScope(unittest.TestCase):
 
     def test_insight_panel_uses_stable_container_key(self) -> None:
         self.assertEqual(MUSIC_COACH_INSIGHT_PANEL_KEY, "music_coach_insight_panel")
+
+    def test_placeholder_render_does_not_consume_ami_return(self) -> None:
+        st = MagicMock()
+        placeholder = _insight_loaded_placeholder("music")
+        st.session_state = {
+            SESSION_PENDING_KEY: {
+                "insight_id": "mc1",
+                "source_app": "music",
+                "source_page": "backing",
+                "conclusion": placeholder,
+            },
+            SESSION_RETURN_PAGE_KEY: "backing",
+            "_ami_insight_return_preserve": True,
+        }
+        st.query_params = {"suite_ami_insight": "mc1", "suite_page": "backing"}
+
+        with patch("applied_math_return_insight.render_applied_math_insight_panel") as mock_panel, patch(
+            "applied_math_return_insight.consume_ami_return_resume",
+        ) as mock_consume:
+            ok = render_suite_applied_math_insight_for_page(
+                st,
+                source_app="music",
+                source_page="backing",
+            )
+
+        self.assertFalse(ok)
+        mock_panel.assert_not_called()
+        mock_consume.assert_not_called()
+
+    def test_backing_insight_renders_on_backing_studio_page(self) -> None:
+        st = MagicMock()
+        st.session_state = {
+            SESSION_PENDING_KEY: {
+                "source_app": "music",
+                "source_page": "backing",
+                "source_state": {"source_page": "backing", "widget_params": {"studio_page": "backing"}},
+                "conclusion": "Slow down the chorus.",
+                "question": "How do I practice backing?",
+            },
+            SESSION_RETURN_PAGE_KEY: "backing",
+        }
+        with patch("applied_math_return_insight.render_applied_math_insight_panel", return_value=True):
+            ok = render_suite_applied_math_insight_for_page(
+                st,
+                source_app="music",
+                source_page="backing",
+            )
+        self.assertTrue(ok)
+        self.assertTrue(st.session_state.get("_ami_insight_card_rendered"))
+
+    def test_apply_insight_schedules_studio_navigation_for_music(self) -> None:
+        st = MagicMock()
+        st.session_state = {}
+        st.query_params = {"suite_ami_insight": "mc2", "suite_page": "backing"}
+        insight = {
+            "insight_id": "mc2",
+            "source_app": "music",
+            "source_page": "backing",
+            "conclusion": "Use a metronome.",
+            "question": "Backing tips?",
+        }
+        with patch("applied_math_return_insight.load_applied_math_insight", return_value=insight), patch(
+            "applied_math_return_insight.apply_return_source_state",
+        ):
+            ok = apply_ami_insight_from_query(st, "music", force=True)
+
+        self.assertTrue(ok)
+        self.assertEqual(st.session_state.get("_navigate_to_studio_page"), "backing")
+        self.assertNotIn("_navigate_to_page", st.session_state)
 
 
 class TestStudioPageCloudSave(unittest.TestCase):

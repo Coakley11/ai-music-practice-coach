@@ -79,6 +79,12 @@ _INSIGHT_KEYS = (
     "_ami_dismissed_insight_at",
 )
 
+# Phase C canonical modules (grow as migration proceeds).
+_WORKSPACE_KEYS: tuple[str, ...] = (
+    "active_song_state",
+    "studio_nav_state",
+)
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -115,21 +121,45 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
         coach_page = resolve_coach_source_page(merged)
     except Exception:
         coach_page = str((core or {}).get("studio_page") or session_extra.get("studio_page") or "")
+    active_song_meta = state.get("active_song_state") if isinstance(state.get("active_song_state"), dict) else {}
+    studio_nav_meta = state.get("studio_nav_state") if isinstance(state.get("studio_nav_state"), dict) else {}
+    studio_page = (
+        studio_nav_meta.get("studio_page")
+        or (core or {}).get("studio_page")
+        or session_extra.get("studio_page")
+    )
     return {
         "schema_version": WORKSPACE_SCHEMA_VERSION,
         "updated_at": _utc_now_iso(),
         "device_id": _get_device_id(st),
         "save_reason": save_reason or "autosave",
-        "page": coach_page or (core or {}).get("studio_page"),
-        "studio_page": (core or {}).get("studio_page") or session_extra.get("studio_page"),
-        "pick_key": (core or {}).get("pick_key"),
-        "instrument": (core or {}).get("instrument"),
-        "display_key": (core or {}).get("display_key"),
+        "page": coach_page or studio_page,
+        "studio_page": studio_page,
+        "pick_key": active_song_meta.get("pick_key") or (core or {}).get("pick_key"),
+        "instrument": active_song_meta.get("instrument") or (core or {}).get("instrument"),
+        "display_key": active_song_meta.get("display_key") or (core or {}).get("display_key"),
+        "active_song": {
+            "pick_key": active_song_meta.get("pick_key") or (core or {}).get("pick_key"),
+            "display_key": active_song_meta.get("display_key") or (core or {}).get("display_key"),
+            "instrument": active_song_meta.get("instrument") or (core or {}).get("instrument"),
+            "level": active_song_meta.get("level") or (core or {}).get("level"),
+            "focus": active_song_meta.get("focus") or (core or {}).get("focus"),
+            "practice_focus_section": active_song_meta.get("practice_focus_section")
+            or (core or {}).get("practice_focus_section"),
+        },
     }
 
 
 def build_music_disk_state(st: Any) -> dict[str, Any]:
     ss = st.session_state
+    try:
+        from active_song_state import commit_active_song_state_from_session
+        from studio_nav_state import commit_studio_nav_from_session
+
+        commit_active_song_state_from_session(ss, reason="autosave")
+        commit_studio_nav_from_session(ss, reason="autosave")
+    except ImportError:
+        pass
     core = build_music_local_state(st)
     extra: dict[str, Any] = {}
     for key in _PERSIST_KEYS:
@@ -154,7 +184,13 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     for key in _INSIGHT_KEYS:
         if key in ss:
             extra[key] = copy.deepcopy(ss[key])
-    state = {"core": core, "session": extra}
+    state: dict[str, Any] = {"core": core, "session": extra}
+    for key in _WORKSPACE_KEYS:
+        if key in ss:
+            try:
+                state[key] = copy.deepcopy(ss[key])
+            except Exception:
+                state[key] = ss[key]
     save_reason = str(ss.pop("_suite_pending_save_reason", None) or "autosave")
     state["music_workspace_state"] = _build_workspace_envelope(st, state, save_reason=save_reason)
     return state
@@ -224,19 +260,74 @@ def apply_music_disk_state(
     if isinstance(meta, dict) and meta.get("studio_page"):
         blob_studio = str(meta.get("studio_page") or blob_studio).strip()
 
-    last_persisted = str(ss.get("_suite_last_persisted_page") or "").strip()
+    for key in _WORKSPACE_KEYS:
+        if key in payload:
+            try:
+                ss[key] = copy.deepcopy(payload[key])
+            except Exception:
+                ss[key] = payload[key]
+
     user_owns_page = bool(pre_restore_user_nav)
-    active_studio = blob_studio or pre_restore_studio_page
-    overwrite_source = "workspace_blob"
-    if user_owns_page and pre_restore_studio_page and blob_studio and pre_restore_studio_page != blob_studio:
-        active_studio = pre_restore_studio_page
-        overwrite_source = "user_page_preserved"
-    elif pre_restore_studio_page and not blob_studio:
-        active_studio = pre_restore_studio_page
+    active_studio, overwrite_source = blob_studio, "workspace_blob"
+    try:
+        from studio_nav_state import resolve_studio_page_for_restore
+
+        active_studio, overwrite_source = resolve_studio_page_for_restore(
+            ss,
+            payload,
+            pre_restore_page=pre_restore_studio_page,
+            user_owns_page=user_owns_page,
+            st=st,
+        )
+    except ImportError:
+        last_persisted = str(ss.get("_suite_last_persisted_page") or "").strip()
+        active_studio, overwrite_source = blob_studio or pre_restore_studio_page, "workspace_blob"
+        try:
+            from applied_math_return_insight import ami_return_navigation_active
+
+            if (
+                ami_return_navigation_active(st, APP_ID)
+                and pre_restore_studio_page
+                and (not blob_studio or pre_restore_studio_page != blob_studio)
+            ):
+                active_studio = pre_restore_studio_page
+                overwrite_source = "ami_return_preserved"
+                user_owns_page = True
+        except ImportError:
+            pass
+        if user_owns_page and pre_restore_studio_page and blob_studio and pre_restore_studio_page != blob_studio:
+            active_studio = pre_restore_studio_page
+            overwrite_source = "user_page_preserved"
+        elif pre_restore_studio_page and not blob_studio:
+            active_studio = pre_restore_studio_page
 
     ss["_suite_page_overwrite_source"] = overwrite_source
     if active_studio:
         ss["studio_page"] = active_studio
+        try:
+            from studio_nav_state import write_canonical_studio_nav_state
+
+            write_canonical_studio_nav_state(ss, active_studio, reason="workspace_restore")
+        except ImportError:
+            pass
+
+    try:
+        from active_song_state import (
+            apply_cloud_active_song_state_if_allowed,
+            clear_active_song_local_edit,
+            is_active_song_locally_dirty,
+            sync_active_song_context_from_core,
+        )
+
+        if is_active_song_locally_dirty(ss):
+            ss["_active_song_restore_skipped_reason"] = "local_dirty"
+        elif apply_cloud_active_song_state_if_allowed(ss, payload):
+            clear_active_song_local_edit(ss)
+        elif isinstance(core, dict) and core and applied:
+            sync_active_song_context_from_core(ss, core)
+            clear_active_song_local_edit(ss)
+    except ImportError:
+        pass
 
     try:
         from music_coach_context import sync_music_coach_workspace_page
@@ -290,8 +381,13 @@ def claim_studio_page_ownership(st: Any, page_id: str) -> None:
     if not page:
         return
     ss = st.session_state
-    ss["studio_page"] = page
-    sync_music_coach_workspace_page(ss)
+    try:
+        from studio_nav_state import write_canonical_studio_nav_state
+
+        write_canonical_studio_nav_state(ss, page, reason="user_nav", local_edit=True)
+    except ImportError:
+        ss["studio_page"] = page
+        sync_music_coach_workspace_page(ss)
     coach_page = resolve_coach_source_page(ss)
     claim_user_page_ownership(st, APP_ID, coach_page)
     ss["_suite_last_persisted_page"] = coach_page
@@ -482,6 +578,17 @@ def apply_music_session_defaults(st: Any) -> None:
     ss.pop(ACTIVE_CATALOG_PICK_KEY, None)
     ss.pop(SELECTED_SONG_STATE_KEY, None)
     ss.pop(SUITE_LOCAL_STATE_RESTORED_KEY, None)
+    for key in _WORKSPACE_KEYS:
+        ss.pop(key, None)
+    try:
+        from active_song_state import ACTIVE_SONG_DIRTY_KEY, clear_active_song_local_edit
+        from studio_nav_state import clear_studio_nav_local_edit
+
+        clear_active_song_local_edit(ss)
+        clear_studio_nav_local_edit(ss)
+        ss.pop(ACTIVE_SONG_DIRTY_KEY, None)
+    except ImportError:
+        pass
     for key in list(ss.keys()):
         if str(key).startswith("_suite_") or str(key).startswith("_page_initialized"):
             ss.pop(key, None)

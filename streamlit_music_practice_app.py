@@ -8856,22 +8856,10 @@ _openai_api_key, _openai_secrets_probe = resolve_openai_api_key()
 _studio_page_before_workspace = str(st.session_state.get("studio_page") or "practice")
 
 try:
-    from music_persistent_state import prepare_music_workspace
-    from suite_user_persistence import record_page_navigation_startup_diagnostics, show_persistence_messages
-
-    record_page_navigation_startup_diagnostics(st, "music")
-    prepare_music_workspace(
-        st,
-        song_picker_catalog=SONG_PICKER_CATALOG,
-        song_library=SONG_LIBRARY,
-    )
-    show_persistence_messages(st)
-except Exception:
-    pass
-
-try:
+    from applied_math_return_insight import hydrate_applied_math_insight_for_session
     from suite_resume_launch import finalize_ami_return_restore
 
+    hydrate_applied_math_insight_for_session(st, "music")
     finalize_ami_return_restore(st, "music")
 except Exception:
     pass
@@ -8884,6 +8872,20 @@ if _nav_target:
         navigate_studio_page(st.session_state, str(_nav_target))
     except Exception:
         st.session_state["studio_page"] = str(_nav_target)
+
+try:
+    from music_persistent_state import prepare_music_workspace
+    from suite_user_persistence import record_page_navigation_startup_diagnostics, show_persistence_messages
+
+    record_page_navigation_startup_diagnostics(st, "music")
+    prepare_music_workspace(
+        st,
+        song_picker_catalog=SONG_PICKER_CATALOG,
+        song_library=SONG_LIBRARY,
+    )
+    show_persistence_messages(st)
+except Exception:
+    pass
 
 # Studio page bootstrap (sidebar order is rendered below Command Center link).
 _studio_page = ensure_studio_page(st.session_state)
@@ -9145,6 +9147,16 @@ try:
     render_persistence_trace_sidebar(st)
 except Exception:
     pass
+
+if _developer_mode_enabled():
+    try:
+        from applied_math_return_insight import render_insight_sync_debug
+        from app_ui import render_quick_nav_dev_diagnostics
+
+        render_insight_sync_debug(st)
+        render_quick_nav_dev_diagnostics(st)
+    except Exception:
+        pass
 
 try:
     from suite_deploy_probe import render_music_deploy_probe
