@@ -52,7 +52,6 @@ def render_cpl_page_header() -> None:
         render_page_quick_nav(
             st.session_state,
             current_page="custom",
-            key_prefix="cpl_header_quick_nav",
             rerun_fn=st.rerun,
         )
     try:

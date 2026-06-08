@@ -91,11 +91,32 @@ def test_same_page_navigation_is_noop():
     assert state["studio_nav_back"] == []
 
 
-def test_quick_nav_css_has_no_hidden_button_labels():
-    from app_ui import _quick_nav_button_css
+def test_quick_nav_css_has_script_labels_without_hidden_text():
+    from app_ui import (
+        STUDIO_QUICK_NAV_PANEL_KEY,
+        _nav_script_label_html,
+        _quick_nav_button_css,
+        _studio_quick_nav_button_key,
+    )
 
     css = _quick_nav_button_css().lower()
     assert "opacity: 0" not in css
     assert "color: transparent" not in css
     assert "text-indent: -9999" not in css
-    assert "ui-studio-nav-label" in css
+    assert "caveat" in css
+    assert "ui-studio-nav-script-word" in css
+    assert STUDIO_QUICK_NAV_PANEL_KEY == "studio_quick_nav_panel"
+    assert _studio_quick_nav_button_key("practice") == "studio_quick_nav_btn_practice"
+    label = _nav_script_label_html("practice", active=True)
+    assert "Practice" in label
+    assert "ui-studio-nav-script" in label
+    assert "_art_" not in _studio_quick_nav_button_key("picker")
+
+
+def test_quick_nav_uses_one_stable_button_key_per_page():
+    from app_ui import TOP_NAV_PAGE_IDS, _studio_quick_nav_button_key
+
+    keys = [_studio_quick_nav_button_key(page_id) for page_id in TOP_NAV_PAGE_IDS]
+    assert len(keys) == len(set(keys))
+    assert all(key.startswith("studio_quick_nav_btn_") for key in keys)
+    assert all("_art_" not in key for key in keys)

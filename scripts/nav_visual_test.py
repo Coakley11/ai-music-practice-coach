@@ -15,7 +15,6 @@ st.title("Top navigation sizing test")
 render_page_quick_nav(
     st.session_state,
     current_page="practice",
-    key_prefix="nav_test_quick_nav",
     rerun_fn=st.rerun,
 )
 st.caption("All segments should be equal height; Practice should match Song Selection.")

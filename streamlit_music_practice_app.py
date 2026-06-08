@@ -8208,7 +8208,6 @@ def _render_page_quick_nav(current_page: str) -> str:
     return render_page_quick_nav(
         st.session_state,
         current_page=current_page,
-        key_prefix="main_studio_quick_nav",
         rerun_fn=st.rerun,
     )
 
