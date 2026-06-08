@@ -363,6 +363,13 @@ def after_studio_page_change(st: Any, session_state: dict | None = None) -> None
 
     ss = session_state if session_state is not None else st.session_state
     page_id = str(ss.get("studio_page") or "practice")
+    try:
+        from applied_math_return_insight import ami_return_navigation_active, consume_ami_return_resume
+
+        if ami_return_navigation_active(st, APP_ID):
+            consume_ami_return_resume(st, APP_ID)
+    except ImportError:
+        pass
     claim_studio_page_ownership(st, page_id)
     sync_music_coach_workspace_page(ss)
     coach_page = resolve_coach_source_page(ss)

@@ -133,6 +133,34 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   background: rgba(255,255,255,0.08) !important;
   border-color: rgba(255,255,255,0.18) !important;
 }
+/* Sidebar form fields — dark text on white (readable on phone + desktop) */
+[data-testid="stSidebar"] .stTextInput input,
+[data-testid="stSidebar"] .stTextArea textarea,
+[data-testid="stSidebar"] .stNumberInput input,
+[data-testid="stSidebar"] input[type="text"],
+[data-testid="stSidebar"] textarea {
+  background: #ffffff !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  border-color: rgba(15, 23, 42, 0.14) !important;
+}
+[data-testid="stSidebar"] .stTextInput input::placeholder,
+[data-testid="stSidebar"] .stTextArea textarea::placeholder {
+  color: #6b7280 !important;
+  -webkit-text-fill-color: #6b7280 !important;
+  opacity: 1 !important;
+}
+[data-testid="stSidebar"] [data-testid="stSelectbox"] > div > div,
+[data-testid="stSidebar"] [data-baseweb="select"] > div {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border-color: rgba(15, 23, 42, 0.14) !important;
+}
+[data-testid="stSidebar"] [data-testid="stSelectbox"] > div > div *,
+[data-testid="stSidebar"] [data-baseweb="select"] > div * {
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+}
 .ui-sb-section {
   font-size: 0.72rem;
   font-weight: 800;
@@ -1282,9 +1310,14 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border: 2px solid rgba(37, 99, 235, 0.35) !important;
   border-radius: 12px !important;
   background: #ffffff !important;
+  color: #111827 !important;
   font-weight: 700 !important;
   min-height: 2.65rem !important;
   box-shadow: 0 2px 10px rgba(37, 99, 235, 0.1) !important;
+}
+.st-key-active_song_hub [data-testid="stSelectbox"] > div > div * {
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
 }
 .st-key-active_song_hub [data-testid="stSelectbox"] > div > div:focus-within {
   border-color: #2563eb !important;

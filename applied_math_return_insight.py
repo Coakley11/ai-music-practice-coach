@@ -1191,6 +1191,21 @@ def consume_ami_return_resume(st: Any, app_key: str) -> bool:
     return True
 
 
+def _finish_ami_return_after_insight_render(
+    st: Any,
+    app_key: str,
+    *,
+    current_page: str = "",
+) -> None:
+    """Release AMI return steering after insight or recovery card renders on source page."""
+    key = _normalize_app_key(app_key)
+    maybe_consume_ami_return_on_page_match(st, key, current_page=current_page)
+    consume_ami_return_resume(
+        st,
+        str(st.session_state.get("_suite_persist_app_id") or key or "baseball"),
+    )
+
+
 def _record_insight_return_diagnostics(st: Any, *, phase: str, insight: dict[str, Any] | None = None) -> None:
     """?dev=1 trace for AMI return → source app insight card."""
     ss = st.session_state
@@ -1775,6 +1790,11 @@ def dismiss_applied_math_insight(st: Any, *, app_key: str = "") -> None:
         st.session_state[SESSION_DISMISSED_AT_KEY] = meta
         persist_insight_dismissal_to_cloud(source_app, iid, dismissed_at=dismissed_at)
     st.session_state[SESSION_PERSIST_INSIGHT_DIRTY] = True
+    if ami_return_navigation_active(st, source_app or st.session_state.get("_suite_persist_app_id") or "music"):
+        consume_ami_return_resume(
+            st,
+            _normalize_app_key(source_app or st.session_state.get("_suite_persist_app_id") or "music"),
+        )
 
 
 def clear_pending_insight(st: Any) -> None:
@@ -2089,6 +2109,11 @@ def render_suite_applied_math_insight_for_page(
             st.session_state["_ami_insight_card_rendered"] = ok
             if ok:
                 st.session_state.pop("_ami_insight_render_skipped_reason", None)
+                _finish_ami_return_after_insight_render(
+                    st,
+                    app_key,
+                    current_page=scope_page,
+                )
             else:
                 st.session_state["_ami_insight_render_skipped_reason"] = "recovery panel failed"
             _record_insight_return_diagnostics(st, phase="render_recovery", insight=insight)
@@ -2101,14 +2126,10 @@ def render_suite_applied_math_insight_for_page(
         st.session_state["_ami_insight_render_skipped_reason"] = "panel render failed"
     else:
         st.session_state.pop("_ami_insight_render_skipped_reason", None)
-        maybe_consume_ami_return_on_page_match(
+        _finish_ami_return_after_insight_render(
             st,
             app_key,
             current_page=scope_page,
-        )
-        consume_ami_return_resume(
-            st,
-            str(st.session_state.get("_suite_persist_app_id") or app_key or "baseball"),
         )
     _record_insight_return_diagnostics(st, phase="render_done", insight=insight)
     return ok

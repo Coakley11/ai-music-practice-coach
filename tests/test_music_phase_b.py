@@ -217,7 +217,7 @@ class TestMusicCoachInsightScope(unittest.TestCase):
     def test_insight_panel_uses_stable_container_key(self) -> None:
         self.assertEqual(MUSIC_COACH_INSIGHT_PANEL_KEY, "music_coach_insight_panel")
 
-    def test_placeholder_render_shows_recovery_without_consuming_ami_return(self) -> None:
+    def test_recovery_render_consumes_ami_return(self) -> None:
         st = MagicMock()
         placeholder = _insight_loaded_placeholder("music")
         st.session_state = {
@@ -229,6 +229,10 @@ class TestMusicCoachInsightScope(unittest.TestCase):
             },
             SESSION_RETURN_PAGE_KEY: "backing",
             "_ami_insight_return_preserve": True,
+            "ami_return_forced_page": "backing",
+            "ami_return_force_active_page": True,
+            "_skip_page_restore_for": "backing",
+            "studio_page": "backing",
         }
         st.query_params = {"suite_ami_insight": "mc1", "suite_page": "backing"}
 
@@ -240,9 +244,7 @@ class TestMusicCoachInsightScope(unittest.TestCase):
             return_value=True,
         ) as mock_recovery, patch(
             "applied_math_return_insight.render_applied_math_insight_panel",
-        ) as mock_panel, patch(
-            "applied_math_return_insight.consume_ami_return_resume",
-        ) as mock_consume:
+        ) as mock_panel:
             ok = render_suite_applied_math_insight_for_page(
                 st,
                 source_app="music",
@@ -252,9 +254,12 @@ class TestMusicCoachInsightScope(unittest.TestCase):
         self.assertTrue(ok)
         mock_recovery.assert_called_once()
         mock_panel.assert_not_called()
-        mock_consume.assert_not_called()
         self.assertTrue(st.session_state.get("_ami_insight_card_rendered"))
-        self.assertTrue(st.session_state.get("_ami_insight_render_success"))
+        self.assertTrue(st.session_state.get("ami_resume_consumed"))
+        self.assertNotIn("_ami_insight_return_preserve", st.session_state)
+        self.assertNotIn("_skip_page_restore_for", st.session_state)
+        self.assertFalse(st.session_state.get("ami_return_force_active_page"))
+        self.assertFalse(st.session_state.get("manual_nav_blocked_by_ami_return"))
 
     def test_merge_recovery_context_marks_displayable_with_question(self) -> None:
         from applied_math_return_insight import _merge_insight_with_recovery_context
