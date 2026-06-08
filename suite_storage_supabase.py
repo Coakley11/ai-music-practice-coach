@@ -462,6 +462,46 @@ def load_saved_items(
     return out
 
 
+def load_saved_item_by_key(
+    item_key: str,
+    *,
+    item_type: str | None = None,
+    app: str | None = None,
+) -> dict[str, Any] | None:
+    """Fetch one saved item row by exact item_key (not limited to recent N)."""
+    key = str(item_key or "").strip()
+    if not key:
+        return None
+    params: dict[str, str] = {
+        "select": "app,item_type,item_key,title,payload,updated_at",
+        "user_id": f"eq.{_scoped_user_id()}",
+        "item_key": f"eq.{key}",
+        "valid": "eq.true",
+        "limit": "1",
+    }
+    if app:
+        params["app"] = f"eq.{normalize_app_key(app)}"
+    if item_type:
+        params["item_type"] = f"eq.{item_type}"
+    rows = _request("GET", _TABLE_SAVED, params=params, prefer="return=representation")
+    if not isinstance(rows, list) or not rows:
+        return None
+    row = rows[0]
+    if not isinstance(row, dict):
+        return None
+    payload = row.get("payload")
+    if not isinstance(payload, dict):
+        payload = {}
+    return {
+        "app": str(row.get("app") or ""),
+        "item_type": str(row.get("item_type") or ""),
+        "item_key": str(row.get("item_key") or ""),
+        "title": str(row.get("title") or ""),
+        "payload": payload,
+        "updated_at": str(row.get("updated_at") or "")[:19],
+    }
+
+
 def save_user_settings(app: str, settings: dict[str, Any]) -> None:
     app_key = str(app or "_global").strip() or "_global"
     _request(

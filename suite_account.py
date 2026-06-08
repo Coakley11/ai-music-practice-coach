@@ -18,18 +18,6 @@ from typing import Any
 from suite_user import account_mode, get_account_user_id, get_display_name, get_external_user_id
 
 
-def _resolve_storage() -> Any:
-    """Command Center has ``suite_storage``; standalone apps use ``suite_storage_supabase``."""
-    try:
-        import suite_storage as storage
-
-        return storage
-    except ImportError:
-        import suite_storage_supabase as storage
-
-        return storage
-
-
 def account_summary() -> dict[str, str]:
     return {
         "external_id": get_external_user_id(),
@@ -48,7 +36,7 @@ def remember_saved_item(
     payload: dict[str, Any] | None = None,
 ) -> None:
     """Persist a song, player, portfolio, simulation, etc. for this account."""
-    storage = _resolve_storage()
+    import suite_storage as storage
 
     storage.upsert_saved_item(
         app, item_type, item_key, title=title, payload=payload
@@ -57,7 +45,7 @@ def remember_saved_item(
 
 def forget_saved_item(app: str, item_type: str, item_key: str) -> None:
     """Mark saved item invalid — removes it from active dashboard surfaces."""
-    storage = _resolve_storage()
+    import suite_storage as storage
 
     storage.invalidate_saved_item(app, item_type, item_key)
     storage.invalidate_resume_item(app, item_key)
@@ -69,20 +57,43 @@ def load_saved_items(
     item_type: str | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
-    storage = _resolve_storage()
+    import suite_storage as storage
 
     return storage.load_saved_items(app=app, item_type=item_type, limit=limit)
 
 
+def load_saved_item_by_key(
+    item_key: str,
+    *,
+    item_type: str | None = None,
+    app: str | None = None,
+) -> dict[str, Any] | None:
+    """Fetch one saved item by exact key across cloud storage backends."""
+    key = str(item_key or "").strip()
+    if not key:
+        return None
+    for loader_name in ("suite_storage", "suite_storage_supabase"):
+        try:
+            mod = __import__(loader_name, fromlist=["load_saved_item_by_key"])
+            fn = getattr(mod, "load_saved_item_by_key", None)
+            if callable(fn):
+                row = fn(key, item_type=item_type, app=app)
+                if isinstance(row, dict) and row.get("item_key"):
+                    return row
+        except Exception:
+            continue
+    return None
+
+
 def save_settings(app: str, settings: dict[str, Any]) -> None:
     """Per-app settings, or ``_global`` for suite-wide preferences."""
-    storage = _resolve_storage()
+    import suite_storage as storage
 
     storage.save_user_settings(app, settings)
 
 
 def load_settings(app: str = "_global") -> dict[str, Any]:
-    storage = _resolve_storage()
+    import suite_storage as storage
 
     return storage.load_user_settings(app)
 
@@ -94,7 +105,7 @@ def sync_local_state_to_cloud(app: str, state: dict[str, Any]) -> None:
     """
     if not state:
         return
-    storage = _resolve_storage()
+    import suite_storage as storage
 
     page = str(state.get("page") or "")
     summary = str(state.get("summary") or state.get("label") or "")

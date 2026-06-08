@@ -34,7 +34,7 @@ NAV_FORWARD_STACK = "studio_nav_forward"
 _NAV_FROM_HISTORY = "_studio_nav_from_history"
 
 # Bump when verifying Streamlit Cloud picked up navigation UI changes.
-NAVIGATION_UI_DEPLOY_MARKER = "studio-nav-stable-v16-ami-insight-render"
+NAVIGATION_UI_DEPLOY_MARKER = "studio-nav-stable-v17-ami-insight-recovery"
 
 __all__ = (
     "STUDIO_PAGE_IDS",

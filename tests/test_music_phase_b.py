@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from applied_math_return_insight import (
     SESSION_PENDING_KEY,
+    SESSION_RETURN_CONTEXT_KEY,
     SESSION_RETURN_PAGE_KEY,
     MUSIC_COACH_INSIGHT_PANEL_KEY,
     _insight_has_displayable_content,
@@ -216,7 +217,7 @@ class TestMusicCoachInsightScope(unittest.TestCase):
     def test_insight_panel_uses_stable_container_key(self) -> None:
         self.assertEqual(MUSIC_COACH_INSIGHT_PANEL_KEY, "music_coach_insight_panel")
 
-    def test_placeholder_render_does_not_consume_ami_return(self) -> None:
+    def test_placeholder_render_shows_recovery_without_consuming_ami_return(self) -> None:
         st = MagicMock()
         placeholder = _insight_loaded_placeholder("music")
         st.session_state = {
@@ -231,7 +232,15 @@ class TestMusicCoachInsightScope(unittest.TestCase):
         }
         st.query_params = {"suite_ami_insight": "mc1", "suite_page": "backing"}
 
-        with patch("applied_math_return_insight.render_applied_math_insight_panel") as mock_panel, patch(
+        with patch(
+            "applied_math_return_insight._refresh_placeholder_insight_from_cloud",
+            return_value=False,
+        ), patch(
+            "applied_math_return_insight.render_insight_recovery_panel",
+            return_value=True,
+        ) as mock_recovery, patch(
+            "applied_math_return_insight.render_applied_math_insight_panel",
+        ) as mock_panel, patch(
             "applied_math_return_insight.consume_ami_return_resume",
         ) as mock_consume:
             ok = render_suite_applied_math_insight_for_page(
@@ -240,9 +249,53 @@ class TestMusicCoachInsightScope(unittest.TestCase):
                 source_page="backing",
             )
 
-        self.assertFalse(ok)
+        self.assertTrue(ok)
+        mock_recovery.assert_called_once()
         mock_panel.assert_not_called()
         mock_consume.assert_not_called()
+        self.assertTrue(st.session_state.get("_ami_insight_card_rendered"))
+        self.assertTrue(st.session_state.get("_ami_insight_render_success"))
+
+    def test_merge_recovery_context_marks_displayable_with_question(self) -> None:
+        from applied_math_return_insight import _merge_insight_with_recovery_context
+
+        st = MagicMock()
+        st.session_state = {SESSION_RETURN_CONTEXT_KEY: {"question": "How should I practice?"}}
+        placeholder = _insight_loaded_placeholder("music")
+        merged = _merge_insight_with_recovery_context(
+            st,
+            {
+                "insight_id": "mc9",
+                "source_app": "music",
+                "source_page": "backing",
+                "conclusion": placeholder,
+            },
+            "music",
+        )
+        self.assertEqual(merged.get("question"), "How should I practice?")
+        self.assertTrue(merged.get("_ami_recovery_card"))
+        self.assertTrue(_insight_has_displayable_content(merged))
+
+    def test_load_applied_math_insight_prefers_direct_key_lookup(self) -> None:
+        from applied_math_return_insight import load_applied_math_insight
+
+        row = {
+            "item_key": "deep-id",
+            "title": "Coach answer",
+            "payload": {
+                "insight_id": "deep-id",
+                "source_app": "music",
+                "conclusion": "Slow down.",
+                "question": "Backing tips?",
+            },
+        }
+        with patch(
+            "applied_math_return_insight._fetch_insight_saved_row",
+            return_value=row,
+        ) as mock_fetch:
+            loaded = load_applied_math_insight("deep-id", source_app="music")
+        mock_fetch.assert_called_once_with("deep-id", source_app="music")
+        self.assertEqual(loaded.get("conclusion"), "Slow down.")
 
     def test_backing_insight_renders_on_backing_studio_page(self) -> None:
         st = MagicMock()
