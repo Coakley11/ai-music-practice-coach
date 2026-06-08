@@ -17,4 +17,4 @@ render_page_quick_nav(
     current_page="practice",
     rerun_fn=st.rerun,
 )
-st.caption("All segments should be equal height; Practice should match Song Selection.")
+st.caption("All page buttons stay visible; active page button should be red.")
