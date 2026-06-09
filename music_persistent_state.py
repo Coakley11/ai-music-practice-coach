@@ -790,14 +790,6 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
 
             cloud_state, cloud_ts = load_cloud_full_session(APP_ID)
             cloud_updated_at = cloud_ts
-            last_write = ss.get("_suite_last_cloud_save_payload")
-            if isinstance(last_write, dict) and ss.get("_suite_persist_last_save_cloud"):
-                cloud_state = last_write
-                ss["_backing_cloud_payload_source"] = "last_write"
-            elif isinstance(cloud_state, dict) and cloud_state:
-                ss["_backing_cloud_payload_source"] = "fetch"
-            else:
-                ss["_backing_cloud_payload_source"] = "none"
             if isinstance(cloud_state, dict) and cloud_state:
                 cloud_meta = (
                     cloud_state.get("music_workspace_state")
