@@ -163,7 +163,6 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
     active_song_meta = state.get("active_song_state") if isinstance(state.get("active_song_state"), dict) else {}
     studio_nav_meta = state.get("studio_nav_state") if isinstance(state.get("studio_nav_state"), dict) else {}
     practice_meta = state.get("practice_state") if isinstance(state.get("practice_state"), dict) else {}
-    backing_meta = state.get("backing_track_state") if isinstance(state.get("backing_track_state"), dict) else {}
     live_studio = ""
     if hasattr(st, "session_state"):
         live_studio = str(st.session_state.get("studio_page") or "").strip()
@@ -202,7 +201,19 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             "practice_notation_difficulty": practice_meta.get("practice_notation_difficulty"),
             "last_practice_mode": practice_meta.get("last_practice_mode"),
         },
-        "backing_filters": {
+        "backing_filters": _backing_filters_for_envelope(st, state),
+    }
+
+
+def _backing_filters_for_envelope(st: Any, state: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from backing_track_state import backing_filters_for_workspace_envelope
+
+        session_ref = st.session_state if hasattr(st, "session_state") else {}
+        return backing_filters_for_workspace_envelope(session_ref, state_blob=state)
+    except ImportError:
+        backing_meta = state.get("backing_track_state") if isinstance(state.get("backing_track_state"), dict) else {}
+        return {
             "backing_track_scope": backing_meta.get("backing_track_scope"),
             "backing_track_single_section": backing_meta.get("backing_track_single_section"),
             "backing_track_multi_sections": backing_meta.get("backing_track_multi_sections"),
@@ -213,8 +224,7 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             "backing_time_signature": backing_meta.get("backing_time_signature"),
             "backing_time_signature_override": backing_meta.get("backing_time_signature_override"),
             "backing_quick_section": backing_meta.get("backing_quick_section"),
-        },
-    }
+        }
 
 
 def build_music_disk_state(st: Any) -> dict[str, Any]:
@@ -265,6 +275,8 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     save_reason = str(ss.pop("_suite_pending_save_reason", None) or "autosave")
     state["music_workspace_state"] = _build_workspace_envelope(st, state, save_reason=save_reason)
     _sync_studio_page_into_music_blob(st, state)
+    if hasattr(st, "session_state"):
+        ss["music_workspace_state"] = copy.deepcopy(state["music_workspace_state"])
     return state
 
 
@@ -478,7 +490,16 @@ def apply_music_disk_state(
         try:
             from backing_track_state import collect_backing_persistence_trace
 
-            backing_trace = collect_backing_persistence_trace(ss, payload=payload)
+            envelope_payload: dict[str, Any] = {}
+            if isinstance(payload.get("music_workspace_state"), dict):
+                envelope_payload["music_workspace_state"] = payload["music_workspace_state"]
+            if isinstance(payload.get("backing_track_state"), dict):
+                envelope_payload["backing_track_state"] = payload["backing_track_state"]
+            backing_trace = collect_backing_persistence_trace(
+                ss,
+                envelope_payload=envelope_payload or None,
+                cloud_payload=payload,
+            )
         except ImportError:
             pass
         update_trace(
@@ -789,8 +810,16 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
         try:
             from backing_track_state import collect_backing_persistence_trace
 
+            envelope_payload: dict[str, Any] = {}
+            ws_local = ss.get("music_workspace_state")
+            if isinstance(ws_local, dict):
+                envelope_payload["music_workspace_state"] = ws_local
+            if isinstance(ss.get("backing_track_state"), dict):
+                envelope_payload["backing_track_state"] = ss["backing_track_state"]
             backing_trace = collect_backing_persistence_trace(
-                ss, payload=cloud_state if isinstance(cloud_state, dict) else None
+                ss,
+                envelope_payload=envelope_payload or None,
+                cloud_payload=cloud_state if isinstance(cloud_state, dict) else None,
             )
         except ImportError:
             pass

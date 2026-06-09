@@ -12,6 +12,8 @@ from backing_track_state import (
     apply_backing_source_state_from_ami,
     apply_cloud_backing_state_if_allowed,
     coerce_backing_groove_for_widget,
+    backing_filters_for_workspace_envelope,
+    collect_backing_persistence_trace,
     commit_backing_canonical_blob_only,
     commit_backing_state_from_session,
     flush_backing_edits,
@@ -289,6 +291,66 @@ class TestBackingTrackState(unittest.TestCase):
             "Step 2 must not write widget keys after Step 1 widgets render",
         )
         self.assertNotIn("prepare_backing_scope_for_widget", step2_body)
+
+    def test_workspace_envelope_populates_all_backing_filters(self) -> None:
+        st = MagicMock()
+        st.session_state = dict(_SAMPLE)
+        write_canonical_backing_state(st.session_state, _SAMPLE, reason="backing_edit")
+        blob = build_music_disk_state(st)
+        bf = (blob.get("music_workspace_state") or {}).get("backing_filters") or {}
+        self.assertEqual(bf.get("backing_track_scope"), "Single section")
+        self.assertEqual(bf.get("backing_track_single_section"), "Chorus")
+        self.assertEqual(bf.get("backing_track_loops"), 4)
+        self.assertEqual(bf.get("backing_track_bpm"), 108)
+        self.assertEqual(bf.get("backing_groove_style"), "Jazz swing")
+        self.assertEqual(bf.get("backing_time_signature"), "3/4")
+        self.assertTrue(bf.get("backing_time_signature_override"))
+        self.assertEqual(bf.get("backing_quick_section"), "Chorus")
+        top = blob.get("backing_track_state") or {}
+        self.assertEqual(top.get("backing_track_loops"), 4)
+        ws_session = st.session_state.get("music_workspace_state") or {}
+        session_bf = ws_session.get("backing_filters") or {}
+        self.assertEqual(session_bf.get("backing_track_loops"), 4)
+
+    def test_envelope_from_canonical_when_state_blob_missing_key(self) -> None:
+        session = dict(_SAMPLE)
+        write_canonical_backing_state(session, _SAMPLE, reason="backing_edit")
+        filters = backing_filters_for_workspace_envelope(session, state_blob={"core": {}})
+        self.assertEqual(filters["backing_track_loops"], 4)
+        self.assertEqual(filters["backing_track_bpm"], 108)
+
+    def test_trace_envelope_from_local_workspace_state(self) -> None:
+        session = dict(_SAMPLE)
+        write_canonical_backing_state(session, _SAMPLE, reason="backing_edit")
+        session["music_workspace_state"] = {
+            "backing_filters": dict(_SAMPLE),
+        }
+        trace = collect_backing_persistence_trace(
+            session,
+            envelope_payload={"music_workspace_state": session["music_workspace_state"]},
+            cloud_payload={"backing_track_state": dict(_SAMPLE)},
+        )
+        self.assertEqual(trace["backing_filters_loops"], 4)
+        self.assertEqual(trace["backing_filters_bpm"], 108)
+        self.assertEqual(trace["cloud_payload_backing_loops"], 4)
+        self.assertEqual(trace["cloud_payload_backing_bpm"], 108)
+
+    def test_autosave_preserves_canonical_in_envelope(self) -> None:
+        st = MagicMock()
+        st.session_state = {
+            **_SAMPLE,
+            "backing_track_state": {
+                **_SAMPLE,
+                "backing_track_loops": 7,
+                "last_write_reason": "backing_edit",
+            },
+            "backing_track_loops": 2,
+            "backing_track_scope": "Full song",
+        }
+        blob = build_music_disk_state(st)
+        bf = (blob.get("music_workspace_state") or {}).get("backing_filters") or {}
+        self.assertEqual(bf.get("backing_track_loops"), 7)
+        self.assertEqual(bf.get("backing_track_bpm"), 108)
 
 
 if __name__ == "__main__":

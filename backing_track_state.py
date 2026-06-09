@@ -105,7 +105,9 @@ __all__ = (
     "normalize_backing_scope",
     "backing_canonical_playback_seed",
     "backing_canonical_meter_seed",
+    "backing_filters_for_workspace_envelope",
     "has_restored_backing_canonical",
+    "resolve_backing_trace_payloads",
     "prepare_backing_bpm_for_widget",
     "prepare_backing_durable_widgets",
     "prepare_backing_meter_for_widget",
@@ -564,6 +566,25 @@ def flush_backing_edits(session: dict[str, Any], *, reason: str = "backing_edit"
     return write_canonical_backing_state(session, filters, reason=reason, local_edit=True)
 
 
+def backing_filters_for_workspace_envelope(
+    session: dict[str, Any],
+    *,
+    state_blob: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Normalized ``music_workspace_state.backing_filters`` from canonical blob or live widgets."""
+    blob = state_blob if isinstance(state_blob, dict) else {}
+    for src in (
+        blob.get(BACKING_STATE_KEY),
+        session.get(BACKING_STATE_KEY),
+    ):
+        if isinstance(src, dict):
+            filters = _normalize_filters(src)
+            if _filters_have_content(filters):
+                return filters
+    gathered = gather_backing_filters(session)
+    return _normalize_filters(gathered)
+
+
 def _backing_filters_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(state, dict):
         return None
@@ -636,19 +657,60 @@ def apply_backing_source_state_from_ami(
     clear_backing_local_edit(session)
 
 
+def resolve_backing_trace_payloads(
+    st: Any,
+    session: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Resolve envelope (last/local save) and cloud payloads for ?dev=1 backing trace."""
+    envelope: dict[str, Any] = {}
+    cloud: dict[str, Any] = {}
+
+    ws = session.get("music_workspace_state")
+    if isinstance(ws, dict) and isinstance(ws.get("backing_filters"), dict):
+        bf = _normalize_filters(ws["backing_filters"])
+        if _filters_have_content(bf):
+            envelope = {"music_workspace_state": {**ws, "backing_filters": bf}}
+
+    if not envelope:
+        filters = backing_filters_for_workspace_envelope(session)
+        if _filters_have_content(filters):
+            canon = session.get(BACKING_STATE_KEY)
+            envelope = {
+                "music_workspace_state": {"backing_filters": filters},
+                BACKING_STATE_KEY: canon if isinstance(canon, dict) else filters,
+            }
+
+    try:
+        from music_persistent_state import APP_ID
+        from suite_cloud_state import load_cloud_full_session
+
+        cloud_state, _ = load_cloud_full_session(APP_ID)
+        if isinstance(cloud_state, dict):
+            cloud = cloud_state
+    except Exception:
+        pass
+
+    return envelope, cloud
+
+
 def collect_backing_persistence_trace(
     session: dict[str, Any],
     *,
     payload: dict[str, Any] | None = None,
+    envelope_payload: dict[str, Any] | None = None,
+    cloud_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     canonical = canonical_backing_filters(session) or {}
     envelope: dict[str, Any] = {}
     cloud_meta: dict[str, Any] = {}
-    if isinstance(payload, dict):
-        ws = payload.get("music_workspace_state")
+    env_src = envelope_payload if envelope_payload is not None else payload
+    cloud_src = cloud_payload if cloud_payload is not None else payload
+    if isinstance(env_src, dict):
+        ws = env_src.get("music_workspace_state")
         if isinstance(ws, dict) and isinstance(ws.get("backing_filters"), dict):
             envelope = _normalize_filters(ws["backing_filters"])
-        cloud_meta = payload.get(BACKING_STATE_KEY) if isinstance(payload.get(BACKING_STATE_KEY), dict) else {}
+    if isinstance(cloud_src, dict):
+        cloud_meta = _backing_filters_from_blob(cloud_src) or {}
     return {
         "backing_canonical_bpm": canonical.get("backing_track_bpm", ""),
         "backing_canonical_groove": canonical.get("backing_groove_style", ""),
@@ -686,7 +748,12 @@ def collect_backing_persistence_trace(
 
 
 def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
-    trace = collect_backing_persistence_trace(session)
+    envelope_payload, cloud_payload = resolve_backing_trace_payloads(st, session)
+    trace = collect_backing_persistence_trace(
+        session,
+        envelope_payload=envelope_payload,
+        cloud_payload=cloud_payload,
+    )
     st.sidebar.caption(
         f"**backing canonical:** scope=`{trace['backing_canonical_scope']}` "
         f"sec=`{trace['backing_canonical_section']}` "
