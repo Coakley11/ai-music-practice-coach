@@ -107,6 +107,40 @@ def _get_device_id(st: Any) -> str:
         return "unknown"
 
 
+def _sync_studio_page_into_music_blob(st: Any, state: dict[str, Any]) -> str:
+    """Force raw ``studio_page`` id into every cross-device sync field (not coach aliases)."""
+    if not hasattr(st, "session_state"):
+        return ""
+    page = str(st.session_state.get("studio_page") or "").strip()
+    if not page:
+        return ""
+    core = state.get("core")
+    if isinstance(core, dict):
+        core["studio_page"] = page
+        core["page"] = page
+    session_extra = state.get("session")
+    if isinstance(session_extra, dict):
+        session_extra["studio_page"] = page
+    meta = state.get("music_workspace_state")
+    if isinstance(meta, dict):
+        meta["studio_page"] = page
+        try:
+            from music_coach_context import resolve_coach_source_page
+
+            merged = {**st.session_state}
+            if isinstance(core, dict):
+                merged.update(core)
+            if isinstance(session_extra, dict):
+                merged.update(session_extra)
+            meta["page"] = resolve_coach_source_page(merged)
+        except Exception:
+            meta.setdefault("page", page)
+    nav_meta = state.get("studio_nav_state")
+    if isinstance(nav_meta, dict):
+        nav_meta["studio_page"] = page
+    return page
+
+
 def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: str) -> dict[str, Any]:
     core = state.get("core") if isinstance(state.get("core"), dict) else {}
     session_extra = state.get("session") if isinstance(state.get("session"), dict) else {}
@@ -197,6 +231,7 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
                 state[key] = ss[key]
     save_reason = str(ss.pop("_suite_pending_save_reason", None) or "autosave")
     state["music_workspace_state"] = _build_workspace_envelope(st, state, save_reason=save_reason)
+    _sync_studio_page_into_music_blob(st, state)
     return state
 
 
@@ -353,14 +388,23 @@ def apply_music_disk_state(
         from music_persistence_trace import update_trace
 
         coach_page = resolve_coach_source_page(ss)
+        ws_meta = payload.get("music_workspace_state")
+        ws_studio = (
+            str(ws_meta.get("studio_page") or "").strip()
+            if isinstance(ws_meta, dict)
+            else ""
+        )
         update_trace(
             st,
             studio_page_raw=pre_restore_studio_page or blob_studio,
             normalized_studio_page=coach_page,
             cloud_payload_studio_page=blob_studio or None,
+            restored_studio_page=active_studio or blob_studio or None,
             restore_decision=overwrite_source,
+            restore_skip_reason=ss.get("_suite_persist_restore_skip_reason"),
             final_studio_page=ss.get("studio_page"),
             page_owner_flag=bool(ss.get("_suite_page_user_nav")),
+            music_workspace_state_studio_page=ws_studio or None,
         )
     except Exception:
         pass
@@ -435,8 +479,75 @@ def prepare_music_workspace(
     )
 
 
+def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
+    """Update ?dev=1 trace after force/autosave (phone→Dell page sync diagnostics)."""
+    try:
+        from music_persistence_trace import update_trace
+
+        ss = st.session_state
+        saved_studio = str(ss.get("studio_page") or "").strip()
+        coach_page = ""
+        try:
+            from music_coach_context import resolve_coach_source_page
+
+            coach_page = resolve_coach_source_page(ss)
+        except Exception:
+            coach_page = saved_studio
+        ws_meta = ss.get("music_workspace_state")
+        ws_studio = (
+            str(ws_meta.get("studio_page") or "").strip()
+            if isinstance(ws_meta, dict)
+            else saved_studio
+        )
+        cloud_updated_at = None
+        cloud_fetch_page = ""
+        cloud_payload_page = saved_studio
+        try:
+            from suite_cloud_state import load_cloud_full_session
+
+            cloud_state, cloud_ts = load_cloud_full_session(APP_ID)
+            cloud_updated_at = cloud_ts
+            if isinstance(cloud_state, dict) and cloud_state:
+                cloud_meta = (
+                    cloud_state.get("music_workspace_state")
+                    if isinstance(cloud_state.get("music_workspace_state"), dict)
+                    else {}
+                )
+                cloud_core = cloud_state.get("core") if isinstance(cloud_state.get("core"), dict) else {}
+                cloud_fetch_page = str(
+                    cloud_meta.get("studio_page")
+                    or cloud_core.get("studio_page")
+                    or ""
+                ).strip()
+                if cloud_fetch_page:
+                    cloud_payload_page = cloud_fetch_page
+                    ss["_suite_cloud_fetch_studio_page"] = cloud_fetch_page
+        except Exception:
+            pass
+        local_updated_at = ss.get("_suite_persist_debug_disk_ts") or ss.get("_suite_persist_last_save_at")
+        update_trace(
+            st,
+            studio_page_raw=saved_studio or None,
+            normalized_studio_page=coach_page,
+            cloud_payload_studio_page=cloud_payload_page or None,
+            music_workspace_state_studio_page=ws_studio or saved_studio or None,
+            last_save_cloud=bool(ss.get("_suite_persist_last_save_cloud")),
+            force_save_reason=reason or ss.get("_suite_persist_last_save_reason"),
+            page_owner_flag=bool(ss.get("_suite_page_user_nav")),
+            cloud_fetch_studio_page=cloud_fetch_page or ss.get("_suite_cloud_fetch_studio_page"),
+            cloud_updated_at=cloud_updated_at,
+            local_updated_at=local_updated_at,
+            final_studio_page=ss.get("studio_page"),
+        )
+    except Exception:
+        pass
+
+
 def force_save_music_state(st: Any, *, reason: str = "") -> bool:
-    return force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
+    ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
+    if ok or reason == "page_change":
+        _record_music_persist_trace(st, reason=reason)
+    return ok
 
 
 def autosave_music_state(st: Any) -> dict[str, Any]:
@@ -452,38 +563,38 @@ def autosave_music_state(st: Any) -> dict[str, Any]:
     except Exception as exc:
         result["error"] = str(exc)
     try:
-        from music_persistence_trace import update_trace
+        from music_persistence_trace import get_trace, update_trace
 
-        core = build_music_disk_state(st).get("core", {})
-        if not isinstance(core, dict):
-            core = {}
-        saved_studio = str(core.get("studio_page") or core.get("page") or "")
+        ss = st.session_state
+        prior = get_trace(st)
+        saved_studio = str(ss.get("studio_page") or "")
         coach_page = ""
         try:
             from music_coach_context import resolve_coach_source_page
 
-            coach_page = resolve_coach_source_page(st.session_state)
+            coach_page = resolve_coach_source_page(ss)
         except Exception:
             coach_page = saved_studio
-        update_trace(
-            st,
-            autosave_ran=not result.get("skipped", True),
-            cloud_save_success=result.get("cloud_ok"),
-            cloud_save_attempted=result.get("cloud_attempted"),
-            cloud_save_error=result.get("cloud_error"),
-            last_save_source=result.get("last_save_source"),
-            persist_calls_autosave=True,
-            saved_pick_key=str(core.get("pick_key") or ""),
-            saved_display_key=str(core.get("display_key") or ""),
-            saved_instrument=str(core.get("instrument") or ""),
-            saved_studio_page=saved_studio,
-            studio_page_raw=st.session_state.get("studio_page"),
-            normalized_studio_page=coach_page,
-            cloud_payload_studio_page=saved_studio or None,
-            last_save_cloud=bool(result.get("cloud_ok")),
-            force_save_reason=st.session_state.get("_suite_persist_last_save_reason"),
-            page_owner_flag=bool(st.session_state.get("_suite_page_user_nav")),
-        )
+        trace_fields: dict[str, Any] = {
+            "autosave_ran": not result.get("skipped", True),
+            "cloud_save_success": result.get("cloud_ok"),
+            "cloud_save_attempted": result.get("cloud_attempted"),
+            "cloud_save_error": result.get("cloud_error"),
+            "last_save_source": result.get("last_save_source"),
+            "persist_calls_autosave": True,
+            "saved_studio_page": saved_studio,
+            "studio_page_raw": ss.get("studio_page"),
+            "normalized_studio_page": coach_page,
+            "cloud_payload_studio_page": saved_studio or None,
+            "last_save_cloud": bool(result.get("cloud_ok")),
+            "force_save_reason": ss.get("_suite_persist_last_save_reason"),
+            "final_studio_page": ss.get("studio_page"),
+        }
+        if ss.get("_suite_page_user_nav"):
+            trace_fields["page_owner_flag"] = True
+        elif prior.get("force_save_reason") != "page_change":
+            trace_fields["page_owner_flag"] = False
+        update_trace(st, **trace_fields)
         try:
             from suite_cloud_state import load_cloud_full_session
 

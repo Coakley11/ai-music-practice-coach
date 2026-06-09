@@ -6992,12 +6992,6 @@ def _render_nav_art_cell(
         if (current is None or page_id != current) and navigate_studio_page(
             session_state, page_id
         ):
-            try:
-                from music_persistent_state import after_studio_page_change
-
-                after_studio_page_change(st, session_state)
-            except Exception:
-                pass
             rerun_fn()
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -7043,12 +7037,6 @@ def _render_simple_nav_row(
                 use_container_width=True,
             ):
                 if page_id != current and navigate_studio_page(session_state, page_id):
-                    try:
-                        from music_persistent_state import after_studio_page_change
-
-                        after_studio_page_change(st, session_state)
-                    except Exception:
-                        pass
                     rerun_fn()
 
 
@@ -7328,12 +7316,6 @@ def render_sidebar_studio_nav(
             type="secondary",
         ):
             if page_id != current and navigate_studio_page(session_state, page_id):
-                try:
-                    from music_persistent_state import after_studio_page_change
-
-                    after_studio_page_change(st, session_state)
-                except Exception:
-                    pass
                 rerun_fn()
         st.sidebar.markdown("</div>", unsafe_allow_html=True)
     st.sidebar.markdown("</div>", unsafe_allow_html=True)

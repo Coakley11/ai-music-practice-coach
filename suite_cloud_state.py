@@ -339,8 +339,15 @@ def session_page_summary(app_id: str, state: dict[str, Any]) -> tuple[str, str]:
         page = str(state.get("active_page") or "")
         return page, page or "Baseball session"
     if app_key == "music":
+        meta = state.get("music_workspace_state") if isinstance(state.get("music_workspace_state"), dict) else {}
         core = state.get("core") if isinstance(state.get("core"), dict) else state
-        page = str((core or {}).get("studio_page") or (core or {}).get("page") or state.get("studio_page") or "")
+        page = str(
+            meta.get("studio_page")
+            or (core or {}).get("studio_page")
+            or (core or {}).get("page")
+            or state.get("studio_page")
+            or ""
+        )
         song = str((core or {}).get("song") or state.get("song") or "")
         return page, song or page or "Music session"
     if app_key == "investment":

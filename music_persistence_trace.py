@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from typing import Any
 
-MUSIC_PERSIST_DEPLOY_VERSION = "2026-06-08-phase-c-nav-song-v1"
+MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v20-phone-cloud-page-sync"
 TRACE_KEY = "_music_persist_trace"
 
 
@@ -95,8 +95,13 @@ def render_persistence_trace_sidebar(st: Any) -> None:
             ("last_save_cloud", trace.get("last_save_cloud")),
             ("cloud_fetch_studio_page", trace.get("cloud_fetch_studio_page") or ss.get("_suite_cloud_fetch_studio_page")),
             ("restore_decision", trace.get("restore_decision") or ss.get("_suite_restore_decision")),
+            ("restore_skip_reason", trace.get("restore_skip_reason") or ss.get("_suite_persist_restore_skip_reason")),
             ("force_save_reason", trace.get("force_save_reason") or ss.get("_suite_persist_last_save_reason")),
+            ("cloud_updated_at", trace.get("cloud_updated_at") or ss.get("_suite_cloud_fetch_updated_at")),
+            ("local_updated_at", trace.get("local_updated_at") or ss.get("_suite_persist_debug_disk_ts")),
             ("page_owner flag", trace.get("page_owner_flag") if trace.get("page_owner_flag") is not None else ss.get("_suite_page_user_nav")),
+            ("_suite_page_user_nav", ss.get("_suite_page_user_nav")),
+            ("music_workspace_state studio_page", trace.get("music_workspace_state_studio_page")),
             ("page overwrite source", ss.get("_suite_page_overwrite_source")),
             ("persist restore skip", ss.get("_suite_persist_restore_skip_reason")),
             ("insight render skipped", ss.get("_ami_insight_render_skipped_reason")),

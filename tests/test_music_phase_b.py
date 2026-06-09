@@ -451,6 +451,36 @@ class TestMusicWorkspaceEnvelope(unittest.TestCase):
         self.assertEqual(meta.get("schema_version"), 1)
         self.assertEqual(meta.get("studio_page"), "practice")
 
+    def test_build_disk_state_stamps_live_studio_page_over_stale_core(self) -> None:
+        st = MagicMock()
+        st.session_state = {
+            "studio_page": "picker",
+            "instrument": "Piano",
+            "active_catalog_pick_key": "pop:test",
+        }
+        with patch("music_persistent_state.build_music_local_state") as mock_core:
+            mock_core.return_value = {
+                "studio_page": "practice",
+                "page": "practice",
+                "pick_key": "pop:test",
+                "instrument": "Piano",
+            }
+            state = build_music_disk_state(st)
+        self.assertEqual(state["core"]["studio_page"], "picker")
+        self.assertEqual(state["session"]["studio_page"], "picker")
+        self.assertEqual(state["music_workspace_state"]["studio_page"], "picker")
+        self.assertEqual(state["music_workspace_state"]["page"], "practice")
+
+    def test_session_page_summary_prefers_workspace_studio_page(self) -> None:
+        from suite_cloud_state import session_page_summary
+
+        blob = {
+            "core": {"studio_page": "practice", "page": "practice"},
+            "music_workspace_state": {"studio_page": "backing", "page": "backing"},
+        }
+        page, _summary = session_page_summary("music", blob)
+        self.assertEqual(page, "backing")
+
 
 if __name__ == "__main__":
     unittest.main()
