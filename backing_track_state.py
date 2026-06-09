@@ -23,6 +23,29 @@ BACKING_LOOPS_MAX = 10
 BACKING_LOOPS_DEFAULT = 2
 BACKING_VOLUME_DEFAULT = 0.75
 
+# Live Streamlit widget keys — must match gather_backing_filters + envelope fields.
+BACKING_METER_WIDGET_KEY = "backing_time_signature"
+BACKING_METER_OVERRIDE_WIDGET_KEY = "backing_time_signature_override"
+BACKING_SCOPE_WIDGET_KEY = "backing_track_scope"
+BACKING_SINGLE_SECTION_WIDGET_KEY = "backing_track_single_section"
+BACKING_MULTI_SECTIONS_WIDGET_KEY = "backing_track_multi_sections"
+BACKING_LOOPS_WIDGET_KEY = "backing_track_loops"
+BACKING_QUICK_SECTION_WIDGET_KEY = "backing_quick_section"
+
+BACKING_DURABLE_WIDGET_KEYS = frozenset(
+    {
+        BACKING_METER_WIDGET_KEY,
+        BACKING_METER_OVERRIDE_WIDGET_KEY,
+        BACKING_SCOPE_WIDGET_KEY,
+        BACKING_SINGLE_SECTION_WIDGET_KEY,
+        BACKING_MULTI_SECTIONS_WIDGET_KEY,
+        BACKING_LOOPS_WIDGET_KEY,
+        BACKING_QUICK_SECTION_WIDGET_KEY,
+        "backing_track_bpm",
+        "backing_groove_style",
+    }
+)
+
 BACKING_SCALAR_KEYS = (
     "backing_track_scope",
     "backing_track_single_section",
@@ -58,6 +81,13 @@ __all__ = (
     "BACKING_SCOPE_CHOICES",
     "BACKING_STATE_KEY",
     "BACKING_VOLUME_DEFAULT",
+    "BACKING_DURABLE_WIDGET_KEYS",
+    "BACKING_LOOPS_WIDGET_KEY",
+    "BACKING_METER_OVERRIDE_WIDGET_KEY",
+    "BACKING_METER_WIDGET_KEY",
+    "BACKING_QUICK_SECTION_WIDGET_KEY",
+    "BACKING_SCOPE_WIDGET_KEY",
+    "BACKING_SINGLE_SECTION_WIDGET_KEY",
     "apply_backing_source_state_from_ami",
     "apply_cloud_backing_state_if_allowed",
     "canonical_backing_filters",
@@ -76,10 +106,12 @@ __all__ = (
     "backing_canonical_meter_seed",
     "has_restored_backing_canonical",
     "prepare_backing_bpm_for_widget",
+    "prepare_backing_durable_widgets",
     "prepare_backing_meter_for_widget",
     "prepare_backing_page",
     "prepare_backing_scope_for_widget",
     "render_backing_state_debug",
+    "strip_durable_backing_snapshot_keys",
     "write_canonical_backing_state",
 )
 
@@ -179,15 +211,25 @@ def _normalize_multi_sections(val: Any) -> list[str]:
 def _normalize_filters(raw: dict[str, Any] | None) -> dict[str, Any]:
     src = raw if isinstance(raw, dict) else {}
     override_raw = src.get("backing_time_signature_override")
+    loops_raw = src.get("backing_track_loops")
+    if loops_raw is None:
+        loops_norm = BACKING_LOOPS_DEFAULT
+    else:
+        loops_norm = normalize_backing_loops(loops_raw)
+    meter_raw = src.get("backing_time_signature")
+    if meter_raw is None:
+        meter_norm = "4/4"
+    else:
+        meter_norm = normalize_backing_meter(meter_raw)
     return {
         "backing_track_scope": normalize_backing_scope(src.get("backing_track_scope")),
         "backing_track_single_section": str(src.get("backing_track_single_section") or "").strip(),
         "backing_track_multi_sections": _normalize_multi_sections(src.get("backing_track_multi_sections")),
-        "backing_track_loops": normalize_backing_loops(src.get("backing_track_loops")),
+        "backing_track_loops": loops_norm,
         "backing_track_bpm": normalize_backing_bpm(src.get("backing_track_bpm")),
         "backing_groove_style": normalize_backing_groove(src.get("backing_groove_style")),
         "backing_volume": normalize_backing_volume(src.get("backing_volume")),
-        "backing_time_signature": normalize_backing_meter(src.get("backing_time_signature")),
+        "backing_time_signature": meter_norm,
         "backing_time_signature_override": bool(override_raw),
         "backing_quick_section": str(src.get("backing_quick_section") or "").strip(),
     }
@@ -218,6 +260,33 @@ def _filters_have_content(filters: dict[str, Any]) -> bool:
     return False
 
 
+def strip_durable_backing_snapshot_keys(snapshot: dict[str, Any] | None) -> dict[str, Any]:
+    """Drop canonical-backed widget keys from legacy page snapshots."""
+    if not isinstance(snapshot, dict):
+        return {}
+    return {key: val for key, val in snapshot.items() if key not in BACKING_DURABLE_WIDGET_KEYS}
+
+
+def _sync_scope_keys_from_session(session: dict[str, Any]) -> dict[str, Any]:
+    """Align scope, single section, and Step-2 quick section from live widget keys."""
+    quick = str(session.get(BACKING_QUICK_SECTION_WIDGET_KEY) or "").strip()
+    scope = normalize_backing_scope(session.get(BACKING_SCOPE_WIDGET_KEY))
+    single = str(session.get(BACKING_SINGLE_SECTION_WIDGET_KEY) or "").strip()
+    if quick and quick != "Full song":
+        if scope == "Full song":
+            scope = "Single section"
+            single = quick
+    elif scope == "Single section" and single:
+        quick = single
+    elif scope == "Full song" and not quick:
+        quick = "Full song"
+    return {
+        "backing_track_scope": scope,
+        "backing_track_single_section": single,
+        "backing_quick_section": quick,
+    }
+
+
 def gather_backing_filters(session: dict[str, Any]) -> dict[str, Any]:
     """Read Backing page filters from live session keys."""
     bpm = session.get("backing_track_bpm")
@@ -230,18 +299,34 @@ def gather_backing_filters(session: dict[str, Any]) -> dict[str, Any]:
         volume_val = None
     else:
         volume_val = normalize_backing_volume(volume)
+    loops_raw = session.get(BACKING_LOOPS_WIDGET_KEY)
+    if loops_raw is None and BACKING_LOOPS_WIDGET_KEY not in session:
+        pending = session.get("_pending_backing_loops")
+        if pending is not None:
+            loops_raw = pending
+            loops_val = normalize_backing_loops(pending)
+        else:
+            loops_val = None
+    else:
+        loops_val = normalize_backing_loops(loops_raw)
+    scope_keys = _sync_scope_keys_from_session(session)
+    meter = session.get(BACKING_METER_WIDGET_KEY)
+    if meter is None and BACKING_METER_WIDGET_KEY not in session:
+        meter_val = None
+    else:
+        meter_val = normalize_backing_meter(meter)
     return _normalize_filters(
         {
-            "backing_track_scope": session.get("backing_track_scope"),
-            "backing_track_single_section": session.get("backing_track_single_section"),
-            "backing_track_multi_sections": session.get("backing_track_multi_sections"),
-            "backing_track_loops": session.get("backing_track_loops"),
+            **scope_keys,
+            "backing_track_multi_sections": session.get(BACKING_MULTI_SECTIONS_WIDGET_KEY),
+            "backing_track_loops": loops_val,
             "backing_track_bpm": bpm_val,
             "backing_groove_style": session.get("backing_groove_style"),
             "backing_volume": volume_val,
-            "backing_time_signature": session.get("backing_time_signature"),
-            "backing_time_signature_override": session.get("backing_time_signature_override"),
-            "backing_quick_section": session.get("backing_quick_section"),
+            "backing_time_signature": meter_val,
+            "backing_time_signature_override": bool(
+                session.get(BACKING_METER_OVERRIDE_WIDGET_KEY, False)
+            ),
         }
     )
 
@@ -361,6 +446,12 @@ def prepare_backing_bpm_for_widget(session: dict[str, Any], *, default_bpm: int 
     if bpm is not None:
         session["backing_track_bpm"] = int(bpm)
     return int(bpm or default_bpm)
+
+
+def prepare_backing_durable_widgets(session: dict[str, Any], *, default_meter: str = "4/4") -> None:
+    """Bind meter + scope/loop widgets to canonical blob before Backing widgets render."""
+    prepare_backing_scope_for_widget(session)
+    prepare_backing_meter_for_widget(session, default_meter=default_meter)
 
 
 def prepare_backing_scope_for_widget(session: dict[str, Any]) -> None:
@@ -559,6 +650,8 @@ def collect_backing_persistence_trace(
         "restored_backing_loops": session.get("backing_track_loops", ""),
         "restored_backing_meter": session.get("backing_time_signature", ""),
         "restored_backing_section": session.get("backing_track_single_section", ""),
+        "restored_backing_quick_section": session.get("backing_quick_section", ""),
+        "restored_backing_meter_override": session.get("backing_time_signature_override", ""),
         "backing_dirty": is_backing_locally_dirty(session),
         "backing_restore_applied": bool(session.get(BACKING_RESTORED_KEY)),
         "backing_restore_skipped": session.get("_backing_restore_skipped_reason"),
@@ -600,6 +693,8 @@ def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
         f"sec=`{trace['restored_backing_section']}` "
         f"loops=`{trace['restored_backing_loops']}` "
         f"meter=`{trace['restored_backing_meter']}` "
+        f"ovr=`{trace['restored_backing_meter_override']}` "
+        f"quick=`{trace['restored_backing_quick_section']}` "
         f"bpm=`{trace['restored_backing_bpm']}` "
         f"groove=`{trace['restored_backing_groove']}` "
         f"restore=`{trace['backing_restore_applied']}`"

@@ -21,3 +21,23 @@ def test_backing_snapshot_excludes_durable_scope_and_loops() -> None:
     assert "backing_track_multi_sections" not in snap
     assert "backing_quick_section" not in snap
     assert snap.get("_last_backing_wav") == b"audio"
+
+
+def test_legacy_snapshot_restore_strips_durable_backing_keys() -> None:
+    from studio_page_persistence import apply_page_snapshot
+
+    session = {
+        "backing_track_loops": 1,
+        "backing_track_scope": "Single section",
+        "instrument": "Piano",
+    }
+    legacy = {
+        "backing_track_loops": 2,
+        "backing_track_scope": "Full song",
+        "backing_quick_section": "Full song",
+        "_last_backing_wav": b"audio",
+    }
+    apply_page_snapshot(session, legacy)
+    assert session["backing_track_loops"] == 1
+    assert session["backing_track_scope"] == "Single section"
+    assert session.get("_last_backing_wav") == b"audio"

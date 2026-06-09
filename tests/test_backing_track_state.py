@@ -12,6 +12,7 @@ from backing_track_state import (
     coerce_backing_groove_for_widget,
     commit_backing_state_from_session,
     flush_backing_edits,
+    gather_backing_filters,
     is_backing_locally_dirty,
     mark_backing_local_edit,
     prepare_backing_page,
@@ -232,6 +233,16 @@ class TestBackingTrackState(unittest.TestCase):
         commit_backing_state_from_session(session, reason="autosave")
         self.assertEqual(session["backing_track_state"]["backing_track_loops"], 1)
         self.assertEqual(session["backing_track_loops"], 1)
+
+    def test_gather_syncs_quick_section_to_scope(self) -> None:
+        session = {
+            "backing_quick_section": "Chorus",
+            "backing_track_scope": "Full song",
+        }
+        filters = gather_backing_filters(session)
+        self.assertEqual(filters["backing_track_scope"], "Single section")
+        self.assertEqual(filters["backing_track_single_section"], "Chorus")
+        self.assertEqual(filters["backing_quick_section"], "Chorus")
 
 
 if __name__ == "__main__":

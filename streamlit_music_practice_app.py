@@ -8521,11 +8521,20 @@ def _render_backing_scope_controls(
 
         st.markdown('<div class="ui-backing-scope-loops-row">', unsafe_allow_html=True)
         render_backing_field_label(st, "Repeats", "How many times to loop the chosen range.")
+        try:
+            from backing_track_state import BACKING_LOOPS_DEFAULT, normalize_backing_loops
+
+            _loops_slider_val = normalize_backing_loops(
+                st.session_state.get("backing_track_loops", BACKING_LOOPS_DEFAULT)
+            )
+            st.session_state["backing_track_loops"] = _loops_slider_val
+        except ImportError:
+            _loops_slider_val = int(st.session_state.get("backing_track_loops", 2))
         st.slider(
             "Number of repeats",
             1,
             10,
-            2,
+            _loops_slider_val,
             1,
             key="backing_track_loops",
             label_visibility="collapsed",
@@ -8658,6 +8667,12 @@ def _render_backing_step2_playback_action(
             song_id=song_id,
             default_time_signature=default_meter,
         )
+    try:
+        from backing_track_state import prepare_backing_durable_widgets
+
+        prepare_backing_durable_widgets(st.session_state, default_meter=default_meter)
+    except ImportError:
+        pass
     _prime_backing_quick_section_from_scope(st.session_state, section_names)
     quick_opts = ["Full song"] + list(section_names)
     slider_key = backing_bpm_slider_widget_key(song_id)
@@ -10687,6 +10702,13 @@ elif _studio_page == "backing":
     _synced_bpm = int(_backing_canon["applied_bpm"])
     default_groove_style = str(_backing_canon["applied_groove"])
     _backing_song_just_reset = bool(_backing_canon["did_reset"])
+
+    try:
+        from backing_track_state import prepare_backing_durable_widgets
+
+        prepare_backing_durable_widgets(st.session_state, default_meter=_default_meter)
+    except Exception:
+        pass
 
     if not pp.is_capture_mode(st):
         if km.is_voice_mode(st.session_state):

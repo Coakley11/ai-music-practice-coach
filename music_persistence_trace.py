@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v30-backing-meter-scope-loops"
+MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v31-backing-widget-key-bind"
 
 TRACE_KEY = "_music_persist_trace"
 

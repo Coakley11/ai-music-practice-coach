@@ -33,24 +33,18 @@ def apply_backing_meter_for_song(
 
     if song_changed and st.session_state.get(LAST_BACKING_METER_SONG) is None:
         try:
-            from backing_track_state import backing_canonical_meter_seed, is_backing_locally_dirty
+            from backing_track_state import has_restored_backing_canonical, prepare_backing_meter_for_widget
 
-            if not is_backing_locally_dirty(st.session_state):
-                canon_meter, canon_override = backing_canonical_meter_seed(st.session_state)
-                if canon_meter is not None or canon_override:
-                    st.session_state[LAST_BACKING_METER_SONG] = song_id
-                    if canon_meter is not None:
-                        st.session_state[BACKING_METER_KEY] = canon_meter
-                    if canon_override is not None:
-                        st.session_state[BACKING_METER_OVERRIDE_KEY] = bool(canon_override)
-                    applied = normalize_time_signature(
-                        st.session_state.get(BACKING_METER_KEY, song_default)
-                    )
-                    if applied not in BACKING_TIME_SIGNATURES:
-                        applied = song_default
-                        st.session_state[BACKING_METER_KEY] = applied
-                    override = bool(st.session_state.get(BACKING_METER_OVERRIDE_KEY, False))
-                    return applied, override, song_default
+            if has_restored_backing_canonical(st.session_state):
+                applied, override = prepare_backing_meter_for_widget(
+                    st.session_state,
+                    default_meter=song_default,
+                )
+                st.session_state[LAST_BACKING_METER_SONG] = song_id
+                if applied not in BACKING_TIME_SIGNATURES:
+                    applied = song_default
+                    st.session_state[BACKING_METER_KEY] = applied
+                return applied, override, song_default
         except ImportError:
             pass
 

@@ -382,6 +382,12 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
     """Restore page-local keys; global musician settings are always preserved."""
     preserved = _preserve_global_state(session_state)
     local = _filter_page_local_snapshot(snapshot)
+    try:
+        from backing_track_state import strip_durable_backing_snapshot_keys
+
+        local = strip_durable_backing_snapshot_keys(local)
+    except ImportError:
+        pass
     for key, val in local.items():
         session_state[key] = copy.deepcopy(val)
     _restore_preserved_globals(session_state, preserved)
@@ -399,10 +405,17 @@ def restore_page_snapshot(session_state: dict, page_id: str) -> None:
 
 def sanitize_persisted_snapshots(session_state: dict) -> None:
     """Strip globals from stored page snapshots and nav history (legacy sessions)."""
+    try:
+        from backing_track_state import strip_durable_backing_snapshot_keys
+    except ImportError:
+        strip_durable_backing_snapshot_keys = None  # type: ignore[assignment]
     store = session_state.get(_PAGE_SNAPSHOTS_KEY)
     if isinstance(store, dict):
         for page_id, snap in list(store.items()):
-            store[page_id] = _filter_page_local_snapshot(snap if isinstance(snap, dict) else {})
+            cleaned = _filter_page_local_snapshot(snap if isinstance(snap, dict) else {})
+            if strip_durable_backing_snapshot_keys is not None:
+                cleaned = strip_durable_backing_snapshot_keys(cleaned)
+            store[page_id] = cleaned
 
     for stack_key in ("studio_nav_back", "studio_nav_forward"):
         stack = session_state.get(stack_key)

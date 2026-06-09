@@ -97,6 +97,13 @@ def init_practice_page_state(session_state: dict) -> None:
 
 
 def init_backing_page_state(session_state: dict) -> None:
+    try:
+        from backing_track_state import has_restored_backing_canonical
+
+        if has_restored_backing_canonical(session_state):
+            return
+    except ImportError:
+        pass
     session_state.setdefault("backing_track_scope", "Full song")
     session_state.setdefault("backing_track_loops", 2)
     session_state.setdefault("backing_quick_section", "Full song")
