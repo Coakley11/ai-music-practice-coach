@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v22-stale-resume-force-restore"
+MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v23-pick-key-no-restore-skip"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -51,6 +51,8 @@ WORKSPACE_RESTORE_TRACE_LABELS: tuple[str, ...] = (
     "stale_resume_flags_cleared",
 
     "has_resume_query_params_result",
+
+    "should_skip_workspace_restore_for_resume",
 
     "ami_return_navigation_active",
 
@@ -362,6 +364,8 @@ def snapshot_workspace_restore_trace(st: Any) -> dict[str, Any]:
 
         "has_resume_query_params_result": trace.get("has_resume_query_params_result"),
 
+        "should_skip_workspace_restore_for_resume": trace.get("should_skip_workspace_restore_for_resume"),
+
         "ami_return_navigation_active": trace.get("ami_return_navigation_active"),
 
     }
@@ -437,6 +441,8 @@ def _workspace_restore_row_values(st: Any, trace: dict[str, Any]) -> dict[str, A
         or ss.get("_suite_stale_resume_flags_cleared"),
 
         "has_resume_query_params_result": trace.get("has_resume_query_params_result"),
+
+        "should_skip_workspace_restore_for_resume": trace.get("should_skip_workspace_restore_for_resume"),
 
         "ami_return_navigation_active": trace.get("ami_return_navigation_active"),
 

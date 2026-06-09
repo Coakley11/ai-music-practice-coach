@@ -485,7 +485,8 @@ def prepare_music_workspace(
             st,
             live_resume_url_params=live_params,
             stale_resume_flags_cleared=cleared,
-            has_resume_query_params_result=skip,
+            has_resume_query_params_result=bool(live_params),
+            should_skip_workspace_restore_for_resume=skip,
             ami_return_navigation_active=ami_active,
         )
     except Exception:

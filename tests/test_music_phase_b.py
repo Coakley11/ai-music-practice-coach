@@ -489,7 +489,7 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("studio-nav-stable-v22", info["build_marker"])
+        self.assertIn("studio-nav-stable-v23", info["build_marker"])
 
     def test_snapshot_workspace_restore_always_sets_trace_fields(self) -> None:
         from music_persistence_trace import get_trace, snapshot_workspace_restore_trace
@@ -623,8 +623,56 @@ class TestStaleResumeLaunchFlags(unittest.TestCase):
         trace = get_trace(st)
         self.assertEqual(trace.get("live_resume_url_params"), [])
         self.assertIn("_suite_resume_launch_music", trace.get("stale_resume_flags_cleared") or [])
-        self.assertFalse(trace.get("has_resume_query_params_result"))
+        self.assertFalse(trace.get("should_skip_workspace_restore_for_resume"))
         self.assertFalse(trace.get("ami_return_navigation_active"))
+
+    def test_prepare_music_workspace_applies_cloud_with_suite_pick_key_only(self) -> None:
+        from music_persistent_state import apply_music_disk_state, prepare_music_workspace
+        from music_persistence_trace import get_trace
+        from suite_cloud_state import should_skip_workspace_restore_for_resume
+
+        st = MagicMock()
+        st.session_state = {"studio_page": "practice"}
+        st.query_params = {"suite_pick_key": "Pop|Perfect"}
+        cloud_state = {
+            "core": {"studio_page": "backing", "pick_key": "Pop|Perfect"},
+            "music_workspace_state": {"studio_page": "backing", "page": "backing"},
+        }
+
+        self.assertFalse(should_skip_workspace_restore_for_resume(st, "music", reconcile_first=False))
+
+        with patch(
+            "suite_cloud_state.load_cloud_full_session",
+            return_value=(cloud_state, "2026-06-08T16:00:00+00:00"),
+        ), patch(
+            "suite_user_persistence._load_raw",
+            return_value=({"core": {"studio_page": "practice"}}, None, "2026-06-08T12:00:00+00:00"),
+        ), patch(
+            "music_persistent_state.apply_music_disk_state",
+            wraps=lambda st_obj, state, **kw: apply_music_disk_state(
+                st_obj,
+                state,
+                song_picker_catalog={},
+                song_library=None,
+            ),
+        ) as mock_apply, patch(
+            "suite_user_persistence.save_user_state",
+            return_value=True,
+        ):
+            ok = prepare_music_workspace(
+                st,
+                song_picker_catalog={},
+                song_library=None,
+            )
+
+        self.assertTrue(ok)
+        mock_apply.assert_called_once()
+        self.assertEqual(st.session_state.get("studio_page"), "backing")
+        trace = get_trace(st)
+        self.assertEqual(trace.get("live_resume_url_params"), ["suite_pick_key"])
+        self.assertTrue(trace.get("has_resume_query_params_result"))
+        self.assertFalse(trace.get("should_skip_workspace_restore_for_resume"))
+        self.assertNotIn("_suite_persist_restore_skip_reason", st.session_state)
 
 
 if __name__ == "__main__":

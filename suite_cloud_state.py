@@ -62,6 +62,31 @@ _RESUME_QUERY_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _normalize_resume_app_key(app_key: str) -> str:
+    key = str(app_key or "").strip()
+    if key == "math":
+        return "applied_intelligence"
+    return key
+
+
+# URL params that must preserve return/source page navigation — block cloud workspace restore.
+_WORKSPACE_RESTORE_BLOCKING_QUERY_KEYS: dict[str, tuple[str, ...]] = {
+    "music": (
+        "suite_resume",
+        "suite_page",
+        "suite_ami_insight",
+        "suite_ai_question_id",
+    ),
+}
+
+
+def _workspace_restore_blocking_keys(app_key: str) -> tuple[str, ...]:
+    key = _normalize_resume_app_key(app_key)
+    if key in _WORKSPACE_RESTORE_BLOCKING_QUERY_KEYS:
+        return _WORKSPACE_RESTORE_BLOCKING_QUERY_KEYS[key]
+    return _RESUME_QUERY_KEYS.get(key, ("suite_resume", "suite_page"))
+
+
 def _qp_get(st: Any, name: str) -> str:
     try:
         raw = st.query_params.get(name)
@@ -86,23 +111,23 @@ def ami_return_resume_consumed(st: Any, app_key: str) -> bool:
     return bool(st.session_state.get(_ami_resume_consumed_flag(app_key)))
 
 
-def _normalize_resume_app_key(app_key: str) -> str:
-    key = str(app_key or "").strip()
-    if key == "math":
-        return "applied_intelligence"
-    return key
-
-
 def list_active_resume_query_params(st: Any, app_key: str) -> list[str]:
-    """Resume / AMI query param names currently present in the URL."""
+    """Resume / deep-link query param names currently present in the URL."""
     key = _normalize_resume_app_key(app_key)
     params = _RESUME_QUERY_KEYS.get(key, ("suite_resume", "suite_page"))
     return [name for name in params if _qp_get(st, name)]
 
 
+def list_workspace_restore_blocking_query_params(st: Any, app_key: str) -> list[str]:
+    """URL params that block cloud workspace restore (return/AMI navigation, not song hydrate)."""
+    key = _normalize_resume_app_key(app_key)
+    params = _workspace_restore_blocking_keys(key)
+    return [name for name in params if _qp_get(st, name)]
+
+
 def _ami_return_url_active(st: Any, app_key: str) -> bool:
-    """True when resume/AMI steering comes from the current URL (not stale session flags)."""
-    if list_active_resume_query_params(st, app_key):
+    """True when return/AMI URL params steer page navigation (not song hydrate-only params)."""
+    if list_workspace_restore_blocking_query_params(st, app_key):
         return True
     try:
         from applied_math_return_insight import _active_ami_return_query_param_keys, insight_return_query_id
@@ -180,7 +205,7 @@ def should_skip_workspace_restore_for_resume(
         return False
     if reconcile_first:
         reconcile_stale_resume_session_flags(st, app_key)
-    if list_active_resume_query_params(st, app_key):
+    if list_workspace_restore_blocking_query_params(st, app_key):
         return True
     try:
         from applied_math_return_insight import ami_return_navigation_active
