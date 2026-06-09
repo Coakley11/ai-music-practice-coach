@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from backing_track_state import (
     BACKING_DIRTY_KEY,
+    BACKING_DURABLE_WIDGET_KEYS,
     apply_backing_source_state_from_ami,
     apply_cloud_backing_state_if_allowed,
     coerce_backing_groove_for_widget,
+    commit_backing_canonical_blob_only,
     commit_backing_state_from_session,
     flush_backing_edits,
     gather_backing_filters,
@@ -243,6 +246,49 @@ class TestBackingTrackState(unittest.TestCase):
         self.assertEqual(filters["backing_track_scope"], "Single section")
         self.assertEqual(filters["backing_track_single_section"], "Chorus")
         self.assertEqual(filters["backing_quick_section"], "Chorus")
+
+    def test_commit_canonical_blob_only_does_not_mutate_widget_keys(self) -> None:
+        session = {
+            "backing_track_state": {
+                **_SAMPLE,
+                "backing_track_scope": "Full song",
+                "backing_track_loops": 2,
+                "last_write_reason": "cloud",
+            },
+            "backing_track_scope": "Full song",
+            "backing_track_loops": 2,
+            "backing_time_signature": "4/4",
+            "backing_time_signature_override": False,
+            "backing_track_bpm": 100,
+            "backing_groove_style": "Ballad",
+        }
+        before = {key: session[key] for key in BACKING_DURABLE_WIDGET_KEYS if key in session}
+        commit_backing_canonical_blob_only(session, reason="post_render")
+        after = {key: session[key] for key in BACKING_DURABLE_WIDGET_KEYS if key in session}
+        self.assertEqual(before, after)
+        self.assertEqual(session["backing_track_state"]["backing_track_scope"], "Full song")
+        self.assertEqual(session["backing_track_state"]["backing_track_loops"], 2)
+        self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 100)
+
+    def test_backing_prepare_durable_before_step1_widgets(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        src = (repo_root / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        backing_block = src.split('elif _studio_page == "backing":', 1)[1]
+        prepare_idx = backing_block.find("prepare_backing_durable_widgets")
+        step1_idx = backing_block.find("_render_backing_playback_setup_panel")
+        self.assertGreater(prepare_idx, -1, "prepare_backing_durable_widgets missing on backing page")
+        self.assertGreater(step1_idx, prepare_idx, "prepare must run before Step 1 widgets")
+
+    def test_backing_step2_does_not_prepare_durable_widgets(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        src = (repo_root / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        step2_body = src.split("def _render_backing_step2_playback_action", 1)[1].split("\ndef ", 1)[0]
+        self.assertNotIn(
+            "prepare_backing_durable_widgets",
+            step2_body,
+            "Step 2 must not write widget keys after Step 1 widgets render",
+        )
+        self.assertNotIn("prepare_backing_scope_for_widget", step2_body)
 
 
 if __name__ == "__main__":

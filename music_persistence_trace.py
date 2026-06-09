@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v31-backing-widget-key-bind"
+MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v31b-backing-pre-widget-prepare"
 
 TRACE_KEY = "_music_persist_trace"
 

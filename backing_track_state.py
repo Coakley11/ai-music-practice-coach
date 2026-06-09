@@ -93,6 +93,7 @@ __all__ = (
     "canonical_backing_filters",
     "clear_backing_local_edit",
     "collect_backing_persistence_trace",
+    "commit_backing_canonical_blob_only",
     "commit_backing_state_from_session",
     "coerce_backing_groove_for_widget",
     "flush_backing_edits",
@@ -527,6 +528,29 @@ def prepare_backing_page(session: dict[str, Any]) -> dict[str, Any]:
     if _filters_have_content(gathered):
         return write_canonical_backing_state(session, gathered, reason="reconcile_on_load")
     return gathered
+
+
+def commit_backing_canonical_blob_only(
+    session: dict[str, Any],
+    *,
+    reason: str = "reconcile",
+    local_edit: bool = False,
+) -> dict[str, Any]:
+    """Update canonical blob from session without writing widget-backed keys.
+
+    Safe after Backing widgets render — use instead of write_canonical_backing_state
+    or prepare_backing_durable_widgets on post-render paths.
+    """
+    filters = gather_backing_filters(session)
+    normalized = _normalize_filters(filters)
+    session[BACKING_STATE_KEY] = {
+        **normalized,
+        "last_write_reason": reason or None,
+    }
+    if local_edit:
+        mark_backing_local_edit(session)
+    session.pop(BACKING_PENDING_SYNC_KEY, None)
+    return normalized
 
 
 def commit_backing_state_from_session(session: dict[str, Any], *, reason: str = "autosave") -> dict[str, Any]:

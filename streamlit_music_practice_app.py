@@ -8558,12 +8558,6 @@ def _render_backing_playback_setup_panel(
     backing_ready: bool,
 ) -> None:
     """Step 1 — playback range and loops only."""
-    try:
-        from backing_track_state import prepare_backing_scope_for_widget
-
-        prepare_backing_scope_for_widget(st.session_state)
-    except ImportError:
-        pass
     _loop_summary = backing_scope_loop_summary_text(
         st.session_state.get("backing_track_scope", "Full song"),
         single_section=str(st.session_state.get("backing_track_single_section", "")),
@@ -8667,12 +8661,6 @@ def _render_backing_step2_playback_action(
             song_id=song_id,
             default_time_signature=default_meter,
         )
-    try:
-        from backing_track_state import prepare_backing_durable_widgets
-
-        prepare_backing_durable_widgets(st.session_state, default_meter=default_meter)
-    except ImportError:
-        pass
     _prime_backing_quick_section_from_scope(st.session_state, section_names)
     quick_opts = ["Full song"] + list(section_names)
     slider_key = backing_bpm_slider_widget_key(song_id)
@@ -10703,6 +10691,8 @@ elif _studio_page == "backing":
     default_groove_style = str(_backing_canon["applied_groove"])
     _backing_song_just_reset = bool(_backing_canon["did_reset"])
 
+    # Seed durable widget keys from canonical before Step 1 widgets render.
+    # Practice handoff (_apply_pending_backing_scope) runs later and may override scope/loops.
     try:
         from backing_track_state import prepare_backing_durable_widgets
 
