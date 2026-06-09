@@ -482,5 +482,63 @@ class TestMusicWorkspaceEnvelope(unittest.TestCase):
         self.assertEqual(page, "backing")
 
 
+class TestStaleResumeLaunchFlags(unittest.TestCase):
+    def test_stale_launch_flag_does_not_block_workspace_sync(self) -> None:
+        from suite_cloud_state import has_resume_query_params
+
+        st = MagicMock()
+        st.session_state = {
+            "_suite_resume_launch_music": True,
+            "studio_page": "practice",
+        }
+        st.query_params = {}
+        self.assertFalse(has_resume_query_params(st, "music"))
+        self.assertNotIn("_suite_resume_launch_music", st.session_state)
+
+    def test_prepare_music_workspace_applies_cloud_when_no_resume_url(self) -> None:
+        from music_persistent_state import apply_music_disk_state, prepare_music_workspace
+
+        st = MagicMock()
+        st.session_state = {
+            "_suite_resume_launch_music": True,
+            "studio_page": "practice",
+        }
+        st.query_params = {}
+        cloud_state = {
+            "core": {"studio_page": "backing", "pick_key": "pop:test"},
+            "session": {"studio_page": "backing"},
+            "music_workspace_state": {"studio_page": "backing", "page": "backing"},
+        }
+
+        with patch(
+            "suite_cloud_state.load_cloud_full_session",
+            return_value=(cloud_state, "2026-06-08T16:00:00+00:00"),
+        ), patch(
+            "suite_user_persistence._load_raw",
+            return_value=({"core": {"studio_page": "practice"}}, None, "2026-06-08T12:00:00+00:00"),
+        ), patch(
+            "music_persistent_state.apply_music_disk_state",
+            wraps=lambda st_obj, state, **kw: apply_music_disk_state(
+                st_obj,
+                state,
+                song_picker_catalog={},
+                song_library=None,
+            ),
+        ) as mock_apply, patch(
+            "suite_user_persistence.save_user_state",
+            return_value=True,
+        ):
+            ok = prepare_music_workspace(
+                st,
+                song_picker_catalog={},
+                song_library=None,
+            )
+
+        self.assertTrue(ok)
+        mock_apply.assert_called_once()
+        self.assertEqual(st.session_state.get("studio_page"), "backing")
+        self.assertNotIn("_suite_resume_launch_music", st.session_state)
+
+
 if __name__ == "__main__":
     unittest.main()

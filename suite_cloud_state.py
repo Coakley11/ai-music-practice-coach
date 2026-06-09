@@ -74,16 +74,80 @@ def _qp_get(st: Any, name: str) -> str:
     return str(raw).strip()
 
 
-def has_resume_query_params(st: Any, app_key: str) -> bool:
-    """True when the user opened via Continue / deep link (skip cloud restore)."""
-    key = str(app_key or "").strip()
+def _ami_resume_consumed_flag(app_key: str) -> str:
+    key = str(app_key or "").strip().lower()
     if key == "math":
         key = "applied_intelligence"
-    if st.session_state.get(f"_suite_resume_launch_{key}"):
+    return f"_ami_resume_consumed_{key}"
+
+
+def ami_return_resume_consumed(st: Any, app_key: str) -> bool:
+    """True after AMI insight was hydrated+rendered once on the source page."""
+    return bool(st.session_state.get(_ami_resume_consumed_flag(app_key)))
+
+
+def _normalize_resume_app_key(app_key: str) -> str:
+    key = str(app_key or "").strip()
+    if key == "math":
+        return "applied_intelligence"
+    return key
+
+
+def list_active_resume_query_params(st: Any, app_key: str) -> list[str]:
+    """Resume / AMI query param names currently present in the URL."""
+    key = _normalize_resume_app_key(app_key)
+    params = _RESUME_QUERY_KEYS.get(key, ("suite_resume", "suite_page"))
+    return [name for name in params if _qp_get(st, name)]
+
+
+def reconcile_stale_resume_session_flags(st: Any, app_key: str) -> None:
+    """
+    Drop stale resume/AMI session flags when the URL no longer carries resume params.
+
+    Prevents ``_suite_resume_launch_*`` from blocking cloud workspace restore after
+    AMI return params were consumed or the user hard-refreshed without query params.
+    """
+    ss = st.session_state
+    if list_active_resume_query_params(st, app_key):
+        return
+    try:
+        from applied_math_return_insight import ami_return_navigation_active, reconcile_stale_page_navigation
+
+        if ami_return_navigation_active(st, app_key):
+            return
+        reconcile_stale_page_navigation(st, app_key)
+    except ImportError:
+        pass
+    key = _normalize_resume_app_key(app_key)
+    for flag in (
+        f"_suite_resume_launch_{key}",
+        "_suite_resume_launch_music",
+        "_suite_resume_launch_baseball",
+        "_ami_insight_return_preserve",
+        "_skip_page_restore_for",
+        "_navigate_to_studio_page",
+        "_navigate_to_page",
+        "_suite_resume_insight_hydration_only",
+        "_suite_workspace_sync_skipped_no_apply",
+    ):
+        ss.pop(flag, None)
+
+
+def has_resume_query_params(st: Any, app_key: str) -> bool:
+    """True when the URL has active resume/AMI params or AMI return is in-flight."""
+    if ami_return_resume_consumed(st, app_key):
+        reconcile_stale_resume_session_flags(st, app_key)
+        return False
+    if list_active_resume_query_params(st, app_key):
         return True
-    for param in _RESUME_QUERY_KEYS.get(key, ("suite_resume", "suite_page")):
-        if _qp_get(st, param):
+    try:
+        from applied_math_return_insight import ami_return_navigation_active
+
+        if ami_return_navigation_active(st, app_key):
             return True
+    except ImportError:
+        pass
+    reconcile_stale_resume_session_flags(st, app_key)
     return False
 
 

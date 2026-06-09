@@ -1179,6 +1179,7 @@ def consume_ami_return_resume(st: Any, app_key: str) -> bool:
     st.session_state["ami_resume_consumed"] = True
     st.session_state.pop("_ami_insight_return_preserve", None)
     st.session_state.pop("_suite_resume_insight_hydration_only", None)
+    st.session_state.pop(f"_suite_resume_launch_{key}", None)
     st.session_state.pop("_navigate_to_page", None)
     st.session_state.pop("_navigate_to_studio_page", None)
     st.session_state.pop("_skip_page_restore_for", None)

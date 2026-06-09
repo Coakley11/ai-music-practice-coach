@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from typing import Any
 
-MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v20-phone-cloud-page-sync"
+MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v21-stale-resume-restore-fix"
 TRACE_KEY = "_music_persist_trace"
 
 

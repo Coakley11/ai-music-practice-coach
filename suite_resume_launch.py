@@ -47,6 +47,7 @@ def finalize_suite_resume_launch(
         _finalize_music_resume(st, song_picker_catalog, song_library)
 
     st.session_state[done_flag] = True
+    st.session_state.pop(launch_flag, None)
     return True
 
 
@@ -56,12 +57,12 @@ def apply_suite_resume_launch(st: Any, app_key: str) -> bool:
     Returns True when query params were applied.
     """
     flag = f"_suite_resume_launch_{app_key}"
-    ami_insight = _qp_get(st, "suite_ami_insight")
-    if st.session_state.get(flag) and not ami_insight:
+    if st.session_state.get(flag):
         return False
 
     resume = _qp_get(st, "suite_resume")
     page = _qp_get(st, "suite_page")
+    ami_insight = _qp_get(st, "suite_ami_insight")
     if not resume and not page and not ami_insight:
         return False
 
