@@ -8320,6 +8320,11 @@ def _render_practice_setup_panel(
     section_focus_after_jump: Callable[[], None] | None = None,
 ) -> None:
     """Practice Control Center — instrument, level, focus, groove, session length."""
+    from practice_state import (
+        PRACTICE_MINUTES_DEFAULT,
+        coerce_practice_groove_for_widget,
+        normalize_practice_minutes,
+    )
     from practice_ui_labels import (
         GROOVE_ICONS,
         INSTRUMENT_ICONS,
@@ -8327,26 +8332,19 @@ def _render_practice_setup_panel(
         icon_for_focus,
         setup_pill_html,
     )
+    from songs.playback_defaults import GROOVE_STYLE_CHOICES
 
-    grooves = [
-        "Auto",
-        "Pop groove",
-        "Rock groove",
-        "Jazz swing",
-        "Bossa nova",
-        "Funk groove",
-        "Ballad",
-        "Jewish hora",
-        "Klezmer groove",
-        "Jewish ballad",
-    ]
+    grooves = list(GROOVE_STYLE_CHOICES)
     _instrument = str(st.session_state.get("instrument", "Piano"))
     _level = str(st.session_state.get("level", "Intermediate"))
     _focus = str(st.session_state.get("focus", "General"))
-    st.session_state.setdefault("practice_groove_style", default_groove)
-    st.session_state.setdefault("practice_minutes", 30)
-    _groove = str(st.session_state.get("practice_groove_style", default_groove))
-    _minutes = int(st.session_state.get("practice_minutes", 30))
+    _groove = coerce_practice_groove_for_widget(st.session_state, default_groove=default_groove)
+    _minutes = normalize_practice_minutes(
+        st.session_state.get("practice_minutes"),
+        default=PRACTICE_MINUTES_DEFAULT,
+    )
+    if _minutes is not None:
+        st.session_state["practice_minutes"] = _minutes
 
     with st.container(key="practice_control_panel", border=False):
         render_practice_control_panel_header(st)
@@ -8385,10 +8383,11 @@ def _render_practice_setup_panel(
                 "Practice length (minutes)",
                 10,
                 120,
-                int(st.session_state.get("practice_minutes", 30)),
+                int(st.session_state.get("practice_minutes", _minutes or PRACTICE_MINUTES_DEFAULT)),
                 5,
                 key="practice_minutes",
                 label_visibility="collapsed",
+                on_change=_on_practice_filter_change,
             )
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -9170,9 +9169,21 @@ except Exception:
     pass
 
 sidebar_section("Session", icon="⏱️", tone="session")
-st.session_state.setdefault("practice_minutes", 30)
+try:
+    from practice_state import PRACTICE_MINUTES_DEFAULT, canonical_practice_filters, normalize_practice_minutes
+
+    _canonical_practice = canonical_practice_filters(st.session_state) or {}
+    _canonical_minutes = normalize_practice_minutes(_canonical_practice.get("practice_minutes"))
+    if _canonical_minutes is not None:
+        st.session_state["practice_minutes"] = _canonical_minutes
+except Exception:
+    PRACTICE_MINUTES_DEFAULT = 30
+_display_minutes = normalize_practice_minutes(
+    st.session_state.get("practice_minutes"),
+    default=PRACTICE_MINUTES_DEFAULT,
+)
 st.sidebar.caption(
-    f"**Practice length:** {int(st.session_state.get('practice_minutes', 30))} min "
+    f"**Practice length:** {_display_minutes} min "
     "(adjust on the **Practice** page)"
 )
 
@@ -9228,7 +9239,9 @@ else:
 
 _apply_catalog_filter_defaults()
 
-minutes = int(st.session_state.get("practice_minutes", 30))
+minutes = int(
+    normalize_practice_minutes(st.session_state.get("practice_minutes"), default=30) or 30
+)
 
 instrument = st.session_state.get("instrument", "Piano")
 sync_written_key_instrument_anchor(st.session_state, instrument)
@@ -9505,6 +9518,12 @@ if _developer_mode_enabled():
 
 if _studio_page == "practice":
 
+    try:
+        from practice_state import prepare_practice_page
+
+        prepare_practice_page(st.session_state)
+    except Exception:
+        pass
     ensure_page_initialized(st.session_state, "practice")
     try:
         from practice_state import prepare_practice_page

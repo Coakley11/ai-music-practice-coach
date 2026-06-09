@@ -442,8 +442,6 @@ def ensure_page_initialized(
         init_creative_lab_state(session_state)
     elif page_id == "custom":
         session_state.setdefault("cpl_edit_section", "Verse")
-    if page_id == "creative" or page_id == "practice":
-        session_state.setdefault("practice_minutes", 30)
 
 
 def ensure_creative_improv_initialized(session_state: dict, *, is_custom_active: bool) -> None:

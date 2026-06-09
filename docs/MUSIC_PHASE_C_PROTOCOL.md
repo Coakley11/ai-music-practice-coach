@@ -24,6 +24,12 @@ Phase C migrates Music workspace fields into canonical `{module}_state.py` blobs
 |--------|-------------|----------------|-------|
 | `practice_state.py` | `practice_state` | `music_workspace_state.practice_filters` | groove, section focus, notation prefs, last mode |
 
+**Shipped in v26 (practice sync fix):**
+
+| Module | Session key | Envelope field | Scope |
+|--------|-------------|----------------|-------|
+| `practice_state.py` | `practice_state` | `music_workspace_state.practice_filters` | + `practice_minutes`; groove normalized via `GROOVE_STYLE_CHOICES` |
+
 **Queued (not started):** `backing_track_state`, `creative_state`, `karaoke_state`, `upload_state`, `practice_log_state`
 
 **Watch item (non-blocker):** First phone→Dell instrument/setup edit may not sync immediately; monitor on next acceptance pass.

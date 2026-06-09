@@ -192,6 +192,7 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             "practice_focus_section": practice_meta.get("practice_focus_section")
             or active_song_meta.get("practice_focus_section"),
             "practice_groove_style": practice_meta.get("practice_groove_style"),
+            "practice_minutes": practice_meta.get("practice_minutes"),
             "practice_notation_lines": practice_meta.get("practice_notation_lines"),
             "practice_notation_difficulty": practice_meta.get("practice_notation_difficulty"),
             "last_practice_mode": practice_meta.get("last_practice_mode"),

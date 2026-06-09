@@ -94,7 +94,6 @@ def init_creative_lab_state(session_state: dict) -> None:
 
 def init_practice_page_state(session_state: dict) -> None:
     session_state.setdefault("practice_focus_section", "Full song")
-    session_state.setdefault("practice_minutes", 30)
 
 
 def init_backing_page_state(session_state: dict) -> None:

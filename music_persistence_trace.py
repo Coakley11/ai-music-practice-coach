@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v25-phase-c-practice-state"
+MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v26-practice-groove-minutes-sync"
 
 TRACE_KEY = "_music_persist_trace"
 
