@@ -412,20 +412,36 @@ def _preserve_durable_filters_for_autosave(
     *,
     reason: str,
 ) -> dict[str, Any]:
+    """Autosave must not clobber gathered widget values with stale canonical (v34)."""
     if reason != "autosave":
         return filters
     if is_backing_locally_dirty(session) or session.get(BACKING_PENDING_SYNC_KEY):
         return filters
-    existing = canonical_backing_filters(session) or {}
-    merged = dict(filters)
-    for key in _DURABLE_FILTER_KEYS:
-        existing_val = existing.get(key)
-        if existing_val in (None, "", [], False):
-            continue
-        gathered_val = merged.get(key)
-        if gathered_val != existing_val:
-            merged[key] = copy.deepcopy(existing_val) if key == "backing_track_multi_sections" else existing_val
-    return merged
+    return filters
+
+
+def _resolve_backing_filters_for_envelope(
+    session: dict[str, Any],
+    *,
+    state_blob: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], str]:
+    """Authoritative backing_filters for workspace envelope + cloud (canonical first)."""
+    session_canon = canonical_backing_filters(session)
+    if session_canon is not None and _filters_have_content(session_canon):
+        return _normalize_filters(session_canon), "canonical"
+
+    blob = state_blob if isinstance(state_blob, dict) else {}
+    blob_meta = blob.get(BACKING_STATE_KEY)
+    if isinstance(blob_meta, dict):
+        filters = _normalize_filters(blob_meta)
+        if _filters_have_content(filters):
+            return filters, "canonical"
+
+    gathered = gather_backing_filters(session)
+    normalized = _normalize_filters(gathered)
+    if _filters_have_content(normalized):
+        return normalized, "widget_fallback"
+    return normalized, "widget_fallback"
 
 
 def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, Any]) -> None:
@@ -612,6 +628,8 @@ def commit_backing_canonical_blob_only(
 
 def commit_backing_state_from_session(session: dict[str, Any], *, reason: str = "autosave") -> dict[str, Any]:
     filters = gather_backing_filters(session)
+    if reason not in ("autosave",):
+        return write_canonical_backing_state(session, filters, reason=reason, local_edit=False)
     filters = _preserve_durable_filters_for_autosave(session, filters, reason=reason)
     return write_canonical_backing_state(session, filters, reason=reason, local_edit=False)
 
@@ -627,17 +645,9 @@ def backing_filters_for_workspace_envelope(
     state_blob: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Normalized ``music_workspace_state.backing_filters`` from canonical blob or live widgets."""
-    blob = state_blob if isinstance(state_blob, dict) else {}
-    for src in (
-        blob.get(BACKING_STATE_KEY),
-        session.get(BACKING_STATE_KEY),
-    ):
-        if isinstance(src, dict):
-            filters = _normalize_filters(src)
-            if _filters_have_content(filters):
-                return filters
-    gathered = gather_backing_filters(session)
-    return _normalize_filters(gathered)
+    filters, source = _resolve_backing_filters_for_envelope(session, state_blob=state_blob)
+    session["_backing_filters_source"] = source
+    return filters
 
 
 def _backing_filters_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
@@ -717,24 +727,19 @@ def resolve_backing_trace_payloads(
     st: Any,
     session: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Resolve envelope (last/local save) and cloud payloads for ?dev=1 backing trace."""
+    """Resolve envelope (canonical-derived) and cloud payloads for ?dev=1 backing trace."""
     envelope: dict[str, Any] = {}
     cloud: dict[str, Any] = {}
 
-    ws = session.get("music_workspace_state")
-    if isinstance(ws, dict) and isinstance(ws.get("backing_filters"), dict):
-        bf = _normalize_filters(ws["backing_filters"])
-        if _filters_have_content(bf):
-            envelope = {"music_workspace_state": {**ws, "backing_filters": bf}}
-
-    if not envelope:
-        filters = backing_filters_for_workspace_envelope(session)
-        if _filters_have_content(filters):
-            canon = session.get(BACKING_STATE_KEY)
-            envelope = {
-                "music_workspace_state": {"backing_filters": filters},
-                BACKING_STATE_KEY: canon if isinstance(canon, dict) else filters,
-            }
+    filters, source = _resolve_backing_filters_for_envelope(session)
+    session["_backing_filters_source"] = source
+    if _filters_have_content(filters):
+        ws = session.get("music_workspace_state")
+        ws_shell = dict(ws) if isinstance(ws, dict) else {}
+        envelope = {
+            "music_workspace_state": {**ws_shell, "backing_filters": filters},
+            BACKING_STATE_KEY: session.get(BACKING_STATE_KEY) or filters,
+        }
 
     try:
         from music_persistent_state import APP_ID
@@ -807,6 +812,7 @@ def collect_backing_persistence_trace(
         "raw_backing_time_signature_override": session.get(BACKING_METER_OVERRIDE_WIDGET_KEY, ""),
         "raw_pending_backing_loops": session.get("_pending_backing_loops", ""),
         "backing_pending_sync": bool(session.get(BACKING_PENDING_SYNC_KEY)),
+        "backing_filters_source": session.get("_backing_filters_source", ""),
     }
 
 
@@ -868,3 +874,5 @@ def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
         f"pending_loops=`{trace.get('raw_pending_backing_loops', '')}` "
         f"sync=`{trace.get('backing_pending_sync', '')}`"
     )
+    if trace.get("backing_filters_source"):
+        st.sidebar.caption(f"**backing_filters_source:** `{trace['backing_filters_source']}`")

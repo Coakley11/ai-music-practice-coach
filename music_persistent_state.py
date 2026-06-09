@@ -201,11 +201,11 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             "practice_notation_difficulty": practice_meta.get("practice_notation_difficulty"),
             "last_practice_mode": practice_meta.get("last_practice_mode"),
         },
-        "backing_filters": _backing_filters_for_envelope(st, state),
+        "backing_filters": _backing_filters_for_envelope(st, state, save_reason=save_reason),
     }
 
 
-def _backing_filters_for_envelope(st: Any, state: dict[str, Any]) -> dict[str, Any]:
+def _backing_filters_for_envelope(st: Any, state: dict[str, Any], *, save_reason: str = "autosave") -> dict[str, Any]:
     try:
         from backing_track_state import backing_filters_for_workspace_envelope
 
@@ -229,16 +229,17 @@ def _backing_filters_for_envelope(st: Any, state: dict[str, Any]) -> dict[str, A
 
 def build_music_disk_state(st: Any) -> dict[str, Any]:
     ss = st.session_state
+    save_reason = str(ss.get("_suite_pending_save_reason") or "autosave")
     try:
         from active_song_state import commit_active_song_state_from_session
         from backing_track_state import commit_backing_state_from_session
         from practice_state import commit_practice_state_from_session
         from studio_nav_state import commit_studio_nav_from_session
 
-        commit_active_song_state_from_session(ss, reason="autosave")
-        commit_studio_nav_from_session(ss, reason="autosave")
-        commit_practice_state_from_session(ss, reason="autosave")
-        commit_backing_state_from_session(ss, reason="autosave")
+        commit_active_song_state_from_session(ss, reason=save_reason)
+        commit_studio_nav_from_session(ss, reason=save_reason)
+        commit_practice_state_from_session(ss, reason=save_reason)
+        commit_backing_state_from_session(ss, reason=save_reason)
     except ImportError:
         pass
     core = build_music_local_state(st)
@@ -272,11 +273,20 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
                 state[key] = copy.deepcopy(ss[key])
             except Exception:
                 state[key] = ss[key]
-    save_reason = str(ss.pop("_suite_pending_save_reason", None) or "autosave")
-    state["music_workspace_state"] = _build_workspace_envelope(st, state, save_reason=save_reason)
+    save_reason = str(ss.pop("_suite_pending_save_reason", None) or save_reason)
+    envelope = _build_workspace_envelope(st, state, save_reason=save_reason)
+    try:
+        from backing_track_state import backing_filters_for_workspace_envelope
+
+        envelope["backing_filters"] = backing_filters_for_workspace_envelope(ss, state_blob=state)
+    except ImportError:
+        pass
+    state["music_workspace_state"] = envelope
     _sync_studio_page_into_music_blob(st, state)
     if hasattr(st, "session_state"):
         ss["music_workspace_state"] = copy.deepcopy(state["music_workspace_state"])
+        if isinstance(state.get("backing_track_state"), dict):
+            ss["backing_track_state"] = copy.deepcopy(state["backing_track_state"])
     return state
 
 
