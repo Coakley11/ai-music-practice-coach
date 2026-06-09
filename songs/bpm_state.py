@@ -26,6 +26,18 @@ def sync_backing_bpm_before_widget(st: Any, song_title: str, default_bpm: int) -
     pending = st.session_state.pop(PENDING_BACKING_TRACK_BPM, None)
     song_changed = st.session_state.get(LAST_BPM_SONG) != song_title
 
+    if song_changed and st.session_state.get(LAST_BPM_SONG) is None:
+        try:
+            from backing_track_state import backing_canonical_playback_seed
+
+            canon_bpm, _ = backing_canonical_playback_seed(st.session_state)
+            if canon_bpm is not None:
+                st.session_state[LAST_BPM_SONG] = song_title
+                st.session_state[BPM_WIDGET_KEY] = int(canon_bpm)
+                return int(canon_bpm)
+        except ImportError:
+            pass
+
     if song_changed:
         st.session_state[LAST_BPM_SONG] = song_title
         st.session_state[BPM_WIDGET_KEY] = int(default_bpm)

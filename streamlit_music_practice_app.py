@@ -8495,7 +8495,15 @@ def _render_backing_scope_controls(
             st.markdown("</div>", unsafe_allow_html=True)
         elif playback_scope == "Multiple selected sections" and section_names:
             if "backing_track_multi_sections" not in st.session_state:
-                st.session_state["backing_track_multi_sections"] = [
+                _multi_seed: list[str] = []
+                try:
+                    from backing_track_state import canonical_backing_filters
+
+                    _canon = canonical_backing_filters(st.session_state) or {}
+                    _multi_seed = list(_canon.get("backing_track_multi_sections") or [])
+                except ImportError:
+                    pass
+                st.session_state["backing_track_multi_sections"] = _multi_seed or [
                     name
                     for name in section_names
                     if any(token in name.lower() for token in ["verse", "chorus"])
@@ -8541,6 +8549,12 @@ def _render_backing_playback_setup_panel(
     backing_ready: bool,
 ) -> None:
     """Step 1 — playback range and loops only."""
+    try:
+        from backing_track_state import prepare_backing_scope_for_widget
+
+        prepare_backing_scope_for_widget(st.session_state)
+    except ImportError:
+        pass
     _loop_summary = backing_scope_loop_summary_text(
         st.session_state.get("backing_track_scope", "Full song"),
         single_section=str(st.session_state.get("backing_track_single_section", "")),
@@ -8633,19 +8647,19 @@ def _render_backing_step2_playback_action(
     _prime_backing_quick_section_from_scope(st.session_state, section_names)
     quick_opts = ["Full song"] + list(section_names)
     slider_key = backing_bpm_slider_widget_key(song_id)
+    try:
+        from backing_track_state import coerce_backing_groove_for_widget, prepare_backing_bpm_for_widget
+
+        prepare_backing_bpm_for_widget(st.session_state, default_bpm=int(default_bpm))
+        coerce_backing_groove_for_widget(st.session_state, default_groove=default_groove)
+    except ImportError:
+        pass
     widget_bpm = resolve_backing_bpm_for_slider(
         st,
         sync_id=song_id,
         default_bpm=default_bpm,
         song_just_reset=song_just_reset,
     )
-    try:
-        from backing_track_state import coerce_backing_groove_for_widget, prepare_backing_bpm_for_widget
-
-        prepare_backing_bpm_for_widget(st.session_state, default_bpm=int(widget_bpm))
-        coerce_backing_groove_for_widget(st.session_state, default_groove=default_groove)
-    except ImportError:
-        pass
 
     with st.container(key="backing_step2_action", border=False):
         render_backing_panel_shell_open(st, "transport")
@@ -9466,6 +9480,12 @@ _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     is_custom=is_custom_progression(st.session_state),
 )
 _default_song_bpm = _synced_bpm
+try:
+    from backing_track_state import prepare_backing_page
+
+    prepare_backing_page(st.session_state)
+except Exception:
+    pass
 
 song_lyrics_slug = _song_slug(
     song,

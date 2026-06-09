@@ -228,6 +228,38 @@ def test_sync_backing_bpm_from_slider_updates_canonical_keys():
     assert st.session_state[slider_key] == 100
 
 
+def test_hard_refresh_seeds_bpm_from_canonical_blob():
+    from backing_track_state import write_canonical_backing_state
+
+    st = _FakeSession()
+    write_canonical_backing_state(
+        st.session_state,
+        {
+            "backing_track_scope": "Single section",
+            "backing_track_single_section": "Chorus",
+            "backing_track_multi_sections": [],
+            "backing_track_loops": 4,
+            "backing_track_bpm": 108,
+            "backing_groove_style": "Jazz swing",
+            "backing_volume": 0.75,
+            "backing_time_signature": "4/4",
+            "backing_time_signature_override": False,
+            "backing_quick_section": "",
+        },
+        reason="cloud_restore",
+    )
+    sync_id = "pk::Pop::Song — Artist"
+    bpm, groove = apply_backing_defaults_for_song(
+        st,
+        song_id=sync_id,
+        default_bpm=100,
+        default_groove="Ballad",
+    )
+    assert bpm == 108
+    assert groove == "Jazz swing"
+    assert st.session_state[LAST_BACKING_DEFAULTS_SONG_ID] == sync_id
+
+
 def test_canonicalize_song_card_matches_playback_for_known_songs():
     """End-to-end: the BPM the song card shows must equal what the engine uses."""
     test_cases = [

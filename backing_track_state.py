@@ -72,8 +72,11 @@ __all__ = (
     "mark_backing_pending_sync",
     "normalize_backing_groove",
     "normalize_backing_scope",
+    "backing_canonical_playback_seed",
+    "has_restored_backing_canonical",
     "prepare_backing_bpm_for_widget",
     "prepare_backing_page",
+    "prepare_backing_scope_for_widget",
     "render_backing_state_debug",
     "write_canonical_backing_state",
 )
@@ -251,6 +254,21 @@ def canonical_backing_filters(session: dict[str, Any]) -> dict[str, Any] | None:
     return filters
 
 
+def has_restored_backing_canonical(session: dict[str, Any]) -> bool:
+    """True when a durable backing blob exists (cloud restore or prior edit)."""
+    return canonical_backing_filters(session) is not None
+
+
+def backing_canonical_playback_seed(session: dict[str, Any]) -> tuple[int | None, str | None]:
+    """BPM + groove from canonical blob for playback-default seeding on hard refresh."""
+    if is_backing_locally_dirty(session):
+        return None, None
+    canonical = canonical_backing_filters(session) or {}
+    bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"))
+    groove = normalize_backing_groove(canonical.get("backing_groove_style"))
+    return bpm, groove or None
+
+
 def _preserve_durable_filters_for_autosave(
     session: dict[str, Any],
     filters: dict[str, Any],
@@ -328,6 +346,26 @@ def prepare_backing_bpm_for_widget(session: dict[str, Any], *, default_bpm: int 
     if bpm is not None:
         session["backing_track_bpm"] = int(bpm)
     return int(bpm or default_bpm)
+
+
+def prepare_backing_scope_for_widget(session: dict[str, Any]) -> None:
+    """Bind scope/loop widgets to canonical blob before Step 1 widgets render."""
+    if is_backing_locally_dirty(session):
+        return
+    canonical = canonical_backing_filters(session)
+    if canonical is None:
+        return
+    session["backing_track_scope"] = normalize_backing_scope(canonical.get("backing_track_scope"))
+    section = str(canonical.get("backing_track_single_section") or "").strip()
+    if section:
+        session["backing_track_single_section"] = section
+    multi = _normalize_multi_sections(canonical.get("backing_track_multi_sections"))
+    if multi:
+        session["backing_track_multi_sections"] = multi
+    session["backing_track_loops"] = normalize_backing_loops(canonical.get("backing_track_loops"))
+    quick = str(canonical.get("backing_quick_section") or "").strip()
+    if quick:
+        session["backing_quick_section"] = quick
 
 
 def write_canonical_backing_state(
@@ -468,30 +506,53 @@ def collect_backing_persistence_trace(
         "backing_canonical_bpm": canonical.get("backing_track_bpm", ""),
         "backing_canonical_groove": canonical.get("backing_groove_style", ""),
         "backing_canonical_scope": canonical.get("backing_track_scope", ""),
+        "backing_canonical_loops": canonical.get("backing_track_loops", ""),
         "backing_filters_bpm": envelope.get("backing_track_bpm", ""),
         "backing_filters_groove": envelope.get("backing_groove_style", ""),
+        "backing_filters_scope": envelope.get("backing_track_scope", ""),
+        "backing_filters_loops": envelope.get("backing_track_loops", ""),
         "cloud_payload_backing_bpm": cloud_meta.get("backing_track_bpm", ""),
         "cloud_payload_backing_groove": cloud_meta.get("backing_groove_style", ""),
+        "cloud_payload_backing_scope": cloud_meta.get("backing_track_scope", ""),
+        "cloud_payload_backing_loops": cloud_meta.get("backing_track_loops", ""),
         "restored_backing_bpm": session.get("backing_track_bpm", ""),
         "restored_backing_groove": session.get("backing_groove_style", ""),
+        "restored_backing_scope": session.get("backing_track_scope", ""),
+        "restored_backing_loops": session.get("backing_track_loops", ""),
         "backing_dirty": is_backing_locally_dirty(session),
         "backing_restore_applied": bool(session.get(BACKING_RESTORED_KEY)),
         "backing_restore_skipped": session.get("_backing_restore_skipped_reason"),
         "backing_last_write": canonical.get("last_write_reason")
         or (session.get(BACKING_STATE_KEY) or {}).get("last_write_reason"),
+        "backing_overwrite_source": session.get("_backing_overwrite_source"),
     }
 
 
 def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
     trace = collect_backing_persistence_trace(session)
     st.sidebar.caption(
-        f"**backing_state:** dirty=`{trace['backing_dirty']}` "
-        f"scope=`{trace['backing_canonical_scope']}` "
+        f"**backing canonical:** scope=`{trace['backing_canonical_scope']}` "
+        f"loops=`{trace['backing_canonical_loops']}` "
         f"bpm=`{trace['backing_canonical_bpm']}` "
-        f"groove=`{trace['backing_canonical_groove']}`"
+        f"groove=`{trace['backing_canonical_groove']}` "
+        f"dirty=`{trace['backing_dirty']}`"
     )
     st.sidebar.caption(
-        f"**backing widget:** bpm=`{trace['restored_backing_bpm']}` "
+        f"**backing envelope:** scope=`{trace['backing_filters_scope']}` "
+        f"loops=`{trace['backing_filters_loops']}` "
+        f"bpm=`{trace['backing_filters_bpm']}` "
+        f"groove=`{trace['backing_filters_groove']}`"
+    )
+    st.sidebar.caption(
+        f"**backing cloud:** scope=`{trace['cloud_payload_backing_scope']}` "
+        f"loops=`{trace['cloud_payload_backing_loops']}` "
+        f"bpm=`{trace['cloud_payload_backing_bpm']}` "
+        f"groove=`{trace['cloud_payload_backing_groove']}`"
+    )
+    st.sidebar.caption(
+        f"**backing widget:** scope=`{trace['restored_backing_scope']}` "
+        f"loops=`{trace['restored_backing_loops']}` "
+        f"bpm=`{trace['restored_backing_bpm']}` "
         f"groove=`{trace['restored_backing_groove']}` "
         f"restore=`{trace['backing_restore_applied']}`"
     )
@@ -499,3 +560,5 @@ def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
         st.sidebar.caption(f"**backing last_write:** `{trace['backing_last_write']}`")
     if trace.get("backing_restore_skipped"):
         st.sidebar.caption(f"**backing restore skipped:** `{trace['backing_restore_skipped']}`")
+    if trace.get("backing_overwrite_source"):
+        st.sidebar.caption(f"**backing overwrite:** `{trace['backing_overwrite_source']}`")

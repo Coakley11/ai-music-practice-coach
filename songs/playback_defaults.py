@@ -111,9 +111,9 @@ def resolve_backing_bpm_for_slider(
 ) -> int:
     """BPM for the slider *before* it renders — never clobber a user edit on rerun."""
     slider_key = backing_bpm_slider_widget_key(sync_id)
-    canonical = normalize_backing_bpm(st.session_state.get(BPM_WIDGET_KEY, default_bpm))
 
     if song_just_reset:
+        canonical = normalize_backing_bpm(st.session_state.get(BPM_WIDGET_KEY, default_bpm))
         st.session_state[slider_key] = canonical
         st.session_state["bpm"] = canonical
         return canonical
@@ -125,6 +125,22 @@ def resolve_backing_bpm_for_slider(
         st.session_state["bpm"] = slider_val
         return slider_val
 
+    if not song_just_reset:
+        try:
+            from backing_track_state import canonical_backing_filters, is_backing_locally_dirty
+
+            if not is_backing_locally_dirty(st.session_state):
+                canonical = canonical_backing_filters(st.session_state) or {}
+                canon_bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"))
+                if canon_bpm is not None:
+                    st.session_state[slider_key] = canon_bpm
+                    st.session_state[BPM_WIDGET_KEY] = canon_bpm
+                    st.session_state["bpm"] = canon_bpm
+                    return canon_bpm
+        except ImportError:
+            pass
+
+    canonical = normalize_backing_bpm(st.session_state.get(BPM_WIDGET_KEY, default_bpm))
     st.session_state[slider_key] = canonical
     return canonical
 
@@ -186,6 +202,46 @@ def prime_active_song_bpm(
 _CANONICAL_BACKING_ID_KEY = "_canonical_active_backing_song_id"
 
 
+def _cloud_refresh_has_canonical_backing(st: Any) -> bool:
+    """Hard refresh clears song trackers; canonical blob means same-song restore."""
+    try:
+        from backing_track_state import has_restored_backing_canonical
+
+        return has_restored_backing_canonical(st.session_state)
+    except ImportError:
+        return False
+
+
+def _seed_backing_from_canonical_on_cloud_refresh(
+    st: Any,
+    *,
+    song_id: str,
+    default_bpm: int,
+    default_groove: str,
+    song_data: dict[str, Any] | None = None,
+    infer_fn: Callable[..., str] | None = None,
+) -> tuple[int, str] | None:
+    """Apply cloud-restored BPM/groove without treating missing tracker as song change."""
+    try:
+        from backing_track_state import backing_canonical_playback_seed
+    except ImportError:
+        return None
+    canon_bpm, canon_groove = backing_canonical_playback_seed(st.session_state)
+    if canon_bpm is None and not canon_groove:
+        return None
+    use_bpm = int(canon_bpm if canon_bpm is not None else default_bpm)
+    use_groove = normalize_groove_label(
+        canon_groove or default_groove,
+        song_data=song_data,
+        infer_fn=infer_fn,
+    )
+    _set_bpm_tracking_ids(st, song_id, use_bpm)
+    st.session_state[LAST_PLAYBACK_GROOVE_SONG] = song_id
+    st.session_state[BACKING_GROOVE_KEY] = use_groove
+    st.session_state[_CANONICAL_BACKING_ID_KEY] = song_id
+    return use_bpm, use_groove
+
+
 def canonicalize_backing_defaults_for_song(
     st: Any,
     *,
@@ -224,6 +280,9 @@ def canonicalize_backing_defaults_for_song(
 
     previous_id = st.session_state.get(_CANONICAL_BACKING_ID_KEY)
     did_reset = previous_id != sync_id
+    if did_reset and previous_id is None and _cloud_refresh_has_canonical_backing(st):
+        did_reset = False
+        st.session_state[_CANONICAL_BACKING_ID_KEY] = sync_id
 
     if did_reset:
         invalidate_backing_cache(st)
@@ -339,6 +398,18 @@ def apply_backing_defaults_for_song(
     pending_bpm = st.session_state.pop(PENDING_BACKING_TRACK_BPM, None)
     pending_groove = st.session_state.pop(PENDING_BACKING_GROOVE, None)
     song_changed = st.session_state.get(LAST_BACKING_DEFAULTS_SONG_ID) != song_id
+
+    if song_changed and st.session_state.get(LAST_BACKING_DEFAULTS_SONG_ID) is None:
+        seeded = _seed_backing_from_canonical_on_cloud_refresh(
+            st,
+            song_id=song_id,
+            default_bpm=active_bpm,
+            default_groove=norm_groove,
+            song_data=song_data,
+            infer_fn=infer_fn,
+        )
+        if seeded is not None:
+            return seeded
 
     if song_changed:
         from .key_state import invalidate_backing_cache
@@ -456,6 +527,20 @@ def sync_playback_defaults_for_active_song(
                 pass
             if not seeded:
                 st.session_state[PRACTICE_GROOVE_KEY] = groove
+        if BACKING_GROOVE_KEY not in st.session_state:
+            seeded = False
+            try:
+                from backing_track_state import canonical_backing_filters, normalize_backing_groove
+
+                canonical = canonical_backing_filters(st.session_state) or {}
+                canon_groove = normalize_backing_groove(canonical.get("backing_groove_style"))
+                if canon_groove:
+                    st.session_state[BACKING_GROOVE_KEY] = canon_groove
+                    seeded = True
+            except ImportError:
+                pass
+            if not seeded:
+                st.session_state[BACKING_GROOVE_KEY] = groove
     return bpm, groove
 
 

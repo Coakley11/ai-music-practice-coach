@@ -149,6 +149,54 @@ class TestBackingTrackState(unittest.TestCase):
         groove = coerce_backing_groove_for_widget(session, default_groove="Ballad")
         self.assertEqual(groove, "Jazz swing")
 
+    def test_hard_refresh_playback_defaults_seed_from_canonical(self) -> None:
+        from songs.playback_defaults import apply_backing_defaults_for_song, canonicalize_backing_defaults_for_song
+
+        session = {"backing_track_state": {**_SAMPLE, "last_write_reason": "cloud_restore"}}
+        prepare_backing_page(session)
+        st = MagicMock()
+        st.session_state = session
+        sync_id = "pk::Pop::Song — Artist"
+        bpm, groove = apply_backing_defaults_for_song(
+            st,
+            song_id=sync_id,
+            default_bpm=100,
+            default_groove="Ballad",
+        )
+        self.assertEqual(bpm, 108)
+        self.assertEqual(groove, "Jazz swing")
+        self.assertEqual(st.session_state["backing_track_scope"], "Single section")
+        self.assertEqual(st.session_state["backing_track_loops"], 4)
+
+        canon = canonicalize_backing_defaults_for_song(
+            st,
+            sync_id=sync_id,
+            active_song_bpm=100,
+            active_song_groove="Ballad",
+            active_song_meter="4/4",
+        )
+        self.assertFalse(canon["did_reset"])
+        self.assertEqual(canon["applied_bpm"], 108)
+        self.assertEqual(canon["applied_groove"], "Jazz swing")
+
+    def test_autosave_after_playback_default_clobber_preserves_scope(self) -> None:
+        session = {
+            "backing_track_state": {
+                **_SAMPLE,
+                "last_write_reason": "backing_edit",
+            },
+            "backing_track_bpm": 100,
+            "backing_groove_style": "Ballad",
+            "backing_track_scope": "Full song",
+            "backing_track_loops": 2,
+        }
+        commit_backing_state_from_session(session, reason="autosave")
+        self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 108)
+        self.assertEqual(session["backing_track_state"]["backing_track_scope"], "Single section")
+        self.assertEqual(session["backing_track_state"]["backing_track_loops"], 4)
+        self.assertEqual(session["backing_track_bpm"], 108)
+        self.assertEqual(session["backing_track_scope"], "Single section")
+
 
 if __name__ == "__main__":
     unittest.main()
