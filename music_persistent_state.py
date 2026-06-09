@@ -463,6 +463,34 @@ def prepare_music_workspace(
     song_library: dict | None,
 ) -> bool:
     """Authoritative cloud/disk workspace sync before sidebar widgets."""
+    try:
+        from suite_cloud_state import (
+            list_active_resume_query_params,
+            reconcile_stale_resume_session_flags,
+            should_skip_workspace_restore_for_resume,
+        )
+        from music_persistence_trace import record_music_resume_restore_trace
+
+        cleared = reconcile_stale_resume_session_flags(st, APP_ID)
+        live_params = list_active_resume_query_params(st, APP_ID)
+        skip = should_skip_workspace_restore_for_resume(st, APP_ID, reconcile_first=False)
+        ami_active = False
+        try:
+            from applied_math_return_insight import ami_return_navigation_active
+
+            ami_active = ami_return_navigation_active(st, APP_ID)
+        except ImportError:
+            pass
+        record_music_resume_restore_trace(
+            st,
+            live_resume_url_params=live_params,
+            stale_resume_flags_cleared=cleared,
+            has_resume_query_params_result=skip,
+            ami_return_navigation_active=ami_active,
+        )
+    except Exception:
+        pass
+
     def _apply(st_obj: Any, state: dict[str, Any]) -> None:
         apply_music_disk_state(
             st_obj,

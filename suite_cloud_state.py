@@ -100,55 +100,99 @@ def list_active_resume_query_params(st: Any, app_key: str) -> list[str]:
     return [name for name in params if _qp_get(st, name)]
 
 
-def reconcile_stale_resume_session_flags(st: Any, app_key: str) -> None:
+def _ami_return_url_active(st: Any, app_key: str) -> bool:
+    """True when resume/AMI steering comes from the current URL (not stale session flags)."""
+    if list_active_resume_query_params(st, app_key):
+        return True
+    try:
+        from applied_math_return_insight import _active_ami_return_query_param_keys, insight_return_query_id
+
+        if insight_return_query_id(st) or _active_ami_return_query_param_keys(st):
+            return True
+    except ImportError:
+        pass
+    return False
+
+
+_STALE_RESUME_SESSION_FLAGS: tuple[str, ...] = (
+    "_suite_resume_launch_music",
+    "_suite_resume_launch",
+    "_suite_resume_launch_baseball",
+    "_suite_resume_launch_app",
+    "_suite_resume_launch_key",
+    "_suite_resume_launch_applied_intelligence",
+    "_suite_resume_insight_hydration_only",
+    "_suite_workspace_sync_skipped_no_apply",
+    "_skip_page_restore_for",
+    "_navigate_to_studio_page",
+    "_navigate_to_page",
+    "_suite_cloud_target_page",
+    "ami_return_force_active_page",
+    "ami_return_forced_page",
+    "_ami_insight_return_preserve",
+)
+
+
+def reconcile_stale_resume_session_flags(st: Any, app_key: str) -> list[str]:
     """
     Drop stale resume/AMI session flags when the URL no longer carries resume params.
 
-    Prevents ``_suite_resume_launch_*`` from blocking cloud workspace restore after
-    AMI return params were consumed or the user hard-refreshed without query params.
+    Returns flag names cleared. Does not clear flags during a live URL resume/AMI return.
     """
     ss = st.session_state
-    if list_active_resume_query_params(st, app_key):
-        return
+    if _ami_return_url_active(st, app_key):
+        return []
+    cleared: list[str] = []
+    key = _normalize_resume_app_key(app_key)
+    for flag in (*_STALE_RESUME_SESSION_FLAGS, f"_suite_resume_launch_{key}"):
+        if flag in ss:
+            ss.pop(flag, None)
+            cleared.append(flag)
+    for flag in list(ss.keys()):
+        name = str(flag)
+        if name.startswith("_suite_resume_launch_") and name not in cleared:
+            ss.pop(flag, None)
+            cleared.append(name)
     try:
-        from applied_math_return_insight import ami_return_navigation_active, reconcile_stale_page_navigation
+        from applied_math_return_insight import reconcile_stale_page_navigation
 
-        if ami_return_navigation_active(st, app_key):
-            return
         reconcile_stale_page_navigation(st, app_key)
     except ImportError:
         pass
-    key = _normalize_resume_app_key(app_key)
-    for flag in (
-        f"_suite_resume_launch_{key}",
-        "_suite_resume_launch_music",
-        "_suite_resume_launch_baseball",
-        "_ami_insight_return_preserve",
-        "_skip_page_restore_for",
-        "_navigate_to_studio_page",
-        "_navigate_to_page",
-        "_suite_resume_insight_hydration_only",
-        "_suite_workspace_sync_skipped_no_apply",
-    ):
-        ss.pop(flag, None)
+    return cleared
 
 
-def has_resume_query_params(st: Any, app_key: str) -> bool:
-    """True when the URL has active resume/AMI params or AMI return is in-flight."""
+def should_skip_workspace_restore_for_resume(
+    st: Any,
+    app_key: str,
+    *,
+    reconcile_first: bool = True,
+) -> bool:
+    """
+    Skip cloud workspace restore only for live URL resume params or URL-driven AMI return.
+
+    Session-only ``_suite_resume_launch_*`` / ``_ami_insight_return_preserve`` flags
+    must not block cross-device page sync.
+    """
     if ami_return_resume_consumed(st, app_key):
-        reconcile_stale_resume_session_flags(st, app_key)
+        if reconcile_first:
+            reconcile_stale_resume_session_flags(st, app_key)
         return False
+    if reconcile_first:
+        reconcile_stale_resume_session_flags(st, app_key)
     if list_active_resume_query_params(st, app_key):
         return True
     try:
         from applied_math_return_insight import ami_return_navigation_active
 
-        if ami_return_navigation_active(st, app_key):
-            return True
+        return ami_return_navigation_active(st, app_key)
     except ImportError:
-        pass
-    reconcile_stale_resume_session_flags(st, app_key)
-    return False
+        return False
+
+
+def has_resume_query_params(st: Any, app_key: str) -> bool:
+    """True when live URL resume/AMI params should defer cloud workspace restore."""
+    return should_skip_workspace_restore_for_resume(st, app_key, reconcile_first=True)
 
 
 def parse_persist_timestamp(ts: str | None) -> float:
