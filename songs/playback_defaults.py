@@ -443,7 +443,19 @@ def sync_playback_defaults_for_active_song(
     )
     if st.session_state.get(LAST_BACKING_DEFAULTS_SONG_ID) == sync_id:
         if PRACTICE_GROOVE_KEY not in st.session_state:
-            st.session_state[PRACTICE_GROOVE_KEY] = groove
+            seeded = False
+            try:
+                from practice_state import canonical_practice_filters, normalize_practice_groove
+
+                canonical = canonical_practice_filters(st.session_state) or {}
+                canon_groove = normalize_practice_groove(canonical.get("practice_groove_style"))
+                if canon_groove:
+                    st.session_state[PRACTICE_GROOVE_KEY] = canon_groove
+                    seeded = True
+            except ImportError:
+                pass
+            if not seeded:
+                st.session_state[PRACTICE_GROOVE_KEY] = groove
     return bpm, groove
 
 

@@ -8323,7 +8323,7 @@ def _render_practice_setup_panel(
     from practice_state import (
         PRACTICE_MINUTES_DEFAULT,
         coerce_practice_groove_for_widget,
-        normalize_practice_minutes,
+        prepare_practice_minutes_for_widget,
     )
     from practice_ui_labels import (
         GROOVE_ICONS,
@@ -8339,12 +8339,7 @@ def _render_practice_setup_panel(
     _level = str(st.session_state.get("level", "Intermediate"))
     _focus = str(st.session_state.get("focus", "General"))
     _groove = coerce_practice_groove_for_widget(st.session_state, default_groove=default_groove)
-    _minutes = normalize_practice_minutes(
-        st.session_state.get("practice_minutes"),
-        default=PRACTICE_MINUTES_DEFAULT,
-    )
-    if _minutes is not None:
-        st.session_state["practice_minutes"] = _minutes
+    _minutes = prepare_practice_minutes_for_widget(st.session_state)
 
     with st.container(key="practice_control_panel", border=False):
         render_practice_control_panel_header(st)

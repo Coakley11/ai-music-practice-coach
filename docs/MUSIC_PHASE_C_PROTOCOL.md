@@ -24,11 +24,15 @@ Phase C migrates Music workspace fields into canonical `{module}_state.py` blobs
 |--------|-------------|----------------|-------|
 | `practice_state.py` | `practice_state` | `music_workspace_state.practice_filters` | groove, section focus, notation prefs, last mode |
 
-**Shipped in v26 (practice sync fix):**
+**Shipped in v27 (durable practice restore):**
 
-| Module | Session key | Envelope field | Scope |
-|--------|-------------|----------------|-------|
-| `practice_state.py` | `practice_state` | `music_workspace_state.practice_filters` | + `practice_minutes`; groove normalized via `GROOVE_STYLE_CHOICES` |
+| Fix | Detail |
+|-----|--------|
+| Autosave guard | `commit_practice_state_from_session` preserves canonical groove/minutes unless locally dirty |
+| Widget bind | `coerce_practice_groove_for_widget` / `prepare_practice_minutes_for_widget` prefer canonical over song/slider defaults |
+| Restore hook | `prepare_practice_page()` runs immediately after cloud apply in `apply_music_disk_state` |
+| Force save | `practice_edit` bypasses post-restore autosave block |
+| Trace | `?dev=1` practice restore fields (canonical, envelope, cloud payload, widget, dirty, save reason) |
 
 **Queued (not started):** `backing_track_state`, `creative_state`, `karaoke_state`, `upload_state`, `practice_log_state`
 

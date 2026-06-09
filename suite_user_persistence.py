@@ -1312,6 +1312,8 @@ def force_autosave(
             "insight_hydrate",
             "applied_math_send",
             "music_coach_send",
+            "song_edit",
+            "practice_edit",
         )
         if st.session_state.get(block_key) and not bypass_block:
             st.session_state["_suite_autosave_blocked_after_restore"] = True

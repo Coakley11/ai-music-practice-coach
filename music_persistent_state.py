@@ -399,6 +399,12 @@ def apply_music_disk_state(
             ss["_practice_restore_skipped_reason"] = "local_dirty"
         elif apply_cloud_practice_state_if_allowed(ss, payload):
             clear_practice_local_edit(ss)
+        try:
+            from practice_state import prepare_practice_page
+
+            prepare_practice_page(ss)
+        except ImportError:
+            pass
     except ImportError:
         pass
 
@@ -422,6 +428,13 @@ def apply_music_disk_state(
             if isinstance(ws_meta, dict)
             else ""
         )
+        practice_trace: dict[str, Any] = {}
+        try:
+            from practice_state import collect_practice_persistence_trace
+
+            practice_trace = collect_practice_persistence_trace(ss, payload=payload)
+        except ImportError:
+            pass
         update_trace(
             st,
             studio_page_raw=pre_restore_studio_page or blob_studio,
@@ -433,6 +446,7 @@ def apply_music_disk_state(
             final_studio_page=ss.get("studio_page"),
             page_owner_flag=bool(ss.get("_suite_page_user_nav")),
             music_workspace_state_studio_page=ws_studio or None,
+            **practice_trace,
         )
     except Exception:
         pass
@@ -679,6 +693,13 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
                     cloud_payload_page = cloud_fetch_page
                     ss["_suite_cloud_fetch_studio_page"] = cloud_fetch_page
         except Exception:
+            cloud_state = {}
+        practice_trace: dict[str, Any] = {}
+        try:
+            from practice_state import collect_practice_persistence_trace
+
+            practice_trace = collect_practice_persistence_trace(ss, payload=cloud_state if isinstance(cloud_state, dict) else None)
+        except ImportError:
             pass
         local_updated_at = ss.get("_suite_persist_debug_disk_ts") or ss.get("_suite_persist_last_save_at")
         update_trace(
@@ -694,6 +715,7 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
             cloud_updated_at=cloud_updated_at,
             local_updated_at=local_updated_at,
             final_studio_page=ss.get("studio_page"),
+            **practice_trace,
         )
     except Exception:
         pass

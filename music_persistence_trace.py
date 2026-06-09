@@ -12,16 +12,32 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v26-practice-groove-minutes-sync"
+MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v27-practice-durable-restore"
 
 TRACE_KEY = "_music_persist_trace"
 
 
 
+PRACTICE_RESTORE_TRACE_LABELS: tuple[str, ...] = (
+    "practice_canonical_groove",
+    "practice_canonical_minutes",
+    "practice_filters_groove",
+    "practice_filters_minutes",
+    "cloud_payload_practice_groove",
+    "cloud_payload_practice_minutes",
+    "restored_practice_groove",
+    "restored_practice_minutes",
+    "practice_dirty",
+    "practice_restore_applied",
+    "practice_restore_skipped",
+    "practice_last_write",
+    "practice_overwrite_source",
+)
+
+
 # Always shown in ?dev=1 sidebar (Dell restore classification C/D/E).
 
 WORKSPACE_RESTORE_TRACE_LABELS: tuple[str, ...] = (
-
     "cloud_fetch_studio_page",
 
     "restore_decision",
@@ -539,6 +555,14 @@ def render_persistence_trace_sidebar(st: Any) -> None:
         except ImportError:
 
             st.text("Phase C modules not available")
+
+
+
+        st.markdown("**Practice restore trace**")
+
+        for label in PRACTICE_RESTORE_TRACE_LABELS:
+
+            st.text(f"{label}: {_trace_display(trace.get(label))}")
 
 
 
