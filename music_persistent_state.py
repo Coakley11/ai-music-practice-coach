@@ -108,38 +108,102 @@ def _get_device_id(st: Any) -> str:
         return "unknown"
 
 
-def _sync_studio_page_into_music_blob(st: Any, state: dict[str, Any]) -> str:
+def _resolve_live_studio_page_for_save(ss: dict[str, Any], *, save_reason: str) -> tuple[str, str]:
+    """Authoritative studio page for save payload (page_change must not use restored blob)."""
+    if save_reason == "page_change":
+        live = str(ss.get("studio_page") or "").strip()
+        if live:
+            return live, "session_state.studio_page"
+        hinted = str(ss.get("_suite_page_change_save_page") or "").strip()
+        if hinted:
+            return hinted, "_suite_page_change_save_page"
+        return "", "missing"
+    live = str(ss.get("studio_page") or "").strip()
+    return live, "session_state.studio_page" if live else "missing"
+
+
+def _stamp_live_studio_page_into_save_payload(
+    state: dict[str, Any],
+    page: str,
+    *,
+    source: str = "session_state.studio_page",
+    coach_page: str = "",
+) -> dict[str, str]:
     """Force raw ``studio_page`` id into every cross-device sync field (not coach aliases)."""
-    if not hasattr(st, "session_state"):
-        return ""
-    page = str(st.session_state.get("studio_page") or "").strip()
-    if not page:
-        return ""
+    normalized = str(page or "").strip()
+    trace: dict[str, str] = {
+        "save_payload_source": source,
+        "save_payload_core_page": "",
+        "save_payload_session_page": "",
+        "save_payload_workspace_page": "",
+        "save_payload_studio_nav_page": "",
+    }
+    if not normalized:
+        return trace
     core = state.get("core")
     if isinstance(core, dict):
-        core["studio_page"] = page
-        core["page"] = page
+        core["studio_page"] = normalized
+        core["page"] = normalized
+        trace["save_payload_core_page"] = normalized
     session_extra = state.get("session")
     if isinstance(session_extra, dict):
-        session_extra["studio_page"] = page
+        session_extra["studio_page"] = normalized
+        trace["save_payload_session_page"] = normalized
     meta = state.get("music_workspace_state")
     if isinstance(meta, dict):
-        meta["studio_page"] = page
+        meta["studio_page"] = normalized
+        meta["page"] = coach_page or normalized
+        trace["save_payload_workspace_page"] = normalized
+    nav_meta = state.get("studio_nav_state")
+    if isinstance(nav_meta, dict):
+        nav_meta["studio_page"] = normalized
+        nav_meta["page"] = normalized
+        trace["save_payload_studio_nav_page"] = normalized
+    else:
+        state["studio_nav_state"] = {
+            "studio_page": normalized,
+            "page": normalized,
+            "last_write_reason": "page_change_save_stamp",
+        }
+        trace["save_payload_studio_nav_page"] = normalized
+    state["studio_page"] = normalized
+    return trace
+
+
+def _sync_studio_page_into_music_blob(
+    st: Any,
+    state: dict[str, Any],
+    *,
+    save_reason: str = "autosave",
+) -> dict[str, str]:
+    if not hasattr(st, "session_state"):
+        return {}
+    ss = st.session_state
+    page, source = _resolve_live_studio_page_for_save(ss, save_reason=save_reason)
+    coach_page = ""
+    if page and save_reason != "page_change":
         try:
             from music_coach_context import resolve_coach_source_page
 
-            merged = {**st.session_state}
+            merged = {**ss}
+            core = state.get("core")
+            session_extra = state.get("session")
             if isinstance(core, dict):
                 merged.update(core)
             if isinstance(session_extra, dict):
                 merged.update(session_extra)
-            meta["page"] = resolve_coach_source_page(merged)
+            coach_page = resolve_coach_source_page(merged)
         except Exception:
-            meta.setdefault("page", page)
-    nav_meta = state.get("studio_nav_state")
-    if isinstance(nav_meta, dict):
-        nav_meta["studio_page"] = page
-    return page
+            coach_page = page
+    elif page:
+        coach_page = page
+    return _stamp_live_studio_page_into_save_payload(
+        state,
+        page,
+        source=source,
+        coach_page=coach_page,
+    )
+
 
 
 def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: str) -> dict[str, Any]:
@@ -161,13 +225,20 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
     practice_meta = state.get("practice_state") if isinstance(state.get("practice_state"), dict) else {}
     live_studio = ""
     if hasattr(st, "session_state"):
-        live_studio = str(st.session_state.get("studio_page") or "").strip()
-    studio_page = (
-        live_studio
-        or studio_nav_meta.get("studio_page")
-        or (core or {}).get("studio_page")
-        or session_extra.get("studio_page")
-    )
+        ss_ref = st.session_state
+        live_studio, _ = _resolve_live_studio_page_for_save(ss_ref, save_reason=save_reason)
+    if save_reason == "page_change" and live_studio:
+        coach_page = live_studio
+    if save_reason == "page_change" and live_studio:
+        studio_page = live_studio
+    else:
+        studio_page = (
+            live_studio
+            or studio_nav_meta.get("studio_page")
+            or (core or {}).get("studio_page")
+            or session_extra.get("studio_page")
+        )
+
     return {
         "schema_version": WORKSPACE_SCHEMA_VERSION,
         "updated_at": _utc_now_iso(),
@@ -245,8 +316,15 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
                 state[key] = ss[key]
     save_reason = str(ss.pop("_suite_pending_save_reason", None) or "autosave")
     state["music_workspace_state"] = _build_workspace_envelope(st, state, save_reason=save_reason)
-    _sync_studio_page_into_music_blob(st, state)
+    stamp_trace = _sync_studio_page_into_music_blob(st, state, save_reason=save_reason)
+    if hasattr(st, "session_state"):
+        if stamp_trace:
+            ss["_music_save_payload_stamp_trace"] = stamp_trace
+        ss["music_workspace_state"] = copy.deepcopy(state["music_workspace_state"])
+        if isinstance(state.get("studio_nav_state"), dict):
+            ss["studio_nav_state"] = copy.deepcopy(state["studio_nav_state"])
     return state
+
 
 
 def apply_music_disk_state(
@@ -472,8 +550,13 @@ def after_studio_page_change(st: Any, session_state: dict | None = None) -> None
         sync_music_coach_workspace_page(ss)
     except ImportError:
         pass
-    force_save_music_state(st, reason="page_change")
+    ss["_suite_page_change_save_page"] = page_id
+    try:
+        force_save_music_state(st, reason="page_change")
+    finally:
+        ss.pop("_suite_page_change_save_page", None)
     _release_user_page_ownership_after_save(st, page_id)
+
     ss["_suite_last_persisted_page"] = page_id
     ss.pop("_suite_page_user_nav", None)
 
@@ -702,6 +785,46 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
         except ImportError:
             pass
         local_updated_at = ss.get("_suite_persist_debug_disk_ts") or ss.get("_suite_persist_last_save_at")
+        stamp_trace = ss.get("_music_save_payload_stamp_trace")
+        save_payload_trace: dict[str, Any] = (
+            dict(stamp_trace) if isinstance(stamp_trace, dict) else {}
+        )
+        if reason == "page_change" and isinstance(ss.get("_suite_last_cloud_save_payload"), dict):
+            last_payload = ss["_suite_last_cloud_save_payload"]
+            payload_ws = last_payload.get("music_workspace_state")
+            payload_core = last_payload.get("core") if isinstance(last_payload.get("core"), dict) else {}
+            payload_sess = (
+                last_payload.get("session") if isinstance(last_payload.get("session"), dict) else {}
+            )
+            payload_nav = (
+                last_payload.get("studio_nav_state")
+                if isinstance(last_payload.get("studio_nav_state"), dict)
+                else {}
+            )
+            save_payload_trace.setdefault(
+                "save_payload_source",
+                save_payload_trace.get("save_payload_source") or "session_state.studio_page",
+            )
+            save_payload_trace["save_payload_core_page"] = str(
+                payload_core.get("studio_page") or save_payload_trace.get("save_payload_core_page") or ""
+            )
+            save_payload_trace["save_payload_session_page"] = str(
+                payload_sess.get("studio_page") or save_payload_trace.get("save_payload_session_page") or ""
+            )
+            save_payload_trace["save_payload_workspace_page"] = str(
+                (payload_ws or {}).get("studio_page")
+                if isinstance(payload_ws, dict)
+                else save_payload_trace.get("save_payload_workspace_page")
+                or ""
+            )
+            save_payload_trace["save_payload_studio_nav_page"] = str(
+                payload_nav.get("studio_page")
+                or payload_nav.get("page")
+                or save_payload_trace.get("save_payload_studio_nav_page")
+                or ""
+            )
+            if save_payload_trace.get("save_payload_workspace_page"):
+                cloud_payload_page = str(save_payload_trace["save_payload_workspace_page"])
         update_trace(
             st,
             studio_page_raw=saved_studio or None,
@@ -715,6 +838,7 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
             cloud_updated_at=cloud_updated_at,
             local_updated_at=local_updated_at,
             final_studio_page=ss.get("studio_page"),
+            **save_payload_trace,
             **practice_trace,
         )
     except Exception:
