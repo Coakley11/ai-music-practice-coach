@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v24-phase-c-song-nav-state"
+MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v25-phase-c-practice-state"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -524,6 +524,8 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
             from active_song_state import render_active_song_state_debug
 
+            from practice_state import render_practice_state_debug
+
             from studio_nav_state import render_studio_nav_state_debug
 
 
@@ -531,6 +533,8 @@ def render_persistence_trace_sidebar(st: Any) -> None:
             render_studio_nav_state_debug(st, ss)
 
             render_active_song_state_debug(st, ss)
+
+            render_practice_state_debug(st, ss)
 
         except ImportError:
 

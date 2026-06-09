@@ -7590,6 +7590,7 @@ def render_section_jump_bar(
     *,
     state_key: str = "practice_focus_section",
     rerun_fn: Optional[Any] = None,
+    on_change: Optional[Any] = None,
 ) -> Optional[str]:
     """Section focus selector — first option should be Full Song when provided."""
     import streamlit as st
@@ -7619,6 +7620,7 @@ def render_section_jump_bar(
         key=state_key,
         format_func=_label,
         label_visibility="collapsed",
+        on_change=on_change,
     )
     st.markdown("</div>", unsafe_allow_html=True)
     return picked

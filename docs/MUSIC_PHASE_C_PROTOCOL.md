@@ -1,7 +1,7 @@
 # Music Phase C — Canonical Page State Protocol
 
 **Last updated:** 2026-06-08  
-**Status:** In progress — `active_song_state.py` + `studio_nav_state.py` wired  
+**Status:** In progress — `active_song_state.py`, `studio_nav_state.py`, `practice_state.py` wired  
 **Reference:** `baseball-stat-app/docs/BASEBALL_PAGE_STATE_PROTOCOL.md`  
 **Phase B (shipped):** `docs/MUSIC_PHASE_B_PROTOCOL.md`
 
@@ -11,14 +11,22 @@
 
 Phase C migrates Music workspace fields into canonical `{module}_state.py` blobs with dirty flags, prepare/flush lifecycle, cloud restore protection, and AMI return hooks.
 
-**Shipped in v24 (first slice only):**
+**Shipped in v24 (first slice):**
 
 | Module | Session key | Envelope field | Scope |
 |--------|-------------|----------------|-------|
 | `studio_nav_state.py` | `studio_nav_state` | `music_workspace_state.studio_page` | `studio_page` ownership |
 | `active_song_state.py` | `active_song_state` | `music_workspace_state.active_song` | pick_key, display_key, instrument, level, focus |
 
-**Queued (not started):** `practice_state`, `backing_track_state`, `creative_state`, `karaoke_state`, `upload_state`, `practice_log_state`
+**Shipped in v25 (second slice):**
+
+| Module | Session key | Envelope field | Scope |
+|--------|-------------|----------------|-------|
+| `practice_state.py` | `practice_state` | `music_workspace_state.practice_filters` | groove, section focus, notation prefs, last mode |
+
+**Queued (not started):** `backing_track_state`, `creative_state`, `karaoke_state`, `upload_state`, `practice_log_state`
+
+**Watch item (non-blocker):** First phone→Dell instrument/setup edit may not sync immediately; monitor on next acceptance pass.
 
 ---
 
@@ -26,9 +34,10 @@ Phase C migrates Music workspace fields into canonical `{module}_state.py` blobs
 
 ```
 Startup   → prepare_music_workspace()           # Phase B cloud/disk sync
-         → prepare_canonical_music_page_state()  # Phase C reconcile
-Before UI → prepare_studio_nav() + prepare_active_song_context()
-User edit → on_change / song pick → flush_active_song_edits_and_save(reason="song_edit")
+         → prepare_canonical_music_page_state()  # Phase C reconcile (nav + song + practice)
+Before UI → prepare_studio_nav() + prepare_active_song_context() + prepare_practice_page()
+Practice  → prepare_practice_page() again before Practice widgets
+User edit → on_change → flush_*_edits_and_save(reason="*_edit")
 Page nav  → navigate_studio_page() → claim_studio_page_ownership() → force_save(page_change)
 Cloud     → apply_cloud_*_if_allowed() — blocked when *_state_dirty
 AMI return → apply_*_source_state_from_ami() via music_coach_context
@@ -56,28 +65,27 @@ Each `{module}_state.py` exports:
 
 ## Integration (`music_persistent_state.py`)
 
-- `_WORKSPACE_KEYS = ("active_song_state", "studio_nav_state")`
-- `build_music_disk_state()` commits both canonical blobs
-- `apply_music_disk_state()` uses `resolve_studio_page_for_restore` + `apply_cloud_active_song_state_if_allowed`
-- `prepare_canonical_music_page_state()` called after `prepare_music_workspace()` in main app
-- `flush_active_song_edits_and_save()` uses `song_edit` force-save bypass (suite_user_persistence)
+- `_WORKSPACE_KEYS = ("active_song_state", "studio_nav_state", "practice_state")`
+- `build_music_disk_state()` commits all canonical blobs
+- `apply_music_disk_state()` restores nav, song, and practice modules
+- Force-save bypass: `song_edit`, `practice_edit`, `page_change`, insight reasons
 
 ---
 
 ## Acceptance matrix (A–E)
 
-| ID | Scenario | active_song | studio_nav |
-|----|----------|-------------|------------|
-| A | Local edit survives prepare | ✓ | ✓ |
-| B | Phone ↔ Dell cloud restore | ✓ | ✓ |
-| C | Stale cloud blocked when dirty | ✓ | ✓ |
-| D | Page nav does not clear song | ✓ | n/a |
-| E | AMI return restores context | ✓ | ✓ |
+| ID | Scenario | active_song | studio_nav | practice |
+|----|----------|-------------|------------|----------|
+| A | Local edit survives prepare | ✓ | ✓ | ✓ |
+| B | Phone ↔ Dell cloud restore | ✓ | ✓ | ✓ |
+| C | Stale cloud blocked when dirty | ✓ | ✓ | ✓ |
+| D | Page nav does not clear filters | ✓ | n/a | ✓ |
+| E | AMI return restores context | ✓ | ✓ | ✓ |
 
-Tests: `tests/test_active_song_state.py`, `tests/test_studio_nav_state.py`
+Tests: `tests/test_active_song_state.py`, `tests/test_studio_nav_state.py`, `tests/test_practice_state.py`
 
 ---
 
 ## Deploy marker
 
-`studio-nav-stable-v24-phase-c-song-nav-state` (`music_persistence_trace.MUSIC_PERSIST_DEPLOY_VERSION`)
+`studio-nav-stable-v25-phase-c-practice-state` (`music_persistence_trace.MUSIC_PERSIST_DEPLOY_VERSION`)

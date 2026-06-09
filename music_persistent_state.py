@@ -83,6 +83,7 @@ _INSIGHT_KEYS = (
 _WORKSPACE_KEYS: tuple[str, ...] = (
     "active_song_state",
     "studio_nav_state",
+    "practice_state",
 )
 
 
@@ -157,6 +158,7 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
         coach_page = str((core or {}).get("studio_page") or session_extra.get("studio_page") or "")
     active_song_meta = state.get("active_song_state") if isinstance(state.get("active_song_state"), dict) else {}
     studio_nav_meta = state.get("studio_nav_state") if isinstance(state.get("studio_nav_state"), dict) else {}
+    practice_meta = state.get("practice_state") if isinstance(state.get("practice_state"), dict) else {}
     live_studio = ""
     if hasattr(st, "session_state"):
         live_studio = str(st.session_state.get("studio_page") or "").strip()
@@ -183,7 +185,16 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             "level": active_song_meta.get("level") or (core or {}).get("level"),
             "focus": active_song_meta.get("focus") or (core or {}).get("focus"),
             "practice_focus_section": active_song_meta.get("practice_focus_section")
+            or practice_meta.get("practice_focus_section")
             or (core or {}).get("practice_focus_section"),
+        },
+        "practice_filters": {
+            "practice_focus_section": practice_meta.get("practice_focus_section")
+            or active_song_meta.get("practice_focus_section"),
+            "practice_groove_style": practice_meta.get("practice_groove_style"),
+            "practice_notation_lines": practice_meta.get("practice_notation_lines"),
+            "practice_notation_difficulty": practice_meta.get("practice_notation_difficulty"),
+            "last_practice_mode": practice_meta.get("last_practice_mode"),
         },
     }
 
@@ -192,10 +203,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     ss = st.session_state
     try:
         from active_song_state import commit_active_song_state_from_session
+        from practice_state import commit_practice_state_from_session
         from studio_nav_state import commit_studio_nav_from_session
 
         commit_active_song_state_from_session(ss, reason="autosave")
         commit_studio_nav_from_session(ss, reason="autosave")
+        commit_practice_state_from_session(ss, reason="autosave")
     except ImportError:
         pass
     core = build_music_local_state(st)
@@ -375,6 +388,20 @@ def apply_music_disk_state(
         pass
 
     try:
+        from practice_state import (
+            apply_cloud_practice_state_if_allowed,
+            clear_practice_local_edit,
+            is_practice_locally_dirty,
+        )
+
+        if is_practice_locally_dirty(ss):
+            ss["_practice_restore_skipped_reason"] = "local_dirty"
+        elif apply_cloud_practice_state_if_allowed(ss, payload):
+            clear_practice_local_edit(ss)
+    except ImportError:
+        pass
+
+    try:
         from music_coach_context import sync_music_coach_workspace_page
 
         sync_music_coach_workspace_page(ss)
@@ -457,13 +484,15 @@ def claim_studio_page_ownership(st: Any, page_id: str) -> None:
 
 
 def prepare_canonical_music_page_state(session: dict[str, Any]) -> None:
-    """Phase C: reconcile studio nav + active song canonical blobs before widgets."""
+    """Phase C: reconcile studio nav + active song + practice canonical blobs before widgets."""
     try:
         from active_song_state import prepare_active_song_context
+        from practice_state import prepare_practice_page
         from studio_nav_state import prepare_studio_nav
 
         prepare_studio_nav(session)
         prepare_active_song_context(session)
+        prepare_practice_page(session)
     except ImportError:
         pass
 
@@ -480,11 +509,44 @@ def mark_active_song_edit_pending(session: dict[str, Any]) -> None:
 def _clear_canonical_dirty_after_save(session: dict[str, Any], *, reason: str = "") -> None:
     try:
         from active_song_state import clear_active_song_local_edit
+        from practice_state import clear_practice_local_edit
         from studio_nav_state import clear_studio_nav_local_edit
 
         clear_active_song_local_edit(session)
+        clear_practice_local_edit(session)
         if reason == "page_change":
             clear_studio_nav_local_edit(session)
+    except ImportError:
+        pass
+
+
+def flush_practice_edits_and_save(st: Any, *, reason: str = "practice_edit") -> bool:
+    """Canonical Practice flush + cross-device force save (Phase C)."""
+    try:
+        from practice_state import (
+            PRACTICE_PENDING_SYNC_KEY,
+            flush_practice_edits,
+            is_practice_locally_dirty,
+        )
+
+        ss = st.session_state
+        if ss.get(PRACTICE_PENDING_SYNC_KEY) or is_practice_locally_dirty(ss) or reason == "practice_edit":
+            flush_practice_edits(ss, reason=reason)
+    except ImportError:
+        pass
+    ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
+    if ok:
+        _clear_canonical_dirty_after_save(st.session_state, reason=reason)
+        _record_music_persist_trace(st, reason=reason)
+    return ok
+
+
+def maybe_flush_pending_practice_edits(st: Any) -> None:
+    try:
+        from practice_state import PRACTICE_PENDING_SYNC_KEY
+
+        if st.session_state.get(PRACTICE_PENDING_SYNC_KEY):
+            flush_practice_edits_and_save(st, reason="practice_edit")
     except ImportError:
         pass
 
@@ -810,9 +872,11 @@ def apply_music_session_defaults(st: Any) -> None:
         ss.pop(key, None)
     try:
         from active_song_state import ACTIVE_SONG_DIRTY_KEY, clear_active_song_local_edit
+        from practice_state import clear_practice_local_edit
         from studio_nav_state import clear_studio_nav_local_edit
 
         clear_active_song_local_edit(ss)
+        clear_practice_local_edit(ss)
         clear_studio_nav_local_edit(ss)
         ss.pop(ACTIVE_SONG_DIRTY_KEY, None)
     except ImportError:

@@ -56,23 +56,34 @@ def sync_music_coach_workspace_page(session_state: dict[str, Any]) -> str:
 
 
 def build_source_state(page: str, session_state: dict[str, Any]) -> dict[str, Any]:
-    """Stub source_state for Music Coach return routing (Phase B — no canonical page modules)."""
+    """Build AMI / Music Coach source_state from canonical page modules when available."""
     coach_page = str(page or "").strip() or resolve_coach_source_page(session_state)
     if coach_page not in COACH_PAGE_IDS:
         coach_page = resolve_coach_source_page(session_state)
-    song = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}
+    try:
+        from active_song_state import gather_active_song_context
+
+        song_ctx = gather_active_song_context(session_state)
+    except ImportError:
+        song_ctx = {}
+    song = song_ctx.get("selected_song") if isinstance(song_ctx.get("selected_song"), dict) else {}
+    if not song:
+        song = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}
     pick_key = str(
-        session_state.get("active_catalog_pick_key")
+        song_ctx.get("pick_key")
+        or session_state.get("active_catalog_pick_key")
         or song.get("pick_key")
         or ""
     ).strip()
     widget_params: dict[str, Any] = {
         "studio_page": str(session_state.get("studio_page") or ""),
-        "instrument": str(session_state.get("instrument") or ""),
-        "level": str(session_state.get("level") or ""),
-        "focus": str(session_state.get("focus") or ""),
-        "display_key": str(session_state.get("display_key") or ""),
-        "practice_focus_section": str(session_state.get("practice_focus_section") or ""),
+        "instrument": str(song_ctx.get("instrument") or session_state.get("instrument") or ""),
+        "level": str(song_ctx.get("level") or session_state.get("level") or ""),
+        "focus": str(song_ctx.get("focus") or session_state.get("focus") or ""),
+        "display_key": str(song_ctx.get("display_key") or session_state.get("display_key") or ""),
+        "practice_focus_section": str(
+            song_ctx.get("practice_focus_section") or session_state.get("practice_focus_section") or ""
+        ),
     }
     if coach_page == "backing":
         widget_params.update(
@@ -89,6 +100,20 @@ def build_source_state(page: str, session_state: dict[str, Any]) -> dict[str, An
                 "cpl_edit_section": session_state.get("cpl_edit_section"),
             }
         )
+    elif coach_page == "practice":
+        try:
+            from practice_state import gather_practice_filters
+
+            widget_params.update(gather_practice_filters(session_state))
+        except ImportError:
+            widget_params.update(
+                {
+                    "practice_groove_style": session_state.get("practice_groove_style"),
+                    "practice_notation_lines": session_state.get("practice_notation_lines"),
+                    "practice_notation_difficulty": session_state.get("practice_notation_difficulty"),
+                    "last_practice_mode": session_state.get("last_practice_mode"),
+                }
+            )
     elif coach_page == "karaoke":
         widget_params["karaoke_session_active"] = True
     return {
@@ -138,29 +163,47 @@ def apply_source_state_to_session(
     *,
     schedule_navigation: bool = True,
 ) -> None:
-    """Stub AMI return apply — restore coach page + light widget prefs (Phase B)."""
+    """Apply Music Coach / AMI return payload via canonical state modules."""
     if not isinstance(source_state, dict):
         return
-    coach_page = str(
-        source_state.get("source_page")
-        or source_state.get("page_params", {}).get("page")
-        or ""
-    ).strip()
-    studio_target = _coach_page_to_studio_page(coach_page)
+    try:
+        from active_song_state import apply_active_song_source_state_from_ami
+        from practice_state import apply_practice_source_state_from_ami
+        from studio_nav_state import apply_studio_nav_source_state_from_ami
+
+        apply_active_song_source_state_from_ami(session_state, source_state)
+        apply_practice_source_state_from_ami(session_state, source_state)
+        studio_target = apply_studio_nav_source_state_from_ami(session_state, source_state)
+    except ImportError:
+        coach_page = str(
+            source_state.get("source_page")
+            or source_state.get("page_params", {}).get("page")
+            or ""
+        ).strip()
+        widgets = source_state.get("widget_params")
+        if isinstance(widgets, dict):
+            for key, val in widgets.items():
+                if key in session_state or str(key).startswith(
+                    ("practice_", "backing_", "cpl_", "instrument", "level", "focus", "display_key")
+                ):
+                    session_state[key] = val
+        entity = source_state.get("entity_params")
+        if isinstance(entity, dict) and entity.get("pick_key"):
+            session_state["active_catalog_pick_key"] = entity["pick_key"]
+        sync_music_coach_workspace_page(session_state)
+        studio_target = _coach_page_to_studio_page(coach_page)
+        if schedule_navigation and studio_target:
+            session_state["studio_page"] = studio_target
+            session_state["_navigate_to_studio_page"] = studio_target
+        return
+    sync_music_coach_workspace_page(session_state)
+    if schedule_navigation and studio_target:
+        session_state["_navigate_to_studio_page"] = studio_target
     widgets = source_state.get("widget_params")
     if isinstance(widgets, dict):
         for key, val in widgets.items():
-            if key in session_state or str(key).startswith(
-                ("practice_", "backing_", "cpl_", "instrument", "level", "focus", "display_key")
-            ):
+            if str(key).startswith(("practice_", "backing_", "cpl_", "karaoke_")):
                 session_state[key] = val
-    entity = source_state.get("entity_params")
-    if isinstance(entity, dict) and entity.get("pick_key"):
-        session_state["active_catalog_pick_key"] = entity["pick_key"]
-    sync_music_coach_workspace_page(session_state)
-    if schedule_navigation and studio_target:
-        session_state["studio_page"] = studio_target
-        session_state["_navigate_to_studio_page"] = studio_target
 
 
 def is_coach_page_eligible(coach_page: str) -> bool:

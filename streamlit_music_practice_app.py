@@ -8369,6 +8369,7 @@ def _render_practice_setup_panel(
                 grooves,
                 key="practice_groove_style",
                 label_visibility="collapsed",
+                on_change=_on_practice_filter_change,
             )
             _groove_icon = GROOVE_ICONS.get(st.session_state.get("practice_groove_style", _groove), "✨")
             _groove_label = html.escape(str(st.session_state.get("practice_groove_style", _groove)))
@@ -8432,6 +8433,7 @@ def _render_practice_setup_panel(
                 st.session_state,
                 state_key="practice_focus_section",
                 rerun_fn=st.rerun,
+                on_change=_on_practice_filter_change,
             )
             if section_focus_after_jump:
                 section_focus_after_jump()
@@ -9033,6 +9035,26 @@ st.sidebar.selectbox(
 _instrument_options = DEFAULT_INSTRUMENT_OPTIONS
 
 
+def _sync_canonical_practice_after_edit() -> None:
+    """Phase C: flush canonical practice_state and force cloud save."""
+    try:
+        from music_persistent_state import flush_practice_edits_and_save
+
+        flush_practice_edits_and_save(st, reason="practice_edit")
+    except Exception:
+        pass
+
+
+def _on_practice_filter_change() -> None:
+    try:
+        from practice_state import mark_practice_pending_sync
+
+        mark_practice_pending_sync(st.session_state)
+    except Exception:
+        pass
+    _sync_canonical_practice_after_edit()
+
+
 def _sync_canonical_active_song_after_edit() -> None:
     """Phase C: flush canonical active_song_state and force cloud save."""
     try:
@@ -9484,6 +9506,12 @@ if _developer_mode_enabled():
 if _studio_page == "practice":
 
     ensure_page_initialized(st.session_state, "practice")
+    try:
+        from practice_state import prepare_practice_page
+
+        prepare_practice_page(st.session_state)
+    except Exception:
+        pass
     note_page_visit(st.session_state, "practice")
     if pp.is_screenshot_mode(st) or pp.is_demo_mode(st):
         pp.render_hero_banner(
@@ -10090,6 +10118,7 @@ if _studio_page == "practice":
                     max_value=4,
                     value=int(st.session_state.get("practice_notation_lines", 2)),
                     key="practice_notation_lines",
+                    on_change=_on_practice_filter_change,
                 )
             with _n_col2:
                 _diff_opts = ["easy", "medium", "advanced"]
@@ -10099,6 +10128,7 @@ if _studio_page == "practice":
                     options=_diff_opts,
                     index=_diff_opts.index(_diff_default) if _diff_default in _diff_opts else 1,
                     key="practice_notation_difficulty",
+                    on_change=_on_practice_filter_change,
                 )
             with _n_col3:
                 st.write("")
@@ -12458,9 +12488,11 @@ if not pp.skip_background_persistence(st):
             clear_music_workspace_autosave_block,
             force_save_music_state,
             maybe_flush_pending_active_song_edits,
+            maybe_flush_pending_practice_edits,
         )
 
         maybe_flush_pending_active_song_edits(st)
+        maybe_flush_pending_practice_edits(st)
         autosave_music_state(st)
         if st.session_state.pop("_suite_persist_insight_dirty", None):
             force_save_music_state(st, reason="insight_persist")
