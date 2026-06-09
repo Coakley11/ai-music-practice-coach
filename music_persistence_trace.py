@@ -500,6 +500,14 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
 
 
+        try:
+            from local_nav_trace import render_local_nav_trace_sidebar
+
+            st.markdown("**Local nav (this run)**")
+            render_local_nav_trace_sidebar(st)
+        except ImportError:
+            pass
+
         st.markdown("**Workspace restore (Dell)**")
 
         for label in WORKSPACE_RESTORE_TRACE_LABELS:

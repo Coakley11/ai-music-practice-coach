@@ -8634,22 +8634,18 @@ def _render_backing_step2_playback_action(
     """Step 2 — tempo, quick controls, generate & play."""
     try:
         from backing_track_state import prepare_backing_meter_for_widget
-        from songs.meter_state import (
-            apply_backing_meter_for_song,
-            sync_backing_meter_override_from_widget,
-        )
 
-        prepare_backing_meter_for_widget(
+        applied_meter, meter_override = prepare_backing_meter_for_widget(
             st.session_state,
             default_meter=default_meter,
         )
-        sync_backing_meter_override_from_widget(st.session_state, default_meter)
+    except ImportError:
         applied_meter, meter_override, _song_meter = apply_backing_meter_for_song(
             st,
             song_id=song_id,
             default_time_signature=default_meter,
         )
-    except ImportError:
+    else:
         applied_meter, meter_override, _song_meter = apply_backing_meter_for_song(
             st,
             song_id=song_id,
@@ -8910,6 +8906,12 @@ from openai_secrets_config import resolve_openai_api_key
 _openai_api_key, _openai_secrets_probe = resolve_openai_api_key()
 
 _studio_page_before_workspace = str(st.session_state.get("studio_page") or "practice")
+try:
+    from local_nav_trace import record_local_nav_checkpoint
+
+    record_local_nav_checkpoint(st, "run_start", intent=_studio_page_before_workspace)
+except Exception:
+    pass
 
 try:
     from applied_math_return_insight import hydrate_applied_math_insight_for_session
@@ -8943,9 +8945,21 @@ try:
         from music_persistent_state import prepare_canonical_music_page_state
 
         prepare_canonical_music_page_state(st.session_state)
+        try:
+            from local_nav_trace import record_local_nav_checkpoint
+
+            record_local_nav_checkpoint(st, "post_canonical")
+        except Exception:
+            pass
     except Exception:
         pass
     show_persistence_messages(st)
+    try:
+        from local_nav_trace import record_local_nav_checkpoint
+
+        record_local_nav_checkpoint(st, "post_workspace")
+    except Exception:
+        pass
 except Exception:
     pass
 
@@ -8959,9 +8973,9 @@ migrate_legacy_session_keys(st.session_state)
 sanitize_persisted_snapshots(st.session_state)
 handle_studio_page_transition(st.session_state)
 try:
-    from backing_track_state import prepare_backing_page
+    from local_nav_trace import record_local_nav_checkpoint
 
-    prepare_backing_page(st.session_state)
+    record_local_nav_checkpoint(st, "post_transition")
 except Exception:
     pass
 note_page_visit(st.session_state, _studio_page)
@@ -9089,31 +9103,11 @@ st.sidebar.selectbox(
 _instrument_options = DEFAULT_INSTRUMENT_OPTIONS
 
 
-def _sync_canonical_backing_after_edit() -> None:
-    """Phase C: flush canonical backing_track_state and force cloud save."""
-    try:
-        from music_persistent_state import flush_backing_edits_and_save
-
-        flush_backing_edits_and_save(st, reason="backing_edit")
-    except Exception:
-        pass
-
-
 def _on_backing_filter_change() -> None:
     try:
         from backing_track_state import mark_backing_pending_sync
 
         mark_backing_pending_sync(st.session_state)
-    except Exception:
-        pass
-
-
-def _flush_backing_pending_after_render() -> None:
-    """End-of-rerun flush — widgets are source of truth (deferred sync)."""
-    try:
-        from music_persistent_state import maybe_flush_pending_backing_edits
-
-        maybe_flush_pending_backing_edits(st)
     except Exception:
         pass
 
@@ -9506,12 +9500,6 @@ _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     is_custom=is_custom_progression(st.session_state),
 )
 _default_song_bpm = _synced_bpm
-try:
-    from backing_track_state import prepare_backing_page
-
-    prepare_backing_page(st.session_state)
-except Exception:
-    pass
 
 song_lyrics_slug = _song_slug(
     song,
@@ -9581,6 +9569,12 @@ if pp.show_quick_nav(st):
         current_page=_studio_page,
         rerun_fn=st.rerun,
     )
+    try:
+        from local_nav_trace import record_local_nav_checkpoint
+
+        record_local_nav_checkpoint(st, "post_quick_nav")
+    except Exception:
+        pass
 
 if not st.session_state.get("_ami_insight_card_rendered"):
     try:
@@ -10638,12 +10632,6 @@ elif _studio_page == "picker":
 
 elif _studio_page == "backing":
 
-    try:
-        from backing_track_state import prepare_backing_page
-
-        prepare_backing_page(st.session_state)
-    except Exception:
-        pass
     ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
     if pp.is_capture_mode(st):
@@ -11368,7 +11356,6 @@ elif _studio_page == "backing":
             hide_index=True,
         )
 
-    _flush_backing_pending_after_render()
 
 # -------------------------------------------------
 # UPLOAD / RECORDING ANALYSIS
@@ -12614,13 +12601,11 @@ if not pp.skip_background_persistence(st):
             clear_music_workspace_autosave_block,
             force_save_music_state,
             maybe_flush_pending_active_song_edits,
-            maybe_flush_pending_backing_edits,
             maybe_flush_pending_practice_edits,
         )
 
         maybe_flush_pending_active_song_edits(st)
         maybe_flush_pending_practice_edits(st)
-        maybe_flush_pending_backing_edits(st)
         autosave_music_state(st)
         if st.session_state.pop("_suite_persist_insight_dirty", None):
             force_save_music_state(st, reason="insight_persist")
