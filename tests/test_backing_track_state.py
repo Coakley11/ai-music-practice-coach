@@ -1,0 +1,154 @@
+"""Tests for canonical Backing Track page state (Phase C acceptance A–E)."""
+
+from __future__ import annotations
+
+import unittest
+from unittest.mock import MagicMock
+
+from backing_track_state import (
+    BACKING_DIRTY_KEY,
+    apply_backing_source_state_from_ami,
+    apply_cloud_backing_state_if_allowed,
+    coerce_backing_groove_for_widget,
+    commit_backing_state_from_session,
+    flush_backing_edits,
+    is_backing_locally_dirty,
+    mark_backing_local_edit,
+    prepare_backing_page,
+    write_canonical_backing_state,
+)
+from music_persistent_state import apply_music_disk_state, build_music_disk_state
+
+_SAMPLE = {
+    "backing_track_scope": "Single section",
+    "backing_track_single_section": "Chorus",
+    "backing_track_multi_sections": ["Verse", "Chorus"],
+    "backing_track_loops": 4,
+    "backing_track_bpm": 108,
+    "backing_groove_style": "Jazz swing",
+    "backing_volume": 0.9,
+    "backing_time_signature": "3/4",
+    "backing_time_signature_override": True,
+    "backing_quick_section": "Chorus",
+}
+
+
+class TestBackingTrackState(unittest.TestCase):
+    def test_a_local_persist_prepare_preserves_edits(self) -> None:
+        session: dict = {}
+        write_canonical_backing_state(session, _SAMPLE, reason="setup")
+        session["backing_track_bpm"] = 120
+        session["backing_groove_style"] = "Rock groove"
+        mark_backing_local_edit(session)
+        flush_backing_edits(session, reason="backing_edit")
+        prepare_backing_page(session)
+        self.assertEqual(session["backing_track_bpm"], 120)
+        self.assertEqual(session["backing_groove_style"], "Rock groove")
+        self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 120)
+        self.assertTrue(is_backing_locally_dirty(session))
+
+    def test_a_prepare_seeds_from_canonical(self) -> None:
+        session = {"backing_track_state": {**_SAMPLE, "last_write_reason": "cloud"}}
+        prepare_backing_page(session)
+        self.assertEqual(session["backing_track_bpm"], 108)
+        self.assertEqual(session["backing_groove_style"], "Jazz swing")
+        self.assertEqual(session["backing_track_scope"], "Single section")
+
+    def test_b_cross_device_cloud_restore(self) -> None:
+        session: dict = {"backing_track_bpm": 100, "backing_groove_style": "Auto"}
+        cloud = {
+            "backing_track_state": dict(_SAMPLE),
+            "music_workspace_state": {"backing_filters": dict(_SAMPLE)},
+        }
+        self.assertTrue(apply_cloud_backing_state_if_allowed(session, cloud))
+        self.assertEqual(session["backing_track_bpm"], 108)
+        self.assertEqual(session["backing_groove_style"], "Jazz swing")
+        self.assertFalse(is_backing_locally_dirty(session))
+
+    def test_b_disk_blob_round_trip(self) -> None:
+        st = MagicMock()
+        st.session_state = dict(_SAMPLE)
+        write_canonical_backing_state(st.session_state, _SAMPLE, reason="setup")
+        blob = build_music_disk_state(st)
+        self.assertIn("backing_track_state", blob)
+        meta = blob.get("music_workspace_state") or {}
+        self.assertEqual(meta.get("backing_filters", {}).get("backing_track_bpm"), 108)
+        self.assertEqual(meta.get("backing_filters", {}).get("backing_groove_style"), "Jazz swing")
+
+        st2 = MagicMock()
+        st2.session_state = {}
+        apply_music_disk_state(st2, blob, song_picker_catalog={}, song_library={})
+        self.assertEqual(st2.session_state.get("backing_track_bpm"), 108)
+        self.assertEqual(st2.session_state.get("backing_groove_style"), "Jazz swing")
+
+    def test_c_stale_cloud_blocked_when_locally_dirty(self) -> None:
+        session = {**_SAMPLE, "backing_track_bpm": 130}
+        mark_backing_local_edit(session)
+        cloud = {"backing_track_state": dict(_SAMPLE)}
+        self.assertFalse(apply_cloud_backing_state_if_allowed(session, cloud))
+        self.assertEqual(session["backing_track_bpm"], 130)
+
+    def test_d_navigation_does_not_clear_backing_filters(self) -> None:
+        session = dict(_SAMPLE)
+        write_canonical_backing_state(session, _SAMPLE, reason="setup")
+        session["studio_page"] = "practice"
+        prepare_backing_page(session)
+        self.assertEqual(session["backing_track_bpm"], 108)
+
+    def test_e_ami_return_restores_backing_filters(self) -> None:
+        session: dict = {}
+        source = {
+            "source_page": "backing",
+            "widget_params": {
+                "backing_track_scope": "Full song",
+                "backing_track_bpm": 95,
+                "backing_groove_style": "Bossa Nova",
+                "backing_track_loops": 3,
+            },
+        }
+        apply_backing_source_state_from_ami(session, source)
+        self.assertEqual(session["backing_track_scope"], "Full song")
+        self.assertEqual(session["backing_track_bpm"], 95)
+        self.assertEqual(session["backing_groove_style"], "Bossa nova")
+        self.assertEqual(session["backing_track_loops"], 3)
+        self.assertFalse(session.get(BACKING_DIRTY_KEY))
+
+    def test_backing_edit_bypasses_post_restore_block(self) -> None:
+        from suite_user_persistence import _cloud_autosave_blocked_reason
+
+        st = MagicMock()
+        st.session_state = {}
+        state = {"backing_track_state": dict(_SAMPLE)}
+        self.assertIsNone(
+            _cloud_autosave_blocked_reason(st, "music", state, save_reason="backing_edit")
+        )
+
+    def test_autosave_preserves_canonical_bpm_without_dirty(self) -> None:
+        session = {
+            "backing_track_state": {
+                **_SAMPLE,
+                "last_write_reason": "backing_edit",
+            },
+            "backing_track_bpm": 100,
+            "backing_groove_style": "Ballad",
+        }
+        commit_backing_state_from_session(session, reason="autosave")
+        self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 108)
+        self.assertEqual(session["backing_track_bpm"], 108)
+
+    def test_coerce_prefers_canonical_over_song_default(self) -> None:
+        session = {"backing_track_state": {**_SAMPLE, "last_write_reason": "cloud_restore"}}
+        apply_cloud_backing_state_if_allowed(
+            session,
+            {
+                "backing_track_state": session["backing_track_state"],
+                "music_workspace_state": {"backing_filters": session["backing_track_state"]},
+            },
+        )
+        session.pop("backing_groove_style", None)
+        groove = coerce_backing_groove_for_widget(session, default_groove="Ballad")
+        self.assertEqual(groove, "Jazz swing")
+
+
+if __name__ == "__main__":
+    unittest.main()

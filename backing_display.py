@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import html
-from typing import Any
+from typing import Any, Callable
 
 __all__ = (
     "render_backing_active_song_card",
@@ -124,6 +124,7 @@ def render_backing_meter_selector(
     song_default_meter: str,
     applied_meter: str,
     user_override: bool,
+    after_change: Callable[[], None] | None = None,
 ) -> str:
     """Time signature control for backing playback."""
     from songs.meter import BACKING_TIME_SIGNATURES, normalize_time_signature
@@ -150,6 +151,8 @@ def render_backing_meter_selector(
             st.session_state[BACKING_NEEDS_REGEN] = True
         else:
             note_backing_meter_override(st, choice)
+        if after_change is not None:
+            after_change()
 
     st.markdown('<p class="ui-playback-setup-label">Meter</p>', unsafe_allow_html=True)
     choice = st.radio(

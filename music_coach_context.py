@@ -86,13 +86,18 @@ def build_source_state(page: str, session_state: dict[str, Any]) -> dict[str, An
         ),
     }
     if coach_page == "backing":
-        widget_params.update(
-            {
-                "backing_track_scope": session_state.get("backing_track_scope"),
-                "backing_track_bpm": session_state.get("backing_track_bpm"),
-                "backing_groove_style": session_state.get("backing_groove_style"),
-            }
-        )
+        try:
+            from backing_track_state import gather_backing_filters
+
+            widget_params.update(gather_backing_filters(session_state))
+        except ImportError:
+            widget_params.update(
+                {
+                    "backing_track_scope": session_state.get("backing_track_scope"),
+                    "backing_track_bpm": session_state.get("backing_track_bpm"),
+                    "backing_groove_style": session_state.get("backing_groove_style"),
+                }
+            )
     elif coach_page == "custom":
         widget_params.update(
             {
@@ -168,11 +173,13 @@ def apply_source_state_to_session(
         return
     try:
         from active_song_state import apply_active_song_source_state_from_ami
+        from backing_track_state import apply_backing_source_state_from_ami
         from practice_state import apply_practice_source_state_from_ami
         from studio_nav_state import apply_studio_nav_source_state_from_ami
 
         apply_active_song_source_state_from_ami(session_state, source_state)
         apply_practice_source_state_from_ami(session_state, source_state)
+        apply_backing_source_state_from_ami(session_state, source_state)
         studio_target = apply_studio_nav_source_state_from_ami(session_state, source_state)
     except ImportError:
         coach_page = str(

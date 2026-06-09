@@ -246,6 +246,7 @@ _FORCE_SAVE_CLOUD_REASONS = frozenset({
     "music_coach_send",
     "song_edit",
     "practice_edit",
+    "backing_edit",
 })
 
 
@@ -1314,6 +1315,7 @@ def force_autosave(
             "music_coach_send",
             "song_edit",
             "practice_edit",
+            "backing_edit",
         )
         if st.session_state.get(block_key) and not bypass_block:
             st.session_state["_suite_autosave_blocked_after_restore"] = True

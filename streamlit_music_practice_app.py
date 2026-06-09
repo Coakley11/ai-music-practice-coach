@@ -7110,10 +7110,14 @@ def request_backing_quick_section_change(
     """Queue scope/section updates for the next rerun (safe after widgets exist)."""
     if choice == "Full song":
         st.session_state[PENDING_BACKING_SCOPE] = "Full song"
+        st.session_state["backing_track_scope"] = "Full song"
         st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
     elif choice in section_names:
         st.session_state[PENDING_BACKING_SCOPE] = "Single section"
         st.session_state[PENDING_BACKING_SINGLE_SECTION] = choice
+        st.session_state["backing_track_scope"] = "Single section"
+        st.session_state["backing_track_single_section"] = choice
+    _on_backing_filter_change()
 
 
 def request_backing_loops_adjust(delta: int) -> None:
@@ -7122,7 +7126,10 @@ def request_backing_loops_adjust(delta: int) -> None:
         current = int(st.session_state.get("backing_track_loops", 2))
     except (TypeError, ValueError):
         current = 2
-    st.session_state[PENDING_BACKING_LOOPS] = max(1, min(10, current + int(delta)))
+    new_loops = max(1, min(10, current + int(delta)))
+    st.session_state[PENDING_BACKING_LOOPS] = new_loops
+    st.session_state["backing_track_loops"] = new_loops
+    _on_backing_filter_change()
 
 
 def _stop_backing_playback() -> None:
@@ -8471,6 +8478,7 @@ def _render_backing_scope_controls(
             horizontal=True,
             key="backing_track_scope",
             label_visibility="collapsed",
+            on_change=_on_backing_filter_change,
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -8482,6 +8490,7 @@ def _render_backing_scope_controls(
                 section_names,
                 key="backing_track_single_section",
                 label_visibility="collapsed",
+                on_change=_on_backing_filter_change,
             )
             st.markdown("</div>", unsafe_allow_html=True)
         elif playback_scope == "Multiple selected sections" and section_names:
@@ -8498,6 +8507,7 @@ def _render_backing_scope_controls(
                 section_names,
                 key="backing_track_multi_sections",
                 label_visibility="collapsed",
+                on_change=_on_backing_filter_change,
             )
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -8511,6 +8521,7 @@ def _render_backing_scope_controls(
             1,
             key="backing_track_loops",
             label_visibility="collapsed",
+            on_change=_on_backing_filter_change,
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -8628,6 +8639,13 @@ def _render_backing_step2_playback_action(
         default_bpm=default_bpm,
         song_just_reset=song_just_reset,
     )
+    try:
+        from backing_track_state import coerce_backing_groove_for_widget, prepare_backing_bpm_for_widget
+
+        prepare_backing_bpm_for_widget(st.session_state, default_bpm=int(widget_bpm))
+        coerce_backing_groove_for_widget(st.session_state, default_groove=default_groove)
+    except ImportError:
+        pass
 
     with st.container(key="backing_step2_action", border=False):
         render_backing_panel_shell_open(st, "transport")
@@ -8646,6 +8664,14 @@ def _render_backing_step2_playback_action(
         _tc1, _tc2, _tc3 = st.columns(3)
         with _tc1:
             st.markdown('<span class="ui-backing-inline-label">Tempo (BPM)</span>', unsafe_allow_html=True)
+
+            def _on_bpm_slider_change() -> None:
+                sync_backing_bpm_from_slider(
+                    st,
+                    slider_bpm=int(st.session_state.get(slider_key, widget_bpm)),
+                )
+                _on_backing_filter_change()
+
             bpm = st.slider(
                 "Quick BPM",
                 BACKING_BPM_MIN,
@@ -8655,6 +8681,7 @@ def _render_backing_step2_playback_action(
                 key=slider_key,
                 label_visibility="collapsed",
                 help="Your tempo is kept until you change songs (20–180 BPM).",
+                on_change=_on_bpm_slider_change,
             )
             bpm = sync_backing_bpm_from_slider(st, slider_bpm=int(bpm))
         with _tc2:
@@ -8717,6 +8744,7 @@ def _render_backing_step2_playback_action(
                 list(GROOVE_STYLE_CHOICES),
                 key="backing_groove_style",
                 label_visibility="collapsed",
+                on_change=_on_backing_filter_change,
             )
             st.markdown("</div>", unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
@@ -8726,6 +8754,7 @@ def _render_backing_step2_playback_action(
                 song_default_meter=default_meter,
                 applied_meter=applied_meter,
                 user_override=meter_override,
+                after_change=_on_backing_filter_change,
             )
             st.markdown("</div>", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
@@ -9027,6 +9056,26 @@ st.sidebar.selectbox(
 )
 
 _instrument_options = DEFAULT_INSTRUMENT_OPTIONS
+
+
+def _sync_canonical_backing_after_edit() -> None:
+    """Phase C: flush canonical backing_track_state and force cloud save."""
+    try:
+        from music_persistent_state import flush_backing_edits_and_save
+
+        flush_backing_edits_and_save(st, reason="backing_edit")
+    except Exception:
+        pass
+
+
+def _on_backing_filter_change() -> None:
+    try:
+        from backing_track_state import mark_backing_pending_sync
+
+        mark_backing_pending_sync(st.session_state)
+    except Exception:
+        pass
+    _sync_canonical_backing_after_edit()
 
 
 def _sync_canonical_practice_after_edit() -> None:
@@ -10543,7 +10592,19 @@ elif _studio_page == "picker":
 
 elif _studio_page == "backing":
 
+    try:
+        from backing_track_state import prepare_backing_page
+
+        prepare_backing_page(st.session_state)
+    except Exception:
+        pass
     ensure_page_initialized(st.session_state, "backing")
+    try:
+        from backing_track_state import prepare_backing_page
+
+        prepare_backing_page(st.session_state)
+    except Exception:
+        pass
     note_page_visit(st.session_state, "backing")
     if pp.is_capture_mode(st):
         if km.is_voice_mode(st.session_state):
@@ -12502,11 +12563,13 @@ if not pp.skip_background_persistence(st):
             clear_music_workspace_autosave_block,
             force_save_music_state,
             maybe_flush_pending_active_song_edits,
+            maybe_flush_pending_backing_edits,
             maybe_flush_pending_practice_edits,
         )
 
         maybe_flush_pending_active_song_edits(st)
         maybe_flush_pending_practice_edits(st)
+        maybe_flush_pending_backing_edits(st)
         autosave_music_state(st)
         if st.session_state.pop("_suite_persist_insight_dirty", None):
             force_save_music_state(st, reason="insight_persist")

@@ -84,6 +84,7 @@ _WORKSPACE_KEYS: tuple[str, ...] = (
     "active_song_state",
     "studio_nav_state",
     "practice_state",
+    "backing_track_state",
 )
 
 
@@ -159,6 +160,7 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
     active_song_meta = state.get("active_song_state") if isinstance(state.get("active_song_state"), dict) else {}
     studio_nav_meta = state.get("studio_nav_state") if isinstance(state.get("studio_nav_state"), dict) else {}
     practice_meta = state.get("practice_state") if isinstance(state.get("practice_state"), dict) else {}
+    backing_meta = state.get("backing_track_state") if isinstance(state.get("backing_track_state"), dict) else {}
     live_studio = ""
     if hasattr(st, "session_state"):
         live_studio = str(st.session_state.get("studio_page") or "").strip()
@@ -197,6 +199,18 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             "practice_notation_difficulty": practice_meta.get("practice_notation_difficulty"),
             "last_practice_mode": practice_meta.get("last_practice_mode"),
         },
+        "backing_filters": {
+            "backing_track_scope": backing_meta.get("backing_track_scope"),
+            "backing_track_single_section": backing_meta.get("backing_track_single_section"),
+            "backing_track_multi_sections": backing_meta.get("backing_track_multi_sections"),
+            "backing_track_loops": backing_meta.get("backing_track_loops"),
+            "backing_track_bpm": backing_meta.get("backing_track_bpm"),
+            "backing_groove_style": backing_meta.get("backing_groove_style"),
+            "backing_volume": backing_meta.get("backing_volume"),
+            "backing_time_signature": backing_meta.get("backing_time_signature"),
+            "backing_time_signature_override": backing_meta.get("backing_time_signature_override"),
+            "backing_quick_section": backing_meta.get("backing_quick_section"),
+        },
     }
 
 
@@ -204,12 +218,14 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     ss = st.session_state
     try:
         from active_song_state import commit_active_song_state_from_session
+        from backing_track_state import commit_backing_state_from_session
         from practice_state import commit_practice_state_from_session
         from studio_nav_state import commit_studio_nav_from_session
 
         commit_active_song_state_from_session(ss, reason="autosave")
         commit_studio_nav_from_session(ss, reason="autosave")
         commit_practice_state_from_session(ss, reason="autosave")
+        commit_backing_state_from_session(ss, reason="autosave")
     except ImportError:
         pass
     core = build_music_local_state(st)
@@ -409,6 +425,26 @@ def apply_music_disk_state(
         pass
 
     try:
+        from backing_track_state import (
+            apply_cloud_backing_state_if_allowed,
+            clear_backing_local_edit,
+            is_backing_locally_dirty,
+        )
+
+        if is_backing_locally_dirty(ss):
+            ss["_backing_restore_skipped_reason"] = "local_dirty"
+        elif apply_cloud_backing_state_if_allowed(ss, payload):
+            clear_backing_local_edit(ss)
+        try:
+            from backing_track_state import prepare_backing_page
+
+            prepare_backing_page(ss)
+        except ImportError:
+            pass
+    except ImportError:
+        pass
+
+    try:
         from music_coach_context import sync_music_coach_workspace_page
 
         sync_music_coach_workspace_page(ss)
@@ -429,10 +465,17 @@ def apply_music_disk_state(
             else ""
         )
         practice_trace: dict[str, Any] = {}
+        backing_trace: dict[str, Any] = {}
         try:
             from practice_state import collect_practice_persistence_trace
 
             practice_trace = collect_practice_persistence_trace(ss, payload=payload)
+        except ImportError:
+            pass
+        try:
+            from backing_track_state import collect_backing_persistence_trace
+
+            backing_trace = collect_backing_persistence_trace(ss, payload=payload)
         except ImportError:
             pass
         update_trace(
@@ -447,6 +490,7 @@ def apply_music_disk_state(
             page_owner_flag=bool(ss.get("_suite_page_user_nav")),
             music_workspace_state_studio_page=ws_studio or None,
             **practice_trace,
+            **backing_trace,
         )
     except Exception:
         pass
@@ -499,15 +543,17 @@ def claim_studio_page_ownership(st: Any, page_id: str) -> None:
 
 
 def prepare_canonical_music_page_state(session: dict[str, Any]) -> None:
-    """Phase C: reconcile studio nav + active song + practice canonical blobs before widgets."""
+    """Phase C: reconcile studio nav + active song + practice + backing canonical blobs."""
     try:
         from active_song_state import prepare_active_song_context
+        from backing_track_state import prepare_backing_page
         from practice_state import prepare_practice_page
         from studio_nav_state import prepare_studio_nav
 
         prepare_studio_nav(session)
         prepare_active_song_context(session)
         prepare_practice_page(session)
+        prepare_backing_page(session)
     except ImportError:
         pass
 
@@ -524,11 +570,13 @@ def mark_active_song_edit_pending(session: dict[str, Any]) -> None:
 def _clear_canonical_dirty_after_save(session: dict[str, Any], *, reason: str = "") -> None:
     try:
         from active_song_state import clear_active_song_local_edit
+        from backing_track_state import clear_backing_local_edit
         from practice_state import clear_practice_local_edit
         from studio_nav_state import clear_studio_nav_local_edit
 
         clear_active_song_local_edit(session)
         clear_practice_local_edit(session)
+        clear_backing_local_edit(session)
         if reason == "page_change":
             clear_studio_nav_local_edit(session)
     except ImportError:
@@ -593,6 +641,37 @@ def maybe_flush_pending_active_song_edits(st: Any) -> None:
 
         if st.session_state.get(ACTIVE_SONG_PENDING_SYNC_KEY):
             flush_active_song_edits_and_save(st, reason="song_edit")
+    except ImportError:
+        pass
+
+
+def flush_backing_edits_and_save(st: Any, *, reason: str = "backing_edit") -> bool:
+    """Canonical Backing flush + cross-device force save (Phase C)."""
+    try:
+        from backing_track_state import (
+            BACKING_PENDING_SYNC_KEY,
+            flush_backing_edits,
+            is_backing_locally_dirty,
+        )
+
+        ss = st.session_state
+        if ss.get(BACKING_PENDING_SYNC_KEY) or is_backing_locally_dirty(ss) or reason == "backing_edit":
+            flush_backing_edits(ss, reason=reason)
+    except ImportError:
+        pass
+    ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
+    if ok:
+        _clear_canonical_dirty_after_save(st.session_state, reason=reason)
+        _record_music_persist_trace(st, reason=reason)
+    return ok
+
+
+def maybe_flush_pending_backing_edits(st: Any) -> None:
+    try:
+        from backing_track_state import BACKING_PENDING_SYNC_KEY
+
+        if st.session_state.get(BACKING_PENDING_SYNC_KEY):
+            flush_backing_edits_and_save(st, reason="backing_edit")
     except ImportError:
         pass
 
@@ -695,10 +774,21 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
         except Exception:
             cloud_state = {}
         practice_trace: dict[str, Any] = {}
+        backing_trace: dict[str, Any] = {}
         try:
             from practice_state import collect_practice_persistence_trace
 
-            practice_trace = collect_practice_persistence_trace(ss, payload=cloud_state if isinstance(cloud_state, dict) else None)
+            practice_trace = collect_practice_persistence_trace(
+                ss, payload=cloud_state if isinstance(cloud_state, dict) else None
+            )
+        except ImportError:
+            pass
+        try:
+            from backing_track_state import collect_backing_persistence_trace
+
+            backing_trace = collect_backing_persistence_trace(
+                ss, payload=cloud_state if isinstance(cloud_state, dict) else None
+            )
         except ImportError:
             pass
         local_updated_at = ss.get("_suite_persist_debug_disk_ts") or ss.get("_suite_persist_last_save_at")
@@ -716,6 +806,7 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
             local_updated_at=local_updated_at,
             final_studio_page=ss.get("studio_page"),
             **practice_trace,
+            **backing_trace,
         )
     except Exception:
         pass
@@ -895,11 +986,13 @@ def apply_music_session_defaults(st: Any) -> None:
         ss.pop(key, None)
     try:
         from active_song_state import ACTIVE_SONG_DIRTY_KEY, clear_active_song_local_edit
+        from backing_track_state import clear_backing_local_edit
         from practice_state import clear_practice_local_edit
         from studio_nav_state import clear_studio_nav_local_edit
 
         clear_active_song_local_edit(ss)
         clear_practice_local_edit(ss)
+        clear_backing_local_edit(ss)
         clear_studio_nav_local_edit(ss)
         ss.pop(ACTIVE_SONG_DIRTY_KEY, None)
     except ImportError:

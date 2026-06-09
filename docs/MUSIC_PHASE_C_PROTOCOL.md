@@ -1,7 +1,7 @@
 # Music Phase C — Canonical Page State Protocol
 
 **Last updated:** 2026-06-08  
-**Status:** In progress — `active_song_state.py`, `studio_nav_state.py`, `practice_state.py` wired  
+**Status:** In progress — `active_song_state.py`, `studio_nav_state.py`, `practice_state.py`, `backing_track_state.py` wired  
 **Reference:** `baseball-stat-app/docs/BASEBALL_PAGE_STATE_PROTOCOL.md`  
 **Phase B (shipped):** `docs/MUSIC_PHASE_B_PROTOCOL.md`
 
@@ -34,7 +34,13 @@ Phase C migrates Music workspace fields into canonical `{module}_state.py` blobs
 | Force save | `practice_edit` bypasses post-restore autosave block |
 | Trace | `?dev=1` practice restore fields (canonical, envelope, cloud payload, widget, dirty, save reason) |
 
-**Queued (not started):** `backing_track_state`, `creative_state`, `karaoke_state`, `upload_state`, `practice_log_state`
+**Shipped in v28 (third slice):**
+
+| Module | Session key | Envelope field | Scope |
+|--------|-------------|----------------|-------|
+| `backing_track_state.py` | `backing_track_state` | `music_workspace_state.backing_filters` | scope, sections, loops, BPM, groove, meter, volume |
+
+**Queued (not started):** `creative_state`, `karaoke_state`, `upload_state`, `practice_log_state`
 
 **Watch item (non-blocker):** First phone→Dell instrument/setup edit may not sync immediately; monitor on next acceptance pass.
 
@@ -45,9 +51,10 @@ Phase C migrates Music workspace fields into canonical `{module}_state.py` blobs
 ```
 Startup   → prepare_music_workspace()           # Phase B cloud/disk sync
          → prepare_canonical_music_page_state()  # Phase C reconcile (nav + song + practice)
-Before UI → prepare_studio_nav() + prepare_active_song_context() + prepare_practice_page()
+Before UI → prepare_studio_nav() + prepare_active_song_context() + prepare_practice_page() + prepare_backing_page()
 Practice  → prepare_practice_page() again before Practice widgets
-User edit → on_change → flush_*_edits_and_save(reason="*_edit")
+Backing   → prepare_backing_page() before song-default sync and Backing widgets
+User edit → on_change → flush_*_edits_and_save(reason="*_edit")  # song_edit, practice_edit, backing_edit
 Page nav  → navigate_studio_page() → claim_studio_page_ownership() → force_save(page_change)
 Cloud     → apply_cloud_*_if_allowed() — blocked when *_state_dirty
 AMI return → apply_*_source_state_from_ami() via music_coach_context
@@ -75,27 +82,27 @@ Each `{module}_state.py` exports:
 
 ## Integration (`music_persistent_state.py`)
 
-- `_WORKSPACE_KEYS = ("active_song_state", "studio_nav_state", "practice_state")`
+- `_WORKSPACE_KEYS = ("active_song_state", "studio_nav_state", "practice_state", "backing_track_state")`
 - `build_music_disk_state()` commits all canonical blobs
-- `apply_music_disk_state()` restores nav, song, and practice modules
-- Force-save bypass: `song_edit`, `practice_edit`, `page_change`, insight reasons
+- `apply_music_disk_state()` restores nav, song, practice, and backing modules
+- Force-save bypass: `song_edit`, `practice_edit`, `backing_edit`, `page_change`, insight reasons
 
 ---
 
 ## Acceptance matrix (A–E)
 
-| ID | Scenario | active_song | studio_nav | practice |
-|----|----------|-------------|------------|----------|
-| A | Local edit survives prepare | ✓ | ✓ | ✓ |
-| B | Phone ↔ Dell cloud restore | ✓ | ✓ | ✓ |
-| C | Stale cloud blocked when dirty | ✓ | ✓ | ✓ |
-| D | Page nav does not clear filters | ✓ | n/a | ✓ |
-| E | AMI return restores context | ✓ | ✓ | ✓ |
+| ID | Scenario | active_song | studio_nav | practice | backing |
+|----|----------|-------------|------------|----------|---------|
+| A | Local edit survives prepare | ✓ | ✓ | ✓ | ✓ |
+| B | Phone ↔ Dell cloud restore | ✓ | ✓ | ✓ | ✓ |
+| C | Stale cloud blocked when dirty | ✓ | ✓ | ✓ | ✓ |
+| D | Page nav does not clear filters | ✓ | n/a | ✓ | ✓ |
+| E | AMI return restores context | ✓ | ✓ | ✓ | ✓ |
 
-Tests: `tests/test_active_song_state.py`, `tests/test_studio_nav_state.py`, `tests/test_practice_state.py`
+Tests: `tests/test_active_song_state.py`, `tests/test_studio_nav_state.py`, `tests/test_practice_state.py`, `tests/test_backing_track_state.py`
 
 ---
 
 ## Deploy marker
 
-`studio-nav-stable-v25-phase-c-practice-state` (`music_persistence_trace.MUSIC_PERSIST_DEPLOY_VERSION`)
+`studio-nav-stable-v28-phase-c-backing-track-state` (`music_persistence_trace.MUSIC_PERSIST_DEPLOY_VERSION`)
