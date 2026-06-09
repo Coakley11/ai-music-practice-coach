@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v23-pick-key-no-restore-skip"
+MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-stable-v24-phase-c-song-nav-state"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -515,6 +515,26 @@ def render_persistence_trace_sidebar(st: Any) -> None:
         for label, val in phone_rows:
 
             st.text(f"{label}: {_trace_display(val)}")
+
+
+
+        st.markdown("**Phase C canonical state**")
+
+        try:
+
+            from active_song_state import render_active_song_state_debug
+
+            from studio_nav_state import render_studio_nav_state_debug
+
+
+
+            render_studio_nav_state_debug(st, ss)
+
+            render_active_song_state_debug(st, ss)
+
+        except ImportError:
+
+            st.text("Phase C modules not available")
 
 
 

@@ -1104,6 +1104,12 @@ if hasattr(st, "session_state"):
             song_picker_catalog=SONG_PICKER_CATALOG,
             song_library=SONG_LIBRARY,
         )
+        try:
+            from music_persistent_state import prepare_canonical_music_page_state
+
+            prepare_canonical_music_page_state(st.session_state)
+        except Exception:
+            pass
     except Exception as _music_restore_exc:
         import traceback
 
@@ -8883,6 +8889,12 @@ try:
         song_picker_catalog=SONG_PICKER_CATALOG,
         song_library=SONG_LIBRARY,
     )
+    try:
+        from music_persistent_state import prepare_canonical_music_page_state
+
+        prepare_canonical_music_page_state(st.session_state)
+    except Exception:
+        pass
     show_persistence_messages(st)
 except Exception:
     pass
@@ -9021,6 +9033,16 @@ st.sidebar.selectbox(
 _instrument_options = DEFAULT_INSTRUMENT_OPTIONS
 
 
+def _sync_canonical_active_song_after_edit() -> None:
+    """Phase C: flush canonical active_song_state and force cloud save."""
+    try:
+        from music_persistent_state import flush_active_song_edits_and_save
+
+        flush_active_song_edits_and_save(st, reason="song_edit")
+    except Exception:
+        persist_music_local_state(st)
+
+
 def _on_global_instrument_change() -> None:
     # Re-validate Practice Focus against the new instrument's option
     # list so other pages don't render a focus that the new instrument
@@ -9035,27 +9057,27 @@ def _on_global_instrument_change() -> None:
     set_active_instrument(st.session_state, new_value)
     sync_written_key_instrument_anchor(st.session_state, new_value)
     request_transposing_instrument_sync(st.session_state, new_value)
-    persist_music_local_state(st)
     try:
         from music_activity import log_instrument_changed
 
         log_instrument_changed(st, instrument=str(new_value), previous=str(previous or ""))
     except Exception:
         pass
+    _sync_canonical_active_song_after_edit()
 
 
 def _on_global_focus_change() -> None:
     from practice_setup_globals import set_active_focus
 
     set_active_focus(st.session_state, st.session_state.get("focus"))
-    persist_music_local_state(st)
+    _sync_canonical_active_song_after_edit()
 
 
 def _on_global_level_change() -> None:
     from practice_setup_globals import set_active_level
 
     set_active_level(st.session_state, st.session_state.get("level"))
-    persist_music_local_state(st)
+    _sync_canonical_active_song_after_edit()
 
 
 sidebar_section("Your practice setup", icon="🎸", tone="session")
@@ -12431,8 +12453,14 @@ elif _studio_page == "log":
 
 if not pp.skip_background_persistence(st):
     try:
-        from music_persistent_state import autosave_music_state, clear_music_workspace_autosave_block, force_save_music_state
+        from music_persistent_state import (
+            autosave_music_state,
+            clear_music_workspace_autosave_block,
+            force_save_music_state,
+            maybe_flush_pending_active_song_edits,
+        )
 
+        maybe_flush_pending_active_song_edits(st)
         autosave_music_state(st)
         if st.session_state.pop("_suite_persist_insight_dirty", None):
             force_save_music_state(st, reason="insight_persist")

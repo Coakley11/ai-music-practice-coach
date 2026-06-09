@@ -489,7 +489,7 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("studio-nav-stable-v23", info["build_marker"])
+        self.assertIn("studio-nav-stable-v24", info["build_marker"])
 
     def test_snapshot_workspace_restore_always_sets_trace_fields(self) -> None:
         from music_persistence_trace import get_trace, snapshot_workspace_restore_trace
@@ -673,6 +673,25 @@ class TestStaleResumeLaunchFlags(unittest.TestCase):
         self.assertTrue(trace.get("has_resume_query_params_result"))
         self.assertFalse(trace.get("should_skip_workspace_restore_for_resume"))
         self.assertNotIn("_suite_persist_restore_skip_reason", st.session_state)
+
+
+class TestPhaseCCanonicalWiring(unittest.TestCase):
+    def test_prepare_canonical_reconciles_studio_and_song(self) -> None:
+        from music_persistent_state import prepare_canonical_music_page_state
+
+        session = {
+            "studio_nav_state": {"studio_page": "backing"},
+            "active_song_state": {
+                "pick_key": "Pop|Test",
+                "display_key": "C Major",
+                "instrument": "Guitar",
+                "selected_song": {"pick_key": "Pop|Test", "title": "Test"},
+            },
+        }
+        prepare_canonical_music_page_state(session)
+        self.assertEqual(session.get("studio_page"), "backing")
+        self.assertEqual(session.get("active_catalog_pick_key"), "Pop|Test")
+        self.assertEqual(session.get("display_key"), "C Major")
 
 
 if __name__ == "__main__":

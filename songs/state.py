@@ -56,13 +56,20 @@ def build_music_local_state(st: Any) -> dict[str, str]:
 
 def persist_music_local_state(st: Any, **extra: Any) -> None:
     """Write disk + cloud session snapshot (Streamlit Cloud survives reboot via cloud)."""
+    if extra:
+        for key, value in extra.items():
+            if value:
+                st.session_state[key] = str(value)
+    try:
+        from music_persistent_state import flush_active_song_edits_and_save
+
+        flush_active_song_edits_and_save(st, reason="song_edit")
+        return
+    except ImportError:
+        pass
     try:
         from music_persistent_state import autosave_music_state
 
-        if extra:
-            for key, value in extra.items():
-                if value:
-                    st.session_state[key] = str(value)
         autosave_music_state(st)
     except Exception:
         try:

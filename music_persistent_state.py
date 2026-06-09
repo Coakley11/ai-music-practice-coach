@@ -456,6 +456,70 @@ def claim_studio_page_ownership(st: Any, page_id: str) -> None:
     ss["_suite_last_persisted_page"] = page
 
 
+def prepare_canonical_music_page_state(session: dict[str, Any]) -> None:
+    """Phase C: reconcile studio nav + active song canonical blobs before widgets."""
+    try:
+        from active_song_state import prepare_active_song_context
+        from studio_nav_state import prepare_studio_nav
+
+        prepare_studio_nav(session)
+        prepare_active_song_context(session)
+    except ImportError:
+        pass
+
+
+def mark_active_song_edit_pending(session: dict[str, Any]) -> None:
+    try:
+        from active_song_state import mark_active_song_pending_sync
+
+        mark_active_song_pending_sync(session)
+    except ImportError:
+        pass
+
+
+def _clear_canonical_dirty_after_save(session: dict[str, Any], *, reason: str = "") -> None:
+    try:
+        from active_song_state import clear_active_song_local_edit
+        from studio_nav_state import clear_studio_nav_local_edit
+
+        clear_active_song_local_edit(session)
+        if reason == "page_change":
+            clear_studio_nav_local_edit(session)
+    except ImportError:
+        pass
+
+
+def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> bool:
+    """Canonical active-song flush + cross-device force save (Phase C)."""
+    try:
+        from active_song_state import (
+            ACTIVE_SONG_PENDING_SYNC_KEY,
+            flush_active_song_edits,
+            is_active_song_locally_dirty,
+        )
+
+        ss = st.session_state
+        if ss.get(ACTIVE_SONG_PENDING_SYNC_KEY) or is_active_song_locally_dirty(ss) or reason == "song_edit":
+            flush_active_song_edits(ss, reason=reason)
+    except ImportError:
+        pass
+    ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
+    if ok:
+        _clear_canonical_dirty_after_save(st.session_state, reason=reason)
+        _record_music_persist_trace(st, reason=reason)
+    return ok
+
+
+def maybe_flush_pending_active_song_edits(st: Any) -> None:
+    try:
+        from active_song_state import ACTIVE_SONG_PENDING_SYNC_KEY
+
+        if st.session_state.get(ACTIVE_SONG_PENDING_SYNC_KEY):
+            flush_active_song_edits_and_save(st, reason="song_edit")
+    except ImportError:
+        pass
+
+
 def prepare_music_workspace(
     st: Any,
     *,
@@ -574,6 +638,8 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
 
 def force_save_music_state(st: Any, *, reason: str = "") -> bool:
     ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
+    if ok:
+        _clear_canonical_dirty_after_save(st.session_state, reason=reason)
     if ok or reason == "page_change":
         _record_music_persist_trace(st, reason=reason)
     return ok
@@ -624,6 +690,8 @@ def autosave_music_state(st: Any) -> dict[str, Any]:
         elif prior.get("force_save_reason") != "page_change":
             trace_fields["page_owner_flag"] = False
         update_trace(st, **trace_fields)
+        if result.get("cloud_ok") or result.get("disk_ok"):
+            _clear_canonical_dirty_after_save(ss)
         try:
             from suite_cloud_state import load_cloud_full_session
 

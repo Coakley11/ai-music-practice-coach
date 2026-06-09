@@ -244,6 +244,7 @@ _FORCE_SAVE_CLOUD_REASONS = frozenset({
     "insight_hydrate",
     "applied_math_send",
     "music_coach_send",
+    "song_edit",
 })
 
 
