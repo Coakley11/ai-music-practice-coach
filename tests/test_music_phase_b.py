@@ -482,6 +482,52 @@ class TestMusicWorkspaceEnvelope(unittest.TestCase):
         self.assertEqual(page, "backing")
 
 
+class TestPersistenceTracePanel(unittest.TestCase):
+    def test_deploy_probe_uses_persist_deploy_version(self) -> None:
+        from music_persistence_trace import MUSIC_PERSIST_DEPLOY_VERSION
+        from suite_deploy_probe import deploy_info
+
+        info = deploy_info()
+        self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
+        self.assertIn("studio-nav-stable-v21", info["build_marker"])
+
+    def test_snapshot_workspace_restore_always_sets_trace_fields(self) -> None:
+        from music_persistence_trace import get_trace, snapshot_workspace_restore_trace
+
+        st = MagicMock()
+        st.session_state = {
+            "studio_page": "practice",
+            "_suite_persist_restore_skip_reason": "workspace already synced",
+            "_suite_restore_decision": "skipped",
+        }
+        st.query_params = {}
+        with patch("suite_cloud_state.load_cloud_full_session", return_value=({}, None)):
+            snapshot_workspace_restore_trace(st)
+        trace = get_trace(st)
+        self.assertIn("cloud_fetch_studio_page", trace)
+        self.assertEqual(trace.get("restore_skip_reason"), "workspace already synced")
+        self.assertEqual(trace.get("final_studio_page"), "practice")
+        self.assertEqual(trace.get("restore_decision"), "skipped")
+
+    def test_snapshot_probes_cloud_studio_page(self) -> None:
+        from music_persistence_trace import get_trace, snapshot_workspace_restore_trace
+
+        st = MagicMock()
+        st.session_state = {"studio_page": "practice"}
+        cloud = {
+            "core": {"studio_page": "backing"},
+            "music_workspace_state": {"studio_page": "backing"},
+        }
+        with patch(
+            "suite_cloud_state.load_cloud_full_session",
+            return_value=(cloud, "2026-06-08T18:00:00+00:00"),
+        ):
+            snapshot_workspace_restore_trace(st)
+        trace = get_trace(st)
+        self.assertEqual(trace.get("cloud_fetch_studio_page"), "backing")
+        self.assertEqual(trace.get("cloud_updated_at"), "2026-06-08T18:00:00+00:00")
+
+
 class TestStaleResumeLaunchFlags(unittest.TestCase):
     def test_stale_launch_flag_does_not_block_workspace_sync(self) -> None:
         from suite_cloud_state import has_resume_query_params

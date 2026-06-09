@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-SUITE_BUILD_MARKER = "2026-06-08-phase-b-nav-stable-v14"
+SUITE_BUILD_MARKER = "unknown-deploy-marker"
 
 
 def developer_mode(st: Any) -> bool:
@@ -95,11 +95,37 @@ def cloud_config_probe() -> dict[str, Any]:
     return out
 
 
+def _resolve_build_marker() -> str:
+    try:
+        from music_persistence_trace import MUSIC_PERSIST_DEPLOY_VERSION
+
+        return str(MUSIC_PERSIST_DEPLOY_VERSION or "").strip() or SUITE_BUILD_MARKER
+    except ImportError:
+        pass
+    try:
+        from studio_nav_history import NAVIGATION_UI_DEPLOY_MARKER
+
+        return str(NAVIGATION_UI_DEPLOY_MARKER or "").strip() or SUITE_BUILD_MARKER
+    except ImportError:
+        pass
+    return SUITE_BUILD_MARKER
+
+
+def _resolve_nav_ui_marker() -> str:
+    try:
+        from studio_nav_history import NAVIGATION_UI_DEPLOY_MARKER
+
+        return str(NAVIGATION_UI_DEPLOY_MARKER or "").strip()
+    except ImportError:
+        return ""
+
+
 def deploy_info() -> dict[str, str]:
     return {
         "commit": _git_short(),
         "branch": _git_branch(),
-        "build_marker": SUITE_BUILD_MARKER,
+        "build_marker": _resolve_build_marker(),
+        "nav_ui_marker": _resolve_nav_ui_marker(),
     }
 
 
@@ -122,11 +148,21 @@ def render_music_deploy_probe(st: Any) -> None:
     if not isinstance(trace, dict):
         trace = {}
 
+    snapshot_restore = None
+    try:
+        from music_persistence_trace import snapshot_workspace_restore_trace
+
+        snapshot_restore = snapshot_workspace_restore_trace(st)
+    except Exception:
+        pass
+
     with st.sidebar.expander("Music deploy probe", expanded=True):
         st.markdown("**Live deploy**")
         st.text(f"commit: {info['commit']}")
         st.text(f"branch: {info['branch']}")
         st.text(f"build_marker: {info['build_marker']}")
+        if info.get("nav_ui_marker"):
+            st.text(f"nav_ui_marker: {info['nav_ui_marker']}")
 
         st.markdown("**Modules / functions**")
         st.text(f"Supabase/cloud configured: {cloud.get('cloud_enabled')}")
@@ -167,3 +203,15 @@ def render_music_deploy_probe(st: Any) -> None:
         st.text(f"final display_key: {ss.get('display_key')}")
         st.text(f"final instrument: {ss.get('instrument')}")
         st.text(f"final studio_page: {ss.get('studio_page')}")
+
+        if isinstance(snapshot_restore, dict):
+            st.markdown("**Workspace restore snapshot**")
+            for key in (
+                "cloud_fetch_studio_page",
+                "restore_decision",
+                "restore_skip_reason",
+                "restored_studio_page",
+                "cloud_updated_at",
+            ):
+                val = snapshot_restore.get(key)
+                st.text(f"{key}: {val if val not in (None, '') else '(not set)'}")

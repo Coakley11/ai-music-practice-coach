@@ -60,6 +60,14 @@ class TestDeploySmoke(unittest.TestCase):
         self.assertTrue(callable(suite_deploy_probe.cloud_config_probe))
         self.assertIn("music", music_coach_context.APP_ID)
 
+    def test_deploy_info_build_marker_matches_persist_version(self) -> None:
+        from music_persistence_trace import MUSIC_PERSIST_DEPLOY_VERSION
+        from suite_deploy_probe import deploy_info
+
+        info = deploy_info()
+        self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
+        self.assertNotIn("phase-b-nav-stable-v14", info["build_marker"])
+
 
 if __name__ == "__main__":
     unittest.main()
