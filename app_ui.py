@@ -2366,9 +2366,24 @@ def _inject_studio_history_nav_pin_script() -> None:
 (function () {
   if (window.__studioHistoryNavPinInit) return;
   window.__studioHistoryNavPinInit = true;
+  function dedupeStudioQuickNavPanels() {
+    var main = document.querySelector('section[data-testid="stMain"]');
+    if (!main) return;
+    var panels = main.querySelectorAll('[class*="st-key-studio_quick_nav_panel"]');
+    for (var i = 0; i < panels.length - 1; i++) {
+      panels[i].style.setProperty('display', 'none', 'important');
+    }
+    ['studio_nav_back_btn', 'studio_nav_forward_btn'].forEach(function (keyPart) {
+      var nodes = main.querySelectorAll('[class*="st-key-' + keyPart + '"]');
+      for (var j = 0; j < nodes.length - 1; j++) {
+        nodes[j].style.setProperty('display', 'none', 'important');
+      }
+    });
+  }
   function pinStudioHistoryNav() {
     var main = document.querySelector('section[data-testid="stMain"]');
     if (!main) return;
+    dedupeStudioQuickNavPanels();
     var rect = main.getBoundingClientRect();
     var midY = window.innerHeight * 0.5;
     var backLeft = Math.max(12, rect.left + 14);
@@ -6951,6 +6966,13 @@ def _quick_nav_artistic_css() -> str:
     gap: 0.08rem !important;
   }
 }
+/* Retired quick-nav widget trees (pre script-v8) — hide stale panels until session reboot */
+[class*="st-key-main_studio_quick_nav_quick_nav_art_panel"],
+[class*="st-key-cpl_header_quick_nav_quick_nav_art_panel"],
+[class*="st-key-legacy_quick_nav_art_panel"],
+[class*="st-key-nav_test_quick_nav_quick_nav_art_panel"] {
+  display: none !important;
+}
 [class*="st-key-music_coach_insight_panel"] {
   margin: 0.4rem 0 0.55rem 0 !important;
   clear: both;
@@ -6969,6 +6991,8 @@ def _render_nav_art_cell(
     compact: bool = False,
 ) -> None:
     """Icon + script label above a small Open button — no duplicate page-name text."""
+    if _QUICK_NAV_RENDERED_THIS_EXEC:
+        return
     is_active = current is not None and page_id == current
     nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
     help_text = STUDIO_PAGE_META.get(page_id, {}).get("label", page_id) or nav_compact_button_label(
@@ -7356,6 +7380,16 @@ def render_cross_page_links(
 ) -> None:
     """Icon + label shortcuts to other workspaces (excludes current page)."""
     import streamlit as st
+
+    if _QUICK_NAV_RENDERED_THIS_EXEC:
+        _record_quick_nav_render(
+            session_state,
+            current_page=current_page,
+            key_prefix=key_prefix,
+            container_key=None,
+            skipped=True,
+        )
+        return
 
     targets = _resolve_nav_page_ids(pages, exclude=current_page)
     if not targets:

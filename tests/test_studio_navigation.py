@@ -178,6 +178,40 @@ def test_quick_nav_resets_between_script_runs():
         assert mock_row.call_count == 2
 
 
+def test_cross_page_links_skips_when_canonical_nav_rendered():
+    from unittest.mock import patch
+
+    from app_ui import (
+        _QUICK_NAV_RENDERED_THIS_EXEC,
+        render_cross_page_links,
+        render_page_quick_nav,
+        reset_quick_nav_render_diagnostics,
+    )
+
+    state: dict = {"studio_page": "practice"}
+    reset_quick_nav_render_diagnostics(state)
+
+    with patch("app_ui.use_simple_music_nav", return_value=False), patch(
+        "app_ui._render_quick_nav_row"
+    ), patch("app_ui._render_music_coach_insight_below_quick_nav"), patch(
+        "app_ui._render_nav_art_cell"
+    ) as mock_art:
+        render_page_quick_nav(state, current_page="practice", rerun_fn=lambda: None)
+        assert _QUICK_NAV_RENDERED_THIS_EXEC is True
+        render_cross_page_links(
+            state,
+            current_page="practice",
+            rerun_fn=lambda: None,
+            key_prefix="practice_nav",
+            pages=["picker", "backing"],
+        )
+
+    assert mock_art.call_count == 0
+    locations = state.get("quick_nav_render_locations") or []
+    skipped = [loc for loc in locations if loc.get("skipped_duplicate")]
+    assert any(loc.get("key_prefix") == "practice_nav" for loc in skipped)
+
+
 def test_simple_nav_mode_uses_plain_button_keys():
     from app_ui import (
         SIMPLE_NAV_PAGE_IDS,
