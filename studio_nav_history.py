@@ -98,6 +98,22 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
     # page-local state on the next run while global settings stay untouched.
     session_state["studio_page"] = page_id
     try:
+        from local_nav_trace import record_local_nav_checkpoint
+
+        _nav_ss = session_state
+
+        class _TraceSt:
+            session_state = _nav_ss
+
+        record_local_nav_checkpoint(
+            _TraceSt(),
+            "post_navigate",
+            session=session_state,
+            intent=page_id,
+        )
+    except ImportError:
+        pass
+    try:
         from music_persistent_state import after_studio_page_change
 
         _nav_ss = session_state

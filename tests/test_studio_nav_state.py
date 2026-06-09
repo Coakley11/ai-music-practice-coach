@@ -35,6 +35,17 @@ class TestStudioNavState(unittest.TestCase):
         prepare_studio_nav(session)
         self.assertEqual(session["studio_page"], "backing")
 
+    def test_prepare_session_page_wins_over_stale_canonical(self) -> None:
+        """Songs→Backing: live studio_page must not revert to canonical picker."""
+        session = {
+            "studio_page": "backing",
+            "studio_nav_state": {"studio_page": "picker", "last_write_reason": "page_change"},
+        }
+        prepare_studio_nav(session)
+        self.assertEqual(session["studio_page"], "backing")
+        self.assertEqual(session["studio_nav_state"]["studio_page"], "backing")
+        self.assertEqual(session["studio_nav_state"]["last_write_reason"], "session_page_wins")
+
     def test_b_cross_device_cloud_restore(self) -> None:
         session: dict = {"studio_page": "practice"}
         cloud = {

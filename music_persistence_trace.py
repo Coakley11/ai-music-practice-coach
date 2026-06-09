@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-page-sync-recovery"
+MUSIC_PERSIST_DEPLOY_VERSION = "studio-nav-local-nav-fix"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -499,6 +499,14 @@ def render_persistence_trace_sidebar(st: Any) -> None:
         st.caption(f"Commit: {trace.get('git_commit', 'unknown')}")
 
 
+
+        try:
+            from local_nav_trace import render_local_nav_trace_sidebar
+
+            st.markdown("**Local nav (this run)**")
+            render_local_nav_trace_sidebar(st)
+        except ImportError:
+            pass
 
         st.markdown("**Workspace restore (Dell)**")
 

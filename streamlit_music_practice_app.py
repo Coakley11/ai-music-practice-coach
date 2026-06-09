@@ -8915,6 +8915,12 @@ from openai_secrets_config import resolve_openai_api_key
 _openai_api_key, _openai_secrets_probe = resolve_openai_api_key()
 
 _studio_page_before_workspace = str(st.session_state.get("studio_page") or "practice")
+try:
+    from local_nav_trace import record_local_nav_checkpoint
+
+    record_local_nav_checkpoint(st, "run_start", intent=_studio_page_before_workspace)
+except Exception:
+    pass
 
 try:
     from applied_math_return_insight import hydrate_applied_math_insight_for_session
@@ -8948,9 +8954,21 @@ try:
         from music_persistent_state import prepare_canonical_music_page_state
 
         prepare_canonical_music_page_state(st.session_state)
+        try:
+            from local_nav_trace import record_local_nav_checkpoint
+
+            record_local_nav_checkpoint(st, "post_canonical")
+        except Exception:
+            pass
     except Exception:
         pass
     show_persistence_messages(st)
+    try:
+        from local_nav_trace import record_local_nav_checkpoint
+
+        record_local_nav_checkpoint(st, "post_workspace")
+    except Exception:
+        pass
 except Exception:
     pass
 
@@ -8963,6 +8981,12 @@ except Exception:
 migrate_legacy_session_keys(st.session_state)
 sanitize_persisted_snapshots(st.session_state)
 handle_studio_page_transition(st.session_state)
+try:
+    from local_nav_trace import record_local_nav_checkpoint
+
+    record_local_nav_checkpoint(st, "post_transition")
+except Exception:
+    pass
 note_page_visit(st.session_state, _studio_page)
 
 if _studio_page == "openai" and not _openai_api_key:
@@ -9556,6 +9580,12 @@ if pp.show_quick_nav(st):
         current_page=_studio_page,
         rerun_fn=st.rerun,
     )
+    try:
+        from local_nav_trace import record_local_nav_checkpoint
+
+        record_local_nav_checkpoint(st, "post_quick_nav")
+    except Exception:
+        pass
 
 if not st.session_state.get("_ami_insight_card_rendered"):
     try:

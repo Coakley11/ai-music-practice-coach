@@ -98,10 +98,20 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
         )
 
     canonical = canonical_studio_page(session)
+    live_raw = session.get("studio_page")
+    live = _normalize_page(live_raw) if live_raw is not None else ""
+    if canonical and live and canonical != live:
+        # Quick-nav set ``studio_page`` on the prior rerun; stale canonical still says picker/songs.
+        return write_canonical_studio_nav_state(
+            session,
+            live,
+            reason="session_page_wins",
+            local_edit=False,
+        )
     if canonical:
         return write_canonical_studio_nav_state(session, canonical, reason="canonical_preserve")
 
-    page = _normalize_page(session.get("studio_page")) or "practice"
+    page = _normalize_page(live_raw) or "practice"
     return write_canonical_studio_nav_state(session, page, reason="reconcile_on_load")
 
 
