@@ -393,10 +393,11 @@ class TestMusicCoachInsightScope(unittest.TestCase):
         self.assertNotIn("_navigate_to_page", st.session_state)
 
     def test_simple_nav_still_renders_insight(self) -> None:
-        from app_ui import USE_SIMPLE_MUSIC_NAV_KEY, render_page_quick_nav
+        from app_ui import USE_SIMPLE_MUSIC_NAV_KEY, render_page_quick_nav, reset_quick_nav_render_diagnostics
 
         st = MagicMock()
         st.session_state = {USE_SIMPLE_MUSIC_NAV_KEY: True, "studio_page": "backing"}
+        reset_quick_nav_render_diagnostics(st.session_state)
         with patch("app_ui._render_simple_nav_row"), patch(
             "app_ui._render_music_coach_insight_below_quick_nav",
         ) as mock_insight:
@@ -505,8 +506,57 @@ class TestMusicWorkspaceEnvelope(unittest.TestCase):
         self.assertEqual(state["studio_nav_state"]["studio_page"], "backing")
         self.assertEqual(state["studio_nav_state"]["page"], "backing")
         stamp = st.session_state.get("_music_save_payload_stamp_trace") or {}
-        self.assertEqual(stamp.get("save_payload_source"), "session_state.studio_page")
+        self.assertEqual(stamp.get("save_payload_source"), "_suite_page_change_save_page")
         self.assertEqual(stamp.get("save_payload_workspace_page"), "backing")
+
+    def test_page_change_hint_wins_over_stale_session_studio_page(self) -> None:
+        st = MagicMock()
+        st.session_state = {
+            "studio_page": "picker",
+            "_suite_pending_save_reason": "page_change",
+            "_suite_page_change_save_page": "backing",
+            "studio_nav_state": {"studio_page": "backing", "last_write_reason": "local_nav_preserve"},
+            "music_workspace_state": {"studio_page": "picker", "page": "picker"},
+            "instrument": "Piano",
+            "active_catalog_pick_key": "pop:test",
+            "selected_song": {"title": "Test", "pick_key": "pop:test"},
+        }
+        with patch("music_persistent_state.build_music_local_state") as mock_core:
+            mock_core.return_value = {
+                "studio_page": "picker",
+                "page": "picker",
+                "pick_key": "pop:test",
+                "instrument": "Piano",
+                "song": "",
+                "artist": "",
+                "focus": "",
+                "display_key": "",
+                "practice_focus_section": "",
+                "level": "",
+                "mode": "",
+            }
+            state = build_music_disk_state(st)
+        self.assertEqual(state["core"]["studio_page"], "backing")
+        self.assertEqual(state["session"]["studio_page"], "backing")
+        self.assertEqual(state["music_workspace_state"]["studio_page"], "backing")
+        self.assertEqual(state["studio_nav_state"]["studio_page"], "backing")
+        self.assertEqual(state["studio_nav_state"]["page"], "backing")
+        stamp = st.session_state.get("_music_save_payload_stamp_trace") or {}
+        self.assertEqual(stamp.get("save_payload_source"), "_suite_page_change_save_page")
+        self.assertEqual(stamp.get("save_payload_core_page"), "backing")
+        self.assertEqual(stamp.get("save_payload_session_page"), "backing")
+        self.assertEqual(stamp.get("save_payload_workspace_page"), "backing")
+        self.assertEqual(stamp.get("save_payload_studio_nav_page"), "backing")
+
+    def test_resolve_page_change_prefers_hint_over_stale_studio_page(self) -> None:
+        from music_persistent_state import _resolve_live_studio_page_for_save
+
+        page, source = _resolve_live_studio_page_for_save(
+            {"studio_page": "picker", "_suite_page_change_save_page": "backing"},
+            save_reason="page_change",
+        )
+        self.assertEqual(page, "backing")
+        self.assertEqual(source, "_suite_page_change_save_page")
 
     def test_session_page_summary_prefers_workspace_studio_page(self) -> None:
         from suite_cloud_state import session_page_summary
@@ -526,7 +576,7 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("page-change-save-stamp-v1", info["build_marker"])
+        self.assertIn("page-change-save-stamp-v2", info["build_marker"])
 
     def test_snapshot_workspace_restore_always_sets_trace_fields(self) -> None:
         from music_persistence_trace import get_trace, snapshot_workspace_restore_trace

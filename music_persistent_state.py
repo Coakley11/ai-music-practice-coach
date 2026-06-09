@@ -108,17 +108,29 @@ def _get_device_id(st: Any) -> str:
         return "unknown"
 
 
+def _normalize_studio_page_for_save(page: Any) -> str:
+    val = str(page or "").strip()
+    if not val:
+        return ""
+    try:
+        from studio_nav_history import STUDIO_PAGE_IDS
+
+        return val if val in STUDIO_PAGE_IDS else ""
+    except ImportError:
+        return val
+
+
 def _resolve_live_studio_page_for_save(ss: dict[str, Any], *, save_reason: str) -> tuple[str, str]:
     """Authoritative studio page for save payload (page_change must not use restored blob)."""
     if save_reason == "page_change":
-        live = str(ss.get("studio_page") or "").strip()
-        if live:
-            return live, "session_state.studio_page"
-        hinted = str(ss.get("_suite_page_change_save_page") or "").strip()
+        hinted = _normalize_studio_page_for_save(ss.get("_suite_page_change_save_page"))
         if hinted:
             return hinted, "_suite_page_change_save_page"
+        live = _normalize_studio_page_for_save(ss.get("studio_page"))
+        if live:
+            return live, "session_state.studio_page"
         return "", "missing"
-    live = str(ss.get("studio_page") or "").strip()
+    live = _normalize_studio_page_for_save(ss.get("studio_page"))
     return live, "session_state.studio_page" if live else "missing"
 
 
@@ -551,10 +563,15 @@ def after_studio_page_change(st: Any, session_state: dict | None = None) -> None
     except ImportError:
         pass
     ss["_suite_page_change_save_page"] = page_id
+    build_ss = getattr(st, "session_state", ss)
+    if build_ss is not ss:
+        build_ss["_suite_page_change_save_page"] = page_id
     try:
         force_save_music_state(st, reason="page_change")
     finally:
         ss.pop("_suite_page_change_save_page", None)
+        if build_ss is not ss:
+            build_ss.pop("_suite_page_change_save_page", None)
     _release_user_page_ownership_after_save(st, page_id)
 
     ss["_suite_last_persisted_page"] = page_id
