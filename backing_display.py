@@ -131,26 +131,24 @@ def render_backing_meter_selector(
     from songs.meter_state import (
         BACKING_METER_KEY,
         BACKING_METER_OVERRIDE_KEY,
-        note_backing_meter_override,
+        sync_backing_meter_override_from_widget,
     )
 
     options = list(BACKING_TIME_SIGNATURES)
-    current = applied_meter if applied_meter in options else song_default_meter
-    if current not in options:
-        current = "4/4"
-    idx = options.index(current)
+    song_default = normalize_time_signature(song_default_meter)
+    seed = normalize_time_signature(applied_meter if applied_meter in options else song_default)
+    if BACKING_METER_KEY not in st.session_state:
+        st.session_state[BACKING_METER_KEY] = seed
+    if BACKING_METER_OVERRIDE_KEY not in st.session_state:
+        st.session_state[BACKING_METER_OVERRIDE_KEY] = bool(user_override)
 
     def _on_meter_change() -> None:
-        choice = normalize_time_signature(st.session_state.get(BACKING_METER_KEY, current))
-        if choice == normalize_time_signature(song_default_meter):
-            st.session_state[BACKING_METER_OVERRIDE_KEY] = False
-            from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+        try:
+            from backing_track_state import mark_backing_pending_sync
 
-            st.session_state[BACKING_METER_KEY] = choice
-            invalidate_backing_cache(st)
-            st.session_state[BACKING_NEEDS_REGEN] = True
-        else:
-            note_backing_meter_override(st, choice)
+            mark_backing_pending_sync(st.session_state)
+        except ImportError:
+            pass
         if after_change is not None:
             after_change()
 
@@ -158,14 +156,14 @@ def render_backing_meter_selector(
     choice = st.radio(
         "Time signature",
         options,
-        index=idx,
         horizontal=True,
         key=BACKING_METER_KEY,
         on_change=_on_meter_change,
         label_visibility="collapsed",
         help="Defaults from the active song. Change to override — regenerate backing audio after.",
     )
-    override_note = " · user override" if user_override else ""
+    choice, override = sync_backing_meter_override_from_widget(st.session_state, song_default_meter)
+    override_note = " · user override" if override else ""
     st.caption(f"**{choice}**{override_note}")
     return str(choice)
 

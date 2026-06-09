@@ -741,15 +741,21 @@ def resolve_backing_trace_payloads(
             BACKING_STATE_KEY: session.get(BACKING_STATE_KEY) or filters,
         }
 
-    try:
-        from music_persistent_state import APP_ID
-        from suite_cloud_state import load_cloud_full_session
+    last_write = session.get("_suite_last_cloud_save_payload")
+    if isinstance(last_write, dict) and session.get("_suite_persist_last_save_cloud"):
+        cloud = last_write
+        session["_backing_cloud_payload_source"] = "last_write"
+    else:
+        try:
+            from music_persistent_state import APP_ID
+            from suite_cloud_state import load_cloud_full_session
 
-        cloud_state, _ = load_cloud_full_session(APP_ID)
-        if isinstance(cloud_state, dict):
-            cloud = cloud_state
-    except Exception:
-        pass
+            cloud_state, _ = load_cloud_full_session(APP_ID)
+            if isinstance(cloud_state, dict):
+                cloud = cloud_state
+            session["_backing_cloud_payload_source"] = "fetch" if cloud else "none"
+        except Exception:
+            session["_backing_cloud_payload_source"] = "none"
 
     return envelope, cloud
 
@@ -813,6 +819,10 @@ def collect_backing_persistence_trace(
         "raw_pending_backing_loops": session.get("_pending_backing_loops", ""),
         "backing_pending_sync": bool(session.get(BACKING_PENDING_SYNC_KEY)),
         "backing_filters_source": session.get("_backing_filters_source", ""),
+        "cloud_payload_source": session.get("_backing_cloud_payload_source", ""),
+        "force_save_reason": session.get("_suite_persist_last_save_reason", ""),
+        "last_save_cloud": bool(session.get("_suite_persist_last_save_cloud")),
+        "cloud_save_blocked_reason": session.get("_suite_autosave_cloud_blocked_reason", ""),
     }
 
 
@@ -876,3 +886,10 @@ def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
     )
     if trace.get("backing_filters_source"):
         st.sidebar.caption(f"**backing_filters_source:** `{trace['backing_filters_source']}`")
+    if trace.get("cloud_payload_source"):
+        st.sidebar.caption(f"**cloud_payload_source:** `{trace['cloud_payload_source']}`")
+    if trace.get("force_save_reason"):
+        st.sidebar.caption(f"**force_save_reason:** `{trace['force_save_reason']}`")
+    st.sidebar.caption(f"**last_save_cloud:** `{trace.get('last_save_cloud', False)}`")
+    if trace.get("cloud_save_blocked_reason"):
+        st.sidebar.caption(f"**cloud_save_blocked:** `{trace['cloud_save_blocked_reason']}`")

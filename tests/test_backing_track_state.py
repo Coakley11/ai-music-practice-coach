@@ -459,6 +459,93 @@ class TestBackingTrackState(unittest.TestCase):
         self.assertTrue(meta["backing_time_signature_override"])
         self.assertEqual(meta["backing_track_bpm"], 120)
 
+    def test_meter_two_four_reaches_canonical_after_flush(self) -> None:
+        session = {
+            "backing_track_state": {
+                **_SAMPLE,
+                "backing_time_signature": "4/4",
+                "backing_time_signature_override": False,
+            },
+            "backing_time_signature": "2/4",
+            "backing_time_signature_override": True,
+            "backing_track_scope": "Single section",
+            "backing_track_single_section": "Chorus",
+            "backing_track_loops": 1,
+        }
+        flush_backing_edits(session, reason="backing_edit")
+        meta = session["backing_track_state"]
+        self.assertEqual(meta["backing_time_signature"], "2/4")
+        self.assertTrue(meta["backing_time_signature_override"])
+
+    def test_apply_backing_meter_preserves_non_default_without_override_flag(self) -> None:
+        from songs.meter_state import (
+            BACKING_METER_KEY,
+            BACKING_METER_OVERRIDE_KEY,
+            apply_backing_meter_for_song,
+        )
+
+        session = {
+            BACKING_METER_KEY: "2/4",
+            BACKING_METER_OVERRIDE_KEY: False,
+            "_last_backing_meter_song": "pk::Pop::Song — Artist",
+        }
+        st = MagicMock()
+        st.session_state = session
+        applied, override, default = apply_backing_meter_for_song(
+            st,
+            song_id="pk::Pop::Song — Artist",
+            default_time_signature="4/4",
+        )
+        self.assertEqual(applied, "2/4")
+        self.assertTrue(override)
+        self.assertEqual(default, "4/4")
+        self.assertTrue(st.session_state[BACKING_METER_OVERRIDE_KEY])
+
+    def test_sync_backing_meter_override_from_widget(self) -> None:
+        from songs.meter_state import (
+            BACKING_METER_KEY,
+            BACKING_METER_OVERRIDE_KEY,
+            sync_backing_meter_override_from_widget,
+        )
+
+        session = {BACKING_METER_KEY: "2/4"}
+        meter, override = sync_backing_meter_override_from_widget(session, "4/4")
+        self.assertEqual(meter, "2/4")
+        self.assertTrue(override)
+        self.assertTrue(session[BACKING_METER_OVERRIDE_KEY])
+
+    def test_resolve_trace_cloud_prefers_last_write_payload(self) -> None:
+        session = {
+            "backing_track_state": {
+                **_SAMPLE,
+                "backing_track_scope": "Single section",
+                "backing_track_loops": 1,
+                "backing_time_signature": "2/4",
+                "backing_time_signature_override": True,
+            },
+            "_suite_persist_last_save_cloud": True,
+            "_suite_last_cloud_save_payload": {
+                "backing_track_state": {
+                    "backing_track_scope": "Single section",
+                    "backing_track_loops": 1,
+                    "backing_time_signature": "2/4",
+                },
+                "music_workspace_state": {
+                    "backing_filters": {
+                        "backing_track_scope": "Single section",
+                        "backing_track_loops": 1,
+                        "backing_time_signature": "2/4",
+                    }
+                },
+            },
+        }
+        _envelope, cloud = resolve_backing_trace_payloads(MagicMock(), session)
+        trace = collect_backing_persistence_trace(session, cloud_payload=cloud)
+        self.assertEqual(trace["cloud_payload_backing_scope"], "Single section")
+        self.assertEqual(trace["cloud_payload_backing_loops"], 1)
+        self.assertEqual(trace["cloud_payload_backing_meter"], "2/4")
+        self.assertEqual(session.get("_backing_cloud_payload_source"), "last_write")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -8643,18 +8643,22 @@ def _render_backing_step2_playback_action(
     """Step 2 — tempo, quick controls, generate & play."""
     try:
         from backing_track_state import prepare_backing_meter_for_widget
+        from songs.meter_state import (
+            apply_backing_meter_for_song,
+            sync_backing_meter_override_from_widget,
+        )
 
-        applied_meter, meter_override = prepare_backing_meter_for_widget(
+        prepare_backing_meter_for_widget(
             st.session_state,
             default_meter=default_meter,
         )
-    except ImportError:
+        sync_backing_meter_override_from_widget(st.session_state, default_meter)
         applied_meter, meter_override, _song_meter = apply_backing_meter_for_song(
             st,
             song_id=song_id,
             default_time_signature=default_meter,
         )
-    else:
+    except ImportError:
         applied_meter, meter_override, _song_meter = apply_backing_meter_for_song(
             st,
             song_id=song_id,
