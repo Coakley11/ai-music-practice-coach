@@ -72,6 +72,8 @@ _DURABLE_FILTER_KEYS = (
     "backing_quick_section",
 )
 
+BACKING_WIDGETS_SEEDED_KEY = "_backing_durable_widgets_seeded"
+
 __all__ = (
     "BACKING_DIRTY_KEY",
     "BACKING_LOOPS_DEFAULT",
@@ -108,6 +110,7 @@ __all__ = (
     "backing_filters_for_workspace_envelope",
     "has_restored_backing_canonical",
     "resolve_backing_trace_payloads",
+    "seed_backing_widgets_from_canonical",
     "prepare_backing_bpm_for_widget",
     "prepare_backing_durable_widgets",
     "prepare_backing_meter_for_widget",
@@ -140,6 +143,37 @@ def clear_backing_local_edit(session: dict[str, Any]) -> None:
 
 def mark_backing_pending_sync(session: dict[str, Any]) -> None:
     session[BACKING_PENDING_SYNC_KEY] = True
+
+
+def _should_seed_widgets_from_canonical(session: dict[str, Any]) -> bool:
+    """True when canonical may hydrate widget keys (restore / first load), not mid-edit reruns."""
+    if is_backing_locally_dirty(session):
+        return False
+    if session.get(BACKING_PENDING_SYNC_KEY):
+        return False
+    if session.get(BACKING_RESTORED_KEY):
+        return True
+    if session.get(BACKING_WIDGETS_SEEDED_KEY):
+        return False
+    canonical = canonical_backing_filters(session)
+    if canonical is None:
+        return False
+    if not any(key in session for key in BACKING_DURABLE_WIDGET_KEYS):
+        return True
+    return False
+
+
+def seed_backing_widgets_from_canonical(
+    session: dict[str, Any],
+    canonical: dict[str, Any],
+    *,
+    reason: str = "canonical_preserve",
+) -> dict[str, Any]:
+    """One-way canonical → widget hydrate for restore / first page load only."""
+    normalized = write_canonical_backing_state(session, canonical, reason=reason)
+    session[BACKING_WIDGETS_SEEDED_KEY] = True
+    session.pop(BACKING_RESTORED_KEY, None)
+    return normalized
 
 
 def normalize_backing_scope(scope: Any) -> str:
@@ -422,7 +456,11 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
 
 
 def coerce_backing_groove_for_widget(session: dict[str, Any], *, default_groove: str = "") -> str:
-    if not is_backing_locally_dirty(session):
+    if (
+        not is_backing_locally_dirty(session)
+        and not session.get(BACKING_PENDING_SYNC_KEY)
+        and _should_seed_widgets_from_canonical(session)
+    ):
         canonical = canonical_backing_filters(session) or {}
         canon_groove = normalize_backing_groove(canonical.get("backing_groove_style"))
         if canon_groove:
@@ -431,7 +469,12 @@ def coerce_backing_groove_for_widget(session: dict[str, Any], *, default_groove:
     current = session.get("backing_groove_style")
     if current is not None and str(current).strip():
         normalized = normalize_backing_groove(current)
-        session["backing_groove_style"] = normalized
+        if (
+            is_backing_locally_dirty(session)
+            or session.get(BACKING_PENDING_SYNC_KEY)
+            or normalized != normalize_backing_groove(default_groove)
+        ):
+            session["backing_groove_style"] = normalized
         return normalized
     fallback = normalize_backing_groove(default_groove) or "Auto"
     session.setdefault("backing_groove_style", fallback)
@@ -439,27 +482,34 @@ def coerce_backing_groove_for_widget(session: dict[str, Any], *, default_groove:
 
 
 def prepare_backing_bpm_for_widget(session: dict[str, Any], *, default_bpm: int = 100) -> int:
-    if not is_backing_locally_dirty(session):
+    if (
+        not is_backing_locally_dirty(session)
+        and not session.get(BACKING_PENDING_SYNC_KEY)
+        and _should_seed_widgets_from_canonical(session)
+    ):
         canonical = canonical_backing_filters(session) or {}
         canon_bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"))
         if canon_bpm is not None:
             session["backing_track_bpm"] = int(canon_bpm)
             return int(canon_bpm)
     bpm = normalize_backing_bpm(session.get("backing_track_bpm"), default=default_bpm)
-    if bpm is not None:
+    if bpm is not None and (
+        is_backing_locally_dirty(session)
+        or session.get(BACKING_PENDING_SYNC_KEY)
+        or _should_seed_widgets_from_canonical(session)
+    ):
         session["backing_track_bpm"] = int(bpm)
     return int(bpm or default_bpm)
 
 
 def prepare_backing_durable_widgets(session: dict[str, Any], *, default_meter: str = "4/4") -> None:
-    """Bind meter + scope/loop widgets to canonical blob before Backing widgets render."""
+    """Bind scope/loop widgets to canonical blob before Step 1 widgets render."""
     prepare_backing_scope_for_widget(session)
-    prepare_backing_meter_for_widget(session, default_meter=default_meter)
 
 
 def prepare_backing_scope_for_widget(session: dict[str, Any]) -> None:
     """Bind scope/loop widgets to canonical blob before Step 1 widgets render."""
-    if is_backing_locally_dirty(session):
+    if not _should_seed_widgets_from_canonical(session):
         return
     canonical = canonical_backing_filters(session)
     if canonical is None:
@@ -475,11 +525,13 @@ def prepare_backing_scope_for_widget(session: dict[str, Any]) -> None:
     quick = str(canonical.get("backing_quick_section") or "").strip()
     if quick:
         session["backing_quick_section"] = quick
+    session[BACKING_WIDGETS_SEEDED_KEY] = True
+    session.pop(BACKING_RESTORED_KEY, None)
 
 
 def prepare_backing_meter_for_widget(session: dict[str, Any], *, default_meter: str = "4/4") -> tuple[str, bool]:
-    """Bind meter radio to canonical blob before the meter widget renders."""
-    if not is_backing_locally_dirty(session):
+    """Return meter for Step 2 radio; only seed widget keys on restore / first load."""
+    if _should_seed_widgets_from_canonical(session):
         canonical = canonical_backing_filters(session) or {}
         meter_raw = str(canonical.get("backing_time_signature") or "").strip()
         override = bool(canonical.get("backing_time_signature_override"))
@@ -487,9 +539,10 @@ def prepare_backing_meter_for_widget(session: dict[str, Any], *, default_meter: 
             meter = normalize_backing_meter(meter_raw or default_meter)
             session["backing_time_signature"] = meter
             session["backing_time_signature_override"] = override
+            session[BACKING_WIDGETS_SEEDED_KEY] = True
+            session.pop(BACKING_RESTORED_KEY, None)
             return meter, override
     meter = normalize_backing_meter(session.get("backing_time_signature"), default=default_meter)
-    session["backing_time_signature"] = meter
     override = bool(session.get("backing_time_signature_override"))
     return meter, override
 
@@ -514,7 +567,7 @@ def write_canonical_backing_state(
 
 
 def prepare_backing_page(session: dict[str, Any]) -> dict[str, Any]:
-    """Reconcile Backing widgets with canonical blob before page widgets render."""
+    """Reconcile Backing canonical blob before page widgets render."""
     if is_backing_locally_dirty(session):
         gathered = gather_backing_filters(session)
         return write_canonical_backing_state(
@@ -524,8 +577,10 @@ def prepare_backing_page(session: dict[str, Any]) -> dict[str, Any]:
             local_edit=True,
         )
     canonical = canonical_backing_filters(session)
+    if canonical is not None and _should_seed_widgets_from_canonical(session):
+        return seed_backing_widgets_from_canonical(session, canonical, reason="canonical_preserve")
     if canonical is not None:
-        return write_canonical_backing_state(session, canonical, reason="canonical_preserve")
+        return canonical
     gathered = gather_backing_filters(session)
     if _filters_have_content(gathered):
         return write_canonical_backing_state(session, gathered, reason="reconcile_on_load")
@@ -618,6 +673,7 @@ def apply_cloud_backing_state_if_allowed(session: dict[str, Any], state: dict[st
         return False
     write_canonical_backing_state(session, filters, reason="cloud_restore")
     session[BACKING_RESTORED_KEY] = True
+    session.pop(BACKING_WIDGETS_SEEDED_KEY, None)
     session["_backing_restore_skipped_reason"] = None
     clear_backing_local_edit(session)
     return True
@@ -744,6 +800,13 @@ def collect_backing_persistence_trace(
         "backing_last_write": canonical.get("last_write_reason")
         or (session.get(BACKING_STATE_KEY) or {}).get("last_write_reason"),
         "backing_overwrite_source": session.get("_backing_overwrite_source"),
+        "raw_backing_track_scope": session.get(BACKING_SCOPE_WIDGET_KEY, ""),
+        "raw_backing_track_loops": session.get(BACKING_LOOPS_WIDGET_KEY, ""),
+        "raw_backing_quick_section": session.get(BACKING_QUICK_SECTION_WIDGET_KEY, ""),
+        "raw_backing_time_signature": session.get(BACKING_METER_WIDGET_KEY, ""),
+        "raw_backing_time_signature_override": session.get(BACKING_METER_OVERRIDE_WIDGET_KEY, ""),
+        "raw_pending_backing_loops": session.get("_pending_backing_loops", ""),
+        "backing_pending_sync": bool(session.get(BACKING_PENDING_SYNC_KEY)),
     }
 
 
@@ -796,3 +859,12 @@ def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
         st.sidebar.caption(f"**backing restore skipped:** `{trace['backing_restore_skipped']}`")
     if trace.get("backing_overwrite_source"):
         st.sidebar.caption(f"**backing overwrite:** `{trace['backing_overwrite_source']}`")
+    st.sidebar.caption(
+        f"**backing raw:** scope=`{trace.get('raw_backing_track_scope', '')}` "
+        f"loops=`{trace.get('raw_backing_track_loops', '')}` "
+        f"quick=`{trace.get('raw_backing_quick_section', '')}` "
+        f"meter=`{trace.get('raw_backing_time_signature', '')}` "
+        f"ovr=`{trace.get('raw_backing_time_signature_override', '')}` "
+        f"pending_loops=`{trace.get('raw_pending_backing_loops', '')}` "
+        f"sync=`{trace.get('backing_pending_sync', '')}`"
+    )

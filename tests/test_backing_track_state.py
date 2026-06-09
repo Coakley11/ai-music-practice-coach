@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 from backing_track_state import (
     BACKING_DIRTY_KEY,
     BACKING_DURABLE_WIDGET_KEYS,
+    BACKING_WIDGETS_SEEDED_KEY,
     apply_backing_source_state_from_ami,
     apply_cloud_backing_state_if_allowed,
     coerce_backing_groove_for_widget,
@@ -20,6 +21,7 @@ from backing_track_state import (
     gather_backing_filters,
     is_backing_locally_dirty,
     mark_backing_local_edit,
+    mark_backing_pending_sync,
     prepare_backing_page,
     write_canonical_backing_state,
 )
@@ -351,6 +353,41 @@ class TestBackingTrackState(unittest.TestCase):
         bf = (blob.get("music_workspace_state") or {}).get("backing_filters") or {}
         self.assertEqual(bf.get("backing_track_loops"), 7)
         self.assertEqual(bf.get("backing_track_bpm"), 108)
+
+    def test_prepare_does_not_clobber_seeded_widgets(self) -> None:
+        session = {
+            "backing_track_state": {**_SAMPLE, "last_write_reason": "cloud"},
+            "backing_track_scope": "Full song",
+            "backing_track_loops": 1,
+            "backing_time_signature": "2/4",
+            "backing_time_signature_override": True,
+            BACKING_WIDGETS_SEEDED_KEY: True,
+        }
+        prepare_backing_page(session)
+        self.assertEqual(session["backing_track_scope"], "Full song")
+        self.assertEqual(session["backing_track_loops"], 1)
+        self.assertEqual(session["backing_time_signature"], "2/4")
+        self.assertTrue(session["backing_time_signature_override"])
+
+    def test_flush_after_pending_sync_captures_widget_values(self) -> None:
+        session = {
+            "backing_track_state": dict(_SAMPLE),
+            "backing_track_scope": "Single section",
+            "backing_track_single_section": "Verse",
+            "backing_track_loops": 1,
+            "backing_time_signature": "2/4",
+            "backing_time_signature_override": True,
+            "backing_track_bpm": 120,
+            "backing_groove_style": "Rock groove",
+        }
+        mark_backing_pending_sync(session)
+        flush_backing_edits(session, reason="backing_edit")
+        meta = session["backing_track_state"]
+        self.assertEqual(meta["backing_track_scope"], "Single section")
+        self.assertEqual(meta["backing_track_loops"], 1)
+        self.assertEqual(meta["backing_time_signature"], "2/4")
+        self.assertTrue(meta["backing_time_signature_override"])
+        self.assertEqual(meta["backing_track_bpm"], 120)
 
 
 if __name__ == "__main__":

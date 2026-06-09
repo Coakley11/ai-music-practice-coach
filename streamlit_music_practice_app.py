@@ -8527,7 +8527,6 @@ def _render_backing_scope_controls(
             _loops_slider_val = normalize_backing_loops(
                 st.session_state.get("backing_track_loops", BACKING_LOOPS_DEFAULT)
             )
-            st.session_state["backing_track_loops"] = _loops_slider_val
         except ImportError:
             _loops_slider_val = int(st.session_state.get("backing_track_loops", 2))
         st.slider(
@@ -9112,7 +9111,16 @@ def _on_backing_filter_change() -> None:
         mark_backing_pending_sync(st.session_state)
     except Exception:
         pass
-    _sync_canonical_backing_after_edit()
+
+
+def _flush_backing_pending_after_render() -> None:
+    """End-of-rerun flush — widgets are source of truth (deferred sync)."""
+    try:
+        from music_persistent_state import maybe_flush_pending_backing_edits
+
+        maybe_flush_pending_backing_edits(st)
+    except Exception:
+        pass
 
 
 def _sync_canonical_practice_after_edit() -> None:
@@ -10642,12 +10650,6 @@ elif _studio_page == "backing":
     except Exception:
         pass
     ensure_page_initialized(st.session_state, "backing")
-    try:
-        from backing_track_state import prepare_backing_page
-
-        prepare_backing_page(st.session_state)
-    except Exception:
-        pass
     note_page_visit(st.session_state, "backing")
     if pp.is_capture_mode(st):
         if km.is_voice_mode(st.session_state):
@@ -11370,6 +11372,8 @@ elif _studio_page == "backing":
             use_container_width=True,
             hide_index=True,
         )
+
+    _flush_backing_pending_after_render()
 
 # -------------------------------------------------
 # UPLOAD / RECORDING ANALYSIS

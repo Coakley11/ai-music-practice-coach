@@ -305,6 +305,12 @@ def canonicalize_backing_defaults_for_song(
         st.session_state.pop(PENDING_BACKING_GROOVE, None)
         st.session_state[BACKING_NEEDS_REGEN] = False
         st.session_state[_CANONICAL_BACKING_ID_KEY] = sync_id
+        try:
+            from backing_track_state import BACKING_WIDGETS_SEEDED_KEY
+
+            st.session_state.pop(BACKING_WIDGETS_SEEDED_KEY, None)
+        except ImportError:
+            pass
 
     return {
         "sync_id": sync_id,
