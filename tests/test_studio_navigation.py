@@ -133,7 +133,6 @@ def test_quick_nav_skips_duplicate_render_same_run():
 
     import app_ui as nav_mod
     from app_ui import (
-        STUDIO_QUICK_NAV_PANEL_KEY,
         render_page_quick_nav,
         reset_quick_nav_render_diagnostics,
     )
@@ -141,9 +140,9 @@ def test_quick_nav_skips_duplicate_render_same_run():
     state: dict = {"studio_page": "practice"}
     reset_quick_nav_render_diagnostics(state)
 
-    with patch("app_ui.use_simple_music_nav", return_value=False), patch(
-        "app_ui._render_quick_nav_row"
-    ) as mock_row, patch("app_ui._render_music_coach_insight_below_quick_nav"):
+    with patch("app_ui._render_simple_nav_row") as mock_row, patch(
+        "app_ui._render_music_coach_insight_below_quick_nav"
+    ):
         render_page_quick_nav(state, current_page="practice", rerun_fn=lambda: None)
         render_page_quick_nav(state, current_page="practice", rerun_fn=lambda: None)
 
@@ -154,7 +153,7 @@ def test_quick_nav_skips_duplicate_render_same_run():
     assert len(locations) == 2
     assert locations[0].get("skipped_duplicate") is False
     assert locations[1].get("skipped_duplicate") is True
-    assert STUDIO_QUICK_NAV_PANEL_KEY in (state.get("quick_nav_container_keys") or [])
+    assert locations[0].get("container_id") is None
 
 
 def test_quick_nav_resets_between_script_runs():
@@ -165,9 +164,9 @@ def test_quick_nav_resets_between_script_runs():
 
     state: dict = {"studio_page": "practice"}
 
-    with patch("app_ui.use_simple_music_nav", return_value=False), patch(
-        "app_ui._render_quick_nav_row"
-    ) as mock_row, patch("app_ui._render_music_coach_insight_below_quick_nav"):
+    with patch("app_ui._render_simple_nav_row") as mock_row, patch(
+        "app_ui._render_music_coach_insight_below_quick_nav"
+    ):
         reset_quick_nav_render_diagnostics(state)
         render_page_quick_nav(state, current_page="practice", rerun_fn=lambda: None)
         assert mock_row.call_count == 1
@@ -191,11 +190,9 @@ def test_cross_page_links_skips_when_canonical_nav_rendered():
     state: dict = {"studio_page": "practice"}
     reset_quick_nav_render_diagnostics(state)
 
-    with patch("app_ui.use_simple_music_nav", return_value=False), patch(
-        "app_ui._render_quick_nav_row"
-    ), patch("app_ui._render_music_coach_insight_below_quick_nav"), patch(
-        "app_ui._render_nav_art_cell"
-    ) as mock_art:
+    with patch("app_ui._render_simple_nav_row"), patch(
+        "app_ui._render_music_coach_insight_below_quick_nav"
+    ), patch("app_ui._render_nav_art_cell") as mock_art:
         render_page_quick_nav(state, current_page="practice", rerun_fn=lambda: None)
         assert _QUICK_NAV_RENDERED_THIS_EXEC is True
         render_cross_page_links(
@@ -226,7 +223,8 @@ def test_simple_nav_mode_uses_plain_button_keys():
     assert "ui-nav-art" not in css
     assert "studio_simple_nav_btn_" in css
     assert use_simple_music_nav({USE_SIMPLE_MUSIC_NAV_KEY: True})
-    assert not use_simple_music_nav({})
+    assert use_simple_music_nav({})
+    assert use_simple_music_nav({USE_SIMPLE_MUSIC_NAV_KEY: False})
     keys = [_studio_simple_nav_button_key(page_id) for page_id in SIMPLE_NAV_PAGE_IDS]
     assert keys == [
         "studio_simple_nav_btn_practice",

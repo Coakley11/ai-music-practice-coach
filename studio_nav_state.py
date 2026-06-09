@@ -106,7 +106,7 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
             session,
             live,
             reason="session_page_wins",
-            local_edit=False,
+            local_edit=True,
         )
     if canonical:
         return write_canonical_studio_nav_state(session, canonical, reason="canonical_preserve")

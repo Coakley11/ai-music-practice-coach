@@ -2366,24 +2366,9 @@ def _inject_studio_history_nav_pin_script() -> None:
 (function () {
   if (window.__studioHistoryNavPinInit) return;
   window.__studioHistoryNavPinInit = true;
-  function dedupeStudioQuickNavPanels() {
-    var main = document.querySelector('section[data-testid="stMain"]');
-    if (!main) return;
-    var panels = main.querySelectorAll('[class*="st-key-studio_quick_nav_panel"]');
-    for (var i = 0; i < panels.length - 1; i++) {
-      panels[i].style.setProperty('display', 'none', 'important');
-    }
-    ['studio_nav_back_btn', 'studio_nav_forward_btn'].forEach(function (keyPart) {
-      var nodes = main.querySelectorAll('[class*="st-key-' + keyPart + '"]');
-      for (var j = 0; j < nodes.length - 1; j++) {
-        nodes[j].style.setProperty('display', 'none', 'important');
-      }
-    });
-  }
   function pinStudioHistoryNav() {
     var main = document.querySelector('section[data-testid="stMain"]');
     if (!main) return;
-    dedupeStudioQuickNavPanels();
     var rect = main.getBoundingClientRect();
     var midY = window.innerHeight * 0.5;
     var backLeft = Math.max(12, rect.left + 14);
@@ -4252,7 +4237,7 @@ def _studio_panels_css() -> str:
         + _custom_builder_panel_css()
         + _upload_studio_panel_css()
         + _multitrack_studio_panel_css()
-        + _quick_nav_artistic_css()
+        + _simple_nav_css()
     )
 
 
@@ -6709,7 +6694,15 @@ def sync_sidebar_nav_body_dataset(session_state: dict, st_module: Any) -> None:
 def navigate_studio_page(session_state: Any, page_id: str) -> bool:
     from studio_nav_history import navigate_studio_page as _nav
 
-    return _nav(session_state, page_id)
+    changed = _nav(session_state, page_id)
+    if changed:
+        try:
+            from studio_nav_state import mark_studio_nav_local_edit
+
+            mark_studio_nav_local_edit(session_state)
+        except ImportError:
+            pass
+    return changed
 
 
 _NAV_COMPACT_TITLE: dict[str, str] = {
@@ -6785,7 +6778,8 @@ def init_simple_music_nav_from_query(st: Any) -> None:
 
 
 def use_simple_music_nav(session_state: Any) -> bool:
-    return bool(session_state.get(USE_SIMPLE_MUSIC_NAV_KEY))
+    """Plain Streamlit quick nav — always on (no art panel / DOM dedupe)."""
+    return True
 
 
 def _studio_quick_nav_button_key(page_id: str) -> str:
@@ -6966,13 +6960,6 @@ def _quick_nav_artistic_css() -> str:
     gap: 0.08rem !important;
   }
 }
-/* Retired quick-nav widget trees (pre script-v8) — hide stale panels until session reboot */
-[class*="st-key-main_studio_quick_nav_quick_nav_art_panel"],
-[class*="st-key-cpl_header_quick_nav_quick_nav_art_panel"],
-[class*="st-key-legacy_quick_nav_art_panel"],
-[class*="st-key-nav_test_quick_nav_quick_nav_art_panel"] {
-  display: none !important;
-}
 [class*="st-key-music_coach_insight_panel"] {
   margin: 0.4rem 0 0.55rem 0 !important;
   clear: both;
@@ -7048,8 +7035,7 @@ def _render_simple_nav_row(
     current: str,
     rerun_fn: Any,
 ) -> None:
-    """Plain Streamlit nav buttons (?simple_nav=1 diagnostic mode)."""
-    st.markdown(f"<style>{_simple_nav_css()}</style>", unsafe_allow_html=True)
+    """Plain Streamlit nav buttons — Practice, Songs, Backing, Custom, Multitrack."""
     cols = st.columns(len(SIMPLE_NAV_PAGE_IDS))
     for col, page_id in zip(cols, SIMPLE_NAV_PAGE_IDS):
         with col:
@@ -7216,21 +7202,20 @@ def render_page_quick_nav(
     rerun_fn: Any,
     key_prefix: str = STUDIO_QUICK_NAV_KEY_PREFIX,
 ) -> str:
-    """Top navigation — art nav, or plain diagnostic buttons when simple mode is on."""
+    """Top navigation — one plain Streamlit button row (always visible, no art/JS dedupe)."""
     import streamlit as st
 
     global _QUICK_NAV_RENDERED_THIS_EXEC
 
     ensure_studio_page(session_state, default=current_page)
     current = _resolve_quick_nav_current_page(session_state, current_page)
-    container_key = None if use_simple_music_nav(session_state) else STUDIO_QUICK_NAV_PANEL_KEY
 
     if _QUICK_NAV_RENDERED_THIS_EXEC:
         _record_quick_nav_render(
             session_state,
             current_page=current,
             key_prefix=key_prefix,
-            container_key=container_key,
+            container_key=None,
             skipped=True,
         )
         return session_state.get("studio_page", current)
@@ -7239,25 +7224,15 @@ def render_page_quick_nav(
         session_state,
         current_page=current,
         key_prefix=key_prefix,
-        container_key=container_key,
+        container_key=None,
     )
 
-    if use_simple_music_nav(session_state):
-        _render_simple_nav_row(
-            st,
-            session_state,
-            current=current,
-            rerun_fn=rerun_fn,
-        )
-    else:
-        with st.container(key=STUDIO_QUICK_NAV_PANEL_KEY):
-            _render_quick_nav_row(
-                st,
-                session_state,
-                page_ids=TOP_NAV_PAGE_IDS,
-                current=current,
-                rerun_fn=rerun_fn,
-            )
+    _render_simple_nav_row(
+        st,
+        session_state,
+        current=current,
+        rerun_fn=rerun_fn,
+    )
     _render_music_coach_insight_below_quick_nav(st, current_page=current)
 
     return session_state.get("studio_page", current)
