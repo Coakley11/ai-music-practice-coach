@@ -61,11 +61,6 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
     ),
     "backing": frozenset(
         {
-            "backing_track_scope",
-            "backing_track_loops",
-            "backing_track_single_section",
-            "backing_track_multi_sections",
-            "backing_quick_section",
             "_last_backing_wav",
             "_last_backing_signature",
             "_last_backing_timeline",

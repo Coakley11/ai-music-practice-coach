@@ -8639,11 +8639,25 @@ def _render_backing_step2_playback_action(
     song_just_reset: bool,
 ) -> tuple[int, bool, bool]:
     """Step 2 — tempo, quick controls, generate & play."""
-    applied_meter, meter_override, _song_meter = apply_backing_meter_for_song(
-        st,
-        song_id=song_id,
-        default_time_signature=default_meter,
-    )
+    try:
+        from backing_track_state import prepare_backing_meter_for_widget
+
+        applied_meter, meter_override = prepare_backing_meter_for_widget(
+            st.session_state,
+            default_meter=default_meter,
+        )
+    except ImportError:
+        applied_meter, meter_override, _song_meter = apply_backing_meter_for_song(
+            st,
+            song_id=song_id,
+            default_time_signature=default_meter,
+        )
+    else:
+        applied_meter, meter_override, _song_meter = apply_backing_meter_for_song(
+            st,
+            song_id=song_id,
+            default_time_signature=default_meter,
+        )
     _prime_backing_quick_section_from_scope(st.session_state, section_names)
     quick_opts = ["Full song"] + list(section_names)
     slider_key = backing_bpm_slider_widget_key(song_id)
@@ -8947,6 +8961,12 @@ except Exception:
 migrate_legacy_session_keys(st.session_state)
 sanitize_persisted_snapshots(st.session_state)
 handle_studio_page_transition(st.session_state)
+try:
+    from backing_track_state import prepare_backing_page
+
+    prepare_backing_page(st.session_state)
+except Exception:
+    pass
 note_page_visit(st.session_state, _studio_page)
 
 if _studio_page == "openai" and not _openai_api_key:

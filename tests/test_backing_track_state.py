@@ -197,6 +197,42 @@ class TestBackingTrackState(unittest.TestCase):
         self.assertEqual(session["backing_track_bpm"], 108)
         self.assertEqual(session["backing_track_scope"], "Single section")
 
+    def test_meter_hard_refresh_seeds_from_canonical(self) -> None:
+        from songs.meter_state import BACKING_METER_KEY, BACKING_METER_OVERRIDE_KEY, apply_backing_meter_for_song
+
+        session = {
+            "backing_track_state": {
+                **_SAMPLE,
+                "last_write_reason": "cloud_restore",
+            }
+        }
+        prepare_backing_page(session)
+        st = MagicMock()
+        st.session_state = session
+        applied, override, _default = apply_backing_meter_for_song(
+            st,
+            song_id="pk::Pop::Song — Artist",
+            default_time_signature="4/4",
+        )
+        self.assertEqual(applied, "3/4")
+        self.assertTrue(override)
+        self.assertEqual(st.session_state[BACKING_METER_KEY], "3/4")
+        self.assertTrue(st.session_state[BACKING_METER_OVERRIDE_KEY])
+
+    def test_loops_one_persists_through_autosave(self) -> None:
+        session = {
+            "backing_track_state": {
+                **_SAMPLE,
+                "backing_track_loops": 1,
+                "last_write_reason": "backing_edit",
+            },
+            "backing_track_loops": 2,
+            "backing_track_scope": "Full song",
+        }
+        commit_backing_state_from_session(session, reason="autosave")
+        self.assertEqual(session["backing_track_state"]["backing_track_loops"], 1)
+        self.assertEqual(session["backing_track_loops"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

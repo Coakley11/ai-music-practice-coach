@@ -73,8 +73,10 @@ __all__ = (
     "normalize_backing_groove",
     "normalize_backing_scope",
     "backing_canonical_playback_seed",
+    "backing_canonical_meter_seed",
     "has_restored_backing_canonical",
     "prepare_backing_bpm_for_widget",
+    "prepare_backing_meter_for_widget",
     "prepare_backing_page",
     "prepare_backing_scope_for_widget",
     "render_backing_state_debug",
@@ -269,6 +271,19 @@ def backing_canonical_playback_seed(session: dict[str, Any]) -> tuple[int | None
     return bpm, groove or None
 
 
+def backing_canonical_meter_seed(session: dict[str, Any]) -> tuple[str | None, bool | None]:
+    """Meter + override flag from canonical blob for hard-refresh meter sync."""
+    if is_backing_locally_dirty(session):
+        return None, None
+    canonical = canonical_backing_filters(session) or {}
+    meter_raw = str(canonical.get("backing_time_signature") or "").strip()
+    override = bool(canonical.get("backing_time_signature_override"))
+    if not meter_raw and not override:
+        return None, None
+    meter = normalize_backing_meter(meter_raw) if meter_raw else None
+    return meter, override
+
+
 def _preserve_durable_filters_for_autosave(
     session: dict[str, Any],
     filters: dict[str, Any],
@@ -366,6 +381,23 @@ def prepare_backing_scope_for_widget(session: dict[str, Any]) -> None:
     quick = str(canonical.get("backing_quick_section") or "").strip()
     if quick:
         session["backing_quick_section"] = quick
+
+
+def prepare_backing_meter_for_widget(session: dict[str, Any], *, default_meter: str = "4/4") -> tuple[str, bool]:
+    """Bind meter radio to canonical blob before the meter widget renders."""
+    if not is_backing_locally_dirty(session):
+        canonical = canonical_backing_filters(session) or {}
+        meter_raw = str(canonical.get("backing_time_signature") or "").strip()
+        override = bool(canonical.get("backing_time_signature_override"))
+        if meter_raw or override:
+            meter = normalize_backing_meter(meter_raw or default_meter)
+            session["backing_time_signature"] = meter
+            session["backing_time_signature_override"] = override
+            return meter, override
+    meter = normalize_backing_meter(session.get("backing_time_signature"), default=default_meter)
+    session["backing_time_signature"] = meter
+    override = bool(session.get("backing_time_signature_override"))
+    return meter, override
 
 
 def write_canonical_backing_state(
@@ -507,18 +539,26 @@ def collect_backing_persistence_trace(
         "backing_canonical_groove": canonical.get("backing_groove_style", ""),
         "backing_canonical_scope": canonical.get("backing_track_scope", ""),
         "backing_canonical_loops": canonical.get("backing_track_loops", ""),
+        "backing_canonical_meter": canonical.get("backing_time_signature", ""),
+        "backing_canonical_section": canonical.get("backing_track_single_section", ""),
         "backing_filters_bpm": envelope.get("backing_track_bpm", ""),
         "backing_filters_groove": envelope.get("backing_groove_style", ""),
         "backing_filters_scope": envelope.get("backing_track_scope", ""),
         "backing_filters_loops": envelope.get("backing_track_loops", ""),
+        "backing_filters_meter": envelope.get("backing_time_signature", ""),
+        "backing_filters_section": envelope.get("backing_track_single_section", ""),
         "cloud_payload_backing_bpm": cloud_meta.get("backing_track_bpm", ""),
         "cloud_payload_backing_groove": cloud_meta.get("backing_groove_style", ""),
         "cloud_payload_backing_scope": cloud_meta.get("backing_track_scope", ""),
         "cloud_payload_backing_loops": cloud_meta.get("backing_track_loops", ""),
+        "cloud_payload_backing_meter": cloud_meta.get("backing_time_signature", ""),
+        "cloud_payload_backing_section": cloud_meta.get("backing_track_single_section", ""),
         "restored_backing_bpm": session.get("backing_track_bpm", ""),
         "restored_backing_groove": session.get("backing_groove_style", ""),
         "restored_backing_scope": session.get("backing_track_scope", ""),
         "restored_backing_loops": session.get("backing_track_loops", ""),
+        "restored_backing_meter": session.get("backing_time_signature", ""),
+        "restored_backing_section": session.get("backing_track_single_section", ""),
         "backing_dirty": is_backing_locally_dirty(session),
         "backing_restore_applied": bool(session.get(BACKING_RESTORED_KEY)),
         "backing_restore_skipped": session.get("_backing_restore_skipped_reason"),
@@ -532,26 +572,34 @@ def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
     trace = collect_backing_persistence_trace(session)
     st.sidebar.caption(
         f"**backing canonical:** scope=`{trace['backing_canonical_scope']}` "
+        f"sec=`{trace['backing_canonical_section']}` "
         f"loops=`{trace['backing_canonical_loops']}` "
+        f"meter=`{trace['backing_canonical_meter']}` "
         f"bpm=`{trace['backing_canonical_bpm']}` "
         f"groove=`{trace['backing_canonical_groove']}` "
         f"dirty=`{trace['backing_dirty']}`"
     )
     st.sidebar.caption(
         f"**backing envelope:** scope=`{trace['backing_filters_scope']}` "
+        f"sec=`{trace['backing_filters_section']}` "
         f"loops=`{trace['backing_filters_loops']}` "
+        f"meter=`{trace['backing_filters_meter']}` "
         f"bpm=`{trace['backing_filters_bpm']}` "
         f"groove=`{trace['backing_filters_groove']}`"
     )
     st.sidebar.caption(
         f"**backing cloud:** scope=`{trace['cloud_payload_backing_scope']}` "
+        f"sec=`{trace['cloud_payload_backing_section']}` "
         f"loops=`{trace['cloud_payload_backing_loops']}` "
+        f"meter=`{trace['cloud_payload_backing_meter']}` "
         f"bpm=`{trace['cloud_payload_backing_bpm']}` "
         f"groove=`{trace['cloud_payload_backing_groove']}`"
     )
     st.sidebar.caption(
         f"**backing widget:** scope=`{trace['restored_backing_scope']}` "
+        f"sec=`{trace['restored_backing_section']}` "
         f"loops=`{trace['restored_backing_loops']}` "
+        f"meter=`{trace['restored_backing_meter']}` "
         f"bpm=`{trace['restored_backing_bpm']}` "
         f"groove=`{trace['restored_backing_groove']}` "
         f"restore=`{trace['backing_restore_applied']}`"

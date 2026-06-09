@@ -283,6 +283,12 @@ def canonicalize_backing_defaults_for_song(
     if did_reset and previous_id is None and _cloud_refresh_has_canonical_backing(st):
         did_reset = False
         st.session_state[_CANONICAL_BACKING_ID_KEY] = sync_id
+        try:
+            from backing_track_state import prepare_backing_page
+
+            prepare_backing_page(st.session_state)
+        except ImportError:
+            pass
 
     if did_reset:
         invalidate_backing_cache(st)
@@ -409,6 +415,12 @@ def apply_backing_defaults_for_song(
             infer_fn=infer_fn,
         )
         if seeded is not None:
+            try:
+                from backing_track_state import prepare_backing_page
+
+                prepare_backing_page(st.session_state)
+            except ImportError:
+                pass
             return seeded
 
     if song_changed:
