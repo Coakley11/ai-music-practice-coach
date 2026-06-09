@@ -8963,12 +8963,6 @@ except Exception:
 migrate_legacy_session_keys(st.session_state)
 sanitize_persisted_snapshots(st.session_state)
 handle_studio_page_transition(st.session_state)
-try:
-    from backing_track_state import prepare_backing_page
-
-    prepare_backing_page(st.session_state)
-except Exception:
-    pass
 note_page_visit(st.session_state, _studio_page)
 
 if _studio_page == "openai" and not _openai_api_key:
@@ -9094,15 +9088,6 @@ st.sidebar.selectbox(
 _instrument_options = DEFAULT_INSTRUMENT_OPTIONS
 
 
-def _sync_canonical_backing_after_edit() -> None:
-    """Phase C: flush canonical backing_track_state and force cloud save."""
-    try:
-        from music_persistent_state import flush_backing_edits_and_save
-
-        flush_backing_edits_and_save(st, reason="backing_edit")
-    except Exception:
-        pass
-
 
 def _on_backing_filter_change() -> None:
     try:
@@ -9112,15 +9097,6 @@ def _on_backing_filter_change() -> None:
     except Exception:
         pass
 
-
-def _flush_backing_pending_after_render() -> None:
-    """End-of-rerun flush — widgets are source of truth (deferred sync)."""
-    try:
-        from music_persistent_state import maybe_flush_pending_backing_edits
-
-        maybe_flush_pending_backing_edits(st)
-    except Exception:
-        pass
 
 
 def _sync_canonical_practice_after_edit() -> None:
@@ -9511,12 +9487,6 @@ _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     is_custom=is_custom_progression(st.session_state),
 )
 _default_song_bpm = _synced_bpm
-try:
-    from backing_track_state import prepare_backing_page
-
-    prepare_backing_page(st.session_state)
-except Exception:
-    pass
 
 song_lyrics_slug = _song_slug(
     song,
@@ -10643,12 +10613,6 @@ elif _studio_page == "picker":
 
 elif _studio_page == "backing":
 
-    try:
-        from backing_track_state import prepare_backing_page
-
-        prepare_backing_page(st.session_state)
-    except Exception:
-        pass
     ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
     if pp.is_capture_mode(st):
@@ -11373,7 +11337,6 @@ elif _studio_page == "backing":
             hide_index=True,
         )
 
-    _flush_backing_pending_after_render()
 
 # -------------------------------------------------
 # UPLOAD / RECORDING ANALYSIS
@@ -12619,13 +12582,11 @@ if not pp.skip_background_persistence(st):
             clear_music_workspace_autosave_block,
             force_save_music_state,
             maybe_flush_pending_active_song_edits,
-            maybe_flush_pending_backing_edits,
             maybe_flush_pending_practice_edits,
         )
 
         maybe_flush_pending_active_song_edits(st)
         maybe_flush_pending_practice_edits(st)
-        maybe_flush_pending_backing_edits(st)
         autosave_music_state(st)
         if st.session_state.pop("_suite_persist_insight_dirty", None):
             force_save_music_state(st, reason="insight_persist")

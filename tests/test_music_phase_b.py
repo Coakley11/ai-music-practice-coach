@@ -489,7 +489,7 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("studio-nav-stable-v25", info["build_marker"])
+        self.assertIn("studio-nav-page-sync-recovery", info["build_marker"])
 
     def test_snapshot_workspace_restore_always_sets_trace_fields(self) -> None:
         from music_persistence_trace import get_trace, snapshot_workspace_restore_trace
@@ -673,6 +673,157 @@ class TestStaleResumeLaunchFlags(unittest.TestCase):
         self.assertTrue(trace.get("has_resume_query_params_result"))
         self.assertFalse(trace.get("should_skip_workspace_restore_for_resume"))
         self.assertNotIn("_suite_persist_restore_skip_reason", st.session_state)
+
+
+class TestPageSyncRecovery(unittest.TestCase):
+    """Regression: phone session saves page_change; Dell restore applies studio_page."""
+
+    def test_phone_backing_page_change_reaches_dell_restore(self) -> None:
+        from music_persistent_state import (
+            after_studio_page_change,
+            apply_music_disk_state,
+            claim_studio_page_ownership,
+        )
+
+        phone = MagicMock()
+        phone.session_state = {"studio_page": "practice"}
+        phone.query_params = {}
+        claim_studio_page_ownership(phone, "backing")
+
+        with patch("music_persistent_state.force_save_music_state", return_value=True) as mock_save, patch(
+            "suite_user_persistence._release_user_page_ownership_after_save"
+        ):
+            after_studio_page_change(phone, session_state=phone.session_state)
+
+        mock_save.assert_called_once()
+        self.assertEqual(mock_save.call_args.kwargs.get("reason"), "page_change")
+        self.assertEqual(phone.session_state["studio_page"], "backing")
+
+        dell = MagicMock()
+        dell.session_state = {"studio_page": "practice"}
+        dell.query_params = {}
+        cloud_payload = {
+            "core": {"studio_page": "backing", "pick_key": "Pop|Test"},
+            "session": {"studio_page": "backing"},
+            "music_workspace_state": {"studio_page": "backing", "page": "backing"},
+        }
+        with patch("music_persistent_state.apply_saved_music_context", return_value=True), patch(
+            "applied_math_return_insight.ami_return_navigation_active",
+            return_value=False,
+        ):
+            apply_music_disk_state(
+                dell,
+                cloud_payload,
+                song_picker_catalog={},
+                song_library=None,
+            )
+        self.assertEqual(dell.session_state.get("studio_page"), "backing")
+
+    def test_phone_picker_page_change_reaches_dell_restore(self) -> None:
+        from music_persistent_state import (
+            after_studio_page_change,
+            apply_music_disk_state,
+            claim_studio_page_ownership,
+        )
+
+        phone = MagicMock()
+        phone.session_state = {"studio_page": "backing"}
+        phone.query_params = {}
+        claim_studio_page_ownership(phone, "picker")
+
+        with patch("music_persistent_state.force_save_music_state", return_value=True), patch(
+            "suite_user_persistence._release_user_page_ownership_after_save"
+        ):
+            after_studio_page_change(phone, session_state=phone.session_state)
+
+        self.assertEqual(phone.session_state["studio_page"], "picker")
+
+        dell = MagicMock()
+        dell.session_state = {"studio_page": "backing"}
+        cloud_payload = {
+            "core": {"studio_page": "picker"},
+            "music_workspace_state": {"studio_page": "picker", "page": "practice"},
+        }
+        with patch("music_persistent_state.apply_saved_music_context", return_value=True), patch(
+            "applied_math_return_insight.ami_return_navigation_active",
+            return_value=False,
+        ):
+            apply_music_disk_state(
+                dell,
+                cloud_payload,
+                song_picker_catalog={},
+                song_library=None,
+            )
+        self.assertEqual(dell.session_state.get("studio_page"), "picker")
+
+    def test_suite_pick_key_does_not_block_page_restore(self) -> None:
+        from music_persistent_state import apply_music_disk_state, prepare_music_workspace
+        from suite_cloud_state import should_skip_workspace_restore_for_resume
+
+        st = MagicMock()
+        st.session_state = {"studio_page": "practice"}
+        st.query_params = {"suite_pick_key": "Pop|Perfect"}
+        cloud_state = {
+            "core": {"studio_page": "custom", "pick_key": "Pop|Perfect"},
+            "music_workspace_state": {"studio_page": "custom", "page": "custom"},
+        }
+        self.assertFalse(should_skip_workspace_restore_for_resume(st, "music", reconcile_first=False))
+
+        with patch(
+            "suite_cloud_state.load_cloud_full_session",
+            return_value=(cloud_state, "2026-06-09T16:00:00+00:00"),
+        ), patch(
+            "suite_user_persistence._load_raw",
+            return_value=({"core": {"studio_page": "practice"}}, None, "2026-06-09T12:00:00+00:00"),
+        ), patch(
+            "music_persistent_state.apply_music_disk_state",
+            wraps=lambda st_obj, state, **kw: apply_music_disk_state(
+                st_obj,
+                state,
+                song_picker_catalog={},
+                song_library=None,
+            ),
+        ), patch("suite_user_persistence.save_user_state", return_value=True):
+            ok = prepare_music_workspace(
+                st,
+                song_picker_catalog={},
+                song_library=None,
+            )
+
+        self.assertTrue(ok)
+        self.assertEqual(st.session_state.get("studio_page"), "custom")
+
+    def test_stale_resume_flags_cleared_before_cloud_restore(self) -> None:
+        from music_persistent_state import prepare_music_workspace
+
+        st = MagicMock()
+        st.session_state = {
+            "_suite_resume_launch_music": True,
+            "studio_page": "practice",
+        }
+        st.query_params = {}
+        cloud_state = {
+            "core": {"studio_page": "backing"},
+            "music_workspace_state": {"studio_page": "backing", "page": "backing"},
+        }
+
+        with patch(
+            "suite_cloud_state.load_cloud_full_session",
+            return_value=(cloud_state, "2026-06-09T16:00:00+00:00"),
+        ), patch(
+            "suite_user_persistence._load_raw",
+            return_value=({"core": {"studio_page": "practice"}}, None, "2026-06-09T12:00:00+00:00"),
+        ), patch("music_persistent_state.apply_music_disk_state"), patch(
+            "suite_user_persistence.save_user_state",
+            return_value=True,
+        ):
+            prepare_music_workspace(
+                st,
+                song_picker_catalog={},
+                song_library=None,
+            )
+
+        self.assertNotIn("_suite_resume_launch_music", st.session_state)
 
 
 class TestPhaseCCanonicalWiring(unittest.TestCase):
