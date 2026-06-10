@@ -1329,16 +1329,27 @@ def force_autosave(
         state = build_state(st)
         if reason == "page_change":
             state = _preserve_cloud_widget_fields_on_page_change(app_id, state)
-        if reason == "page_change" and app_id == "music":
+        if app_id == "music":
             try:
-                from music_persistent_state import finalize_music_page_change_cloud_payload
+                from music_persistent_state import (
+                    _sync_save_payload_trace_fields,
+                    ensure_music_payload_stamped_for_session,
+                    finalize_music_page_change_cloud_payload,
+                )
 
-                state, finalize_trace = finalize_music_page_change_cloud_payload(st, state)
+                if reason == "page_change":
+                    state, finalize_trace = finalize_music_page_change_cloud_payload(st, state)
+                else:
+                    state, finalize_trace = ensure_music_payload_stamped_for_session(st, state)
                 if finalize_trace:
+                    finalize_trace = _sync_save_payload_trace_fields(finalize_trace)
                     st.session_state["_music_save_payload_stamp_trace"] = finalize_trace
-                    write_page = finalize_trace.get("cloud_write_studio_page")
-                    if write_page:
-                        st.session_state["_music_cloud_write_studio_page"] = write_page
+                    final_page = finalize_trace.get("final_payload_studio_page") or finalize_trace.get(
+                        "cloud_write_studio_page"
+                    )
+                    if final_page:
+                        st.session_state["_music_final_payload_studio_page"] = final_page
+                        st.session_state["_music_cloud_write_studio_page"] = final_page
             except ImportError:
                 pass
         blob = json.dumps(state, sort_keys=True, default=str)
@@ -1364,12 +1375,24 @@ def force_autosave(
                 if app_id == "music":
                     from music_persistent_state import _studio_page_from_save_state
 
-                    written = _studio_page_from_save_state(state)
+                    written = (
+                        st.session_state.get("_music_final_payload_studio_page")
+                        or _studio_page_from_save_state(state)
+                    )
                     if written:
                         st.session_state["_music_cloud_payload_studio_page"] = written
                         st.session_state["_music_cloud_payload_source"] = "last_write"
                 _, cloud_ts = load_cloud_full_session(app_id)
                 st.session_state[_applied_cloud_ts_key(app_id)] = cloud_ts or _utc_now_iso()
+            elif app_id == "music" and saved_disk:
+                from music_persistent_state import _studio_page_from_save_state
+
+                written = (
+                    st.session_state.get("_music_final_payload_studio_page")
+                    or _studio_page_from_save_state(state)
+                )
+                if written:
+                    st.session_state["_music_disk_write_studio_page"] = written
             st.session_state["_suite_persist_last_save_at"] = _utc_now_iso()
             st.session_state["_suite_persist_last_save_disk"] = saved_disk
             st.session_state["_suite_persist_last_save_cloud"] = saved_cloud
@@ -1421,6 +1444,25 @@ def autosave_if_changed(
             return
 
         state = build_state(st)
+        if app_id == "music":
+            try:
+                from music_persistent_state import (
+                    _sync_save_payload_trace_fields,
+                    ensure_music_payload_stamped_for_session,
+                )
+
+                state, stamp_trace = ensure_music_payload_stamped_for_session(st, state)
+                if stamp_trace:
+                    stamp_trace = _sync_save_payload_trace_fields(stamp_trace)
+                    st.session_state["_music_save_payload_stamp_trace"] = stamp_trace
+                    final_page = stamp_trace.get("final_payload_studio_page") or stamp_trace.get(
+                        "cloud_write_studio_page"
+                    )
+                    if final_page:
+                        st.session_state["_music_final_payload_studio_page"] = final_page
+                        st.session_state["_music_cloud_write_studio_page"] = final_page
+            except ImportError:
+                pass
         blob = json.dumps(state, sort_keys=True, default=str)
         fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
         key = f"_suite_autosave_fp::{app_id}"

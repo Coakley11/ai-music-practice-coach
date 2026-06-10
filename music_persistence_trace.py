@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v7"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v8"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -520,11 +520,17 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
         phone_rows = [
 
+            ("final_payload_studio_page", trace.get("final_payload_studio_page") or ss.get("_music_final_payload_studio_page")),
+
+            ("final_payload_source", trace.get("final_payload_source")),
+
             ("cloud_payload_studio_page", trace.get("cloud_payload_studio_page") or ss.get("_music_cloud_payload_studio_page")),
 
             ("cloud_payload_source", trace.get("cloud_payload_source") or ss.get("_music_cloud_payload_source")),
 
             ("cloud_write_studio_page", trace.get("cloud_write_studio_page") or ss.get("_music_cloud_write_studio_page")),
+
+            ("disk_write_studio_page", trace.get("disk_write_studio_page") or ss.get("_music_disk_write_studio_page")),
 
             ("last_save_cloud", trace.get("last_save_cloud")),
 
@@ -554,13 +560,13 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
             ("save_payload_source", trace.get("save_payload_source")),
 
-            ("save_payload_core_page", trace.get("save_payload_core_page")),
+            ("save_payload_core_page", trace.get("post_stamp_core_page") or trace.get("save_payload_core_page")),
 
-            ("save_payload_session_page", trace.get("save_payload_session_page")),
+            ("save_payload_session_page", trace.get("post_stamp_session_page") or trace.get("save_payload_session_page")),
 
-            ("save_payload_workspace_page", trace.get("save_payload_workspace_page")),
+            ("save_payload_workspace_page", trace.get("post_stamp_workspace_page") or trace.get("save_payload_workspace_page")),
 
-            ("save_payload_studio_nav_page", trace.get("save_payload_studio_nav_page")),
+            ("save_payload_studio_nav_page", trace.get("post_stamp_studio_nav_page") or trace.get("save_payload_studio_nav_page")),
 
             ("page_owner flag", trace.get("page_owner_flag") if trace.get("page_owner_flag") is not None else ss.get("_suite_page_user_nav")),
 
