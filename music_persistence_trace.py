@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v15-backing-trace"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v16-backing-rendered-trace"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -20,20 +20,32 @@ TRACE_KEY = "_music_persist_trace"
 
 BACKING_PATH_TRACE_LABELS: tuple[str, ...] = (
     "backing_sync_failure_class",
+    "backing_rendered_bpm_key",
+    "backing_rendered_bpm",
+    "backing_rendered_bpm_vs_canonical",
+    "backing_widget_canonical_mismatch",
+    "backing_render_bind_reason",
     "backing_widget_bpm",
     "backing_canonical_bpm",
     "backing_payload_bpm",
     "backing_cloud_bpm",
-    "backing_restore_source",
-    "backing_last_write",
-    "backing_widget_scope",
+    "backing_rendered_scope",
     "backing_canonical_scope",
     "backing_payload_scope",
     "cloud_payload_backing_scope",
+    "backing_rendered_loops",
     "backing_widget_loops",
     "backing_canonical_loops",
     "backing_payload_loops",
     "cloud_payload_backing_loops",
+    "backing_rendered_quick_section",
+    "backing_rendered_single_section",
+    "backing_rendered_groove",
+    "backing_rendered_meter",
+    "backing_rendered_meter_override",
+    "backing_restore_source",
+    "backing_last_write",
+    "backing_widget_scope",
     "backing_pending_sync",
     "backing_dirty",
     "force_save_reason",

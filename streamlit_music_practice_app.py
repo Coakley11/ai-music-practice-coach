@@ -10705,7 +10705,14 @@ elif _studio_page == "backing":
     try:
         from backing_track_state import prepare_backing_durable_widgets
 
-        prepare_backing_durable_widgets(st.session_state, default_meter=_default_meter)
+        st.session_state["_backing_trace_sync_id"] = _bpm_sync_id
+        prepare_backing_durable_widgets(
+            st.session_state,
+            sync_id=_bpm_sync_id,
+            default_bpm=_default_bpm,
+            default_groove=default_groove_style,
+            default_meter=_default_meter,
+        )
     except Exception:
         pass
     try:

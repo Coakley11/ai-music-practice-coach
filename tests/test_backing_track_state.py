@@ -12,10 +12,12 @@ from backing_track_state import (
     BACKING_WIDGETS_SEEDED_KEY,
     apply_backing_source_state_from_ami,
     apply_cloud_backing_state_if_allowed,
+    bind_backing_rendered_widgets_from_canonical,
     classify_backing_sync_failure_class,
     coerce_backing_groove_for_widget,
     backing_filters_for_workspace_envelope,
     collect_backing_persistence_trace,
+    collect_rendered_backing_widget_trace,
     commit_backing_canonical_blob_only,
     commit_backing_state_from_session,
     flush_backing_edits,
@@ -524,6 +526,73 @@ class TestBackingTrackState(unittest.TestCase):
             classify_backing_sync_failure_class(trace),
             "phone_restore_overwrite_defaults",
         )
+
+    def test_classify_rendered_canonical_mismatch_scope(self) -> None:
+        trace = {
+            "backing_widget_bpm": 130,
+            "backing_canonical_bpm": 130,
+            "backing_payload_bpm": 130,
+            "backing_cloud_bpm": 130,
+            "backing_widget_canonical_mismatch": True,
+            "backing_rendered_scope": "Full song",
+            "backing_canonical_scope": "Single section",
+        }
+        self.assertEqual(
+            classify_backing_sync_failure_class(trace),
+            "rendered_canonical_mismatch",
+        )
+
+    def test_bind_rendered_widgets_reconciles_stale_per_song_slider(self) -> None:
+        sync_id = "pk::Pop::Song — Artist"
+        slider_key = f"backing_track_bpm::{sync_id.replace(':', '_').replace('/', '_').replace(' ', '_')}"
+        session = {
+            "backing_track_state": {**_SAMPLE, "backing_track_bpm": 130, "last_write_reason": "cloud"},
+            "backing_track_bpm": 130,
+            "backing_track_scope": "Single section",
+            "backing_track_single_section": "Chorus",
+            "backing_track_loops": 3,
+            "backing_groove_style": "Rock groove",
+            slider_key: 100,
+            BACKING_WIDGETS_SEEDED_KEY: True,
+        }
+        trace = bind_backing_rendered_widgets_from_canonical(session, sync_id=sync_id, default_bpm=100)
+        self.assertEqual(session[slider_key], 130)
+        self.assertEqual(trace["backing_rendered_bpm"], 130)
+        self.assertFalse(trace["backing_widget_canonical_mismatch"])
+        self.assertEqual(session["_backing_render_bind_reason"], "rendered_canonical_mismatch")
+
+    def test_trace_reports_rendered_widget_keys(self) -> None:
+        sync_id = "pk::Pop::Song — Artist"
+        slider_key = f"backing_track_bpm::{sync_id.replace(':', '_').replace('/', '_').replace(' ', '_')}"
+        session = dict(_SAMPLE)
+        write_canonical_backing_state(session, _SAMPLE, reason="backing_edit")
+        session[slider_key] = 100
+        session["backing_track_loops"] = 1
+        trace = collect_backing_persistence_trace(session, sync_id=sync_id)
+        self.assertEqual(trace["backing_rendered_bpm_key"], slider_key)
+        self.assertEqual(trace["backing_rendered_bpm"], 100)
+        self.assertEqual(trace["backing_canonical_bpm"], 108)
+        self.assertTrue(trace["backing_widget_canonical_mismatch"])
+        self.assertIn("100!=108", trace["backing_rendered_bpm_vs_canonical"])
+
+    def test_collect_rendered_trace_all_controls(self) -> None:
+        sync_id = "pk::Pop::Song"
+        session = {
+            "backing_track_scope": "Single section",
+            "backing_track_loops": 3,
+            "backing_groove_style": "Rock groove",
+            "backing_quick_section": "Verse",
+            "backing_track_single_section": "Verse",
+            "backing_time_signature": "3/4",
+            "backing_time_signature_override": True,
+        }
+        trace = collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+        self.assertEqual(trace["backing_rendered_scope"], "Single section")
+        self.assertEqual(trace["backing_rendered_loops"], 3)
+        self.assertEqual(trace["backing_rendered_groove"], "Rock groove")
+        self.assertEqual(trace["backing_rendered_quick_section"], "Verse")
+        self.assertEqual(trace["backing_rendered_meter"], "3/4")
+        self.assertTrue(trace["backing_rendered_meter_override"])
 
     def test_record_disk_payload_trace_from_envelope(self) -> None:
         session: dict = {}

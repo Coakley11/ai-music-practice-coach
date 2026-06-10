@@ -109,6 +109,8 @@ __all__ = (
     "backing_canonical_meter_seed",
     "backing_filters_for_workspace_envelope",
     "classify_backing_sync_failure_class",
+    "bind_backing_rendered_widgets_from_canonical",
+    "collect_rendered_backing_widget_trace",
     "has_restored_backing_canonical",
     "record_backing_disk_payload_trace",
     "resolve_backing_trace_payloads",
@@ -328,14 +330,148 @@ def _sync_scope_keys_from_session(session: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _widget_bpm_from_session(session: dict[str, Any]) -> int | None:
-    """BPM from canonical widget key or per-song slider key (``backing_track_bpm::``)."""
-    if "backing_track_bpm" in session:
-        return normalize_backing_bpm(session.get("backing_track_bpm"))
+def _per_song_bpm_slider_key(sync_id: str) -> str:
+    try:
+        from songs.playback_defaults import backing_bpm_slider_widget_key
+
+        return backing_bpm_slider_widget_key(sync_id)
+    except ImportError:
+        safe = str(sync_id).replace(":", "_").replace("/", "_").replace(" ", "_")
+        return f"backing_track_bpm::{safe}"
+
+
+def _rendered_bpm_from_session(session: dict[str, Any], *, sync_id: str = "") -> tuple[str, int | None]:
+    """BPM from the visible per-song slider key (what Streamlit renders)."""
+    if sync_id:
+        slider_key = _per_song_bpm_slider_key(sync_id)
+        if slider_key in session:
+            return slider_key, normalize_backing_bpm(session[slider_key])
     for key, val in session.items():
         if str(key).startswith("backing_track_bpm::"):
-            return normalize_backing_bpm(val)
+            return str(key), normalize_backing_bpm(val)
+    if "backing_track_bpm" in session:
+        return "backing_track_bpm", normalize_backing_bpm(session.get("backing_track_bpm"))
+    return "", None
+
+
+def _widget_bpm_from_session(session: dict[str, Any]) -> int | None:
+    """BPM from gather/commit keys (may differ from rendered slider)."""
+    _, rendered = _rendered_bpm_from_session(session)
+    if rendered is not None:
+        return rendered
+    if "backing_track_bpm" in session:
+        return normalize_backing_bpm(session.get("backing_track_bpm"))
     return None
+
+
+def _rendered_differs_from_canonical(
+    session: dict[str, Any],
+    sync_id: str,
+    canonical: dict[str, Any] | None = None,
+) -> bool:
+    canon = _normalize_filters(canonical if isinstance(canonical, dict) else (canonical_backing_filters(session) or {}))
+    if not _filters_have_content(canon):
+        return False
+    _, rendered_bpm = _rendered_bpm_from_session(session, sync_id=sync_id)
+    canon_bpm = normalize_backing_bpm(canon.get("backing_track_bpm"))
+    if rendered_bpm is not None and canon_bpm is not None and rendered_bpm != canon_bpm:
+        return True
+    pairs = (
+        (BACKING_SCOPE_WIDGET_KEY, "backing_track_scope", normalize_backing_scope),
+        (BACKING_LOOPS_WIDGET_KEY, "backing_track_loops", normalize_backing_loops),
+        ("backing_groove_style", "backing_groove_style", normalize_backing_groove),
+        (BACKING_QUICK_SECTION_WIDGET_KEY, "backing_quick_section", str),
+        (BACKING_METER_WIDGET_KEY, "backing_time_signature", normalize_backing_meter),
+    )
+    for wkey, ckey, norm in pairs:
+        if wkey not in session and ckey not in canon:
+            continue
+        wval = norm(session.get(wkey)) if wkey in session else None
+        cval = norm(canon.get(ckey)) if canon.get(ckey) not in (None, "") else None
+        if cval is not None and wval is not None and wval != cval:
+            return True
+    if bool(session.get(BACKING_METER_OVERRIDE_WIDGET_KEY)) != bool(canon.get("backing_time_signature_override")):
+        return True
+    return False
+
+
+def collect_rendered_backing_widget_trace(
+    session: dict[str, Any],
+    *,
+    sync_id: str = "",
+) -> dict[str, Any]:
+    """Trace values bound to visible Streamlit widget keys (not canonical blob alone)."""
+    slider_key, rendered_bpm = _rendered_bpm_from_session(session, sync_id=sync_id)
+    canonical = canonical_backing_filters(session) or {}
+    canon_bpm = canonical.get("backing_track_bpm", "")
+    mismatch = _rendered_differs_from_canonical(session, sync_id, canonical) if sync_id else False
+    return {
+        "backing_rendered_bpm_key": slider_key,
+        "backing_rendered_bpm": rendered_bpm if rendered_bpm is not None else "",
+        "backing_rendered_scope": session.get(BACKING_SCOPE_WIDGET_KEY, ""),
+        "backing_rendered_loops": session.get(BACKING_LOOPS_WIDGET_KEY, ""),
+        "backing_rendered_groove": session.get("backing_groove_style", ""),
+        "backing_rendered_quick_section": session.get(BACKING_QUICK_SECTION_WIDGET_KEY, ""),
+        "backing_rendered_meter": session.get(BACKING_METER_WIDGET_KEY, ""),
+        "backing_rendered_meter_override": bool(session.get(BACKING_METER_OVERRIDE_WIDGET_KEY, False)),
+        "backing_rendered_single_section": session.get(BACKING_SINGLE_SECTION_WIDGET_KEY, ""),
+        "backing_widget_canonical_mismatch": mismatch,
+        "backing_render_bind_reason": session.get("_backing_render_bind_reason", ""),
+        "backing_rendered_bpm_vs_canonical": (
+            f"{rendered_bpm}!={canon_bpm}"
+            if rendered_bpm is not None and canon_bpm not in (None, "") and rendered_bpm != canon_bpm
+            else ""
+        ),
+    }
+
+
+def bind_backing_rendered_widgets_from_canonical(
+    session: dict[str, Any],
+    *,
+    sync_id: str,
+    default_bpm: int = 100,
+    default_groove: str = "",
+    default_meter: str = "4/4",
+) -> dict[str, Any]:
+    """Push canonical blob into every visible widget key (incl. per-song BPM slider)."""
+    if is_backing_locally_dirty(session) or session.get(BACKING_PENDING_SYNC_KEY):
+        return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+
+    canonical = canonical_backing_filters(session)
+    if canonical is None:
+        return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+
+    should_bind = (
+        session.get(BACKING_RESTORED_KEY)
+        or not session.get(BACKING_WIDGETS_SEEDED_KEY)
+        or _rendered_differs_from_canonical(session, sync_id, canonical)
+    )
+    if not should_bind:
+        return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+
+    bind_reason = (
+        "cloud_restore"
+        if session.get(BACKING_RESTORED_KEY) or session.get("_backing_restore_source") == "cloud_restore"
+        else "rendered_canonical_mismatch"
+    )
+    _apply_filters_to_session_keys(session, canonical)
+    slider_key = _per_song_bpm_slider_key(sync_id)
+    bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"), default=default_bpm)
+    if bpm is not None:
+        session[slider_key] = int(bpm)
+        session["backing_track_bpm"] = int(bpm)
+        session["bpm"] = int(bpm)
+    groove = normalize_backing_groove(canonical.get("backing_groove_style") or default_groove)
+    if groove:
+        session["backing_groove_style"] = groove
+    meter = normalize_backing_meter(canonical.get("backing_time_signature") or default_meter)
+    if meter:
+        session[BACKING_METER_WIDGET_KEY] = meter
+    session[BACKING_METER_OVERRIDE_WIDGET_KEY] = bool(canonical.get("backing_time_signature_override"))
+    session[BACKING_WIDGETS_SEEDED_KEY] = True
+    session.pop(BACKING_RESTORED_KEY, None)
+    session["_backing_render_bind_reason"] = bind_reason
+    return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
 
 
 def sync_backing_session_keys_for_save(session: dict[str, Any]) -> None:
@@ -587,8 +723,24 @@ def prepare_backing_bpm_for_widget(session: dict[str, Any], *, default_bpm: int 
     return int(bpm or default_bpm)
 
 
-def prepare_backing_durable_widgets(session: dict[str, Any], *, default_meter: str = "4/4") -> None:
-    """Bind scope/loop widgets to canonical blob before Step 1 widgets render."""
+def prepare_backing_durable_widgets(
+    session: dict[str, Any],
+    *,
+    sync_id: str = "",
+    default_bpm: int = 100,
+    default_groove: str = "",
+    default_meter: str = "4/4",
+) -> None:
+    """Bind all visible widget keys to canonical blob before Step 1/2 widgets render."""
+    if sync_id:
+        bind_backing_rendered_widgets_from_canonical(
+            session,
+            sync_id=sync_id,
+            default_bpm=default_bpm,
+            default_groove=default_groove,
+            default_meter=default_meter,
+        )
+        return
     prepare_backing_scope_for_widget(session)
 
 
@@ -893,6 +1045,9 @@ def classify_backing_sync_failure_class(trace: dict[str, Any]) -> str:
     if widget_bpm != "" and canonical_bpm != "" and widget_bpm != canonical_bpm:
         return "dell_widget_canonical_mismatch"
 
+    if trace.get("backing_widget_canonical_mismatch"):
+        return "rendered_canonical_mismatch"
+
     if canonical_bpm != "" and payload_bpm != "" and canonical_bpm != payload_bpm:
         return "dell_canonical_payload_mismatch"
 
@@ -941,11 +1096,13 @@ def snapshot_backing_path_trace(st: Any) -> dict[str, Any]:
         from music_persistence_trace import get_trace, update_trace
 
         session = st.session_state
+        sync_id = str(session.get("_backing_trace_sync_id") or "")
         envelope_payload, cloud_payload = resolve_backing_trace_payloads(st, session)
         trace = collect_backing_persistence_trace(
             session,
             envelope_payload=envelope_payload,
             cloud_payload=cloud_payload,
+            sync_id=sync_id,
         )
         update_trace(st, **trace)
         return trace
@@ -959,8 +1116,10 @@ def collect_backing_persistence_trace(
     payload: dict[str, Any] | None = None,
     envelope_payload: dict[str, Any] | None = None,
     cloud_payload: dict[str, Any] | None = None,
+    sync_id: str = "",
 ) -> dict[str, Any]:
     sync_backing_session_keys_for_save(session)
+    effective_sync_id = sync_id or str(session.get("_backing_trace_sync_id") or "")
     canonical = canonical_backing_filters(session) or {}
     envelope: dict[str, Any] = {}
     cloud_meta: dict[str, Any] = {}
@@ -977,8 +1136,11 @@ def collect_backing_persistence_trace(
     payload_bpm = session.get("_music_backing_payload_bpm")
     if payload_bpm in (None, "") and envelope.get("backing_track_bpm") not in (None, ""):
         payload_bpm = envelope.get("backing_track_bpm")
-    widget_bpm = _widget_bpm_from_session(session)
+    rendered_trace = collect_rendered_backing_widget_trace(session, sync_id=effective_sync_id)
+    _, rendered_bpm = _rendered_bpm_from_session(session, sync_id=effective_sync_id)
+    widget_bpm = rendered_bpm if rendered_bpm is not None else _widget_bpm_from_session(session)
     trace = {
+        **rendered_trace,
         "backing_widget_bpm": widget_bpm if widget_bpm is not None else "",
         "backing_widget_scope": session.get(BACKING_SCOPE_WIDGET_KEY, ""),
         "backing_widget_loops": session.get(BACKING_LOOPS_WIDGET_KEY, ""),
@@ -1008,6 +1170,7 @@ def collect_backing_persistence_trace(
         "backing_payload_loops": session.get("_music_backing_payload_loops", envelope.get("backing_track_loops", "")),
         "backing_payload_groove": session.get("_music_backing_payload_groove", envelope.get("backing_groove_style", "")),
         "backing_restore_source": session.get("_backing_restore_source", ""),
+        "backing_render_bind_reason": session.get("_backing_render_bind_reason", ""),
         "restored_backing_bpm": session.get("backing_track_bpm", ""),
         "restored_backing_groove": session.get("backing_groove_style", ""),
         "restored_backing_scope": session.get("backing_track_scope", ""),
