@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v18-backing-user-dirty"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v19-written-key-sync"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -274,6 +274,8 @@ def collect_test_d_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
     """Snapshot fields for Test D cross-device compare (song + key + instrument + page)."""
     from datetime import datetime, timezone
 
+    from instrument_transposition import CHART_IN_INSTRUMENT_KEY_KEY, chart_in_instrument_key
+
     ss = st.session_state
     device_id = "unknown"
     try:
@@ -283,6 +285,23 @@ def collect_test_d_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
     except ImportError:
         pass
     song = ss.get("selected_song") if isinstance(ss.get("selected_song"), dict) else {}
+    active_meta = ss.get("active_song_state") if isinstance(ss.get("active_song_state"), dict) else {}
+    written_key_mode_widget = (
+        ss.get(CHART_IN_INSTRUMENT_KEY_KEY)
+        if CHART_IN_INSTRUMENT_KEY_KEY in ss
+        else chart_in_instrument_key(ss)
+    )
+    written_key_mode_canonical = active_meta.get(CHART_IN_INSTRUMENT_KEY_KEY)
+    written_key_mode_cloud = trace.get("written_key_mode_cloud")
+    if written_key_mode_cloud is None:
+        try:
+            from active_song_state import written_key_mode_from_blob
+
+            cloud_blob = ss.get("_suite_last_cloud_save_payload")
+            if isinstance(cloud_blob, dict):
+                written_key_mode_cloud = written_key_mode_from_blob(cloud_blob)
+        except ImportError:
+            pass
     return {
         "device_id": device_id,
         "trace_captured_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
@@ -308,6 +327,13 @@ def collect_test_d_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
         "active_song_restore_skipped": ss.get("_active_song_restore_skipped_reason"),
         "page_overwrite_source": trace.get("page_overwrite_source")
         or ss.get("_suite_page_overwrite_source"),
+        "written_key_mode_widget": written_key_mode_widget,
+        "written_key_mode_canonical": written_key_mode_canonical,
+        "written_key_mode_cloud": written_key_mode_cloud,
+        "written_key_mode_restored": ss.get("_written_key_mode_restored")
+        or trace.get("written_key_mode_restored"),
+        "written_key_restore_source": ss.get("_written_key_restore_source")
+        or trace.get("written_key_restore_source"),
         "final_song_title": song.get("title") or "",
     }
 

@@ -9163,6 +9163,12 @@ def _sync_canonical_active_song_after_edit() -> None:
         persist_music_local_state(st)
 
 
+def _on_written_key_checkbox_change() -> None:
+    instrument = st.session_state.get("instrument", "Piano")
+    sync_written_key_instrument_anchor(st.session_state, instrument)
+    _sync_canonical_active_song_after_edit()
+
+
 def _on_global_instrument_change() -> None:
     # Re-validate Practice Focus against the new instrument's option
     # list so other pages don't render a focus that the new instrument
@@ -9361,6 +9367,7 @@ render_sidebar_transposing_controls(
     st,
     concert_key=display_key,
     instrument=instrument,
+    on_written_key_change=_on_written_key_checkbox_change,
 )
 
 _key_ctx = resolve_practice_keys(st.session_state, display_key, instrument)

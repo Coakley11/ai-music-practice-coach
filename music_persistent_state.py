@@ -1074,6 +1074,10 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             "instrument": active_song_meta.get("instrument") or (core or {}).get("instrument"),
             "level": active_song_meta.get("level") or (core or {}).get("level"),
             "focus": active_song_meta.get("focus") or (core or {}).get("focus"),
+            "show_chart_in_instrument_key": active_song_meta.get("show_chart_in_instrument_key"),
+            "_chart_written_key_instrument_anchor": active_song_meta.get(
+                "_chart_written_key_instrument_anchor"
+            ),
             "practice_focus_section": active_song_meta.get("practice_focus_section")
             or practice_meta.get("practice_focus_section")
             or (core or {}).get("practice_focus_section"),

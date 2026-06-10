@@ -395,6 +395,7 @@ def render_sidebar_transposing_widgets(
     *,
     concert_key: str,
     instrument: str,
+    on_written_key_change: Any | None = None,
 ) -> None:
     """App-wide transposing controls (sidebar) — persist across all studio pages."""
     if not is_transposing_instrument(instrument):
@@ -408,13 +409,18 @@ def render_sidebar_transposing_widgets(
             key=SELECTED_TRANSPOSING_INSTRUMENT_KEY,
             help="Applies to charts, backing chord view, and notation on every page.",
         )
-    st.sidebar.checkbox(
-        "Show chart in written key for instrument",
-        key=CHART_IN_INSTRUMENT_KEY_KEY,
-        help=(
+    checkbox_kwargs: dict[str, Any] = {
+        "help": (
             "When on, charts stay in your instrument's written key while you change "
             "Practice / Display Key. Turn off to read charts in concert pitch."
         ),
+    }
+    if on_written_key_change is not None:
+        checkbox_kwargs["on_change"] = on_written_key_change
+    st.sidebar.checkbox(
+        "Show chart in written key for instrument",
+        key=CHART_IN_INSTRUMENT_KEY_KEY,
+        **checkbox_kwargs,
     )
 
 
@@ -454,9 +460,15 @@ def render_sidebar_transposing_controls(
     *,
     concert_key: str,
     instrument: str,
+    on_written_key_change: Any | None = None,
 ) -> None:
     """Sidebar type selector, written-key toggle, and recap (all pages)."""
-    render_sidebar_transposing_widgets(st, concert_key=concert_key, instrument=instrument)
+    render_sidebar_transposing_widgets(
+        st,
+        concert_key=concert_key,
+        instrument=instrument,
+        on_written_key_change=on_written_key_change,
+    )
     render_sidebar_transposing_recap(st, concert_key=concert_key, instrument=instrument)
 
 

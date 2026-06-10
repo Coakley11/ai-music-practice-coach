@@ -17,6 +17,7 @@ from active_song_state import (
     prepare_active_song_context,
     write_canonical_active_song_state,
 )
+from instrument_transposition import CHART_IN_INSTRUMENT_KEY_KEY, WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY
 from music_coach_context import apply_source_state_to_session, build_source_state
 from music_persistent_state import apply_music_disk_state, build_music_disk_state
 from song_catalog import format_pick_key
@@ -150,6 +151,73 @@ class TestActiveSongState(unittest.TestCase):
         commit_active_song_state_from_session(session, reason="autosave")
         self.assertEqual(session["display_key"], "Widget Key")
         self.assertEqual(session["active_song_state"]["display_key"], "D Major")
+
+    def test_written_key_checkbox_prepare_and_cloud_restore(self) -> None:
+        session = {
+            "active_song_state": {
+                **_SAMPLE,
+                "instrument": "Clarinet",
+                CHART_IN_INSTRUMENT_KEY_KEY: True,
+                WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Clarinet",
+            }
+        }
+        prepare_active_song_context(session)
+        self.assertTrue(session[CHART_IN_INSTRUMENT_KEY_KEY])
+        self.assertEqual(session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY], "Clarinet")
+
+        cloud = {
+            "active_song_state": {
+                **_SAMPLE,
+                "instrument": "Clarinet",
+                CHART_IN_INSTRUMENT_KEY_KEY: True,
+                WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Clarinet",
+            },
+            "music_workspace_state": {
+                "active_song": {
+                    "pick_key": _PICK_KEY,
+                    "instrument": "Clarinet",
+                    CHART_IN_INSTRUMENT_KEY_KEY: True,
+                }
+            },
+        }
+        phone: dict = {"instrument": "Piano"}
+        self.assertTrue(apply_cloud_active_song_state_if_allowed(phone, cloud))
+        self.assertTrue(phone[CHART_IN_INSTRUMENT_KEY_KEY])
+        self.assertEqual(phone["_written_key_mode_restored"], True)
+        self.assertEqual(phone["_written_key_restore_source"], "cloud_restore")
+
+    def test_written_key_checkbox_disk_round_trip(self) -> None:
+        st = MagicMock()
+        st.session_state = {
+            **_SAMPLE,
+            ACTIVE_CATALOG_PICK_KEY: _PICK_KEY,
+            SELECTED_SONG_STATE_KEY: _SAMPLE["selected_song"],
+            "instrument": "Clarinet",
+            CHART_IN_INSTRUMENT_KEY_KEY: True,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Clarinet",
+        }
+        flush_active_song_edits(st.session_state, reason="song_edit")
+        blob = build_music_disk_state(st)
+        self.assertTrue(blob["active_song_state"][CHART_IN_INSTRUMENT_KEY_KEY])
+        ws = blob.get("music_workspace_state") or {}
+        self.assertTrue(ws.get("active_song", {}).get(CHART_IN_INSTRUMENT_KEY_KEY))
+
+        st2 = MagicMock()
+        st2.session_state = {}
+        catalog = {
+            "Pop": {
+                "Turn the Lights Back On — Billy Joel": {
+                    "title": "Turn the Lights Back On",
+                    "artist": "Billy Joel",
+                    "key": "C",
+                }
+            }
+        }
+        library = {"Pop": {"Turn the Lights Back On": catalog["Pop"]["Turn the Lights Back On — Billy Joel"]}}
+        apply_music_disk_state(st2, blob, song_picker_catalog=catalog, song_library=library)
+        ss = st2.session_state
+        self.assertTrue(ss.get(CHART_IN_INSTRUMENT_KEY_KEY))
+        self.assertTrue(ss.get("active_song_state", {}).get(CHART_IN_INSTRUMENT_KEY_KEY))
 
     def test_song_edit_bypasses_post_restore_block(self) -> None:
         from suite_user_persistence import _cloud_autosave_blocked_reason

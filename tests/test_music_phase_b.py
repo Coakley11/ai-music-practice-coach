@@ -727,7 +727,7 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("page-change-save-stamp-v18-backing-user-dirty", info["build_marker"])
+        self.assertIn("page-change-save-stamp-v19-written-key-sync", info["build_marker"])
 
     def test_test_d_compare_trace_includes_final_fields(self) -> None:
         from music_persistence_trace import (
@@ -743,7 +743,18 @@ class TestPersistenceTracePanel(unittest.TestCase):
             "instrument": "Saxophone",
             "studio_page": "creative",
             "selected_song": {"title": "Shallow"},
+            "show_chart_in_instrument_key": True,
+            "active_song_state": {
+                "pick_key": "pk::Pop::Shallow — Lady Gaga",
+                "instrument": "Saxophone",
+                "show_chart_in_instrument_key": True,
+            },
+            "_written_key_mode_restored": True,
+            "_written_key_restore_source": "cloud_restore",
             "_suite_cloud_fetch_updated_at": "2026-06-09T12:00:00+00:00",
+            "_suite_last_cloud_save_payload": {
+                "active_song_state": {"show_chart_in_instrument_key": True},
+            },
         }
         trace = {"final_studio_page": "creative", "restored_pick_key": "pk::Pop::Shallow — Lady Gaga"}
         rows = collect_test_d_trace_rows(st, trace)
@@ -755,6 +766,11 @@ class TestPersistenceTracePanel(unittest.TestCase):
         for label in TEST_D_TRACE_LABELS:
             self.assertIn(f"{label}:", text)
         self.assertIn("final_song_title: Shallow", text)
+        self.assertEqual(rows["written_key_mode_widget"], True)
+        self.assertEqual(rows["written_key_mode_canonical"], True)
+        self.assertEqual(rows["written_key_mode_cloud"], True)
+        self.assertEqual(rows["written_key_mode_restored"], True)
+        self.assertEqual(rows["written_key_restore_source"], "cloud_restore")
 
     def test_finalize_uses_normalized_studio_page_over_stale_picker_hint(self) -> None:
         from music_persistent_state import finalize_music_page_change_cloud_payload

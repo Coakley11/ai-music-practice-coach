@@ -6,6 +6,11 @@ import copy
 from datetime import datetime, timezone
 from typing import Any
 
+from instrument_transposition import (
+    CHART_IN_INSTRUMENT_KEY_KEY,
+    WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+    chart_in_instrument_key,
+)
 from songs.key_state import PENDING_DISPLAY_KEY
 from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
@@ -40,6 +45,7 @@ __all__ = (
     "prepare_active_song_context",
     "render_active_song_state_debug",
     "sync_active_song_context_from_core",
+    "written_key_mode_from_blob",
     "write_canonical_active_song_state",
 )
 
@@ -80,6 +86,16 @@ def _normalize_selected_song(raw: Any) -> dict[str, Any]:
     return out
 
 
+def _written_key_fields_from_raw(src: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    if CHART_IN_INSTRUMENT_KEY_KEY in src:
+        out[CHART_IN_INSTRUMENT_KEY_KEY] = bool(src[CHART_IN_INSTRUMENT_KEY_KEY])
+    anchor = str(src.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+    if anchor:
+        out[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+    return out
+
+
 def _normalize_context(raw: dict[str, Any] | None) -> dict[str, Any]:
     src = raw if isinstance(raw, dict) else {}
     sel = _normalize_selected_song(src.get("selected_song"))
@@ -93,6 +109,7 @@ def _normalize_context(raw: dict[str, Any] | None) -> dict[str, Any]:
         "level": str(src.get("level") or "").strip(),
         "focus": str(src.get("focus") or "").strip(),
         "selected_song": sel,
+        **_written_key_fields_from_raw(src),
     }
 
 
@@ -105,14 +122,19 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     ).strip()
     if pick_key and not selected.get("pick_key"):
         selected["pick_key"] = pick_key
-    return {
+    ctx = {
         "pick_key": pick_key,
         "display_key": str(session.get("display_key") or "").strip(),
         "instrument": str(session.get("instrument") or "").strip(),
         "level": str(session.get("level") or "").strip(),
         "focus": str(session.get("focus") or "").strip(),
         "selected_song": selected,
+        CHART_IN_INSTRUMENT_KEY_KEY: chart_in_instrument_key(session),
     }
+    anchor = str(session.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+    if anchor:
+        ctx[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+    return ctx
 
 
 def canonical_active_song_context(session: dict[str, Any]) -> dict[str, Any] | None:
@@ -126,11 +148,23 @@ def canonical_active_song_context(session: dict[str, Any]) -> dict[str, Any] | N
     return ctx
 
 
+def _record_written_key_restore_trace(
+    session: dict[str, Any],
+    ctx: dict[str, Any],
+    *,
+    source: str,
+) -> None:
+    if CHART_IN_INSTRUMENT_KEY_KEY in ctx:
+        session["_written_key_mode_restored"] = bool(ctx[CHART_IN_INSTRUMENT_KEY_KEY])
+        session["_written_key_restore_source"] = source
+
+
 def _apply_context_to_session_keys(
     session: dict[str, Any],
     ctx: dict[str, Any],
     *,
     mutate_display_key: bool = True,
+    mutate_written_key: bool = True,
 ) -> None:
     pick_key = str(ctx.get("pick_key") or "").strip()
     if pick_key:
@@ -149,6 +183,11 @@ def _apply_context_to_session_keys(
         if pick_key:
             selected.setdefault("pick_key", pick_key)
         session[SELECTED_SONG_STATE_KEY] = selected
+    if mutate_written_key and CHART_IN_INSTRUMENT_KEY_KEY in ctx:
+        session[CHART_IN_INSTRUMENT_KEY_KEY] = bool(ctx[CHART_IN_INSTRUMENT_KEY_KEY])
+    anchor = str(ctx.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+    if mutate_written_key and anchor:
+        session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
 
 
 def write_canonical_active_song_state(
@@ -158,6 +197,7 @@ def write_canonical_active_song_state(
     reason: str = "",
     local_edit: bool = False,
     mutate_display_key: bool | None = None,
+    mutate_written_key: bool | None = None,
 ) -> dict[str, Any]:
     """Single write path for active song context."""
     ctx = _normalize_context(context)
@@ -165,10 +205,12 @@ def write_canonical_active_song_state(
         **ctx,
         "last_write_reason": reason or None,
     }
+    mutate_wk = True if mutate_written_key is None else mutate_written_key
     _apply_context_to_session_keys(
         session,
         ctx,
         mutate_display_key=True if mutate_display_key is None else mutate_display_key,
+        mutate_written_key=mutate_wk,
     )
     if local_edit:
         mark_active_song_local_edit(session)
@@ -189,11 +231,13 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
 
     canonical = canonical_active_song_context(session)
     if canonical is not None:
-        return write_canonical_active_song_state(
+        ctx = write_canonical_active_song_state(
             session,
             canonical,
             reason="canonical_preserve",
         )
+        _record_written_key_restore_trace(session, ctx, source="canonical_prepare")
+        return ctx
 
     gathered = gather_active_song_context(session)
     if gathered.get("pick_key") or gathered.get("instrument") or gathered.get("display_key"):
@@ -218,6 +262,7 @@ def commit_active_song_state_from_session(
         reason=reason,
         local_edit=False,
         mutate_display_key=False,
+        mutate_written_key=False,
     )
 
 
@@ -282,6 +327,21 @@ def _active_song_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | No
     return None
 
 
+def written_key_mode_from_blob(state: dict[str, Any]) -> bool | None:
+    """Read written-key checkbox from a disk/cloud music payload."""
+    if not isinstance(state, dict):
+        return None
+    meta = state.get(ACTIVE_SONG_STATE_KEY)
+    if isinstance(meta, dict) and CHART_IN_INSTRUMENT_KEY_KEY in meta:
+        return bool(meta[CHART_IN_INSTRUMENT_KEY_KEY])
+    ws = state.get("music_workspace_state")
+    if isinstance(ws, dict):
+        active = ws.get("active_song")
+        if isinstance(active, dict) and CHART_IN_INSTRUMENT_KEY_KEY in active:
+            return bool(active[CHART_IN_INSTRUMENT_KEY_KEY])
+    return None
+
+
 def apply_cloud_active_song_state_if_allowed(
     session: dict[str, Any],
     state: dict[str, Any],
@@ -294,6 +354,7 @@ def apply_cloud_active_song_state_if_allowed(
     if not ctx or not ctx.get("pick_key"):
         return False
     write_canonical_active_song_state(session, ctx, reason="cloud_restore")
+    _record_written_key_restore_trace(session, ctx, source="cloud_restore")
     clear_active_song_local_edit(session)
     return True
 
@@ -334,9 +395,11 @@ def render_active_song_state_debug(st: Any, session: dict[str, Any]) -> None:
     """?dev=1 sidebar panel for active song canonical state."""
     ctx = canonical_active_song_context(session) or {}
     dirty = is_active_song_locally_dirty(session)
+    written_on = ctx.get(CHART_IN_INSTRUMENT_KEY_KEY)
     st.sidebar.caption(
         f"**active_song_state:** dirty=`{dirty}` pick=`{ctx.get('pick_key', '')}` "
-        f"key=`{ctx.get('display_key', '')}` inst=`{ctx.get('instrument', '')}`"
+        f"key=`{ctx.get('display_key', '')}` inst=`{ctx.get('instrument', '')}` "
+        f"written=`{written_on}`"
     )
     reason = ctx.get("last_write_reason")
     if reason:
