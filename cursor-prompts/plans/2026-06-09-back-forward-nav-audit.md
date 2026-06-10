@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-06-09  
 **Priority:** **P1 — later** (after P0 UI polish)  
-**Status:** DEFERRED — manual audit when scheduled  
+**Status:** CODE REVIEW COMPLETE — manual `?dev=1` audit still PENDING (2026-06-09)  
 **Policy:** Separate from UI polish. Do **not** touch Tests A–E persistence unless `?dev=1` trace proves navigation crosses into sync.
 
 **Frozen:** Tests **A–E** passed. See [MUSIC_PERSISTENCE_BASELINE.md](../../docs/MUSIC_PERSISTENCE_BASELINE.md).
@@ -152,3 +152,23 @@ If audit fails, isolate fix to:
 | Phone | | | | | |
 
 **Result:** PENDING / PASSED / FAILED (nav fix needed)
+
+---
+
+## Code review findings (2026-06-09)
+
+Static audit only — no nav code changed in this pass.
+
+| Area | Finding | Risk |
+|------|---------|------|
+| Stack mechanics | `studio_nav_history.go_back` / `go_forward` push/pop stacks; `handle_studio_page_transition` runs each script run (~line 9024 streamlit) to restore page-local snapshots | Low — unit tests pass |
+| Global preservation | `studio_page_persistence` whitelists globals (`display_key`, `show_chart_in_instrument_key`, active song, instrument, BPM, etc.) — never snapshotted/restored on nav | Low |
+| Quick nav vs Back/Forward | Quick nav uses `app_ui.navigate_studio_page` → marks `studio_nav_local_edit`; Back/Forward call `studio_nav_history` directly + `after_studio_page_change` only | **Medium** — back/forward may not set `_suite_page_user_nav` / dirty flag consistently |
+| Karaoke | Not a `STUDIO_PAGE_IDS` page — lives on `backing` with session karaoke keys in global whitelist | **Medium** — Back from backing may not restore karaoke sub-UI state beyond globals |
+| Upload / Multitrack | In `STUDIO_PAGE_IDS` (`analysis`, `multitrack`); page-local keys defined in `_PAGE_LOCAL_KEYS` | Low — verify manually |
+| Persistence coupling | `navigate_studio_page` and back/forward both call `after_studio_page_change` / `prepare_page_change_save_state` | **Medium** — requires Test D smoke after nav-only session |
+| Floating buttons | `render_floating_nav_history` at main area ~line 9397; keys `studio_nav_back_btn` / `studio_nav_forward_btn` | Low — present |
+
+**Recommended isolated fix (if manual audit fails):** add `mark_studio_nav_local_edit` to `go_back` / `go_forward`; optional nav trace fields in `local_nav_trace.py`.
+
+**Next step:** run manual protocol (Paths A–C) on `dev` deploy with `?dev=1` before any nav rewrite.

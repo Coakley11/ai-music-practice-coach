@@ -8,6 +8,7 @@ from instrument_transposition import (
     WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
     chart_in_instrument_key,
     effective_chart_key,
+    effective_practice_key,
     preserve_written_key_on_display_key_change,
     resolve_practice_keys,
     sync_written_key_instrument_anchor,
@@ -62,6 +63,26 @@ def test_written_key_spelling_follows_concert_accidental_style():
     assert written_key_for_type("F#", "Tenor saxophone (Bb)") == "G#"
     assert written_key_for_type("Ab", "Alto saxophone (Eb)") == "F"
     assert written_key_for_type("C#", "Tenor saxophone (Bb)") == "D#"
+
+
+def test_effective_practice_key_written_mode_matches_chart_key():
+    ss = _state()
+    assert effective_practice_key(ss, "Db", "Saxophone") == written_key_for_type(
+        "Db", "Tenor saxophone (Bb)"
+    )
+    assert effective_practice_key(ss, "Db", "Saxophone") == "Eb"
+
+
+def test_effective_practice_key_concert_when_written_off():
+    ss = _state()
+    ss[CHART_IN_INSTRUMENT_KEY_KEY] = False
+    assert effective_practice_key(ss, "Db", "Saxophone") == "Db"
+
+
+def test_resolve_practice_keys_includes_effective_practice_key():
+    ss = _state()
+    ctx = resolve_practice_keys(ss, "F", "Saxophone")
+    assert ctx["effective_practice_key"] == ctx["chart_key"] == "G"
 
 
 def test_switch_sax_to_trumpet_keeps_written_mode():

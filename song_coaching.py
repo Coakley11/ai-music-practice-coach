@@ -172,16 +172,102 @@ def lookup_curated(title: str) -> CoachingBlock | None:
     return dict(raw)
 
 
+def _extract_key_root(label: str) -> str | None:
+    m = re.match(r"^([A-G](?:#|b)?)", str(label or "").strip())
+    return m.group(1) if m else None
+
+
+def _infer_scale_kind(primary_scale: str, catalog_key: str) -> str:
+    """Return 'minor', 'major', or 'major_pentatonic'."""
+    low = str(primary_scale or "").lower()
+    if "minor" in low:
+        return "minor"
+    if "pentatonic" in low:
+        return "major_pentatonic"
+    if "major" in low:
+        return "major"
+    ck = str(catalog_key or "C")
+    if ck.lower().endswith("m") and len(ck) > 1:
+        return "minor"
+    return "major_pentatonic"
+
+
+def _primary_scale_for_practice_key(practice_key: str, kind: str) -> str:
+    pk = str(practice_key or "C").strip() or "C"
+    if kind == "minor":
+        return f"{pk} minor pentatonic"
+    if kind == "major":
+        return f"{pk} major"
+    return f"{pk} major pentatonic"
+
+
+def _remap_improv_key_text(text: str, old_root: str | None, practice_key: str) -> str:
+    """Swap catalog-root scale mentions for the practice/chart key."""
+    improv = str(text or "").strip()
+    pk = str(practice_key or "C").strip() or "C"
+    if not improv:
+        return improv
+    low = improv.lower()
+    if "song key" in low:
+        out = re.sub(r"\bthe song key\b", pk, improv, flags=re.I)
+        out = re.sub(r"\bsong key\b", pk, out, flags=re.I)
+        return out
+    if not old_root or old_root == pk:
+        return improv
+    replacements = (
+        (rf"\b{re.escape(old_root)}\s+major\s+pentatonic", f"{pk} major pentatonic"),
+        (rf"\b{re.escape(old_root)}\s+minor\s+pentatonic", f"{pk} minor pentatonic"),
+        (rf"\b{re.escape(old_root)}\s+major\b", f"{pk} major"),
+        (rf"\b{re.escape(old_root)}\b", pk),
+    )
+    out = improv
+    for pattern, repl in replacements:
+        out = re.sub(pattern, repl, out, flags=re.I)
+    return out
+
+
+def _apply_practice_key_to_block(
+    block: CoachingBlock,
+    *,
+    practice_key: str,
+    catalog_key: str,
+) -> CoachingBlock:
+    """Rewrite scale/improv coaching to match the chart key the player reads."""
+    pk = str(practice_key or "").strip()
+    if not pk:
+        return block
+    catalog = str(catalog_key or "C").strip() or "C"
+    out = dict(block)
+    primary_raw = str(block.get("primary_scale") or "")
+    improv_raw = str(block.get("improv_approach") or "")
+    kind = _infer_scale_kind(primary_raw, catalog)
+    out["primary_scale"] = _primary_scale_for_practice_key(pk, kind)
+    old_root = _extract_key_root(primary_raw) or _extract_key_root(catalog)
+    if improv_raw:
+        out["improv_approach"] = _remap_improv_key_text(improv_raw, old_root, pk)
+    else:
+        out["improv_approach"] = (
+            f"Use {out['primary_scale']}; target chord tones when harmony shifts."
+        )
+    what = str(out.get("what_matters") or "")
+    if catalog != pk and catalog in what:
+        out["what_matters"] = what.replace(f"**{catalog}**", f"**{pk}**", 1).replace(
+            catalog, pk, 1
+        )
+    return out
+
+
 def _fallback_coaching(
     record: dict[str, Any],
     sections: dict[str, list[str]],
     *,
     instrument: str = "",
     level: str = "Intermediate",
+    practice_key: str | None = None,
 ) -> CoachingBlock:
     title = str(record.get("title") or "this song")
     genre = str(record.get("genre") or "Pop")
-    key = str(record.get("key") or "C")
+    key = str(practice_key or record.get("key") or "C")
     ext = record.get("extensions") or {}
     groove = str(ext.get("default_groove") or genre)
     section_names = [str(s) for s in (sections or {}).keys() if str(s).strip()]
@@ -229,12 +315,24 @@ def build_song_coaching(
     *,
     instrument: str = "",
     level: str = "Intermediate",
+    practice_key: str | None = None,
 ) -> CoachingBlock:
     """Return a coaching block with instrument tip resolved."""
     sections = sections or {}
+    catalog_key = str(record.get("key") or "C")
     block = lookup_curated(str(record.get("title") or "")) or _fallback_coaching(
-        record, sections, instrument=instrument, level=level
+        record,
+        sections,
+        instrument=instrument,
+        level=level,
+        practice_key=practice_key,
     )
+    if practice_key:
+        block = _apply_practice_key_to_block(
+            block,
+            practice_key=practice_key,
+            catalog_key=catalog_key,
+        )
     tips = block.get("instrument_tips")
     if isinstance(tips, dict):
         block = dict(block)

@@ -52,3 +52,37 @@ def test_practice_focus_short():
     block = build_song_coaching({"title": "Perfect", "key": "G", "genre": "Pop"}, {})
     focus = coaching_practice_focus(block)
     assert len(focus) <= 123
+
+
+def test_fallback_coaching_uses_practice_key():
+    record = {"title": "Obscure Demo Track XYZ", "genre": "Rock", "key": "Db"}
+    block = build_song_coaching(
+        record,
+        {"Verse": ["Eb", "Ab"]},
+        instrument="Guitar",
+        practice_key="Eb",
+    )
+    assert "Eb" in block["primary_scale"]
+    assert "Db" not in block["primary_scale"]
+    assert "Eb" in block["improv_approach"]
+
+
+def test_curated_coaching_remaps_practice_key():
+    record = {"title": "All of Me", "genre": "Jazz", "key": "Ab"}
+    block = build_song_coaching(record, {}, practice_key="Eb")
+    assert "Eb" in block["primary_scale"]
+    assert "Eb" in block["improv_approach"]
+    assert "Ab major pentatonic" not in block["improv_approach"]
+
+
+def test_written_key_tenor_practice_key_in_coaching():
+    record = {"title": "Unknown Tune QRS", "genre": "Pop", "key": "Db"}
+    block = build_song_coaching(
+        record,
+        {"Verse": ["Eb"]},
+        instrument="Saxophone",
+        practice_key="Eb",
+    )
+    summary = coaching_scale_summary(block)
+    assert "Eb" in summary
+    assert "Db major" not in summary.lower()

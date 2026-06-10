@@ -410,6 +410,24 @@ def effective_chart_key(
     return concert_key, "concert"
 
 
+def effective_practice_key(
+    session_state: dict,
+    concert_key: str,
+    instrument: str,
+    *,
+    capo_shape_key: str | None = None,
+) -> str:
+    """Authoritative key for player-facing Practice coaching and scale text.
+
+    Matches the chart key the musician reads (written or concert), with an
+    optional guitar capo shape-key override when capo is enabled.
+    """
+    chart_key, _ = effective_chart_key(concert_key, instrument, session_state)
+    if capo_shape_key and str(instrument or "").strip() == "Guitar":
+        return str(capo_shape_key).strip() or chart_key
+    return chart_key
+
+
 def resolve_practice_keys(
     session_state: dict,
     concert_key: str,
@@ -425,6 +443,7 @@ def resolve_practice_keys(
         "concert_key": concert_key,
         "written_key": written,
         "chart_key": chart_key,
+        "effective_practice_key": chart_key,
         "global_display_key": global_display,
         "chart_key_mode": mode,
         "transposing_type": selected_transposing_type(session_state, instrument)

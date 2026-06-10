@@ -393,6 +393,7 @@ def active_song_card_details(
     level: str = "Intermediate",
     *,
     instrument: str = "",
+    practice_key: str | None = None,
 ) -> dict[str, Any]:
     """Rich metadata for the highlighted Active Song card.
 
@@ -459,6 +460,7 @@ def active_song_card_details(
             sections,
             instrument=instrument,
             level=level,
+            practice_key=practice_key,
         )
         practice_focus_text = coaching_practice_focus(coaching)
     except Exception:

@@ -307,6 +307,7 @@ from instrument_transposition import (
     apply_pending_transposing_instrument,
     chart_in_instrument_key,
     effective_chart_key,
+    effective_practice_key,
     instrument_display_name,
     is_transposing_instrument,
     options_for_instrument,
@@ -7346,12 +7347,14 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     """
     level = st.session_state.get("level", "Intermediate")
     active_instrument = str(st.session_state.get("instrument") or "")
+    _original_key, _chart_practice_key = _active_song_key_pair(rec)
     _details_error: Exception | None = None
     try:
         details = active_song_card_details(
             rec,
             level=level,
             instrument=active_instrument,
+            practice_key=_chart_practice_key,
         )
     except Exception as _details_exc:
         _details_error = _details_exc
@@ -7421,9 +7424,10 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     _is_fav = _active_pk in _favorites
     _fav_icon = "★" if _is_fav else "☆"
     _fav_title = "Remove from favorites" if _is_fav else "Add to favorites"
-    _original_key, _practice_key = _active_song_key_pair(rec)
     _key_row_html = (
-        active_song_key_row_html(_original_key, _practice_key) if show_key_row else ""
+        active_song_key_row_html(_original_key, _chart_practice_key)
+        if show_key_row
+        else ""
     )
     _genre_label = html.escape(str(rec.get("genre") or details.get("visual_genre") or "Song"))
     _user_ov = rec.get("user_override") or {}
@@ -9850,10 +9854,14 @@ if _studio_page == "practice":
     ):
         st.session_state.pop(_old_key, None)
 
-    _practice_chart_key = _key_ctx["chart_key"]
+    _capo_shape = guitar_shape_chart_key if (_capo_ctx.enabled and instrument == "Guitar") else None
+    _practice_chart_key = effective_practice_key(
+        st.session_state,
+        concert_key,
+        instrument,
+        capo_shape_key=_capo_shape,
+    )
     _chart_key_mode = _key_ctx["chart_key_mode"]
-    if _capo_ctx.enabled and instrument == "Guitar":
-        _practice_chart_key = guitar_shape_chart_key
 
     if _capo_ctx.enabled and instrument == "Guitar":
         st.markdown(capo_status_banner_html(_capo_ctx), unsafe_allow_html=True)
@@ -10017,6 +10025,7 @@ if _studio_page == "practice":
                 song_data.get("sections") or {},
                 instrument=instrument,
                 level=level,
+                practice_key=_practice_chart_key,
             )
             with st.expander("Song coach", expanded=pp.feature_expander_default(st, default=True)):
                 st.markdown(coaching_markdown(_song_coaching))
