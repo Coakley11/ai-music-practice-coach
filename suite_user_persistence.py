@@ -1334,14 +1334,19 @@ def force_autosave(
             from music_persistent_state import (
                 resolve_music_save_reason_at_write,
                 stamp_music_payload_for_write,
+                sync_page_change_write_pending_for_music_save,
             )
 
+            sync_page_change_write_pending_for_music_save(st)
             write_reason = resolve_music_save_reason_at_write(st, reason or "")
             state = stamp_music_payload_for_write(
                 st,
                 state,
-                explicit_reason=reason or "",
+                explicit_reason=write_reason,
                 write_path="force_autosave",
+            )
+            write_reason = str(
+                st.session_state.get("_music_save_reason_at_write") or write_reason
             )
         blob = json.dumps(state, sort_keys=True, default=str)
         fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
@@ -1451,14 +1456,19 @@ def autosave_if_changed(
             from music_persistent_state import (
                 resolve_music_save_reason_at_write,
                 stamp_music_payload_for_write,
+                sync_page_change_write_pending_for_music_save,
             )
 
+            sync_page_change_write_pending_for_music_save(st)
             autosave_reason = resolve_music_save_reason_at_write(st, "autosave")
             state = stamp_music_payload_for_write(
                 st,
                 state,
                 explicit_reason=autosave_reason,
                 write_path="autosave_if_changed",
+            )
+            autosave_reason = str(
+                st.session_state.get("_music_save_reason_at_write") or autosave_reason
             )
         blob = json.dumps(state, sort_keys=True, default=str)
         fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]

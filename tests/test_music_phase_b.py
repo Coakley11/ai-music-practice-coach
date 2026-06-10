@@ -727,7 +727,7 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("page-change-save-stamp-v11", info["build_marker"])
+        self.assertIn("page-change-save-stamp-v12", info["build_marker"])
 
     def test_finalize_uses_normalized_studio_page_over_stale_picker_hint(self) -> None:
         from music_persistent_state import finalize_music_page_change_cloud_payload
@@ -899,6 +899,23 @@ class TestPersistenceTracePanel(unittest.TestCase):
             "_suite_page_change_stamp_target": "backing",
             "_suite_pending_save_reason": "song_edit",
         }
+        self.assertEqual(resolve_music_save_reason_at_write(st, "song_edit"), "page_change")
+
+    def test_sync_pending_from_build_trace_when_session_key_missing(self) -> None:
+        from music_persistent_state import (
+            resolve_music_save_reason_at_write,
+            sync_page_change_write_pending_for_music_save,
+        )
+
+        st = MagicMock()
+        st.session_state = {
+            "_music_build_save_reason": "page_change",
+            "_music_build_page_change_target": "backing",
+            "_suite_pending_save_reason": "song_edit",
+        }
+        page = sync_page_change_write_pending_for_music_save(st)
+        self.assertEqual(page, "backing")
+        self.assertEqual(st.session_state.get("_suite_page_change_write_pending"), "backing")
         self.assertEqual(resolve_music_save_reason_at_write(st, "song_edit"), "page_change")
 
     def test_stamp_music_payload_song_edit_with_pending_page_change_finalizes_backing(self) -> None:
