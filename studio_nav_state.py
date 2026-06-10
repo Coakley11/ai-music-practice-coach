@@ -72,6 +72,7 @@ def write_canonical_studio_nav_state(
     normalized = _normalize_page(page) or _normalize_page(session.get("studio_page")) or "practice"
     session[STUDIO_NAV_STATE_KEY] = {
         "studio_page": normalized,
+        "page": normalized,
         "last_write_reason": reason or None,
     }
     session["studio_page"] = normalized

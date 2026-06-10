@@ -127,6 +127,121 @@ def _studio_nav_page_from_session(ss: dict[str, Any]) -> str:
     return ""
 
 
+def _page_change_save_ready(session: dict[str, Any], target_page: str) -> bool:
+    """True when live session/nav/ownership/workspace all match the nav target."""
+    target = _normalize_studio_page_for_save(target_page)
+    if not target:
+        return False
+    if _normalize_studio_page_for_save(session.get("studio_page")) != target:
+        return False
+    if _studio_nav_page_from_session(session) != target:
+        return False
+    if not bool(session.get("_suite_page_user_nav")):
+        return False
+    ws = session.get("music_workspace_state")
+    if isinstance(ws, dict):
+        ws_page = _normalize_studio_page_for_save(ws.get("studio_page"))
+        if ws_page and ws_page != target:
+            return False
+    return True
+
+
+def prepare_page_change_save_state(
+    session: dict[str, Any],
+    target_page: str,
+    *,
+    st: Any | None = None,
+) -> str:
+    """Stamp live nav/workspace/ownership before page_change cloud save."""
+    page = _normalize_studio_page_for_save(target_page) or _normalize_studio_page_for_save(
+        session.get("studio_page")
+    )
+    if not page:
+        return ""
+    session["studio_page"] = page
+    try:
+        from studio_nav_state import write_canonical_studio_nav_state
+
+        write_canonical_studio_nav_state(session, page, reason="page_change", local_edit=True)
+    except ImportError:
+        session["studio_nav_state"] = {
+            "studio_page": page,
+            "page": page,
+            "last_write_reason": "page_change",
+        }
+        session["_suite_page_user_nav"] = True
+
+    session["_suite_page_user_nav"] = True
+    session["active_page_source"] = "user_sidebar"
+    session["requested_page"] = page
+    try:
+        from suite_user_persistence import SESSION_USER_OWNED_PAGE_KEY
+
+        session[SESSION_USER_OWNED_PAGE_KEY] = page
+    except ImportError:
+        session["_suite_user_owned_page"] = page
+
+    if st is not None:
+        try:
+            from suite_user_persistence import claim_user_page_ownership
+
+            claim_user_page_ownership(st, APP_ID, page)
+        except Exception:
+            pass
+
+    ws = session.get("music_workspace_state")
+    if isinstance(ws, dict):
+        ws = copy.deepcopy(ws)
+    else:
+        ws = {}
+    ws["studio_page"] = page
+    try:
+        from music_coach_context import resolve_coach_source_page
+
+        ws["page"] = resolve_coach_source_page({**session, **ws})
+    except Exception:
+        ws["page"] = page
+    session["music_workspace_state"] = ws
+    try:
+        from music_coach_context import sync_music_coach_workspace_page
+
+        sync_music_coach_workspace_page(session)
+    except Exception:
+        pass
+    return page
+
+
+def maybe_flush_deferred_page_change_save(st: Any) -> bool:
+    """Run a deferred page_change save after canonical nav catches up (next rerun)."""
+    ss = st.session_state
+    deferred = _normalize_studio_page_for_save(ss.get("_suite_deferred_page_change_save"))
+    if not deferred:
+        return False
+    prepare_page_change_save_state(ss, deferred, st=st)
+    if not _page_change_save_ready(ss, deferred):
+        return False
+    ss.pop("_suite_deferred_page_change_save", None)
+    ss["_suite_page_change_save_page"] = deferred
+    build_ss = getattr(st, "session_state", ss)
+    if build_ss is not ss:
+        build_ss["_suite_page_change_save_page"] = deferred
+    try:
+        ok = force_save_music_state(st, reason="page_change")
+    finally:
+        ss.pop("_suite_page_change_save_page", None)
+        if build_ss is not ss:
+            build_ss.pop("_suite_page_change_save_page", None)
+    if ok:
+        try:
+            from suite_user_persistence import _release_user_page_ownership_after_save
+
+            _release_user_page_ownership_after_save(st, deferred)
+        except ImportError:
+            pass
+        ss["_suite_last_persisted_page"] = deferred
+    return ok
+
+
 def _resolve_live_studio_page_for_save(ss: dict[str, Any], *, save_reason: str) -> tuple[str, str]:
     """Authoritative studio page for save payload (page_change must not use restored blob)."""
     if save_reason == "page_change":
@@ -597,13 +712,33 @@ def after_studio_page_change(
             consume_ami_return_resume(st, APP_ID)
     except ImportError:
         pass
-    claim_studio_page_ownership(st, page_id)
+    prepare_page_change_save_state(ss, page_id, st=st)
     try:
-        from music_coach_context import sync_music_coach_workspace_page
+        from music_persistence_trace import update_trace
 
-        sync_music_coach_workspace_page(ss)
+        update_trace(
+            st,
+            pre_save_studio_page=ss.get("studio_page"),
+            pre_save_nav_page=_studio_nav_page_from_session(ss),
+            pre_save_page_owner=bool(ss.get("_suite_page_user_nav")),
+        )
+    except Exception:
+        pass
+    try:
+        from local_nav_trace import record_local_nav_checkpoint
+
+        record_local_nav_checkpoint(
+            st,
+            "post_navigate_before_save",
+            session=ss,
+            intent=page_id,
+        )
     except ImportError:
         pass
+    if not _page_change_save_ready(ss, page_id):
+        ss["_suite_deferred_page_change_save"] = page_id
+        return
+    ss.pop("_suite_deferred_page_change_save", None)
     ss["_suite_page_change_save_page"] = page_id
     build_ss = getattr(st, "session_state", ss)
     if build_ss is not ss:
@@ -620,24 +755,16 @@ def after_studio_page_change(
     ss.pop("_suite_page_user_nav", None)
 
 
-def claim_studio_page_ownership(st: Any, page_id: str) -> None:
+def claim_studio_page_ownership(
+    st: Any,
+    page_id: str,
+    session_state: dict | None = None,
+) -> None:
     """Manual sidebar navigation wins over stale cloud studio_page restore."""
-    from music_coach_context import sync_music_coach_workspace_page
-    from suite_user_persistence import claim_user_page_ownership
-
-    page = str(page_id or "").strip()
-    if not page:
-        return
-    ss = st.session_state
-    try:
-        from studio_nav_state import write_canonical_studio_nav_state
-
-        write_canonical_studio_nav_state(ss, page, reason="user_nav", local_edit=True)
-    except ImportError:
-        ss["studio_page"] = page
-        sync_music_coach_workspace_page(ss)
-    claim_user_page_ownership(st, APP_ID, page)
-    ss["_suite_last_persisted_page"] = page
+    ss = session_state if session_state is not None else st.session_state
+    page = prepare_page_change_save_state(ss, page_id, st=st)
+    if page:
+        ss["_suite_last_persisted_page"] = page
 
 
 def prepare_canonical_music_page_state(session: dict[str, Any]) -> None:
@@ -900,6 +1027,9 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
             last_save_cloud=bool(ss.get("_suite_persist_last_save_cloud")),
             force_save_reason=reason or ss.get("_suite_persist_last_save_reason"),
             page_owner_flag=bool(ss.get("_suite_page_user_nav")),
+            pre_save_studio_page=ss.get("studio_page"),
+            pre_save_nav_page=_studio_nav_page_from_session(ss),
+            pre_save_page_owner=bool(ss.get("_suite_page_user_nav")),
             cloud_fetch_studio_page=cloud_fetch_page or ss.get("_suite_cloud_fetch_studio_page"),
             cloud_updated_at=cloud_updated_at,
             local_updated_at=local_updated_at,

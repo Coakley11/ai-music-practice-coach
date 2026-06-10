@@ -97,41 +97,32 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
     # Only change the page id here; ``handle_studio_page_transition`` restores
     # page-local state on the next run while global settings stay untouched.
     session_state["studio_page"] = page_id
+    _nav_ss = session_state
+
+    class _St:
+        session_state = _nav_ss
+
     try:
-        from local_nav_trace import record_local_nav_checkpoint
+        from music_persistent_state import after_studio_page_change, prepare_page_change_save_state
 
-        _nav_ss = session_state
+        prepare_page_change_save_state(session_state, page_id, st=_St())
+        try:
+            from local_nav_trace import record_local_nav_checkpoint
 
-        class _TraceSt:
-            session_state = _nav_ss
-
-        record_local_nav_checkpoint(
-            _TraceSt(),
-            "post_navigate",
-            session=session_state,
-            intent=page_id,
-        )
-    except ImportError:
-        pass
-    try:
-        from music_persistent_state import after_studio_page_change
-
-        _nav_ss = session_state
-
-        class _St:
-            session_state = _nav_ss
-
+            record_local_nav_checkpoint(
+                _St(),
+                "post_navigate_before_save",
+                session=session_state,
+                intent=page_id,
+            )
+        except ImportError:
+            pass
         after_studio_page_change(_St(), session_state, target_page=page_id)
     except Exception:
         try:
             from music_persistent_state import claim_studio_page_ownership
 
-            _nav_ss = session_state
-
-            class _St:
-                session_state = _nav_ss
-
-            claim_studio_page_ownership(_St(), page_id)
+            claim_studio_page_ownership(_St(), page_id, session_state=session_state)
         except Exception:
             pass
     return True

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from applied_math_return_insight import (
@@ -617,16 +618,91 @@ class TestMusicWorkspaceEnvelope(unittest.TestCase):
     def test_after_studio_page_change_uses_explicit_target_page(self) -> None:
         st = MagicMock()
         st.session_state = {"studio_page": "picker"}
-        with patch("music_persistent_state.claim_studio_page_ownership") as mock_claim, patch(
+        with patch(
             "music_persistent_state.force_save_music_state",
             return_value=True,
         ) as mock_save, patch("suite_user_persistence._release_user_page_ownership_after_save"):
             from music_persistent_state import after_studio_page_change
 
             after_studio_page_change(st, st.session_state, target_page="backing")
-        mock_claim.assert_called_once_with(st, "backing")
-        self.assertEqual(st.session_state.get("_suite_page_change_save_page"), None)
+        self.assertEqual(st.session_state["studio_page"], "backing")
+        self.assertEqual(st.session_state["studio_nav_state"]["studio_page"], "backing")
         self.assertEqual(mock_save.call_args.kwargs.get("reason"), "page_change")
+
+    def test_navigate_picker_to_backing_stamps_state_before_page_change_save(self) -> None:
+        """Regression: canonical nav still picker at click time must not produce picker save."""
+        from studio_nav_history import init_nav_history, navigate_studio_page
+
+        state = {
+            "studio_page": "picker",
+            "studio_nav_state": {
+                "studio_page": "picker",
+                "page": "picker",
+                "last_write_reason": "canonical_preserve",
+            },
+            "music_workspace_state": {"studio_page": "picker", "page": "practice"},
+            "instrument": "Piano",
+            "active_catalog_pick_key": "pop:test",
+            "selected_song": {"title": "Test", "pick_key": "pop:test"},
+        }
+        init_nav_history(state)
+        st = MagicMock()
+        st.session_state = state
+        captured: dict[str, Any] = {}
+
+        def _capture_save(st_obj: Any, *, reason: str = "") -> bool:
+            captured["reason"] = reason
+            with patch("music_persistent_state.build_music_local_state") as mock_core, patch(
+                "active_song_state.commit_active_song_state_from_session"
+            ), patch("studio_nav_state.commit_studio_nav_from_session"), patch(
+                "practice_state.commit_practice_state_from_session"
+            ):
+                mock_core.return_value = {
+                    "studio_page": "picker",
+                    "page": "picker",
+                    "pick_key": "pop:test",
+                    "instrument": "Piano",
+                    "song": "",
+                    "artist": "",
+                    "focus": "",
+                    "display_key": "",
+                    "practice_focus_section": "",
+                    "level": "",
+                    "mode": "",
+                }
+                st_obj.session_state["_suite_pending_save_reason"] = reason
+                captured["state"] = build_music_disk_state(st_obj)
+            return True
+
+        with patch("music_persistent_state.force_save_music_state", side_effect=_capture_save):
+            self.assertTrue(navigate_studio_page(state, "backing"))
+
+        self.assertEqual(state["studio_page"], "backing")
+        self.assertEqual(state["studio_nav_state"]["studio_page"], "backing")
+        self.assertEqual(state["studio_nav_state"]["page"], "backing")
+        self.assertEqual(state["music_workspace_state"]["studio_page"], "backing")
+        self.assertEqual(captured.get("reason"), "page_change")
+        payload = captured.get("state") or {}
+        self.assertEqual(payload.get("core", {}).get("studio_page"), "backing")
+        self.assertEqual(payload.get("music_workspace_state", {}).get("studio_page"), "backing")
+        self.assertEqual(payload.get("studio_nav_state", {}).get("studio_page"), "backing")
+
+    def test_page_change_save_skipped_when_nav_still_stale(self) -> None:
+        st = MagicMock()
+        st.session_state = {
+            "studio_page": "backing",
+            "studio_nav_state": {"studio_page": "picker", "page": "picker"},
+            "_suite_page_user_nav": False,
+        }
+        with patch("music_persistent_state.prepare_page_change_save_state", return_value="backing"), patch(
+            "music_persistent_state._page_change_save_ready",
+            return_value=False,
+        ), patch("music_persistent_state.force_save_music_state") as mock_save:
+            from music_persistent_state import after_studio_page_change
+
+            after_studio_page_change(st, st.session_state, target_page="backing")
+        mock_save.assert_not_called()
+        self.assertEqual(st.session_state.get("_suite_deferred_page_change_save"), "backing")
 
     def test_session_page_summary_prefers_workspace_studio_page(self) -> None:
         from suite_cloud_state import session_page_summary
@@ -646,7 +722,7 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("page-change-save-stamp-v3", info["build_marker"])
+        self.assertIn("page-change-save-stamp-v4", info["build_marker"])
 
     def test_snapshot_workspace_restore_always_sets_trace_fields(self) -> None:
         from music_persistence_trace import get_trace, snapshot_workspace_restore_trace

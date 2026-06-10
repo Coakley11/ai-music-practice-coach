@@ -1105,9 +1105,13 @@ if hasattr(st, "session_state"):
             song_library=SONG_LIBRARY,
         )
         try:
-            from music_persistent_state import prepare_canonical_music_page_state
+            from music_persistent_state import (
+                maybe_flush_deferred_page_change_save,
+                prepare_canonical_music_page_state,
+            )
 
             prepare_canonical_music_page_state(st.session_state)
+            maybe_flush_deferred_page_change_save(st)
         except Exception:
             pass
     except Exception as _music_restore_exc:
@@ -8942,9 +8946,13 @@ try:
         song_library=SONG_LIBRARY,
     )
     try:
-        from music_persistent_state import prepare_canonical_music_page_state
+        from music_persistent_state import (
+            maybe_flush_deferred_page_change_save,
+            prepare_canonical_music_page_state,
+        )
 
         prepare_canonical_music_page_state(st.session_state)
+        maybe_flush_deferred_page_change_save(st)
         try:
             from local_nav_trace import record_local_nav_checkpoint
 

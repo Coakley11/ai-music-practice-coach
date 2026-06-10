@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v3"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v4"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -525,6 +525,12 @@ def render_persistence_trace_sidebar(st: Any) -> None:
             ("last_save_cloud", trace.get("last_save_cloud")),
 
             ("force_save_reason", trace.get("force_save_reason") or ss.get("_suite_persist_last_save_reason")),
+
+            ("pre_save_studio_page", trace.get("pre_save_studio_page")),
+
+            ("pre_save_nav_page", trace.get("pre_save_nav_page")),
+
+            ("pre_save_page_owner", trace.get("pre_save_page_owner")),
 
             ("save_payload_source", trace.get("save_payload_source")),
 
