@@ -1059,6 +1059,12 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   color: #64748b;
   margin: 0 0 0.55rem 0;
 }
+.ui-active-song-meta-row {
+  margin: 0.35rem 0 0.5rem;
+  font-size: 0.8rem;
+  color: #475569;
+  line-height: 1.45;
+}
 .ui-active-song-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1138,34 +1144,6 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   font-size: 0.78rem;
   color: #64748b;
   margin: 0;
-}
-.ui-active-song-hub .ui-active-song-card {
-  border: 2px solid rgba(37, 99, 235, 0.35);
-  border-radius: 18px;
-  padding: 1.1rem 1.15rem;
-  margin: 0.25rem 0 0.65rem 0;
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 40%, #eef2ff 100%);
-  box-shadow: 0 6px 24px rgba(37, 99, 235, 0.14);
-}
-.ui-active-song-hub .ui-active-song-art {
-  min-height: 120px;
-  font-size: 2.35rem;
-  border-radius: 16px;
-}
-.ui-active-song-hub .ui-active-song-kicker {
-  font-size: 0.7rem;
-  color: #4338ca;
-}
-.ui-active-song-hub .ui-active-song-title {
-  font-size: 1.65rem;
-  font-weight: 900;
-  letter-spacing: -0.03em;
-  line-height: 1.15;
-}
-.ui-active-song-hub .ui-active-song-artist {
-  font-size: 0.95rem;
-  color: #475569;
-  margin-bottom: 0.45rem;
 }
 .ui-active-song-hub .ui-active-song-genre-line {
   font-size: 0.8rem;
@@ -1262,37 +1240,6 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   text-transform: uppercase;
   color: #64748b;
   margin: 0 0 0.35rem 0;
-}
-/* Direct child styling when ui-active-song-hub wrapper is present OR via Streamlit key */
-.st-key-active_song_hub,
-.ui-active-song-hub {
-  border: 2px solid rgba(37, 99, 235, 0.45) !important;
-  border-radius: 22px !important;
-  padding: 1rem 1.15rem 1.15rem 1.15rem !important;
-  margin: 0 0 1.35rem 0 !important;
-  background: linear-gradient(165deg, #ffffff 0%, #eef2ff 38%, #dbeafe 100%) !important;
-  box-shadow: 0 16px 48px rgba(37, 99, 235, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
-}
-.st-key-active_song_hub .ui-active-song-card,
-.ui-active-song-hub .ui-active-song-card {
-  border: 2px solid rgba(37, 99, 235, 0.42) !important;
-  border-radius: 18px !important;
-  padding: 1.15rem 1.2rem !important;
-  margin: 0.5rem 0 0.75rem 0 !important;
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 40%, #eef2ff 100%) !important;
-  box-shadow: 0 8px 28px rgba(37, 99, 235, 0.16) !important;
-}
-.st-key-active_song_hub .ui-active-song-title,
-.ui-active-song-hub .ui-active-song-title {
-  font-size: clamp(1.55rem, 3.2vw, 2rem) !important;
-  font-weight: 900 !important;
-  letter-spacing: -0.035em !important;
-  color: #0f172a !important;
-}
-.st-key-active_song_hub .ui-active-song-art,
-.ui-active-song-hub .ui-active-song-art {
-  min-height: 128px !important;
-  font-size: 2.5rem !important;
 }
 .st-key-active_song_hub .ui-active-song-hero-title {
   font-size: clamp(1.75rem, 4vw, 2.35rem);
@@ -2445,7 +2392,7 @@ def _inject_studio_history_nav_pin_script() -> None:
     )
 
 
-_UI_POLISH_VERSION = "v5-2026-06-09-ui-regression-fix"
+_UI_POLISH_VERSION = "v6-2026-06-09-global-controls-song-card"
 
 
 def _backing_studio_panel_css() -> str:
@@ -4666,108 +4613,6 @@ def _ui_polish_phase2_css() -> str:
   }
 }
 
-/* ---- Active song hub & card ---- */
-.ui-active-song-hub {
-  border-width: 2px !important;
-  border-color: rgba(37, 99, 235, 0.5) !important;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.9),
-    0 18px 52px rgba(37, 99, 235, 0.2) !important;
-}
-.ui-active-song-hub-label {
-  font-size: 0.74rem !important;
-  font-weight: 900 !important;
-  letter-spacing: 0.08em !important;
-  color: #1d4ed8 !important;
-}
-.ui-active-song-hub-sub {
-  color: #334155 !important;
-}
-.ui-active-song-status-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 0.55rem;
-  margin: 0.45rem 0 0.65rem 0;
-  padding: 0.5rem 0.65rem;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(37, 99, 235, 0.2);
-}
-.ui-active-song-status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.74rem;
-  font-weight: 800;
-  padding: 0.22rem 0.55rem;
-  border-radius: 999px;
-  background: #f1f5f9;
-  color: #0f172a;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-}
-.ui-active-song-status-pill strong {
-  color: #1e293b;
-  font-weight: 900;
-}
-.ui-active-song-status-pill.is-instrument {
-  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
-  border-color: rgba(79, 70, 229, 0.22);
-  color: #312e81;
-}
-.ui-active-song-status-pill.is-key {
-  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-  border-color: rgba(16, 185, 129, 0.25);
-  color: #065f46;
-}
-.ui-active-song-hub .ui-chart-key-mode-badge {
-  margin: 0 !important;
-}
-.ui-active-song-card.trusted::before {
-  content: "Trusted core chart";
-  display: inline-block;
-  font-size: 0.62rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #166534;
-  background: #dcfce7;
-  border: 1px solid rgba(22, 163, 74, 0.25);
-  border-radius: 999px;
-  padding: 0.12rem 0.45rem;
-  margin-bottom: 0.35rem;
-}
-.ui-active-song-kicker {
-  color: #1d4ed8 !important;
-  font-size: 0.7rem !important;
-}
-.ui-active-song-meta-row {
-  font-size: 0.8rem !important;
-  color: #334155 !important;
-  line-height: 1.45 !important;
-  margin: 0.35rem 0 0.55rem 0 !important;
-  padding: 0.4rem 0.55rem;
-  border-radius: 10px;
-  background: rgba(241, 245, 249, 0.85);
-  border: 1px solid rgba(148, 163, 184, 0.25);
-}
-.ui-active-song-meta-row strong {
-  color: #0f172a !important;
-}
-.ui-active-song-facts {
-  font-size: 0.8rem !important;
-  color: #1e293b !important;
-}
-.ui-active-song-facts dd {
-  font-weight: 700 !important;
-  color: #0f172a !important;
-}
-@media (max-width: 720px) {
-  .ui-active-song-status-strip {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
 """
 
 
@@ -6369,8 +6214,6 @@ def render_active_song_hub_open(st: Any, *, extra_class: str = "") -> None:
         """,
         unsafe_allow_html=True,
     )
-    render_active_song_status_strip(st)
-
 
 def render_active_song_hub_hero(
     st: Any,
@@ -6564,7 +6407,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-09-ui-regression-fix"
+STUDIO_UI_RELEASE = "2026-06-09-global-controls-song-card"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"

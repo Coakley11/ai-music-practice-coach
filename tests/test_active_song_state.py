@@ -76,6 +76,24 @@ class TestActiveSongState(unittest.TestCase):
         self.assertEqual(session["instrument"], "Saxophone")
         self.assertEqual(session["level"], "Advanced")
         self.assertEqual(session["focus"], "Tone")
+        self.assertEqual(session["active_song_state"]["instrument"], "Saxophone")
+
+    def test_canonical_preserve_does_not_overwrite_session_globals(self) -> None:
+        """After flush clears dirty, prepare must not stomp live sidebar globals."""
+        session = {
+            "active_song_state": {**_SAMPLE, "last_write_reason": "song_edit"},
+            "instrument": "Clarinet",
+            "level": "Advanced",
+            "focus": "Articulation",
+            "display_key": "E Major",
+        }
+        prepare_active_song_context(session)
+        self.assertEqual(session["instrument"], "Clarinet")
+        self.assertEqual(session["level"], "Advanced")
+        self.assertEqual(session["focus"], "Articulation")
+        self.assertEqual(session["display_key"], "E Major")
+        self.assertEqual(session["active_song_state"]["instrument"], "Clarinet")
+        self.assertNotEqual(session.get("global_control_overwrite_source"), "instrument:canonical_preserve")
 
     def test_b_cross_device_cloud_restore(self) -> None:
         session: dict = {"studio_page": "practice"}
@@ -205,7 +223,7 @@ class TestActiveSongState(unittest.TestCase):
         session["display_key"] = "Widget Key"
         commit_active_song_state_from_session(session, reason="autosave")
         self.assertEqual(session["display_key"], "Widget Key")
-        self.assertEqual(session["active_song_state"]["display_key"], "D Major")
+        self.assertEqual(session["active_song_state"]["display_key"], "Widget Key")
 
     def test_written_key_checkbox_prepare_and_cloud_restore(self) -> None:
         session = {

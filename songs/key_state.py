@@ -42,6 +42,16 @@ def clear_backing_needs_regen(st: Any) -> None:
 def mark_display_key_changed(st: Any) -> None:
     """Sidebar widget callback — invalidate derived audio/analysis."""
     try:
+        from practice_setup_globals import record_global_control_change
+
+        record_global_control_change(
+            st.session_state,
+            "display_key",
+            "sidebar_on_change",
+        )
+    except Exception:
+        pass
+    try:
         from instrument_transposition import preserve_written_key_on_display_key_change
 
         preserve_written_key_on_display_key_change(st.session_state)
@@ -72,8 +82,14 @@ def mark_display_key_changed(st: Any) -> None:
         pass
 
 
-def _apply_display_key_before_widget(st: Any, key: str) -> None:
+def _apply_display_key_before_widget(st: Any, key: str, *, source: str = "sync_display_key") -> None:
     """Mutate display_key only before the sidebar selectbox is instantiated."""
+    try:
+        from practice_setup_globals import record_global_control_change
+
+        record_global_control_change(st.session_state, "display_key", source)
+    except Exception:
+        pass
     st.session_state["display_key"] = key
 
 

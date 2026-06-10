@@ -247,6 +247,27 @@ def collect_transposing_save_trace_fields(
     return out
 
 
+def _session_has_live_global_controls(session: dict[str, Any]) -> bool:
+    return any(
+        str(session.get(key) or "").strip()
+        for key in ("instrument", "level", "focus", "display_key")
+    )
+
+
+def _merge_live_global_controls(
+    session: dict[str, Any],
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    """Session globals win over stale canonical values on normal reruns."""
+    live = gather_active_song_context(session)
+    merged = dict(ctx)
+    for key in ("instrument", "level", "focus", "display_key"):
+        live_val = str(live.get(key) or "").strip()
+        if live_val:
+            merged[key] = live_val
+    return merged
+
+
 def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     """Read active song context from live session keys."""
     sel = session.get(SELECTED_SONG_STATE_KEY)
@@ -467,18 +488,39 @@ def _apply_context_to_session_keys(
     mutate_display_key: bool = True,
     mutate_written_key: bool = True,
     mutate_transposing_subtype: bool = True,
+    apply_global_controls: bool = True,
+    global_control_source: str = "",
 ) -> None:
+    try:
+        from practice_setup_globals import record_global_control_change
+    except ImportError:
+        record_global_control_change = None  # type: ignore[assignment,misc]
+
     pick_key = str(ctx.get("pick_key") or "").strip()
     if pick_key:
         session[ACTIVE_CATALOG_PICK_KEY] = pick_key
     display_key = str(ctx.get("display_key") or "").strip()
-    if display_key:
+    if display_key and apply_global_controls:
         session[PENDING_DISPLAY_KEY] = display_key
         if mutate_display_key:
+            if record_global_control_change is not None:
+                record_global_control_change(
+                    session,
+                    "display_key",
+                    global_control_source or "canonical_apply",
+                    overwrite=True,
+                )
             session["display_key"] = display_key
     for key in ("instrument", "level", "focus"):
         val = str(ctx.get(key) or "").strip()
-        if val:
+        if val and apply_global_controls:
+            if record_global_control_change is not None:
+                record_global_control_change(
+                    session,
+                    key,
+                    global_control_source or "canonical_apply",
+                    overwrite=True,
+                )
             session[key] = val
     selected = _normalize_selected_song(ctx.get("selected_song"))
     if selected:
@@ -504,6 +546,7 @@ def write_canonical_active_song_state(
     mutate_display_key: bool | None = None,
     mutate_written_key: bool | None = None,
     mutate_transposing_subtype: bool | None = None,
+    apply_global_controls_to_session: bool | None = None,
 ) -> dict[str, Any]:
     """Single write path for active song context."""
     ctx = _normalize_context(context)
@@ -513,12 +556,19 @@ def write_canonical_active_song_state(
     }
     mutate_wk = True if mutate_written_key is None else mutate_written_key
     mutate_subtype = True if mutate_transposing_subtype is None else mutate_transposing_subtype
+    if apply_global_controls_to_session is None:
+        apply_global_controls_to_session = reason not in (
+            "canonical_preserve",
+            "autosave",
+        )
     _apply_context_to_session_keys(
         session,
         ctx,
         mutate_display_key=True if mutate_display_key is None else mutate_display_key,
         mutate_written_key=mutate_wk,
         mutate_transposing_subtype=mutate_subtype,
+        apply_global_controls=apply_global_controls_to_session,
+        global_control_source=reason or "canonical_write",
     )
     if local_edit:
         mark_active_song_local_edit(session)
@@ -546,22 +596,14 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     canonical = canonical_active_song_context(session)
     if canonical is not None:
         ctx = dict(canonical)
-        # Sidebar globals (instrument / level / focus) are live session keys.
-        # Do not stomp them from a stale canonical blob on normal reruns —
-        # only cloud/local restore should fully seed from canonical.
+        apply_globals = restored_this_run or not _session_has_live_global_controls(session)
         if not restored_this_run:
-            live = gather_active_song_context(session)
-            for key in ("instrument", "level", "focus"):
-                live_val = str(live.get(key) or "").strip()
-                if live_val:
-                    ctx[key] = live_val
-            live_dk = str(live.get("display_key") or "").strip()
-            if live_dk:
-                ctx["display_key"] = live_dk
+            ctx = _merge_live_global_controls(session, ctx)
         ctx = write_canonical_active_song_state(
             session,
             ctx,
             reason="canonical_preserve",
+            apply_global_controls_to_session=apply_globals,
         )
         _record_transposing_restore_trace(session, ctx, source="canonical_prepare")
         rehydrate_transposing_sidebar_from_canonical(session)
@@ -587,6 +629,7 @@ def commit_active_song_state_from_session(
     """Persist canonical blob from current session without marking a new local edit."""
     ctx = canonical_active_song_context(session) or gather_active_song_context(session)
     ctx = _merge_live_transposing_fields(session, dict(ctx))
+    ctx = _merge_live_global_controls(session, ctx)
     return write_canonical_active_song_state(
         session,
         ctx,
@@ -595,6 +638,7 @@ def commit_active_song_state_from_session(
         mutate_display_key=False,
         mutate_written_key=False,
         mutate_transposing_subtype=False,
+        apply_global_controls_to_session=False,
     )
 
 
@@ -775,3 +819,17 @@ def render_active_song_state_debug(st: Any, session: dict[str, Any]) -> None:
     skipped = session.get("_active_song_restore_skipped_reason")
     if skipped:
         st.sidebar.caption(f"**active_song restore skipped:** `{skipped}`")
+    st.sidebar.caption(
+        "**global controls:** "
+        f"inst=`{session.get('instrument', '')}` "
+        f"({session.get('instrument_change_source', '')}) · "
+        f"lvl=`{session.get('level', '')}` "
+        f"({session.get('level_change_source', '')}) · "
+        f"focus=`{session.get('focus', '')}` "
+        f"({session.get('focus_change_source', '')}) · "
+        f"key=`{session.get('display_key', '')}` "
+        f"({session.get('display_key_change_source', '')})"
+    )
+    overwrite = session.get("global_control_overwrite_source")
+    if overwrite:
+        st.sidebar.caption(f"**global_control_overwrite_source:** `{overwrite}`")

@@ -8251,6 +8251,16 @@ def _sync_focus_options_before_widget(instrument: str) -> list[str]:
     opts = focus_options_for_instrument(instrument)
     if opts and st.session_state.get("focus") not in opts:
         st.session_state["focus"] = opts[0]
+        try:
+            from practice_setup_globals import record_global_control_change
+
+            record_global_control_change(
+                st.session_state,
+                "focus",
+                "sync_focus_options_before_widget",
+            )
+        except Exception:
+            pass
     return opts
 
 
@@ -9214,7 +9224,7 @@ def _on_global_instrument_change() -> None:
         "instrument"
     )
     new_value = st.session_state.get("instrument", "Piano")
-    set_active_instrument(st.session_state, new_value)
+    set_active_instrument(st.session_state, new_value, source="sidebar_on_change")
     sync_written_key_instrument_anchor(st.session_state, new_value)
     request_transposing_instrument_sync(st.session_state, new_value)
     try:
@@ -9227,9 +9237,11 @@ def _on_global_instrument_change() -> None:
 
 
 def _on_global_focus_change() -> None:
+    from active_song_state import mark_active_song_local_edit
     from practice_setup_globals import set_active_focus
 
-    set_active_focus(st.session_state, st.session_state.get("focus"))
+    mark_active_song_local_edit(st.session_state)
+    set_active_focus(st.session_state, st.session_state.get("focus"), source="sidebar_on_change")
     _sync_canonical_active_song_after_edit()
 
 
@@ -9238,7 +9250,7 @@ def _on_global_level_change() -> None:
     from practice_setup_globals import set_active_level
 
     mark_active_song_local_edit(st.session_state)
-    set_active_level(st.session_state, st.session_state.get("level"))
+    set_active_level(st.session_state, st.session_state.get("level"), source="sidebar_on_change")
     _sync_canonical_active_song_after_edit()
 
 

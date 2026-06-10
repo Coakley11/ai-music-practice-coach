@@ -42,12 +42,30 @@ GLOBAL_FOCUS_KEY = "focus"
 DEFAULT_INSTRUMENT = "Piano"
 DEFAULT_LEVEL = "Intermediate"
 
+INSTRUMENT_CHANGE_SOURCE_KEY = "instrument_change_source"
+LEVEL_CHANGE_SOURCE_KEY = "level_change_source"
+FOCUS_CHANGE_SOURCE_KEY = "focus_change_source"
+DISPLAY_KEY_CHANGE_SOURCE_KEY = "display_key_change_source"
+GLOBAL_CONTROL_OVERWRITE_SOURCE_KEY = "global_control_overwrite_source"
+
+_GLOBAL_CONTROL_SOURCE_KEYS: dict[str, str] = {
+    GLOBAL_INSTRUMENT_KEY: INSTRUMENT_CHANGE_SOURCE_KEY,
+    GLOBAL_LEVEL_KEY: LEVEL_CHANGE_SOURCE_KEY,
+    GLOBAL_FOCUS_KEY: FOCUS_CHANGE_SOURCE_KEY,
+    "display_key": DISPLAY_KEY_CHANGE_SOURCE_KEY,
+}
+
 __all__ = (
     "GLOBAL_INSTRUMENT_KEY",
     "GLOBAL_LEVEL_KEY",
     "GLOBAL_FOCUS_KEY",
     "DEFAULT_INSTRUMENT",
     "DEFAULT_LEVEL",
+    "INSTRUMENT_CHANGE_SOURCE_KEY",
+    "LEVEL_CHANGE_SOURCE_KEY",
+    "FOCUS_CHANGE_SOURCE_KEY",
+    "DISPLAY_KEY_CHANGE_SOURCE_KEY",
+    "GLOBAL_CONTROL_OVERWRITE_SOURCE_KEY",
     "get_active_instrument",
     "get_active_level",
     "get_active_focus",
@@ -55,6 +73,7 @@ __all__ = (
     "set_active_level",
     "set_active_focus",
     "ensure_global_setup_defaults",
+    "record_global_control_change",
     "valid_focus_for",
     "sync_widget_state_from_globals",
     "commit_widget_state_to_globals",
@@ -106,6 +125,23 @@ def valid_focus_for(instrument: str, candidate: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
+def record_global_control_change(
+    session_state: Any,
+    field: str,
+    source: str,
+    *,
+    overwrite: bool = False,
+) -> None:
+    """Record who last wrote a global control (sidebar, canonical prepare, etc.)."""
+    diag_key = _GLOBAL_CONTROL_SOURCE_KEYS.get(field)
+    if diag_key:
+        session_state[diag_key] = str(source or "").strip() or "unknown"
+    if overwrite:
+        session_state[GLOBAL_CONTROL_OVERWRITE_SOURCE_KEY] = (
+            f"{field}:{source or 'unknown'}"
+        )
+
+
 def ensure_global_setup_defaults(session_state: Any) -> None:
     """Populate any missing global setup keys with safe defaults.
 
@@ -123,7 +159,7 @@ def ensure_global_setup_defaults(session_state: Any) -> None:
         session_state[GLOBAL_FOCUS_KEY] = opts[0]
 
 
-def set_active_instrument(session_state: Any, value: Any) -> str:
+def set_active_instrument(session_state: Any, value: Any, *, source: str = "setter") -> str:
     """Set the global instrument and re-validate the global focus.
 
     Returns the actual value stored (may differ from the input when an
@@ -136,23 +172,26 @@ def set_active_instrument(session_state: Any, value: Any) -> str:
         # keep it as-is.
         pass
     session_state[GLOBAL_INSTRUMENT_KEY] = instrument
+    record_global_control_change(session_state, GLOBAL_INSTRUMENT_KEY, source)
     # Re-align focus against the new instrument's option list.
     opts = focus_options_for_instrument(instrument)
     current_focus = _as_str(session_state.get(GLOBAL_FOCUS_KEY), "")
     if opts and current_focus not in opts:
         session_state[GLOBAL_FOCUS_KEY] = opts[0]
+        record_global_control_change(session_state, GLOBAL_FOCUS_KEY, f"{source}:focus_clamp")
     return instrument
 
 
-def set_active_level(session_state: Any, value: Any) -> str:
+def set_active_level(session_state: Any, value: Any, *, source: str = "setter") -> str:
     level = _as_str(value, DEFAULT_LEVEL)
     if level not in LEVEL_OPTIONS:
         level = DEFAULT_LEVEL
     session_state[GLOBAL_LEVEL_KEY] = level
+    record_global_control_change(session_state, GLOBAL_LEVEL_KEY, source)
     return level
 
 
-def set_active_focus(session_state: Any, value: Any) -> str:
+def set_active_focus(session_state: Any, value: Any, *, source: str = "setter") -> str:
     """Set the global focus, validated against the current instrument."""
     instrument = get_active_instrument(session_state)
     opts = focus_options_for_instrument(instrument)
@@ -160,6 +199,7 @@ def set_active_focus(session_state: Any, value: Any) -> str:
     if opts and focus not in opts:
         focus = opts[0]
     session_state[GLOBAL_FOCUS_KEY] = focus
+    record_global_control_change(session_state, GLOBAL_FOCUS_KEY, source)
     return focus
 
 
