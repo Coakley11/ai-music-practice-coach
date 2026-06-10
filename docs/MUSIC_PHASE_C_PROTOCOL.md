@@ -98,7 +98,7 @@ Each `{module}_state.py` exports:
 | C | Stale cloud blocked when dirty | ✓ | ✓ | ✓ | ✓ |
 | D | Page nav does not clear filters | ✓ | n/a | ✓ | ✓ |
 
-**Manual cross-device sign-off (2026-06-09):** Test A page sync PASSED · Test B Practice PASSED · Test C Backing PASSED (v18). **Next:** Test D — active song + display key + instrument + page restore. Do not reopen A/B/C unless trace shows failure.
+**Manual cross-device sign-off (2026-06-09):** Test A page PASSED · Test B Practice PASSED · Test C Backing PASSED (v18) · **Test D active song + written-key + subtype PASSED (v25 `f153204`)**. Tests **A–D frozen** — see [MUSIC_PERSISTENCE_BASELINE.md](./MUSIC_PERSISTENCE_BASELINE.md). **Next:** Test E (AMI return) or UI polish.
 | E | AMI return restores context | ✓ | ✓ | ✓ | ✓ |
 
 Tests: `tests/test_active_song_state.py`, `tests/test_studio_nav_state.py`, `tests/test_practice_state.py`, `tests/test_backing_track_state.py`
@@ -107,4 +107,4 @@ Tests: `tests/test_active_song_state.py`, `tests/test_studio_nav_state.py`, `tes
 
 ## Deploy marker
 
-`page-change-save-stamp-v18-backing-user-dirty` (`music_persistence_trace.MUSIC_PERSIST_DEPLOY_VERSION`)
+`page-change-save-stamp-v26-test-e-ami-return-trace` (`music_persistence_trace.MUSIC_PERSIST_DEPLOY_VERSION`)

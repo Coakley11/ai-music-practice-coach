@@ -727,7 +727,7 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("page-change-save-stamp-v25-transposing-save-trace", info["build_marker"])
+        self.assertIn("page-change-save-stamp-v26-test-e-ami-return-trace", info["build_marker"])
 
     def test_test_d_compare_trace_includes_final_fields(self) -> None:
         from music_persistence_trace import (
@@ -782,6 +782,64 @@ class TestPersistenceTracePanel(unittest.TestCase):
         self.assertEqual(rows["transposing_subtype_canonical"], "Alto saxophone (Eb)")
         self.assertEqual(rows["transposing_subtype_cloud"], "Alto saxophone (Eb)")
         self.assertEqual(rows["transposing_subtype_restored"], "Alto saxophone (Eb)")
+
+    def test_test_e_compare_trace_includes_ami_return_fields(self) -> None:
+        from music_persistence_trace import (
+            TEST_E_TRACE_LABELS,
+            collect_test_e_trace_rows,
+            format_test_e_compare_trace,
+            record_ami_return_restore_trace,
+        )
+
+        st = MagicMock()
+        st.session_state = {
+            "active_catalog_pick_key": "pk::Pop::Photograph — Ed Sheeran",
+            "display_key": "Db Major",
+            "instrument": "Saxophone",
+            "studio_page": "practice",
+            "show_chart_in_instrument_key": True,
+            "selected_transposing_instrument": "Tenor saxophone (Bb)",
+            "ami_return_detected": True,
+            "source_app_normalized": "music",
+            "ami_resume_consumed": False,
+            "current_studio_page": "practice",
+            "final_page": "practice",
+            "page_forced_by_ami_return": True,
+            "active_song_state": {
+                "pick_key": "pk::Pop::Photograph — Ed Sheeran",
+                "display_key": "Db Major",
+                "instrument": "Saxophone",
+                "show_chart_in_instrument_key": True,
+                "selected_transposing_instrument": "Tenor saxophone (Bb)",
+                "last_write_reason": "ami_return",
+            },
+            "_written_key_mode_restored": True,
+            "_transposing_subtype_restored": "Tenor saxophone (Bb)",
+        }
+        source_state = {
+            "source_page": "practice",
+            "entity_params": {"pick_key": "pk::Pop::Photograph — Ed Sheeran"},
+            "widget_params": {
+                "display_key": "Db Major",
+                "instrument": "Saxophone",
+                "studio_page": "practice",
+                "show_chart_in_instrument_key": True,
+                "selected_transposing_instrument": "Tenor saxophone (Bb)",
+            },
+        }
+        record_ami_return_restore_trace(st, source_state=source_state)
+        trace = st.session_state.get("_music_persist_trace", {})
+        rows = collect_test_e_trace_rows(st, trace)
+        self.assertTrue(rows["ami_return_detected"])
+        self.assertEqual(rows["source_app_normalized"], "music")
+        self.assertEqual(rows["final_pick_key"], "pk::Pop::Photograph — Ed Sheeran")
+        self.assertEqual(rows["final_display_key"], "Db Major")
+        self.assertEqual(rows["restored_studio_page"], "practice")
+        self.assertEqual(rows["final_studio_page"], "practice")
+        self.assertIn("written=True", rows["active_song_state"])
+        text = format_test_e_compare_trace(rows)
+        for label in TEST_E_TRACE_LABELS:
+            self.assertIn(f"{label}:", text)
 
     def test_finalize_uses_normalized_studio_page_over_stale_picker_hint(self) -> None:
         from music_persistent_state import finalize_music_page_change_cloud_payload

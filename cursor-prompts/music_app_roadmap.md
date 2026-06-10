@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-06-09 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py`
+**Last updated:** 2026-06-09 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 This is the master planning document. Related files:
 
@@ -49,7 +49,7 @@ This is the master planning document. Related files:
 9. **Instrument & key system** — Transposing instruments, written key charts, guitar capo, voice wording.
 10. **Persistence** — Local JSON state, optional Supabase full-session sync, suite activity logging.
 11. **UI theme bundle** — `app_ui.py` studio panels, genre/instrument card modifiers, per-page style injectors.
-12. **Phase C cross-device sync (partial)** — Canonical page state + `?dev=1` persistence trace; manual Tests A–C passed on `dev` (2026-06-09).
+12. **Phase C cross-device sync (A–D)** — Canonical modules + `?dev=1` trace; manual Tests A–D **passed** on `dev` (2026-06-09, Test D v25 `f153204`).
 
 ---
 
@@ -60,11 +60,12 @@ This is the master planning document. Related files:
 | **A** | Studio **page** sync (phone ↔ Dell) | **PASSED** | v14 `454e0af` |
 | **B** | **Practice** field sync (section focus, groove, minutes) | **PASSED** | `97fad4a` |
 | **C** | **Backing** content sync (BPM, scope, loops, groove, meter) | **PASSED** | v18 `fdf9800` |
-| **D** | **Active song** + display key + instrument + page restore together | **NEXT** | — |
+| **D** | **Active song** + display key + instrument + page + written-key + transposing subtype | **PASSED** | v25 `f153204` |
+| **E** | AMI return restores song/key/instrument/written-key/subtype/page + practice/backing | **IN PROGRESS** | v26 trace — [plan](./plans/2026-06-09-test-e-ami-return.md) |
 
-**Policy (accepted 2026-06-09):** Tests A–C are **frozen**. Do not reopen page / Practice / Backing workstreams unless a new `?dev=1` trace demonstrates regression. v18 (`fdf9800`) remains baseline. Focus exclusively on **Test D** until pass/fail.
+**Policy (accepted 2026-06-09, updated after Test D pass):** Tests **A–D are frozen**. Do not modify page / Practice / Backing / active-song cloud persistence unless a new `?dev=1` trace proves regression. Baseline notes: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md). **Next focus:** Test E manual sign-off, then UI polish (separate commit).
 
-**Trace:** Music persistence sidebar (`?dev=1`) — workspace restore, Backing device compare, `backing_user_edit_intent`.
+**Trace:** Music persistence sidebar (`?dev=1`) — Test D compare, **Transposing save (last cloud write)**, workspace restore, Backing device compare.
 
 ---
 

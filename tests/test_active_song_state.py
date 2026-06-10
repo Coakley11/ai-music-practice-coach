@@ -148,6 +148,44 @@ class TestActiveSongState(unittest.TestCase):
         self.assertEqual(target["display_key"], "D Major")
         self.assertEqual(target["active_song_state"]["pick_key"], _PICK_KEY)
 
+    def test_e_ami_return_restores_written_key_and_tenor_subtype(self) -> None:
+        sax_sample = {
+            **_SAMPLE,
+            "instrument": "Saxophone",
+            "display_key": "Db Major",
+            CHART_IN_INSTRUMENT_KEY_KEY: True,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Tenor saxophone (Bb)",
+        }
+        session = {**sax_sample, ACTIVE_CATALOG_PICK_KEY: _PICK_KEY, "studio_page": "practice"}
+        write_canonical_active_song_state(session, sax_sample, reason="setup")
+
+        built = build_source_state("practice", session)
+        widgets = built["widget_params"]
+        self.assertTrue(widgets[CHART_IN_INSTRUMENT_KEY_KEY])
+        self.assertEqual(widgets[SELECTED_TRANSPOSING_INSTRUMENT_KEY], "Tenor saxophone (Bb)")
+        self.assertEqual(widgets["instrument"], "Saxophone")
+        self.assertEqual(widgets["display_key"], "Db Major")
+        self.assertEqual(widgets["studio_page"], "practice")
+
+        target: dict = {
+            "display_key": "C Major",
+            "instrument": "Piano",
+            CHART_IN_INSTRUMENT_KEY_KEY: False,
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+            "studio_page": "backing",
+        }
+        apply_source_state_to_session(target, built, schedule_navigation=False)
+        self.assertEqual(target[ACTIVE_CATALOG_PICK_KEY], _PICK_KEY)
+        self.assertEqual(target["display_key"], "Db Major")
+        self.assertEqual(target["instrument"], "Saxophone")
+        self.assertTrue(target[CHART_IN_INSTRUMENT_KEY_KEY])
+        self.assertEqual(target[SELECTED_TRANSPOSING_INSTRUMENT_KEY], "Tenor saxophone (Bb)")
+        self.assertEqual(target["studio_page"], "practice")
+        self.assertEqual(target["_written_key_restore_source"], "ami_return")
+        self.assertEqual(target["_transposing_subtype_restore_source"], "ami_return")
+        self.assertFalse(target.get(ACTIVE_SONG_DIRTY_KEY))
+
     def test_commit_autosave_does_not_mutate_display_key_widget(self) -> None:
         """Save build must not assign display_key after the widget exists (Streamlit conflict)."""
         session = {**dict(_SAMPLE), ACTIVE_CATALOG_PICK_KEY: _PICK_KEY}

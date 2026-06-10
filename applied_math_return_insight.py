@@ -604,6 +604,12 @@ def apply_return_source_state(st: Any, app_key: str, source_state: dict[str, Any
             from music_coach_context import apply_source_state_to_session
 
             apply_source_state_to_session(ss, source_state, schedule_navigation=schedule_navigation)
+            try:
+                from music_persistence_trace import record_ami_return_restore_trace
+
+                record_ami_return_restore_trace(st, source_state=source_state)
+            except Exception:
+                pass
     except TypeError:
         try:
             if app == "baseball":
@@ -1241,6 +1247,7 @@ def _record_insight_return_diagnostics(st: Any, *, phase: str, insight: dict[str
     ) if pending else {}
     ss["_ami_insight_return_phase"] = phase
     ss["insight_return_detected"] = bool(url_iid)
+    ss["ami_return_detected"] = bool(url_iid or ss.get("insight_return_detected"))
     ss["source_app_raw"] = app_raw
     ss["source_app_normalized"] = app_norm
     ss["source_page_raw"] = pending.get("source_page") if pending else scope.get("source_page_raw")
@@ -1249,6 +1256,9 @@ def _record_insight_return_diagnostics(st: Any, *, phase: str, insight: dict[str
     ss["insight_source_page_normalized"] = ss["source_page_normalized"]
     ss["current_studio_page"] = scope.get("current_studio_page") or (
         _music_studio_page_for_scope(st) if app_norm == "music" else None
+    )
+    ss["final_page"] = (
+        ss.get("studio_page") if app_norm == "music" else ss.get("active_page")
     )
     ss["current_page_normalized"] = scope.get("current_page_normalized")
     ss["should_render_insight_on_page"] = scope.get("should_render_insight_on_page")

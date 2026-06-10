@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v25-transposing-save-trace"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v26-test-e-ami-return-trace"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -201,6 +201,33 @@ def record_music_resume_restore_trace(st: Any, **fields: Any) -> None:
     """Record resume-flag reconciliation before workspace sync (Dell classification D)."""
 
     update_trace(st, **fields)
+
+
+def record_ami_return_restore_trace(
+    st: Any,
+    *,
+    source_state: dict[str, Any],
+) -> None:
+    """Record AMI return restore snapshot for Test E compare (does not touch A–D cloud restore)."""
+    if not isinstance(source_state, dict):
+        return
+    ss = st.session_state
+    widgets = source_state.get("widget_params")
+    entity = source_state.get("entity_params")
+    widget_blob = widgets if isinstance(widgets, dict) else {}
+    entity_blob = entity if isinstance(entity, dict) else {}
+    restored_page = str(widget_blob.get("studio_page") or "").strip()
+    update_trace(
+        st,
+        restored_pick_key=str(entity_blob.get("pick_key") or "").strip() or None,
+        restored_display_key=str(widget_blob.get("display_key") or "").strip() or None,
+        restored_instrument=str(widget_blob.get("instrument") or "").strip() or None,
+        restored_studio_page=restored_page or None,
+        final_studio_page=ss.get("studio_page"),
+        workspace_restore_source="ami_return",
+        ami_return_navigation_active=True,
+    )
+    ss["_ami_restored_studio_page"] = restored_page or ss.get("studio_page")
 
 
 
@@ -440,6 +467,103 @@ def format_test_d_compare_trace(rows: dict[str, Any]) -> str:
     """Copy-paste block for Dell vs phone Test D comparison."""
     lines = ["# Test D — active song + key + instrument + page", ""]
     for label in TEST_D_TRACE_LABELS:
+        val = rows.get(label)
+        if val is None or val == "":
+            lines.append(f"{label}: (empty)")
+        else:
+            lines.append(f"{label}: {val}")
+    title = rows.get("final_song_title")
+    if title:
+        lines.append(f"final_song_title: {title}")
+    return "\n".join(lines)
+
+
+TEST_E_TRACE_LABELS: tuple[str, ...] = (
+    "ami_return_detected",
+    "source_app_normalized",
+    "ami_resume_consumed",
+    "current_studio_page",
+    "final_page",
+    "page_forced_by_ami_return",
+    "manual_nav_after_ami_return",
+    "active_song_state",
+    "final_pick_key",
+    "final_display_key",
+    "final_instrument",
+    "written_key_mode_widget",
+    "written_key_mode_canonical",
+    "written_key_mode_restored",
+    "transposing_subtype_widget",
+    "transposing_subtype_canonical",
+    "transposing_subtype_restored",
+    "cloud_fetch_studio_page",
+    "restored_studio_page",
+    "final_studio_page",
+    "page_overwrite_source",
+    "active_song_restore_skipped",
+    "active_song_dirty",
+)
+
+
+def _active_song_state_summary(session: dict[str, Any]) -> str:
+    meta = session.get("active_song_state")
+    if not isinstance(meta, dict):
+        return "(empty)"
+    parts = [
+        f"pick={meta.get('pick_key', '')}",
+        f"key={meta.get('display_key', '')}",
+        f"inst={meta.get('instrument', '')}",
+    ]
+    if "show_chart_in_instrument_key" in meta:
+        parts.append(f"written={meta.get('show_chart_in_instrument_key')}")
+    subtype = meta.get("selected_transposing_instrument")
+    if subtype:
+        parts.append(f"subtype={subtype}")
+    reason = meta.get("last_write_reason")
+    if reason:
+        parts.append(f"reason={reason}")
+    return " ".join(parts)
+
+
+def collect_test_e_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
+    """Snapshot fields for Test E AMI return validation (extends Test D song/page fields)."""
+    ss = st.session_state
+    base = collect_test_d_trace_rows(st, trace)
+    rows: dict[str, Any] = {
+        "ami_return_detected": ss.get("ami_return_detected") or ss.get("insight_return_detected"),
+        "source_app_normalized": ss.get("source_app_normalized"),
+        "ami_resume_consumed": ss.get("ami_resume_consumed"),
+        "current_studio_page": ss.get("current_studio_page") or ss.get("studio_page"),
+        "final_page": ss.get("final_page") or ss.get("studio_page"),
+        "page_forced_by_ami_return": ss.get("page_forced_by_ami_return"),
+        "manual_nav_after_ami_return": ss.get("manual_nav_after_ami_return"),
+        "active_song_state": _active_song_state_summary(ss),
+        "final_pick_key": base.get("final_pick_key"),
+        "final_display_key": base.get("final_display_key"),
+        "final_instrument": base.get("final_instrument"),
+        "written_key_mode_widget": base.get("written_key_mode_widget"),
+        "written_key_mode_canonical": base.get("written_key_mode_canonical"),
+        "written_key_mode_restored": base.get("written_key_mode_restored"),
+        "transposing_subtype_widget": base.get("transposing_subtype_widget"),
+        "transposing_subtype_canonical": base.get("transposing_subtype_canonical"),
+        "transposing_subtype_restored": base.get("transposing_subtype_restored"),
+        "cloud_fetch_studio_page": base.get("cloud_fetch_studio_page"),
+        "restored_studio_page": trace.get("restored_studio_page")
+        or ss.get("_ami_restored_studio_page")
+        or base.get("restored_studio_page"),
+        "final_studio_page": base.get("final_studio_page"),
+        "page_overwrite_source": base.get("page_overwrite_source"),
+        "active_song_restore_skipped": base.get("active_song_restore_skipped"),
+        "active_song_dirty": base.get("active_song_dirty"),
+        "final_song_title": base.get("final_song_title"),
+    }
+    return rows
+
+
+def format_test_e_compare_trace(rows: dict[str, Any]) -> str:
+    """Copy-paste block for Test E AMI return before/after comparison."""
+    lines = ["# Test E — AMI return restores Music state", ""]
+    for label in TEST_E_TRACE_LABELS:
         val = rows.get(label)
         if val is None or val == "":
             lines.append(f"{label}: (empty)")
@@ -794,6 +918,23 @@ def render_persistence_trace_sidebar(st: Any) -> None:
             "Copy Test D compare",
             value=format_test_d_compare_trace(test_d_rows),
             height=280,
+            label_visibility="collapsed",
+        )
+
+        st.markdown("**Test E compare (AMI return)**")
+        st.caption(
+            "Frozen: Tests A–D passed. "
+            "1) Music: set song, key, Saxophone, written-key ON, Tenor/Alto, Practice or Backing. "
+            "2) Send AMI insight → return via link. "
+            "3) Copy block before send and after return; compare final_* and transposing fields."
+        )
+        test_e_rows = collect_test_e_trace_rows(st, trace)
+        for label in TEST_E_TRACE_LABELS:
+            st.text(f"{label}: {_trace_display(test_e_rows.get(label))}")
+        st.text_area(
+            "Copy Test E compare",
+            value=format_test_e_compare_trace(test_e_rows),
+            height=320,
             label_visibility="collapsed",
         )
 

@@ -731,7 +731,17 @@ def apply_active_song_source_state_from_ami(
         for key in ACTIVE_SONG_SCALAR_KEYS:
             if key in widgets and widgets[key]:
                 ctx[key] = str(widgets[key]).strip()
+        if CHART_IN_INSTRUMENT_KEY_KEY in widgets:
+            ctx[CHART_IN_INSTRUMENT_KEY_KEY] = bool(widgets[CHART_IN_INSTRUMENT_KEY_KEY])
+        anchor = str(widgets.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+        if anchor:
+            ctx[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+        subtype = str(widgets.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
+        if subtype:
+            ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
     write_canonical_active_song_state(session, ctx, reason="ami_return")
+    _record_transposing_restore_trace(session, ctx, source="ami_return")
+    rehydrate_transposing_sidebar_from_canonical(session)
     clear_active_song_local_edit(session)
 
 

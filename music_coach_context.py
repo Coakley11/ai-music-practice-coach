@@ -85,6 +85,23 @@ def build_source_state(page: str, session_state: dict[str, Any]) -> dict[str, An
             song_ctx.get("practice_focus_section") or session_state.get("practice_focus_section") or ""
         ),
     }
+    try:
+        from instrument_transposition import (
+            CHART_IN_INSTRUMENT_KEY_KEY,
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+        )
+
+        if CHART_IN_INSTRUMENT_KEY_KEY in song_ctx:
+            widget_params[CHART_IN_INSTRUMENT_KEY_KEY] = bool(song_ctx[CHART_IN_INSTRUMENT_KEY_KEY])
+        anchor = str(song_ctx.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+        if anchor:
+            widget_params[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+        subtype = str(song_ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
+        if subtype:
+            widget_params[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+    except ImportError:
+        pass
     if coach_page == "backing":
         try:
             from backing_track_state import gather_backing_filters
