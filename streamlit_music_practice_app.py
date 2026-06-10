@@ -9654,8 +9654,13 @@ if _studio_page == "practice":
     render_scroll_anchor_marker(st, ANCHOR_PRACTICE_COACH)
 
     _section_choices = practice_section_options(sections)
-    if _section_choices and st.session_state.get("practice_focus_section") not in _section_choices:
-        st.session_state["practice_focus_section"] = _section_choices[0]
+    try:
+        from practice_state import coerce_practice_focus_for_widget
+
+        coerce_practice_focus_for_widget(st.session_state, _section_choices or None)
+    except ImportError:
+        if _section_choices and st.session_state.get("practice_focus_section") not in _section_choices:
+            st.session_state["practice_focus_section"] = _section_choices[0]
 
     _practice_display_label_map: dict[str, str] = dict(
         (song_data or {}).get("_beginner_display_labels") or {}

@@ -20,7 +20,6 @@ ACTIVE_SONG_SCALAR_KEYS = (
     "instrument",
     "level",
     "focus",
-    "practice_focus_section",
 )
 
 __all__ = (
@@ -93,7 +92,6 @@ def _normalize_context(raw: dict[str, Any] | None) -> dict[str, Any]:
         "instrument": str(src.get("instrument") or "").strip(),
         "level": str(src.get("level") or "").strip(),
         "focus": str(src.get("focus") or "").strip(),
-        "practice_focus_section": str(src.get("practice_focus_section") or "").strip(),
         "selected_song": sel,
     }
 
@@ -113,7 +111,6 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         "instrument": str(session.get("instrument") or "").strip(),
         "level": str(session.get("level") or "").strip(),
         "focus": str(session.get("focus") or "").strip(),
-        "practice_focus_section": str(session.get("practice_focus_section") or "").strip(),
         "selected_song": selected,
     }
 
@@ -143,7 +140,7 @@ def _apply_context_to_session_keys(
         session[PENDING_DISPLAY_KEY] = display_key
         if mutate_display_key:
             session["display_key"] = display_key
-    for key in ("instrument", "level", "focus", "practice_focus_section"):
+    for key in ("instrument", "level", "focus"):
         val = str(ctx.get(key) or "").strip()
         if val:
             session[key] = val

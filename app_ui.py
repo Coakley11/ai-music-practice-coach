@@ -7607,7 +7607,14 @@ def render_section_jump_bar(
     options = [n for n in section_names if n]
     if not options:
         return None
-    current = session_state.get(state_key)
+    try:
+        from practice_state import normalize_practice_focus_section
+
+        current = normalize_practice_focus_section(session_state.get(state_key))
+        if current:
+            session_state[state_key] = current
+    except ImportError:
+        current = session_state.get(state_key)
     if current not in options:
         session_state[state_key] = options[0]
         current = options[0]

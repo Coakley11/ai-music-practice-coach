@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 
 from music_persistent_state import apply_music_disk_state, build_music_disk_state
 
+from active_song_state import prepare_active_song_context
 from practice_state import (
 
     PRACTICE_DIRTY_KEY,
@@ -22,6 +23,8 @@ from practice_state import (
 
     apply_practice_source_state_from_ami,
 
+    coerce_practice_focus_for_widget,
+
     coerce_practice_groove_for_widget,
 
     flush_practice_edits,
@@ -29,6 +32,8 @@ from practice_state import (
     is_practice_locally_dirty,
 
     mark_practice_local_edit,
+
+    normalize_practice_focus_section,
 
     normalize_practice_groove,
 
@@ -335,6 +340,50 @@ class TestPracticeState(unittest.TestCase):
         self.assertEqual(session["practice_minutes"], 50)
 
 
+
+    def test_normalize_full_song_casing(self) -> None:
+        self.assertEqual(normalize_practice_focus_section("Full song"), "Full Song")
+        self.assertEqual(normalize_practice_focus_section("full song"), "Full Song")
+        self.assertEqual(normalize_practice_focus_section("Verse"), "Verse")
+
+    def test_prepare_session_section_wins_over_stale_canonical_full_song(self) -> None:
+        """Section focus selector: live Verse must not revert to canonical Full Song."""
+        session = {
+            "practice_focus_section": "Verse",
+            "practice_state": {
+                **_SAMPLE,
+                "practice_focus_section": "Full Song",
+                "last_write_reason": "cloud_restore",
+            },
+        }
+        prepare_practice_page(session)
+        self.assertEqual(session["practice_focus_section"], "Verse")
+        self.assertEqual(session["practice_state"]["practice_focus_section"], "Verse")
+        self.assertEqual(session["practice_state"]["last_write_reason"], "session_section_wins")
+        self.assertTrue(is_practice_locally_dirty(session))
+
+    def test_coerce_practice_focus_for_widget_normalizes_legacy_full_song(self) -> None:
+        session = {"practice_focus_section": "Full song"}
+        choices = ["Full Song", "Verse", "Chorus"]
+        section = coerce_practice_focus_for_widget(session, choices)
+        self.assertEqual(section, "Full Song")
+        self.assertEqual(session["practice_focus_section"], "Full Song")
+
+    def test_active_song_prepare_does_not_clobber_practice_section(self) -> None:
+        song_sample = {
+            "pick_key": "Pop|Test",
+            "display_key": "C",
+            "instrument": "Guitar",
+            "practice_focus_section": "Full Song",
+        }
+        session = {
+            "practice_focus_section": "Verse",
+            "practice_state": {**_SAMPLE, "practice_focus_section": "Verse"},
+            "active_song_state": {**song_sample, "last_write_reason": "cloud"},
+        }
+        prepare_active_song_context(session)
+        prepare_practice_page(session)
+        self.assertEqual(session["practice_focus_section"], "Verse")
 
     def test_coerce_prefers_canonical_over_song_default(self) -> None:
 
