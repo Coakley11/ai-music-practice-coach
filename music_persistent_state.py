@@ -142,6 +142,106 @@ def _studio_nav_page_from_session(ss: dict[str, Any]) -> str:
     return ""
 
 
+_PAGE_CHANGE_STAMP_TARGET_KEY = "_suite_page_change_stamp_target"
+
+
+def _resolve_page_change_stamp_target(ss: dict[str, Any]) -> tuple[str, str]:
+    """Authoritative page_change save target (pre-save nav/page wins over stale session picker)."""
+    explicit = _normalize_studio_page_for_save(ss.get(_PAGE_CHANGE_STAMP_TARGET_KEY))
+    if explicit:
+        return explicit, _PAGE_CHANGE_STAMP_TARGET_KEY
+
+    live = _normalize_studio_page_for_save(ss.get("studio_page"))
+    nav = _studio_nav_page_from_session(ss)
+    user_nav = bool(ss.get("_suite_page_user_nav"))
+
+    if user_nav and live and nav and live == nav:
+        return live, "session_state.studio_page"
+
+    hinted = _normalize_studio_page_for_save(ss.get("_suite_page_change_save_page"))
+    deferred = _normalize_studio_page_for_save(ss.get("_suite_deferred_page_change_save"))
+    for page, source in (
+        (hinted, "_suite_page_change_save_page"),
+        (deferred, "_suite_deferred_page_change_save"),
+    ):
+        if not page:
+            continue
+        if user_nav and live and nav and live == nav and page != live:
+            return live, "session_state.studio_page"
+        if user_nav and nav and page != nav:
+            return nav, "studio_nav_state"
+        return page, source
+
+    if nav and user_nav:
+        return nav, "studio_nav_state"
+    if live:
+        return live, "session_state.studio_page"
+    return "", "missing"
+
+
+def _apply_page_change_stamp_to_session(session: dict[str, Any], target: str) -> None:
+    """Force live session + workspace blobs to the page_change target before payload build."""
+    page = _normalize_studio_page_for_save(target)
+    if not page:
+        return
+    session["studio_page"] = page
+    nav = session.get("studio_nav_state")
+    if isinstance(nav, dict):
+        nav = copy.deepcopy(nav)
+        nav["studio_page"] = page
+        nav["page"] = page
+        nav["last_write_reason"] = nav.get("last_write_reason") or "page_change_save_stamp"
+        session["studio_nav_state"] = nav
+    else:
+        session["studio_nav_state"] = {
+            "studio_page": page,
+            "page": page,
+            "last_write_reason": "page_change_save_stamp",
+        }
+    ws = session.get("music_workspace_state")
+    if isinstance(ws, dict):
+        ws = copy.deepcopy(ws)
+        ws["studio_page"] = page
+        ws["page"] = page
+        session["music_workspace_state"] = ws
+    else:
+        session["music_workspace_state"] = {"studio_page": page, "page": page}
+    try:
+        from music_coach_context import sync_music_coach_workspace_page
+
+        sync_music_coach_workspace_page(session)
+    except Exception:
+        pass
+
+
+def _mirror_page_change_save_session(st: Any, ss: dict[str, Any], page_id: str) -> None:
+    """When ``session_state`` arg differs from ``st.session_state``, mirror stamped nav into build target."""
+    build_ss = getattr(st, "session_state", None)
+    if build_ss is None or build_ss is ss:
+        return
+    target = _normalize_studio_page_for_save(page_id)
+    if not target:
+        return
+    _apply_page_change_stamp_to_session(ss, target)
+    _apply_page_change_stamp_to_session(build_ss, target)
+    for key in (
+        "_suite_page_user_nav",
+        "active_page_source",
+        "requested_page",
+        _PAGE_CHANGE_STAMP_TARGET_KEY,
+        "_suite_page_change_save_page",
+    ):
+        if key in ss:
+            build_ss[key] = ss[key]
+        elif key in (_PAGE_CHANGE_STAMP_TARGET_KEY, "_suite_page_change_save_page"):
+            build_ss[key] = target
+
+
+def _clear_page_change_save_hints(session: dict[str, Any]) -> None:
+    session.pop(_PAGE_CHANGE_STAMP_TARGET_KEY, None)
+    session.pop("_suite_page_change_save_page", None)
+
+
 def _page_change_save_ready(session: dict[str, Any], target_page: str) -> bool:
     """True when live session/nav/ownership/workspace all match the nav target."""
     target = _normalize_studio_page_for_save(target_page)
@@ -236,16 +336,19 @@ def maybe_flush_deferred_page_change_save(st: Any) -> bool:
     if not _page_change_save_ready(ss, deferred):
         return False
     ss.pop("_suite_deferred_page_change_save", None)
+    ss[_PAGE_CHANGE_STAMP_TARGET_KEY] = deferred
     ss["_suite_page_change_save_page"] = deferred
     build_ss = getattr(st, "session_state", ss)
+    _mirror_page_change_save_session(st, ss, deferred)
     if build_ss is not ss:
+        build_ss[_PAGE_CHANGE_STAMP_TARGET_KEY] = deferred
         build_ss["_suite_page_change_save_page"] = deferred
     try:
         ok = force_save_music_state(st, reason="page_change")
     finally:
-        ss.pop("_suite_page_change_save_page", None)
+        _clear_page_change_save_hints(ss)
         if build_ss is not ss:
-            build_ss.pop("_suite_page_change_save_page", None)
+            _clear_page_change_save_hints(build_ss)
     if ok:
         try:
             from suite_user_persistence import _release_user_page_ownership_after_save
@@ -264,24 +367,7 @@ def _last_persisted_studio_page_for_save(session: dict[str, Any]) -> str:
 def _resolve_live_studio_page_for_save(ss: dict[str, Any], *, save_reason: str) -> tuple[str, str]:
     """Authoritative studio page for save payload (page_change must not use restored blob)."""
     if save_reason == "page_change":
-        hinted = _normalize_studio_page_for_save(ss.get("_suite_page_change_save_page"))
-        live = _normalize_studio_page_for_save(ss.get("studio_page"))
-        nav = _studio_nav_page_from_session(ss)
-        if hinted and live and hinted != live:
-            if nav == live:
-                return live, "session_state.studio_page"
-            if nav == hinted:
-                return hinted, "_suite_page_change_save_page"
-            if bool(ss.get("_suite_page_user_nav")) and live:
-                return live, "session_state.studio_page"
-            return hinted, "_suite_page_change_save_page"
-        if hinted:
-            return hinted, "_suite_page_change_save_page"
-        if live:
-            return live, "session_state.studio_page"
-        if nav:
-            return nav, "studio_nav_state"
-        return "", "missing"
+        return _resolve_page_change_stamp_target(ss)
     live = _normalize_studio_page_for_save(ss.get("studio_page"))
     reason = str(save_reason or "autosave").strip() or "autosave"
     if reason in _PRESERVE_USER_NAV_SAVE_REASONS:
@@ -468,10 +554,12 @@ def _backing_filters_for_envelope(st: Any, state: dict[str, Any], *, save_reason
 def build_music_disk_state(st: Any) -> dict[str, Any]:
     ss = st.session_state
     save_reason = str(ss.get("_suite_pending_save_reason") or "autosave")
+    page_change_target = ""
+    page_change_source = ""
     if save_reason == "page_change":
-        live_page, _ = _resolve_live_studio_page_for_save(ss, save_reason=save_reason)
-        if live_page:
-            ss["studio_page"] = live_page
+        page_change_target, page_change_source = _resolve_page_change_stamp_target(ss)
+        if page_change_target:
+            _apply_page_change_stamp_to_session(ss, page_change_target)
     try:
         from active_song_state import commit_active_song_state_from_session
         from backing_track_state import commit_backing_state_from_session
@@ -479,7 +567,7 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         from studio_nav_state import commit_studio_nav_from_session
 
         commit_active_song_state_from_session(ss, reason=save_reason)
-        if save_reason not in ("song_edit", "practice_edit", "backing_edit"):
+        if save_reason not in ("song_edit", "practice_edit", "backing_edit", "page_change"):
             commit_studio_nav_from_session(ss, reason=save_reason)
         commit_practice_state_from_session(ss, reason=save_reason)
         commit_backing_state_from_session(ss, reason=save_reason)
@@ -517,16 +605,16 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
             except Exception:
                 state[key] = ss[key]
     save_reason = str(ss.pop("_suite_pending_save_reason", None) or save_reason)
-    if save_reason == "page_change":
-        live_page, _ = _resolve_live_studio_page_for_save(ss, save_reason=save_reason)
-        if live_page:
-            core["studio_page"] = live_page
-            core["page"] = live_page
-            extra["studio_page"] = live_page
-            nav_meta = state.get("studio_nav_state")
-            if isinstance(nav_meta, dict):
-                nav_meta["studio_page"] = live_page
-                nav_meta["page"] = live_page
+    if save_reason == "page_change" and not page_change_target:
+        page_change_target, page_change_source = _resolve_page_change_stamp_target(ss)
+    if save_reason == "page_change" and page_change_target:
+        core["studio_page"] = page_change_target
+        core["page"] = page_change_target
+        extra["studio_page"] = page_change_target
+        nav_meta = state.get("studio_nav_state")
+        if isinstance(nav_meta, dict):
+            nav_meta["studio_page"] = page_change_target
+            nav_meta["page"] = page_change_target
     envelope = _build_workspace_envelope(st, state, save_reason=save_reason)
     try:
         from backing_track_state import backing_filters_for_workspace_envelope
@@ -535,7 +623,15 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     except ImportError:
         pass
     state["music_workspace_state"] = envelope
-    stamp_trace = _sync_studio_page_into_music_blob(st, state, save_reason=save_reason)
+    if save_reason == "page_change" and page_change_target:
+        stamp_trace = _stamp_live_studio_page_into_save_payload(
+            state,
+            page_change_target,
+            source=page_change_source or _PAGE_CHANGE_STAMP_TARGET_KEY,
+            coach_page=page_change_target,
+        )
+    else:
+        stamp_trace = _sync_studio_page_into_music_blob(st, state, save_reason=save_reason)
     if hasattr(st, "session_state"):
         if stamp_trace:
             ss["_music_save_payload_stamp_trace"] = stamp_trace
@@ -836,16 +932,19 @@ def after_studio_page_change(
         ss["_suite_deferred_page_change_save"] = page_id
         return
     ss.pop("_suite_deferred_page_change_save", None)
+    ss[_PAGE_CHANGE_STAMP_TARGET_KEY] = page_id
     ss["_suite_page_change_save_page"] = page_id
     build_ss = getattr(st, "session_state", ss)
+    _mirror_page_change_save_session(st, ss, page_id)
     if build_ss is not ss:
+        build_ss[_PAGE_CHANGE_STAMP_TARGET_KEY] = page_id
         build_ss["_suite_page_change_save_page"] = page_id
     try:
         force_save_music_state(st, reason="page_change")
     finally:
-        ss.pop("_suite_page_change_save_page", None)
+        _clear_page_change_save_hints(ss)
         if build_ss is not ss:
-            build_ss.pop("_suite_page_change_save_page", None)
+            _clear_page_change_save_hints(build_ss)
     _release_user_page_ownership_after_save(st, page_id)
     ss["_suite_last_persisted_page"] = page_id
     ss.pop("_suite_page_user_nav", None)
@@ -1052,9 +1151,10 @@ def prepare_music_workspace(
 def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
     """Update ?dev=1 trace after force/autosave (phone→Dell page sync diagnostics)."""
     try:
-        from music_persistence_trace import update_trace
+        from music_persistence_trace import get_trace, update_trace
 
         ss = st.session_state
+        prior = get_trace(st)
         saved_studio = str(ss.get("studio_page") or "").strip()
         coach_page = ""
         try:
@@ -1176,6 +1276,11 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
             )
             if save_payload_trace.get("save_payload_workspace_page"):
                 cloud_payload_page = str(save_payload_trace["save_payload_workspace_page"])
+        elif reason == "page_change" and save_payload_trace.get("save_payload_workspace_page"):
+            cloud_payload_page = str(save_payload_trace["save_payload_workspace_page"])
+        pre_save_studio = prior.get("pre_save_studio_page")
+        pre_save_nav = prior.get("pre_save_nav_page")
+        pre_save_owner = prior.get("pre_save_page_owner")
         update_trace(
             st,
             studio_page_raw=saved_studio or None,
@@ -1184,10 +1289,20 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
             music_workspace_state_studio_page=ws_studio or saved_studio or None,
             last_save_cloud=bool(ss.get("_suite_persist_last_save_cloud")),
             force_save_reason=reason or ss.get("_suite_persist_last_save_reason"),
-            page_owner_flag=bool(ss.get("_suite_page_user_nav")),
-            pre_save_studio_page=ss.get("studio_page"),
-            pre_save_nav_page=_studio_nav_page_from_session(ss),
-            pre_save_page_owner=bool(ss.get("_suite_page_user_nav")),
+            page_owner_flag=(
+                pre_save_owner
+                if reason == "page_change" and pre_save_owner is not None
+                else bool(ss.get("_suite_page_user_nav"))
+            ),
+            pre_save_studio_page=pre_save_studio if pre_save_studio is not None else ss.get("studio_page"),
+            pre_save_nav_page=(
+                pre_save_nav if pre_save_nav is not None else _studio_nav_page_from_session(ss)
+            ),
+            pre_save_page_owner=(
+                pre_save_owner
+                if pre_save_owner is not None
+                else bool(ss.get("_suite_page_user_nav"))
+            ),
             cloud_fetch_studio_page=cloud_fetch_page or ss.get("_suite_cloud_fetch_studio_page"),
             cloud_updated_at=cloud_updated_at,
             local_updated_at=local_updated_at,

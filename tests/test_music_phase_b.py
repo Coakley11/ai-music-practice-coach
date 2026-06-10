@@ -722,7 +722,62 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("page-change-save-stamp-v5", info["build_marker"])
+        self.assertIn("page-change-save-stamp-v6", info["build_marker"])
+
+    def test_page_change_nav_wins_over_stale_session_without_hint(self) -> None:
+        """Phone trace: pre_save nav=backing, session studio_page still picker, no save hint."""
+        st = MagicMock()
+        st.session_state = {
+            "studio_page": "picker",
+            "_suite_page_user_nav": True,
+            "_suite_pending_save_reason": "page_change",
+            "_suite_page_change_stamp_target": "backing",
+            "studio_nav_state": {
+                "studio_page": "backing",
+                "page": "backing",
+                "last_write_reason": "page_change",
+            },
+            "music_workspace_state": {"studio_page": "backing", "page": "backing"},
+            "instrument": "Piano",
+            "active_catalog_pick_key": "pop:test",
+        }
+        with patch("music_persistent_state.build_music_local_state") as mock_core, patch(
+            "active_song_state.commit_active_song_state_from_session"
+        ), patch("practice_state.commit_practice_state_from_session"), patch(
+            "backing_track_state.commit_backing_state_from_session"
+        ):
+            mock_core.return_value = {
+                "studio_page": "picker",
+                "page": "picker",
+                "pick_key": "pop:test",
+                "instrument": "Piano",
+                "song": "",
+                "artist": "",
+                "focus": "",
+                "display_key": "",
+                "practice_focus_section": "",
+                "level": "",
+                "mode": "",
+            }
+            state = build_music_disk_state(st)
+        self.assertEqual(state["core"]["studio_page"], "backing")
+        self.assertEqual(state["music_workspace_state"]["studio_page"], "backing")
+        stamp = st.session_state.get("_music_save_payload_stamp_trace") or {}
+        self.assertEqual(stamp.get("save_payload_source"), "_suite_page_change_stamp_target")
+        self.assertEqual(stamp.get("save_payload_workspace_page"), "backing")
+
+    def test_page_change_pre_save_nav_wins_without_stamp_target_or_hint(self) -> None:
+        from music_persistent_state import _resolve_page_change_stamp_target
+
+        page, source = _resolve_page_change_stamp_target(
+            {
+                "studio_page": "picker",
+                "_suite_page_user_nav": True,
+                "studio_nav_state": {"studio_page": "backing", "page": "backing"},
+            }
+        )
+        self.assertEqual(page, "backing")
+        self.assertEqual(source, "studio_nav_state")
 
     def test_song_edit_preserves_last_persisted_backing_over_stale_picker(self) -> None:
         st = MagicMock()
