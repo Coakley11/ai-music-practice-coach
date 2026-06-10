@@ -17,7 +17,12 @@ from active_song_state import (
     prepare_active_song_context,
     write_canonical_active_song_state,
 )
-from instrument_transposition import CHART_IN_INSTRUMENT_KEY_KEY, WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY
+from instrument_transposition import (
+    CHART_IN_INSTRUMENT_KEY_KEY,
+    SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+    WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+    resolve_practice_keys,
+)
 from music_coach_context import apply_source_state_to_session, build_source_state
 from music_persistent_state import apply_music_disk_state, build_music_disk_state
 from song_catalog import format_pick_key
@@ -218,6 +223,50 @@ class TestActiveSongState(unittest.TestCase):
         self.assertTrue(phone[CHART_IN_INSTRUMENT_KEY_KEY])
         self.assertTrue(phone["active_song_state"][CHART_IN_INSTRUMENT_KEY_KEY])
         self.assertEqual(phone["_written_key_mode_cloud"], True)
+
+    def test_transposing_subtype_commit_and_cloud_restore(self) -> None:
+        session = {
+            **_SAMPLE,
+            ACTIVE_CATALOG_PICK_KEY: _PICK_KEY,
+            "instrument": "Saxophone",
+            CHART_IN_INSTRUMENT_KEY_KEY: True,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+        }
+        write_canonical_active_song_state(
+            session,
+            {**_SAMPLE, "instrument": "Saxophone"},
+            reason="legacy",
+        )
+        commit_active_song_state_from_session(session, reason="autosave")
+        self.assertEqual(
+            session["active_song_state"][SELECTED_TRANSPOSING_INSTRUMENT_KEY],
+            "Alto saxophone (Eb)",
+        )
+        self.assertTrue(session["active_song_state"][CHART_IN_INSTRUMENT_KEY_KEY])
+
+        cloud = {
+            "active_song_state": {
+                **_SAMPLE,
+                "instrument": "Saxophone",
+                "show_chart_in_instrument_key": None,
+            },
+            "music_workspace_state": {
+                "active_song": {
+                    "pick_key": _PICK_KEY,
+                    "instrument": "Saxophone",
+                    CHART_IN_INSTRUMENT_KEY_KEY: True,
+                    SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+                }
+            },
+        }
+        phone: dict = {}
+        self.assertTrue(apply_cloud_active_song_state_if_allowed(phone, cloud))
+        self.assertEqual(phone[SELECTED_TRANSPOSING_INSTRUMENT_KEY], "Alto saxophone (Eb)")
+        self.assertTrue(phone[CHART_IN_INSTRUMENT_KEY_KEY])
+        ctx = resolve_practice_keys(phone, "F", "Saxophone")
+        self.assertEqual(ctx["chart_key_mode"], "written")
+        self.assertEqual(ctx["chart_key"], "D")
 
     def test_written_key_checkbox_disk_round_trip(self) -> None:
         st = MagicMock()

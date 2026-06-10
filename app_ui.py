@@ -420,13 +420,26 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
 }
 .ui-key-global-hint {
   font-size: 0.78rem;
-  color: #1d4ed8;
-  background: #eff6ff;
-  border: 1px solid rgba(29, 78, 216, 0.2);
+  color: #0f172a !important;
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.14);
   border-radius: 8px;
   padding: 0.4rem 0.55rem;
   margin: 0 0 0.45rem 0;
   line-height: 1.4;
+}
+.ui-sidebar-key-caption {
+  font-size: 0.82rem;
+  color: #0f172a !important;
+  margin: 0.35rem 0 0.55rem 0;
+  line-height: 1.45;
+}
+.ui-transposing-recap,
+.ui-transposing-recap strong {
+  color: #0f172a !important;
+}
+.ui-transposing-recap-meta {
+  color: #1e293b !important;
 }
 .ui-ctrl-section-body .stSelectbox label,
 .ui-ctrl-section-body .stSlider label,

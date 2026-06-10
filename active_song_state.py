@@ -8,8 +8,11 @@ from typing import Any
 
 from instrument_transposition import (
     CHART_IN_INSTRUMENT_KEY_KEY,
+    SELECTED_TRANSPOSING_INSTRUMENT_KEY,
     WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
     chart_in_instrument_key,
+    is_transposing_instrument,
+    selected_transposing_type,
 )
 from songs.key_state import PENDING_DISPLAY_KEY
 from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
@@ -45,6 +48,7 @@ __all__ = (
     "prepare_active_song_context",
     "render_active_song_state_debug",
     "sync_active_song_context_from_core",
+    "transposing_subtype_from_blob",
     "written_key_mode_from_blob",
     "write_canonical_active_song_state",
 )
@@ -86,14 +90,32 @@ def _normalize_selected_song(raw: Any) -> dict[str, Any]:
     return out
 
 
+def _written_key_is_set(raw: dict[str, Any]) -> bool:
+    return CHART_IN_INSTRUMENT_KEY_KEY in raw and raw[CHART_IN_INSTRUMENT_KEY_KEY] is not None
+
+
 def _written_key_fields_from_raw(src: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    if CHART_IN_INSTRUMENT_KEY_KEY in src:
+    if _written_key_is_set(src):
         out[CHART_IN_INSTRUMENT_KEY_KEY] = bool(src[CHART_IN_INSTRUMENT_KEY_KEY])
     anchor = str(src.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
     if anchor:
         out[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
     return out
+
+
+def _transposing_subtype_fields_from_raw(src: dict[str, Any]) -> dict[str, Any]:
+    subtype = str(src.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
+    if subtype:
+        return {SELECTED_TRANSPOSING_INSTRUMENT_KEY: subtype}
+    return {}
+
+
+def _transposing_fields_from_raw(src: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **_written_key_fields_from_raw(src),
+        **_transposing_subtype_fields_from_raw(src),
+    }
 
 
 def _normalize_context(raw: dict[str, Any] | None) -> dict[str, Any]:
@@ -109,7 +131,7 @@ def _normalize_context(raw: dict[str, Any] | None) -> dict[str, Any]:
         "level": str(src.get("level") or "").strip(),
         "focus": str(src.get("focus") or "").strip(),
         "selected_song": sel,
-        **_written_key_fields_from_raw(src),
+        **_transposing_fields_from_raw(src),
     }
 
 
@@ -134,6 +156,11 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     anchor = str(session.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
     if anchor:
         ctx[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+    instrument_name = str(ctx.get("instrument") or "").strip()
+    if is_transposing_instrument(instrument_name):
+        subtype = selected_transposing_type(session, instrument_name)
+        if subtype:
+            ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
     return ctx
 
 
@@ -148,11 +175,11 @@ def canonical_active_song_context(session: dict[str, Any]) -> dict[str, Any] | N
     return ctx
 
 
-def _merge_live_written_key_fields(
+def _merge_live_transposing_fields(
     session: dict[str, Any],
     ctx: dict[str, Any],
 ) -> dict[str, Any]:
-    """Always fold live written-key widget state into canonical context before save."""
+    """Fold live written-key + transposing subtype widgets into canonical context before save."""
     live = gather_active_song_context(session)
     ctx[CHART_IN_INSTRUMENT_KEY_KEY] = bool(live.get(CHART_IN_INSTRUMENT_KEY_KEY, False))
     anchor = str(live.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
@@ -160,35 +187,69 @@ def _merge_live_written_key_fields(
         ctx[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
     else:
         ctx.pop(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY, None)
+    subtype = str(live.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
+    if subtype:
+        ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+    else:
+        ctx.pop(SELECTED_TRANSPOSING_INSTRUMENT_KEY, None)
     return ctx
 
 
-def _merge_written_key_from_blob_sources(
+def _merge_transposing_from_blob_sources(
     ctx: dict[str, Any],
     state: dict[str, Any],
 ) -> dict[str, Any]:
-    """Backfill written-key fields from workspace/session when legacy meta omits them."""
-    if CHART_IN_INSTRUMENT_KEY_KEY in ctx:
-        return ctx
+    """Backfill written-key + subtype from workspace/session when legacy meta omits them."""
+    sources: list[dict[str, Any]] = []
     ws = state.get("music_workspace_state")
     if isinstance(ws, dict) and isinstance(ws.get("active_song"), dict):
-        ctx.update(_written_key_fields_from_raw(ws["active_song"]))
-    if CHART_IN_INSTRUMENT_KEY_KEY not in ctx:
-        session_blob = state.get("session")
-        if isinstance(session_blob, dict):
-            ctx.update(_written_key_fields_from_raw(session_blob))
+        sources.append(ws["active_song"])
+    session_blob = state.get("session")
+    if isinstance(session_blob, dict):
+        sources.append(session_blob)
+    if not _written_key_is_set(ctx):
+        for src in sources:
+            merged = _written_key_fields_from_raw(src)
+            if merged:
+                ctx.update(merged)
+                break
+    if not str(ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip():
+        for src in sources:
+            merged = _transposing_subtype_fields_from_raw(src)
+            if merged:
+                ctx.update(merged)
+                break
     return ctx
 
 
-def _record_written_key_restore_trace(
+def _record_transposing_restore_trace(
     session: dict[str, Any],
     ctx: dict[str, Any],
     *,
     source: str,
 ) -> None:
-    if CHART_IN_INSTRUMENT_KEY_KEY in ctx:
+    if _written_key_is_set(ctx):
         session["_written_key_mode_restored"] = bool(ctx[CHART_IN_INSTRUMENT_KEY_KEY])
         session["_written_key_restore_source"] = source
+    subtype = str(ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
+    if subtype:
+        session["_transposing_subtype_restored"] = subtype
+        session["_transposing_subtype_restore_source"] = source
+
+
+def rehydrate_transposing_sidebar_from_canonical(session: dict[str, Any]) -> None:
+    """Bind written-key + subtype widget keys from canonical blob before sidebar render."""
+    meta = session.get(ACTIVE_SONG_STATE_KEY)
+    if not isinstance(meta, dict):
+        return
+    if _written_key_is_set(meta):
+        session[CHART_IN_INSTRUMENT_KEY_KEY] = bool(meta[CHART_IN_INSTRUMENT_KEY_KEY])
+    anchor = str(meta.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+    if anchor:
+        session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+    subtype = str(meta.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
+    if subtype:
+        session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
 
 
 def _apply_context_to_session_keys(
@@ -197,6 +258,7 @@ def _apply_context_to_session_keys(
     *,
     mutate_display_key: bool = True,
     mutate_written_key: bool = True,
+    mutate_transposing_subtype: bool = True,
 ) -> None:
     pick_key = str(ctx.get("pick_key") or "").strip()
     if pick_key:
@@ -215,11 +277,14 @@ def _apply_context_to_session_keys(
         if pick_key:
             selected.setdefault("pick_key", pick_key)
         session[SELECTED_SONG_STATE_KEY] = selected
-    if mutate_written_key and CHART_IN_INSTRUMENT_KEY_KEY in ctx:
+    if mutate_written_key and _written_key_is_set(ctx):
         session[CHART_IN_INSTRUMENT_KEY_KEY] = bool(ctx[CHART_IN_INSTRUMENT_KEY_KEY])
     anchor = str(ctx.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
     if mutate_written_key and anchor:
         session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+    subtype = str(ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
+    if mutate_transposing_subtype and subtype:
+        session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
 
 
 def write_canonical_active_song_state(
@@ -230,6 +295,7 @@ def write_canonical_active_song_state(
     local_edit: bool = False,
     mutate_display_key: bool | None = None,
     mutate_written_key: bool | None = None,
+    mutate_transposing_subtype: bool | None = None,
 ) -> dict[str, Any]:
     """Single write path for active song context."""
     ctx = _normalize_context(context)
@@ -268,7 +334,8 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
             canonical,
             reason="canonical_preserve",
         )
-        _record_written_key_restore_trace(session, ctx, source="canonical_prepare")
+        _record_transposing_restore_trace(session, ctx, source="canonical_prepare")
+        rehydrate_transposing_sidebar_from_canonical(session)
         return ctx
 
     gathered = gather_active_song_context(session)
@@ -288,7 +355,7 @@ def commit_active_song_state_from_session(
 ) -> dict[str, Any]:
     """Persist canonical blob from current session without marking a new local edit."""
     ctx = canonical_active_song_context(session) or gather_active_song_context(session)
-    ctx = _merge_live_written_key_fields(session, dict(ctx))
+    ctx = _merge_live_transposing_fields(session, dict(ctx))
     return write_canonical_active_song_state(
         session,
         ctx,
@@ -296,6 +363,7 @@ def commit_active_song_state_from_session(
         local_edit=False,
         mutate_display_key=False,
         mutate_written_key=False,
+        mutate_transposing_subtype=False,
     )
 
 
@@ -334,7 +402,7 @@ def _active_song_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | No
     if isinstance(meta, dict):
         ctx = _normalize_context(meta)
         if ctx.get("pick_key") or ctx.get("instrument") or ctx.get("display_key"):
-            return _merge_written_key_from_blob_sources(ctx, state)
+            return _merge_transposing_from_blob_sources(ctx, state)
     core = state.get("core") if isinstance(state.get("core"), dict) else state
     if isinstance(core, dict) and (core.get("pick_key") or core.get("song")):
         sel: dict[str, Any] = {}
@@ -356,23 +424,41 @@ def _active_song_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | No
     if isinstance(ws, dict) and isinstance(ws.get("active_song"), dict):
         ctx = _normalize_context(ws["active_song"])
         if ctx.get("pick_key") or ctx.get("display_key"):
-            return ctx
+            return _merge_transposing_from_blob_sources(ctx, state)
+    return None
+
+
+def _transposing_value_from_blob_sources(
+    state: dict[str, Any],
+    key: str,
+) -> Any | None:
+    if not isinstance(state, dict):
+        return None
+    meta = state.get(ACTIVE_SONG_STATE_KEY)
+    if isinstance(meta, dict) and key in meta and meta.get(key) is not None:
+        return meta.get(key)
+    ws = state.get("music_workspace_state")
+    if isinstance(ws, dict):
+        active = ws.get("active_song")
+        if isinstance(active, dict) and key in active and active.get(key) is not None:
+            return active.get(key)
+    session_blob = state.get("session")
+    if isinstance(session_blob, dict) and key in session_blob and session_blob.get(key) is not None:
+        return session_blob.get(key)
     return None
 
 
 def written_key_mode_from_blob(state: dict[str, Any]) -> bool | None:
     """Read written-key checkbox from a disk/cloud music payload."""
-    if not isinstance(state, dict):
-        return None
-    meta = state.get(ACTIVE_SONG_STATE_KEY)
-    if isinstance(meta, dict) and CHART_IN_INSTRUMENT_KEY_KEY in meta:
-        return bool(meta[CHART_IN_INSTRUMENT_KEY_KEY])
-    ws = state.get("music_workspace_state")
-    if isinstance(ws, dict):
-        active = ws.get("active_song")
-        if isinstance(active, dict) and CHART_IN_INSTRUMENT_KEY_KEY in active:
-            return bool(active[CHART_IN_INSTRUMENT_KEY_KEY])
-    return None
+    raw = _transposing_value_from_blob_sources(state, CHART_IN_INSTRUMENT_KEY_KEY)
+    return bool(raw) if raw is not None else None
+
+
+def transposing_subtype_from_blob(state: dict[str, Any]) -> str | None:
+    """Read transposing subtype (e.g. Alto saxophone) from a disk/cloud music payload."""
+    raw = _transposing_value_from_blob_sources(state, SELECTED_TRANSPOSING_INSTRUMENT_KEY)
+    subtype = str(raw or "").strip()
+    return subtype or None
 
 
 def apply_cloud_active_song_state_if_allowed(
@@ -387,12 +473,14 @@ def apply_cloud_active_song_state_if_allowed(
     if not ctx or not ctx.get("pick_key"):
         return False
     session["_written_key_mode_cloud"] = (
-        bool(ctx[CHART_IN_INSTRUMENT_KEY_KEY])
-        if CHART_IN_INSTRUMENT_KEY_KEY in ctx
-        else None
+        bool(ctx[CHART_IN_INSTRUMENT_KEY_KEY]) if _written_key_is_set(ctx) else None
+    )
+    session["_transposing_subtype_cloud"] = (
+        str(ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip() or None
     )
     write_canonical_active_song_state(session, ctx, reason="cloud_restore")
-    _record_written_key_restore_trace(session, ctx, source="cloud_restore")
+    _record_transposing_restore_trace(session, ctx, source="cloud_restore")
+    rehydrate_transposing_sidebar_from_canonical(session)
     clear_active_song_local_edit(session)
     return True
 
@@ -433,11 +521,12 @@ def render_active_song_state_debug(st: Any, session: dict[str, Any]) -> None:
     """?dev=1 sidebar panel for active song canonical state."""
     ctx = canonical_active_song_context(session) or {}
     dirty = is_active_song_locally_dirty(session)
-    written_on = ctx.get(CHART_IN_INSTRUMENT_KEY_KEY)
+    written_on = ctx.get(CHART_IN_INSTRUMENT_KEY_KEY) if _written_key_is_set(ctx) else None
+    subtype = ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or ""
     st.sidebar.caption(
         f"**active_song_state:** dirty=`{dirty}` pick=`{ctx.get('pick_key', '')}` "
         f"key=`{ctx.get('display_key', '')}` inst=`{ctx.get('instrument', '')}` "
-        f"written=`{written_on}`"
+        f"written=`{written_on}` subtype=`{subtype}`"
     )
     reason = ctx.get("last_write_reason")
     if reason:

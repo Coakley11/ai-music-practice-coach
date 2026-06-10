@@ -9169,6 +9169,10 @@ def _on_written_key_checkbox_change() -> None:
     _sync_canonical_active_song_after_edit()
 
 
+def _on_transposing_subtype_change() -> None:
+    _sync_canonical_active_song_after_edit()
+
+
 def _on_global_instrument_change() -> None:
     # Re-validate Practice Focus against the new instrument's option
     # list so other pages don't render a focus that the new instrument
@@ -9368,6 +9372,7 @@ render_sidebar_transposing_controls(
     concert_key=display_key,
     instrument=instrument,
     on_written_key_change=_on_written_key_checkbox_change,
+    on_transposing_type_change=_on_transposing_subtype_change,
 )
 
 _key_ctx = resolve_practice_keys(st.session_state, display_key, instrument)
@@ -9383,9 +9388,11 @@ if is_transposing_instrument(instrument):
         if chart_key_mode == "written"
         else concert_key
     )
-    st.sidebar.caption(
-        f"**Concert:** {concert_key} · **Written:** {written_key} · "
-        f"**Charts shown in:** {_charts_sidebar}"
+    st.sidebar.markdown(
+        f'<p class="ui-sidebar-key-caption"><strong>Concert:</strong> {concert_key} · '
+        f"<strong>Written:</strong> {written_key} · "
+        f"<strong>Charts shown in:</strong> {_charts_sidebar}</p>",
+        unsafe_allow_html=True,
     )
 
 if instrument == "Guitar":

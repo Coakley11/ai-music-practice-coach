@@ -1074,9 +1074,20 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             "instrument": active_song_meta.get("instrument") or (core or {}).get("instrument"),
             "level": active_song_meta.get("level") or (core or {}).get("level"),
             "focus": active_song_meta.get("focus") or (core or {}).get("focus"),
-            "show_chart_in_instrument_key": active_song_meta.get("show_chart_in_instrument_key"),
-            "_chart_written_key_instrument_anchor": active_song_meta.get(
-                "_chart_written_key_instrument_anchor"
+            **(
+                {"show_chart_in_instrument_key": bool(active_song_meta["show_chart_in_instrument_key"])}
+                if active_song_meta.get("show_chart_in_instrument_key") is not None
+                else {}
+            ),
+            **(
+                {"_chart_written_key_instrument_anchor": active_song_meta["_chart_written_key_instrument_anchor"]}
+                if active_song_meta.get("_chart_written_key_instrument_anchor")
+                else {}
+            ),
+            **(
+                {"selected_transposing_instrument": active_song_meta["selected_transposing_instrument"]}
+                if active_song_meta.get("selected_transposing_instrument")
+                else {}
             ),
             "practice_focus_section": active_song_meta.get("practice_focus_section")
             or practice_meta.get("practice_focus_section")
@@ -1391,6 +1402,12 @@ def apply_music_disk_state(
         elif isinstance(core, dict) and core and applied:
             sync_active_song_context_from_core(ss, core)
             clear_active_song_local_edit(ss)
+        try:
+            from active_song_state import rehydrate_transposing_sidebar_from_canonical
+
+            rehydrate_transposing_sidebar_from_canonical(ss)
+        except ImportError:
+            pass
     except ImportError:
         pass
 

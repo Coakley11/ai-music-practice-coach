@@ -396,18 +396,24 @@ def render_sidebar_transposing_widgets(
     concert_key: str,
     instrument: str,
     on_written_key_change: Any | None = None,
+    on_transposing_type_change: Any | None = None,
 ) -> None:
     """App-wide transposing controls (sidebar) — persist across all studio pages."""
     if not is_transposing_instrument(instrument):
         return
     apply_pending_transposing_instrument(st.session_state, instrument)
     if instrument == "Saxophone":
+        sax_kwargs: dict[str, Any] = {
+            "help": "Applies to charts, backing chord view, and notation on every page.",
+        }
+        if on_transposing_type_change is not None:
+            sax_kwargs["on_change"] = on_transposing_type_change
         st.sidebar.selectbox(
             "Saxophone type",
             list(SAXOPHONE_TYPES),
             format_func=lambda t: instrument_display_name(str(t), "Saxophone"),
             key=SELECTED_TRANSPOSING_INSTRUMENT_KEY,
-            help="Applies to charts, backing chord view, and notation on every page.",
+            **sax_kwargs,
         )
     checkbox_kwargs: dict[str, Any] = {
         "help": (
@@ -444,11 +450,11 @@ def render_sidebar_transposing_recap(
         show_in_instrument_key=show_written,
     )
     st.sidebar.markdown(
-        f'<div class="ui-card soft" style="margin:0.5rem 0;padding:0.65rem;">'
+        f'<div class="ui-card soft ui-transposing-recap" style="margin:0.5rem 0;padding:0.65rem;">'
         f"<strong>Concert key:</strong> {html.escape(concert_key)}<br>"
         f"<strong>Written key:</strong> {html.escape(written)}<br>"
         f"<strong>Charts shown in:</strong> {html.escape(charts_in)}<br>"
-        f"<small>{html.escape(instrument_display_name(t_type, instrument))}</small>"
+        f"<small class=\"ui-transposing-recap-meta\">{html.escape(instrument_display_name(t_type, instrument))}</small>"
         f"{' · written charts on' if show_written else ' · concert charts'}"
         f"</div>",
         unsafe_allow_html=True,
@@ -461,6 +467,7 @@ def render_sidebar_transposing_controls(
     concert_key: str,
     instrument: str,
     on_written_key_change: Any | None = None,
+    on_transposing_type_change: Any | None = None,
 ) -> None:
     """Sidebar type selector, written-key toggle, and recap (all pages)."""
     render_sidebar_transposing_widgets(
@@ -468,6 +475,7 @@ def render_sidebar_transposing_controls(
         concert_key=concert_key,
         instrument=instrument,
         on_written_key_change=on_written_key_change,
+        on_transposing_type_change=on_transposing_type_change,
     )
     render_sidebar_transposing_recap(st, concert_key=concert_key, instrument=instrument)
 

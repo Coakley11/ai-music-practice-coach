@@ -727,7 +727,7 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("page-change-save-stamp-v20-written-key-restore", info["build_marker"])
+        self.assertIn("page-change-save-stamp-v21-transposing-subtype-sync", info["build_marker"])
 
     def test_test_d_compare_trace_includes_final_fields(self) -> None:
         from music_persistence_trace import (
@@ -744,16 +744,23 @@ class TestPersistenceTracePanel(unittest.TestCase):
             "studio_page": "creative",
             "selected_song": {"title": "Shallow"},
             "show_chart_in_instrument_key": True,
+            "selected_transposing_instrument": "Alto saxophone (Eb)",
             "active_song_state": {
                 "pick_key": "pk::Pop::Shallow — Lady Gaga",
                 "instrument": "Saxophone",
                 "show_chart_in_instrument_key": True,
+                "selected_transposing_instrument": "Alto saxophone (Eb)",
             },
             "_written_key_mode_restored": True,
             "_written_key_restore_source": "cloud_restore",
+            "_transposing_subtype_restored": "Alto saxophone (Eb)",
+            "_transposing_subtype_cloud": "Alto saxophone (Eb)",
             "_suite_cloud_fetch_updated_at": "2026-06-09T12:00:00+00:00",
             "_suite_last_cloud_save_payload": {
-                "active_song_state": {"show_chart_in_instrument_key": True},
+                "active_song_state": {
+                    "show_chart_in_instrument_key": True,
+                    "selected_transposing_instrument": "Alto saxophone (Eb)",
+                },
             },
         }
         trace = {"final_studio_page": "creative", "restored_pick_key": "pk::Pop::Shallow — Lady Gaga"}
@@ -771,6 +778,10 @@ class TestPersistenceTracePanel(unittest.TestCase):
         self.assertEqual(rows["written_key_mode_cloud"], True)
         self.assertEqual(rows["written_key_mode_restored"], True)
         self.assertEqual(rows["written_key_restore_source"], "cloud_restore")
+        self.assertEqual(rows["transposing_subtype_widget"], "Alto saxophone (Eb)")
+        self.assertEqual(rows["transposing_subtype_canonical"], "Alto saxophone (Eb)")
+        self.assertEqual(rows["transposing_subtype_cloud"], "Alto saxophone (Eb)")
+        self.assertEqual(rows["transposing_subtype_restored"], "Alto saxophone (Eb)")
 
     def test_finalize_uses_normalized_studio_page_over_stale_picker_hint(self) -> None:
         from music_persistent_state import finalize_music_page_change_cloud_payload

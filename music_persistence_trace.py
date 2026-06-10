@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v20-written-key-restore"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v21-transposing-subtype-sync"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -274,7 +274,12 @@ def collect_test_d_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
     """Snapshot fields for Test D cross-device compare (song + key + instrument + page)."""
     from datetime import datetime, timezone
 
-    from instrument_transposition import CHART_IN_INSTRUMENT_KEY_KEY, chart_in_instrument_key
+    from instrument_transposition import (
+        CHART_IN_INSTRUMENT_KEY_KEY,
+        SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+        chart_in_instrument_key,
+        selected_transposing_type,
+    )
 
     ss = st.session_state
     device_id = "unknown"
@@ -304,6 +309,27 @@ def collect_test_d_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
             cloud_blob = ss.get("_suite_last_cloud_save_payload")
             if isinstance(cloud_blob, dict):
                 written_key_mode_cloud = written_key_mode_from_blob(cloud_blob)
+        except ImportError:
+            pass
+    instrument_name = str(ss.get("instrument") or "").strip()
+    transposing_subtype_widget = (
+        ss.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY)
+        if SELECTED_TRANSPOSING_INSTRUMENT_KEY in ss
+        else (selected_transposing_type(ss, instrument_name) if instrument_name else "")
+    )
+    transposing_subtype_canonical = active_meta.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY)
+    transposing_subtype_cloud = (
+        trace.get("transposing_subtype_cloud")
+        if trace.get("transposing_subtype_cloud") is not None
+        else ss.get("_transposing_subtype_cloud")
+    )
+    if transposing_subtype_cloud is None:
+        try:
+            from active_song_state import transposing_subtype_from_blob
+
+            cloud_blob = ss.get("_suite_last_cloud_save_payload")
+            if isinstance(cloud_blob, dict):
+                transposing_subtype_cloud = transposing_subtype_from_blob(cloud_blob)
         except ImportError:
             pass
     return {
@@ -338,6 +364,11 @@ def collect_test_d_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
         or trace.get("written_key_mode_restored"),
         "written_key_restore_source": ss.get("_written_key_restore_source")
         or trace.get("written_key_restore_source"),
+        "transposing_subtype_widget": transposing_subtype_widget,
+        "transposing_subtype_canonical": transposing_subtype_canonical,
+        "transposing_subtype_cloud": transposing_subtype_cloud,
+        "transposing_subtype_restored": ss.get("_transposing_subtype_restored")
+        or trace.get("transposing_subtype_restored"),
         "final_song_title": song.get("title") or "",
     }
 
