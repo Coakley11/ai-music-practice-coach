@@ -1074,10 +1074,8 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             "instrument": active_song_meta.get("instrument") or (core or {}).get("instrument"),
             "level": active_song_meta.get("level") or (core or {}).get("level"),
             "focus": active_song_meta.get("focus") or (core or {}).get("focus"),
-            **(
-                {"show_chart_in_instrument_key": bool(active_song_meta["show_chart_in_instrument_key"])}
-                if active_song_meta.get("show_chart_in_instrument_key") is not None
-                else {}
+            "show_chart_in_instrument_key": bool(
+                active_song_meta.get("show_chart_in_instrument_key", False)
             ),
             **(
                 {"_chart_written_key_instrument_anchor": active_song_meta["_chart_written_key_instrument_anchor"]}
@@ -1261,6 +1259,64 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     return state
 
 
+def _apply_deferred_cloud_transposing_session_keys(
+    session: dict[str, Any],
+    deferred: dict[str, Any],
+) -> None:
+    """Apply cloud session transposing keys after canonical restore (written-key boolean)."""
+    if not deferred:
+        return
+    try:
+        from active_song_state import (
+            ACTIVE_SONG_STATE_KEY,
+            rehydrate_transposing_sidebar_from_canonical,
+        )
+        from instrument_transposition import (
+            CHART_IN_INSTRUMENT_KEY_KEY,
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+        )
+        from active_song_state import _written_key_is_set
+    except ImportError:
+        return
+
+    meta = session.get(ACTIVE_SONG_STATE_KEY)
+    if not isinstance(meta, dict):
+        meta = {}
+    updated = False
+
+    if CHART_IN_INSTRUMENT_KEY_KEY in deferred:
+        cloud_written = bool(deferred[CHART_IN_INSTRUMENT_KEY_KEY])
+        canonical_written = (
+            bool(meta[CHART_IN_INSTRUMENT_KEY_KEY])
+            if _written_key_is_set(meta)
+            else None
+        )
+        if canonical_written is None or (canonical_written is False and cloud_written):
+            meta[CHART_IN_INSTRUMENT_KEY_KEY] = cloud_written
+            session[CHART_IN_INSTRUMENT_KEY_KEY] = cloud_written
+            session["_written_key_mode_cloud"] = cloud_written
+            session["_written_key_mode_restored"] = cloud_written
+            session["_written_key_restore_source"] = "cloud_session_extra"
+            updated = True
+
+    anchor = str(deferred.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+    if anchor:
+        meta[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+        session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+        updated = True
+
+    subtype = str(deferred.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
+    if subtype and not str(meta.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip():
+        meta[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+        session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+        updated = True
+
+    if updated:
+        session[ACTIVE_SONG_STATE_KEY] = meta
+    rehydrate_transposing_sidebar_from_canonical(session)
+
+
 def apply_music_disk_state(
     st: Any,
     payload: dict[str, Any],
@@ -1329,6 +1385,7 @@ def apply_music_disk_state(
         )
 
     restore_intermediate_studio_page = str(ss.get("studio_page") or "").strip()
+    deferred_transposing_session: dict[str, Any] = {}
 
     for key, val in session_extra.items():
         if key in _INSIGHT_KEYS and preserve_insight:
@@ -1353,6 +1410,7 @@ def apply_music_disk_state(
                 from active_song_state import TRANSPOSING_WIDGET_SESSION_KEYS
 
                 if key in TRANSPOSING_WIDGET_SESSION_KEYS:
+                    deferred_transposing_session[key] = copy.deepcopy(val)
                     continue
             except ImportError:
                 pass
@@ -1424,6 +1482,7 @@ def apply_music_disk_state(
             rehydrate_transposing_sidebar_from_canonical(ss)
         except ImportError:
             pass
+        _apply_deferred_cloud_transposing_session_keys(ss, deferred_transposing_session)
     except ImportError:
         pass
 

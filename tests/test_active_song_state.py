@@ -206,6 +206,27 @@ class TestActiveSongState(unittest.TestCase):
         self.assertTrue(session["active_song_state"][CHART_IN_INSTRUMENT_KEY_KEY])
         self.assertTrue(session[CHART_IN_INSTRUMENT_KEY_KEY])
 
+    def test_cloud_restore_workspace_written_key_overrides_stale_canonical_false(self) -> None:
+        cloud = {
+            "active_song_state": {
+                **_SAMPLE,
+                "instrument": "Saxophone",
+                CHART_IN_INSTRUMENT_KEY_KEY: False,
+            },
+            "music_workspace_state": {
+                "active_song": {
+                    "pick_key": _PICK_KEY,
+                    "instrument": "Saxophone",
+                    CHART_IN_INSTRUMENT_KEY_KEY: True,
+                    WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+                }
+            },
+        }
+        phone: dict = {}
+        self.assertTrue(apply_cloud_active_song_state_if_allowed(phone, cloud))
+        self.assertTrue(phone[CHART_IN_INSTRUMENT_KEY_KEY])
+        self.assertTrue(phone["active_song_state"][CHART_IN_INSTRUMENT_KEY_KEY])
+
     def test_cloud_restore_backfills_written_key_from_workspace(self) -> None:
         cloud = {
             "active_song_state": {**_SAMPLE, "instrument": "Saxophone"},
@@ -267,6 +288,56 @@ class TestActiveSongState(unittest.TestCase):
         ctx = resolve_practice_keys(phone, "F", "Saxophone")
         self.assertEqual(ctx["chart_key_mode"], "written")
         self.assertEqual(ctx["chart_key"], "D")
+
+    def test_disk_restore_applies_deferred_written_key_from_session_extra(self) -> None:
+        """Cloud session extra carries written-key True even when canonical meta is stale False."""
+        blob = {
+            "core": {
+                "pick_key": _PICK_KEY,
+                "display_key": "Db",
+                "instrument": "Saxophone",
+                "song": "Turn the Lights Back On",
+                "artist": "Billy Joel",
+            },
+            "session": {
+                CHART_IN_INSTRUMENT_KEY_KEY: True,
+                WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+                SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+            },
+            "active_song_state": {
+                **_SAMPLE,
+                "instrument": "Saxophone",
+                "display_key": "Db",
+                CHART_IN_INSTRUMENT_KEY_KEY: False,
+                SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+            },
+            "music_workspace_state": {
+                "active_song": {
+                    "pick_key": _PICK_KEY,
+                    "instrument": "Saxophone",
+                    "display_key": "Db",
+                    "show_chart_in_instrument_key": False,
+                    SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+                }
+            },
+        }
+        st = MagicMock()
+        st.session_state = {}
+        catalog = {
+            "Pop": {
+                "Turn the Lights Back On — Billy Joel": {
+                    "title": "Turn the Lights Back On",
+                    "artist": "Billy Joel",
+                    "key": "C",
+                }
+            }
+        }
+        library = {"Pop": {"Turn the Lights Back On": catalog["Pop"]["Turn the Lights Back On — Billy Joel"]}}
+        apply_music_disk_state(st, blob, song_picker_catalog=catalog, song_library=library)
+        ss = st.session_state
+        self.assertTrue(ss.get(CHART_IN_INSTRUMENT_KEY_KEY))
+        self.assertTrue(ss.get("active_song_state", {}).get(CHART_IN_INSTRUMENT_KEY_KEY))
+        self.assertEqual(ss.get("_written_key_restore_source"), "cloud_session_extra")
 
     def test_written_key_checkbox_disk_round_trip(self) -> None:
         st = MagicMock()

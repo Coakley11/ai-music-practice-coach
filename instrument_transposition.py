@@ -483,6 +483,12 @@ def render_sidebar_transposing_widgets(
     """App-wide transposing controls (sidebar) — persist across all studio pages."""
     if not is_transposing_instrument(instrument):
         return
+    try:
+        from active_song_state import rehydrate_transposing_sidebar_from_canonical
+
+        rehydrate_transposing_sidebar_from_canonical(st.session_state)
+    except ImportError:
+        pass
     apply_pending_transposing_instrument(st.session_state, instrument)
     if instrument == "Saxophone":
         sax_kwargs: dict[str, Any] = {

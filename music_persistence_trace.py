@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v22-transposing-spelling-ui"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v23-written-key-restore"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -267,6 +267,15 @@ TEST_D_TRACE_LABELS: tuple[str, ...] = (
     "restore_skip_reason",
     "active_song_restore_skipped",
     "page_overwrite_source",
+    "written_key_mode_widget",
+    "written_key_mode_canonical",
+    "written_key_mode_cloud",
+    "written_key_mode_restored",
+    "written_key_restore_source",
+    "transposing_subtype_widget",
+    "transposing_subtype_canonical",
+    "transposing_subtype_cloud",
+    "transposing_subtype_restored",
 )
 
 

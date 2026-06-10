@@ -206,7 +206,7 @@ def _merge_transposing_from_blob_sources(
     ctx: dict[str, Any],
     state: dict[str, Any],
 ) -> dict[str, Any]:
-    """Backfill written-key + subtype from workspace/session when legacy meta omits them."""
+    """Prefer workspace/session transposing fields over stale canonical active_song_state."""
     sources: list[dict[str, Any]] = []
     ws = state.get("music_workspace_state")
     if isinstance(ws, dict) and isinstance(ws.get("active_song"), dict):
@@ -214,12 +214,10 @@ def _merge_transposing_from_blob_sources(
     session_blob = state.get("session")
     if isinstance(session_blob, dict):
         sources.append(session_blob)
-    if not _written_key_is_set(ctx):
-        for src in sources:
-            merged = _written_key_fields_from_raw(src)
-            if merged:
-                ctx.update(merged)
-                break
+    for src in sources:
+        if _written_key_is_set(src):
+            ctx.update(_written_key_fields_from_raw(src))
+            break
     if not str(ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip():
         for src in sources:
             merged = _transposing_subtype_fields_from_raw(src)
