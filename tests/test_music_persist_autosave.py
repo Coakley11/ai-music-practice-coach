@@ -16,8 +16,8 @@ class _FakeSt:
         self._ss = {"instrument": "Guitar"}
 
 
-def test_persist_music_local_state_uses_autosave():
+def test_persist_music_local_state_uses_force_save_flush():
     st = _FakeSt()
-    with patch("music_persistent_state.autosave_music_state") as autosave:
+    with patch("music_persistent_state.flush_active_song_edits_and_save") as flush_save:
         persist_music_local_state(st)
-        autosave.assert_called_once_with(st)
+        flush_save.assert_called_once_with(st, reason="song_edit")

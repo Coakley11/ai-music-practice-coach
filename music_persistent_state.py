@@ -350,6 +350,28 @@ def finalize_music_page_change_cloud_payload(
         )
 
 
+def resolve_music_save_reason_at_write(st: Any, explicit: str = "") -> str:
+    """Resolve the save reason that must drive the pre-write stamp on this persist."""
+    ss = st.session_state
+    explicit_reason = str(explicit or "").strip()
+    if explicit_reason and explicit_reason != "autosave":
+        return explicit_reason
+    pending = str(ss.get("_suite_pending_save_reason") or "").strip()
+    if pending:
+        return pending
+    at_write = str(ss.get("_music_save_reason_at_write") or "").strip()
+    if at_write:
+        return at_write
+    if ss.get(_PAGE_CHANGE_STAMP_TARGET_KEY) or ss.get("_suite_page_change_save_page"):
+        return "page_change"
+    if ss.get("_suite_page_user_nav") and ss.get("_music_build_page_change_target"):
+        return "page_change"
+    last_force = str(ss.get("_suite_persist_last_save_reason") or "").strip()
+    if last_force == "page_change":
+        return "page_change"
+    return explicit_reason or "autosave"
+
+
 def apply_music_pre_write_stamp(
     st: Any,
     state: dict[str, Any],
@@ -357,7 +379,7 @@ def apply_music_pre_write_stamp(
     save_reason: str = "",
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Stamp persist payload from session immediately before disk/cloud write."""
-    reason = str(save_reason or st.session_state.get("_music_save_reason_at_write") or "autosave")
+    reason = resolve_music_save_reason_at_write(st, save_reason)
     if reason == "page_change":
         state, trace = finalize_music_page_change_cloud_payload(st, state, save_reason=reason)
     else:
@@ -367,7 +389,12 @@ def apply_music_pre_write_stamp(
         else:
             trace = {
                 **trace,
-                **_finalize_trace_shell(save_reason=reason, ran=True),
+                **_finalize_trace_shell(
+                    save_reason=reason,
+                    target=trace.get("page_change_finalize_target"),
+                    source=trace.get("page_change_finalize_source"),
+                    ran=True,
+                ),
             }
     meta = {
         "page_change_finalize_ran": bool(trace.get("page_change_finalize_ran")),
@@ -381,21 +408,111 @@ def apply_music_pre_write_stamp(
     return state, trace, meta
 
 
+def record_music_pre_write_diagnostics(
+    st: Any,
+    trace: dict[str, Any],
+    meta: dict[str, Any],
+    *,
+    write_path: str,
+) -> None:
+    """Mirror pre-write stamp diagnostics onto session + stamp trace."""
+    ss = st.session_state
+    ss["music_pre_write_path"] = write_path
+    ss["music_pre_write_stamp_ran"] = bool(trace.get("page_change_finalize_ran"))
+    for key, val in meta.items():
+        ss[key] = val
+    for key in (
+        "page_change_finalize_ran",
+        "page_change_finalize_target",
+        "page_change_finalize_source",
+        "page_change_finalize_error",
+    ):
+        val = meta.get(key)
+        if val is None:
+            val = trace.get(key)
+        if val is not None:
+            ss[key] = val
+    if trace:
+        stamped = _sync_save_payload_trace_fields(
+            {
+                **trace,
+                "music_pre_write_path": write_path,
+                "music_pre_write_stamp_ran": bool(trace.get("page_change_finalize_ran")),
+                "save_reason_at_write": meta.get("_music_save_reason_at_write"),
+            }
+        )
+        ss["_music_save_payload_stamp_trace"] = stamped
+
+
+def stamp_music_payload_for_write(
+    st: Any,
+    state: dict[str, Any],
+    *,
+    explicit_reason: str = "",
+    write_path: str = "",
+) -> dict[str, Any]:
+    """Authoritative pre-write stamp used by every music disk/cloud persist path."""
+    if not isinstance(state, dict):
+        return state
+    try:
+        state, trace, meta = apply_music_pre_write_stamp(st, state, save_reason=explicit_reason)
+        record_music_pre_write_diagnostics(st, trace, meta, write_path=write_path or "unknown")
+    except Exception as exc:
+        ss = st.session_state
+        ss["music_pre_write_path"] = write_path or "unknown"
+        ss["music_pre_write_stamp_ran"] = False
+        ss["page_change_finalize_ran"] = False
+        ss["page_change_finalize_error"] = str(exc)
+        ss["_music_save_reason_at_write"] = resolve_music_save_reason_at_write(st, explicit_reason)
+    return state
+
+
 def ensure_music_payload_stamped_for_session(
     st: Any,
     state: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Re-stamp persist blob when session normalized page drifted from payload (any save path)."""
     ss = st.session_state
-    target, _source = _normalized_session_studio_page_for_save(ss)
+    target, source = _page_change_write_target(ss)
+    if not target:
+        target, source = _normalized_session_studio_page_for_save(ss)
     if not target:
         return state, {}
     snap = _payload_page_snapshot(state)
     core_page = _normalize_studio_page_for_save(snap.get("core"))
     ws_page = _normalize_studio_page_for_save(snap.get("workspace"))
-    if core_page == target and ws_page == target:
+    nav_page = _normalize_studio_page_for_save(snap.get("studio_nav"))
+    if core_page == target and ws_page == target and nav_page == target:
         return state, {}
-    return finalize_music_page_change_cloud_payload(st, state)
+    pre = _payload_page_snapshot(state)
+    post_trace = _stamp_live_studio_page_into_save_payload(
+        state,
+        target,
+        source=source or "normalized_studio_page",
+        coach_page=target,
+    )
+    post = _payload_page_snapshot(state)
+    final_page = _studio_page_from_save_state(state) or target
+    trace = _sync_save_payload_trace_fields(
+        {
+            **post_trace,
+            "page_change_finalize_target": target,
+            "page_change_finalize_source": source,
+            "pre_stamp_core_page": pre.get("core") or None,
+            "pre_stamp_session_page": pre.get("session") or None,
+            "pre_stamp_workspace_page": pre.get("workspace") or None,
+            "pre_stamp_studio_nav_page": pre.get("studio_nav") or None,
+            "post_stamp_core_page": post.get("core") or None,
+            "post_stamp_session_page": post.get("session") or None,
+            "post_stamp_workspace_page": post.get("workspace") or None,
+            "post_stamp_studio_nav_page": post.get("studio_nav") or None,
+            "cloud_write_studio_page": final_page or None,
+            "final_payload_studio_page": final_page or None,
+            "final_payload_source": source or "normalized_studio_page",
+            "page_change_finalize_ran": True,
+        }
+    )
+    return state, trace
 
 
 def _apply_page_change_stamp_to_session(session: dict[str, Any], target: str) -> None:
@@ -1506,6 +1623,8 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
             "cloud_write_studio_page": ss.get("_music_cloud_write_studio_page"),
             "build_save_reason": ss.get("_music_build_save_reason"),
             "build_page_change_target": ss.get("_music_build_page_change_target"),
+            "music_pre_write_path": ss.get("music_pre_write_path"),
+            "music_pre_write_stamp_ran": ss.get("music_pre_write_stamp_ran"),
         }
         for key, val in diag_fields.items():
             if val is not None and (val != "" or key == "page_change_finalize_ran"):
@@ -1699,7 +1818,15 @@ def restore_music_disk_state_once(
 
 
 def persist_music_disk_state(st: Any) -> None:
-    save_user_state(APP_ID, build_music_disk_state(st))
+    reason = resolve_music_save_reason_at_write(st)
+    state = build_music_disk_state(st)
+    state = stamp_music_payload_for_write(
+        st,
+        state,
+        explicit_reason=reason,
+        write_path="persist_music_disk_state",
+    )
+    save_user_state(APP_ID, state)
 
 
 def reset_music_disk_state(st: Any) -> None:

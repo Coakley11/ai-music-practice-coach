@@ -1326,36 +1326,18 @@ def force_autosave(
 
         if reason:
             st.session_state["_suite_pending_save_reason"] = reason
-        st.session_state["_music_save_reason_at_write"] = reason or ""
         state = build_state(st)
         if reason == "page_change":
             state = _preserve_cloud_widget_fields_on_page_change(app_id, state)
         if app_id == "music":
-            try:
-                from music_persistent_state import (
-                    _sync_save_payload_trace_fields,
-                    apply_music_pre_write_stamp,
-                )
+            from music_persistent_state import stamp_music_payload_for_write
 
-                state, finalize_trace, finalize_meta = apply_music_pre_write_stamp(
-                    st, state, save_reason=reason or ""
-                )
-                for key, val in finalize_meta.items():
-                    st.session_state[key] = val
-                for key in (
-                    "page_change_finalize_ran",
-                    "page_change_finalize_target",
-                    "page_change_finalize_source",
-                    "page_change_finalize_error",
-                ):
-                    st.session_state[key] = finalize_meta.get(key) or finalize_trace.get(key)
-                if finalize_trace:
-                    finalize_trace = _sync_save_payload_trace_fields(finalize_trace)
-                    st.session_state["_music_save_payload_stamp_trace"] = finalize_trace
-            except Exception as exc:
-                st.session_state["page_change_finalize_ran"] = False
-                st.session_state["page_change_finalize_error"] = str(exc)
-                st.session_state["_music_save_reason_at_write"] = reason or ""
+            state = stamp_music_payload_for_write(
+                st,
+                state,
+                explicit_reason=reason or "",
+                write_path="force_autosave",
+            )
         blob = json.dumps(state, sort_keys=True, default=str)
         fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
         saved_disk = save_user_state(app_id, state)
@@ -1410,8 +1392,8 @@ def force_autosave(
             )
             st.session_state[_SESSION_SAVED_FLASH_KEY] = True
             return True
-    except Exception:
-        pass
+    except Exception as exc:
+        st.session_state["_suite_force_autosave_error"] = str(exc)
     return False
 
 
@@ -1447,24 +1429,21 @@ def autosave_if_changed(
             )
             return
 
+        autosave_reason = "autosave"
         state = build_state(st)
         if app_id == "music":
-            try:
-                from music_persistent_state import (
-                    _sync_save_payload_trace_fields,
-                    apply_music_pre_write_stamp,
-                )
+            from music_persistent_state import (
+                resolve_music_save_reason_at_write,
+                stamp_music_payload_for_write,
+            )
 
-                state, stamp_trace, stamp_meta = apply_music_pre_write_stamp(
-                    st, state, save_reason="autosave"
-                )
-                for key, val in stamp_meta.items():
-                    st.session_state[key] = val
-                if stamp_trace:
-                    stamp_trace = _sync_save_payload_trace_fields(stamp_trace)
-                    st.session_state["_music_save_payload_stamp_trace"] = stamp_trace
-            except Exception:
-                pass
+            autosave_reason = resolve_music_save_reason_at_write(st, "autosave")
+            state = stamp_music_payload_for_write(
+                st,
+                state,
+                explicit_reason=autosave_reason,
+                write_path="autosave_if_changed",
+            )
         blob = json.dumps(state, sort_keys=True, default=str)
         fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
         key = f"_suite_autosave_fp::{app_id}"
@@ -1486,7 +1465,12 @@ def autosave_if_changed(
             from suite_cloud_state import save_cloud_full_session, session_page_summary
 
             page, summary = session_page_summary(app_id, state)
-            cloud_block = _cloud_autosave_blocked_reason(st, app_id, state, save_reason="autosave")
+            cloud_block = _cloud_autosave_blocked_reason(
+                st,
+                app_id,
+                state,
+                save_reason=autosave_reason if app_id == "music" else "autosave",
+            )
             if cloud_block:
                 st.session_state["_suite_autosave_cloud_blocked_reason"] = cloud_block
             else:
@@ -1499,6 +1483,16 @@ def autosave_if_changed(
                     _, cloud_ts_after = load_cloud_full_session(app_id)
                     if cloud_ts_after:
                         st.session_state[_applied_cloud_ts_key(app_id)] = cloud_ts_after
+                    if app_id == "music":
+                        from music_persistent_state import _studio_page_from_save_state
+
+                        written = (
+                            st.session_state.get("_music_final_payload_studio_page")
+                            or _studio_page_from_save_state(state)
+                        )
+                        if written:
+                            st.session_state["_music_cloud_payload_studio_page"] = written
+                            st.session_state["_music_cloud_payload_source"] = "last_write"
         except Exception as exc:
             cloud_err = str(exc)
         if saved_disk or saved_cloud:
@@ -1515,7 +1509,11 @@ def autosave_if_changed(
             st.session_state["_suite_persist_last_save_disk"] = saved_disk
             st.session_state["_suite_persist_last_save_cloud"] = saved_cloud
             _record_autosave_trace(
-                st, app_id, reason="autosave", wrote_cloud=saved_cloud, state=state
+                st,
+                app_id,
+                reason=autosave_reason if app_id == "music" else "autosave",
+                wrote_cloud=saved_cloud,
+                state=state,
             )
             st.session_state["_suite_last_cloud_payload_comparison_players"] = _workspace_comparison_players(
                 state

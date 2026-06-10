@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v9"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v10"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -519,6 +519,10 @@ def render_persistence_trace_sidebar(st: Any) -> None:
         st.markdown("**Save / phone**")
 
         phone_rows = [
+
+            ("music_pre_write_path", trace.get("music_pre_write_path") or ss.get("music_pre_write_path")),
+
+            ("music_pre_write_stamp_ran", trace.get("music_pre_write_stamp_ran") if trace.get("music_pre_write_stamp_ran") is not None else ss.get("music_pre_write_stamp_ran")),
 
             ("page_change_finalize_ran", trace.get("page_change_finalize_ran") if trace.get("page_change_finalize_ran") is not None else ss.get("page_change_finalize_ran")),
 

@@ -727,7 +727,7 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("page-change-save-stamp-v9", info["build_marker"])
+        self.assertIn("page-change-save-stamp-v10", info["build_marker"])
 
     def test_finalize_uses_normalized_studio_page_over_stale_picker_hint(self) -> None:
         from music_persistent_state import finalize_music_page_change_cloud_payload
@@ -854,6 +854,41 @@ class TestPersistenceTracePanel(unittest.TestCase):
         )
         self.assertEqual(page, "backing")
         self.assertEqual(source, "music_workspace_state.studio_page")
+
+    def test_stamp_music_payload_for_write_sets_path_and_finalize_on_page_change(self) -> None:
+        from music_persistent_state import stamp_music_payload_for_write
+
+        st = MagicMock()
+        st.session_state = {
+            "studio_page": "picker",
+            "_suite_page_user_nav": True,
+            "studio_nav_state": {"studio_page": "backing", "page": "backing"},
+            "music_workspace_state": {"studio_page": "backing", "page": "backing"},
+        }
+        state = {
+            "core": {"studio_page": "picker", "page": "picker"},
+            "session": {"studio_page": "picker"},
+            "music_workspace_state": {"studio_page": "picker", "page": "picker"},
+            "studio_nav_state": {"studio_page": "picker", "page": "picker"},
+        }
+        out = stamp_music_payload_for_write(
+            st,
+            state,
+            explicit_reason="page_change",
+            write_path="force_autosave",
+        )
+        self.assertEqual(out["core"]["studio_page"], "backing")
+        self.assertEqual(st.session_state.get("music_pre_write_path"), "force_autosave")
+        self.assertTrue(st.session_state.get("music_pre_write_stamp_ran"))
+        self.assertTrue(st.session_state.get("page_change_finalize_ran"))
+        self.assertEqual(st.session_state.get("_music_cloud_write_studio_page"), "backing")
+
+    def test_resolve_music_save_reason_prefers_pending_page_change(self) -> None:
+        from music_persistent_state import resolve_music_save_reason_at_write
+
+        st = MagicMock()
+        st.session_state = {"_suite_pending_save_reason": "page_change"}
+        self.assertEqual(resolve_music_save_reason_at_write(st, "autosave"), "page_change")
 
     def test_finalize_sets_ran_and_cloud_write_diagnostics(self) -> None:
         from music_persistent_state import finalize_music_page_change_cloud_payload
