@@ -106,6 +106,11 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def get_music_device_id(st: Any) -> str:
+    """Stable per-install device id (persisted under data/music_device_id.txt)."""
+    return _get_device_id(st)
+
+
 def _get_device_id(st: Any) -> str:
     try:
         from pathlib import Path

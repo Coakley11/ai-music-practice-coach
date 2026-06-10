@@ -74,6 +74,43 @@ _DURABLE_FILTER_KEYS = (
 
 BACKING_WIDGETS_SEEDED_KEY = "_backing_durable_widgets_seeded"
 
+BACKING_DEVICE_COMPARE_LABELS: tuple[str, ...] = (
+    "device_id",
+    "trace_captured_at",
+    "cloud_updated_at",
+    "local_updated_at",
+    "backing_last_save_at",
+    "backing_local_edit_at",
+    "backing_last_write",
+    "last_save_cloud",
+    "cloud_payload_source",
+    "backing_cloud_writer_device_id",
+    "backing_cloud_writer_updated_at",
+    "backing_rendered_bpm",
+    "backing_rendered_scope",
+    "backing_rendered_loops",
+    "backing_rendered_groove",
+    "backing_rendered_meter",
+    "backing_rendered_meter_override",
+    "backing_canonical_bpm",
+    "backing_canonical_scope",
+    "backing_canonical_loops",
+    "backing_canonical_groove",
+    "backing_canonical_meter",
+    "backing_payload_bpm",
+    "backing_payload_scope",
+    "backing_payload_loops",
+    "backing_payload_groove",
+    "backing_cloud_bpm",
+    "backing_cloud_scope",
+    "backing_cloud_loops",
+    "backing_cloud_groove",
+    "backing_cloud_meter",
+    "backing_widget_canonical_mismatch",
+    "backing_sync_failure_class",
+    "backing_stale_cloud_hint",
+)
+
 __all__ = (
     "BACKING_DIRTY_KEY",
     "BACKING_LOOPS_DEFAULT",
@@ -109,8 +146,11 @@ __all__ = (
     "backing_canonical_meter_seed",
     "backing_filters_for_workspace_envelope",
     "classify_backing_sync_failure_class",
+    "BACKING_DEVICE_COMPARE_LABELS",
     "bind_backing_rendered_widgets_from_canonical",
+    "collect_backing_device_context",
     "collect_rendered_backing_widget_trace",
+    "format_backing_device_compare_trace",
     "has_restored_backing_canonical",
     "record_backing_disk_payload_trace",
     "resolve_backing_trace_payloads",
@@ -1090,6 +1130,110 @@ def record_backing_disk_payload_trace(session: dict[str, Any], state: dict[str, 
     session["_music_backing_payload_groove"] = bf.get("backing_groove_style", "")
 
 
+def collect_backing_device_context(st: Any | None, session: dict[str, Any]) -> dict[str, Any]:
+    """Device id + timestamps for cross-device Test C comparison."""
+    device_id = "unknown"
+    if st is not None:
+        try:
+            from music_persistent_state import get_music_device_id
+
+            device_id = get_music_device_id(st)
+        except ImportError:
+            pass
+
+    cloud_updated = (
+        session.get("_suite_cloud_fetch_updated_at")
+        or session.get("_suite_persist_debug_cloud_ts")
+        or ""
+    )
+    if not cloud_updated and st is not None:
+        try:
+            from music_persistent_state import APP_ID
+            from suite_cloud_state import load_cloud_full_session
+
+            _, cloud_ts = load_cloud_full_session(APP_ID)
+            if cloud_ts:
+                cloud_updated = cloud_ts
+                session["_suite_cloud_fetch_updated_at"] = cloud_ts
+        except Exception:
+            pass
+
+    local_updated = (
+        session.get("_suite_persist_debug_disk_ts")
+        or session.get("_suite_persist_last_save_at")
+        or session.get("_suite_persist_last_restore_at")
+        or ""
+    )
+
+    cloud_writer_device = ""
+    cloud_writer_updated = ""
+    last_write = session.get("_suite_last_cloud_save_payload")
+    if isinstance(last_write, dict):
+        ws = last_write.get("music_workspace_state")
+        if isinstance(ws, dict):
+            cloud_writer_device = str(ws.get("device_id") or "")
+            cloud_writer_updated = str(ws.get("updated_at") or "")
+    if not cloud_writer_device:
+        ws_local = session.get("music_workspace_state")
+        if isinstance(ws_local, dict):
+            cloud_writer_device = str(ws_local.get("device_id") or "")
+            if not cloud_writer_updated:
+                cloud_writer_updated = str(ws_local.get("updated_at") or "")
+
+    return {
+        "device_id": device_id,
+        "trace_captured_at": _utc_now_iso(),
+        "cloud_updated_at": cloud_updated,
+        "local_updated_at": local_updated,
+        "backing_last_save_at": session.get("_suite_persist_last_save_at", ""),
+        "backing_local_edit_at": session.get(BACKING_LOCAL_EDIT_TS_KEY, ""),
+        "backing_cloud_writer_device_id": cloud_writer_device,
+        "backing_cloud_writer_updated_at": cloud_writer_updated,
+    }
+
+
+def format_backing_device_compare_trace(trace: dict[str, Any]) -> str:
+    """Single copy-paste block for side-by-side Dell vs phone comparison."""
+    lines = ["# Backing device compare (Test C)", ""]
+    for label in BACKING_DEVICE_COMPARE_LABELS:
+        val = trace.get(label)
+        if val is None or val == "":
+            lines.append(f"{label}: (empty)")
+        else:
+            lines.append(f"{label}: {val}")
+    return "\n".join(lines)
+
+
+def classify_backing_stale_cloud_hint(trace: dict[str, Any]) -> str:
+    """Single-device hint: cloud may be older than local or rendered widgets."""
+    cloud_updated = str(trace.get("cloud_updated_at") or "")
+    local_updated = str(trace.get("local_updated_at") or "")
+    last_save = str(trace.get("backing_last_save_at") or "")
+    cloud_bpm = _trace_bpm(trace.get("backing_cloud_bpm"))
+    rendered_bpm = _trace_bpm(trace.get("backing_rendered_bpm"))
+    payload_bpm = _trace_bpm(trace.get("backing_payload_bpm"))
+
+    if trace.get("backing_widget_canonical_mismatch"):
+        return "rendered_widgets_stale_vs_canonical"
+
+    if cloud_bpm != "" and rendered_bpm != "" and cloud_bpm != rendered_bpm:
+        if local_updated and cloud_updated and local_updated > cloud_updated:
+            return "local_newer_than_cloud_fetch"
+        if last_save and cloud_updated and last_save > cloud_updated:
+            return "local_save_after_cloud_fetch"
+        return "rendered_differs_from_cloud"
+
+    if payload_bpm != "" and cloud_bpm != "" and payload_bpm != cloud_bpm:
+        if trace.get("last_save_cloud"):
+            return "local_payload_ahead_of_cloud_fetch"
+        return "payload_differs_from_cloud_fetch"
+
+    if local_updated and cloud_updated and local_updated > cloud_updated:
+        return "local_newer_than_cloud_no_field_diff"
+
+    return ""
+
+
 def snapshot_backing_path_trace(st: Any) -> dict[str, Any]:
     """Refresh full Backing path trace for ?dev=1 (widget → canonical → payload → cloud)."""
     try:
@@ -1103,6 +1247,7 @@ def snapshot_backing_path_trace(st: Any) -> dict[str, Any]:
             envelope_payload=envelope_payload,
             cloud_payload=cloud_payload,
             sync_id=sync_id,
+            st=st,
         )
         update_trace(st, **trace)
         return trace
@@ -1117,6 +1262,7 @@ def collect_backing_persistence_trace(
     envelope_payload: dict[str, Any] | None = None,
     cloud_payload: dict[str, Any] | None = None,
     sync_id: str = "",
+    st: Any | None = None,
 ) -> dict[str, Any]:
     sync_backing_session_keys_for_save(session)
     effective_sync_id = sync_id or str(session.get("_backing_trace_sync_id") or "")
@@ -1165,6 +1311,11 @@ def collect_backing_persistence_trace(
         "cloud_payload_backing_meter": cloud_meta.get("backing_time_signature", ""),
         "cloud_payload_backing_section": cloud_meta.get("backing_track_single_section", ""),
         "backing_cloud_bpm": cloud_meta.get("backing_track_bpm", ""),
+        "backing_cloud_scope": cloud_meta.get("backing_track_scope", ""),
+        "backing_cloud_loops": cloud_meta.get("backing_track_loops", ""),
+        "backing_cloud_groove": cloud_meta.get("backing_groove_style", ""),
+        "backing_cloud_meter": cloud_meta.get("backing_time_signature", ""),
+        "backing_cloud_section": cloud_meta.get("backing_track_single_section", ""),
         "backing_payload_bpm": payload_bpm if payload_bpm is not None else "",
         "backing_payload_scope": session.get("_music_backing_payload_scope", envelope.get("backing_track_scope", "")),
         "backing_payload_loops": session.get("_music_backing_payload_loops", envelope.get("backing_track_loops", "")),
@@ -1198,6 +1349,9 @@ def collect_backing_persistence_trace(
         "last_save_cloud": bool(session.get("_suite_persist_last_save_cloud")),
         "cloud_save_blocked_reason": session.get("_suite_autosave_cloud_blocked_reason", ""),
     }
+    if st is not None:
+        trace.update(collect_backing_device_context(st, session))
+    trace["backing_stale_cloud_hint"] = classify_backing_stale_cloud_hint(trace)
     trace["backing_sync_failure_class"] = classify_backing_sync_failure_class(trace)
     return trace
 

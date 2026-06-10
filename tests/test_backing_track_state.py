@@ -12,8 +12,12 @@ from backing_track_state import (
     BACKING_WIDGETS_SEEDED_KEY,
     apply_backing_source_state_from_ami,
     apply_cloud_backing_state_if_allowed,
+    BACKING_DEVICE_COMPARE_LABELS,
     bind_backing_rendered_widgets_from_canonical,
+    classify_backing_stale_cloud_hint,
     classify_backing_sync_failure_class,
+    collect_backing_device_context,
+    format_backing_device_compare_trace,
     coerce_backing_groove_for_widget,
     backing_filters_for_workspace_envelope,
     collect_backing_persistence_trace,
@@ -685,6 +689,63 @@ class TestBackingTrackState(unittest.TestCase):
         self.assertTrue(session[BACKING_METER_OVERRIDE_KEY])
 
     @unittest.skip(_PHASE_C_PAUSED)
+    def test_device_context_includes_timestamps_and_writer(self) -> None:
+        st = MagicMock()
+        st.session_state = {
+            **_SAMPLE,
+            "_suite_cloud_fetch_updated_at": "2026-06-09T10:00:00+00:00",
+            "_suite_persist_last_save_at": "2026-06-09T10:00:05+00:00",
+            "_suite_persist_last_save_cloud": True,
+            "_suite_last_cloud_save_payload": {
+                "music_workspace_state": {
+                    "device_id": "dell-device-uuid",
+                    "updated_at": "2026-06-09T10:00:05+00:00",
+                    "backing_filters": dict(_SAMPLE),
+                }
+            },
+        }
+        ctx = collect_backing_device_context(st, st.session_state)
+        self.assertIn("device_id", ctx)
+        self.assertEqual(ctx["cloud_updated_at"], "2026-06-09T10:00:00+00:00")
+        self.assertEqual(ctx["backing_last_save_at"], "2026-06-09T10:00:05+00:00")
+        self.assertEqual(ctx["backing_cloud_writer_device_id"], "dell-device-uuid")
+
+    def test_format_device_compare_includes_all_labels(self) -> None:
+        trace = {label: f"val_{label}" for label in BACKING_DEVICE_COMPARE_LABELS}
+        text = format_backing_device_compare_trace(trace)
+        for label in BACKING_DEVICE_COMPARE_LABELS:
+            self.assertIn(f"{label}: val_{label}", text)
+
+    def test_stale_cloud_hint_rendered_differs_from_cloud(self) -> None:
+        hint = classify_backing_stale_cloud_hint(
+            {
+                "backing_rendered_bpm": 130,
+                "backing_cloud_bpm": 100,
+                "cloud_updated_at": "2026-06-09T09:00:00+00:00",
+                "local_updated_at": "2026-06-09T10:00:00+00:00",
+            }
+        )
+        self.assertEqual(hint, "local_newer_than_cloud_fetch")
+
+    def test_trace_includes_device_fields_when_st_passed(self) -> None:
+        st = MagicMock()
+        st.session_state = dict(_SAMPLE)
+        write_canonical_backing_state(st.session_state, _SAMPLE, reason="backing_edit")
+        st.session_state["_suite_cloud_fetch_updated_at"] = "2026-06-09T10:00:00+00:00"
+        cloud_payload = {
+            "backing_track_state": dict(_SAMPLE),
+            "music_workspace_state": {"backing_filters": dict(_SAMPLE)},
+        }
+        trace = collect_backing_persistence_trace(
+            st.session_state,
+            cloud_payload=cloud_payload,
+            st=st,
+        )
+        self.assertIn("device_id", trace)
+        self.assertEqual(trace["cloud_updated_at"], "2026-06-09T10:00:00+00:00")
+        self.assertEqual(trace["backing_cloud_scope"], "Single section")
+        self.assertEqual(trace["backing_cloud_loops"], 4)
+
     def test_resolve_trace_cloud_prefers_last_write_payload(self) -> None:
         session = {
             "backing_track_state": {

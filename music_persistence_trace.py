@@ -12,13 +12,22 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v16-backing-rendered-trace"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v17-backing-device-compare"
 
 TRACE_KEY = "_music_persist_trace"
 
 
 
 BACKING_PATH_TRACE_LABELS: tuple[str, ...] = (
+    "device_id",
+    "trace_captured_at",
+    "cloud_updated_at",
+    "local_updated_at",
+    "backing_last_save_at",
+    "backing_local_edit_at",
+    "backing_cloud_writer_device_id",
+    "backing_cloud_writer_updated_at",
+    "backing_stale_cloud_hint",
     "backing_sync_failure_class",
     "backing_rendered_bpm_key",
     "backing_rendered_bpm",
@@ -29,6 +38,10 @@ BACKING_PATH_TRACE_LABELS: tuple[str, ...] = (
     "backing_canonical_bpm",
     "backing_payload_bpm",
     "backing_cloud_bpm",
+    "backing_cloud_scope",
+    "backing_cloud_loops",
+    "backing_cloud_groove",
+    "backing_cloud_meter",
     "backing_rendered_scope",
     "backing_canonical_scope",
     "backing_payload_scope",
@@ -586,7 +599,28 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
             st.success("Backing sync class: path_ok")
 
+        stale_hint = trace.get("backing_stale_cloud_hint") or ""
+        if stale_hint:
+            st.warning(f"Backing stale-cloud hint: {stale_hint}")
 
+        st.markdown("**Device compare (Test C)**")
+        st.caption(
+            "1) Dell: set obvious Backing values → wait 10s → copy block below. "
+            "2) Hard-refresh phone → open Backing ?dev=1 → copy block. "
+            "3) Compare device_id, timestamps, rendered_*, backing_cloud_*, backing_last_write."
+        )
+        try:
+            from backing_track_state import format_backing_device_compare_trace
+
+            compare_text = format_backing_device_compare_trace(trace)
+            st.text_area(
+                "Copy Backing device compare",
+                value=compare_text,
+                height=360,
+                label_visibility="collapsed",
+            )
+        except ImportError:
+            pass
 
         st.markdown("**Save / phone**")
 
