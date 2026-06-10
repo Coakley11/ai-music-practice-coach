@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-06-03
+**Last updated:** 2026-06-09
 
 ---
 
@@ -146,6 +146,11 @@
 - [x] Suite activity logging on practice log save
 - [x] Session reset (preserves chart overrides file)
 - [x] Autosave at end of Streamlit run
+- [x] Phase C canonical modules: `active_song_state`, `studio_nav_state`, `practice_state`, `backing_track_state`
+- [x] `prepare_music_workspace()` + `?dev=1` persistence trace sidebar
+- [x] **Manual Test A** — studio page cross-device sync (v14, 2026-06-09)
+- [x] **Manual Test B** — Practice field cross-device sync (`97fad4a`, 2026-06-09)
+- [x] **Manual Test C** — Backing content cross-device sync (v18 `fdf9800`, 2026-06-09): rendered-widget bind, device-compare trace, user-intent dirty gate
 
 ### AI & coaching
 

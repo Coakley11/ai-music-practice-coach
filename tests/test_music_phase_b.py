@@ -729,6 +729,33 @@ class TestPersistenceTracePanel(unittest.TestCase):
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
         self.assertIn("page-change-save-stamp-v18-backing-user-dirty", info["build_marker"])
 
+    def test_test_d_compare_trace_includes_final_fields(self) -> None:
+        from music_persistence_trace import (
+            TEST_D_TRACE_LABELS,
+            collect_test_d_trace_rows,
+            format_test_d_compare_trace,
+        )
+
+        st = MagicMock()
+        st.session_state = {
+            "active_catalog_pick_key": "pk::Pop::Shallow — Lady Gaga",
+            "display_key": "F Major",
+            "instrument": "Saxophone",
+            "studio_page": "creative",
+            "selected_song": {"title": "Shallow"},
+            "_suite_cloud_fetch_updated_at": "2026-06-09T12:00:00+00:00",
+        }
+        trace = {"final_studio_page": "creative", "restored_pick_key": "pk::Pop::Shallow — Lady Gaga"}
+        rows = collect_test_d_trace_rows(st, trace)
+        self.assertEqual(rows["final_pick_key"], "pk::Pop::Shallow — Lady Gaga")
+        self.assertEqual(rows["final_display_key"], "F Major")
+        self.assertEqual(rows["final_instrument"], "Saxophone")
+        self.assertEqual(rows["final_studio_page"], "creative")
+        text = format_test_d_compare_trace(rows)
+        for label in TEST_D_TRACE_LABELS:
+            self.assertIn(f"{label}:", text)
+        self.assertIn("final_song_title: Shallow", text)
+
     def test_finalize_uses_normalized_studio_page_over_stale_picker_hint(self) -> None:
         from music_persistent_state import finalize_music_page_change_cloud_payload
 

@@ -1,6 +1,6 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-06-03
+**Last updated:** 2026-06-09
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
@@ -8,11 +8,19 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ## Current Priorities
 
-*Backlog items promoted to active work live in [music_app_tasks.md](./music_app_tasks.md).*
+*Active: **Test D** (active song + display key + instrument + page restore) — see [music_app_tasks.md](./music_app_tasks.md).*
+
+*Tests A–C (page / practice / backing cross-device sync) are **passed** on `dev`; do not reopen unless a new `?dev=1` trace shows failure.*
 
 ---
 
 ## Next Features
+
+### Cross-device persistence (Test D+)
+
+- Test D manual sign-off: non-core song + instrument + display key + studio page (phone ↔ Dell)
+- Test E: AMI return restores practice/backing context (when AMI enabled)
+- Conflict resolution UI when cloud vs local diverge (suite-wide)
 
 ### Navigation & shell
 

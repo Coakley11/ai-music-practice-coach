@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-06-03 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py`
+**Last updated:** 2026-06-09 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py`
 
 This is the master planning document. Related files:
 
@@ -49,6 +49,22 @@ This is the master planning document. Related files:
 9. **Instrument & key system** — Transposing instruments, written key charts, guitar capo, voice wording.
 10. **Persistence** — Local JSON state, optional Supabase full-session sync, suite activity logging.
 11. **UI theme bundle** — `app_ui.py` studio panels, genre/instrument card modifiers, per-page style injectors.
+12. **Phase C cross-device sync (partial)** — Canonical page state + `?dev=1` persistence trace; manual Tests A–C passed on `dev` (2026-06-09).
+
+---
+
+## Cross-device persistence acceptance (manual, `?dev=1`)
+
+| Test | Scope | Status | Deploy marker / commit |
+|------|--------|--------|-------------------------|
+| **A** | Studio **page** sync (phone ↔ Dell) | **PASSED** | v14 `454e0af` |
+| **B** | **Practice** field sync (section focus, groove, minutes) | **PASSED** | `97fad4a` |
+| **C** | **Backing** content sync (BPM, scope, loops, groove, meter) | **PASSED** | v18 `fdf9800` |
+| **D** | **Active song** + display key + instrument + page restore together | **NEXT** | — |
+
+**Policy (accepted 2026-06-09):** Tests A–C are **frozen**. Do not reopen page / Practice / Backing workstreams unless a new `?dev=1` trace demonstrates regression. v18 (`fdf9800`) remains baseline. Focus exclusively on **Test D** until pass/fail.
+
+**Trace:** Music persistence sidebar (`?dev=1`) — workspace restore, Backing device compare, `backing_user_edit_intent`.
 
 ---
 

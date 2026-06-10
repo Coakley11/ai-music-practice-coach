@@ -249,7 +249,82 @@ def _trace_display(val: Any) -> str:
     return text
 
 
+TEST_D_TRACE_LABELS: tuple[str, ...] = (
+    "device_id",
+    "trace_captured_at",
+    "cloud_updated_at",
+    "local_updated_at",
+    "final_pick_key",
+    "final_display_key",
+    "final_instrument",
+    "final_studio_page",
+    "cloud_fetch_studio_page",
+    "restored_pick_key",
+    "restored_display_key",
+    "restored_instrument",
+    "restored_studio_page",
+    "restore_decision",
+    "restore_skip_reason",
+    "active_song_restore_skipped",
+    "page_overwrite_source",
+)
 
+
+def collect_test_d_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
+    """Snapshot fields for Test D cross-device compare (song + key + instrument + page)."""
+    from datetime import datetime, timezone
+
+    ss = st.session_state
+    device_id = "unknown"
+    try:
+        from music_persistent_state import get_music_device_id
+
+        device_id = get_music_device_id(st)
+    except ImportError:
+        pass
+    song = ss.get("selected_song") if isinstance(ss.get("selected_song"), dict) else {}
+    return {
+        "device_id": device_id,
+        "trace_captured_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "cloud_updated_at": trace.get("cloud_updated_at")
+        or ss.get("_suite_cloud_fetch_updated_at")
+        or ss.get("_suite_persist_debug_cloud_ts"),
+        "local_updated_at": trace.get("local_updated_at")
+        or ss.get("_suite_persist_debug_disk_ts")
+        or ss.get("_suite_persist_last_save_at"),
+        "final_pick_key": ss.get("active_catalog_pick_key") or trace.get("final_pick_key"),
+        "final_display_key": ss.get("display_key") or trace.get("final_display_key"),
+        "final_instrument": ss.get("instrument") or trace.get("final_instrument"),
+        "final_studio_page": trace.get("final_studio_page") or ss.get("studio_page"),
+        "cloud_fetch_studio_page": trace.get("cloud_fetch_studio_page")
+        or ss.get("_suite_cloud_fetch_studio_page"),
+        "restored_pick_key": trace.get("restored_pick_key"),
+        "restored_display_key": trace.get("restored_display_key"),
+        "restored_instrument": trace.get("restored_instrument"),
+        "restored_studio_page": trace.get("restored_studio_page"),
+        "restore_decision": trace.get("restore_decision") or ss.get("_suite_restore_decision"),
+        "restore_skip_reason": trace.get("restore_skip_reason")
+        or ss.get("_suite_persist_restore_skip_reason"),
+        "active_song_restore_skipped": ss.get("_active_song_restore_skipped_reason"),
+        "page_overwrite_source": trace.get("page_overwrite_source")
+        or ss.get("_suite_page_overwrite_source"),
+        "final_song_title": song.get("title") or "",
+    }
+
+
+def format_test_d_compare_trace(rows: dict[str, Any]) -> str:
+    """Copy-paste block for Dell vs phone Test D comparison."""
+    lines = ["# Test D — active song + key + instrument + page", ""]
+    for label in TEST_D_TRACE_LABELS:
+        val = rows.get(label)
+        if val is None or val == "":
+            lines.append(f"{label}: (empty)")
+        else:
+            lines.append(f"{label}: {val}")
+    title = rows.get("final_song_title")
+    if title:
+        lines.append(f"final_song_title: {title}")
+    return "\n".join(lines)
 
 
 def _cloud_studio_page_from_state(state: dict[str, Any]) -> str:
@@ -581,9 +656,24 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
             st.text(f"{label}: {_trace_display(restore_rows.get(label))}")
 
+        st.markdown("**Test D compare (active song + page)**")
+        st.caption(
+            "Frozen: Tests A–C passed. "
+            "1) Dell: non-default song, key, instrument, page → wait 10s → copy block. "
+            "2) Phone hard refresh (no touches) → copy block. "
+            "3) Compare final_* fields."
+        )
+        test_d_rows = collect_test_d_trace_rows(st, trace)
+        for label in TEST_D_TRACE_LABELS:
+            st.text(f"{label}: {_trace_display(test_d_rows.get(label))}")
+        st.text_area(
+            "Copy Test D compare",
+            value=format_test_d_compare_trace(test_d_rows),
+            height=280,
+            label_visibility="collapsed",
+        )
 
-
-        st.markdown("**Backing path (Test C)**")
+        st.markdown("**Backing path (Test C — frozen)**")
 
         backing_rows = {label: trace.get(label) for label in BACKING_PATH_TRACE_LABELS}
 
