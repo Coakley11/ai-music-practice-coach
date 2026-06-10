@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-06-09
+**Last updated:** 2026-06-09 (Tests A–E passed)
 
 ---
 
@@ -151,6 +151,11 @@
 - [x] **Manual Test A** — studio page cross-device sync (v14, 2026-06-09)
 - [x] **Manual Test B** — Practice field cross-device sync (`97fad4a`, 2026-06-09)
 - [x] **Manual Test C** — Backing content cross-device sync (v18 `fdf9800`, 2026-06-09): rendered-widget bind, device-compare trace, user-intent dirty gate
+- [x] **Manual Test D** — Active song + display key + instrument + page + written-key + transposing subtype (v25 `f153204`, 2026-06-09): save payload trace + cloud readback, phone hard-refresh pass (Tenor + written charts ON)
+- [x] **Manual Test E** — AMI return restores song/key/instrument/written-key/subtype/page + practice/backing (v26 `1b00d58`, 2026-06-09): Test E compare trace; no default song / autosave / page overwrite
+- [x] Transposing save diagnostics — `save_*` canonical/payload/readback trace panel (`?dev=1`)
+- [x] AMI return trace — Test E compare panel; transposing round-trip in `build_source_state` / `apply_active_song_source_state_from_ami` (v26)
+- [x] Written-key + subtype cloud save path — widget → canonical merge at commit (v25)
 
 ### AI & coaching
 

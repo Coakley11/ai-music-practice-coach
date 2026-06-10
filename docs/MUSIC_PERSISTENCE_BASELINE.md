@@ -3,11 +3,11 @@
 **Last updated:** 2026-06-09  
 **Branch:** `dev`  
 **Current deploy marker:** `page-change-save-stamp-v26-test-e-ami-return-trace`  
-**Latest commit (Test D sign-off):** `f153204`
+**Latest commit (Test E sign-off):** `1b00d58`
 
 ---
 
-## Frozen acceptance (Tests A–D)
+## Frozen acceptance (Tests A–E)
 
 Do **not** modify these persistence systems unless a new `?dev=1` trace proves regression.
 
@@ -17,6 +17,7 @@ Do **not** modify these persistence systems unless a new `?dev=1` trace proves r
 | **B** | **Practice** field sync | **PASSED** | `97fad4a` |
 | **C** | **Backing** content sync | **PASSED** | v18 `fdf9800` |
 | **D** | **Active song** + display key + instrument + page + written-key + transposing subtype | **PASSED** | v25 `f153204` |
+| **E** | AMI return — song/key/instrument/written-key/subtype/page + practice/backing | **PASSED** | v26 `1b00d58` |
 
 ### Test D sign-off (2026-06-09)
 
@@ -64,11 +65,20 @@ Do **not** modify these persistence systems unless a new `?dev=1` trace proves r
 
 ---
 
-## Next manual test (not frozen)
+### Test E sign-off (2026-06-09)
 
-| Test | Scope | Status |
-|------|--------|--------|
-| **E** | AMI return restores song/key/instrument/written-key/subtype/page + practice/backing | **IN PROGRESS** (v26) — [protocol](../cursor-prompts/plans/2026-06-09-test-e-ami-return.md) |
+- AMI return restores song, display key, instrument, written-key, transposing subtype, studio page.
+- No default-song fallback, no startup autosave overwrite, no page overwrite from AMI return.
+- Protocol: [Test E plan](../cursor-prompts/plans/2026-06-09-test-e-ami-return.md).
+
+---
+
+## Next work (not persistence)
+
+| Priority | Scope | Plan |
+|----------|--------|------|
+| **P0** (immediate) | UI polish — decorative headers, logos/icons, Upload/Multitrack nav visibility, Practice layout, badges, song cards. **Rendering/CSS/layout only** — preserve page routing, restore, cloud sync, AMI return, nav ownership, active-song code | [ui-polish-phase](../cursor-prompts/plans/2026-06-09-ui-polish-phase.md) |
+| **P1** (later) | Back/Forward nav audit — manual re-validation; isolated fix if broken. Not blocking unless normal use impaired | [back-forward-nav-audit](../cursor-prompts/plans/2026-06-09-back-forward-nav-audit.md) |
 
 ---
 

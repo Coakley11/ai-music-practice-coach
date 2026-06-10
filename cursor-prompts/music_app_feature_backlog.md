@@ -1,6 +1,6 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-06-09
+**Last updated:** 2026-06-09 (Tests A–E frozen)
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
@@ -8,26 +8,38 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ## Current Priorities
 
-*Active: **Test D** (active song + display key + instrument + page restore) — see [music_app_tasks.md](./music_app_tasks.md).*
+*Tests **A–E** are **passed** and **frozen** on `dev`. See [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).*
 
-*Tests A–C (page / practice / backing cross-device sync) are **passed** on `dev`; do not reopen unless a new `?dev=1` trace shows failure.*
+*Active: **P0 UI polish first** — Back/Forward audit **P1 later**. See [music_app_tasks.md](./music_app_tasks.md).*
+
+| Priority | Phase | Plan |
+|----------|-------|------|
+| **P0** (immediate) | UI polish — headers, icons, Practice layout, badges, song cards; **visual/layout only** | [2026-06-09-ui-polish-phase.md](./plans/2026-06-09-ui-polish-phase.md) |
+| **P1** (later) | Back/Forward nav audit — manual first; fix only if broken; not blocking unless app use impaired | [2026-06-09-back-forward-nav-audit.md](./plans/2026-06-09-back-forward-nav-audit.md) |
 
 ---
 
 ## Next Features
 
-### Cross-device persistence (Test D+)
+### UI polish (scheduled — UI-only commits)
 
-- Test D manual sign-off: non-core song + instrument + display key + studio page (phone ↔ Dell)
-- Test E: AMI return restores practice/backing context (when AMI enabled)
-- Conflict resolution UI when cloud vs local diverge (suite-wide)
+- Restore decorative **script-style page headers** + per-page logos/icons (Practice, Backing, Creative, Karaoke, Upload)
+- Restore **Upload / Multitrack** sidebar/quick-nav access
+- Practice: reduce scroll, Control Center layout, chart/TAB presentation
+- **Written charts ON** / **Concert charts** status badge
+- Song cards + active song display; gray readability cleanup
 
 ### Navigation & shell
 
+- **Back/Forward audit** — manual first; trace `nav_history_stack`, `back_button_clicked`, etc. if gaps found
 - Sidebar Pages: remember expanded/collapsed per user (already session-persisted; consider default expanded for new users)
 - Keyboard shortcuts: Alt+← / Alt+→ for history
 - Breadcrumb trail showing page history stack (debug / power users)
 - Deep link to specific Practice tab or Backing scope via URL params
+
+### Cross-device persistence (post A–E)
+
+- Conflict resolution UI when cloud vs local diverge (suite-wide)
 
 ### Practice page
 
@@ -101,6 +113,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### UI
 
+- *(Promoted to P0 — see ui-polish-phase plan)* Decorative headers, page icons, Practice layout, written-key badge, song cards
 - Dark/light theme toggle (sidebar is dark; main is light)
 - Reduce sidebar clutter: group key + instrument into one collapsible
 - Accessibility: ARIA on floating history buttons

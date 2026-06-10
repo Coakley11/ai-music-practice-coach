@@ -1,0 +1,33 @@
+---
+description: P0 UI polish — rendering/CSS/layout only; preserve page routing and persistence (Tests A–E frozen)
+alwaysApply: true
+---
+
+# UI polish — preserve architecture
+
+Tests **A–E** are **PASSED and frozen**. P0 work is **visual/layout only**.
+
+## Do not move or modify logic in
+
+- **Page routing** — `streamlit_music_practice_app.py` dispatch, `studio_page` routing, `studio_nav_history.py` navigate/push/pop
+- **Restore code** — `apply_music_disk_state`, `prepare_music_workspace`, `sync_workspace_protocol`, `apply_*_source_state_from_ami`
+- **Cloud sync** — `music_persistent_state.py`, `suite_user_persistence.py`, `suite_cloud_state.py`, `build_music_disk_state` / save envelopes
+- **AMI return** — `applied_math_return_insight.py`, `music_coach_context.py` `build_source_state` / `apply_source_state_to_session`
+- **Navigation ownership** — `_suite_page_user_nav`, page owner flags, `after_studio_page_change`, deferred page saves
+- **Active-song state** — `active_song_state.py`, `practice_state.py`, `backing_track_state.py`, `studio_nav_state.py` canonical read/write/restore
+
+Do **not** reopen Tests A–E unless `?dev=1` trace proves regression.
+
+## Allowed UI polish surfaces
+
+- **Rendering / CSS / HTML** — `app_ui.py`, `portfolio_polish.py`, page style injectors, markdown/HTML cards
+- **Layout density** — Streamlit column/expander/tab order **without** changing which session keys are read or written
+- **Display-only badges** — written-key / concert charts status text that **reads** existing session/canonical values; no new save paths
+- **Sidebar/menu labels** — restore Upload/Multitrack **visibility** in nav UI only; do not change routing or ownership handlers
+
+## Commit rules
+
+- UI polish = **separate commit(s)** from persistence and from P1 Back/Forward nav fixes
+- After deploy: smoke **Test D + Test E compare** — all `final_*` and transposing fields unchanged
+
+Plan: `cursor-prompts/plans/2026-06-09-ui-polish-phase.md`

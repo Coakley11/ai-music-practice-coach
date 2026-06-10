@@ -1,9 +1,9 @@
 # Test E — AMI return validation protocol
 
 **Last updated:** 2026-06-09  
-**Status:** IN PROGRESS (v26 trace + AMI transposing round-trip)  
-**Deploy marker:** `page-change-save-stamp-v26-test-e-ami-return-trace`  
-**Frozen:** Tests A–D — do not modify A–D persistence unless `?dev=1` trace proves regression.
+**Status:** **PASSED** — frozen with Tests A–D  
+**Sign-off commit:** v26 `1b00d58` — `page-change-save-stamp-v26-test-e-ami-return-trace`  
+**Frozen:** Tests **A–E** — do not modify persistence unless `?dev=1` trace proves regression.
 
 ---
 
@@ -95,9 +95,9 @@ Insight sync trace (sidebar) also shows AMI return diagnostics.
 
 ## After pass
 
-1. Mark Test E **PASSED** in this file and `docs/MUSIC_PERSISTENCE_BASELINE.md`
-2. Freeze AMI return path (same policy as A–D)
-3. UI polish in a **separate commit** (Practice scroll, chart/TAB, badges, etc.)
+1. ~~Mark Test E **PASSED**~~ — **done** (2026-06-09)
+2. ~~Freeze AMI return path~~ — **frozen** with A–D
+3. **Next:** [UI polish phase](./2026-06-09-ui-polish-phase.md) + [Back/Forward nav audit](./2026-06-09-back-forward-nav-audit.md) — separate commits
 
 ---
 
@@ -105,5 +105,5 @@ Insight sync trace (sidebar) also shows AMI return diagnostics.
 
 | Device | Before copy | After copy | Pass? | Notes |
 |--------|-------------|------------|-------|-------|
-| Dell | | | | |
+| Dell | Test E compare | Test E compare | **PASSED** | v26 `1b00d58`; song/key/instrument/written-key/subtype/page preserved |
 | Phone | N/A (return on same device first) | | | |

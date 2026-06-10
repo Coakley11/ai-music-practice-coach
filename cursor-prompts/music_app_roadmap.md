@@ -49,7 +49,7 @@ This is the master planning document. Related files:
 9. **Instrument & key system** — Transposing instruments, written key charts, guitar capo, voice wording.
 10. **Persistence** — Local JSON state, optional Supabase full-session sync, suite activity logging.
 11. **UI theme bundle** — `app_ui.py` studio panels, genre/instrument card modifiers, per-page style injectors.
-12. **Phase C cross-device sync (A–D)** — Canonical modules + `?dev=1` trace; manual Tests A–D **passed** on `dev` (2026-06-09, Test D v25 `f153204`).
+12. **Phase C cross-device sync (A–E)** — Canonical modules + `?dev=1` trace; manual Tests A–E **passed** on `dev` (2026-06-09, Test E v26 `1b00d58`).
 
 ---
 
@@ -61,17 +61,20 @@ This is the master planning document. Related files:
 | **B** | **Practice** field sync (section focus, groove, minutes) | **PASSED** | `97fad4a` |
 | **C** | **Backing** content sync (BPM, scope, loops, groove, meter) | **PASSED** | v18 `fdf9800` |
 | **D** | **Active song** + display key + instrument + page + written-key + transposing subtype | **PASSED** | v25 `f153204` |
-| **E** | AMI return restores song/key/instrument/written-key/subtype/page + practice/backing | **IN PROGRESS** | v26 trace — [plan](./plans/2026-06-09-test-e-ami-return.md) |
+| **E** | AMI return restores song/key/instrument/written-key/subtype/page + practice/backing | **PASSED** | v26 `1b00d58` — [plan](./plans/2026-06-09-test-e-ami-return.md) |
 
-**Policy (accepted 2026-06-09, updated after Test D pass):** Tests **A–D are frozen**. Do not modify page / Practice / Backing / active-song cloud persistence unless a new `?dev=1` trace proves regression. Baseline notes: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md). **Next focus:** Test E manual sign-off, then UI polish (separate commit).
+**Policy (accepted 2026-06-09):** Tests **A–E are frozen**. Do not modify persistence unless a new `?dev=1` trace proves regression. Baseline: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).
 
-**Trace:** Music persistence sidebar (`?dev=1`) — Test D compare, **Transposing save (last cloud write)**, workspace restore, Backing device compare.
+**Next focus:** **P0** [UI polish](./plans/2026-06-09-ui-polish-phase.md) first (visual/layout only, separate commits). **P1** [Back/Forward nav audit](./plans/2026-06-09-back-forward-nav-audit.md) later — not immediate unless nav blocks normal use.
+
+**Trace:** Music persistence sidebar (`?dev=1`) — Test D compare, Test E compare, **Transposing save (last cloud write)**, workspace restore, Local nav checkpoints.
 
 ---
 
 ## High-priority future enhancements
 
-- Stabilize floating back/forward nav across all pages and Streamlit versions (verify on Cloud `dev`).
+- **P0 UI polish** (immediate) — decorative headers, logos/icons, Upload/Multitrack nav visibility, Practice layout, written-key badge, song cards — **rendering/CSS/layout only**; preserve page routing, restore, cloud sync, AMI return, nav ownership, active-song architecture ([plan](./plans/2026-06-09-ui-polish-phase.md), rule `.cursor/rules/ui-polish-architecture-preservation.mdc`).
+- **P1 Back/Forward nav audit** (later) — manual audit / rebuild if needed after architecture changes; isolated fix only ([plan](./plans/2026-06-09-back-forward-nav-audit.md)).
 - Fix Practice **Section Focus** when type labels (e.g. “Verse”) do not resolve to chart section keys (“Verse 1”).
 - Expand **OpenAI Coaching hub** beyond “coming soon” cards (active-song coach, session plans).
 - **Karaoke vocal scoring** — implement stubs in `karaoke_mode.py` (pitch tracking / score).
@@ -95,13 +98,14 @@ This is the master planning document. Related files:
 
 ---
 
-## UI improvements (queued)
+## UI improvements (queued — see [ui-polish-phase plan](./plans/2026-06-09-ui-polish-phase.md))
 
+- Restore decorative script-style **page headers** + per-page **logos/icons** (Song Selection, Practice, Backing, Creative, Karaoke, Upload/Multitrack).
+- Restore **Upload / Multitrack** navigation access if hidden.
+- Reduce Practice scrolling; improve Control Center + chart/TAB layout.
+- **Written charts ON** / **Concert charts** badge; song cards; gray readability fixes.
 - Remove temporary deploy verification banner when Cloud `dev` is confirmed stable.
-- Consistent Active Song Hub actions across catalog and custom sources.
 - Mobile tuning for floating history buttons and sidebar Pages rail.
-- Deeper Creative Lab UI for non-improv modes (currently text expanders).
-- Tutorial refresh for floating nav + collapsed sidebar defaults.
 
 ---
 
