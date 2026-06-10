@@ -10,6 +10,7 @@ from active_song_state import (
     apply_active_song_source_state_from_ami,
     apply_cloud_active_song_state_if_allowed,
     clear_active_song_local_edit,
+    commit_active_song_state_from_session,
     flush_active_song_edits,
     is_active_song_locally_dirty,
     mark_active_song_local_edit,
@@ -140,6 +141,15 @@ class TestActiveSongState(unittest.TestCase):
         apply_source_state_to_session(target, built, schedule_navigation=False)
         self.assertEqual(target["display_key"], "D Major")
         self.assertEqual(target["active_song_state"]["pick_key"], _PICK_KEY)
+
+    def test_commit_autosave_does_not_mutate_display_key_widget(self) -> None:
+        """Save build must not assign display_key after the widget exists (Streamlit conflict)."""
+        session = {**dict(_SAMPLE), ACTIVE_CATALOG_PICK_KEY: _PICK_KEY}
+        write_canonical_active_song_state(session, _SAMPLE, reason="setup")
+        session["display_key"] = "Widget Key"
+        commit_active_song_state_from_session(session, reason="autosave")
+        self.assertEqual(session["display_key"], "Widget Key")
+        self.assertEqual(session["active_song_state"]["display_key"], "D Major")
 
     def test_song_edit_bypasses_post_restore_block(self) -> None:
         from suite_user_persistence import _cloud_autosave_blocked_reason

@@ -1249,6 +1249,26 @@ def apply_music_disk_state(
             ss[key] = copy.deepcopy(session_extra[key])
 
     ss.pop(SUITE_LOCAL_STATE_RESTORED_KEY, None)
+    for key in _WORKSPACE_KEYS:
+        if key in payload:
+            try:
+                ss[key] = copy.deepcopy(payload[key])
+            except Exception:
+                ss[key] = payload[key]
+
+    blob_studio = ""
+    try:
+        from studio_nav_state import _studio_page_from_blob
+
+        blob_studio = _studio_page_from_blob(payload)
+    except ImportError:
+        blob_studio = ""
+    if not blob_studio:
+        blob_studio = str((core or {}).get("studio_page") or session_extra.get("studio_page") or "").strip()
+        meta = payload.get("music_workspace_state")
+        if isinstance(meta, dict) and meta.get("studio_page"):
+            blob_studio = str(meta.get("studio_page") or blob_studio).strip()
+
     applied = False
     if isinstance(core, dict) and core:
         applied = apply_saved_music_context(
@@ -1256,6 +1276,7 @@ def apply_music_disk_state(
             core,
             song_picker_catalog=song_picker_catalog,
             song_library=song_library,
+            apply_studio_page=False,
         )
         if applied:
             ss[SUITE_LOCAL_STATE_RESTORED_KEY] = True
@@ -1267,8 +1288,12 @@ def apply_music_disk_state(
             song_library=song_library,
         )
 
+    restore_intermediate_studio_page = str(ss.get("studio_page") or "").strip()
+
     for key, val in session_extra.items():
         if key in _INSIGHT_KEYS and preserve_insight:
+            continue
+        if key in ("studio_page", "page"):
             continue
         if key == "_studio_page_snapshots" and isinstance(val, dict):
             ss[key] = copy.deepcopy(val)
@@ -1285,18 +1310,6 @@ def apply_music_disk_state(
             ss[key] = copy.deepcopy(val)
         elif not str(key).startswith("_ami_"):
             ss[key] = copy.deepcopy(val)
-
-    blob_studio = str((core or {}).get("studio_page") or session_extra.get("studio_page") or "").strip()
-    meta = payload.get("music_workspace_state")
-    if isinstance(meta, dict) and meta.get("studio_page"):
-        blob_studio = str(meta.get("studio_page") or blob_studio).strip()
-
-    for key in _WORKSPACE_KEYS:
-        if key in payload:
-            try:
-                ss[key] = copy.deepcopy(payload[key])
-            except Exception:
-                ss[key] = payload[key]
 
     user_owns_page = bool(pre_restore_user_nav)
     active_studio, overwrite_source = blob_studio, "workspace_blob"
@@ -1449,11 +1462,13 @@ def apply_music_disk_state(
             normalized_studio_page=coach_page,
             cloud_payload_studio_page=blob_studio or None,
             restored_studio_page=active_studio or blob_studio or None,
+            restored_studio_page_source=overwrite_source,
+            restore_intermediate_studio_page=restore_intermediate_studio_page or None,
             restore_decision=overwrite_source,
             restore_skip_reason=ss.get("_suite_persist_restore_skip_reason"),
             final_studio_page=ss.get("studio_page"),
             page_owner_flag=bool(ss.get("_suite_page_user_nav")),
-            music_workspace_state_studio_page=ws_studio or None,
+            music_workspace_state_studio_page=ws_studio or blob_studio or None,
             **practice_trace,
             **backing_trace,
         )

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 from music_persistent_state import apply_music_disk_state, build_music_disk_state
 from studio_nav_state import (
     STUDIO_NAV_DIRTY_KEY,
+    _studio_page_from_blob,
     apply_cloud_studio_nav_state_if_allowed,
     apply_studio_nav_source_state_from_ami,
     clear_studio_nav_local_edit,
@@ -105,6 +106,28 @@ class TestStudioNavState(unittest.TestCase):
         self.assertTrue(is_studio_nav_locally_dirty(session))
         clear_studio_nav_local_edit(session)
         self.assertFalse(is_studio_nav_locally_dirty(session))
+
+    def test_studio_page_from_blob_prefers_workspace_over_stale_core(self) -> None:
+        blob = {
+            "music_workspace_state": {"studio_page": "backing"},
+            "core": {"studio_page": "picker"},
+            "session": {"studio_page": "picker"},
+        }
+        self.assertEqual(_studio_page_from_blob(blob), "backing")
+
+    def test_disk_restore_workspace_page_wins_over_stale_core(self) -> None:
+        """Dell restore: cloud workspace backing must not flash picker from stale core."""
+        st2 = MagicMock()
+        st2.session_state = {}
+        blob = {
+            "music_workspace_state": {"studio_page": "backing"},
+            "studio_nav_state": {"studio_page": "backing"},
+            "core": {"studio_page": "picker", "instrument": "Guitar"},
+            "session": {"studio_page": "picker"},
+        }
+        apply_music_disk_state(st2, blob, song_picker_catalog={}, song_library={})
+        self.assertEqual(st2.session_state.get("studio_page"), "backing")
+        self.assertEqual(st2.session_state.get("_suite_page_overwrite_source"), "workspace_blob")
 
 
 if __name__ == "__main__":

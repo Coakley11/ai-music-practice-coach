@@ -99,6 +99,7 @@ def apply_saved_music_context(
     *,
     song_picker_catalog: dict[str, dict[str, dict]],
     song_library: dict[str, dict[str, dict]] | None = None,
+    apply_studio_page: bool = True,
 ) -> bool:
     """Apply pick_key, instrument, studio page, and related fields from a snapshot dict."""
     if not isinstance(saved, dict) or not saved:
@@ -130,9 +131,10 @@ def apply_saved_music_context(
                 valid_focus_for(get_active_instrument(st.session_state), focus),
             )
 
-        page = str(saved.get("studio_page") or saved.get("page") or "").strip()
-        if page in STUDIO_PAGE_IDS:
-            st.session_state["studio_page"] = page
+        if apply_studio_page:
+            page = str(saved.get("studio_page") or saved.get("page") or "").strip()
+            if page in STUDIO_PAGE_IDS:
+                st.session_state["studio_page"] = page
 
         section = str(saved.get("practice_focus_section") or "").strip()
         if section:

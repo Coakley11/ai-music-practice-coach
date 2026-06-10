@@ -129,14 +129,20 @@ def canonical_active_song_context(session: dict[str, Any]) -> dict[str, Any] | N
     return ctx
 
 
-def _apply_context_to_session_keys(session: dict[str, Any], ctx: dict[str, Any]) -> None:
+def _apply_context_to_session_keys(
+    session: dict[str, Any],
+    ctx: dict[str, Any],
+    *,
+    mutate_display_key: bool = True,
+) -> None:
     pick_key = str(ctx.get("pick_key") or "").strip()
     if pick_key:
         session[ACTIVE_CATALOG_PICK_KEY] = pick_key
     display_key = str(ctx.get("display_key") or "").strip()
     if display_key:
-        session["display_key"] = display_key
         session[PENDING_DISPLAY_KEY] = display_key
+        if mutate_display_key:
+            session["display_key"] = display_key
     for key in ("instrument", "level", "focus", "practice_focus_section"):
         val = str(ctx.get(key) or "").strip()
         if val:
@@ -154,6 +160,7 @@ def write_canonical_active_song_state(
     *,
     reason: str = "",
     local_edit: bool = False,
+    mutate_display_key: bool | None = None,
 ) -> dict[str, Any]:
     """Single write path for active song context."""
     ctx = _normalize_context(context)
@@ -161,7 +168,11 @@ def write_canonical_active_song_state(
         **ctx,
         "last_write_reason": reason or None,
     }
-    _apply_context_to_session_keys(session, ctx)
+    _apply_context_to_session_keys(
+        session,
+        ctx,
+        mutate_display_key=True if mutate_display_key is None else mutate_display_key,
+    )
     if local_edit:
         mark_active_song_local_edit(session)
     session.pop(ACTIVE_SONG_PENDING_SYNC_KEY, None)
@@ -203,8 +214,14 @@ def commit_active_song_state_from_session(
     reason: str = "autosave",
 ) -> dict[str, Any]:
     """Persist canonical blob from current session without marking a new local edit."""
-    ctx = gather_active_song_context(session)
-    return write_canonical_active_song_state(session, ctx, reason=reason, local_edit=False)
+    ctx = canonical_active_song_context(session) or gather_active_song_context(session)
+    return write_canonical_active_song_state(
+        session,
+        ctx,
+        reason=reason,
+        local_edit=False,
+        mutate_display_key=False,
+    )
 
 
 def flush_active_song_edits(session: dict[str, Any], *, reason: str = "song_edit") -> dict[str, Any]:

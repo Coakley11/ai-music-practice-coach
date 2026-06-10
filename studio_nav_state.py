@@ -124,6 +124,11 @@ def commit_studio_nav_from_session(session: dict[str, Any], *, reason: str = "au
 def _studio_page_from_blob(state: dict[str, Any]) -> str:
     if not isinstance(state, dict):
         return ""
+    ws = state.get("music_workspace_state")
+    if isinstance(ws, dict):
+        page = _normalize_page(ws.get("studio_page") or ws.get("page"))
+        if page:
+            return page
     meta = state.get(STUDIO_NAV_STATE_KEY)
     if isinstance(meta, dict):
         page = _normalize_page(meta.get("studio_page"))
@@ -136,11 +141,6 @@ def _studio_page_from_blob(state: dict[str, Any]) -> str:
             page = _normalize_page(src.get("studio_page") or src.get("page"))
             if page:
                 return page
-    ws = state.get("music_workspace_state")
-    if isinstance(ws, dict):
-        page = _normalize_page(ws.get("studio_page") or ws.get("page"))
-        if page:
-            return page
     return ""
 
 

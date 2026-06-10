@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v13"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v14"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -40,11 +40,15 @@ PRACTICE_RESTORE_TRACE_LABELS: tuple[str, ...] = (
 WORKSPACE_RESTORE_TRACE_LABELS: tuple[str, ...] = (
     "cloud_fetch_studio_page",
 
+    "restore_intermediate_studio_page",
+
     "restore_decision",
 
     "restore_skip_reason",
 
     "restored_studio_page",
+
+    "restored_studio_page_source",
 
     "final_studio_page",
 
@@ -404,6 +408,8 @@ def _workspace_restore_row_values(st: Any, trace: dict[str, Any]) -> dict[str, A
 
         or ss.get("_suite_cloud_fetch_studio_page"),
 
+        "restore_intermediate_studio_page": trace.get("restore_intermediate_studio_page"),
+
         "restore_decision": trace.get("restore_decision") or ss.get("_suite_restore_decision"),
 
         "restore_skip_reason": trace.get("restore_skip_reason")
@@ -413,6 +419,8 @@ def _workspace_restore_row_values(st: Any, trace: dict[str, Any]) -> dict[str, A
         or ss.get("_suite_restore_skip_reason"),
 
         "restored_studio_page": trace.get("restored_studio_page"),
+
+        "restored_studio_page_source": trace.get("restored_studio_page_source"),
 
         "final_studio_page": trace.get("final_studio_page") or ss.get("studio_page"),
 
