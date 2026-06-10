@@ -137,6 +137,10 @@ def inject_polish_css(st, *, app_slug: str = "app") -> None:
         <style>
         /* Portfolio polish — {app_slug} */
         h1, h2, h3, h4 {{ letter-spacing: -0.02em; }}
+        .ui-studio-script-header {{ margin-bottom: 0.5rem; }}
+        .ui-chart-key-mode-badge {{ margin-bottom: 0.35rem; }}
+        body.practice-page .block-container {{ padding-top: 0.45rem !important; }}
+        body.practice-page [data-testid="stVerticalBlock"] > div {{ gap: 0.35rem; }}
         [data-testid="stMetricValue"] {{
             font-size: 1.55rem !important;
             font-weight: 700 !important;

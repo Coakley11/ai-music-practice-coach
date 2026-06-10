@@ -2434,7 +2434,7 @@ def _inject_studio_history_nav_pin_script() -> None:
     )
 
 
-_UI_POLISH_VERSION = "v2-2026-05-24"
+_UI_POLISH_VERSION = "v3-2026-06-09-ui-polish-p0"
 
 
 def _backing_studio_panel_css() -> str:
@@ -3330,6 +3330,21 @@ body[data-practice-setup-ui] .st-key-practice_control_panel {
 /* Legacy plain card — hide if old markup ever renders */
 .practice-setup-card:has(.ui-page-nav-label:only-child) {
   display: none !important;
+}
+/* P0 UI polish — tighter Practice vertical rhythm */
+body.practice-page .block-container {
+  padding-top: 0.45rem !important;
+}
+body.practice-page .st-key-practice_control_panel {
+  margin-top: 0.2rem !important;
+  padding: 0.85rem 1rem 0.75rem !important;
+}
+body.practice-page .ui-studio-script-header {
+  margin-bottom: 0.55rem !important;
+  padding: 0.75rem 0.95rem 0.8rem !important;
+}
+body.practice-page .notation-output {
+  margin-top: 0.35rem !important;
 }
 """
 
@@ -4258,6 +4273,134 @@ body[data-multitrack-studio-ui] .st-key-multitrack_studio_panel {
 """
 
 
+def _decorative_studio_header_css() -> str:
+    return """
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap');
+
+.ui-studio-script-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  margin: 0.15rem 0 0.85rem 0;
+  padding: 0.95rem 1.1rem 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--ui-studio-header-border, rgba(148, 163, 184, 0.35));
+  background: var(--ui-studio-header-wash, linear-gradient(135deg, #f8fafc 0%, #ffffff 100%));
+  box-shadow: 0 2px 14px rgba(15, 23, 42, 0.06);
+}
+.ui-studio-script-header-icon {
+  font-size: 2.05rem;
+  line-height: 1;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.12));
+}
+.ui-studio-script-header-kicker {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-studio-header-accent, #64748b);
+  margin: 0 0 0.12rem 0;
+}
+.ui-studio-script-header-script {
+  font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive !important;
+  font-size: 2.35rem !important;
+  font-weight: 700 !important;
+  line-height: 1.05 !important;
+  margin: 0 !important;
+  color: var(--ui-studio-header-accent, #0f172a) !important;
+  letter-spacing: 0.01em !important;
+}
+.ui-studio-script-header-sub {
+  margin: 0.28rem 0 0 !important;
+  font-size: 0.88rem !important;
+  line-height: 1.45 !important;
+  color: #475569 !important;
+}
+.ui-studio-script-header--practice {
+  --ui-studio-header-accent: #dc2626;
+  --ui-studio-header-wash: linear-gradient(135deg, #fff5f5 0%, #ffffff 72%);
+  --ui-studio-header-border: #fecaca;
+}
+.ui-studio-script-header--picker {
+  --ui-studio-header-accent: #4f46e5;
+  --ui-studio-header-wash: linear-gradient(135deg, #eef2ff 0%, #ffffff 72%);
+  --ui-studio-header-border: #c7d2fe;
+}
+.ui-studio-script-header--backing {
+  --ui-studio-header-accent: #2563eb;
+  --ui-studio-header-wash: linear-gradient(135deg, #eff6ff 0%, #ffffff 72%);
+  --ui-studio-header-border: #bfdbfe;
+}
+.ui-studio-script-header--custom {
+  --ui-studio-header-accent: #059669;
+  --ui-studio-header-wash: linear-gradient(135deg, #ecfdf5 0%, #ffffff 72%);
+  --ui-studio-header-border: #a7f3d0;
+}
+.ui-studio-script-header--creative {
+  --ui-studio-header-accent: #7c3aed;
+  --ui-studio-header-wash: linear-gradient(135deg, #f5f3ff 0%, #ffffff 72%);
+  --ui-studio-header-border: #ddd6fe;
+}
+.ui-studio-script-header--analysis {
+  --ui-studio-header-accent: #ea580c;
+  --ui-studio-header-wash: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
+  --ui-studio-header-border: #fed7aa;
+}
+.ui-studio-script-header--multitrack {
+  --ui-studio-header-accent: #c2410c;
+  --ui-studio-header-wash: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
+  --ui-studio-header-border: #fdba74;
+}
+.ui-studio-script-header--log {
+  --ui-studio-header-accent: #0d9488;
+  --ui-studio-header-wash: linear-gradient(135deg, #f0fdfa 0%, #ffffff 72%);
+  --ui-studio-header-border: #99f6e4;
+}
+.ui-studio-script-header--openai {
+  --ui-studio-header-accent: #0891b2;
+  --ui-studio-header-wash: linear-gradient(135deg, #ecfeff 0%, #ffffff 72%);
+  --ui-studio-header-border: #a5f3fc;
+}
+.ui-chart-key-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.45rem 0 0.65rem 0;
+  padding: 0.32rem 0.62rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border: 1px solid transparent;
+}
+.ui-chart-key-mode-badge.is-written-on {
+  color: #9a3412;
+  background: linear-gradient(135deg, #ffedd5 0%, #fff7ed 100%);
+  border-color: #fdba74;
+}
+.ui-chart-key-mode-badge.is-concert {
+  color: #1e40af;
+  background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
+  border-color: #93c5fd;
+}
+.ui-script-word {
+  font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em !important;
+}
+.ui-song-library-title .ui-script-word,
+.ui-practice-control-title .ui-script-word,
+.ui-backing-studio-title .ui-script-word {
+  font-size: 1.65em;
+  color: var(--ui-studio-header-accent, #dc2626);
+}
+.ui-practice-control-head { --ui-studio-header-accent: #dc2626; }
+.ui-backing-studio-deck-head { --ui-studio-header-accent: #2563eb; }
+.ui-song-library-head { --ui-studio-header-accent: #4f46e5; }
+"""
+
+
 def _studio_panels_css() -> str:
     return (
         _backing_studio_all_css()
@@ -4267,6 +4410,7 @@ def _studio_panels_css() -> str:
         + _upload_studio_panel_css()
         + _multitrack_studio_panel_css()
         + _simple_nav_css()
+        + _decorative_studio_header_css()
     )
 
 
@@ -5773,8 +5917,8 @@ def render_song_library_panel_header(
     st.markdown(
         f"""
 <div class="ui-song-library-head">
-  <p class="ui-song-library-kicker">Catalog</p>
-  <h3 class="ui-song-library-title">Browse Library</h3>
+  <p class="ui-song-library-kicker">🎼 Catalog</p>
+  <h3 class="ui-song-library-title"><span class="ui-script-word">Songs</span> · Browse Library</h3>
   <p class="ui-song-library-sub">
     Filter by genre or search below — your pick loads in
     <strong>Active Song</strong> above. Use <strong>Edit Song Chart</strong> there to fix chords.
@@ -5900,7 +6044,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-05-28-studio-bundle-v12"
+STUDIO_UI_RELEASE = "2026-06-09-ui-polish-p0"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -6054,8 +6198,8 @@ def render_upload_studio_panel_header(
     st.markdown(
         f"""
 <div class="ui-upload-studio-head" data-upload-panel-ui="{UPLOAD_STUDIO_UI_VERSION}">
-  <span class="ui-upload-studio-kicker">Audio upload studio</span>
-  <p class="ui-upload-studio-title">Upload &amp; AI Coach</p>
+  <span class="ui-upload-studio-kicker">🎙️ Audio upload studio</span>
+  <p class="ui-upload-studio-title"><span class="ui-script-word">Upload</span> &amp; AI Coach</p>
   <p class="ui-upload-studio-sub">Drop a take, get timing and pitch feedback, then jump to practice or multitrack.</p>
 </div>
         """,
@@ -6091,8 +6235,8 @@ def render_multitrack_studio_panel_header(st: Any, *, song_title: str) -> None:
     st.markdown(
         f"""
 <div class="ui-multitrack-studio-head" data-multitrack-panel-ui="{MULTITRACK_STUDIO_UI_VERSION}">
-  <span class="ui-multitrack-studio-kicker">Multitrack studio</span>
-  <p class="ui-multitrack-studio-title">Session Workspace</p>
+  <span class="ui-multitrack-studio-kicker">🎚️ Multitrack studio</span>
+  <p class="ui-multitrack-studio-title"><span class="ui-script-word">Multitrack</span> Session Workspace</p>
   <p class="ui-multitrack-studio-sub">Overdub layers with monitor backing, mix, and export — synced to your active song.</p>
 </div>
         """,
@@ -6296,8 +6440,8 @@ def render_creative_studio_panel_header(
     st.markdown(
         f"""
 <div class="ui-creative-studio-head" data-creative-panel-ui="{CREATIVE_STUDIO_UI_VERSION}">
-  <span class="ui-creative-studio-kicker">Creative studio</span>
-  <p class="ui-creative-studio-title">Improvisation lab · {html.escape(instrument)} · {html.escape(level)}</p>
+  <span class="ui-creative-studio-kicker">🧠 Creative studio</span>
+  <p class="ui-creative-studio-title"><span class="ui-script-word">Creative</span> lab · {html.escape(instrument)} · {html.escape(level)}</p>
   <p class="ui-creative-studio-sub">Working from <strong>{html.escape(song_title or "your song")}</strong> — pick a mode, then shape your jam.</p>
 </div>
         """,
@@ -6675,8 +6819,13 @@ SIMPLE_NAV_PAGE_IDS: list[str] = [
     "picker",
     "backing",
     "custom",
+    "creative",
+    "analysis",
     "multitrack",
 ]
+
+QUICK_NAV_ROW_PRIMARY: list[str] = ["practice", "picker", "backing", "custom"]
+QUICK_NAV_ROW_SECONDARY: list[str] = ["creative", "analysis", "multitrack"]
 
 
 def sidebar_studio_page_items(*, ai_enabled: bool) -> list[tuple[str, str]]:
@@ -6807,8 +6956,8 @@ def init_simple_music_nav_from_query(st: Any) -> None:
 
 
 def use_simple_music_nav(session_state: Any) -> bool:
-    """Plain Streamlit quick nav — always on (no art panel / DOM dedupe)."""
-    return True
+    """Plain Streamlit quick nav — diagnostic fallback (?simple_nav=1)."""
+    return bool(session_state.get(USE_SIMPLE_MUSIC_NAV_KEY))
 
 
 def _studio_quick_nav_button_key(page_id: str) -> str:
@@ -7007,8 +7156,6 @@ def _render_nav_art_cell(
     compact: bool = False,
 ) -> None:
     """Icon + script label above a small Open button — no duplicate page-name text."""
-    if _QUICK_NAV_RENDERED_THIS_EXEC:
-        return
     is_active = current is not None and page_id == current
     nav_class = STUDIO_PAGE_META.get(page_id, {}).get("nav_class", page_id)
     help_text = STUDIO_PAGE_META.get(page_id, {}).get("label", page_id) or nav_compact_button_label(
@@ -7231,7 +7378,7 @@ def render_page_quick_nav(
     rerun_fn: Any,
     key_prefix: str = STUDIO_QUICK_NAV_KEY_PREFIX,
 ) -> str:
-    """Top navigation — one plain Streamlit button row (always visible, no art/JS dedupe)."""
+    """Top navigation — script-style art row (Upload/Multitrack visible) or plain diagnostic row."""
     import streamlit as st
 
     global _QUICK_NAV_RENDERED_THIS_EXEC
@@ -7253,15 +7400,36 @@ def render_page_quick_nav(
         session_state,
         current_page=current,
         key_prefix=key_prefix,
-        container_key=None,
+        container_key=STUDIO_QUICK_NAV_PANEL_KEY,
     )
 
-    _render_simple_nav_row(
-        st,
-        session_state,
-        current=current,
-        rerun_fn=rerun_fn,
+    st.markdown(
+        f"<style>{_quick_nav_artistic_css()}</style>",
+        unsafe_allow_html=True,
     )
+    if use_simple_music_nav(session_state):
+        _render_simple_nav_row(
+            st,
+            session_state,
+            current=current,
+            rerun_fn=rerun_fn,
+        )
+    else:
+        with st.container(key=STUDIO_QUICK_NAV_PANEL_KEY):
+            _render_quick_nav_row(
+                st,
+                session_state,
+                page_ids=QUICK_NAV_ROW_PRIMARY,
+                current=current,
+                rerun_fn=rerun_fn,
+            )
+            _render_quick_nav_row(
+                st,
+                session_state,
+                page_ids=QUICK_NAV_ROW_SECONDARY,
+                current=current,
+                rerun_fn=rerun_fn,
+            )
     _render_music_coach_insight_below_quick_nav(st, current_page=current)
 
     return session_state.get("studio_page", current)
@@ -7595,14 +7763,126 @@ def render_global_studio_bar(
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def compact_page_title(icon: str, title: str, subtitle: str = "") -> None:
-    import streamlit as st
+_DECORATIVE_HEADER_SCRIPT: dict[str, str] = {
+    "practice": "Practice",
+    "picker": "Songs",
+    "backing": "Backing",
+    "custom": "Custom",
+    "creative": "Creative",
+    "analysis": "Upload",
+    "multitrack": "Multitrack",
+    "log": "Log",
+    "openai": "Coach",
+}
 
-    sub = f'<p class="ui-compact-sub">{html.escape(subtitle)}</p>' if subtitle else ""
+_DECORATIVE_HEADER_KICKER: dict[str, str] = {
+    "practice": "Music studio",
+    "picker": "Song catalog",
+    "backing": "Audio studio",
+    "custom": "Progression lab",
+    "creative": "Improvisation lab",
+    "analysis": "Recording coach",
+    "multitrack": "Layer studio",
+    "log": "Session history",
+    "openai": "AI coaching",
+}
+
+
+def _resolve_decorative_header_page_id(icon: str, title: str) -> str:
+    text = str(title or "").strip().lower()
+    if "practice" in text and "log" not in text:
+        return "practice"
+    if "song" in text or "selection" in text or "library" in text:
+        return "picker"
+    if "backing" in text:
+        return "backing"
+    if "custom" in text or "progression" in text:
+        return "custom"
+    if "creative" in text:
+        return "creative"
+    if "upload" in text or "analysis" in text:
+        return "analysis"
+    if "multitrack" in text:
+        return "multitrack"
+    if "log" in text:
+        return "log"
+    if "openai" in text or "coaching" in text:
+        return "openai"
+    icon_map = {
+        "🎯": "practice",
+        "📚": "picker",
+        "🎤": "picker",
+        "🎧": "backing",
+        "✏️": "custom",
+        "🧠": "creative",
+        "🎙️": "analysis",
+        "🎚️": "multitrack",
+        "📓": "log",
+        "✨": "openai",
+    }
+    return icon_map.get(str(icon or "").strip(), "practice")
+
+
+def render_chart_key_mode_status_badge(st: Any) -> None:
+    """Display-only written-key / concert charts badge (reads session; no writes)."""
+    try:
+        from instrument_transposition import (
+            chart_in_instrument_key,
+            is_transposing_instrument,
+            written_key_for_instrument,
+        )
+    except ImportError:
+        return
+    ss = st.session_state
+    instrument = str(ss.get("instrument") or "").strip()
+    if not is_transposing_instrument(instrument):
+        return
+    concert_key = str(ss.get("display_key") or "C").strip() or "C"
+    written_on = bool(chart_in_instrument_key(ss))
+    if written_on:
+        written_key = written_key_for_instrument(concert_key, instrument, ss)
+        label = "Written charts ON"
+        detail = f"Charts in {written_key}"
+        variant = "is-written-on"
+        glyph = "📝"
+    else:
+        label = "Concert charts"
+        detail = f"Charts in {concert_key}"
+        variant = "is-concert"
+        glyph = "🎼"
     st.markdown(
-        f'<p class="ui-compact-title">{html.escape(icon)} {html.escape(title)}</p>{sub}',
+        f'<div class="ui-chart-key-mode-badge {variant}" role="status">'
+        f'<span aria-hidden="true">{glyph}</span>'
+        f"<strong>{html.escape(label)}</strong>"
+        f'<span> · {html.escape(detail)}</span>'
+        f"</div>",
         unsafe_allow_html=True,
     )
+
+
+def compact_page_title(icon: str, title: str, subtitle: str = "") -> None:
+    """Decorative script-style page header with icon and optional chart-key badge."""
+    import streamlit as st
+
+    page_id = _resolve_decorative_header_page_id(icon, title)
+    script_word = _DECORATIVE_HEADER_SCRIPT.get(page_id, title.split()[0] if title else "Studio")
+    kicker = _DECORATIVE_HEADER_KICKER.get(page_id, "Music studio")
+    sub = (
+        f'<p class="ui-studio-script-header-sub">{subtitle}</p>'
+        if subtitle
+        else ""
+    )
+    st.markdown(
+        f'<div class="ui-studio-script-header ui-studio-script-header--{html.escape(page_id)}">'
+        f'<span class="ui-studio-script-header-icon" aria-hidden="true">{html.escape(icon)}</span>'
+        f"<div>"
+        f'<p class="ui-studio-script-header-kicker">{html.escape(kicker)}</p>'
+        f'<h2 class="ui-studio-script-header-script">{html.escape(script_word)}</h2>'
+        f"{sub}"
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
+    render_chart_key_mode_status_badge(st)
 
 
 def _short_section_label(name: str) -> str:
