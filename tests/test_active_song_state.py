@@ -191,6 +191,24 @@ class TestActiveSongState(unittest.TestCase):
         self.assertEqual(phone["_written_key_mode_restored"], True)
         self.assertEqual(phone["_written_key_restore_source"], "cloud_restore")
 
+    def test_commit_preserves_canonical_transposing_when_widgets_not_in_session(self) -> None:
+        """Autosave commit must not default to Alto/False when canonical already has Tenor/True."""
+        session = {
+            **_SAMPLE,
+            ACTIVE_CATALOG_PICK_KEY: _PICK_KEY,
+            "instrument": "Saxophone",
+            "active_song_state": {
+                **_SAMPLE,
+                "instrument": "Saxophone",
+                CHART_IN_INSTRUMENT_KEY_KEY: True,
+                SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Tenor saxophone (Bb)",
+            },
+        }
+        commit_active_song_state_from_session(session, reason="autosave")
+        meta = session["active_song_state"]
+        self.assertTrue(meta[CHART_IN_INSTRUMENT_KEY_KEY])
+        self.assertEqual(meta[SELECTED_TRANSPOSING_INSTRUMENT_KEY], "Tenor saxophone (Bb)")
+
     def test_commit_merges_live_written_key_from_widget(self) -> None:
         """Autosave commit must not drop checkbox when legacy canonical omits written key."""
         session = {
@@ -404,6 +422,36 @@ class TestActiveSongState(unittest.TestCase):
         self.assertTrue(ss.get(CHART_IN_INSTRUMENT_KEY_KEY))
         self.assertTrue(ss.get("active_song_state", {}).get(CHART_IN_INSTRUMENT_KEY_KEY))
         self.assertEqual(ss.get("_written_key_restore_source"), "receive_finalize")
+
+    def test_collect_transposing_save_trace_fields_from_payload(self) -> None:
+        from active_song_state import collect_transposing_save_trace_fields
+
+        session = {
+            "instrument": "Saxophone",
+            CHART_IN_INSTRUMENT_KEY_KEY: True,
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Tenor saxophone (Bb)",
+            "active_song_state": {
+                "instrument": "Saxophone",
+                CHART_IN_INSTRUMENT_KEY_KEY: True,
+                SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Tenor saxophone (Bb)",
+            },
+        }
+        payload = {
+            "active_song_state": {
+                CHART_IN_INSTRUMENT_KEY_KEY: True,
+                SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Tenor saxophone (Bb)",
+            },
+            "music_workspace_state": {
+                "active_song": {
+                    "show_chart_in_instrument_key": True,
+                    "selected_transposing_instrument": "Tenor saxophone (Bb)",
+                }
+            },
+        }
+        rows = collect_transposing_save_trace_fields(session, payload, phase="payload_write")
+        self.assertTrue(rows["save_written_key_canonical"])
+        self.assertTrue(rows["save_written_key_payload"])
+        self.assertEqual(rows["save_transposing_subtype_payload"], "Tenor saxophone (Bb)")
 
     def test_written_key_checkbox_disk_round_trip(self) -> None:
         st = MagicMock()

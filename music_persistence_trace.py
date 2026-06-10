@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v24-transposing-receive"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v25-transposing-save-trace"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -279,6 +279,42 @@ TEST_D_TRACE_LABELS: tuple[str, ...] = (
     "transposing_subtype_cloud",
     "transposing_subtype_restored",
 )
+
+TRANSPOSING_SAVE_TRACE_LABELS: tuple[str, ...] = (
+    "save_sequence",
+    "save_write_path",
+    "save_reason",
+    "save_written_key_widget",
+    "save_written_key_canonical",
+    "save_written_key_payload",
+    "save_written_key_cloud_readback",
+    "save_transposing_subtype_widget",
+    "save_transposing_subtype_canonical",
+    "save_transposing_subtype_payload",
+    "save_transposing_subtype_cloud_readback",
+)
+
+
+def collect_transposing_save_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
+    """Last transposing save diagnostics (canonical vs payload vs cloud readback)."""
+    ss = st.session_state
+    last = ss.get("_music_last_transposing_save_trace")
+    if isinstance(last, dict):
+        rows = dict(last)
+    else:
+        rows = {}
+    for label in TRANSPOSING_SAVE_TRACE_LABELS:
+        if label not in rows and trace.get(label) is not None:
+            rows[label] = trace.get(label)
+    rows["save_overwrite_detected"] = bool(ss.get("_music_transposing_save_overwrite_detected"))
+    detail = ss.get("_music_transposing_save_overwrite_detail")
+    if isinstance(detail, dict):
+        rows["save_overwrite_detail"] = detail
+    pre = ss.get("_music_pre_save_transposing_trace")
+    if isinstance(pre, dict):
+        rows.setdefault("save_written_key_canonical", pre.get("save_written_key_canonical"))
+        rows.setdefault("save_transposing_subtype_canonical", pre.get("save_transposing_subtype_canonical"))
+    return rows
 
 
 def collect_test_d_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
@@ -760,6 +796,17 @@ def render_persistence_trace_sidebar(st: Any) -> None:
             height=280,
             label_visibility="collapsed",
         )
+
+        st.markdown("**Transposing save (last cloud write)**")
+        st.caption(
+            "Compare canonical before save, payload written to Supabase, and immediate readback. "
+            "Receive trace cloud_* fields are NOT save proof — use save_* / readback here."
+        )
+        save_rows = collect_transposing_save_trace_rows(st, trace)
+        for label in TRANSPOSING_SAVE_TRACE_LABELS:
+            st.text(f"{label}: {_trace_display(save_rows.get(label))}")
+        if save_rows.get("save_overwrite_detected"):
+            st.warning(f"Second save overwrote transposing fields: {save_rows.get('save_overwrite_detail')}")
 
         st.markdown("**Backing path (Test C — frozen)**")
 

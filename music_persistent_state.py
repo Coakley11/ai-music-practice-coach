@@ -602,6 +602,74 @@ def build_music_state_for_save(
         raise
 
 
+def record_transposing_save_diagnostics(
+    st: Any,
+    payload: dict[str, Any] | None,
+    *,
+    phase: str,
+    write_path: str = "",
+    readback_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Record canonical/payload/cloud-readback transposing fields for save-path debugging."""
+    ss = st.session_state
+    try:
+        from active_song_state import collect_transposing_save_trace_fields
+    except ImportError:
+        return {}
+    rows = collect_transposing_save_trace_fields(ss, payload, phase=phase)
+    if write_path:
+        rows["save_write_path"] = write_path
+    if isinstance(readback_payload, dict):
+        rb_written, rb_subtype = None, None
+        try:
+            from active_song_state import _transposing_values_from_payload_sources
+
+            rb_written, rb_subtype = _transposing_values_from_payload_sources(readback_payload)
+        except ImportError:
+            pass
+        rows["save_written_key_cloud_readback"] = rb_written
+        rows["save_transposing_subtype_cloud_readback"] = rb_subtype
+    if phase == "cloud_readback":
+        last = ss.get("_music_last_transposing_save_trace")
+        if isinstance(last, dict):
+            rows = {**last, **rows}
+    seq = int(ss.get("_music_transposing_save_seq") or 0) + 1
+    if phase == "payload_write":
+        rows["save_sequence"] = seq
+        ss["_music_transposing_save_seq"] = seq
+    prev = ss.get("_music_prev_transposing_save_trace")
+    if isinstance(prev, dict) and phase == "payload_write":
+        if (
+            prev.get("save_written_key_payload") is not None
+            and rows.get("save_written_key_payload") is not None
+            and prev.get("save_written_key_payload") != rows.get("save_written_key_payload")
+        ) or (
+            prev.get("save_transposing_subtype_payload") is not None
+            and rows.get("save_transposing_subtype_payload") is not None
+            and prev.get("save_transposing_subtype_payload") != rows.get("save_transposing_subtype_payload")
+        ):
+            ss["_music_transposing_save_overwrite_detected"] = True
+            ss["_music_transposing_save_overwrite_detail"] = {
+                "previous_written": prev.get("save_written_key_payload"),
+                "current_written": rows.get("save_written_key_payload"),
+                "previous_subtype": prev.get("save_transposing_subtype_payload"),
+                "current_subtype": rows.get("save_transposing_subtype_payload"),
+                "previous_seq": prev.get("save_sequence"),
+                "current_seq": seq,
+                "previous_path": prev.get("save_write_path"),
+                "current_path": write_path,
+            }
+    ss["_music_prev_transposing_save_trace"] = dict(rows)
+    ss["_music_last_transposing_save_trace"] = dict(rows)
+    try:
+        from music_persistence_trace import update_trace
+
+        update_trace(st, **{k: v for k, v in rows.items() if v is not None})
+    except Exception:
+        pass
+    return rows
+
+
 def record_music_cloud_write_result(
     st: Any,
     state: dict[str, Any],
@@ -615,6 +683,12 @@ def record_music_cloud_write_result(
     ss["_music_last_cloud_write_ok"] = saved_cloud
     ss["_music_stamp_before_cloud_write_ran"] = bool(
         ss.get("music_pre_write_stamp_ran") or ss.get("page_change_finalize_ran")
+    )
+    record_transposing_save_diagnostics(
+        st,
+        state,
+        phase="payload_write",
+        write_path=write_path,
     )
     if saved_cloud:
         import copy as _copy
@@ -668,6 +742,22 @@ def save_music_cloud_session(
         saved_cloud=saved_cloud,
         cloud_error=cloud_error,
     )
+    if saved_cloud:
+        readback: dict[str, Any] = {}
+        try:
+            from suite_cloud_state import load_cloud_full_session
+
+            readback, _ = load_cloud_full_session(APP_ID)
+        except Exception:
+            readback = {}
+        if isinstance(readback, dict) and readback:
+            record_transposing_save_diagnostics(
+                st,
+                state,
+                phase="cloud_readback",
+                write_path=write_path,
+                readback_payload=readback,
+            )
     return saved_cloud
 
 
@@ -1083,8 +1173,12 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
                 else {}
             ),
             **(
-                {"selected_transposing_instrument": active_song_meta["selected_transposing_instrument"]}
-                if active_song_meta.get("selected_transposing_instrument")
+                {
+                    "selected_transposing_instrument": str(
+                        active_song_meta["selected_transposing_instrument"]
+                    ).strip()
+                }
+                if str(active_song_meta.get("selected_transposing_instrument") or "").strip()
                 else {}
             ),
             "practice_focus_section": active_song_meta.get("practice_focus_section")
