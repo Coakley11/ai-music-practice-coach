@@ -120,15 +120,33 @@ def _normalize_studio_page_for_save(page: Any) -> str:
         return val
 
 
+def _studio_nav_page_from_session(ss: dict[str, Any]) -> str:
+    nav = ss.get("studio_nav_state")
+    if isinstance(nav, dict):
+        return _normalize_studio_page_for_save(nav.get("studio_page") or nav.get("page"))
+    return ""
+
+
 def _resolve_live_studio_page_for_save(ss: dict[str, Any], *, save_reason: str) -> tuple[str, str]:
     """Authoritative studio page for save payload (page_change must not use restored blob)."""
     if save_reason == "page_change":
         hinted = _normalize_studio_page_for_save(ss.get("_suite_page_change_save_page"))
+        live = _normalize_studio_page_for_save(ss.get("studio_page"))
+        nav = _studio_nav_page_from_session(ss)
+        if hinted and live and hinted != live:
+            if nav == live:
+                return live, "session_state.studio_page"
+            if nav == hinted:
+                return hinted, "_suite_page_change_save_page"
+            if bool(ss.get("_suite_page_user_nav")) and live:
+                return live, "session_state.studio_page"
+            return hinted, "_suite_page_change_save_page"
         if hinted:
             return hinted, "_suite_page_change_save_page"
-        live = _normalize_studio_page_for_save(ss.get("studio_page"))
         if live:
             return live, "session_state.studio_page"
+        if nav:
+            return nav, "studio_nav_state"
         return "", "missing"
     live = _normalize_studio_page_for_save(ss.get("studio_page"))
     return live, "session_state.studio_page" if live else "missing"
@@ -285,14 +303,19 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
 
 def build_music_disk_state(st: Any) -> dict[str, Any]:
     ss = st.session_state
+    save_reason = str(ss.get("_suite_pending_save_reason") or "autosave")
+    if save_reason == "page_change":
+        live_page, _ = _resolve_live_studio_page_for_save(ss, save_reason=save_reason)
+        if live_page:
+            ss["studio_page"] = live_page
     try:
         from active_song_state import commit_active_song_state_from_session
         from practice_state import commit_practice_state_from_session
         from studio_nav_state import commit_studio_nav_from_session
 
-        commit_active_song_state_from_session(ss, reason="autosave")
-        commit_studio_nav_from_session(ss, reason="autosave")
-        commit_practice_state_from_session(ss, reason="autosave")
+        commit_active_song_state_from_session(ss, reason=save_reason)
+        commit_studio_nav_from_session(ss, reason=save_reason)
+        commit_practice_state_from_session(ss, reason=save_reason)
     except ImportError:
         pass
     core = build_music_local_state(st)
@@ -326,7 +349,17 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
                 state[key] = copy.deepcopy(ss[key])
             except Exception:
                 state[key] = ss[key]
-    save_reason = str(ss.pop("_suite_pending_save_reason", None) or "autosave")
+    save_reason = str(ss.pop("_suite_pending_save_reason", None) or save_reason)
+    if save_reason == "page_change":
+        live_page, _ = _resolve_live_studio_page_for_save(ss, save_reason=save_reason)
+        if live_page:
+            core["studio_page"] = live_page
+            core["page"] = live_page
+            extra["studio_page"] = live_page
+            nav_meta = state.get("studio_nav_state")
+            if isinstance(nav_meta, dict):
+                nav_meta["studio_page"] = live_page
+                nav_meta["page"] = live_page
     state["music_workspace_state"] = _build_workspace_envelope(st, state, save_reason=save_reason)
     stamp_trace = _sync_studio_page_into_music_blob(st, state, save_reason=save_reason)
     if hasattr(st, "session_state"):
@@ -542,12 +575,21 @@ def apply_music_disk_state(
         pass
 
 
-def after_studio_page_change(st: Any, session_state: dict | None = None) -> None:
+def after_studio_page_change(
+    st: Any,
+    session_state: dict | None = None,
+    *,
+    target_page: str | None = None,
+) -> None:
     """Persist studio_page to disk/cloud immediately after manual navigation."""
     from suite_user_persistence import _release_user_page_ownership_after_save
 
     ss = session_state if session_state is not None else st.session_state
-    page_id = str(ss.get("studio_page") or "practice")
+    page_id = (
+        _normalize_studio_page_for_save(target_page)
+        or _normalize_studio_page_for_save(ss.get("studio_page"))
+        or "practice"
+    )
     try:
         from applied_math_return_insight import ami_return_navigation_active, consume_ami_return_resume
 
@@ -823,21 +865,28 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
                 save_payload_trace.get("save_payload_source") or "session_state.studio_page",
             )
             save_payload_trace["save_payload_core_page"] = str(
-                payload_core.get("studio_page") or save_payload_trace.get("save_payload_core_page") or ""
+                save_payload_trace.get("save_payload_core_page")
+                or payload_core.get("studio_page")
+                or ""
             )
             save_payload_trace["save_payload_session_page"] = str(
-                payload_sess.get("studio_page") or save_payload_trace.get("save_payload_session_page") or ""
+                save_payload_trace.get("save_payload_session_page")
+                or payload_sess.get("studio_page")
+                or ""
             )
             save_payload_trace["save_payload_workspace_page"] = str(
-                (payload_ws or {}).get("studio_page")
-                if isinstance(payload_ws, dict)
-                else save_payload_trace.get("save_payload_workspace_page")
+                save_payload_trace.get("save_payload_workspace_page")
+                or (
+                    (payload_ws or {}).get("studio_page")
+                    if isinstance(payload_ws, dict)
+                    else ""
+                )
                 or ""
             )
             save_payload_trace["save_payload_studio_nav_page"] = str(
-                payload_nav.get("studio_page")
+                save_payload_trace.get("save_payload_studio_nav_page")
+                or payload_nav.get("studio_page")
                 or payload_nav.get("page")
-                or save_payload_trace.get("save_payload_studio_nav_page")
                 or ""
             )
             if save_payload_trace.get("save_payload_workspace_page"):

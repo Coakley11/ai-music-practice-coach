@@ -121,7 +121,7 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
         class _St:
             session_state = _nav_ss
 
-        after_studio_page_change(_St(), session_state)
+        after_studio_page_change(_St(), session_state, target_page=page_id)
     except Exception:
         try:
             from music_persistent_state import claim_studio_page_ownership
@@ -210,7 +210,11 @@ def render_floating_nav_history(
             try:
                 from music_persistent_state import after_studio_page_change
 
-                after_studio_page_change(st, session_state)
+                after_studio_page_change(
+                    st,
+                    session_state,
+                    target_page=str(session_state.get("studio_page") or ""),
+                )
             except Exception:
                 pass
             rerun_fn()
@@ -226,7 +230,11 @@ def render_floating_nav_history(
             try:
                 from music_persistent_state import after_studio_page_change
 
-                after_studio_page_change(st, session_state)
+                after_studio_page_change(
+                    st,
+                    session_state,
+                    target_page=str(session_state.get("studio_page") or ""),
+                )
             except Exception:
                 pass
             rerun_fn()
