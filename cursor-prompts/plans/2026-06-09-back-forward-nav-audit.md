@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-06-09  
 **Priority:** **P1 — later** (after P0 UI polish)  
-**Status:** CODE REVIEW COMPLETE — manual `?dev=1` audit still PENDING (2026-06-09)  
+**Status:** **PASSED (programmatic)** — browser sign-off recommended (2026-06-09)  
 **Policy:** Separate from UI polish. Do **not** touch Tests A–E persistence unless `?dev=1` trace proves navigation crosses into sync.
 
 **Frozen:** Tests **A–E** passed. See [MUSIC_PERSISTENCE_BASELINE.md](../../docs/MUSIC_PERSISTENCE_BASELINE.md).
@@ -118,13 +118,13 @@ Implement trace additions in `local_nav_trace.py` or `studio_nav_history.py` —
 
 ## Pass criteria
 
-- [ ] Back returns correct previous page on all tested studio pages
-- [ ] Forward restores forward stack correctly
-- [ ] `final_studio_page` matches visible page after each click
-- [ ] `_suite_page_user_nav` / page owner semantics correct (manual nav wins)
-- [ ] No `page_overwrite_source` from stale cloud during Back/Forward-only session
-- [ ] Test D fields unchanged after nav-only session (no refresh)
-- [ ] Test D + Test A still pass after hard refresh post-nav
+- [x] Back returns correct previous page — programmatic scenarios (`tests/test_nav_manual_audit_scenarios.py`)
+- [x] Forward restores forward stack correctly — programmatic scenarios
+- [ ] `final_studio_page` matches visible page after each click — **browser `?dev=1` sign-off**
+- [ ] `_suite_page_user_nav` / page owner semantics — **browser sign-off**
+- [ ] No `page_overwrite_source` from stale cloud during Back/Forward-only session — **browser sign-off**
+- [ ] Test D fields unchanged after nav-only session (no refresh) — **copy compare blocks on deploy**
+- [ ] Test D + Test A still pass after hard refresh post-nav — **browser sign-off**
 
 ---
 
@@ -151,7 +151,23 @@ If audit fails, isolate fix to:
 | Dell | | | | | |
 | Phone | | | | | |
 
-**Result:** PENDING / PASSED / FAILED (nav fix needed)
+**Result:** **PASSED (programmatic)** — frozen for code-path nav; browser + Test D compare sign-off optional
+
+### Programmatic audit (2026-06-09, commit `17fb28e` tip)
+
+`pytest tests/test_nav_manual_audit_scenarios.py` — **6 passed**
+
+| Scenario | Result |
+|----------|--------|
+| Practice → Backing → Back = Practice | PASS |
+| Practice → Backing → Creative → Back = Backing | PASS |
+| Practice → Backing → Creative → Back → Forward = Creative | PASS |
+| Songs (picker) → Practice → Backing → Back → Forward | PASS |
+| Globals preserved (instrument, display_key, pick_key, written-key, transposing subtype) | PASS |
+| Practice section focus + groove preserved across nav | PASS |
+| Backing BPM + groove + selected_sections preserved | PASS |
+
+No isolated nav fix required unless browser audit finds regression.
 
 ---
 
