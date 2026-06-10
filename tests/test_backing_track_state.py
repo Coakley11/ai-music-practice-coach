@@ -146,8 +146,9 @@ class TestBackingTrackState(unittest.TestCase):
             "backing_groove_style": "Ballad",
         }
         commit_backing_state_from_session(session, reason="autosave")
-        self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 100)
-        self.assertEqual(session["backing_track_bpm"], 100)
+        self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 108)
+        self.assertEqual(session["backing_track_bpm"], 108)
+        self.assertEqual(session["backing_groove_style"], "Jazz swing")
 
     def test_coerce_prefers_canonical_over_song_default(self) -> None:
         session = {"backing_track_state": {**_SAMPLE, "last_write_reason": "cloud_restore"}}
@@ -204,11 +205,49 @@ class TestBackingTrackState(unittest.TestCase):
             "backing_track_loops": 2,
         }
         commit_backing_state_from_session(session, reason="autosave")
-        self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 100)
-        self.assertEqual(session["backing_track_state"]["backing_track_scope"], "Full song")
-        self.assertEqual(session["backing_track_state"]["backing_track_loops"], 2)
-        self.assertEqual(session["backing_track_bpm"], 100)
-        self.assertEqual(session["backing_track_scope"], "Full song")
+        self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 108)
+        self.assertEqual(session["backing_track_state"]["backing_track_scope"], "Single section")
+        self.assertEqual(session["backing_track_state"]["backing_track_loops"], 4)
+        self.assertEqual(session["backing_track_scope"], "Single section")
+        self.assertEqual(session["backing_track_loops"], 4)
+
+    def test_prepare_canonical_over_song_default_clobber(self) -> None:
+        session = {
+            "backing_track_state": {**_SAMPLE, "last_write_reason": "cloud_restore"},
+            "backing_track_scope": "Full song",
+            "backing_track_loops": 2,
+            "backing_quick_section": "Full song",
+            "backing_time_signature": "4/4",
+            "backing_time_signature_override": False,
+            BACKING_WIDGETS_SEEDED_KEY: True,
+        }
+        prepare_backing_page(session)
+        self.assertEqual(session["backing_track_scope"], "Single section")
+        self.assertEqual(session["backing_track_loops"], 4)
+        self.assertEqual(session["backing_quick_section"], "Chorus")
+
+    def test_prepare_session_backing_wins_over_stale_canonical(self) -> None:
+        session = {
+            "backing_track_scope": "Single section",
+            "backing_track_single_section": "Verse",
+            "backing_track_loops": 1,
+            "backing_quick_section": "Verse",
+            "backing_track_bpm": 120,
+            "backing_groove_style": "Rock groove",
+            "backing_track_state": {
+                **_SAMPLE,
+                "backing_track_scope": "Full song",
+                "backing_track_loops": 2,
+                "last_write_reason": "cloud_restore",
+            },
+            BACKING_WIDGETS_SEEDED_KEY: True,
+        }
+        prepare_backing_page(session)
+        self.assertEqual(session["backing_track_scope"], "Single section")
+        self.assertEqual(session["backing_track_loops"], 1)
+        self.assertEqual(session["backing_track_state"]["backing_track_scope"], "Single section")
+        self.assertEqual(session["backing_track_state"]["backing_track_loops"], 1)
+        self.assertEqual(session["backing_track_state"]["last_write_reason"], "session_backing_wins")
 
     def test_meter_hard_refresh_seeds_from_canonical(self) -> None:
         from songs.meter_state import BACKING_METER_KEY, BACKING_METER_OVERRIDE_KEY, apply_backing_meter_for_song

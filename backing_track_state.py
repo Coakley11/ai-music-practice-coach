@@ -406,18 +406,59 @@ def backing_canonical_meter_seed(session: dict[str, Any]) -> tuple[str | None, b
     return meter, override
 
 
+def _filters_differ(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    a = _normalize_filters(left)
+    b = _normalize_filters(right)
+    for key in BACKING_SCALAR_KEYS:
+        if a.get(key) != b.get(key):
+            return True
+    return False
+
+
+def _gathered_looks_like_song_defaults(filters: dict[str, Any]) -> bool:
+    """True when live widget keys match generic song-default backing (not a user edit)."""
+    f = _normalize_filters(filters)
+    if normalize_backing_scope(f.get("backing_track_scope")) != "Full song":
+        return False
+    if normalize_backing_loops(f.get("backing_track_loops")) != BACKING_LOOPS_DEFAULT:
+        return False
+    if str(f.get("backing_track_single_section") or "").strip():
+        return False
+    if f.get("backing_track_multi_sections"):
+        return False
+    quick = str(f.get("backing_quick_section") or "").strip().lower()
+    if quick not in ("", "full song"):
+        return False
+    if f.get("backing_time_signature_override"):
+        return False
+    if str(f.get("backing_time_signature") or "").strip() not in ("", "4/4"):
+        return False
+    return True
+
+
 def _preserve_durable_filters_for_autosave(
     session: dict[str, Any],
     filters: dict[str, Any],
     *,
     reason: str,
 ) -> dict[str, Any]:
-    """Autosave must not clobber gathered widget values with stale canonical (v34)."""
+    """Keep cloud-restored durable filters when song-default seeding clobbered widget keys."""
     if reason != "autosave":
         return filters
     if is_backing_locally_dirty(session) or session.get(BACKING_PENDING_SYNC_KEY):
         return filters
-    return filters
+    existing = canonical_backing_filters(session) or {}
+    merged = dict(filters)
+    for key in _DURABLE_FILTER_KEYS:
+        existing_val = existing.get(key)
+        if existing_val in (None, ""):
+            continue
+        if key == "backing_track_multi_sections" and not existing_val:
+            continue
+        gathered_val = merged.get(key)
+        if gathered_val != existing_val:
+            merged[key] = existing_val
+    return merged
 
 
 def _resolve_backing_filters_for_envelope(
@@ -584,7 +625,7 @@ def write_canonical_backing_state(
 
 def prepare_backing_page(session: dict[str, Any]) -> dict[str, Any]:
     """Reconcile Backing canonical blob before page widgets render."""
-    if is_backing_locally_dirty(session):
+    if is_backing_locally_dirty(session) or session.get(BACKING_PENDING_SYNC_KEY):
         gathered = gather_backing_filters(session)
         return write_canonical_backing_state(
             session,
@@ -592,12 +633,30 @@ def prepare_backing_page(session: dict[str, Any]) -> dict[str, Any]:
             reason="local_edit_preserve",
             local_edit=True,
         )
+    gathered = gather_backing_filters(session)
     canonical = canonical_backing_filters(session)
+    if canonical is not None and _filters_differ(canonical, gathered):
+        if _should_seed_widgets_from_canonical(session) or (
+            _filters_have_content(canonical) and _gathered_looks_like_song_defaults(gathered)
+        ):
+            return seed_backing_widgets_from_canonical(
+                session,
+                canonical,
+                reason="canonical_over_defaults",
+            )
+        if _filters_have_content(gathered) and not _gathered_looks_like_song_defaults(gathered):
+            merged = dict(canonical)
+            merged.update(gathered)
+            return write_canonical_backing_state(
+                session,
+                merged,
+                reason="session_backing_wins",
+                local_edit=True,
+            )
     if canonical is not None and _should_seed_widgets_from_canonical(session):
         return seed_backing_widgets_from_canonical(session, canonical, reason="canonical_preserve")
     if canonical is not None:
         return canonical
-    gathered = gather_backing_filters(session)
     if _filters_have_content(gathered):
         return write_canonical_backing_state(session, gathered, reason="reconcile_on_load")
     return gathered
@@ -741,15 +800,21 @@ def resolve_backing_trace_payloads(
             BACKING_STATE_KEY: session.get(BACKING_STATE_KEY) or filters,
         }
 
-    try:
-        from music_persistent_state import APP_ID
-        from suite_cloud_state import load_cloud_full_session
+    last_write = session.get("_suite_last_cloud_save_payload")
+    if isinstance(last_write, dict) and session.get("_suite_persist_last_save_cloud"):
+        cloud = last_write
+        session["_backing_cloud_payload_source"] = "last_write"
+    else:
+        try:
+            from music_persistent_state import APP_ID
+            from suite_cloud_state import load_cloud_full_session
 
-        cloud_state, _ = load_cloud_full_session(APP_ID)
-        if isinstance(cloud_state, dict):
-            cloud = cloud_state
-    except Exception:
-        pass
+            cloud_state, _ = load_cloud_full_session(APP_ID)
+            if isinstance(cloud_state, dict):
+                cloud = cloud_state
+            session["_backing_cloud_payload_source"] = "fetch" if cloud else "none"
+        except Exception:
+            session["_backing_cloud_payload_source"] = "none"
 
     return envelope, cloud
 
@@ -813,6 +878,10 @@ def collect_backing_persistence_trace(
         "raw_pending_backing_loops": session.get("_pending_backing_loops", ""),
         "backing_pending_sync": bool(session.get(BACKING_PENDING_SYNC_KEY)),
         "backing_filters_source": session.get("_backing_filters_source", ""),
+        "cloud_payload_source": session.get("_backing_cloud_payload_source", ""),
+        "force_save_reason": session.get("_suite_persist_last_save_reason", ""),
+        "last_save_cloud": bool(session.get("_suite_persist_last_save_cloud")),
+        "cloud_save_blocked_reason": session.get("_suite_autosave_cloud_blocked_reason", ""),
     }
 
 
@@ -876,3 +945,10 @@ def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
     )
     if trace.get("backing_filters_source"):
         st.sidebar.caption(f"**backing_filters_source:** `{trace['backing_filters_source']}`")
+    if trace.get("cloud_payload_source"):
+        st.sidebar.caption(f"**cloud_payload_source:** `{trace['cloud_payload_source']}`")
+    if trace.get("force_save_reason"):
+        st.sidebar.caption(f"**force_save_reason:** `{trace['force_save_reason']}`")
+    st.sidebar.caption(f"**last_save_cloud:** `{trace.get('last_save_cloud', False)}`")
+    if trace.get("cloud_save_blocked_reason"):
+        st.sidebar.caption(f"**cloud_save_blocked:** `{trace['cloud_save_blocked_reason']}`")
