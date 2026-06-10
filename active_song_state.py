@@ -15,7 +15,11 @@ from instrument_transposition import (
     selected_transposing_type,
 )
 from songs.key_state import PENDING_DISPLAY_KEY
-from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+from songs.state import (
+    ACTIVE_CATALOG_PICK_KEY,
+    SELECTED_SONG_STATE_KEY,
+    SUITE_LOCAL_STATE_RESTORED_KEY,
+)
 
 ACTIVE_SONG_STATE_KEY = "active_song_state"
 ACTIVE_SONG_DIRTY_KEY = "active_song_state_dirty"
@@ -46,6 +50,7 @@ __all__ = (
     "canonical_active_song_context",
     "clear_active_song_local_edit",
     "commit_active_song_state_from_session",
+    "finalize_transposing_receive_restore",
     "flush_active_song_edits",
     "gather_active_song_context",
     "is_active_song_locally_dirty",
@@ -202,29 +207,121 @@ def _merge_live_transposing_fields(
     return ctx
 
 
-def _merge_transposing_from_blob_sources(
-    ctx: dict[str, Any],
+def _transposing_receive_source_dicts(
     state: dict[str, Any],
-) -> dict[str, Any]:
-    """Prefer workspace/session transposing fields over stale canonical active_song_state."""
+    *,
+    deferred_session: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Ordered cloud receive sources — deferred session, workspace, session extra, canonical meta."""
     sources: list[dict[str, Any]] = []
+    if isinstance(deferred_session, dict) and deferred_session:
+        sources.append(deferred_session)
     ws = state.get("music_workspace_state")
     if isinstance(ws, dict) and isinstance(ws.get("active_song"), dict):
         sources.append(ws["active_song"])
     session_blob = state.get("session")
     if isinstance(session_blob, dict):
         sources.append(session_blob)
+    meta = state.get(ACTIVE_SONG_STATE_KEY)
+    if isinstance(meta, dict):
+        sources.append(meta)
+    return sources
+
+
+def _resolve_written_key_from_receive_sources(
+    sources: list[dict[str, Any]],
+) -> bool | None:
+    """Any explicit True wins; otherwise first explicit False; else unset."""
+    saw_false = False
     for src in sources:
-        if _written_key_is_set(src):
-            ctx.update(_written_key_fields_from_raw(src))
-            break
-    if not str(ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip():
-        for src in sources:
-            merged = _transposing_subtype_fields_from_raw(src)
-            if merged:
-                ctx.update(merged)
-                break
+        if not _written_key_is_set(src):
+            continue
+        if bool(src[CHART_IN_INSTRUMENT_KEY_KEY]):
+            return True
+        saw_false = True
+    return False if saw_false else None
+
+
+def _resolve_subtype_from_receive_sources(
+    sources: list[dict[str, Any]],
+) -> str | None:
+    for src in sources:
+        subtype = str(src.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
+        if subtype:
+            return subtype
+    return None
+
+
+def _resolve_written_key_anchor_from_receive_sources(
+    sources: list[dict[str, Any]],
+) -> str | None:
+    for src in sources:
+        anchor = str(src.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+        if anchor:
+            return anchor
+    return None
+
+
+def _merge_transposing_from_blob_sources(
+    ctx: dict[str, Any],
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    """Prefer workspace/session transposing fields over stale canonical active_song_state."""
+    sources = _transposing_receive_source_dicts(state)
+    written = _resolve_written_key_from_receive_sources(sources)
+    if written is not None:
+        ctx[CHART_IN_INSTRUMENT_KEY_KEY] = written
+    subtype = _resolve_subtype_from_receive_sources(sources)
+    if subtype:
+        ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+    anchor = _resolve_written_key_anchor_from_receive_sources(sources)
+    if anchor:
+        ctx[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
     return ctx
+
+
+def finalize_transposing_receive_restore(
+    session: dict[str, Any],
+    payload: dict[str, Any],
+    *,
+    deferred_session: dict[str, Any] | None = None,
+    source: str = "receive_finalize",
+) -> None:
+    """Phone receive path — bind written-key + subtype from cloud payload after restore."""
+    if not isinstance(payload, dict):
+        return
+    sources = _transposing_receive_source_dicts(payload, deferred_session=deferred_session)
+    written = _resolve_written_key_from_receive_sources(sources)
+    subtype = _resolve_subtype_from_receive_sources(sources)
+    anchor = _resolve_written_key_anchor_from_receive_sources(sources)
+    if written is None and not subtype and not anchor:
+        return
+
+    meta = session.get(ACTIVE_SONG_STATE_KEY)
+    if not isinstance(meta, dict):
+        meta = {}
+    updated = False
+    if written is not None:
+        meta[CHART_IN_INSTRUMENT_KEY_KEY] = written
+        session[CHART_IN_INSTRUMENT_KEY_KEY] = written
+        session["_written_key_mode_cloud"] = written
+        session["_written_key_mode_restored"] = written
+        session["_written_key_restore_source"] = source
+        updated = True
+    if anchor:
+        meta[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+        session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+        updated = True
+    if subtype:
+        meta[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+        session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+        session["_transposing_subtype_cloud"] = subtype
+        session["_transposing_subtype_restored"] = subtype
+        session["_transposing_subtype_restore_source"] = source
+        updated = True
+    if updated:
+        session[ACTIVE_SONG_STATE_KEY] = meta
+    rehydrate_transposing_sidebar_from_canonical(session)
 
 
 def _record_transposing_restore_trace(
@@ -325,7 +422,13 @@ def write_canonical_active_song_state(
 
 def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     """Reconcile session keys with canonical blob before widgets render."""
-    if is_active_song_locally_dirty(session):
+    restored_this_run = bool(
+        session.get("_cloud_workspace_restored_this_run")
+        or session.get(SUITE_LOCAL_STATE_RESTORED_KEY)
+    )
+    if is_active_song_locally_dirty(session) and restored_this_run:
+        clear_active_song_local_edit(session)
+    elif is_active_song_locally_dirty(session):
         ctx = gather_active_song_context(session)
         return write_canonical_active_song_state(
             session,

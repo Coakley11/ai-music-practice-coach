@@ -1259,73 +1259,28 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     return state
 
 
-def _apply_deferred_cloud_transposing_session_keys(
-    session: dict[str, Any],
-    deferred: dict[str, Any],
-) -> None:
-    """Apply cloud session transposing keys after canonical restore (written-key boolean)."""
-    if not deferred:
-        return
-    try:
-        from active_song_state import (
-            ACTIVE_SONG_STATE_KEY,
-            rehydrate_transposing_sidebar_from_canonical,
-        )
-        from instrument_transposition import (
-            CHART_IN_INSTRUMENT_KEY_KEY,
-            SELECTED_TRANSPOSING_INSTRUMENT_KEY,
-            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
-        )
-        from active_song_state import _written_key_is_set
-    except ImportError:
-        return
-
-    meta = session.get(ACTIVE_SONG_STATE_KEY)
-    if not isinstance(meta, dict):
-        meta = {}
-    updated = False
-
-    if CHART_IN_INSTRUMENT_KEY_KEY in deferred:
-        cloud_written = bool(deferred[CHART_IN_INSTRUMENT_KEY_KEY])
-        canonical_written = (
-            bool(meta[CHART_IN_INSTRUMENT_KEY_KEY])
-            if _written_key_is_set(meta)
-            else None
-        )
-        if canonical_written is None or (canonical_written is False and cloud_written):
-            meta[CHART_IN_INSTRUMENT_KEY_KEY] = cloud_written
-            session[CHART_IN_INSTRUMENT_KEY_KEY] = cloud_written
-            session["_written_key_mode_cloud"] = cloud_written
-            session["_written_key_mode_restored"] = cloud_written
-            session["_written_key_restore_source"] = "cloud_session_extra"
-            updated = True
-
-    anchor = str(deferred.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
-    if anchor:
-        meta[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
-        session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
-        updated = True
-
-    subtype = str(deferred.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
-    if subtype and not str(meta.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip():
-        meta[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
-        session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
-        updated = True
-
-    if updated:
-        session[ACTIVE_SONG_STATE_KEY] = meta
-    rehydrate_transposing_sidebar_from_canonical(session)
-
-
 def apply_music_disk_state(
     st: Any,
     payload: dict[str, Any],
     *,
     song_picker_catalog: dict,
     song_library: dict | None,
+    authoritative_restore: bool = False,
 ) -> None:
     """Apply disk/cloud payload with studio_page ownership protection."""
     ss = st.session_state
+    if authoritative_restore:
+        try:
+            from active_song_state import clear_active_song_local_edit
+
+            clear_active_song_local_edit(ss)
+            ss.pop("_active_song_restore_skipped_reason", None)
+        except ImportError:
+            pass
+    try:
+        ss["_suite_last_cloud_fetch_payload"] = copy.deepcopy(payload)
+    except Exception:
+        ss["_suite_last_cloud_fetch_payload"] = payload
     pre_restore_studio_page = str(ss.get("studio_page") or "").strip()
     pre_restore_user_nav = bool(ss.get("_suite_page_user_nav"))
     pre_restore_coach_page = str(ss.get("_music_coach_workspace_page") or "").strip()
@@ -1407,15 +1362,35 @@ def apply_music_disk_state(
             ss[key] = copy.deepcopy(val)
         else:
             try:
-                from active_song_state import TRANSPOSING_WIDGET_SESSION_KEYS
+                from active_song_state import (
+                    ACTIVE_SONG_DIRTY_KEY,
+                    ACTIVE_SONG_LOCAL_EDIT_TS_KEY,
+                    ACTIVE_SONG_PENDING_SYNC_KEY,
+                    TRANSPOSING_WIDGET_SESSION_KEYS,
+                )
 
                 if key in TRANSPOSING_WIDGET_SESSION_KEYS:
                     deferred_transposing_session[key] = copy.deepcopy(val)
+                    continue
+                if key in (
+                    ACTIVE_SONG_DIRTY_KEY,
+                    ACTIVE_SONG_LOCAL_EDIT_TS_KEY,
+                    ACTIVE_SONG_PENDING_SYNC_KEY,
+                ):
                     continue
             except ImportError:
                 pass
             if not str(key).startswith("_ami_"):
                 ss[key] = copy.deepcopy(val)
+
+    if authoritative_restore:
+        try:
+            from active_song_state import clear_active_song_local_edit
+
+            clear_active_song_local_edit(ss)
+            ss.pop("_active_song_restore_skipped_reason", None)
+        except ImportError:
+            pass
 
     user_owns_page = bool(pre_restore_user_nav)
     active_studio, overwrite_source = blob_studio, "workspace_blob"
@@ -1477,12 +1452,16 @@ def apply_music_disk_state(
             sync_active_song_context_from_core(ss, core)
             clear_active_song_local_edit(ss)
         try:
-            from active_song_state import rehydrate_transposing_sidebar_from_canonical
+            from active_song_state import finalize_transposing_receive_restore
 
-            rehydrate_transposing_sidebar_from_canonical(ss)
+            finalize_transposing_receive_restore(
+                ss,
+                payload,
+                deferred_session=deferred_transposing_session,
+                source="receive_finalize",
+            )
         except ImportError:
             pass
-        _apply_deferred_cloud_transposing_session_keys(ss, deferred_transposing_session)
     except ImportError:
         pass
 

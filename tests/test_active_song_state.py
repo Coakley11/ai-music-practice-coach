@@ -289,6 +289,66 @@ class TestActiveSongState(unittest.TestCase):
         self.assertEqual(ctx["chart_key_mode"], "written")
         self.assertEqual(ctx["chart_key"], "D")
 
+    def test_authoritative_restore_clears_dirty_and_restores_written_key(self) -> None:
+        """Stale active_song_state_dirty must not block cloud written-key receive."""
+        blob = {
+            "core": {
+                "pick_key": _PICK_KEY,
+                "display_key": "Db",
+                "instrument": "Saxophone",
+                "song": "Turn the Lights Back On",
+                "artist": "Billy Joel",
+            },
+            "session": {
+                CHART_IN_INSTRUMENT_KEY_KEY: True,
+                WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+                SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Tenor saxophone (Bb)",
+                ACTIVE_SONG_DIRTY_KEY: True,
+            },
+            "active_song_state": {
+                **_SAMPLE,
+                "instrument": "Saxophone",
+                "display_key": "Db",
+                CHART_IN_INSTRUMENT_KEY_KEY: False,
+                SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+            },
+            "music_workspace_state": {
+                "active_song": {
+                    "pick_key": _PICK_KEY,
+                    "instrument": "Saxophone",
+                    "display_key": "Db",
+                    "show_chart_in_instrument_key": True,
+                    SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Tenor saxophone (Bb)",
+                }
+            },
+        }
+        st = MagicMock()
+        st.session_state = {ACTIVE_SONG_DIRTY_KEY: True}
+        catalog = {
+            "Pop": {
+                "Turn the Lights Back On — Billy Joel": {
+                    "title": "Turn the Lights Back On",
+                    "artist": "Billy Joel",
+                    "key": "C",
+                }
+            }
+        }
+        library = {"Pop": {"Turn the Lights Back On": catalog["Pop"]["Turn the Lights Back On — Billy Joel"]}}
+        apply_music_disk_state(
+            st,
+            blob,
+            song_picker_catalog=catalog,
+            song_library=library,
+            authoritative_restore=True,
+        )
+        ss = st.session_state
+        self.assertFalse(is_active_song_locally_dirty(ss))
+        self.assertTrue(ss.get(CHART_IN_INSTRUMENT_KEY_KEY))
+        self.assertEqual(ss.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY), "Tenor saxophone (Bb)")
+        prepare_active_song_context(ss)
+        self.assertTrue(ss.get(CHART_IN_INSTRUMENT_KEY_KEY))
+        self.assertTrue(ss.get("active_song_state", {}).get(CHART_IN_INSTRUMENT_KEY_KEY))
+
     def test_disk_restore_applies_deferred_written_key_from_session_extra(self) -> None:
         """Cloud session extra carries written-key True even when canonical meta is stale False."""
         blob = {
@@ -333,11 +393,17 @@ class TestActiveSongState(unittest.TestCase):
             }
         }
         library = {"Pop": {"Turn the Lights Back On": catalog["Pop"]["Turn the Lights Back On — Billy Joel"]}}
-        apply_music_disk_state(st, blob, song_picker_catalog=catalog, song_library=library)
+        apply_music_disk_state(
+            st,
+            blob,
+            song_picker_catalog=catalog,
+            song_library=library,
+            authoritative_restore=True,
+        )
         ss = st.session_state
         self.assertTrue(ss.get(CHART_IN_INSTRUMENT_KEY_KEY))
         self.assertTrue(ss.get("active_song_state", {}).get(CHART_IN_INSTRUMENT_KEY_KEY))
-        self.assertEqual(ss.get("_written_key_restore_source"), "cloud_session_extra")
+        self.assertEqual(ss.get("_written_key_restore_source"), "receive_finalize")
 
     def test_written_key_checkbox_disk_round_trip(self) -> None:
         st = MagicMock()

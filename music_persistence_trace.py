@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v23-written-key-restore"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v24-transposing-receive"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -266,6 +266,8 @@ TEST_D_TRACE_LABELS: tuple[str, ...] = (
     "restore_decision",
     "restore_skip_reason",
     "active_song_restore_skipped",
+    "active_song_dirty",
+    "workspace_restore_source",
     "page_overwrite_source",
     "written_key_mode_widget",
     "written_key_mode_canonical",
@@ -315,9 +317,12 @@ def collect_test_d_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
         try:
             from active_song_state import written_key_mode_from_blob
 
-            cloud_blob = ss.get("_suite_last_cloud_save_payload")
-            if isinstance(cloud_blob, dict):
-                written_key_mode_cloud = written_key_mode_from_blob(cloud_blob)
+            for blob_key in ("_suite_last_cloud_fetch_payload", "_suite_last_cloud_save_payload"):
+                cloud_blob = ss.get(blob_key)
+                if isinstance(cloud_blob, dict):
+                    written_key_mode_cloud = written_key_mode_from_blob(cloud_blob)
+                    if written_key_mode_cloud is not None:
+                        break
         except ImportError:
             pass
     instrument_name = str(ss.get("instrument") or "").strip()
@@ -336,11 +341,21 @@ def collect_test_d_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
         try:
             from active_song_state import transposing_subtype_from_blob
 
-            cloud_blob = ss.get("_suite_last_cloud_save_payload")
-            if isinstance(cloud_blob, dict):
-                transposing_subtype_cloud = transposing_subtype_from_blob(cloud_blob)
+            for blob_key in ("_suite_last_cloud_fetch_payload", "_suite_last_cloud_save_payload"):
+                cloud_blob = ss.get(blob_key)
+                if isinstance(cloud_blob, dict):
+                    transposing_subtype_cloud = transposing_subtype_from_blob(cloud_blob)
+                    if transposing_subtype_cloud:
+                        break
         except ImportError:
             pass
+    active_song_dirty = bool(ss.get("active_song_state_dirty"))
+    try:
+        from active_song_state import is_active_song_locally_dirty
+
+        active_song_dirty = is_active_song_locally_dirty(ss)
+    except ImportError:
+        pass
     return {
         "device_id": device_id,
         "trace_captured_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
@@ -364,6 +379,9 @@ def collect_test_d_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
         "restore_skip_reason": trace.get("restore_skip_reason")
         or ss.get("_suite_persist_restore_skip_reason"),
         "active_song_restore_skipped": ss.get("_active_song_restore_skipped_reason"),
+        "active_song_dirty": active_song_dirty,
+        "workspace_restore_source": trace.get("workspace_restore_source")
+        or ss.get("_suite_persist_last_restore_source"),
         "page_overwrite_source": trace.get("page_overwrite_source")
         or ss.get("_suite_page_overwrite_source"),
         "written_key_mode_widget": written_key_mode_widget,

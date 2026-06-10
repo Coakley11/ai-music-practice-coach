@@ -727,7 +727,7 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("page-change-save-stamp-v23-written-key-restore", info["build_marker"])
+        self.assertIn("page-change-save-stamp-v24-transposing-receive", info["build_marker"])
 
     def test_test_d_compare_trace_includes_final_fields(self) -> None:
         from music_persistence_trace import (
