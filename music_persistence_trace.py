@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v4"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v5"
 
 TRACE_KEY = "_music_persist_trace"
 

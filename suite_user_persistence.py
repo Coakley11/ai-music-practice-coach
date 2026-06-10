@@ -1346,6 +1346,9 @@ def force_autosave(
             if reason == "page_change":
                 _release_user_page_ownership_after_save(st, str(state.get("active_page") or ""))
             if saved_cloud:
+                import copy
+
+                st.session_state["_suite_last_cloud_save_payload"] = copy.deepcopy(state)
                 _, cloud_ts = load_cloud_full_session(app_id)
                 st.session_state[_applied_cloud_ts_key(app_id)] = cloud_ts or _utc_now_iso()
             st.session_state["_suite_persist_last_save_at"] = _utc_now_iso()

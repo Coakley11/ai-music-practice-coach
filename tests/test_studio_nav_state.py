@@ -45,6 +45,7 @@ class TestStudioNavState(unittest.TestCase):
         self.assertEqual(session["studio_page"], "backing")
         self.assertEqual(session["studio_nav_state"]["studio_page"], "backing")
         self.assertEqual(session["studio_nav_state"]["last_write_reason"], "session_page_wins")
+        self.assertTrue(is_studio_nav_locally_dirty(session))
 
     def test_b_cross_device_cloud_restore(self) -> None:
         session: dict = {"studio_page": "practice"}
