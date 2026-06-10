@@ -12,10 +12,35 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v14"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v15-backing-trace"
 
 TRACE_KEY = "_music_persist_trace"
 
+
+
+BACKING_PATH_TRACE_LABELS: tuple[str, ...] = (
+    "backing_sync_failure_class",
+    "backing_widget_bpm",
+    "backing_canonical_bpm",
+    "backing_payload_bpm",
+    "backing_cloud_bpm",
+    "backing_restore_source",
+    "backing_last_write",
+    "backing_widget_scope",
+    "backing_canonical_scope",
+    "backing_payload_scope",
+    "cloud_payload_backing_scope",
+    "backing_widget_loops",
+    "backing_canonical_loops",
+    "backing_payload_loops",
+    "cloud_payload_backing_loops",
+    "backing_pending_sync",
+    "backing_dirty",
+    "force_save_reason",
+    "last_save_cloud",
+    "cloud_payload_source",
+    "cloud_save_blocked_reason",
+)
 
 
 PRACTICE_RESTORE_TRACE_LABELS: tuple[str, ...] = (
@@ -392,6 +417,13 @@ def snapshot_workspace_restore_trace(st: Any) -> dict[str, Any]:
 
     update_trace(st, **fields)
 
+    try:
+        from backing_track_state import snapshot_backing_path_trace
+
+        snapshot_backing_path_trace(st)
+    except ImportError:
+        pass
+
     return fields
 
 
@@ -521,6 +553,26 @@ def render_persistence_trace_sidebar(st: Any) -> None:
         for label in WORKSPACE_RESTORE_TRACE_LABELS:
 
             st.text(f"{label}: {_trace_display(restore_rows.get(label))}")
+
+
+
+        st.markdown("**Backing path (Test C)**")
+
+        backing_rows = {label: trace.get(label) for label in BACKING_PATH_TRACE_LABELS}
+
+        for label in BACKING_PATH_TRACE_LABELS:
+
+            st.text(f"{label}: {_trace_display(backing_rows.get(label))}")
+
+        failure_class = trace.get("backing_sync_failure_class") or ""
+
+        if failure_class and failure_class not in ("path_ok", "unclassified"):
+
+            st.warning(f"Backing sync class: {failure_class}")
+
+        elif failure_class == "path_ok":
+
+            st.success("Backing sync class: path_ok")
 
 
 

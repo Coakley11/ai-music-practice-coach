@@ -10708,6 +10708,12 @@ elif _studio_page == "backing":
         prepare_backing_durable_widgets(st.session_state, default_meter=_default_meter)
     except Exception:
         pass
+    try:
+        from backing_track_state import snapshot_backing_path_trace
+
+        snapshot_backing_path_trace(st)
+    except Exception:
+        pass
 
     if not pp.is_capture_mode(st):
         if km.is_voice_mode(st.session_state):

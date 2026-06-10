@@ -615,6 +615,12 @@ def record_music_cloud_write_result(
         import copy as _copy
 
         ss["_suite_last_cloud_save_payload"] = _copy.deepcopy(state)
+        try:
+            from backing_track_state import record_backing_disk_payload_trace
+
+            record_backing_disk_payload_trace(ss, state)
+        except ImportError:
+            pass
         written = (
             ss.get("_music_final_payload_studio_page")
             or ss.get("_music_cloud_write_studio_page")
@@ -1181,6 +1187,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     except ImportError:
         pass
     state["music_workspace_state"] = envelope
+    try:
+        from backing_track_state import record_backing_disk_payload_trace
+
+        record_backing_disk_payload_trace(ss, state)
+    except ImportError:
+        pass
     pre_stamp = _payload_page_snapshot(state) if save_reason == "page_change" else {}
     if save_reason == "page_change" and page_change_target:
         stamp_trace = _stamp_live_studio_page_into_save_payload(
@@ -1668,7 +1680,13 @@ def flush_backing_edits_and_save(st: Any, *, reason: str = "backing_edit") -> bo
     ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
     if ok:
         _clear_canonical_dirty_after_save(st.session_state, reason=reason)
-        _record_music_persist_trace(st, reason=reason)
+    _record_music_persist_trace(st, reason=reason)
+    try:
+        from backing_track_state import snapshot_backing_path_trace
+
+        snapshot_backing_path_trace(st)
+    except ImportError:
+        pass
     return ok
 
 
@@ -2044,6 +2062,19 @@ def autosave_music_state(st: Any) -> dict[str, Any]:
             ):
                 if prior.get(key) not in (None, ""):
                     trace_fields[key] = prior.get(key)
+        try:
+            from backing_track_state import collect_backing_persistence_trace, resolve_backing_trace_payloads
+
+            envelope_payload, cloud_payload = resolve_backing_trace_payloads(st, ss)
+            trace_fields.update(
+                collect_backing_persistence_trace(
+                    ss,
+                    envelope_payload=envelope_payload,
+                    cloud_payload=cloud_payload,
+                )
+            )
+        except ImportError:
+            pass
         update_trace(st, **trace_fields)
         if result.get("cloud_ok") or result.get("disk_ok"):
             _clear_canonical_dirty_after_save(ss)

@@ -12,6 +12,7 @@ from backing_track_state import (
     BACKING_WIDGETS_SEEDED_KEY,
     apply_backing_source_state_from_ami,
     apply_cloud_backing_state_if_allowed,
+    classify_backing_sync_failure_class,
     coerce_backing_groove_for_widget,
     backing_filters_for_workspace_envelope,
     collect_backing_persistence_trace,
@@ -23,6 +24,7 @@ from backing_track_state import (
     mark_backing_local_edit,
     mark_backing_pending_sync,
     prepare_backing_page,
+    record_backing_disk_payload_trace,
     resolve_backing_trace_payloads,
     write_canonical_backing_state,
 )
@@ -484,6 +486,57 @@ class TestBackingTrackState(unittest.TestCase):
         self.assertEqual(session["backing_track_loops"], 1)
         self.assertEqual(session["backing_time_signature"], "2/4")
         self.assertTrue(session["backing_time_signature_override"])
+
+    def test_gather_reads_per_song_slider_bpm_key(self) -> None:
+        session = {
+            "backing_track_bpm::pk__Pop__Song": 125,
+            "backing_track_scope": "Single section",
+            "backing_track_single_section": "Verse",
+            "backing_track_loops": 3,
+            "backing_groove_style": "Rock groove",
+        }
+        filters = gather_backing_filters(session)
+        self.assertEqual(filters["backing_track_bpm"], 125)
+        self.assertEqual(session["backing_track_bpm"], 125)
+
+    def test_classify_dell_widget_canonical_mismatch(self) -> None:
+        trace = {
+            "backing_widget_bpm": 125,
+            "backing_canonical_bpm": 108,
+            "backing_payload_bpm": 108,
+            "backing_cloud_bpm": 108,
+        }
+        self.assertEqual(
+            classify_backing_sync_failure_class(trace),
+            "dell_widget_canonical_mismatch",
+        )
+
+    def test_classify_phone_restore_overwrite_defaults(self) -> None:
+        trace = {
+            "backing_widget_bpm": 100,
+            "backing_cloud_bpm": 125,
+            "backing_restore_source": "cloud_restore",
+            "backing_widget_scope": "Full song",
+            "backing_widget_loops": 2,
+            "backing_widget_quick_section": "Full song",
+        }
+        self.assertEqual(
+            classify_backing_sync_failure_class(trace),
+            "phone_restore_overwrite_defaults",
+        )
+
+    def test_record_disk_payload_trace_from_envelope(self) -> None:
+        session: dict = {}
+        state = {
+            "music_workspace_state": {
+                "backing_filters": {
+                    **_SAMPLE,
+                    "backing_track_bpm": 125,
+                }
+            }
+        }
+        record_backing_disk_payload_trace(session, state)
+        self.assertEqual(session["_music_backing_payload_bpm"], 125)
 
     def test_flush_after_pending_sync_captures_widget_values(self) -> None:
         session = {

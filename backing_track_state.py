@@ -108,8 +108,12 @@ __all__ = (
     "backing_canonical_playback_seed",
     "backing_canonical_meter_seed",
     "backing_filters_for_workspace_envelope",
+    "classify_backing_sync_failure_class",
     "has_restored_backing_canonical",
+    "record_backing_disk_payload_trace",
     "resolve_backing_trace_payloads",
+    "snapshot_backing_path_trace",
+    "sync_backing_session_keys_for_save",
     "seed_backing_widgets_from_canonical",
     "prepare_backing_bpm_for_widget",
     "prepare_backing_durable_widgets",
@@ -324,13 +328,37 @@ def _sync_scope_keys_from_session(session: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _widget_bpm_from_session(session: dict[str, Any]) -> int | None:
+    """BPM from canonical widget key or per-song slider key (``backing_track_bpm::``)."""
+    if "backing_track_bpm" in session:
+        return normalize_backing_bpm(session.get("backing_track_bpm"))
+    for key, val in session.items():
+        if str(key).startswith("backing_track_bpm::"):
+            return normalize_backing_bpm(val)
+    return None
+
+
+def sync_backing_session_keys_for_save(session: dict[str, Any]) -> None:
+    """Mirror live widget keys into gather/commit keys before flush or disk build."""
+    bpm = _widget_bpm_from_session(session)
+    if bpm is not None:
+        session["backing_track_bpm"] = int(bpm)
+    groove = str(session.get("backing_groove_style") or "").strip()
+    if not groove:
+        try:
+            from songs.playback_defaults import BACKING_GROOVE_KEY
+
+            groove = str(session.get(BACKING_GROOVE_KEY) or "").strip()
+            if groove:
+                session["backing_groove_style"] = groove
+        except ImportError:
+            pass
+
+
 def gather_backing_filters(session: dict[str, Any]) -> dict[str, Any]:
     """Read Backing page filters from live session keys."""
-    bpm = session.get("backing_track_bpm")
-    if bpm is None and "backing_track_bpm" not in session:
-        bpm_val = None
-    else:
-        bpm_val = normalize_backing_bpm(bpm)
+    sync_backing_session_keys_for_save(session)
+    bpm_val = _widget_bpm_from_session(session)
     volume = session.get("backing_volume")
     if volume is None and "backing_volume" not in session:
         volume_val = None
@@ -735,15 +763,18 @@ def _backing_filters_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
 def apply_cloud_backing_state_if_allowed(session: dict[str, Any], state: dict[str, Any]) -> bool:
     if is_backing_locally_dirty(session):
         session["_backing_restore_skipped_reason"] = "local_dirty"
+        session["_backing_restore_source"] = "skipped_local_dirty"
         return False
     filters = _backing_filters_from_blob(state)
     if not filters:
         session.pop(BACKING_RESTORED_KEY, None)
+        session["_backing_restore_source"] = "skipped_no_blob"
         return False
     write_canonical_backing_state(session, filters, reason="cloud_restore")
     session[BACKING_RESTORED_KEY] = True
     session.pop(BACKING_WIDGETS_SEEDED_KEY, None)
     session["_backing_restore_skipped_reason"] = None
+    session["_backing_restore_source"] = "cloud_restore"
     clear_backing_local_edit(session)
     return True
 
@@ -819,6 +850,109 @@ def resolve_backing_trace_payloads(
     return envelope, cloud
 
 
+def _trace_bpm(val: Any) -> int | str:
+    if val in (None, ""):
+        return ""
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return ""
+
+
+def classify_backing_sync_failure_class(trace: dict[str, Any]) -> str:
+    """Classify Test C failure into Dell save vs phone restore vs flush timing."""
+    widget_bpm = _trace_bpm(trace.get("backing_widget_bpm"))
+    canonical_bpm = _trace_bpm(trace.get("backing_canonical_bpm"))
+    payload_bpm = _trace_bpm(trace.get("backing_payload_bpm"))
+    cloud_bpm = _trace_bpm(trace.get("backing_cloud_bpm"))
+    pending = bool(trace.get("backing_pending_sync"))
+    last_write = str(trace.get("backing_last_write") or "")
+    force_reason = str(trace.get("force_save_reason") or "")
+    restore_source = str(trace.get("backing_restore_source") or "")
+    last_save_cloud = bool(trace.get("last_save_cloud"))
+
+    if restore_source.startswith("skipped"):
+        return "phone_restore_skipped"
+
+    if (
+        cloud_bpm != ""
+        and widget_bpm != ""
+        and cloud_bpm != widget_bpm
+        and restore_source == "cloud_restore"
+        and _gathered_looks_like_song_defaults(
+            {
+                "backing_track_scope": trace.get("backing_widget_scope"),
+                "backing_track_loops": trace.get("backing_widget_loops"),
+                "backing_quick_section": trace.get("backing_widget_quick_section"),
+                "backing_track_bpm": widget_bpm,
+            }
+        )
+    ):
+        return "phone_restore_overwrite_defaults"
+
+    if widget_bpm != "" and canonical_bpm != "" and widget_bpm != canonical_bpm:
+        return "dell_widget_canonical_mismatch"
+
+    if canonical_bpm != "" and payload_bpm != "" and canonical_bpm != payload_bpm:
+        return "dell_canonical_payload_mismatch"
+
+    if payload_bpm != "" and cloud_bpm != "" and payload_bpm != cloud_bpm:
+        return "dell_payload_cloud_mismatch"
+
+    if pending and force_reason != "backing_edit":
+        return "flush_save_not_triggered"
+
+    if widget_bpm != "" and not last_save_cloud and force_reason != "backing_edit":
+        return "flush_save_not_triggered"
+
+    if (
+        widget_bpm != ""
+        and canonical_bpm == widget_bpm
+        and payload_bpm == widget_bpm
+        and (cloud_bpm == "" or cloud_bpm == payload_bpm)
+    ):
+        return "path_ok"
+
+    if cloud_bpm != "" and widget_bpm == cloud_bpm:
+        return "path_ok"
+
+    return "unclassified"
+
+
+def record_backing_disk_payload_trace(session: dict[str, Any], state: dict[str, Any]) -> None:
+    """Capture backing BPM from the disk/cloud payload about to be written."""
+    if not isinstance(state, dict):
+        return
+    ws = state.get("music_workspace_state")
+    bf: dict[str, Any] = {}
+    if isinstance(ws, dict) and isinstance(ws.get("backing_filters"), dict):
+        bf = _normalize_filters(ws["backing_filters"])
+    elif isinstance(state.get(BACKING_STATE_KEY), dict):
+        bf = _normalize_filters(state[BACKING_STATE_KEY])
+    session["_music_backing_payload_bpm"] = bf.get("backing_track_bpm", "")
+    session["_music_backing_payload_scope"] = bf.get("backing_track_scope", "")
+    session["_music_backing_payload_loops"] = bf.get("backing_track_loops", "")
+    session["_music_backing_payload_groove"] = bf.get("backing_groove_style", "")
+
+
+def snapshot_backing_path_trace(st: Any) -> dict[str, Any]:
+    """Refresh full Backing path trace for ?dev=1 (widget → canonical → payload → cloud)."""
+    try:
+        from music_persistence_trace import get_trace, update_trace
+
+        session = st.session_state
+        envelope_payload, cloud_payload = resolve_backing_trace_payloads(st, session)
+        trace = collect_backing_persistence_trace(
+            session,
+            envelope_payload=envelope_payload,
+            cloud_payload=cloud_payload,
+        )
+        update_trace(st, **trace)
+        return trace
+    except Exception:
+        return {}
+
+
 def collect_backing_persistence_trace(
     session: dict[str, Any],
     *,
@@ -826,6 +960,7 @@ def collect_backing_persistence_trace(
     envelope_payload: dict[str, Any] | None = None,
     cloud_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    sync_backing_session_keys_for_save(session)
     canonical = canonical_backing_filters(session) or {}
     envelope: dict[str, Any] = {}
     cloud_meta: dict[str, Any] = {}
@@ -835,9 +970,20 @@ def collect_backing_persistence_trace(
         ws = env_src.get("music_workspace_state")
         if isinstance(ws, dict) and isinstance(ws.get("backing_filters"), dict):
             envelope = _normalize_filters(ws["backing_filters"])
+        elif isinstance(env_src.get(BACKING_STATE_KEY), dict):
+            envelope = _normalize_filters(env_src[BACKING_STATE_KEY])
     if isinstance(cloud_src, dict):
         cloud_meta = _backing_filters_from_blob(cloud_src) or {}
-    return {
+    payload_bpm = session.get("_music_backing_payload_bpm")
+    if payload_bpm in (None, "") and envelope.get("backing_track_bpm") not in (None, ""):
+        payload_bpm = envelope.get("backing_track_bpm")
+    widget_bpm = _widget_bpm_from_session(session)
+    trace = {
+        "backing_widget_bpm": widget_bpm if widget_bpm is not None else "",
+        "backing_widget_scope": session.get(BACKING_SCOPE_WIDGET_KEY, ""),
+        "backing_widget_loops": session.get(BACKING_LOOPS_WIDGET_KEY, ""),
+        "backing_widget_groove": session.get("backing_groove_style", ""),
+        "backing_widget_quick_section": session.get(BACKING_QUICK_SECTION_WIDGET_KEY, ""),
         "backing_canonical_bpm": canonical.get("backing_track_bpm", ""),
         "backing_canonical_groove": canonical.get("backing_groove_style", ""),
         "backing_canonical_scope": canonical.get("backing_track_scope", ""),
@@ -856,6 +1002,12 @@ def collect_backing_persistence_trace(
         "cloud_payload_backing_loops": cloud_meta.get("backing_track_loops", ""),
         "cloud_payload_backing_meter": cloud_meta.get("backing_time_signature", ""),
         "cloud_payload_backing_section": cloud_meta.get("backing_track_single_section", ""),
+        "backing_cloud_bpm": cloud_meta.get("backing_track_bpm", ""),
+        "backing_payload_bpm": payload_bpm if payload_bpm is not None else "",
+        "backing_payload_scope": session.get("_music_backing_payload_scope", envelope.get("backing_track_scope", "")),
+        "backing_payload_loops": session.get("_music_backing_payload_loops", envelope.get("backing_track_loops", "")),
+        "backing_payload_groove": session.get("_music_backing_payload_groove", envelope.get("backing_groove_style", "")),
+        "backing_restore_source": session.get("_backing_restore_source", ""),
         "restored_backing_bpm": session.get("backing_track_bpm", ""),
         "restored_backing_groove": session.get("backing_groove_style", ""),
         "restored_backing_scope": session.get("backing_track_scope", ""),
@@ -883,6 +1035,8 @@ def collect_backing_persistence_trace(
         "last_save_cloud": bool(session.get("_suite_persist_last_save_cloud")),
         "cloud_save_blocked_reason": session.get("_suite_autosave_cloud_blocked_reason", ""),
     }
+    trace["backing_sync_failure_class"] = classify_backing_sync_failure_class(trace)
+    return trace
 
 
 def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
@@ -952,3 +1106,6 @@ def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
     st.sidebar.caption(f"**last_save_cloud:** `{trace.get('last_save_cloud', False)}`")
     if trace.get("cloud_save_blocked_reason"):
         st.sidebar.caption(f"**cloud_save_blocked:** `{trace['cloud_save_blocked_reason']}`")
+    failure_class = trace.get("backing_sync_failure_class")
+    if failure_class:
+        st.sidebar.caption(f"**backing_sync_class:** `{failure_class}`")
