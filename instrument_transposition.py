@@ -397,6 +397,7 @@ def render_sidebar_transposing_widgets(
     instrument: str,
     on_written_key_change: Any | None = None,
     on_transposing_type_change: Any | None = None,
+    **_: Any,
 ) -> None:
     """App-wide transposing controls (sidebar) — persist across all studio pages."""
     if not is_transposing_instrument(instrument):
@@ -468,6 +469,7 @@ def render_sidebar_transposing_controls(
     instrument: str,
     on_written_key_change: Any | None = None,
     on_transposing_type_change: Any | None = None,
+    **_: Any,
 ) -> None:
     """Sidebar type selector, written-key toggle, and recap (all pages)."""
     render_sidebar_transposing_widgets(

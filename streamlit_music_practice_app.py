@@ -9173,6 +9173,27 @@ def _on_transposing_subtype_change() -> None:
     _sync_canonical_active_song_after_edit()
 
 
+def _render_sidebar_transposing_controls_compat(
+    *,
+    concert_key: str,
+    instrument: str,
+) -> None:
+    """Call transposing sidebar controls; tolerate older instrument_transposition signatures."""
+    import inspect
+
+    kwargs: dict[str, Any] = {
+        "st": st,
+        "concert_key": concert_key,
+        "instrument": instrument,
+        "on_written_key_change": _on_written_key_checkbox_change,
+        "on_transposing_type_change": _on_transposing_subtype_change,
+    }
+    supported = inspect.signature(render_sidebar_transposing_controls).parameters
+    render_sidebar_transposing_controls(
+        **{k: v for k, v in kwargs.items() if k in supported}
+    )
+
+
 def _on_global_instrument_change() -> None:
     # Re-validate Practice Focus against the new instrument's option
     # list so other pages don't render a focus that the new instrument
@@ -9367,12 +9388,9 @@ if display_key not in _display_key_options:
 key_changed_this_run = note_display_key_change(st, display_key)
 
 apply_pending_transposing_instrument(st.session_state, instrument)
-render_sidebar_transposing_controls(
-    st,
+_render_sidebar_transposing_controls_compat(
     concert_key=display_key,
     instrument=instrument,
-    on_written_key_change=_on_written_key_checkbox_change,
-    on_transposing_type_change=_on_transposing_subtype_change,
 )
 
 _key_ctx = resolve_practice_keys(st.session_state, display_key, instrument)

@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v21-transposing-subtype-sync"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v21-hotfix-transposing-kwarg"
 
 TRACE_KEY = "_music_persist_trace"
 
