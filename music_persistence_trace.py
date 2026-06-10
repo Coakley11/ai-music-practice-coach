@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v12"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v13"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -524,9 +524,25 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
             ("page_change_write_coerced", trace.get("page_change_write_coerced") if trace.get("page_change_write_coerced") is not None else ss.get("page_change_write_coerced")),
 
+            ("music_cloud_write_path", trace.get("music_cloud_write_path") or ss.get("_music_cloud_write_path")),
+
+            ("music_stamp_before_cloud_write_ran", trace.get("music_stamp_before_cloud_write_ran") if trace.get("music_stamp_before_cloud_write_ran") is not None else ss.get("_music_stamp_before_cloud_write_ran")),
+
             ("music_pre_write_path", trace.get("music_pre_write_path") or ss.get("music_pre_write_path")),
 
             ("music_pre_write_stamp_ran", trace.get("music_pre_write_stamp_ran") if trace.get("music_pre_write_stamp_ran") is not None else ss.get("music_pre_write_stamp_ran")),
+
+            ("music_disk_build_error", trace.get("music_disk_build_error") or ss.get("_music_disk_build_error")),
+
+            ("music_commit_error", trace.get("music_commit_error") or ss.get("_music_commit_error")),
+
+            ("music_last_cloud_write_ok", trace.get("music_last_cloud_write_ok") if trace.get("music_last_cloud_write_ok") is not None else ss.get("_music_last_cloud_write_ok")),
+
+            ("music_last_cloud_write_error", trace.get("music_last_cloud_write_error") or ss.get("_music_last_cloud_write_error")),
+
+            ("force_autosave_ok", trace.get("force_autosave_ok") if trace.get("force_autosave_ok") is not None else ss.get("_music_force_save_ok")),
+
+            ("force_autosave_error", trace.get("force_autosave_error") or ss.get("_suite_force_autosave_error")),
 
             ("page_change_finalize_ran", trace.get("page_change_finalize_ran") if trace.get("page_change_finalize_ran") is not None else ss.get("page_change_finalize_ran")),
 

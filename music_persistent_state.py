@@ -545,6 +545,121 @@ def record_music_pre_write_diagnostics(
         ss["_music_save_payload_stamp_trace"] = stamped
 
 
+def build_music_fallback_page_change_state(st: Any) -> dict[str, Any]:
+    """Minimal persist blob when full disk build throws during page_change."""
+    ss = st.session_state
+    target = (
+        sync_page_change_write_pending_for_music_save(st)
+        or _normalize_studio_page_for_save(ss.get("_music_build_page_change_target"))
+        or _page_change_write_target(ss)[0]
+    )
+    if not target:
+        raise ValueError("no page_change target for fallback build")
+    core = build_music_local_state(st)
+    core["studio_page"] = target
+    core["page"] = target
+    extra: dict[str, Any] = {"studio_page": target}
+    state: dict[str, Any] = {"core": core, "session": extra}
+    nav = ss.get("studio_nav_state")
+    if isinstance(nav, dict):
+        nav_copy = copy.deepcopy(nav)
+        nav_copy["studio_page"] = target
+        nav_copy["page"] = target
+        state["studio_nav_state"] = nav_copy
+    ws = ss.get("music_workspace_state")
+    if isinstance(ws, dict):
+        ws_copy = copy.deepcopy(ws)
+        ws_copy["studio_page"] = target
+        ws_copy["page"] = target
+        state["music_workspace_state"] = ws_copy
+    else:
+        state["music_workspace_state"] = {"studio_page": target, "page": target}
+    ss["_music_build_save_reason"] = "page_change"
+    ss["_music_build_page_change_target"] = target
+    ss["_music_fallback_page_change_build"] = True
+    return state
+
+
+def build_music_state_for_save(
+    st: Any,
+    build_state: Any,
+    *,
+    save_reason: str = "",
+) -> dict[str, Any]:
+    """Build disk state; on page_change failures use a minimal backing-safe blob."""
+    try:
+        return build_state(st)
+    except Exception as exc:
+        ss = st.session_state
+        ss["_music_disk_build_error"] = str(exc)
+        if save_reason == "page_change" or _pending_page_change_write_target(ss):
+            return build_music_fallback_page_change_state(st)
+        raise
+
+
+def record_music_cloud_write_result(
+    st: Any,
+    state: dict[str, Any],
+    *,
+    write_path: str,
+    saved_cloud: bool,
+    cloud_error: str = "",
+) -> None:
+    ss = st.session_state
+    ss["_music_cloud_write_path"] = write_path
+    ss["_music_last_cloud_write_ok"] = saved_cloud
+    ss["_music_stamp_before_cloud_write_ran"] = bool(
+        ss.get("music_pre_write_stamp_ran") or ss.get("page_change_finalize_ran")
+    )
+    if saved_cloud:
+        import copy as _copy
+
+        ss["_suite_last_cloud_save_payload"] = _copy.deepcopy(state)
+        written = (
+            ss.get("_music_final_payload_studio_page")
+            or ss.get("_music_cloud_write_studio_page")
+            or _studio_page_from_save_state(state)
+        )
+        if written:
+            ss["_music_cloud_payload_studio_page"] = written
+            ss["_music_cloud_payload_source"] = "last_write"
+        _maybe_clear_page_change_write_pending(st, state, saved_cloud=True)
+        ss.pop("_music_last_cloud_write_error", None)
+    elif cloud_error:
+        ss["_music_last_cloud_write_error"] = cloud_error
+
+
+def save_music_cloud_session(
+    st: Any,
+    state: dict[str, Any],
+    *,
+    write_path: str,
+    page: str = "",
+    summary: str = "",
+) -> bool:
+    """Write stamped music state to cloud and record v13 write-path diagnostics."""
+    from suite_cloud_state import save_cloud_full_session
+
+    ss = st.session_state
+    ss["_music_cloud_write_path"] = write_path
+    cloud_error = ""
+    saved_cloud = False
+    try:
+        saved_cloud = bool(save_cloud_full_session(APP_ID, state, page=page, summary=summary))
+        if not saved_cloud:
+            cloud_error = "save_cloud_full_session returned False"
+    except Exception as exc:
+        cloud_error = str(exc)
+    record_music_cloud_write_result(
+        st,
+        state,
+        write_path=write_path,
+        saved_cloud=saved_cloud,
+        cloud_error=cloud_error,
+    )
+    return saved_cloud
+
+
 def stamp_music_payload_for_write(
     st: Any,
     state: dict[str, Any],
@@ -1014,6 +1129,8 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         commit_backing_state_from_session(ss, reason=save_reason)
     except ImportError:
         pass
+    except Exception as exc:
+        ss["_music_commit_error"] = str(exc)
     core = build_music_local_state(st)
     extra: dict[str, Any] = {}
     for key in _PERSIST_KEYS:
@@ -1703,7 +1820,10 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
         elif reason == "page_change" and save_payload_trace.get("save_payload_workspace_page"):
             cloud_payload_source = "save_payload_trace"
             cloud_payload_page = str(save_payload_trace["save_payload_workspace_page"])
-        elif cloud_fetch_page:
+        elif reason == "page_change" and ss.get("_music_build_page_change_target"):
+            cloud_payload_source = "build_target_inference"
+            cloud_payload_page = str(ss["_music_build_page_change_target"])
+        elif cloud_fetch_page and not ss.get(_PAGE_CHANGE_WRITE_PENDING_KEY):
             cloud_payload_page = cloud_fetch_page
             cloud_payload_source = "fetch"
         save_payload_trace = _sync_save_payload_trace_fields(save_payload_trace)
@@ -1720,6 +1840,15 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
             "music_pre_write_stamp_ran": ss.get("music_pre_write_stamp_ran"),
             "page_change_write_pending": ss.get(_PAGE_CHANGE_WRITE_PENDING_KEY),
             "page_change_write_coerced": ss.get("page_change_write_coerced"),
+            "music_cloud_write_path": ss.get("_music_cloud_write_path"),
+            "music_stamp_before_cloud_write_ran": ss.get("_music_stamp_before_cloud_write_ran"),
+            "music_disk_build_error": ss.get("_music_disk_build_error"),
+            "music_commit_error": ss.get("_music_commit_error"),
+            "music_last_cloud_write_ok": ss.get("_music_last_cloud_write_ok"),
+            "music_last_cloud_write_error": ss.get("_music_last_cloud_write_error"),
+            "force_autosave_ok": ss.get("_music_force_save_ok"),
+            "force_autosave_error": ss.get("_suite_force_autosave_error"),
+            "music_fallback_page_change_build": ss.get("_music_fallback_page_change_build"),
         }
         for key, val in diag_fields.items():
             if val is not None and (val != "" or key == "page_change_finalize_ran"):
@@ -1779,6 +1908,7 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
 
 def force_save_music_state(st: Any, *, reason: str = "") -> bool:
     ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
+    st.session_state["_music_force_save_ok"] = ok
     if ok:
         _clear_canonical_dirty_after_save(st.session_state, reason=reason)
     if ok or reason == "page_change":
@@ -1821,7 +1951,16 @@ def autosave_music_state(st: Any) -> dict[str, Any]:
             "saved_studio_page": saved_studio,
             "studio_page_raw": ss.get("studio_page"),
             "normalized_studio_page": coach_page,
-            "cloud_payload_studio_page": ss.get("_music_cloud_payload_studio_page") or saved_studio or None,
+            "cloud_payload_studio_page": (
+                ss.get("_music_cloud_payload_studio_page")
+                or (
+                    ss.get("_music_build_page_change_target")
+                    if ss.get(_PAGE_CHANGE_WRITE_PENDING_KEY)
+                    else None
+                )
+                or saved_studio
+                or None
+            ),
             "last_save_cloud": bool(result.get("cloud_ok")),
             "force_save_reason": ss.get("_suite_persist_last_save_reason"),
             "final_studio_page": ss.get("studio_page"),
@@ -1852,9 +1991,30 @@ def autosave_music_state(st: Any) -> dict[str, Any]:
                 "page_change_write_coerced",
                 "music_pre_write_path",
                 "music_pre_write_stamp_ran",
+                "music_cloud_write_path",
+                "music_stamp_before_cloud_write_ran",
+                "music_disk_build_error",
+                "music_last_cloud_write_error",
             ):
                 if stamp.get(key) not in (None, ""):
                     trace_fields[key] = stamp.get(key)
+        for key in (
+            "music_cloud_write_path",
+            "music_stamp_before_cloud_write_ran",
+            "music_disk_build_error",
+            "music_commit_error",
+            "music_last_cloud_write_ok",
+            "music_last_cloud_write_error",
+            "force_autosave_ok",
+            "force_autosave_error",
+            "_music_cloud_write_path",
+        ):
+            ss_key = key if key.startswith("_") or key.startswith("music") else key
+            val = ss.get(ss_key) if ss_key != "force_autosave_error" else ss.get("_suite_force_autosave_error")
+            if key == "force_autosave_ok":
+                val = ss.get("_music_force_save_ok")
+            if val is not None and val != "":
+                trace_fields[key] = val
         prior_finalize = prior.get("page_change_finalize_ran")
         if prior.get("force_save_reason") == "page_change" and prior_finalize:
             for key in (

@@ -1327,17 +1327,24 @@ def force_autosave(
         if reason:
             st.session_state["_suite_pending_save_reason"] = reason
         write_reason = reason or ""
-        state = build_state(st)
-        if reason == "page_change":
-            state = _preserve_cloud_widget_fields_on_page_change(app_id, state)
         if app_id == "music":
             from music_persistent_state import (
+                build_music_state_for_save,
                 resolve_music_save_reason_at_write,
+                save_music_cloud_session,
                 stamp_music_payload_for_write,
                 sync_page_change_write_pending_for_music_save,
             )
 
             sync_page_change_write_pending_for_music_save(st)
+            state = build_music_state_for_save(
+                st, build_state, save_reason=reason or ""
+            )
+        else:
+            state = build_state(st)
+        if reason == "page_change":
+            state = _preserve_cloud_widget_fields_on_page_change(app_id, state)
+        if app_id == "music":
             write_reason = resolve_music_save_reason_at_write(st, reason or "")
             state = stamp_music_payload_for_write(
                 st,
@@ -1347,6 +1354,10 @@ def force_autosave(
             )
             write_reason = str(
                 st.session_state.get("_music_save_reason_at_write") or write_reason
+            )
+            st.session_state["_music_stamp_before_cloud_write_ran"] = bool(
+                st.session_state.get("music_pre_write_stamp_ran")
+                or st.session_state.get("page_change_finalize_ran")
             )
         blob = json.dumps(state, sort_keys=True, default=str)
         fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
@@ -1361,6 +1372,26 @@ def force_autosave(
         saved_cloud = False
         if cloud_block:
             st.session_state["_suite_autosave_cloud_blocked_reason"] = cloud_block
+            if app_id == "music":
+                from music_persistent_state import record_music_cloud_write_result
+
+                record_music_cloud_write_result(
+                    st,
+                    state,
+                    write_path="force_autosave_blocked",
+                    saved_cloud=False,
+                    cloud_error=str(cloud_block),
+                )
+        elif app_id == "music":
+            from music_persistent_state import save_music_cloud_session
+
+            saved_cloud = save_music_cloud_session(
+                st,
+                state,
+                write_path="force_autosave",
+                page=page,
+                summary=summary,
+            )
         else:
             saved_cloud = bool(save_cloud_full_session(app_id, state, page=page, summary=summary))
         if saved_disk or saved_cloud:
@@ -1370,23 +1401,6 @@ def force_autosave(
             if write_reason == "page_change":
                 _release_user_page_ownership_after_save(st, str(state.get("active_page") or ""))
             if saved_cloud:
-                import copy
-
-                st.session_state["_suite_last_cloud_save_payload"] = copy.deepcopy(state)
-                if app_id == "music":
-                    from music_persistent_state import (
-                        _maybe_clear_page_change_write_pending,
-                        _studio_page_from_save_state,
-                    )
-
-                    written = (
-                        st.session_state.get("_music_final_payload_studio_page")
-                        or _studio_page_from_save_state(state)
-                    )
-                    if written:
-                        st.session_state["_music_cloud_payload_studio_page"] = written
-                        st.session_state["_music_cloud_payload_source"] = "last_write"
-                    _maybe_clear_page_change_write_pending(st, state, saved_cloud=True)
                 _, cloud_ts = load_cloud_full_session(app_id)
                 st.session_state[_applied_cloud_ts_key(app_id)] = cloud_ts or _utc_now_iso()
             elif app_id == "music" and saved_disk:
@@ -1437,8 +1451,14 @@ def autosave_if_changed(
     app_id: str,
     *,
     build_state: Callable[[Any], dict[str, Any]],
-) -> None:
+) -> dict[str, Any]:
     """Persist to disk and Supabase when the session snapshot changes."""
+    result: dict[str, Any] = {
+        "skipped": True,
+        "disk_ok": False,
+        "cloud_ok": False,
+        "cloud_attempted": False,
+    }
     try:
         import hashlib
 
@@ -1448,10 +1468,15 @@ def autosave_if_changed(
             st.session_state["_suite_autosave_block_reason"] = st.session_state.get(
                 "_suite_autosave_block_reason", "post-restore cooldown"
             )
-            return
+            return result
 
         autosave_reason = "autosave"
-        state = build_state(st)
+        if app_id == "music":
+            from music_persistent_state import build_music_state_for_save
+
+            state = build_music_state_for_save(st, build_state, save_reason="autosave")
+        else:
+            state = build_state(st)
         if app_id == "music":
             from music_persistent_state import (
                 resolve_music_save_reason_at_write,
@@ -1483,12 +1508,15 @@ def autosave_if_changed(
             else:
                 st.session_state[_local_dirty_key(app_id)] = True
         if st.session_state.get(key) == fp:
-            return
+            return result
         saved_disk = save_user_state(app_id, state)
         saved_cloud = False
         cloud_err = ""
+        result["skipped"] = False
+        result["disk_ok"] = saved_disk
+        result["cloud_attempted"] = True
         try:
-            from suite_cloud_state import save_cloud_full_session, session_page_summary
+            from suite_cloud_state import session_page_summary
 
             page, summary = session_page_summary(app_id, state)
             cloud_block = _cloud_autosave_blocked_reason(
@@ -1499,32 +1527,41 @@ def autosave_if_changed(
             )
             if cloud_block:
                 st.session_state["_suite_autosave_cloud_blocked_reason"] = cloud_block
+                if app_id == "music":
+                    from music_persistent_state import record_music_cloud_write_result
+
+                    record_music_cloud_write_result(
+                        st,
+                        state,
+                        write_path="autosave_if_changed_blocked",
+                        saved_cloud=False,
+                        cloud_error=str(cloud_block),
+                    )
+            elif app_id == "music":
+                from music_persistent_state import save_music_cloud_session
+
+                saved_cloud = save_music_cloud_session(
+                    st,
+                    state,
+                    write_path="autosave_if_changed",
+                    page=page,
+                    summary=summary,
+                )
             else:
+                from suite_cloud_state import save_cloud_full_session
+
                 saved_cloud = bool(
                     save_cloud_full_session(app_id, state, page=page, summary=summary)
                 )
-                if saved_cloud:
-                    from suite_cloud_state import load_cloud_full_session
+            if saved_cloud:
+                from suite_cloud_state import load_cloud_full_session
 
-                    _, cloud_ts_after = load_cloud_full_session(app_id)
-                    if cloud_ts_after:
-                        st.session_state[_applied_cloud_ts_key(app_id)] = cloud_ts_after
-                    if app_id == "music":
-                        from music_persistent_state import (
-                            _maybe_clear_page_change_write_pending,
-                            _studio_page_from_save_state,
-                        )
-
-                        written = (
-                            st.session_state.get("_music_final_payload_studio_page")
-                            or _studio_page_from_save_state(state)
-                        )
-                        if written:
-                            st.session_state["_music_cloud_payload_studio_page"] = written
-                            st.session_state["_music_cloud_payload_source"] = "last_write"
-                        _maybe_clear_page_change_write_pending(st, state, saved_cloud=True)
+                _, cloud_ts_after = load_cloud_full_session(app_id)
+                if cloud_ts_after:
+                    st.session_state[_applied_cloud_ts_key(app_id)] = cloud_ts_after
         except Exception as exc:
             cloud_err = str(exc)
+        result["cloud_ok"] = saved_cloud
         if saved_disk or saved_cloud:
             st.session_state[key] = fp
             st.session_state[_restored_fp_key(app_id)] = fp
@@ -1551,8 +1588,10 @@ def autosave_if_changed(
             if cloud_err:
                 st.session_state["_suite_persist_last_cloud_error"] = cloud_err
             st.session_state[_SESSION_SAVED_FLASH_KEY] = True
+        return result
     except Exception:
         pass
+    return result
 
 
 def show_persistence_messages(st: Any) -> None:
