@@ -727,7 +727,7 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("page-change-save-stamp-v10", info["build_marker"])
+        self.assertIn("page-change-save-stamp-v11", info["build_marker"])
 
     def test_finalize_uses_normalized_studio_page_over_stale_picker_hint(self) -> None:
         from music_persistent_state import finalize_music_page_change_cloud_payload
@@ -889,6 +889,45 @@ class TestPersistenceTracePanel(unittest.TestCase):
         st = MagicMock()
         st.session_state = {"_suite_pending_save_reason": "page_change"}
         self.assertEqual(resolve_music_save_reason_at_write(st, "autosave"), "page_change")
+
+    def test_resolve_music_save_reason_pending_stamp_wins_over_song_edit(self) -> None:
+        from music_persistent_state import resolve_music_save_reason_at_write
+
+        st = MagicMock()
+        st.session_state = {
+            "_suite_page_change_write_pending": "backing",
+            "_suite_page_change_stamp_target": "backing",
+            "_suite_pending_save_reason": "song_edit",
+        }
+        self.assertEqual(resolve_music_save_reason_at_write(st, "song_edit"), "page_change")
+
+    def test_stamp_music_payload_song_edit_with_pending_page_change_finalizes_backing(self) -> None:
+        from music_persistent_state import stamp_music_payload_for_write
+
+        st = MagicMock()
+        st.session_state = {
+            "_suite_page_change_write_pending": "backing",
+            "_suite_page_change_stamp_target": "backing",
+            "studio_page": "picker",
+            "studio_nav_state": {"studio_page": "backing", "page": "backing"},
+            "music_workspace_state": {"studio_page": "backing", "page": "backing"},
+        }
+        state = {
+            "core": {"studio_page": "picker", "page": "picker"},
+            "session": {"studio_page": "picker"},
+            "music_workspace_state": {"studio_page": "picker", "page": "picker"},
+            "studio_nav_state": {"studio_page": "picker", "page": "picker"},
+        }
+        out = stamp_music_payload_for_write(
+            st,
+            state,
+            explicit_reason="song_edit",
+            write_path="force_autosave",
+        )
+        self.assertEqual(out["core"]["studio_page"], "backing")
+        self.assertEqual(st.session_state.get("_music_save_reason_at_write"), "page_change")
+        self.assertTrue(st.session_state.get("page_change_finalize_ran"))
+        self.assertEqual(st.session_state.get("_music_cloud_write_studio_page"), "backing")
 
     def test_finalize_sets_ran_and_cloud_write_diagnostics(self) -> None:
         from music_persistent_state import finalize_music_page_change_cloud_payload

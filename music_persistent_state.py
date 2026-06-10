@@ -143,6 +143,7 @@ def _studio_nav_page_from_session(ss: dict[str, Any]) -> str:
 
 
 _PAGE_CHANGE_STAMP_TARGET_KEY = "_suite_page_change_stamp_target"
+_PAGE_CHANGE_WRITE_PENDING_KEY = "_suite_page_change_write_pending"
 
 
 def _normalized_session_studio_page_for_save(ss: dict[str, Any]) -> tuple[str, str]:
@@ -167,9 +168,72 @@ def _normalized_session_studio_page_for_save(ss: dict[str, Any]) -> tuple[str, s
     return "", "missing"
 
 
+def _pending_page_change_write_target(ss: dict[str, Any]) -> str:
+    """Page id that must still be written before page_change is considered complete."""
+    for key in (
+        _PAGE_CHANGE_STAMP_TARGET_KEY,
+        _PAGE_CHANGE_WRITE_PENDING_KEY,
+        "_suite_page_change_save_page",
+    ):
+        page = _normalize_studio_page_for_save(ss.get(key))
+        if page:
+            return page
+    return ""
+
+
+def _mark_page_change_write_pending(session: dict[str, Any], page_id: str) -> str:
+    page = _normalize_studio_page_for_save(page_id)
+    if not page:
+        return ""
+    session[_PAGE_CHANGE_WRITE_PENDING_KEY] = page
+    session[_PAGE_CHANGE_STAMP_TARGET_KEY] = page
+    session["_suite_page_change_save_page"] = page
+    return page
+
+
+def _clear_page_change_write_pending(session: dict[str, Any]) -> None:
+    session.pop(_PAGE_CHANGE_WRITE_PENDING_KEY, None)
+    session.pop(_PAGE_CHANGE_STAMP_TARGET_KEY, None)
+    session.pop("_suite_page_change_save_page", None)
+
+
+def _maybe_clear_page_change_write_pending(
+    st: Any,
+    state: dict[str, Any],
+    *,
+    saved_cloud: bool,
+) -> None:
+    if not saved_cloud:
+        return
+    ss = st.session_state
+    pending = _pending_page_change_write_target(ss)
+    if not pending:
+        return
+    written = _normalize_studio_page_for_save(
+        ss.get("_music_cloud_write_studio_page")
+        or ss.get("_music_final_payload_studio_page")
+        or _studio_page_from_save_state(state)
+    )
+    if written == pending:
+        _clear_page_change_write_pending(ss)
+
+
 def _page_change_write_target(ss: dict[str, Any]) -> tuple[str, str]:
     """Resolve the page id that must be written for page_change (session/workspace/nav)."""
-    stamp = _normalize_studio_page_for_save(ss.get(_PAGE_CHANGE_STAMP_TARGET_KEY))
+    pending = _pending_page_change_write_target(ss)
+    pending_source = (
+        _PAGE_CHANGE_WRITE_PENDING_KEY
+        if ss.get(_PAGE_CHANGE_WRITE_PENDING_KEY)
+        else _PAGE_CHANGE_STAMP_TARGET_KEY
+    )
+    if pending:
+        live, live_source = _normalized_session_studio_page_for_save(ss)
+        if live == pending:
+            return live, live_source
+        return pending, pending_source
+
+    stamp = ""
+    stamp_source = _PAGE_CHANGE_STAMP_TARGET_KEY
     live, live_source = _normalized_session_studio_page_for_save(ss)
     nav = _studio_nav_page_from_session(ss)
     ws = ss.get("music_workspace_state")
@@ -193,7 +257,7 @@ def _page_change_write_target(ss: dict[str, Any]) -> tuple[str, str]:
     if user_nav and ws_page:
         return ws_page, "music_workspace_state.studio_page"
     if stamp:
-        return stamp, _PAGE_CHANGE_STAMP_TARGET_KEY
+        return stamp, stamp_source
     if ws_page:
         return ws_page, "music_workspace_state.studio_page"
     if nav:
@@ -353,6 +417,8 @@ def finalize_music_page_change_cloud_payload(
 def resolve_music_save_reason_at_write(st: Any, explicit: str = "") -> str:
     """Resolve the save reason that must drive the pre-write stamp on this persist."""
     ss = st.session_state
+    if _pending_page_change_write_target(ss):
+        return "page_change"
     explicit_reason = str(explicit or "").strip()
     if explicit_reason and explicit_reason != "autosave":
         return explicit_reason
@@ -362,8 +428,6 @@ def resolve_music_save_reason_at_write(st: Any, explicit: str = "") -> str:
     at_write = str(ss.get("_music_save_reason_at_write") or "").strip()
     if at_write:
         return at_write
-    if ss.get(_PAGE_CHANGE_STAMP_TARGET_KEY) or ss.get("_suite_page_change_save_page"):
-        return "page_change"
     if ss.get("_suite_page_user_nav") and ss.get("_music_build_page_change_target"):
         return "page_change"
     last_force = str(ss.get("_suite_persist_last_save_reason") or "").strip()
@@ -401,6 +465,7 @@ def apply_music_pre_write_stamp(
         "page_change_finalize_target": trace.get("page_change_finalize_target"),
         "page_change_finalize_source": trace.get("page_change_finalize_source"),
         "page_change_finalize_error": trace.get("page_change_finalize_error"),
+        "page_change_write_pending": _pending_page_change_write_target(st.session_state) or None,
         "_music_save_reason_at_write": reason,
         "_music_cloud_write_studio_page": trace.get("cloud_write_studio_page"),
         "_music_final_payload_studio_page": trace.get("final_payload_studio_page"),
@@ -565,17 +630,21 @@ def _mirror_page_change_save_session(st: Any, ss: dict[str, Any], page_id: str) 
         "active_page_source",
         "requested_page",
         _PAGE_CHANGE_STAMP_TARGET_KEY,
+        _PAGE_CHANGE_WRITE_PENDING_KEY,
         "_suite_page_change_save_page",
     ):
         if key in ss:
             build_ss[key] = ss[key]
-        elif key in (_PAGE_CHANGE_STAMP_TARGET_KEY, "_suite_page_change_save_page"):
+        elif key in (
+            _PAGE_CHANGE_STAMP_TARGET_KEY,
+            _PAGE_CHANGE_WRITE_PENDING_KEY,
+            "_suite_page_change_save_page",
+        ):
             build_ss[key] = target
 
 
 def _clear_page_change_save_hints(session: dict[str, Any]) -> None:
-    session.pop(_PAGE_CHANGE_STAMP_TARGET_KEY, None)
-    session.pop("_suite_page_change_save_page", None)
+    _clear_page_change_write_pending(session)
 
 
 def _page_change_save_ready(session: dict[str, Any], target_page: str) -> bool:
@@ -672,19 +741,12 @@ def maybe_flush_deferred_page_change_save(st: Any) -> bool:
     if not _page_change_save_ready(ss, deferred):
         return False
     ss.pop("_suite_deferred_page_change_save", None)
-    ss[_PAGE_CHANGE_STAMP_TARGET_KEY] = deferred
-    ss["_suite_page_change_save_page"] = deferred
+    _mark_page_change_write_pending(ss, deferred)
     build_ss = getattr(st, "session_state", ss)
     _mirror_page_change_save_session(st, ss, deferred)
     if build_ss is not ss:
-        build_ss[_PAGE_CHANGE_STAMP_TARGET_KEY] = deferred
-        build_ss["_suite_page_change_save_page"] = deferred
-    try:
-        ok = force_save_music_state(st, reason="page_change")
-    finally:
-        _clear_page_change_save_hints(ss)
-        if build_ss is not ss:
-            _clear_page_change_save_hints(build_ss)
+        _mark_page_change_write_pending(build_ss, deferred)
+    ok = force_save_music_state(st, reason="page_change")
     if ok:
         try:
             from suite_user_persistence import _release_user_page_ownership_after_save
@@ -1293,19 +1355,12 @@ def after_studio_page_change(
         ss["_suite_deferred_page_change_save"] = page_id
         return
     ss.pop("_suite_deferred_page_change_save", None)
-    ss[_PAGE_CHANGE_STAMP_TARGET_KEY] = page_id
-    ss["_suite_page_change_save_page"] = page_id
+    _mark_page_change_write_pending(ss, page_id)
     build_ss = getattr(st, "session_state", ss)
     _mirror_page_change_save_session(st, ss, page_id)
     if build_ss is not ss:
-        build_ss[_PAGE_CHANGE_STAMP_TARGET_KEY] = page_id
-        build_ss["_suite_page_change_save_page"] = page_id
-    try:
-        force_save_music_state(st, reason="page_change")
-    finally:
-        _clear_page_change_save_hints(ss)
-        if build_ss is not ss:
-            _clear_page_change_save_hints(build_ss)
+        _mark_page_change_write_pending(build_ss, page_id)
+    force_save_music_state(st, reason="page_change")
     _release_user_page_ownership_after_save(st, page_id)
     ss["_suite_last_persisted_page"] = page_id
     ss.pop("_suite_page_user_nav", None)
@@ -1625,6 +1680,7 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
             "build_page_change_target": ss.get("_music_build_page_change_target"),
             "music_pre_write_path": ss.get("music_pre_write_path"),
             "music_pre_write_stamp_ran": ss.get("music_pre_write_stamp_ran"),
+            "page_change_write_pending": ss.get(_PAGE_CHANGE_WRITE_PENDING_KEY),
         }
         for key, val in diag_fields.items():
             if val is not None and (val != "" or key == "page_change_finalize_ran"):
