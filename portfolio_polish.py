@@ -150,6 +150,15 @@ def inject_polish_css(st, *, app_slug: str = "app") -> None:
             text-transform: uppercase;
             letter-spacing: 0.04em;
         }}
+        [data-testid="stSidebar"] .stCaption,
+        [data-testid="stSidebar"] p[data-testid="stCaptionContainer"] {{
+            color: #0f172a !important;
+        }}
+        .ui-song-library-foot,
+        .ui-active-song-hub-sub,
+        .ui-song-card-artist {{
+            color: #334155 !important;
+        }}
         .pp-exec-summary {{
             background: linear-gradient(135deg, #f0f6ff 0%, #f8fafc 100%);
             border: 1px solid #c8daf5;

@@ -2434,7 +2434,7 @@ def _inject_studio_history_nav_pin_script() -> None:
     )
 
 
-_UI_POLISH_VERSION = "v3-2026-06-09-ui-polish-p0"
+_UI_POLISH_VERSION = "v4-2026-06-09-ui-polish-p2"
 
 
 def _backing_studio_panel_css() -> str:
@@ -4401,6 +4401,365 @@ def _decorative_studio_header_css() -> str:
 """
 
 
+def _ui_polish_phase2_css() -> str:
+    """Phase-2 visual polish: charts/TAB, song cards, active song, readability."""
+    return """
+/* ---- UI polish P2: readability (darker labels, higher contrast) ---- */
+:root {
+  --studio-muted: #475569;
+  --ui-muted: #475569;
+}
+.ui-page-nav-label,
+.ui-active-song-recent-label,
+.ui-practice-top .stCaption,
+.ui-practice-top p[data-testid="stCaptionContainer"] {
+  color: #334155 !important;
+}
+.ui-song-card-artist,
+.ui-active-song-artist {
+  color: #334155 !important;
+}
+.ui-active-song-facts dt,
+.tab-bar-label,
+.tab-str-label {
+  color: #475569 !important;
+}
+.notation-output .notation-rhythm {
+  color: #334155 !important;
+}
+[data-testid="stSidebar"] .ui-sb-section {
+  color: #e2e8f0 !important;
+  font-weight: 800 !important;
+}
+[data-testid="stSidebar"] .ui-sb-section.tone-nav {
+  color: #f1f5f9 !important;
+}
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stCaption,
+[data-testid="stSidebar"] p[data-testid="stCaptionContainer"] {
+  color: #0f172a !important;
+}
+[data-testid="stSidebar"] .ui-ctrl-section-body .stSelectbox label,
+[data-testid="stSidebar"] .ui-ctrl-section-body .stSlider label,
+[data-testid="stSidebar"] .ui-ctrl-section-body .stRadio label {
+  color: #1e293b !important;
+}
+.block-container .stCaption,
+.block-container p[data-testid="stCaptionContainer"] {
+  color: #334155 !important;
+}
+.ui-song-library-foot,
+.ui-song-library-sub,
+.ui-genre-filter-active-summary {
+  color: #334155 !important;
+}
+.ui-section-jump .ui-bar-label,
+.ui-bar-label,
+.ui-instrument-strip-muted,
+.ui-practice-setup-kicker,
+.ui-backing-panel-kicker,
+.ui-practice-control-kicker,
+.ui-song-library-kicker,
+.ui-multitrack-studio-kicker,
+.ui-upload-studio-kicker {
+  color: #334155 !important;
+}
+.block-container label[data-testid="stWidgetLabel"] p,
+.block-container .stSelectbox label p,
+.block-container .stSlider label p,
+.block-container .stRadio label p {
+  color: #1e293b !important;
+}
+
+/* ---- Chart / TAB — music-sheet presentation ---- */
+.notation-output {
+  border: 1px solid rgba(15, 23, 42, 0.14) !important;
+  border-radius: 16px !important;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent 27px,
+      rgba(15, 23, 42, 0.04) 27px,
+      rgba(15, 23, 42, 0.04) 28px
+    ),
+    linear-gradient(180deg, #fffef8 0%, #fffdf5 55%, #faf8f0 100%) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.85),
+    0 10px 28px rgba(15, 23, 42, 0.08) !important;
+  padding: 1rem 1.15rem 1.1rem 1.15rem !important;
+}
+.notation-output .notation-title {
+  font-size: 1.05rem !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.02em !important;
+  border-bottom: 2px solid rgba(30, 64, 175, 0.18);
+  padding-bottom: 0.35rem;
+  margin-bottom: 0.55rem !important;
+}
+.notation-output .notation-chords {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(3.25rem, 1fr));
+  gap: 0.3rem 0.45rem;
+  font-size: 0.92rem !important;
+  font-weight: 800 !important;
+  color: #1e3a8a !important;
+  margin-bottom: 0.65rem !important;
+  padding: 0.45rem 0.55rem;
+  border-radius: 10px;
+  background: rgba(219, 234, 254, 0.35);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+.notation-output.notation-tab .tab-lesson {
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 12px;
+  padding: 0.35rem 0.15rem;
+}
+.tab-section-badge {
+  font-size: 0.82rem !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  color: #1e3a8a !important;
+  background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%) !important;
+  border: 1px solid rgba(59, 130, 246, 0.35) !important;
+  border-radius: 999px !important;
+  padding: 0.22rem 0.72rem !important;
+  margin: 0.55rem 0 0.45rem 0 !important;
+  box-shadow: 0 2px 6px rgba(30, 64, 175, 0.1);
+}
+.tab-progression {
+  gap: 0.45rem !important;
+  margin-bottom: 0.75rem !important;
+}
+.tab-prog-chord {
+  font-size: 0.95rem !important;
+  padding: 0.28rem 0.62rem !important;
+  border-radius: 10px !important;
+  box-shadow: 0 2px 5px rgba(30, 64, 175, 0.08);
+}
+.tab-measure {
+  border-radius: 14px !important;
+  border-width: 1px !important;
+  border-color: rgba(51, 65, 85, 0.35) !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07) !important;
+}
+.tab-chord-name {
+  font-size: 1.42rem !important;
+}
+.tab-beat {
+  border-bottom-width: 2px !important;
+  color: #64748b !important;
+}
+@media (max-width: 768px) {
+  .notation-output {
+    padding: 0.85rem 0.75rem !important;
+    margin-left: -0.15rem;
+    margin-right: -0.15rem;
+  }
+  .notation-output .notation-chords {
+    grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr));
+    font-size: 0.98rem !important;
+  }
+  .tab-scroll-wrap {
+    margin: 0 -0.5rem;
+    padding-bottom: 0.5rem;
+  }
+}
+
+/* ---- Song browse cards (Song Selection grid) ---- */
+.ui-song-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+  margin: 0.85rem 0 0.35rem 0;
+}
+.ui-song-card-grid-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #334155;
+  margin: 0.25rem 0 0.15rem 0;
+}
+.ui-song-card-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.ui-song-card {
+  border: 1px solid rgba(99, 102, 241, 0.22) !important;
+  border-radius: 16px !important;
+  padding: 0.95rem 1rem 0.85rem 1rem !important;
+  margin-bottom: 0 !important;
+  min-height: 10.5rem !important;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.07) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.ui-song-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.1) !important;
+}
+.ui-song-card.trusted {
+  border-color: rgba(22, 163, 74, 0.42) !important;
+  background: linear-gradient(145deg, #ecfdf5 0%, #ffffff 52%, #f8fafc 100%) !important;
+  box-shadow: 0 4px 18px rgba(22, 163, 74, 0.12) !important;
+}
+.ui-song-card.trusted::before {
+  content: "Trusted core";
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  margin-bottom: 0.35rem;
+}
+.ui-song-card.active {
+  border-color: rgba(37, 99, 235, 0.55) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16), 0 8px 24px rgba(37, 99, 235, 0.14) !important;
+  background: linear-gradient(145deg, #eff6ff 0%, #ffffff 55%, #f8fafc 100%) !important;
+}
+.ui-song-card.active .ui-song-card-title::after {
+  content: " · Active now";
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+.ui-song-card-title {
+  font-size: 1.08rem !important;
+  font-weight: 900 !important;
+}
+.ui-song-pill {
+  font-size: 0.7rem !important;
+  padding: 0.22rem 0.5rem !important;
+}
+.ui-song-pill.level {
+  background: #f1f5f9;
+  color: #334155;
+  border-color: rgba(100, 116, 139, 0.25);
+}
+.ui-song-card-cell .stButton > button {
+  font-size: 0.72rem !important;
+  font-weight: 800 !important;
+  min-height: 2rem !important;
+  border-radius: 10px !important;
+}
+@media (max-width: 720px) {
+  .ui-song-card-grid {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+}
+
+/* ---- Active song hub & card ---- */
+.ui-active-song-hub {
+  border-width: 2px !important;
+  border-color: rgba(37, 99, 235, 0.5) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.9),
+    0 18px 52px rgba(37, 99, 235, 0.2) !important;
+}
+.ui-active-song-hub-label {
+  font-size: 0.74rem !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.08em !important;
+  color: #1d4ed8 !important;
+}
+.ui-active-song-hub-sub {
+  color: #334155 !important;
+}
+.ui-active-song-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  margin: 0.45rem 0 0.65rem 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+.ui-active-song-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.74rem;
+  font-weight: 800;
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #0f172a;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+}
+.ui-active-song-status-pill strong {
+  color: #1e293b;
+  font-weight: 900;
+}
+.ui-active-song-status-pill.is-instrument {
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  border-color: rgba(79, 70, 229, 0.22);
+  color: #312e81;
+}
+.ui-active-song-status-pill.is-key {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: #065f46;
+}
+.ui-active-song-hub .ui-chart-key-mode-badge {
+  margin: 0 !important;
+}
+.ui-active-song-card.trusted::before {
+  content: "Trusted core chart";
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  margin-bottom: 0.35rem;
+}
+.ui-active-song-kicker {
+  color: #1d4ed8 !important;
+  font-size: 0.7rem !important;
+}
+.ui-active-song-meta-row {
+  font-size: 0.8rem !important;
+  color: #334155 !important;
+  line-height: 1.45 !important;
+  margin: 0.35rem 0 0.55rem 0 !important;
+  padding: 0.4rem 0.55rem;
+  border-radius: 10px;
+  background: rgba(241, 245, 249, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+.ui-active-song-meta-row strong {
+  color: #0f172a !important;
+}
+.ui-active-song-facts {
+  font-size: 0.8rem !important;
+  color: #1e293b !important;
+}
+.ui-active-song-facts dd {
+  font-weight: 700 !important;
+  color: #0f172a !important;
+}
+@media (max-width: 720px) {
+  .ui-active-song-status-strip {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+"""
+
+
 def _studio_panels_css() -> str:
     return (
         _backing_studio_all_css()
@@ -4411,6 +4770,7 @@ def _studio_panels_css() -> str:
         + _multitrack_studio_panel_css()
         + _simple_nav_css()
         + _decorative_studio_header_css()
+        + _ui_polish_phase2_css()
     )
 
 
@@ -5835,6 +6195,154 @@ def close_control_section() -> None:
     st.markdown("</div></div>", unsafe_allow_html=True)
 
 
+def chart_key_mode_badge_html(session: dict) -> str:
+    """Display-only written-key / concert charts badge HTML (reads session; no writes)."""
+    try:
+        from instrument_transposition import (
+            chart_in_instrument_key,
+            is_transposing_instrument,
+            written_key_for_instrument,
+        )
+    except ImportError:
+        return ""
+    instrument = str(session.get("instrument") or "").strip()
+    if not is_transposing_instrument(instrument):
+        return ""
+    concert_key = str(session.get("display_key") or "C").strip() or "C"
+    written_on = bool(chart_in_instrument_key(session))
+    if written_on:
+        written_key = written_key_for_instrument(concert_key, instrument, session)
+        label = "Written charts ON"
+        detail = f"Charts in {written_key}"
+        variant = "is-written-on"
+        glyph = "📝"
+    else:
+        label = "Concert charts"
+        detail = f"Charts in {concert_key}"
+        variant = "is-concert"
+        glyph = "🎼"
+    return (
+        f'<div class="ui-chart-key-mode-badge {variant}" role="status">'
+        f'<span aria-hidden="true">{glyph}</span>'
+        f"<strong>{html.escape(label)}</strong>"
+        f'<span> · {html.escape(detail)}</span>'
+        f"</div>"
+    )
+
+
+def active_song_status_strip_html(session: dict) -> str:
+    """Read-only strip: instrument, practice key, optional chart-key badge."""
+    instrument = str(session.get("instrument") or "Piano").strip() or "Piano"
+    display_key = str(session.get("display_key") or "C").strip() or "C"
+    chart_badge = chart_key_mode_badge_html(session)
+    return (
+        '<div class="ui-active-song-status-strip" role="status">'
+        f'<span class="ui-active-song-status-pill is-instrument">'
+        f"<strong>Instrument</strong> {html.escape(instrument)}</span>"
+        f'<span class="ui-active-song-status-pill is-key">'
+        f"<strong>Key</strong> {html.escape(display_key)}</span>"
+        f"{chart_badge}"
+        "</div>"
+    )
+
+
+def render_active_song_status_strip(st: Any) -> None:
+    """Show instrument, key, and chart-key mode for the loaded session."""
+    block = active_song_status_strip_html(st.session_state)
+    if block:
+        st.markdown(block, unsafe_allow_html=True)
+
+
+def catalog_song_card_html(
+    *,
+    title: str,
+    artist: str,
+    genre: str,
+    key_display: str,
+    bpm: int | None,
+    level: str = "",
+    trusted: bool = False,
+    active: bool = False,
+) -> str:
+    """Single browse card markup for Song Selection grid (display only)."""
+    classes = ["ui-song-card"]
+    if trusted:
+        classes.append("trusted")
+    if active:
+        classes.append("active")
+    bpm_val = int(bpm) if bpm else 100
+    level_pill = (
+        f'<span class="ui-song-pill level">{html.escape(level)}</span>'
+        if str(level or "").strip()
+        else ""
+    )
+    return (
+        f'<div class="{" ".join(classes)}">'
+        f'<p class="ui-song-card-title">{html.escape(title)}</p>'
+        f'<p class="ui-song-card-artist">{html.escape(artist)}</p>'
+        f'<div class="ui-song-card-meta">'
+        f'<span class="ui-song-pill genre">{html.escape(genre)}</span>'
+        f'<span class="ui-song-pill key">{html.escape(key_display)}</span>'
+        f'<span class="ui-song-pill bpm">{bpm_val} BPM</span>'
+        f"{level_pill}"
+        f"</div></div>"
+    )
+
+
+def render_catalog_song_card_grid(
+    st: Any,
+    records: list[dict],
+    *,
+    active_pick_key: str,
+    song_meta_fn: Any,
+    pick_key_for_record_fn: Any,
+    on_load_pick_key: Any,
+    max_cards: int = 18,
+) -> None:
+    """Browse grid with Load buttons — display wiring only; callback owns state."""
+    if not records:
+        return
+    shown = records[: max(1, int(max_cards))]
+    st.markdown(
+        '<p class="ui-song-card-grid-title">Browse matching songs</p>',
+        unsafe_allow_html=True,
+    )
+    cols_per_row = 3
+    for row_start in range(0, len(shown), cols_per_row):
+        row_recs = shown[row_start : row_start + cols_per_row]
+        cols = st.columns(len(row_recs))
+        for col_idx, (col, rec) in enumerate(zip(cols, row_recs)):
+            pk = str(pick_key_for_record_fn(rec) or "").strip()
+            if not pk:
+                continue
+            meta = song_meta_fn(rec) or {}
+            with col:
+                st.markdown(
+                    '<div class="ui-song-card-cell">'
+                    + catalog_song_card_html(
+                        title=str(meta.get("title") or rec.get("title") or "Song"),
+                        artist=str(meta.get("artist") or rec.get("artist") or ""),
+                        genre=str(meta.get("genre") or rec.get("genre") or "Song"),
+                        key_display=str(meta.get("key") or rec.get("key") or "C"),
+                        bpm=meta.get("bpm") or rec.get("bpm"),
+                        level=str(meta.get("difficulty") or rec.get("difficulty") or ""),
+                        trusted=bool(meta.get("trusted")),
+                        active=pk == active_pick_key,
+                    )
+                    + "</div>",
+                    unsafe_allow_html=True,
+                )
+                btn_label = "Active" if pk == active_pick_key else "Load song"
+                st.button(
+                    btn_label,
+                    key=f"catalog_card_load_{row_start}_{col_idx}",
+                    use_container_width=True,
+                    disabled=pk == active_pick_key,
+                    on_click=on_load_pick_key,
+                    kwargs={"pick_key": pk},
+                )
+
+
 def render_active_song_hub_open(st: Any, *, extra_class: str = "") -> None:
     """Open the Active Song command-center wrapper (pairs with hub_close)."""
     _cls = "ui-active-song-hub"
@@ -5850,6 +6358,7 @@ def render_active_song_hub_open(st: Any, *, extra_class: str = "") -> None:
         """,
         unsafe_allow_html=True,
     )
+    render_active_song_status_strip(st)
 
 
 def render_active_song_hub_hero(
@@ -6044,7 +6553,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-09-ui-polish-p0"
+STUDIO_UI_RELEASE = "2026-06-09-ui-polish-p2"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -7825,39 +8334,9 @@ def _resolve_decorative_header_page_id(icon: str, title: str) -> str:
 
 def render_chart_key_mode_status_badge(st: Any) -> None:
     """Display-only written-key / concert charts badge (reads session; no writes)."""
-    try:
-        from instrument_transposition import (
-            chart_in_instrument_key,
-            is_transposing_instrument,
-            written_key_for_instrument,
-        )
-    except ImportError:
-        return
-    ss = st.session_state
-    instrument = str(ss.get("instrument") or "").strip()
-    if not is_transposing_instrument(instrument):
-        return
-    concert_key = str(ss.get("display_key") or "C").strip() or "C"
-    written_on = bool(chart_in_instrument_key(ss))
-    if written_on:
-        written_key = written_key_for_instrument(concert_key, instrument, ss)
-        label = "Written charts ON"
-        detail = f"Charts in {written_key}"
-        variant = "is-written-on"
-        glyph = "📝"
-    else:
-        label = "Concert charts"
-        detail = f"Charts in {concert_key}"
-        variant = "is-concert"
-        glyph = "🎼"
-    st.markdown(
-        f'<div class="ui-chart-key-mode-badge {variant}" role="status">'
-        f'<span aria-hidden="true">{glyph}</span>'
-        f"<strong>{html.escape(label)}</strong>"
-        f'<span> · {html.escape(detail)}</span>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
+    block = chart_key_mode_badge_html(st.session_state)
+    if block:
+        st.markdown(block, unsafe_allow_html=True)
 
 
 def compact_page_title(icon: str, title: str, subtitle: str = "") -> None:

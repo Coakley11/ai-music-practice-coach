@@ -578,6 +578,7 @@ try:
         render_active_song_hub_hero,
         render_active_song_hub_close,
         active_song_key_row_html,
+        render_catalog_song_card_grid,
     )
     _APP_UI_LOADED = True
 except Exception as _app_ui_first_err:
@@ -8099,6 +8100,43 @@ def _render_catalog_song_picker_block(
                     f"· {', '.join(_filter_bits)} update the <strong>Active Song</strong> dropdown above</p>",
                     unsafe_allow_html=True,
                 )
+                if filtered:
+
+                    def _pick_key_for_catalog_card(rec: dict) -> str:
+                        return format_pick_key(
+                            str(rec.get("genre") or ""),
+                            f"{rec.get('title', '')} — {rec.get('artist', '')}",
+                        )
+
+                    def _load_catalog_card_pick(pick_key: str) -> None:
+                        set_catalog_source(st.session_state)
+                        st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = pick_key
+                        apply_pick_key(
+                            st,
+                            pick_key,
+                            SONG_PICKER_CATALOG,
+                            song_library=SONG_LIBRARY,
+                        )
+                        _push_recent_pick_key(st.session_state, pick_key)
+                        note_active_source_change(
+                            st, invalidate_backing=invalidate_backing_cache
+                        )
+                        try:
+                            st.toast(
+                                "Song loaded from browse card.",
+                                icon="🎵",
+                            )
+                        except Exception:
+                            pass
+
+                    render_catalog_song_card_grid(
+                        st,
+                        filtered,
+                        active_pick_key=active_pick_key,
+                        song_meta_fn=song_card_meta,
+                        pick_key_for_record_fn=_pick_key_for_catalog_card,
+                        on_load_pick_key=_load_catalog_card_pick,
+                    )
     else:
         if _library_shell is not None:
             with _library_shell:
