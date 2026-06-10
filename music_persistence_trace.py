@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v19-written-key-sync"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v20-written-key-restore"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -292,7 +292,11 @@ def collect_test_d_trace_rows(st: Any, trace: dict[str, Any]) -> dict[str, Any]:
         else chart_in_instrument_key(ss)
     )
     written_key_mode_canonical = active_meta.get(CHART_IN_INSTRUMENT_KEY_KEY)
-    written_key_mode_cloud = trace.get("written_key_mode_cloud")
+    written_key_mode_cloud = (
+        trace.get("written_key_mode_cloud")
+        if trace.get("written_key_mode_cloud") is not None
+        else ss.get("_written_key_mode_cloud")
+    )
     if written_key_mode_cloud is None:
         try:
             from active_song_state import written_key_mode_from_blob

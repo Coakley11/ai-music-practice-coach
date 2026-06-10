@@ -148,6 +148,38 @@ def canonical_active_song_context(session: dict[str, Any]) -> dict[str, Any] | N
     return ctx
 
 
+def _merge_live_written_key_fields(
+    session: dict[str, Any],
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    """Always fold live written-key widget state into canonical context before save."""
+    live = gather_active_song_context(session)
+    ctx[CHART_IN_INSTRUMENT_KEY_KEY] = bool(live.get(CHART_IN_INSTRUMENT_KEY_KEY, False))
+    anchor = str(live.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+    if anchor:
+        ctx[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+    else:
+        ctx.pop(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY, None)
+    return ctx
+
+
+def _merge_written_key_from_blob_sources(
+    ctx: dict[str, Any],
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    """Backfill written-key fields from workspace/session when legacy meta omits them."""
+    if CHART_IN_INSTRUMENT_KEY_KEY in ctx:
+        return ctx
+    ws = state.get("music_workspace_state")
+    if isinstance(ws, dict) and isinstance(ws.get("active_song"), dict):
+        ctx.update(_written_key_fields_from_raw(ws["active_song"]))
+    if CHART_IN_INSTRUMENT_KEY_KEY not in ctx:
+        session_blob = state.get("session")
+        if isinstance(session_blob, dict):
+            ctx.update(_written_key_fields_from_raw(session_blob))
+    return ctx
+
+
 def _record_written_key_restore_trace(
     session: dict[str, Any],
     ctx: dict[str, Any],
@@ -256,6 +288,7 @@ def commit_active_song_state_from_session(
 ) -> dict[str, Any]:
     """Persist canonical blob from current session without marking a new local edit."""
     ctx = canonical_active_song_context(session) or gather_active_song_context(session)
+    ctx = _merge_live_written_key_fields(session, dict(ctx))
     return write_canonical_active_song_state(
         session,
         ctx,
@@ -301,7 +334,7 @@ def _active_song_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | No
     if isinstance(meta, dict):
         ctx = _normalize_context(meta)
         if ctx.get("pick_key") or ctx.get("instrument") or ctx.get("display_key"):
-            return ctx
+            return _merge_written_key_from_blob_sources(ctx, state)
     core = state.get("core") if isinstance(state.get("core"), dict) else state
     if isinstance(core, dict) and (core.get("pick_key") or core.get("song")):
         sel: dict[str, Any] = {}
@@ -353,6 +386,11 @@ def apply_cloud_active_song_state_if_allowed(
     ctx = _active_song_context_from_blob(state)
     if not ctx or not ctx.get("pick_key"):
         return False
+    session["_written_key_mode_cloud"] = (
+        bool(ctx[CHART_IN_INSTRUMENT_KEY_KEY])
+        if CHART_IN_INSTRUMENT_KEY_KEY in ctx
+        else None
+    )
     write_canonical_active_song_state(session, ctx, reason="cloud_restore")
     _record_written_key_restore_trace(session, ctx, source="cloud_restore")
     clear_active_song_local_edit(session)

@@ -186,6 +186,39 @@ class TestActiveSongState(unittest.TestCase):
         self.assertEqual(phone["_written_key_mode_restored"], True)
         self.assertEqual(phone["_written_key_restore_source"], "cloud_restore")
 
+    def test_commit_merges_live_written_key_from_widget(self) -> None:
+        """Autosave commit must not drop checkbox when legacy canonical omits written key."""
+        session = {
+            **_SAMPLE,
+            ACTIVE_CATALOG_PICK_KEY: _PICK_KEY,
+            "instrument": "Saxophone",
+            CHART_IN_INSTRUMENT_KEY_KEY: True,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+        }
+        write_canonical_active_song_state(session, _SAMPLE, reason="legacy")
+        self.assertNotIn(CHART_IN_INSTRUMENT_KEY_KEY, session["active_song_state"])
+        commit_active_song_state_from_session(session, reason="autosave")
+        self.assertTrue(session["active_song_state"][CHART_IN_INSTRUMENT_KEY_KEY])
+        self.assertTrue(session[CHART_IN_INSTRUMENT_KEY_KEY])
+
+    def test_cloud_restore_backfills_written_key_from_workspace(self) -> None:
+        cloud = {
+            "active_song_state": {**_SAMPLE, "instrument": "Saxophone"},
+            "music_workspace_state": {
+                "active_song": {
+                    "pick_key": _PICK_KEY,
+                    "instrument": "Saxophone",
+                    CHART_IN_INSTRUMENT_KEY_KEY: True,
+                    WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+                }
+            },
+        }
+        phone: dict = {}
+        self.assertTrue(apply_cloud_active_song_state_if_allowed(phone, cloud))
+        self.assertTrue(phone[CHART_IN_INSTRUMENT_KEY_KEY])
+        self.assertTrue(phone["active_song_state"][CHART_IN_INSTRUMENT_KEY_KEY])
+        self.assertEqual(phone["_written_key_mode_cloud"], True)
+
     def test_written_key_checkbox_disk_round_trip(self) -> None:
         st = MagicMock()
         st.session_state = {
