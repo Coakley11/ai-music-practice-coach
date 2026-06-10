@@ -1326,6 +1326,7 @@ def force_autosave(
 
         if reason:
             st.session_state["_suite_pending_save_reason"] = reason
+        st.session_state["_music_save_reason_at_write"] = reason or ""
         state = build_state(st)
         if reason == "page_change":
             state = _preserve_cloud_widget_fields_on_page_change(app_id, state)
@@ -1333,25 +1334,28 @@ def force_autosave(
             try:
                 from music_persistent_state import (
                     _sync_save_payload_trace_fields,
-                    ensure_music_payload_stamped_for_session,
-                    finalize_music_page_change_cloud_payload,
+                    apply_music_pre_write_stamp,
                 )
 
-                if reason == "page_change":
-                    state, finalize_trace = finalize_music_page_change_cloud_payload(st, state)
-                else:
-                    state, finalize_trace = ensure_music_payload_stamped_for_session(st, state)
+                state, finalize_trace, finalize_meta = apply_music_pre_write_stamp(
+                    st, state, save_reason=reason or ""
+                )
+                for key, val in finalize_meta.items():
+                    st.session_state[key] = val
+                for key in (
+                    "page_change_finalize_ran",
+                    "page_change_finalize_target",
+                    "page_change_finalize_source",
+                    "page_change_finalize_error",
+                ):
+                    st.session_state[key] = finalize_meta.get(key) or finalize_trace.get(key)
                 if finalize_trace:
                     finalize_trace = _sync_save_payload_trace_fields(finalize_trace)
                     st.session_state["_music_save_payload_stamp_trace"] = finalize_trace
-                    final_page = finalize_trace.get("final_payload_studio_page") or finalize_trace.get(
-                        "cloud_write_studio_page"
-                    )
-                    if final_page:
-                        st.session_state["_music_final_payload_studio_page"] = final_page
-                        st.session_state["_music_cloud_write_studio_page"] = final_page
-            except ImportError:
-                pass
+            except Exception as exc:
+                st.session_state["page_change_finalize_ran"] = False
+                st.session_state["page_change_finalize_error"] = str(exc)
+                st.session_state["_music_save_reason_at_write"] = reason or ""
         blob = json.dumps(state, sort_keys=True, default=str)
         fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
         saved_disk = save_user_state(app_id, state)
@@ -1448,20 +1452,18 @@ def autosave_if_changed(
             try:
                 from music_persistent_state import (
                     _sync_save_payload_trace_fields,
-                    ensure_music_payload_stamped_for_session,
+                    apply_music_pre_write_stamp,
                 )
 
-                state, stamp_trace = ensure_music_payload_stamped_for_session(st, state)
+                state, stamp_trace, stamp_meta = apply_music_pre_write_stamp(
+                    st, state, save_reason="autosave"
+                )
+                for key, val in stamp_meta.items():
+                    st.session_state[key] = val
                 if stamp_trace:
                     stamp_trace = _sync_save_payload_trace_fields(stamp_trace)
                     st.session_state["_music_save_payload_stamp_trace"] = stamp_trace
-                    final_page = stamp_trace.get("final_payload_studio_page") or stamp_trace.get(
-                        "cloud_write_studio_page"
-                    )
-                    if final_page:
-                        st.session_state["_music_final_payload_studio_page"] = final_page
-                        st.session_state["_music_cloud_write_studio_page"] = final_page
-            except ImportError:
+            except Exception:
                 pass
         blob = json.dumps(state, sort_keys=True, default=str)
         fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
