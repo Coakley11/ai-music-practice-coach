@@ -9,6 +9,8 @@ from typing import Any
 BACKING_STATE_KEY = "backing_track_state"
 BACKING_DIRTY_KEY = "backing_track_state_dirty"
 BACKING_LOCAL_EDIT_TS_KEY = "backing_track_state_last_local_edit_ts"
+BACKING_USER_EDIT_INTENT_KEY = "_backing_user_edit_intent"
+BACKING_USER_EDITS_ALLOWED_KEY = "_backing_user_edits_allowed"
 BACKING_PENDING_SYNC_KEY = "_backing_filters_pending_sync"
 BACKING_RESTORED_KEY = "_backing_track_state_cloud_restored"
 
@@ -109,6 +111,8 @@ BACKING_DEVICE_COMPARE_LABELS: tuple[str, ...] = (
     "backing_widget_canonical_mismatch",
     "backing_sync_failure_class",
     "backing_stale_cloud_hint",
+    "backing_user_edit_intent",
+    "backing_user_edits_allowed",
 )
 
 __all__ = (
@@ -138,7 +142,11 @@ __all__ = (
     "flush_backing_edits",
     "gather_backing_filters",
     "is_backing_locally_dirty",
+    "begin_backing_page_widget_phase",
+    "enable_backing_user_edits",
+    "is_backing_user_dirty",
     "mark_backing_local_edit",
+    "mark_backing_user_edit",
     "mark_backing_pending_sync",
     "normalize_backing_groove",
     "normalize_backing_scope",
@@ -176,14 +184,28 @@ def is_backing_locally_dirty(session: dict[str, Any]) -> bool:
     return bool(session.get(BACKING_DIRTY_KEY))
 
 
+def is_backing_user_dirty(session: dict[str, Any]) -> bool:
+    """True only when the user changed a Backing widget after page load."""
+    return bool(session.get(BACKING_DIRTY_KEY)) and bool(session.get(BACKING_USER_EDIT_INTENT_KEY))
+
+
 def mark_backing_local_edit(session: dict[str, Any]) -> None:
     session[BACKING_DIRTY_KEY] = True
     session[BACKING_LOCAL_EDIT_TS_KEY] = _utc_now_iso()
 
 
+def mark_backing_user_edit(session: dict[str, Any]) -> None:
+    """Mark a real user Backing widget change (not widget seeding / restore)."""
+    session[BACKING_DIRTY_KEY] = True
+    session[BACKING_USER_EDIT_INTENT_KEY] = True
+    session[BACKING_LOCAL_EDIT_TS_KEY] = _utc_now_iso()
+    session[BACKING_PENDING_SYNC_KEY] = True
+
+
 def clear_backing_local_edit(session: dict[str, Any]) -> None:
     session.pop(BACKING_DIRTY_KEY, None)
     session.pop(BACKING_LOCAL_EDIT_TS_KEY, None)
+    session.pop(BACKING_USER_EDIT_INTENT_KEY, None)
     session.pop(BACKING_PENDING_SYNC_KEY, None)
 
 
@@ -191,9 +213,32 @@ def mark_backing_pending_sync(session: dict[str, Any]) -> None:
     session[BACKING_PENDING_SYNC_KEY] = True
 
 
+def begin_backing_page_widget_phase(session: dict[str, Any]) -> None:
+    """Reset user-edit gate before Backing widgets render; drop spurious dirty flags."""
+    session[BACKING_USER_EDITS_ALLOWED_KEY] = False
+    if session.get(BACKING_PENDING_SYNC_KEY) and not is_backing_user_dirty(session):
+        session.pop(BACKING_PENDING_SYNC_KEY, None)
+    if is_backing_locally_dirty(session) and not session.get(BACKING_USER_EDIT_INTENT_KEY):
+        session.pop(BACKING_DIRTY_KEY, None)
+        session.pop(BACKING_LOCAL_EDIT_TS_KEY, None)
+
+
+def enable_backing_user_edits(session: dict[str, Any]) -> None:
+    """Allow widget on_change handlers to count as user edits after first render."""
+    session[BACKING_USER_EDITS_ALLOWED_KEY] = True
+
+
+def _clear_spurious_backing_dirty(session: dict[str, Any]) -> None:
+    if is_backing_locally_dirty(session) and not session.get(BACKING_USER_EDIT_INTENT_KEY):
+        session.pop(BACKING_DIRTY_KEY, None)
+        session.pop(BACKING_LOCAL_EDIT_TS_KEY, None)
+    if session.get(BACKING_PENDING_SYNC_KEY) and not is_backing_user_dirty(session):
+        session.pop(BACKING_PENDING_SYNC_KEY, None)
+
+
 def _should_seed_widgets_from_canonical(session: dict[str, Any]) -> bool:
     """True when canonical may hydrate widget keys (restore / first load), not mid-edit reruns."""
-    if is_backing_locally_dirty(session):
+    if is_backing_user_dirty(session):
         return False
     if session.get(BACKING_PENDING_SYNC_KEY):
         return False
@@ -474,13 +519,14 @@ def bind_backing_rendered_widgets_from_canonical(
     default_meter: str = "4/4",
 ) -> dict[str, Any]:
     """Push canonical blob into every visible widget key (incl. per-song BPM slider)."""
-    if is_backing_locally_dirty(session) or session.get(BACKING_PENDING_SYNC_KEY):
+    if is_backing_user_dirty(session):
         return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
 
     canonical = canonical_backing_filters(session)
     if canonical is None:
         return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
 
+    _clear_spurious_backing_dirty(session)
     should_bind = (
         session.get(BACKING_RESTORED_KEY)
         or not session.get(BACKING_WIDGETS_SEEDED_KEY)
@@ -589,7 +635,7 @@ def has_restored_backing_canonical(session: dict[str, Any]) -> bool:
 
 def backing_canonical_playback_seed(session: dict[str, Any]) -> tuple[int | None, str | None]:
     """BPM + groove from canonical blob for playback-default seeding on hard refresh."""
-    if is_backing_locally_dirty(session):
+    if is_backing_user_dirty(session):
         return None, None
     canonical = canonical_backing_filters(session) or {}
     bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"))
@@ -599,7 +645,7 @@ def backing_canonical_playback_seed(session: dict[str, Any]) -> tuple[int | None
 
 def backing_canonical_meter_seed(session: dict[str, Any]) -> tuple[str | None, bool | None]:
     """Meter + override flag from canonical blob for hard-refresh meter sync."""
-    if is_backing_locally_dirty(session):
+    if is_backing_user_dirty(session):
         return None, None
     canonical = canonical_backing_filters(session) or {}
     meter_raw = str(canonical.get("backing_time_signature") or "").strip()
@@ -730,11 +776,7 @@ def coerce_backing_groove_for_widget(session: dict[str, Any], *, default_groove:
     current = session.get("backing_groove_style")
     if current is not None and str(current).strip():
         normalized = normalize_backing_groove(current)
-        if (
-            is_backing_locally_dirty(session)
-            or session.get(BACKING_PENDING_SYNC_KEY)
-            or normalized != normalize_backing_groove(default_groove)
-        ):
+        if is_backing_user_dirty(session) or normalized != normalize_backing_groove(default_groove):
             session["backing_groove_style"] = normalized
         return normalized
     fallback = normalize_backing_groove(default_groove) or "Auto"
@@ -743,22 +785,14 @@ def coerce_backing_groove_for_widget(session: dict[str, Any], *, default_groove:
 
 
 def prepare_backing_bpm_for_widget(session: dict[str, Any], *, default_bpm: int = 100) -> int:
-    if (
-        not is_backing_locally_dirty(session)
-        and not session.get(BACKING_PENDING_SYNC_KEY)
-        and _should_seed_widgets_from_canonical(session)
-    ):
+    if not is_backing_user_dirty(session) and _should_seed_widgets_from_canonical(session):
         canonical = canonical_backing_filters(session) or {}
         canon_bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"))
         if canon_bpm is not None:
             session["backing_track_bpm"] = int(canon_bpm)
             return int(canon_bpm)
     bpm = normalize_backing_bpm(session.get("backing_track_bpm"), default=default_bpm)
-    if bpm is not None and (
-        is_backing_locally_dirty(session)
-        or session.get(BACKING_PENDING_SYNC_KEY)
-        or _should_seed_widgets_from_canonical(session)
-    ):
+    if bpm is not None and (is_backing_user_dirty(session) or _should_seed_widgets_from_canonical(session)):
         session["backing_track_bpm"] = int(bpm)
     return int(bpm or default_bpm)
 
@@ -845,13 +879,14 @@ def write_canonical_backing_state(
 
 def prepare_backing_page(session: dict[str, Any]) -> dict[str, Any]:
     """Reconcile Backing canonical blob before page widgets render."""
-    if is_backing_locally_dirty(session) or session.get(BACKING_PENDING_SYNC_KEY):
+    _clear_spurious_backing_dirty(session)
+    if is_backing_user_dirty(session):
         gathered = gather_backing_filters(session)
         return write_canonical_backing_state(
             session,
             gathered,
             reason="local_edit_preserve",
-            local_edit=True,
+            local_edit=False,
         )
     gathered = gather_backing_filters(session)
     canonical = canonical_backing_filters(session)
@@ -915,7 +950,7 @@ def commit_backing_state_from_session(session: dict[str, Any], *, reason: str = 
 
 def flush_backing_edits(session: dict[str, Any], *, reason: str = "backing_edit") -> dict[str, Any]:
     filters = gather_backing_filters(session)
-    return write_canonical_backing_state(session, filters, reason=reason, local_edit=True)
+    return write_canonical_backing_state(session, filters, reason=reason, local_edit=False)
 
 
 def backing_filters_for_workspace_envelope(
@@ -953,11 +988,22 @@ def _backing_filters_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def apply_cloud_backing_state_if_allowed(session: dict[str, Any], state: dict[str, Any]) -> bool:
-    if is_backing_locally_dirty(session):
+    if is_backing_user_dirty(session):
         session["_backing_restore_skipped_reason"] = "local_dirty"
         session["_backing_restore_source"] = "skipped_local_dirty"
         return False
+    _clear_spurious_backing_dirty(session)
     filters = _backing_filters_from_blob(state)
+    if not filters:
+        try:
+            from music_persistent_state import APP_ID
+            from suite_cloud_state import load_cloud_full_session
+
+            cloud_state, _ = load_cloud_full_session(APP_ID)
+            if isinstance(cloud_state, dict):
+                filters = _backing_filters_from_blob(cloud_state)
+        except Exception:
+            filters = None
     if not filters:
         session.pop(BACKING_RESTORED_KEY, None)
         session["_backing_restore_source"] = "skipped_no_blob"
@@ -1331,6 +1377,8 @@ def collect_backing_persistence_trace(
         "restored_backing_quick_section": session.get("backing_quick_section", ""),
         "restored_backing_meter_override": session.get("backing_time_signature_override", ""),
         "backing_dirty": is_backing_locally_dirty(session),
+        "backing_user_edit_intent": bool(session.get(BACKING_USER_EDIT_INTENT_KEY)),
+        "backing_user_edits_allowed": bool(session.get(BACKING_USER_EDITS_ALLOWED_KEY)),
         "backing_restore_applied": bool(session.get(BACKING_RESTORED_KEY)),
         "backing_restore_skipped": session.get("_backing_restore_skipped_reason"),
         "backing_last_write": canonical.get("last_write_reason")

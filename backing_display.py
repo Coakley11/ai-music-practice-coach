@@ -141,6 +141,13 @@ def render_backing_meter_selector(
     idx = options.index(current)
 
     def _on_meter_change() -> None:
+        try:
+            from backing_track_state import BACKING_USER_EDITS_ALLOWED_KEY, mark_backing_user_edit
+
+            if st.session_state.get(BACKING_USER_EDITS_ALLOWED_KEY):
+                mark_backing_user_edit(st.session_state)
+        except ImportError:
+            pass
         choice = normalize_time_signature(st.session_state.get(BACKING_METER_KEY, current))
         if choice == normalize_time_signature(song_default_meter):
             st.session_state[BACKING_METER_OVERRIDE_KEY] = False

@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v17-backing-device-compare"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v18-backing-user-dirty"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -61,6 +61,8 @@ BACKING_PATH_TRACE_LABELS: tuple[str, ...] = (
     "backing_widget_scope",
     "backing_pending_sync",
     "backing_dirty",
+    "backing_user_edit_intent",
+    "backing_user_edits_allowed",
     "force_save_reason",
     "last_save_cloud",
     "cloud_payload_source",

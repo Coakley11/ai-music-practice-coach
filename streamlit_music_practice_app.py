@@ -9123,11 +9123,13 @@ def _sync_canonical_backing_after_edit() -> None:
 
 def _on_backing_filter_change() -> None:
     try:
-        from backing_track_state import mark_backing_pending_sync
+        from backing_track_state import BACKING_USER_EDITS_ALLOWED_KEY, mark_backing_user_edit
 
-        mark_backing_pending_sync(st.session_state)
+        if not st.session_state.get(BACKING_USER_EDITS_ALLOWED_KEY):
+            return
+        mark_backing_user_edit(st.session_state)
     except Exception:
-        pass
+        return
     _sync_canonical_backing_after_edit()
 
 
@@ -10658,6 +10660,12 @@ elif _studio_page == "backing":
 
     ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
+    try:
+        from backing_track_state import begin_backing_page_widget_phase
+
+        begin_backing_page_widget_phase(st.session_state)
+    except Exception:
+        pass
     if pp.is_capture_mode(st):
         if km.is_voice_mode(st.session_state):
             pp.render_hero_banner(
@@ -11392,6 +11400,13 @@ elif _studio_page == "backing":
             use_container_width=True,
             hide_index=True,
         )
+
+    try:
+        from backing_track_state import enable_backing_user_edits
+
+        enable_backing_user_edits(st.session_state)
+    except Exception:
+        pass
 
 
 # -------------------------------------------------

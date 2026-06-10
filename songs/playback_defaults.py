@@ -127,9 +127,9 @@ def resolve_backing_bpm_for_slider(
 
     if not song_just_reset:
         try:
-            from backing_track_state import canonical_backing_filters, is_backing_locally_dirty
+            from backing_track_state import canonical_backing_filters, is_backing_user_dirty
 
-            if not is_backing_locally_dirty(st.session_state):
+            if not is_backing_user_dirty(st.session_state):
                 canonical = canonical_backing_filters(st.session_state) or {}
                 canon_bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"))
                 if canon_bpm is not None:

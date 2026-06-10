@@ -1414,10 +1414,10 @@ def apply_music_disk_state(
         from backing_track_state import (
             apply_cloud_backing_state_if_allowed,
             clear_backing_local_edit,
-            is_backing_locally_dirty,
+            is_backing_user_dirty,
         )
 
-        if is_backing_locally_dirty(ss):
+        if is_backing_user_dirty(ss):
             ss["_backing_restore_skipped_reason"] = "local_dirty"
         elif apply_cloud_backing_state_if_allowed(ss, payload):
             clear_backing_local_edit(ss)
@@ -1674,11 +1674,11 @@ def flush_backing_edits_and_save(st: Any, *, reason: str = "backing_edit") -> bo
         from backing_track_state import (
             BACKING_PENDING_SYNC_KEY,
             flush_backing_edits,
-            is_backing_locally_dirty,
+            is_backing_user_dirty,
         )
 
         ss = st.session_state
-        if ss.get(BACKING_PENDING_SYNC_KEY) or is_backing_locally_dirty(ss) or reason == "backing_edit":
+        if is_backing_user_dirty(ss) or (reason == "backing_edit" and ss.get(BACKING_PENDING_SYNC_KEY)):
             flush_backing_edits(ss, reason=reason)
     except ImportError:
         pass
@@ -1697,10 +1697,13 @@ def flush_backing_edits_and_save(st: Any, *, reason: str = "backing_edit") -> bo
 
 def maybe_flush_pending_backing_edits(st: Any) -> None:
     try:
-        from backing_track_state import BACKING_PENDING_SYNC_KEY
+        from backing_track_state import BACKING_PENDING_SYNC_KEY, is_backing_user_dirty
 
-        if st.session_state.get(BACKING_PENDING_SYNC_KEY):
+        ss = st.session_state
+        if is_backing_user_dirty(ss) and ss.get(BACKING_PENDING_SYNC_KEY):
             flush_backing_edits_and_save(st, reason="backing_edit")
+        elif ss.get(BACKING_PENDING_SYNC_KEY):
+            ss.pop(BACKING_PENDING_SYNC_KEY, None)
     except ImportError:
         pass
 

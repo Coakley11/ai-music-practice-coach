@@ -27,7 +27,9 @@ from backing_track_state import (
     flush_backing_edits,
     gather_backing_filters,
     is_backing_locally_dirty,
+    is_backing_user_dirty,
     mark_backing_local_edit,
+    mark_backing_user_edit,
     mark_backing_pending_sync,
     prepare_backing_page,
     record_backing_disk_payload_trace,
@@ -59,13 +61,13 @@ class TestBackingTrackState(unittest.TestCase):
         write_canonical_backing_state(session, _SAMPLE, reason="setup")
         session["backing_track_bpm"] = 120
         session["backing_groove_style"] = "Rock groove"
-        mark_backing_local_edit(session)
+        mark_backing_user_edit(session)
         flush_backing_edits(session, reason="backing_edit")
         prepare_backing_page(session)
         self.assertEqual(session["backing_track_bpm"], 120)
         self.assertEqual(session["backing_groove_style"], "Rock groove")
         self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 120)
-        self.assertTrue(is_backing_locally_dirty(session))
+        self.assertTrue(is_backing_user_dirty(session))
 
     def test_a_prepare_seeds_from_canonical(self) -> None:
         session = {"backing_track_state": {**_SAMPLE, "last_write_reason": "cloud"}}
@@ -102,12 +104,52 @@ class TestBackingTrackState(unittest.TestCase):
         self.assertEqual(st2.session_state.get("backing_track_bpm"), 108)
         self.assertEqual(st2.session_state.get("backing_groove_style"), "Jazz swing")
 
-    def test_c_stale_cloud_blocked_when_locally_dirty(self) -> None:
+    def test_c_stale_cloud_blocked_when_user_dirty(self) -> None:
         session = {**_SAMPLE, "backing_track_bpm": 130}
-        mark_backing_local_edit(session)
+        mark_backing_user_edit(session)
         cloud = {"backing_track_state": dict(_SAMPLE)}
         self.assertFalse(apply_cloud_backing_state_if_allowed(session, cloud))
         self.assertEqual(session["backing_track_bpm"], 130)
+
+    def test_spurious_dirty_does_not_block_cloud_restore(self) -> None:
+        session = {
+            "backing_track_bpm": 100,
+            "backing_track_scope": "Full song",
+            "backing_track_loops": 2,
+            BACKING_DIRTY_KEY: True,
+        }
+        cloud = {
+            "backing_track_state": dict(_SAMPLE),
+            "music_workspace_state": {"backing_filters": dict(_SAMPLE)},
+        }
+        self.assertTrue(apply_cloud_backing_state_if_allowed(session, cloud))
+        self.assertEqual(session["backing_track_bpm"], 108)
+        self.assertFalse(is_backing_user_dirty(session))
+
+    def test_pending_sync_alone_does_not_mark_user_dirty(self) -> None:
+        session = {
+            "backing_track_bpm": 100,
+            "backing_track_scope": "Full song",
+            "backing_track_loops": 2,
+        }
+        mark_backing_pending_sync(session)
+        prepare_backing_page(session)
+        self.assertFalse(is_backing_user_dirty(session))
+        self.assertNotIn("local_edit_preserve", (session.get("backing_track_state") or {}).get("last_write_reason", ""))
+
+    def test_flush_without_user_intent_does_not_block_restore(self) -> None:
+        session = {
+            "backing_track_scope": "Full song",
+            "backing_track_loops": 2,
+            "backing_track_bpm": 100,
+        }
+        flush_backing_edits(session, reason="backing_edit")
+        cloud = {
+            "backing_track_state": dict(_SAMPLE),
+            "music_workspace_state": {"backing_filters": dict(_SAMPLE)},
+        }
+        self.assertTrue(apply_cloud_backing_state_if_allowed(session, cloud))
+        self.assertEqual(session["backing_track_bpm"], 108)
 
     def test_d_navigation_does_not_clear_backing_filters(self) -> None:
         session = dict(_SAMPLE)
