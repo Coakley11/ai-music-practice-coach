@@ -1329,6 +1329,18 @@ def force_autosave(
         state = build_state(st)
         if reason == "page_change":
             state = _preserve_cloud_widget_fields_on_page_change(app_id, state)
+        if reason == "page_change" and app_id == "music":
+            try:
+                from music_persistent_state import finalize_music_page_change_cloud_payload
+
+                state, finalize_trace = finalize_music_page_change_cloud_payload(st, state)
+                if finalize_trace:
+                    st.session_state["_music_save_payload_stamp_trace"] = finalize_trace
+                    write_page = finalize_trace.get("cloud_write_studio_page")
+                    if write_page:
+                        st.session_state["_music_cloud_write_studio_page"] = write_page
+            except ImportError:
+                pass
         blob = json.dumps(state, sort_keys=True, default=str)
         fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
         saved_disk = save_user_state(app_id, state)
@@ -1349,6 +1361,13 @@ def force_autosave(
                 import copy
 
                 st.session_state["_suite_last_cloud_save_payload"] = copy.deepcopy(state)
+                if app_id == "music":
+                    from music_persistent_state import _studio_page_from_save_state
+
+                    written = _studio_page_from_save_state(state)
+                    if written:
+                        st.session_state["_music_cloud_payload_studio_page"] = written
+                        st.session_state["_music_cloud_payload_source"] = "last_write"
                 _, cloud_ts = load_cloud_full_session(app_id)
                 st.session_state[_applied_cloud_ts_key(app_id)] = cloud_ts or _utc_now_iso()
             st.session_state["_suite_persist_last_save_at"] = _utc_now_iso()

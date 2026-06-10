@@ -722,7 +722,31 @@ class TestPersistenceTracePanel(unittest.TestCase):
 
         info = deploy_info()
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
-        self.assertIn("page-change-save-stamp-v6", info["build_marker"])
+        self.assertIn("page-change-save-stamp-v7", info["build_marker"])
+
+    def test_finalize_page_change_stamps_picker_core_to_backing_before_write(self) -> None:
+        from music_persistent_state import finalize_music_page_change_cloud_payload
+
+        st = MagicMock()
+        st.session_state = {
+            "_suite_page_change_stamp_target": "backing",
+            "_suite_page_user_nav": True,
+            "studio_page": "backing",
+            "studio_nav_state": {"studio_page": "backing", "page": "backing"},
+            "music_workspace_state": {"studio_page": "backing", "page": "backing"},
+        }
+        state = {
+            "core": {"studio_page": "picker", "page": "picker"},
+            "session": {"studio_page": "picker"},
+            "music_workspace_state": {"studio_page": "picker", "page": "picker"},
+            "studio_nav_state": {"studio_page": "picker", "page": "picker"},
+        }
+        out, trace = finalize_music_page_change_cloud_payload(st, state)
+        self.assertEqual(out["core"]["studio_page"], "backing")
+        self.assertEqual(out["music_workspace_state"]["studio_page"], "backing")
+        self.assertEqual(trace.get("pre_stamp_core_page"), "picker")
+        self.assertEqual(trace.get("post_stamp_core_page"), "backing")
+        self.assertEqual(trace.get("cloud_write_studio_page"), "backing")
 
     def test_page_change_nav_wins_over_stale_session_without_hint(self) -> None:
         """Phone trace: pre_save nav=backing, session studio_page still picker, no save hint."""

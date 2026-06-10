@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v6"
+MUSIC_PERSIST_DEPLOY_VERSION = "page-change-save-stamp-v7"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -520,7 +520,11 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
         phone_rows = [
 
-            ("cloud_payload_studio_page", trace.get("cloud_payload_studio_page")),
+            ("cloud_payload_studio_page", trace.get("cloud_payload_studio_page") or ss.get("_music_cloud_payload_studio_page")),
+
+            ("cloud_payload_source", trace.get("cloud_payload_source") or ss.get("_music_cloud_payload_source")),
+
+            ("cloud_write_studio_page", trace.get("cloud_write_studio_page") or ss.get("_music_cloud_write_studio_page")),
 
             ("last_save_cloud", trace.get("last_save_cloud")),
 
@@ -531,6 +535,22 @@ def render_persistence_trace_sidebar(st: Any) -> None:
             ("pre_save_nav_page", trace.get("pre_save_nav_page")),
 
             ("pre_save_page_owner", trace.get("pre_save_page_owner")),
+
+            ("pre_stamp_core_page", trace.get("pre_stamp_core_page")),
+
+            ("pre_stamp_session_page", trace.get("pre_stamp_session_page")),
+
+            ("pre_stamp_workspace_page", trace.get("pre_stamp_workspace_page")),
+
+            ("pre_stamp_studio_nav_page", trace.get("pre_stamp_studio_nav_page")),
+
+            ("post_stamp_core_page", trace.get("post_stamp_core_page")),
+
+            ("post_stamp_session_page", trace.get("post_stamp_session_page")),
+
+            ("post_stamp_workspace_page", trace.get("post_stamp_workspace_page")),
+
+            ("post_stamp_studio_nav_page", trace.get("post_stamp_studio_nav_page")),
 
             ("save_payload_source", trace.get("save_payload_source")),
 
