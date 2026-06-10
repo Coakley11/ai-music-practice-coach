@@ -545,9 +545,22 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
 
     canonical = canonical_active_song_context(session)
     if canonical is not None:
+        ctx = dict(canonical)
+        # Sidebar globals (instrument / level / focus) are live session keys.
+        # Do not stomp them from a stale canonical blob on normal reruns —
+        # only cloud/local restore should fully seed from canonical.
+        if not restored_this_run:
+            live = gather_active_song_context(session)
+            for key in ("instrument", "level", "focus"):
+                live_val = str(live.get(key) or "").strip()
+                if live_val:
+                    ctx[key] = live_val
+            live_dk = str(live.get("display_key") or "").strip()
+            if live_dk:
+                ctx["display_key"] = live_dk
         ctx = write_canonical_active_song_state(
             session,
-            canonical,
+            ctx,
             reason="canonical_preserve",
         )
         _record_transposing_restore_trace(session, ctx, source="canonical_prepare")

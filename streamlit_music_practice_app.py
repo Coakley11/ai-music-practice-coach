@@ -579,7 +579,6 @@ try:
         render_active_song_hub_hero,
         render_active_song_hub_close,
         active_song_key_row_html,
-        render_catalog_song_card_grid,
     )
     _APP_UI_LOADED = True
 except Exception as _app_ui_first_err:
@@ -8104,43 +8103,6 @@ def _render_catalog_song_picker_block(
                     f"· {', '.join(_filter_bits)} update the <strong>Active Song</strong> dropdown above</p>",
                     unsafe_allow_html=True,
                 )
-                if filtered:
-
-                    def _pick_key_for_catalog_card(rec: dict) -> str:
-                        return format_pick_key(
-                            str(rec.get("genre") or ""),
-                            f"{rec.get('title', '')} — {rec.get('artist', '')}",
-                        )
-
-                    def _load_catalog_card_pick(pick_key: str) -> None:
-                        set_catalog_source(st.session_state)
-                        st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = pick_key
-                        apply_pick_key(
-                            st,
-                            pick_key,
-                            SONG_PICKER_CATALOG,
-                            song_library=SONG_LIBRARY,
-                        )
-                        _push_recent_pick_key(st.session_state, pick_key)
-                        note_active_source_change(
-                            st, invalidate_backing=invalidate_backing_cache
-                        )
-                        try:
-                            st.toast(
-                                "Song loaded from browse card.",
-                                icon="🎵",
-                            )
-                        except Exception:
-                            pass
-
-                    render_catalog_song_card_grid(
-                        st,
-                        filtered,
-                        active_pick_key=active_pick_key,
-                        song_meta_fn=song_card_meta,
-                        pick_key_for_record_fn=_pick_key_for_catalog_card,
-                        on_load_pick_key=_load_catalog_card_pick,
-                    )
     else:
         if _library_shell is not None:
             with _library_shell:
@@ -9244,8 +9206,10 @@ def _on_global_instrument_change() -> None:
     # list so other pages don't render a focus that the new instrument
     # doesn't offer. Done via the canonical setter so the focus key
     # is *also* clamped before downstream code reads it on this rerun.
+    from active_song_state import mark_active_song_local_edit
     from practice_setup_globals import set_active_instrument
 
+    mark_active_song_local_edit(st.session_state)
     previous = st.session_state.get("_activity_last_logged_instrument") or st.session_state.get(
         "instrument"
     )
@@ -9270,8 +9234,10 @@ def _on_global_focus_change() -> None:
 
 
 def _on_global_level_change() -> None:
+    from active_song_state import mark_active_song_local_edit
     from practice_setup_globals import set_active_level
 
+    mark_active_song_local_edit(st.session_state)
     set_active_level(st.session_state, st.session_state.get("level"))
     _sync_canonical_active_song_after_edit()
 
@@ -10930,9 +10896,6 @@ elif _studio_page == "backing":
         st.session_state.get("backing_time_signature", _default_meter)
     )
     _meter_override = bool(st.session_state.get("backing_time_signature_override", False))
-    if is_transposing_instrument(instrument):
-        render_transposing_info_card(st, concert_key=concert_key, instrument=instrument)
-
     selected_section_names: list[str] = []
     form_loops = int(st.session_state.get("backing_track_loops", 2))
 

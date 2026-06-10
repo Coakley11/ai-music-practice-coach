@@ -65,6 +65,18 @@ class TestActiveSongState(unittest.TestCase):
         self.assertEqual(session["instrument"], "Guitar")
         self.assertEqual(session[PENDING_DISPLAY_KEY], "D Major")
 
+    def test_prepare_preserves_live_sidebar_globals_over_stale_canonical(self) -> None:
+        session = {
+            "active_song_state": {**_SAMPLE, "last_write_reason": "cloud"},
+            "instrument": "Saxophone",
+            "level": "Advanced",
+            "focus": "Tone",
+        }
+        prepare_active_song_context(session)
+        self.assertEqual(session["instrument"], "Saxophone")
+        self.assertEqual(session["level"], "Advanced")
+        self.assertEqual(session["focus"], "Tone")
+
     def test_b_cross_device_cloud_restore(self) -> None:
         session: dict = {"studio_page": "practice"}
         cloud = {

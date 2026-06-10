@@ -161,6 +161,17 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   color: #111827 !important;
   -webkit-text-fill-color: #111827 !important;
 }
+[data-testid="stSidebar"] [data-testid="stSelectbox"],
+[data-testid="stSidebar"] [data-baseweb="select"],
+[data-testid="stSidebar"] [data-testid="stCheckbox"],
+[data-testid="stSidebar"] .stButton > button,
+[data-testid="stSidebar"] input,
+[data-testid="stSidebar"] textarea {
+  pointer-events: auto !important;
+}
+[data-testid="stSidebar"] [data-testid="stSelectbox"] > div > div {
+  cursor: pointer !important;
+}
 .ui-sb-section {
   font-size: 0.72rem;
   font-weight: 800;
@@ -2434,7 +2445,7 @@ def _inject_studio_history_nav_pin_script() -> None:
     )
 
 
-_UI_POLISH_VERSION = "v4-2026-06-09-ui-polish-p2"
+_UI_POLISH_VERSION = "v5-2026-06-09-ui-regression-fix"
 
 
 def _backing_studio_panel_css() -> str:
@@ -6553,7 +6564,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-09-ui-polish-p2"
+STUDIO_UI_RELEASE = "2026-06-09-ui-regression-fix"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
