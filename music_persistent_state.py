@@ -1181,6 +1181,14 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     for key in _INSIGHT_KEYS:
         if key in ss:
             extra[key] = copy.deepcopy(ss[key])
+    try:
+        from active_song_state import TRANSPOSING_WIDGET_SESSION_KEYS
+
+        for key in TRANSPOSING_WIDGET_SESSION_KEYS:
+            if key in ss:
+                extra[key] = copy.deepcopy(ss[key])
+    except ImportError:
+        pass
     state: dict[str, Any] = {"core": core, "session": extra}
     for key in _WORKSPACE_KEYS:
         if key in ss:
@@ -1340,8 +1348,16 @@ def apply_music_disk_state(
             ss[key] = copy.deepcopy(val)
         elif key in _PERSIST_KEYS:
             ss[key] = copy.deepcopy(val)
-        elif not str(key).startswith("_ami_"):
-            ss[key] = copy.deepcopy(val)
+        else:
+            try:
+                from active_song_state import TRANSPOSING_WIDGET_SESSION_KEYS
+
+                if key in TRANSPOSING_WIDGET_SESSION_KEYS:
+                    continue
+            except ImportError:
+                pass
+            if not str(key).startswith("_ami_"):
+                ss[key] = copy.deepcopy(val)
 
     user_owns_page = bool(pre_restore_user_nav)
     active_studio, overwrite_source = blob_studio, "workspace_blob"

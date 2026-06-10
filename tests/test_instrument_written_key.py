@@ -57,6 +57,13 @@ def test_switch_to_piano_clears_written_mode():
     assert ctx["chart_key_mode"] == "concert"
 
 
+def test_written_key_spelling_follows_concert_accidental_style():
+    assert written_key_for_type("Db", "Alto saxophone (Eb)") == "Bb"
+    assert written_key_for_type("F#", "Tenor saxophone (Bb)") == "G#"
+    assert written_key_for_type("Ab", "Alto saxophone (Eb)") == "F"
+    assert written_key_for_type("C#", "Tenor saxophone (Bb)") == "D#"
+
+
 def test_switch_sax_to_trumpet_keeps_written_mode():
     ss = _state()
     ss[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = "Bb Trumpet"

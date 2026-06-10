@@ -30,6 +30,12 @@ ACTIVE_SONG_SCALAR_KEYS = (
     "focus",
 )
 
+TRANSPOSING_WIDGET_SESSION_KEYS: tuple[str, ...] = (
+    CHART_IN_INSTRUMENT_KEY_KEY,
+    WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+    SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+)
+
 __all__ = (
     "ACTIVE_SONG_DIRTY_KEY",
     "ACTIVE_SONG_PENDING_SYNC_KEY",
@@ -48,6 +54,7 @@ __all__ = (
     "prepare_active_song_context",
     "render_active_song_state_debug",
     "sync_active_song_context_from_core",
+    "TRANSPOSING_WIDGET_SESSION_KEYS",
     "transposing_subtype_from_blob",
     "written_key_mode_from_blob",
     "write_canonical_active_song_state",
@@ -304,11 +311,13 @@ def write_canonical_active_song_state(
         "last_write_reason": reason or None,
     }
     mutate_wk = True if mutate_written_key is None else mutate_written_key
+    mutate_subtype = True if mutate_transposing_subtype is None else mutate_transposing_subtype
     _apply_context_to_session_keys(
         session,
         ctx,
         mutate_display_key=True if mutate_display_key is None else mutate_display_key,
         mutate_written_key=mutate_wk,
+        mutate_transposing_subtype=mutate_subtype,
     )
     if local_edit:
         mark_active_song_local_edit(session)
@@ -340,11 +349,13 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
 
     gathered = gather_active_song_context(session)
     if gathered.get("pick_key") or gathered.get("instrument") or gathered.get("display_key"):
-        return write_canonical_active_song_state(
+        ctx = write_canonical_active_song_state(
             session,
             gathered,
             reason="reconcile_on_load",
         )
+        rehydrate_transposing_sidebar_from_canonical(session)
+        return ctx
     return gathered
 
 

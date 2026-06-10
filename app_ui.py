@@ -441,6 +441,22 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
 .ui-transposing-recap-meta {
   color: #1e293b !important;
 }
+[data-testid="stSidebar"] .ui-key-global-hint,
+[data-testid="stSidebar"] .ui-key-global-hint * {
+  color: #0f172a !important;
+  background: #f8fafc !important;
+}
+[data-testid="stSidebar"] .ui-sidebar-key-caption,
+[data-testid="stSidebar"] .ui-sidebar-key-caption *,
+[data-testid="stSidebar"] .ui-sidebar-key-caption strong {
+  color: #0f172a !important;
+}
+[data-testid="stSidebar"] .ui-transposing-recap,
+[data-testid="stSidebar"] .ui-transposing-recap *,
+[data-testid="stSidebar"] .ui-transposing-recap strong,
+[data-testid="stSidebar"] .ui-transposing-recap-meta {
+  color: #0f172a !important;
+}
 .ui-ctrl-section-body .stSelectbox label,
 .ui-ctrl-section-body .stSlider label,
 .ui-ctrl-section-body .stRadio label {

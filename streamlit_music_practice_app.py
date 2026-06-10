@@ -9099,7 +9099,10 @@ st.sidebar.markdown(
     '<p class="ui-key-global-hint">Practice / Display Key — concert pitch for the active song.</p>',
     unsafe_allow_html=True,
 )
-st.sidebar.caption(f"Song original key: **{original_key}**")
+st.sidebar.markdown(
+    f'<p class="ui-sidebar-key-caption">Song original key: <strong>{original_key}</strong></p>',
+    unsafe_allow_html=True,
+)
 st.sidebar.selectbox(
     "Practice / Display Key (concert)",
     _display_key_options,

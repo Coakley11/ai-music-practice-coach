@@ -73,12 +73,76 @@ TRANSPOSING_INSTRUMENTS: dict[str, int] = {
 USER_TRANSPOSING_INSTRUMENTS: tuple[str, ...] = ("Saxophone", "Trumpet", "Clarinet")
 
 
-def _transpose_key_center(key: str, steps: int) -> str:
+_FLAT_PITCH_CLASSES: tuple[str, ...] = (
+    "C",
+    "Db",
+    "D",
+    "Eb",
+    "E",
+    "F",
+    "Gb",
+    "G",
+    "Ab",
+    "A",
+    "Bb",
+    "B",
+)
+_SHARP_PITCH_CLASSES: tuple[str, ...] = (
+    "C",
+    "C#",
+    "D",
+    "D#",
+    "E",
+    "F",
+    "F#",
+    "G",
+    "G#",
+    "A",
+    "A#",
+    "B",
+)
+_NATURAL_PITCH_CLASSES: frozenset[str] = frozenset(
+    {"C", "D", "E", "F", "G", "A", "B"}
+)
+
+
+def _reference_spelling_mode(reference_key: str) -> str:
+    """flat | sharp | natural — follow concert/display key accidental style."""
+    root, _ = split_chord(str(reference_key or "C"))
+    root = str(root or "C")
+    if "b" in root:
+        return "flat"
+    if "#" in root:
+        return "sharp"
+    return "natural"
+
+
+def _spell_pitch_class(pitch_idx: int, *, mode: str) -> str:
+    idx = int(pitch_idx) % 12
+    if mode == "flat":
+        return _FLAT_PITCH_CLASSES[idx]
+    if mode == "sharp":
+        return _SHARP_PITCH_CLASSES[idx]
+    natural = _FLAT_PITCH_CLASSES[idx]
+    if natural in _NATURAL_PITCH_CLASSES:
+        return natural
+    return _FLAT_PITCH_CLASSES[idx]
+
+
+def _transpose_key_center(
+    key: str,
+    steps: int,
+    *,
+    reference_key: str | None = None,
+) -> str:
     root, suffix = split_chord(str(key or "C"))
     nr = normalize_root(root)
     if nr not in CHROMATIC:
         return str(key)
-    new_root = CHROMATIC[(CHROMATIC.index(nr) + steps) % 12]
+    ref = str(reference_key if reference_key is not None else key)
+    mode = _reference_spelling_mode(ref)
+    new_idx = (CHROMATIC.index(nr) + steps) % 12
+    new_root = _spell_pitch_class(new_idx, mode=mode)
     return new_root + suffix
 
 
@@ -134,6 +198,12 @@ def apply_pending_transposing_instrument(session_state: dict, instrument: str) -
     """Apply pending type or fix invalid value — call only BEFORE the type selectbox."""
     if not is_transposing_instrument(instrument):
         return
+    try:
+        from active_song_state import rehydrate_transposing_sidebar_from_canonical
+
+        rehydrate_transposing_sidebar_from_canonical(session_state)
+    except ImportError:
+        pass
     _migrate_transposing_instrument_state(session_state)
     opts = options_for_instrument(instrument)
     pending = session_state.pop(PENDING_SELECTED_TRANSPOSING_INSTRUMENT, None)
@@ -142,6 +212,17 @@ def apply_pending_transposing_instrument(session_state: dict, instrument: str) -
         return
     current = session_state.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY)
     if current not in opts:
+        try:
+            from active_song_state import ACTIVE_SONG_STATE_KEY
+
+            meta = session_state.get(ACTIVE_SONG_STATE_KEY)
+            if isinstance(meta, dict):
+                restored = str(meta.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
+                if restored in opts:
+                    session_state[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = restored
+                    return
+        except ImportError:
+            pass
         session_state[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = default_transposing_type(instrument)
 
 
@@ -213,7 +294,7 @@ def chart_transpose_cache_signature(
 
 def written_key_for_type(concert_key: str, transposing_type: str) -> str:
     steps = TRANSPOSING_SEMITONE_STEPS.get(transposing_type, 0)
-    return _transpose_key_center(concert_key, steps)
+    return _transpose_key_center(concert_key, steps, reference_key=concert_key)
 
 
 def transpose_key_for_instrument(
