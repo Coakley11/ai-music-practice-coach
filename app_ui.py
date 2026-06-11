@@ -2392,7 +2392,7 @@ def _inject_studio_history_nav_pin_script() -> None:
     )
 
 
-_UI_POLISH_VERSION = "v7-2026-06-09-global-controls-page-widgets"
+_UI_POLISH_VERSION = "v8-2026-06-09-studio-header-cleanup"
 
 
 def _backing_studio_panel_css() -> str:
@@ -6217,7 +6217,6 @@ def render_active_song_hub_open(st: Any, *, extra_class: str = "") -> None:
         """
 <div class="ui-active-song-hub-head">
   <span class="ui-active-song-hub-label">Current active song</span>
-  <span class="ui-active-song-hub-sub">Pick a song here — then <strong>Edit Song Chart</strong>, Practice, or Backing Track</span>
 </div>
         """,
         unsafe_allow_html=True,
@@ -6288,12 +6287,8 @@ def render_song_library_panel_header(
     st.markdown(
         f"""
 <div class="ui-song-library-head">
-  <p class="ui-song-library-kicker">🎼 Catalog</p>
-  <h3 class="ui-song-library-title"><span class="ui-script-word">Songs</span> · Browse Library</h3>
-  <p class="ui-song-library-sub">
-    Filter by genre or search below — your pick loads in
-    <strong>Active Song</strong> above. Use <strong>Edit Song Chart</strong> there to fix chords.
-  </p>
+  <p class="ui-song-library-kicker">Browse Library</p>
+  <p class="ui-song-library-sub">Browse, search, or filter songs below.</p>
   {count_html}
 </div>
         """,
@@ -6415,7 +6410,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-09-global-controls-page-widgets"
+STUDIO_UI_RELEASE = "2026-06-09-studio-header-cleanup"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -6791,13 +6786,13 @@ def render_creative_studio_panel_header(
     level: str,
     song_title: str,
 ) -> None:
+    """Compact session context — page title lives in the script header above."""
     st.markdown(
         f"""
-<div class="ui-creative-studio-head" data-creative-panel-ui="{CREATIVE_STUDIO_UI_VERSION}">
-  <span class="ui-creative-studio-kicker">🧠 Creative studio</span>
-  <p class="ui-creative-studio-title"><span class="ui-script-word">Creative</span> lab · {html.escape(instrument)} · {html.escape(level)}</p>
-  <p class="ui-creative-studio-sub">Working from <strong>{html.escape(song_title or "your song")}</strong> — pick a mode, then shape your jam.</p>
-</div>
+<p class="ui-creative-studio-sub ui-creative-studio-sub--compact" data-creative-panel-ui="{CREATIVE_STUDIO_UI_VERSION}">
+  Working from <strong>{html.escape(song_title or "your song")}</strong>
+  · {html.escape(instrument or "Instrument")} · {html.escape(level or "Intermediate")}
+</p>
         """,
         unsafe_allow_html=True,
     )
@@ -8155,10 +8150,11 @@ def _resolve_decorative_header_page_id(icon: str, title: str) -> str:
         return "openai"
     icon_map = {
         "🎯": "practice",
+        "🎼": "picker",
         "📚": "picker",
         "🎤": "picker",
         "🎧": "backing",
-        "✏️": "custom",
+        "✏️": "creative",
         "🧠": "creative",
         "🎙️": "analysis",
         "🎚️": "multitrack",

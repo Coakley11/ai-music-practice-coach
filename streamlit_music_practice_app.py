@@ -10545,9 +10545,11 @@ elif _studio_page == "picker":
         )
     else:
         _studio_page_header(
-            "📚",
+            "🎼",
             "Song Selection",
-            "Pick a song in **Active Song**, then use **Edit Song Chart** to fix chords, or open **Practice** / **Backing Track**.",
+            "Choose a song from your library. The active song drives Practice, Backing Track, "
+            "Creative Lab, Karaoke, and Upload/Multitrack. Use Edit Song Chart to customize "
+            "chords, sections, and song structure.",
         )
 
     _render_catalog_song_picker_block(
@@ -11507,13 +11509,6 @@ elif _studio_page == "analysis":
         "Drop a take, get timing and pitch feedback, then jump to practice or multitrack.",
     )
 
-    try:
-        from instrument_aware import render_instrument_context_strip
-
-        render_instrument_context_strip(st, instrument, "analysis")
-    except Exception:
-        pass
-
     _song_title = str(song or "Your song")
     _song_artist = _active_song_artist_label()
 
@@ -11881,7 +11876,11 @@ elif _studio_page == "creative":
             "Harmonic analyzer, improvisation coach, arrangement assistant, weakness detection, and progress tracking.",
         )
     else:
-        _studio_page_header("🧠", "Creative Lab", "Harmony, improvisation, and growth tools.")
+        _studio_page_header(
+            "✏️",
+            "Creative Lab",
+            "Harmony, improvisation, and growth tools for your active song.",
+        )
 
     ctx = current_song_context_lab()
 
@@ -12058,12 +12057,6 @@ elif _studio_page == "multitrack":
         "Multitrack Session Workspace",
         "Overdub layers with monitor backing, mix, and export — synced to your active song.",
     )
-    try:
-        from instrument_aware import render_instrument_context_strip
-
-        render_instrument_context_strip(st, instrument, "multitrack")
-    except Exception:
-        pass
 
     MT_SLOTS = [
         "Guitar",
