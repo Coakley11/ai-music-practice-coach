@@ -130,6 +130,22 @@ WORKSPACE_RESTORE_TRACE_LABELS: tuple[str, ...] = (
 
 )
 
+NAV_HISTORY_TRACE_LABELS: tuple[str, ...] = (
+    "back_button_rendered",
+    "forward_button_rendered",
+    "back_button_disabled",
+    "forward_button_disabled",
+    "back_button_clicked",
+    "forward_button_clicked",
+    "nav_history_stack",
+    "nav_forward_stack",
+    "nav_current_page",
+    "nav_target_page",
+    "final_studio_page",
+    "page_overwrite_source",
+    "active_page_source",
+)
+
 
 
 
@@ -903,6 +919,11 @@ def render_persistence_trace_sidebar(st: Any) -> None:
         for label in WORKSPACE_RESTORE_TRACE_LABELS:
 
             st.text(f"{label}: {_trace_display(restore_rows.get(label))}")
+
+        st.markdown("**Back/Forward nav (live UI)**")
+        nav_rows = {label: trace.get(label) if label in trace else ss.get(label) for label in NAV_HISTORY_TRACE_LABELS}
+        for label in NAV_HISTORY_TRACE_LABELS:
+            st.text(f"{label}: {_trace_display(nav_rows.get(label))}")
 
         st.markdown("**Test D compare (active song + page)**")
         st.caption(

@@ -173,7 +173,6 @@ def render_custom_progression_lab_page() -> None:
     from progression_helpers import (
         default_active_progression,
         invalidate_backing_cache,
-        render_cpl_page_header,
         session_display_key,
     )
     from jazz_demo_charts import build_demo_progression, demo_presets_for_style
@@ -182,8 +181,6 @@ def render_custom_progression_lab_page() -> None:
         note_active_source_change,
         set_custom_source,
     )
-
-    render_cpl_page_header()
     try:
         from app_ui import (
             custom_song_preview_card_html,

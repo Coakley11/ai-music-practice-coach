@@ -155,6 +155,8 @@ def resolve_studio_page_for_restore(
     """Pick authoritative studio page after cloud restore (respects manual nav + AMI return)."""
     blob_page = _studio_page_from_blob(blob)
     pre = _normalize_page(pre_restore_page)
+    if session.get("_studio_nav_from_history") and pre:
+        return pre, "history_nav_preserved"
     try:
         from applied_math_return_insight import ami_return_navigation_active
 

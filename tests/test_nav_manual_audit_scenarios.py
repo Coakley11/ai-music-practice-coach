@@ -141,3 +141,30 @@ def test_audit_page_local_backing_bpm_preserved(_mock_save):
     assert state["backing_track_bpm"] == 118
     assert state["backing_groove_style"] == "Shuffle"
     assert state["selected_sections"] == ["Intro", "Solo"]
+
+
+@patch("music_persistent_state.after_studio_page_change")
+def test_back_survives_stale_cloud_workspace_restore(_mock_save):
+    """Live Back must not revert when cloud workspace still says the prior page."""
+    from unittest.mock import MagicMock
+
+    from music_persistent_state import apply_music_disk_state
+
+    state = _global_session()
+    init_nav_history(state)
+    _nav(state, "backing")
+    assert go_back(state) is True
+    state["_studio_nav_from_history"] = True
+    state["active_page_source"] = "history_back"
+    handle_studio_page_transition(state)
+
+    st = MagicMock()
+    st.session_state = state
+    cloud = {
+        "studio_nav_state": {"studio_page": "backing"},
+        "music_workspace_state": {"studio_page": "backing"},
+        "core": {"studio_page": "backing", "instrument": "Saxophone"},
+    }
+    apply_music_disk_state(st, cloud, song_picker_catalog={}, song_library={})
+    assert st.session_state["studio_page"] == "practice"
+    assert st.session_state.get("_suite_page_overwrite_source") == "history_nav_preserved"

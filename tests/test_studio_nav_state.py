@@ -89,6 +89,21 @@ class TestStudioNavState(unittest.TestCase):
         self.assertEqual(page, "backing")
         self.assertEqual(source, "user_page_preserved")
 
+    def test_history_nav_preserved_on_restore(self) -> None:
+        """Back/Forward must not lose to stale cloud workspace page on next rerun."""
+        page, source = resolve_studio_page_for_restore(
+            {"_studio_nav_from_history": True},
+            {
+                "studio_nav_state": {"studio_page": "backing"},
+                "music_workspace_state": {"studio_page": "backing"},
+                "core": {"studio_page": "backing"},
+            },
+            pre_restore_page="practice",
+            user_owns_page=False,
+        )
+        self.assertEqual(page, "practice")
+        self.assertEqual(source, "history_nav_preserved")
+
     def test_e_ami_return_restores_studio_page(self) -> None:
         session: dict = {}
         source = {

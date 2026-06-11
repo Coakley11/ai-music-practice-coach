@@ -1494,7 +1494,7 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   position: fixed !important;
   top: 50vh !important;
   transform: translateY(-50%) !important;
-  z-index: 900 !important;
+  z-index: 99990 !important;
   margin: 0 !important;
   width: auto !important;
   pointer-events: auto !important;
@@ -1508,7 +1508,13 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   left: auto !important;
 }
 section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
-section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button,
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] button[kind="secondary"],
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] button[kind="secondary"],
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] [data-testid="stBaseButton-secondary"],
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] [data-testid="stBaseButton-secondary"] {
+  pointer-events: auto !important;
+  z-index: 99991 !important;
   min-height: 2.65rem !important;
   height: auto !important;
   min-width: 2.65rem !important;
@@ -2368,7 +2374,7 @@ def _inject_studio_history_nav_pin_script() -> None:
     );
     var btnBase =
       'position:fixed!important;top:' + midY + 'px!important;' +
-      'transform:translateY(-50%)!important;z-index:900!important;' +
+      'transform:translateY(-50%)!important;z-index:99990!important;' +
       'margin:0!important;width:auto!important;pointer-events:auto!important;';
     main.querySelectorAll('[class*="st-key-studio_nav_back_btn"] .stButton').forEach(function (btn) {
       btn.style.cssText = btnBase + 'left:' + backLeft + 'px!important;right:auto!important;';
@@ -2392,7 +2398,7 @@ def _inject_studio_history_nav_pin_script() -> None:
     )
 
 
-_UI_POLISH_VERSION = "v8-2026-06-09-studio-header-cleanup"
+_UI_POLISH_VERSION = "v9-2026-06-09-custom-header-nav-fix"
 
 
 def _backing_studio_panel_css() -> str:
@@ -6410,7 +6416,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-09-studio-header-cleanup"
+STUDIO_UI_RELEASE = "2026-06-09-custom-header-nav-fix"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"

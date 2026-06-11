@@ -8966,6 +8966,14 @@ try:
             record_local_nav_checkpoint(st, "post_canonical")
         except Exception:
             pass
+        try:
+            from studio_nav_history import consume_history_nav_startup_flag, record_nav_history_trace
+
+            if consume_history_nav_startup_flag(st.session_state):
+                st.session_state["_studio_history_nav_consumed"] = True
+            record_nav_history_trace(st, st.session_state)
+        except Exception:
+            pass
     except Exception:
         pass
     show_persistence_messages(st)
@@ -9366,8 +9374,9 @@ except Exception:
 
 try:
     render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
-except Exception:
-    pass
+except Exception as _nav_hist_exc:
+    if st.session_state.get("developer_mode"):
+        st.warning(f"Back/Forward nav render failed: {_nav_hist_exc}")
 
 note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
@@ -11840,6 +11849,11 @@ elif _studio_page == "custom":
         inject_studio_ui_release_marker(st, page="custom")
     except Exception:
         pass
+    _studio_page_header(
+        "✏️",
+        "Custom Progression Lab",
+        "Build chord progressions for your active song — then open in Backing Track.",
+    )
     from cpl_page_ui import render_custom_progression_lab_page
 
     render_custom_progression_lab_page()
@@ -11864,8 +11878,8 @@ elif _studio_page == "creative":
         pass
 
     if pp.is_capture_mode(st):
-        pp.render_hero_banner(
-            st,
+        _studio_page_header(
+            "✏️",
             "Creative Lab",
             "Deep harmonic analysis, improvisation intelligence, and adaptive musical development tools.",
         )
