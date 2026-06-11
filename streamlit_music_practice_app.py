@@ -8912,6 +8912,12 @@ from app_tutorial import (
 init_tutorial_state(st.session_state)
 init_nav_history(st.session_state)
 
+try:
+    render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
+except Exception as _early_nav_hist_exc:
+    if st.session_state.get("developer_mode"):
+        st.warning(f"Back/Forward nav render failed: {_early_nav_hist_exc}")
+
 from openai_secrets_config import resolve_openai_api_key
 
 _openai_api_key, _openai_secrets_probe = resolve_openai_api_key()
@@ -9371,12 +9377,6 @@ try:
     render_music_deploy_probe(st)
 except Exception:
     pass
-
-try:
-    render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
-except Exception as _nav_hist_exc:
-    if st.session_state.get("developer_mode"):
-        st.warning(f"Back/Forward nav render failed: {_nav_hist_exc}")
 
 note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
@@ -12726,6 +12726,14 @@ elif _studio_page == "log":
             st.session_state.pop("practice_log_insights", None)
             st.success("Practice log cleared.")
             st.rerun()
+
+try:
+    from studio_nav_history import flush_deferred_history_nav_save, record_nav_history_trace
+
+    if flush_deferred_history_nav_save(st):
+        record_nav_history_trace(st, st.session_state)
+except Exception:
+    pass
 
 if not pp.skip_background_persistence(st):
     try:

@@ -667,6 +667,29 @@ def sync_workspace_protocol(
         )
         return False
 
+    try:
+        from studio_nav_history import history_nav_blocks_workspace_sync
+
+        if history_nav_blocks_workspace_sync(st.session_state):
+            reason = "history navigation — workspace sync skipped"
+            _mark_user_nav_sync_skipped(st, reason)
+            _record_startup_restore_diagnostics(
+                st,
+                app_id,
+                cloud_state=cloud_state,
+                cloud_ts=cloud_ts,
+                disk_state=disk_state,
+                disk_ts=disk_ts,
+                picked_source="none",
+                picked_reason=reason,
+                should_apply=False,
+                apply_reason="",
+                skip_reason=reason,
+            )
+            return False
+    except ImportError:
+        pass
+
     if not cloud_state and not disk_state:
         reason = "no workspace blob"
         _record_workspace_sync_trace(

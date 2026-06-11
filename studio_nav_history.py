@@ -32,9 +32,10 @@ STUDIO_PAGE_IDS: frozenset[str] = frozenset(
 NAV_BACK_STACK = "studio_nav_back"
 NAV_FORWARD_STACK = "studio_nav_forward"
 _NAV_FROM_HISTORY = "_studio_nav_from_history"
+_HISTORY_NAV_PENDING_SAVE = "_studio_history_nav_pending_save"
 
 # Bump when verifying Streamlit Cloud picked up navigation UI changes.
-NAVIGATION_UI_DEPLOY_MARKER = "studio-nav-history-live-fix"
+NAVIGATION_UI_DEPLOY_MARKER = "studio-nav-history-live-fix-v2"
 
 __all__ = (
     "STUDIO_PAGE_IDS",
@@ -52,6 +53,8 @@ __all__ = (
     "render_nav_deploy_marker",
     "record_nav_history_trace",
     "consume_history_nav_startup_flag",
+    "flush_deferred_history_nav_save",
+    "history_nav_blocks_workspace_sync",
 )
 
 
@@ -103,6 +106,7 @@ def record_nav_history_trace(st: Any | None, session_state: dict, **extra: Any) 
             "final_studio_page": session_state.get("studio_page"),
             "page_overwrite_source": session_state.get("_suite_page_overwrite_source"),
             "active_page_source": session_state.get("active_page_source"),
+            "nav_target_page": session_state.get("nav_target_page"),
         }
         payload.update(extra)
         update_trace(st, **payload)
@@ -113,6 +117,22 @@ def record_nav_history_trace(st: Any | None, session_state: dict, **extra: Any) 
 def consume_history_nav_startup_flag(session_state: dict) -> bool:
     """Clear one-shot history nav flag after workspace restore consumed it."""
     return bool(session_state.pop(_NAV_FROM_HISTORY, False))
+
+
+def history_nav_blocks_workspace_sync(session_state: dict) -> bool:
+    """True when cloud workspace restore must not stomp a history Back/Forward target."""
+    if session_state.get(_NAV_FROM_HISTORY):
+        return True
+    if session_state.get(_HISTORY_NAV_PENDING_SAVE):
+        return True
+    try:
+        from studio_nav_state import is_studio_nav_locally_dirty
+
+        if is_studio_nav_locally_dirty(session_state):
+            return True
+    except ImportError:
+        pass
+    return False
 
 
 def _claim_history_nav_ownership(session_state: dict, target_page: str, *, source: str) -> None:
@@ -134,25 +154,84 @@ def _claim_history_nav_ownership(session_state: dict, target_page: str, *, sourc
         pass
 
 
-def _after_history_nav(
-    st: Any,
-    session_state: dict,
-    *,
-    target_page: str,
-    source: str,
-) -> None:
-    _claim_history_nav_ownership(session_state, target_page, source=source)
+def _apply_history_nav_transition(session_state: dict, *, source: str) -> str:
+    """Commit history target page before workspace restore runs on the next script pass."""
+    target = str(session_state.get("studio_page") or "practice")
+    _claim_history_nav_ownership(session_state, target, source=source)
+    try:
+        from studio_page_persistence import handle_studio_page_transition
+
+        handle_studio_page_transition(session_state)
+    except Exception:
+        pass
+    session_state[_HISTORY_NAV_PENDING_SAVE] = target
+    return target
+
+
+def _on_history_back() -> None:
+    import streamlit as st
+
+    ss = st.session_state
+    init_nav_history(ss)
+    ss.pop("_history_nav_failed", None)
+    if not go_back(ss):
+        ss["_history_nav_failed"] = "empty_back_stack"
+        record_nav_history_trace(st, ss, back_button_clicked=True, history_nav_failed="empty_back_stack")
+        return
+    target = _apply_history_nav_transition(ss, source="history_back")
+    record_nav_history_trace(
+        st,
+        ss,
+        back_button_clicked=True,
+        nav_target_page=target,
+        active_page_source="history_back",
+    )
+
+
+def _on_history_forward() -> None:
+    import streamlit as st
+
+    ss = st.session_state
+    init_nav_history(ss)
+    ss.pop("_history_nav_failed", None)
+    if not go_forward(ss):
+        ss["_history_nav_failed"] = "empty_forward_stack"
+        record_nav_history_trace(st, ss, forward_button_clicked=True, history_nav_failed="empty_forward_stack")
+        return
+    target = _apply_history_nav_transition(ss, source="history_forward")
+    record_nav_history_trace(
+        st,
+        ss,
+        forward_button_clicked=True,
+        nav_target_page=target,
+        active_page_source="history_forward",
+    )
+
+
+def flush_deferred_history_nav_save(st: Any) -> bool:
+    """Persist history navigation after the target page has rendered (post-workspace)."""
+    ss = st.session_state
+    pending = str(ss.pop(_HISTORY_NAV_PENDING_SAVE, None) or "").strip()
+    if not pending:
+        return False
     try:
         from music_persistent_state import after_studio_page_change
 
-        after_studio_page_change(st, session_state, target_page=target_page)
+        after_studio_page_change(st, ss, target_page=pending)
     except Exception:
         try:
             from music_persistent_state import claim_studio_page_ownership
 
-            claim_studio_page_ownership(st, target_page, session_state=session_state)
+            claim_studio_page_ownership(st, pending, session_state=ss)
         except Exception:
             pass
+    record_nav_history_trace(
+        st,
+        ss,
+        nav_target_page=pending,
+        final_studio_page=ss.get("studio_page"),
+    )
+    return True
 
 
 def navigate_studio_page(session_state: dict, page_id: str) -> bool:
@@ -259,11 +338,13 @@ def render_floating_nav_history(
     st_module: Any,
     session_state: dict,
     *,
-    rerun_fn: Callable[[], None],
+    rerun_fn: Callable[[], None] | None = None,
 ) -> None:
-    """Fixed back / forward controls at the left and right edges of the main viewport."""
-    import streamlit as st
+    """Fixed back / forward controls at the left and right edges of the main viewport.
 
+    Uses ``on_click`` callbacks so page changes commit before ``prepare_music_workspace``
+    runs on the subsequent script pass (avoids stale cloud restore overwriting the target).
+    """
     init_nav_history(session_state)
     back_ok = can_go_back(session_state)
     fwd_ok = can_go_forward(session_state)
@@ -280,44 +361,24 @@ def render_floating_nav_history(
         forward_button_disabled=not fwd_ok,
     )
 
-    if st_module.button(
+    st_module.button(
         "← Back",
         key="studio_nav_back_btn",
         disabled=not back_ok,
         use_container_width=False,
         type="secondary",
         help="Previous page in history",
-    ):
-        session_state["back_button_clicked"] = True
-        record_nav_history_trace(st_module, session_state, back_button_clicked=True)
-        if go_back(session_state):
-            _after_history_nav(
-                st,
-                session_state,
-                target_page=str(session_state.get("studio_page") or ""),
-                source="history_back",
-            )
-            record_nav_history_trace(st_module, session_state, back_button_clicked=True)
-            rerun_fn()
-    if st_module.button(
+        on_click=_on_history_back,
+    )
+    st_module.button(
         "Forward →",
         key="studio_nav_forward_btn",
         disabled=not fwd_ok,
         use_container_width=False,
         type="secondary",
         help="Next page in history",
-    ):
-        session_state["forward_button_clicked"] = True
-        record_nav_history_trace(st_module, session_state, forward_button_clicked=True)
-        if go_forward(session_state):
-            _after_history_nav(
-                st,
-                session_state,
-                target_page=str(session_state.get("studio_page") or ""),
-                source="history_forward",
-            )
-            record_nav_history_trace(st_module, session_state, forward_button_clicked=True)
-            rerun_fn()
+        on_click=_on_history_forward,
+    )
 
 
 def render_sidebar_nav_history(

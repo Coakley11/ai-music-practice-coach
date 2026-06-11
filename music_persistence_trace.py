@@ -144,6 +144,7 @@ NAV_HISTORY_TRACE_LABELS: tuple[str, ...] = (
     "final_studio_page",
     "page_overwrite_source",
     "active_page_source",
+    "history_nav_failed",
 )
 
 

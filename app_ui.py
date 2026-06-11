@@ -1485,7 +1485,7 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] {
   margin: 0 !important;
   padding: 0 !important;
   overflow: visible !important;
-  pointer-events: none !important;
+  pointer-events: auto !important;
   border: none !important;
   background: transparent !important;
 }
@@ -2398,7 +2398,7 @@ def _inject_studio_history_nav_pin_script() -> None:
     )
 
 
-_UI_POLISH_VERSION = "v9-2026-06-09-custom-header-nav-fix"
+_UI_POLISH_VERSION = "v10-2026-06-09-history-nav-live-fix"
 
 
 def _backing_studio_panel_css() -> str:
@@ -6416,7 +6416,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-09-custom-header-nav-fix"
+STUDIO_UI_RELEASE = "2026-06-09-history-nav-live-fix"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"

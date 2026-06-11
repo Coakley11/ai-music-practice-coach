@@ -54,13 +54,17 @@ def _nav(state: dict, page: str) -> None:
 
 
 def _back(state: dict) -> None:
+    from studio_nav_history import _apply_history_nav_transition
+
     assert go_back(state) is True
-    handle_studio_page_transition(state)
+    _apply_history_nav_transition(state, source="history_back")
 
 
 def _forward(state: dict) -> None:
+    from studio_nav_history import _apply_history_nav_transition
+
     assert go_forward(state) is True
-    handle_studio_page_transition(state)
+    _apply_history_nav_transition(state, source="history_forward")
 
 
 @patch("music_persistent_state.after_studio_page_change")
