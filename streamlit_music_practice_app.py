@@ -8352,30 +8352,23 @@ def _render_practice_setup_panel(
     )
     from practice_ui_labels import (
         GROOVE_ICONS,
-        INSTRUMENT_ICONS,
-        LEVEL_ICONS,
-        icon_for_focus,
-        setup_pill_html,
     )
     from songs.playback_defaults import GROOVE_STYLE_CHOICES
 
     grooves = list(GROOVE_STYLE_CHOICES)
-    _instrument = str(st.session_state.get("instrument", "Piano"))
-    _level = str(st.session_state.get("level", "Intermediate"))
-    _focus = str(st.session_state.get("focus", "General"))
     _groove = coerce_practice_groove_for_widget(st.session_state, default_groove=default_groove)
     _minutes = prepare_practice_minutes_for_widget(st.session_state)
 
     with st.container(key="practice_control_panel", border=False):
         render_practice_control_panel_header(st)
 
-        st.markdown(
-            '<div class="ui-practice-meta-row">'
-            + setup_pill_html(_instrument, INSTRUMENT_ICONS.get(_instrument, "🎵"))
-            + setup_pill_html(_level, LEVEL_ICONS.get(_level, "🌱"))
-            + setup_pill_html(_focus, icon_for_focus(_focus))
-            + "</div>",
-            unsafe_allow_html=True,
+        _instrument, _level, _focus = render_setup_quick_controls(
+            st,
+            session_state=st.session_state,
+            key_prefix="practice_panel",
+            instrument_options=instrument_options,
+            label="Instrument · level · focus",
+            show_sync_caption=False,
         )
 
         g1, g2 = st.columns([1, 1])
@@ -9411,6 +9404,12 @@ if display_key not in _display_key_options:
 key_changed_this_run = note_display_key_change(st, display_key)
 
 apply_pending_transposing_instrument(st.session_state, instrument)
+try:
+    from practice_setup_controls import snapshot_global_control_values
+
+    snapshot_global_control_values(st.session_state)
+except Exception:
+    pass
 _render_sidebar_transposing_controls_compat(
     concert_key=display_key,
     instrument=instrument,
@@ -10800,9 +10799,17 @@ elif _studio_page == "backing":
         else:
             _studio_page_header(
                 "🎧",
-                "Backing Track",
+                "Backing Track Studio",
                 "Generate accompaniment matched to your active song — then play along.",
             )
+        render_setup_quick_controls(
+            st,
+            session_state=st.session_state,
+            key_prefix="backing_panel",
+            instrument_options=_instrument_options,
+            label="Instrument · level · focus",
+            show_sync_caption=False,
+        )
 
     # The voice-mode `data-vocal-focus="true"` body attribute is set
     # globally at app init (search for `dataset.vocalFocus` upstream),
@@ -11494,6 +11501,11 @@ elif _studio_page == "analysis":
 
     inject_upload_studio_styles(st)
     inject_studio_ui_release_marker(st, page="analysis")
+    _studio_page_header(
+        "🎙️",
+        "Upload & AI Coach",
+        "Drop a take, get timing and pitch feedback, then jump to practice or multitrack.",
+    )
 
     try:
         from instrument_aware import render_instrument_context_strip
@@ -12041,6 +12053,11 @@ elif _studio_page == "multitrack":
 
     inject_multitrack_studio_styles(st)
     inject_studio_ui_release_marker(st, page="multitrack")
+    _studio_page_header(
+        "🎚️",
+        "Multitrack Session Workspace",
+        "Overdub layers with monitor backing, mix, and export — synced to your active song.",
+    )
     try:
         from instrument_aware import render_instrument_context_strip
 

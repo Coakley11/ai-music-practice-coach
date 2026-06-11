@@ -102,6 +102,8 @@ FOCUS_OPTIONS_BY_INSTRUMENT: dict[str, list[str]] = {
     ],
 }
 
+GLOBAL_CONTROL_TRACE_KEY = "_global_control_widget_trace"
+
 
 def focus_options_for_instrument(instrument: str) -> list[str]:
     return FOCUS_OPTIONS_BY_INSTRUMENT.get(
@@ -118,27 +120,128 @@ def focus_options_for_instrument(instrument: str) -> list[str]:
     )
 
 
-def _sync_widget_from_global(
+def _widget_value_for_global(
     session_state: dict,
     widget_key: str,
     global_key: str,
     options: list[str],
 ) -> str:
-    """Pre-fill a page-local widget key from the canonical global key.
+    """Pre-fill a prefixed widget from globals without mutating global keys.
 
-    If the global value is missing or not in the offered options,
-    fall back to the first option and write that back to the global
-    so every other surface (sidebar, other quick-controls) sees the
-    same clamped value on the next render.
+    Global keys are owned by the sidebar widgets (``key=instrument`` etc.).
+    Writing globals after those widgets render causes Streamlit snapback.
     """
     if not options:
         return str(session_state.get(global_key) or "")
-    value = str(session_state.get(global_key) or "")
+    value = str(session_state.get(global_key) or "").strip()
     if value not in options:
         value = options[0]
-        session_state[global_key] = value
     session_state[widget_key] = value
     return value
+
+
+def record_global_control_widget_trace(
+    session_state: dict,
+    *,
+    control_name: str,
+    widget_key: str,
+    attempted_value: str,
+    source: str,
+) -> None:
+    """Temporary diagnostics for page-local global control widgets."""
+    try:
+        from practice_setup_globals import record_global_control_change
+
+        record_global_control_change(session_state, control_name, source)
+    except ImportError:
+        pass
+    trace = {
+        "control_name": control_name,
+        "widget_key": widget_key,
+        "attempted_value": str(attempted_value or "").strip(),
+        "source": str(source or "").strip() or "unknown",
+    }
+    session_state[GLOBAL_CONTROL_TRACE_KEY] = trace
+    session_state[f"_global_control_last_{control_name}"] = trace
+
+
+def snapshot_global_control_values(session_state: dict) -> None:
+    """Record post-prepare session/canonical values for ?dev=1 trace."""
+    trace = dict(session_state.get(GLOBAL_CONTROL_TRACE_KEY) or {})
+    if not trace:
+        return
+    canonical = {}
+    meta = session_state.get("active_song_state")
+    if isinstance(meta, dict):
+        canonical = {
+            "instrument": str(meta.get("instrument") or ""),
+            "level": str(meta.get("level") or ""),
+            "focus": str(meta.get("focus") or ""),
+            "display_key": str(meta.get("display_key") or ""),
+        }
+    trace["value_after_rerun"] = {
+        "instrument": str(session_state.get("instrument") or ""),
+        "level": str(session_state.get("level") or ""),
+        "focus": str(session_state.get("focus") or ""),
+        "display_key": str(session_state.get("display_key") or ""),
+    }
+    trace["active_song_state"] = canonical
+    trace["overwrite_source"] = str(
+        session_state.get("global_control_overwrite_source") or ""
+    ).strip() or None
+    session_state[GLOBAL_CONTROL_TRACE_KEY] = trace
+
+
+def _commit_quick_control_globals(
+    session_state: dict,
+    *,
+    instrument_widget_key: str | None = None,
+    level_widget_key: str | None = None,
+    focus_widget_key: str | None = None,
+    source: str,
+    st_module: Any | None = None,
+) -> None:
+    """Push prefixed widget values to canonical globals + active song blob."""
+    from practice_setup_globals import commit_widget_state_to_globals
+
+    commit_widget_state_to_globals(
+        session_state,
+        instrument_widget_key=instrument_widget_key,
+        level_widget_key=level_widget_key,
+        focus_widget_key=focus_widget_key,
+    )
+    try:
+        from practice_setup_globals import record_global_control_change
+
+        for field, wkey in (
+            ("instrument", instrument_widget_key),
+            ("level", level_widget_key),
+            ("focus", focus_widget_key),
+        ):
+            if wkey and session_state.get(wkey) is not None:
+                record_global_control_change(session_state, field, source)
+    except ImportError:
+        pass
+    try:
+        from active_song_state import mark_active_song_local_edit
+
+        mark_active_song_local_edit(session_state)
+    except ImportError:
+        pass
+    if st_module is not None:
+        try:
+            from music_persistent_state import flush_active_song_edits_and_save
+
+            flush_active_song_edits_and_save(st_module, reason="song_edit")
+            return
+        except Exception:
+            pass
+    try:
+        from active_song_state import flush_active_song_edits
+
+        flush_active_song_edits(session_state, reason="song_edit")
+    except ImportError:
+        pass
 
 
 def render_setup_quick_controls(
@@ -152,50 +255,84 @@ def render_setup_quick_controls(
     show_sync_caption: bool = True,
 ) -> tuple[str, str, str]:
     """
-  Compact Instrument / Level / Focus row.
+    Compact Instrument / Level / Focus row.
 
-  Widget keys are prefixed; values sync to session_state instrument / level / focus
-  (same keys as the sidebar).
-  """
+    Widget keys are prefixed; values commit to global ``instrument`` / ``level`` /
+    ``focus`` via on_change (same keys as the sidebar).
+    """
     instruments = instrument_options or DEFAULT_INSTRUMENT_OPTIONS
     ik = f"{key_prefix}::qc_instrument"
     lk = f"{key_prefix}::qc_level"
     fk = f"{key_prefix}::qc_focus"
 
-    instrument = _sync_widget_from_global(session_state, ik, "instrument", instruments)
-    level = _sync_widget_from_global(session_state, lk, "level", LEVEL_OPTIONS)
-    focus_opts = focus_options_for_instrument(instrument)
-    focus = _sync_widget_from_global(session_state, fk, "focus", focus_opts)
+    instrument = _widget_value_for_global(session_state, ik, "instrument", instruments)
+    level = _widget_value_for_global(session_state, lk, "level", LEVEL_OPTIONS)
+    focus_opts = focus_options_for_instrument(
+        str(session_state.get("instrument") or instrument)
+    )
+    focus = _widget_value_for_global(session_state, fk, "focus", focus_opts)
+
+    source_prefix = key_prefix
 
     def _apply_instrument() -> None:
-        # Flow through the canonical setter so the focus key is
-        # re-validated against the new instrument's options before any
-        # other widget on the page reads it.
-        from practice_setup_globals import set_active_instrument
-
-        new_inst = set_active_instrument(session_state, session_state[ik])
+        attempted = str(session_state.get(ik) or "")
+        record_global_control_widget_trace(
+            session_state,
+            control_name="instrument",
+            widget_key=ik,
+            attempted_value=attempted,
+            source=f"{source_prefix}:instrument_on_change",
+        )
+        _commit_quick_control_globals(
+            session_state,
+            instrument_widget_key=ik,
+            level_widget_key=lk,
+            focus_widget_key=fk,
+            source=f"{source_prefix}:instrument_on_change",
+            st_module=st_module,
+        )
+        new_inst = str(session_state.get("instrument") or "")
         try:
             from instrument_transposition import request_transposing_instrument_sync
 
             request_transposing_instrument_sync(session_state, new_inst)
         except ImportError:
             pass
-        # Keep this widget's focus key in sync with the (possibly
-        # clamped) global focus so the local Focus selectbox renders
-        # the right value on the next pass.
-        session_state[fk] = session_state.get("focus", "")
+        session_state[fk] = str(session_state.get("focus") or "")
         if on_instrument_change:
             on_instrument_change()
 
     def _apply_level() -> None:
-        from practice_setup_globals import set_active_level
-
-        set_active_level(session_state, session_state[lk])
+        attempted = str(session_state.get(lk) or "")
+        record_global_control_widget_trace(
+            session_state,
+            control_name="level",
+            widget_key=lk,
+            attempted_value=attempted,
+            source=f"{source_prefix}:level_on_change",
+        )
+        _commit_quick_control_globals(
+            session_state,
+            level_widget_key=lk,
+            source=f"{source_prefix}:level_on_change",
+            st_module=st_module,
+        )
 
     def _apply_focus() -> None:
-        from practice_setup_globals import set_active_focus
-
-        set_active_focus(session_state, session_state[fk])
+        attempted = str(session_state.get(fk) or "")
+        record_global_control_widget_trace(
+            session_state,
+            control_name="focus",
+            widget_key=fk,
+            attempted_value=attempted,
+            source=f"{source_prefix}:focus_on_change",
+        )
+        _commit_quick_control_globals(
+            session_state,
+            focus_widget_key=fk,
+            source=f"{source_prefix}:focus_on_change",
+            st_module=st_module,
+        )
 
     st_module.markdown(
         '<div class="setup-quick-row">',
@@ -222,13 +359,15 @@ def render_setup_quick_controls(
     with c3:
         st_module.selectbox(
             "Focus",
-            focus_options_for_instrument(session_state.get("instrument", instrument)),
+            focus_options_for_instrument(str(session_state.get("instrument") or instrument)),
             key=fk,
             on_change=_apply_focus,
         )
     st_module.markdown("</div>", unsafe_allow_html=True)
     if show_sync_caption:
-        st_module.caption("Synced with the sidebar — changes apply across Practice, Backing Track, and Creative Lab.")
+        st_module.caption(
+            "Synced with the sidebar — changes apply across Practice, Backing Track, and Creative Lab."
+        )
 
     return (
         str(session_state.get("instrument", instrument)),

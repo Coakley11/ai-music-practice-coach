@@ -2392,7 +2392,7 @@ def _inject_studio_history_nav_pin_script() -> None:
     )
 
 
-_UI_POLISH_VERSION = "v6-2026-06-09-global-controls-song-card"
+_UI_POLISH_VERSION = "v7-2026-06-09-global-controls-page-widgets"
 
 
 def _backing_studio_panel_css() -> str:
@@ -4239,8 +4239,8 @@ def _decorative_studio_header_css() -> str:
   display: flex;
   align-items: flex-start;
   gap: 0.85rem;
-  margin: 0.15rem 0 0.85rem 0;
-  padding: 0.95rem 1.1rem 1rem;
+  margin: 0.15rem 0 0.65rem 0;
+  padding: 0.75rem 1rem 0.85rem;
   border-radius: 14px;
   border: 1px solid var(--ui-studio-header-border, rgba(148, 163, 184, 0.35));
   background: var(--ui-studio-header-wash, linear-gradient(135deg, #f8fafc 0%, #ffffff 100%));
@@ -4262,17 +4262,25 @@ def _decorative_studio_header_css() -> str:
 }
 .ui-studio-script-header-script {
   font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive !important;
-  font-size: 2.35rem !important;
+  font-size: 2.1rem !important;
   font-weight: 700 !important;
   line-height: 1.05 !important;
   margin: 0 !important;
   color: var(--ui-studio-header-accent, #0f172a) !important;
   letter-spacing: 0.01em !important;
 }
+.ui-studio-script-header-title {
+  font-size: 1.05rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.02em !important;
+  line-height: 1.25 !important;
+  margin: 0.12rem 0 0 !important;
+  color: #0f172a !important;
+}
 .ui-studio-script-header-sub {
-  margin: 0.28rem 0 0 !important;
-  font-size: 0.88rem !important;
-  line-height: 1.45 !important;
+  margin: 0.22rem 0 0 !important;
+  font-size: 0.84rem !important;
+  line-height: 1.4 !important;
   color: #475569 !important;
 }
 .ui-studio-script-header--practice {
@@ -6407,7 +6415,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-09-global-controls-song-card"
+STUDIO_UI_RELEASE = "2026-06-09-global-controls-page-widgets"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -6557,17 +6565,8 @@ def render_upload_studio_panel_header(
     song_title: str,
     artist: str = "",
 ) -> None:
-    artist_bit = f" · {html.escape(artist.strip())}" if (artist or "").strip() else ""
-    st.markdown(
-        f"""
-<div class="ui-upload-studio-head" data-upload-panel-ui="{UPLOAD_STUDIO_UI_VERSION}">
-  <span class="ui-upload-studio-kicker">🎙️ Audio upload studio</span>
-  <p class="ui-upload-studio-title"><span class="ui-script-word">Upload</span> &amp; AI Coach</p>
-  <p class="ui-upload-studio-sub">Drop a take, get timing and pitch feedback, then jump to practice or multitrack.</p>
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
+    """Context only — page title is in the script header above."""
+    _ = song_title, artist
 
 
 def upload_session_context_html(
@@ -6595,16 +6594,8 @@ def upload_format_chips_html() -> str:
 
 
 def render_multitrack_studio_panel_header(st: Any, *, song_title: str) -> None:
-    st.markdown(
-        f"""
-<div class="ui-multitrack-studio-head" data-multitrack-panel-ui="{MULTITRACK_STUDIO_UI_VERSION}">
-  <span class="ui-multitrack-studio-kicker">🎚️ Multitrack studio</span>
-  <p class="ui-multitrack-studio-title"><span class="ui-script-word">Multitrack</span> Session Workspace</p>
-  <p class="ui-multitrack-studio-sub">Overdub layers with monitor backing, mix, and export — synced to your active song.</p>
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
+    """Context only — page title is in the script header above."""
+    _ = song_title
 
 
 def multitrack_session_context_html(
@@ -6838,15 +6829,11 @@ def render_creative_song_context_card(
 
 
 def render_practice_control_panel_header(st: Any) -> None:
-    """Title row for the Practice Control Center panel."""
+    """Compact hint for the Practice Control Center panel (page title lives in script header)."""
     st.markdown(
         f"""
-<div class="ui-practice-control-head" data-practice-panel-ui="{PRACTICE_SETUP_UI_VERSION}">
-  <div>
-    <span class="ui-practice-control-kicker">Session setup</span>
-    <p class="ui-practice-control-title">Practice Control Center</p>
-    <p class="ui-practice-control-sub">Your instrument, level, and focus sync with the sidebar — groove and length shape coaching below.</p>
-  </div>
+<div class="ui-practice-control-head ui-practice-control-head--compact" data-practice-panel-ui="{PRACTICE_SETUP_UI_VERSION}">
+  <p class="ui-practice-control-sub">Instrument, level, and focus sync with the sidebar. Groove and length shape coaching below.</p>
 </div>
         """,
         unsafe_allow_html=True,
@@ -6854,15 +6841,10 @@ def render_practice_control_panel_header(st: Any) -> None:
 
 
 def render_backing_studio_deck_header(st: Any) -> None:
-    """Compact section header above the two-step backing control deck."""
+    """Compact workflow steps for the backing deck (page title lives in script header)."""
     st.markdown(
         """
-<div class="ui-backing-studio-deck-head">
-  <div class="ui-backing-studio-deck-main">
-    <span class="ui-backing-studio-kicker">Backing studio</span>
-    <h2 class="ui-backing-studio-title">Playback &amp; accompaniment</h2>
-    <p class="ui-backing-studio-sub">Choose what to practice, then set tempo and generate.</p>
-  </div>
+<div class="ui-backing-studio-deck-head ui-backing-studio-deck-head--compact">
   <div class="ui-backing-studio-steps" aria-label="Workflow steps">
     <span class="ui-backing-studio-step">1 Range</span>
     <span class="ui-backing-studio-step">2 Tempo &amp; play</span>
@@ -8194,14 +8176,14 @@ def render_chart_key_mode_status_badge(st: Any) -> None:
 
 
 def compact_page_title(icon: str, title: str, subtitle: str = "") -> None:
-    """Decorative script-style page header with icon and optional chart-key badge."""
+    """Single branded page header: icon, script accent, page title, optional subtitle."""
     import streamlit as st
 
     page_id = _resolve_decorative_header_page_id(icon, title)
     script_word = _DECORATIVE_HEADER_SCRIPT.get(page_id, title.split()[0] if title else "Studio")
     kicker = _DECORATIVE_HEADER_KICKER.get(page_id, "Music studio")
     sub = (
-        f'<p class="ui-studio-script-header-sub">{subtitle}</p>'
+        f'<p class="ui-studio-script-header-sub">{html.escape(subtitle)}</p>'
         if subtitle
         else ""
     )
@@ -8210,7 +8192,8 @@ def compact_page_title(icon: str, title: str, subtitle: str = "") -> None:
         f'<span class="ui-studio-script-header-icon" aria-hidden="true">{html.escape(icon)}</span>'
         f"<div>"
         f'<p class="ui-studio-script-header-kicker">{html.escape(kicker)}</p>'
-        f'<h2 class="ui-studio-script-header-script">{html.escape(script_word)}</h2>'
+        f'<p class="ui-studio-script-header-script">{html.escape(script_word)}</p>'
+        f'<p class="ui-studio-script-header-title">{html.escape(title)}</p>'
         f"{sub}"
         f"</div></div>",
         unsafe_allow_html=True,

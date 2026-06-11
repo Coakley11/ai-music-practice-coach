@@ -833,3 +833,14 @@ def render_active_song_state_debug(st: Any, session: dict[str, Any]) -> None:
     overwrite = session.get("global_control_overwrite_source")
     if overwrite:
         st.sidebar.caption(f"**global_control_overwrite_source:** `{overwrite}`")
+    trace = session.get("_global_control_widget_trace")
+    if isinstance(trace, dict) and trace:
+        st.sidebar.caption(
+            "**global_control_widget_trace:** "
+            f"name=`{trace.get('control_name', '')}` "
+            f"widget=`{trace.get('widget_key', '')}` "
+            f"attempt=`{trace.get('attempted_value', '')}` "
+            f"after=`{trace.get('value_after_rerun', {})}` "
+            f"canonical=`{trace.get('active_song_state', {})}` "
+            f"overwrite=`{trace.get('overwrite_source') or ''}`"
+        )
