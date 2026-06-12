@@ -12438,6 +12438,7 @@ elif _studio_page == "log":
         "📓",
         "Practice Log",
         "Log sessions and get specific coaching — what to keep working on next.",
+        page_id="log",
     )
     _inject_practice_log_studio_styles()
 

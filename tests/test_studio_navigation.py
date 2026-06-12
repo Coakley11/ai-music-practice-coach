@@ -234,4 +234,11 @@ def test_simple_nav_mode_uses_plain_button_keys():
         "studio_simple_nav_btn_creative",
         "studio_simple_nav_btn_analysis",
         "studio_simple_nav_btn_multitrack",
+        "studio_simple_nav_btn_log",
     ]
+
+
+def test_quick_nav_rows_cover_all_top_nav_pages():
+    from app_ui import QUICK_NAV_ROW_PRIMARY, QUICK_NAV_ROW_SECONDARY, TOP_NAV_PAGE_IDS
+
+    assert set(QUICK_NAV_ROW_PRIMARY + QUICK_NAV_ROW_SECONDARY) == set(TOP_NAV_PAGE_IDS)

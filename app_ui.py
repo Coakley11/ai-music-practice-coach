@@ -7168,10 +7168,11 @@ SIMPLE_NAV_PAGE_IDS: list[str] = [
     "creative",
     "analysis",
     "multitrack",
+    "log",
 ]
 
 QUICK_NAV_ROW_PRIMARY: list[str] = ["practice", "picker", "backing", "custom"]
-QUICK_NAV_ROW_SECONDARY: list[str] = ["creative", "analysis", "multitrack"]
+QUICK_NAV_ROW_SECONDARY: list[str] = ["creative", "analysis", "multitrack", "log"]
 
 
 def sidebar_studio_page_items(*, ai_enabled: bool) -> list[tuple[str, str]]:
