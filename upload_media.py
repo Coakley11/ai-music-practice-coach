@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import tempfile
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -25,8 +25,8 @@ UPLOAD_ACCEPT_TYPES = [
 ]
 
 VIDEO_EXTRACTION_UNAVAILABLE_MSG = (
-    "Video audio extraction is unavailable on this deployment. "
-    "Upload MP3/WAV directly or use a deployment with ffmpeg enabled."
+    "Could not extract audio from this video on the server. "
+    "Try a shorter clip or a different MP4/MOV file."
 )
 
 
@@ -54,51 +54,109 @@ def is_audio_filename(filename: str) -> bool:
     return ext in AUDIO_EXTENSIONS or ext == ""
 
 
+def _resolve_ffmpeg_exe() -> tuple[str, str]:
+    """
+    Resolve an ffmpeg executable for this deployment.
+
+    Returns (path, backend) where backend is ``system`` or ``imageio-ffmpeg``.
+    """
+    system = shutil.which("ffmpeg")
+    if system:
+        return system, "system"
+    try:
+        import imageio_ffmpeg
+
+        bundled = str(imageio_ffmpeg.get_ffmpeg_exe() or "").strip()
+        if bundled and Path(bundled).is_file():
+            return bundled, "imageio-ffmpeg"
+    except Exception:
+        pass
+    return "", ""
+
+
+def _ffmpeg_version_line(ffmpeg_exe: str) -> str:
+    if not ffmpeg_exe:
+        return ""
+    try:
+        proc = subprocess.run(
+            [ffmpeg_exe, "-version"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        text = (proc.stdout or proc.stderr or "").strip()
+        return text.splitlines()[0].strip() if text else ""
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
 def ffmpeg_status() -> dict[str, Any]:
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg_exe, backend = _resolve_ffmpeg_exe()
     ffprobe = shutil.which("ffprobe")
     return {
-        "ffmpeg_detected": bool(ffmpeg),
-        "ffmpeg_path": ffmpeg or "",
+        "ffmpeg_detected": bool(ffmpeg_exe),
+        "ffmpeg_path": ffmpeg_exe,
+        "ffmpeg_backend": backend or "none",
+        "ffmpeg_version": _ffmpeg_version_line(ffmpeg_exe),
         "ffprobe_detected": bool(ffprobe),
         "ffprobe_path": ffprobe or "",
     }
 
 
-def _ffprobe_duration_seconds(path: str) -> float | None:
-    if not shutil.which("ffprobe"):
+def _duration_from_ffmpeg_stderr(stderr: str) -> float | None:
+    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", stderr or "")
+    if not match:
         return None
-    try:
-        proc = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                path,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-        if proc.returncode != 0:
-            return None
-        return float(str(proc.stdout).strip())
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        return None
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
-def _extract_with_ffmpeg(video_path: str, wav_path: str) -> None:
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
+def _probe_duration_seconds(path: str, ffmpeg_exe: str) -> float | None:
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        try:
+            proc = subprocess.run(
+                [
+                    ffprobe,
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            if proc.returncode == 0:
+                return float(str(proc.stdout).strip())
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            pass
+    if ffmpeg_exe:
+        try:
+            proc = subprocess.run(
+                [ffmpeg_exe, "-hide_banner", "-i", path],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            return _duration_from_ffmpeg_stderr(proc.stderr or proc.stdout or "")
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return None
+
+
+def _extract_with_ffmpeg(video_path: str, wav_path: str, *, ffmpeg_exe: str) -> None:
+    if not ffmpeg_exe:
         raise RuntimeError("ffmpeg_not_found")
     proc = subprocess.run(
         [
-            ffmpeg,
+            ffmpeg_exe,
             "-y",
             "-i",
             video_path,
@@ -146,67 +204,78 @@ def extract_audio_from_video(video_bytes: bytes, filename: str) -> tuple[bytes, 
     """Extract mono WAV audio from a video container."""
     ext = file_extension(filename) or ".mp4"
     meta = _base_video_meta(filename, video_bytes)
+    ffmpeg_exe, ffmpeg_backend = _resolve_ffmpeg_exe()
+    meta["ffmpeg_backend"] = ffmpeg_backend or "none"
     video_path = ""
     wav_path = ""
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             tmp.write(video_bytes)
             video_path = tmp.name
-        meta["video_duration_sec"] = _ffprobe_duration_seconds(video_path)
+        meta["video_duration_sec"] = _probe_duration_seconds(video_path, ffmpeg_exe)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as wav_tmp:
             wav_path = wav_tmp.name
 
         audio_duration: float | None = None
         sample_rate = 44100
-        librosa_error = ""
-        try:
-            audio_duration, sample_rate = _extract_with_librosa(video_path, wav_path)
-            meta["extractor"] = "librosa"
-        except Exception as exc:
-            librosa_error = str(exc)
-            meta["failed_step"] = "librosa_load"
-            meta["librosa_error"] = librosa_error
-            if not meta.get("ffmpeg_detected"):
-                meta["failed_step"] = "ffmpeg_missing"
-                raise VideoExtractionError(VIDEO_EXTRACTION_UNAVAILABLE_MSG, meta=meta) from exc
+        extraction_errors: list[str] = []
+
+        if ffmpeg_exe:
             try:
                 meta["failed_step"] = "ffmpeg_extract"
-                _extract_with_ffmpeg(video_path, wav_path)
-                meta["extractor"] = "ffmpeg"
-                audio_duration = _ffprobe_duration_seconds(wav_path)
+                _extract_with_ffmpeg(video_path, wav_path, ffmpeg_exe=ffmpeg_exe)
+                meta["extractor"] = f"ffmpeg ({ffmpeg_backend})"
+                audio_duration = _probe_duration_seconds(wav_path, ffmpeg_exe)
             except RuntimeError as ffmpeg_exc:
                 if str(ffmpeg_exc) == "ffmpeg_not_found":
-                    meta["failed_step"] = "ffmpeg_missing"
-                    raise VideoExtractionError(
-                        VIDEO_EXTRACTION_UNAVAILABLE_MSG, meta=meta
-                    ) from ffmpeg_exc
-                meta["ffmpeg_error"] = str(ffmpeg_exc)
-                raise VideoExtractionError(
-                    "Could not extract audio from this video file. "
-                    "Try uploading MP3/WAV directly.",
-                    meta=meta,
-                ) from ffmpeg_exc
+                    extraction_errors.append("ffmpeg_not_found")
+                else:
+                    extraction_errors.append(str(ffmpeg_exc))
+                    meta["ffmpeg_error"] = str(ffmpeg_exc)
+
+        if meta.get("extractor") is None:
+            try:
+                meta["failed_step"] = "librosa_load"
+                audio_duration, sample_rate = _extract_with_librosa(video_path, wav_path)
+                meta["extractor"] = "librosa"
+            except Exception as librosa_exc:
+                extraction_errors.append(str(librosa_exc))
+                meta["librosa_error"] = str(librosa_exc)
+
+        if meta.get("extractor") is None:
+            meta["failed_step"] = "ffmpeg_missing" if not ffmpeg_exe else "all_backends_failed"
+            meta["extraction_errors"] = extraction_errors
+            if not ffmpeg_exe:
+                raise VideoExtractionError(VIDEO_EXTRACTION_UNAVAILABLE_MSG, meta=meta)
+            raise VideoExtractionError(
+                "Could not extract audio from this video file. "
+                "Try a shorter clip or a different MP4/MOV file.",
+                meta=meta,
+            )
 
         wav_bytes = Path(wav_path).read_bytes()
         if not wav_bytes or len(wav_bytes) < 44:
             meta["failed_step"] = meta.get("failed_step") or "empty_output"
             raise VideoExtractionError(
-                "Extracted audio was empty. Upload MP3/WAV directly.",
+                "Extracted audio was empty. Try a different video file.",
                 meta=meta,
             )
         meta["ok"] = True
         meta["audio_duration_sec"] = audio_duration
         meta["sample_rate"] = sample_rate
         meta["extracted_wav_bytes"] = len(wav_bytes)
+        meta["extraction_success"] = True
         return wav_bytes, meta
     except VideoExtractionError:
+        meta["extraction_success"] = False
         raise
     except Exception as exc:
         meta.setdefault("failed_step", "unexpected")
         meta["error"] = str(exc)
+        meta["extraction_success"] = False
         raise VideoExtractionError(
-            "Could not extract audio from this video file. Upload MP3/WAV directly.",
+            "Could not extract audio from this video file.",
             meta=meta,
         ) from exc
     finally:

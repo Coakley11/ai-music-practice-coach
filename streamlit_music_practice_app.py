@@ -11627,18 +11627,14 @@ elif _studio_page == "analysis":
                                 except VideoExtractionError as _vid_exc:
                                     st.warning(str(_vid_exc))
                                     st.caption(
-                                        "Tip: export audio from your video editor as MP3 or WAV, "
-                                        "then upload that file instead."
+                                        "Try a shorter clip or re-export the video as MP4 with an audio track."
                                     )
                                     if _developer_mode_enabled():
                                         st.markdown("**Developer · video extraction diagnostics**")
                                         st.json(_vid_exc.meta)
                                     audio_obj = None
                                 except Exception as _vid_exc:
-                                    st.warning(
-                                        "Could not extract audio from this video. "
-                                        "Upload MP3/WAV directly."
-                                    )
+                                    st.warning("Could not extract audio from this video.")
                                     if _developer_mode_enabled():
                                         st.caption(f"Developer · {type(_vid_exc).__name__}: {_vid_exc}")
                                     audio_obj = None

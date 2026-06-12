@@ -6,3 +6,4 @@ openai
 librosa
 soundfile
 scipy
+imageio-ffmpeg>=0.5.1
