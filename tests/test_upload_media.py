@@ -5,6 +5,9 @@ from __future__ import annotations
 import pytest
 
 from upload_media import (
+    VideoExtractionError,
+    VIDEO_EXTRACTION_UNAVAILABLE_MSG,
+    ffmpeg_status,
     is_audio_filename,
     is_video_filename,
     prepare_upload_for_analysis,
@@ -50,3 +53,35 @@ def test_extract_audio_from_video_requires_librosa_or_ffmpeg(monkeypatch, tmp_pa
     assert meta.get("was_video") is True
     assert len(out_bytes) > 44
     assert out_bytes[:4] == b"RIFF"
+
+
+def test_ffmpeg_status_keys():
+    status = ffmpeg_status()
+    assert "ffmpeg_detected" in status
+    assert "ffmpeg_path" in status
+    assert "ffprobe_detected" in status
+    assert "ffprobe_path" in status
+
+
+def test_video_extraction_error_when_ffmpeg_missing(monkeypatch, tmp_path):
+    pytest.importorskip("numpy")
+    try:
+        import librosa  # noqa: F401
+    except ImportError:
+        pytest.skip("librosa not installed")
+
+    monkeypatch.setattr("upload_media.shutil.which", lambda _name: None)
+
+    import numpy as np
+    import soundfile as sf
+
+    bad_path = tmp_path / "broken.mp4"
+    bad_path.write_bytes(b"not-a-video")
+    with pytest.raises(VideoExtractionError) as exc_info:
+        __import__(
+            "upload_media", fromlist=["extract_audio_from_video"]
+        ).extract_audio_from_video(bad_path.read_bytes(), "broken.mp4")
+    assert VIDEO_EXTRACTION_UNAVAILABLE_MSG in str(exc_info.value)
+    assert exc_info.value.meta.get("failed_step") == "ffmpeg_missing"
+    assert exc_info.value.meta.get("ffmpeg_detected") is False
+    assert exc_info.value.meta.get("file_type") == ".mp4"

@@ -8442,9 +8442,15 @@ def _render_practice_setup_panel(
                 section_focus_after_jump()
 
 
-def _studio_page_header(icon: str, title: str, subtitle: str = "") -> None:
+def _studio_page_header(
+    icon: str,
+    title: str,
+    subtitle: str = "",
+    *,
+    page_id: str | None = None,
+) -> None:
     """Page title plus subtle instrument-aware context strip."""
-    compact_page_title(icon, title, subtitle)
+    compact_page_title(icon, title, subtitle, page_id=page_id or _studio_page)
     try:
         from instrument_aware import render_instrument_context_strip
 
@@ -10803,15 +10809,17 @@ elif _studio_page == "backing":
     if not pp.is_capture_mode(st):
         if km.is_voice_mode(st.session_state):
             _studio_page_header(
-                "🎤",
+                "🎧",
                 km.voice_wording("backing_page_title", voice=True),
                 km.voice_wording("backing_page_subtitle", voice=True),
+                page_id="backing",
             )
         else:
             _studio_page_header(
                 "🎧",
                 "Backing Track Studio",
                 "Generate accompaniment matched to your active song — then play along.",
+                page_id="backing",
             )
         render_setup_quick_controls(
             st,
@@ -11559,7 +11567,6 @@ elif _studio_page == "analysis":
                 is_analysis_criteria_locked,
                 render_analysis_criteria_summary,
                 render_mission_goals_selector,
-                render_mission_history_panel,
                 ANALYSIS_RETURN_TO_METRICS,
             )
 
@@ -11578,11 +11585,11 @@ elif _studio_page == "analysis":
                     mission_ids = render_analysis_criteria_summary(st, st.session_state)
                 else:
                     mission_ids = render_mission_goals_selector(st, st.session_state)
-                    render_mission_history_panel(st)
 
                 from upload_media import (
                     PreparedUpload,
                     UPLOAD_ACCEPT_TYPES,
+                    VideoExtractionError,
                     is_video_filename,
                 )
 
@@ -11617,8 +11624,23 @@ elif _studio_page == "analysis":
                             with st.spinner("Video detected. Extracting audio…"):
                                 try:
                                     audio_obj = PreparedUpload.from_uploaded(analysis_audio)
+                                except VideoExtractionError as _vid_exc:
+                                    st.warning(str(_vid_exc))
+                                    st.caption(
+                                        "Tip: export audio from your video editor as MP3 or WAV, "
+                                        "then upload that file instead."
+                                    )
+                                    if _developer_mode_enabled():
+                                        st.markdown("**Developer · video extraction diagnostics**")
+                                        st.json(_vid_exc.meta)
+                                    audio_obj = None
                                 except Exception as _vid_exc:
-                                    st.error(f"Could not extract audio from video: {_vid_exc}")
+                                    st.warning(
+                                        "Could not extract audio from this video. "
+                                        "Upload MP3/WAV directly."
+                                    )
+                                    if _developer_mode_enabled():
+                                        st.caption(f"Developer · {type(_vid_exc).__name__}: {_vid_exc}")
                                     audio_obj = None
                         else:
                             audio_obj = PreparedUpload(_raw, _raw_name)

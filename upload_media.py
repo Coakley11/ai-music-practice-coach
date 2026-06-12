@@ -24,6 +24,19 @@ UPLOAD_ACCEPT_TYPES = [
     "avi",
 ]
 
+VIDEO_EXTRACTION_UNAVAILABLE_MSG = (
+    "Video audio extraction is unavailable on this deployment. "
+    "Upload MP3/WAV directly or use a deployment with ffmpeg enabled."
+)
+
+
+class VideoExtractionError(Exception):
+    """Video could not be converted to analysis audio — includes diagnostics."""
+
+    def __init__(self, message: str, *, meta: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.meta = meta
+
 
 def file_extension(filename: str) -> str:
     name = str(filename or "").strip().lower()
@@ -39,6 +52,17 @@ def is_video_filename(filename: str) -> bool:
 def is_audio_filename(filename: str) -> bool:
     ext = file_extension(filename)
     return ext in AUDIO_EXTENSIONS or ext == ""
+
+
+def ffmpeg_status() -> dict[str, Any]:
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    return {
+        "ffmpeg_detected": bool(ffmpeg),
+        "ffmpeg_path": ffmpeg or "",
+        "ffprobe_detected": bool(ffprobe),
+        "ffprobe_path": ffprobe or "",
+    }
 
 
 def _ffprobe_duration_seconds(path: str) -> float | None:
@@ -71,10 +95,7 @@ def _ffprobe_duration_seconds(path: str) -> float | None:
 def _extract_with_ffmpeg(video_path: str, wav_path: str) -> None:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
-        raise RuntimeError(
-            "Video upload requires ffmpeg on the server. "
-            "Install ffmpeg or convert the file to MP3/WAV first."
-        )
+        raise RuntimeError("ffmpeg_not_found")
     proc = subprocess.run(
         [
             ffmpeg,
@@ -109,14 +130,22 @@ def _extract_with_librosa(video_path: str, wav_path: str) -> tuple[float, int]:
     return float(len(y) / max(1, sr)), int(sr)
 
 
-def extract_audio_from_video(video_bytes: bytes, filename: str) -> tuple[bytes, dict[str, Any]]:
-    """Extract mono WAV audio from a video container."""
-    ext = file_extension(filename) or ".mp4"
+def _base_video_meta(filename: str, video_bytes: bytes) -> dict[str, Any]:
     meta: dict[str, Any] = {
         "was_video": True,
         "source_filename": filename,
         "ok": False,
+        "file_type": file_extension(filename) or "unknown",
+        "file_size_bytes": len(video_bytes),
     }
+    meta.update(ffmpeg_status())
+    return meta
+
+
+def extract_audio_from_video(video_bytes: bytes, filename: str) -> tuple[bytes, dict[str, Any]]:
+    """Extract mono WAV audio from a video container."""
+    ext = file_extension(filename) or ".mp4"
+    meta = _base_video_meta(filename, video_bytes)
     video_path = ""
     wav_path = ""
     try:
@@ -130,20 +159,56 @@ def extract_audio_from_video(video_bytes: bytes, filename: str) -> tuple[bytes, 
 
         audio_duration: float | None = None
         sample_rate = 44100
+        librosa_error = ""
         try:
             audio_duration, sample_rate = _extract_with_librosa(video_path, wav_path)
             meta["extractor"] = "librosa"
-        except Exception:
-            _extract_with_ffmpeg(video_path, wav_path)
-            meta["extractor"] = "ffmpeg"
-            audio_duration = _ffprobe_duration_seconds(wav_path)
+        except Exception as exc:
+            librosa_error = str(exc)
+            meta["failed_step"] = "librosa_load"
+            meta["librosa_error"] = librosa_error
+            if not meta.get("ffmpeg_detected"):
+                meta["failed_step"] = "ffmpeg_missing"
+                raise VideoExtractionError(VIDEO_EXTRACTION_UNAVAILABLE_MSG, meta=meta) from exc
+            try:
+                meta["failed_step"] = "ffmpeg_extract"
+                _extract_with_ffmpeg(video_path, wav_path)
+                meta["extractor"] = "ffmpeg"
+                audio_duration = _ffprobe_duration_seconds(wav_path)
+            except RuntimeError as ffmpeg_exc:
+                if str(ffmpeg_exc) == "ffmpeg_not_found":
+                    meta["failed_step"] = "ffmpeg_missing"
+                    raise VideoExtractionError(
+                        VIDEO_EXTRACTION_UNAVAILABLE_MSG, meta=meta
+                    ) from ffmpeg_exc
+                meta["ffmpeg_error"] = str(ffmpeg_exc)
+                raise VideoExtractionError(
+                    "Could not extract audio from this video file. "
+                    "Try uploading MP3/WAV directly.",
+                    meta=meta,
+                ) from ffmpeg_exc
 
         wav_bytes = Path(wav_path).read_bytes()
+        if not wav_bytes or len(wav_bytes) < 44:
+            meta["failed_step"] = meta.get("failed_step") or "empty_output"
+            raise VideoExtractionError(
+                "Extracted audio was empty. Upload MP3/WAV directly.",
+                meta=meta,
+            )
         meta["ok"] = True
         meta["audio_duration_sec"] = audio_duration
         meta["sample_rate"] = sample_rate
         meta["extracted_wav_bytes"] = len(wav_bytes)
         return wav_bytes, meta
+    except VideoExtractionError:
+        raise
+    except Exception as exc:
+        meta.setdefault("failed_step", "unexpected")
+        meta["error"] = str(exc)
+        raise VideoExtractionError(
+            "Could not extract audio from this video file. Upload MP3/WAV directly.",
+            meta=meta,
+        ) from exc
     finally:
         for path in (video_path, wav_path):
             if path:

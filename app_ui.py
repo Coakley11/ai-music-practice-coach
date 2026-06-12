@@ -8134,14 +8134,16 @@ _DECORATIVE_HEADER_KICKER: dict[str, str] = {
 }
 
 
-def _resolve_decorative_header_page_id(icon: str, title: str) -> str:
+def _resolve_decorative_header_page_id(icon: str, title: str, *, page_id: str | None = None) -> str:
+    if page_id:
+        return str(page_id).strip().lower()
     text = str(title or "").strip().lower()
     if "practice" in text and "log" not in text:
         return "practice"
-    if "song" in text or "selection" in text or "library" in text:
-        return "picker"
     if "backing" in text:
         return "backing"
+    if "song" in text or "selection" in text or "library" in text:
+        return "picker"
     if "custom" in text or "progression" in text:
         return "custom"
     if "creative" in text:
@@ -8158,8 +8160,8 @@ def _resolve_decorative_header_page_id(icon: str, title: str) -> str:
         "🎯": "practice",
         "🎼": "picker",
         "📚": "picker",
-        "🎤": "picker",
         "🎧": "backing",
+        "🎤": "backing",
         "✏️": "creative",
         "🧠": "creative",
         "🎙️": "analysis",
@@ -8177,20 +8179,28 @@ def render_chart_key_mode_status_badge(st: Any) -> None:
         st.markdown(block, unsafe_allow_html=True)
 
 
-def compact_page_title(icon: str, title: str, subtitle: str = "") -> None:
+def compact_page_title(
+    icon: str,
+    title: str,
+    subtitle: str = "",
+    *,
+    page_id: str | None = None,
+) -> None:
     """Single branded page header: icon, script accent, page title, optional subtitle."""
     import streamlit as st
 
-    page_id = _resolve_decorative_header_page_id(icon, title)
-    script_word = _DECORATIVE_HEADER_SCRIPT.get(page_id, title.split()[0] if title else "Studio")
-    kicker = _DECORATIVE_HEADER_KICKER.get(page_id, "Music studio")
+    resolved_page_id = _resolve_decorative_header_page_id(icon, title, page_id=page_id)
+    script_word = _DECORATIVE_HEADER_SCRIPT.get(
+        resolved_page_id, title.split()[0] if title else "Studio"
+    )
+    kicker = _DECORATIVE_HEADER_KICKER.get(resolved_page_id, "Music studio")
     sub = (
         f'<p class="ui-studio-script-header-sub">{html.escape(subtitle)}</p>'
         if subtitle
         else ""
     )
     st.markdown(
-        f'<div class="ui-studio-script-header ui-studio-script-header--{html.escape(page_id)}">'
+        f'<div class="ui-studio-script-header ui-studio-script-header--{html.escape(resolved_page_id)}">'
         f'<span class="ui-studio-script-header-icon" aria-hidden="true">{html.escape(icon)}</span>'
         f"<div>"
         f'<p class="ui-studio-script-header-kicker">{html.escape(kicker)}</p>'
