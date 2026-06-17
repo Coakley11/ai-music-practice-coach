@@ -62,11 +62,12 @@ def _render_subbar_timing_panel(
             save()
             st.rerun()
 
+        section_tag = str(edit_section or "section").replace(" ", "_")
         cols = st.columns(4)
         with cols[0]:
             if st.button(
                 "Half-bar",
-                key=f"cpl_sub_half_{edit_section}",
+                key=f"cpl_sub_half_{section_tag}",
                 use_container_width=True,
                 help="C → C:2|G:2 (4/4) or C:1.5|G:1.5 (3/4)",
             ):
@@ -79,13 +80,10 @@ def _render_subbar_timing_panel(
         with cols[1]:
             if st.button(
                 "Thirds (3/4 group)",
-                key=f"cpl_sub_thirds_{edit_section}",
+                key=f"cpl_sub_thirds_{section_tag}",
                 use_container_width=True,
                 help="Fmaj7 → Am7 → C/D, one chord per beat (Piano Man style)",
             ):
-                # Pending chord becomes 3rd; previous head stays 1st.
-                # 2nd defaults to a passing chord between them. Users can
-                # tweak the token later via Edit chord text input.
                 _apply_token(
                     join_weighted_subdivisions([
                         Subdivision(prev_head, 1.0, False),
@@ -96,7 +94,7 @@ def _render_subbar_timing_panel(
         with cols[2]:
             if st.button(
                 "Quarters (4 chords/bar)",
-                key=f"cpl_sub_quarters_{edit_section}",
+                key=f"cpl_sub_quarters_{section_tag}",
                 use_container_width=True,
                 help="1 chord per beat in 4/4",
             ):
@@ -111,7 +109,7 @@ def _render_subbar_timing_panel(
         with cols[3]:
             if st.button(
                 "Push (last 1/2 beat)",
-                key=f"cpl_sub_push_{edit_section}",
+                key=f"cpl_sub_push_{section_tag}",
                 use_container_width=True,
                 help="Anticipates the next chord on the last 8th note",
             ):
@@ -162,6 +160,7 @@ def render_custom_progression_lab_page() -> None:
         prepare_cpl_backing_handoff,
         presets_for_style,
         progression_is_empty,
+        purge_cpl_ephemeral_widget_keys,
         save_progression,
         section_is_empty,
         simple_chords_for_key,
@@ -193,6 +192,8 @@ def render_custom_progression_lab_page() -> None:
         custom_song_preview_card_html = lambda **_k: ""  # type: ignore
 
     inject_custom_builder_styles(st)
+
+    purge_cpl_ephemeral_widget_keys(st.session_state)
 
     if st.session_state.get("cpl_builder_version") != CPL_BUILDER_VERSION:
         apply_cpl_session_progression(st.session_state, default_active_progression())
@@ -621,7 +622,7 @@ def render_custom_progression_lab_page() -> None:
                     cleaned = normalize_chord_symbol(_typed) or _typed.strip()
                     if cleaned:
                         st.session_state[pending_key] = cleaned
-                        st.session_state[_sc_text_key] = ""
+                        st.session_state.pop(_sc_text_key, None)
                         st.rerun()
 
         st.markdown("**2. Choose bars** (adds selected chord, or changes the last chord)")

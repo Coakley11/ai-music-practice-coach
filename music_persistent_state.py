@@ -1448,6 +1448,7 @@ def apply_music_disk_state(
                 from custom_progression_lab import import_cpl_widget_state
 
                 import_cpl_widget_state(ss, val)
+                purge_cpl_ephemeral_widget_keys(ss)
             except Exception:
                 pass
         elif key in _LIST_KEYS and isinstance(val, list):

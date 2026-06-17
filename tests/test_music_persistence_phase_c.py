@@ -42,16 +42,17 @@ def test_cpl_widget_state_round_trip():
     ss = {
         "cpl_edit_section": "Chorus",
         "cpl_finished": True,
-        "cpl_last_bars_Verse": [4, 4, 4, 4],
+        "cpl_last_bars_Verse": 4,
         "cpl_sub_half_Chorus": True,
         "cpl_pending_chord_Bridge": "G7",
     }
     blob = export_cpl_widget_state(ss)
+    assert "cpl_sub_half_Chorus" not in blob
     out = {}
     import_cpl_widget_state(out, blob)
     assert out["cpl_edit_section"] == "Chorus"
     assert out["cpl_pending_chord_Bridge"] == "G7"
-    assert out["cpl_sub_half_Chorus"] is True
+    assert "cpl_sub_half_Chorus" not in out
 
 
 def test_turn_the_lights_back_on_scenario_blob(lights_catalog):
@@ -95,7 +96,7 @@ def test_turn_the_lights_back_on_scenario_blob(lights_catalog):
     assert restored["studio_page"] == "backing"
     assert restored[PENDING_DISPLAY_KEY] == "D Major"
     assert restored["backing_track_single_section"] == "Chorus"
-    assert restored.get("cpl_sub_half_Chorus") is True
+    assert restored.get("cpl_sub_half_Chorus") is None
 
 
 def test_pick_restore_session_prefers_newer_cloud():

@@ -914,6 +914,8 @@ def clear_cpl_widget_state(session_state: dict) -> None:
             session_state.pop(key, None)
         if key.startswith("_cpl_prev_bars_"):
             session_state.pop(key, None)
+        if is_cpl_ephemeral_widget_key(key):
+            session_state.pop(key, None)
     for key in ("_cpl_editing_display_key", "cpl_finished", "_cpl_last_bar_apply"):
         session_state.pop(key, None)
     for key in list(session_state.keys()):
@@ -924,9 +926,42 @@ def clear_cpl_widget_state(session_state: dict) -> None:
 CPL_WIDGET_PERSIST_PREFIXES = (
     "cpl_pending_chord_",
     "cpl_last_bars_",
-    "cpl_sub_",
     "_cpl_prev_bars_",
 )
+
+# Streamlit widget keys (buttons, etc.) — never persist or restore.
+CPL_EPHEMERAL_WIDGET_PREFIXES = (
+    "cpl_sub_",
+    "cpl_pick_",
+    "cpl_b1_",
+    "cpl_b2_",
+    "cpl_b4_",
+    "cpl_use_slash_",
+    "cpl_use_typed_",
+    "cpl_custom_sel_",
+    "cpl_custom_add_",
+    "cpl_demo_",
+    "cpl_pre_",
+    "cpl_ext_",
+    "cpl_slash_root_",
+    "cpl_slash_bass_",
+    "cpl_custom_text_",
+)
+
+CPL_TIMING_PANEL_FIX_ID = "cpl-timing-v2-no-sub-widget-restore"
+
+
+def is_cpl_ephemeral_widget_key(key: str) -> bool:
+    """True for Streamlit widget keys that must not be written via session_state."""
+    sk = str(key or "")
+    if sk in CPL_WIDGET_PERSIST_SCALAR_KEYS:
+        return False
+    if sk.startswith("cpl_custom_") and sk not in CPL_WIDGET_PERSIST_SCALAR_KEYS:
+        # e.g. cpl_custom_Verse text_input — widget-owned, not cpl_custom_text_* builder.
+        parts = sk.split("_", 2)
+        if len(parts) >= 3 and parts[0] == "cpl" and parts[1] == "custom":
+            return True
+    return any(sk.startswith(prefix) for prefix in CPL_EPHEMERAL_WIDGET_PREFIXES)
 
 CPL_WIDGET_PERSIST_SCALAR_KEYS = (
     "cpl_finished",
@@ -942,6 +977,13 @@ CPL_WIDGET_PERSIST_SCALAR_KEYS = (
 )
 
 
+def purge_cpl_ephemeral_widget_keys(session_state: dict) -> None:
+    """Remove persisted Streamlit widget keys that cause ValueAssignmentNotAllowedError."""
+    for key in list(session_state.keys()):
+        if is_cpl_ephemeral_widget_key(key):
+            session_state.pop(key, None)
+
+
 def export_cpl_widget_state(session_state: dict) -> dict[str, Any]:
     """Persist CPL bar/subdivision widget keys for cross-refresh restore."""
     import copy
@@ -953,6 +995,8 @@ def export_cpl_widget_state(session_state: dict) -> dict[str, Any]:
     for key in list(session_state.keys()):
         sk = str(key)
         if any(sk.startswith(prefix) for prefix in CPL_WIDGET_PERSIST_PREFIXES):
+            if is_cpl_ephemeral_widget_key(sk):
+                continue
             out[sk] = copy.deepcopy(session_state[key])
     return out
 
@@ -964,7 +1008,10 @@ def import_cpl_widget_state(session_state: dict, blob: dict[str, Any]) -> None:
     if not isinstance(blob, dict):
         return
     for key, val in blob.items():
-        session_state[key] = copy.deepcopy(val)
+        sk = str(key)
+        if is_cpl_ephemeral_widget_key(sk):
+            continue
+        session_state[sk] = copy.deepcopy(val)
 
 
 def apply_cpl_session_progression(session_state: dict, active: dict) -> None:
