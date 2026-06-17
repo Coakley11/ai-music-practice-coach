@@ -90,7 +90,7 @@ class TestMusicCoachSharedSubmit(unittest.TestCase):
         self.assertIn("Music Coach insight is ready", str(fb.get("message") or ""))
         ui.success.assert_called_once()
 
-    def test_sidebar_uses_form_submit_path(self) -> None:
+    def test_sidebar_uses_same_button_path_as_main(self) -> None:
         from suite_analytical_question import render_analyze_with_applied_math_sidebar
 
         st = MagicMock()
@@ -98,12 +98,7 @@ class TestMusicCoachSharedSubmit(unittest.TestCase):
         st.session_state = ss
         sidebar = MagicMock()
         st.sidebar = sidebar
-
-        form_cm = MagicMock()
-        form_cm.__enter__ = MagicMock(return_value=sidebar)
-        form_cm.__exit__ = MagicMock(return_value=False)
-        sidebar.form.return_value = form_cm
-        sidebar.form_submit_button.return_value = True
+        sidebar.button.return_value = True
         sidebar.text_area.return_value = "How should I practice chorus?"
 
         with patch(
@@ -117,11 +112,28 @@ class TestMusicCoachSharedSubmit(unittest.TestCase):
                 surface="sidebar",
                 show_heading=False,
             )
+            sidebar.form.assert_not_called()
+            sidebar.button.assert_called_once()
             mock_submit.assert_called_once()
             self.assertEqual(
                 mock_submit.call_args.kwargs.get("question_raw"),
                 "How should I practice chorus?",
             )
+
+    def test_stage_pending_insight_accepts_session_dict(self) -> None:
+        from applied_math_return_insight import SESSION_PENDING_KEY, stage_pending_insight
+
+        session: dict = {}
+        stage_pending_insight(
+            session,
+            {
+                "insight_id": "mc-1",
+                "question": "How much time on chords?",
+                "source_page": "practice",
+                "conclusion": "10 minutes on transitions.",
+            },
+        )
+        self.assertTrue(session.get(SESSION_PENDING_KEY))
 
 
 if __name__ == "__main__":

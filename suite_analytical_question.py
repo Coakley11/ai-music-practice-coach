@@ -13,6 +13,7 @@ import logging
 import re
 import copy
 import time
+import traceback
 from datetime import datetime, timezone
 from collections.abc import Callable
 from typing import Any
@@ -946,7 +947,7 @@ def _stage_music_instant_insight(
         )
 
     return_context = _music_return_context(submit_ctx, submit_source_state)
-    stage_pending_insight(ss, insight, return_context=return_context)
+    stage_pending_insight(st, insight, return_context=return_context)
     ss["_ami_force_insight_render"] = True
     ss["_ami_submit_render_insight_this_run"] = True
     ss["_ami_last_submit_source_page"] = _music_insight_render_page(submit_source_state, source_page)
@@ -1117,16 +1118,20 @@ def _execute_coach_question_submit(
     except Exception as exc:
         log.exception("Music Coach submit failed for %s (%s)", source_app, source_page)
         err = f"{type(exc).__name__}: {exc}"
+        tb = traceback.format_exc()
         ss["_ami_coach_submit_last_error"] = err
+        ss["_ami_coach_submit_last_traceback"] = tb
         fail_msg = (
-            f"Music Coach submit failed. Open Command Center or retry. ({err})"
+            f"Music Coach submit failed: {err}"
             if developer_mode
             else "Music Coach submit failed. Try again or use the Practice page panel."
         )
         _persist_coach_submit_feedback(
             ss, source_app=source_app, kind="error", message=fail_msg, surface=surface_tag
         )
-        ui.error(fail_msg if developer_mode else "Music Coach submit failed. Try again or use the Practice page panel.")
+        ui.error(fail_msg)
+        if developer_mode:
+            ui.code(tb)
 
 
 def render_analyze_with_applied_math_sidebar(
@@ -1188,85 +1193,51 @@ def render_analyze_with_applied_math_sidebar(
         if is_music
         else "Send to Command Center"
     )
-    form_key = f"ami_form_{source_app}_{page_suffix}_{surface_tag}_{send_gen}"
 
-    if surface_tag == "sidebar":
-        with ui.form(key=form_key, clear_on_submit=False):
-            question = ui.text_area(
-                "Question",
-                placeholder=(
-                    music_coach_question_placeholder(source_page)
-                    if is_music
-                    else "e.g. Is this trend meaningful statistically?"
-                ),
-                height=88,
-                key=question_key,
-                label_visibility="visible",
-            )
-            submitted = ui.form_submit_button(
-                submit_label,
-                use_container_width=True,
-                type="primary",
-            )
-        if submitted:
-            _execute_coach_question_submit(
-                st,
-                ui,
-                ss,
-                question_raw=str(ss.get(question_key) or question or ""),
-                source_app=source_app,
-                source_page=source_page,
-                page_suffix=page_suffix,
-                send_gen=send_gen,
-                surface_tag=surface_tag,
-                context=context,
-                context_extra_builder=context_extra_builder,
-                source_state_builder=source_state_builder,
-                context_summary=context_summary,
-                developer_mode=developer_mode,
-                on_after_send=on_after_send,
-            )
-    else:
-        question = ui.text_area(
-            "Question",
-            placeholder=(
-                music_coach_question_placeholder(source_page)
-                if is_music
-                else "e.g. Is this trend meaningful statistically?"
-            ),
-            height=88,
-            key=question_key,
-            label_visibility="visible",
+    question = ui.text_area(
+        "Question",
+        placeholder=(
+            music_coach_question_placeholder(source_page)
+            if is_music
+            else "e.g. Is this trend meaningful statistically?"
+        ),
+        height=88,
+        key=question_key,
+        label_visibility="visible",
+    )
+    if ui.button(
+        submit_label,
+        key=submit_key,
+        use_container_width=True,
+        type="primary",
+    ):
+        _execute_coach_question_submit(
+            st,
+            ui,
+            ss,
+            question_raw=str(ss.get(question_key) or question or ""),
+            source_app=source_app,
+            source_page=source_page,
+            page_suffix=page_suffix,
+            send_gen=send_gen,
+            surface_tag=surface_tag,
+            context=context,
+            context_extra_builder=context_extra_builder,
+            source_state_builder=source_state_builder,
+            context_summary=context_summary,
+            developer_mode=developer_mode,
+            on_after_send=on_after_send,
         )
-        if ui.button(
-            submit_label,
-            key=submit_key,
-            use_container_width=True,
-            type="primary",
-        ):
-            _execute_coach_question_submit(
-                st,
-                ui,
-                ss,
-                question_raw=str(ss.get(question_key) or question or ""),
-                source_app=source_app,
-                source_page=source_page,
-                page_suffix=page_suffix,
-                send_gen=send_gen,
-                surface_tag=surface_tag,
-                context=context,
-                context_extra_builder=context_extra_builder,
-                source_state_builder=source_state_builder,
-                context_summary=context_summary,
-                developer_mode=developer_mode,
-                on_after_send=on_after_send,
-            )
 
     if developer_mode:
         ui.caption(f"🛠 {AMI_SIDEBAR_DEPLOY_LABEL} · {AMI_SIDEBAR_DEPLOY_VERSION}")
         last_err = ss.get("_ami_coach_submit_last_error")
         if last_err:
             ui.warning(f"Last submit error: {last_err}")
+        last_tb = ss.get("_ami_coach_submit_last_traceback")
+        if last_tb:
+            with ui.expander("Last submit traceback", expanded=True):
+                ui.code(str(last_tb))
     if surface_tag == "sidebar":
         ui.divider()
 

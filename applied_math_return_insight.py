@@ -7,9 +7,21 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from collections.abc import MutableMapping
 from typing import Any
 
 log = logging.getLogger(__name__)
+
+
+def _resolve_session_state(st: Any) -> Any:
+    """Accept Streamlit module, SessionState, or a plain session_state dict."""
+    if isinstance(st, MutableMapping):
+        return st
+    bucket = getattr(st, "session_state", None)
+    if isinstance(bucket, MutableMapping):
+        return bucket
+    raise TypeError("Expected Streamlit st, SessionState, or session_state mapping")
+
 
 INSIGHT_ITEM_TYPE = "applied_math_insight"
 INSIGHT_DISMISSAL_ITEM_TYPE = "applied_math_insight_dismissal"
@@ -1902,12 +1914,13 @@ def commit_ami_return_page_restore(st: Any, app_key: str) -> bool:
 def stage_pending_insight(st: Any, insight: AppliedMathInsight | dict[str, Any], *, return_context: dict[str, Any] | None = None) -> None:
     """Write insight into Streamlit session for AMI return button."""
     data = insight.to_dict() if isinstance(insight, AppliedMathInsight) else dict(insight)
+    ss = _resolve_session_state(st)
     if return_context:
         rc = dict(return_context)
         data["return_context"] = rc
-        st.session_state[SESSION_RETURN_CONTEXT_KEY] = rc
-    st.session_state[SESSION_PENDING_KEY] = data
-    st.session_state[SESSION_RETURN_PAGE_KEY] = data.get("source_page") or ""
+        ss[SESSION_RETURN_CONTEXT_KEY] = rc
+    ss[SESSION_PENDING_KEY] = data
+    ss[SESSION_RETURN_PAGE_KEY] = data.get("source_page") or ""
 
 
 def apply_ami_insight_from_query(st: Any, app_key: str, *, force: bool = False) -> bool:
