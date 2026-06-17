@@ -87,6 +87,67 @@ class TestMusicInstantSolver(unittest.TestCase):
         self.assertIsNone(solve_instant_music_insight("hello", {"coach_page": "practice"}))
 
 
+class TestInstrumentAwareCoaching(unittest.TestCase):
+    _SIMILAR_Q = "What songs similar to Perfect can I play?"
+
+    def test_similar_songs_saxophone_uses_wind_language(self) -> None:
+        solved = solve_instant_music_insight(
+            self._SIMILAR_Q,
+            {"coach_page": "practice", "instrument": "Saxophone", "level": "Intermediate"},
+        )
+        self.assertIsNotNone(solved)
+        _, result = solved
+        text = result.short_answer.lower()
+        self.assertIn("breath", text)
+        self.assertIn("phrasing", text)
+        self.assertNotIn("strumming", text)
+        self.assertNotIn("left-hand", text)
+
+    def test_similar_songs_guitar_uses_fretted_language(self) -> None:
+        solved = solve_instant_music_insight(
+            self._SIMILAR_Q,
+            {"coach_page": "practice", "instrument": "Guitar", "level": "Intermediate"},
+        )
+        self.assertIsNotNone(solved)
+        _, result = solved
+        text = result.short_answer.lower()
+        self.assertIn("strumming", text)
+        self.assertIn("left-hand", text)
+
+    def test_similar_songs_piano_uses_keyboard_language(self) -> None:
+        solved = solve_instant_music_insight(
+            self._SIMILAR_Q,
+            {"coach_page": "practice", "instrument": "Piano", "level": "Intermediate"},
+        )
+        self.assertIsNotNone(solved)
+        _, result = solved
+        text = result.short_answer.lower()
+        self.assertIn("left-hand", text)
+        self.assertNotIn("strumming", text)
+
+    def test_similar_songs_voice_uses_vocal_language(self) -> None:
+        solved = solve_instant_music_insight(
+            self._SIMILAR_Q,
+            {"coach_page": "practice", "instrument": "Voice", "level": "Intermediate"},
+        )
+        self.assertIsNotNone(solved)
+        _, result = solved
+        text = result.short_answer.lower()
+        self.assertIn("vowel", text)
+        self.assertNotIn("strumming", text)
+
+    def test_practice_plan_saxophone_avoids_chord_transition_blocks(self) -> None:
+        solved = solve_instant_music_insight(
+            "I have 15 minutes to practice this song. What should I do?",
+            {"coach_page": "practice", "instrument": "Alto Sax"},
+        )
+        self.assertIsNotNone(solved)
+        _, result = solved
+        text = result.short_answer.lower()
+        self.assertIn("phrasing", text)
+        self.assertNotIn("chord transitions", text)
+
+
 class TestMusicCoachSharedSubmit(unittest.TestCase):
     def test_execute_coach_submit_persists_feedback(self) -> None:
         st = MagicMock()

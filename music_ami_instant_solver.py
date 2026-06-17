@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-MUSIC_AMI_BUILD_ID = "music-ami-v3-reliability-routing"
+MUSIC_AMI_BUILD_ID = "music-ami-v4-instrument-coaching"
 
 _MUSIC_SOLVER_INTENTS = frozenset(
     {
@@ -116,26 +116,13 @@ def _allocate_minutes(total: int, weights: dict[str, float]) -> dict[str, int]:
 
 
 def _practice_plan_answer(question: str, ctx: dict[str, Any], *, chord_focus: bool) -> MusicSolverResult:
+    from music_coach_instrument_voice import practice_plan_profile
+
     minutes = _session_minutes(ctx, question)
     section = str(_ctx_value(ctx, "practice_focus_section", "section_focus_named", default="")).strip()
     instrument = str(_ctx_value(ctx, "instrument", default="your instrument")).strip()
     song = str(_ctx_value(ctx, "question_song", "song", default="")).strip()
-    if chord_focus:
-        weights = {
-            "chord transitions": 0.40,
-            "rhythm / groove": 0.30,
-            "melody / licks": 0.20,
-            "full run-through": 0.10,
-        }
-        focus_line = "Prioritize clean chord changes before speed."
-    else:
-        weights = {
-            "technique / drills": 0.35,
-            "rhythm / groove": 0.25,
-            "repertoire section": 0.25,
-            "full run-through": 0.15,
-        }
-        focus_line = "Balance technique, time feel, and musical run-throughs."
+    weights, focus_line = practice_plan_profile(instrument, chord_focus=chord_focus)
     blocks = _allocate_minutes(minutes, weights)
     lines = [f"Suggested {minutes}-minute practice split:"]
     for label, block_min in blocks.items():
@@ -162,19 +149,12 @@ def _practice_plan_answer(question: str, ctx: dict[str, Any], *, chord_focus: bo
 
 
 def _chord_transition_answer(ctx: dict[str, Any], question: str = "") -> MusicSolverResult:
+    from music_coach_instrument_voice import chord_transition_lines
+
     minutes = max(10, min(25, _session_minutes(ctx, question) // 2 or 15))
-    bpm = _ctx_value(ctx, "bpm", "practice_bpm", default="")
+    bpm = str(_ctx_value(ctx, "bpm", "practice_bpm", default="")).strip()
     instrument = str(_ctx_value(ctx, "instrument", default="your instrument")).strip()
-    lines = [
-        f"Spend about **{minutes} minutes** on chord-change drills, then plug them into the song.",
-        "- Loop pairs of chords slowly (metronome 60–70% of target tempo).",
-        "- Practice common-finger anchors and lift only the fingers that must move.",
-        "- Run 4-bar loops, then 8-bar loops, then add rhythm on **{inst}**.".format(inst=instrument),
-    ]
-    if bpm:
-        lines.append(f"- Target tempo ladder: 70% → 85% → 100% of **{bpm} BPM**.")
-    else:
-        lines.append("- Target tempo ladder: comfortable → medium → performance tempo.")
+    lines = chord_transition_lines(instrument, minutes, bpm)
     return MusicSolverResult(
         short_answer="\n".join(lines),
         math_idea="Isolated transition reps before tempo and groove integration.",
@@ -188,14 +168,15 @@ def _chord_transition_answer(ctx: dict[str, Any], question: str = "") -> MusicSo
 
 
 def _section_focus_answer(ctx: dict[str, Any], question: str = "") -> MusicSolverResult:
+    from music_coach_instrument_voice import section_focus_coaching
+
     section = str(_ctx_value(ctx, "practice_focus_section", "section_focus_named", default="this section")).strip()
+    instrument = str(_ctx_value(ctx, "instrument", default="your instrument")).strip()
     minutes = _session_minutes(ctx, question)
     drill = max(8, minutes // 3)
+    connect = max(5, minutes - 2 * drill)
     return MusicSolverResult(
-        short_answer=(
-            f"For **{section}**: loop **{drill} min** slow reps, **{drill} min** rhythm-focused reps, "
-            f"then **{max(5, minutes - 2 * drill)} min** connecting into the full song."
-        ),
+        short_answer=section_focus_coaching(instrument, section, drill, connect),
         math_idea="Section loops with escalating tempo and context.",
         problem_type="section_focus",
         model_name="Music Coach section focus",
@@ -205,9 +186,12 @@ def _section_focus_answer(ctx: dict[str, Any], question: str = "") -> MusicSolve
 
 
 def _tempo_key_answer(ctx: dict[str, Any]) -> MusicSolverResult:
+    from music_coach_instrument_voice import tempo_key_coaching
+
     bpm = str(_ctx_value(ctx, "bpm", "practice_bpm", default="")).strip()
     display_key = str(_ctx_value(ctx, "display_key", "key", default="")).strip()
     level = str(_ctx_value(ctx, "level", default="Intermediate")).strip()
+    instrument = str(_ctx_value(ctx, "instrument", default="your instrument")).strip()
     tempo_line = (
         f"Try **{int(float(bpm) * 0.75)} BPM** as a learning tempo (about 75% of {bpm})."
         if bpm
@@ -215,7 +199,7 @@ def _tempo_key_answer(ctx: dict[str, Any]) -> MusicSolverResult:
     )
     key_line = f"Written key **{display_key}** is fine for practice." if display_key else "Match the chart key you are reading."
     return MusicSolverResult(
-        short_answer=f"{tempo_line}\n{key_line}\nFor **{level}** players, add +5 BPM only after two clean passes.",
+        short_answer=tempo_key_coaching(instrument, level, tempo_line, key_line),
         math_idea="Tempo ladder with key context from the active chart.",
         problem_type="tempo_key",
         model_name="Music Coach tempo & key",
@@ -225,14 +209,12 @@ def _tempo_key_answer(ctx: dict[str, Any]) -> MusicSolverResult:
 
 
 def _skill_technique_answer(ctx: dict[str, Any]) -> MusicSolverResult:
+    from music_coach_instrument_voice import skill_technique_coaching
+
     level = str(_ctx_value(ctx, "level", default="your level")).strip()
     instrument = str(_ctx_value(ctx, "instrument", default="your instrument")).strip()
     return MusicSolverResult(
-        short_answer=(
-            f"At **{level}** on **{instrument}**, build technique before full-tempo performance: "
-            "slow reps with a metronome, short bursts at target tempo, then rest. "
-            "If the song feels too hard, reduce tempo 20% and isolate the hardest bar."
-        ),
+        short_answer=skill_technique_coaching(instrument, level),
         math_idea="Readiness check with technique-first progression.",
         problem_type="skill_technique",
         model_name="Music Coach technique roadmap",
@@ -241,13 +223,13 @@ def _skill_technique_answer(ctx: dict[str, Any]) -> MusicSolverResult:
 
 
 def _backing_track_answer(ctx: dict[str, Any]) -> MusicSolverResult:
+    from music_coach_instrument_voice import backing_track_coaching
+
     groove = str(_ctx_value(ctx, "groove", "practice_groove_style", "backing_groove_style", default="the groove")).strip()
     section = str(_ctx_value(ctx, "practice_focus_section", default="the chorus")).strip()
+    instrument = str(_ctx_value(ctx, "instrument", default="your instrument")).strip()
     return MusicSolverResult(
-        short_answer=(
-            f"Loop **{section}** with **{groove}** at a comfortable tempo. "
-            "Practice chord changes first without the backing, then add the track for time feel."
-        ),
+        short_answer=backing_track_coaching(instrument, groove, section),
         math_idea="Backing-track practice order: technique → groove integration.",
         problem_type="backing_track",
         model_name="Music Coach backing track",
@@ -416,10 +398,13 @@ def _extract_reference_song(question: str, ctx: dict[str, Any]) -> str:
 
 
 def _similar_songs_answer(question: str, ctx: dict[str, Any]) -> MusicSolverResult:
+    from music_coach_instrument_voice import similar_song_style_hint, similar_songs_coaching_tip
+
     reference = _extract_reference_song(question, ctx)
     ref_key = reference.lower().strip()
     instrument = str(_ctx_value(ctx, "instrument", default="your instrument")).strip()
     level = str(_ctx_value(ctx, "level", default="your level")).strip()
+    style_hint = similar_song_style_hint(instrument)
     picks = _SIMILAR_SONG_LIBRARY.get(ref_key)
     if not picks:
         for key, songs in _SIMILAR_SONG_LIBRARY.items():
@@ -436,11 +421,8 @@ def _similar_songs_answer(question: str, ctx: dict[str, Any]) -> MusicSolverResu
         )
     lines = [f"Songs similar to **{reference}** for **{instrument}** at **{level}** level:"]
     for title in picks[:5]:
-        lines.append(f"- **{title}** — acoustic pop ballad feel, steady groove, singable melody.")
-    lines.append(
-        "Use them to practice the same strumming/pulse, verse–chorus dynamics, and left-hand changes "
-        "without learning a brand-new harmonic language."
-    )
+        lines.append(f"- **{title}** — {style_hint}.")
+    lines.append(similar_songs_coaching_tip(instrument))
     return MusicSolverResult(
         short_answer="\n".join(lines),
         math_idea="Repertoire clustering by tempo, harmony density, and melodic range.",
@@ -456,15 +438,13 @@ def _similar_songs_answer(question: str, ctx: dict[str, Any]) -> MusicSolverResu
 
 
 def _music_theory_answer(question: str, ctx: dict[str, Any]) -> MusicSolverResult:
+    from music_coach_instrument_voice import music_theory_coaching
+
     display_key = str(_ctx_value(ctx, "display_key", "key", default="")).strip() or "the song key"
     section = str(_ctx_value(ctx, "practice_focus_section", default="the section")).strip()
+    instrument = str(_ctx_value(ctx, "instrument", default="your instrument")).strip()
     return MusicSolverResult(
-        short_answer=(
-            f"For **{section}** in **{display_key}**, start with the **tonic scale** and chord functions: "
-            "I = home, IV = lift, V = tension, vi = emotional color in pop harmony. "
-            "Name the chords as scale degrees first, then connect that to what you hear in the progression. "
-            "If you share a specific chord change from the question, isolate that pair and compare the voice-leading."
-        ),
+        short_answer=music_theory_coaching(instrument, display_key, section),
         math_idea="Functional harmony and scale-degree mapping for the active chart.",
         problem_type="music_theory",
         model_name="Music Coach theory",
