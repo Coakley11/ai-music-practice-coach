@@ -918,79 +918,107 @@ def render_analyze_with_applied_math_sidebar(
         )
         ui.success(sent_msg)
 
-    question = ui.text_area(
-        "Question",
-        value=str(ss.get(question_key) or default_question or "").strip(),
-        placeholder=(
-            music_coach_question_placeholder(source_page)
-            if is_music
-            else "e.g. Is this trend meaningful statistically?"
-        ),
-        height=88,
-        key=question_key,
-        label_visibility="visible",
-    )
+    if question_key not in ss:
+        ss[question_key] = str(default_question or ss.get("_ami_last_typed_question") or "").strip()
 
     submit_label = (
         "Ask the Music Coach"
         if is_music
         else "Send to Command Center"
     )
-    if ui.button(
-        submit_label,
-        key=submit_key,
-        use_container_width=True,
-        type="primary",
-    ):
-        q = str(question or "").strip()
+
+    def _handle_submit(q_raw: str) -> None:
+        q = str(q_raw or "").strip()
         if not q:
             ui.warning("Enter a question first.")
+            return
+        submit_ctx = build_submit_context(
+            source_app,
+            source_page,
+            ss,
+            context_extra_builder=context_extra_builder,
+            context_extra=context,
+            question=q,
+        )
+        submit_source_state: dict[str, Any] | None = None
+        if source_state_builder is not None:
+            try:
+                submit_source_state = source_state_builder()
+            except Exception:
+                log.exception("AMI source_state builder failed for %s (%s)", source_app, source_page)
+        result = submit_analytical_question(
+            source_app=source_app,
+            source_page=source_page,
+            question=q,
+            context=submit_ctx,
+            context_summary=context_summary,
+            source_state=submit_source_state,
+            session_state=ss,
+        )
+        ss["_last_analytical_question"] = result
+        ss["_ami_last_typed_question"] = q
+        ss[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
+        dup_msg = (
+            "That question was already sent recently. Open Command Center to continue with the Music Coach."
+            if is_music
+            else "That question was already sent recently. Open Command Center to continue in Applied Intelligence."
+        )
+        ok_msg = (
+            "Question sent to Command Center. Open Command Center to continue with the Music Coach."
+            if is_music
+            else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
+        )
+        if result.get("duplicate"):
+            ui.info(dup_msg)
         else:
-            submit_ctx = build_submit_context(
-                source_app,
-                source_page,
-                ss,
-                context_extra_builder=context_extra_builder,
-                context_extra=context,
-                question=q,
+            ui.success(ok_msg)
+        if on_after_send is not None and not result.get("duplicate"):
+            try:
+                on_after_send()
+            except Exception:
+                log.exception("on_after_send hook failed for %s (%s)", source_app, source_page)
+        st.rerun()
+
+    if surface_tag == "sidebar":
+        form_key = f"ami_form_{source_app}_{page_suffix}_{surface_tag}_{send_gen}"
+        with ui.form(key=form_key, clear_on_submit=False):
+            question = ui.text_area(
+                "Question",
+                placeholder=(
+                    music_coach_question_placeholder(source_page)
+                    if is_music
+                    else "e.g. Is this trend meaningful statistically?"
+                ),
+                height=88,
+                key=question_key,
+                label_visibility="visible",
             )
-            submit_source_state: dict[str, Any] | None = None
-            if source_state_builder is not None:
-                try:
-                    submit_source_state = source_state_builder()
-                except Exception:
-                    log.exception("AMI source_state builder failed for %s (%s)", source_app, source_page)
-            result = submit_analytical_question(
-                source_app=source_app,
-                source_page=source_page,
-                question=q,
-                context=submit_ctx,
-                context_summary=context_summary,
-                source_state=submit_source_state,
-                session_state=ss,
+            submitted = ui.form_submit_button(
+                submit_label,
+                use_container_width=True,
+                type="primary",
             )
-            ss["_last_analytical_question"] = result
-            ss[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
-            dup_msg = (
-                "That question was already sent recently. Open Command Center to continue with the Music Coach."
+        if submitted:
+            _handle_submit(str(ss.get(question_key) or question or ""))
+    else:
+        question = ui.text_area(
+            "Question",
+            placeholder=(
+                music_coach_question_placeholder(source_page)
                 if is_music
-                else "That question was already sent recently. Open Command Center to continue in Applied Intelligence."
-            )
-            ok_msg = (
-                "Question sent to Command Center. Open Command Center to continue with the Music Coach."
-                if is_music
-                else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
-            )
-            if result.get("duplicate"):
-                ui.info(dup_msg)
-            else:
-                ui.success(ok_msg)
-            if on_after_send is not None and not result.get("duplicate"):
-                try:
-                    on_after_send()
-                except Exception:
-                    log.exception("on_after_send hook failed for %s (%s)", source_app, source_page)
-            st.rerun()
+                else "e.g. Is this trend meaningful statistically?"
+            ),
+            height=88,
+            key=question_key,
+            label_visibility="visible",
+        )
+        if ui.button(
+            submit_label,
+            key=submit_key,
+            use_container_width=True,
+            type="primary",
+        ):
+            _handle_submit(str(ss.get(question_key) or question or ""))
 
     if developer_mode:
         ui.caption(f"🛠 {AMI_SIDEBAR_DEPLOY_LABEL} · {AMI_SIDEBAR_DEPLOY_VERSION}")

@@ -7,14 +7,14 @@ from typing import Any
 
 MUSIC_SIDEBAR_LAYOUT_MARKER = "sidebar-order-v2"
 
-# Primary sidebar blocks in render order (streamlit_music_practice_app.py ~8876–9070).
+# Primary sidebar blocks in render order (streamlit_music_practice_app.py).
 MUSIC_SIDEBAR_SECTION_ORDER: tuple[str, ...] = (
     "command_center",
     "saved_session",
     "active_song",
     "practice_setup",
-    "pages",
     "music_coach",
+    "pages",
     "session",
 )
 

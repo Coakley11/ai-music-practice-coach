@@ -9291,16 +9291,7 @@ st.sidebar.selectbox(
     help="Applies on every page — drives practice goals, suggestions, and video matching.",
 )
 
-try:
-    render_sidebar_studio_nav(
-        st.session_state,
-        current_page=_studio_page,
-        rerun_fn=st.rerun,
-        ai_enabled=bool(_openai_api_key),
-    )
-except Exception:
-    pass
-
+sidebar_section("Music Coach", icon="🎵", tone="session")
 try:
     from global_active_song_state import prepare_global_active_song
     from music_coach_context import (
@@ -9328,6 +9319,16 @@ except Exception as exc:
     st.session_state["_music_coach_sidebar_error"] = str(exc)
     if _developer_mode_enabled():
         st.sidebar.warning(f"Music Coach sidebar unavailable: {type(exc).__name__}: {exc}")
+
+try:
+    render_sidebar_studio_nav(
+        st.session_state,
+        current_page=_studio_page,
+        rerun_fn=st.rerun,
+        ai_enabled=bool(_openai_api_key),
+    )
+except Exception:
+    pass
 
 try:
     from applied_math_return_insight import hydrate_applied_math_insight_for_session
