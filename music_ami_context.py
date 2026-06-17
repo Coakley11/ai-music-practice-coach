@@ -92,6 +92,30 @@ def _should_skip_music_cache(session: dict[str, Any], coach_page: str, sig: tupl
     return False
 
 
+def _active_instrument_for_ami(session_state: dict[str, Any], song_ctx: dict[str, Any]) -> str:
+    try:
+        from practice_setup_globals import get_active_instrument
+
+        inst = str(get_active_instrument(session_state) or "").strip()
+        if inst:
+            return inst
+    except ImportError:
+        pass
+    return str(song_ctx.get("instrument") or session_state.get("instrument") or "").strip()
+
+
+def _active_level_for_ami(session_state: dict[str, Any], song_ctx: dict[str, Any]) -> str:
+    try:
+        from practice_setup_globals import get_active_level
+
+        level = str(get_active_level(session_state) or "").strip()
+        if level:
+            return level
+    except ImportError:
+        pass
+    return str(song_ctx.get("level") or session_state.get("level") or "").strip()
+
+
 def gather_practice_ami_snapshot(session_state: dict[str, Any]) -> dict[str, Any]:
     """JSON-safe practice + active song context for AMI."""
     try:
@@ -137,8 +161,8 @@ def gather_practice_ami_snapshot(session_state: dict[str, Any]) -> dict[str, Any
         "genre": str(song.get("genre") or "").strip(),
         "display_key": str(song_ctx.get("display_key") or session_state.get("display_key") or "").strip(),
         "bpm": int(bpm) if bpm is not None else None,
-        "instrument": str(song_ctx.get("instrument") or session_state.get("instrument") or "").strip(),
-        "level": str(song_ctx.get("level") or session_state.get("level") or "").strip(),
+        "instrument": _active_instrument_for_ami(session_state, song_ctx),
+        "level": _active_level_for_ami(session_state, song_ctx),
         "focus": str(song_ctx.get("focus") or session_state.get("focus") or "").strip(),
         "practice_mode": str(practice.get("last_practice_mode") or session_state.get("last_practice_mode") or "").strip(),
         "practice_focus_section": str(

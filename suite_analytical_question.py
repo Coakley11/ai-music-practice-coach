@@ -343,6 +343,9 @@ def _store_question_context_blob(payload: dict[str, Any]) -> None:
         "context": dict(payload.get("context") or {}),
         "source_state": dict(payload.get("source_state") or {}),
     }
+    instant = payload.get("instant_insight")
+    if isinstance(instant, dict) and instant:
+        blob["instant_insight"] = dict(instant)
     try:
         from suite_account import remember_saved_item
 
@@ -578,7 +581,8 @@ def metrics_for_applied_math_resume(payload: dict[str, Any]) -> dict[str, Any]:
     """Metrics bundle for deep links into Applied Intelligence."""
     ctx = dict(payload.get("context") or {})
     ctx_lines = format_context_lines(ctx)
-    return {
+    instant = payload.get("instant_insight") or ctx.get("instant_insight")
+    metrics = {
         "question": payload.get("question"),
         "question_id": payload.get("question_id"),
         "source_app": payload.get("source_app"),
@@ -592,6 +596,11 @@ def metrics_for_applied_math_resume(payload: dict[str, Any]) -> dict[str, Any]:
         "saved_item_type": _CONTEXT_ITEM_TYPE,
         "saved_item_key": payload.get("question_id"),
     }
+    if isinstance(instant, dict):
+        iid = str(instant.get("insight_id") or "").strip()
+        if iid:
+            metrics["ami_insight"] = iid
+    return metrics
 
 
 def _upsert_applied_intelligence_resume(
@@ -735,16 +744,21 @@ def submit_analytical_question(
     quant_area: str = "",
     source_state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
+    pre_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Log event on source app and upsert Applied Intelligence resume item."""
-    payload = build_question_payload(
-        source_app=source_app,
-        source_page=source_page,
-        question=question,
-        context=context,
-        context_summary=context_summary,
-        quant_area=quant_area,
-        source_state=source_state,
+    payload = (
+        dict(pre_payload)
+        if isinstance(pre_payload, dict) and pre_payload.get("question_id")
+        else build_question_payload(
+            source_app=source_app,
+            source_page=source_page,
+            question=question,
+            context=context,
+            context_summary=context_summary,
+            quant_area=quant_area,
+            source_state=source_state,
+        )
     )
     action_url = build_applied_math_resume_url(payload)
     duplicate = _recent_duplicate_send(session_state, payload["question_id"])
@@ -914,8 +928,9 @@ def _stage_music_instant_insight(
             build_return_insight_payload,
             build_submit_fallback_insight,
             stage_pending_insight,
+            store_applied_math_insight,
         )
-        from music_ami_instant_solver import solve_instant_music_insight
+        from music_ami_instant_solver import MUSIC_AMI_BUILD_ID, solve_instant_music_insight
     except Exception:
         log.exception("Music instant insight imports failed")
         return False
@@ -948,6 +963,17 @@ def _stage_music_instant_insight(
 
     return_context = _music_return_context(submit_ctx, submit_source_state)
     stage_pending_insight(st, insight, return_context=return_context)
+    store_blob = insight.to_dict() if hasattr(insight, "to_dict") else dict(insight)
+    if solved_pair:
+        store_blob["canonical_instant"] = True
+        store_blob["solver_build_id"] = MUSIC_AMI_BUILD_ID
+        store_blob["problem_type"] = str(getattr(route, "problem_type", "") or "")
+    store_applied_math_insight(
+        store_blob,
+        return_context=return_context,
+        source_state=submit_source_state,
+        st=st,
+    )
     ss["_ami_force_insight_render"] = True
     ss["_ami_submit_render_insight_this_run"] = True
     ss["_ami_last_submit_source_page"] = render_page
@@ -964,6 +990,20 @@ def _stage_music_instant_insight(
         intent = str(submit_ctx.get("routing_hint") or submit_ctx.get("intent") or "")
         MUSIC_AMI_BUILD_ID = "unknown"
     insight_data = insight.to_dict() if hasattr(insight, "to_dict") else dict(insight)
+    canonical: dict[str, Any] = {
+        "insight_id": str(insight_data.get("insight_id") or ""),
+        "question_id": str(pre_payload.get("question_id") or ""),
+        "conclusion": str(insight_data.get("conclusion") or ""),
+        "method": str(insight_data.get("method") or ""),
+        "model_name": str(insight_data.get("model_name") or ""),
+        "assumptions": list(insight_data.get("assumptions") or [])[:6],
+        "problem_type": str(getattr(solved_pair[0], "problem_type", "") if solved_pair else ""),
+        "solver_build_id": MUSIC_AMI_BUILD_ID,
+        "canonical_instant": bool(solved_pair),
+        "source_app": source_app,
+        "source_page": render_page,
+    }
+    ss["_ami_music_instant_canonical"] = canonical
     ss["_ami_music_submit_diagnostics"] = {
         "submit_source_page": str(source_page or ""),
         "normalized_source_page": render_page,
@@ -1088,6 +1128,17 @@ def _execute_coach_question_submit(
                 pre_payload=pre_payload,
                 action_url_pre=action_url_pre,
             )
+            canonical = ss.get("_ami_music_instant_canonical")
+            if isinstance(canonical, dict) and canonical.get("insight_id"):
+                submit_ctx = dict(submit_ctx)
+                submit_ctx["instant_insight"] = canonical
+                pre_payload = dict(pre_payload)
+                pre_payload["context"] = submit_ctx
+                pre_payload["instant_insight"] = canonical
+                action_url_pre = build_applied_math_resume_url(pre_payload)
+                pending = ss.get("_ami_pending_insight")
+                if isinstance(pending, dict):
+                    pending["full_analysis_url"] = action_url_pre
         result = submit_analytical_question(
             source_app=source_app,
             source_page=source_page,
@@ -1096,6 +1147,7 @@ def _execute_coach_question_submit(
             context_summary=context_summary,
             source_state=submit_source_state,
             session_state=ss,
+            pre_payload=pre_payload if is_music else None,
         )
         ss["_last_analytical_question"] = result
         ss[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1

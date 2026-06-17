@@ -209,6 +209,70 @@ def similar_songs_coaching_tip(instrument: str) -> str:
     )
 
 
+def format_level_phrase(level: str) -> str:
+    """Avoid duplicated phrasing like 'your level level' in answer headers."""
+    raw = str(level or "").strip()
+    if not raw or raw.lower() in {"your level", "level"}:
+        return ""
+    if raw.lower().endswith(" level"):
+        return raw
+    return raw
+
+
+def _normalize_song_key(title: str) -> str:
+    return str(title or "").split("—", 1)[0].strip().lower()
+
+
+_SIMILAR_SONG_TEACHER_NOTES: dict[str, dict[str, str]] = {
+    "wind": {
+        "thinking out loud": "lyrical phrasing and breath control",
+        "all of me": "smooth melodic lines and dynamic shaping",
+        "say you won't let go": "long-tone support through the chorus",
+        "a thousand years": "dynamic control and expressive articulation",
+        "photograph": "long-tone support and melodic shaping",
+        "perfect": "ballad phrasing and breath pacing",
+    },
+    "voice": {
+        "thinking out loud": "storytelling phrasing and vowel clarity",
+        "all of me": "emotional delivery on a singable range",
+        "say you won't let go": "breath support through sustained lines",
+        "a thousand years": "dynamic build from verse to chorus",
+        "photograph": "intimate lyric delivery and pitch stability",
+        "perfect": "warm vowels and steady breath support",
+    },
+    "keyboard": {
+        "thinking out loud": "broken-chord accompaniment patterns",
+        "all of me": "common pop-ballad voicings",
+        "say you won't let go": "left-hand pulse with simple right-hand melody",
+        "a thousand years": "sustain-pedal control and legato phrasing",
+        "photograph": "melody/accompaniment balance",
+        "perfect": "ballad voicings with steady harmonic pulse",
+    },
+    "fretted": {
+        "thinking out loud": "steady strumming and singable chord shapes",
+        "all of me": "open-position changes with a ballad groove",
+        "say you won't let go": "fingerstyle or strum patterns with clean changes",
+        "a thousand years": "dynamic strumming from verse to chorus",
+        "photograph": "arpeggio-friendly changes and melodic picking",
+        "perfect": "capo-friendly shapes with a steady pulse",
+    },
+    "bass": {
+        "thinking out loud": "root-driven groove and note length",
+        "all of me": "walking root movement on a slow ballad",
+        "say you won't let go": "locked pulse with the kick drum",
+        "a thousand years": "dynamic note length through sections",
+        "photograph": "simple root patterns with melodic fills",
+        "perfect": "steady eighth-note groove support",
+    },
+}
+
+
+def similar_song_teacher_note(instrument: str, song_title: str) -> str:
+    fam = instrument_family(instrument)
+    key = _normalize_song_key(song_title)
+    return _SIMILAR_SONG_TEACHER_NOTES.get(fam, {}).get(key, "")
+
+
 def chord_transition_lines(instrument: str, minutes: int, bpm: str) -> list[str]:
     fam = instrument_family(instrument)
     inst = str(instrument or "your instrument").strip()

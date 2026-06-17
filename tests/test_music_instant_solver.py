@@ -102,6 +102,8 @@ class TestInstrumentAwareCoaching(unittest.TestCase):
         self.assertIn("phrasing", text)
         self.assertNotIn("strumming", text)
         self.assertNotIn("left-hand", text)
+        self.assertNotIn("your level level", text)
+        self.assertIn("focus on", text)
 
     def test_similar_songs_guitar_uses_fretted_language(self) -> None:
         solved = solve_instant_music_insight(

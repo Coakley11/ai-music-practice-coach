@@ -1144,6 +1144,7 @@ _skip_master_song_init = (
     _music_has_saved_song_context(st.session_state)
     or bool(st.session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY))
     or bool(st.session_state.get("_music_restore_error"))
+    or bool(st.session_state.get("_suite_persist_restore_applied"))
 )
 if not _skip_master_song_init:
     ensure_master_song_initialized(

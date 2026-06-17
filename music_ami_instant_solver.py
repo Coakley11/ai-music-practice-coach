@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-MUSIC_AMI_BUILD_ID = "music-ami-v4-instrument-coaching"
+MUSIC_AMI_BUILD_ID = "music-ami-v5-canonical-insight"
 
 _MUSIC_SOLVER_INTENTS = frozenset(
     {
@@ -398,12 +398,17 @@ def _extract_reference_song(question: str, ctx: dict[str, Any]) -> str:
 
 
 def _similar_songs_answer(question: str, ctx: dict[str, Any]) -> MusicSolverResult:
-    from music_coach_instrument_voice import similar_song_style_hint, similar_songs_coaching_tip
+    from music_coach_instrument_voice import (
+        format_level_phrase,
+        similar_song_style_hint,
+        similar_song_teacher_note,
+        similar_songs_coaching_tip,
+    )
 
     reference = _extract_reference_song(question, ctx)
     ref_key = reference.lower().strip()
     instrument = str(_ctx_value(ctx, "instrument", default="your instrument")).strip()
-    level = str(_ctx_value(ctx, "level", default="your level")).strip()
+    level = format_level_phrase(str(_ctx_value(ctx, "level", default="")).strip())
     style_hint = similar_song_style_hint(instrument)
     picks = _SIMILAR_SONG_LIBRARY.get(ref_key)
     if not picks:
@@ -419,9 +424,17 @@ def _similar_songs_answer(question: str, ctx: dict[str, Any]) -> MusicSolverResu
             "A Thousand Years — Christina Perri",
             "Photograph — Ed Sheeran",
         )
-    lines = [f"Songs similar to **{reference}** for **{instrument}** at **{level}** level:"]
+    header = f"Songs similar to **{reference}** for **{instrument}**"
+    if level:
+        header += f" at **{level}**"
+    header += ":"
+    lines = [header]
     for title in picks[:5]:
-        lines.append(f"- **{title}** — {style_hint}.")
+        teacher = similar_song_teacher_note(instrument, title)
+        if teacher:
+            lines.append(f"- **{title}** — {style_hint}; focus on **{teacher}**.")
+        else:
+            lines.append(f"- **{title}** — {style_hint}.")
     lines.append(similar_songs_coaching_tip(instrument))
     return MusicSolverResult(
         short_answer="\n".join(lines),

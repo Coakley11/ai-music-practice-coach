@@ -680,9 +680,12 @@ def apply_return_source_state(st: Any, app_key: str, source_state: dict[str, Any
 
             apply_source_state_to_session(ss, source_state, schedule_navigation=schedule_navigation)
         elif app == "music":
-            from music_coach_context import apply_source_state_to_session
-
-            apply_source_state_to_session(ss, source_state, schedule_navigation=schedule_navigation)
+            # Display-only return: keep the live workspace; do not time-travel song/page setup.
+            ss.pop("_navigate_to_page", None)
+            ss.pop("_navigate_to_studio_page", None)
+            ss.pop("ami_return_forced_page", None)
+            ss.pop("ami_return_force_active_page", None)
+            return
     except TypeError:
         try:
             if app == "baseball":
@@ -890,6 +893,42 @@ def load_applied_math_insight(insight_id: str, *, source_app: str = "") -> dict[
                     best_score = score
     except Exception as exc:
         log.warning("load_applied_math_insight failed: %s", exc)
+    return best
+
+
+def load_applied_math_insight_for_question(question_id: str, *, source_app: str = "") -> dict[str, Any]:
+    """Load the stored insight tied to a question_id (Music instant / canonical answer)."""
+    qid = str(question_id or "").strip()
+    if not qid:
+        return {}
+    app_filter = str(source_app or "").strip().lower()
+    search_apps: list[str] = []
+    if app_filter:
+        search_apps.append(app_filter)
+    for app_key in ("music", "applied_intelligence"):
+        if app_key not in search_apps:
+            search_apps.append(app_key)
+    best: dict[str, Any] = {}
+    best_score = -1
+    try:
+        from suite_account import load_saved_items
+
+        for app_key in search_apps:
+            rows = load_saved_items(app=app_key, item_type=INSIGHT_ITEM_TYPE, limit=100)
+            for row in rows:
+                payload = row.get("payload")
+                if not isinstance(payload, dict):
+                    continue
+                if str(payload.get("question_id") or "") != qid:
+                    continue
+                score = _insight_blob_restore_score(payload)
+                if payload.get("canonical_instant"):
+                    score += 10
+                if score > best_score:
+                    best = dict(payload)
+                    best_score = score
+    except Exception as exc:
+        log.warning("load_applied_math_insight_for_question failed: %s", exc)
     return best
 
 
@@ -1694,6 +1733,24 @@ def hydrate_applied_math_insight_for_session(st: Any, app_key: str) -> bool:
         _record_insight_return_diagnostics(st, phase="hydrate_session", insight=pending)
         return True
 
+    qid_qp = str(_query_param(st, "suite_ai_question_id") or "").strip()
+    if qid_qp:
+        matched = load_applied_math_insight_for_question(qid_qp, source_app=key)
+        if matched and str(matched.get("conclusion") or "").strip():
+            st.session_state[SESSION_PENDING_KEY] = matched
+            st.session_state[SESSION_RETURN_PAGE_KEY] = matched.get("source_page") or ""
+            _stage_insight_trace(
+                st,
+                hydrate_success=True,
+                hydrate_source="question_id_match",
+                insight=matched,
+                loaded_from_cloud=True,
+            )
+            st.session_state["_ami_hydrated_insight_id"] = str(matched.get("insight_id") or "")
+            st.session_state[SESSION_PERSIST_INSIGHT_DIRTY] = True
+            _record_insight_return_diagnostics(st, phase="hydrate_question_id", insight=matched)
+            return True
+
     dismissed = _get_dismissed_insight_ids(st)
     latest = load_latest_applied_math_insight_for_app(key, exclude_ids=dismissed)
     if not latest:
@@ -1987,11 +2044,16 @@ def apply_ami_insight_from_query(st: Any, app_key: str, *, force: bool = False) 
         question_id_qp=_query_param(st, "suite_ai_question_id"),
     )
 
-    if isinstance(source_state, dict) and source_state:
+    if isinstance(source_state, dict) and source_state and key != "music":
         if page and not source_state.get("source_page"):
             source_state["source_page"] = page
         st.session_state[SESSION_RETURN_CONTEXT_KEY] = dict(source_state)
         apply_return_source_state(st, app_key, source_state)
+    elif key == "music":
+        st.session_state.pop("_navigate_to_page", None)
+        st.session_state.pop("_navigate_to_studio_page", None)
+        st.session_state.pop("ami_return_forced_page", None)
+        st.session_state.pop("ami_return_force_active_page", None)
     elif st.session_state.get(SESSION_RETURN_PAGE_KEY):
         ret_page = st.session_state[SESSION_RETURN_PAGE_KEY]
         if _should_apply_ami_return_navigation(st, key, ret_page):
