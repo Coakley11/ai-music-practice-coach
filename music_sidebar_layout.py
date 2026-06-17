@@ -14,6 +14,7 @@ MUSIC_SIDEBAR_SECTION_ORDER: tuple[str, ...] = (
     "active_song",
     "practice_setup",
     "pages",
+    "music_coach",
     "session",
 )
 

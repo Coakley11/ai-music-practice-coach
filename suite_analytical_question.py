@@ -867,6 +867,10 @@ def build_submit_context(
     return ctx
 
 
+def _analytical_question_ui(st: Any, *, surface: str = "sidebar") -> Any:
+    return st if str(surface or "").strip().lower() == "main" else st.sidebar
+
+
 def render_analyze_with_applied_math_sidebar(
     st: Any,
     *,
@@ -880,23 +884,26 @@ def render_analyze_with_applied_math_sidebar(
     developer_mode: bool = False,
     session_state: dict[str, Any] | None = None,
     on_after_send: Callable[[], None] | None = None,
+    surface: str = "sidebar",
 ) -> None:
-    """Always-visible sidebar block: question → Command Center → Applied Intelligence."""
+    """Question block → Command Center (sidebar by default; use surface='main' on-page)."""
     ss = session_state if session_state is not None else st.session_state
+    ui = _analytical_question_ui(st, surface=surface)
     page_suffix = _safe_widget_suffix(source_page)
+    surface_tag = "main" if str(surface or "").strip().lower() == "main" else "sidebar"
     send_gen = int(ss.get(f"_ami_send_gen_{source_app}_{page_suffix}") or 0)
-    question_key = f"ami_question_{source_app}_{page_suffix}_{send_gen}"
-    submit_key = f"ami_submit_{source_app}_{page_suffix}"
+    question_key = f"ami_question_{source_app}_{page_suffix}_{surface_tag}_{send_gen}"
+    submit_key = f"ami_submit_{source_app}_{page_suffix}_{surface_tag}"
 
     is_music = str(source_app or "").strip().lower() == "music"
     if is_music:
-        st.sidebar.markdown("### Ask the Music Coach")
-        st.sidebar.caption(
+        ui.markdown("### Ask the Music Coach")
+        ui.caption(
             "Get help with practice, theory, navigation, backing tracks, karaoke, or this app."
         )
     else:
-        st.sidebar.markdown("### Analyze with Applied Math")
-        st.sidebar.caption("Ask a math question about what you are viewing.")
+        ui.markdown("### Analyze with Applied Math")
+        ui.caption("Ask a math question about what you are viewing.")
 
     last = ss.get("_ami_last_send")
     if (
@@ -909,9 +916,9 @@ def render_analyze_with_applied_math_sidebar(
             if is_music
             else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
         )
-        st.sidebar.success(sent_msg)
+        ui.success(sent_msg)
 
-    question = st.sidebar.text_area(
+    question = ui.text_area(
         "Question",
         value=str(ss.get(question_key) or default_question or "").strip(),
         placeholder=(
@@ -924,15 +931,20 @@ def render_analyze_with_applied_math_sidebar(
         label_visibility="visible",
     )
 
-    if st.sidebar.button(
-        "Send to Command Center",
+    submit_label = (
+        "Ask the Music Coach"
+        if is_music
+        else "Send to Command Center"
+    )
+    if ui.button(
+        submit_label,
         key=submit_key,
         use_container_width=True,
         type="primary",
     ):
         q = str(question or "").strip()
         if not q:
-            st.sidebar.warning("Enter a question first.")
+            ui.warning("Enter a question first.")
         else:
             submit_ctx = build_submit_context(
                 source_app,
@@ -970,9 +982,9 @@ def render_analyze_with_applied_math_sidebar(
                 else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
             )
             if result.get("duplicate"):
-                st.sidebar.info(dup_msg)
+                ui.info(dup_msg)
             else:
-                st.sidebar.success(ok_msg)
+                ui.success(ok_msg)
             if on_after_send is not None and not result.get("duplicate"):
                 try:
                     on_after_send()
@@ -981,8 +993,9 @@ def render_analyze_with_applied_math_sidebar(
             st.rerun()
 
     if developer_mode:
-        st.sidebar.caption(f"🛠 {AMI_SIDEBAR_DEPLOY_LABEL} · {AMI_SIDEBAR_DEPLOY_VERSION}")
-    st.sidebar.divider()
+        ui.caption(f"🛠 {AMI_SIDEBAR_DEPLOY_LABEL} · {AMI_SIDEBAR_DEPLOY_VERSION}")
+    if surface_tag == "sidebar":
+        ui.divider()
 
 
 def render_applied_math_sidebar_entry(
@@ -1310,6 +1323,37 @@ def render_music_coach_sidebar_entry(
         developer_mode=developer_mode,
         on_after_send=on_after_send,
     )
+
+
+def render_music_coach_page_entry(
+    st: Any,
+    *,
+    source_page: str,
+    session_state: dict[str, Any] | None = None,
+    context_extra_builder: Callable[[], dict[str, Any] | None] | None = None,
+    source_state_builder: Callable[[], dict[str, Any] | None] | None = None,
+    developer_mode: bool = False,
+    on_after_send: Callable[[], None] | None = None,
+) -> None:
+    """On-page Music Coach question box (Practice page primary entry point)."""
+    ss = session_state if session_state is not None else getattr(st, "session_state", {})
+    try:
+        with st.container(border=True):
+            render_analyze_with_applied_math_sidebar(
+                st,
+                source_app="music",
+                source_page=source_page,
+                context_extra_builder=context_extra_builder,
+                source_state_builder=source_state_builder,
+                developer_mode=developer_mode,
+                session_state=ss,
+                on_after_send=on_after_send,
+                surface="main",
+            )
+    except Exception as exc:
+        log.exception("Music Coach page panel failed for %s", source_page)
+        if developer_mode:
+            st.warning(f"Music Coach panel failed: {type(exc).__name__}: {exc}")
 
 
 def render_suite_applied_math_insight(

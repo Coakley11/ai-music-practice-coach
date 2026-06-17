@@ -9319,12 +9319,15 @@ try:
         st,
         source_page=_coach_page,
         session_state=st.session_state,
+        developer_mode=_developer_mode_enabled(),
         context_extra_builder=lambda: build_music_coach_context(_coach_page, st.session_state),
         source_state_builder=lambda: build_source_state(_coach_page, st.session_state),
         on_after_send=lambda: force_save_music_state(st, reason="music_coach_send"),
     )
-except Exception:
-    pass
+except Exception as exc:
+    st.session_state["_music_coach_sidebar_error"] = str(exc)
+    if _developer_mode_enabled():
+        st.sidebar.warning(f"Music Coach sidebar unavailable: {type(exc).__name__}: {exc}")
 
 try:
     from applied_math_return_insight import hydrate_applied_math_insight_for_session
@@ -9737,6 +9740,33 @@ if _studio_page == "practice":
             "Song Practice",
             "Set up your session below — change key in the sidebar; pick songs on Song Selection.",
         )
+    try:
+        from music_coach_context import (
+            build_music_coach_context,
+            build_source_state,
+            resolve_coach_source_page,
+        )
+        from music_persistent_state import force_save_music_state
+        from suite_analytical_question import render_music_coach_page_entry
+
+        _practice_coach_page = resolve_coach_source_page(st.session_state)
+        render_music_coach_page_entry(
+            st,
+            source_page=_practice_coach_page,
+            session_state=st.session_state,
+            developer_mode=_developer_mode_enabled(),
+            context_extra_builder=lambda: build_music_coach_context(
+                _practice_coach_page, st.session_state
+            ),
+            source_state_builder=lambda: build_source_state(
+                _practice_coach_page, st.session_state
+            ),
+            on_after_send=lambda: force_save_music_state(st, reason="music_coach_send"),
+        )
+    except Exception as exc:
+        st.session_state["_music_coach_page_error"] = str(exc)
+        if _developer_mode_enabled():
+            st.warning(f"Music Coach page panel unavailable: {type(exc).__name__}: {exc}")
     _inject_practice_toolkit_styles()
 
     render_scroll_anchor_marker(st, ANCHOR_PRACTICE_COACH)
