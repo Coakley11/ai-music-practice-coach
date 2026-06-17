@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+MUSIC_AMI_BUILD_ID = "music-ami-v3-reliability-routing"
+
 _MUSIC_SOLVER_INTENTS = frozenset(
     {
         "practice_plan",

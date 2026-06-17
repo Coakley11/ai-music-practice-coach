@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from music_ami_context import detect_music_send_intent
 from music_ami_instant_solver import solve_instant_music_insight
+from tests.test_music_coach_reliability import SIMILAR_SONGS_QUESTION, TRANSPOSE_QUESTION
 from suite_analytical_question import (
     _AMI_COACH_SUBMIT_FEEDBACK_KEY,
     _execute_coach_question_submit,
@@ -27,14 +28,11 @@ class TestMusicIntentRouting(unittest.TestCase):
         self.assertEqual(detect_music_send_intent(q, "practice"), "chord_transition")
 
     def test_transposition_intent(self) -> None:
-        q = (
-            "If I want to play this song in F instead of E on the Alto sax, "
-            "what notes would I have to use?"
-        )
+        q = TRANSPOSE_QUESTION
         self.assertEqual(detect_music_send_intent(q, "practice"), "music_transposition")
 
     def test_similar_songs_intent(self) -> None:
-        q = "What songs can I practice that are similar to Perfect?"
+        q = SIMILAR_SONGS_QUESTION
         self.assertEqual(detect_music_send_intent(q, "practice"), "similar_songs")
 
 
@@ -66,10 +64,7 @@ class TestMusicInstantSolver(unittest.TestCase):
         self.assertIn("15 minutes", result.assumptions[0])
 
     def test_transposition_answer_not_practice_plan(self) -> None:
-        q = (
-            "If I want to play this song in F instead of E on the Alto sax, "
-            "what notes would I have to use?"
-        )
+        q = TRANSPOSE_QUESTION
         solved = solve_instant_music_insight(q, {"coach_page": "practice", "instrument": "Alto Sax"})
         self.assertIsNotNone(solved)
         route, result = solved
@@ -79,7 +74,7 @@ class TestMusicInstantSolver(unittest.TestCase):
 
     def test_similar_songs_answer_not_practice_plan(self) -> None:
         solved = solve_instant_music_insight(
-            "What songs can I practice that are similar to Perfect?",
+            SIMILAR_SONGS_QUESTION,
             {"coach_page": "practice", "instrument": "Guitar", "level": "Intermediate"},
         )
         self.assertIsNotNone(solved)

@@ -921,12 +921,13 @@ def _stage_music_instant_insight(
         return False
 
     solved_pair = solve_instant_music_insight(question, submit_ctx)
+    render_page = _music_insight_render_page(submit_source_state, source_page)
     if solved_pair:
         route, solved = solved_pair
         insight = build_return_insight_payload(
             question=question,
             source_app=source_app,
-            source_page=source_page,
+            source_page=render_page,
             question_id=str(pre_payload.get("question_id") or ""),
             route=route,
             result=solved,
@@ -938,7 +939,7 @@ def _stage_music_instant_insight(
         insight = build_submit_fallback_insight(
             question=question,
             source_app=source_app,
-            source_page=source_page,
+            source_page=render_page,
             question_id=str(pre_payload.get("question_id") or ""),
             full_analysis_url=action_url_pre,
             resume_key=str(pre_payload.get("resume_key") or ""),
@@ -949,8 +950,33 @@ def _stage_music_instant_insight(
     stage_pending_insight(st, insight, return_context=return_context)
     ss["_ami_force_insight_render"] = True
     ss["_ami_submit_render_insight_this_run"] = True
-    ss["_ami_last_submit_source_page"] = _music_insight_render_page(submit_source_state, source_page)
+    ss["_ami_last_submit_source_page"] = render_page
     ss["_ami_insight_return_preserve"] = True
+    try:
+        from music_ami_context import detect_music_send_intent
+        from music_ami_instant_solver import MUSIC_AMI_BUILD_ID
+
+        intent = detect_music_send_intent(
+            question,
+            str(submit_ctx.get("coach_page") or submit_ctx.get("source_page") or source_page or ""),
+        )
+    except Exception:
+        intent = str(submit_ctx.get("routing_hint") or submit_ctx.get("intent") or "")
+        MUSIC_AMI_BUILD_ID = "unknown"
+    insight_data = insight.to_dict() if hasattr(insight, "to_dict") else dict(insight)
+    ss["_ami_music_submit_diagnostics"] = {
+        "submit_source_page": str(source_page or ""),
+        "normalized_source_page": render_page,
+        "coach_page": str(submit_ctx.get("coach_page") or source_page or ""),
+        "studio_page": render_page,
+        "question_id": str(pre_payload.get("question_id") or ""),
+        "insight_id": str(insight_data.get("insight_id") or ""),
+        "stage_success": bool(ss.get(SESSION_PENDING_KEY)),
+        "detected_intent": intent,
+        "solver_build_id": MUSIC_AMI_BUILD_ID,
+        "instant_solved": bool(solved_pair),
+        "problem_type": str(getattr(solved_pair[0], "problem_type", "") if solved_pair else ""),
+    }
     return bool(ss.get(SESSION_PENDING_KEY))
 
 
@@ -1073,6 +1099,25 @@ def _execute_coach_question_submit(
         )
         ss["_last_analytical_question"] = result
         ss[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
+        if is_music:
+            diag = dict(ss.get("_ami_music_submit_diagnostics") or {})
+            diag.update(
+                {
+                    "submit_clicked": True,
+                    "submit_surface": surface_tag,
+                    "command_center_send_success": not bool(result.get("duplicate")),
+                    "command_center_duplicate": bool(result.get("duplicate")),
+                    "render_attempted": bool(ss.get("_ami_insight_render_attempted")),
+                    "render_suppressed_reason": ss.get("_ami_insight_render_skipped_reason"),
+                    "insight_card_rendered": bool(ss.get("_ami_insight_card_rendered")),
+                }
+            )
+            ss["_ami_music_submit_diagnostics"] = diag
+            if developer_mode and not ss.get("_ami_insight_card_rendered") and insight_card_created:
+                ui.warning(
+                    "Insight staged but not rendered yet — deferred render runs at end of page "
+                    f"(studio_page={diag.get('studio_page')!r}, reason={diag.get('render_suppressed_reason')!r})."
+                )
         dup_msg = (
             "That question was already sent recently. Open Command Center to continue with the Music Coach."
             if is_music
@@ -1219,6 +1264,32 @@ def render_analyze_with_applied_math_sidebar(
 
     if developer_mode:
         ui.caption(f"🛠 {AMI_SIDEBAR_DEPLOY_LABEL} · {AMI_SIDEBAR_DEPLOY_VERSION}")
+        if is_music:
+            music_diag = ss.get("_ami_music_submit_diagnostics")
+            if isinstance(music_diag, dict) and music_diag:
+                with ui.expander("Music Coach submit/render (last send)", expanded=True):
+                    for key in (
+                        "submit_clicked",
+                        "submit_surface",
+                        "submit_source_page",
+                        "normalized_source_page",
+                        "coach_page",
+                        "studio_page",
+                        "question_id",
+                        "insight_id",
+                        "stage_success",
+                        "detected_intent",
+                        "problem_type",
+                        "solver_build_id",
+                        "instant_solved",
+                        "command_center_send_success",
+                        "render_attempted",
+                        "insight_card_rendered",
+                        "render_suppressed_reason",
+                    ):
+                        val = music_diag.get(key)
+                        if val is not None and val != "":
+                            ui.text(f"{key}: {val}")
         last_err = ss.get("_ami_coach_submit_last_error")
         if last_err:
             ui.warning(f"Last submit error: {last_err}")

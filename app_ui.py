@@ -7160,6 +7160,7 @@ USE_SIMPLE_MUSIC_NAV_KEY = "use_simple_music_nav"
 STUDIO_SIMPLE_NAV_KEY_PREFIX = "studio_simple_nav"
 QUICK_NAV_DIAG_KEY = "_quick_nav_render_diag"
 _QUICK_NAV_RENDERED_THIS_EXEC = False
+_MUSIC_INSIGHT_RENDERED_THIS_EXEC = False
 SIMPLE_NAV_PAGE_IDS: list[str] = [
     "practice",
     "picker",
@@ -7628,9 +7629,11 @@ def end_studio_control_deck() -> None:
 
 def reset_quick_nav_render_diagnostics(session_state: Any) -> None:
     """Clear per-script-run quick nav counters (call once at top of each Streamlit run)."""
-    global _QUICK_NAV_RENDERED_THIS_EXEC
+    global _QUICK_NAV_RENDERED_THIS_EXEC, _MUSIC_INSIGHT_RENDERED_THIS_EXEC
 
     _QUICK_NAV_RENDERED_THIS_EXEC = False
+    _MUSIC_INSIGHT_RENDERED_THIS_EXEC = False
+    session_state.pop("_ami_insight_card_rendered", None)
     session_state["quick_nav_render_count"] = 0
     session_state["quick_nav_render_locations"] = []
     session_state["quick_nav_render_stack"] = []
@@ -7782,21 +7785,48 @@ def render_page_quick_nav(
     return session_state.get("studio_page", current)
 
 
-def _render_music_coach_insight_below_quick_nav(st: Any, *, current_page: str) -> None:
-    """Music Coach insight — canonical single render location, below quick nav."""
+def _render_music_coach_insight_below_quick_nav(st: Any, *, current_page: str) -> bool:
+    """Music Coach insight — canonical render slot below quick nav."""
+    global _MUSIC_INSIGHT_RENDERED_THIS_EXEC
+
+    if _MUSIC_INSIGHT_RENDERED_THIS_EXEC:
+        return False
     ss = getattr(st, "session_state", st)
-    if ss.get("_ami_insight_card_rendered"):
-        return
     try:
         from suite_analytical_question import render_suite_applied_math_insight
 
-        render_suite_applied_math_insight(
-            st,
-            source_app="music",
-            source_page=current_page,
+        ok = bool(
+            render_suite_applied_math_insight(
+                st,
+                source_app="music",
+                source_page=current_page,
+            )
         )
+        if ok:
+            _MUSIC_INSIGHT_RENDERED_THIS_EXEC = True
+        return ok
+    except Exception as exc:
+        ss["_ami_insight_render_error"] = str(exc)
+        return False
+
+
+def render_deferred_music_coach_insight(st: Any, *, studio_page: str) -> bool:
+    """Render pending insight after page body (main-panel submit runs after quick nav)."""
+    global _MUSIC_INSIGHT_RENDERED_THIS_EXEC
+
+    if _MUSIC_INSIGHT_RENDERED_THIS_EXEC:
+        return False
+    ss = getattr(st, "session_state", st)
+    if ss.get("_ami_insight_card_rendered"):
+        return False
+    try:
+        from applied_math_return_insight import _pending_insight_valid
+
+        if not _pending_insight_valid(st):
+            return False
     except Exception:
-        pass
+        return False
+    return _render_music_coach_insight_below_quick_nav(st, current_page=studio_page)
 
 
 def render_sidebar_studio_nav(

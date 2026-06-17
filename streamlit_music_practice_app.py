@@ -9655,6 +9655,13 @@ if st.session_state.get("tutorial_open"):
 render_pending_scroll_script(st)
 
 # Canonical quick nav — exactly once per script run, every page, before page body.
+try:
+    from app_ui import reset_quick_nav_render_diagnostics
+
+    reset_quick_nav_render_diagnostics(st.session_state)
+except Exception:
+    pass
+
 if pp.show_quick_nav(st):
     _studio_page = render_page_quick_nav(
         st.session_state,
@@ -12795,3 +12802,13 @@ if not pp.skip_background_persistence(st):
         clear_music_workspace_autosave_block(st)
     except Exception:
         pass
+
+try:
+    from app_ui import render_deferred_music_coach_insight
+
+    render_deferred_music_coach_insight(
+        st,
+        studio_page=str(st.session_state.get("studio_page") or _studio_page or "practice"),
+    )
+except Exception as exc:
+    st.session_state["_ami_deferred_insight_render_error"] = str(exc)

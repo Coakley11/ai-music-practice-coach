@@ -164,7 +164,7 @@ def _is_music_insight_app(source_app: str, insight: dict[str, Any] | None = None
 
 
 def _music_insight_allowed_studio_pages(insight: dict[str, Any]) -> frozenset[str]:
-    """Studio page ids where this insight may appear (strict — not coach aliases)."""
+    """Studio page ids where this insight may appear (prefer submit-time studio_page)."""
     for container_key in ("source_state", "return_context"):
         container = insight.get(container_key)
         if not isinstance(container, dict):
@@ -295,16 +295,18 @@ def insight_page_scope_decision(
     skip_reason = ""
     if not cur_eligible:
         skip_reason = f"current_page_not_eligible ({cur!r})"
-    elif not insight_page:
-        skip_reason = "missing_normalized_source_page"
     elif app == "music":
         if cur_studio in allowed_studio:
             should_render = True
+        elif not allowed_studio:
+            skip_reason = "missing_music_studio_scope"
         else:
             skip_reason = (
                 f"studio_page_mismatch (insight_studio={sorted(allowed_studio)!r}, "
                 f"current={cur_studio!r})"
             )
+    elif not insight_page:
+        skip_reason = "missing_normalized_source_page"
     elif insight_page == cur:
         should_render = True
     elif "draft" in insight_page.lower() and "draft" in cur.lower():
@@ -1802,8 +1804,11 @@ def render_insight_sync_debug(st: Any) -> None:
         "final_page_after_sidebar_click": ss.get("final_page_after_sidebar_click"),
         "render_attempted": ss.get("_ami_insight_render_attempted"),
         "render_success": ss.get("_ami_insight_render_success"),
-        "render_skipped_reason": ss.get("_ami_insight_render_skipped_reason"),
+        "render_suppressed_reason": ss.get("_ami_insight_render_skipped_reason"),
     }
+    music_submit = ss.get("_ami_music_submit_diagnostics")
+    if isinstance(music_submit, dict) and music_submit:
+        decision_rows["music_submit_diagnostics"] = music_submit
 
     with st.sidebar.expander("Insight sync trace", expanded=True):
         app_key = str(st.session_state.get("_suite_persist_app_id") or "baseball")
@@ -2119,13 +2124,29 @@ def render_suite_applied_math_insight_for_page(
     st.session_state["_ami_insight_scope_decision"] = scope
     _record_insight_return_diagnostics(st, phase="render_check", insight=insight)
     if not scope.get("should_render_insight_on_page"):
-        st.session_state["_ami_insight_render_skipped_reason"] = (
-            scope.get("render_skip_reason")
-            or f"page mismatch (current={source_page!r}, insight={insight.get('source_page')!r})"
+        ss = _resolve_session_state(st)
+        submit_page = str(ss.get("_ami_last_submit_source_page") or "").strip().lower()
+        cur_page = str(source_page or "").strip().lower()
+        force_render = bool(
+            ss.get("_ami_force_insight_render")
+            or ss.get("_ami_submit_render_insight_this_run")
+            or (
+                submit_page
+                and cur_page
+                and submit_page == cur_page
+                and insight.get("conclusion")
+            )
         )
-        st.session_state["_ami_insight_render_success"] = False
-        st.session_state["_ami_insight_card_rendered"] = False
-        return False
+        if force_render and insight.get("conclusion"):
+            scope = {**scope, "should_render_insight_on_page": True, "render_skip_reason": None}
+        else:
+            st.session_state["_ami_insight_render_skipped_reason"] = (
+                scope.get("render_skip_reason")
+                or f"page mismatch (current={source_page!r}, insight={insight.get('source_page')!r})"
+            )
+            st.session_state["_ami_insight_render_success"] = False
+            st.session_state["_ami_insight_card_rendered"] = False
+            return False
     ok = render_applied_math_insight_panel(st)
     st.session_state["_ami_insight_render_success"] = ok
     st.session_state["_ami_insight_card_rendered"] = ok
@@ -2133,6 +2154,8 @@ def render_suite_applied_math_insight_for_page(
         st.session_state["_ami_insight_render_skipped_reason"] = "panel render failed"
     else:
         st.session_state.pop("_ami_insight_render_skipped_reason", None)
+        st.session_state.pop("_ami_force_insight_render", None)
+        st.session_state.pop("_ami_submit_render_insight_this_run", None)
         consume_ami_return_resume(
             st,
             str(st.session_state.get("_suite_persist_app_id") or source_app or "baseball"),

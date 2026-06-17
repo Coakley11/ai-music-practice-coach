@@ -262,6 +262,8 @@ _SIMILAR_SONG_PHRASES: tuple[str, ...] = (
     "songs like",
     "song like",
     "recommend songs",
+    "what songs can i practice",
+    "songs can i practice",
     "songs to practice that are similar",
     "songs can i practice that are similar",
     "what should i play after",
@@ -354,6 +356,12 @@ def detect_music_send_intent(question: str, coach_page: str = "") -> str:
             return "chord_transition"
         return "progression_analysis"
     for intent, phrases in _PRACTICE_INTENT_RULES:
+        if intent == "practice_plan" and (
+            _is_similar_songs_question(low)
+            or _is_transposition_question(low)
+            or _is_music_theory_question(low)
+        ):
+            continue
         if any(p in low for p in phrases):
             return intent
     if extract_song_title_from_question(q):
