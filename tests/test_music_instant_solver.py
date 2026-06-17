@@ -7,6 +7,10 @@ from unittest.mock import MagicMock, patch
 
 from music_ami_context import detect_music_send_intent
 from music_ami_instant_solver import solve_instant_music_insight
+from suite_analytical_question import (
+    _AMI_COACH_SUBMIT_FEEDBACK_KEY,
+    _execute_coach_question_submit,
+)
 
 
 class TestMusicIntentRouting(unittest.TestCase):
@@ -40,13 +44,11 @@ class TestMusicInstantSolver(unittest.TestCase):
         self.assertIsNone(solve_instant_music_insight("hello", {"coach_page": "practice"}))
 
 
-class TestMusicSubmitStagesInsight(unittest.TestCase):
-    def test_handle_submit_stages_pending_insight(self) -> None:
-        from suite_analytical_question import render_analyze_with_applied_math_sidebar
-
+class TestMusicCoachSharedSubmit(unittest.TestCase):
+    def test_execute_coach_submit_persists_feedback(self) -> None:
         st = MagicMock()
+        ui = MagicMock()
         ss: dict = {}
-        st.session_state = ss
 
         with patch(
             "suite_analytical_question.build_submit_context",
@@ -63,20 +65,63 @@ class TestMusicSubmitStagesInsight(unittest.TestCase):
         ), patch(
             "suite_analytical_question._stage_music_instant_insight",
             return_value=True,
-        ) as mock_stage:
+        ):
+            _execute_coach_question_submit(
+                st,
+                ui,
+                ss,
+                question_raw="How much time on chord changes?",
+                source_app="music",
+                source_page="practice",
+                page_suffix="practice",
+                send_gen=0,
+                surface_tag="sidebar",
+                context=None,
+                context_extra_builder=None,
+                source_state_builder=None,
+                context_summary="",
+                developer_mode=False,
+                on_after_send=None,
+            )
+
+        fb = ss.get(_AMI_COACH_SUBMIT_FEEDBACK_KEY)
+        self.assertIsInstance(fb, dict)
+        self.assertEqual(fb.get("kind"), "success")
+        self.assertIn("Music Coach insight is ready", str(fb.get("message") or ""))
+        ui.success.assert_called_once()
+
+    def test_sidebar_uses_form_submit_path(self) -> None:
+        from suite_analytical_question import render_analyze_with_applied_math_sidebar
+
+        st = MagicMock()
+        ss: dict = {}
+        st.session_state = ss
+        sidebar = MagicMock()
+        st.sidebar = sidebar
+
+        form_cm = MagicMock()
+        form_cm.__enter__ = MagicMock(return_value=sidebar)
+        form_cm.__exit__ = MagicMock(return_value=False)
+        sidebar.form.return_value = form_cm
+        sidebar.form_submit_button.return_value = True
+        sidebar.text_area.return_value = "How should I practice chorus?"
+
+        with patch(
+            "suite_analytical_question._execute_coach_question_submit",
+        ) as mock_submit:
             render_analyze_with_applied_math_sidebar(
                 st,
                 source_app="music",
                 source_page="practice",
                 session_state=ss,
-                surface="main",
+                surface="sidebar",
+                show_heading=False,
             )
-
-        submitted = False
-        for call in st.button.call_args_list:
-            if call.kwargs.get("type") == "primary":
-                submitted = True
-        self.assertTrue(submitted or st.text_area.called)
+            mock_submit.assert_called_once()
+            self.assertEqual(
+                mock_submit.call_args.kwargs.get("question_raw"),
+                "How should I practice chorus?",
+            )
 
 
 if __name__ == "__main__":

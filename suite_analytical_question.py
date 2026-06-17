@@ -965,69 +965,79 @@ def _stage_music_instant_insight(
     return bool(ss.get(SESSION_PENDING_KEY))
 
 
-def render_analyze_with_applied_math_sidebar(
-    st: Any,
+_AMI_COACH_SUBMIT_FEEDBACK_KEY = "_ami_coach_submit_feedback"
+
+
+def _show_coach_submit_feedback(ui: Any, ss: dict[str, Any], *, source_app: str) -> None:
+    """Show persisted submit confirmation/error (survives st.rerun)."""
+    fb = ss.get(_AMI_COACH_SUBMIT_FEEDBACK_KEY)
+    if not isinstance(fb, dict):
+        return
+    if str(fb.get("source_app") or "").strip().lower() != str(source_app or "").strip().lower():
+        return
+    message = str(fb.get("message") or "").strip()
+    if not message:
+        return
+    kind = str(fb.get("kind") or "success").strip().lower()
+    if kind == "error":
+        ui.error(message)
+    elif kind == "info":
+        ui.info(message)
+    elif kind == "warning":
+        ui.warning(message)
+    else:
+        ui.success(message)
+
+
+def _persist_coach_submit_feedback(
+    ss: dict[str, Any],
     *,
     source_app: str,
-    source_page: str,
-    context: dict[str, Any] | None = None,
-    context_extra_builder: Callable[[], dict[str, Any] | None] | None = None,
-    source_state_builder: Callable[[], dict[str, Any] | None] | None = None,
-    context_summary: str = "",
-    default_question: str = "",
-    developer_mode: bool = False,
-    session_state: dict[str, Any] | None = None,
-    on_after_send: Callable[[], None] | None = None,
-    surface: str = "sidebar",
-    show_heading: bool = True,
+    kind: str,
+    message: str,
+    surface: str = "",
 ) -> None:
-    """Question block → Command Center (sidebar by default; use surface='main' on-page)."""
-    ss = session_state if session_state is not None else st.session_state
-    ui = _analytical_question_ui(st, surface=surface)
-    page_suffix = _safe_widget_suffix(source_page)
-    surface_tag = "main" if str(surface or "").strip().lower() == "main" else "sidebar"
-    send_gen = int(ss.get(f"_ami_send_gen_{source_app}_{page_suffix}") or 0)
-    question_key = f"ami_question_{source_app}_{page_suffix}_{surface_tag}_{send_gen}"
-    submit_key = f"ami_submit_{source_app}_{page_suffix}_{surface_tag}"
+    ss[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
+        "source_app": str(source_app or "").strip().lower(),
+        "kind": str(kind or "success").strip().lower(),
+        "message": str(message or "").strip(),
+        "surface": str(surface or "").strip(),
+        "submitted_at": utc_now_iso(),
+    }
 
+
+def _execute_coach_question_submit(
+    st: Any,
+    ui: Any,
+    ss: dict[str, Any],
+    *,
+    question_raw: str,
+    source_app: str,
+    source_page: str,
+    page_suffix: str,
+    send_gen: int,
+    surface_tag: str,
+    context: dict[str, Any] | None,
+    context_extra_builder: Callable[[], dict[str, Any] | None] | None,
+    source_state_builder: Callable[[], dict[str, Any] | None] | None,
+    context_summary: str,
+    developer_mode: bool,
+    on_after_send: Callable[[], None] | None,
+) -> None:
+    """Shared Music Coach / AMI submit — sidebar and main panel use the same path."""
+    q = str(question_raw or "").strip()
     is_music = str(source_app or "").strip().lower() == "music"
-    if is_music:
-        if show_heading:
-            ui.markdown("### Ask the Music Coach")
-        ui.caption(
-            "Ask a music practice question about the page/song you are viewing."
+    if not q:
+        msg = "Enter a question first."
+        _persist_coach_submit_feedback(
+            ss, source_app=source_app, kind="warning", message=msg, surface=surface_tag
         )
-    else:
-        ui.markdown("### Analyze with Applied Math")
-        ui.caption("Ask a math question about what you are viewing.")
+        ui.warning(msg)
+        return
 
-    last = ss.get("_ami_last_send")
-    if (
-        isinstance(last, dict)
-        and last.get("source_app") == source_app
-        and _recent_duplicate_send(ss, str(last.get("question_id") or ""))
-    ):
-        sent_msg = (
-            "Music Coach insight is ready on this page — open Command Center for the full thread."
-            if is_music
-            else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
-        )
-        ui.success(sent_msg)
-
-    if question_key not in ss:
-        ss[question_key] = str(default_question or ss.get("_ami_last_typed_question") or "").strip()
-
-    submit_label = (
-        "Ask the Music Coach"
-        if is_music
-        else "Send to Command Center"
-    )
-
-    def _handle_submit(q_raw: str) -> None:
-        q = str(q_raw or "").strip()
-        if not q:
-            ui.warning("Enter a question first.")
-            return
+    ss["_ami_last_typed_question"] = q
+    insight_card_created = False
+    try:
         submit_ctx = build_submit_context(
             source_app,
             source_page,
@@ -1051,7 +1061,6 @@ def render_analyze_with_applied_math_sidebar(
             source_state=submit_source_state,
         )
         action_url_pre = build_applied_math_resume_url(pre_payload)
-        insight_card_created = False
         if is_music:
             insight_card_created = _stage_music_instant_insight(
                 st,
@@ -1074,7 +1083,6 @@ def render_analyze_with_applied_math_sidebar(
             session_state=ss,
         )
         ss["_last_analytical_question"] = result
-        ss["_ami_last_typed_question"] = q
         ss[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
         dup_msg = (
             "That question was already sent recently. Open Command Center to continue with the Music Coach."
@@ -1091,37 +1099,174 @@ def render_analyze_with_applied_math_sidebar(
             )
         )
         if result.get("duplicate"):
+            _persist_coach_submit_feedback(
+                ss, source_app=source_app, kind="info", message=dup_msg, surface=surface_tag
+            )
             ui.info(dup_msg)
         else:
+            _persist_coach_submit_feedback(
+                ss, source_app=source_app, kind="success", message=ok_msg, surface=surface_tag
+            )
             ui.success(ok_msg)
         if on_after_send is not None and not result.get("duplicate"):
             try:
                 on_after_send()
             except Exception:
                 log.exception("on_after_send hook failed for %s (%s)", source_app, source_page)
-        st.rerun()
+        ss["_ami_coach_submit_last_error"] = None
+    except Exception as exc:
+        log.exception("Music Coach submit failed for %s (%s)", source_app, source_page)
+        err = f"{type(exc).__name__}: {exc}"
+        ss["_ami_coach_submit_last_error"] = err
+        fail_msg = (
+            f"Music Coach submit failed. Open Command Center or retry. ({err})"
+            if developer_mode
+            else "Music Coach submit failed. Try again or use the Practice page panel."
+        )
+        _persist_coach_submit_feedback(
+            ss, source_app=source_app, kind="error", message=fail_msg, surface=surface_tag
+        )
+        ui.error(fail_msg if developer_mode else "Music Coach submit failed. Try again or use the Practice page panel.")
 
-    question = ui.text_area(
-        "Question",
-        placeholder=(
-            music_coach_question_placeholder(source_page)
-            if is_music
-            else "e.g. Is this trend meaningful statistically?"
-        ),
-        height=88,
-        key=question_key,
-        label_visibility="visible",
-    )
-    if ui.button(
-        submit_label,
-        key=submit_key,
-        use_container_width=True,
-        type="primary",
+
+def render_analyze_with_applied_math_sidebar(
+    st: Any,
+    *,
+    source_app: str,
+    source_page: str,
+    context: dict[str, Any] | None = None,
+    context_extra_builder: Callable[[], dict[str, Any] | None] | None = None,
+    source_state_builder: Callable[[], dict[str, Any] | None] | None = None,
+    context_summary: str = "",
+    default_question: str = "",
+    developer_mode: bool = False,
+    session_state: dict[str, Any] | None = None,
+    on_after_send: Callable[[], None] | None = None,
+    surface: str = "sidebar",
+    show_heading: bool = True,
+) -> None:
+    """Question block → Command Center (sidebar by default; use surface='main' on-page)."""
+    ss = session_state if session_state is not None else st.session_state
+    ui = _analytical_question_ui(st, surface=surface)
+    page_suffix = _safe_widget_suffix(source_page)
+    surface_tag = "main" if str(surface or "").strip().lower() == "main" else "sidebar"
+    send_gen = int(ss.get(f"_ami_send_gen_{source_app}_{page_suffix}") or 0)
+    question_key = f"ami_question_{source_app}_{page_suffix}_{surface_tag}_{send_gen}"
+    submit_key = f"ami_submit_{source_app}_{page_suffix}_{surface_tag}_{send_gen}"
+
+    is_music = str(source_app or "").strip().lower() == "music"
+    _show_coach_submit_feedback(ui, ss, source_app=source_app)
+    if is_music:
+        if show_heading:
+            ui.markdown("### Ask the Music Coach")
+        ui.caption(
+            "Ask a music practice question about the page/song you are viewing."
+        )
+    else:
+        ui.markdown("### Analyze with Applied Math")
+        ui.caption("Ask a math question about what you are viewing.")
+
+    last = ss.get("_ami_last_send")
+    if (
+        isinstance(last, dict)
+        and last.get("source_app") == source_app
+        and _recent_duplicate_send(ss, str(last.get("question_id") or ""))
+        and not ss.get(_AMI_COACH_SUBMIT_FEEDBACK_KEY)
     ):
-        _handle_submit(str(ss.get(question_key) or question or ""))
+        sent_msg = (
+            "Music Coach insight is ready on this page — open Command Center for the full thread."
+            if is_music
+            else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
+        )
+        ui.success(sent_msg)
+
+    if question_key not in ss:
+        ss[question_key] = str(default_question or ss.get("_ami_last_typed_question") or "").strip()
+
+    submit_label = (
+        "Ask the Music Coach"
+        if is_music
+        else "Send to Command Center"
+    )
+    form_key = f"ami_form_{source_app}_{page_suffix}_{surface_tag}_{send_gen}"
+
+    if surface_tag == "sidebar":
+        with ui.form(key=form_key, clear_on_submit=False):
+            question = ui.text_area(
+                "Question",
+                placeholder=(
+                    music_coach_question_placeholder(source_page)
+                    if is_music
+                    else "e.g. Is this trend meaningful statistically?"
+                ),
+                height=88,
+                key=question_key,
+                label_visibility="visible",
+            )
+            submitted = ui.form_submit_button(
+                submit_label,
+                use_container_width=True,
+                type="primary",
+            )
+        if submitted:
+            _execute_coach_question_submit(
+                st,
+                ui,
+                ss,
+                question_raw=str(ss.get(question_key) or question or ""),
+                source_app=source_app,
+                source_page=source_page,
+                page_suffix=page_suffix,
+                send_gen=send_gen,
+                surface_tag=surface_tag,
+                context=context,
+                context_extra_builder=context_extra_builder,
+                source_state_builder=source_state_builder,
+                context_summary=context_summary,
+                developer_mode=developer_mode,
+                on_after_send=on_after_send,
+            )
+    else:
+        question = ui.text_area(
+            "Question",
+            placeholder=(
+                music_coach_question_placeholder(source_page)
+                if is_music
+                else "e.g. Is this trend meaningful statistically?"
+            ),
+            height=88,
+            key=question_key,
+            label_visibility="visible",
+        )
+        if ui.button(
+            submit_label,
+            key=submit_key,
+            use_container_width=True,
+            type="primary",
+        ):
+            _execute_coach_question_submit(
+                st,
+                ui,
+                ss,
+                question_raw=str(ss.get(question_key) or question or ""),
+                source_app=source_app,
+                source_page=source_page,
+                page_suffix=page_suffix,
+                send_gen=send_gen,
+                surface_tag=surface_tag,
+                context=context,
+                context_extra_builder=context_extra_builder,
+                source_state_builder=source_state_builder,
+                context_summary=context_summary,
+                developer_mode=developer_mode,
+                on_after_send=on_after_send,
+            )
 
     if developer_mode:
         ui.caption(f"🛠 {AMI_SIDEBAR_DEPLOY_LABEL} · {AMI_SIDEBAR_DEPLOY_VERSION}")
+        last_err = ss.get("_ami_coach_submit_last_error")
+        if last_err:
+            ui.warning(f"Last submit error: {last_err}")
     if surface_tag == "sidebar":
         ui.divider()
 
