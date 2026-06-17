@@ -913,7 +913,6 @@ def _stage_music_instant_insight(
             SESSION_PENDING_KEY,
             build_return_insight_payload,
             build_submit_fallback_insight,
-            render_suite_applied_math_insight_for_page,
             stage_pending_insight,
         )
         from music_ami_instant_solver import solve_instant_music_insight
@@ -952,17 +951,6 @@ def _stage_music_instant_insight(
     ss["_ami_submit_render_insight_this_run"] = True
     ss["_ami_last_submit_source_page"] = _music_insight_render_page(submit_source_state, source_page)
     ss["_ami_insight_return_preserve"] = True
-
-    render_page = _music_insight_render_page(submit_source_state, source_page)
-    try:
-        render_suite_applied_math_insight_for_page(
-            st,
-            source_app=source_app,
-            source_page=render_page,
-        )
-        ss["_ami_insight_rendered_inline_after_submit"] = True
-    except Exception:
-        log.exception("inline Music Coach insight render failed for %s (%s)", source_app, source_page)
     return bool(ss.get(SESSION_PENDING_KEY))
 
 

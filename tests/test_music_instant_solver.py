@@ -26,6 +26,17 @@ class TestMusicIntentRouting(unittest.TestCase):
         q = "How do I improve these chord changes?"
         self.assertEqual(detect_music_send_intent(q, "practice"), "chord_transition")
 
+    def test_transposition_intent(self) -> None:
+        q = (
+            "If I want to play this song in F instead of E on the Alto sax, "
+            "what notes would I have to use?"
+        )
+        self.assertEqual(detect_music_send_intent(q, "practice"), "music_transposition")
+
+    def test_similar_songs_intent(self) -> None:
+        q = "What songs can I practice that are similar to Perfect?"
+        self.assertEqual(detect_music_send_intent(q, "practice"), "similar_songs")
+
 
 class TestMusicInstantSolver(unittest.TestCase):
     def test_practice_plan_answer_has_time_blocks(self) -> None:
@@ -52,6 +63,30 @@ class TestMusicInstantSolver(unittest.TestCase):
         self.assertIsNotNone(solved)
         _, result = solved
         self.assertIn("15-minute", result.short_answer)
+        self.assertIn("15 minutes", result.assumptions[0])
+
+    def test_transposition_answer_not_practice_plan(self) -> None:
+        q = (
+            "If I want to play this song in F instead of E on the Alto sax, "
+            "what notes would I have to use?"
+        )
+        solved = solve_instant_music_insight(q, {"coach_page": "practice", "instrument": "Alto Sax"})
+        self.assertIsNotNone(solved)
+        route, result = solved
+        self.assertEqual(route.problem_type, "music_transposition")
+        self.assertIn("Alto sax", result.short_answer)
+        self.assertNotIn("practice split", result.short_answer.lower())
+
+    def test_similar_songs_answer_not_practice_plan(self) -> None:
+        solved = solve_instant_music_insight(
+            "What songs can I practice that are similar to Perfect?",
+            {"coach_page": "practice", "instrument": "Guitar", "level": "Intermediate"},
+        )
+        self.assertIsNotNone(solved)
+        route, result = solved
+        self.assertEqual(route.problem_type, "similar_songs")
+        self.assertIn("Thinking Out Loud", result.short_answer)
+        self.assertNotIn("practice split", result.short_answer.lower())
 
     def test_unknown_question_returns_none(self) -> None:
         self.assertIsNone(solve_instant_music_insight("hello", {"coach_page": "practice"}))

@@ -9668,18 +9668,6 @@ if pp.show_quick_nav(st):
     except Exception:
         pass
 
-if not st.session_state.get("_ami_insight_card_rendered"):
-    try:
-        from suite_analytical_question import render_suite_applied_math_insight
-
-        render_suite_applied_math_insight(
-            st,
-            source_app="music",
-            source_page=str(st.session_state.get("studio_page") or _studio_page or "practice"),
-        )
-    except Exception as exc:
-        st.session_state["_ami_insight_render_error"] = str(exc)
-
 if _developer_mode_enabled():
     try:
         from applied_math_return_insight import render_insight_sync_debug

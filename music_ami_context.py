@@ -52,7 +52,7 @@ _PRACTICE_INTENT_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("chord change", "chord changes", "chord transition", "transition between", "improve these chords"),
     ),
     ("section_focus", ("chorus", "verse", "bridge", "pre-chorus", "section", "drill", "loop this")),
-    ("tempo_key", ("tempo", "bpm", "too fast", "too slow", "what key", "transpose", "play this in")),
+    ("tempo_key", ("tempo", "bpm", "too fast", "too slow", "what key")),
     (
         "skill_technique",
         ("technique", "what technique", "learn before", "what should i learn", "skill should"),
@@ -237,6 +237,89 @@ def extract_section_from_question(question: str) -> str:
     return ""
 
 
+_TRANSPOSE_PHRASES: tuple[str, ...] = (
+    "instead of",
+    "transpose",
+    "transposing",
+    "move up a half step",
+    "move up a whole step",
+    "move down a half step",
+    "move down a whole step",
+    "half step up",
+    "whole step up",
+    "what notes",
+    "what note",
+    "notes would i",
+    "notes do i",
+    "notes should i",
+    "convert this key",
+    "key conversion",
+)
+
+_SIMILAR_SONG_PHRASES: tuple[str, ...] = (
+    "songs similar to",
+    "similar to",
+    "songs like",
+    "song like",
+    "recommend songs",
+    "songs to practice that are similar",
+    "songs can i practice that are similar",
+    "what should i play after",
+    "similar repertoire",
+    "songs in the same style",
+    "other songs like",
+)
+
+_MUSIC_THEORY_PHRASES: tuple[str, ...] = (
+    "music theory",
+    "what scale",
+    "which scale",
+    "what mode",
+    "interval",
+    "chord theory",
+    "why does this chord",
+    "roman numeral",
+    "harmonic function",
+    "circle of fifths",
+)
+
+
+def _is_transposition_question(low: str) -> bool:
+    if re.search(r"\bin\s+[a-g][#b]?\s+instead\s+of\s+[a-g]", low):
+        return True
+    if re.search(r"\bplay\b.+\bin\s+[a-g][#b]?\s+instead\s+of", low):
+        return True
+    if any(p in low for p in _TRANSPOSE_PHRASES):
+        return True
+    if re.search(r"\btranspose\b", low) and any(
+        p in low for p in ("key", "note", "chord", "sax", "horn", "trumpet")
+    ):
+        return True
+    if re.search(r"\bwhat\s+key\s+should\s+i\s+(play|use)\b", low) and any(
+        p in low for p in ("alto", "tenor", "sax", "trumpet", "clarinet", "instead", "convert")
+    ):
+        return True
+    return False
+
+
+def _is_similar_songs_question(low: str) -> bool:
+    if any(p in low for p in _SIMILAR_SONG_PHRASES):
+        return True
+    if re.search(r"\bsongs?\b.+\bsimilar\b", low) or re.search(r"\bsimilar\b.+\bsongs?\b", low):
+        return True
+    if "recommend" in low and "song" in low:
+        return True
+    return False
+
+
+def _is_music_theory_question(low: str) -> bool:
+    if any(p in low for p in _MUSIC_THEORY_PHRASES):
+        return True
+    if re.search(r"\bwhat\s+(scale|mode|chord)\b", low) and not re.search(r"\bpractice\b", low):
+        return True
+    return False
+
+
 def detect_music_send_intent(question: str, coach_page: str = "") -> str:
     """Classify Music Coach AMI send intent from question text."""
     q = str(question or "").strip()
@@ -244,6 +327,14 @@ def detect_music_send_intent(question: str, coach_page: str = "") -> str:
     if not low:
         return "music_general"
     page = str(coach_page or "").strip().lower()
+
+    if _is_transposition_question(low):
+        return "music_transposition"
+    if _is_similar_songs_question(low):
+        return "similar_songs"
+    if _is_music_theory_question(low):
+        return "music_theory"
+
     if re.search(r"\b\d{1,3}\s*minutes?\b", low) and any(
         p in low for p in ("practice", "song", "session", "today", "do")
     ):

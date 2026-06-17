@@ -7783,7 +7783,10 @@ def render_page_quick_nav(
 
 
 def _render_music_coach_insight_below_quick_nav(st: Any, *, current_page: str) -> None:
-    """Music Coach insight — always below quick nav; scope-gated inside AMI module."""
+    """Music Coach insight — canonical single render location, below quick nav."""
+    ss = getattr(st, "session_state", st)
+    if ss.get("_ami_insight_card_rendered"):
+        return
     try:
         from suite_analytical_question import render_suite_applied_math_insight
 
