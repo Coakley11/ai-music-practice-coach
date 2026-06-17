@@ -57,7 +57,15 @@ def _ctx_value(ctx: dict[str, Any], *keys: str, default: Any = "") -> Any:
     return default
 
 
-def _session_minutes(ctx: dict[str, Any]) -> int:
+def _session_minutes(ctx: dict[str, Any], question: str = "") -> int:
+    import re
+
+    m = re.search(r"\b(\d{1,3})\s*minutes?\b", str(question or ""), flags=re.I)
+    if m:
+        try:
+            return max(5, min(120, int(m.group(1))))
+        except (TypeError, ValueError):
+            pass
     raw = _ctx_value(ctx, "practice_minutes", "session_minutes", "minutes", default=30)
     try:
         minutes = int(float(raw))
@@ -83,7 +91,7 @@ def _allocate_minutes(total: int, weights: dict[str, float]) -> dict[str, int]:
 
 
 def _practice_plan_answer(question: str, ctx: dict[str, Any], *, chord_focus: bool) -> MusicSolverResult:
-    minutes = _session_minutes(ctx)
+    minutes = _session_minutes(ctx, question)
     section = str(_ctx_value(ctx, "practice_focus_section", "section_focus_named", default="")).strip()
     instrument = str(_ctx_value(ctx, "instrument", default="your instrument")).strip()
     song = str(_ctx_value(ctx, "question_song", "song", default="")).strip()
@@ -129,7 +137,7 @@ def _practice_plan_answer(question: str, ctx: dict[str, Any], *, chord_focus: bo
 
 
 def _chord_transition_answer(ctx: dict[str, Any]) -> MusicSolverResult:
-    minutes = max(10, min(25, _session_minutes(ctx) // 2 or 15))
+    minutes = max(10, min(25, _session_minutes(ctx, question) // 2 or 15))
     bpm = _ctx_value(ctx, "bpm", "practice_bpm", default="")
     instrument = str(_ctx_value(ctx, "instrument", default="your instrument")).strip()
     lines = [
@@ -156,7 +164,7 @@ def _chord_transition_answer(ctx: dict[str, Any]) -> MusicSolverResult:
 
 def _section_focus_answer(ctx: dict[str, Any]) -> MusicSolverResult:
     section = str(_ctx_value(ctx, "practice_focus_section", "section_focus_named", default="this section")).strip()
-    minutes = _session_minutes(ctx)
+    minutes = _session_minutes(ctx, question)
     drill = max(8, minutes // 3)
     return MusicSolverResult(
         short_answer=(

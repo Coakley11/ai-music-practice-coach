@@ -18,6 +18,10 @@ class TestMusicIntentRouting(unittest.TestCase):
         q = "How much time should I spend on learning the chord changes?"
         self.assertEqual(detect_music_send_intent(q, "practice"), "practice_plan")
 
+    def test_fifteen_minute_practice_question_routes_practice_plan(self) -> None:
+        q = "I have 15 minutes to practice this song. What should I do?"
+        self.assertEqual(detect_music_send_intent(q, "practice"), "practice_plan")
+
     def test_chord_transition_intent(self) -> None:
         q = "How do I improve these chord changes?"
         self.assertEqual(detect_music_send_intent(q, "practice"), "chord_transition")
@@ -39,6 +43,15 @@ class TestMusicInstantSolver(unittest.TestCase):
         self.assertIn("30-minute", result.short_answer)
         self.assertIn("chord transitions", result.short_answer.lower())
         self.assertGreaterEqual(result.computed.get("chord transitions", 0), 8)
+
+    def test_fifteen_minute_practice_question(self) -> None:
+        solved = solve_instant_music_insight(
+            "I have 15 minutes to practice this song. What should I do?",
+            {"coach_page": "practice", "instrument": "Guitar"},
+        )
+        self.assertIsNotNone(solved)
+        _, result = solved
+        self.assertIn("15-minute", result.short_answer)
 
     def test_unknown_question_returns_none(self) -> None:
         self.assertIsNone(solve_instant_music_insight("hello", {"coach_page": "practice"}))

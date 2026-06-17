@@ -29,6 +29,7 @@ _PRACTICE_INTENT_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
         "practice_plan",
         (
             "what should i practice",
+            "what should i do",
             "practice next",
             "practice plan",
             "what to practice",
@@ -36,10 +37,14 @@ _PRACTICE_INTENT_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "how much time",
             "how long should",
             "minutes should",
+            "minutes to practice",
             "time should i spend",
             "time on",
             "focus on today",
             "what should i focus",
+            "practice this song",
+            "practice the song",
+            "have to practice",
         ),
     ),
     (
@@ -239,6 +244,12 @@ def detect_music_send_intent(question: str, coach_page: str = "") -> str:
     if not low:
         return "music_general"
     page = str(coach_page or "").strip().lower()
+    if re.search(r"\b\d{1,3}\s*minutes?\b", low) and any(
+        p in low for p in ("practice", "song", "session", "today", "do")
+    ):
+        return "practice_plan"
+    if "what should i do" in low and any(p in low for p in ("practice", "song", "minutes", "session")):
+        return "practice_plan"
     if page == "backing" or page == "karaoke":
         if any(p in low for p in ("tempo", "bpm", "too fast", "too slow")):
             return "tempo_key"
