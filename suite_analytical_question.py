@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import copy
+import time
 from datetime import datetime, timezone
 from collections.abc import Callable
 from typing import Any
@@ -139,6 +140,14 @@ _PUBLIC_CONTEXT_KEYS = (
     "rebalance_recommendation",
     "total_drift",
     "historical_comparison",
+    "draft_snapshot",
+    "roster",
+    "recommended_players",
+    "sleepers",
+    "scoring_settings",
+    "ami_guidance",
+    "projection",
+    "watchlist",
 )
 
 _CONTEXT_LABELS = {
@@ -336,16 +345,26 @@ def _store_question_context_blob(payload: dict[str, Any]) -> None:
     try:
         from suite_account import remember_saved_item
 
-        remember_saved_item(
-            "applied_intelligence",
-            _CONTEXT_ITEM_TYPE,
-            qid,
-            title=str(payload.get("question") or "Applied Math question")[:200],
-            payload=blob,
-        )
+        store_apps: list[str] = ["applied_intelligence"]
+        src_app = str(payload.get("source_app") or "").strip().lower()
+        if src_app and src_app not in store_apps:
+            store_apps.append(src_app)
+        for app_name in store_apps:
+            remember_saved_item(
+                app_name,
+                _CONTEXT_ITEM_TYPE,
+                qid,
+                title=str(payload.get("question") or "Applied Math question")[:200],
+                payload=blob,
+            )
         return
     except Exception as exc:
         log.warning("remember_saved_item failed for analytical context: %s", exc)
+
+
+def persist_question_context_blob(payload: dict[str, Any]) -> None:
+    """Public wrapper: persist question send snapshot (context + source_state) by question_id."""
+    _store_question_context_blob(payload)
 
 
 def load_analytical_question_context(question_id: str) -> dict[str, Any]:
@@ -359,15 +378,26 @@ def load_analytical_question_payload(question_id: str) -> dict[str, Any]:
     if not qid:
         return {}
     resume_key = f"ai:question:{qid}"
+    search_apps = ["applied_intelligence"]
     try:
         from suite_account import load_saved_items
 
-        rows = load_saved_items(app="applied_intelligence", item_type=_CONTEXT_ITEM_TYPE, limit=50)
-        for row in rows:
-            if str(row.get("item_key") or "") == qid:
-                payload = row.get("payload")
-                if isinstance(payload, dict):
-                    return copy.deepcopy(payload)
+        for app_name in search_apps:
+            rows = load_saved_items(app=app_name, item_type=_CONTEXT_ITEM_TYPE, limit=80)
+            for row in rows:
+                if str(row.get("item_key") or "") == qid:
+                    payload = row.get("payload")
+                    if isinstance(payload, dict):
+                        return copy.deepcopy(payload)
+        for app_name in ("investment", "baseball", "nba", "music"):
+            if app_name in search_apps:
+                continue
+            rows = load_saved_items(app=app_name, item_type=_CONTEXT_ITEM_TYPE, limit=80)
+            for row in rows:
+                if str(row.get("item_key") or "") == qid:
+                    payload = row.get("payload")
+                    if isinstance(payload, dict):
+                        return copy.deepcopy(payload)
     except Exception as exc:
         log.warning("load_saved_items failed for question context: %s", exc)
     try:
@@ -417,20 +447,39 @@ def hydrate_applied_intelligence_session(st: Any, *, metrics: dict[str, Any] | N
     page = str(m.get("page") or _qp("suite_page") or "Solve a Problem").strip()
 
     ctx: dict[str, Any] = {}
+    source_state: dict[str, Any] = {}
+    hydrate_source = "none"
+
+    # Blob-first: full context by question_id before metrics/URL (avoids truncated deep links).
+    if qid:
+        blob_payload = load_analytical_question_payload(qid)
+        blob_ctx = blob_payload.get("context") if isinstance(blob_payload.get("context"), dict) else {}
+        if blob_ctx:
+            ctx = copy.deepcopy(blob_ctx)
+            hydrate_source = "question_id_blob"
+        blob_ss = blob_payload.get("source_state") if isinstance(blob_payload.get("source_state"), dict) else {}
+        if blob_ss:
+            source_state = copy.deepcopy(blob_ss)
+
+    metrics_ctx: dict[str, Any] = {}
     if isinstance(m.get("context"), dict):
-        ctx = copy.deepcopy(m["context"])
+        metrics_ctx = copy.deepcopy(m["context"])
     elif m.get("context_json"):
         try:
             parsed = json.loads(str(m["context_json"]))
             if isinstance(parsed, dict):
-                ctx = parsed
+                metrics_ctx = parsed
         except json.JSONDecodeError:
             pass
-    if not ctx and qid:
-        ctx = load_analytical_question_context(qid)
-    source_state: dict[str, Any] = {}
-    if qid:
-        source_state = load_analytical_question_source_state(qid)
+    if metrics_ctx:
+        if not ctx:
+            ctx = metrics_ctx
+            hydrate_source = "metrics"
+        else:
+            for key, val in metrics_ctx.items():
+                if key not in ctx or not ctx.get(key):
+                    ctx[key] = val
+
     if not ctx:
         raw_ctx = _qp("suite_ai_context")
         if raw_ctx:
@@ -438,6 +487,7 @@ def hydrate_applied_intelligence_session(st: Any, *, metrics: dict[str, Any] | N
                 parsed = json.loads(raw_ctx)
                 if isinstance(parsed, dict):
                     ctx = parsed
+                    hydrate_source = "url_query"
             except json.JSONDecodeError:
                 pass
 
@@ -458,6 +508,7 @@ def hydrate_applied_intelligence_session(st: Any, *, metrics: dict[str, Any] | N
         ss["_suite_ai_context"] = json.dumps(ctx, ensure_ascii=False)
     if source_state:
         ss["_suite_ai_source_state"] = copy.deepcopy(source_state)
+    ss["_suite_ai_hydrate_source"] = hydrate_source
 
 
 def _format_context_value(key: str, val: Any) -> str:
@@ -719,7 +770,13 @@ def submit_analytical_question(
         except Exception as exc:
             log.warning("record_activity failed for analytical_question: %s", exc)
     _upsert_applied_intelligence_resume(payload, action_url=action_url)
-    if not duplicate:
+    ss = payload.get("source_state")
+    refresh_blob = not duplicate or (
+        str(payload.get("source_app") or "").strip().lower() == "investment"
+        and isinstance(ss, dict)
+        and bool(ss.get("entity_params"))
+    )
+    if refresh_blob:
         _store_question_context_blob(payload)
     if session_state is not None:
         session_state["_ami_last_send"] = {
@@ -746,10 +803,17 @@ def build_submit_context(
     *,
     context_extra_builder: Callable[[], dict[str, Any] | None] | None = None,
     context_extra: dict[str, Any] | None = None,
+    question: str = "",
 ) -> dict[str, Any]:
     """Fresh context at Send time — page hooks may run after sidebar render."""
+    timing: dict[str, Any] = {}
+    t0 = time.perf_counter()
     ctx, _ = build_context_from_session(source_app, source_page, session_state)
+    ctx["source_page"] = str(source_page or "").strip()
+    timing["build_context_from_session_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+
     extra: dict[str, Any] | None = None
+    t_extra = time.perf_counter()
     if context_extra_builder is not None:
         try:
             extra = context_extra_builder()
@@ -759,6 +823,47 @@ def build_submit_context(
         extra = context_extra
     if extra:
         ctx = merge_analytical_context(ctx, extra)
+    timing["context_extra_builder_ms"] = round((time.perf_counter() - t_extra) * 1000, 1)
+
+    app_low = str(source_app or "").strip().lower()
+    q = str(question or "").strip()
+    if app_low == "music" and q:
+        try:
+            from global_active_song_state import prepare_global_active_song
+
+            prepare_global_active_song(session_state)
+            t_cache = time.perf_counter()
+            from music_ami_context import build_music_applied_math_context, build_music_send_pipeline_diagnostics
+
+            music_ctx = build_music_applied_math_context(source_page, session_state, question=q)
+            ctx = merge_analytical_context(ctx, music_ctx)
+            timing["cache_build_ms"] = round((time.perf_counter() - t_cache) * 1000, 1)
+            timing["cache_build_action"] = music_ctx.get("cache_build_action") or "built"
+            t_fin = time.perf_counter()
+            from music_ami_pages import promote_music_ami_context_at_send
+
+            page_diag = promote_music_ami_context_at_send(
+                ctx, session_state, source_page=source_page, question=q
+            )
+            timing["finalize_context_ms"] = round((time.perf_counter() - t_fin) * 1000, 1)
+            ctx["send_pipeline_diagnostics"] = build_music_send_pipeline_diagnostics(ctx, session_state)
+            if page_diag:
+                ctx["send_pipeline_diagnostics"].update(page_diag)
+            ctx["question"] = q
+            trace = {
+                "raw_question": q,
+                "coach_page": str(ctx.get("coach_page") or source_page),
+                "routing_hint": str(ctx.get("routing_hint") or ""),
+                "question_song": str(ctx.get("question_song") or ""),
+                "active_song_title": str((ctx.get("active_song") or {}).get("title") or ""),
+                "practice_focus_section": str(ctx.get("practice_focus_section") or ""),
+            }
+            session_state["_music_ami_send_trace"] = trace
+        except Exception:
+            log.exception("Music AMI send pipeline failed for %s (%s)", source_app, source_page)
+
+    timing["build_submit_context_total_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+    session_state["_ami_last_send_build_timing"] = timing
     return ctx
 
 
@@ -835,6 +940,7 @@ def render_analyze_with_applied_math_sidebar(
                 ss,
                 context_extra_builder=context_extra_builder,
                 context_extra=context,
+                question=q,
             )
             submit_source_state: dict[str, Any] | None = None
             if source_state_builder is not None:

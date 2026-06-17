@@ -9302,6 +9302,7 @@ except Exception:
     pass
 
 try:
+    from global_active_song_state import prepare_global_active_song
     from music_coach_context import (
         build_music_coach_context,
         build_source_state,
@@ -9311,6 +9312,7 @@ try:
     from music_persistent_state import force_save_music_state
     from suite_analytical_question import render_music_coach_sidebar_entry
 
+    prepare_global_active_song(st.session_state)
     sync_music_coach_workspace_page(st.session_state)
     _coach_page = resolve_coach_source_page(st.session_state)
     render_music_coach_sidebar_entry(
@@ -9694,8 +9696,12 @@ if _studio_page == "practice":
 
     try:
         from practice_state import prepare_practice_page
+        from global_active_song_state import prepare_global_active_song
+        from music_ami_context import cache_music_ami_context
 
+        prepare_global_active_song(st.session_state)
         prepare_practice_page(st.session_state)
+        cache_music_ami_context(st.session_state, coach_page="practice")
     except Exception:
         pass
     ensure_page_initialized(st.session_state, "practice")

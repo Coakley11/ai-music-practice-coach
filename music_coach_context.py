@@ -156,16 +156,21 @@ def build_source_state(page: str, session_state: dict[str, Any]) -> dict[str, An
 
 def build_music_coach_context(page: str, session_state: dict[str, Any]) -> dict[str, Any]:
     """Sidebar context summary for Music Coach send UI."""
-    coach_page = str(page or "").strip() or resolve_coach_source_page(session_state)
-    ctx = build_source_state(coach_page, session_state)
-    return {
-        "source_app": "Music",
-        "page": coach_page_display_name(coach_page),
-        "workflow": "Music practice coach",
-        "pick_key": ctx.get("entity_params", {}).get("pick_key"),
-        "instrument": session_state.get("instrument"),
-        "display_key": session_state.get("display_key"),
-    }
+    try:
+        from music_ami_context import build_music_applied_math_context
+
+        return build_music_applied_math_context(page, session_state)
+    except ImportError:
+        coach_page = str(page or "").strip() or resolve_coach_source_page(session_state)
+        ctx = build_source_state(coach_page, session_state)
+        return {
+            "source_app": "Music",
+            "page": coach_page_display_name(coach_page),
+            "workflow": "Music practice coach",
+            "pick_key": ctx.get("entity_params", {}).get("pick_key"),
+            "instrument": session_state.get("instrument"),
+            "display_key": session_state.get("display_key"),
+        }
 
 
 def _coach_page_to_studio_page(coach_page: str) -> str:
