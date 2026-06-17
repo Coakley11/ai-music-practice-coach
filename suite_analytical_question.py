@@ -871,6 +871,100 @@ def _analytical_question_ui(st: Any, *, surface: str = "sidebar") -> Any:
     return st if str(surface or "").strip().lower() == "main" else st.sidebar
 
 
+def _music_insight_render_page(source_state: dict[str, Any] | None, source_page: str) -> str:
+    if isinstance(source_state, dict):
+        widgets = source_state.get("widget_params")
+        if isinstance(widgets, dict):
+            studio = str(widgets.get("studio_page") or "").strip()
+            if studio:
+                return studio
+    return str(source_page or "").strip()
+
+
+def _music_return_context(
+    submit_ctx: dict[str, Any] | None,
+    submit_source_state: dict[str, Any] | None,
+) -> dict[str, Any]:
+    rc = dict(submit_ctx or {})
+    if isinstance(submit_source_state, dict) and submit_source_state:
+        rc["source_state"] = submit_source_state
+        widgets = submit_source_state.get("widget_params")
+        if isinstance(widgets, dict):
+            rc.setdefault("widget_params", widgets)
+    return rc
+
+
+def _stage_music_instant_insight(
+    st: Any,
+    ss: dict[str, Any],
+    *,
+    question: str,
+    source_app: str,
+    source_page: str,
+    submit_ctx: dict[str, Any],
+    submit_source_state: dict[str, Any] | None,
+    pre_payload: dict[str, Any],
+    action_url_pre: str,
+) -> bool:
+    """Try local Music Coach solve and stage an on-page insight card."""
+    try:
+        from applied_math_return_insight import (
+            SESSION_PENDING_KEY,
+            build_return_insight_payload,
+            build_submit_fallback_insight,
+            render_suite_applied_math_insight_for_page,
+            stage_pending_insight,
+        )
+        from music_ami_instant_solver import solve_instant_music_insight
+    except Exception:
+        log.exception("Music instant insight imports failed")
+        return False
+
+    solved_pair = solve_instant_music_insight(question, submit_ctx)
+    if solved_pair:
+        route, solved = solved_pair
+        insight = build_return_insight_payload(
+            question=question,
+            source_app=source_app,
+            source_page=source_page,
+            question_id=str(pre_payload.get("question_id") or ""),
+            route=route,
+            result=solved,
+            full_analysis_url=action_url_pre,
+            context=submit_ctx,
+            resume_key=str(pre_payload.get("resume_key") or ""),
+        )
+    else:
+        insight = build_submit_fallback_insight(
+            question=question,
+            source_app=source_app,
+            source_page=source_page,
+            question_id=str(pre_payload.get("question_id") or ""),
+            full_analysis_url=action_url_pre,
+            resume_key=str(pre_payload.get("resume_key") or ""),
+            reason="music_local_solver_pending",
+        )
+
+    return_context = _music_return_context(submit_ctx, submit_source_state)
+    stage_pending_insight(ss, insight, return_context=return_context)
+    ss["_ami_force_insight_render"] = True
+    ss["_ami_submit_render_insight_this_run"] = True
+    ss["_ami_last_submit_source_page"] = _music_insight_render_page(submit_source_state, source_page)
+    ss["_ami_insight_return_preserve"] = True
+
+    render_page = _music_insight_render_page(submit_source_state, source_page)
+    try:
+        render_suite_applied_math_insight_for_page(
+            st,
+            source_app=source_app,
+            source_page=render_page,
+        )
+        ss["_ami_insight_rendered_inline_after_submit"] = True
+    except Exception:
+        log.exception("inline Music Coach insight render failed for %s (%s)", source_app, source_page)
+    return bool(ss.get(SESSION_PENDING_KEY))
+
+
 def render_analyze_with_applied_math_sidebar(
     st: Any,
     *,
@@ -885,6 +979,7 @@ def render_analyze_with_applied_math_sidebar(
     session_state: dict[str, Any] | None = None,
     on_after_send: Callable[[], None] | None = None,
     surface: str = "sidebar",
+    show_heading: bool = True,
 ) -> None:
     """Question block → Command Center (sidebar by default; use surface='main' on-page)."""
     ss = session_state if session_state is not None else st.session_state
@@ -897,9 +992,10 @@ def render_analyze_with_applied_math_sidebar(
 
     is_music = str(source_app or "").strip().lower() == "music"
     if is_music:
-        ui.markdown("### Ask the Music Coach")
+        if show_heading:
+            ui.markdown("### Ask the Music Coach")
         ui.caption(
-            "Get help with practice, theory, navigation, backing tracks, karaoke, or this app."
+            "Ask a music practice question about the page/song you are viewing."
         )
     else:
         ui.markdown("### Analyze with Applied Math")
@@ -912,7 +1008,7 @@ def render_analyze_with_applied_math_sidebar(
         and _recent_duplicate_send(ss, str(last.get("question_id") or ""))
     ):
         sent_msg = (
-            "Question sent to Command Center. Open Command Center to continue with the Music Coach."
+            "Music Coach insight is ready on this page — open Command Center for the full thread."
             if is_music
             else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
         )
@@ -946,6 +1042,28 @@ def render_analyze_with_applied_math_sidebar(
                 submit_source_state = source_state_builder()
             except Exception:
                 log.exception("AMI source_state builder failed for %s (%s)", source_app, source_page)
+        pre_payload = build_question_payload(
+            source_app=source_app,
+            source_page=source_page,
+            question=q,
+            context=submit_ctx,
+            context_summary=context_summary,
+            source_state=submit_source_state,
+        )
+        action_url_pre = build_applied_math_resume_url(pre_payload)
+        insight_card_created = False
+        if is_music:
+            insight_card_created = _stage_music_instant_insight(
+                st,
+                ss,
+                question=q,
+                source_app=source_app,
+                source_page=source_page,
+                submit_ctx=submit_ctx,
+                submit_source_state=submit_source_state,
+                pre_payload=pre_payload,
+                action_url_pre=action_url_pre,
+            )
         result = submit_analytical_question(
             source_app=source_app,
             source_page=source_page,
@@ -964,9 +1082,13 @@ def render_analyze_with_applied_math_sidebar(
             else "That question was already sent recently. Open Command Center to continue in Applied Intelligence."
         )
         ok_msg = (
-            "Question sent to Command Center. Open Command Center to continue with the Music Coach."
-            if is_music
-            else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
+            "Music Coach insight is ready on this page — use Open full analysis for the deep dive."
+            if is_music and insight_card_created
+            else (
+                "Question sent to Command Center. Open Command Center to continue with the Music Coach."
+                if is_music
+                else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
+            )
         )
         if result.get("duplicate"):
             ui.info(dup_msg)
@@ -979,46 +1101,24 @@ def render_analyze_with_applied_math_sidebar(
                 log.exception("on_after_send hook failed for %s (%s)", source_app, source_page)
         st.rerun()
 
-    if surface_tag == "sidebar":
-        form_key = f"ami_form_{source_app}_{page_suffix}_{surface_tag}_{send_gen}"
-        with ui.form(key=form_key, clear_on_submit=False):
-            question = ui.text_area(
-                "Question",
-                placeholder=(
-                    music_coach_question_placeholder(source_page)
-                    if is_music
-                    else "e.g. Is this trend meaningful statistically?"
-                ),
-                height=88,
-                key=question_key,
-                label_visibility="visible",
-            )
-            submitted = ui.form_submit_button(
-                submit_label,
-                use_container_width=True,
-                type="primary",
-            )
-        if submitted:
-            _handle_submit(str(ss.get(question_key) or question or ""))
-    else:
-        question = ui.text_area(
-            "Question",
-            placeholder=(
-                music_coach_question_placeholder(source_page)
-                if is_music
-                else "e.g. Is this trend meaningful statistically?"
-            ),
-            height=88,
-            key=question_key,
-            label_visibility="visible",
-        )
-        if ui.button(
-            submit_label,
-            key=submit_key,
-            use_container_width=True,
-            type="primary",
-        ):
-            _handle_submit(str(ss.get(question_key) or question or ""))
+    question = ui.text_area(
+        "Question",
+        placeholder=(
+            music_coach_question_placeholder(source_page)
+            if is_music
+            else "e.g. Is this trend meaningful statistically?"
+        ),
+        height=88,
+        key=question_key,
+        label_visibility="visible",
+    )
+    if ui.button(
+        submit_label,
+        key=submit_key,
+        use_container_width=True,
+        type="primary",
+    ):
+        _handle_submit(str(ss.get(question_key) or question or ""))
 
     if developer_mode:
         ui.caption(f"🛠 {AMI_SIDEBAR_DEPLOY_LABEL} · {AMI_SIDEBAR_DEPLOY_VERSION}")
@@ -1037,6 +1137,7 @@ def render_applied_math_sidebar_entry(
     source_state_builder: Callable[[], dict[str, Any] | None] | None = None,
     developer_mode: bool = False,
     on_after_send: Callable[[], None] | None = None,
+    show_heading: bool = True,
     **kwargs: Any,
 ) -> None:
     """Render AMI sidebar near the top; log and surface failures in Developer Mode."""
@@ -1066,6 +1167,7 @@ def render_applied_math_sidebar_entry(
             developer_mode=developer_mode,
             session_state=ss,
             on_after_send=on_after_send,
+            show_heading=show_heading,
         )
     except Exception as exc:
         log.exception("Applied Math sidebar failed for %s (%s)", source_app, source_page)
@@ -1350,6 +1452,7 @@ def render_music_coach_sidebar_entry(
         source_state_builder=source_state_builder,
         developer_mode=developer_mode,
         on_after_send=on_after_send,
+        show_heading=False,
     )
 
 

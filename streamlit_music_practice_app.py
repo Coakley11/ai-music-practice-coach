@@ -9293,18 +9293,14 @@ st.sidebar.selectbox(
 
 sidebar_section("Music Coach", icon="🎵", tone="session")
 try:
-    from global_active_song_state import prepare_global_active_song
     from music_coach_context import (
         build_music_coach_context,
         build_source_state,
         resolve_coach_source_page,
-        sync_music_coach_workspace_page,
     )
     from music_persistent_state import force_save_music_state
     from suite_analytical_question import render_music_coach_sidebar_entry
 
-    prepare_global_active_song(st.session_state)
-    sync_music_coach_workspace_page(st.session_state)
     _coach_page = resolve_coach_source_page(st.session_state)
     render_music_coach_sidebar_entry(
         st,

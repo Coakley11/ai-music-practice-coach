@@ -25,9 +25,33 @@ _STALE_SONG_FOCUS_KEYS = (
 )
 
 _PRACTICE_INTENT_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("practice_plan", ("what should i practice", "practice next", "practice plan", "what to practice", "this week")),
+    (
+        "practice_plan",
+        (
+            "what should i practice",
+            "practice next",
+            "practice plan",
+            "what to practice",
+            "this week",
+            "how much time",
+            "how long should",
+            "minutes should",
+            "time should i spend",
+            "time on",
+            "focus on today",
+            "what should i focus",
+        ),
+    ),
+    (
+        "chord_transition",
+        ("chord change", "chord changes", "chord transition", "transition between", "improve these chords"),
+    ),
     ("section_focus", ("chorus", "verse", "bridge", "pre-chorus", "section", "drill", "loop this")),
     ("tempo_key", ("tempo", "bpm", "too fast", "too slow", "what key", "transpose", "play this in")),
+    (
+        "skill_technique",
+        ("technique", "what technique", "learn before", "what should i learn", "skill should"),
+    ),
     ("difficulty", ("too difficult", "too hard", "too easy", "my level", "difficult for", "within my level")),
     ("backing_track", ("backing track", "groove", "play along")),
     ("lyrics_cues", ("lyrics", "lyric", "when do i come in", "memorize", "cue")),

@@ -13,6 +13,7 @@ log = logging.getLogger(__name__)
 
 INSIGHT_ITEM_TYPE = "applied_math_insight"
 INSIGHT_DISMISSAL_ITEM_TYPE = "applied_math_insight_dismissal"
+AMI_INSIGHT_STORE_VERSION = "insight-store-v10"
 SESSION_PENDING_KEY = "_ami_pending_insight"
 SESSION_RETURN_PAGE_KEY = "_ami_return_page"
 SESSION_RETURN_CONTEXT_KEY = "_ami_return_context"
@@ -433,6 +434,72 @@ def build_return_insight_payload(
     )
 
 
+def build_submit_fallback_insight(
+    *,
+    question: str,
+    source_app: str,
+    source_page: str = "",
+    question_id: str = "",
+    full_analysis_url: str = "",
+    resume_key: str = "",
+    reason: str = "",
+) -> AppliedMathInsight:
+    """Stage an immediate insight card when the local music solver cannot answer yet."""
+    q = str(question or "").strip()
+    app = str(source_app or "").strip().lower()
+    page = str(source_page or "").strip()
+    qid = str(question_id or "").strip()
+    if app == "music":
+        why = (
+            "Your question reached Command Center. A detailed Music Coach answer is available via "
+            "**Open full analysis** while on-page coaching expands."
+        )
+        conclusion = "Question sent — open **full analysis** or wait for the Music Coach card to update."
+        method = "Music Coach"
+    else:
+        why = (
+            "Local solver is unavailable on this server — your question was saved and "
+            "the full Applied Math analysis opens via **Open full analysis**."
+        )
+        conclusion = "Question received — open full analysis for details."
+        method = "Applied Math"
+    if reason and reason not in ("ok", "solver_ok", "solver_unavailable", "music_local_solver_pending"):
+        why += f" ({reason})"
+    iid = _insight_id(qid or hashlib.sha256(q.encode()).hexdigest()[:12], conclusion)
+    return AppliedMathInsight(
+        insight_id=iid,
+        question_id=qid,
+        question=q,
+        source_app=app,
+        source_page=page,
+        conclusion=conclusion,
+        method=method,
+        model_name="Music Coach (full analysis)" if app == "music" else "Applied Math (full analysis)",
+        math_summary=why,
+        assumptions=[],
+        confidence="medium",
+        confidence_pct=None,
+        key_numbers={"routing_reason": reason or "fallback_insight"},
+        full_analysis_url=str(full_analysis_url or "").strip(),
+        created_at=datetime.now(timezone.utc).isoformat(),
+        resume_key=str(resume_key or "").strip(),
+    )
+
+
+def _insight_has_displayable_content(insight: dict[str, Any]) -> bool:
+    """True when an insight dict has user-visible coaching content (not a load placeholder)."""
+    if not isinstance(insight, dict):
+        return False
+    if insight.get("_ami_recovery_card"):
+        return bool(str(insight.get("question") or "").strip())
+    conclusion = str(insight.get("conclusion") or "").strip()
+    if not conclusion:
+        return False
+    app = str(insight.get("source_app") or "").strip().lower()
+    placeholder = _insight_loaded_placeholder(app or "music")
+    return conclusion != placeholder
+
+
 def build_applied_math_full_analysis_url(payload: dict[str, Any], *, base_url: str = "") -> str:
     """Deep link back into Applied Intelligence for the same question."""
     try:
@@ -551,9 +618,8 @@ def build_return_resume_key(
                 return f"trend:{pl}"
     if app == "music":
         pick = str(ent.get("pick_key") or wp.get("pick_key") or "").strip()
-        studio = str(wp.get("studio_page") or "").strip().lower()
-        coach = _normalize_music_coach_page(page)
-        if pick and (coach in {"backing", "karaoke"} or studio == "backing"):
+        studio = str(wp.get("studio_page") or "").strip()
+        if pick and (page == "karaoke" or studio == "backing" or page == "backing"):
             return f"backing:{pick}"
         if pick:
             return f"song:{pick}"
@@ -569,22 +635,21 @@ def apply_return_source_state(st: Any, app_key: str, source_state: dict[str, Any
     ss = st.session_state
     key = _normalize_app_key(app_key or source_state.get("source_app") or "")
     ss[SESSION_RETURN_CONTEXT_KEY] = dict(source_state)
-    page_raw = str(
+    page = str(
         source_state.get("source_page")
         or source_state.get("page_params", {}).get("page")
         or ""
     ).strip()
-    page = _normalize_return_page_for_app(key, page_raw) or page_raw
     if page:
         ss[SESSION_RETURN_PAGE_KEY] = page
     schedule_navigation = _should_apply_ami_return_navigation(st, key, page)
     if page and schedule_navigation:
-        _schedule_ami_return_navigation(st, key, page)
+        ss["_skip_page_restore_for"] = page
+        ss["ami_return_forced_page"] = page
         ss["active_page_source"] = "ami_return_source_state"
     elif not schedule_navigation:
         ss.pop("_skip_page_restore_for", None)
         ss.pop("_navigate_to_page", None)
-        ss.pop("_navigate_to_studio_page", None)
 
     app = key
     try:
@@ -604,12 +669,6 @@ def apply_return_source_state(st: Any, app_key: str, source_state: dict[str, Any
             from music_coach_context import apply_source_state_to_session
 
             apply_source_state_to_session(ss, source_state, schedule_navigation=schedule_navigation)
-            try:
-                from music_persistence_trace import record_ami_return_restore_trace
-
-                record_ami_return_restore_trace(st, source_state=source_state)
-            except Exception:
-                pass
     except TypeError:
         try:
             if app == "baseball":
@@ -652,13 +711,12 @@ def build_source_app_return_url(
     except Exception as exc:
         log.warning("build_source_app_return_url failed: %s", exc)
         return ""
-
-
 def store_applied_math_insight(
     insight: AppliedMathInsight | dict[str, Any],
     *,
     return_context: dict[str, Any] | None = None,
     source_state: dict[str, Any] | None = None,
+    st: Any | None = None,
 ) -> str:
     """Persist insight for retrieval on source app return."""
     data = insight.to_dict() if isinstance(insight, AppliedMathInsight) else dict(insight)
@@ -666,34 +724,108 @@ def store_applied_math_insight(
     if not iid:
         return ""
     blob = dict(data)
-    rc = dict(return_context or source_state or data.get("return_context") or data.get("source_state") or {})
-    ss = dict(source_state or data.get("source_state") or rc)
-    if rc:
-        blob["return_context"] = rc
-    if ss:
+    ss = dict(source_state) if isinstance(source_state, dict) else {}
+    if st is not None and not _source_state_has_restore_payload(ss):
+        ss = resolve_ami_return_source_state_for_store(
+            st,
+            data,
+            source_state=ss,
+            return_context=return_context,
+        )
+    elif not _source_state_has_restore_payload(ss):
+        for key in ("source_state", "return_context"):
+            candidate = data.get(key)
+            if _source_state_has_restore_payload(candidate):
+                ss = dict(candidate)
+                break
+    qid = str(
+        data.get("question_id")
+        or blob.get("question_id")
+        or (st is not None and _question_id_from_insight_or_session(st, data))
+        or ""
+    ).strip()
+    if qid and not _source_state_has_restore_payload(ss):
+        try:
+            from suite_analytical_question import load_analytical_question_source_state
+
+            loaded = load_analytical_question_source_state(qid)
+            if _source_state_has_restore_payload(loaded):
+                ss = dict(loaded)
+        except Exception:
+            pass
+    if _source_state_has_restore_payload(ss):
         blob["source_state"] = ss
-    store_app = _normalize_source_app_for_diagnostics(str(data.get("source_app") or ""), blob)
-    if store_app:
-        blob["source_app"] = store_app
-    try:
+        blob["return_context"] = ss
+    if qid:
+        blob["question_id"] = qid
+    store_exc = ""
+    store_trace = _ami_insight_store_trace(
+        insight_id=iid,
+        question_id=qid,
+        source_state=ss if isinstance(ss, dict) else {},
+        return_context_exists=_source_state_has_restore_payload(ss),
+        blob_written_success=False,
+        payload_keys=sorted(str(k) for k in blob.keys()),
+    )
+    _flatten_insight_store_diag_on_blob(blob, store_trace)
+    written_ok = False
+    write_modes: list[str] = []
+    duplicate_handled = False
+
+    def _write_insight_blobs() -> None:
+        nonlocal duplicate_handled, write_modes
         from suite_account import remember_saved_item
 
-        for app_key in dict.fromkeys(
-            [store_app, "music", "applied_intelligence"]
-            if store_app
-            else ["music", "applied_intelligence"]
+        for store_app in (
+            str(data.get("source_app") or "applied_intelligence"),
+            "applied_intelligence",
+            "investment",
         ):
-            if not app_key:
-                continue
-            remember_saved_item(
-                app_key,
+            default_title = "Applied Math insight"
+            if str(data.get("source_app") or "").strip().lower() == "investment":
+                default_title = "Applied Investment Insight"
+            write_result = remember_saved_item(
+                store_app,
                 INSIGHT_ITEM_TYPE,
                 iid,
-                title=str(data.get("conclusion") or "Applied Math insight")[:120],
+                title=str(data.get("conclusion") or default_title)[:120],
                 payload=blob,
             )
+            if isinstance(write_result, dict):
+                mode = str(write_result.get("write_mode") or "").strip()
+                if mode:
+                    write_modes.append(mode)
+                duplicate_handled |= bool(write_result.get("duplicate_handled"))
+
+    try:
+        _write_insight_blobs()
+        written_ok = True
     except Exception as exc:
+        store_exc = str(exc)
         log.warning("remember_saved_item insight failed: %s", exc)
+    store_trace["store_blob_written_success"] = written_ok
+    store_trace["store_exception"] = store_exc or None
+    store_trace["store_payload_has_source_state"] = _source_state_has_restore_payload(blob.get("source_state"))
+    store_trace["store_payload_has_question_id"] = bool(str(blob.get("question_id") or "").strip())
+    if write_modes:
+        store_trace["store_write_mode"] = write_modes[-1]
+    store_trace["store_duplicate_handled"] = duplicate_handled
+    _flatten_insight_store_diag_on_blob(blob, store_trace)
+    if written_ok:
+        try:
+            _write_insight_blobs()
+            if write_modes:
+                store_trace["store_write_mode"] = write_modes[-1]
+            store_trace["store_duplicate_handled"] = duplicate_handled
+            _flatten_insight_store_diag_on_blob(blob, store_trace)
+        except Exception as exc:
+            store_exc = str(exc)
+            store_trace["store_exception"] = store_exc
+            store_trace["store_blob_written_success"] = False
+            _flatten_insight_store_diag_on_blob(blob, store_trace)
+            log.warning("remember_saved_item insight re-write failed: %s", exc)
+    if st is not None:
+        st.session_state["_ami_insight_store_trace"] = dict(store_trace)
     try:
         from suite_activity_client import record_activity
 
@@ -711,85 +843,40 @@ def store_applied_math_insight(
 
 
 def load_applied_math_insight(insight_id: str, *, source_app: str = "") -> dict[str, Any]:
-    """Load stored insight by id."""
+    """Load stored insight by id, preferring blobs that include usable source_state."""
     iid = str(insight_id or "").strip()
     if not iid:
         return {}
-    app = _normalize_app_key(str(source_app or "").strip())
-    row = _fetch_insight_saved_row(iid, source_app=app)
-    if row:
-        return _insight_dict_from_saved_row(row, iid)
+    app = str(source_app or "").strip()
+    best: dict[str, Any] = {}
+    best_score = -1
+    seen_apps: set[str] = set()
     try:
         from suite_account import load_saved_items
 
-        app_keys = []
-        for candidate in (app, "music", "applied_intelligence", "baseball", "nba", "investment"):
-            if candidate and candidate not in app_keys:
-                app_keys.append(candidate)
-        for app_key in app_keys:
-            rows = load_saved_items(app=app_key, item_type=INSIGHT_ITEM_TYPE, limit=200)
+        for app_key in ([app] if app else []) + [
+            "applied_intelligence",
+            "investment",
+            "baseball",
+            "nba",
+        ]:
+            if app_key in seen_apps:
+                continue
+            seen_apps.add(app_key)
+            rows = load_saved_items(app=app_key, item_type=INSIGHT_ITEM_TYPE, limit=80)
             for row in rows:
-                if str(row.get("item_key") or "") == iid:
-                    return _insight_dict_from_saved_row(row, iid)
+                if str(row.get("item_key") or "") != iid:
+                    continue
+                payload = row.get("payload")
+                if not isinstance(payload, dict):
+                    continue
+                score = _insight_blob_restore_score(payload)
+                if score > best_score:
+                    best = dict(payload)
+                    best_score = score
     except Exception as exc:
         log.warning("load_applied_math_insight failed: %s", exc)
-    return {}
-
-
-def _insight_dict_from_saved_row(row: dict[str, Any], insight_id: str) -> dict[str, Any]:
-    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
-    out = dict(payload)
-    out.setdefault("insight_id", insight_id)
-    out.setdefault(
-        "source_app",
-        _normalize_source_app_for_diagnostics(
-            str(out.get("source_app") or row.get("app") or ""),
-            out,
-        ),
-    )
-    title = str(row.get("title") or "").strip()
-    if title and not out.get("conclusion"):
-        out["conclusion"] = title
-    return out
-
-
-def _fetch_insight_saved_row(insight_id: str, *, source_app: str = "") -> dict[str, Any] | None:
-    """Direct cloud lookup by insight id (exact item_key)."""
-    iid = str(insight_id or "").strip()
-    if not iid:
-        return None
-    try:
-        from suite_account import load_saved_item_by_key
-
-        apps = []
-        for candidate in (_normalize_app_key(source_app), "music", "applied_intelligence"):
-            if candidate and candidate not in apps:
-                apps.append(candidate)
-        for app_key in apps:
-            row = load_saved_item_by_key(iid, item_type=INSIGHT_ITEM_TYPE, app=app_key)
-            if isinstance(row, dict) and row.get("item_key"):
-                return row
-        row = load_saved_item_by_key(iid, item_type=INSIGHT_ITEM_TYPE, app=None)
-        if isinstance(row, dict) and row.get("item_key"):
-            return row
-    except Exception as exc:
-        log.warning("_fetch_insight_saved_row failed: %s", exc)
-    return None
-
-
-def insight_exists_in_cloud(insight_id: str, *, source_app: str = "") -> bool:
-    """True when a full insight row exists in cloud for this id."""
-    iid = str(insight_id or "").strip()
-    if not iid:
-        return False
-    row = _fetch_insight_saved_row(iid, source_app=source_app)
-    if not row:
-        return False
-    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
-    merged = _insight_dict_from_saved_row(row, iid)
-    return _insight_has_displayable_content(merged) or bool(
-        str(payload.get("conclusion") or row.get("title") or "").strip()
-    )
+    return best
 
 
 def _get_dismissed_insight_ids(st: Any) -> set[str]:
@@ -905,6 +992,339 @@ def insight_return_query_id(st: Any) -> str:
     return _query_param(st, "suite_ami_insight")
 
 
+def _source_state_has_restore_payload(state: Any) -> bool:
+    """True when a source_state dict can restore page/holdings (not empty shell)."""
+    if not isinstance(state, dict) or not state:
+        return False
+    if not str(state.get("source_app") or "").strip():
+        return False
+    ent = state.get("entity_params")
+    if isinstance(ent, dict) and ent:
+        return True
+    wp = state.get("widget_params")
+    if isinstance(wp, dict) and wp:
+        return True
+    if state.get("source_page") or state.get("page_params"):
+        return True
+    return False
+
+
+def _ami_insight_store_trace(
+    *,
+    insight_id: str,
+    question_id: str,
+    source_state: dict[str, Any],
+    return_context_exists: bool,
+    blob_written_success: bool,
+    return_link_insight_id: str = "",
+    store_exception: str = "",
+    payload_keys: list[str] | None = None,
+    store_write_mode: str = "",
+    store_duplicate_handled: bool = False,
+) -> dict[str, Any]:
+    ent = source_state.get("entity_params") if isinstance(source_state, dict) else {}
+    return {
+        "store_called": True,
+        "store_function_name_used": "store_applied_math_insight",
+        "store_module_file_used": __file__,
+        "store_version": AMI_INSIGHT_STORE_VERSION,
+        "store_insight_id": insight_id or None,
+        "store_question_id": question_id or None,
+        "store_source_state_exists": _source_state_has_restore_payload(source_state),
+        "store_source_state_keys": (
+            sorted(str(k) for k in source_state.keys()) if isinstance(source_state, dict) and source_state else None
+        ),
+        "store_source_state_has_holdings_df": bool(isinstance(ent, dict) and ent.get("holdings_df")),
+        "store_source_state_holdings_fingerprint": (
+            str(ent.get("holdings_fingerprint") or "").strip() or None if isinstance(ent, dict) else None
+        ),
+        "store_return_context_exists": return_context_exists,
+        "store_blob_written_success": blob_written_success,
+        "store_payload_keys": sorted(str(k) for k in (payload_keys or [])) or None,
+        "store_payload_has_source_state": _source_state_has_restore_payload(source_state),
+        "store_payload_has_question_id": bool(str(question_id or "").strip()),
+        "store_payload_has_ami_store_trace": True,
+        "store_exception": str(store_exception or "").strip() or None,
+        "store_write_mode": str(store_write_mode or "").strip() or None,
+        "store_duplicate_handled": bool(store_duplicate_handled),
+        "return_link_insight_id": str(return_link_insight_id or insight_id or "").strip() or None,
+    }
+
+
+def _flatten_insight_store_diag_on_blob(blob: dict[str, Any], trace: dict[str, Any]) -> None:
+    """Copy store diagnostics onto blob top-level so Investment return can read them."""
+    blob["_ami_store_trace"] = dict(trace)
+    blob["store_version"] = AMI_INSIGHT_STORE_VERSION
+    for key, value in trace.items():
+        if key.startswith("store_") or key == "return_link_insight_id":
+            blob[key] = value
+
+
+def _insight_blob_restore_score(payload: dict[str, Any]) -> int:
+    """Rank stored insight payloads — prefer blobs with usable source_state."""
+    if not isinstance(payload, dict) or not payload:
+        return -1
+    score = 0
+    if str(payload.get("insight_id") or "").strip():
+        score += 1
+    if str(payload.get("question_id") or "").strip():
+        score += 1
+    for key in ("source_state", "return_context"):
+        if _source_state_has_restore_payload(payload.get(key)):
+            score += 4
+            break
+    if isinstance(payload.get("_ami_store_trace"), dict) and payload.get("_ami_store_trace"):
+        score += 2
+    if str(payload.get("store_version") or "") == AMI_INSIGHT_STORE_VERSION:
+        score += 3
+    if payload.get("store_blob_written_success") is True:
+        score += 1
+    return score
+
+
+def _question_id_from_insight_or_session(st: Any, data: dict[str, Any]) -> str:
+    qid = str(data.get("question_id") or "").strip()
+    if qid:
+        return qid
+    try:
+        return str(st.session_state.get("_suite_ai_question_id") or "").strip()
+    except Exception:
+        return ""
+
+
+def prepare_ami_insight_store_context(
+    st: Any,
+    *,
+    source_app: str,
+    source_page: str,
+    question: str,
+    context: dict[str, Any] | None = None,
+    question_id: str = "",
+    session_source_state: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], str]:
+    """
+    Build question payload + resolved source_state before insight store.
+
+    Ensures question_id and question blob exist for Investment return apply path.
+    """
+    from suite_analytical_question import (
+        build_question_payload,
+        load_analytical_question_source_state,
+        persist_question_context_blob,
+    )
+
+    ctx = dict(context or {})
+    ss: dict[str, Any] = dict(session_source_state) if isinstance(session_source_state, dict) else {}
+    session_qid = str(question_id or "").strip()
+    if not session_qid:
+        try:
+            session_qid = str(st.session_state.get("_suite_ai_question_id") or "").strip()
+        except Exception:
+            session_qid = ""
+    if not session_qid:
+        try:
+            session_qid = _query_param(st, "suite_ai_question_id")
+        except Exception:
+            session_qid = ""
+
+    if session_qid and not _source_state_has_restore_payload(ss):
+        try:
+            loaded = load_analytical_question_source_state(session_qid)
+            if _source_state_has_restore_payload(loaded):
+                ss = dict(loaded)
+        except Exception:
+            pass
+
+    payload = build_question_payload(
+        source_app=source_app,
+        source_page=source_page,
+        question=question,
+        context=ctx,
+        source_state=ss if _source_state_has_restore_payload(ss) else None,
+    )
+    qid = session_qid or str(payload.get("question_id") or "").strip()
+    payload["question_id"] = qid
+    if qid:
+        try:
+            st.session_state["_suite_ai_question_id"] = qid
+        except Exception:
+            pass
+
+    if qid and not _source_state_has_restore_payload(ss):
+        try:
+            loaded = load_analytical_question_source_state(qid)
+            if _source_state_has_restore_payload(loaded):
+                ss = dict(loaded)
+        except Exception:
+            pass
+
+    payload_ss = payload.get("source_state")
+    if _source_state_has_restore_payload(payload_ss) and not _source_state_has_restore_payload(ss):
+        ss = dict(payload_ss)
+
+    if _source_state_has_restore_payload(ss):
+        payload["source_state"] = dict(ss)
+        try:
+            st.session_state["_suite_ai_source_state"] = dict(ss)
+        except Exception:
+            pass
+        if qid:
+            try:
+                persist_question_context_blob(payload)
+            except Exception as exc:
+                log.warning("persist_question_context_blob failed: %s", exc)
+
+    return payload, ss, qid
+
+
+def persist_suite_return_insight(
+    st: Any,
+    *,
+    question: str,
+    source_app: str,
+    source_page: str,
+    context: dict[str, Any],
+    route: Any,
+    result: Any,
+) -> dict[str, Any]:
+    """Single live AMI path: prepare context, store insight blob, render return button."""
+    out: dict[str, Any] = {
+        "store_called": True,
+        "store_function_name_used": "persist_suite_return_insight",
+        "store_module_file_used": __file__,
+        "store_version": AMI_INSIGHT_STORE_VERSION,
+    }
+    try:
+        session_source_state = st.session_state.get("_suite_ai_source_state")
+        if not isinstance(session_source_state, dict):
+            session_source_state = None
+        payload, session_source_state, qid = prepare_ami_insight_store_context(
+            st,
+            source_app=source_app,
+            source_page=source_page,
+            question=question,
+            context=context,
+            session_source_state=session_source_state,
+        )
+        resume_key = f"ai:question:{qid}" if qid else ""
+        full_url = build_applied_math_full_analysis_url(payload)
+        insight = build_return_insight_payload(
+            question=question,
+            source_app=source_app,
+            source_page=source_page,
+            question_id=qid,
+            route=route,
+            result=result,
+            resume_key=resume_key,
+            full_analysis_url=full_url,
+            context=context,
+        )
+        insight_data = insight.to_dict() if hasattr(insight, "to_dict") else dict(insight)
+        if qid:
+            insight_data["question_id"] = qid
+
+        resolved_ss = resolve_ami_return_source_state_for_store(
+            st,
+            insight_data,
+            source_state=session_source_state,
+            return_context=context,
+        )
+        store_applied_math_insight(
+            insight_data,
+            return_context=resolved_ss or None,
+            source_state=resolved_ss or None,
+            st=st,
+        )
+        stage_pending_insight(st, insight, return_context=resolved_ss or context)
+        st.markdown("---")
+        render_return_to_source_button(
+            st,
+            insight_data,
+            resume_key=resume_key,
+            return_context=context,
+            source_state=resolved_ss or session_source_state,
+        )
+        trace = dict(st.session_state.get("_ami_insight_store_trace") or {})
+        out.update(trace)
+        st.session_state["_ami_last_insight_store_trace"] = dict(out)
+    except Exception as exc:
+        out["store_exception"] = str(exc)
+        log.exception("persist_suite_return_insight failed")
+        st.session_state["_ami_last_insight_store_trace"] = dict(out)
+    return out
+
+
+def resolve_ami_return_source_state_for_store(
+    st: Any,
+    insight_data: dict[str, Any],
+    *,
+    source_state: dict[str, Any] | None = None,
+    return_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Resolve page-restore source_state for insight store + return URL.
+
+    Question-send snapshot (``load_analytical_question_source_state``) is authoritative
+    over partial session/context when present.
+    """
+    data = dict(insight_data or {})
+    app = str(data.get("source_app") or "").strip().lower()
+    ss: dict[str, Any] = dict(source_state) if _source_state_has_restore_payload(source_state) else {}
+
+    try:
+        session_ss = dict(st.session_state.get("_suite_ai_source_state") or {})
+    except Exception:
+        session_ss = {}
+    if _source_state_has_restore_payload(session_ss) and not _source_state_has_restore_payload(ss):
+        ss = session_ss
+
+    for blob_key in ("source_state", "return_context"):
+        blob_ss = data.get(blob_key)
+        if _source_state_has_restore_payload(blob_ss):
+            ss = dict(blob_ss)
+            break
+
+    qid = _question_id_from_insight_or_session(st, data)
+    if qid:
+        try:
+            from suite_analytical_question import load_analytical_question_source_state
+
+            loaded = load_analytical_question_source_state(qid)
+            if _source_state_has_restore_payload(loaded):
+                ss = dict(loaded)
+        except Exception:
+            pass
+
+    rc = dict(return_context) if isinstance(return_context, dict) else {}
+    if not _source_state_has_restore_payload(ss) and app == "investment" and rc:
+        page = str(data.get("source_page") or rc.get("page") or "").strip()
+        hfp = str(rc.get("holdings_fingerprint") or "").strip()
+        ent: dict[str, Any] = {}
+        if hfp:
+            ent["holdings_fingerprint"] = hfp
+        if page or ent:
+            ss = {
+                "source_app": app,
+                "source_page": page,
+                "entity_params": ent,
+                "widget_params": {},
+                "page_params": {"page": page, "tab": page},
+            }
+
+    if ss:
+        ss.setdefault("source_app", app or ss.get("source_app") or "investment")
+        page = str(data.get("source_page") or ss.get("source_page") or "").strip()
+        if page:
+            ss.setdefault("source_page", page)
+            pp = ss.get("page_params")
+            if not isinstance(pp, dict):
+                pp = {}
+                ss["page_params"] = pp
+            pp.setdefault("page", page)
+            pp.setdefault("tab", page)
+    return ss
+
+
 _AMI_RETURN_QP_KEYS: tuple[str, ...] = (
     "suite_ami_insight",
     "suite_page",
@@ -922,137 +1342,6 @@ def _normalize_app_key(app_key: str) -> str:
     if key == "math":
         return "applied_intelligence"
     return key
-
-
-def _normalize_source_app_for_diagnostics(source_app: str, insight: dict[str, Any] | None = None) -> str:
-    try:
-        from suite_analytical_question import normalize_source_app_id
-    except Exception:
-        normalize_source_app_id = lambda x, ctx=None: str(x or "").strip().lower()  # noqa: E731
-    ctx = None
-    if isinstance(insight, dict):
-        ctx = insight.get("return_context") or insight.get("source_state")
-        if not isinstance(ctx, dict):
-            ctx = insight.get("context") if isinstance(insight.get("context"), dict) else None
-    return normalize_source_app_id(str(source_app or ""), ctx if isinstance(ctx, dict) else None)
-
-
-def _music_studio_page_for_scope(st: Any, current_page: str = "") -> str:
-    ss = st.session_state
-    return str(
-        current_page
-        or ss.get("studio_page")
-        or ss.get("_music_coach_workspace_page")
-        or ""
-    ).strip().lower()
-
-
-def _current_page_for_insight_scope(st: Any, app_key: str, current_page: str = "") -> str:
-    key = _normalize_app_key(app_key)
-    if key == "music":
-        return _music_studio_page_for_scope(st, current_page)
-    return str(
-        current_page
-        or st.session_state.get("active_page")
-        or st.session_state.get("main_sidebar_page")
-        or ""
-    ).strip()
-
-
-def _normalize_return_page_for_app(app_key: str, page: str) -> str:
-    key = _normalize_app_key(app_key)
-    raw = str(page or "").strip()
-    if not raw:
-        return ""
-    if key == "music":
-        return _normalize_music_coach_page(raw) or raw.lower()
-    return _normalize_insight_page(raw)
-
-
-def _schedule_ami_return_navigation(st: Any, app_key: str, return_page: str) -> None:
-    """Schedule page navigation for AMI return (music uses studio_page ids)."""
-    ss = st.session_state
-    key = _normalize_app_key(app_key)
-    page = _normalize_return_page_for_app(key, return_page)
-    if not page:
-        return
-    ss["_skip_page_restore_for"] = page
-    ss["ami_return_forced_page"] = page
-    ss["ami_return_force_active_page"] = True
-    ss["active_page_source"] = "ami_return_query"
-    if key == "music":
-        try:
-            from music_coach_context import _coach_page_to_studio_page
-
-            studio_target = _coach_page_to_studio_page(page)
-        except Exception:
-            studio_target = page if page in {"practice", "backing", "custom", "picker", "creative"} else "practice"
-        ss["_navigate_to_studio_page"] = studio_target
-        ss.pop("_navigate_to_page", None)
-    else:
-        ss["_navigate_to_page"] = page
-
-
-def _ami_return_pages_match(
-    app_key: str,
-    return_page: str,
-    current_page: str,
-    *,
-    insight: dict[str, Any] | None = None,
-    st: Any | None = None,
-) -> bool:
-    key = _normalize_app_key(app_key)
-    if key == "music":
-        coach = _normalize_music_coach_page(return_page)
-        if not coach and isinstance(insight, dict):
-            coach = _normalize_music_coach_page(_resolve_insight_source_page(insight))
-        current_studio = _music_studio_page_for_scope(st, current_page) if st is not None else str(current_page or "").strip().lower()
-        if not coach or not current_studio:
-            return False
-        if isinstance(insight, dict):
-            allowed = _music_insight_allowed_studio_pages(insight)
-            if allowed:
-                return current_studio in allowed
-        allowed = _MUSIC_INSIGHT_STUDIO_BY_COACH.get(coach, frozenset({coach}))
-        return current_studio in allowed
-    ret = _normalize_insight_page(return_page)
-    current = _normalize_insight_page(current_page)
-    return bool(ret and current and ret == current)
-
-
-def _refresh_placeholder_insight_from_cloud(st: Any, app_key: str) -> bool:
-    """Replace URL-hydrate placeholder with cloud-backed insight when available."""
-    pending = _pending_insight_valid(st)
-    if not pending or _insight_has_displayable_content(pending):
-        return False
-    iid = str(pending.get("insight_id") or insight_return_query_id(st) or "").strip()
-    if not iid:
-        return False
-    st.session_state["_ami_insight_cloud_reload_attempted"] = True
-    loaded = load_applied_math_insight(iid, source_app=app_key)
-    st.session_state["_ami_insight_cloud_found"] = bool(
-        loaded and _insight_has_displayable_content(loaded)
-    )
-    if not loaded or not _insight_has_displayable_content(loaded):
-        merged = _merge_insight_with_recovery_context(st, pending, app_key)
-        if _insight_has_displayable_content(merged):
-            st.session_state[SESSION_PENDING_KEY] = merged
-            st.session_state["_ami_insight_recovered_from_context"] = True
-            st.session_state["_ami_insight_cloud_found"] = False
-            return True
-        st.session_state["_ami_insight_cloud_miss_reason"] = (
-            "Insight id found in session but full insight not found in cloud."
-        )
-        return False
-    page = _normalize_return_page_for_app(app_key, str(loaded.get("source_page") or pending.get("source_page") or ""))
-    if page:
-        loaded["source_page"] = page
-    st.session_state[SESSION_PENDING_KEY] = loaded
-    st.session_state[SESSION_RETURN_PAGE_KEY] = page or loaded.get("source_page") or ""
-    st.session_state["_ami_hydrated_insight_id"] = iid
-    st.session_state[SESSION_PERSIST_INSIGHT_DIRTY] = True
-    st.session_state.pop("_ami_insight_cloud_miss_reason", None)
-    return True
 
 
 def _ami_resume_consumed_flag(app_key: str) -> str:
@@ -1101,16 +1390,20 @@ def maybe_consume_ami_return_on_page_match(
     *,
     current_page: str = "",
 ) -> bool:
-    """Consume AMI return once the user is on the source page (displayable insight only)."""
+    """Consume AMI return once the user is on the source page (even if insight card skipped)."""
     key = _normalize_app_key(app_key)
     if ami_resume_consumed(st, key):
         return False
-    pending = _pending_insight_valid(st)
-    if pending and not _insight_has_displayable_content(pending):
-        return False
-    ret = str(st.session_state.get(SESSION_RETURN_PAGE_KEY) or "")
-    current = _current_page_for_insight_scope(st, key, current_page)
-    if not _ami_return_pages_match(key, ret, current, insight=pending, st=st):
+    ret = _normalize_insight_page(str(st.session_state.get(SESSION_RETURN_PAGE_KEY) or ""))
+    current = _normalize_insight_page(
+        str(
+            current_page
+            or st.session_state.get("active_page")
+            or st.session_state.get("main_sidebar_page")
+            or ""
+        )
+    )
+    if not ret or not current or ret != current:
         return False
     if not (
         ami_return_navigation_active(st, key)
@@ -1187,7 +1480,6 @@ def consume_ami_return_resume(st: Any, app_key: str) -> bool:
     st.session_state.pop("_suite_resume_insight_hydration_only", None)
     st.session_state.pop(f"_suite_resume_launch_{key}", None)
     st.session_state.pop("_navigate_to_page", None)
-    st.session_state.pop("_navigate_to_studio_page", None)
     st.session_state.pop("_skip_page_restore_for", None)
     st.session_state.pop("_suite_cloud_target_page", None)
     st.session_state.pop("ami_return_forced_page", None)
@@ -1198,92 +1490,34 @@ def consume_ami_return_resume(st: Any, app_key: str) -> bool:
     return True
 
 
-def local_ami_insight_should_preserve(st: Any) -> bool:
-    """True while a pending insight should survive workspace restore (until dismiss)."""
-    pending = st.session_state.get(SESSION_PENDING_KEY)
-    if not isinstance(pending, dict) or not pending:
-        return False
-    iid = str(pending.get("insight_id") or "").strip()
-    if iid and _insight_is_dismissed(st, iid):
-        return False
-    if _pending_insight_valid(st):
-        return True
-    return bool(iid or pending.get("_ami_recovery_card"))
-
-
-def _finish_ami_return_after_insight_render(
-    st: Any,
-    app_key: str,
-    *,
-    current_page: str = "",
-) -> None:
-    """Release AMI return steering after insight or recovery card renders on source page."""
-    key = _normalize_app_key(app_key)
-    maybe_consume_ami_return_on_page_match(st, key, current_page=current_page)
-    consume_ami_return_resume(
-        st,
-        str(st.session_state.get("_suite_persist_app_id") or key or "baseball"),
-    )
-    try:
-        from music_persistent_state import force_save_music_state
-
-        force_save_music_state(st, reason="insight_persist")
-    except Exception:
-        pass
-
-
 def _record_insight_return_diagnostics(st: Any, *, phase: str, insight: dict[str, Any] | None = None) -> None:
     """?dev=1 trace for AMI return → source app insight card."""
     ss = st.session_state
     url_iid = insight_return_query_id(st)
     pending = insight if isinstance(insight, dict) else _pending_insight_valid(st)
-    app_raw = str(ss.get("_suite_persist_app_id") or (pending or {}).get("source_app") or "baseball")
-    app_norm = _normalize_source_app_for_diagnostics(app_raw, pending if isinstance(pending, dict) else None)
-    scope_page = _current_page_for_insight_scope(st, app_norm)
     scope = insight_page_scope_decision(
-        app_norm,
-        scope_page,
+        str(ss.get("_suite_persist_app_id") or pending.get("source_app") or "baseball"),
+        str(ss.get("active_page") or ""),
         pending,
     ) if pending else {}
     ss["_ami_insight_return_phase"] = phase
     ss["insight_return_detected"] = bool(url_iid)
-    ss["ami_return_detected"] = bool(url_iid or ss.get("insight_return_detected"))
-    ss["source_app_raw"] = app_raw
-    ss["source_app_normalized"] = app_norm
-    ss["source_page_raw"] = pending.get("source_page") if pending else scope.get("source_page_raw")
-    ss["source_page_normalized"] = scope.get("source_page_normalized")
-    ss["insight_source_page_raw"] = ss["source_page_raw"]
-    ss["insight_source_page_normalized"] = ss["source_page_normalized"]
-    ss["current_studio_page"] = scope.get("current_studio_page") or (
-        _music_studio_page_for_scope(st) if app_norm == "music" else None
+    ss["insight_source_page_raw"] = (
+        pending.get("source_page") if pending else scope.get("source_page_raw")
     )
-    ss["final_page"] = (
-        ss.get("studio_page") if app_norm == "music" else ss.get("active_page")
-    )
+    ss["insight_source_page_normalized"] = scope.get("source_page_normalized")
     ss["current_page_normalized"] = scope.get("current_page_normalized")
     ss["should_render_insight_on_page"] = scope.get("should_render_insight_on_page")
     ss["render_skip_reason"] = scope.get("render_skip_reason")
     ss["hydrate_attempted"] = ss.get("_ami_insight_hydrate_attempted")
     ss["hydrate_success"] = ss.get("_ami_insight_hydrate_success")
     ss["hydrate_source"] = ss.get("_ami_insight_hydrate_source")
-    ss["pending_insight_exists"] = bool(
-        pending and (pending.get("conclusion") or pending.get("question"))
-        and _insight_has_displayable_content(pending)
-    )
+    ss["pending_insight_exists"] = bool(pending.get("conclusion") or pending.get("question"))
     ss["insight_card_rendered"] = bool(ss.get("_ami_insight_card_rendered"))
-    app_key = app_norm
+    app_key = str(ss.get("_suite_persist_app_id") or (pending or {}).get("source_app") or "baseball")
     consumed = ami_resume_consumed(st, app_key)
     url_params = _active_ami_return_query_param_keys(st)
-    try:
-        ss["return_url_params"] = {k: _query_param(st, k) for k in url_params if _query_param(st, k)}
-    except Exception:
-        ss["return_url_params"] = {}
-    forced_page = str(
-        ss.get("_navigate_to_studio_page")
-        or ss.get("_navigate_to_page")
-        or ss.get("ami_return_forced_page")
-        or ""
-    )
+    forced_page = str(ss.get("_navigate_to_page") or ss.get("ami_return_forced_page") or "")
     ss["ami_resume_consumed"] = consumed
     ss["ami_url_params_present"] = url_params
     ss["query_params_present"] = url_params
@@ -1432,9 +1666,6 @@ def hydrate_applied_math_insight_for_session(st: Any, app_key: str) -> bool:
 
     pending = _pending_insight_valid(st)
     if pending:
-        if not _insight_has_displayable_content(pending):
-            _refresh_placeholder_insight_from_cloud(st, key)
-            pending = _pending_insight_valid(st)
         url_iid = insight_return_query_id(st)
         pending_iid = str(pending.get("insight_id") or "").strip()
         if url_iid and pending_iid and pending_iid != url_iid and not ami_resume_consumed(st, key):
@@ -1485,40 +1716,20 @@ def render_insight_sync_debug(st: Any) -> None:
     """Developer panel: insight hydration + render trace."""
     ss = st.session_state
     pending = ss.get(SESSION_PENDING_KEY) if isinstance(ss.get(SESSION_PENDING_KEY), dict) else {}
-    active_iid = str(
-        pending.get("insight_id")
-        or ss.get("_ami_insight_active_id")
-        or ss.get("_ami_hydrated_insight_id")
-        or ""
-    ).strip()
-    app_norm = _normalize_source_app_for_diagnostics(
-        str(ss.get("_suite_persist_app_id") or pending.get("source_app") or "music"),
-        pending,
-    )
-    cloud_exists_by_id = False
-    if active_iid:
-        try:
-            cloud_exists_by_id = insight_exists_in_cloud(active_iid, source_app=app_norm)
-        except Exception:
-            cloud_exists_by_id = False
-    cloud_exists = cloud_exists_by_id
-    if not cloud_exists:
-        try:
-            latest = load_latest_applied_math_insight_for_app(
-                str(ss.get("_suite_persist_app_id") or "baseball"),
-                exclude_ids=set(),
-            )
-            cloud_exists = bool(latest.get("insight_id"))
-        except Exception:
-            cloud_exists = False
+    cloud_exists = False
+    try:
+        latest = load_latest_applied_math_insight_for_app(
+            str(ss.get("_suite_persist_app_id") or "baseball"),
+            exclude_ids=set(),
+        )
+        cloud_exists = bool(latest.get("insight_id"))
+    except Exception:
+        cloud_exists = False
 
     cloud_rows = {
-        "insight_id": active_iid or pending.get("insight_id"),
+        "insight_id": pending.get("insight_id") or ss.get("_ami_insight_active_id"),
         "question_id": pending.get("question_id") or ss.get("_ami_insight_active_question_id"),
         "insight_exists_cloud": cloud_exists,
-        "insight_exists_cloud_by_id": cloud_exists_by_id,
-        "insight_cloud_miss_reason": ss.get("_ami_insight_cloud_miss_reason"),
-        "insight_render_mode": ss.get("_ami_insight_render_mode"),
         "insight_loaded_from_cloud": ss.get("_ami_insight_loaded_from_cloud"),
         "insight_loaded_from_url": ss.get("_ami_insight_loaded_from_url"),
         "insight_timestamp": pending.get("created_at"),
@@ -1530,9 +1741,12 @@ def render_insight_sync_debug(st: Any) -> None:
         "last_loaded_insight_id": ss.get("_ami_hydrated_insight_id"),
     }
     scope = ss.get("_ami_insight_scope_decision")
-    scope_page = _current_page_for_insight_scope(st, app_norm)
     if not isinstance(scope, dict):
-        scope = insight_page_scope_decision(app_norm, scope_page, pending)
+        scope = insight_page_scope_decision(
+            str(ss.get("_suite_persist_app_id") or "baseball"),
+            str(ss.get("active_page") or ""),
+            pending,
+        )
     rc = ss.get(SESSION_RETURN_CONTEXT_KEY)
     if not isinstance(rc, dict):
         rc = pending.get("return_context") or pending.get("source_state") or {}
@@ -1540,26 +1754,17 @@ def render_insight_sync_debug(st: Any) -> None:
     rc_filters = rc.get("filter_params") if isinstance(rc.get("filter_params"), dict) else {}
     decision_rows = {
         "insight_return_detected": ss.get("insight_return_detected"),
-        "source_app_raw": ss.get("source_app_raw") or pending.get("source_app"),
-        "source_app_normalized": ss.get("source_app_normalized") or app_norm,
-        "source_page_raw": ss.get("source_page_raw") or scope.get("source_page_raw"),
-        "source_page_normalized": ss.get("source_page_normalized") or scope.get("source_page_normalized"),
         "insight_source_page_raw": ss.get("insight_source_page_raw") or scope.get("source_page_raw"),
         "insight_source_page_normalized": ss.get("insight_source_page_normalized") or scope.get("source_page_normalized"),
-        "current_studio_page": ss.get("current_studio_page") or scope.get("current_studio_page") or ss.get("studio_page"),
         "current_page_normalized": ss.get("current_page_normalized") or scope.get("current_page_normalized"),
         "should_render_insight_on_page": ss.get("should_render_insight_on_page", scope.get("should_render_insight_on_page")),
         "render_skip_reason": ss.get("render_skip_reason") or scope.get("render_skip_reason"),
         "hydrate_attempted": ss.get("hydrate_attempted", ss.get("_ami_insight_hydrate_attempted")),
         "hydrate_success": ss.get("hydrate_success", ss.get("_ami_insight_hydrate_success")),
         "hydrate_source": ss.get("hydrate_source", ss.get("_ami_insight_hydrate_source")),
-        "pending_insight_exists": ss.get(
-            "pending_insight_exists",
-            bool(pending.get("conclusion") or pending.get("question"))
-            and _insight_has_displayable_content(pending),
-        ),
+        "pending_insight_exists": ss.get("pending_insight_exists", bool(pending.get("conclusion"))),
         "insight_card_rendered": ss.get("insight_card_rendered", ss.get("_ami_insight_card_rendered")),
-        "return_url_params": ss.get("return_url_params"),
+        "return_context_source_page": rc.get("source_page"),
         "return_context_has_valuation_filters": any(str(k).startswith("value_") for k in rc_filters),
         "return_context_has_projections_filters": any(str(k).startswith("ml_") for k in rc_filters),
         "return_context_has_leaderboards_filters": any(str(k).startswith("leaders_") for k in rc_filters),
@@ -1586,8 +1791,6 @@ def render_insight_sync_debug(st: Any) -> None:
         "render_attempted": ss.get("_ami_insight_render_attempted"),
         "render_success": ss.get("_ami_insight_render_success"),
         "render_skipped_reason": ss.get("_ami_insight_render_skipped_reason"),
-        "ami_insight_startup_error": ss.get("_ami_insight_startup_error"),
-        "ami_insight_render_error": ss.get("_ami_insight_render_error"),
     }
 
     with st.sidebar.expander("Insight sync trace", expanded=True):
@@ -1611,11 +1814,8 @@ def render_insight_sync_debug(st: Any) -> None:
             if v is not None and v != "":
                 st.text(f"{k}: {v}")
         st.markdown("**FINAL**")
-        final_page = ss.get("studio_page") if app_norm == "music" else ss.get("active_page")
-        st.text(f"final_page: {final_page}")
-        st.text(
-            f"final_has_insight_card: {bool(pending.get('conclusion') and _insight_has_displayable_content(pending))}"
-        )
+        st.text(f"final_page: {ss.get('active_page')}")
+        st.text(f"final_has_insight_card: {bool(pending.get('conclusion'))}")
 
 
 def _resolve_return_source_state(
@@ -1702,10 +1902,12 @@ def commit_ami_return_page_restore(st: Any, app_key: str) -> bool:
 def stage_pending_insight(st: Any, insight: AppliedMathInsight | dict[str, Any], *, return_context: dict[str, Any] | None = None) -> None:
     """Write insight into Streamlit session for AMI return button."""
     data = insight.to_dict() if isinstance(insight, AppliedMathInsight) else dict(insight)
+    if return_context:
+        rc = dict(return_context)
+        data["return_context"] = rc
+        st.session_state[SESSION_RETURN_CONTEXT_KEY] = rc
     st.session_state[SESSION_PENDING_KEY] = data
     st.session_state[SESSION_RETURN_PAGE_KEY] = data.get("source_page") or ""
-    if return_context:
-        st.session_state[SESSION_RETURN_CONTEXT_KEY] = dict(return_context)
 
 
 def apply_ami_insight_from_query(st: Any, app_key: str, *, force: bool = False) -> bool:
@@ -1751,9 +1953,8 @@ def apply_ami_insight_from_query(st: Any, app_key: str, *, force: bool = False) 
             "source_app": app_key,
         }
 
-    page = _normalize_return_page_for_app(
-        key,
-        _query_param(st, "suite_page") or str(insight.get("source_page") or ""),
+    page = _normalize_insight_page(
+        _query_param(st, "suite_page") or str(insight.get("source_page") or "")
     )
     if page:
         insight["source_page"] = page
@@ -1776,14 +1977,14 @@ def apply_ami_insight_from_query(st: Any, app_key: str, *, force: bool = False) 
     elif st.session_state.get(SESSION_RETURN_PAGE_KEY):
         ret_page = st.session_state[SESSION_RETURN_PAGE_KEY]
         if _should_apply_ami_return_navigation(st, key, ret_page):
-            _schedule_ami_return_navigation(st, key, ret_page)
+            st.session_state["_navigate_to_page"] = ret_page
+            st.session_state["_skip_page_restore_for"] = ret_page
+            st.session_state["ami_return_forced_page"] = ret_page
+            st.session_state["ami_return_force_active_page"] = True
+            st.session_state["active_page_source"] = "ami_return_query"
         else:
             st.session_state.pop("_navigate_to_page", None)
-            st.session_state.pop("_navigate_to_studio_page", None)
             st.session_state.pop("ami_return_force_active_page", None)
-
-    if not _insight_has_displayable_content(insight if isinstance(insight, dict) else {}):
-        _refresh_placeholder_insight_from_cloud(st, key)
 
     st.session_state["_ami_hydrated_insight_id"] = iid
     st.session_state[SESSION_PERSIST_INSIGHT_DIRTY] = True
@@ -1820,11 +2021,6 @@ def dismiss_applied_math_insight(st: Any, *, app_key: str = "") -> None:
         st.session_state[SESSION_DISMISSED_AT_KEY] = meta
         persist_insight_dismissal_to_cloud(source_app, iid, dismissed_at=dismissed_at)
     st.session_state[SESSION_PERSIST_INSIGHT_DIRTY] = True
-    if ami_return_navigation_active(st, source_app or st.session_state.get("_suite_persist_app_id") or "music"):
-        consume_ami_return_resume(
-            st,
-            _normalize_app_key(source_app or st.session_state.get("_suite_persist_app_id") or "music"),
-        )
 
 
 def clear_pending_insight(st: Any) -> None:
@@ -1851,200 +2047,13 @@ def _insight_loaded_placeholder(app_key: str) -> str:
     return "Applied Math insight loaded."
 
 
-def _insight_has_displayable_content(insight: dict[str, Any]) -> bool:
-    """Skip URL-hydrate placeholder cards until real question/conclusion is available."""
-    if insight.get("_ami_recovery_card"):
-        return True
-    conclusion = str(insight.get("conclusion") or "").strip()
-    question = str(insight.get("question") or "").strip()
-    if not conclusion and not question:
-        return False
-    app = str(insight.get("source_app") or "")
-    placeholder = _insight_loaded_placeholder(app)
-    if conclusion == placeholder:
-        return False
-    return True
-
-
-def _is_placeholder_only_insight(insight: dict[str, Any]) -> bool:
-    if not insight:
-        return False
-    if _insight_has_displayable_content(insight):
-        return False
-    conclusion = str(insight.get("conclusion") or "").strip()
-    question = str(insight.get("question") or "").strip()
-    if not conclusion and not question:
-        return bool(insight.get("insight_id"))
-    app = str(insight.get("source_app") or "")
-    placeholder = _insight_loaded_placeholder(app)
-    return conclusion == placeholder or (not question and bool(conclusion))
-
-
-def _resolve_insight_question(st: Any, insight: dict[str, Any]) -> str:
-    q = str(insight.get("question") or "").strip()
-    if q:
-        return q
-    qid = str(
-        insight.get("question_id")
-        or _query_param(st, "suite_ai_question_id")
-        or ""
-    ).strip()
-    if qid:
-        try:
-            from suite_analytical_question import load_analytical_question_payload
-
-            payload = load_analytical_question_payload(qid)
-            ctx = payload.get("context") if isinstance(payload.get("context"), dict) else {}
-            q = str(ctx.get("question") or payload.get("question") or "").strip()
-            if q:
-                return q
-        except Exception:
-            pass
-    for container_key in (SESSION_RETURN_CONTEXT_KEY,):
-        container = st.session_state.get(container_key)
-        if isinstance(container, dict):
-            q = str(container.get("question") or "").strip()
-            if q:
-                return q
-    last = st.session_state.get("_ami_last_send")
-    if isinstance(last, dict):
-        q = str(last.get("question") or "").strip()
-        if q:
-            return q
-    return ""
-
-
-def _merge_insight_with_recovery_context(st: Any, insight: dict[str, Any], app_key: str) -> dict[str, Any]:
-    """Best-effort merge of question/source metadata when cloud payload is missing."""
-    merged = dict(insight)
-    q = _resolve_insight_question(st, merged)
-    if q and not merged.get("question"):
-        merged["question"] = q
-    qid = str(
-        merged.get("question_id")
-        or _query_param(st, "suite_ai_question_id")
-        or ""
-    ).strip()
-    if qid and not merged.get("question_id"):
-        merged["question_id"] = qid
-    page = _normalize_return_page_for_app(
-        app_key,
-        str(
-            merged.get("source_page")
-            or st.session_state.get(SESSION_RETURN_PAGE_KEY)
-            or _query_param(st, "suite_page")
-            or ""
-        ),
-    )
-    if page:
-        merged["source_page"] = page
-    merged["source_app"] = _normalize_source_app_for_diagnostics(
-        str(merged.get("source_app") or app_key),
-        merged,
-    )
-    if q and not _insight_has_displayable_content(merged):
-        merged["conclusion"] = (
-            "Your Music Coach answer is not available in cloud storage yet. "
-            "Use **Open full analysis** below or retry loading."
-            if _is_music_insight_app(app_key, merged)
-            else "Insight answer is not available in cloud storage yet. Retry loading or open full analysis."
-        )
-        merged["_ami_recovery_card"] = True
-    return merged
-
-
-def _applied_intelligence_return_url(insight: dict[str, Any]) -> str:
-    qid = str(insight.get("question_id") or "").strip()
-    if not qid:
-        return str(insight.get("full_analysis_url") or "").strip()
-    try:
-        from suite_deep_links import build_resume_action_url
-
-        return build_resume_action_url(
-            "applied_intelligence",
-            resume_key=f"ai:question:{qid}",
-            page="Solve a Problem",
-            metrics={"question_id": qid, "dedupe_fingerprint": qid},
-        )
-    except Exception:
-        return str(insight.get("full_analysis_url") or "").strip()
-
-
-def render_insight_recovery_panel(
-    st: Any,
-    insight: dict[str, Any],
-    *,
-    app_key: str,
-    cloud_miss: bool = False,
-) -> bool:
-    """Visible fallback when full insight payload is unavailable."""
-    merged = _merge_insight_with_recovery_context(st, insight, app_key)
-    q = str(merged.get("question") or "").strip()
-    conclusion = str(merged.get("conclusion") or "").strip()
-    if _is_placeholder_only_insight(merged):
-        conclusion = ""
-    if not q and not conclusion:
-        conclusion = (
-            "Music Coach insight could not be loaded."
-            if _is_music_insight_app(app_key, merged)
-            else "Applied Math insight could not be loaded."
-        )
-    iid = str(merged.get("insight_id") or "").strip()
-
-    with st.container(key=MUSIC_COACH_INSIGHT_PANEL_KEY, border=True):
-        st.markdown(f"#### {_insight_panel_title(merged)}")
-        if q:
-            st.markdown(f"**Question:** *{q}*")
-        st.markdown(f"**Conclusion:** {conclusion}")
-        if cloud_miss and iid:
-            st.session_state["_ami_insight_cloud_miss_reason"] = (
-                "Insight id found in session but full insight not found in cloud."
-            )
-            if bool(st.session_state.get("developer_mode")):
-                st.warning(
-                    "Insight id found in session but full insight not found in cloud."
-                )
-                st.caption(f"active_insight: `{iid}`")
-        url = _applied_intelligence_return_url(merged)
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            if url:
-                st.link_button("Open full analysis →", url, use_container_width=True)
-        with c2:
-            if st.button("Retry load", key="ami_insight_retry_load", use_container_width=True):
-                if _refresh_placeholder_insight_from_cloud(st, app_key):
-                    st.rerun()
-        with c3:
-            dismiss_label = (
-                "Dismiss coach insight"
-                if _is_music_insight_app(str(merged.get("source_app") or ""), merged)
-                else "Dismiss insight"
-            )
-            if st.button(dismiss_label, key="ami_insight_dismiss_recovery", use_container_width=True):
-                dismiss_applied_math_insight(st, app_key=app_key)
-                st.rerun()
-    st.session_state[SESSION_PENDING_KEY] = merged
-    st.session_state["_ami_insight_render_mode"] = "recovery"
-    return True
-    """Skip URL-hydrate placeholder cards until real question/conclusion is available."""
-    conclusion = str(insight.get("conclusion") or "").strip()
-    question = str(insight.get("question") or "").strip()
-    if not conclusion and not question:
-        return False
-    app = str(insight.get("source_app") or "")
-    placeholder = _insight_loaded_placeholder(app)
-    if conclusion == placeholder and not question:
-        return False
-    return True
-
-
 def render_applied_math_insight_panel(st: Any) -> bool:
     """Display-only insight card on source app pages. Returns True if rendered."""
     insight = _pending_insight_valid(st)
-    if not insight or not _insight_has_displayable_content(insight):
+    if not insight or not insight.get("conclusion"):
         return False
 
-    with st.container(key=MUSIC_COACH_INSIGHT_PANEL_KEY, border=True):
+    with st.container(border=True):
         st.markdown(f"#### {_insight_panel_title(insight)}")
         q = str(insight.get("question") or "").strip()
         if q:
@@ -2085,70 +2094,25 @@ def render_suite_applied_math_insight_for_page(
     source_app: str,
     source_page: str,
 ) -> bool:
-    """Render insight card below quick nav when scope matches (no empty placeholders)."""
+    """Render insight card when pending insight matches this page (source apps)."""
     st.session_state["_ami_insight_render_attempted"] = True
+    maybe_consume_ami_return_on_page_match(st, source_app, current_page=source_page)
     insight = _pending_insight_valid(st)
     if not insight:
         st.session_state["_ami_insight_render_skipped_reason"] = "no pending insight"
         st.session_state["_ami_insight_render_success"] = False
-        st.session_state["_ami_insight_card_rendered"] = False
-        _record_insight_return_diagnostics(st, phase="render_no_pending")
         return False
-
-    app_key = _normalize_source_app_for_diagnostics(source_app, insight)
-    scope_page = (
-        _music_studio_page_for_scope(st, source_page)
-        if app_key == "music"
-        else str(source_page or "").strip()
-    )
-    scope = insight_page_scope_decision(app_key, scope_page, insight)
+    scope = insight_page_scope_decision(source_app, source_page, insight)
     st.session_state["_ami_insight_scope_decision"] = scope
     _record_insight_return_diagnostics(st, phase="render_check", insight=insight)
     if not scope.get("should_render_insight_on_page"):
         st.session_state["_ami_insight_render_skipped_reason"] = (
             scope.get("render_skip_reason")
-            or f"page mismatch (current={scope_page!r}, insight={insight.get('source_page')!r})"
+            or f"page mismatch (current={source_page!r}, insight={insight.get('source_page')!r})"
         )
         st.session_state["_ami_insight_render_success"] = False
         st.session_state["_ami_insight_card_rendered"] = False
         return False
-
-    if not _insight_has_displayable_content(insight):
-        if app_key == "music":
-            _refresh_placeholder_insight_from_cloud(st, app_key)
-            insight = _pending_insight_valid(st)
-        if not insight or not _insight_has_displayable_content(insight):
-            cloud_miss = bool(
-                st.session_state.get("_ami_insight_cloud_miss_reason")
-                or (
-                    insight
-                    and str(insight.get("insight_id") or "").strip()
-                    and not insight_exists_in_cloud(
-                        str(insight.get("insight_id") or ""),
-                        source_app=app_key,
-                    )
-                )
-            )
-            ok = render_insight_recovery_panel(
-                st,
-                insight or {},
-                app_key=app_key,
-                cloud_miss=cloud_miss,
-            )
-            st.session_state["_ami_insight_render_success"] = ok
-            st.session_state["_ami_insight_card_rendered"] = ok
-            if ok:
-                st.session_state.pop("_ami_insight_render_skipped_reason", None)
-                _finish_ami_return_after_insight_render(
-                    st,
-                    app_key,
-                    current_page=scope_page,
-                )
-            else:
-                st.session_state["_ami_insight_render_skipped_reason"] = "recovery panel failed"
-            _record_insight_return_diagnostics(st, phase="render_recovery", insight=insight)
-            return ok
-
     ok = render_applied_math_insight_panel(st)
     st.session_state["_ami_insight_render_success"] = ok
     st.session_state["_ami_insight_card_rendered"] = ok
@@ -2156,10 +2120,9 @@ def render_suite_applied_math_insight_for_page(
         st.session_state["_ami_insight_render_skipped_reason"] = "panel render failed"
     else:
         st.session_state.pop("_ami_insight_render_skipped_reason", None)
-        _finish_ami_return_after_insight_render(
+        consume_ami_return_resume(
             st,
-            app_key,
-            current_page=scope_page,
+            str(st.session_state.get("_suite_persist_app_id") or source_app or "baseball"),
         )
     _record_insight_return_diagnostics(st, phase="render_done", insight=insight)
     return ok
@@ -2175,7 +2138,7 @@ def render_return_to_source_button(
 ) -> None:
     """AMI button: return insight to originating source app."""
     data = insight.to_dict() if isinstance(insight, AppliedMathInsight) else dict(insight)
-    app = _normalize_source_app_for_diagnostics(str(data.get("source_app") or ""), data)
+    app = str(data.get("source_app") or "").strip().lower()
     if not app or app in ("unknown", "applied_intelligence", "math"):
         return
 
@@ -2186,15 +2149,13 @@ def render_return_to_source_button(
 
     label = source_app_label(app)
 
-    ss = dict(source_state or {})
-    if not ss:
-        try:
-            ss = dict(st.session_state.get("_suite_ai_source_state") or {})
-        except Exception:
-            ss = {}
-    if not ss and return_context and isinstance(return_context.get("widget_params"), dict):
-        ss = dict(return_context)
-    if not ss and return_context:
+    ss = resolve_ami_return_source_state_for_store(
+        st,
+        data,
+        source_state=source_state if isinstance(source_state, dict) else None,
+        return_context=return_context,
+    )
+    if not _source_state_has_restore_payload(ss) and return_context:
         page = _normalize_insight_page(
             str(data.get("source_page") or return_context.get("page") or "")
         )
@@ -2232,14 +2193,6 @@ def render_return_to_source_button(
             "widget_params": dict(return_context.get("widget_params") or {}),
             "page_params": {"page": page},
         }
-    qid = str(data.get("question_id") or "").strip()
-    if qid and not ss:
-        try:
-            from suite_analytical_question import load_analytical_question_source_state
-
-            ss = load_analytical_question_source_state(qid)
-        except Exception:
-            pass
 
     blob_data = dict(data)
     page = _normalize_insight_page(str(data.get("source_page") or ss.get("source_page") or ""))
@@ -2247,17 +2200,26 @@ def render_return_to_source_button(
         blob_data["source_page"] = page
         if ss and not ss.get("source_page"):
             ss["source_page"] = page
-    if ss:
-        blob_data["source_state"] = ss
-        blob_data["return_context"] = ss
+    qid = str(blob_data.get("question_id") or _question_id_from_insight_or_session(st, blob_data) or "").strip()
+    if qid:
+        blob_data["question_id"] = qid
 
     rk = str(resume_key or build_return_resume_key(blob_data, source_state=ss) or "").strip()
-    store_applied_math_insight(blob_data, return_context=ss or return_context, source_state=ss)
+    link_iid = str(blob_data.get("insight_id") or "").strip()
+    store_applied_math_insight(blob_data, return_context=ss or None, source_state=ss or None, st=st)
     url = build_source_app_return_url(
         blob_data,
         resume_key=rk,
         metrics=metrics_for_source_app_return({**blob_data, "source_state": ss, "return_context": ss or {}}),
     )
+    if st is not None and link_iid:
+        trace = st.session_state.get("_ami_insight_store_trace")
+        if not isinstance(trace, dict):
+            trace = {}
+        trace = dict(trace)
+        trace["return_link_insight_id"] = link_iid
+        st.session_state["_ami_insight_store_trace"] = trace
+        st.session_state["return_link_insight_id"] = link_iid
     if not url:
         st.caption(f"Return link unavailable for {label}.")
         return
