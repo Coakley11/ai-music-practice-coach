@@ -168,7 +168,7 @@ def init_developer_mode_from_query(st: Any) -> None:
                 if is_developer_workspace(st=st):
                     st.session_state["developer_mode"] = True
             except ImportError:
-                st.session_state["developer_mode"] = True
+                pass
 
     except Exception:
 
