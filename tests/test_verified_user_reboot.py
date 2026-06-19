@@ -12,7 +12,7 @@ from songs.user_lyrics_runtime import hydrate_user_lyrics_session
 def test_verified_chart_and_lyrics_survive_catalog_reload(tmp_path, monkeypatch):
     overrides_file = tmp_path / "user_chart_overrides.json"
     content_file = tmp_path / "user_song_content.json"
-    monkeypatch.setattr(uo, "OVERRIDES_PATH", overrides_file)
+    monkeypatch.setattr(uo, "overrides_path", lambda workspace_id=None: overrides_file)
     monkeypatch.setattr(usc, "USER_CONTENT_PATH", content_file)
 
     sections = {"Verse": ["Gmaj7", "D", "Em", "C"]}
@@ -109,7 +109,7 @@ def test_library_resolve_prefers_picker_when_title_collides():
 def test_chart_editor_save_reload_end_to_end(tmp_path, monkeypatch):
     """Simulate edit → save verified → reboot → reopen (disk + merge)."""
     overrides_file = tmp_path / "user_chart_overrides.json"
-    monkeypatch.setattr(uo, "OVERRIDES_PATH", overrides_file)
+    monkeypatch.setattr(uo, "overrides_path", lambda workspace_id=None: overrides_file)
 
     from songs.verified_user_save import save_verified_chart
 

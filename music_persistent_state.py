@@ -106,6 +106,15 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _active_workspace_id(st: Any) -> str:
+    try:
+        from suite_workspace import get_active_workspace_id
+
+        return get_active_workspace_id(st)
+    except Exception:
+        return "daniel"
+
+
 def get_music_device_id(st: Any) -> str:
     """Stable per-install device id (persisted under data/music_device_id.txt)."""
     return _get_device_id(st)
@@ -1153,6 +1162,7 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
         "updated_at": _utc_now_iso(),
         "device_id": _get_device_id(st),
         "save_reason": save_reason or "autosave",
+        "workspace_id": _active_workspace_id(st),
         "page": coach_page or studio_page,
         "studio_page": studio_page,
         "pick_key": active_song_meta.get("pick_key") or (core or {}).get("pick_key"),

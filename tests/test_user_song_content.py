@@ -67,7 +67,7 @@ def test_user_verified_marks_chart_override(tmp_path, monkeypatch):
     content_path = tmp_path / "user_song_content.json"
     chart_path = tmp_path / "user_chart_overrides.json"
     monkeypatch.setattr(usc, "USER_CONTENT_PATH", content_path)
-    monkeypatch.setattr("song_catalog.user_overrides.OVERRIDES_PATH", chart_path)
+    monkeypatch.setattr("song_catalog.user_overrides.overrides_path", lambda workspace_id=None: chart_path)
 
     state = _State()
     slug = song_lyrics_slug("Verify Me", "Artist")

@@ -53,9 +53,16 @@ def finalize_suite_resume_launch(
 
 def apply_suite_resume_launch(st: Any, app_key: str) -> bool:
     """
-    Map ?suite_resume= & ?suite_page= into session state (once per session).
-    Returns True when query params were applied.
+    Initialize workspace profile and map ?suite_resume= & ?suite_page= into session state.
+    Returns True when resume query params were applied.
     """
+    try:
+        from suite_workspace import init_suite_workspace
+
+        init_suite_workspace(st)
+    except ImportError:
+        pass
+
     flag = f"_suite_resume_launch_{app_key}"
     if st.session_state.get(flag):
         return False

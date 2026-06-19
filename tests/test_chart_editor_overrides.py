@@ -67,7 +67,7 @@ def test_collect_draft_uses_bar_widgets_not_stale_quick_edit(monkeypatch):
 def test_save_and_reload_user_verified_override(tmp_path, monkeypatch):
     """Save as user verified writes disk and applies on catalog reload."""
     overrides_file = tmp_path / "user_chart_overrides.json"
-    monkeypatch.setattr(uo, "OVERRIDES_PATH", overrides_file)
+    monkeypatch.setattr(uo, "overrides_path", lambda workspace_id=None: overrides_file)
 
     sections = {"Verse": ["Dm", "G", "Am", "F"], "Chorus": ["F", "C", "G", "Am"]}
     uo.save_user_override(
@@ -116,7 +116,7 @@ def test_save_and_reload_user_verified_override(tmp_path, monkeypatch):
 def test_user_verified_and_corrected_share_same_storage(tmp_path, monkeypatch):
     """Both save buttons persist the same way; only override_status differs."""
     overrides_file = tmp_path / "user_chart_overrides.json"
-    monkeypatch.setattr(uo, "OVERRIDES_PATH", overrides_file)
+    monkeypatch.setattr(uo, "overrides_path", lambda workspace_id=None: overrides_file)
 
     uo.save_user_override(
         title="Status Test",

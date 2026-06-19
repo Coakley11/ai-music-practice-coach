@@ -29,6 +29,25 @@ _TABLE_STATE = "suite_app_current_state"
 _TABLE_RESUME = "suite_resume_items"
 _TABLE_SAVED = "suite_saved_items"
 _TABLE_SETTINGS = "suite_user_settings"
+_SAVED_ITEM_CONFLICT_COLS = "user_id,app,item_type,item_key"
+_FULL_SESSION_KEY = "full_session"
+
+
+def _merge_state_metrics(app_key: str, incoming: dict[str, Any] | None) -> dict[str, Any]:
+    """Shallow-merge metrics; preserve ``full_session`` when incoming omits it."""
+    new_metrics = dict(incoming or {})
+    try:
+        existing = load_current_states().get(app_key) or {}
+        prior = existing.get("metrics")
+        if not isinstance(prior, dict) or not prior:
+            return new_metrics
+        merged = dict(prior)
+        merged.update(new_metrics)
+        if _FULL_SESSION_KEY not in new_metrics and _FULL_SESSION_KEY in prior:
+            merged[_FULL_SESSION_KEY] = prior[_FULL_SESSION_KEY]
+        return merged
+    except Exception:
+        return new_metrics
 
 
 def _now_iso() -> str:
@@ -84,6 +103,26 @@ def normalize_app_key(app: str) -> str:
     if cleaned == "math":
         return "applied_intelligence"
     return cleaned
+
+
+def _scoped_resume_app(app: str) -> str:
+    """Workspace-scoped cloud key for resume rows (Daniel keeps legacy unscoped)."""
+    app_key = normalize_app_key(app)
+    try:
+        from suite_workspace import scoped_cloud_app_id
+
+        return scoped_cloud_app_id(app_key)
+    except Exception:
+        return app_key
+
+
+def _workspace_resume_app_keys() -> list[str]:
+    try:
+        from suite_workspace import scoped_cloud_app_id
+
+        return [scoped_cloud_app_id(app) for app in sorted(ACTIVE_APP_KEYS)]
+    except Exception:
+        return [normalize_app_key(app) for app in sorted(ACTIVE_APP_KEYS)]
 
 
 def _scoped_user_id() -> str:
@@ -190,7 +229,7 @@ def save_current_state(
         "app": app_key,
         "page": page or "",
         "summary": summary or "",
-        "metrics": metrics or {},
+        "metrics": _merge_state_metrics(app_key, metrics),
         "updated_at": _now_iso(),
     }
     uid = _cloud_user_id()
@@ -212,12 +251,13 @@ def upsert_resume_item(
     subtitle: str = "",
     action_url: str = "",
 ) -> None:
-    app_key = normalize_app_key(app)
+    logical_app = normalize_app_key(app)
+    app_key = _scoped_resume_app(app)
     key = str(item_key or "").strip()
     title_clean = str(title or "").strip()
     if not app_key or not key or not title_clean:
         return
-    if app_key not in ACTIVE_APP_KEYS:
+    if logical_app not in ACTIVE_APP_KEYS:
         return
     body: dict[str, Any] = {
         "app": app_key,
@@ -240,7 +280,7 @@ def upsert_resume_item(
 
 
 def invalidate_resume_item(app: str, item_key: str) -> None:
-    app_key = normalize_app_key(app)
+    app_key = _scoped_resume_app(app)
     key = str(item_key or "").strip()
     if not app_key or not key:
         return
@@ -257,7 +297,7 @@ def invalidate_resume_item(app: str, item_key: str) -> None:
 
 
 def invalidate_app_resume_items(app: str) -> None:
-    app_key = normalize_app_key(app)
+    app_key = _scoped_resume_app(app)
     if not app_key:
         return
     params: dict[str, str] = {"app": f"eq.{app_key}"}
@@ -343,7 +383,10 @@ def load_current_states() -> dict[str, dict[str, Any]]:
     return out
 
 
-def load_active_resume_items(limit: int = 8) -> list[dict[str, Any]]:
+def load_active_resume_items(limit: int = 8, *, app: str | None = None) -> list[dict[str, Any]]:
+    app_keys = [_scoped_resume_app(app)] if app else _workspace_resume_app_keys()
+    if not app_keys:
+        return []
     rows = _request(
         "GET",
         _TABLE_RESUME,
@@ -353,6 +396,7 @@ def load_active_resume_items(limit: int = 8) -> list[dict[str, Any]]:
             "valid": "eq.true",
             "order": "updated_at.desc",
             "limit": str(limit),
+            "app": f"in.({','.join(app_keys)})",
         },
         prefer="return=representation",
     )
@@ -372,6 +416,11 @@ def load_active_resume_items(limit: int = 8) -> list[dict[str, Any]]:
     ]
 
 
+def _is_duplicate_key_error(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return "409" in str(exc) or "duplicate key" in msg or "unique constraint" in msg
+
+
 def upsert_saved_item(
     app: str,
     item_type: str,
@@ -379,28 +428,62 @@ def upsert_saved_item(
     *,
     title: str,
     payload: dict[str, Any] | None = None,
-) -> None:
+) -> dict[str, Any]:
+    """
+    Idempotent write for ``suite_saved_items``.
+
+    Uses PostgREST upsert on ``(user_id, app, item_type, item_key)``; falls back to
+  PATCH when a duplicate-key 409 still occurs (older PostgREST / missing on_conflict).
+    """
     app_key = normalize_app_key(app)
     key = str(item_key or "").strip()
     title_clean = str(title or "").strip()
     itype = str(item_type or "item").strip() or "item"
     if not app_key or not key or not title_clean:
-        return
-    _request(
-        "POST",
-        _TABLE_SAVED,
-        json_body={
-            "user_id": _scoped_user_id(),
-            "app": app_key,
-            "item_type": itype,
-            "item_key": key,
-            "title": title_clean,
-            "payload": payload or {},
-            "valid": True,
-            "updated_at": _now_iso(),
-        },
-        prefer="resolution=merge-duplicates,return=minimal",
-    )
+        return {"write_mode": "skipped", "duplicate_handled": False}
+    uid = _scoped_user_id()
+    row_body = {
+        "user_id": uid,
+        "app": app_key,
+        "item_type": itype,
+        "item_key": key,
+        "title": title_clean,
+        "payload": payload or {},
+        "valid": True,
+        "updated_at": _now_iso(),
+    }
+    patch_body = {
+        "title": title_clean,
+        "payload": payload or {},
+        "valid": True,
+        "updated_at": _now_iso(),
+    }
+    patch_params = {
+        "user_id": f"eq.{uid}",
+        "app": f"eq.{app_key}",
+        "item_type": f"eq.{itype}",
+        "item_key": f"eq.{key}",
+    }
+    try:
+        _request(
+            "POST",
+            _TABLE_SAVED,
+            params={"on_conflict": _SAVED_ITEM_CONFLICT_COLS},
+            json_body=row_body,
+            prefer="resolution=merge-duplicates,return=minimal",
+        )
+        return {"write_mode": "upsert", "duplicate_handled": False}
+    except RuntimeError as exc:
+        if not _is_duplicate_key_error(exc):
+            raise
+        _request(
+            "PATCH",
+            _TABLE_SAVED,
+            params=patch_params,
+            json_body=patch_body,
+            prefer="return=minimal",
+        )
+        return {"write_mode": "update", "duplicate_handled": True}
 
 
 def invalidate_saved_item(app: str, item_type: str, item_key: str) -> None:
@@ -462,46 +545,6 @@ def load_saved_items(
     return out
 
 
-def load_saved_item_by_key(
-    item_key: str,
-    *,
-    item_type: str | None = None,
-    app: str | None = None,
-) -> dict[str, Any] | None:
-    """Fetch one saved item row by exact item_key (not limited to recent N)."""
-    key = str(item_key or "").strip()
-    if not key:
-        return None
-    params: dict[str, str] = {
-        "select": "app,item_type,item_key,title,payload,updated_at",
-        "user_id": f"eq.{_scoped_user_id()}",
-        "item_key": f"eq.{key}",
-        "valid": "eq.true",
-        "limit": "1",
-    }
-    if app:
-        params["app"] = f"eq.{normalize_app_key(app)}"
-    if item_type:
-        params["item_type"] = f"eq.{item_type}"
-    rows = _request("GET", _TABLE_SAVED, params=params, prefer="return=representation")
-    if not isinstance(rows, list) or not rows:
-        return None
-    row = rows[0]
-    if not isinstance(row, dict):
-        return None
-    payload = row.get("payload")
-    if not isinstance(payload, dict):
-        payload = {}
-    return {
-        "app": str(row.get("app") or ""),
-        "item_type": str(row.get("item_type") or ""),
-        "item_key": str(row.get("item_key") or ""),
-        "title": str(row.get("title") or ""),
-        "payload": payload,
-        "updated_at": str(row.get("updated_at") or "")[:19],
-    }
-
-
 def save_user_settings(app: str, settings: dict[str, Any]) -> None:
     app_key = str(app or "_global").strip() or "_global"
     _request(
@@ -550,6 +593,17 @@ def record_activity(
     action_url: str = "",
 ) -> None:
     append_event(app, event, page=page, metrics=metrics)
+    # Applied-math insight events must not replace metrics.full_session (Test D portfolio).
+    if str(event or "").strip() == "applied_math_insight":
+        if resume_key and resume_title:
+            upsert_resume_item(
+                app,
+                resume_key,
+                title=resume_title,
+                subtitle=resume_subtitle,
+                action_url=action_url,
+            )
+        return
     if summary or page or metrics:
         save_current_state(app, page=page, summary=summary, metrics=metrics)
     if resume_key and resume_title:

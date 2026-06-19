@@ -5881,24 +5881,27 @@ def practice_text(level, instrument=None, sections=None, focus=None, *, groove_o
     return base
 
 def load_logs():
+    from music_workspace_paths import music_data_path
 
-    if DATA_FILE.exists():
-
+    data_file = music_data_path("practice_history")
+    if data_file.exists():
         try:
             return json.loads(
-                DATA_FILE.read_text(
+                data_file.read_text(
                     encoding="utf-8"
                 )
             )
-
         except Exception:
             return []
-
     return []
 
-def save_logs(logs):
 
-    DATA_FILE.write_text(
+def save_logs(logs):
+    from music_workspace_paths import music_data_path
+
+    data_file = music_data_path("practice_history")
+    data_file.parent.mkdir(parents=True, exist_ok=True)
+    data_file.write_text(
         json.dumps(logs, indent=2),
         encoding="utf-8"
     )

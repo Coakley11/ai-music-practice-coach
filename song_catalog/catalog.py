@@ -211,8 +211,8 @@ _CACHE_DISK_REV: tuple[str, str] | None = None
 
 def _user_disk_revision() -> tuple[str, str]:
     """Invalidate in-process catalog cache when user override files change on disk."""
-    from .user_overrides import OVERRIDES_PATH
-    from .user_song_content import USER_CONTENT_PATH
+    from .user_overrides import overrides_path
+    from .user_song_content import user_content_path
 
     def _mtime_ns(path) -> str:
         try:
@@ -220,7 +220,7 @@ def _user_disk_revision() -> tuple[str, str]:
         except OSError:
             return "0"
 
-    return _mtime_ns(OVERRIDES_PATH), _mtime_ns(USER_CONTENT_PATH)
+    return _mtime_ns(overrides_path()), _mtime_ns(user_content_path())
 
 
 def load_song_catalog():

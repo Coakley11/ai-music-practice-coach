@@ -9,10 +9,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-OVERRIDES_PATH = Path(__file__).resolve().parent.parent / "data" / "user_chart_overrides.json"
-
 USER_CORRECTED = "user_corrected"
 USER_VERIFIED = "user_verified"
+
+
+def overrides_path(workspace_id: str | None = None) -> Path:
+    from music_workspace_paths import music_data_path
+
+    return music_data_path("user_chart_overrides", workspace_id)
+
+
+# Backward compat for tests/tools that monkeypatch this name.
+OVERRIDES_PATH = overrides_path()
 
 
 def override_storage_key(title: str, artist: str) -> str:
@@ -25,17 +33,19 @@ def _utc_now_iso() -> str:
 
 def overrides_disk_revision() -> str:
     """Revision token for catalog cache invalidation (mtime of overrides file)."""
+    path = overrides_path()
     try:
-        return str(OVERRIDES_PATH.stat().st_mtime_ns)
+        return str(path.stat().st_mtime_ns)
     except OSError:
         return "0"
 
 
 def load_overrides_document() -> dict[str, Any]:
-    if not OVERRIDES_PATH.is_file():
+    path = overrides_path()
+    if not path.is_file():
         return {"version": 1, "overrides": {}}
     try:
-        raw = json.loads(OVERRIDES_PATH.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {"version": 1, "overrides": {}}
     if not isinstance(raw, dict):
@@ -46,11 +56,12 @@ def load_overrides_document() -> dict[str, Any]:
 
 
 def save_overrides_document(doc: dict[str, Any]) -> None:
-    OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    path = overrides_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(doc, indent=2, ensure_ascii=False)
-    tmp = OVERRIDES_PATH.with_suffix(".json.tmp")
+    tmp = path.with_suffix(".json.tmp")
     tmp.write_text(payload + "\n", encoding="utf-8")
-    tmp.replace(OVERRIDES_PATH)
+    tmp.replace(path)
 
 
 def get_user_override(title: str, artist: str) -> dict[str, Any] | None:

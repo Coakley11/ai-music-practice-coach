@@ -7,15 +7,25 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-PERFORMANCE_HISTORY_FILE = Path("ai_performance_history.json")
-LEGACY_ANALYSIS_FILE = Path("analysis_history.json")
-LEGACY_MISSION_FILE = Path("mission_analysis_history.json")
+from music_workspace_paths import music_data_path
 
 SOURCE_METRICS_UPLOAD = "Metrics & AI Upload Analysis"
 SOURCE_UPLOAD = "Upload Analysis"
 SOURCE_MULTITRACK = "Multitrack Analysis"
 SOURCE_BACKING = "Backing Track Practice"
 SOURCE_ENSEMBLE = "Ensemble / Multitrack"
+
+
+def _performance_history_path() -> Path:
+    return music_data_path("ai_performance_history")
+
+
+def _legacy_analysis_path() -> Path:
+    return music_data_path("analysis_history")
+
+
+def _legacy_mission_path() -> Path:
+    return music_data_path("mission_analysis_history")
 
 
 def _criteria_labels_from_ids(ids: list[str]) -> list[str]:
@@ -145,10 +155,11 @@ def build_performance_record(
 
 
 def _legacy_analysis_rows() -> list[dict[str, Any]]:
-    if not LEGACY_ANALYSIS_FILE.exists():
+    legacy_path = _legacy_analysis_path()
+    if not legacy_path.is_file():
         return []
     try:
-        data = json.loads(LEGACY_ANALYSIS_FILE.read_text(encoding="utf-8"))
+        data = json.loads(legacy_path.read_text(encoding="utf-8"))
         rows = data if isinstance(data, list) else []
     except Exception:
         return []
@@ -166,10 +177,11 @@ def _legacy_analysis_rows() -> list[dict[str, Any]]:
 
 
 def _legacy_mission_rows() -> list[dict[str, Any]]:
-    if not LEGACY_MISSION_FILE.exists():
+    legacy_path = _legacy_mission_path()
+    if not legacy_path.is_file():
         return []
     try:
-        data = json.loads(LEGACY_MISSION_FILE.read_text(encoding="utf-8"))
+        data = json.loads(legacy_path.read_text(encoding="utf-8"))
         rows = data if isinstance(data, list) else []
     except Exception:
         return []
@@ -230,9 +242,10 @@ def _dedupe_records(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def load_performance_history() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    if PERFORMANCE_HISTORY_FILE.exists():
+    history_path = _performance_history_path()
+    if history_path.exists():
         try:
-            data = json.loads(PERFORMANCE_HISTORY_FILE.read_text(encoding="utf-8"))
+            data = json.loads(history_path.read_text(encoding="utf-8"))
             if isinstance(data, list):
                 rows = data
         except Exception:
@@ -246,7 +259,9 @@ def load_performance_history() -> list[dict[str, Any]]:
 
 
 def save_performance_history(entries: list[dict[str, Any]]) -> None:
-    PERFORMANCE_HISTORY_FILE.write_text(
+    path = _performance_history_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         json.dumps(entries[-120:], indent=2),
         encoding="utf-8",
     )

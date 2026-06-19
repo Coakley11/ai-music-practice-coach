@@ -10,9 +10,14 @@ from typing import Any
 
 from song_catalog.user_overrides import USER_VERIFIED, override_storage_key
 
-USER_CONTENT_PATH = (
-    Path(__file__).resolve().parent.parent / "data" / "user_song_content.json"
-)
+
+def user_content_path(workspace_id: str | None = None) -> Path:
+    from music_workspace_paths import music_data_path
+
+    return music_data_path("user_song_content", workspace_id)
+
+
+USER_CONTENT_PATH = user_content_path()
 
 CONTENT_MY_VERSION = "my_version"
 CONTENT_USER_VERIFIED = "user_verified"
@@ -24,10 +29,11 @@ def _utc_now_iso() -> str:
 
 
 def load_content_document() -> dict[str, Any]:
-    if not USER_CONTENT_PATH.is_file():
+    path = user_content_path()
+    if not path.is_file():
         return {"version": 1, "songs": {}}
     try:
-        raw = json.loads(USER_CONTENT_PATH.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {"version": 1, "songs": {}}
     if not isinstance(raw, dict):
@@ -38,11 +44,12 @@ def load_content_document() -> dict[str, Any]:
 
 
 def save_content_document(doc: dict[str, Any]) -> None:
-    USER_CONTENT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    path = user_content_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(doc, indent=2, ensure_ascii=False)
-    tmp = USER_CONTENT_PATH.with_suffix(".json.tmp")
+    tmp = path.with_suffix(".json.tmp")
     tmp.write_text(payload + "\n", encoding="utf-8")
-    tmp.replace(USER_CONTENT_PATH)
+    tmp.replace(path)
 
 
 def get_user_song_content(title: str, artist: str) -> dict[str, Any] | None:
