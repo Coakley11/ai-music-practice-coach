@@ -6930,7 +6930,12 @@ def musical_development_tracker_text():
 
 
 def _developer_mode_enabled() -> bool:
-    return bool(st.session_state.get("developer_mode", False))
+    try:
+        from suite_workspace import can_show_developer_tools
+
+        return can_show_developer_tools(st=st)
+    except ImportError:
+        return bool(st.session_state.get("developer_mode", False))
 
 
 def _apply_catalog_filter_defaults() -> None:
@@ -6988,6 +6993,13 @@ def _render_catalog_health_debug(*, in_sidebar: bool = True) -> None:
 
 def _render_sidebar_developer_library_panel() -> None:
     """Collapsed footer — catalog stats and developer mode (normal users can ignore)."""
+    try:
+        from suite_workspace import is_developer_workspace
+
+        if not is_developer_workspace(st=st):
+            return
+    except ImportError:
+        pass
     with st.sidebar.expander("Developer / Library Info", expanded=False):
         _render_catalog_health_debug(in_sidebar=False)
         st.checkbox(
