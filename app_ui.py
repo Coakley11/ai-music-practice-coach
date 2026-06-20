@@ -3759,7 +3759,7 @@ body[data-custom-builder-ui] [data-testid="stVerticalBlock"] {
 body[data-custom-builder-ui] .ui-instrument-strip {
   margin-bottom: 0.35rem !important;
 }
-body:not([data-studio-page="custom"]) .st-key-custom_song_builder_panel {
+body[data-studio-page]:not([data-studio-page="custom"]) .st-key-custom_song_builder_panel {
   display: none !important;
   visibility: hidden !important;
   max-height: 0 !important;
@@ -3770,6 +3770,14 @@ body:not([data-studio-page="custom"]) .st-key-custom_song_builder_panel {
   pointer-events: none !important;
   border: none !important;
   box-shadow: none !important;
+}
+body.custom-builder-page .st-key-custom_song_builder_panel {
+  display: block !important;
+  visibility: visible !important;
+  max-height: none !important;
+  overflow: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 .ui-studio-meta-badges {
   display: flex;
@@ -6907,18 +6915,25 @@ def custom_song_preview_card_html(
         f" · {html.escape(artist.strip())}" if (artist or "").strip() else ""
     )
     badges = studio_song_meta_badges_html(
-        original_key=key_label,
-        display_key=display_key_label or key_label,
         bpm=int(bpm),
         meter=str(time_signature or "4/4"),
         style=str(style or "Pop"),
         source="Custom Progression",
     )
+    key_line = (
+        f'<p class="ui-custom-preview-key-row">'
+        f"Original key <strong>{html.escape(key_label)}</strong>"
+        f" · Display / practice <strong>{html.escape(display_key_label or key_label)}</strong>"
+        f"</p>"
+    )
     body = (
-        f"{badges}"
+        f"{key_line}{badges}"
         f'<p class="ui-custom-preview-meta">{html.escape(sections_line)}</p>'
         if has_chords
-        else f"{badges}<p class=\"ui-custom-preview-empty\">Add chords in step 2 to see your song structure here.</p>"
+        else (
+            f"{key_line}{badges}"
+            f'<p class="ui-custom-preview-empty">Add chords in step 2 to see your song structure here.</p>'
+        )
     )
     active_pill = (
         '<span class="ui-custom-active-pill">Active song</span>'

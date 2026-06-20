@@ -117,12 +117,7 @@ def active_song_key_pair(
     session_state: dict[str, Any],
     rec: dict[str, Any] | None = None,
 ) -> tuple[str, str]:
-    """Original key and chart/practice key for Active Song cards."""
-    from instrument_transposition import (
-        chart_in_instrument_key,
-        effective_chart_key,
-        is_transposing_instrument,
-    )
+    """Original key and display/practice (concert) key for Active Song cards."""
     from songs.state import SELECTED_SONG_STATE_KEY
 
     if is_custom_progression(session_state):
@@ -140,12 +135,29 @@ def active_song_key_pair(
         record = rec or {}
         selected = session_state.get(SELECTED_SONG_STATE_KEY) or {}
         original = str(record.get("key") or selected.get("key") or "C")
-    concert = str(session_state.get("display_key") or original)
+    display = str(session_state.get("display_key") or original).strip() or original
+    return original, display
+
+
+def active_song_written_chart_key(
+    session_state: dict[str, Any],
+    *,
+    display_key: str | None = None,
+) -> str | None:
+    """Written instrument key when transposing + chart-in-written-key mode is on."""
+    from instrument_transposition import (
+        chart_in_instrument_key,
+        effective_chart_key,
+        is_transposing_instrument,
+    )
+
+    _, display = active_song_key_pair(session_state)
+    concert = str(display_key or display or "C").strip() or "C"
     inst = str(session_state.get("instrument") or "Piano")
     if is_transposing_instrument(inst) and chart_in_instrument_key(session_state):
         chart_k, _ = effective_chart_key(concert, inst, session_state)
-        return original, chart_k
-    return original, concert
+        return chart_k
+    return None
 
 
 def note_active_source_change(st: Any, *, invalidate_backing) -> bool:
@@ -264,7 +276,7 @@ def custom_pick_key_for(active: dict[str, Any]) -> str:
 
 def custom_selected_song_record(active: dict[str, Any]) -> dict[str, Any]:
     """Sidebar/global ``selected_song`` shape for an active custom progression."""
-    from custom_progression_lab import ensure_original_structure, written_home_key
+    from custom_progression_lab import ensure_original_structure
 
     active = ensure_original_structure(active)
     home_key = custom_original_key(active)

@@ -276,6 +276,24 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(original, "C")
         self.assertEqual(practice, "C")
 
+    def test_active_song_key_pair_keeps_display_not_written_key(self) -> None:
+        from songs.music_source import active_song_written_chart_key
+
+        active = self._draft_with_chords()
+        session = {
+            "active_music_source": SOURCE_CUSTOM,
+            CPL_ACTIVE_KEY: active,
+            "display_key": "C",
+            "instrument": "Saxophone",
+            "selected_transposing_instrument": "Alto saxophone (Eb)",
+            "show_chart_in_instrument_key": True,
+        }
+        original, practice = active_song_key_pair(session, {"key": "G"})
+        self.assertEqual(original, "C")
+        self.assertEqual(practice, "C")
+        written = active_song_written_chart_key(session)
+        self.assertEqual(written, "A")
+
     def test_commit_custom_active_song_syncs_picker_source_widget(self) -> None:
         active = self._draft_with_chords()
         st = SimpleNamespace(session_state={

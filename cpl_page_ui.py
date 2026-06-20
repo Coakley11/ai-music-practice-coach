@@ -127,6 +127,13 @@ def render_custom_progression_lab_page() -> None:
 
     import streamlit as st
 
+    try:
+        from app_ui import inject_studio_page_marker_sync
+
+        inject_studio_page_marker_sync(st, page="custom")
+    except Exception:
+        pass
+
     from custom_progression_lab import (
         CHORD_QUICK_EDIT_KEYS,
         CPL_ACTIVE_KEY,

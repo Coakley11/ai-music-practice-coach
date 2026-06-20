@@ -7434,57 +7434,43 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     _is_fav = _active_pk in _favorites
     _fav_icon = "★" if _is_fav else "☆"
     _fav_title = "Remove from favorites" if _is_fav else "Add to favorites"
+    _orig_label = _original_key
+    _practice_label = _chart_practice_key
+    _written_label = ""
+    _style_label = str(details.get("style_label") or rec.get("genre") or "Song")
+    _source_label = "Catalog Song"
     try:
         from custom_progression_lab import format_key_label as _format_key_label
         from app_ui import studio_song_meta_badges_html as _studio_song_meta_badges_html
+        from songs.music_source import active_song_written_chart_key as _active_song_written_chart_key
 
         _orig_label = _format_key_label(_original_key)
         _practice_label = _format_key_label(_chart_practice_key)
-        _written_label = ""
-        try:
-            from instrument_transposition import chart_in_instrument_key, effective_chart_key, is_transposing_instrument
-
-            _inst = str(st.session_state.get("instrument") or "Piano")
-            if is_transposing_instrument(_inst) and chart_in_instrument_key(st.session_state):
-                _written_k, _ = effective_chart_key(
-                    str(st.session_state.get("display_key") or _original_key),
-                    _inst,
-                    st.session_state,
-                )
-                _written_label = _format_key_label(_written_k)
-        except Exception:
-            pass
-        _source_label = "Custom Progression" if is_custom_progression(st.session_state) else "Catalog Song"
+        if is_custom_progression(st.session_state):
+            _source_label = "Custom Progression"
+            _cpl_style = ensure_original_structure(
+                st.session_state.get(CPL_ACTIVE_KEY) or {}
+            ).get("progression_style")
+            if _cpl_style:
+                _style_label = str(_cpl_style)
+        _written_k = _active_song_written_chart_key(st.session_state)
+        if _written_k:
+            _written_label = _format_key_label(_written_k)
         _badge_html = _studio_song_meta_badges_html(
-            original_key=_orig_label,
-            display_key=_practice_label,
-            written_key=_written_label,
+            written_key=_written_label if show_key_row else "",
             bpm=int(details.get("bpm") or 100),
             meter=str(details.get("time_signature") or "4/4"),
-            style=str(details.get("style_label") or rec.get("genre") or "Song"),
+            style=_style_label,
             source=_source_label,
         )
     except Exception:
         _badge_html = ""
     _key_row_html = (
-        active_song_key_row_html(_original_key, _chart_practice_key)
+        active_song_key_row_html(_orig_label, _practice_label)
         if show_key_row
         else ""
     )
-    _genre_label = html.escape(str(rec.get("genre") or details.get("visual_genre") or "Song"))
-    _user_ov = rec.get("user_override") or {}
-    _chart_source_note = (
-        " · <strong>Using User Override Chart</strong>"
-        if _user_ov
-        else " · Using Catalog Chart"
-    )
-    _meta_row = (
-        f'<p class="ui-active-song-meta-row">{_genre_label} · '
-        f"<strong>{int(details.get('bpm') or 100)} BPM</strong> · "
-        f"{html.escape(details.get('time_signature', '4/4'))} · "
-        f"{_section_count} sections · {_bar_count} bars · "
-        f"{html.escape(_groove_label)}{_chart_source_note}</p>"
-    )
+    _meta_row = 
     card_html = (
         f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}">'
         f'<div class="ui-active-song-art" style="background:{html.escape(details["visual_gradient"])};">'
@@ -7817,7 +7803,6 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
             invalidate_backing=invalidate_backing_cache,
         )
         set_catalog_source(st.session_state)
-        sync_song_picker_source_widget(st.session_state, force=True)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         st.rerun()
     return False
@@ -8033,7 +8018,6 @@ def _render_catalog_song_picker_block(
                 invalidate_backing=invalidate_backing_cache,
             )
             set_catalog_source(st.session_state)
-            sync_song_picker_source_widget(st.session_state, force=True)
             note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
             st.rerun()
 
@@ -11007,6 +10991,22 @@ elif _studio_page == "backing":
     except Exception:
         pass
     render_backing_studio_deck_header(st)
+    _backing_orig_key, _backing_practice_key = _active_song_key_pair(song_data)
+    _backing_ctx_range = backing_scope_loop_summary_text(
+        st.session_state.get("backing_track_scope", "Full song"),
+        single_section=str(st.session_state.get("backing_track_single_section", "")),
+        multi_sections=list(st.session_state.get("backing_track_multi_sections") or []),
+        loops=int(st.session_state.get("backing_track_loops", 2)),
+    )
+    render_backing_setup_context_strip(
+        st,
+        original_key=_backing_orig_key,
+        practice_key=_backing_practice_key,
+        meter=str(_applied_meter_pre or _default_meter),
+        groove=str(default_groove_style),
+        range_summary=_backing_ctx_range,
+        default_bpm=int(_default_bpm),
+    )
     if _developer_mode_enabled():
         try:
             from app_ui import BACKING_STUDIO_UI_VERSION as _bs_ui_ver
@@ -11965,6 +11965,9 @@ elif _studio_page == "custom":
         from app_ui import inject_custom_builder_styles, inject_studio_ui_release_marker
 
         inject_custom_builder_styles(st)
+        from app_ui import inject_studio_page_marker_sync
+
+        inject_studio_page_marker_sync(st, page="custom")
         inject_studio_ui_release_marker(st, page="custom")
     except Exception:
         pass
