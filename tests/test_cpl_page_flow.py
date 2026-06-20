@@ -19,6 +19,7 @@ from custom_progression_lab import (
     cpl_page_end_save_should_preserve_sections,
     cpl_save_draft,
     cpl_section_progression_view,
+    cpl_set_pending_chord,
     cpl_whole_song_progression_view,
     default_active_progression,
     ensure_all_cpl_sections,
@@ -329,7 +330,7 @@ class TestCplPageFlow(unittest.TestCase):
             return_value=True,
         ) as flush:
             ok = persist_cpl_draft_state(st)
-        flush.assert_called_once_with(st, reason="song_edit")
+        flush.assert_called_once_with(st, reason="cpl_draft_edit")
         self.assertTrue(ok)
         self.assertTrue(session.get("_cpl_last_persist_ok"))
 
@@ -361,7 +362,7 @@ class TestCplPageFlow(unittest.TestCase):
         session = self._session_with_draft()
         ensure_cpl_widget_keys_initialized(session, cpl_active_from_session(session))
         session["cpl_edit_section"] = "Verse"
-        session["cpl_pending_chord_Verse"] = "C"
+        cpl_set_pending_chord(session, section="Verse", chord="C")
         session["cpl_last_bars_Verse"] = 4
         active = cpl_apply_chord_with_bars_to_session(
             session,

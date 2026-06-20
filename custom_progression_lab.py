@@ -929,9 +929,7 @@ def clear_cpl_widget_state(session_state: dict) -> None:
             session_state.pop(key, None)
     for key in ("_cpl_editing_display_key", "cpl_finished", "_cpl_last_bar_apply"):
         session_state.pop(key, None)
-    for key in list(session_state.keys()):
-        if key.startswith("cpl_pending_chord_") or key.startswith("cpl_last_bars_"):
-            session_state.pop(key, None)
+    cpl_clear_pending_chord(session_state)
 
 
 CPL_WIDGET_PERSIST_PREFIXES = (
@@ -939,6 +937,49 @@ CPL_WIDGET_PERSIST_PREFIXES = (
     "cpl_last_bars_",
     "_cpl_prev_bars_",
 )
+
+CPL_PENDING_CHORD_KEY = "cpl_pending_chord"
+CPL_PENDING_SECTION_KEY = "cpl_pending_section"
+
+
+def cpl_pending_chord_key(section: str) -> str:
+    return f"cpl_pending_chord_{section}"
+
+
+def cpl_set_pending_chord(session_state: dict, *, section: str, chord: str) -> None:
+    """Store pending chord in canonical + section keys (survives cloud widget restore)."""
+    section_name = str(section or "Verse").strip() or "Verse"
+    symbol = normalize_chord_symbol(chord) or str(chord or "").strip()
+    if not symbol:
+        return
+    session_state[CPL_PENDING_CHORD_KEY] = symbol
+    session_state[CPL_PENDING_SECTION_KEY] = section_name
+    session_state[cpl_pending_chord_key(section_name)] = symbol
+
+
+def cpl_get_pending_chord(session_state: dict, section: str) -> str | None:
+    """Read pending chord for the active section (canonical keys + section suffix)."""
+    section_name = str(section or "Verse").strip() or "Verse"
+    direct = session_state.get(cpl_pending_chord_key(section_name))
+    if direct:
+        return str(direct).strip() or None
+    canonical_chord = str(session_state.get(CPL_PENDING_CHORD_KEY) or "").strip()
+    canonical_section = str(session_state.get(CPL_PENDING_SECTION_KEY) or "").strip()
+    if canonical_chord and canonical_section == section_name:
+        session_state[cpl_pending_chord_key(section_name)] = canonical_chord
+        return canonical_chord
+    return None
+
+
+def cpl_clear_pending_chord(session_state: dict, section: str | None = None) -> None:
+    """Drop pending chord keys after commit or section reset."""
+    section_name = str(section or session_state.get(CPL_PENDING_SECTION_KEY) or "").strip()
+    session_state.pop(CPL_PENDING_CHORD_KEY, None)
+    session_state.pop(CPL_PENDING_SECTION_KEY, None)
+    if section_name:
+        session_state.pop(cpl_pending_chord_key(section_name), None)
+    for name in CPL_EDITABLE_SECTIONS:
+        session_state.pop(cpl_pending_chord_key(name), None)
 
 # Streamlit widget keys (buttons, etc.) — never persist or restore.
 CPL_EPHEMERAL_WIDGET_PREFIXES = (
@@ -984,11 +1025,11 @@ CPL_WIDGET_PERSIST_SCALAR_KEYS = (
     "cpl_artist_input",
     "cpl_original_key",
     "cpl_time_signature",
-    "cpl_progression_style",
     "cpl_style_early",
-    "cpl_bpm",
     "cpl_bpm_builder",
     "cpl_groove_style",
+    CPL_PENDING_CHORD_KEY,
+    CPL_PENDING_SECTION_KEY,
 )
 
 
@@ -1007,6 +1048,11 @@ def export_cpl_widget_state(session_state: dict) -> dict[str, Any]:
     for key in CPL_WIDGET_PERSIST_SCALAR_KEYS:
         if key in session_state:
             out[key] = copy.deepcopy(session_state[key])
+    # Canonical widget keys only — do not export legacy aliases (cpl_bpm, cpl_progression_style).
+    if "cpl_bpm_builder" not in out and session_state.get("cpl_bpm") is not None:
+        out["cpl_bpm_builder"] = copy.deepcopy(session_state["cpl_bpm"])
+    if "cpl_style_early" not in out and session_state.get("cpl_progression_style"):
+        out["cpl_style_early"] = copy.deepcopy(session_state["cpl_progression_style"])
     for key in list(session_state.keys()):
         sk = str(key)
         if any(sk.startswith(prefix) for prefix in CPL_WIDGET_PERSIST_PREFIXES):
@@ -1198,7 +1244,7 @@ def persist_cpl_draft_state(st) -> bool:
     try:
         from music_persistent_state import flush_active_song_edits_and_save
 
-        ok = bool(flush_active_song_edits_and_save(st, reason="song_edit"))
+        ok = bool(flush_active_song_edits_and_save(st, reason="cpl_draft_edit"))
         cloud_ok = bool(ss.get("_suite_persist_last_save_cloud"))
         block_reason = str(
             ss.get("_suite_autosave_block_reason")
@@ -2518,7 +2564,7 @@ def cpl_apply_chord_with_bars_to_session(
     if not symbol:
         return active
     home[section_name].append({"chord": symbol, "bars": max(1, int(bars or 1))})
-    session_state.pop(f"cpl_pending_chord_{section_name}", None)
+    cpl_clear_pending_chord(session_state, section_name)
     return cpl_save_draft(session_state, active, home, persist=persist, st=st)
 
 
@@ -2531,14 +2577,15 @@ def build_cpl_developer_diagnostics(
     """Live CPL state snapshot for developer-mode panel."""
     active = ensure_original_structure(active)
     home = ensure_all_cpl_sections(active.get("original_sections"))
-    pending_key = f"cpl_pending_chord_{edit_section}"
+    pending_key = cpl_pending_chord_key(edit_section)
     bars_key = f"cpl_last_bars_{edit_section}"
     preview_key = cpl_draft_preview_key(active)
+    pending_chord = cpl_get_pending_chord(session_state, edit_section)
     section_view = cpl_section_progression_view(
         active,
         section_name=edit_section,
         preview_key=preview_key,
-        pending_chord=session_state.get(pending_key),
+        pending_chord=pending_chord,
         time_signature=str(active.get("time_signature") or "4/4"),
     )
     whole_song_view = cpl_whole_song_progression_view(active, preview_key)
@@ -2584,12 +2631,13 @@ def build_cpl_developer_diagnostics(
         },
         "pending": {
             "edit_section": edit_section,
-            "pending_chord": session_state.get(pending_key),
+            "pending_chord": pending_chord,
+            "pending_section": session_state.get(CPL_PENDING_SECTION_KEY),
             "last_bars": session_state.get(bars_key),
             "pending_by_section": {
-                name: session_state.get(f"cpl_pending_chord_{name}")
+                name: cpl_get_pending_chord(session_state, name)
                 for name in CPL_EDITABLE_SECTIONS
-                if session_state.get(f"cpl_pending_chord_{name}")
+                if cpl_get_pending_chord(session_state, name)
             },
         },
         "chord_pipeline": {

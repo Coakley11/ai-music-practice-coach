@@ -142,8 +142,11 @@ def render_custom_progression_lab_page() -> None:
         build_cpl_developer_diagnostics,
         cpl_active_from_session,
         cpl_apply_chord_with_bars_to_session,
+        cpl_clear_pending_chord,
         cpl_draft_chord_count,
         cpl_draft_written_key,
+        cpl_get_pending_chord,
+        cpl_set_pending_chord,
         cpl_save_draft,
         cpl_section_progression_view,
         cpl_steps_strip_html,
@@ -353,7 +356,7 @@ def render_custom_progression_lab_page() -> None:
         )
         st.session_state[CPL_ACTIVE_KEY] = active
         prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
-        _save(_home_sections())
+        _save(_home_sections(), persist=False)
         n1, n2, n3 = st.columns(3)
         with n1:
             if st.button("Save to library", key="cpl_save_prog", use_container_width=True):
@@ -497,7 +500,7 @@ def render_custom_progression_lab_page() -> None:
         pending_key = _pending_chord_key(edit_section)
         last_bars_key = _last_bars_key(edit_section)
         st.session_state.setdefault(last_bars_key, 1)
-        pending_chord = st.session_state.get(pending_key)
+        pending_chord = cpl_get_pending_chord(st.session_state, edit_section)
 
         st.markdown(
             cpl_steps_strip_html(
@@ -535,7 +538,7 @@ def render_custom_progression_lab_page() -> None:
         for i, ch in enumerate(simple):
             with cols[i % len(cols)]:
                 if st.button(ch, key=f"cpl_pick_{home_ns}_{edit_section}_{ch}", use_container_width=True):
-                    st.session_state[pending_key] = ch
+                    cpl_set_pending_chord(st.session_state, section=edit_section, chord=ch)
                     st.rerun()
 
         # ----- Slash chord / custom chord builder -----
@@ -590,8 +593,11 @@ def render_custom_progression_lab_page() -> None:
                 use_container_width=True,
             ):
                 slash_symbol = f"{_slash_root}/{_slash_bass}"
-                # normalize_chord_symbol preserves slashes; just be defensive about whitespace.
-                st.session_state[pending_key] = normalize_chord_symbol(slash_symbol) or slash_symbol
+                cpl_set_pending_chord(
+                    st.session_state,
+                    section=edit_section,
+                    chord=normalize_chord_symbol(slash_symbol) or slash_symbol,
+                )
                 st.rerun()
 
             st.markdown("**Or type any chord** (e.g. `Cmaj7`, `F#m7b5`, `Bbmaj9/D`):")
@@ -612,7 +618,7 @@ def render_custom_progression_lab_page() -> None:
                 ):
                     cleaned = normalize_chord_symbol(_typed) or _typed.strip()
                     if cleaned:
-                        st.session_state[pending_key] = cleaned
+                        cpl_set_pending_chord(st.session_state, section=edit_section, chord=cleaned)
                         st.session_state.pop(_sc_text_key, None)
                         st.rerun()
 
@@ -668,7 +674,7 @@ def render_custom_progression_lab_page() -> None:
             last_bars_key_now = _last_bars_key(section)
             bars = int(bars)
             st.session_state[last_bars_key_now] = bars
-            pending = st.session_state.get(pending_key_now)
+            pending = cpl_get_pending_chord(st.session_state, section)
             if pending:
                 active = cpl_apply_chord_with_bars_to_session(
                     st.session_state,
@@ -721,7 +727,7 @@ def render_custom_progression_lab_page() -> None:
             if st.button("Select", key=f"cpl_custom_sel_{edit_section}", use_container_width=True):
                 ch = normalize_chord_symbol(custom_ch)
                 if ch:
-                    st.session_state[pending_key] = ch
+                    cpl_set_pending_chord(st.session_state, section=edit_section, chord=ch)
                     st.rerun()
         with tc3:
             if st.button("Add now", key=f"cpl_custom_add_{edit_section}", use_container_width=True):
@@ -773,7 +779,7 @@ def render_custom_progression_lab_page() -> None:
                 with ext_cols[i]:
                     if st.button(ek, key=f"cpl_ext_{home_ns}_{edit_section}_{ek}"):
                         staged = apply_quick_chord_edit(st.session_state["cpl_ext_root"], ek)
-                        st.session_state[pending_key] = staged
+                        cpl_set_pending_chord(st.session_state, section=edit_section, chord=staged)
                         st.rerun()
 
         demo_presets = demo_presets_for_style(style)
@@ -806,7 +812,7 @@ def render_custom_progression_lab_page() -> None:
                     home_sections[edit_section] = build_style_preset_entries(
                         style, preset_id, original_key
                     )
-                    st.session_state.pop(pending_key, None)
+                    cpl_clear_pending_chord(st.session_state, edit_section)
                     if home_sections[edit_section]:
                         st.session_state[last_bars_key] = int(
                             home_sections[edit_section][-1].get("bars", 1) or 1
@@ -875,7 +881,7 @@ def render_custom_progression_lab_page() -> None:
                 disabled=not home_entries,
             ):
                 home_entries.pop()
-                st.session_state.pop(pending_key, None)
+                cpl_clear_pending_chord(st.session_state, edit_section)
                 _save(home_sections)
                 st.rerun()
         with u2:
@@ -886,7 +892,7 @@ def render_custom_progression_lab_page() -> None:
                 disabled=not section_has_chords and not pending_chord,
             ):
                 home_sections[edit_section] = []
-                st.session_state.pop(pending_key, None)
+                cpl_clear_pending_chord(st.session_state, edit_section)
                 _save(home_sections)
                 st.rerun()
         with u3:

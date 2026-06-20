@@ -33,6 +33,7 @@ WORKSPACE_SCHEMA_VERSION = 1
 _PRESERVE_USER_NAV_SAVE_REASONS: frozenset[str] = frozenset(
     {
         "song_edit",
+        "cpl_draft_edit",
         "practice_edit",
         "backing_edit",
         "autosave",
@@ -1256,7 +1257,13 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         from studio_nav_state import commit_studio_nav_from_session
 
         commit_active_song_state_from_session(ss, reason=save_reason)
-        if save_reason not in ("song_edit", "practice_edit", "backing_edit", "page_change"):
+        if save_reason not in (
+            "song_edit",
+            "cpl_draft_edit",
+            "practice_edit",
+            "backing_edit",
+            "page_change",
+        ):
             commit_studio_nav_from_session(ss, reason=save_reason)
         commit_practice_state_from_session(ss, reason=save_reason)
         commit_backing_state_from_session(ss, reason=save_reason)
@@ -1887,7 +1894,12 @@ def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> b
         )
 
         ss = st.session_state
-        if ss.get(ACTIVE_SONG_PENDING_SYNC_KEY) or is_active_song_locally_dirty(ss) or reason == "song_edit":
+        should_flush = reason not in ("cpl_draft_edit",) and (
+            ss.get(ACTIVE_SONG_PENDING_SYNC_KEY)
+            or is_active_song_locally_dirty(ss)
+            or reason == "song_edit"
+        )
+        if should_flush:
             flush_active_song_edits(ss, reason=reason)
     except ImportError:
         pass
