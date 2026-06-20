@@ -2158,3 +2158,69 @@ def chord_tiles_html(chords: list[str], *, max_tiles: int = 16) -> str:
         return ""
     entries = [{"chord": ch, "bars": 1} for ch in chords[:max_tiles]]
     return entries_chord_tiles_html(entries, max_tiles=max_tiles)
+
+
+def cpl_section_progression_view(
+    active: dict,
+    *,
+    section_name: str,
+    preview_key: str,
+    pending_chord: str | None = None,
+    time_signature: str = "4/4",
+    use_lead_sheet: bool = False,
+) -> dict[str, Any]:
+    """View model for the CPL builder progression panel (Streamlit page + tests)."""
+    active = ensure_original_structure(active)
+    home_sections = ensure_all_cpl_sections(active.get("original_sections"))
+    home_entries = list(home_sections.get(section_name) or [])
+    section_display = display_entries_for_section(active, preview_key, section_name)
+    if not section_display and not section_is_empty(home_entries):
+        section_display = [
+            dict(entry)
+            for entry in home_entries
+            if normalize_chord_symbol(str(entry.get("chord", "")))
+        ]
+    tiles_html = ""
+    if section_display:
+        tiles_html = entries_chord_tiles_html(
+            section_display,
+            time_signature=time_signature,
+            lead_sheet=use_lead_sheet,
+        )
+    has_chords = bool(section_display) or not section_is_empty(home_entries)
+    pending = str(pending_chord or "").strip() or None
+    show_panel = has_chords or bool(pending)
+    panel_bits: list[str] = ['<div class="cpl-live-progression">']
+    if tiles_html:
+        panel_bits.append(tiles_html)
+    if pending:
+        panel_bits.append(
+            f'<p class="cpl-pending-hint">Selected: <strong>{_html.escape(pending)}</strong> '
+            f"— click 1, 2, or 4 bars above to add it</p>"
+        )
+    panel_bits.append("</div>")
+    return {
+        "section_display": section_display,
+        "home_entries": home_entries,
+        "tiles_html": tiles_html,
+        "has_chords": has_chords,
+        "show_panel": show_panel,
+        "panel_html": "".join(panel_bits) if show_panel else "",
+    }
+
+
+def cpl_apply_pending_chord_to_section(
+    active: dict,
+    *,
+    section_name: str,
+    pending_chord: str,
+    bars: int,
+) -> dict:
+    """Mirror CPL page bar-button flow: append pending chord, then persist sections."""
+    active = ensure_original_structure(active)
+    home_sections = ensure_all_cpl_sections(active.get("original_sections"))
+    chord = normalize_chord_symbol(pending_chord) or str(pending_chord or "").strip()
+    if not chord:
+        return active
+    home_sections[section_name].append({"chord": chord, "bars": max(1, int(bars or 1))})
+    return commit_home_sections(active, home_sections)

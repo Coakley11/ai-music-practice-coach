@@ -6,6 +6,8 @@ import unittest
 
 from custom_progression_lab import (
     commit_home_sections,
+    cpl_apply_pending_chord_to_section,
+    cpl_section_progression_view,
     default_active_progression,
     display_entries_for_section,
     entries_chord_tiles_html,
@@ -53,6 +55,25 @@ class TestCplChordDisplay(unittest.TestCase):
         display = display_entries_for_section(active, "Eb", "Verse")
         self.assertEqual(display[0]["chord"], "Eb")
         self.assertEqual(display[1]["chord"], "Ab")
+
+    def test_page_path_apply_chord_then_build_view(self) -> None:
+        active = default_active_progression()
+        active["original_key_center"] = "C"
+        active["user_locked_home_key"] = True
+        active = cpl_apply_pending_chord_to_section(
+            active,
+            section_name="Verse",
+            pending_chord="C",
+            bars=1,
+        )
+        view = cpl_section_progression_view(
+            active,
+            section_name="Verse",
+            preview_key=written_home_key(active),
+        )
+        self.assertTrue(view["has_chords"])
+        self.assertIn("chord-symbol", view["panel_html"])
+        self.assertIn(">C<", view["panel_html"])
 
 
 if __name__ == "__main__":

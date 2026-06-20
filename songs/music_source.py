@@ -175,8 +175,8 @@ def commit_custom_active_song(
         written_home_key,
     )
     from songs.key_state import (
+        IDENTITY_KEY,
         PENDING_DISPLAY_KEY,
-        apply_display_key_for_active_song,
         song_display_identity,
     )
     from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
@@ -198,18 +198,20 @@ def commit_custom_active_song(
     if pick_key:
         session[ACTIVE_CATALOG_PICK_KEY] = pick_key
 
-    session[PENDING_DISPLAY_KEY] = home_key
     identity = song_display_identity(
         selected.get("title", ""),
         selected.get("artist", ""),
         home_key,
     )
-    apply_display_key_for_active_song(st, home_key, identity, pending_key=home_key)
+    # Queue display-key change for the next run — never mutate the display_key widget
+    # key in the same run as Set as Active Song (sidebar widget already rendered).
+    session[PENDING_DISPLAY_KEY] = home_key
+    session[IDENTITY_KEY] = identity
 
     prepare_cpl_backing_handoff(session, active)
 
     try:
-        from active_song_state import flush_active_song_edits, write_canonical_active_song_state
+        from active_song_state import write_canonical_active_song_state
         from global_active_song_state import sync_active_song_to_canonical
 
         ctx = {
@@ -223,8 +225,13 @@ def commit_custom_active_song(
             "custom_progression_name": selected.get("title", ""),
             "custom_home_key": home_key,
         }
-        write_canonical_active_song_state(session, ctx, reason="custom_active_song")
-        flush_active_song_edits(session, reason="custom_active_song")
+        write_canonical_active_song_state(
+            session,
+            ctx,
+            reason="custom_active_song",
+            local_edit=True,
+            mutate_display_key=False,
+        )
         sync_active_song_to_canonical(session)
     except ImportError:
         pass

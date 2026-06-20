@@ -139,6 +139,7 @@ def render_custom_progression_lab_page() -> None:
         build_style_preset_entries,
         clear_all_cpl_sections,
         commit_home_sections,
+        cpl_section_progression_view,
         cpl_steps_strip_html,
         deep_copy_sections,
         delete_progression,
@@ -194,6 +195,9 @@ def render_custom_progression_lab_page() -> None:
         custom_song_preview_card_html = lambda **_k: ""  # type: ignore
 
     inject_custom_builder_styles(st)
+
+    if toast_title := st.session_state.pop("_cpl_activation_toast", None):
+        st.success(f"**{toast_title}** is now your active song.")
 
     purge_cpl_ephemeral_widget_keys(st.session_state)
 
@@ -262,7 +266,7 @@ def render_custom_progression_lab_page() -> None:
             invalidate_backing=invalidate_backing_cache,
         )
         if toast:
-            st.success(f"**{prog_title}** is now your active song.")
+            st.session_state["_cpl_activation_toast"] = prog_title
         st.rerun()
 
     def _open_practice() -> None:
@@ -536,35 +540,6 @@ def render_custom_progression_lab_page() -> None:
 
         active["original_sections"] = home_sections
         st.session_state[CPL_ACTIVE_KEY] = active
-        section_display = display_entries_for_section(active, preview_key, edit_section)
-        if not section_display and not section_is_empty(home_entries):
-            section_display = [
-                dict(entry)
-                for entry in home_entries
-                if normalize_chord_symbol(str(entry.get("chord", "")))
-            ]
-        section_has_chords = bool(section_display) or not section_is_empty(home_entries)
-
-        st.markdown("**Progression in this section**")
-        progression_bits: list[str] = ['<div class="cpl-live-progression">']
-        if section_has_chords:
-            tiles = entries_chord_tiles_html(
-                section_display,
-                time_signature=time_sig,
-                lead_sheet=use_lead_sheet,
-            )
-            if tiles:
-                progression_bits.append(tiles)
-        if pending_chord:
-            progression_bits.append(
-                f'<p class="cpl-pending-hint">Selected: <strong>{html.escape(pending_chord)}</strong> '
-                f"— click 1, 2, or 4 bars below to add it</p>"
-            )
-        progression_bits.append("</div>")
-        if section_has_chords or pending_chord:
-            st.markdown("".join(progression_bits), unsafe_allow_html=True)
-        elif not section_has_chords:
-            st.info("Tap a chord below, then choose **1**, **2**, or **4** bars to add it.")
 
         st.markdown("**1. Click a chord**")
         cols = st.columns(min(6, max(1, len(simple))))
@@ -681,6 +656,27 @@ def render_custom_progression_lab_page() -> None:
         with b4:
             if st.button("4 bars", key=f"cpl_b4_{edit_section}", use_container_width=True):
                 _apply_bars(4)
+
+        def _render_section_progression(*, pending: str | None = None) -> dict:
+            active_now = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
+            view = cpl_section_progression_view(
+                active_now,
+                section_name=edit_section,
+                preview_key=preview_key,
+                pending_chord=pending,
+                time_signature=time_sig,
+                use_lead_sheet=use_lead_sheet,
+            )
+            st.markdown("**Progression in this section**")
+            if view["show_panel"]:
+                st.html(view["panel_html"])
+            else:
+                st.info("Tap a chord below, then choose **1**, **2**, or **4** bars to add it.")
+            return view
+
+        progression_view = _render_section_progression(pending=pending_chord)
+        section_has_chords = progression_view["has_chords"]
+        section_display = progression_view["section_display"]
 
         st.markdown("**Type any chord**")
         tc1, tc2, tc3 = st.columns([3, 1, 1])
@@ -894,4 +890,4 @@ def render_custom_progression_lab_page() -> None:
                     delete_progression(saved, del_pick)
                     st.rerun()
 
-        _save(home_sections)
+        _save(_home_sections())

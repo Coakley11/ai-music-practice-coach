@@ -14,6 +14,8 @@ from active_song_state import (
 from custom_progression_lab import (
     CPL_ACTIVE_KEY,
     commit_home_sections,
+    cpl_apply_pending_chord_to_section,
+    cpl_section_progression_view,
     default_active_progression,
     display_entries_for_section,
     entries_chord_tiles_html,
@@ -21,6 +23,12 @@ from custom_progression_lab import (
     ensure_original_structure,
     set_original_key_center,
     written_home_key,
+)
+from songs.key_state import (
+    IDENTITY_KEY,
+    PENDING_DISPLAY_KEY,
+    apply_display_key_for_active_song,
+    song_display_identity,
 )
 from songs.music_source import (
     SOURCE_CUSTOM,
@@ -55,6 +63,48 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertIn(">C<", html)
         self.assertIn(">Am<", html)
 
+    def test_builder_view_after_chord_and_bars_matches_page_path(self) -> None:
+        active = default_active_progression()
+        active["original_key_center"] = "C"
+        active["user_locked_home_key"] = True
+        active = cpl_apply_pending_chord_to_section(
+            active,
+            section_name="Verse",
+            pending_chord="C",
+            bars=2,
+        )
+        active = cpl_apply_pending_chord_to_section(
+            active,
+            section_name="Verse",
+            pending_chord="G",
+            bars=2,
+        )
+        preview = written_home_key(active)
+        view = cpl_section_progression_view(
+            active,
+            section_name="Verse",
+            preview_key=preview,
+        )
+        self.assertTrue(view["show_panel"])
+        self.assertTrue(view["has_chords"])
+        self.assertIn("cpl-live-progression", view["panel_html"])
+        self.assertIn(">C<", view["panel_html"])
+        self.assertIn(">G<", view["panel_html"])
+
+    def test_builder_view_shows_pending_chord_before_bars(self) -> None:
+        active = default_active_progression()
+        active["original_key_center"] = "C"
+        active["user_locked_home_key"] = True
+        view = cpl_section_progression_view(
+            active,
+            section_name="Verse",
+            preview_key="C",
+            pending_chord="Am",
+        )
+        self.assertTrue(view["show_panel"])
+        self.assertIn("cpl-pending-hint", view["panel_html"])
+        self.assertIn(">Am<", view["panel_html"])
+
     def test_draft_key_change_does_not_require_global_display_key(self) -> None:
         active = self._draft_with_chords()
         session = {"display_key": "G", CPL_ACTIVE_KEY: active}
@@ -63,7 +113,7 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(session["display_key"], "G")
         self.assertEqual(written_home_key(active), "D")
 
-    def test_commit_custom_active_song_updates_global_state(self) -> None:
+    def test_commit_custom_active_song_defers_display_key_widget(self) -> None:
         active = self._draft_with_chords()
         st = SimpleNamespace(session_state={
             "display_key": "G",
@@ -81,8 +131,50 @@ class TestCplSetActiveSong(unittest.TestCase):
             )
 
         ss = st.session_state
+        self.assertEqual(ss["display_key"], "G")
+        self.assertEqual(ss[PENDING_DISPLAY_KEY], "C")
+        self.assertEqual(
+            ss[IDENTITY_KEY],
+            song_display_identity("My Progression", "Your progression", "C"),
+        )
+
+    def test_pending_display_key_applied_before_widget_on_next_run(self) -> None:
+        identity = song_display_identity("My Progression", "", "C")
+        st = MagicMock(
+            session_state={
+                "display_key": "G",
+                PENDING_DISPLAY_KEY: "C",
+                IDENTITY_KEY: identity,
+            }
+        )
+        apply_display_key_for_active_song(st, "C", identity)
+        self.assertEqual(st.session_state["display_key"], "C")
+        self.assertNotIn(PENDING_DISPLAY_KEY, st.session_state)
+
+    def test_commit_custom_active_song_updates_global_state(self) -> None:
+        active = self._draft_with_chords()
+        identity = song_display_identity("My Progression", "", "C")
+        st = SimpleNamespace(session_state={
+            "display_key": "G",
+            "instrument": "Piano",
+            "level": "Intermediate",
+            "focus": "General",
+            CPL_ACTIVE_KEY: active,
+            IDENTITY_KEY: identity,
+            PENDING_DISPLAY_KEY: "C",
+        })
+
+        with patch("songs.state.persist_music_local_state"):
+            commit_custom_active_song(
+                st,
+                active,
+                invalidate_backing=lambda _st: None,
+            )
+
+        ss = st.session_state
         self.assertTrue(is_custom_progression(ss))
-        self.assertEqual(ss["display_key"], "C")
+        self.assertEqual(ss["display_key"], "G")
+        self.assertEqual(ss[PENDING_DISPLAY_KEY], "C")
         selected = ss[SELECTED_SONG_STATE_KEY]
         self.assertEqual(selected["title"], "My Progression")
         self.assertEqual(selected["key"], "C")
