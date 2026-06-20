@@ -7341,15 +7341,10 @@ def _render_v2_chart_debug_pill(rec: dict) -> None:
 
 
 def _active_song_key_pair(rec: dict | None = None) -> tuple[str, str]:
-    """Catalog original key and the key shown on charts (written or concert practice key)."""
-    record = rec or {}
-    original = str(record.get("key") or "C")
-    concert = str(st.session_state.get("display_key") or original)
-    inst = str(st.session_state.get("instrument") or "Piano")
-    if is_transposing_instrument(inst) and chart_in_instrument_key(st.session_state):
-        chart_k, _ = effective_chart_key(concert, inst, st.session_state)
-        return original, chart_k
-    return original, concert
+    """Original key and chart/practice key for the Active Song card."""
+    from songs.music_source import active_song_key_pair
+
+    return active_song_key_pair(st.session_state, rec)
 
 
 def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
@@ -7676,10 +7671,10 @@ def _migrate_workspace_genre_filters(available_genres: set[str]) -> list[str]:
 
 def _cpl_to_song_record(active: dict) -> dict[str, Any]:
     """Catalog-shaped row for the Active Song hub when using Custom Progression."""
-    from custom_progression_lab import sections_to_chord_lists, written_home_key
+    from custom_progression_lab import cpl_draft_written_key, sections_to_chord_lists
 
     title = str(active.get("name") or "My Progression")
-    home_key = written_home_key(active)
+    home_key = cpl_draft_written_key(active)
     sections = sections_to_chord_lists(active.get("original_sections") or {})
     style = str(active.get("progression_style") or "Custom")
     bpm = int(active.get("bpm") or 100)
@@ -7739,6 +7734,9 @@ def _apply_picker_catalog_filters(
     master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
     default_pk = master_pk if master_pk in pick_options else pick_options[0]
     if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
+        if is_custom_progression(st.session_state):
+            active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
+            return filtered, pick_options, active_pk
         set_catalog_source(st.session_state)
         apply_pick_key(st, default_pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
@@ -7757,11 +7755,13 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
         "Song Selection (catalog song)",
         "Use Custom Progression / Create Your Own Song",
     ]
-    index = 1 if is_custom_progression(st.session_state) else 0
+    from songs.music_source import sync_song_picker_source_widget
+
+    sync_song_picker_source_widget(st.session_state)
     choice = st.radio(
         "Music source",
         options,
-        index=index,
+        index=1 if is_custom_progression(st.session_state) else 0,
         horizontal=True,
         key="song_picker_active_source",
         label_visibility="collapsed" if polished else "visible",
@@ -7960,11 +7960,13 @@ def _render_catalog_song_picker_block(
             "Song Selection (catalog song)",
             "Use Custom Progression / Create Your Own Song",
         ]
-        _picker_source_index = 1 if is_custom_progression(st.session_state) else 0
+        from songs.music_source import sync_song_picker_source_widget
+
+        sync_song_picker_source_widget(st.session_state)
         picker_source = st.radio(
             "Music source",
             _picker_source_options,
-            index=_picker_source_index,
+            index=1 if is_custom_progression(st.session_state) else 0,
             horizontal=True,
             key="song_picker_active_source",
         )

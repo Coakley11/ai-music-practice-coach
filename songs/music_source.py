@@ -9,6 +9,9 @@ SOURCE_CATALOG = "catalog_song"
 SOURCE_CUSTOM = "custom_progression"
 _LAST_SOURCE_KEY = "_last_active_music_source"
 PENDING_CUSTOM_ACTIVE_SONG_KEY = "_pending_custom_active_song_activation"
+SONG_PICKER_SOURCE_CATALOG = "Song Selection (catalog song)"
+SONG_PICKER_SOURCE_CUSTOM = "Use Custom Progression / Create Your Own Song"
+SONG_PICKER_ACTIVE_SOURCE_KEY = "song_picker_active_source"
 
 
 def ensure_active_music_source(session_state: dict[str, Any]) -> None:
@@ -25,6 +28,57 @@ def set_catalog_source(session_state: dict[str, Any]) -> None:
 
 def set_custom_source(session_state: dict[str, Any]) -> None:
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
+
+
+def sync_song_picker_source_widget(session_state: dict[str, Any]) -> None:
+    """Keep Song Selection source radio aligned with canonical active_music_source."""
+    session_state[SONG_PICKER_ACTIVE_SOURCE_KEY] = (
+        SONG_PICKER_SOURCE_CUSTOM
+        if is_custom_progression(session_state)
+        else SONG_PICKER_SOURCE_CATALOG
+    )
+
+
+def custom_original_key(active: dict[str, Any]) -> str:
+    """User-chosen CPL original key (never inferred from chord analysis)."""
+    from custom_progression_lab import cpl_draft_written_key, ensure_original_structure
+
+    return cpl_draft_written_key(ensure_original_structure(active))
+
+
+def active_song_key_pair(
+    session_state: dict[str, Any],
+    rec: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Original key and chart/practice key for Active Song cards."""
+    from instrument_transposition import (
+        chart_in_instrument_key,
+        effective_chart_key,
+        is_transposing_instrument,
+    )
+    from songs.state import SELECTED_SONG_STATE_KEY
+
+    if is_custom_progression(session_state):
+        from custom_progression_lab import (
+            CPL_ACTIVE_KEY,
+            default_active_progression,
+            ensure_original_structure,
+        )
+
+        active = ensure_original_structure(
+            session_state.get(CPL_ACTIVE_KEY) or default_active_progression()
+        )
+        original = custom_original_key(active)
+    else:
+        record = rec or {}
+        selected = session_state.get(SELECTED_SONG_STATE_KEY) or {}
+        original = str(record.get("key") or selected.get("key") or "C")
+    concert = str(session_state.get("display_key") or original)
+    inst = str(session_state.get("instrument") or "Piano")
+    if is_transposing_instrument(inst) and chart_in_instrument_key(session_state):
+        chart_k, _ = effective_chart_key(concert, inst, session_state)
+        return original, chart_k
+    return original, concert
 
 
 def note_active_source_change(st: Any, *, invalidate_backing) -> bool:
@@ -114,13 +168,12 @@ def display_key_context(
         from custom_progression_lab import (
             default_active_progression,
             ensure_original_structure,
-            written_home_key,
         )
 
         active = ensure_original_structure(
             session_state.get(cpl_active_key) or default_active_progression()
         )
-        home = written_home_key(active)
+        home = custom_original_key(active)
         title = active.get("name", "Custom Progression")
         return home, (title, "Custom progression", home)
 
@@ -225,7 +278,7 @@ def commit_custom_active_song(
         ensure_all_cpl_sections,
         ensure_original_structure,
         prepare_cpl_backing_handoff,
-        written_home_key,
+        cpl_draft_written_key,
     )
     from songs.key_state import (
         apply_display_key_for_active_song,
@@ -239,11 +292,12 @@ def commit_custom_active_song(
     active["user_locked_home_key"] = True
     session[cpl_active_key] = active
 
-    home_key = written_home_key(active)
+    home_key = cpl_draft_written_key(active)
     selected = custom_selected_song_record(active)
     pick_key = str(selected.get("pick_key") or "").strip()
 
     set_custom_source(session)
+    sync_song_picker_source_widget(session)
     note_active_source_change(st, invalidate_backing=invalidate_backing)
 
     session[SELECTED_SONG_STATE_KEY] = selected
@@ -313,7 +367,6 @@ def build_active_chart_bundle(
             ensure_all_cpl_sections,
             ensure_original_structure,
             sections_to_chord_lists,
-            written_home_key,
         )
 
         active = ensure_original_structure(
@@ -321,7 +374,7 @@ def build_active_chart_bundle(
         )
         active["original_sections"] = ensure_all_cpl_sections(active.get("original_sections"))
         session_state[cpl_active_key] = active
-        home_key = written_home_key(active)
+        home_key = custom_original_key(active)
         home_sections = active.get("original_sections") or {}
         level_source_sections = sections_to_chord_lists(home_sections)
         level_song_data = {

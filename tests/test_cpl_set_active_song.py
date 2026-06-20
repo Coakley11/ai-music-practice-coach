@@ -33,11 +33,14 @@ from songs.key_state import (
 from songs.music_source import (
     PENDING_CUSTOM_ACTIVE_SONG_KEY,
     SOURCE_CUSTOM,
+    active_song_key_pair,
     apply_pending_custom_active_song_activation_before_widgets,
     commit_custom_active_song,
     custom_selected_song_record,
     is_custom_progression,
     queue_custom_active_song_activation,
+    sync_song_picker_source_widget,
+    SONG_PICKER_SOURCE_CUSTOM,
 )
 from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
@@ -255,6 +258,41 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(record["title"], "My Progression")
         self.assertEqual(record["key"], "C")
         self.assertTrue(record["is_custom"])
+
+    def test_active_song_key_pair_uses_cpl_original_not_stale_rec_key(self) -> None:
+        active = self._draft_with_chords()
+        session = {
+            "active_music_source": SOURCE_CUSTOM,
+            CPL_ACTIVE_KEY: active,
+            "display_key": "C",
+            "instrument": "Piano",
+        }
+        original, practice = active_song_key_pair(session, {"key": "G"})
+        self.assertEqual(original, "C")
+        self.assertEqual(practice, "C")
+
+    def test_commit_custom_active_song_syncs_picker_source_widget(self) -> None:
+        active = self._draft_with_chords()
+        st = SimpleNamespace(session_state={
+            "display_key": "G",
+            "instrument": "Piano",
+            "level": "Intermediate",
+            "focus": "General",
+            CPL_ACTIVE_KEY: active,
+            "song_picker_active_source": "Song Selection (catalog song)",
+        })
+
+        with patch("songs.state.persist_music_local_state"):
+            commit_custom_active_song(
+                st,
+                active,
+                invalidate_backing=lambda _st: None,
+            )
+
+        self.assertEqual(
+            st.session_state["song_picker_active_source"],
+            SONG_PICKER_SOURCE_CUSTOM,
+        )
 
 
 if __name__ == "__main__":

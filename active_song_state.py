@@ -288,7 +288,7 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         from custom_progression_lab import (
             default_active_progression,
             ensure_original_structure,
-            written_home_key,
+            cpl_draft_written_key,
         )
         from songs.music_source import custom_pick_key_for, custom_selected_song_record
 
@@ -296,7 +296,7 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
             session.get("cpl_active_progression") or default_active_progression()
         )
         selected = custom_selected_song_record(active)
-        home_key = written_home_key(active)
+        home_key = cpl_draft_written_key(active)
         pick_key = str(selected.get("pick_key") or custom_pick_key_for(active)).strip()
         instrument_name = str(session.get("instrument") or "").strip()
         display_key = str(session.get("display_key") or home_key or "C").strip()
@@ -783,7 +783,7 @@ def _custom_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
     if source != SOURCE_CUSTOM:
         return None
 
-    from custom_progression_lab import default_active_progression, ensure_original_structure, written_home_key
+    from custom_progression_lab import default_active_progression, ensure_original_structure, cpl_draft_written_key
     from songs.music_source import custom_pick_key_for, custom_selected_song_record
 
     cpl = session_extra.get("cpl_active_progression")
@@ -791,7 +791,7 @@ def _custom_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
         cpl = default_active_progression()
     active = ensure_original_structure(cpl)
     selected = custom_selected_song_record(active)
-    home_key = written_home_key(active)
+    home_key = cpl_draft_written_key(active)
     ctx = _normalize_context(meta if isinstance(meta, dict) else {})
     ctx.update(
         {
