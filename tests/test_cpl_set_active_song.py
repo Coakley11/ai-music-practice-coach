@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from active_song_state import (
     ACTIVE_SONG_STATE_KEY,
@@ -31,10 +31,13 @@ from songs.key_state import (
     song_display_identity,
 )
 from songs.music_source import (
+    PENDING_CUSTOM_ACTIVE_SONG_KEY,
     SOURCE_CUSTOM,
+    apply_pending_custom_active_song_activation_before_widgets,
     commit_custom_active_song,
     custom_selected_song_record,
     is_custom_progression,
+    queue_custom_active_song_activation,
 )
 from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
@@ -87,9 +90,10 @@ class TestCplSetActiveSong(unittest.TestCase):
         )
         self.assertTrue(view["show_panel"])
         self.assertTrue(view["has_chords"])
-        self.assertIn("cpl-live-progression", view["panel_html"])
-        self.assertIn(">C<", view["panel_html"])
-        self.assertIn(">G<", view["panel_html"])
+        self.assertEqual(len(view["native_rows"]), 2)
+        self.assertEqual(view["native_rows"][0], ("C", 2))
+        self.assertEqual(view["native_rows"][1], ("G", 2))
+        self.assertIn("C — 2 bars", view["native_lines"])
 
     def test_builder_view_shows_pending_chord_before_bars(self) -> None:
         active = default_active_progression()
@@ -103,7 +107,17 @@ class TestCplSetActiveSong(unittest.TestCase):
         )
         self.assertTrue(view["show_panel"])
         self.assertIn("cpl-pending-hint", view["panel_html"])
-        self.assertIn(">Am<", view["panel_html"])
+        self.assertEqual(view["native_rows"], [])
+
+    def test_native_fallback_would_render_rows(self) -> None:
+        active = self._draft_with_chords()
+        view = cpl_section_progression_view(
+            active,
+            section_name="Verse",
+            preview_key=written_home_key(active),
+        )
+        self.assertGreater(len(view["native_rows"]), 0)
+        self.assertTrue(all(ch and bars >= 1 for ch, bars in view["native_rows"]))
 
     def test_draft_key_change_does_not_require_global_display_key(self) -> None:
         active = self._draft_with_chords()
@@ -113,7 +127,7 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(session["display_key"], "G")
         self.assertEqual(written_home_key(active), "D")
 
-    def test_commit_custom_active_song_defers_display_key_widget(self) -> None:
+    def test_queue_activation_does_not_mutate_widget_keys(self) -> None:
         active = self._draft_with_chords()
         st = SimpleNamespace(session_state={
             "display_key": "G",
@@ -122,25 +136,47 @@ class TestCplSetActiveSong(unittest.TestCase):
             "focus": "General",
             CPL_ACTIVE_KEY: active,
         })
+        queue_custom_active_song_activation(st, active, toast_title="My Progression")
+        ss = st.session_state
+        self.assertIn(PENDING_CUSTOM_ACTIVE_SONG_KEY, ss)
+        self.assertEqual(ss["display_key"], "G")
+        self.assertEqual(ss["instrument"], "Piano")
+        self.assertEqual(ss["level"], "Intermediate")
+        self.assertEqual(ss["focus"], "General")
+        self.assertNotIn(PENDING_DISPLAY_KEY, ss)
 
+    def test_apply_pending_activation_before_widgets(self) -> None:
+        active = self._draft_with_chords()
+        st = SimpleNamespace(session_state={
+            "display_key": "G",
+            "instrument": "Piano",
+            "level": "Intermediate",
+            "focus": "General",
+            CPL_ACTIVE_KEY: active,
+            PENDING_CUSTOM_ACTIVE_SONG_KEY: {
+                "cpl_active_key": CPL_ACTIVE_KEY,
+                "toast_title": "My Progression",
+            },
+        })
         with patch("songs.state.persist_music_local_state"):
-            commit_custom_active_song(
+            applied = apply_pending_custom_active_song_activation_before_widgets(
                 st,
-                active,
                 invalidate_backing=lambda _st: None,
             )
-
+        self.assertTrue(applied)
         ss = st.session_state
-        self.assertEqual(ss["display_key"], "G")
-        self.assertEqual(ss[PENDING_DISPLAY_KEY], "C")
+        self.assertTrue(is_custom_progression(ss))
+        self.assertEqual(ss["display_key"], "C")
+        self.assertEqual(ss["_cpl_activation_toast"], "My Progression")
+        self.assertNotIn(PENDING_CUSTOM_ACTIVE_SONG_KEY, ss)
         self.assertEqual(
             ss[IDENTITY_KEY],
             song_display_identity("My Progression", "Your progression", "C"),
         )
 
     def test_pending_display_key_applied_before_widget_on_next_run(self) -> None:
-        identity = song_display_identity("My Progression", "", "C")
-        st = MagicMock(
+        identity = song_display_identity("My Progression", "Your progression", "C")
+        st = SimpleNamespace(
             session_state={
                 "display_key": "G",
                 PENDING_DISPLAY_KEY: "C",
@@ -153,15 +189,12 @@ class TestCplSetActiveSong(unittest.TestCase):
 
     def test_commit_custom_active_song_updates_global_state(self) -> None:
         active = self._draft_with_chords()
-        identity = song_display_identity("My Progression", "", "C")
         st = SimpleNamespace(session_state={
             "display_key": "G",
             "instrument": "Piano",
             "level": "Intermediate",
             "focus": "General",
             CPL_ACTIVE_KEY: active,
-            IDENTITY_KEY: identity,
-            PENDING_DISPLAY_KEY: "C",
         })
 
         with patch("songs.state.persist_music_local_state"):
@@ -173,8 +206,7 @@ class TestCplSetActiveSong(unittest.TestCase):
 
         ss = st.session_state
         self.assertTrue(is_custom_progression(ss))
-        self.assertEqual(ss["display_key"], "G")
-        self.assertEqual(ss[PENDING_DISPLAY_KEY], "C")
+        self.assertEqual(ss["display_key"], "C")
         selected = ss[SELECTED_SONG_STATE_KEY]
         self.assertEqual(selected["title"], "My Progression")
         self.assertEqual(selected["key"], "C")

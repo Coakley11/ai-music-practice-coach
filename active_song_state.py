@@ -535,6 +535,28 @@ def rehydrate_transposing_sidebar_from_canonical(session: dict[str, Any]) -> Non
         session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
 
 
+def _log_widget_bound_session_mutation_blocked(
+    key: str,
+    source: str,
+    exc: Exception,
+) -> None:
+    """Best-effort trace when a widget-bound session key cannot be mutated late in a run."""
+    msg = (
+        f"Blocked session mutation for widget-bound key `{key}` "
+        f"(source={source or 'unknown'}): {exc}"
+    )
+    try:
+        import streamlit as st
+
+        trace = st.session_state.setdefault("_widget_bound_mutation_trace", [])
+        if isinstance(trace, list):
+            trace.append(msg)
+            if len(trace) > 12:
+                del trace[:-12]
+    except Exception:
+        pass
+
+
 def _apply_context_to_session_keys(
     session: dict[str, Any],
     ctx: dict[str, Any],
@@ -575,7 +597,11 @@ def _apply_context_to_session_keys(
                     global_control_source or "canonical_apply",
                     overwrite=True,
                 )
-            session[key] = val
+            try:
+                session[key] = val
+            except Exception as exc:
+                _log_widget_bound_session_mutation_blocked(key, global_control_source, exc)
+                raise
     selected = _normalize_selected_song(ctx.get("selected_song"))
     if selected:
         if pick_key:

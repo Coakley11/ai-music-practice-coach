@@ -178,9 +178,9 @@ def render_custom_progression_lab_page() -> None:
     )
     from jazz_demo_charts import build_demo_progression, demo_presets_for_style
     from songs.music_source import (
-        commit_custom_active_song,
         is_custom_progression,
         note_active_source_change,
+        queue_custom_active_song_activation,
         set_custom_source,
     )
     try:
@@ -260,13 +260,11 @@ def render_custom_progression_lab_page() -> None:
         nonlocal active
         _save(_home_sections())
         active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
-        commit_custom_active_song(
+        queue_custom_active_song_activation(
             st,
             active,
-            invalidate_backing=invalidate_backing_cache,
+            toast_title=prog_title if toast else None,
         )
-        if toast:
-            st.session_state["_cpl_activation_toast"] = prog_title
         st.rerun()
 
     def _open_practice() -> None:
@@ -668,10 +666,29 @@ def render_custom_progression_lab_page() -> None:
                 use_lead_sheet=use_lead_sheet,
             )
             st.markdown("**Progression in this section**")
-            if view["show_panel"]:
-                st.html(view["panel_html"])
-            else:
-                st.info("Tap a chord below, then choose **1**, **2**, or **4** bars to add it.")
+            if not view["show_panel"]:
+                st.info("Tap a chord above, then choose **1**, **2**, or **4** bars to add it.")
+                return view
+
+            native_rows = view["native_rows"]
+            if native_rows:
+                with st.container(border=True):
+                    head_ch, head_bars = st.columns([2, 1])
+                    with head_ch:
+                        st.markdown("**Chord**")
+                    with head_bars:
+                        st.markdown("**Bars**")
+                    for chord_label, bar_count in native_rows:
+                        col_ch, col_bars = st.columns([2, 1])
+                        with col_ch:
+                            st.markdown(f"### {chord_label}")
+                        with col_bars:
+                            unit = "bar" if bar_count == 1 else "bars"
+                            st.write(f"{bar_count} {unit}")
+            if pending:
+                st.info(
+                    f"Selected: **{pending}** — choose **1**, **2**, or **4** bars above to add it."
+                )
             return view
 
         progression_view = _render_section_progression(pending=pending_chord)

@@ -72,8 +72,9 @@ class TestCplChordDisplay(unittest.TestCase):
             preview_key=written_home_key(active),
         )
         self.assertTrue(view["has_chords"])
-        self.assertIn("chord-symbol", view["panel_html"])
-        self.assertIn(">C<", view["panel_html"])
+        self.assertGreater(len(view["native_rows"]), 0)
+        self.assertEqual(view["native_rows"][0][0], "C")
+        self.assertIn("C — 1 bar", view["native_lines"])
 
 
 if __name__ == "__main__":

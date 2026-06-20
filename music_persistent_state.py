@@ -1759,6 +1759,22 @@ def prepare_canonical_music_page_state(session: dict[str, Any]) -> None:
         from practice_state import prepare_practice_page
         from studio_nav_state import prepare_studio_nav
 
+        try:
+            from songs.key_state import invalidate_backing_cache
+            from songs.music_source import (
+                apply_pending_custom_active_song_activation_before_widgets,
+            )
+
+            class _SessionProxy:
+                session_state = session
+
+            apply_pending_custom_active_song_activation_before_widgets(
+                _SessionProxy(),
+                invalidate_backing=invalidate_backing_cache,
+            )
+        except ImportError:
+            pass
+
         prepare_studio_nav(session)
         prepare_active_song_context(session)
         prepare_practice_page(session)

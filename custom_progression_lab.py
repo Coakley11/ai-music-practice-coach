@@ -2199,6 +2199,17 @@ def cpl_section_progression_view(
             f"— click 1, 2, or 4 bars above to add it</p>"
         )
     panel_bits.append("</div>")
+    native_rows: list[tuple[str, int]] = []
+    for entry in section_display:
+        chord_label = str(entry.get("chord", "")).strip()
+        if not chord_label or chord_label == "%":
+            continue
+        bar_count = max(1, int(entry.get("bars", 1) or 1))
+        native_rows.append((chord_label, bar_count))
+    native_lines = [
+        f"{chord_label} — {bar_count} bar{'s' if bar_count != 1 else ''}"
+        for chord_label, bar_count in native_rows
+    ]
     return {
         "section_display": section_display,
         "home_entries": home_entries,
@@ -2206,6 +2217,8 @@ def cpl_section_progression_view(
         "has_chords": has_chords,
         "show_panel": show_panel,
         "panel_html": "".join(panel_bits) if show_panel else "",
+        "native_rows": native_rows,
+        "native_lines": native_lines,
     }
 
 

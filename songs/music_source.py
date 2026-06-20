@@ -8,6 +8,7 @@ ACTIVE_MUSIC_SOURCE_KEY = "active_music_source"
 SOURCE_CATALOG = "catalog_song"
 SOURCE_CUSTOM = "custom_progression"
 _LAST_SOURCE_KEY = "_last_active_music_source"
+PENDING_CUSTOM_ACTIVE_SONG_KEY = "_pending_custom_active_song_activation"
 
 
 def ensure_active_music_source(session_state: dict[str, Any]) -> None:
@@ -160,6 +161,53 @@ def custom_selected_song_record(active: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def queue_custom_active_song_activation(
+    st: Any,
+    active: dict[str, Any],
+    *,
+    cpl_active_key: str = "cpl_active_progression",
+    toast_title: str | None = None,
+) -> None:
+    """Queue CPL activation for the next run (before sidebar/global widgets render)."""
+    from custom_progression_lab import ensure_all_cpl_sections, ensure_original_structure
+
+    session = st.session_state
+    active = ensure_original_structure(active)
+    active["original_sections"] = ensure_all_cpl_sections(active.get("original_sections"))
+    active["user_locked_home_key"] = True
+    session[cpl_active_key] = active
+    payload: dict[str, Any] = {"cpl_active_key": cpl_active_key}
+    if toast_title:
+        payload["toast_title"] = str(toast_title).strip()
+    session[PENDING_CUSTOM_ACTIVE_SONG_KEY] = payload
+
+
+def apply_pending_custom_active_song_activation_before_widgets(
+    st: Any,
+    *,
+    invalidate_backing,
+) -> bool:
+    """Apply queued CPL activation before any widget-bound session keys are touched."""
+    session = st.session_state
+    pending = session.pop(PENDING_CUSTOM_ACTIVE_SONG_KEY, None)
+    if not isinstance(pending, dict):
+        return False
+    cpl_active_key = str(pending.get("cpl_active_key") or "cpl_active_progression").strip()
+    active = session.get(cpl_active_key)
+    if not isinstance(active, dict):
+        return False
+    commit_custom_active_song(
+        st,
+        active,
+        cpl_active_key=cpl_active_key,
+        invalidate_backing=invalidate_backing,
+    )
+    toast_title = str(pending.get("toast_title") or "").strip()
+    if toast_title:
+        session["_cpl_activation_toast"] = toast_title
+    return True
+
+
 def commit_custom_active_song(
     st: Any,
     active: dict[str, Any],
@@ -167,7 +215,12 @@ def commit_custom_active_song(
     cpl_active_key: str = "cpl_active_progression",
     invalidate_backing,
 ) -> dict[str, Any]:
-    """Promote CPL draft to the global active song (source, title, key, playback, cloud)."""
+    """Promote CPL draft to the global active song (source, title, key, playback, cloud).
+
+    Must run before sidebar/global widgets render. Use ``queue_custom_active_song_activation``
+    from page callbacks, then ``apply_pending_custom_active_song_activation_before_widgets``
+    at app startup.
+    """
     from custom_progression_lab import (
         ensure_all_cpl_sections,
         ensure_original_structure,
@@ -175,8 +228,7 @@ def commit_custom_active_song(
         written_home_key,
     )
     from songs.key_state import (
-        IDENTITY_KEY,
-        PENDING_DISPLAY_KEY,
+        apply_display_key_for_active_song,
         song_display_identity,
     )
     from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
@@ -203,10 +255,7 @@ def commit_custom_active_song(
         selected.get("artist", ""),
         home_key,
     )
-    # Queue display-key change for the next run — never mutate the display_key widget
-    # key in the same run as Set as Active Song (sidebar widget already rendered).
-    session[PENDING_DISPLAY_KEY] = home_key
-    session[IDENTITY_KEY] = identity
+    apply_display_key_for_active_song(st, home_key, identity, pending_key=home_key)
 
     prepare_cpl_backing_handoff(session, active)
 
@@ -230,7 +279,6 @@ def commit_custom_active_song(
             ctx,
             reason="custom_active_song",
             local_edit=True,
-            mutate_display_key=False,
         )
         sync_active_song_to_canonical(session)
     except ImportError:
