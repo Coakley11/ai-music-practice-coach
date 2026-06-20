@@ -979,10 +979,14 @@ CPL_WIDGET_PERSIST_SCALAR_KEYS = (
     CPL_LAST_DISPLAY_KEY,
     "cpl_edit_section",
     "cpl_name",
+    "cpl_title_input",
+    "cpl_artist_input",
     "cpl_original_key",
     "cpl_time_signature",
     "cpl_progression_style",
+    "cpl_style_early",
     "cpl_bpm",
+    "cpl_bpm_builder",
     "cpl_groove_style",
 )
 
@@ -1033,7 +1037,102 @@ def apply_cpl_session_progression(session_state: dict, active: dict) -> None:
         written_home_key(session_state[CPL_ACTIVE_KEY]),
     )
     clear_cpl_widget_state(session_state)
+    seed_cpl_draft_widgets_from_active(session_state, session_state[CPL_ACTIVE_KEY])
     invalidate_cpl_derived_outputs(session_state)
+
+
+def migrate_cpl_builder_version(session_state: dict) -> None:
+    """Upgrade builder metadata without wiping an in-progress draft."""
+    stored = session_state.get("cpl_builder_version")
+    if stored == CPL_BUILDER_VERSION:
+        return
+    if CPL_ACTIVE_KEY not in session_state:
+        session_state[CPL_ACTIVE_KEY] = default_active_progression()
+    else:
+        session_state[CPL_ACTIVE_KEY] = ensure_original_structure(session_state[CPL_ACTIVE_KEY])
+    session_state["cpl_builder_version"] = CPL_BUILDER_VERSION
+    seed_cpl_draft_widgets_from_active(session_state, session_state[CPL_ACTIVE_KEY])
+
+
+def seed_cpl_draft_widgets_from_active(session_state: dict, active: dict) -> None:
+    """Seed Streamlit widget keys from canonical draft fields before widgets render."""
+    active = ensure_original_structure(active)
+    session_state.setdefault("cpl_title_input", str(active.get("name") or "My Progression"))
+    session_state.setdefault("cpl_artist_input", str(active.get("artist") or ""))
+    session_state.setdefault("cpl_name", str(active.get("name") or "My Progression"))
+    ts = str(active.get("time_signature") or "4/4")
+    session_state.setdefault("cpl_time_signature", ts)
+    bpm = int(active.get("bpm", 100) or 100)
+    session_state.setdefault("cpl_bpm_builder", bpm)
+    session_state.setdefault("cpl_bpm", bpm)
+    style = str(active.get("progression_style") or "Pop")
+    session_state.setdefault("cpl_style_early", style)
+    session_state.setdefault("cpl_progression_style", style)
+    home_key = written_home_key(active)
+    session_state.setdefault("cpl_original_key", home_key)
+
+
+def sync_cpl_draft_widgets_to_active(session_state: dict, active: dict) -> dict:
+    """Copy live CPL widget values into the canonical draft blob."""
+    active = ensure_original_structure(active)
+    if "cpl_title_input" in session_state:
+        title = str(session_state.get("cpl_title_input") or "").strip()
+        active["name"] = title or "My Progression"
+    elif "cpl_name" in session_state:
+        title = str(session_state.get("cpl_name") or "").strip()
+        active["name"] = title or "My Progression"
+    if "cpl_artist_input" in session_state:
+        active["artist"] = str(session_state.get("cpl_artist_input") or "").strip()
+    if "cpl_time_signature" in session_state:
+        active["time_signature"] = str(session_state.get("cpl_time_signature") or "4/4")
+    if "cpl_bpm_builder" in session_state:
+        active["bpm"] = int(session_state.get("cpl_bpm_builder") or 100)
+    elif "cpl_bpm" in session_state:
+        active["bpm"] = int(session_state.get("cpl_bpm") or 100)
+    if "cpl_style_early" in session_state:
+        active["progression_style"] = str(session_state.get("cpl_style_early") or "Pop")
+    elif "cpl_progression_style" in session_state:
+        active["progression_style"] = str(session_state.get("cpl_progression_style") or "Pop")
+    return active
+
+
+def persist_cpl_draft_state(st) -> None:
+    """Flush CPL draft to local/cloud persistence."""
+    try:
+        from songs.state import persist_music_local_state
+
+        persist_music_local_state(st)
+    except Exception:
+        pass
+
+
+def cpl_active_from_session(session_state: dict) -> dict:
+    """Read the canonical CPL draft from session_state."""
+    return ensure_original_structure(session_state.get(CPL_ACTIVE_KEY) or default_active_progression())
+
+
+def cpl_save_draft(
+    session_state: dict,
+    active: dict,
+    sections: dict | None = None,
+    *,
+    persist: bool = True,
+    st: Any | None = None,
+) -> dict:
+    """Single write path: widgets → draft blob → session → optional cloud persist."""
+    active = ensure_original_structure(session_state.get(CPL_ACTIVE_KEY) or active)
+    active = sync_cpl_draft_widgets_to_active(session_state, active)
+    home = (
+        ensure_all_cpl_sections(sections)
+        if sections is not None
+        else ensure_all_cpl_sections(active.get("original_sections"))
+    )
+    active = commit_home_sections(active, home)
+    active["user_locked_home_key"] = True
+    session_state[CPL_ACTIVE_KEY] = active
+    if persist and st is not None:
+        persist_cpl_draft_state(st)
+    return active
 
 
 def list_saved_progression_names(store: dict) -> list[str]:
@@ -2237,3 +2336,52 @@ def cpl_apply_pending_chord_to_section(
         return active
     home_sections[section_name].append({"chord": chord, "bars": max(1, int(bars or 1))})
     return commit_home_sections(active, home_sections)
+
+
+def cpl_format_section_line(rows: list[tuple[str, int]]) -> str:
+    parts: list[str] = []
+    for chord, bar_count in rows:
+        unit = "bar" if bar_count == 1 else "bars"
+        parts.append(f"{chord} — {bar_count} {unit}")
+    return " · ".join(parts)
+
+
+def cpl_whole_song_progression_view(active: dict, preview_key: str) -> dict[str, Any]:
+    """Whole-song display model for the CPL page (native + HTML fallbacks)."""
+    active = ensure_original_structure(active)
+    home_sections = ensure_all_cpl_sections(active.get("original_sections"))
+    section_blocks: list[dict[str, Any]] = []
+    for name in filled_section_names(home_sections):
+        view = cpl_section_progression_view(
+            active,
+            section_name=name,
+            preview_key=preview_key,
+            time_signature=str(active.get("time_signature") or "4/4"),
+        )
+        if not view["native_rows"]:
+            continue
+        section_blocks.append(
+            {
+                "name": name,
+                "rows": list(view["native_rows"]),
+                "line": cpl_format_section_line(view["native_rows"]),
+            }
+        )
+    return {
+        "sections": section_blocks,
+        "has_any": bool(section_blocks),
+    }
+
+
+def cpl_page_end_save_should_preserve_sections(
+    session_state: dict,
+    *,
+    sections_snapshot: dict,
+) -> bool:
+    """True when end-of-page save would not drop newly-added chords."""
+    active = cpl_active_from_session(session_state)
+    current = ensure_all_cpl_sections(active.get("original_sections"))
+    snap = ensure_all_cpl_sections(sections_snapshot)
+    snap_count = sum(len(snap.get(name) or []) for name in CPL_EDITABLE_SECTIONS)
+    cur_count = sum(len(current.get(name) or []) for name in CPL_EDITABLE_SECTIONS)
+    return cur_count >= snap_count
