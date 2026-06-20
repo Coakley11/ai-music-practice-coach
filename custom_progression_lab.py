@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import copy
 import re
 import sys
 from pathlib import Path
@@ -1054,22 +1055,39 @@ def migrate_cpl_builder_version(session_state: dict) -> None:
     seed_cpl_draft_widgets_from_active(session_state, session_state[CPL_ACTIVE_KEY])
 
 
-def seed_cpl_draft_widgets_from_active(session_state: dict, active: dict) -> None:
+CPL_DRAFT_WIDGET_KEYS: tuple[str, ...] = (
+    "cpl_title_input",
+    "cpl_artist_input",
+    "cpl_time_signature",
+    "cpl_bpm_builder",
+    "cpl_style_early",
+    "cpl_original_key",
+    "cpl_edit_section",
+)
+
+
+def seed_cpl_draft_widgets_from_active(
+    session_state: dict,
+    active: dict,
+    *,
+    force: bool = False,
+) -> None:
     """Seed Streamlit widget keys from canonical draft fields before widgets render."""
     active = ensure_original_structure(active)
-    session_state.setdefault("cpl_title_input", str(active.get("name") or "My Progression"))
-    session_state.setdefault("cpl_artist_input", str(active.get("artist") or ""))
-    session_state.setdefault("cpl_name", str(active.get("name") or "My Progression"))
-    ts = str(active.get("time_signature") or "4/4")
-    session_state.setdefault("cpl_time_signature", ts)
-    bpm = int(active.get("bpm", 100) or 100)
-    session_state.setdefault("cpl_bpm_builder", bpm)
-    session_state.setdefault("cpl_bpm", bpm)
-    style = str(active.get("progression_style") or "Pop")
-    session_state.setdefault("cpl_style_early", style)
-    session_state.setdefault("cpl_progression_style", style)
-    home_key = written_home_key(active)
-    session_state.setdefault("cpl_original_key", home_key)
+    values = {
+        "cpl_title_input": str(active.get("name") or "My Progression"),
+        "cpl_artist_input": str(active.get("artist") or ""),
+        "cpl_name": str(active.get("name") or "My Progression"),
+        "cpl_time_signature": str(active.get("time_signature") or "4/4"),
+        "cpl_bpm_builder": int(active.get("bpm", 100) or 100),
+        "cpl_bpm": int(active.get("bpm", 100) or 100),
+        "cpl_style_early": str(active.get("progression_style") or "Pop"),
+        "cpl_progression_style": str(active.get("progression_style") or "Pop"),
+        "cpl_original_key": cpl_draft_written_key(active),
+    }
+    for key, val in values.items():
+        if force or key not in session_state:
+            session_state[key] = val
 
 
 def sync_cpl_draft_widgets_to_active(session_state: dict, active: dict) -> dict:
@@ -1084,26 +1102,49 @@ def sync_cpl_draft_widgets_to_active(session_state: dict, active: dict) -> dict:
     if "cpl_artist_input" in session_state:
         active["artist"] = str(session_state.get("cpl_artist_input") or "").strip()
     if "cpl_time_signature" in session_state:
-        active["time_signature"] = str(session_state.get("cpl_time_signature") or "4/4")
+        ts = str(session_state.get("cpl_time_signature") or "4/4").strip()
+        if ts in CPL_TIME_SIGNATURES:
+            active["time_signature"] = ts
     if "cpl_bpm_builder" in session_state:
         active["bpm"] = int(session_state.get("cpl_bpm_builder") or 100)
     elif "cpl_bpm" in session_state:
         active["bpm"] = int(session_state.get("cpl_bpm") or 100)
     if "cpl_style_early" in session_state:
-        active["progression_style"] = str(session_state.get("cpl_style_early") or "Pop")
+        style = str(session_state.get("cpl_style_early") or "Pop").strip()
+        if style in CPL_PROGRESSION_STYLES:
+            active["progression_style"] = style
     elif "cpl_progression_style" in session_state:
-        active["progression_style"] = str(session_state.get("cpl_progression_style") or "Pop")
+        style = str(session_state.get("cpl_progression_style") or "Pop").strip()
+        if style in CPL_PROGRESSION_STYLES:
+            active["progression_style"] = style
+    if "cpl_original_key" in session_state:
+        picked = str(session_state.get("cpl_original_key") or "C").strip() or "C"
+        stored = cpl_draft_written_key(active)
+        if picked != stored:
+            active = set_original_key_center(active, picked)
     return active
 
 
 def persist_cpl_draft_state(st) -> None:
     """Flush CPL draft to local/cloud persistence."""
+    import time
+
+    ss = st.session_state
+    ss["_cpl_last_persist_attempt_at"] = time.time()
     try:
         from songs.state import persist_music_local_state
 
         persist_music_local_state(st)
+        ss["_cpl_last_persist_ok"] = True
+        ss["_cpl_last_persist_error"] = None
+    except Exception as exc:
+        ss["_cpl_last_persist_ok"] = False
+        ss["_cpl_last_persist_error"] = str(exc)
+    try:
+        exported = export_cpl_widget_state(ss)
+        ss["_cpl_last_exported_widget_keys"] = sorted(str(k) for k in exported.keys())
     except Exception:
-        pass
+        ss["_cpl_last_exported_widget_keys"] = []
 
 
 def cpl_active_from_session(session_state: dict) -> dict:
@@ -1127,8 +1168,8 @@ def cpl_save_draft(
         if sections is not None
         else ensure_all_cpl_sections(active.get("original_sections"))
     )
-    active = commit_home_sections(active, home)
     active["user_locked_home_key"] = True
+    active = commit_home_sections(active, home)
     session_state[CPL_ACTIVE_KEY] = active
     if persist and st is not None:
         persist_cpl_draft_state(st)
@@ -1995,14 +2036,20 @@ def format_key_label(home_key: str) -> str:
     return f"{root} major"
 
 
+def cpl_draft_written_key(active: dict) -> str:
+    """Written key shown in CPL — always the user-chosen original_key_center (no inference)."""
+    active = ensure_original_structure(active)
+    return str(active.get("original_key_center") or "C").strip() or "C"
+
+
 def cpl_draft_preview_key(active: dict) -> str:
     """Written/home key for in-page chord preview — does not touch global display_key."""
-    return written_home_key(active)
+    return cpl_draft_written_key(active)
 
 
 def ensure_cpl_draft_home_tracking(st, active: dict) -> dict:
     """Invalidate derived CPL outputs when the draft written key changes."""
-    home = written_home_key(active)
+    home = cpl_draft_written_key(active)
     prev = st.session_state.get("_cpl_editing_home_key")
     if prev != home:
         st.session_state["_cpl_editing_home_key"] = home
@@ -2370,6 +2417,71 @@ def cpl_whole_song_progression_view(active: dict, preview_key: str) -> dict[str,
     return {
         "sections": section_blocks,
         "has_any": bool(section_blocks),
+    }
+
+
+def cpl_apply_chord_with_bars_to_session(
+    session_state: dict,
+    *,
+    section_name: str,
+    chord: str,
+    bars: int,
+    st: Any | None = None,
+    persist: bool = False,
+) -> dict:
+    """Simulate CPL page flow: pick chord → choose bars → save draft."""
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    symbol = normalize_chord_symbol(chord) or str(chord or "").strip()
+    if not symbol:
+        return active
+    home[section_name].append({"chord": symbol, "bars": max(1, int(bars or 1))})
+    session_state.pop(f"cpl_pending_chord_{section_name}", None)
+    return cpl_save_draft(session_state, active, home, persist=persist, st=st)
+
+
+def build_cpl_developer_diagnostics(
+    session_state: dict,
+    active: dict,
+    *,
+    edit_section: str,
+) -> dict[str, Any]:
+    """Live CPL state snapshot for developer-mode panel."""
+    active = ensure_original_structure(active)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    pending_key = f"cpl_pending_chord_{edit_section}"
+    bars_key = f"cpl_last_bars_{edit_section}"
+    chord_count = sum(len(home.get(name) or []) for name in CPL_EDITABLE_SECTIONS)
+    return {
+        "widgets": {
+            key: session_state.get(key)
+            for key in CPL_DRAFT_WIDGET_KEYS
+        },
+        "draft": {
+            "title": active.get("name"),
+            "artist": active.get("artist"),
+            "style": active.get("progression_style"),
+            "bpm": active.get("bpm"),
+            "meter": active.get("time_signature"),
+            "written_key": cpl_draft_written_key(active),
+            "original_key_center": active.get("original_key_center"),
+            "user_locked_home_key": active.get("user_locked_home_key"),
+            "section_count": len(filled_section_names(home)),
+            "chord_count": chord_count,
+            "original_sections": copy.deepcopy(home),
+        },
+        "pending": {
+            "edit_section": edit_section,
+            "pending_chord": session_state.get(pending_key),
+            "last_bars": session_state.get(bars_key),
+        },
+        "persistence": {
+            "last_persist_attempt_at": session_state.get("_cpl_last_persist_attempt_at"),
+            "last_persist_ok": session_state.get("_cpl_last_persist_ok"),
+            "last_persist_error": session_state.get("_cpl_last_persist_error"),
+            "exported_widget_keys": session_state.get("_cpl_last_exported_widget_keys"),
+            "builder_version": session_state.get("cpl_builder_version"),
+        },
     }
 
 

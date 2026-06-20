@@ -1470,6 +1470,8 @@ def apply_music_disk_state(
             ss[key] = copy.deepcopy(val)
         elif key in _PERSIST_KEYS:
             ss[key] = copy.deepcopy(val)
+            if key == "cpl_active_progression":
+                ss["_cpl_reseed_widgets_from_active"] = True
         else:
             try:
                 from active_song_state import (

@@ -138,7 +138,9 @@ def render_custom_progression_lab_page() -> None:
         apply_quick_chord_edit,
         build_style_preset_entries,
         clear_all_cpl_sections,
+        build_cpl_developer_diagnostics,
         cpl_active_from_session,
+        cpl_draft_written_key,
         cpl_save_draft,
         cpl_section_progression_view,
         cpl_steps_strip_html,
@@ -161,7 +163,6 @@ def render_custom_progression_lab_page() -> None:
         load_saved_progression,
         migrate_cpl_builder_version,
         normalize_chord_symbol,
-        persist_cpl_draft_state,
         preset_button_label,
         prepare_cpl_backing_handoff,
         presets_for_style,
@@ -173,7 +174,6 @@ def render_custom_progression_lab_page() -> None:
         simple_chords_for_key,
         song_structure_overview_html,
         start_new_progression,
-        set_original_key_center,
         sync_cpl_draft_widgets_to_active,
         written_home_key,
     )
@@ -217,10 +217,13 @@ def render_custom_progression_lab_page() -> None:
 
     active = cpl_active_from_session(st.session_state)
     active = ensure_cpl_draft_home_tracking(st, active)
-    seed_cpl_draft_widgets_from_active(st.session_state, active)
+    if st.session_state.pop("_cpl_reseed_widgets_from_active", False):
+        seed_cpl_draft_widgets_from_active(st.session_state, active, force=True)
+    else:
+        seed_cpl_draft_widgets_from_active(st.session_state, active)
 
     display_key = session_display_key(st.session_state)
-    original_key = written_home_key(active)
+    original_key = cpl_draft_written_key(active)
     preview_key = cpl_draft_preview_key(active)
     preview_label = format_key_label(preview_key)
     display_label = format_key_label(display_key)
@@ -286,89 +289,54 @@ def render_custom_progression_lab_page() -> None:
         st.markdown('<div class="cpl-title-panel">', unsafe_allow_html=True)
         info_a, info_b = st.columns([2, 1])
         with info_a:
-            title = st.text_input(
+            st.text_input(
                 "Song title",
-                value=prog_title,
                 key="cpl_title_input",
                 placeholder="e.g. My Ballad",
             )
         with info_b:
-            artist_val = st.text_input(
+            st.text_input(
                 "Artist (optional)",
-                value=str(active.get("artist") or ""),
                 key="cpl_artist_input",
                 placeholder="Your name",
             )
-        title = (title or "").strip() or "My Progression"
-        artist_val = (artist_val or "").strip()
-        active = sync_cpl_draft_widgets_to_active(st.session_state, active)
-        if active.get("name") != title or str(active.get("artist") or "") != artist_val:
-            active["name"] = title
-            active["artist"] = artist_val
-            prog_title = title
-            _save(None, persist=False)
-            st.session_state[CPL_ACTIVE_KEY] = active
 
         row2 = st.columns([1, 1, 1])
-        cur_ts = str(active.get("time_signature") or "4/4")
-        ts_ix = CPL_TIME_SIGNATURES.index(cur_ts) if cur_ts in CPL_TIME_SIGNATURES else 0
         with row2[0]:
-            picked_ts = st.radio(
+            st.radio(
                 "Meter",
                 CPL_TIME_SIGNATURES,
-                index=ts_ix,
                 horizontal=True,
                 key="cpl_time_signature",
             )
-        cur_bpm = int(active.get("bpm", 100) or 100)
         with row2[1]:
-            picked_bpm = st.slider("BPM", 50, 200, cur_bpm, 5, key="cpl_bpm_builder")
-        style_ix = (
-            CPL_PROGRESSION_STYLES.index(active.get("progression_style", "Pop"))
-            if active.get("progression_style") in CPL_PROGRESSION_STYLES
-            else 0
-        )
+            st.slider("BPM", 50, 200, step=5, key="cpl_bpm_builder")
         with row2[2]:
-            picked_style = st.selectbox(
+            st.selectbox(
                 "Genre / style",
                 CPL_PROGRESSION_STYLES,
-                index=style_ix,
                 key="cpl_style_early",
             )
-        if picked_ts != cur_ts:
-            active["time_signature"] = picked_ts
-            _save(None)
-        if int(picked_bpm) != cur_bpm:
-            active["bpm"] = int(picked_bpm)
-            _save(None)
-        if active.get("progression_style") != picked_style:
-            active["progression_style"] = picked_style
-            _save(None)
 
         st.markdown(
             f'<p class="cpl-now-editing">Editing <span>{html.escape(prog_title)}</span></p>',
             unsafe_allow_html=True,
         )
 
-        orig_ix = (
-            CPL_KEY_OPTIONS.index(original_key)
-            if original_key in CPL_KEY_OPTIONS
-            else 0
-        )
-        picked_orig = st.selectbox(
+        st.selectbox(
             "Original key (written key)",
             CPL_KEY_OPTIONS,
-            index=orig_ix,
             format_func=format_key_label,
             key="cpl_original_key",
             help="Written key for the chart; transpose for practice in the sidebar.",
         )
-        if picked_orig != original_key:
-            active = set_original_key_center(active, picked_orig)
+
+        before_written_key = cpl_draft_written_key(active)
+        active = sync_cpl_draft_widgets_to_active(st.session_state, active)
+        prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
+        if cpl_draft_written_key(active) != before_written_key:
             _save(None)
             st.rerun()
-
-        active = sync_cpl_draft_widgets_to_active(st.session_state, active)
         st.session_state[CPL_ACTIVE_KEY] = active
 
         n1, n2, n3 = st.columns(3)
@@ -418,7 +386,7 @@ def render_custom_progression_lab_page() -> None:
 
         active = cpl_active_from_session(st.session_state)
         prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
-        original_key = written_home_key(active)
+        original_key = cpl_draft_written_key(active)
         original_label = format_key_label(original_key)
         home_ns = original_key.replace("#", "s").replace("b", "f")
 
@@ -503,7 +471,7 @@ def render_custom_progression_lab_page() -> None:
         active = cpl_active_from_session(st.session_state)
         home_sections = _home_sections()
         home_entries = home_sections[edit_section]
-        original_key = written_home_key(active)
+        original_key = cpl_draft_written_key(active)
         original_label = format_key_label(original_key)
         home_ns = original_key.replace("#", "s").replace("b", "f")
         simple = simple_chords_for_key(original_key)
@@ -545,9 +513,6 @@ def render_custom_progression_lab_page() -> None:
                 f'<p class="cpl-key-line">Key: <strong>{preview_label}</strong></p>',
                 unsafe_allow_html=True,
             )
-
-        active["original_sections"] = home_sections
-        st.session_state[CPL_ACTIVE_KEY] = active
 
         st.markdown("**1. Click a chord**")
         cols = st.columns(min(6, max(1, len(simple))))
@@ -639,9 +604,11 @@ def render_custom_progression_lab_page() -> None:
         b1, b2, b4 = st.columns(3)
 
         def _apply_bars(bars: int) -> None:
-            nonlocal active, pending_chord
+            nonlocal active, pending_chord, home_sections, home_entries
             bars = int(bars)
             st.session_state[last_bars_key] = bars
+            home_sections = _home_sections()
+            home_entries = home_sections[edit_section]
             pending = st.session_state.get(pending_key)
             if pending:
                 home_entries.append({"chord": pending, "bars": bars})
@@ -653,8 +620,6 @@ def render_custom_progression_lab_page() -> None:
                 return
             _save(home_sections)
             active = cpl_active_from_session(st.session_state)
-            home_sections = _home_sections()
-            home_entries = home_sections[edit_section]
             st.rerun()
 
         with b1:
@@ -933,5 +898,19 @@ def render_custom_progression_lab_page() -> None:
                     st.rerun()
 
         sync_cpl_draft_widgets_to_active(st.session_state, active)
-        st.session_state[CPL_ACTIVE_KEY] = active
-        persist_cpl_draft_state(st)
+        _save(None)
+
+        try:
+            from music_persistence_trace import music_developer_mode
+
+            if music_developer_mode(st):
+                edit_for_diag = str(st.session_state.get("cpl_edit_section") or "Verse")
+                diag = build_cpl_developer_diagnostics(
+                    st.session_state,
+                    cpl_active_from_session(st.session_state),
+                    edit_section=edit_for_diag,
+                )
+                with st.expander("Developer: CPL draft diagnostics", expanded=False):
+                    st.json(diag)
+        except Exception:
+            pass
