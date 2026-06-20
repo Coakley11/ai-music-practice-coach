@@ -837,7 +837,7 @@ def song_structure_overview_html(
         blocks.append(f'<p class="cpl-song-title">{_html.escape(prog_name)}</p>')
     for name in names:
         entries = display_entries_for_section(active, display_key, name)
-        chart = cpl_progression_bar_chart_html(entries)
+        chart = cpl_progression_bar_chart_html(entries, time_signature=time_sig)
         if not chart:
             continue
         active_cls = " cpl-section-active" if name == highlight_section else ""
@@ -2415,6 +2415,18 @@ def suggest_next_chords(
     return out[:limit]
 
 
+def bars_per_phrase_group(time_signature: str) -> int:
+    """Bars per visual phrase row on chord charts (follows song meter)."""
+    ts = str(time_signature or "4/4").strip()
+    if ts == "6/8":
+        return 6
+    if ts == "3/4":
+        return 3
+    if ts == "2/4":
+        return 2
+    return 4
+
+
 def chords_per_measure(time_signature: str) -> int:
     """How many chord slots fit in one notated measure row."""
     ts = str(time_signature or "4/4").strip()
@@ -2424,19 +2436,26 @@ def chords_per_measure(time_signature: str) -> int:
 def cpl_progression_bar_chart_html(
     entries: list[dict] | None,
     *,
+    time_signature: str = "4/4",
     max_bars: int = 64,
 ) -> str:
-    """Single-line bar chart: | Em | Em | Em | Em | Dm | Dm | … |"""
+    """Meter-grouped bar chart: | Em | Em | Em | Em |  then next phrase row."""
     slots = expand_entries_to_display_slots(entries)[:max_bars]
     if not slots:
         return ""
-    bits: list[str] = ['<div class="cpl-bar-chart-line">', '<span class="cpl-measure-bar">|</span>']
-    for display, _sound in slots:
-        cell_cls = "cpl-bar-chord-cell"
-        if display == "%":
-            cell_cls += " cpl-repeat-cell"
-        bits.append(f'<span class="{cell_cls}">{_html.escape(display)}</span>')
+    group_size = max(1, bars_per_phrase_group(time_signature))
+    bits: list[str] = ['<div class="cpl-bar-chart-block">']
+    for start in range(0, len(slots), group_size):
+        chunk = slots[start : start + group_size]
+        bits.append('<div class="cpl-bar-chart-line">')
         bits.append('<span class="cpl-measure-bar">|</span>')
+        for display, _sound in chunk:
+            cell_cls = "cpl-bar-chord-cell"
+            if display == "%":
+                cell_cls += " cpl-repeat-cell"
+            bits.append(f'<span class="{cell_cls}">{_html.escape(display)}</span>')
+            bits.append('<span class="cpl-measure-bar">|</span>')
+        bits.append("</div>")
     bits.append("</div>")
     return "".join(bits)
 
@@ -2508,7 +2527,7 @@ def cpl_section_progression_view(
     chart_html = ""
     tiles_html = ""
     if section_display:
-        chart_html = cpl_progression_bar_chart_html(section_display)
+        chart_html = cpl_progression_bar_chart_html(section_display, time_signature=time_signature)
         tiles_html = entries_chord_tiles_html(
             section_display,
             time_signature=time_signature,

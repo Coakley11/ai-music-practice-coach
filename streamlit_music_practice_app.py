@@ -7434,6 +7434,38 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     _is_fav = _active_pk in _favorites
     _fav_icon = "★" if _is_fav else "☆"
     _fav_title = "Remove from favorites" if _is_fav else "Add to favorites"
+    try:
+        from custom_progression_lab import format_key_label as _format_key_label
+        from app_ui import studio_song_meta_badges_html as _studio_song_meta_badges_html
+
+        _orig_label = _format_key_label(_original_key)
+        _practice_label = _format_key_label(_chart_practice_key)
+        _written_label = ""
+        try:
+            from instrument_transposition import chart_in_instrument_key, effective_chart_key, is_transposing_instrument
+
+            _inst = str(st.session_state.get("instrument") or "Piano")
+            if is_transposing_instrument(_inst) and chart_in_instrument_key(st.session_state):
+                _written_k, _ = effective_chart_key(
+                    str(st.session_state.get("display_key") or _original_key),
+                    _inst,
+                    st.session_state,
+                )
+                _written_label = _format_key_label(_written_k)
+        except Exception:
+            pass
+        _source_label = "Custom Progression" if is_custom_progression(st.session_state) else "Catalog Song"
+        _badge_html = _studio_song_meta_badges_html(
+            original_key=_orig_label,
+            display_key=_practice_label,
+            written_key=_written_label,
+            bpm=int(details.get("bpm") or 100),
+            meter=str(details.get("time_signature") or "4/4"),
+            style=str(details.get("style_label") or rec.get("genre") or "Song"),
+            source=_source_label,
+        )
+    except Exception:
+        _badge_html = ""
     _key_row_html = (
         active_song_key_row_html(_original_key, _chart_practice_key)
         if show_key_row
@@ -7462,6 +7494,7 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         f'<p class="ui-active-song-title">{html.escape(details["title"])}</p>'
         f'<p class="ui-active-song-artist">{html.escape(details["artist"])}</p>'
         f'{_key_row_html}'
+        f'{_badge_html}'
         f'{_meta_row}'
         f'<dl class="ui-active-song-facts">'
         f'<dt>Levels</dt><dd>{html.escape(details["levels_display"])}</dd>'
@@ -7755,9 +7788,13 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
         "Song Selection (catalog song)",
         "Use Custom Progression / Create Your Own Song",
     ]
-    from songs.music_source import sync_song_picker_source_widget
+    from songs.music_source import (
+        restore_last_catalog_active_song,
+        sync_song_picker_source_widget,
+    )
 
-    sync_song_picker_source_widget(st.session_state)
+    if "song_picker_active_source" not in st.session_state:
+        sync_song_picker_source_widget(st.session_state)
     choice = st.radio(
         "Music source",
         options,
@@ -7773,7 +7810,14 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
             st.rerun()
         return True
     if is_custom_progression(st.session_state):
+        restore_last_catalog_active_song(
+            st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+            invalidate_backing=invalidate_backing_cache,
+        )
         set_catalog_source(st.session_state)
+        sync_song_picker_source_widget(st.session_state, force=True)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         st.rerun()
     return False
@@ -7960,9 +8004,13 @@ def _render_catalog_song_picker_block(
             "Song Selection (catalog song)",
             "Use Custom Progression / Create Your Own Song",
         ]
-        from songs.music_source import sync_song_picker_source_widget
+        from songs.music_source import (
+            restore_last_catalog_active_song,
+            sync_song_picker_source_widget,
+        )
 
-        sync_song_picker_source_widget(st.session_state)
+        if "song_picker_active_source" not in st.session_state:
+            sync_song_picker_source_widget(st.session_state)
         picker_source = st.radio(
             "Music source",
             _picker_source_options,
@@ -7978,7 +8026,14 @@ def _render_catalog_song_picker_block(
             _render_custom_active_song_hub(wrap_section=wrap_section)
             return
         if is_custom_progression(st.session_state):
+            restore_last_catalog_active_song(
+                st,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+                invalidate_backing=invalidate_backing_cache,
+            )
             set_catalog_source(st.session_state)
+            sync_song_picker_source_widget(st.session_state, force=True)
             note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
             st.rerun()
 

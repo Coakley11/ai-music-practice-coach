@@ -31,7 +31,9 @@ from songs.key_state import (
     song_display_identity,
 )
 from songs.music_source import (
+    LAST_CATALOG_STATE_KEY,
     PENDING_CUSTOM_ACTIVE_SONG_KEY,
+    SOURCE_CATALOG,
     SOURCE_CUSTOM,
     active_song_key_pair,
     apply_pending_custom_active_song_activation_before_widgets,
@@ -39,7 +41,10 @@ from songs.music_source import (
     custom_selected_song_record,
     is_custom_progression,
     queue_custom_active_song_activation,
+    restore_last_catalog_active_song,
+    save_last_catalog_snapshot,
     sync_song_picker_source_widget,
+    SONG_PICKER_SOURCE_CATALOG,
     SONG_PICKER_SOURCE_CUSTOM,
 )
 from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
@@ -279,7 +284,7 @@ class TestCplSetActiveSong(unittest.TestCase):
             "level": "Intermediate",
             "focus": "General",
             CPL_ACTIVE_KEY: active,
-            "song_picker_active_source": "Song Selection (catalog song)",
+            "song_picker_active_source": SONG_PICKER_SOURCE_CATALOG,
         })
 
         with patch("songs.state.persist_music_local_state"):
@@ -293,6 +298,34 @@ class TestCplSetActiveSong(unittest.TestCase):
             st.session_state["song_picker_active_source"],
             SONG_PICKER_SOURCE_CUSTOM,
         )
+
+    def test_save_and_restore_last_catalog_snapshot(self) -> None:
+        session = {
+            "active_music_source": SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: "pop::Shallow — Lady Gaga",
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": "pop::Shallow — Lady Gaga",
+                "title": "Shallow",
+                "artist": "Lady Gaga",
+                "key": "G",
+            },
+            "display_key": "F",
+        }
+        save_last_catalog_snapshot(session)
+        snap = session.get(LAST_CATALOG_STATE_KEY) or {}
+        self.assertEqual(snap.get("pick_key"), "pop::Shallow — Lady Gaga")
+        self.assertEqual(snap.get("original_key"), "G")
+        self.assertEqual(snap.get("display_key"), "F")
+
+    def test_sync_picker_widget_does_not_clobber_user_choice(self) -> None:
+        session = {
+            "active_music_source": SOURCE_CUSTOM,
+            "song_picker_active_source": SONG_PICKER_SOURCE_CATALOG,
+        }
+        sync_song_picker_source_widget(session)
+        self.assertEqual(session["song_picker_active_source"], SONG_PICKER_SOURCE_CATALOG)
+        sync_song_picker_source_widget(session, force=True)
+        self.assertEqual(session["song_picker_active_source"], SONG_PICKER_SOURCE_CUSTOM)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ PENDING_CUSTOM_ACTIVE_SONG_KEY = "_pending_custom_active_song_activation"
 SONG_PICKER_SOURCE_CATALOG = "Song Selection (catalog song)"
 SONG_PICKER_SOURCE_CUSTOM = "Use Custom Progression / Create Your Own Song"
 SONG_PICKER_ACTIVE_SOURCE_KEY = "song_picker_active_source"
+LAST_CATALOG_STATE_KEY = "_last_catalog_song_state"
 
 
 def ensure_active_music_source(session_state: dict[str, Any]) -> None:
@@ -27,16 +28,82 @@ def set_catalog_source(session_state: dict[str, Any]) -> None:
 
 
 def set_custom_source(session_state: dict[str, Any]) -> None:
+    save_last_catalog_snapshot(session_state)
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
 
 
-def sync_song_picker_source_widget(session_state: dict[str, Any]) -> None:
-    """Keep Song Selection source radio aligned with canonical active_music_source."""
+def sync_song_picker_source_widget(session_state: dict[str, Any], *, force: bool = False) -> None:
+    """Align Song Selection source radio with active_music_source (init or forced promotion only)."""
+    if not force and SONG_PICKER_ACTIVE_SOURCE_KEY in session_state:
+        return
     session_state[SONG_PICKER_ACTIVE_SOURCE_KEY] = (
         SONG_PICKER_SOURCE_CUSTOM
         if is_custom_progression(session_state)
         else SONG_PICKER_SOURCE_CATALOG
     )
+
+
+def save_last_catalog_snapshot(session_state: dict[str, Any]) -> None:
+    """Remember the last catalog song + keys before switching to Custom Progression."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+    if is_custom_progression(session_state):
+        return
+    sel = session_state.get(SELECTED_SONG_STATE_KEY)
+    if not isinstance(sel, dict):
+        return
+    pick_key = str(
+        session_state.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or ""
+    ).strip()
+    if not pick_key or pick_key.startswith("custom::"):
+        return
+    original_key = str(sel.get("key") or "C").strip() or "C"
+    display_key = str(session_state.get("display_key") or original_key).strip() or original_key
+    session_state[LAST_CATALOG_STATE_KEY] = {
+        "pick_key": pick_key,
+        "selected_song": dict(sel),
+        "original_key": original_key,
+        "display_key": display_key,
+    }
+
+
+def restore_last_catalog_active_song(
+    st: Any,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]] | None = None,
+    invalidate_backing,
+) -> bool:
+    """Restore the catalog song active before Custom Progression mode."""
+    from songs.key_state import apply_display_key_for_active_song, song_display_identity
+    from songs.state import apply_pick_key
+
+    session = st.session_state
+    snap = session.get(LAST_CATALOG_STATE_KEY)
+    if not isinstance(snap, dict) or not snap.get("pick_key"):
+        return False
+    pick_key = str(snap.get("pick_key") or "").strip()
+    if not pick_key or pick_key.startswith("custom::"):
+        return False
+    data = apply_pick_key(
+        st,
+        pick_key,
+        song_picker_catalog,
+        song_library=song_library,
+        skip_activity_log=True,
+    )
+    if not data:
+        return False
+    original_key = str(snap.get("original_key") or data.get("key") or "C").strip() or "C"
+    display_key = str(snap.get("display_key") or original_key).strip() or original_key
+    identity = song_display_identity(
+        str(data.get("title") or ""),
+        str(data.get("artist") or ""),
+        original_key,
+    )
+    apply_display_key_for_active_song(st, original_key, identity, pending_key=display_key)
+    note_active_source_change(st, invalidate_backing=invalidate_backing)
+    return True
 
 
 def custom_original_key(active: dict[str, Any]) -> str:
@@ -200,7 +267,7 @@ def custom_selected_song_record(active: dict[str, Any]) -> dict[str, Any]:
     from custom_progression_lab import ensure_original_structure, written_home_key
 
     active = ensure_original_structure(active)
-    home_key = written_home_key(active)
+    home_key = custom_original_key(active)
     title = str(active.get("name") or "My Progression").strip() or "My Progression"
     artist = str(active.get("artist") or "Your progression").strip() or "Your progression"
     pick_key = custom_pick_key_for(active)
@@ -297,7 +364,7 @@ def commit_custom_active_song(
     pick_key = str(selected.get("pick_key") or "").strip()
 
     set_custom_source(session)
-    sync_song_picker_source_widget(session)
+    sync_song_picker_source_widget(session, force=True)
     note_active_source_change(st, invalidate_backing=invalidate_backing)
 
     session[SELECTED_SONG_STATE_KEY] = selected

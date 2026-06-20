@@ -514,6 +514,12 @@ def apply_pick_key(
             )
         except Exception:
             pass
+    try:
+        from songs.music_source import save_last_catalog_snapshot
+
+        save_last_catalog_snapshot(st.session_state)
+    except ImportError:
+        pass
     persist_music_local_state(st)
     return data
 

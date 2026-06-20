@@ -420,6 +420,7 @@ def render_custom_progression_lab_page() -> None:
                 title=prog_title,
                 artist=str(active.get("artist") or ""),
                 key_label=original_label,
+                display_key_label=display_label,
                 bpm=int(active.get("bpm", 100) or 100),
                 time_signature=str(active.get("time_signature") or "4/4"),
                 style=str(active.get("progression_style") or "Pop"),
@@ -467,15 +468,6 @@ def render_custom_progression_lab_page() -> None:
                     st.session_state["cpl_finished"] = False
                     st.rerun()
 
-            c1, c2 = st.columns(2)
-            with c1:
-                active["bpm"] = st.slider(
-                    "BPM", 50, 200, int(active.get("bpm", 100)), 5, key="cpl_bpm_finish"
-                )
-            with c2:
-                active["loops"] = st.slider(
-                    "Loops", 1, 10, int(active.get("loops", 2)), 1, key="cpl_loops_finish"
-                )
             _save(None)
             return
 

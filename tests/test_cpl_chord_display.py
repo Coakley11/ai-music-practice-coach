@@ -60,11 +60,17 @@ class TestCplChordDisplay(unittest.TestCase):
 
     def test_bar_chart_expands_each_bar(self) -> None:
         entries = [{"chord": "Em", "bars": 4}, {"chord": "Dm", "bars": 4}]
-        html = cpl_progression_bar_chart_html(entries)
+        html = cpl_progression_bar_chart_html(entries, time_signature="4/4")
         self.assertEqual(html.count(">Em<"), 4)
         self.assertEqual(html.count(">Dm<"), 4)
-        self.assertIn("cpl-bar-chart-line", html)
-        self.assertIn("cpl-measure-bar", html)
+        self.assertIn("cpl-bar-chart-block", html)
+        self.assertEqual(html.count("cpl-bar-chart-line"), 2)
+
+    def test_bar_chart_groups_by_meter(self) -> None:
+        entries = [{"chord": "Em", "bars": 6}]
+        html = cpl_progression_bar_chart_html(entries, time_signature="3/4")
+        self.assertEqual(html.count(">Em<"), 6)
+        self.assertEqual(html.count("cpl-bar-chart-line"), 2)
 
     def test_song_structure_uses_bar_charts(self) -> None:
         active = default_active_progression()
@@ -79,7 +85,8 @@ class TestCplChordDisplay(unittest.TestCase):
         self.assertIn("Trial Song", html)
         self.assertIn("Verse:", html)
         self.assertIn("Chorus:", html)
-        self.assertEqual(html.count("cpl-bar-chart-line"), 2)
+        self.assertEqual(html.count("cpl-bar-chart-block"), 2)
+        self.assertEqual(html.count("cpl-bar-chart-line"), 4)
         self.assertEqual(html.count(">C<"), 4)
 
     def test_page_path_apply_chord_then_build_view(self) -> None:

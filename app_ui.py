@@ -2130,6 +2130,12 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   padding: 0.2rem 0;
   font-family: "Consolas", "Courier New", monospace;
 }
+.cpl-bar-chart-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.15rem 0;
+}
 .cpl-bar-chord-cell {
   font-size: 1.15rem;
   font-weight: 800;
@@ -3752,6 +3758,80 @@ body[data-custom-builder-ui] [data-testid="stVerticalBlock"] {
 }
 body[data-custom-builder-ui] .ui-instrument-strip {
   margin-bottom: 0.35rem !important;
+}
+body:not([data-studio-page="custom"]) .st-key-custom_song_builder_panel {
+  display: none !important;
+  visibility: hidden !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.ui-studio-meta-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0.55rem;
+}
+.ui-studio-meta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.2;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #f8fafc;
+  color: #334155;
+}
+.ui-studio-meta-badge-ico {
+  font-size: 0.82rem;
+  line-height: 1;
+}
+.ui-studio-meta-badge-label {
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.62rem;
+}
+.ui-studio-meta-badge-value {
+  font-weight: 850;
+  color: #0f172a;
+}
+.ui-studio-meta-badge.tone-key {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+}
+.ui-studio-meta-badge.tone-display {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%);
+}
+.ui-studio-meta-badge.tone-written {
+  border-color: rgba(168, 85, 247, 0.35);
+  background: linear-gradient(180deg, #faf5ff 0%, #ffffff 100%);
+}
+.ui-studio-meta-badge.tone-tempo {
+  border-color: rgba(234, 88, 12, 0.3);
+  background: linear-gradient(180deg, #fff7ed 0%, #ffffff 100%);
+}
+.ui-studio-meta-badge.tone-meter {
+  border-color: rgba(14, 165, 233, 0.32);
+  background: linear-gradient(180deg, #f0f9ff 0%, #ffffff 100%);
+}
+.ui-studio-meta-badge.tone-style {
+  border-color: rgba(236, 72, 153, 0.28);
+  background: linear-gradient(180deg, #fdf2f8 0%, #ffffff 100%);
+}
+.ui-studio-meta-badge.tone-source {
+  border-color: rgba(100, 116, 139, 0.35);
+  background: linear-gradient(180deg, #f1f5f9 0%, #ffffff 100%);
 }
 .ui-custom-setup-links {
   display: flex;
@@ -6535,7 +6615,6 @@ def inject_custom_builder_styles(st: Any) -> None:
 <script>try{{
 document.body.dataset.customBuilderUi="{CUSTOM_BUILDER_UI_VERSION}";
 document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";
-document.body.classList.add("custom-builder-page");
 }}catch(e){{}}</script>
         """,
         unsafe_allow_html=True,
@@ -6715,17 +6794,81 @@ def render_multitrack_field_label(st: Any, label: str) -> None:
 
 def inject_studio_ui_release_marker(st: Any, *, page: str) -> None:
     """Hidden deploy marker — confirms Streamlit is serving the latest UI bundle."""
+    page_slug = html.escape(str(page or "").strip())
     st.markdown(
         f"""
 <div id="studio-ui-release-marker" data-studio-ui-release="{html.escape(STUDIO_UI_RELEASE)}"
-     data-studio-page="{html.escape(page)}" style="display:none!important" aria-hidden="true"></div>
+     data-studio-page="{page_slug}" style="display:none!important" aria-hidden="true"></div>
 <script>try{{
-document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";
-document.body.dataset.studioPage="{html.escape(page)}";
+const page = "{page_slug}";
+document.body.dataset.studioUiRelease = "{STUDIO_UI_RELEASE}";
+document.body.dataset.studioPage = page;
+["custom-builder-page","upload-studio-page","backing-studio-page","multitrack-studio-page"].forEach(function(c) {{
+  document.body.classList.remove(c);
+}});
+const pageClass = {{
+  custom: "custom-builder-page",
+  upload: "upload-studio-page",
+  backing: "backing-studio-page",
+  multitrack: "multitrack-studio-page",
+}}[page];
+if (pageClass) document.body.classList.add(pageClass);
 }}catch(e){{}}</script>
         """,
         unsafe_allow_html=True,
     )
+
+
+def studio_meta_badge(
+    label: str,
+    value: str,
+    *,
+    tone: str = "neutral",
+    icon: str = "",
+) -> str:
+    ico = (
+        f'<span class="ui-studio-meta-badge-ico" aria-hidden="true">{html.escape(icon)}</span>'
+        if icon
+        else ""
+    )
+    return (
+        f'<span class="ui-studio-meta-badge tone-{html.escape(tone)}">'
+        f"{ico}"
+        f'<span class="ui-studio-meta-badge-label">{html.escape(label)}</span>'
+        f'<span class="ui-studio-meta-badge-value">{html.escape(value)}</span>'
+        f"</span>"
+    )
+
+
+def studio_song_meta_badges_html(
+    *,
+    original_key: str = "",
+    display_key: str = "",
+    written_key: str = "",
+    bpm: int | None = None,
+    meter: str = "",
+    style: str = "",
+    source: str = "",
+) -> str:
+    """Professional pill badges for CPL preview and Songs page cards."""
+    badges: list[str] = []
+    if original_key:
+        badges.append(studio_meta_badge("Original Key", original_key, tone="key", icon="🎹"))
+    if display_key:
+        badges.append(studio_meta_badge("Display Key", display_key, tone="display", icon="🎼"))
+    if written_key and written_key != display_key:
+        badges.append(studio_meta_badge("Written Key", written_key, tone="written", icon="🎷"))
+    if bpm is not None:
+        badges.append(studio_meta_badge("BPM", str(int(bpm)), tone="tempo", icon="⏱"))
+    if meter:
+        badges.append(studio_meta_badge("Meter", meter, tone="meter", icon="🥁"))
+    if style:
+        badges.append(studio_meta_badge("Style", style, tone="style", icon="✨"))
+    if source:
+        badges.append(studio_meta_badge("Source", source, tone="source", icon="📀"))
+    if not badges:
+        return ""
+    return f'<div class="ui-studio-meta-badges">{"".join(badges)}</div>'
 
 
 def custom_builder_step_open_html(step: int, title: str, subtitle: str = "") -> str:
@@ -6758,21 +6901,24 @@ def custom_song_preview_card_html(
     sections_line: str,
     has_chords: bool,
     is_active: bool,
+    display_key_label: str = "",
 ) -> str:
     artist_bit = (
         f" · {html.escape(artist.strip())}" if (artist or "").strip() else ""
     )
-    meta = (
-        f"<strong>{html.escape(key_label)}</strong> · "
-        f"<strong>{int(bpm)}</strong> BPM · "
-        f"{html.escape(time_signature or '4/4')} · "
-        f"{html.escape(style or 'Pop')}"
+    badges = studio_song_meta_badges_html(
+        original_key=key_label,
+        display_key=display_key_label or key_label,
+        bpm=int(bpm),
+        meter=str(time_signature or "4/4"),
+        style=str(style or "Pop"),
+        source="Custom Progression",
     )
     body = (
-        f'<p class="ui-custom-preview-meta">{meta}</p>'
+        f"{badges}"
         f'<p class="ui-custom-preview-meta">{html.escape(sections_line)}</p>'
         if has_chords
-        else '<p class="ui-custom-preview-empty">Add chords in step 2 to see your song structure here.</p>'
+        else f"{badges}<p class=\"ui-custom-preview-empty\">Add chords in step 2 to see your song structure here.</p>"
     )
     active_pill = (
         '<span class="ui-custom-active-pill">Active song</span>'
