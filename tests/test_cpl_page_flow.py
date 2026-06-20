@@ -22,6 +22,8 @@ from custom_progression_lab import (
     ensure_all_cpl_sections,
     filled_section_names,
     migrate_cpl_builder_version,
+    ensure_cpl_widget_keys_initialized,
+    reset_cpl_widget_initialization,
     seed_cpl_draft_widgets_from_active,
     sync_cpl_draft_widgets_to_active,
 )
@@ -271,6 +273,27 @@ class TestCplPageFlow(unittest.TestCase):
         whole = cpl_whole_song_progression_view(active, "C")
         self.assertEqual(len(section["native_rows"]), 2)
         self.assertEqual(len(whole["sections"]), 2)
+
+    def test_widget_init_seeds_once_and_preserves_user_edits(self) -> None:
+        session = self._session_with_draft()
+        active = cpl_active_from_session(session)
+        ensure_cpl_widget_keys_initialized(session, active)
+        session["cpl_bpm_builder"] = 120
+        session["cpl_artist_input"] = "Edited Artist"
+        ensure_cpl_widget_keys_initialized(session, active)
+        self.assertEqual(session["cpl_bpm_builder"], 120)
+        self.assertEqual(session["cpl_artist_input"], "Edited Artist")
+
+    def test_widget_reset_allows_reseed_from_active(self) -> None:
+        session = self._session_with_draft()
+        active = cpl_active_from_session(session)
+        ensure_cpl_widget_keys_initialized(session, active)
+        session["cpl_bpm_builder"] = 120
+        active["bpm"] = 88
+        session[CPL_ACTIVE_KEY] = active
+        reset_cpl_widget_initialization(session)
+        ensure_cpl_widget_keys_initialized(session, active)
+        self.assertEqual(session["cpl_bpm_builder"], 88)
 
 
 if __name__ == "__main__":

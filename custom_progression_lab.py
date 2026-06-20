@@ -1022,6 +1022,8 @@ def import_cpl_widget_state(session_state: dict, blob: dict[str, Any]) -> None:
 
     if not isinstance(blob, dict):
         return
+    if session_state.get(CPL_WIDGETS_INITIALIZED_KEY):
+        return
     for key, val in blob.items():
         sk = str(key)
         if is_cpl_ephemeral_widget_key(sk):
@@ -1038,7 +1040,8 @@ def apply_cpl_session_progression(session_state: dict, active: dict) -> None:
         written_home_key(session_state[CPL_ACTIVE_KEY]),
     )
     clear_cpl_widget_state(session_state)
-    seed_cpl_draft_widgets_from_active(session_state, session_state[CPL_ACTIVE_KEY])
+    reset_cpl_widget_initialization(session_state)
+    ensure_cpl_widget_keys_initialized(session_state, session_state[CPL_ACTIVE_KEY])
     invalidate_cpl_derived_outputs(session_state)
 
 
@@ -1052,7 +1055,29 @@ def migrate_cpl_builder_version(session_state: dict) -> None:
     else:
         session_state[CPL_ACTIVE_KEY] = ensure_original_structure(session_state[CPL_ACTIVE_KEY])
     session_state["cpl_builder_version"] = CPL_BUILDER_VERSION
-    seed_cpl_draft_widgets_from_active(session_state, session_state[CPL_ACTIVE_KEY])
+    ensure_cpl_widget_keys_initialized(session_state, session_state[CPL_ACTIVE_KEY])
+
+
+CPL_WIDGETS_INITIALIZED_KEY = "_cpl_widgets_initialized"
+
+
+def reset_cpl_widget_initialization(session_state: dict) -> None:
+    """Allow a one-time widget seed from canonical draft (load/new/cloud restore)."""
+    session_state.pop(CPL_WIDGETS_INITIALIZED_KEY, None)
+
+
+def ensure_cpl_widget_keys_initialized(session_state: dict, active: dict) -> None:
+    """Seed CPL widget keys once per session; widgets stay source of truth until reset."""
+    if session_state.get(CPL_WIDGETS_INITIALIZED_KEY):
+        return
+    seed_cpl_draft_widgets_from_active(session_state, active, force=True)
+    session_state[CPL_WIDGETS_INITIALIZED_KEY] = True
+
+
+def cpl_draft_chord_count(active: dict) -> int:
+    """Count chord entries across all CPL sections."""
+    home = ensure_all_cpl_sections((active or {}).get("original_sections"))
+    return sum(len(home.get(name) or []) for name in CPL_EDITABLE_SECTIONS)
 
 
 CPL_DRAFT_WIDGET_KEYS: tuple[str, ...] = (
@@ -2037,7 +2062,7 @@ def format_key_label(home_key: str) -> str:
 
 
 def cpl_draft_written_key(active: dict) -> str:
-    """Written key shown in CPL — always the user-chosen original_key_center (no inference)."""
+    """Original key shown in CPL — always the user-chosen original_key_center (no inference)."""
     active = ensure_original_structure(active)
     return str(active.get("original_key_center") or "C").strip() or "C"
 
@@ -2451,11 +2476,24 @@ def build_cpl_developer_diagnostics(
     home = ensure_all_cpl_sections(active.get("original_sections"))
     pending_key = f"cpl_pending_chord_{edit_section}"
     bars_key = f"cpl_last_bars_{edit_section}"
-    chord_count = sum(len(home.get(name) or []) for name in CPL_EDITABLE_SECTIONS)
+    preview_key = cpl_draft_preview_key(active)
+    section_view = cpl_section_progression_view(
+        active,
+        section_name=edit_section,
+        preview_key=preview_key,
+        pending_chord=session_state.get(pending_key),
+        time_signature=str(active.get("time_signature") or "4/4"),
+    )
+    whole_song_view = cpl_whole_song_progression_view(active, preview_key)
+    chord_count = cpl_draft_chord_count(active)
     return {
         "widgets": {
             key: session_state.get(key)
             for key in CPL_DRAFT_WIDGET_KEYS
+        },
+        "widget_lifecycle": {
+            "widgets_initialized": bool(session_state.get(CPL_WIDGETS_INITIALIZED_KEY)),
+            "reseed_flag_pending": bool(session_state.get("_cpl_reseed_widgets_from_active")),
         },
         "draft": {
             "title": active.get("name"),
@@ -2463,12 +2501,29 @@ def build_cpl_developer_diagnostics(
             "style": active.get("progression_style"),
             "bpm": active.get("bpm"),
             "meter": active.get("time_signature"),
-            "written_key": cpl_draft_written_key(active),
+            "original_key": cpl_draft_written_key(active),
             "original_key_center": active.get("original_key_center"),
             "user_locked_home_key": active.get("user_locked_home_key"),
             "section_count": len(filled_section_names(home)),
             "chord_count": chord_count,
             "original_sections": copy.deepcopy(home),
+        },
+        "session_home_sections": {
+            edit_section: copy.deepcopy(home.get(edit_section) or []),
+        },
+        "display_path": {
+            "preview_key": preview_key,
+            "section_view": {
+                "show_panel": section_view["show_panel"],
+                "has_chords": section_view["has_chords"],
+                "native_rows": section_view["native_rows"],
+                "home_entry_count": len(section_view["home_entries"]),
+            },
+            "whole_song_view": {
+                "has_any": whole_song_view["has_any"],
+                "section_names": [block["name"] for block in whole_song_view["sections"]],
+                "sections": whole_song_view["sections"],
+            },
         },
         "pending": {
             "edit_section": edit_section,

@@ -152,6 +152,8 @@ def render_custom_progression_lab_page() -> None:
         ensure_all_cpl_sections,
         cpl_draft_preview_key,
         ensure_cpl_draft_home_tracking,
+        ensure_cpl_widget_keys_initialized,
+        reset_cpl_widget_initialization,
         ensure_original_structure,
         entries_chord_tiles_html,
         filled_section_names,
@@ -170,11 +172,9 @@ def render_custom_progression_lab_page() -> None:
         purge_cpl_ephemeral_widget_keys,
         save_progression,
         section_is_empty,
-        seed_cpl_draft_widgets_from_active,
         simple_chords_for_key,
         song_structure_overview_html,
         start_new_progression,
-        sync_cpl_draft_widgets_to_active,
         written_home_key,
     )
     from progression_helpers import (
@@ -218,9 +218,8 @@ def render_custom_progression_lab_page() -> None:
     active = cpl_active_from_session(st.session_state)
     active = ensure_cpl_draft_home_tracking(st, active)
     if st.session_state.pop("_cpl_reseed_widgets_from_active", False):
-        seed_cpl_draft_widgets_from_active(st.session_state, active, force=True)
-    else:
-        seed_cpl_draft_widgets_from_active(st.session_state, active)
+        reset_cpl_widget_initialization(st.session_state)
+    ensure_cpl_widget_keys_initialized(st.session_state, active)
 
     display_key = session_display_key(st.session_state)
     original_key = cpl_draft_written_key(active)
@@ -324,22 +323,14 @@ def render_custom_progression_lab_page() -> None:
         )
 
         st.selectbox(
-            "Original key (written key)",
+            "Original Key",
             CPL_KEY_OPTIONS,
             format_func=format_key_label,
             key="cpl_original_key",
-            help="Written key for the chart; transpose for practice in the sidebar.",
+            help="The song's base key. Instrument written keys are calculated later from transposition settings.",
         )
 
-        before_written_key = cpl_draft_written_key(active)
-        active = sync_cpl_draft_widgets_to_active(st.session_state, active)
         prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
-        if cpl_draft_written_key(active) != before_written_key:
-            _save(None)
-            st.rerun()
-        st.session_state[CPL_ACTIVE_KEY] = active
-
-        n1, n2, n3 = st.columns(3)
         with n1:
             if st.button("Save to library", key="cpl_save_prog", use_container_width=True):
                 save_progression(saved, active["name"], active)
@@ -497,7 +488,7 @@ def render_custom_progression_lab_page() -> None:
         st.markdown(f'<p class="cpl-section-heading">{edit_section}</p>', unsafe_allow_html=True)
         if is_custom_progression(st.session_state) and preview_key != display_key:
             st.markdown(
-                f'<p class="cpl-key-line">Written in <strong>{preview_label}</strong> · '
+                f'<p class="cpl-key-line">Original key <strong>{preview_label}</strong> · '
                 f"Practice key <strong>{display_label}</strong> (sidebar)</p>",
                 unsafe_allow_html=True,
             )
@@ -634,10 +625,11 @@ def render_custom_progression_lab_page() -> None:
 
         def _render_section_progression(*, pending: str | None = None) -> dict:
             active_now = cpl_active_from_session(st.session_state)
+            preview_key_now = cpl_draft_preview_key(active_now)
             view = cpl_section_progression_view(
                 active_now,
                 section_name=edit_section,
-                preview_key=preview_key,
+                preview_key=preview_key_now,
                 pending_chord=pending,
                 time_signature=time_sig,
                 use_lead_sheet=use_lead_sheet,
@@ -804,6 +796,7 @@ def render_custom_progression_lab_page() -> None:
         st.markdown("</div>", unsafe_allow_html=True)
 
         active = cpl_active_from_session(st.session_state)
+        preview_key = cpl_draft_preview_key(active)
         whole_song = cpl_whole_song_progression_view(active, preview_key)
         has_chords = whole_song["has_any"]
         if whole_song["has_any"]:
@@ -897,8 +890,10 @@ def render_custom_progression_lab_page() -> None:
                     delete_progression(saved, del_pick)
                     st.rerun()
 
-        sync_cpl_draft_widgets_to_active(st.session_state, active)
+        before_original_key = cpl_draft_written_key(cpl_active_from_session(st.session_state))
         _save(None)
+        if cpl_draft_written_key(cpl_active_from_session(st.session_state)) != before_original_key:
+            st.rerun()
 
         try:
             from music_persistence_trace import music_developer_mode

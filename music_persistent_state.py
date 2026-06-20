@@ -1460,17 +1460,41 @@ def apply_music_disk_state(
             ss[key] = copy.deepcopy(val)
         elif key == "_cpl_widget_state" and isinstance(val, dict):
             try:
-                from custom_progression_lab import import_cpl_widget_state
+                from custom_progression_lab import (
+                    CPL_WIDGETS_INITIALIZED_KEY,
+                    import_cpl_widget_state,
+                    purge_cpl_ephemeral_widget_keys,
+                )
 
-                import_cpl_widget_state(ss, val)
-                purge_cpl_ephemeral_widget_keys(ss)
+                if authoritative_restore or not ss.get(CPL_WIDGETS_INITIALIZED_KEY):
+                    import_cpl_widget_state(ss, val)
+                    purge_cpl_ephemeral_widget_keys(ss)
             except Exception:
                 pass
         elif key in _LIST_KEYS and isinstance(val, list):
             ss[key] = copy.deepcopy(val)
         elif key in _PERSIST_KEYS:
+            if key == "cpl_active_progression" and isinstance(val, dict):
+                try:
+                    from custom_progression_lab import cpl_draft_chord_count
+
+                    local = ss.get(key)
+                    if (
+                        not authoritative_restore
+                        and isinstance(local, dict)
+                        and cpl_draft_chord_count(local) > cpl_draft_chord_count(val)
+                    ):
+                        continue
+                except Exception:
+                    pass
             ss[key] = copy.deepcopy(val)
-            if key == "cpl_active_progression":
+            if key == "cpl_active_progression" and authoritative_restore:
+                try:
+                    from custom_progression_lab import reset_cpl_widget_initialization
+
+                    reset_cpl_widget_initialization(ss)
+                except Exception:
+                    pass
                 ss["_cpl_reseed_widgets_from_active"] = True
         else:
             try:
