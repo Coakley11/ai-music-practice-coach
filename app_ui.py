@@ -2122,6 +2122,22 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   line-height: 1;
   user-select: none;
 }
+.cpl-bar-chart-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.45rem;
+  padding: 0.2rem 0;
+  font-family: "Consolas", "Courier New", monospace;
+}
+.cpl-bar-chord-cell {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #1e3a8a;
+  padding: 0.1rem 0.35rem;
+  min-width: 2rem;
+  text-align: center;
+}
 .cpl-live-progression {
   min-height: 3.5rem;
   padding: 0.65rem 0.75rem;
@@ -2300,12 +2316,12 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
 }
 .cpl-section-label {
-  font-size: 0.82rem;
+  font-size: 0.95rem;
   font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #475569;
-  margin-bottom: 0.2rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: #334155;
+  margin-bottom: 0.35rem;
 }
 .cpl-section-bars {
   font-family: "Consolas", "Courier New", monospace;

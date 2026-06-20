@@ -152,7 +152,6 @@ def render_custom_progression_lab_page() -> None:
         cpl_save_draft,
         cpl_section_progression_view,
         cpl_steps_strip_html,
-        cpl_whole_song_progression_view,
         deep_copy_sections,
         delete_progression,
         display_entries_for_section,
@@ -651,30 +650,13 @@ def render_custom_progression_lab_page() -> None:
                 time_signature=time_sig,
                 use_lead_sheet=use_lead_sheet,
             )
-            st.markdown("**Progression in this section**")
+            st.markdown(f"**{edit_section} Progression**")
             if not view["show_panel"]:
                 st.info("Tap a chord above, then choose **1**, **2**, or **4** bars to add it.")
                 return view
 
-            native_rows = view["native_rows"]
-            if native_rows:
-                with st.container(border=True):
-                    head_ch, head_bars = st.columns([2, 1])
-                    with head_ch:
-                        st.markdown("**Chord**")
-                    with head_bars:
-                        st.markdown("**Bars**")
-                    for chord_label, bar_count in native_rows:
-                        col_ch, col_bars = st.columns([2, 1])
-                        with col_ch:
-                            st.markdown(f"### {chord_label}")
-                        with col_bars:
-                            unit = "bar" if bar_count == 1 else "bars"
-                            st.write(f"{bar_count} {unit}")
-            if pending:
-                st.info(
-                    f"Selected: **{pending}** — choose **1**, **2**, or **4** bars below to add it."
-                )
+            if view["panel_html"]:
+                st.markdown(view["panel_html"], unsafe_allow_html=True)
             return view
 
         progression_view = _render_section_progression(pending=pending_chord)
@@ -852,18 +834,7 @@ def render_custom_progression_lab_page() -> None:
 
         active = cpl_active_from_session(st.session_state)
         preview_key = cpl_draft_preview_key(active)
-        whole_song = cpl_whole_song_progression_view(active, preview_key)
-        has_chords = whole_song["has_any"]
-        if whole_song["has_any"]:
-            st.markdown("**Whole song progression**")
-            with st.container(border=True):
-                for block in whole_song["sections"]:
-                    st.markdown(f"**{block['name']}**")
-                    st.write(block["line"])
-                    for chord_label, bar_count in block["rows"]:
-                        st.caption(
-                            f"{chord_label} — {bar_count} bar{'s' if bar_count != 1 else ''}"
-                        )
+        has_chords = bool(filled_section_names(home_sections))
 
         st.markdown("---")
         u1, u2, u3 = st.columns(3)

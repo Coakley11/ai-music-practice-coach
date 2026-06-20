@@ -837,12 +837,8 @@ def song_structure_overview_html(
         blocks.append(f'<p class="cpl-song-title">{_html.escape(prog_name)}</p>')
     for name in names:
         entries = display_entries_for_section(active, display_key, name)
-        tiles = entries_chord_tiles_html(
-            entries,
-            time_signature=time_sig,
-            lead_sheet=use_lead,
-        )
-        if not tiles:
+        chart = cpl_progression_bar_chart_html(entries)
+        if not chart:
             continue
         active_cls = " cpl-section-active" if name == highlight_section else ""
         letter = labels.get(name, "")
@@ -854,8 +850,8 @@ def song_structure_overview_html(
         blocks.append(
             f'<div class="cpl-section-card cpl-lead-section{active_cls}">'
             f"{letter_html}"
-            f'<div class="cpl-section-label">{_html.escape(name)}</div>'
-            f"{tiles}"
+            f'<div class="cpl-section-label">{_html.escape(name)}:</div>'
+            f"{chart}"
             "</div>"
         )
     blocks.append("</div>")
@@ -2425,6 +2421,26 @@ def chords_per_measure(time_signature: str) -> int:
     return {"3/4": 3, "2/4": 2, "6/8": 3}.get(ts, 4)
 
 
+def cpl_progression_bar_chart_html(
+    entries: list[dict] | None,
+    *,
+    max_bars: int = 64,
+) -> str:
+    """Single-line bar chart: | Em | Em | Em | Em | Dm | Dm | … |"""
+    slots = expand_entries_to_display_slots(entries)[:max_bars]
+    if not slots:
+        return ""
+    bits: list[str] = ['<div class="cpl-bar-chart-line">', '<span class="cpl-measure-bar">|</span>']
+    for display, _sound in slots:
+        cell_cls = "cpl-bar-chord-cell"
+        if display == "%":
+            cell_cls += " cpl-repeat-cell"
+        bits.append(f'<span class="{cell_cls}">{_html.escape(display)}</span>')
+        bits.append('<span class="cpl-measure-bar">|</span>')
+    bits.append("</div>")
+    return "".join(bits)
+
+
 def entries_chord_tiles_html(
     entries: list[dict] | None,
     *,
@@ -2489,8 +2505,10 @@ def cpl_section_progression_view(
             for entry in home_entries
             if normalize_chord_symbol(str(entry.get("chord", "")))
         ]
+    chart_html = ""
     tiles_html = ""
     if section_display:
+        chart_html = cpl_progression_bar_chart_html(section_display)
         tiles_html = entries_chord_tiles_html(
             section_display,
             time_signature=time_signature,
@@ -2500,12 +2518,14 @@ def cpl_section_progression_view(
     pending = str(pending_chord or "").strip() or None
     show_panel = has_chords or bool(pending)
     panel_bits: list[str] = ['<div class="cpl-live-progression">']
-    if tiles_html:
+    if chart_html:
+        panel_bits.append(chart_html)
+    elif tiles_html:
         panel_bits.append(tiles_html)
     if pending:
         panel_bits.append(
             f'<p class="cpl-pending-hint">Selected: <strong>{_html.escape(pending)}</strong> '
-            f"— click 1, 2, or 4 bars above to add it</p>"
+            f"— choose <strong>1</strong>, <strong>2</strong>, or <strong>4</strong> bars below to add it</p>"
         )
     panel_bits.append("</div>")
     native_rows: list[tuple[str, int]] = []
@@ -2522,6 +2542,7 @@ def cpl_section_progression_view(
     return {
         "section_display": section_display,
         "home_entries": home_entries,
+        "chart_html": chart_html,
         "tiles_html": tiles_html,
         "has_chords": has_chords,
         "show_panel": show_panel,
