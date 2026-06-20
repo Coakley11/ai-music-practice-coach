@@ -7470,7 +7470,7 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         if show_key_row
         else ""
     )
-    _meta_row = 
+    _meta_row = ""
     card_html = (
         f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}">'
         f'<div class="ui-active-song-art" style="background:{html.escape(details["visual_gradient"])};">'
