@@ -1896,14 +1896,25 @@ def format_key_label(home_key: str) -> str:
     return f"{root} major"
 
 
-def ensure_cpl_editing_in_display_key(st, active: dict, display_key: str) -> dict:
-    """Track sidebar display key — stored chords stay in original_key_center."""
-    display_key = str(display_key or "C").strip() or "C"
-    prev = st.session_state.get("_cpl_editing_display_key")
-    if prev != display_key:
-        st.session_state["_cpl_editing_display_key"] = display_key
+def cpl_draft_preview_key(active: dict) -> str:
+    """Written/home key for in-page chord preview — does not touch global display_key."""
+    return written_home_key(active)
+
+
+def ensure_cpl_draft_home_tracking(st, active: dict) -> dict:
+    """Invalidate derived CPL outputs when the draft written key changes."""
+    home = written_home_key(active)
+    prev = st.session_state.get("_cpl_editing_home_key")
+    if prev != home:
+        st.session_state["_cpl_editing_home_key"] = home
         invalidate_cpl_derived_outputs(st.session_state)
     return active
+
+
+def ensure_cpl_editing_in_display_key(st, active: dict, display_key: str) -> dict:
+    """Backward-compatible alias — draft home key only (not global practice display key)."""
+    _ = display_key
+    return ensure_cpl_draft_home_tracking(st, active)
 
 
 def simple_chords_for_key(home_key: str) -> list[str]:

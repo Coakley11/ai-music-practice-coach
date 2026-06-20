@@ -35,6 +35,9 @@ from .music_source import (
     note_active_source_change,
     set_catalog_source,
     set_custom_source,
+    commit_custom_active_song,
+    custom_pick_key_for,
+    custom_selected_song_record,
 )
 from .picker_session import (
     CATALOG_FAVORITES_KEY,
@@ -102,6 +105,9 @@ __all__ = [
     "note_active_source_change",
     "set_catalog_source",
     "set_custom_source",
+    "commit_custom_active_song",
+    "custom_pick_key_for",
+    "custom_selected_song_record",
     # Form / timeline
     "chord_blocks_for_backing",
     "form_timeline_rows",

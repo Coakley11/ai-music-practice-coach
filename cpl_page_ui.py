@@ -145,7 +145,8 @@ def render_custom_progression_lab_page() -> None:
         display_entries_for_section,
         display_sections_for_key,
         ensure_all_cpl_sections,
-        ensure_cpl_editing_in_display_key,
+        cpl_draft_preview_key,
+        ensure_cpl_draft_home_tracking,
         ensure_original_structure,
         entries_chord_tiles_html,
         filled_section_names,
@@ -176,6 +177,7 @@ def render_custom_progression_lab_page() -> None:
     )
     from jazz_demo_charts import build_demo_progression, demo_presets_for_style
     from songs.music_source import (
+        commit_custom_active_song,
         is_custom_progression,
         note_active_source_change,
         set_custom_source,
@@ -206,11 +208,13 @@ def render_custom_progression_lab_page() -> None:
 
     display_key = session_display_key(st.session_state)
     active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
-    active = ensure_cpl_editing_in_display_key(st, active, display_key)
+    active = ensure_cpl_draft_home_tracking(st, active)
 
     original_key = written_home_key(active)
+    preview_key = cpl_draft_preview_key(active)
+    preview_label = format_key_label(preview_key)
     display_label = format_key_label(display_key)
-    original_label = format_key_label(original_key)
+    original_label = preview_label
     home_ns = original_key.replace("#", "s").replace("b", "f")
     finished = bool(st.session_state.get("cpl_finished"))
     saved = st.session_state[CPL_SAVED_KEY]
@@ -249,11 +253,17 @@ def render_custom_progression_lab_page() -> None:
         return ensure_all_cpl_sections(active.get("original_sections"))
 
     def _activate_custom_song(*, toast: bool = True) -> None:
+        nonlocal active
         _save(_home_sections())
-        set_custom_source(st.session_state)
-        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
+        commit_custom_active_song(
+            st,
+            active,
+            invalidate_backing=invalidate_backing_cache,
+        )
         if toast:
             st.success(f"**{prog_title}** is now your active song.")
+        st.rerun()
 
     def _open_practice() -> None:
         _save(_home_sections())
@@ -400,7 +410,7 @@ def render_custom_progression_lab_page() -> None:
         original_label = format_key_label(original_key)
         home_ns = original_key.replace("#", "s").replace("b", "f")
 
-        display_sections = deep_copy_sections(display_sections_for_key(active, display_key))
+        display_sections = deep_copy_sections(display_sections_for_key(active, preview_key))
         has_chords = bool(flatten_sections_to_events(display_sections))
         _filled = filled_section_names(_home_sections())
         _sections_line = (
@@ -505,21 +515,35 @@ def render_custom_progression_lab_page() -> None:
 
         st.markdown('<div class="cpl-builder-panel">', unsafe_allow_html=True)
         st.markdown(f'<p class="cpl-section-heading">{edit_section}</p>', unsafe_allow_html=True)
-        if original_key != display_key:
+        if is_custom_progression(st.session_state) and preview_key != display_key:
             st.markdown(
-                f'<p class="cpl-key-line">Written in <strong>{original_label}</strong> · '
-                f"Showing in <strong>{display_label}</strong> (change practice key in the sidebar)</p>",
+                f'<p class="cpl-key-line">Written in <strong>{preview_label}</strong> · '
+                f"Practice key <strong>{display_label}</strong> (sidebar)</p>",
+                unsafe_allow_html=True,
+            )
+        elif not is_custom_progression(st.session_state):
+            st.markdown(
+                f'<p class="cpl-key-line">Draft key: <strong>{preview_label}</strong> · '
+                f"global practice key stays <strong>{display_label}</strong> until you "
+                f"<strong>Set as Active Song</strong></p>",
                 unsafe_allow_html=True,
             )
         else:
             st.markdown(
-                f'<p class="cpl-key-line">Key: <strong>{original_label}</strong> · '
-                f"change practice key in the sidebar to transpose</p>",
+                f'<p class="cpl-key-line">Key: <strong>{preview_label}</strong></p>',
                 unsafe_allow_html=True,
             )
 
-        section_display = display_entries_for_section(active, display_key, edit_section)
-        section_has_chords = not section_is_empty(home_entries)
+        active["original_sections"] = home_sections
+        st.session_state[CPL_ACTIVE_KEY] = active
+        section_display = display_entries_for_section(active, preview_key, edit_section)
+        if not section_display and not section_is_empty(home_entries):
+            section_display = [
+                dict(entry)
+                for entry in home_entries
+                if normalize_chord_symbol(str(entry.get("chord", "")))
+            ]
+        section_has_chords = bool(section_display) or not section_is_empty(home_entries)
 
         st.markdown("**Progression in this section**")
         progression_bits: list[str] = ['<div class="cpl-live-progression">']
@@ -756,7 +780,7 @@ def render_custom_progression_lab_page() -> None:
 
         if section_has_chords:
             with st.expander("Edit chords in this section", expanded=False):
-                section_display = display_entries_for_section(active, display_key, edit_section)
+                section_display = display_entries_for_section(active, preview_key, edit_section)
                 for idx, entry in enumerate(list(home_entries)):
                     e1, e2, e3 = st.columns([2, 2, 1])
                     with e1:
@@ -828,7 +852,7 @@ def render_custom_progression_lab_page() -> None:
         active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
         map_html = song_structure_overview_html(
             active,
-            display_key,
+            preview_key if not is_custom_progression(st.session_state) else display_key,
             highlight_section=edit_section,
             only_filled=True,
         )

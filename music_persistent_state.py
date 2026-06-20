@@ -1174,6 +1174,11 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             "instrument": active_song_meta.get("instrument") or (core or {}).get("instrument"),
             "level": active_song_meta.get("level") or (core or {}).get("level"),
             "focus": active_song_meta.get("focus") or (core or {}).get("focus"),
+            "music_source": active_song_meta.get("music_source")
+            or session_extra.get("active_music_source")
+            or (core or {}).get("music_source"),
+            "custom_progression_name": active_song_meta.get("custom_progression_name"),
+            "custom_home_key": active_song_meta.get("custom_home_key"),
             "show_chart_in_instrument_key": bool(
                 active_song_meta.get("show_chart_in_instrument_key", False)
             ),
@@ -1554,8 +1559,9 @@ def apply_music_disk_state(
         elif apply_cloud_active_song_state_if_allowed(ss, payload):
             clear_active_song_local_edit(ss)
         elif isinstance(core, dict) and core and applied:
-            sync_active_song_context_from_core(ss, core)
-            clear_active_song_local_edit(ss)
+            if str(ss.get("active_music_source") or "") != "custom_progression":
+                sync_active_song_context_from_core(ss, core)
+                clear_active_song_local_edit(ss)
         try:
             from active_song_state import finalize_transposing_receive_restore
 

@@ -16,6 +16,7 @@ from instrument_transposition import (
     selected_transposing_type,
 )
 from songs.key_state import PENDING_DISPLAY_KEY
+from songs.music_source import SOURCE_CATALOG, SOURCE_CUSTOM, is_custom_progression
 from songs.state import (
     ACTIVE_CATALOG_PICK_KEY,
     SELECTED_SONG_STATE_KEY,
@@ -33,6 +34,9 @@ ACTIVE_SONG_SCALAR_KEYS = (
     "instrument",
     "level",
     "focus",
+    "music_source",
+    "custom_progression_name",
+    "custom_home_key",
 )
 
 TRANSPOSING_WIDGET_SESSION_KEYS: tuple[str, ...] = (
@@ -145,6 +149,9 @@ def _normalize_context(raw: dict[str, Any] | None) -> dict[str, Any]:
         "level": str(src.get("level") or "").strip(),
         "focus": str(src.get("focus") or "").strip(),
         "selected_song": sel,
+        "music_source": str(src.get("music_source") or "").strip(),
+        "custom_progression_name": str(src.get("custom_progression_name") or "").strip(),
+        "custom_home_key": str(src.get("custom_home_key") or "").strip(),
         **_transposing_fields_from_raw(src),
     }
 
@@ -277,6 +284,43 @@ def _merge_live_global_controls(
 
 def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     """Read active song context from live session keys."""
+    if is_custom_progression(session):
+        from custom_progression_lab import (
+            default_active_progression,
+            ensure_original_structure,
+            written_home_key,
+        )
+        from songs.music_source import custom_pick_key_for, custom_selected_song_record
+
+        active = ensure_original_structure(
+            session.get("cpl_active_progression") or default_active_progression()
+        )
+        selected = custom_selected_song_record(active)
+        home_key = written_home_key(active)
+        pick_key = str(selected.get("pick_key") or custom_pick_key_for(active)).strip()
+        instrument_name = str(session.get("instrument") or "").strip()
+        display_key = str(session.get("display_key") or home_key or "C").strip()
+        ctx = {
+            "pick_key": pick_key,
+            "display_key": display_key,
+            "instrument": instrument_name,
+            "level": str(session.get("level") or "").strip(),
+            "focus": str(session.get("focus") or "").strip(),
+            "selected_song": selected,
+            "music_source": SOURCE_CUSTOM,
+            "custom_progression_name": str(selected.get("title") or "").strip(),
+            "custom_home_key": home_key,
+            CHART_IN_INSTRUMENT_KEY_KEY: _live_written_key_for_save(session),
+        }
+        anchor = str(session.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+        if anchor:
+            ctx[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+        if is_transposing_instrument(instrument_name):
+            subtype = _live_subtype_for_save(session, instrument_name)
+            if subtype:
+                ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+        return ctx
+
     sel = session.get(SELECTED_SONG_STATE_KEY)
     selected = _normalize_selected_song(sel)
     pick_key = str(
@@ -292,6 +336,7 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         "level": str(session.get("level") or "").strip(),
         "focus": str(session.get("focus") or "").strip(),
         "selected_song": selected,
+        "music_source": SOURCE_CATALOG,
         CHART_IN_INSTRUMENT_KEY_KEY: _live_written_key_for_save(session),
     }
     anchor = str(session.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
@@ -309,6 +354,8 @@ def canonical_active_song_context(session: dict[str, Any]) -> dict[str, Any] | N
     if not isinstance(meta, dict):
         return None
     ctx = _normalize_context(meta)
+    if ctx.get("music_source") == SOURCE_CUSTOM:
+        return ctx
     if not ctx.get("pick_key") and not ctx.get("instrument") and not ctx.get("display_key"):
         if not ctx.get("selected_song"):
             return None
@@ -608,7 +655,19 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
             live = gather_active_song_context(session)
             live_pick = str(live.get("pick_key") or "").strip()
             canon_pick = str(ctx.get("pick_key") or "").strip()
-            if live_pick and live_pick != canon_pick:
+            if is_custom_progression(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM:
+                ctx["music_source"] = SOURCE_CUSTOM
+                if live.get("selected_song"):
+                    ctx["selected_song"] = live["selected_song"]
+                if live.get("display_key"):
+                    ctx["display_key"] = live["display_key"]
+                if live_pick:
+                    ctx["pick_key"] = live_pick
+                if live.get("custom_progression_name"):
+                    ctx["custom_progression_name"] = live["custom_progression_name"]
+                if live.get("custom_home_key"):
+                    ctx["custom_home_key"] = live["custom_home_key"]
+            elif live_pick and live_pick != canon_pick:
                 ctx["pick_key"] = live_pick
                 if live.get("selected_song"):
                     ctx["selected_song"] = live["selected_song"]
@@ -689,12 +748,49 @@ def sync_active_song_context_from_core(session: dict[str, Any], core: dict[str, 
     return write_canonical_active_song_state(session, ctx, reason="core_restore")
 
 
+def _custom_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
+    session_extra = state.get("session") if isinstance(state.get("session"), dict) else {}
+    source = str(session_extra.get("active_music_source") or "").strip()
+    meta = state.get(ACTIVE_SONG_STATE_KEY)
+    if not source and isinstance(meta, dict):
+        source = str(meta.get("music_source") or "").strip()
+    if source != SOURCE_CUSTOM:
+        return None
+
+    from custom_progression_lab import default_active_progression, ensure_original_structure, written_home_key
+    from songs.music_source import custom_pick_key_for, custom_selected_song_record
+
+    cpl = session_extra.get("cpl_active_progression")
+    if not isinstance(cpl, dict):
+        cpl = default_active_progression()
+    active = ensure_original_structure(cpl)
+    selected = custom_selected_song_record(active)
+    home_key = written_home_key(active)
+    ctx = _normalize_context(meta if isinstance(meta, dict) else {})
+    ctx.update(
+        {
+            "pick_key": str(ctx.get("pick_key") or selected.get("pick_key") or custom_pick_key_for(active)).strip(),
+            "display_key": str(ctx.get("display_key") or home_key or "C").strip(),
+            "selected_song": selected,
+            "music_source": SOURCE_CUSTOM,
+            "custom_progression_name": str(selected.get("title") or "").strip(),
+            "custom_home_key": home_key,
+        }
+    )
+    return _merge_transposing_from_blob_sources(ctx, state)
+
+
 def _active_song_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
+    custom_ctx = _custom_context_from_blob(state)
+    if custom_ctx is not None:
+        return custom_ctx
     if not isinstance(state, dict):
         return None
     meta = state.get(ACTIVE_SONG_STATE_KEY)
     if isinstance(meta, dict):
         ctx = _normalize_context(meta)
+        if ctx.get("music_source") == SOURCE_CUSTOM:
+            return _merge_transposing_from_blob_sources(ctx, state)
         if ctx.get("pick_key") or ctx.get("instrument") or ctx.get("display_key"):
             return _merge_transposing_from_blob_sources(ctx, state)
     core = state.get("core") if isinstance(state.get("core"), dict) else state
@@ -763,6 +859,22 @@ def apply_cloud_active_song_state_if_allowed(
     if is_active_song_locally_dirty(session):
         session["_active_song_restore_skipped_reason"] = "local_dirty"
         return False
+    custom_ctx = _custom_context_from_blob(state)
+    if custom_ctx is not None:
+        session["active_music_source"] = SOURCE_CUSTOM
+        session["_written_key_mode_cloud"] = (
+            bool(custom_ctx[CHART_IN_INSTRUMENT_KEY_KEY])
+            if _written_key_is_set(custom_ctx)
+            else None
+        )
+        session["_transposing_subtype_cloud"] = (
+            str(custom_ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip() or None
+        )
+        write_canonical_active_song_state(session, custom_ctx, reason="cloud_restore_custom")
+        _record_transposing_restore_trace(session, custom_ctx, source="cloud_restore_custom")
+        rehydrate_transposing_sidebar_from_canonical(session)
+        clear_active_song_local_edit(session)
+        return True
     ctx = _active_song_context_from_blob(state)
     if not ctx or not ctx.get("pick_key"):
         return False

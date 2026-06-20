@@ -131,6 +131,114 @@ def display_key_context(
     )
 
 
+def custom_pick_key_for(active: dict[str, Any]) -> str:
+    """Stable session pick_key for a custom progression (not a catalog pk:: id)."""
+    title = str(active.get("name") or "My Progression").strip() or "My Progression"
+    rev = str(active.get("id") or "").strip()
+    if rev:
+        return f"custom::{rev}"
+    safe = title.replace(":", "_").replace("/", "_")[:80]
+    return f"custom::{safe}"
+
+
+def custom_selected_song_record(active: dict[str, Any]) -> dict[str, Any]:
+    """Sidebar/global ``selected_song`` shape for an active custom progression."""
+    from custom_progression_lab import ensure_original_structure, written_home_key
+
+    active = ensure_original_structure(active)
+    home_key = written_home_key(active)
+    title = str(active.get("name") or "My Progression").strip() or "My Progression"
+    artist = str(active.get("artist") or "Your progression").strip() or "Your progression"
+    pick_key = custom_pick_key_for(active)
+    return {
+        "pick_key": pick_key,
+        "title": title,
+        "artist": artist,
+        "key": home_key,
+        "source": SOURCE_CUSTOM,
+        "is_custom": True,
+    }
+
+
+def commit_custom_active_song(
+    st: Any,
+    active: dict[str, Any],
+    *,
+    cpl_active_key: str = "cpl_active_progression",
+    invalidate_backing,
+) -> dict[str, Any]:
+    """Promote CPL draft to the global active song (source, title, key, playback, cloud)."""
+    from custom_progression_lab import (
+        ensure_all_cpl_sections,
+        ensure_original_structure,
+        prepare_cpl_backing_handoff,
+        written_home_key,
+    )
+    from songs.key_state import (
+        PENDING_DISPLAY_KEY,
+        apply_display_key_for_active_song,
+        song_display_identity,
+    )
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+    session = st.session_state
+    active = ensure_original_structure(active)
+    active["original_sections"] = ensure_all_cpl_sections(active.get("original_sections"))
+    active["user_locked_home_key"] = True
+    session[cpl_active_key] = active
+
+    home_key = written_home_key(active)
+    selected = custom_selected_song_record(active)
+    pick_key = str(selected.get("pick_key") or "").strip()
+
+    set_custom_source(session)
+    note_active_source_change(st, invalidate_backing=invalidate_backing)
+
+    session[SELECTED_SONG_STATE_KEY] = selected
+    if pick_key:
+        session[ACTIVE_CATALOG_PICK_KEY] = pick_key
+
+    session[PENDING_DISPLAY_KEY] = home_key
+    identity = song_display_identity(
+        selected.get("title", ""),
+        selected.get("artist", ""),
+        home_key,
+    )
+    apply_display_key_for_active_song(st, home_key, identity, pending_key=home_key)
+
+    prepare_cpl_backing_handoff(session, active)
+
+    try:
+        from active_song_state import flush_active_song_edits, write_canonical_active_song_state
+        from global_active_song_state import sync_active_song_to_canonical
+
+        ctx = {
+            "pick_key": pick_key,
+            "display_key": home_key,
+            "instrument": str(session.get("instrument") or "").strip(),
+            "level": str(session.get("level") or "").strip(),
+            "focus": str(session.get("focus") or "").strip(),
+            "selected_song": selected,
+            "music_source": SOURCE_CUSTOM,
+            "custom_progression_name": selected.get("title", ""),
+            "custom_home_key": home_key,
+        }
+        write_canonical_active_song_state(session, ctx, reason="custom_active_song")
+        flush_active_song_edits(session, reason="custom_active_song")
+        sync_active_song_to_canonical(session)
+    except ImportError:
+        pass
+
+    try:
+        from songs.state import persist_music_local_state
+
+        persist_music_local_state(st)
+    except ImportError:
+        pass
+
+    return active
+
+
 def build_active_chart_bundle(
     session_state: dict[str, Any],
     *,
