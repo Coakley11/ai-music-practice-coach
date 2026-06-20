@@ -292,8 +292,22 @@ class TestCplPageFlow(unittest.TestCase):
         active["bpm"] = 88
         session[CPL_ACTIVE_KEY] = active
         reset_cpl_widget_initialization(session)
-        ensure_cpl_widget_keys_initialized(session, active)
+        ensure_cpl_widget_keys_initialized(session, active, force=True)
         self.assertEqual(session["cpl_bpm_builder"], 88)
+
+    def test_widget_init_respects_cloud_restored_widget_values(self) -> None:
+        session = self._session_with_draft()
+        active = cpl_active_from_session(session)
+        active["bpm"] = 80
+        active["artist"] = "Stale Artist"
+        session[CPL_ACTIVE_KEY] = active
+        session["cpl_bpm_builder"] = 120
+        session["cpl_artist_input"] = "Cloud Artist"
+        synced = ensure_cpl_widget_keys_initialized(session, active, force=False)
+        self.assertEqual(session["cpl_bpm_builder"], 120)
+        self.assertEqual(session["cpl_artist_input"], "Cloud Artist")
+        self.assertEqual(synced["bpm"], 120)
+        self.assertEqual(synced["artist"], "Cloud Artist")
 
 
 if __name__ == "__main__":

@@ -175,6 +175,7 @@ def render_custom_progression_lab_page() -> None:
         simple_chords_for_key,
         song_structure_overview_html,
         start_new_progression,
+        sync_cpl_draft_widgets_to_active,
         written_home_key,
     )
     from progression_helpers import (
@@ -217,9 +218,15 @@ def render_custom_progression_lab_page() -> None:
 
     active = cpl_active_from_session(st.session_state)
     active = ensure_cpl_draft_home_tracking(st, active)
+    force_widget_seed = False
     if st.session_state.pop("_cpl_reseed_widgets_from_active", False):
         reset_cpl_widget_initialization(st.session_state)
-    ensure_cpl_widget_keys_initialized(st.session_state, active)
+        force_widget_seed = True
+    active = ensure_cpl_widget_keys_initialized(
+        st.session_state,
+        active,
+        force=force_widget_seed,
+    )
 
     display_key = session_display_key(st.session_state)
     original_key = cpl_draft_written_key(active)
@@ -330,7 +337,13 @@ def render_custom_progression_lab_page() -> None:
             help="The song's base key. Instrument written keys are calculated later from transposition settings.",
         )
 
+        active = sync_cpl_draft_widgets_to_active(
+            st.session_state,
+            cpl_active_from_session(st.session_state),
+        )
+        st.session_state[CPL_ACTIVE_KEY] = active
         prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
+        n1, n2, n3 = st.columns(3)
         with n1:
             if st.button("Save to library", key="cpl_save_prog", use_container_width=True):
                 save_progression(saved, active["name"], active)

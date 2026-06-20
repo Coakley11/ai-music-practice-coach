@@ -1041,7 +1041,11 @@ def apply_cpl_session_progression(session_state: dict, active: dict) -> None:
     )
     clear_cpl_widget_state(session_state)
     reset_cpl_widget_initialization(session_state)
-    ensure_cpl_widget_keys_initialized(session_state, session_state[CPL_ACTIVE_KEY])
+    ensure_cpl_widget_keys_initialized(
+        session_state,
+        session_state[CPL_ACTIVE_KEY],
+        force=True,
+    )
     invalidate_cpl_derived_outputs(session_state)
 
 
@@ -1066,12 +1070,23 @@ def reset_cpl_widget_initialization(session_state: dict) -> None:
     session_state.pop(CPL_WIDGETS_INITIALIZED_KEY, None)
 
 
-def ensure_cpl_widget_keys_initialized(session_state: dict, active: dict) -> None:
+def ensure_cpl_widget_keys_initialized(
+    session_state: dict,
+    active: dict,
+    *,
+    force: bool = False,
+) -> dict:
     """Seed CPL widget keys once per session; widgets stay source of truth until reset."""
     if session_state.get(CPL_WIDGETS_INITIALIZED_KEY):
-        return
-    seed_cpl_draft_widgets_from_active(session_state, active, force=True)
+        return ensure_original_structure(session_state.get(CPL_ACTIVE_KEY) or active)
+    seed_cpl_draft_widgets_from_active(session_state, active, force=force)
+    active = sync_cpl_draft_widgets_to_active(
+        session_state,
+        ensure_original_structure(session_state.get(CPL_ACTIVE_KEY) or active),
+    )
+    session_state[CPL_ACTIVE_KEY] = active
     session_state[CPL_WIDGETS_INITIALIZED_KEY] = True
+    return active
 
 
 def cpl_draft_chord_count(active: dict) -> int:

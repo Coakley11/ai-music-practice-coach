@@ -61,11 +61,6 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
     ),
     "backing": frozenset(
         {
-            "backing_track_scope",
-            "backing_track_loops",
-            "backing_track_single_section",
-            "backing_track_multi_sections",
-            "backing_quick_section",
             "_last_backing_wav",
             "_last_backing_signature",
             "_last_backing_timeline",
@@ -81,11 +76,16 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "cpl_builder_version",
             "cpl_active_progression",
             "cpl_saved_progressions",
-            "cpl_name",
+            "cpl_title_input",
+            "cpl_artist_input",
             "cpl_original_key",
             "cpl_time_signature",
-            "cpl_progression_style",
+            "cpl_bpm_builder",
+            "cpl_style_early",
+            # Legacy widget keys (older sessions / exports)
+            "cpl_name",
             "cpl_bpm",
+            "cpl_progression_style",
             "cpl_groove_style",
         }
     ),
@@ -387,6 +387,12 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
     """Restore page-local keys; global musician settings are always preserved."""
     preserved = _preserve_global_state(session_state)
     local = _filter_page_local_snapshot(snapshot)
+    try:
+        from backing_track_state import strip_durable_backing_snapshot_keys
+
+        local = strip_durable_backing_snapshot_keys(local)
+    except ImportError:
+        pass
     for key, val in local.items():
         session_state[key] = copy.deepcopy(val)
     _restore_preserved_globals(session_state, preserved)
@@ -404,10 +410,17 @@ def restore_page_snapshot(session_state: dict, page_id: str) -> None:
 
 def sanitize_persisted_snapshots(session_state: dict) -> None:
     """Strip globals from stored page snapshots and nav history (legacy sessions)."""
+    try:
+        from backing_track_state import strip_durable_backing_snapshot_keys
+    except ImportError:
+        strip_durable_backing_snapshot_keys = None  # type: ignore[assignment]
     store = session_state.get(_PAGE_SNAPSHOTS_KEY)
     if isinstance(store, dict):
         for page_id, snap in list(store.items()):
-            store[page_id] = _filter_page_local_snapshot(snap if isinstance(snap, dict) else {})
+            cleaned = _filter_page_local_snapshot(snap if isinstance(snap, dict) else {})
+            if strip_durable_backing_snapshot_keys is not None:
+                cleaned = strip_durable_backing_snapshot_keys(cleaned)
+            store[page_id] = cleaned
 
     for stack_key in ("studio_nav_back", "studio_nav_forward"):
         stack = session_state.get(stack_key)
