@@ -478,8 +478,12 @@ def render_custom_progression_lab_page() -> None:
             key="cpl_edit_section",
             help="Intro, Verse, Chorus, Bridge, and more.",
         )
+        active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
         home_sections = _home_sections()
         home_entries = home_sections[edit_section]
+        original_key = written_home_key(active)
+        original_label = format_key_label(original_key)
+        home_ns = original_key.replace("#", "s").replace("b", "f")
         simple = simple_chords_for_key(original_key)
         style_presets = presets_for_style(style)
         time_sig = str(active.get("time_signature") or "4/4")
@@ -514,30 +518,29 @@ def render_custom_progression_lab_page() -> None:
                 unsafe_allow_html=True,
             )
 
-        active = ensure_original_structure(st.session_state[CPL_ACTIVE_KEY])
         section_display = display_entries_for_section(active, display_key, edit_section)
         section_has_chords = not section_is_empty(home_entries)
 
         st.markdown("**Progression in this section**")
-        st.markdown('<div class="cpl-live-progression">', unsafe_allow_html=True)
+        progression_bits: list[str] = ['<div class="cpl-live-progression">']
         if section_has_chords:
-            st.markdown(
-                entries_chord_tiles_html(
-                    section_display,
-                    time_signature=time_sig,
-                    lead_sheet=use_lead_sheet,
-                ),
-                unsafe_allow_html=True,
+            tiles = entries_chord_tiles_html(
+                section_display,
+                time_signature=time_sig,
+                lead_sheet=use_lead_sheet,
             )
+            if tiles:
+                progression_bits.append(tiles)
         if pending_chord:
-            st.markdown(
+            progression_bits.append(
                 f'<p class="cpl-pending-hint">Selected: <strong>{html.escape(pending_chord)}</strong> '
-                f"— click 1, 2, or 4 bars below to add it</p>",
-                unsafe_allow_html=True,
+                f"— click 1, 2, or 4 bars below to add it</p>"
             )
+        progression_bits.append("</div>")
+        if section_has_chords or pending_chord:
+            st.markdown("".join(progression_bits), unsafe_allow_html=True)
         elif not section_has_chords:
             st.info("Tap a chord below, then choose **1**, **2**, or **4** bars to add it.")
-        st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("**1. Click a chord**")
         cols = st.columns(min(6, max(1, len(simple))))

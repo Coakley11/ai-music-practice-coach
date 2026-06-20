@@ -1,0 +1,59 @@
+"""Custom Progression Lab — chord tile rendering and display-key sync."""
+
+from __future__ import annotations
+
+import unittest
+
+from custom_progression_lab import (
+    commit_home_sections,
+    default_active_progression,
+    display_entries_for_section,
+    entries_chord_tiles_html,
+    ensure_original_structure,
+    written_home_key,
+)
+
+
+class TestCplChordDisplay(unittest.TestCase):
+    def test_progression_tiles_render_after_adding_chords(self) -> None:
+        active = default_active_progression()
+        active["original_key_center"] = "C"
+        active["user_locked_home_key"] = True
+        home = ensure_original_structure(active)["original_sections"]
+        home["Verse"] = [{"chord": "C", "bars": 2}, {"chord": "G", "bars": 2}]
+        active = commit_home_sections(active, home)
+        display = display_entries_for_section(active, "C", "Verse")
+        html = entries_chord_tiles_html(display, time_signature="4/4")
+        self.assertEqual(len(display), 2)
+        self.assertIn("chord-symbol", html)
+        self.assertIn(">C<", html)
+        self.assertIn(">G<", html)
+
+    def test_display_key_transpose_updates_tiles(self) -> None:
+        active = default_active_progression()
+        active["original_key_center"] = "C"
+        active["user_locked_home_key"] = True
+        home = ensure_original_structure(active)["original_sections"]
+        home["Verse"] = [{"chord": "Am", "bars": 1}, {"chord": "Dm", "bars": 1}]
+        active = commit_home_sections(active, home)
+        home_key = written_home_key(active)
+        display = display_entries_for_section(active, "G", "Verse")
+        html = entries_chord_tiles_html(display)
+        self.assertEqual(home_key, "C")
+        self.assertEqual(display[0]["chord"], "Em")
+        self.assertIn(">Em<", html)
+
+    def test_flat_home_key_keeps_flat_spelling_when_transposed(self) -> None:
+        active = default_active_progression()
+        active["original_key_center"] = "Db"
+        active["user_locked_home_key"] = True
+        home = ensure_original_structure(active)["original_sections"]
+        home["Verse"] = [{"chord": "Db", "bars": 1}, {"chord": "Gb", "bars": 1}]
+        active = commit_home_sections(active, home)
+        display = display_entries_for_section(active, "Eb", "Verse")
+        self.assertEqual(display[0]["chord"], "Eb")
+        self.assertEqual(display[1]["chord"], "Ab")
+
+
+if __name__ == "__main__":
+    unittest.main()

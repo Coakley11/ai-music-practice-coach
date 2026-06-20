@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 from backing_track_state import (
     BACKING_DIRTY_KEY,
     BACKING_DURABLE_WIDGET_KEYS,
+    BACKING_RESTORED_KEY,
     BACKING_WIDGETS_SEEDED_KEY,
     apply_backing_source_state_from_ami,
     apply_cloud_backing_state_if_allowed,
@@ -602,10 +603,50 @@ class TestBackingTrackState(unittest.TestCase):
             BACKING_WIDGETS_SEEDED_KEY: True,
         }
         trace = bind_backing_rendered_widgets_from_canonical(session, sync_id=sync_id, default_bpm=100)
+        self.assertEqual(session[slider_key], 100)
+        self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 100)
+        self.assertEqual(trace["backing_rendered_bpm"], 100)
+        self.assertFalse(trace["backing_widget_canonical_mismatch"])
+        self.assertTrue(is_backing_user_dirty(session))
+
+    def test_bind_restores_canonical_on_cloud_restore_mismatch(self) -> None:
+        sync_id = "pk::Pop::Song — Artist"
+        slider_key = f"backing_track_bpm::{sync_id.replace(':', '_').replace('/', '_').replace(' ', '_')}"
+        session = {
+            "backing_track_state": {**_SAMPLE, "backing_track_bpm": 130, "last_write_reason": "cloud_restore"},
+            "backing_track_bpm": 130,
+            "backing_track_scope": "Single section",
+            "backing_track_single_section": "Chorus",
+            "backing_track_loops": 3,
+            "backing_groove_style": "Rock groove",
+            slider_key: 100,
+            BACKING_WIDGETS_SEEDED_KEY: True,
+            BACKING_RESTORED_KEY: True,
+        }
+        trace = bind_backing_rendered_widgets_from_canonical(session, sync_id=sync_id, default_bpm=100)
         self.assertEqual(session[slider_key], 130)
         self.assertEqual(trace["backing_rendered_bpm"], 130)
-        self.assertFalse(trace["backing_widget_canonical_mismatch"])
-        self.assertEqual(session["_backing_render_bind_reason"], "rendered_canonical_mismatch")
+        self.assertEqual(session["_backing_render_bind_reason"], "cloud_restore")
+
+    def test_prepare_preserves_user_bpm_change(self) -> None:
+        session = {
+            "backing_track_state": {
+                "backing_track_scope": "Full song",
+                "backing_track_loops": 2,
+                "backing_track_bpm": 100,
+                "backing_groove_style": "Ballad",
+                "last_write_reason": "reconcile_on_load",
+            },
+            "backing_track_bpm": 125,
+            "backing_track_scope": "Full song",
+            "backing_track_loops": 2,
+            "backing_groove_style": "Ballad",
+            BACKING_WIDGETS_SEEDED_KEY: True,
+        }
+        mark_backing_user_edit(session)
+        prepare_backing_page(session)
+        self.assertEqual(session["backing_track_bpm"], 125)
+        self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 125)
 
     def test_trace_reports_rendered_widget_keys(self) -> None:
         sync_id = "pk::Pop::Song — Artist"

@@ -34,6 +34,16 @@ def _load_music_theory():
 
 semitone_distance, transpose_chord = _load_music_theory()
 
+try:
+    from music_theory import ENHARMONIC_MAJOR_KEYS, ENHARMONIC_MINOR_KEYS
+except ImportError:
+    ENHARMONIC_MAJOR_KEYS = [
+        "C", "Db", "C#", "D", "Eb", "D#", "E", "F", "Gb", "F#", "G", "Ab", "G#", "A", "Bb", "A#", "B",
+    ]
+    ENHARMONIC_MINOR_KEYS = [
+        "Cm", "Dbm", "C#m", "Dm", "D#m", "Ebm", "Em", "Fm", "Gbm", "F#m", "Gm", "G#m", "Abm", "Am", "A#m", "Bbm", "Bm",
+    ]
+
 from creative_lab_text import (
     chord_quality,
     chord_root,
@@ -180,7 +190,7 @@ def transpose_section_entries(entries, from_key, to_key):
             continue
         out.append(
             {
-                "chord": transpose_chord(chord, steps),
+                "chord": transpose_chord(chord, steps, reference_key=from_key),
                 "bars": max(1, int(entry.get("bars", 1) or 1)),
             }
         )
@@ -1083,7 +1093,7 @@ def display_entries_for_section(active: dict, display_key: str, section_name: st
         if not ch or ch == "%":
             continue
         out.append({
-            "chord": transpose_chord(ch, steps),
+            "chord": transpose_chord(ch, steps, reference_key=home),
             "bars": max(1, int(entry.get("bars", 1) or 1)),
         })
     return out
@@ -1865,10 +1875,7 @@ def apply_style_preset(style: str, home_key: str) -> dict | None:
     return {"sections": sections, "groove_style": data["groove_style"]}
 
 
-CPL_KEY_OPTIONS: list[str] = [
-    "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B",
-    "Cm", "C#m", "Dm", "Ebm", "Em", "Fm", "F#m", "Gm", "Abm", "Am", "Bbm", "Bm",
-]
+CPL_KEY_OPTIONS: list[str] = list(ENHARMONIC_MAJOR_KEYS) + list(ENHARMONIC_MINOR_KEYS)
 
 
 def _is_minor_home_key(home_key: str) -> bool:

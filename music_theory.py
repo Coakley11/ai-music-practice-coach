@@ -5,10 +5,26 @@ COMMON_KEYS = [
     "Gb", "G", "Ab", "A", "Bb", "B",
 ]
 
+# Both enharmonic spellings for each black-key pitch class (musician-friendly dropdowns).
+ENHARMONIC_MAJOR_KEYS = [
+    "C", "Db", "C#", "D", "Eb", "D#", "E", "F", "Gb", "F#", "G", "Ab", "G#", "A", "Bb", "A#", "B",
+]
+ENHARMONIC_MINOR_KEYS = [
+    "Cm", "Dbm", "C#m", "Dm", "D#m", "Ebm", "Em", "Fm", "Gbm", "F#m", "Gm", "G#m", "Abm", "Am", "A#m", "Bbm", "Bm",
+]
+
 # Major + parallel minor centers (legacy combined list).
 PRACTICE_KEYS = [k for pair in zip(COMMON_KEYS, [f"{k}m" for k in COMMON_KEYS]) for k in pair]
 MAJOR_PRACTICE_KEYS = list(COMMON_KEYS)
 MINOR_PRACTICE_KEYS = [f"{k}m" for k in COMMON_KEYS]
+
+_FLAT_PITCH_CLASSES: tuple[str, ...] = (
+    "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B",
+)
+_SHARP_PITCH_CLASSES: tuple[str, ...] = (
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+)
+_NATURAL_PITCH_CLASSES: frozenset[str] = frozenset({"C", "D", "E", "F", "G", "A", "B"})
 
 CHROMATIC = [
     "C", "C#", "D", "D#", "E", "F",
@@ -36,6 +52,21 @@ NOTE_TO_MIDI = {
 
 def normalize_root(root):
     return FLAT_TO_SHARP.get(root, root)
+
+
+# Circle-of-fifths side — used when the key name has no #/b (e.g. E minor → sharp family).
+_SHARP_SIDE_MAJOR: frozenset[str] = frozenset(
+    normalize_root(k) for k in ("G", "D", "A", "E", "B", "F#", "C#")
+)
+_FLAT_SIDE_MAJOR: frozenset[str] = frozenset(
+    normalize_root(k) for k in ("F", "Bb", "Eb", "Ab", "Db", "Gb")
+)
+_SHARP_SIDE_MINOR: frozenset[str] = frozenset(
+    normalize_root(k.rstrip("m")) for k in ("Em", "Bm", "F#m", "C#m", "G#m", "D#m", "A#m")
+)
+_FLAT_SIDE_MINOR: frozenset[str] = frozenset(
+    normalize_root(k.rstrip("m")) for k in ("Dm", "Gm", "Cm", "Fm", "Bbm", "Ebm", "Abm")
+)
 
 
 # Tokens (case-insensitive, dot/space-tolerant) that should be treated as
@@ -88,20 +119,62 @@ def key_mode(key: str) -> str:
     return "minor" if key_is_minor(key) else "major"
 
 
+def enharmonic_keys_for_mode(mode: str) -> list[str]:
+    """Major or minor key centers with both flat and sharp spellings where applicable."""
+    return list(ENHARMONIC_MINOR_KEYS if str(mode or "").lower() == "minor" else ENHARMONIC_MAJOR_KEYS)
+
+
 def practice_keys_for_mode(mode: str) -> list[str]:
-    """Twelve major or twelve minor key centers."""
-    return list(MINOR_PRACTICE_KEYS if str(mode or "").lower() == "minor" else MAJOR_PRACTICE_KEYS)
+    """Key centers for the requested mode (includes enharmonic spellings)."""
+    return enharmonic_keys_for_mode(mode)
+
+
+def reference_spelling_mode(reference_key: str) -> str:
+    """flat | sharp | natural — follow concert/display key accidental family."""
+    root, suffix = split_chord(str(reference_key or "C"))
+    root = str(root or "C")
+    if "b" in root:
+        return "flat"
+    if "#" in root:
+        return "sharp"
+    nr = normalize_root(root)
+    if key_is_minor(str(root) + suffix):
+        if nr in _SHARP_SIDE_MINOR:
+            return "sharp"
+        if nr in _FLAT_SIDE_MINOR:
+            return "flat"
+    else:
+        if nr in _SHARP_SIDE_MAJOR:
+            return "sharp"
+        if nr in _FLAT_SIDE_MAJOR:
+            return "flat"
+    return "natural"
+
+
+def spell_pitch_class(pitch_idx: int, *, mode: str) -> str:
+    idx = int(pitch_idx) % 12
+    if mode == "flat":
+        return _FLAT_PITCH_CLASSES[idx]
+    if mode == "sharp":
+        return _SHARP_PITCH_CLASSES[idx]
+    natural = _FLAT_PITCH_CLASSES[idx]
+    if natural in _NATURAL_PITCH_CLASSES:
+        return natural
+    return _FLAT_PITCH_CLASSES[idx]
 
 
 def _practice_key_for_pitch_class(key: str, mode: str) -> str:
-    """Pick the catalog spelling (Eb vs D#) for a pitch class in major or minor."""
-    root, _ = split_chord(str(key or "C").strip() or "C")
+    """Pick a dropdown spelling for a pitch class, preserving user spelling when possible."""
+    raw = str(key or "C").strip() or "C"
+    root, suffix = split_chord(raw)
     nr = normalize_root(root)
     if nr not in CHROMATIC:
-        return str(key or "C").strip() or "C"
+        return raw
     want_minor = str(mode or "").lower() == "minor"
+    if want_minor == key_is_minor(raw) and raw in practice_keys_for_mode(mode):
+        return raw
     for candidate in practice_keys_for_mode(mode):
-        cr, _ = split_chord(candidate)
+        cr, cs = split_chord(candidate)
         if normalize_root(cr) != nr:
             continue
         if want_minor == key_is_minor(candidate):
@@ -155,36 +228,35 @@ def semitone_distance(from_key, to_key):
     return (CHROMATIC.index(b) - CHROMATIC.index(a)) % 12
 
 
-def transpose_chord(chord, steps):
+def _transpose_root(root: str, steps: int, *, reference_key: str | None) -> str:
+    nr = normalize_root(root)
+    if nr not in CHROMATIC:
+        return root
+    ref = str(reference_key if reference_key is not None else root)
+    mode = reference_spelling_mode(ref)
+    new_idx = (CHROMATIC.index(nr) + steps) % 12
+    return spell_pitch_class(new_idx, mode=mode)
+
+
+def transpose_chord(chord, steps, *, reference_key: str | None = None):
     chord = str(chord).strip()
+    ref = reference_key
     if "/" in chord:
         left, bass = chord.split("/", 1)
         lr, ls = split_chord(left)
-        nr = normalize_root(lr)
-        left_out = (
-            CHROMATIC[(CHROMATIC.index(nr) + steps) % 12] + ls
-            if nr in CHROMATIC
-            else left
-        )
+        left_out = _transpose_root(lr, steps, reference_key=ref) + ls
         if not bass.strip():
             return left_out + "/"
         br, bs = split_chord(bass)
-        nbr = normalize_root(br)
-        bass_out = (
-            CHROMATIC[(CHROMATIC.index(nbr) + steps) % 12] + bs
-            if nbr in CHROMATIC
-            else bass
-        )
+        bass_out = _transpose_root(br, steps, reference_key=ref) + bs
         return f"{left_out}/{bass_out}"
 
     root, suffix = split_chord(chord)
-    root = normalize_root(root)
-
-    if root not in CHROMATIC:
+    nr = normalize_root(root)
+    if nr not in CHROMATIC:
         return chord
 
-    new_root = CHROMATIC[(CHROMATIC.index(root) + steps) % 12]
-
+    new_root = _transpose_root(root, steps, reference_key=ref)
     return new_root + suffix
 
 
@@ -195,7 +267,10 @@ def transpose_guitar_tabs(g_tabs: dict, from_key: str, to_key: str) -> dict:
     steps = semitone_distance(from_key, to_key)
     if steps == 0:
         return dict(g_tabs)
-    return {transpose_chord(name, steps): shape for name, shape in g_tabs.items()}
+    return {
+        transpose_chord(name, steps, reference_key=from_key): shape
+        for name, shape in g_tabs.items()
+    }
 
 
 def transpose_sections(song_data, target_key):
@@ -222,6 +297,6 @@ def transpose_sections_dict(sections, from_key, to_key):
     """Transpose a sections mapping from one key center to another."""
     steps = semitone_distance(from_key, to_key)
     return {
-        name: [transpose_chord(ch, steps) for ch in chords]
+        name: [transpose_chord(ch, steps, reference_key=from_key) for ch in chords]
         for name, chords in sections.items()
     }

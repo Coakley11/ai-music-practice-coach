@@ -107,14 +107,10 @@ _NATURAL_PITCH_CLASSES: frozenset[str] = frozenset(
 
 
 def _reference_spelling_mode(reference_key: str) -> str:
-    """flat | sharp | natural — follow concert/display key accidental style."""
-    root, _ = split_chord(str(reference_key or "C"))
-    root = str(root or "C")
-    if "b" in root:
-        return "flat"
-    if "#" in root:
-        return "sharp"
-    return "natural"
+    """flat | sharp | natural — follow concert/display key accidental family."""
+    from music_theory import reference_spelling_mode
+
+    return reference_spelling_mode(reference_key)
 
 
 def _spell_pitch_class(pitch_idx: int, *, mode: str) -> str:
@@ -771,6 +767,8 @@ def transpose_chord_for_instrument(
     chord: str,
     instrument: str,
     session_state: dict,
+    *,
+    concert_key: str | None = None,
 ) -> str:
     """Transpose a chord symbol into written key for the selected transposing type."""
     from music_theory import transpose_chord
@@ -779,7 +777,13 @@ def transpose_chord_for_instrument(
         return chord
     t_type = selected_transposing_type(session_state, instrument)
     steps = semitone_steps_for_label(t_type)
-    return transpose_chord(chord, steps)
+    ref = str(
+        concert_key
+        or session_state.get(CONCERT_KEY_SESSION_KEY)
+        or session_state.get("display_key")
+        or "C"
+    )
+    return transpose_chord(chord, steps, reference_key=ref)
 
 
 def transpose_song_for_instrument(

@@ -527,10 +527,27 @@ def bind_backing_rendered_widgets_from_canonical(
         return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
 
     _clear_spurious_backing_dirty(session)
+    rendered_mismatch = _rendered_differs_from_canonical(session, sync_id, canonical)
+    if (
+        rendered_mismatch
+        and session.get(BACKING_WIDGETS_SEEDED_KEY)
+        and not session.get(BACKING_RESTORED_KEY)
+        and session.get("_backing_restore_source") != "cloud_restore"
+    ):
+        gathered = gather_backing_filters(session)
+        write_canonical_backing_state(
+            session,
+            gathered,
+            reason="rendered_widget_wins",
+            local_edit=True,
+        )
+        mark_backing_user_edit(session)
+        return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+
     should_bind = (
         session.get(BACKING_RESTORED_KEY)
         or not session.get(BACKING_WIDGETS_SEEDED_KEY)
-        or _rendered_differs_from_canonical(session, sync_id, canonical)
+        or rendered_mismatch
     )
     if not should_bind:
         return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
@@ -665,7 +682,11 @@ def _filters_differ(left: dict[str, Any], right: dict[str, Any]) -> bool:
     return False
 
 
-def _gathered_looks_like_song_defaults(filters: dict[str, Any]) -> bool:
+def _gathered_looks_like_song_defaults(
+    filters: dict[str, Any],
+    *,
+    canonical: dict[str, Any] | None = None,
+) -> bool:
     """True when live widget keys match generic song-default backing (not a user edit)."""
     f = _normalize_filters(filters)
     if normalize_backing_scope(f.get("backing_track_scope")) != "Full song":
@@ -682,6 +703,11 @@ def _gathered_looks_like_song_defaults(filters: dict[str, Any]) -> bool:
     if f.get("backing_time_signature_override"):
         return False
     if str(f.get("backing_time_signature") or "").strip() not in ("", "4/4"):
+        return False
+    canon = _normalize_filters(canonical) if isinstance(canonical, dict) else {}
+    gather_bpm = normalize_backing_bpm(f.get("backing_track_bpm"))
+    canon_bpm = normalize_backing_bpm(canon.get("backing_track_bpm"))
+    if gather_bpm is not None and canon_bpm is not None and gather_bpm != canon_bpm:
         return False
     return True
 
@@ -892,7 +918,8 @@ def prepare_backing_page(session: dict[str, Any]) -> dict[str, Any]:
     canonical = canonical_backing_filters(session)
     if canonical is not None and _filters_differ(canonical, gathered):
         if _should_seed_widgets_from_canonical(session) or (
-            _filters_have_content(canonical) and _gathered_looks_like_song_defaults(gathered)
+            _filters_have_content(canonical)
+            and _gathered_looks_like_song_defaults(gathered, canonical=canonical)
         ):
             return seed_backing_widgets_from_canonical(
                 session,
