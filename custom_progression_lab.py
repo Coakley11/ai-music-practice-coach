@@ -948,13 +948,22 @@ def cpl_pending_chord_key(section: str) -> str:
 
 def cpl_set_pending_chord(session_state: dict, *, section: str, chord: str) -> None:
     """Store pending chord in canonical + section keys (survives cloud widget restore)."""
+    import time
+
     section_name = str(section or "Verse").strip() or "Verse"
     symbol = normalize_chord_symbol(chord) or str(chord or "").strip()
     if not symbol:
         return
+    pending_key = cpl_pending_chord_key(section_name)
     session_state[CPL_PENDING_CHORD_KEY] = symbol
     session_state[CPL_PENDING_SECTION_KEY] = section_name
-    session_state[cpl_pending_chord_key(section_name)] = symbol
+    session_state[pending_key] = symbol
+    session_state["_cpl_last_chord_click"] = {
+        "section": section_name,
+        "chord": symbol,
+        "pending_key_written": pending_key,
+        "timestamp": time.time(),
+    }
 
 
 def cpl_get_pending_chord(session_state: dict, section: str) -> str | None:
@@ -1000,6 +1009,22 @@ CPL_EPHEMERAL_WIDGET_PREFIXES = (
     "cpl_custom_text_",
 )
 
+# Builder action buttons — ephemeral for export, but must NOT be purged before render
+# or Streamlit loses the click before `if st.button()` / callbacks run.
+CPL_ACTION_BUTTON_PREFIXES = (
+    "cpl_pick_",
+    "cpl_b1_",
+    "cpl_b2_",
+    "cpl_b4_",
+    "cpl_use_slash_",
+    "cpl_use_typed_",
+    "cpl_custom_sel_",
+    "cpl_custom_add_",
+    "cpl_demo_",
+    "cpl_pre_",
+    "cpl_ext_",
+)
+
 CPL_TIMING_PANEL_FIX_ID = "cpl-timing-v2-no-sub-widget-restore"
 
 
@@ -1033,10 +1058,20 @@ CPL_WIDGET_PERSIST_SCALAR_KEYS = (
 )
 
 
+def should_purge_cpl_widget_key_on_page_start(key: str) -> bool:
+    """True for widget keys safe to drop at CPL page start (timing/sub restore fixes)."""
+    sk = str(key or "")
+    if not is_cpl_ephemeral_widget_key(sk):
+        return False
+    if any(sk.startswith(prefix) for prefix in CPL_ACTION_BUTTON_PREFIXES):
+        return False
+    return True
+
+
 def purge_cpl_ephemeral_widget_keys(session_state: dict) -> None:
-    """Remove persisted Streamlit widget keys that cause ValueAssignmentNotAllowedError."""
+    """Remove restored timing/sub widget keys that cause ValueAssignmentNotAllowedError."""
     for key in list(session_state.keys()):
-        if is_cpl_ephemeral_widget_key(key):
+        if should_purge_cpl_widget_key_on_page_start(key):
             session_state.pop(key, None)
 
 
@@ -2568,6 +2603,64 @@ def cpl_apply_chord_with_bars_to_session(
     return cpl_save_draft(session_state, active, home, persist=persist, st=st)
 
 
+def cpl_on_pick_chord_callback(chord: str) -> None:
+    """Streamlit on_click — runs before page purge/render (fixes lost chord picks)."""
+    import streamlit as st
+
+    section = str(st.session_state.get("cpl_edit_section") or "Verse").strip() or "Verse"
+    cpl_set_pending_chord(st.session_state, section=section, chord=chord)
+
+
+def cpl_on_apply_bars_callback(bars: int) -> None:
+    """Streamlit on_click — commit pending chord to the active section."""
+    import streamlit as st
+
+    section = str(st.session_state.get("cpl_edit_section") or "Verse").strip() or "Verse"
+    bars = max(1, int(bars or 1))
+    st.session_state[f"cpl_last_bars_{section}"] = bars
+    pending = cpl_get_pending_chord(st.session_state, section)
+    if not pending:
+        active = cpl_active_from_session(st.session_state)
+        home = ensure_all_cpl_sections(active.get("original_sections"))
+        entries = list(home.get(section) or [])
+        if entries:
+            entries[-1]["bars"] = bars
+            home[section] = entries
+            cpl_save_draft(st.session_state, active, home, persist=True, st=st)
+            st.session_state["_cpl_last_bar_apply"] = {
+                "section": section,
+                "bars": bars,
+                "source": "resize_last_chord",
+                "chord_count": cpl_draft_chord_count(
+                    cpl_active_from_session(st.session_state)
+                ),
+            }
+        else:
+            st.session_state["_cpl_last_bar_apply"] = {
+                "section": section,
+                "bars": bars,
+                "error": "no_pending_chord",
+            }
+        return
+    active = cpl_apply_chord_with_bars_to_session(
+        st.session_state,
+        section_name=section,
+        chord=str(pending),
+        bars=bars,
+        st=st,
+        persist=True,
+    )
+    home = ensure_all_cpl_sections(cpl_active_from_session(st.session_state).get("original_sections"))
+    st.session_state["_cpl_last_bar_apply"] = {
+        "section": section,
+        "chord": str(pending),
+        "bars": bars,
+        "pending_key": cpl_pending_chord_key(section),
+        "verse_entries": copy.deepcopy(home.get("Verse") or []),
+        "chord_count": cpl_draft_chord_count(active),
+    }
+
+
 def build_cpl_developer_diagnostics(
     session_state: dict,
     active: dict,
@@ -2641,6 +2734,7 @@ def build_cpl_developer_diagnostics(
             },
         },
         "chord_pipeline": {
+            "last_chord_click": copy.deepcopy(session_state.get("_cpl_last_chord_click") or {}),
             "last_bar_apply": copy.deepcopy(session_state.get("_cpl_last_bar_apply") or {}),
             "session_verse_entries": copy.deepcopy(home.get("Verse") or []),
         },

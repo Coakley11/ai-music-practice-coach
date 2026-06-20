@@ -146,6 +146,8 @@ def render_custom_progression_lab_page() -> None:
         cpl_draft_chord_count,
         cpl_draft_written_key,
         cpl_get_pending_chord,
+        cpl_on_apply_bars_callback,
+        cpl_on_pick_chord_callback,
         cpl_set_pending_chord,
         cpl_save_draft,
         cpl_section_progression_view,
@@ -537,9 +539,23 @@ def render_custom_progression_lab_page() -> None:
         cols = st.columns(min(6, max(1, len(simple))))
         for i, ch in enumerate(simple):
             with cols[i % len(cols)]:
-                if st.button(ch, key=f"cpl_pick_{home_ns}_{edit_section}_{ch}", use_container_width=True):
-                    cpl_set_pending_chord(st.session_state, section=edit_section, chord=ch)
-                    st.rerun()
+                st.button(
+                    ch,
+                    key=f"cpl_pick_{edit_section}_{ch}",
+                    on_click=cpl_on_pick_chord_callback,
+                    args=(ch,),
+                    use_container_width=True,
+                )
+
+        try:
+            from music_persistence_trace import music_developer_mode
+
+            if music_developer_mode(st):
+                last_click = st.session_state.get("_cpl_last_chord_click")
+                if last_click:
+                    st.caption(f"Debug last_chord_click: {last_click}")
+        except Exception:
+            pass
 
         # ----- Slash chord / custom chord builder -----
         # Lets the user create a slash chord (D/F#, C/E, G/B, A/C#, D/A, ...) by
@@ -667,52 +683,30 @@ def render_custom_progression_lab_page() -> None:
 
         b1, b2, b4 = st.columns(3)
 
-        def _apply_bars(bars: int) -> None:
-            nonlocal active, pending_chord, home_sections, home_entries
-            section = str(st.session_state.get("cpl_edit_section") or edit_section or "Verse")
-            pending_key_now = _pending_chord_key(section)
-            last_bars_key_now = _last_bars_key(section)
-            bars = int(bars)
-            st.session_state[last_bars_key_now] = bars
-            pending = cpl_get_pending_chord(st.session_state, section)
-            if pending:
-                active = cpl_apply_chord_with_bars_to_session(
-                    st.session_state,
-                    section_name=section,
-                    chord=str(pending),
-                    bars=bars,
-                    st=st,
-                    persist=True,
-                )
-                pending_chord = None
-                home_sections = _home_sections()
-                home_entries = home_sections[section]
-                st.session_state["_cpl_last_bar_apply"] = {
-                    "section": section,
-                    "chord": str(pending),
-                    "bars": bars,
-                    "pending_key": pending_key_now,
-                    "verse_entries": copy.deepcopy(home_sections.get("Verse") or []),
-                    "chord_count": cpl_draft_chord_count(active),
-                }
-                st.rerun()
-            home_sections = _home_sections()
-            home_entries = home_sections[section]
-            if home_entries:
-                home_entries[-1]["bars"] = bars
-                _save(home_sections)
-                active = cpl_active_from_session(st.session_state)
-                st.rerun()
-
         with b1:
-            if st.button("1 bar", key=f"cpl_b1_{edit_section}", use_container_width=True):
-                _apply_bars(1)
+            st.button(
+                "1 bar",
+                key=f"cpl_b1_{edit_section}",
+                on_click=cpl_on_apply_bars_callback,
+                args=(1,),
+                use_container_width=True,
+            )
         with b2:
-            if st.button("2 bars", key=f"cpl_b2_{edit_section}", use_container_width=True):
-                _apply_bars(2)
+            st.button(
+                "2 bars",
+                key=f"cpl_b2_{edit_section}",
+                on_click=cpl_on_apply_bars_callback,
+                args=(2,),
+                use_container_width=True,
+            )
         with b4:
-            if st.button("4 bars", key=f"cpl_b4_{edit_section}", use_container_width=True):
-                _apply_bars(4)
+            st.button(
+                "4 bars",
+                key=f"cpl_b4_{edit_section}",
+                on_click=cpl_on_apply_bars_callback,
+                args=(4,),
+                use_container_width=True,
+            )
 
         st.markdown("**Type any chord**")
         tc1, tc2, tc3 = st.columns([3, 1, 1])

@@ -62,6 +62,15 @@ class TestCplDraftPersist(unittest.TestCase):
         self.assertNotIn("cpl_bpm", blob)
         self.assertNotIn("cpl_progression_style", blob)
 
+    def test_set_pending_records_last_chord_click(self) -> None:
+        session = {}
+        cpl_set_pending_chord(session, section="Chorus", chord="C")
+        click = session.get("_cpl_last_chord_click") or {}
+        self.assertEqual(click.get("section"), "Chorus")
+        self.assertEqual(click.get("chord"), "C")
+        self.assertEqual(click.get("pending_key_written"), "cpl_pending_chord_Chorus")
+        self.assertIn("timestamp", click)
+
     def test_clear_pending_removes_all_pending_keys(self) -> None:
         session = {}
         cpl_set_pending_chord(session, section="Chorus", chord="Am")

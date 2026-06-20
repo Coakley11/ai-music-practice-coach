@@ -46,6 +46,12 @@ class TestCplEphemeralWidgetKeys(unittest.TestCase):
         self.assertNotIn("cpl_sub_half_Verse", ss)
         self.assertEqual(ss["cpl_pending_chord_Verse"], "Am")
 
+    def test_purge_keeps_builder_action_button_keys(self) -> None:
+        ss = {"cpl_pick_Chorus_C": True, "cpl_b1_Chorus": True}
+        purge_cpl_ephemeral_widget_keys(ss)
+        self.assertTrue(ss.get("cpl_pick_Chorus_C"))
+        self.assertTrue(ss.get("cpl_b1_Chorus"))
+
     def test_export_never_includes_timing_buttons(self) -> None:
         blob = export_cpl_widget_state(
             {
