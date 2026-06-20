@@ -1476,8 +1476,13 @@ def apply_music_disk_state(
         elif key in _PERSIST_KEYS:
             if key == "cpl_active_progression" and isinstance(val, dict):
                 try:
-                    from custom_progression_lab import cpl_draft_chord_count
+                    from custom_progression_lab import (
+                        CPL_DRAFT_DIRTY_KEY,
+                        cpl_draft_chord_count,
+                    )
 
+                    if ss.get(CPL_DRAFT_DIRTY_KEY) and not authoritative_restore:
+                        continue
                     local = ss.get(key)
                     if (
                         not authoritative_restore
@@ -1650,6 +1655,13 @@ def apply_music_disk_state(
         pass
 
     ss["_suite_cloud_workspace_applied"] = True
+
+    try:
+        from custom_progression_lab import reconcile_cpl_restored_session
+
+        reconcile_cpl_restored_session(ss)
+    except Exception:
+        pass
 
     try:
         from music_coach_context import resolve_coach_source_page

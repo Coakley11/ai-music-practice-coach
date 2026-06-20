@@ -20,9 +20,10 @@ from custom_progression_lab import (
     cpl_whole_song_progression_view,
     default_active_progression,
     ensure_all_cpl_sections,
+    ensure_cpl_widget_keys_initialized,
     filled_section_names,
     migrate_cpl_builder_version,
-    ensure_cpl_widget_keys_initialized,
+    persist_cpl_draft_state,
     reset_cpl_widget_initialization,
     seed_cpl_draft_widgets_from_active,
     sync_cpl_draft_widgets_to_active,
@@ -308,6 +309,27 @@ class TestCplPageFlow(unittest.TestCase):
         self.assertEqual(session["cpl_artist_input"], "Cloud Artist")
         self.assertEqual(synced["bpm"], 120)
         self.assertEqual(synced["artist"], "Cloud Artist")
+
+    def test_persist_bypasses_post_restore_autosave_block(self) -> None:
+        from unittest.mock import patch
+
+        session = self._session_with_draft()
+        session.update({
+            "cpl_title_input": "Trial Song",
+            "cpl_bpm_builder": 100,
+            "cpl_time_signature": "3/4",
+            "cpl_original_key": "C",
+        })
+        session["_suite_autosave_blocked::music"] = True
+        st = SimpleNamespace(session_state=session)
+        with patch(
+            "music_persistent_state.flush_active_song_edits_and_save",
+            return_value=True,
+        ) as flush:
+            ok = persist_cpl_draft_state(st)
+        flush.assert_called_once_with(st, reason="song_edit")
+        self.assertTrue(ok)
+        self.assertTrue(session.get("_cpl_last_persist_ok"))
 
 
 if __name__ == "__main__":

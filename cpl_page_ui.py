@@ -244,6 +244,13 @@ def render_custom_progression_lab_page() -> None:
 
     def _save(sections: dict | None = None, *, persist: bool = True) -> None:
         nonlocal active
+        if persist:
+            try:
+                from music_persistent_state import clear_music_workspace_autosave_block
+
+                clear_music_workspace_autosave_block(st)
+            except Exception:
+                pass
         active = cpl_save_draft(
             st.session_state,
             active,
@@ -343,6 +350,7 @@ def render_custom_progression_lab_page() -> None:
         )
         st.session_state[CPL_ACTIVE_KEY] = active
         prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
+        _save(None)
         n1, n2, n3 = st.columns(3)
         with n1:
             if st.button("Save to library", key="cpl_save_prog", use_container_width=True):

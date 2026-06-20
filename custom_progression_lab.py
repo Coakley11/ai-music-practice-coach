@@ -1063,6 +1063,27 @@ def migrate_cpl_builder_version(session_state: dict) -> None:
 
 
 CPL_WIDGETS_INITIALIZED_KEY = "_cpl_widgets_initialized"
+CPL_DRAFT_DIRTY_KEY = "_cpl_draft_locally_dirty"
+
+
+def mark_cpl_draft_locally_dirty(session_state: dict) -> None:
+    session_state[CPL_DRAFT_DIRTY_KEY] = True
+
+
+def clear_cpl_draft_local_dirty(session_state: dict) -> None:
+    session_state.pop(CPL_DRAFT_DIRTY_KEY, None)
+
+
+def reconcile_cpl_restored_session(session_state: dict) -> None:
+    """After cloud restore, merge widget blob into canonical draft once."""
+    if CPL_ACTIVE_KEY not in session_state:
+        return
+    session_state.pop(CPL_WIDGETS_INITIALIZED_KEY, None)
+    ensure_cpl_widget_keys_initialized(
+        session_state,
+        session_state[CPL_ACTIVE_KEY],
+        force=False,
+    )
 
 
 def reset_cpl_widget_initialization(session_state: dict) -> None:
@@ -1165,26 +1186,46 @@ def sync_cpl_draft_widgets_to_active(session_state: dict, active: dict) -> dict:
     return active
 
 
-def persist_cpl_draft_state(st) -> None:
+def persist_cpl_draft_state(st) -> bool:
     """Flush CPL draft to local/cloud persistence."""
     import time
 
     ss = st.session_state
     ss["_cpl_last_persist_attempt_at"] = time.time()
+    ok = False
+    cloud_ok = False
+    block_reason = str(ss.get("_suite_autosave_block_reason") or "").strip() or None
     try:
-        from songs.state import persist_music_local_state
+        from music_persistent_state import flush_active_song_edits_and_save
 
-        persist_music_local_state(st)
-        ss["_cpl_last_persist_ok"] = True
-        ss["_cpl_last_persist_error"] = None
+        ok = bool(flush_active_song_edits_and_save(st, reason="song_edit"))
+        cloud_ok = bool(ss.get("_suite_persist_last_save_cloud"))
+        block_reason = str(
+            ss.get("_suite_autosave_block_reason")
+            or ss.get("_suite_autosave_blocked_after_restore")
+            or block_reason
+            or ""
+        ).strip() or None
+        ss["_cpl_last_persist_ok"] = ok
+        ss["_cpl_last_cloud_save_ok"] = cloud_ok
+        ss["_cpl_last_persist_error"] = None if ok else (
+            block_reason or str(ss.get("_suite_autosave_cloud_blocked_reason") or "save_failed")
+        )
+        if ok:
+            clear_cpl_draft_local_dirty(ss)
     except Exception as exc:
         ss["_cpl_last_persist_ok"] = False
+        ss["_cpl_last_cloud_save_ok"] = False
         ss["_cpl_last_persist_error"] = str(exc)
     try:
         exported = export_cpl_widget_state(ss)
+        ss["_cpl_last_exported_widget_state"] = copy.deepcopy(exported)
         ss["_cpl_last_exported_widget_keys"] = sorted(str(k) for k in exported.keys())
     except Exception:
+        ss["_cpl_last_exported_widget_state"] = {}
         ss["_cpl_last_exported_widget_keys"] = []
+    ss["_cpl_last_autosave_block_reason"] = block_reason
+    return ok
 
 
 def cpl_active_from_session(session_state: dict) -> dict:
@@ -1211,6 +1252,7 @@ def cpl_save_draft(
     active["user_locked_home_key"] = True
     active = commit_home_sections(active, home)
     session_state[CPL_ACTIVE_KEY] = active
+    mark_cpl_draft_locally_dirty(session_state)
     if persist and st is not None:
         persist_cpl_draft_state(st)
     return active
@@ -2546,10 +2588,21 @@ def build_cpl_developer_diagnostics(
             "last_bars": session_state.get(bars_key),
         },
         "persistence": {
+            "draft_locally_dirty": bool(session_state.get(CPL_DRAFT_DIRTY_KEY)),
             "last_persist_attempt_at": session_state.get("_cpl_last_persist_attempt_at"),
             "last_persist_ok": session_state.get("_cpl_last_persist_ok"),
+            "last_cloud_save_ok": session_state.get("_cpl_last_cloud_save_ok"),
             "last_persist_error": session_state.get("_cpl_last_persist_error"),
+            "last_autosave_block_reason": session_state.get("_cpl_last_autosave_block_reason"),
+            "suite_autosave_block_reason": session_state.get("_suite_autosave_block_reason"),
+            "suite_autosave_blocked_after_restore": session_state.get(
+                "_suite_autosave_blocked_after_restore"
+            ),
+            "suite_persist_last_save_cloud": session_state.get("_suite_persist_last_save_cloud"),
             "exported_widget_keys": session_state.get("_cpl_last_exported_widget_keys"),
+            "exported_widget_state": copy.deepcopy(
+                session_state.get("_cpl_last_exported_widget_state") or {}
+            ),
             "builder_version": session_state.get("cpl_builder_version"),
         },
     }
