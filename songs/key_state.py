@@ -93,29 +93,36 @@ def _apply_display_key_before_widget(st: Any, key: str, *, source: str = "sync_d
     st.session_state["display_key"] = key
 
 
-def sync_display_key_before_widget(
+def song_display_identity(title: str, artist: str, original_key: str) -> tuple[str, str, str]:
+    """Stable identity tuple for display-key reset when the active song changes."""
+    return (str(title or "").strip(), str(artist or "").strip(), str(original_key or "").strip())
+
+
+def apply_display_key_for_active_song(
     st: Any,
     original_key: str,
     song_identity: tuple,
+    *,
+    pending_key: str | None = None,
 ) -> list[str]:
-    """Apply pending key / song-change resets before the display_key widget is built."""
-    pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
+    """Reset or sync practice display key before the display_key widget renders."""
     options = display_key_options(original_key)
     identity_changed = st.session_state.get(IDENTITY_KEY) != song_identity
 
     if identity_changed:
         st.session_state[IDENTITY_KEY] = song_identity
-        _apply_display_key_before_widget(
-            st,
-            pending if pending is not None else original_key,
-        )
+        target = pending_key if pending_key is not None else original_key
+        _apply_display_key_before_widget(st, target, source="active_song_change")
         st.session_state[LAST_DISPLAY_KEY] = st.session_state["display_key"]
         invalidate_backing_cache(st)
         st.session_state[BACKING_NEEDS_REGEN] = False
-    elif pending is not None:
-        _apply_display_key_before_widget(st, pending)
+        return options
+
+    pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
+    if pending is not None:
+        _apply_display_key_before_widget(st, pending, source="pending_display_key")
     elif "display_key" not in st.session_state:
-        _apply_display_key_before_widget(st, original_key)
+        _apply_display_key_before_widget(st, original_key, source="initial_display_key")
 
     current = st.session_state.get("display_key", original_key)
     if current not in options:
@@ -128,6 +135,15 @@ def sync_display_key_before_widget(
         _apply_display_key_before_widget(st, fallback)
 
     return options
+
+
+def sync_display_key_before_widget(
+    st: Any,
+    original_key: str,
+    song_identity: tuple,
+) -> list[str]:
+    """Apply pending key / song-change resets before the display_key widget is built."""
+    return apply_display_key_for_active_song(st, original_key, song_identity)
 
 
 def request_display_key(st: Any, key: str) -> None:

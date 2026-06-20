@@ -418,6 +418,7 @@ def apply_pick_key(
         "artist": data["artist"],
         "genre": genre,
         "label": label,
+        "key": data.get("key") or "",
     }
     prev = st.session_state.get(_LAST_PICK_KEY)
     st.session_state[_LAST_PICK_KEY] = pick_key
@@ -432,9 +433,19 @@ def apply_pick_key(
             st.session_state["chart_edit_mode"] = False
         except Exception:
             pass
-        st.session_state[PENDING_DISPLAY_KEY] = data["key"]
-        st.session_state[IDENTITY_KEY] = (data["title"], data["artist"], data["key"])
-        st.session_state[LAST_DISPLAY_KEY] = data["key"]
+        from songs.key_state import apply_display_key_for_active_song, song_display_identity
+
+        song_identity = song_display_identity(
+            str(data.get("title") or ""),
+            str(data.get("artist") or ""),
+            str(data.get("key") or ""),
+        )
+        apply_display_key_for_active_song(
+            st,
+            str(data.get("key") or "C"),
+            song_identity,
+            pending_key=str(data.get("key") or "C"),
+        )
         reset_playback_song_tracking(st)
         invalidate_backing_cache(st)
         st.session_state[BACKING_NEEDS_REGEN] = False

@@ -261,10 +261,17 @@ def _merge_live_global_controls(
     """Session globals win over stale canonical values on normal reruns."""
     live = gather_active_song_context(session)
     merged = dict(ctx)
+    live_pick = str(live.get("pick_key") or "").strip()
+    ctx_pick = str(ctx.get("pick_key") or "").strip()
+    song_changed = bool(live_pick and ctx_pick and live_pick != ctx_pick)
     for key in ("instrument", "level", "focus", "display_key"):
+        if key == "display_key" and song_changed:
+            continue
         live_val = str(live.get(key) or "").strip()
         if live_val:
             merged[key] = live_val
+    if song_changed and live_pick:
+        merged["pick_key"] = live_pick
     return merged
 
 
@@ -598,7 +605,19 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         ctx = dict(canonical)
         apply_globals = restored_this_run or not _session_has_live_global_controls(session)
         if not restored_this_run:
-            ctx = _merge_live_global_controls(session, ctx)
+            live = gather_active_song_context(session)
+            live_pick = str(live.get("pick_key") or "").strip()
+            canon_pick = str(ctx.get("pick_key") or "").strip()
+            if live_pick and live_pick != canon_pick:
+                ctx["pick_key"] = live_pick
+                if live.get("selected_song"):
+                    ctx["selected_song"] = live["selected_song"]
+                ctx.pop("display_key", None)
+                song_key = str((live.get("selected_song") or {}).get("key") or "").strip()
+                if song_key:
+                    session[PENDING_DISPLAY_KEY] = song_key
+            else:
+                ctx = _merge_live_global_controls(session, ctx)
         ctx = write_canonical_active_song_state(
             session,
             ctx,

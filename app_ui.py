@@ -8003,6 +8003,19 @@ def render_global_studio_bar(
     st.markdown('<div class="ui-global-bar">', unsafe_allow_html=True)
     st.markdown('<p class="ui-bar-label session">Practice session</p>', unsafe_allow_html=True)
 
+    try:
+        from songs.key_state import apply_display_key_for_active_song, song_display_identity
+
+        sel = ss.get("selected_song") if isinstance(ss.get("selected_song"), dict) else {}
+        song_identity = song_display_identity(
+            song,
+            str(sel.get("artist") or ""),
+            original_key,
+        )
+        apply_display_key_for_active_song(st, original_key, song_identity)
+    except Exception:
+        pass
+
     row1 = st.columns([1.55, 1.15, 0.95, 1.05, 1.0, 0.85])
     with row1[0]:
         genre_bit = f'<span style="color:#6d28d9;font-weight:700;">{html.escape(genre)}</span>' if genre else ""
