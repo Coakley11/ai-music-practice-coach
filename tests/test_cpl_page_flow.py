@@ -13,6 +13,8 @@ from custom_progression_lab import (
     cpl_active_from_session,
     cpl_apply_chord_with_bars_to_session,
     cpl_apply_pending_chord_to_section,
+    cpl_apply_chord_with_bars_to_session,
+    cpl_draft_chord_count,
     cpl_draft_written_key,
     cpl_page_end_save_should_preserve_sections,
     cpl_save_draft,
@@ -330,6 +332,48 @@ class TestCplPageFlow(unittest.TestCase):
         flush.assert_called_once_with(st, reason="song_edit")
         self.assertTrue(ok)
         self.assertTrue(session.get("_cpl_last_persist_ok"))
+
+    def test_metadata_sync_save_preserves_existing_chords(self) -> None:
+        session = self._session_with_draft()
+        ensure_cpl_widget_keys_initialized(session, cpl_active_from_session(session))
+        cpl_apply_chord_with_bars_to_session(
+            session,
+            section_name="Verse",
+            chord="C",
+            bars=4,
+            persist=False,
+        )
+        session.update({
+            "cpl_bpm_builder": 100,
+            "cpl_time_signature": "3/4",
+            "cpl_original_key": "C",
+        })
+        home_before = ensure_all_cpl_sections(
+            cpl_active_from_session(session).get("original_sections")
+        )
+        active = sync_cpl_draft_widgets_to_active(session, cpl_active_from_session(session))
+        active = cpl_save_draft(session, active, home_before, persist=False)
+        view = cpl_section_progression_view(active, section_name="Verse", preview_key="C")
+        self.assertEqual(view["native_rows"], [("C", 4)])
+        self.assertEqual(cpl_draft_chord_count(active), 1)
+
+    def test_pick_chord_then_bars_page_flow(self) -> None:
+        session = self._session_with_draft()
+        ensure_cpl_widget_keys_initialized(session, cpl_active_from_session(session))
+        session["cpl_edit_section"] = "Verse"
+        session["cpl_pending_chord_Verse"] = "C"
+        session["cpl_last_bars_Verse"] = 4
+        active = cpl_apply_chord_with_bars_to_session(
+            session,
+            section_name="Verse",
+            chord="C",
+            bars=4,
+            persist=False,
+        )
+        whole = cpl_whole_song_progression_view(active, "C")
+        self.assertTrue(whole["has_any"])
+        self.assertEqual(whole["sections"][0]["name"], "Verse")
+        self.assertIn("C", whole["sections"][0]["line"])
 
 
 if __name__ == "__main__":

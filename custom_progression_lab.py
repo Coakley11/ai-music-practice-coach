@@ -2586,6 +2586,15 @@ def build_cpl_developer_diagnostics(
             "edit_section": edit_section,
             "pending_chord": session_state.get(pending_key),
             "last_bars": session_state.get(bars_key),
+            "pending_by_section": {
+                name: session_state.get(f"cpl_pending_chord_{name}")
+                for name in CPL_EDITABLE_SECTIONS
+                if session_state.get(f"cpl_pending_chord_{name}")
+            },
+        },
+        "chord_pipeline": {
+            "last_bar_apply": copy.deepcopy(session_state.get("_cpl_last_bar_apply") or {}),
+            "session_verse_entries": copy.deepcopy(home.get("Verse") or []),
         },
         "persistence": {
             "draft_locally_dirty": bool(session_state.get(CPL_DRAFT_DIRTY_KEY)),
