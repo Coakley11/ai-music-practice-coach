@@ -7115,9 +7115,9 @@ def render_backing_setup_context_strip(
     st.markdown(
         f'<div class="ui-backing-setup-context" role="group" aria-label="Playback context">'
         f'<span class="ui-backing-ctx-badge key-orig" title="{html.escape(_orig_title)}">'
-        f'<span class="ui-backing-ctx-ico">🎹</span> Original <strong>{_orig}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">🎹</span> Original Key <strong>{_orig}</strong></span>'
         f'<span class="ui-backing-ctx-badge key-practice" title="Display / practice key">'
-        f'<span class="ui-backing-ctx-ico">🎼</span> Practice <strong>{_practice}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">🎼</span> Display Practice Key <strong>{_practice}</strong></span>'
         f"{written_badge}"
         f'<span class="ui-backing-ctx-badge meter" title="Time signature">'
         f'<span class="ui-backing-ctx-ico">🥁</span> <strong>{_meter}</strong></span>'
@@ -8425,6 +8425,7 @@ def compact_page_title(
     subtitle: str = "",
     *,
     page_id: str | None = None,
+    skip_chart_key_badge: bool = False,
 ) -> None:
     """Single branded page header: icon, script accent, page title, optional subtitle."""
     import streamlit as st
@@ -8450,7 +8451,8 @@ def compact_page_title(
         f"</div></div>",
         unsafe_allow_html=True,
     )
-    render_chart_key_mode_status_badge(st)
+    if not skip_chart_key_badge:
+        render_chart_key_mode_status_badge(st)
 
 
 def _short_section_label(name: str) -> str:

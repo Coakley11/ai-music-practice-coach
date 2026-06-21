@@ -30,6 +30,15 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     meta = session_state.get("active_song_state")
     if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
         return True
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if pick_key.startswith("custom::"):
+        return True
+    if isinstance(meta, dict):
+        meta_pick = str(meta.get("pick_key") or "").strip()
+        if meta_pick.startswith("custom::"):
+            return True
     return False
 
 

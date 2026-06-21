@@ -7476,6 +7476,18 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         else ""
     )
     _meta_row = ""
+    _raw_artist = str(details.get("artist") or "").strip()
+    if _raw_artist and _raw_artist.lower() not in ("your progression",):
+        _artist_display = (
+            _raw_artist if _raw_artist.lower().startswith("by ") else f"By {_raw_artist}"
+        )
+    else:
+        _artist_display = ""
+    _artist_html = (
+        f'<p class="ui-active-song-artist">{html.escape(_artist_display)}</p>'
+        if _artist_display
+        else ""
+    )
     card_html = (
         f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}">'
         f'<div class="ui-active-song-art" style="background:{html.escape(details["visual_gradient"])};">'
@@ -7483,7 +7495,7 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         f'<div class="ui-active-song-body">'
         f'<p class="ui-active-song-kicker">Now loaded for practice</p>'
         f'<p class="ui-active-song-title">{html.escape(details["title"])}</p>'
-        f'<p class="ui-active-song-artist">{html.escape(details["artist"])}</p>'
+        f'{_artist_html}'
         f'{_key_row_html}'
         f'{_badge_html}'
         f'{_meta_row}'
@@ -7699,6 +7711,7 @@ def _cpl_to_song_record(active: dict) -> dict[str, Any]:
 
     title = str(active.get("name") or "My Progression")
     home_key = cpl_draft_written_key(active)
+    artist = str(active.get("artist") or "").strip()
     sections = sections_to_chord_lists(active.get("original_sections") or {})
     style = str(active.get("progression_style") or "Custom")
     bpm = int(active.get("bpm") or 100)
@@ -7706,7 +7719,7 @@ def _cpl_to_song_record(active: dict) -> dict[str, Any]:
     meter = str(active.get("time_signature") or "4/4")
     return {
         "title": title,
-        "artist": "Your progression",
+        "artist": artist or "Your progression",
         "genre": "Custom",
         "key": home_key,
         "sections": sections,
@@ -8512,7 +8525,13 @@ def _studio_page_header(
     page_id: str | None = None,
 ) -> None:
     """Page title plus subtle instrument-aware context strip."""
-    compact_page_title(icon, title, subtitle, page_id=page_id or _studio_page)
+    compact_page_title(
+        icon,
+        title,
+        subtitle,
+        page_id=page_id or _studio_page,
+        skip_chart_key_badge=(page_id or _studio_page) == "backing",
+    )
     try:
         from instrument_aware import render_instrument_context_strip
 
@@ -10994,7 +11013,8 @@ elif _studio_page == "backing":
     except Exception:
         pass
     render_backing_studio_deck_header(st)
-    _backing_orig_key, _backing_practice_key = _active_song_key_pair(song_data)
+    _backing_orig_key = str(original_key or "C").strip() or "C"
+    _, _backing_practice_key = _active_song_key_pair(None)
     _backing_written_key = ""
     try:
         from songs.music_source import active_song_written_chart_key as _active_song_written_chart_key

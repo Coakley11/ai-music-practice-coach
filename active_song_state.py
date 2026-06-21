@@ -300,6 +300,7 @@ def _resolve_display_key_from_music_blob(
         candidates.append(core.get("display_key"))
     ws = state.get("music_workspace_state")
     if isinstance(ws, dict):
+        candidates.append(ws.get("display_key"))
         active = ws.get("active_song")
         if isinstance(active, dict):
             candidates.append(active.get("display_key"))
@@ -346,7 +347,7 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         home_key = cpl_draft_written_key(active)
         pick_key = str(selected.get("pick_key") or custom_pick_key_for(active)).strip()
         instrument_name = str(session.get("instrument") or "").strip()
-        display_key = str(session.get("display_key") or home_key or "C").strip()
+        display_key = _resolve_custom_display_key_for_session(session, home_key)
         ctx = {
             "pick_key": pick_key,
             "display_key": display_key,
@@ -737,8 +738,13 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
                 ctx["music_source"] = SOURCE_CUSTOM
                 if live.get("selected_song"):
                     ctx["selected_song"] = live["selected_song"]
-                if live.get("display_key"):
-                    ctx["display_key"] = live["display_key"]
+                home_key = str(
+                    ctx.get("custom_home_key")
+                    or live.get("custom_home_key")
+                    or (live.get("selected_song") or {}).get("key")
+                    or "C"
+                ).strip() or "C"
+                ctx["display_key"] = _resolve_custom_display_key_for_session(session, home_key)
                 if live_pick:
                     ctx["pick_key"] = live_pick
                 if live.get("custom_progression_name"):
@@ -786,6 +792,13 @@ def commit_active_song_state_from_session(
     ctx = canonical_active_song_context(session) or gather_active_song_context(session)
     ctx = _merge_live_transposing_fields(session, dict(ctx))
     ctx = _merge_live_global_controls(session, ctx)
+    if is_custom_progression(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM:
+        home_key = str(
+            ctx.get("custom_home_key")
+            or (ctx.get("selected_song") or {}).get("key")
+            or "C"
+        ).strip() or "C"
+        ctx["display_key"] = _resolve_custom_display_key_for_session(session, home_key)
     return write_canonical_active_song_state(
         session,
         ctx,
@@ -1021,10 +1034,26 @@ def render_active_song_state_debug(st: Any, session: dict[str, Any]) -> None:
     dirty = is_active_song_locally_dirty(session)
     written_on = ctx.get(CHART_IN_INSTRUMENT_KEY_KEY) if _written_key_is_set(ctx) else None
     subtype = ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or ""
+    canonical_display_key = str(ctx.get("display_key") or "").strip()
+    restored_display_key = str(session.get("display_key") or "").strip()
+    home_key = str(ctx.get("custom_home_key") or "").strip()
+    if is_custom_progression(session):
+        effective_display_key = _resolve_custom_display_key_for_session(
+            session,
+            home_key or "C",
+        )
+    else:
+        effective_display_key = restored_display_key or canonical_display_key
     st.sidebar.caption(
         f"**active_song_state:** dirty=`{dirty}` pick=`{ctx.get('pick_key', '')}` "
-        f"key=`{ctx.get('display_key', '')}` inst=`{ctx.get('instrument', '')}` "
+        f"key=`{canonical_display_key}` inst=`{ctx.get('instrument', '')}` "
         f"written=`{written_on}` subtype=`{subtype}`"
+    )
+    st.sidebar.caption(
+        "**display_key trace:** "
+        f"canonical=`{canonical_display_key}` "
+        f"restored=`{restored_display_key}` "
+        f"effective=`{effective_display_key}`"
     )
     reason = ctx.get("last_write_reason")
     if reason:

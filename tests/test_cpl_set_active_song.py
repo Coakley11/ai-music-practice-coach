@@ -10,6 +10,7 @@ from active_song_state import (
     ACTIVE_SONG_STATE_KEY,
     apply_cloud_active_song_state_if_allowed,
     gather_active_song_context,
+    _resolve_display_key_from_music_blob,
 )
 from custom_progression_lab import (
     CPL_ACTIVE_KEY,
@@ -38,6 +39,7 @@ from songs.music_source import (
     active_song_key_pair,
     apply_pending_custom_active_song_activation_before_widgets,
     commit_custom_active_song,
+    custom_progression_is_active,
     custom_selected_song_record,
     is_custom_progression,
     queue_custom_active_song_activation,
@@ -394,6 +396,57 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(session["song_picker_active_source"], SONG_PICKER_SOURCE_CATALOG)
         sync_song_picker_source_widget(session, force=True)
         self.assertEqual(session["song_picker_active_source"], SONG_PICKER_SOURCE_CUSTOM)
+
+    def test_gather_custom_display_key_from_canonical_when_session_empty(self) -> None:
+        active = self._draft_with_chords()
+        active["original_key_center"] = "D"
+        session = {
+            "active_music_source": SOURCE_CUSTOM,
+            CPL_ACTIVE_KEY: active,
+            ACTIVE_SONG_STATE_KEY: {
+                "music_source": SOURCE_CUSTOM,
+                "display_key": "Eb",
+                "custom_home_key": "D",
+            },
+        }
+        ctx = gather_active_song_context(session)
+        self.assertEqual(ctx["display_key"], "Eb")
+
+    def test_resolve_display_key_from_workspace_envelope_top_level(self) -> None:
+        self.assertEqual(
+            _resolve_display_key_from_music_blob(
+                {
+                    "music_workspace_state": {"display_key": "Eb"},
+                    "active_song_state": {"display_key": ""},
+                },
+                home_key="D",
+            ),
+            "Eb",
+        )
+
+    def test_custom_progression_is_active_from_canonical_pick_key(self) -> None:
+        session = {
+            "active_music_source": SOURCE_CATALOG,
+            ACTIVE_SONG_STATE_KEY: {
+                "music_source": SOURCE_CUSTOM,
+                "pick_key": "custom::my-progression",
+            },
+        }
+        self.assertTrue(custom_progression_is_active(session))
+
+    def test_active_song_key_pair_ignores_stale_catalog_rec_when_pick_custom(self) -> None:
+        active = self._draft_with_chords()
+        active["original_key_center"] = "D"
+        session = {
+            "active_music_source": SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: "custom::my-progression",
+            ACTIVE_SONG_STATE_KEY: {"music_source": SOURCE_CUSTOM, "pick_key": "custom::my-progression"},
+            CPL_ACTIVE_KEY: active,
+            "display_key": "Eb",
+        }
+        original, practice = active_song_key_pair(session, {"key": "G"})
+        self.assertEqual(original, "D")
+        self.assertEqual(practice, "Eb")
 
 
 if __name__ == "__main__":
