@@ -407,6 +407,19 @@ def apply_pick_key(
         else:
             return {}
     pick_key = resolved
+    prev = st.session_state.get(_LAST_PICK_KEY)
+    if (
+        prev
+        and prev != pick_key
+        and not str(prev).startswith("custom::")
+        and not str(pick_key).startswith("custom::")
+    ):
+        try:
+            from songs.music_source import snapshot_current_catalog_state
+
+            snapshot_current_catalog_state(st.session_state)
+        except ImportError:
+            pass
     genre, label = parse_pick_key(pick_key)
     if genre not in song_picker_catalog or label not in song_picker_catalog[genre]:
         existing = st.session_state.get(SELECTED_SONG_STATE_KEY)
@@ -514,12 +527,6 @@ def apply_pick_key(
             )
         except Exception:
             pass
-    try:
-        from songs.music_source import save_last_catalog_snapshot
-
-        save_last_catalog_snapshot(st.session_state)
-    except ImportError:
-        pass
     persist_music_local_state(st)
     return data
 

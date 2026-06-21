@@ -58,6 +58,16 @@ class TestCplChordDisplay(unittest.TestCase):
         self.assertEqual(display[0]["chord"], "Eb")
         self.assertEqual(display[1]["chord"], "Ab")
 
+    def test_display_key_spelling_uses_eb_not_d_sharp(self) -> None:
+        active = default_active_progression()
+        active["original_key_center"] = "D"
+        active["user_locked_home_key"] = True
+        home = ensure_original_structure(active)["original_sections"]
+        home["Verse"] = [{"chord": "D", "bars": 4}]
+        active = commit_home_sections(active, home)
+        display = display_entries_for_section(active, "Eb", "Verse")
+        self.assertEqual(display[0]["chord"], "Eb")
+
     def test_bar_chart_expands_each_bar(self) -> None:
         entries = [{"chord": "Em", "bars": 4}, {"chord": "Dm", "bars": 4}]
         html = cpl_progression_bar_chart_html(entries, time_signature="4/4")

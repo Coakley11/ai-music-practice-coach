@@ -191,7 +191,7 @@ def transpose_section_entries(entries, from_key, to_key):
             continue
         out.append(
             {
-                "chord": transpose_chord(chord, steps, reference_key=from_key),
+                "chord": transpose_chord(chord, steps, reference_key=to_key),
                 "bars": max(1, int(entry.get("bars", 1) or 1)),
             }
         )
@@ -1392,7 +1392,7 @@ def display_entries_for_section(active: dict, display_key: str, section_name: st
         if not ch or ch == "%":
             continue
         out.append({
-            "chord": transpose_chord(ch, steps, reference_key=home),
+            "chord": transpose_chord(ch, steps, reference_key=display_key),
             "bars": max(1, int(entry.get("bars", 1) or 1)),
         })
     return out

@@ -16,7 +16,7 @@ from instrument_transposition import (
     selected_transposing_type,
 )
 from songs.key_state import PENDING_DISPLAY_KEY
-from songs.music_source import SOURCE_CATALOG, SOURCE_CUSTOM, custom_progression_is_active, is_custom_progression
+from songs.music_source import SOURCE_CATALOG, SOURCE_CUSTOM, custom_progression_is_active, is_custom_progression, LAST_CATALOG_STATE_KEY
 from songs.state import (
     ACTIVE_CATALOG_PICK_KEY,
     SELECTED_SONG_STATE_KEY,
@@ -271,6 +271,21 @@ def _merge_live_global_controls(
     live_pick = str(live.get("pick_key") or "").strip()
     ctx_pick = str(ctx.get("pick_key") or "").strip()
     song_changed = bool(live_pick and ctx_pick and live_pick != ctx_pick)
+    if custom_progression_is_active(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM:
+        home_key = str(
+            ctx.get("custom_home_key")
+            or live.get("custom_home_key")
+            or (ctx.get("selected_song") or {}).get("key")
+            or "C"
+        ).strip() or "C"
+        merged["display_key"] = _resolve_custom_display_key_for_session(session, home_key)
+        for key in ("instrument", "level", "focus"):
+            live_val = str(live.get(key) or "").strip()
+            if live_val:
+                merged[key] = live_val
+        if song_changed and live_pick:
+            merged["pick_key"] = live_pick
+        return merged
     for key in ("instrument", "level", "focus", "display_key"):
         if key == "display_key" and song_changed:
             continue
@@ -334,6 +349,35 @@ def _resolve_custom_display_key_for_session(
     if live:
         return live
     return home
+
+
+def _push_resolved_display_key_to_session(
+    session: dict[str, Any],
+    ctx: dict[str, Any],
+) -> None:
+    """Apply canonical/custom display key to session before sidebar widgets render."""
+    if custom_progression_is_active(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM:
+        home_key = str(
+            ctx.get("custom_home_key")
+            or (ctx.get("selected_song") or {}).get("key")
+            or "C"
+        ).strip() or "C"
+        resolved = str(ctx.get("display_key") or "").strip() or _resolve_custom_display_key_for_session(
+            session,
+            home_key,
+        )
+    else:
+        resolved = str(ctx.get("display_key") or "").strip()
+    if not resolved:
+        return
+    live = str(session.get("display_key") or "").strip()
+    if resolved == live:
+        return
+    session[PENDING_DISPLAY_KEY] = resolved
+    try:
+        session["display_key"] = resolved
+    except Exception:
+        pass
 
 
 def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
@@ -763,10 +807,23 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
                     ctx["custom_progression_name"] = live["custom_progression_name"]
                 if live.get("custom_home_key"):
                     ctx["custom_home_key"] = live["custom_home_key"]
-            elif str(ctx.get("music_source") or "") == SOURCE_CUSTOM:
-                live = gather_active_song_context(session)
-                live_pick = str(live.get("pick_key") or "").strip()
-                if live_pick and not live_pick.startswith("custom::"):
+            elif str(ctx.get("music_source") or "") == SOURCE_CUSTOM and not is_custom_progression(session):
+                snap = session.get(LAST_CATALOG_STATE_KEY)
+                if isinstance(snap, dict) and snap.get("pick_key"):
+                    ctx.update(
+                        {
+                            "pick_key": str(snap.get("pick_key") or "").strip(),
+                            "display_key": str(snap.get("display_key") or "").strip(),
+                            "instrument": str(live.get("instrument") or ctx.get("instrument") or "").strip(),
+                            "level": str(live.get("level") or ctx.get("level") or "").strip(),
+                            "focus": str(live.get("focus") or ctx.get("focus") or "").strip(),
+                            "selected_song": snap.get("selected_song") or ctx.get("selected_song") or {},
+                            "music_source": SOURCE_CATALOG,
+                        }
+                    )
+                    ctx.pop("custom_home_key", None)
+                    ctx.pop("custom_progression_name", None)
+                elif live_pick and not live_pick.startswith("custom::"):
                     ctx.update(
                         {
                             "pick_key": live_pick,
@@ -798,6 +855,7 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         )
         _record_transposing_restore_trace(session, ctx, source="canonical_prepare")
         rehydrate_transposing_sidebar_from_canonical(session)
+        _push_resolved_display_key_to_session(session, ctx)
         return ctx
 
     gathered = gather_active_song_context(session)
@@ -808,7 +866,9 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
             reason="reconcile_on_load",
         )
         rehydrate_transposing_sidebar_from_canonical(session)
+        _push_resolved_display_key_to_session(session, ctx)
         return ctx
+    _push_resolved_display_key_to_session(session, gathered)
     return gathered
 
 

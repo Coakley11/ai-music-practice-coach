@@ -286,7 +286,7 @@ def transpose_sections(song_data, target_key):
     for section_name, chords in song_data["sections"].items():
 
         out[section_name] = [
-            transpose_chord(ch, steps)
+            transpose_chord(ch, steps, reference_key=target_key)
             for ch in chords
         ]
 

@@ -13,6 +13,8 @@ SONG_PICKER_SOURCE_CATALOG = "Song Selection (catalog song)"
 SONG_PICKER_SOURCE_CUSTOM = "Use Custom Progression / Create Your Own Song"
 SONG_PICKER_ACTIVE_SOURCE_KEY = "song_picker_active_source"
 LAST_CATALOG_STATE_KEY = "_last_catalog_song_state"
+USER_CATALOG_SOURCE_CHOICE_KEY = "_user_chose_catalog_music_source"
+CATALOG_RECENT_PICK_KEYS = "catalog_recent_pick_keys"
 
 
 def ensure_active_music_source(session_state: dict[str, Any]) -> None:
@@ -25,14 +27,11 @@ def is_custom_progression(session_state: dict[str, Any]) -> bool:
 
 def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     """True when Custom Progression is the active song (session or canonical blob)."""
+    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return False
     if is_custom_progression(session_state):
         return True
-    from songs.state import ACTIVE_CATALOG_PICK_KEY
-
-    live_pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
-        if live_pick.startswith("custom::"):
-            return True
         return False
     meta = session_state.get("active_song_state")
     if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
@@ -88,8 +87,8 @@ def sync_song_picker_source_widget(session_state: dict[str, Any], *, force: bool
     )
 
 
-def save_last_catalog_snapshot(session_state: dict[str, Any]) -> None:
-    """Remember the last catalog song + keys before switching to Custom Progression."""
+def snapshot_current_catalog_state(session_state: dict[str, Any]) -> None:
+    """Remember the active catalog song before switching to another song or Custom Progression."""
     from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
     if is_custom_progression(session_state):
@@ -110,6 +109,69 @@ def save_last_catalog_snapshot(session_state: dict[str, Any]) -> None:
         "original_key": original_key,
         "display_key": display_key,
     }
+
+
+def save_last_catalog_snapshot(session_state: dict[str, Any]) -> None:
+    """Backward-compatible alias for snapshot_current_catalog_state."""
+    snapshot_current_catalog_state(session_state)
+
+
+def previous_catalog_snapshot(session_state: dict[str, Any]) -> dict[str, Any] | None:
+    """Previous catalog song snapshot when it differs from the active catalog pick."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    snap = session_state.get(LAST_CATALOG_STATE_KEY)
+    if not isinstance(snap, dict):
+        return None
+    prev_pick = str(snap.get("pick_key") or "").strip()
+    if not prev_pick or prev_pick.startswith("custom::"):
+        return None
+    current_pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if prev_pick == current_pick:
+        return None
+    return snap
+
+
+def restore_previous_catalog_song(
+    st: Any,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]] | None = None,
+    invalidate_backing,
+) -> bool:
+    """Restore the previous catalog song (browser-back style shortcut)."""
+    snap = previous_catalog_snapshot(st.session_state)
+    if not snap:
+        return False
+    pick_key = str(snap.get("pick_key") or "").strip()
+    selected = dict(snap.get("selected_song") or {})
+    original_key = str(snap.get("original_key") or selected.get("key") or "C").strip() or "C"
+    display_key = str(snap.get("display_key") or original_key).strip() or original_key
+    from songs.state import apply_pick_key
+
+    data = apply_pick_key(
+        st,
+        pick_key,
+        song_picker_catalog,
+        song_library=song_library,
+        skip_activity_log=True,
+    )
+    if not data:
+        return False
+    selected.setdefault("title", str(data.get("title") or ""))
+    selected.setdefault("artist", str(data.get("artist") or ""))
+    selected.setdefault("key", str(data.get("key") or original_key))
+    selected["pick_key"] = pick_key
+    commit_catalog_active_song(
+        st,
+        pick_key=pick_key,
+        selected_song=selected,
+        original_key=original_key,
+        display_key=display_key,
+        invalidate_backing=invalidate_backing,
+        reason="previous_catalog_restore",
+    )
+    return True
 
 
 def restore_last_catalog_active_song(
@@ -167,6 +229,7 @@ def commit_catalog_active_song(
     from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
     session = st.session_state
+    session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
     set_catalog_source(session)
     session[SELECTED_SONG_STATE_KEY] = dict(selected_song)
     session[ACTIVE_CATALOG_PICK_KEY] = str(pick_key or "").strip()
@@ -215,40 +278,55 @@ def switch_to_catalog_from_custom(
     invalidate_backing,
 ) -> bool:
     """Leave Custom Progression for the last catalog song (or current catalog pick)."""
-    from songs.state import ACTIVE_CATALOG_PICK_KEY, apply_pick_key
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, apply_pick_key, first_valid_pick_key
 
     session = st.session_state
     if not is_custom_progression(session):
         return False
-    snap = session.get(LAST_CATALOG_STATE_KEY)
-    if isinstance(snap, dict) and snap.get("pick_key"):
+    session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+
+    def _try_restore_from_snap(snap: dict[str, Any]) -> bool:
         pick_key = str(snap.get("pick_key") or "").strip()
-        if pick_key and not pick_key.startswith("custom::"):
-            selected = dict(snap.get("selected_song") or {})
-            original_key = str(snap.get("original_key") or selected.get("key") or "C").strip() or "C"
-            display_key = str(snap.get("display_key") or original_key).strip() or original_key
-            data = apply_pick_key(
-                st,
-                pick_key,
-                song_picker_catalog,
-                song_library=song_library,
-                skip_activity_log=True,
-            )
-            if data:
-                selected.setdefault("title", str(data.get("title") or ""))
-                selected.setdefault("artist", str(data.get("artist") or ""))
-                selected.setdefault("key", str(data.get("key") or original_key))
-                selected["pick_key"] = pick_key
-                commit_catalog_active_song(
-                    st,
-                    pick_key=pick_key,
-                    selected_song=selected,
-                    original_key=original_key,
-                    display_key=display_key,
-                    invalidate_backing=invalidate_backing,
-                    reason="last_catalog_restore",
-                )
-                return True
+        if not pick_key or pick_key.startswith("custom::"):
+            return False
+        selected = dict(snap.get("selected_song") or {})
+        original_key = str(snap.get("original_key") or selected.get("key") or "C").strip() or "C"
+        display_key = str(snap.get("display_key") or original_key).strip() or original_key
+        data = apply_pick_key(
+            st,
+            pick_key,
+            song_picker_catalog,
+            song_library=song_library,
+            skip_activity_log=True,
+        )
+        if not data:
+            return False
+        selected.setdefault("title", str(data.get("title") or ""))
+        selected.setdefault("artist", str(data.get("artist") or ""))
+        selected.setdefault("key", str(data.get("key") or original_key))
+        selected["pick_key"] = pick_key
+        commit_catalog_active_song(
+            st,
+            pick_key=pick_key,
+            selected_song=selected,
+            original_key=original_key,
+            display_key=display_key,
+            invalidate_backing=invalidate_backing,
+            reason="last_catalog_restore",
+        )
+        return True
+
+    snap = session.get(LAST_CATALOG_STATE_KEY)
+    if isinstance(snap, dict) and _try_restore_from_snap(snap):
+        return True
+
+    for pick_key in session.get(CATALOG_RECENT_PICK_KEYS) or []:
+        pk = str(pick_key or "").strip()
+        if not pk or pk.startswith("custom::"):
+            continue
+        if _try_restore_from_snap({"pick_key": pk, "selected_song": {}, "original_key": "C", "display_key": "C"}):
+            return True
+
     pick_key = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if pick_key and not pick_key.startswith("custom::"):
         data = apply_pick_key(
@@ -276,6 +354,13 @@ def switch_to_catalog_from_custom(
                 reason="catalog_source_switch",
             )
             return True
+
+    fallback = first_valid_pick_key(song_picker_catalog)
+    if fallback and _try_restore_from_snap(
+        {"pick_key": fallback, "selected_song": {}, "original_key": "C", "display_key": "C"}
+    ):
+        return True
+
     set_catalog_source(session)
     sync_song_picker_source_widget(session, force=True)
     note_active_source_change(st, invalidate_backing=invalidate_backing)
@@ -292,10 +377,12 @@ def on_song_picker_source_change(
     """Radio callback: switch catalog ↔ custom without post-render rerun loops."""
     choice = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     if choice.startswith("Use Custom"):
+        st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
         if not is_custom_progression(st.session_state):
             set_custom_source(st.session_state)
             note_active_source_change(st, invalidate_backing=invalidate_backing)
         return
+    st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
     if is_custom_progression(st.session_state):
         switch_to_catalog_from_custom(
             st,
@@ -303,6 +390,7 @@ def on_song_picker_source_change(
             song_library=song_library,
             invalidate_backing=invalidate_backing,
         )
+        st.rerun()
 
 
 def custom_original_key(active: dict[str, Any]) -> str:

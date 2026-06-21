@@ -7638,6 +7638,42 @@ def _render_active_song_favorites_switch(
                     st.rerun()
 
 
+def _render_last_catalog_song_shortcut(
+    active_pick_key: str,
+    *,
+    key_prefix: str = "catalog",
+) -> None:
+    """Browser-back shortcut to the previous catalog song."""
+    from songs.music_source import previous_catalog_snapshot, restore_previous_catalog_song
+
+    snap = previous_catalog_snapshot(st.session_state)
+    if not snap:
+        return
+    sel = snap.get("selected_song") or {}
+    title = str(sel.get("title") or "Catalog song").strip() or "Catalog song"
+    artist = str(sel.get("artist") or "").strip()
+    artist_line = f" · {artist}" if artist else ""
+    st.markdown(
+        f'<div class="ui-last-catalog-shortcut">'
+        f'<p class="ui-last-catalog-kicker">Last catalog song</p>'
+        f'<p class="ui-last-catalog-title">{html.escape(title)}{html.escape(artist_line)}</p>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        f"Restore {title}",
+        key=f"{key_prefix}_restore_last_catalog",
+        use_container_width=True,
+    ):
+        if restore_previous_catalog_song(
+            st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+            invalidate_backing=invalidate_backing_cache,
+        ):
+            st.rerun()
+
+
 def _render_active_song_recent_switch(
     visible_records: list[dict],
     pick_options: list[str],
@@ -7849,33 +7885,10 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
             "This is **your** song — Practice, Backing Track, and charts follow this custom progression."
         )
         _render_active_song_card(rec)
-        _last_catalog_snap = st.session_state.get(LAST_CATALOG_STATE_KEY)
-        if isinstance(_last_catalog_snap, dict) and _last_catalog_snap.get("pick_key"):
-            _lc_sel = _last_catalog_snap.get("selected_song") or {}
-            _lc_title = str(_lc_sel.get("title") or "Catalog song").strip() or "Catalog song"
-            _lc_artist = str(_lc_sel.get("artist") or "").strip()
-            _lc_artist_line = f" · {_lc_artist}" if _lc_artist else ""
-            st.markdown(
-                f'<div class="ui-last-catalog-shortcut">'
-                f'<p class="ui-last-catalog-kicker">Last catalog song</p>'
-                f'<p class="ui-last-catalog-title">{html.escape(_lc_title)}{html.escape(_lc_artist_line)}</p>'
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-            if st.button(
-                f"Restore {_lc_title}",
-                key="custom_hub_restore_last_catalog",
-                use_container_width=True,
-            ):
-                from songs.music_source import switch_to_catalog_from_custom
-
-                if switch_to_catalog_from_custom(
-                    st,
-                    song_picker_catalog=SONG_PICKER_CATALOG,
-                    song_library=SONG_LIBRARY,
-                    invalidate_backing=invalidate_backing_cache,
-                ):
-                    st.rerun()
+        _render_last_catalog_song_shortcut(
+            str(st.session_state.get("active_catalog_pick_key") or ""),
+            key_prefix="custom_hub",
+        )
         st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
         b1, b2, b3 = st.columns(3)
         with b1:
@@ -8000,6 +8013,10 @@ def _render_catalog_active_song_hub(
                 visible_song_records,
                 _catalog_pick_keys,
                 active_pick_key,
+            )
+            _render_last_catalog_song_shortcut(
+                active_pick_key,
+                key_prefix="catalog_hub",
             )
             _render_active_song_recent_switch(
                 visible_song_records,
@@ -9569,6 +9586,8 @@ _chart_bundle = session_cache_get_or_set(
         str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("id", ""))
         if is_custom_progression(st.session_state)
         else "",
+        str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("original_key_center", "")),
+        str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("progression_style", "")),
         level,
         chart_key,
         chart_key_mode,
@@ -11036,7 +11055,9 @@ elif _studio_page == "backing":
     except Exception:
         pass
     render_backing_studio_deck_header(st)
-    if custom_progression_is_active(st.session_state):
+    if is_custom_progression(st.session_state) or (
+        custom_progression_is_active(st.session_state) and _cpl_active
+    ):
         from custom_progression_lab import ensure_original_structure
         from songs.music_source import custom_original_key
 
