@@ -1228,7 +1228,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   color: #93c5fd;
 }
 .ui-backing-active-song .ui-active-song-key-value {
-  color: #f8fafc;
+  color: #0f172a;
 }
 .ui-backing-active-source {
   font-size: 0.82rem;
@@ -1251,6 +1251,28 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   text-transform: uppercase;
   color: #64748b;
   margin: 0 0 0.35rem 0;
+}
+.ui-last-catalog-shortcut {
+  margin: 0.35rem 0 0;
+  padding-top: 0.45rem;
+  border-top: 1px dashed rgba(15, 23, 42, 0.12);
+}
+.ui-last-catalog-kicker {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 0.35rem 0;
+}
+.st-key-custom_hub_restore_last_catalog button,
+.st-key-catalog_hub_restore_last_catalog button {
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  background: rgba(255, 255, 255, 0.55) !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
 }
 .st-key-active_song_hub .ui-active-song-hero-title {
   font-size: clamp(1.75rem, 4vw, 2.35rem);

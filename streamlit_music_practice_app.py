@@ -7659,16 +7659,15 @@ def _render_last_catalog_song_shortcut(
     sel = snap.get("selected_song") or {}
     title = str(sel.get("title") or "Catalog song").strip() or "Catalog song"
     artist = str(sel.get("artist") or "").strip()
-    artist_line = f" · {artist}" if artist else ""
+    song_line = f"{title} \u2014 {artist}" if artist else title
     st.markdown(
         f'<div class="ui-last-catalog-shortcut">'
-        f'<p class="ui-last-catalog-kicker">Last catalog song</p>'
-        f'<p class="ui-last-catalog-title">{html.escape(title)}{html.escape(artist_line)}</p>'
+        f'<p class="ui-last-catalog-kicker">Recently Selected</p>'
         f"</div>",
         unsafe_allow_html=True,
     )
     if st.button(
-        f"Restore {title}",
+        song_line,
         key=f"{key_prefix}_restore_last_catalog",
         use_container_width=True,
     ):
