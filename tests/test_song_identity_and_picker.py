@@ -91,6 +91,63 @@ class TestDeferredCatalogPick(unittest.TestCase):
         mock_apply.assert_called_once()
 
 
+class TestDeferredPreviousCatalogRestore(unittest.TestCase):
+    def test_queue_sets_pending_flag(self) -> None:
+        from songs.music_source import (
+            PENDING_PREVIOUS_CATALOG_RESTORE_KEY,
+            queue_previous_catalog_restore,
+        )
+
+        st = _fake_st({})
+        queue_previous_catalog_restore(st)
+        self.assertTrue(st.session_state[PENDING_PREVIOUS_CATALOG_RESTORE_KEY])
+
+    def test_apply_pending_restore_before_widgets(self) -> None:
+        from songs.music_source import (
+            LAST_CATALOG_STATE_KEY,
+            PENDING_PREVIOUS_CATALOG_RESTORE_KEY,
+            apply_pending_previous_catalog_restore_before_widgets,
+            SOURCE_CATALOG,
+        )
+
+        st = _fake_st(
+            {
+                "active_music_source": SOURCE_CATALOG,
+                ACTIVE_CATALOG_PICK_KEY: PK_OTHER,
+                _LAST_PICK_KEY: PK_OTHER,
+                SELECTED_SONG_STATE_KEY: {
+                    "pick_key": PK_OTHER,
+                    "title": "Song B",
+                    "artist": "Artist B",
+                    "key": "C",
+                },
+                LAST_CATALOG_STATE_KEY: {
+                    "pick_key": PK_SAY,
+                    "selected_song": {
+                        "pick_key": PK_SAY,
+                        "title": "Say",
+                        "artist": "John Mayer",
+                        "key": "G",
+                    },
+                    "original_key": "G",
+                    "display_key": "Eb",
+                },
+                PENDING_PREVIOUS_CATALOG_RESTORE_KEY: True,
+                "display_key": "C",
+            }
+        )
+        with patch("songs.state.persist_music_local_state"):
+            applied = apply_pending_previous_catalog_restore_before_widgets(
+                st,
+                song_picker_catalog=CATALOG,
+                invalidate_backing=lambda _st: None,
+            )
+        self.assertTrue(applied)
+        self.assertNotIn(PENDING_PREVIOUS_CATALOG_RESTORE_KEY, st.session_state)
+        self.assertEqual(st.session_state[ACTIVE_CATALOG_PICK_KEY], PK_SAY)
+        self.assertEqual(st.session_state["display_key"], "Eb")
+
+
 class TestFlushDoesNotMutateDisplayKey(unittest.TestCase):
     def test_flush_preserves_widget_bound_display_key(self) -> None:
         session = {

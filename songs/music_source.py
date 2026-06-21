@@ -14,8 +14,10 @@ SONG_PICKER_SOURCE_CATALOG = "Song Selection (catalog song)"
 SONG_PICKER_SOURCE_CUSTOM = "Use Custom Progression / Create Your Own Song"
 SONG_PICKER_ACTIVE_SOURCE_KEY = "song_picker_active_source"
 LAST_CATALOG_STATE_KEY = "_last_catalog_song_state"
+PENDING_PREVIOUS_CATALOG_RESTORE_KEY = "_pending_previous_catalog_restore"
 USER_CATALOG_SOURCE_CHOICE_KEY = "_user_chose_catalog_music_source"
 CATALOG_RECENT_PICK_KEYS = "catalog_recent_pick_keys"
+CUSTOM_RECENT_ACTIVE_NAMES_KEY = "custom_recent_active_names"
 
 
 def ensure_active_music_source(session_state: dict[str, Any]) -> None:
@@ -153,6 +155,29 @@ def previous_catalog_snapshot(session_state: dict[str, Any]) -> dict[str, Any] |
     if prev_pick == current_pick:
         return None
     return snap
+
+
+def queue_previous_catalog_restore(st: Any) -> None:
+    """Queue previous-catalog restore for before-widget application on the next rerun."""
+    st.session_state[PENDING_PREVIOUS_CATALOG_RESTORE_KEY] = True
+
+
+def apply_pending_previous_catalog_restore_before_widgets(
+    st: Any,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]] | None = None,
+    invalidate_backing,
+) -> bool:
+    """Apply queued previous-catalog restore before sidebar/global widgets render."""
+    if not st.session_state.pop(PENDING_PREVIOUS_CATALOG_RESTORE_KEY, None):
+        return False
+    return restore_previous_catalog_song(
+        st,
+        song_picker_catalog=song_picker_catalog,
+        song_library=song_library,
+        invalidate_backing=invalidate_backing,
+    )
 
 
 def restore_previous_catalog_song(
@@ -786,6 +811,21 @@ def custom_pick_key_for(active: dict[str, Any]) -> str:
     return f"custom::{safe}"
 
 
+def _push_recent_custom_name(session_state: dict[str, Any], name: str) -> None:
+    label = str(name or "").strip()
+    if not label:
+        return
+    recent = [
+        str(n).strip()
+        for n in (session_state.get(CUSTOM_RECENT_ACTIVE_NAMES_KEY) or [])
+        if str(n).strip()
+    ]
+    if label in recent:
+        recent.remove(label)
+    recent.insert(0, label)
+    session_state[CUSTOM_RECENT_ACTIVE_NAMES_KEY] = recent[:8]
+
+
 def custom_song_data_from_active(active: dict[str, Any]) -> dict[str, Any]:
     """Catalog-shaped song row for charts/backing when Custom Progression is active."""
     from custom_progression_lab import (
@@ -940,6 +980,7 @@ def commit_custom_active_song(
     active["original_sections"] = ensure_all_cpl_sections(active.get("original_sections"))
     active["user_locked_home_key"] = True
     session[cpl_active_key] = active
+    _push_recent_custom_name(session, str(active.get("name") or "My Progression"))
 
     home_key = cpl_draft_written_key(active)
     selected = custom_selected_song_record(active)

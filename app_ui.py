@@ -1274,6 +1274,14 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   text-align: left !important;
   justify-content: flex-start !important;
 }
+.ui-custom-library-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 0.35rem 0;
+}
 .st-key-active_song_hub .ui-active-song-hero-title {
   font-size: clamp(1.75rem, 4vw, 2.35rem);
   font-weight: 900;

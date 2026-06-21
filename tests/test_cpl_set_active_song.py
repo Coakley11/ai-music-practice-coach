@@ -454,6 +454,29 @@ class TestCplSetActiveSong(unittest.TestCase):
         }
         self.assertIsNone(previous_catalog_snapshot(session))
 
+    def test_save_progression_assigns_id_without_activation(self) -> None:
+        from custom_progression_lab import save_progression
+
+        store: dict = {}
+        active = self._draft_with_chords()
+        active["name"] = "Bossa Practice"
+        save_progression(store, "Bossa Practice", active)
+        saved = store["Bossa Practice"]
+        self.assertTrue(str(saved.get("id") or "").strip())
+        self.assertIn("updated_at", saved)
+        self.assertIn("created_at", saved)
+
+    def test_commit_custom_pushes_recent_name(self) -> None:
+        from songs.music_source import CUSTOM_RECENT_ACTIVE_NAMES_KEY, commit_custom_active_song
+
+        st = SimpleNamespace(session_state={})
+        active = self._draft_with_chords()
+        active["name"] = "Minor Blues Idea"
+        with patch("songs.state.persist_music_local_state"):
+            commit_custom_active_song(st, active, invalidate_backing=lambda _st: None)
+        recent = st.session_state.get(CUSTOM_RECENT_ACTIVE_NAMES_KEY) or []
+        self.assertEqual(recent[0], "Minor Blues Idea")
+
     def test_merge_live_global_controls_keeps_canonical_custom_display_key(self) -> None:
         from active_song_state import _merge_live_global_controls
 

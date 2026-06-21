@@ -900,6 +900,9 @@ def load_saved_progression(store: dict, name: str) -> dict:
     )
     out["section_labels"] = dict(raw.get("section_labels") or {})
     out["demo_chart_id"] = raw.get("demo_chart_id")
+    out["id"] = str(raw.get("id") or out.get("id") or "").strip()
+    out["artist"] = str(raw.get("artist") or out.get("artist") or "").strip()
+    out["lyrics_by_section"] = dict(raw.get("lyrics_by_section") or out.get("lyrics_by_section") or {})
     return out
 
 
@@ -1993,10 +1996,18 @@ def lab_context_for_coaching(sections, key_center, instrument, level, focus):
 
 
 def save_progression(store, name, data):
+    import time
+    import uuid
+
     data = ensure_original_structure(dict(data))
     save_name = str(data.get("name") or name).strip() or name
+    existing = store.get(save_name) if isinstance(store.get(save_name), dict) else {}
+    song_id = str(data.get("id") or existing.get("id") or "").strip() or str(uuid.uuid4())
+    now = time.time()
     store[save_name] = {
+        "id": song_id,
         "name": save_name,
+        "artist": str(data.get("artist") or existing.get("artist") or "").strip(),
         "original_key_center": data.get("original_key_center", "C"),
         "original_sections": deep_copy_sections(
             ensure_all_cpl_sections(data.get("original_sections"))
@@ -2009,6 +2020,9 @@ def save_progression(store, name, data):
         "user_locked_home_key": bool(data.get("user_locked_home_key", True)),
         "section_labels": dict(data.get("section_labels") or {}),
         "demo_chart_id": data.get("demo_chart_id"),
+        "lyrics_by_section": dict(data.get("lyrics_by_section") or existing.get("lyrics_by_section") or {}),
+        "created_at": existing.get("created_at") or now,
+        "updated_at": now,
     }
     return store
 

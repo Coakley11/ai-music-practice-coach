@@ -7645,14 +7645,74 @@ def _render_active_song_favorites_switch(
                     st.rerun()
 
 
+def _render_custom_song_library_selector() -> None:
+    """Pick a saved custom song to activate (Custom Progression source)."""
+    from custom_progression_lab import (
+        apply_cpl_session_progression,
+        list_saved_progression_names,
+        load_saved_progression,
+        start_new_progression,
+    )
+    from songs.music_source import (
+        CUSTOM_RECENT_ACTIVE_NAMES_KEY,
+        custom_progression_is_active,
+        queue_custom_active_song_activation,
+    )
+
+    saved = st.session_state.get(CPL_SAVED_KEY) or {}
+    names = list_saved_progression_names(saved)
+    recent = [
+        n
+        for n in (st.session_state.get(CUSTOM_RECENT_ACTIVE_NAMES_KEY) or [])
+        if n in names
+    ]
+    ordered = recent + [n for n in names if n not in recent]
+    active_name = ""
+    if custom_progression_is_active(st.session_state):
+        active = ensure_original_structure(
+            st.session_state.get(CPL_ACTIVE_KEY) or default_active_progression()
+        )
+        active_name = str(active.get("name") or "").strip()
+
+    st.markdown(
+        '<p class="ui-custom-library-label">Custom Songs</p>',
+        unsafe_allow_html=True,
+    )
+    if st.button("New Song", key="custom_lib_new_song", use_container_width=True):
+        apply_cpl_session_progression(st.session_state, start_new_progression())
+        navigate_studio_page(st.session_state, "custom")
+        st.rerun()
+
+    if not ordered:
+        st.caption("No saved custom songs yet. Build one in Custom Progression Lab, then Save to library.")
+        return
+
+    for name in ordered:
+        safe_key = "".join(ch if ch.isalnum() else "_" for ch in name)[:48] or "song"
+        label = name
+        if name == active_name:
+            label = f"{name} (active)"
+        if st.button(label, key=f"custom_lib_pick_{safe_key}", use_container_width=True):
+            loaded = load_saved_progression(saved, name)
+            apply_cpl_session_progression(st.session_state, loaded)
+            queue_custom_active_song_activation(st, loaded, toast_title=name)
+            st.rerun()
+
+
 def _render_last_catalog_song_shortcut(
     active_pick_key: str,
     *,
     key_prefix: str = "catalog",
 ) -> None:
     """Browser-back shortcut to the previous catalog song."""
-    from songs.music_source import previous_catalog_snapshot, restore_previous_catalog_song
+    from songs.music_source import (
+        custom_progression_is_active,
+        previous_catalog_snapshot,
+        queue_previous_catalog_restore,
+    )
 
+    if custom_progression_is_active(st.session_state):
+        return
     snap = previous_catalog_snapshot(st.session_state)
     if not snap:
         return
@@ -7671,13 +7731,8 @@ def _render_last_catalog_song_shortcut(
         key=f"{key_prefix}_restore_last_catalog",
         use_container_width=True,
     ):
-        if restore_previous_catalog_song(
-            st,
-            song_picker_catalog=SONG_PICKER_CATALOG,
-            song_library=SONG_LIBRARY,
-            invalidate_backing=invalidate_backing_cache,
-        ):
-            st.rerun()
+        queue_previous_catalog_restore(st)
+        st.rerun()
 
 
 def _render_active_song_recent_switch(
@@ -7892,11 +7947,8 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
         st.caption(
             "This is **your** song — Practice, Backing Track, and charts follow this custom progression."
         )
+        _render_custom_song_library_selector()
         _render_active_song_card(rec)
-        _render_last_catalog_song_shortcut(
-            str(st.session_state.get("active_catalog_pick_key") or ""),
-            key_prefix="custom_hub",
-        )
         st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
         b1, b2, b3 = st.columns(3)
         with b1:
@@ -8031,11 +8083,6 @@ def _render_catalog_active_song_hub(
             _render_last_catalog_song_shortcut(
                 active_pick_key,
                 key_prefix="catalog_hub",
-            )
-            _render_active_song_recent_switch(
-                visible_song_records,
-                pick_options,
-                active_pick_key,
             )
             st.markdown("</div>", unsafe_allow_html=True)
         render_active_song_hub_close(st)
