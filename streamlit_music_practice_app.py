@@ -35,6 +35,8 @@ st.set_page_config(
     layout="wide"
 )
 
+st.session_state["_script_run_seq"] = int(st.session_state.get("_script_run_seq") or 0) + 1
+
 try:
     from app_ui import init_simple_music_nav_from_query
     from music_persistence_trace import init_developer_mode_from_query, render_persistence_trace_sidebar

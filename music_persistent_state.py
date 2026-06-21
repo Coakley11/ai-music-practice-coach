@@ -1990,6 +1990,11 @@ def prepare_music_workspace(
     song_library: dict | None,
 ) -> bool:
     """Authoritative cloud/disk workspace sync before sidebar widgets."""
+    ss = st.session_state
+    run_seq = int(ss.get("_script_run_seq") or 0)
+    if ss.get("_music_workspace_prepared_for_run") == run_seq:
+        return bool(ss.get("_music_workspace_last_result", False))
+
     try:
         from suite_cloud_state import (
             list_active_resume_query_params,
@@ -2027,12 +2032,15 @@ def prepare_music_workspace(
             song_library=song_library,
         )
 
-    return sync_workspace_protocol(
+    result = sync_workspace_protocol(
         st,
         APP_ID,
         apply_state=_apply,
         cloud_first=True,
     )
+    ss["_music_workspace_prepared_for_run"] = run_seq
+    ss["_music_workspace_last_result"] = bool(result)
+    return result
 
 
 def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:

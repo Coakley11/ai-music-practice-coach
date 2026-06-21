@@ -9,6 +9,8 @@ from music_theory import coerce_key_to_mode, display_key_options, key_mode
 IDENTITY_KEY = "_display_key_song_identity"
 LAST_DISPLAY_KEY = "_last_app_display_key"
 PENDING_DISPLAY_KEY = "_pending_display_key"
+DISPLAY_KEY_OWNER_IDENTITY_KEY = "_display_key_owner_identity"
+LAST_DISPLAY_KEY_SAVE_OK_KEY = "_last_display_key_save_ok"
 CPL_JUMP_HOME_TARGET = "_cpl_jump_home_target"
 BACKING_NEEDS_REGEN = "_backing_needs_regen"
 
@@ -85,9 +87,39 @@ def mark_display_key_changed(st: Any) -> None:
         from music_persistent_state import flush_active_song_edits_and_save
 
         mark_active_song_local_edit(st.session_state)
-        flush_active_song_edits_and_save(st, reason="display_key_change")
+        ok = flush_active_song_edits_and_save(st, reason="display_key_change")
+        st.session_state[LAST_DISPLAY_KEY_SAVE_OK_KEY] = bool(ok)
+        if ok:
+            try:
+                from songs.music_source import (
+                    ACTIVE_SONG_IDENTITY_KEY,
+                    compute_active_song_identity,
+                    cpl_session_is_active,
+                )
+                from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+                owner = str(st.session_state.get(ACTIVE_SONG_IDENTITY_KEY) or "").strip()
+                if not owner:
+                    selected = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
+                    owner = compute_active_song_identity(
+                        pick_key=str(
+                            st.session_state.get(ACTIVE_CATALOG_PICK_KEY)
+                            or selected.get("pick_key")
+                            or ""
+                        ).strip(),
+                        title=str(selected.get("title") or ""),
+                        artist=str(selected.get("artist") or ""),
+                        original_key=str(selected.get("key") or "C"),
+                        is_custom=cpl_session_is_active(st.session_state),
+                        custom_revision=str(
+                            (st.session_state.get("cpl_active_progression") or {}).get("id") or ""
+                        ).strip(),
+                    )
+                st.session_state[DISPLAY_KEY_OWNER_IDENTITY_KEY] = owner
+            except Exception:
+                pass
     except Exception:
-        pass
+        st.session_state[LAST_DISPLAY_KEY_SAVE_OK_KEY] = False
 
 
 def _apply_display_key_before_widget(st: Any, key: str, *, source: str = "sync_display_key") -> None:

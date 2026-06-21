@@ -28,10 +28,10 @@ def is_custom_progression(session_state: dict[str, Any]) -> bool:
 
 def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     """True when Custom Progression is the active song (session or canonical blob)."""
-    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
-        return False
     if is_custom_progression(session_state):
         return True
+    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return False
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
         return False
     meta = session_state.get("active_song_state")
@@ -95,6 +95,7 @@ def set_catalog_source(session_state: dict[str, Any]) -> None:
 
 def set_custom_source(session_state: dict[str, Any]) -> None:
     save_last_catalog_snapshot(session_state)
+    session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
 
 
@@ -659,6 +660,14 @@ def on_active_song_identity_changed(
             active_song_meter=str(default_meter),
         )
 
+    if identity_changed:
+        try:
+            from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+
+            session.pop(DISPLAY_KEY_OWNER_IDENTITY_KEY, None)
+        except ImportError:
+            pass
+
     session[ACTIVE_SONG_IDENTITY_KEY] = new_identity
     session[SONG_IDENTITY_DIAG_KEY] = {
         "active_song_identity": new_identity,
@@ -777,6 +786,59 @@ def custom_pick_key_for(active: dict[str, Any]) -> str:
     return f"custom::{safe}"
 
 
+def custom_song_data_from_active(active: dict[str, Any]) -> dict[str, Any]:
+    """Catalog-shaped song row for charts/backing when Custom Progression is active."""
+    from custom_progression_lab import (
+        cpl_draft_written_key,
+        ensure_original_structure,
+        sections_to_chord_lists,
+    )
+
+    active = ensure_original_structure(active)
+    title = str(active.get("name") or "My Progression")
+    home_key = cpl_draft_written_key(active)
+    artist = str(active.get("artist") or "").strip()
+    sections = sections_to_chord_lists(active.get("original_sections") or {})
+    style = str(active.get("progression_style") or "Custom")
+    bpm = int(active.get("bpm") or 100)
+    groove = str(active.get("groove_style") or "Auto")
+    meter = str(active.get("time_signature") or "4/4")
+    return {
+        "title": title,
+        "artist": artist or "Your progression",
+        "genre": "Custom",
+        "key": home_key,
+        "sections": sections,
+        "chart_versions": {
+            "Beginner": sections,
+            "Intermediate": sections,
+            "Advanced": sections,
+        },
+        "chart_status": "custom",
+        "extensions": {
+            "default_bpm": bpm,
+            "default_groove": groove,
+            "time_signature": meter,
+            "arrangement_notes": f"Custom progression — {style} feel",
+        },
+    }
+
+
+def custom_song_context_from_session(
+    session_state: dict[str, Any],
+    *,
+    cpl_active_key: str = "cpl_active_progression",
+) -> tuple[str, str, dict[str, Any]]:
+    """Return (genre, title, song_data) for an active Custom Progression song."""
+    from custom_progression_lab import default_active_progression, ensure_original_structure
+
+    active = ensure_original_structure(
+        session_state.get(cpl_active_key) or default_active_progression()
+    )
+    song_data = custom_song_data_from_active(active)
+    return "Custom", str(song_data.get("title") or "My Progression"), song_data
+
+
 def custom_selected_song_record(active: dict[str, Any]) -> dict[str, Any]:
     """Sidebar/global ``selected_song`` shape for an active custom progression."""
     from custom_progression_lab import ensure_original_structure
@@ -840,6 +902,7 @@ def apply_pending_custom_active_song_activation_before_widgets(
     toast_title = str(pending.get("toast_title") or "").strip()
     if toast_title:
         session["_cpl_activation_toast"] = toast_title
+    session["_custom_active_song_applied_this_run"] = True
     return True
 
 

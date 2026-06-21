@@ -48,6 +48,23 @@ def apply_pending_catalog_pick_before_widgets(
     invalidate_backing,
 ) -> bool:
     """Apply queued catalog pick before sidebar/global widgets render."""
+    try:
+        from songs.music_source import (
+            PENDING_CUSTOM_ACTIVE_SONG_KEY,
+            is_custom_progression,
+        )
+    except ImportError:
+        PENDING_CUSTOM_ACTIVE_SONG_KEY = "_pending_custom_active_song_activation"  # noqa: N806
+        is_custom_progression = lambda _s: False  # type: ignore[assignment,misc]
+
+    if st.session_state.get(PENDING_CUSTOM_ACTIVE_SONG_KEY):
+        return False
+    if is_custom_progression(st.session_state) or st.session_state.get(
+        "_custom_active_song_applied_this_run"
+    ):
+        st.session_state.pop(PENDING_CATALOG_PICK_KEY, None)
+        return False
+
     pending = st.session_state.pop(PENDING_CATALOG_PICK_KEY, None)
     if not pending:
         return False
@@ -591,6 +608,18 @@ def get_song_context(
     Never raises for stale/renamed/missing pick keys — falls back to title match,
     then the first catalog song, and stores a one-run recovery notice.
     """
+    try:
+        from songs.music_source import custom_song_context_from_session, is_custom_progression
+    except ImportError:
+        is_custom_progression = lambda _s: False  # type: ignore[assignment,misc]
+        custom_song_context_from_session = None  # type: ignore[assignment,misc]
+
+    sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
+    pk = str(sel.get("pick_key") or "").strip()
+    if is_custom_progression(st.session_state) or pk.startswith("custom::"):
+        if custom_song_context_from_session is not None:
+            return custom_song_context_from_session(st.session_state)
+
     sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
     pk = str(sel.get("pick_key") or "").strip()
 

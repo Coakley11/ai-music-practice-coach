@@ -145,6 +145,7 @@ def _normalize_context(raw: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "pick_key": pick_key,
         "display_key": str(src.get("display_key") or "").strip(),
+        "display_key_owner_identity": str(src.get("display_key_owner_identity") or "").strip(),
         "instrument": str(src.get("instrument") or "").strip(),
         "level": str(src.get("level") or "").strip(),
         "focus": str(src.get("focus") or "").strip(),
@@ -261,6 +262,108 @@ def _session_has_live_global_controls(session: dict[str, Any]) -> bool:
     )
 
 
+def _current_active_song_identity(session: dict[str, Any]) -> str:
+    try:
+        from songs.music_source import (
+            ACTIVE_SONG_IDENTITY_KEY,
+            compute_active_song_identity,
+            cpl_session_is_active,
+        )
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+    except ImportError:
+        return ""
+
+    cached = str(session.get(ACTIVE_SONG_IDENTITY_KEY) or "").strip()
+    if cached:
+        return cached
+    selected = session.get(SELECTED_SONG_STATE_KEY) or {}
+    pick_key = str(session.get(ACTIVE_CATALOG_PICK_KEY) or selected.get("pick_key") or "").strip()
+    is_custom = cpl_session_is_active(session)
+    custom_revision = ""
+    if is_custom:
+        try:
+            from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+
+            active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+            custom_revision = str(active.get("id") or "").strip()
+        except ImportError:
+            pass
+    return compute_active_song_identity(
+        pick_key=pick_key,
+        title=str(selected.get("title") or ""),
+        artist=str(selected.get("artist") or ""),
+        original_key=str(selected.get("key") or "C"),
+        is_custom=is_custom,
+        custom_revision=custom_revision,
+    )
+
+
+def _display_key_override_valid_for_identity(session: dict[str, Any]) -> bool:
+    """True when session display_key is a user override for the current song identity."""
+    try:
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+        from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+    except ImportError:
+        return False
+
+    owner = str(session.get(DISPLAY_KEY_OWNER_IDENTITY_KEY) or "").strip()
+    current = _current_active_song_identity(session)
+    if owner and current:
+        return owner == current
+    return str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip() == "sidebar_on_change"
+
+
+def _merge_display_key_for_active_song(
+    session: dict[str, Any],
+    ctx: dict[str, Any],
+    *,
+    home_key: str = "",
+) -> str:
+    """Pick display key for canonical merge — cloud/canonical wins unless identity-scoped override."""
+    live = str(session.get("display_key") or "").strip()
+    canonical = str(ctx.get("display_key") or "").strip()
+    restored_this_run = bool(
+        session.get("_cloud_workspace_restored_this_run")
+        or session.get(SUITE_LOCAL_STATE_RESTORED_KEY)
+    )
+    if restored_this_run and canonical:
+        return canonical
+    ctx_pick = str(ctx.get("pick_key") or "").strip()
+    try:
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        session_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or ctx_pick or "").strip()
+    except ImportError:
+        session_pick = ctx_pick
+    same_song = not ctx_pick or not session_pick or ctx_pick == session_pick
+    if same_song and live and (not canonical or live != canonical):
+        if _display_key_override_valid_for_identity(session):
+            return live
+        try:
+            from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+
+            if str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "") == "sidebar_on_change":
+                return live
+        except ImportError:
+            pass
+        if not restored_this_run and not (
+            custom_progression_is_active(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM
+        ):
+            return live
+    if custom_progression_is_active(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM:
+        home = str(home_key or ctx.get("custom_home_key") or "C").strip() or "C"
+        if _display_key_override_valid_for_identity(session) and live:
+            return live
+        if canonical:
+            return canonical
+        return _resolve_custom_display_key_for_session(session, home)
+    if _display_key_override_valid_for_identity(session) and live:
+        return live
+    if canonical:
+        return canonical
+    return live
+
+
 def _merge_live_global_controls(
     session: dict[str, Any],
     ctx: dict[str, Any],
@@ -278,7 +381,11 @@ def _merge_live_global_controls(
             or (ctx.get("selected_song") or {}).get("key")
             or "C"
         ).strip() or "C"
-        merged["display_key"] = _resolve_custom_display_key_for_session(session, home_key)
+        merged["display_key"] = _merge_display_key_for_active_song(
+            session,
+            ctx,
+            home_key=home_key,
+        )
         for key in ("instrument", "level", "focus"):
             live_val = str(live.get(key) or "").strip()
             if live_val:
@@ -286,9 +393,8 @@ def _merge_live_global_controls(
         if song_changed and live_pick:
             merged["pick_key"] = live_pick
         return merged
-    for key in ("instrument", "level", "focus", "display_key"):
-        if key == "display_key" and song_changed:
-            continue
+    merged["display_key"] = _merge_display_key_for_active_song(session, ctx)
+    for key in ("instrument", "level", "focus"):
         live_val = str(live.get(key) or "").strip()
         if live_val:
             merged[key] = live_val
@@ -347,6 +453,8 @@ def _resolve_custom_display_key_for_session(
         if meta_pick and live_pick and meta_pick != live_pick:
             canonical = ""
     change_source = str(session.get("display_key_change_source") or "").strip()
+    if _display_key_override_valid_for_identity(session) and live:
+        return live
     user_override = bool(live and live != home and change_source)
     if user_override:
         return live
@@ -388,6 +496,38 @@ def _push_resolved_display_key_to_session(
         pass
 
 
+def _attach_display_key_owner(session: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+    except ImportError:
+        return ctx
+    owner = str(session.get(DISPLAY_KEY_OWNER_IDENTITY_KEY) or "").strip()
+    if owner:
+        ctx["display_key_owner_identity"] = owner
+    return ctx
+
+
+def _restore_display_key_owner_from_context(session: dict[str, Any], ctx: dict[str, Any]) -> None:
+    try:
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+        from songs.music_source import ACTIVE_SONG_IDENTITY_KEY, compute_active_song_identity
+    except ImportError:
+        return
+    owner = str(ctx.get("display_key_owner_identity") or "").strip()
+    if not owner:
+        selected = ctx.get("selected_song") if isinstance(ctx.get("selected_song"), dict) else {}
+        owner = compute_active_song_identity(
+            pick_key=str(ctx.get("pick_key") or selected.get("pick_key") or "").strip(),
+            title=str(selected.get("title") or ctx.get("custom_progression_name") or ""),
+            artist=str(selected.get("artist") or ""),
+            original_key=str(ctx.get("custom_home_key") or selected.get("key") or "C"),
+            is_custom=str(ctx.get("music_source") or "") == SOURCE_CUSTOM,
+        )
+    if owner:
+        session[DISPLAY_KEY_OWNER_IDENTITY_KEY] = owner
+        session[ACTIVE_SONG_IDENTITY_KEY] = owner
+
+
 def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     """Read active song context from live session keys."""
     if custom_progression_is_active(session):
@@ -425,7 +565,7 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
             subtype = _live_subtype_for_save(session, instrument_name)
             if subtype:
                 ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
-        return ctx
+        return _attach_display_key_owner(session, ctx)
 
     sel = session.get(SELECTED_SONG_STATE_KEY)
     selected = _normalize_selected_song(sel)
@@ -452,7 +592,7 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         subtype = _live_subtype_for_save(session, instrument_name)
         if subtype:
             ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
-    return ctx
+    return _attach_display_key_owner(session, ctx)
 
 
 def canonical_active_song_context(session: dict[str, Any]) -> dict[str, Any] | None:
@@ -1106,6 +1246,7 @@ def apply_cloud_active_song_state_if_allowed(
         )
         write_canonical_active_song_state(session, custom_ctx, reason="cloud_restore_custom")
         _record_transposing_restore_trace(session, custom_ctx, source="cloud_restore_custom")
+        _restore_display_key_owner_from_context(session, custom_ctx)
         _push_resolved_display_key_to_session(session, custom_ctx)
         rehydrate_transposing_sidebar_from_canonical(session)
         clear_active_song_local_edit(session)
@@ -1121,6 +1262,7 @@ def apply_cloud_active_song_state_if_allowed(
     )
     write_canonical_active_song_state(session, ctx, reason="cloud_restore")
     _record_transposing_restore_trace(session, ctx, source="cloud_restore")
+    _restore_display_key_owner_from_context(session, ctx)
     _push_resolved_display_key_to_session(session, ctx)
     rehydrate_transposing_sidebar_from_canonical(session)
     clear_active_song_local_edit(session)
@@ -1176,7 +1318,11 @@ def render_active_song_state_debug(st: Any, session: dict[str, Any]) -> None:
     written_on = ctx.get(CHART_IN_INSTRUMENT_KEY_KEY) if _written_key_is_set(ctx) else None
     subtype = ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or ""
     canonical_display_key = str(ctx.get("display_key") or "").strip()
-    restored_display_key = str(session.get("display_key") or "").strip()
+    session_display_key = str(session.get("display_key") or "").strip()
+    cloud_payload = session.get("_suite_last_cloud_fetch_payload")
+    cloud_display_key = ""
+    if isinstance(cloud_payload, dict):
+        cloud_display_key = _resolve_display_key_from_music_blob(cloud_payload, ctx=ctx)
     home_key = str(ctx.get("custom_home_key") or "").strip()
     if is_custom_progression(session):
         effective_display_key = _resolve_custom_display_key_for_session(
@@ -1184,7 +1330,25 @@ def render_active_song_state_debug(st: Any, session: dict[str, Any]) -> None:
             home_key or "C",
         )
     else:
-        effective_display_key = restored_display_key or canonical_display_key
+        effective_display_key = session_display_key or canonical_display_key
+    try:
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY, LAST_DISPLAY_KEY_SAVE_OK_KEY
+        from songs.music_source import (
+            ACTIVE_SONG_IDENTITY_KEY,
+            PREVIOUS_ACTIVE_SONG_IDENTITY_KEY,
+            SONG_IDENTITY_DIAG_KEY,
+        )
+
+        owner_identity = str(session.get(DISPLAY_KEY_OWNER_IDENTITY_KEY) or ctx.get("display_key_owner_identity") or "")
+        active_identity = str(session.get(ACTIVE_SONG_IDENTITY_KEY) or "")
+        previous_identity = str(session.get(PREVIOUS_ACTIVE_SONG_IDENTITY_KEY) or "")
+        identity_diag = session.get(SONG_IDENTITY_DIAG_KEY) if isinstance(session.get(SONG_IDENTITY_DIAG_KEY), dict) else {}
+        identity_changed = identity_diag.get("identity_changed")
+        last_save_ok = session.get(LAST_DISPLAY_KEY_SAVE_OK_KEY)
+    except ImportError:
+        owner_identity = active_identity = previous_identity = ""
+        identity_changed = None
+        last_save_ok = None
     st.sidebar.caption(
         f"**active_song_state:** dirty=`{dirty}` pick=`{ctx.get('pick_key', '')}` "
         f"key=`{canonical_display_key}` inst=`{ctx.get('instrument', '')}` "
@@ -1192,9 +1356,19 @@ def render_active_song_state_debug(st: Any, session: dict[str, Any]) -> None:
     )
     st.sidebar.caption(
         "**display_key trace:** "
+        f"session=`{session_display_key}` "
         f"canonical=`{canonical_display_key}` "
-        f"restored=`{restored_display_key}` "
+        f"cloud=`{cloud_display_key}` "
+        f"restored=`{session_display_key}` "
         f"effective=`{effective_display_key}`"
+    )
+    st.sidebar.caption(
+        "**display_key identity:** "
+        f"active_song_identity=`{active_identity}` "
+        f"previous=`{previous_identity}` "
+        f"owner=`{owner_identity}` "
+        f"identity_changed=`{identity_changed}` "
+        f"last_save_ok=`{last_save_ok}`"
     )
     reason = ctx.get("last_write_reason")
     if reason:

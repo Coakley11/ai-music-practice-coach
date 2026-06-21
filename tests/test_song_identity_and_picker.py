@@ -174,5 +174,40 @@ class TestActiveSongIdentityChanged(unittest.TestCase):
         self.assertEqual(st.session_state[ACTIVE_CATALOG_PICK_KEY], PK_SAY)
 
 
+class TestDisplayKeyCloudMerge(unittest.TestCase):
+    def test_cloud_restore_display_key_wins_over_stale_session(self) -> None:
+        from active_song_state import _merge_display_key_for_active_song, write_canonical_active_song_state
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+
+        session = {
+            "display_key": "G",
+            "_cloud_workspace_restored_this_run": True,
+            DISPLAY_KEY_OWNER_IDENTITY_KEY: f"pk::{PK_SAY}",
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": PK_SAY,
+                "title": "Say",
+                "artist": "John Mayer",
+                "key": "G",
+            },
+            ACTIVE_CATALOG_PICK_KEY: PK_SAY,
+        }
+        write_canonical_active_song_state(
+            session,
+            {
+                "pick_key": PK_SAY,
+                "display_key": "Eb",
+                "display_key_owner_identity": f"pk::{PK_SAY}",
+                "selected_song": session[SELECTED_SONG_STATE_KEY],
+            },
+            reason="setup",
+            mutate_display_key=False,
+        )
+        merged = _merge_display_key_for_active_song(
+            session,
+            {"display_key": "Eb", "music_source": "catalog_song"},
+        )
+        self.assertEqual(merged, "Eb")
+
+
 if __name__ == "__main__":
     unittest.main()

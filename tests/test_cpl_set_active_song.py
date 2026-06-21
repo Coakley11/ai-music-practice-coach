@@ -54,6 +54,7 @@ from songs.music_source import (
     restore_previous_catalog_song,
     resolve_active_song_keys,
     save_last_catalog_snapshot,
+    set_custom_source,
     snapshot_current_catalog_state,
     display_key_context,
     switch_to_catalog_from_custom,
@@ -174,6 +175,41 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(ss["level"], "Intermediate")
         self.assertEqual(ss["focus"], "General")
         self.assertNotIn(PENDING_DISPLAY_KEY, ss)
+
+    def test_get_song_context_skips_catalog_when_custom_active(self) -> None:
+        from songs.state import get_song_context, SELECTED_SONG_STATE_KEY
+
+        active = self._draft_with_chords()
+        active["name"] = "New Song"
+        active["original_key_center"] = "D"
+        st = SimpleNamespace(session_state={
+            "active_music_source": SOURCE_CUSTOM,
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            CPL_ACTIVE_KEY: active,
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": "custom::draft-1",
+                "title": "New Song",
+                "artist": "Your progression",
+                "key": "D",
+            },
+        })
+        with patch("songs.state.apply_pick_key") as mock_apply:
+            genre, title, song_data = get_song_context(
+                st,
+                song_library={},
+                song_picker_catalog={"Pop": {}},
+            )
+        mock_apply.assert_not_called()
+        self.assertEqual(genre, "Custom")
+        self.assertEqual(title, "New Song")
+        self.assertEqual(song_data.get("key"), "D")
+
+    def test_set_custom_source_clears_catalog_source_choice_flag(self) -> None:
+        session = {USER_CATALOG_SOURCE_CHOICE_KEY: True, "active_music_source": SOURCE_CATALOG}
+        set_custom_source(session)
+        self.assertNotIn(USER_CATALOG_SOURCE_CHOICE_KEY, session)
+        self.assertEqual(session["active_music_source"], SOURCE_CUSTOM)
+        self.assertTrue(custom_progression_is_active(session))
 
     def test_apply_pending_activation_before_widgets(self) -> None:
         active = self._draft_with_chords()
