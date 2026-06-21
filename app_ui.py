@@ -2952,6 +2952,10 @@ body.backing-studio-page .ui-active-song-card,
 body.backing-studio-page .ui-active-song-hub {
   display: none !important;
 }
+body:not([data-studio-page="picker"]) .st-key-active_song_hub,
+body:not([data-studio-page="picker"]) .ui-active-song-hub-wrap {
+  display: none !important;
+}
 .ui-backing-badge.bpm-default {
   background: rgba(249, 115, 22, 0.22);
   border-color: rgba(251, 146, 60, 0.42);
@@ -6595,7 +6599,7 @@ def inject_backing_studio_styles(st: Any) -> None:
 <style data-backing-studio-ui="{BACKING_STUDIO_UI_VERSION}">
 {_backing_studio_all_css()}
 </style>
-<script>try{{document.body.dataset.backingStudioUi="{BACKING_STUDIO_UI_VERSION}";document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";document.body.classList.add("backing-studio-page");}}catch(e){{}}</script>
+<script>try{{document.body.dataset.backingStudioUi="{BACKING_STUDIO_UI_VERSION}";document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";document.body.classList.remove("practice-page");document.body.classList.add("backing-studio-page");}}catch(e){{}}</script>
         """,
         unsafe_allow_html=True,
     )
@@ -6622,7 +6626,7 @@ def inject_practice_page_styles(st: Any) -> None:
 <style data-practice-setup-ui="{PRACTICE_SETUP_UI_VERSION}">
 {_practice_control_panel_css()}
 </style>
-<script>try{{document.body.dataset.practiceSetupUi="{PRACTICE_SETUP_UI_VERSION}";document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";document.body.classList.add("practice-page");}}catch(e){{}}</script>
+<script>try{{document.body.dataset.practiceSetupUi="{PRACTICE_SETUP_UI_VERSION}";document.body.dataset.studioUiRelease="{STUDIO_UI_RELEASE}";document.body.classList.remove("backing-studio-page");document.body.classList.add("practice-page");}}catch(e){{}}</script>
         """,
         unsafe_allow_html=True,
     )
@@ -6866,7 +6870,7 @@ def inject_studio_ui_release_marker(st: Any, *, page: str) -> None:
 const page = "{page_slug}";
 document.body.dataset.studioUiRelease = "{STUDIO_UI_RELEASE}";
 document.body.dataset.studioPage = page;
-["custom-builder-page","upload-studio-page","backing-studio-page","multitrack-studio-page"].forEach(function(c) {{
+["custom-builder-page","upload-studio-page","backing-studio-page","multitrack-studio-page","practice-page"].forEach(function(c) {{
   document.body.classList.remove(c);
 }});
 const pageClass = {{
@@ -6880,6 +6884,11 @@ if (pageClass) document.body.classList.add(pageClass);
         """,
         unsafe_allow_html=True,
     )
+
+
+def inject_studio_page_marker_sync(st: Any, *, page: str) -> None:
+    """Unified studio page marker — sets data-studio-page and page body classes."""
+    inject_studio_ui_release_marker(st, page=page)
 
 
 def studio_meta_badge(

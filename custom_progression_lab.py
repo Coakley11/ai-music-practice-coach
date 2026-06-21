@@ -1113,14 +1113,25 @@ def import_cpl_widget_state(session_state: dict, blob: dict[str, Any]) -> None:
         session_state[sk] = copy.deepcopy(val)
 
 
-def apply_cpl_session_progression(session_state: dict, active: dict) -> None:
+def apply_cpl_session_progression(
+    session_state: dict,
+    active: dict,
+    *,
+    reset_display_key: bool = False,
+) -> None:
     """Install progression as active and reset CPL UI widget cache."""
     session_state[CPL_ACTIVE_KEY] = ensure_original_structure(active)
     session_state.pop("cpl_finished", None)
-    session_state["_cpl_editing_display_key"] = session_state.get(
-        "display_key",
-        written_home_key(session_state[CPL_ACTIVE_KEY]),
-    )
+    home_key = written_home_key(session_state[CPL_ACTIVE_KEY])
+    if reset_display_key:
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY
+
+            session_state.pop(PENDING_DISPLAY_KEY, None)
+        except ImportError:
+            pass
+        session_state["display_key"] = home_key
+    session_state["_cpl_editing_display_key"] = session_state.get("display_key", home_key)
     clear_cpl_widget_state(session_state)
     reset_cpl_widget_initialization(session_state)
     ensure_cpl_widget_keys_initialized(

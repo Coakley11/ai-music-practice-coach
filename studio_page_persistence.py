@@ -74,19 +74,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
         {
             "cpl_edit_section",
             "cpl_builder_version",
-            "cpl_active_progression",
-            "cpl_saved_progressions",
-            "cpl_title_input",
-            "cpl_artist_input",
-            "cpl_original_key",
-            "cpl_time_signature",
-            "cpl_bpm_builder",
-            "cpl_style_early",
-            # Legacy widget keys (older sessions / exports)
-            "cpl_name",
-            "cpl_bpm",
-            "cpl_progression_style",
-            "cpl_groove_style",
+            "cpl_finished",
         }
     ),
     "creative": frozenset(

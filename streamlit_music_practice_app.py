@@ -7694,7 +7694,11 @@ def _render_custom_song_library_selector() -> None:
             label = f"{name} (active)"
         if st.button(label, key=f"custom_lib_pick_{safe_key}", use_container_width=True):
             loaded = load_saved_progression(saved, name)
-            apply_cpl_session_progression(st.session_state, loaded)
+            apply_cpl_session_progression(
+                st.session_state,
+                loaded,
+                reset_display_key=True,
+            )
             queue_custom_active_song_activation(st, loaded, toast_title=name)
             st.rerun()
 
@@ -7959,6 +7963,14 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
                 _picker_navigate("backing")
         with b3:
             if st.button(nav_icon_button_label("custom") + " Edit", key="custom_hub_edit", use_container_width=True):
+                from custom_progression_lab import apply_cpl_session_progression, cpl_active_from_session
+
+                active = cpl_active_from_session(st.session_state)
+                apply_cpl_session_progression(
+                    st.session_state,
+                    active,
+                    reset_display_key=True,
+                )
                 navigate_studio_page(st.session_state, "custom")
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -12104,13 +12116,10 @@ elif _studio_page == "custom":
     ensure_page_initialized(st.session_state, "custom")
     note_page_visit(st.session_state, "custom")
     try:
-        from app_ui import inject_custom_builder_styles, inject_studio_ui_release_marker
+        from app_ui import inject_custom_builder_styles, inject_studio_page_marker_sync
 
         inject_custom_builder_styles(st)
-        from app_ui import inject_studio_page_marker_sync
-
         inject_studio_page_marker_sync(st, page="custom")
-        inject_studio_ui_release_marker(st, page="custom")
     except Exception:
         pass
     _studio_page_header(

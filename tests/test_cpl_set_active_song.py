@@ -466,6 +466,25 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertIn("updated_at", saved)
         self.assertIn("created_at", saved)
 
+    def test_apply_cpl_session_progression_can_reset_display_key(self) -> None:
+        from custom_progression_lab import apply_cpl_session_progression, load_saved_progression, save_progression
+
+        store: dict = {}
+        active = self._draft_with_chords()
+        active["name"] = "Trial Song"
+        active["original_key_center"] = "D"
+        active["artist"] = "Daniel"
+        active["bpm"] = 115
+        save_progression(store, "Trial Song", active)
+        session = {"display_key": "Eb", CPL_ACTIVE_KEY: default_active_progression()}
+        loaded = load_saved_progression(store, "Trial Song")
+        apply_cpl_session_progression(session, loaded, reset_display_key=True)
+        self.assertEqual(session[CPL_ACTIVE_KEY]["name"], "Trial Song")
+        self.assertEqual(int(session[CPL_ACTIVE_KEY]["bpm"]), 115)
+        self.assertEqual(session["display_key"], "D")
+        self.assertEqual(session["cpl_bpm_builder"], 115)
+        self.assertEqual(session["cpl_title_input"], "Trial Song")
+
     def test_commit_custom_pushes_recent_name(self) -> None:
         from songs.music_source import CUSTOM_RECENT_ACTIVE_NAMES_KEY, commit_custom_active_song
 
@@ -837,7 +856,23 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(home, "D")
         self.assertEqual(identity[2], "D")
 
-    def test_identity_change_applies_pending_display_key(self) -> None:
+    def test_identity_change_applies_explicit_pending_key(self) -> None:
+        active = self._draft_with_chords()
+        active["original_key_center"] = "D"
+        st = SimpleNamespace(
+            session_state={
+                CPL_ACTIVE_KEY: active,
+                ACTIVE_CATALOG_PICK_KEY: "custom::my-progression",
+                PENDING_DISPLAY_KEY: "Eb",
+                IDENTITY_KEY: ("Shallow", "Lady Gaga", "G"),
+                "display_key": "D",
+            }
+        )
+        identity = song_display_identity("My Progression", "Custom progression", "D")
+        apply_display_key_for_active_song(st, "D", identity, pending_key="Eb")
+        self.assertEqual(st.session_state["display_key"], "Eb")
+
+    def test_identity_change_ignores_stale_pending_without_explicit_key(self) -> None:
         active = self._draft_with_chords()
         active["original_key_center"] = "D"
         st = SimpleNamespace(
@@ -851,7 +886,27 @@ class TestCplSetActiveSong(unittest.TestCase):
         )
         identity = song_display_identity("My Progression", "Custom progression", "D")
         apply_display_key_for_active_song(st, "D", identity)
-        self.assertEqual(st.session_state["display_key"], "Eb")
+        self.assertEqual(st.session_state["display_key"], "D")
+        self.assertNotIn(PENDING_DISPLAY_KEY, st.session_state)
+
+    def test_merge_display_key_after_cpl_to_catalog_transition(self) -> None:
+        from active_song_state import _merge_display_key_for_active_song
+        from songs.music_source import PREVIOUS_ACTIVE_SONG_IDENTITY_KEY, SOURCE_CATALOG
+
+        session = {
+            "active_music_source": SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: PK_A,
+            "display_key": "Eb",
+            PREVIOUS_ACTIVE_SONG_IDENTITY_KEY: "cpl::draft-1",
+        }
+        ctx = {
+            "music_source": SOURCE_CATALOG,
+            "pick_key": PK_A,
+            "display_key": "G",
+            "selected_song": {"key": "G"},
+        }
+        merged = _merge_display_key_for_active_song(session, ctx)
+        self.assertEqual(merged, "G")
 
 
 if __name__ == "__main__":

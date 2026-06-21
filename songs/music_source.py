@@ -660,6 +660,18 @@ def on_active_song_identity_changed(
     )
 
     if identity_changed:
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY
+
+            session.pop(PENDING_DISPLAY_KEY, None)
+        except ImportError:
+            pass
+        try:
+            from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+
+            session.pop(DISPLAY_KEY_CHANGE_SOURCE_KEY, None)
+        except ImportError:
+            pass
         target_display = str(display_key if display_key is not None else original_key).strip() or original_key
         song_identity = song_display_identity(title, artist, original_key)
         apply_display_key_for_active_song(

@@ -336,19 +336,26 @@ def _merge_display_key_for_active_song(
     except ImportError:
         session_pick = ctx_pick
     same_song = not ctx_pick or not session_pick or ctx_pick == session_pick
+    is_catalog_ctx = not (
+        custom_progression_is_active(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM
+    )
+    try:
+        from songs.music_source import PREVIOUS_ACTIVE_SONG_IDENTITY_KEY
+
+        prev_identity = str(session.get(PREVIOUS_ACTIVE_SONG_IDENTITY_KEY) or "")
+    except ImportError:
+        prev_identity = ""
+    if is_catalog_ctx and prev_identity.startswith("cpl::"):
+        if canonical:
+            return canonical
+        catalog_home = str(
+            home_key
+            or (ctx.get("selected_song") or {}).get("key")
+            or "C"
+        ).strip() or "C"
+        return catalog_home
     if same_song and live and (not canonical or live != canonical):
         if _display_key_override_valid_for_identity(session):
-            return live
-        try:
-            from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
-
-            if str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "") == "sidebar_on_change":
-                return live
-        except ImportError:
-            pass
-        if not restored_this_run and not (
-            custom_progression_is_active(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM
-        ):
             return live
     if custom_progression_is_active(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM:
         home = str(home_key or ctx.get("custom_home_key") or "C").strip() or "C"
