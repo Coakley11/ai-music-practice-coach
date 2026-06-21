@@ -861,6 +861,110 @@ def custom_pick_key_for(active: dict[str, Any]) -> str:
     return f"custom::{safe}"
 
 
+def _custom_pick_key_suffix(pick_key: str) -> str:
+    return str(pick_key or "").strip().removeprefix("custom::").strip()
+
+
+def _title_from_custom_blob(blob: dict[str, Any], store_name: str = "") -> tuple[str, str]:
+    title = str(blob.get("name") or store_name or "").strip()
+    artist = str(blob.get("artist") or "Your progression").strip() or "Your progression"
+    return title, artist
+
+
+def custom_display_title_for_pick_key(
+    session_state: dict[str, Any],
+    pick_key: str,
+    *,
+    fallback_title: str = "",
+    cpl_active_key: str = "cpl_active_progression",
+    cpl_saved_key: str = "cpl_saved_progressions",
+) -> str:
+    """User-facing title for a custom song (never an internal id/code)."""
+    from custom_progression_lab import default_active_progression, ensure_original_structure
+    from songs.state import SELECTED_SONG_STATE_KEY
+
+    pk = str(pick_key or "").strip()
+    fb = str(fallback_title or "").strip()
+    if not pk.startswith("custom::"):
+        return fb
+    suffix = _custom_pick_key_suffix(pk)
+    if fb and not fb.startswith("custom::") and fb != suffix:
+        return fb
+
+    sel = session_state.get(SELECTED_SONG_STATE_KEY)
+    if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip() == pk:
+        title = str(sel.get("title") or "").strip()
+        if title and title != suffix:
+            return title
+
+    active = ensure_original_structure(
+        session_state.get(cpl_active_key) or default_active_progression()
+    )
+    active_id = str(active.get("id") or "").strip()
+    active_name = str(active.get("name") or "").strip()
+    if active_id and suffix == active_id and active_name:
+        return active_name
+    if active_name and suffix == active_name.replace(":", "_").replace("/", "_")[:80]:
+        return active_name
+
+    saved = session_state.get(cpl_saved_key) or {}
+    if isinstance(saved, dict):
+        for store_name, blob in saved.items():
+            if not isinstance(blob, dict):
+                continue
+            blob_id = str(blob.get("id") or "").strip()
+            blob_name = str(blob.get("name") or store_name).strip()
+            if suffix and (suffix == blob_id or suffix == blob_name or suffix == store_name):
+                return blob_name or store_name
+
+    meta = session_state.get("active_song_state")
+    if isinstance(meta, dict) and str(meta.get("pick_key") or "").strip() == pk:
+        title = str(meta.get("custom_progression_name") or meta.get("title") or "").strip()
+        if title and title != suffix:
+            return title
+
+    if suffix and " " in suffix.replace("_", " "):
+        return suffix.replace("_", " ")
+    return active_name or fb or "My Progression"
+
+
+def custom_display_artist_for_pick_key(
+    session_state: dict[str, Any],
+    pick_key: str,
+    *,
+    fallback_artist: str = "",
+    cpl_active_key: str = "cpl_active_progression",
+    cpl_saved_key: str = "cpl_saved_progressions",
+) -> str:
+    """User-facing artist for a custom song pick_key."""
+    from custom_progression_lab import default_active_progression, ensure_original_structure
+
+    pk = str(pick_key or "").strip()
+    fb = str(fallback_artist or "").strip() or "Your progression"
+    if not pk.startswith("custom::"):
+        return fb
+    suffix = _custom_pick_key_suffix(pk)
+
+    active = ensure_original_structure(
+        session_state.get(cpl_active_key) or default_active_progression()
+    )
+    active_id = str(active.get("id") or "").strip()
+    if active_id and suffix == active_id:
+        return str(active.get("artist") or fb).strip() or fb
+
+    saved = session_state.get(cpl_saved_key) or {}
+    if isinstance(saved, dict):
+        for store_name, blob in saved.items():
+            if not isinstance(blob, dict):
+                continue
+            blob_id = str(blob.get("id") or "").strip()
+            blob_name = str(blob.get("name") or store_name).strip()
+            if suffix and (suffix == blob_id or suffix == blob_name or suffix == store_name):
+                return _title_from_custom_blob(blob, store_name)[1]
+
+    return fb
+
+
 def _push_recent_custom_name(session_state: dict[str, Any], name: str) -> None:
     label = str(name or "").strip()
     if not label:

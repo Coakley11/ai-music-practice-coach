@@ -52,6 +52,7 @@ def lookup_pick_key_label(
     *,
     record_for_pick_key: Callable[[Iterable[dict], str], dict | None],
     all_records: Iterable[dict],
+    session_state: Mapping[str, Any] | None = None,
 ) -> tuple[str, str]:
     """Resolve a pick_key to ``(title, artist)``.
 
@@ -61,8 +62,20 @@ def lookup_pick_key_label(
     rec = record_for_pick_key(all_records, pick_key) if pick_key else None
     if rec:
         return (str(rec.get("title", "") or ""), str(rec.get("artist", "") or ""))
+    if pick_key.startswith("custom::") and session_state is not None:
+        from songs.music_source import (
+            custom_display_artist_for_pick_key,
+            custom_display_title_for_pick_key,
+        )
+
+        return (
+            custom_display_title_for_pick_key(session_state, pick_key),
+            custom_display_artist_for_pick_key(session_state, pick_key),
+        )
     # Best-effort fallback: pick_key is "genre\x1ftitle — artist"
     label = pick_key.split("\x1f", 1)[-1] if "\x1f" in pick_key else pick_key
+    if label.startswith("custom::"):
+        label = label.removeprefix("custom::").replace("_", " ")
     if " — " in label:
         title, artist = label.split(" — ", 1)
         return (title.strip(), artist.strip())
@@ -114,8 +127,17 @@ def render_add_to_queue_button(
     )
     if clicked and not already:
         km.add_to_queue(st.session_state, pick_key)
-        if title:
-            st.toast(f"Added '{title}' to the karaoke setlist.", icon="🎤")
+        display_title = str(title or "").strip()
+        if pick_key.startswith("custom::"):
+            from songs.music_source import custom_display_title_for_pick_key
+
+            display_title = custom_display_title_for_pick_key(
+                st.session_state,
+                pick_key,
+                fallback_title=display_title,
+            )
+        if display_title:
+            st.toast(f"Added '{display_title}' to the karaoke setlist.", icon="🎤")
     return bool(clicked)
 
 
@@ -215,6 +237,7 @@ def render_karaoke_setlist_panel(
                 pick_key,
                 record_for_pick_key=record_for_pick_key,
                 all_records=all_records,
+                session_state=st.session_state,
             )
             is_now_singing = pick_key == session_active_pk
             is_editing = bool(selected_pk and pick_key == selected_pk)
@@ -450,6 +473,7 @@ def render_karaoke_setlist_panel(
                 session_active_pk or "",
                 record_for_pick_key=record_for_pick_key,
                 all_records=all_records,
+                session_state=st.session_state,
             )
             st.caption(
                 f"Karaoke set in progress · **{pos} of {total}** · "
@@ -509,6 +533,7 @@ def render_karaoke_skip_controls(
             nxt,
             record_for_pick_key=record_for_pick_key,
             all_records=all_records,
+            session_state=st.session_state,
         )
         next_caption = f"Next: **{t}** — {a}"
     else:
@@ -547,6 +572,7 @@ def render_karaoke_skip_controls(
                 new_pk,
                 record_for_pick_key=record_for_pick_key,
                 all_records=all_records,
+                session_state=st.session_state,
             )
             st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = f"Now Singing: {t2}"
         st.rerun()
@@ -557,6 +583,7 @@ def render_karaoke_skip_controls(
                 new_pk,
                 record_for_pick_key=record_for_pick_key,
                 all_records=all_records,
+                session_state=st.session_state,
             )
             st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = f"Now Singing: {t2}"
         else:
@@ -623,6 +650,7 @@ def render_karaoke_transition_card(
             nxt,
             record_for_pick_key=record_for_pick_key,
             all_records=all_records,
+            session_state=st.session_state,
         )
         kicker = "Next on your setlist"
         title = t
@@ -859,6 +887,7 @@ def render_karaoke_queue_preview(
             pk,
             record_for_pick_key=record_for_pick_key,
             all_records=all_records,
+            session_state=st.session_state,
         )
         cls = "ui-karaoke-preview-row" + (" current" if current else "")
         return (

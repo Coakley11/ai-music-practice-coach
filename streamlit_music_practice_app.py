@@ -7584,11 +7584,29 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     # this button. (The button itself also self-gates as a safety net.)
     _active_pick_key = st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""
     if _active_pick_key and km.is_voice_mode(st.session_state):
+        _karaoke_title = str(rec.get("title", "") or "")
+        _karaoke_artist = str(rec.get("artist", "") or "")
+        if str(_active_pick_key).startswith("custom::"):
+            from songs.music_source import (
+                custom_display_artist_for_pick_key,
+                custom_display_title_for_pick_key,
+            )
+
+            _karaoke_title = custom_display_title_for_pick_key(
+                st.session_state,
+                _active_pick_key,
+                fallback_title=_karaoke_title,
+            )
+            _karaoke_artist = custom_display_artist_for_pick_key(
+                st.session_state,
+                _active_pick_key,
+                fallback_artist=_karaoke_artist,
+            )
         render_add_to_queue_button(
             st,
             pick_key=_active_pick_key,
-            title=str(rec.get("title", "")),
-            artist=str(rec.get("artist", "")),
+            title=_karaoke_title,
+            artist=_karaoke_artist,
             key_suffix=f"card_{_active_pick_key}",
             use_container_width=True,
         )
