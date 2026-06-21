@@ -16,7 +16,7 @@ from instrument_transposition import (
     selected_transposing_type,
 )
 from songs.key_state import PENDING_DISPLAY_KEY
-from songs.music_source import SOURCE_CATALOG, SOURCE_CUSTOM, custom_progression_is_active, is_custom_progression, LAST_CATALOG_STATE_KEY
+from songs.music_source import SOURCE_CATALOG, SOURCE_CUSTOM, custom_progression_is_active, is_custom_progression, LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY
 from songs.state import (
     ACTIVE_CATALOG_PICK_KEY,
     SELECTED_SONG_STATE_KEY,
@@ -1001,7 +1001,7 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
                 if live.get("custom_home_key"):
                     ctx["custom_home_key"] = live["custom_home_key"]
             elif str(ctx.get("music_source") or "") == SOURCE_CUSTOM and not is_custom_progression(session):
-                snap = session.get(LAST_CATALOG_STATE_KEY)
+                snap = session.get(CATALOG_BEFORE_CUSTOM_KEY) or session.get(LAST_CATALOG_STATE_KEY)
                 if isinstance(snap, dict) and snap.get("pick_key"):
                     ctx.update(
                         {

@@ -36,6 +36,7 @@ from songs.key_state import (
 )
 from songs.music_source import (
     LAST_CATALOG_STATE_KEY,
+    CATALOG_BEFORE_CUSTOM_KEY,
     PENDING_CUSTOM_ACTIVE_SONG_KEY,
     PENDING_CUSTOM_LIBRARY_ACTION_KEY,
     SOURCE_CATALOG,
@@ -59,6 +60,7 @@ from songs.music_source import (
     resolve_active_song_keys,
     save_last_catalog_snapshot,
     set_custom_source,
+    reconcile_picker_music_source,
     snapshot_current_catalog_state,
     display_key_context,
     switch_to_catalog_from_custom,
@@ -70,6 +72,7 @@ from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 from song_catalog.catalog import format_pick_key
 
 PK_A = format_pick_key("Pop", "Song A — Artist A")
+PK_SAY = format_pick_key("Pop", "Say — John Mayer")
 _CATALOG_FIXTURE = {
     "Pop": {
         "Song A — Artist A": {"title": "Song A", "artist": "Artist A", "key": "G"},
@@ -429,6 +432,45 @@ class TestCplSetActiveSong(unittest.TestCase):
             st.session_state["song_picker_active_source"],
             SONG_PICKER_SOURCE_CUSTOM,
         )
+
+    def test_set_custom_source_preserves_previous_catalog_snapshot(self) -> None:
+        session = {
+            "active_music_source": SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: PK_SAY,
+            LAST_CATALOG_STATE_KEY: {
+                "pick_key": PK_A,
+                "selected_song": {"title": "Song A", "artist": "Artist A", "key": "G"},
+                "original_key": "G",
+                "display_key": "G",
+            },
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": PK_SAY,
+                "title": "Say",
+                "artist": "John Mayer",
+                "key": "G",
+            },
+        }
+        set_custom_source(session)
+        self.assertEqual(session[LAST_CATALOG_STATE_KEY]["pick_key"], PK_A)
+        self.assertEqual(session["active_music_source"], SOURCE_CUSTOM)
+        before_custom = session.get(CATALOG_BEFORE_CUSTOM_KEY) or {}
+        self.assertEqual(before_custom.get("pick_key"), PK_SAY)
+
+    def test_reconcile_picker_music_source_activates_custom_on_picker_page(self) -> None:
+        session = {
+            "studio_page": "picker",
+            "song_picker_active_source": SONG_PICKER_SOURCE_CUSTOM,
+            "active_music_source": SOURCE_CATALOG,
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": PK_SAY,
+                "title": "Say",
+                "artist": "John Mayer",
+                "key": "G",
+            },
+            ACTIVE_CATALOG_PICK_KEY: PK_SAY,
+        }
+        self.assertTrue(reconcile_picker_music_source(session))
+        self.assertEqual(session["active_music_source"], SOURCE_CUSTOM)
 
     def test_save_and_restore_last_catalog_snapshot(self) -> None:
         session = {

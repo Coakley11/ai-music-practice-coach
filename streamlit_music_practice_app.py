@@ -7914,7 +7914,8 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
         label_visibility="collapsed" if polished else "visible",
         on_change=_picker_source_on_change,
     )
-    return is_custom_progression(st.session_state)
+    choice = str(st.session_state.get("song_picker_active_source") or "").strip()
+    return is_custom_progression(st.session_state) or choice.startswith("Use Custom")
 
 
 def _render_custom_active_song_hub(*, wrap_section: bool) -> None:

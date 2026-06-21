@@ -1825,12 +1825,14 @@ def prepare_canonical_music_page_state(
                 apply_pending_custom_active_song_activation_before_widgets,
                 apply_pending_custom_library_action_before_widgets,
                 apply_pending_previous_catalog_restore_before_widgets,
+                reconcile_picker_music_source,
             )
             from songs.state import apply_pending_catalog_pick_before_widgets
 
             class _SessionProxy:
                 session_state = session
 
+            reconcile_picker_music_source(session)
             apply_pending_custom_active_song_activation_before_widgets(
                 _SessionProxy(),
                 invalidate_backing=invalidate_backing_cache,
