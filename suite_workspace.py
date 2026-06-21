@@ -29,6 +29,15 @@ WORKSPACE_PRESETS: tuple[dict[str, str], ...] = (
 
 _VALID_IDS = frozenset(p["id"] for p in WORKSPACE_PRESETS)
 
+_SUITE_STORAGE_APP_IDS: tuple[str, ...] = (
+    "music",
+    "investment",
+    "baseball",
+    "nba",
+    "applied_intelligence",
+    "future_lens",
+)
+
 
 def normalize_workspace_id(raw: str | None) -> str:
     text = str(raw or "").strip().lower()
@@ -108,60 +117,98 @@ def set_active_workspace_id(st: Any, workspace_id: str) -> str:
 
 
 def _on_active_workspace_changed(st: Any) -> None:
-    """Drop in-memory Music caches so the new profile loads its own disk/cloud state."""
+    """Drop Command Center aggregation caches when the active profile changes."""
     ss = st.session_state
-    preserve = {SESSION_KEY, _INITIALIZED_KEY, "_suite_workspace_selector_widget"}
     for key in list(ss.keys()):
-        if key in preserve:
-            continue
         sk = str(key)
-        if sk.startswith(
-            (
-                "_ami_",
-                "_suite_",
-                "studio_",
-                "active_",
-                "backing_",
-                "practice_",
-                "karaoke",
-                "cpl_",
-                "music_",
-                "song_",
-                "chart_",
-                "picker_",
-                "improv_",
-                "creative_",
-                "catalog_",
-                "analysis_",
-                "mt_",
-            )
-        ):
+        if sk.startswith(("_cc_", "_ami_", "activity_", "_suite_activity")):
             ss.pop(key, None)
-        elif sk in {
-            "instrument",
-            "level",
-            "focus",
-            "display_key",
-            "studio_page",
-            "song",
-            "selected_song",
-        }:
+        elif sk.startswith(("_suite_ai_", "ps_")) or sk in ("view_mode", "ps_library_problem"):
             ss.pop(key, None)
-    ss.pop(f"_suite_workspace_synced::music", None)
-    ss.pop(f"_suite_disk_state_restored::music", None)
-    ss.pop("_music_workspace_paths_cache", None)
+    for key in DEVELOPER_SESSION_FLAG_KEYS:
+        ss.pop(key, None)
     try:
-        import music_workspace_paths as mwp
+        import streamlit as st_module
 
-        mwp._migrated_keys.clear()
+        st_module.cache_data.clear()
     except Exception:
         pass
-    try:
-        from applied_math_return_insight import sync_dismissed_insights_from_cloud
 
-        sync_dismissed_insights_from_cloud(st, "music")
+
+def logical_storage_app_key(storage_app: str) -> str:
+    """Map cloud row key ``baseball__ariel`` → ``baseball`` for CC aggregation."""
+    base = str(storage_app or "").strip()
+    if base == "math":
+        base = "applied_intelligence"
+    if "__" in base:
+        base = base.split("__", 1)[0]
+    return base
+
+
+def workspace_storage_app_keys(workspace_id: str | None = None) -> frozenset[str]:
+    """Scoped Supabase ``app`` keys for the active (or given) workspace profile."""
+    ws = normalize_workspace_id(
+        workspace_id if workspace_id not in (None, "") else resolve_workspace_id()
+    )
+    return frozenset(scoped_cloud_app_id(app, ws) for app in _SUITE_STORAGE_APP_IDS)
+
+
+def storage_app_in_workspace(storage_app: str, workspace_id: str | None = None) -> bool:
+    return str(storage_app or "").strip() in workspace_storage_app_keys(workspace_id)
+
+
+DEVELOPER_QUERY_PARAM = "dev"
+DEVELOPER_SESSION_FLAG_KEYS: tuple[str, ...] = (
+    "_suite_dev_mode",
+    "cc_developer_mode",
+    "app_developer_mode",
+    "developer_mode",
+    "investment_show_dev_diagnostics",
+    "investment_pr1_diagnostics_enabled",
+    "dev_lab_enabled",
+)
+
+
+def is_developer_workspace(*, st: Any | None = None, workspace_id: str | None = None) -> bool:
+    """Daniel is the admin/developer workspace (Phase 1 — not auth)."""
+    wid = workspace_id if workspace_id not in (None, "") else resolve_workspace_id(st=st)
+    return normalize_workspace_id(wid) == DEFAULT_WORKSPACE_ID
+
+
+def _developer_query_enabled(st: Any | None = None) -> bool:
+    val = _qp_get(st, DEVELOPER_QUERY_PARAM) if st is not None else ""
+    if not val:
+        try:
+            import streamlit as st_module  # noqa: WPS433
+
+            raw = st_module.query_params.get(DEVELOPER_QUERY_PARAM)
+            if raw is None:
+                return False
+            val = str(raw[0] if isinstance(raw, list) else raw).strip()
+        except Exception:
+            return False
+    return val.lower() in ("1", "true", "yes", "on")
+
+
+def is_developer_mode_enabled(*, st: Any | None = None) -> bool:
+    """True when ?dev=1 or a developer-mode session toggle is on (any workspace)."""
+    if _developer_query_enabled(st):
+        return True
+    try:
+        import streamlit as st_module  # noqa: WPS433
+
+        ss = st.session_state if st is not None else st_module.session_state
+        for key in DEVELOPER_SESSION_FLAG_KEYS:
+            if ss.get(key):
+                return True
     except Exception:
         pass
+    return False
+
+
+def can_show_developer_tools(*, st: Any | None = None) -> bool:
+    """Daniel workspace only, with explicit developer mode enabled."""
+    return is_developer_workspace(st=st) and is_developer_mode_enabled(st=st)
 
 
 def _qp_get(st: Any, name: str) -> str:
@@ -181,10 +228,20 @@ def init_suite_workspace(st: Any) -> str:
     Apply ?suite_workspace=, else session/persisted choice.
     Call once near app startup before restore/autosave.
     """
+    from_url = _qp_get(st, _QUERY_PARAM)
+    if from_url:
+        incoming = normalize_workspace_id(from_url)
+        current = normalize_workspace_id(
+            str(st.session_state.get(SESSION_KEY) or load_persisted_workspace_id())
+        )
+        if incoming != current:
+            set_active_workspace_id(st, incoming)
+            st.session_state[_INITIALIZED_KEY] = True
+            return incoming
+
     if st.session_state.get(_INITIALIZED_KEY):
         return get_active_workspace_id(st)
 
-    from_url = _qp_get(st, _QUERY_PARAM)
     if from_url:
         set_active_workspace_id(st, from_url)
     elif SESSION_KEY not in st.session_state:
@@ -249,6 +306,10 @@ def render_workspace_selector_sidebar(st: Any) -> str:
     if selected != current:
         set_active_workspace_id(st, selected)
         current = selected
+        try:
+            st.rerun()
+        except Exception:
+            pass
     st.caption(f"Active profile: **{workspace_label(current)}** (`{current}`)")
     return current
 
@@ -308,60 +369,6 @@ def workspace_persistence_meta(
         "local_state_path": local_path,
         "cloud_app_key": scoped_cloud_app_id(app_id, ws),
     }
-
-
-DEVELOPER_QUERY_PARAM = "dev"
-DEVELOPER_SESSION_FLAG_KEYS: tuple[str, ...] = (
-    "_suite_dev_mode",
-    "cc_developer_mode",
-    "app_developer_mode",
-    "developer_mode",
-    "investment_show_dev_diagnostics",
-    "investment_pr1_diagnostics_enabled",
-    "dev_lab_enabled",
-)
-
-
-def is_developer_workspace(*, st: Any | None = None, workspace_id: str | None = None) -> bool:
-    """Daniel is the admin/developer workspace (Phase 1 — not auth)."""
-    wid = workspace_id if workspace_id not in (None, "") else resolve_workspace_id(st=st)
-    return normalize_workspace_id(wid) == DEFAULT_WORKSPACE_ID
-
-
-def _developer_query_enabled(st: Any | None = None) -> bool:
-    val = _qp_get(st, DEVELOPER_QUERY_PARAM) if st is not None else ""
-    if not val:
-        try:
-            import streamlit as st_module  # noqa: WPS433
-
-            raw = st_module.query_params.get(DEVELOPER_QUERY_PARAM)
-            if raw is None:
-                return False
-            val = str(raw[0] if isinstance(raw, list) else raw).strip()
-        except Exception:
-            return False
-    return val.lower() in ("1", "true", "yes", "on")
-
-
-def is_developer_mode_enabled(*, st: Any | None = None) -> bool:
-    """True when ?dev=1 or a developer-mode session toggle is on (any workspace)."""
-    if _developer_query_enabled(st):
-        return True
-    try:
-        import streamlit as st_module  # noqa: WPS433
-
-        ss = st.session_state if st is not None else st_module.session_state
-        for key in DEVELOPER_SESSION_FLAG_KEYS:
-            if ss.get(key):
-                return True
-    except Exception:
-        pass
-    return False
-
-
-def can_show_developer_tools(*, st: Any | None = None) -> bool:
-    """Daniel workspace only, with explicit developer mode enabled."""
-    return is_developer_workspace(st=st) and is_developer_mode_enabled(st=st)
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:

@@ -61,6 +61,12 @@ try:
 except Exception:
     pass
 
+try:
+    from suite_app_shell import apply_suite_auth_gate
+
+    apply_suite_auth_gate(st)
+except Exception:
+    pass
 # -------------------------------------------------
 # GLOBAL CONSTANTS + SONG CATALOG
 # -------------------------------------------------
@@ -9223,11 +9229,16 @@ if _studio_page == "openai" and not _openai_api_key:
     st.rerun()
 
 try:
-    from suite_command_center_link import render_command_center_sidebar_link
+    from suite_app_shell import render_suite_sidebar_account_shell
 
-    render_command_center_sidebar_link(st, show_divider=False)
+    render_suite_sidebar_account_shell(st, command_center_divider=False)
 except Exception:
-    pass
+    try:
+        from suite_command_center_link import render_command_center_sidebar_link
+
+        render_command_center_sidebar_link(st, show_divider=False)
+    except Exception:
+        pass
 
 if not st.session_state.get("_music_sidebar_suite_top_css"):
     st.session_state["_music_sidebar_suite_top_css"] = True
