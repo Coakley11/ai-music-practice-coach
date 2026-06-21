@@ -442,13 +442,22 @@ def resolve_active_song_keys(
         original = custom_original_key(active)
         display = _resolve_custom_display_key_for_session(session_state, original)
     else:
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
         record = rec or {}
         selected = session_state.get(SELECTED_SONG_STATE_KEY) or {}
         original = str(record.get("key") or selected.get("key") or "C").strip() or "C"
         meta = session_state.get("active_song_state")
+        live_pick = str(
+            session_state.get(ACTIVE_CATALOG_PICK_KEY)
+            or selected.get("pick_key")
+            or ""
+        ).strip()
         canonical = ""
         if isinstance(meta, dict):
-            canonical = str(meta.get("display_key") or "").strip()
+            meta_pick = str(meta.get("pick_key") or "").strip()
+            if not meta_pick or not live_pick or meta_pick == live_pick:
+                canonical = str(meta.get("display_key") or "").strip()
         live = str(session_state.get("display_key") or "").strip()
         display = canonical or live or original
     from instrument_transposition import (

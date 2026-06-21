@@ -119,11 +119,11 @@ def apply_display_key_for_active_song(
 
     if identity_changed:
         st.session_state[IDENTITY_KEY] = song_identity
-        pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
-        if pending is not None:
-            target = pending
-        elif pending_key is not None:
+        session_pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
+        if pending_key is not None:
             target = pending_key
+        elif session_pending is not None:
+            target = session_pending
         else:
             target = original_key
         _apply_display_key_before_widget(st, target, source="active_song_change")

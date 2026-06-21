@@ -1,42 +1,138 @@
-"""Backing track UI helpers (active song card, meter selector, debug)."""
+"""Backing Track page — active song card, meter selector, and defaults debug."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
-
 import html
+from typing import Any, Callable
+
+__all__ = (
+    "render_backing_active_song_card",
+    "render_backing_defaults_debug",
+    "render_backing_generation_debug",
+    "render_backing_meter_selector",
+)
+
+from backing_generation import render_backing_generation_debug  # noqa: E402
 
 
 def render_backing_active_song_card(
     st: Any,
-    song_record: dict,
+    record: dict[str, Any],
     *,
-    level: str,
-    applied_bpm: int,
-    applied_groove: str,
-    applied_meter: str,
+    level: str = "Intermediate",
+    applied_bpm: int | None = None,
+    applied_groove: str | None = None,
+    applied_meter: str | None = None,
+    original_key: str = "C",
+    practice_key: str = "C",
+    source_label: str = "Catalog Song",
     written_key: str = "",
 ) -> None:
-    """Compact active-song summary for Backing Track Studio."""
-    title = html.escape(str(song_record.get("title") or "Active song"))
-    artist = html.escape(str(song_record.get("artist") or ""))
-    genre = html.escape(str(song_record.get("genre") or ""))
+    """Premium blue active-song card for Backing Track (keys live here only)."""
+    from practice_studio import active_song_card_details, genre_visual_style
+
+    try:
+        from app_ui import active_song_key_row_html, studio_card_modifier_classes
+    except Exception:  # pragma: no cover - defensive
+        def studio_card_modifier_classes(**_kwargs: Any) -> str:
+            return ""
+
+        def active_song_key_row_html(orig: str, practice: str) -> str:
+            return (
+                f'<p class="ui-backing-active-key-line">'
+                f"Original Key: <strong>{html.escape(orig)}</strong>"
+                f" · Display / Practice Key: <strong>{html.escape(practice)}</strong>"
+                f"</p>"
+            )
+
+    try:
+        import streamlit as _st_for_instrument  # type: ignore
+
+        _active_instrument = str(_st_for_instrument.session_state.get("instrument") or "")
+        _session_state = _st_for_instrument.session_state
+    except Exception:
+        _active_instrument = ""
+        _session_state = None
+
+    try:
+        details = active_song_card_details(
+            record,
+            level=level,
+            instrument=_active_instrument,
+        )
+    except Exception:
+        details = {
+            "title": record.get("title", "Song"),
+            "artist": record.get("artist", ""),
+            "genre": record.get("genre", "Song"),
+            "bpm": applied_bpm or 100,
+            "style_label": record.get("genre", ""),
+            "time_signature": applied_meter or "4/4",
+            "visual_emoji": "🎵",
+            "visual_gradient": "linear-gradient(145deg,#1e3a8a,#312e81)",
+            "visual_genre": record.get("genre", "Song"),
+        }
+
+    raw_genre = str(record.get("genre") or details.get("visual_genre") or "Song")
+    genre = html.escape(str(details.get("genre") or details.get("visual_genre") or "Song"))
+    bpm = int(applied_bpm if applied_bpm is not None else details.get("bpm") or 100)
+    groove = html.escape(str(applied_groove or details.get("style_label") or "Auto"))
+    meter = html.escape(str(applied_meter or details.get("time_signature") or "4/4"))
+    visual = genre_visual_style(raw_genre)
+    gradient = visual.get("gradient") or "linear-gradient(145deg,#1e3a8a,#312e81)"
+    emoji = html.escape(visual.get("emoji") or details.get("visual_emoji") or "🎵")
+    modifier_cls = studio_card_modifier_classes(genre=raw_genre, instrument=_active_instrument)
+
+    _voice_mode = False
+    _karaoke_active = False
+    if _session_state is not None:
+        try:
+            import karaoke_mode as _km
+
+            _voice_mode = _km.is_voice_mode(_session_state)
+            _karaoke_active = _km.is_karaoke_session_active(_session_state)
+        except Exception:
+            _voice_mode = False
+            _karaoke_active = False
+    if _karaoke_active:
+        modifier_cls = (modifier_cls + " mode-karaoke").strip()
+        modifier_cls = " " + modifier_cls if not modifier_cls.startswith(" ") else modifier_cls
+
+    kicker_label = "Now Singing · Vocal Performance" if _voice_mode else "Active song · Backing Track"
+    _orig = html.escape(str(original_key or "C").strip() or "C")
+    _practice = html.escape(str(practice_key or original_key or "C").strip() or "C")
+    key_row = active_song_key_row_html(_orig, _practice)
+    source_badge = html.escape(str(source_label or "Catalog Song").strip() or "Catalog Song")
     written_badge = ""
     _written = html.escape(str(written_key or "").strip())
-    if _written:
+    if _written and _written != _practice:
         written_badge = (
             f'<span class="ui-backing-badge written-key">Written {_written}</span>'
         )
+
+    title = html.escape(str(details.get("title") or record.get("title") or "Active song"))
+    artist = html.escape(str(details.get("artist") or record.get("artist") or ""))
+    title_line = (
+        f"{title}<span class=\"ui-backing-active-dash\"> — </span>{artist}"
+        if artist
+        else title
+    )
+
     st.markdown(
-        f'<div class="ui-backing-active-song-card">'
-        f'<div class="ui-backing-active-song-title">{title}</div>'
-        f'<div class="ui-backing-active-song-meta">{artist} · {genre} · {html.escape(level)}</div>'
-        f'<div class="ui-backing-active-song-badges">'
+        f'<div class="ui-backing-active-song{modifier_cls}">'
+        f'<div class="ui-backing-active-art" style="background:{html.escape(gradient)};">'
+        f"{emoji}<small>{genre}</small></div>"
+        f'<div class="ui-backing-active-body">'
+        f'<p class="ui-backing-active-kicker">{html.escape(kicker_label)}</p>'
+        f'<p class="ui-backing-active-title">{title_line}'
+        f'<span class="ui-backing-active-dash"> · </span>'
+        f'<span class="ui-backing-active-source">{source_badge}</span></p>'
+        f"{key_row}"
+        f'<div class="ui-backing-active-badges">'
         f"{written_badge}"
-        f'<span class="ui-backing-badge bpm">{int(applied_bpm)} BPM</span>'
-        f'<span class="ui-backing-badge groove">{html.escape(applied_groove)}</span>'
-        f'<span class="ui-backing-badge meter">{html.escape(applied_meter)}</span>'
+        f'<span class="ui-backing-badge bpm">{bpm} BPM</span>'
+        f'<span class="ui-backing-badge meter">{meter}</span>'
+        f'<span class="ui-backing-badge groove">{groove}</span>'
         f"</div></div></div>",
         unsafe_allow_html=True,
     )
@@ -55,14 +151,19 @@ def render_backing_meter_selector(
     from songs.meter_state import (
         BACKING_METER_KEY,
         BACKING_METER_OVERRIDE_KEY,
+        note_backing_meter_override,
         sync_backing_meter_override_from_widget,
     )
 
     options = list(BACKING_TIME_SIGNATURES)
     song_default = normalize_time_signature(song_default_meter)
-    seed = normalize_time_signature(applied_meter if applied_meter in options else song_default)
+    current = normalize_time_signature(
+        applied_meter if applied_meter in options else song_default
+    )
+    if current not in options:
+        current = song_default
     if BACKING_METER_KEY not in st.session_state:
-        st.session_state[BACKING_METER_KEY] = seed
+        st.session_state[BACKING_METER_KEY] = current
     if BACKING_METER_OVERRIDE_KEY not in st.session_state:
         st.session_state[BACKING_METER_OVERRIDE_KEY] = bool(user_override)
 
@@ -74,13 +175,25 @@ def render_backing_meter_selector(
                 mark_backing_user_edit(st.session_state)
         except ImportError:
             pass
+        choice = normalize_time_signature(st.session_state.get(BACKING_METER_KEY, current))
+        if choice == song_default:
+            st.session_state[BACKING_METER_OVERRIDE_KEY] = False
+            from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+
+            st.session_state[BACKING_METER_KEY] = choice
+            invalidate_backing_cache(st)
+            st.session_state[BACKING_NEEDS_REGEN] = True
+        else:
+            note_backing_meter_override(st, choice)
         if after_change is not None:
             after_change()
 
     st.markdown('<p class="ui-playback-setup-label">Meter</p>', unsafe_allow_html=True)
+    idx = options.index(current) if current in options else 0
     choice = st.radio(
         "Time signature",
         options,
+        index=idx,
         horizontal=True,
         key=BACKING_METER_KEY,
         on_change=_on_meter_change,

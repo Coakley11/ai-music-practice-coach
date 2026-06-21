@@ -1224,6 +1224,17 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   margin: 0.5rem 0 0.65rem;
   max-width: 100%;
 }
+.ui-backing-active-song .ui-active-song-key-label {
+  color: #93c5fd;
+}
+.ui-backing-active-song .ui-active-song-key-value {
+  color: #f8fafc;
+}
+.ui-backing-active-source {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #bfdbfe;
+}
 .ui-active-song-hub-actions .stButton > button {
   font-weight: 750 !important;
   min-height: 2.1rem !important;
@@ -2902,33 +2913,10 @@ def _backing_studio_panel_css() -> str:
   line-height: 1.3;
 }
 .ui-backing-setup-key-row { margin: 0.1rem 0 0; }
-.ui-backing-setup-context ~ .ui-chart-key-mode-badge,
-.ui-backing-setup-context ~ .ui-active-song-key-row,
 body.backing-studio-page .ui-chart-key-mode-badge,
-body.backing-studio-page .ui-active-song-key-row,
 body.backing-studio-page .ui-studio-meta-badges .tone-key,
 body.backing-studio-page .ui-studio-meta-badges .tone-display {
   display: none !important;
-}
-.ui-last-catalog-shortcut {
-  margin: 0.65rem 0 0.85rem;
-  padding: 0.65rem 0.85rem;
-  border-radius: 12px;
-  border: 1px solid rgba(99, 102, 241, 0.28);
-  background: rgba(238, 242, 255, 0.72);
-}
-.ui-last-catalog-kicker {
-  margin: 0;
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #4338ca;
-}
-.ui-last-catalog-title {
-  margin: 0.2rem 0 0;
-  font-weight: 700;
-  color: #0f172a;
 }
 .ui-backing-setup-context {
   display: flex;
@@ -6549,7 +6537,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-19-cpl-live-paths-v29"
+STUDIO_UI_RELEASE = "2026-06-19-cpl-live-paths-v29b"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"

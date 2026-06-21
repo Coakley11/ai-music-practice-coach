@@ -9237,6 +9237,7 @@ original_key, _song_identity = display_key_context(
     catalog_song_data=_catalog_song_data,
     cpl_active_key=CPL_ACTIVE_KEY,
 )
+from songs.key_state import IDENTITY_KEY as _DISPLAY_IDENTITY_KEY
 from songs.key_state import PENDING_DISPLAY_KEY as _PENDING_DISPLAY_KEY
 from songs.music_source import cpl_session_is_active as _cpl_session_is_active
 from songs.music_source import resolve_active_song_keys as _resolve_active_song_keys
@@ -9245,7 +9246,10 @@ _resolved_orig, _resolved_display, _resolved_written = _resolve_active_song_keys
     st.session_state,
     _catalog_song_data,
 )
-if _resolved_display:
+if (
+    st.session_state.get(_DISPLAY_IDENTITY_KEY) == _song_identity
+    and _resolved_display
+):
     st.session_state[_PENDING_DISPLAY_KEY] = _resolved_display
 _display_key_options = sync_display_key_before_widget(
     st,
@@ -11056,6 +11060,11 @@ elif _studio_page == "backing":
         _backing_card_record,
     )
     _backing_written_key = str(_backing_written_key or "").strip()
+    _backing_source_label = (
+        "Custom Progression"
+        if _cpl_session_is_active(st.session_state)
+        else "Catalog Song"
+    )
     render_backing_active_song_card(
         st,
         _backing_card_record,
@@ -11063,6 +11072,9 @@ elif _studio_page == "backing":
         applied_bpm=_synced_bpm,
         applied_groove=default_groove_style,
         applied_meter=_applied_meter_pre,
+        original_key=_backing_orig_key,
+        practice_key=_backing_practice_key,
+        source_label=_backing_source_label,
         written_key=_backing_written_key,
     )
 
@@ -11074,23 +11086,6 @@ elif _studio_page == "backing":
     except Exception:
         pass
     render_backing_studio_deck_header(st)
-    _backing_ctx_range = backing_scope_loop_summary_text(
-        st.session_state.get("backing_track_scope", "Full song"),
-        single_section=str(st.session_state.get("backing_track_single_section", "")),
-        multi_sections=list(st.session_state.get("backing_track_multi_sections") or []),
-        loops=int(st.session_state.get("backing_track_loops", 2)),
-    )
-    render_backing_setup_context_strip(
-        st,
-        original_key=_backing_orig_key,
-        practice_key=_backing_practice_key,
-        meter=str(_applied_meter_pre or _default_meter),
-        groove=str(default_groove_style),
-        range_summary=_backing_ctx_range,
-        default_bpm=int(_default_bpm),
-        written_key=_backing_written_key,
-        source_kind="custom" if _cpl_session_is_active(st.session_state) else "catalog",
-    )
     if _developer_mode_enabled():
         try:
             from app_ui import BACKING_STUDIO_UI_VERSION as _bs_ui_ver

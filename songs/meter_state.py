@@ -29,7 +29,15 @@ def apply_backing_meter_for_song(
     Returns (applied_meter, user_override, song_default_meter).
     """
     song_default = normalize_time_signature(default_time_signature)
-    song_changed = st.session_state.get(LAST_BACKING_METER_SONG) != song_id
+    ss = st.session_state
+    if bool(ss.get(BACKING_METER_OVERRIDE_KEY, False)):
+        applied = normalize_time_signature(ss.get(BACKING_METER_KEY, song_default))
+        if applied not in BACKING_TIME_SIGNATURES:
+            applied = song_default
+            ss[BACKING_METER_KEY] = applied
+        return applied, True, song_default
+
+    song_changed = ss.get(LAST_BACKING_METER_SONG) != song_id
 
     if song_changed and st.session_state.get(LAST_BACKING_METER_SONG) is None:
         try:
@@ -58,12 +66,15 @@ def apply_backing_meter_for_song(
     elif BACKING_METER_KEY not in st.session_state:
         st.session_state[BACKING_METER_KEY] = song_default
 
-    applied = normalize_time_signature(st.session_state.get(BACKING_METER_KEY, song_default))
+    applied = normalize_time_signature(ss.get(BACKING_METER_KEY, song_default))
     if applied not in BACKING_TIME_SIGNATURES:
         applied = song_default
-        st.session_state[BACKING_METER_KEY] = applied
+        ss[BACKING_METER_KEY] = applied
 
-    override = bool(st.session_state.get(BACKING_METER_OVERRIDE_KEY, False))
+    override = bool(ss.get(BACKING_METER_OVERRIDE_KEY, False))
+    if not override and applied != song_default:
+        override = True
+        ss[BACKING_METER_OVERRIDE_KEY] = True
     return applied, override, song_default
 
 
@@ -74,3 +85,18 @@ def note_backing_meter_override(st: Any, time_signature: str) -> None:
     st.session_state[BACKING_METER_OVERRIDE_KEY] = True
     invalidate_backing_cache(st)
     st.session_state[BACKING_NEEDS_REGEN] = True
+
+
+def sync_backing_meter_override_from_widget(
+    session: dict[str, Any],
+    song_default_meter: str,
+) -> tuple[str, bool]:
+    """Post-render: derive override flag from live meter radio (deferred sync)."""
+    song_default = normalize_time_signature(song_default_meter)
+    choice = normalize_time_signature(session.get(BACKING_METER_KEY, song_default))
+    if choice not in BACKING_TIME_SIGNATURES:
+        choice = song_default
+        session[BACKING_METER_KEY] = choice
+    override = choice != song_default
+    session[BACKING_METER_OVERRIDE_KEY] = override
+    return choice, override
