@@ -2905,7 +2905,9 @@ def _backing_studio_panel_css() -> str:
 .ui-backing-setup-context ~ .ui-chart-key-mode-badge,
 .ui-backing-setup-context ~ .ui-active-song-key-row,
 body.backing-studio-page .ui-chart-key-mode-badge,
-body.backing-studio-page .ui-active-song-key-row {
+body.backing-studio-page .ui-active-song-key-row,
+body.backing-studio-page .ui-studio-meta-badges .tone-key,
+body.backing-studio-page .ui-studio-meta-badges .tone-display {
   display: none !important;
 }
 .ui-last-catalog-shortcut {
@@ -6547,7 +6549,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-19-cpl-live-paths-v28"
+STUDIO_UI_RELEASE = "2026-06-19-cpl-live-paths-v29"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"

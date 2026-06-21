@@ -119,7 +119,13 @@ def apply_display_key_for_active_song(
 
     if identity_changed:
         st.session_state[IDENTITY_KEY] = song_identity
-        target = pending_key if pending_key is not None else original_key
+        pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
+        if pending is not None:
+            target = pending
+        elif pending_key is not None:
+            target = pending_key
+        else:
+            target = original_key
         _apply_display_key_before_widget(st, target, source="active_song_change")
         st.session_state[LAST_DISPLAY_KEY] = st.session_state["display_key"]
         invalidate_backing_cache(st)

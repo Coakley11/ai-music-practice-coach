@@ -48,6 +48,27 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     return False
 
 
+def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
+    """True when the loaded song is a Custom Progression (for key display/sync)."""
+    if is_custom_progression(session_state):
+        return True
+    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return False
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if pick_key.startswith("custom::"):
+        return True
+    meta = session_state.get("active_song_state")
+    if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
+        return True
+    if isinstance(meta, dict):
+        meta_pick = str(meta.get("pick_key") or "").strip()
+        if meta_pick.startswith("custom::"):
+            return True
+    return False
+
+
 def ensure_active_music_source_from_canonical(session_state: dict[str, Any]) -> None:
     """After cloud/local restore, align session source flag with canonical custom songs."""
     if is_custom_progression(session_state):
@@ -400,29 +421,56 @@ def custom_original_key(active: dict[str, Any]) -> str:
     return cpl_draft_written_key(ensure_original_structure(active))
 
 
-def active_song_key_pair(
+def resolve_active_song_keys(
     session_state: dict[str, Any],
     rec: dict[str, Any] | None = None,
-) -> tuple[str, str]:
-    """Original key and display/practice (concert) key for Active Song cards."""
+) -> tuple[str, str, str | None]:
+    """Single source of truth: original, display/practice, optional written chart key."""
     from songs.state import SELECTED_SONG_STATE_KEY
 
-    if custom_progression_is_active(session_state):
+    if cpl_session_is_active(session_state):
         from custom_progression_lab import (
             CPL_ACTIVE_KEY,
             default_active_progression,
             ensure_original_structure,
         )
+        from active_song_state import _resolve_custom_display_key_for_session
 
         active = ensure_original_structure(
             session_state.get(CPL_ACTIVE_KEY) or default_active_progression()
         )
         original = custom_original_key(active)
+        display = _resolve_custom_display_key_for_session(session_state, original)
     else:
         record = rec or {}
         selected = session_state.get(SELECTED_SONG_STATE_KEY) or {}
-        original = str(record.get("key") or selected.get("key") or "C")
-    display = str(session_state.get("display_key") or original).strip() or original
+        original = str(record.get("key") or selected.get("key") or "C").strip() or "C"
+        meta = session_state.get("active_song_state")
+        canonical = ""
+        if isinstance(meta, dict):
+            canonical = str(meta.get("display_key") or "").strip()
+        live = str(session_state.get("display_key") or "").strip()
+        display = canonical or live or original
+    from instrument_transposition import (
+        chart_in_instrument_key,
+        effective_chart_key,
+        is_transposing_instrument,
+    )
+
+    written: str | None = None
+    inst = str(session_state.get("instrument") or "Piano")
+    if is_transposing_instrument(inst) and chart_in_instrument_key(session_state):
+        chart_k, _ = effective_chart_key(display, inst, session_state)
+        written = chart_k
+    return original, display, written
+
+
+def active_song_key_pair(
+    session_state: dict[str, Any],
+    rec: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Original key and display/practice (concert) key for Active Song cards."""
+    original, display, _written = resolve_active_song_keys(session_state, rec)
     return original, display
 
 
@@ -530,7 +578,7 @@ def display_key_context(
     cpl_active_key: str,
 ) -> tuple[str, tuple]:
     """Original/home key and identity tuple for the global display-key widget."""
-    if custom_progression_is_active(session_state):
+    if cpl_session_is_active(session_state):
         from custom_progression_lab import (
             default_active_progression,
             ensure_original_structure,

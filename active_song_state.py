@@ -356,7 +356,9 @@ def _push_resolved_display_key_to_session(
     ctx: dict[str, Any],
 ) -> None:
     """Apply canonical/custom display key to session before sidebar widgets render."""
-    if custom_progression_is_active(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM:
+    from songs.music_source import cpl_session_is_active
+
+    if cpl_session_is_active(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM:
         home_key = str(
             ctx.get("custom_home_key")
             or (ctx.get("selected_song") or {}).get("key")
@@ -1056,6 +1058,7 @@ def apply_cloud_active_song_state_if_allowed(
         )
         write_canonical_active_song_state(session, custom_ctx, reason="cloud_restore_custom")
         _record_transposing_restore_trace(session, custom_ctx, source="cloud_restore_custom")
+        _push_resolved_display_key_to_session(session, custom_ctx)
         rehydrate_transposing_sidebar_from_canonical(session)
         clear_active_song_local_edit(session)
         return True
@@ -1070,6 +1073,7 @@ def apply_cloud_active_song_state_if_allowed(
     )
     write_canonical_active_song_state(session, ctx, reason="cloud_restore")
     _record_transposing_restore_trace(session, ctx, source="cloud_restore")
+    _push_resolved_display_key_to_session(session, ctx)
     rehydrate_transposing_sidebar_from_canonical(session)
     clear_active_song_local_edit(session)
     return True

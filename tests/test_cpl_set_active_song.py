@@ -43,6 +43,7 @@ from songs.music_source import (
     apply_pending_custom_active_song_activation_before_widgets,
     build_active_chart_bundle,
     commit_custom_active_song,
+    cpl_session_is_active,
     custom_progression_is_active,
     custom_selected_song_record,
     is_custom_progression,
@@ -51,8 +52,10 @@ from songs.music_source import (
     queue_custom_active_song_activation,
     restore_last_catalog_active_song,
     restore_previous_catalog_song,
+    resolve_active_song_keys,
     save_last_catalog_snapshot,
     snapshot_current_catalog_state,
+    display_key_context,
     switch_to_catalog_from_custom,
     sync_song_picker_source_widget,
     SONG_PICKER_SOURCE_CATALOG,
@@ -665,6 +668,56 @@ class TestCplSetActiveSong(unittest.TestCase):
         original, practice = active_song_key_pair(session, {"key": "G"})
         self.assertEqual(original, "D")
         self.assertEqual(practice, "Eb")
+
+    def test_resolve_active_song_keys_prefers_canonical_over_stale_session(self) -> None:
+        active = self._draft_with_chords()
+        active["original_key_center"] = "D"
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: "custom::my-progression",
+            CPL_ACTIVE_KEY: active,
+            "display_key": "D",
+            ACTIVE_SONG_STATE_KEY: {
+                "music_source": SOURCE_CUSTOM,
+                "pick_key": "custom::my-progression",
+                "display_key": "Eb",
+                "custom_home_key": "D",
+            },
+        }
+        self.assertTrue(cpl_session_is_active(session))
+        original, display, _written = resolve_active_song_keys(session, {"key": "G"})
+        self.assertEqual(original, "D")
+        self.assertEqual(display, "Eb")
+
+    def test_display_key_context_uses_cpl_when_pick_custom_not_catalog_home(self) -> None:
+        active = self._draft_with_chords()
+        active["original_key_center"] = "D"
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: "custom::my-progression",
+            CPL_ACTIVE_KEY: active,
+        }
+        home, identity = display_key_context(
+            session,
+            catalog_song_data={"title": "Shallow", "artist": "Lady Gaga", "key": "G"},
+            cpl_active_key=CPL_ACTIVE_KEY,
+        )
+        self.assertEqual(home, "D")
+        self.assertEqual(identity[2], "D")
+
+    def test_identity_change_applies_pending_display_key(self) -> None:
+        active = self._draft_with_chords()
+        active["original_key_center"] = "D"
+        st = SimpleNamespace(
+            session_state={
+                CPL_ACTIVE_KEY: active,
+                ACTIVE_CATALOG_PICK_KEY: "custom::my-progression",
+                PENDING_DISPLAY_KEY: "Eb",
+                IDENTITY_KEY: ("Shallow", "Lady Gaga", "G"),
+                "display_key": "D",
+            }
+        )
+        identity = song_display_identity("My Progression", "Custom progression", "D")
+        apply_display_key_for_active_song(st, "D", identity)
+        self.assertEqual(st.session_state["display_key"], "Eb")
 
 
 if __name__ == "__main__":

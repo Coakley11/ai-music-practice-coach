@@ -9237,9 +9237,19 @@ original_key, _song_identity = display_key_context(
     catalog_song_data=_catalog_song_data,
     cpl_active_key=CPL_ACTIVE_KEY,
 )
+from songs.key_state import PENDING_DISPLAY_KEY as _PENDING_DISPLAY_KEY
+from songs.music_source import cpl_session_is_active as _cpl_session_is_active
+from songs.music_source import resolve_active_song_keys as _resolve_active_song_keys
+
+_resolved_orig, _resolved_display, _resolved_written = _resolve_active_song_keys(
+    st.session_state,
+    _catalog_song_data,
+)
+if _resolved_display:
+    st.session_state[_PENDING_DISPLAY_KEY] = _resolved_display
 _display_key_options = sync_display_key_before_widget(
     st,
-    original_key,
+    _resolved_orig if _cpl_session_is_active(st.session_state) else original_key,
     _song_identity,
 )
 
@@ -11038,6 +11048,14 @@ elif _studio_page == "backing":
         meter_override=bool(_meter_override_pre),
         did_reset=bool(_backing_canon["did_reset"]),
     )
+    from songs.music_source import cpl_session_is_active as _cpl_session_is_active
+    from songs.music_source import resolve_active_song_keys as _resolve_active_song_keys
+
+    _backing_orig_key, _backing_practice_key, _backing_written_key = _resolve_active_song_keys(
+        st.session_state,
+        _backing_card_record,
+    )
+    _backing_written_key = str(_backing_written_key or "").strip()
     render_backing_active_song_card(
         st,
         _backing_card_record,
@@ -11045,6 +11063,7 @@ elif _studio_page == "backing":
         applied_bpm=_synced_bpm,
         applied_groove=default_groove_style,
         applied_meter=_applied_meter_pre,
+        written_key=_backing_written_key,
     )
 
     inject_backing_studio_styles(st)
@@ -11055,28 +11074,6 @@ elif _studio_page == "backing":
     except Exception:
         pass
     render_backing_studio_deck_header(st)
-    if is_custom_progression(st.session_state) or (
-        custom_progression_is_active(st.session_state) and _cpl_active
-    ):
-        from custom_progression_lab import ensure_original_structure
-        from songs.music_source import custom_original_key
-
-        _cpl_for_keys = ensure_original_structure(
-            st.session_state.get(CPL_ACTIVE_KEY) or _cpl_active or {}
-        )
-        _backing_orig_key = custom_original_key(_cpl_for_keys)
-    else:
-        _backing_orig_key = str(original_key or "C").strip() or "C"
-    _, _backing_practice_key = _active_song_key_pair(None)
-    _backing_written_key = ""
-    try:
-        from songs.music_source import active_song_written_chart_key as _active_song_written_chart_key
-
-        _wk = _active_song_written_chart_key(st.session_state)
-        if _wk:
-            _backing_written_key = _wk
-    except Exception:
-        pass
     _backing_ctx_range = backing_scope_loop_summary_text(
         st.session_state.get("backing_track_scope", "Full song"),
         single_section=str(st.session_state.get("backing_track_single_section", "")),
@@ -11092,7 +11089,7 @@ elif _studio_page == "backing":
         range_summary=_backing_ctx_range,
         default_bpm=int(_default_bpm),
         written_key=_backing_written_key,
-        source_kind="custom" if custom_progression_is_active(st.session_state) else "catalog",
+        source_kind="custom" if _cpl_session_is_active(st.session_state) else "catalog",
     )
     if _developer_mode_enabled():
         try:
