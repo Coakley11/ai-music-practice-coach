@@ -126,6 +126,7 @@ from songs.key_state import (
 )
 from songs.music_source import (
     ACTIVE_MUSIC_SOURCE_KEY,
+    LAST_CATALOG_STATE_KEY,
     SOURCE_CATALOG,
     SOURCE_CUSTOM,
     active_source_banner,
@@ -133,6 +134,7 @@ from songs.music_source import (
     display_key_context,
     ensure_active_music_source,
     is_custom_progression,
+    custom_progression_is_active,
     note_active_source_change,
     set_catalog_source,
     set_custom_source,
@@ -7797,33 +7799,29 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
         sync_song_picker_source_widget,
     )
 
+    from songs.music_source import on_song_picker_source_change
+
     if "song_picker_active_source" not in st.session_state:
         sync_song_picker_source_widget(st.session_state)
-    choice = st.radio(
+
+    def _picker_source_on_change() -> None:
+        on_song_picker_source_change(
+            st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+            invalidate_backing=invalidate_backing_cache,
+        )
+
+    st.radio(
         "Music source",
         options,
         index=1 if is_custom_progression(st.session_state) else 0,
         horizontal=True,
         key="song_picker_active_source",
         label_visibility="collapsed" if polished else "visible",
+        on_change=_picker_source_on_change,
     )
-    if choice.startswith("Use Custom"):
-        if not is_custom_progression(st.session_state):
-            set_custom_source(st.session_state)
-            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-            st.rerun()
-        return True
-    if is_custom_progression(st.session_state):
-        restore_last_catalog_active_song(
-            st,
-            song_picker_catalog=SONG_PICKER_CATALOG,
-            song_library=SONG_LIBRARY,
-            invalidate_backing=invalidate_backing_cache,
-        )
-        set_catalog_source(st.session_state)
-        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-        st.rerun()
-    return False
+    return is_custom_progression(st.session_state)
 
 
 def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
@@ -7851,6 +7849,33 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
             "This is **your** song — Practice, Backing Track, and charts follow this custom progression."
         )
         _render_active_song_card(rec)
+        _last_catalog_snap = st.session_state.get(LAST_CATALOG_STATE_KEY)
+        if isinstance(_last_catalog_snap, dict) and _last_catalog_snap.get("pick_key"):
+            _lc_sel = _last_catalog_snap.get("selected_song") or {}
+            _lc_title = str(_lc_sel.get("title") or "Catalog song").strip() or "Catalog song"
+            _lc_artist = str(_lc_sel.get("artist") or "").strip()
+            _lc_artist_line = f" · {_lc_artist}" if _lc_artist else ""
+            st.markdown(
+                f'<div class="ui-last-catalog-shortcut">'
+                f'<p class="ui-last-catalog-kicker">Last catalog song</p>'
+                f'<p class="ui-last-catalog-title">{html.escape(_lc_title)}{html.escape(_lc_artist_line)}</p>'
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                f"Restore {_lc_title}",
+                key="custom_hub_restore_last_catalog",
+                use_container_width=True,
+            ):
+                from songs.music_source import switch_to_catalog_from_custom
+
+                if switch_to_catalog_from_custom(
+                    st,
+                    song_picker_catalog=SONG_PICKER_CATALOG,
+                    song_library=SONG_LIBRARY,
+                    invalidate_backing=invalidate_backing_cache,
+                ):
+                    st.rerun()
         st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
         b1, b2, b3 = st.columns(3)
         with b1:
@@ -8012,32 +8037,30 @@ def _render_catalog_song_picker_block(
             sync_song_picker_source_widget,
         )
 
+        from songs.music_source import on_song_picker_source_change
+
         if "song_picker_active_source" not in st.session_state:
             sync_song_picker_source_widget(st.session_state)
-        picker_source = st.radio(
-            "Music source",
-            _picker_source_options,
-            index=1 if is_custom_progression(st.session_state) else 0,
-            horizontal=True,
-            key="song_picker_active_source",
-        )
-        if picker_source.startswith("Use Custom"):
-            if not is_custom_progression(st.session_state):
-                set_custom_source(st.session_state)
-                note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-                st.rerun()
-            _render_custom_active_song_hub(wrap_section=wrap_section)
-            return
-        if is_custom_progression(st.session_state):
-            restore_last_catalog_active_song(
+
+        def _library_source_on_change() -> None:
+            on_song_picker_source_change(
                 st,
                 song_picker_catalog=SONG_PICKER_CATALOG,
                 song_library=SONG_LIBRARY,
                 invalidate_backing=invalidate_backing_cache,
             )
-            set_catalog_source(st.session_state)
-            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-            st.rerun()
+
+        st.radio(
+            "Music source",
+            _picker_source_options,
+            index=1 if is_custom_progression(st.session_state) else 0,
+            horizontal=True,
+            key="song_picker_active_source",
+            on_change=_library_source_on_change,
+        )
+        if is_custom_progression(st.session_state):
+            _render_custom_active_song_hub(wrap_section=wrap_section)
+            return
 
     visible_song_records = _picker_visible_records()
     available_genres = sorted({r.get("genre") for r in visible_song_records if r.get("genre")})
@@ -9542,7 +9565,7 @@ _chart_bundle = session_cache_get_or_set(
     "chart_bundle",
     (
         st.session_state.get(ACTIVE_CATALOG_PICK_KEY),
-        st.session_state.get(ACTIVE_MUSIC_SOURCE_KEY),
+        "custom" if custom_progression_is_active(st.session_state) else "catalog",
         str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("id", ""))
         if is_custom_progression(st.session_state)
         else "",
@@ -9631,7 +9654,7 @@ _default_groove = str(
     _chart_bundle.get("default_groove")
     or default_groove_for_song(song_data, infer_fn=infer_groove_style)
 )
-if is_custom_progression(st.session_state) and _cpl_active:
+if custom_progression_is_active(st.session_state) and _cpl_active:
     from custom_progression_lab import cpl_default_groove_for_active
 
     _default_bpm = int(_cpl_active.get("bpm", _default_bpm) or _default_bpm)
@@ -9645,7 +9668,7 @@ _default_meter = default_time_signature_for_record(
     sections_for_backing,
     song_title=song,
 )
-if is_custom_progression(st.session_state) and _cpl_active:
+if custom_progression_is_active(st.session_state) and _cpl_active:
     _default_meter = str(_cpl_active.get("time_signature") or _default_meter)
 _playback_id = playback_song_id(
     is_custom=is_custom_progression(st.session_state),
@@ -9658,7 +9681,7 @@ _active_pick_key = str((st.session_state.get("selected_song") or {}).get("pick_k
 _bpm_sync_id = active_song_sync_id(
     pick_key=_active_pick_key,
     playback_song_id=_playback_id,
-    is_custom=is_custom_progression(st.session_state),
+    is_custom=custom_progression_is_active(st.session_state),
 )
 _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     st,
@@ -9668,7 +9691,7 @@ _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     song_data=song_data,
     infer_fn=infer_groove_style,
     pick_key=_active_pick_key,
-    is_custom=is_custom_progression(st.session_state),
+    is_custom=custom_progression_is_active(st.session_state),
 )
 _default_song_bpm = _synced_bpm
 
@@ -10971,7 +10994,7 @@ elif _studio_page == "backing":
         )
 
     _backing_card_record = dict(_catalog_song_data or song_data)
-    if is_custom_progression(st.session_state) and _cpl_active:
+    if custom_progression_is_active(st.session_state) and _cpl_active:
         _backing_card_record = {
             **_backing_card_record,
             "title": str(_cpl_active.get("name") or song),
@@ -11013,7 +11036,16 @@ elif _studio_page == "backing":
     except Exception:
         pass
     render_backing_studio_deck_header(st)
-    _backing_orig_key = str(original_key or "C").strip() or "C"
+    if custom_progression_is_active(st.session_state):
+        from custom_progression_lab import ensure_original_structure
+        from songs.music_source import custom_original_key
+
+        _cpl_for_keys = ensure_original_structure(
+            st.session_state.get(CPL_ACTIVE_KEY) or _cpl_active or {}
+        )
+        _backing_orig_key = custom_original_key(_cpl_for_keys)
+    else:
+        _backing_orig_key = str(original_key or "C").strip() or "C"
     _, _backing_practice_key = _active_song_key_pair(None)
     _backing_written_key = ""
     try:
@@ -11039,7 +11071,7 @@ elif _studio_page == "backing":
         range_summary=_backing_ctx_range,
         default_bpm=int(_default_bpm),
         written_key=_backing_written_key,
-        source_kind="custom" if is_custom_progression(st.session_state) else "catalog",
+        source_kind="custom" if custom_progression_is_active(st.session_state) else "catalog",
     )
     if _developer_mode_enabled():
         try:

@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-06-09
+**Last updated:** 2026-06-19
 
 Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
@@ -9,7 +9,13 @@ Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadma
 
 ## Current Priorities
 
-### P0 — UI polish first (immediate — visual/layout only)
+### P0 — AMI improvements (primary suite focus)
+
+Music Coach AMI: expand send context (song, section, mission, analysis, practice history); add music analysis router/solvers; teaching-style answers (harmony, rhythm, practice steps). Return restore already strong (Test E).
+
+**Sync audit (2026-06-11):** See Command Center [plans/2026-06-11-ami-enhancement-roadmap.md](../../daniel-ai-command-center/cursor-prompts/plans/2026-06-11-ami-enhancement-roadmap.md). Optional later: practice log + analysis history → Supabase (Medium, 3–8h).
+
+### P1 — UI polish (ongoing)
 
 **Frozen:** Tests **A–E** passed — do not reopen persistence without `?dev=1` trace regression.  
 **Plan:** [plans/2026-06-09-ui-polish-phase.md](./plans/2026-06-09-ui-polish-phase.md)
@@ -40,7 +46,12 @@ Back/Forward may need rebuild or re-validation after architecture changes. **Def
 
 ### P2 — Deploy verification
 
-- [ ] Confirm Streamlit Cloud **dev** deploy marker `page-change-save-stamp-v26-test-e-ami-return-trace`
+- [ ] Confirm Streamlit Cloud **dev** deploy marker `cpl-display-key-sync-v27-live-fix` + git commit on `?dev=1` probe
+- [ ] **CPL live sync (v27)** — verify after deploy:
+  - Display / Practice Key sync Dell → phone (canonical beats session home key on restore)
+  - Backing Original Key + default Groove/Style from custom song (not stale catalog G / Pop)
+  - Custom → Song Selection switch (no refresh loop; Last Catalog Song card + restore)
+  - Backing page: key badges only in blue context strip (Written badge when written mode on)
 
 ### P3 — Practice reliability
 

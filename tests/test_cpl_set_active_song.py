@@ -10,6 +10,8 @@ from active_song_state import (
     ACTIVE_SONG_STATE_KEY,
     apply_cloud_active_song_state_if_allowed,
     gather_active_song_context,
+    prepare_active_song_context,
+    _resolve_custom_display_key_for_session,
     _resolve_display_key_from_music_blob,
 )
 from custom_progression_lab import (
@@ -38,13 +40,16 @@ from songs.music_source import (
     SOURCE_CUSTOM,
     active_song_key_pair,
     apply_pending_custom_active_song_activation_before_widgets,
+    build_active_chart_bundle,
     commit_custom_active_song,
     custom_progression_is_active,
     custom_selected_song_record,
     is_custom_progression,
+    on_song_picker_source_change,
     queue_custom_active_song_activation,
     restore_last_catalog_active_song,
     save_last_catalog_snapshot,
+    switch_to_catalog_from_custom,
     sync_song_picker_source_widget,
     SONG_PICKER_SOURCE_CATALOG,
     SONG_PICKER_SOURCE_CUSTOM,
@@ -427,12 +432,129 @@ class TestCplSetActiveSong(unittest.TestCase):
     def test_custom_progression_is_active_from_canonical_pick_key(self) -> None:
         session = {
             "active_music_source": SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: "custom::my-progression",
             ACTIVE_SONG_STATE_KEY: {
                 "music_source": SOURCE_CUSTOM,
                 "pick_key": "custom::my-progression",
             },
         }
         self.assertTrue(custom_progression_is_active(session))
+
+    def test_custom_progression_not_active_when_catalog_source_and_catalog_pick(self) -> None:
+        session = {
+            "active_music_source": SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: "pop::Shallow — Lady Gaga",
+            ACTIVE_SONG_STATE_KEY: {
+                "music_source": SOURCE_CUSTOM,
+                "pick_key": "custom::my-progression",
+            },
+        }
+        self.assertFalse(custom_progression_is_active(session))
+
+    def test_resolve_custom_display_key_prefers_canonical_over_session_home(self) -> None:
+        session = {
+            "display_key": "D",
+            ACTIVE_SONG_STATE_KEY: {"display_key": "Eb"},
+        }
+        self.assertEqual(
+            _resolve_custom_display_key_for_session(session, home_key="D"),
+            "Eb",
+        )
+
+    def test_prepare_active_song_context_does_not_force_custom_when_catalog_pick(self) -> None:
+        session = {
+            "active_music_source": SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: "pop::Shallow — Lady Gaga",
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": "pop::Shallow — Lady Gaga",
+                "title": "Shallow",
+                "artist": "Lady Gaga",
+                "key": "G",
+            },
+            "display_key": "G",
+            ACTIVE_SONG_STATE_KEY: {
+                "music_source": SOURCE_CUSTOM,
+                "pick_key": "custom::my-progression",
+                "display_key": "Eb",
+            },
+        }
+        ctx = prepare_active_song_context(session)
+        self.assertEqual(ctx.get("music_source"), SOURCE_CATALOG)
+        self.assertEqual(str(ctx.get("pick_key") or ""), "pop::Shallow — Lady Gaga")
+
+    def test_switch_to_catalog_from_custom_commits_catalog_canonical(self) -> None:
+        active = self._draft_with_chords()
+        st = SimpleNamespace(session_state={
+            "active_music_source": SOURCE_CUSTOM,
+            CPL_ACTIVE_KEY: active,
+            LAST_CATALOG_STATE_KEY: {
+                "pick_key": "pop::Shallow — Lady Gaga",
+                "original_key": "G",
+                "display_key": "F",
+                "selected_song": {
+                    "pick_key": "pop::Shallow — Lady Gaga",
+                    "title": "Shallow",
+                    "artist": "Lady Gaga",
+                    "key": "G",
+                },
+            },
+            "song_picker_active_source": SONG_PICKER_SOURCE_CATALOG,
+        })
+        catalog = {
+            "pop": {
+                "Shallow — Lady Gaga": {"title": "Shallow", "artist": "Lady Gaga", "key": "G"},
+            }
+        }
+
+        def _apply_pick_key(_st, pick_key, song_picker_catalog, **kwargs):
+            genre, title = pick_key.split("::", 1)
+            data = song_picker_catalog[genre][title]
+            _st.session_state[SELECTED_SONG_STATE_KEY] = {
+                "pick_key": pick_key,
+                **data,
+            }
+            return dict(data)
+
+        with patch("songs.state.apply_pick_key", side_effect=_apply_pick_key):
+            with patch("songs.state.persist_music_local_state"):
+                ok = switch_to_catalog_from_custom(
+                    st,
+                    song_picker_catalog=catalog,
+                    invalidate_backing=lambda _st: None,
+                )
+        self.assertTrue(ok)
+        ss = st.session_state
+        self.assertFalse(is_custom_progression(ss))
+        self.assertEqual(ss[ACTIVE_SONG_STATE_KEY]["music_source"], SOURCE_CATALOG)
+        self.assertEqual(ss[ACTIVE_SONG_STATE_KEY]["pick_key"], "pop::Shallow — Lady Gaga")
+
+    def test_build_active_chart_bundle_uses_custom_keys_when_stale_catalog_flag(self) -> None:
+        active = self._draft_with_chords()
+        active["original_key_center"] = "D"
+        active["progression_style"] = "Bossa"
+        session = {
+            "active_music_source": SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: "custom::my-progression",
+            CPL_ACTIVE_KEY: active,
+            ACTIVE_SONG_STATE_KEY: {
+                "music_source": SOURCE_CUSTOM,
+                "pick_key": "custom::my-progression",
+            },
+            "display_key": "Eb",
+        }
+        bundle = build_active_chart_bundle(
+            session,
+            catalog_genre="pop",
+            catalog_song="Shallow — Lady Gaga",
+            catalog_song_data={"title": "Shallow", "artist": "Lady Gaga", "key": "G"},
+            level="Intermediate",
+            display_key="Eb",
+            cpl_active_key=CPL_ACTIVE_KEY,
+            sections_for_level=lambda data, lvl: data.get("sections") or {},
+            transpose_sections=lambda data, key: data.get("sections") or {},
+        )
+        self.assertEqual(bundle.get("original_key"), "D")
+        self.assertEqual(bundle.get("default_groove"), "Bossa nova")
 
     def test_active_song_key_pair_ignores_stale_catalog_rec_when_pick_custom(self) -> None:
         active = self._draft_with_chords()

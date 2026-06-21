@@ -2902,6 +2902,32 @@ def _backing_studio_panel_css() -> str:
   line-height: 1.3;
 }
 .ui-backing-setup-key-row { margin: 0.1rem 0 0; }
+.ui-backing-setup-context ~ .ui-chart-key-mode-badge,
+.ui-backing-setup-context ~ .ui-active-song-key-row,
+body.backing-studio-page .ui-chart-key-mode-badge,
+body.backing-studio-page .ui-active-song-key-row {
+  display: none !important;
+}
+.ui-last-catalog-shortcut {
+  margin: 0.65rem 0 0.85rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  background: rgba(238, 242, 255, 0.72);
+}
+.ui-last-catalog-kicker {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4338ca;
+}
+.ui-last-catalog-title {
+  margin: 0.2rem 0 0;
+  font-weight: 700;
+  color: #0f172a;
+}
 .ui-backing-setup-context {
   display: flex;
   flex-wrap: wrap;
@@ -6521,7 +6547,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-09-history-nav-live-fix"
+STUDIO_UI_RELEASE = "2026-06-19-cpl-key-sync-v27"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"

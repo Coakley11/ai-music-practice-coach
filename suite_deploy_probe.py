@@ -161,6 +161,8 @@ def render_music_deploy_probe(st: Any) -> None:
         st.text(f"commit: {info['commit']}")
         st.text(f"branch: {info['branch']}")
         st.text(f"build_marker: {info['build_marker']}")
+        st.text(f"git_commit: {info['commit']}")
+        st.text(f"git_branch: {info['branch']}")
         if info.get("nav_ui_marker"):
             st.text(f"nav_ui_marker: {info['nav_ui_marker']}")
 

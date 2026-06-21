@@ -27,6 +27,13 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     """True when Custom Progression is the active song (session or canonical blob)."""
     if is_custom_progression(session_state):
         return True
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    live_pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
+        if live_pick.startswith("custom::"):
+            return True
+        return False
     meta = session_state.get("active_song_state")
     if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
         return True
@@ -40,6 +47,25 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
         if meta_pick.startswith("custom::"):
             return True
     return False
+
+
+def ensure_active_music_source_from_canonical(session_state: dict[str, Any]) -> None:
+    """After cloud/local restore, align session source flag with canonical custom songs."""
+    if is_custom_progression(session_state):
+        return
+    try:
+        from active_song_state import ACTIVE_SONG_STATE_KEY, SUITE_LOCAL_STATE_RESTORED_KEY
+    except ImportError:
+        return
+    restored = bool(
+        session_state.get("_cloud_workspace_restored_this_run")
+        or session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY)
+    )
+    if not restored:
+        return
+    meta = session_state.get(ACTIVE_SONG_STATE_KEY)
+    if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
+        session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
 
 
 def set_catalog_source(session_state: dict[str, Any]) -> None:
@@ -123,6 +149,160 @@ def restore_last_catalog_active_song(
     apply_display_key_for_active_song(st, original_key, identity, pending_key=display_key)
     note_active_source_change(st, invalidate_backing=invalidate_backing)
     return True
+
+
+def commit_catalog_active_song(
+    st: Any,
+    *,
+    pick_key: str,
+    selected_song: dict[str, Any],
+    original_key: str,
+    display_key: str,
+    invalidate_backing,
+    reason: str = "catalog_restore",
+) -> None:
+    """Promote a catalog song to the global active song and canonical blob."""
+    from active_song_state import write_canonical_active_song_state
+    from songs.key_state import apply_display_key_for_active_song, song_display_identity
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+    session = st.session_state
+    set_catalog_source(session)
+    session[SELECTED_SONG_STATE_KEY] = dict(selected_song)
+    session[ACTIVE_CATALOG_PICK_KEY] = str(pick_key or "").strip()
+    identity = song_display_identity(
+        str(selected_song.get("title") or ""),
+        str(selected_song.get("artist") or ""),
+        original_key,
+    )
+    apply_display_key_for_active_song(
+        st,
+        original_key,
+        identity,
+        pending_key=display_key,
+    )
+    sync_song_picker_source_widget(session, force=True)
+    note_active_source_change(st, invalidate_backing=invalidate_backing)
+    ctx = {
+        "pick_key": str(pick_key or "").strip(),
+        "display_key": str(display_key or original_key).strip() or original_key,
+        "instrument": str(session.get("instrument") or "").strip(),
+        "level": str(session.get("level") or "").strip(),
+        "focus": str(session.get("focus") or "").strip(),
+        "selected_song": dict(selected_song),
+        "music_source": SOURCE_CATALOG,
+    }
+    write_canonical_active_song_state(session, ctx, reason=reason, local_edit=True)
+    try:
+        from active_song_state import clear_active_song_local_edit
+
+        clear_active_song_local_edit(session)
+    except ImportError:
+        pass
+    try:
+        from songs.state import persist_music_local_state
+
+        persist_music_local_state(st)
+    except ImportError:
+        pass
+
+
+def switch_to_catalog_from_custom(
+    st: Any,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]] | None = None,
+    invalidate_backing,
+) -> bool:
+    """Leave Custom Progression for the last catalog song (or current catalog pick)."""
+    from songs.state import apply_pick_key
+
+    session = st.session_state
+    if not is_custom_progression(session):
+        return False
+    snap = session.get(LAST_CATALOG_STATE_KEY)
+    if isinstance(snap, dict) and snap.get("pick_key"):
+        pick_key = str(snap.get("pick_key") or "").strip()
+        if pick_key and not pick_key.startswith("custom::"):
+            selected = dict(snap.get("selected_song") or {})
+            original_key = str(snap.get("original_key") or selected.get("key") or "C").strip() or "C"
+            display_key = str(snap.get("display_key") or original_key).strip() or original_key
+            data = apply_pick_key(
+                st,
+                pick_key,
+                song_picker_catalog,
+                song_library=song_library,
+                skip_activity_log=True,
+            )
+            if data:
+                selected.setdefault("title", str(data.get("title") or ""))
+                selected.setdefault("artist", str(data.get("artist") or ""))
+                selected.setdefault("key", str(data.get("key") or original_key))
+                selected["pick_key"] = pick_key
+                commit_catalog_active_song(
+                    st,
+                    pick_key=pick_key,
+                    selected_song=selected,
+                    original_key=original_key,
+                    display_key=display_key,
+                    invalidate_backing=invalidate_backing,
+                    reason="last_catalog_restore",
+                )
+                return True
+    pick_key = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if pick_key and not pick_key.startswith("custom::"):
+        data = apply_pick_key(
+            st,
+            pick_key,
+            song_picker_catalog,
+            song_library=song_library,
+            skip_activity_log=True,
+        )
+        if data:
+            original_key = str(data.get("key") or "C").strip() or "C"
+            display_key = str(session.get("display_key") or original_key).strip() or original_key
+            commit_catalog_active_song(
+                st,
+                pick_key=pick_key,
+                selected_song={
+                    "pick_key": pick_key,
+                    "title": str(data.get("title") or ""),
+                    "artist": str(data.get("artist") or ""),
+                    "key": original_key,
+                },
+                original_key=original_key,
+                display_key=display_key,
+                invalidate_backing=invalidate_backing,
+                reason="catalog_source_switch",
+            )
+            return True
+    set_catalog_source(session)
+    sync_song_picker_source_widget(session, force=True)
+    note_active_source_change(st, invalidate_backing=invalidate_backing)
+    return True
+
+
+def on_song_picker_source_change(
+    st: Any,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]] | None = None,
+    invalidate_backing,
+) -> None:
+    """Radio callback: switch catalog ↔ custom without post-render rerun loops."""
+    choice = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    if choice.startswith("Use Custom"):
+        if not is_custom_progression(st.session_state):
+            set_custom_source(st.session_state)
+            note_active_source_change(st, invalidate_backing=invalidate_backing)
+        return
+    if is_custom_progression(st.session_state):
+        switch_to_catalog_from_custom(
+            st,
+            song_picker_catalog=song_picker_catalog,
+            song_library=song_library,
+            invalidate_backing=invalidate_backing,
+        )
 
 
 def custom_original_key(active: dict[str, Any]) -> str:
@@ -465,7 +645,7 @@ def build_active_chart_bundle(
     transpose_sections: Callable[[dict, str], dict],
 ) -> dict[str, Any]:
     """Resolve genre, song, song_data, and chord sections for the active source."""
-    if is_custom_progression(session_state):
+    if custom_progression_is_active(session_state):
         from custom_progression_lab import (
             cpl_default_groove_for_active,
             default_active_progression,
