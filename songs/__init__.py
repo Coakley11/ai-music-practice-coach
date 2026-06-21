@@ -39,8 +39,11 @@ from .music_source import (
     custom_pick_key_for,
     custom_selected_song_record,
     queue_custom_active_song_activation,
+    queue_custom_library_action,
     apply_pending_custom_active_song_activation_before_widgets,
+    apply_pending_custom_library_action_before_widgets,
     PENDING_CUSTOM_ACTIVE_SONG_KEY,
+    PENDING_CUSTOM_LIBRARY_ACTION_KEY,
 )
 from .picker_session import (
     CATALOG_FAVORITES_KEY,
@@ -112,8 +115,11 @@ __all__ = [
     "custom_pick_key_for",
     "custom_selected_song_record",
     "queue_custom_active_song_activation",
+    "queue_custom_library_action",
     "apply_pending_custom_active_song_activation_before_widgets",
+    "apply_pending_custom_library_action_before_widgets",
     "PENDING_CUSTOM_ACTIVE_SONG_KEY",
+    "PENDING_CUSTOM_LIBRARY_ACTION_KEY",
     # Form / timeline
     "chord_blocks_for_backing",
     "form_timeline_rows",

@@ -7648,15 +7648,12 @@ def _render_active_song_favorites_switch(
 def _render_custom_song_library_selector() -> None:
     """Pick a saved custom song to activate (Custom Progression source)."""
     from custom_progression_lab import (
-        apply_cpl_session_progression,
         list_saved_progression_names,
-        load_saved_progression,
-        start_new_progression,
     )
     from songs.music_source import (
         CUSTOM_RECENT_ACTIVE_NAMES_KEY,
         custom_progression_is_active,
-        queue_custom_active_song_activation,
+        queue_custom_library_action,
     )
 
     saved = st.session_state.get(CPL_SAVED_KEY) or {}
@@ -7679,8 +7676,7 @@ def _render_custom_song_library_selector() -> None:
         unsafe_allow_html=True,
     )
     if st.button("New Song", key="custom_lib_new_song", use_container_width=True):
-        apply_cpl_session_progression(st.session_state, start_new_progression())
-        navigate_studio_page(st.session_state, "custom")
+        queue_custom_library_action(st, action="new_song")
         st.rerun()
 
     if not ordered:
@@ -7693,13 +7689,7 @@ def _render_custom_song_library_selector() -> None:
         if name == active_name:
             label = f"{name} (active)"
         if st.button(label, key=f"custom_lib_pick_{safe_key}", use_container_width=True):
-            loaded = load_saved_progression(saved, name)
-            apply_cpl_session_progression(
-                st.session_state,
-                loaded,
-                reset_display_key=True,
-            )
-            queue_custom_active_song_activation(st, loaded, toast_title=name)
+            queue_custom_library_action(st, name=name, action="activate")
             st.rerun()
 
 
@@ -7963,15 +7953,9 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
                 _picker_navigate("backing")
         with b3:
             if st.button(nav_icon_button_label("custom") + " Edit", key="custom_hub_edit", use_container_width=True):
-                from custom_progression_lab import apply_cpl_session_progression, cpl_active_from_session
+                from songs.music_source import queue_custom_library_action
 
-                active = cpl_active_from_session(st.session_state)
-                apply_cpl_session_progression(
-                    st.session_state,
-                    active,
-                    reset_display_key=True,
-                )
-                navigate_studio_page(st.session_state, "custom")
+                queue_custom_library_action(st, action="edit_active")
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
         render_active_song_hub_close(st)

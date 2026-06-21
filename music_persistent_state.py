@@ -1823,6 +1823,7 @@ def prepare_canonical_music_page_state(
             from songs.key_state import invalidate_backing_cache
             from songs.music_source import (
                 apply_pending_custom_active_song_activation_before_widgets,
+                apply_pending_custom_library_action_before_widgets,
                 apply_pending_previous_catalog_restore_before_widgets,
             )
             from songs.state import apply_pending_catalog_pick_before_widgets
@@ -1831,6 +1832,10 @@ def prepare_canonical_music_page_state(
                 session_state = session
 
             apply_pending_custom_active_song_activation_before_widgets(
+                _SessionProxy(),
+                invalidate_backing=invalidate_backing_cache,
+            )
+            apply_pending_custom_library_action_before_widgets(
                 _SessionProxy(),
                 invalidate_backing=invalidate_backing_cache,
             )

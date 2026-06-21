@@ -10,6 +10,7 @@ SOURCE_CUSTOM = "custom_progression"
 _LAST_SOURCE_KEY = "_last_active_music_source"
 _LAST_ACTIVE_PICK_KEY = "_last_active_pick_key_for_reset"
 PENDING_CUSTOM_ACTIVE_SONG_KEY = "_pending_custom_active_song_activation"
+PENDING_CUSTOM_LIBRARY_ACTION_KEY = "_pending_custom_library_action"
 SONG_PICKER_SOURCE_CATALOG = "Song Selection (catalog song)"
 SONG_PICKER_SOURCE_CUSTOM = "Use Custom Progression / Create Your Own Song"
 SONG_PICKER_ACTIVE_SOURCE_KEY = "song_picker_active_source"
@@ -929,6 +930,70 @@ def queue_custom_active_song_activation(
     if toast_title:
         payload["toast_title"] = str(toast_title).strip()
     session[PENDING_CUSTOM_ACTIVE_SONG_KEY] = payload
+
+
+def queue_custom_library_action(
+    st: Any,
+    *,
+    name: str = "",
+    action: str = "activate",
+) -> None:
+    """Queue saved custom song load/activate/edit for before-widget application."""
+    payload: dict[str, Any] = {"action": str(action or "activate").strip()}
+    label = str(name or "").strip()
+    if label:
+        payload["name"] = label
+    st.session_state[PENDING_CUSTOM_LIBRARY_ACTION_KEY] = payload
+
+
+def apply_pending_custom_library_action_before_widgets(
+    st: Any,
+    *,
+    invalidate_backing,
+) -> bool:
+    """Load a saved custom song (or reseed active) before sidebar/global widgets render."""
+    session = st.session_state
+    pending = session.pop(PENDING_CUSTOM_LIBRARY_ACTION_KEY, None)
+    if not isinstance(pending, dict):
+        return False
+    action = str(pending.get("action") or "activate").strip()
+    from custom_progression_lab import (
+        CPL_SAVED_KEY,
+        apply_cpl_session_progression,
+        cpl_active_from_session,
+        load_saved_progression,
+        start_new_progression,
+    )
+
+    if action == "edit_active":
+        active = cpl_active_from_session(session)
+    elif action == "new_song":
+        active = start_new_progression()
+    else:
+        name = str(pending.get("name") or "").strip()
+        if not name:
+            return False
+        saved = session.get(CPL_SAVED_KEY) or {}
+        active = load_saved_progression(saved, name)
+
+    apply_cpl_session_progression(session, active, reset_display_key=True)
+
+    if action == "activate":
+        song_name = str(pending.get("name") or active.get("name") or "").strip()
+        commit_custom_active_song(st, active, invalidate_backing=invalidate_backing)
+        if song_name:
+            session["_cpl_activation_toast"] = song_name
+        session["_custom_active_song_applied_this_run"] = True
+    elif action in ("edit", "edit_active", "new_song"):
+        try:
+            from studio_nav_history import navigate_studio_page
+
+            navigate_studio_page(session, "custom")
+        except ImportError:
+            session["studio_page"] = "custom"
+
+    session["_custom_library_action_applied_this_run"] = True
+    return True
 
 
 def apply_pending_custom_active_song_activation_before_widgets(

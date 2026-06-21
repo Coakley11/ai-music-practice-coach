@@ -16,6 +16,7 @@ from active_song_state import (
 )
 from custom_progression_lab import (
     CPL_ACTIVE_KEY,
+    CPL_SAVED_KEY,
     commit_home_sections,
     cpl_apply_pending_chord_to_section,
     cpl_section_progression_view,
@@ -36,11 +37,13 @@ from songs.key_state import (
 from songs.music_source import (
     LAST_CATALOG_STATE_KEY,
     PENDING_CUSTOM_ACTIVE_SONG_KEY,
+    PENDING_CUSTOM_LIBRARY_ACTION_KEY,
     SOURCE_CATALOG,
     SOURCE_CUSTOM,
     USER_CATALOG_SOURCE_CHOICE_KEY,
     active_song_key_pair,
     apply_pending_custom_active_song_activation_before_widgets,
+    apply_pending_custom_library_action_before_widgets,
     build_active_chart_bundle,
     commit_custom_active_song,
     cpl_session_is_active,
@@ -50,6 +53,7 @@ from songs.music_source import (
     on_song_picker_source_change,
     previous_catalog_snapshot,
     queue_custom_active_song_activation,
+    queue_custom_library_action,
     restore_last_catalog_active_song,
     restore_previous_catalog_song,
     resolve_active_song_keys,
@@ -484,6 +488,54 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(session["display_key"], "D")
         self.assertEqual(session["cpl_bpm_builder"], 115)
         self.assertEqual(session["cpl_title_input"], "Trial Song")
+
+    def test_deferred_custom_library_activate_resets_display_key(self) -> None:
+        from custom_progression_lab import CPL_SAVED_KEY, save_progression
+
+        store: dict = {}
+        active = self._draft_with_chords()
+        active["name"] = "Trial Song"
+        active["original_key_center"] = "D"
+        save_progression(store, "Trial Song", active)
+        st = SimpleNamespace(
+            session_state={
+                "display_key": "F#",
+                CPL_SAVED_KEY: store,
+                "active_music_source": SOURCE_CUSTOM,
+            }
+        )
+        queue_custom_library_action(st, name="Trial Song", action="activate")
+        with patch("songs.state.persist_music_local_state"):
+            applied = apply_pending_custom_library_action_before_widgets(
+                st,
+                invalidate_backing=lambda _st: None,
+            )
+        self.assertTrue(applied)
+        self.assertNotIn(PENDING_CUSTOM_LIBRARY_ACTION_KEY, st.session_state)
+        self.assertEqual(st.session_state["display_key"], "D")
+        self.assertEqual(st.session_state[CPL_ACTIVE_KEY]["name"], "Trial Song")
+
+    def test_deferred_custom_library_edit_active_reseeds_without_crash(self) -> None:
+        active = self._draft_with_chords()
+        active["name"] = "Trial Song"
+        active["original_key_center"] = "D"
+        active["bpm"] = 115
+        st = SimpleNamespace(
+            session_state={
+                "display_key": "F#",
+                CPL_ACTIVE_KEY: active,
+                "active_music_source": SOURCE_CUSTOM,
+            }
+        )
+        queue_custom_library_action(st, action="edit_active")
+        applied = apply_pending_custom_library_action_before_widgets(
+            st,
+            invalidate_backing=lambda _st: None,
+        )
+        self.assertTrue(applied)
+        self.assertEqual(st.session_state["display_key"], "D")
+        self.assertEqual(st.session_state.get("studio_page"), "custom")
+        self.assertEqual(st.session_state["cpl_bpm_builder"], 115)
 
     def test_commit_custom_pushes_recent_name(self) -> None:
         from songs.music_source import CUSTOM_RECENT_ACTIVE_NAMES_KEY, commit_custom_active_song

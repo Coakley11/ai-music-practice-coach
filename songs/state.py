@@ -51,13 +51,17 @@ def apply_pending_catalog_pick_before_widgets(
     try:
         from songs.music_source import (
             PENDING_CUSTOM_ACTIVE_SONG_KEY,
+            PENDING_CUSTOM_LIBRARY_ACTION_KEY,
             is_custom_progression,
         )
     except ImportError:
         PENDING_CUSTOM_ACTIVE_SONG_KEY = "_pending_custom_active_song_activation"  # noqa: N806
+        PENDING_CUSTOM_LIBRARY_ACTION_KEY = "_pending_custom_library_action"  # noqa: N806
         is_custom_progression = lambda _s: False  # type: ignore[assignment,misc]
 
     if st.session_state.get(PENDING_CUSTOM_ACTIVE_SONG_KEY):
+        return False
+    if st.session_state.get(PENDING_CUSTOM_LIBRARY_ACTION_KEY):
         return False
     if is_custom_progression(st.session_state) or st.session_state.get(
         "_custom_active_song_applied_this_run"
