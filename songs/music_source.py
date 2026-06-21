@@ -215,7 +215,7 @@ def switch_to_catalog_from_custom(
     invalidate_backing,
 ) -> bool:
     """Leave Custom Progression for the last catalog song (or current catalog pick)."""
-    from songs.state import apply_pick_key
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, apply_pick_key
 
     session = st.session_state
     if not is_custom_progression(session):

@@ -528,6 +528,41 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(ss[ACTIVE_SONG_STATE_KEY]["music_source"], SOURCE_CATALOG)
         self.assertEqual(ss[ACTIVE_SONG_STATE_KEY]["pick_key"], "pop::Shallow — Lady Gaga")
 
+    def test_switch_to_catalog_fallback_uses_active_catalog_pick_key(self) -> None:
+        active = self._draft_with_chords()
+        st = SimpleNamespace(session_state={
+            "active_music_source": SOURCE_CUSTOM,
+            CPL_ACTIVE_KEY: active,
+            ACTIVE_CATALOG_PICK_KEY: "pop::Shallow — Lady Gaga",
+            "song_picker_active_source": SONG_PICKER_SOURCE_CATALOG,
+        })
+        catalog = {
+            "pop": {
+                "Shallow — Lady Gaga": {"title": "Shallow", "artist": "Lady Gaga", "key": "G"},
+            }
+        }
+
+        def _apply_pick_key(_st, pick_key, song_picker_catalog, **kwargs):
+            genre, title = pick_key.split("::", 1)
+            data = song_picker_catalog[genre][title]
+            _st.session_state[SELECTED_SONG_STATE_KEY] = {
+                "pick_key": pick_key,
+                **data,
+            }
+            return dict(data)
+
+        with patch("songs.state.apply_pick_key", side_effect=_apply_pick_key):
+            with patch("songs.state.persist_music_local_state"):
+                ok = switch_to_catalog_from_custom(
+                    st,
+                    song_picker_catalog=catalog,
+                    invalidate_backing=lambda _st: None,
+                )
+        self.assertTrue(ok)
+        ss = st.session_state
+        self.assertFalse(is_custom_progression(ss))
+        self.assertEqual(ss[ACTIVE_SONG_STATE_KEY]["music_source"], SOURCE_CATALOG)
+
     def test_build_active_chart_bundle_uses_custom_keys_when_stale_catalog_flag(self) -> None:
         active = self._draft_with_chords()
         active["original_key_center"] = "D"
