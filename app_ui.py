@@ -2929,6 +2929,7 @@ def _backing_studio_panel_css() -> str:
 .ui-backing-ctx-ico { font-size: 0.78rem; line-height: 1; opacity: 0.92; }
 .ui-backing-ctx-badge.key-orig { border-color: rgba(99, 102, 241, 0.4); background: rgba(238, 242, 255, 0.95); }
 .ui-backing-ctx-badge.key-practice { border-color: rgba(16, 185, 129, 0.45); background: rgba(236, 253, 245, 0.95); }
+.ui-backing-ctx-badge.key-written { border-color: rgba(245, 158, 11, 0.45); background: rgba(255, 251, 235, 0.95); }
 .ui-backing-ctx-badge.meter { border-color: rgba(14, 165, 233, 0.4); background: rgba(224, 242, 254, 0.9); }
 .ui-backing-ctx-badge.groove { border-color: rgba(245, 158, 11, 0.45); background: rgba(255, 251, 235, 0.95); }
 .ui-backing-ctx-badge.range { border-color: rgba(79, 70, 229, 0.4); background: rgba(238, 242, 255, 0.92); }
@@ -7090,19 +7091,34 @@ def render_backing_setup_context_strip(
     groove: str,
     range_summary: str,
     default_bpm: int,
+    written_key: str = "",
+    source_kind: str = "",
 ) -> None:
     """At-a-glance playback context row (keys, meter, feel, range)."""
     _orig = html.escape(str(original_key or "C").strip() or "C")
     _practice = html.escape(str(practice_key or original_key or "C").strip() or "C")
+    _written = html.escape(str(written_key or "").strip())
+    _orig_title = (
+        "Custom progression original key"
+        if str(source_kind or "").strip().lower() == "custom"
+        else "Original / home key"
+    )
     _meter = html.escape(str(meter or "4/4").strip() or "4/4")
     _groove = html.escape(str(groove or "Auto").strip() or "Auto")
     _range = html.escape(str(range_summary or "Full song ×2").strip())
+    written_badge = ""
+    if _written and _written != _practice:
+        written_badge = (
+            f'<span class="ui-backing-ctx-badge key-written" title="Written chart key">'
+            f'<span class="ui-backing-ctx-ico">🎷</span> Written <strong>{_written}</strong></span>'
+        )
     st.markdown(
         f'<div class="ui-backing-setup-context" role="group" aria-label="Playback context">'
-        f'<span class="ui-backing-ctx-badge key-orig" title="Catalog original key">'
+        f'<span class="ui-backing-ctx-badge key-orig" title="{html.escape(_orig_title)}">'
         f'<span class="ui-backing-ctx-ico">🎹</span> Original <strong>{_orig}</strong></span>'
         f'<span class="ui-backing-ctx-badge key-practice" title="Display / practice key">'
         f'<span class="ui-backing-ctx-ico">🎼</span> Practice <strong>{_practice}</strong></span>'
+        f"{written_badge}"
         f'<span class="ui-backing-ctx-badge meter" title="Time signature">'
         f'<span class="ui-backing-ctx-ico">🥁</span> <strong>{_meter}</strong></span>'
         f'<span class="ui-backing-ctx-badge groove" title="Rhythm feel">'

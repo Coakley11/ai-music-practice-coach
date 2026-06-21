@@ -23,6 +23,16 @@ def is_custom_progression(session_state: dict[str, Any]) -> bool:
     return session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CUSTOM
 
 
+def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
+    """True when Custom Progression is the active song (session or canonical blob)."""
+    if is_custom_progression(session_state):
+        return True
+    meta = session_state.get("active_song_state")
+    if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
+        return True
+    return False
+
+
 def set_catalog_source(session_state: dict[str, Any]) -> None:
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CATALOG
 
@@ -120,7 +130,7 @@ def active_song_key_pair(
     """Original key and display/practice (concert) key for Active Song cards."""
     from songs.state import SELECTED_SONG_STATE_KEY
 
-    if is_custom_progression(session_state):
+    if custom_progression_is_active(session_state):
         from custom_progression_lab import (
             CPL_ACTIVE_KEY,
             default_active_progression,
@@ -243,7 +253,7 @@ def display_key_context(
     cpl_active_key: str,
 ) -> tuple[str, tuple]:
     """Original/home key and identity tuple for the global display-key widget."""
-    if is_custom_progression(session_state):
+    if custom_progression_is_active(session_state):
         from custom_progression_lab import (
             default_active_progression,
             ensure_original_structure,
@@ -374,6 +384,12 @@ def commit_custom_active_song(
     home_key = cpl_draft_written_key(active)
     selected = custom_selected_song_record(active)
     pick_key = str(selected.get("pick_key") or "").strip()
+    existing_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    live_display = str(session.get("display_key") or "").strip()
+    if pick_key and existing_pick == pick_key and live_display:
+        practice_key = live_display
+    else:
+        practice_key = home_key
 
     set_custom_source(session)
     sync_song_picker_source_widget(session, force=True)
@@ -388,7 +404,7 @@ def commit_custom_active_song(
         selected.get("artist", ""),
         home_key,
     )
-    apply_display_key_for_active_song(st, home_key, identity, pending_key=home_key)
+    apply_display_key_for_active_song(st, home_key, identity, pending_key=practice_key)
 
     prepare_cpl_backing_handoff(session, active)
 
@@ -398,7 +414,7 @@ def commit_custom_active_song(
 
         ctx = {
             "pick_key": pick_key,
-            "display_key": home_key,
+            "display_key": practice_key,
             "instrument": str(session.get("instrument") or "").strip(),
             "level": str(session.get("level") or "").strip(),
             "focus": str(session.get("focus") or "").strip(),
@@ -442,6 +458,7 @@ def build_active_chart_bundle(
     """Resolve genre, song, song_data, and chord sections for the active source."""
     if is_custom_progression(session_state):
         from custom_progression_lab import (
+            cpl_default_groove_for_active,
             default_active_progression,
             ensure_all_cpl_sections,
             ensure_original_structure,
@@ -481,7 +498,7 @@ def build_active_chart_bundle(
             "cpl_active": active,
             "default_bpm": int(active.get("bpm", 100) or 100),
             "default_loops": int(active.get("loops", 2) or 2),
-            "default_groove": active.get("groove_style", "Auto") or "Auto",
+            "default_groove": cpl_default_groove_for_active(active),
             "time_signature": active.get("time_signature", "4/4") or "4/4",
         }
 

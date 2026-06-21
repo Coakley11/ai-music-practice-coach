@@ -7358,13 +7358,18 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     level = st.session_state.get("level", "Intermediate")
     active_instrument = str(st.session_state.get("instrument") or "")
     _original_key, _chart_practice_key = _active_song_key_pair(rec)
+    _coaching_chart_key = effective_practice_key(
+        st.session_state,
+        _chart_practice_key,
+        active_instrument,
+    )
     _details_error: Exception | None = None
     try:
         details = active_song_card_details(
             rec,
             level=level,
             instrument=active_instrument,
-            practice_key=_chart_practice_key,
+            practice_key=_coaching_chart_key,
         )
     except Exception as _details_exc:
         _details_error = _details_exc
@@ -9608,16 +9613,14 @@ _default_groove = str(
     or default_groove_for_song(song_data, infer_fn=infer_groove_style)
 )
 if is_custom_progression(st.session_state) and _cpl_active:
+    from custom_progression_lab import cpl_default_groove_for_active
+
     _default_bpm = int(_cpl_active.get("bpm", _default_bpm) or _default_bpm)
-    _cpl_groove = str(_cpl_active.get("groove_style") or "Auto")
-    if _cpl_groove == "Auto":
-        _default_groove = default_groove_for_song(song_data, infer_fn=infer_groove_style)
-    else:
-        _default_groove = normalize_groove_label(
-            _cpl_groove,
-            song_data=song_data,
-            infer_fn=infer_groove_style,
-        )
+    _default_groove = normalize_groove_label(
+        cpl_default_groove_for_active(_cpl_active),
+        song_data=song_data,
+        infer_fn=infer_groove_style,
+    )
 _default_meter = default_time_signature_for_record(
     song_data,
     sections_for_backing,
@@ -10992,6 +10995,15 @@ elif _studio_page == "backing":
         pass
     render_backing_studio_deck_header(st)
     _backing_orig_key, _backing_practice_key = _active_song_key_pair(song_data)
+    _backing_written_key = ""
+    try:
+        from songs.music_source import active_song_written_chart_key as _active_song_written_chart_key
+
+        _wk = _active_song_written_chart_key(st.session_state)
+        if _wk:
+            _backing_written_key = _wk
+    except Exception:
+        pass
     _backing_ctx_range = backing_scope_loop_summary_text(
         st.session_state.get("backing_track_scope", "Full song"),
         single_section=str(st.session_state.get("backing_track_single_section", "")),
@@ -11006,6 +11018,8 @@ elif _studio_page == "backing":
         groove=str(default_groove_style),
         range_summary=_backing_ctx_range,
         default_bpm=int(_default_bpm),
+        written_key=_backing_written_key,
+        source_kind="custom" if is_custom_progression(st.session_state) else "catalog",
     )
     if _developer_mode_enabled():
         try:

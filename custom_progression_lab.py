@@ -692,7 +692,7 @@ def prepare_cpl_backing_handoff(
     st_like = SimpleNamespace(session_state=session_state)
 
     default_bpm = int(active.get("bpm", 100) or 100)
-    default_groove = str(active.get("groove_style", "Auto") or "Auto")
+    default_groove = cpl_default_groove_for_active(active)
     song_id = playback_song_id(
         is_custom=True,
         song_title=str(active.get("name", "") or ""),
@@ -2172,6 +2172,34 @@ def apply_style_preset(style: str, home_key: str) -> dict | None:
     for name, entries in sections.items():
         sections[name] = transpose_section_entries(entries, ref_key, home_key)
     return {"sections": sections, "groove_style": data["groove_style"]}
+
+
+_CPL_STYLE_GROOVE_FALLBACK: dict[str, str] = {
+    "Pop": "Pop groove",
+    "Soul/R&B": "Funk groove",
+    "Jazz": "Jazz swing",
+    "Bossa": "Bossa nova",
+    "Blues": "Rock groove",
+    "Funk": "Funk groove",
+    "Rock": "Rock groove",
+}
+
+
+def cpl_default_groove_for_active(active: dict) -> str:
+    """Backing default groove from CPL style when groove_style is Auto."""
+    groove = str(active.get("groove_style") or "Auto").strip() or "Auto"
+    if groove and groove.lower() != "auto":
+        return groove
+    style = str(active.get("progression_style") or "").strip()
+    if not style or style == "Custom":
+        return "Auto"
+    preset_style = "Bossa Nova" if style == "Bossa" else style
+    preset = apply_style_preset(preset_style, cpl_draft_written_key(active))
+    if preset:
+        mapped = str(preset.get("groove_style") or "").strip()
+        if mapped:
+            return mapped
+    return _CPL_STYLE_GROOVE_FALLBACK.get(style, "Auto")
 
 
 CPL_KEY_OPTIONS: list[str] = list(ENHARMONIC_MAJOR_KEYS) + list(ENHARMONIC_MINOR_KEYS)

@@ -80,6 +80,14 @@ def mark_display_key_changed(st: Any) -> None:
         persist_music_local_state(st)
     except Exception:
         pass
+    try:
+        from active_song_state import mark_active_song_local_edit
+        from music_persistent_state import flush_active_song_edits_and_save
+
+        mark_active_song_local_edit(st.session_state)
+        flush_active_song_edits_and_save(st, reason="display_key_change")
+    except Exception:
+        pass
 
 
 def _apply_display_key_before_widget(st: Any, key: str, *, source: str = "sync_display_key") -> None:

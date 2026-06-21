@@ -254,6 +254,14 @@ def _apply_practice_key_to_block(
         out["what_matters"] = what.replace(f"**{catalog}**", f"**{pk}**", 1).replace(
             catalog, pk, 1
         )
+    elif pk and "feel in" in what.lower():
+        out["what_matters"] = re.sub(
+            r"(feel in\s+\*\*)([^*]+)(\*\*)",
+            rf"\g<1>{pk}\3",
+            what,
+            count=1,
+            flags=re.I,
+        )
     return out
 
 

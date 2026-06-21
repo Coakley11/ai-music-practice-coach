@@ -1597,7 +1597,17 @@ def apply_music_disk_state(
         elif apply_cloud_active_song_state_if_allowed(ss, payload):
             clear_active_song_local_edit(ss)
         elif isinstance(core, dict) and core and applied:
-            if str(ss.get("active_music_source") or "") != "custom_progression":
+            blob_custom = False
+            try:
+                from active_song_state import _custom_context_from_blob
+
+                blob_custom = _custom_context_from_blob(payload) is not None
+            except ImportError:
+                pass
+            if (
+                str(ss.get("active_music_source") or "") != "custom_progression"
+                and not blob_custom
+            ):
                 sync_active_song_context_from_core(ss, core)
                 clear_active_song_local_edit(ss)
         try:

@@ -257,6 +257,56 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(session[SELECTED_SONG_STATE_KEY]["title"], "My Progression")
         self.assertEqual(session[ACTIVE_SONG_STATE_KEY]["music_source"], SOURCE_CUSTOM)
 
+    def test_cloud_restore_custom_display_key_from_workspace(self) -> None:
+        active = self._draft_with_chords()
+        active["original_key_center"] = "D"
+        cloud = {
+            "session": {
+                "active_music_source": SOURCE_CUSTOM,
+                "cpl_active_progression": active,
+            },
+            "active_song_state": {
+                "music_source": SOURCE_CUSTOM,
+                "display_key": "",
+                "custom_home_key": "D",
+            },
+            "music_workspace_state": {
+                "active_song": {
+                    "display_key": "Eb",
+                    "music_source": SOURCE_CUSTOM,
+                }
+            },
+        }
+        session: dict = {"display_key": "D"}
+        self.assertTrue(apply_cloud_active_song_state_if_allowed(session, cloud))
+        self.assertEqual(session["display_key"], "Eb")
+        self.assertEqual(session[ACTIVE_SONG_STATE_KEY]["display_key"], "Eb")
+
+    def test_commit_preserves_display_key_on_same_custom_reactivation(self) -> None:
+        active = self._draft_with_chords()
+        active["original_key_center"] = "D"
+        st = SimpleNamespace(session_state={
+            "display_key": "G",
+            "instrument": "Piano",
+            "level": "Intermediate",
+            "focus": "General",
+            CPL_ACTIVE_KEY: active,
+        })
+        with patch("songs.state.persist_music_local_state"):
+            commit_custom_active_song(st, active, invalidate_backing=lambda _st: None)
+            st.session_state["display_key"] = "Eb"
+            commit_custom_active_song(st, active, invalidate_backing=lambda _st: None)
+        self.assertEqual(st.session_state["display_key"], "Eb")
+        self.assertEqual(st.session_state[ACTIVE_SONG_STATE_KEY]["display_key"], "Eb")
+
+    def test_cpl_default_groove_maps_bossa_style(self) -> None:
+        from custom_progression_lab import cpl_default_groove_for_active
+
+        active = self._draft_with_chords()
+        active["progression_style"] = "Bossa"
+        active["groove_style"] = "Auto"
+        self.assertEqual(cpl_default_groove_for_active(active), "Bossa nova")
+
     def test_custom_selected_song_record_shape(self) -> None:
         active = self._draft_with_chords()
         record = custom_selected_song_record(active)

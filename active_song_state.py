@@ -282,6 +282,53 @@ def _merge_live_global_controls(
     return merged
 
 
+def _resolve_display_key_from_music_blob(
+    state: dict[str, Any],
+    *,
+    ctx: dict[str, Any] | None = None,
+    home_key: str = "C",
+) -> str:
+    """Resolve persisted display/practice key from cloud/disk payload layers."""
+    candidates: list[Any] = []
+    if isinstance(ctx, dict):
+        candidates.append(ctx.get("display_key"))
+    meta = state.get(ACTIVE_SONG_STATE_KEY)
+    if isinstance(meta, dict):
+        candidates.append(meta.get("display_key"))
+    core = state.get("core")
+    if isinstance(core, dict):
+        candidates.append(core.get("display_key"))
+    ws = state.get("music_workspace_state")
+    if isinstance(ws, dict):
+        active = ws.get("active_song")
+        if isinstance(active, dict):
+            candidates.append(active.get("display_key"))
+    session_blob = state.get("session")
+    if isinstance(session_blob, dict):
+        candidates.append(session_blob.get("display_key"))
+    for val in candidates:
+        resolved = str(val or "").strip()
+        if resolved:
+            return resolved
+    return str(home_key or "C").strip() or "C"
+
+
+def _resolve_custom_display_key_for_session(
+    session: dict[str, Any],
+    home_key: str,
+) -> str:
+    """Prefer live sidebar key, then canonical blob, then home key."""
+    live = str(session.get("display_key") or "").strip()
+    if live:
+        return live
+    meta = session.get(ACTIVE_SONG_STATE_KEY)
+    if isinstance(meta, dict):
+        saved = str(meta.get("display_key") or "").strip()
+        if saved:
+            return saved
+    return str(home_key or "C").strip() or "C"
+
+
 def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     """Read active song context from live session keys."""
     if is_custom_progression(session):
@@ -634,6 +681,11 @@ def write_canonical_active_song_state(
         **ctx,
         "last_write_reason": reason or None,
     }
+    music_source = str(ctx.get("music_source") or "").strip()
+    if music_source == SOURCE_CUSTOM:
+        session["active_music_source"] = SOURCE_CUSTOM
+    elif music_source == SOURCE_CATALOG:
+        session["active_music_source"] = SOURCE_CATALOG
     mutate_wk = True if mutate_written_key is None else mutate_written_key
     mutate_subtype = True if mutate_transposing_subtype is None else mutate_transposing_subtype
     if apply_global_controls_to_session is None:
@@ -796,7 +848,11 @@ def _custom_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
     ctx.update(
         {
             "pick_key": str(ctx.get("pick_key") or selected.get("pick_key") or custom_pick_key_for(active)).strip(),
-            "display_key": str(ctx.get("display_key") or home_key or "C").strip(),
+            "display_key": _resolve_display_key_from_music_blob(
+                state,
+                ctx=ctx,
+                home_key=home_key,
+            ),
             "selected_song": selected,
             "music_source": SOURCE_CUSTOM,
             "custom_progression_name": str(selected.get("title") or "").strip(),
