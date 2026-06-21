@@ -2952,9 +2952,23 @@ body.backing-studio-page .ui-active-song-card,
 body.backing-studio-page .ui-active-song-hub {
   display: none !important;
 }
-body:not([data-studio-page="picker"]) .st-key-active_song_hub,
-body:not([data-studio-page="picker"]) .ui-active-song-hub-wrap {
+/* Hide Songs-page active song hub only on non-picker studio pages (never default-hide). */
+body.backing-studio-page .st-key-active_song_hub,
+body.practice-page .st-key-active_song_hub,
+body.custom-builder-page .st-key-active_song_hub,
+body[data-studio-page="backing"] .st-key-active_song_hub,
+body[data-studio-page="practice"] .st-key-active_song_hub,
+body[data-studio-page="custom"] .st-key-active_song_hub,
+body[data-studio-page="creative"] .st-key-active_song_hub,
+body[data-studio-page="multitrack"] .st-key-active_song_hub,
+body[data-studio-page="analysis"] .st-key-active_song_hub,
+body[data-studio-page="upload"] .st-key-active_song_hub {
   display: none !important;
+}
+body[data-studio-page="picker"] .st-key-active_song_hub,
+body[data-song-picker-ui] .st-key-active_song_hub {
+  display: block !important;
+  visibility: visible !important;
 }
 .ui-backing-badge.bpm-default {
   background: rgba(249, 115, 22, 0.22);
@@ -6613,7 +6627,13 @@ def inject_song_picker_page_styles(st: Any) -> None:
 /* Song Selection — no separate footer metadata block (genre/levels live on Active Song card) */
 body[data-song-picker-ui] .ui-active-song-card .ui-active-song-facts dt:first-child {{ color: #4f46e5; }}
 </style>
-<script>try{{document.body.dataset.songPickerUi="{SONG_PICKER_UI_VERSION}";}}catch(e){{}}</script>
+<script>try{{
+document.body.dataset.songPickerUi="{SONG_PICKER_UI_VERSION}";
+document.body.dataset.studioPage = "picker";
+["custom-builder-page","upload-studio-page","backing-studio-page","multitrack-studio-page","practice-page"].forEach(function(c) {{
+  document.body.classList.remove(c);
+}});
+}}catch(e){{}}</script>
         """,
         unsafe_allow_html=True,
     )

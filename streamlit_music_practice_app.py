@@ -10765,9 +10765,9 @@ elif _studio_page == "picker":
     note_page_visit(st.session_state, "picker")
     inject_song_picker_page_styles(st)
     try:
-        from app_ui import inject_studio_ui_release_marker
+        from app_ui import inject_studio_page_marker_sync
 
-        inject_studio_ui_release_marker(st, page="picker")
+        inject_studio_page_marker_sync(st, page="picker")
     except Exception:
         pass
 
