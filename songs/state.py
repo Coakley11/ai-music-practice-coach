@@ -22,16 +22,49 @@ from .playback_defaults import (
     active_song_sync_id,
     canonical_active_song_bpm,
     playback_song_id,
-    prime_active_song_bpm,
-    reset_playback_song_tracking,
 )
 
 SELECTED_SONG_STATE_KEY = "selected_song"
 ACTIVE_CATALOG_PICK_KEY = "active_catalog_pick_key"
 PENDING_MATCHING_SONG_DROPDOWN = "_pending_matching_song_dropdown"
+PENDING_CATALOG_PICK_KEY = "_pending_catalog_pick_key"
 PICK_KEY_RECOVERY_NOTICE_KEY = "_pick_key_recovery_notice"
 _LAST_PICK_KEY = "_master_song_pick_key"
 SUITE_LOCAL_STATE_RESTORED_KEY = "_suite_local_state_restored"
+
+
+def queue_pending_catalog_pick(st: Any, pick_key: str) -> None:
+    """Queue a catalog pick for before-widget application on the next rerun."""
+    pk = str(pick_key or "").strip()
+    if pk:
+        st.session_state[PENDING_CATALOG_PICK_KEY] = pk
+
+
+def apply_pending_catalog_pick_before_widgets(
+    st: Any,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    *,
+    song_library: dict[str, dict[str, dict]] | None = None,
+    invalidate_backing,
+) -> bool:
+    """Apply queued catalog pick before sidebar/global widgets render."""
+    pending = st.session_state.pop(PENDING_CATALOG_PICK_KEY, None)
+    if not pending:
+        return False
+    apply_pick_key(
+        st,
+        str(pending),
+        song_picker_catalog,
+        song_library=song_library,
+        skip_activity_log=True,
+    )
+    try:
+        from songs.music_source import note_active_source_change
+
+        note_active_source_change(st, invalidate_backing=invalidate_backing)
+    except ImportError:
+        pass
+    return True
 
 
 def build_music_local_state(st: Any) -> dict[str, str]:
@@ -395,6 +428,7 @@ def apply_pick_key(
     *,
     song_library: dict[str, dict[str, dict]] | None = None,
     skip_activity_log: bool = False,
+    persist: bool = True,
 ) -> dict[str, Any]:
     resolved = resolve_pick_key(pick_key, song_picker_catalog=song_picker_catalog)
     if not resolved:
@@ -437,7 +471,7 @@ def apply_pick_key(
     st.session_state[_LAST_PICK_KEY] = pick_key
     st.session_state["active_genre"] = genre
     st.session_state["active_song_title"] = data["title"]
-    if prev is not None and prev != pick_key:
+    if prev != pick_key:
         try:
             from picker_song_editor import PICKER_EDITOR_OPEN_KEY, PICKER_EDITOR_NOTICE_KEY
 
@@ -456,25 +490,6 @@ def apply_pick_key(
 
             st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
             set_catalog_source(st.session_state)
-        from songs.key_state import apply_display_key_for_active_song, song_display_identity
-
-        song_identity = song_display_identity(
-            str(data.get("title") or ""),
-            str(data.get("artist") or ""),
-            str(data.get("key") or ""),
-        )
-        apply_display_key_for_active_song(
-            st,
-            str(data.get("key") or "C"),
-            song_identity,
-            pending_key=str(data.get("key") or "C"),
-        )
-        reset_playback_song_tracking(st)
-        invalidate_backing_cache(st)
-        st.session_state[BACKING_NEEDS_REGEN] = False
-        st.session_state.pop("multitrack_backing_wav", None)
-        st.session_state.pop("multitrack_backing_music_wav", None)
-        st.session_state.pop("mixed_track_wav", None)
         lib_record = data
         if song_library is not None:
             lib_record = resolve_library_song_data(
@@ -484,17 +499,40 @@ def apply_pick_key(
                 artist=str(data.get("artist") or ""),
                 fallback=data,
             )
+        original_key = str(lib_record.get("key") or data.get("key") or "C").strip() or "C"
+        default_bpm = canonical_active_song_bpm(lib_record)
+        from songs.playback_defaults import default_groove_for_song, get_song_default_meter
+
+        default_groove = default_groove_for_song(lib_record, infer_fn=lambda _rec, _fb: "Auto")
+        default_meter = get_song_default_meter(lib_record)
         _pid = playback_song_id(
             is_custom=False,
             song_title=data["title"],
             song_artist=data.get("artist", ""),
         )
         _sync_id = active_song_sync_id(pick_key=pick_key, playback_song_id=_pid, is_custom=False)
-        prime_active_song_bpm(
+        from songs.music_source import on_active_song_identity_changed
+
+        on_active_song_identity_changed(
             st,
+            pick_key=pick_key,
+            title=str(data.get("title") or ""),
+            artist=str(data.get("artist") or ""),
+            original_key=original_key,
+            is_custom=False,
             sync_id=_sync_id,
-            active_song_bpm=canonical_active_song_bpm(lib_record),
+            default_bpm=default_bpm,
+            default_groove=default_groove,
+            default_meter=default_meter,
+            display_key=original_key,
+            song_data=lib_record,
+            invalidate_backing=invalidate_backing_cache,
+            force_reset=prev != pick_key,
         )
+        st.session_state[BACKING_NEEDS_REGEN] = False
+        st.session_state.pop("multitrack_backing_wav", None)
+        st.session_state.pop("multitrack_backing_music_wav", None)
+        st.session_state.pop("mixed_track_wav", None)
     elif "display_key" not in st.session_state:
         st.session_state[PENDING_DISPLAY_KEY] = data["key"]
     st.session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
@@ -537,7 +575,8 @@ def apply_pick_key(
             )
         except Exception:
             pass
-    persist_music_local_state(st)
+    if persist:
+        persist_music_local_state(st)
     return data
 
 

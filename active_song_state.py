@@ -767,6 +767,44 @@ def write_canonical_active_song_state(
     return ctx
 
 
+def _seed_active_song_identity_from_session(session: dict[str, Any]) -> None:
+    """Record current active song identity without resetting playback/display state."""
+    try:
+        from songs.music_source import (
+            ACTIVE_SONG_IDENTITY_KEY,
+            compute_active_song_identity,
+            cpl_session_is_active,
+        )
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+    except ImportError:
+        return
+
+    selected = session.get(SELECTED_SONG_STATE_KEY) or {}
+    pick_key = str(session.get(ACTIVE_CATALOG_PICK_KEY) or selected.get("pick_key") or "").strip()
+    title = str(selected.get("title") or "")
+    artist = str(selected.get("artist") or "")
+    is_custom = cpl_session_is_active(session)
+    original_key = str(selected.get("key") or "C").strip() or "C"
+    custom_revision = ""
+    if is_custom:
+        try:
+            from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+
+            active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+            original_key = str(active.get("original_key_center") or original_key).strip() or original_key
+            custom_revision = str(active.get("id") or "").strip()
+        except ImportError:
+            pass
+    session[ACTIVE_SONG_IDENTITY_KEY] = compute_active_song_identity(
+        pick_key=pick_key,
+        title=title,
+        artist=artist,
+        original_key=original_key,
+        is_custom=is_custom,
+        custom_revision=custom_revision,
+    )
+
+
 def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     """Reconcile session keys with canonical blob before widgets render."""
     try:
@@ -864,6 +902,7 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         _record_transposing_restore_trace(session, ctx, source="canonical_prepare")
         rehydrate_transposing_sidebar_from_canonical(session)
         _push_resolved_display_key_to_session(session, ctx)
+        _seed_active_song_identity_from_session(session)
         return ctx
 
     gathered = gather_active_song_context(session)
@@ -875,8 +914,10 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         )
         rehydrate_transposing_sidebar_from_canonical(session)
         _push_resolved_display_key_to_session(session, ctx)
+        _seed_active_song_identity_from_session(session)
         return ctx
     _push_resolved_display_key_to_session(session, gathered)
+    _seed_active_song_identity_from_session(session)
     return gathered
 
 
@@ -916,6 +957,7 @@ def flush_active_song_edits(session: dict[str, Any], *, reason: str = "song_edit
         ctx,
         reason=reason,
         local_edit=True,
+        mutate_display_key=False,
     )
 
 

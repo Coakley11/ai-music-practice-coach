@@ -1806,7 +1806,12 @@ def claim_studio_page_ownership(
         ss["_suite_last_persisted_page"] = page
 
 
-def prepare_canonical_music_page_state(session: dict[str, Any]) -> None:
+def prepare_canonical_music_page_state(
+    session: dict[str, Any],
+    *,
+    song_picker_catalog: dict | None = None,
+    song_library: dict | None = None,
+) -> None:
     """Phase C: reconcile studio nav + active song + practice + backing canonical blobs."""
     try:
         from active_song_state import prepare_active_song_context
@@ -1819,6 +1824,7 @@ def prepare_canonical_music_page_state(session: dict[str, Any]) -> None:
             from songs.music_source import (
                 apply_pending_custom_active_song_activation_before_widgets,
             )
+            from songs.state import apply_pending_catalog_pick_before_widgets
 
             class _SessionProxy:
                 session_state = session
@@ -1827,6 +1833,13 @@ def prepare_canonical_music_page_state(session: dict[str, Any]) -> None:
                 _SessionProxy(),
                 invalidate_backing=invalidate_backing_cache,
             )
+            if song_picker_catalog:
+                apply_pending_catalog_pick_before_widgets(
+                    _SessionProxy(),
+                    song_picker_catalog,
+                    song_library=song_library,
+                    invalidate_backing=invalidate_backing_cache,
+                )
         except ImportError:
             pass
 

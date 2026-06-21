@@ -167,6 +167,8 @@ def ensure_original_structure(active):
         active["original_sections"] = ensure_all_cpl_sections(active["original_sections"])
     if not active.get("original_key_center"):
         active["original_key_center"] = active.get("key_center", "C")
+    if "lyrics_by_section" not in active:
+        active["lyrics_by_section"] = {}
     active.pop("sections", None)
     active.pop("key_center", None)
     return active

@@ -1114,7 +1114,11 @@ if hasattr(st, "session_state"):
                 prepare_canonical_music_page_state,
             )
 
-            prepare_canonical_music_page_state(st.session_state)
+            prepare_canonical_music_page_state(
+                st.session_state,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+            )
             maybe_flush_deferred_page_change_save(st)
         except Exception:
             pass
@@ -7814,8 +7818,10 @@ def _apply_picker_catalog_filters(
             active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
             return filtered, pick_options, active_pk
         set_catalog_source(st.session_state)
-        apply_pick_key(st, default_pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
-        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        from songs.state import queue_pending_catalog_pick
+
+        queue_pending_catalog_pick(st, default_pk)
+        st.rerun()
     active_pk = sync_matching_song_dropdown_before_widget(st, pick_options, default_pk)
     return filtered, pick_options, active_pk
 
@@ -7904,6 +7910,12 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
         render_active_song_hub_close(st)
+
+    render_cpl_lyrics_editor_panel(
+        st,
+        active=active,
+        cpl_active_key=CPL_ACTIVE_KEY,
+    )
 
     if wrap_section:
         close_control_section()
@@ -8260,9 +8272,11 @@ def _render_catalog_song_picker_block(
         master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
         default_pk = master_pk if master_pk in pick_options else pick_options[0]
         if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
+            from songs.state import queue_pending_catalog_pick
+
             set_catalog_source(st.session_state)
-            apply_pick_key(st, default_pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
-            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+            queue_pending_catalog_pick(st, default_pk)
+            st.rerun()
 
         active_pick_key = sync_matching_song_dropdown_before_widget(
             st,
@@ -9092,7 +9106,11 @@ try:
             prepare_canonical_music_page_state,
         )
 
-        prepare_canonical_music_page_state(st.session_state)
+        prepare_canonical_music_page_state(
+            st.session_state,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+        )
         maybe_flush_deferred_page_change_save(st)
         try:
             from local_nav_trace import record_local_nav_checkpoint
@@ -9728,6 +9746,7 @@ if pp.show_developer_sidebar(st):
     _render_sidebar_developer_library_panel()
 
 from songs.user_lyrics_runtime import hydrate_user_lyrics_session, resolve_user_lyrics_and_cues
+from songs.cpl_lyrics_runtime import render_cpl_lyrics_editor_panel
 
 hydrate_user_lyrics_session(
     st.session_state,

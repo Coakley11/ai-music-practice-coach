@@ -247,7 +247,13 @@ def commit_catalog_active_song(
 ) -> None:
     """Promote a catalog song to the global active song and canonical blob."""
     from active_song_state import write_canonical_active_song_state
-    from songs.key_state import apply_display_key_for_active_song, song_display_identity
+    from songs.playback_defaults import (
+        active_song_sync_id,
+        canonical_active_song_bpm,
+        default_groove_for_song,
+        get_song_default_meter,
+        playback_song_id,
+    )
     from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
     session = st.session_state
@@ -255,19 +261,35 @@ def commit_catalog_active_song(
     set_catalog_source(session)
     session[SELECTED_SONG_STATE_KEY] = dict(selected_song)
     session[ACTIVE_CATALOG_PICK_KEY] = str(pick_key or "").strip()
-    identity = song_display_identity(
-        str(selected_song.get("title") or ""),
-        str(selected_song.get("artist") or ""),
-        original_key,
-    )
+    original_key = str(original_key or selected_song.get("key") or "C").strip() or "C"
     display_key = str(display_key or original_key).strip() or original_key
     if reason == "catalog_source_switch":
         display_key = original_key
-    apply_display_key_for_active_song(
+    lib_record = dict(selected_song)
+    default_bpm = canonical_active_song_bpm(lib_record)
+    default_groove = default_groove_for_song(lib_record, infer_fn=lambda _rec, _fb: "Auto")
+    default_meter = get_song_default_meter(lib_record)
+    _pid = playback_song_id(
+        is_custom=False,
+        song_title=str(selected_song.get("title") or ""),
+        song_artist=str(selected_song.get("artist") or ""),
+    )
+    sync_id = active_song_sync_id(pick_key=str(pick_key or "").strip(), playback_song_id=_pid, is_custom=False)
+    on_active_song_identity_changed(
         st,
-        original_key,
-        identity,
-        pending_key=display_key,
+        pick_key=str(pick_key or "").strip(),
+        title=str(selected_song.get("title") or ""),
+        artist=str(selected_song.get("artist") or ""),
+        original_key=original_key,
+        is_custom=False,
+        sync_id=sync_id,
+        default_bpm=default_bpm,
+        default_groove=default_groove,
+        default_meter=default_meter,
+        display_key=display_key,
+        song_data=lib_record,
+        invalidate_backing=invalidate_backing,
+        force_reset=reason in ("catalog_source_switch", "last_catalog_restore", "previous_catalog_restore"),
     )
     sync_song_picker_source_widget(session, force=True)
     note_active_source_change(st, invalidate_backing=invalidate_backing)
@@ -538,6 +560,124 @@ def note_active_source_change(st: Any, *, invalidate_backing) -> bool:
     return False
 
 
+ACTIVE_SONG_IDENTITY_KEY = "_active_song_identity"
+PREVIOUS_ACTIVE_SONG_IDENTITY_KEY = "_previous_active_song_identity"
+SONG_IDENTITY_DIAG_KEY = "_song_identity_diag"
+
+
+def compute_active_song_identity(
+    *,
+    pick_key: str = "",
+    title: str = "",
+    artist: str = "",
+    original_key: str = "",
+    is_custom: bool = False,
+    custom_revision: str = "",
+) -> str:
+    """Stable identity string for catalog pick_key or custom progression revision."""
+    pk = str(pick_key or "").strip()
+    if is_custom or pk.startswith("custom::"):
+        rev = str(custom_revision or "").strip()
+        if rev:
+            return f"cpl::{rev}"
+        if pk:
+            return f"cpl::{pk}"
+        return f"cpl::{title}|{artist}|{original_key}"
+    if pk:
+        return f"pk::{pk}"
+    return f"cat::{title}|{artist}|{original_key}"
+
+
+def on_active_song_identity_changed(
+    st: Any,
+    *,
+    pick_key: str,
+    title: str,
+    artist: str,
+    original_key: str,
+    is_custom: bool,
+    sync_id: str,
+    default_bpm: int,
+    default_groove: str,
+    default_meter: str,
+    display_key: str | None = None,
+    custom_revision: str = "",
+    song_data: dict[str, Any] | None = None,
+    invalidate_backing,
+    force_reset: bool = False,
+) -> bool:
+    """Reset display key and backing defaults when the active song identity changes.
+
+    Must run before widget-bound session keys (``display_key``, BPM slider, etc.)
+    are instantiated for the rerun.
+    """
+    from songs.key_state import apply_display_key_for_active_song, song_display_identity
+    from songs.playback_defaults import (
+        canonicalize_backing_defaults_for_song,
+        prime_active_song_bpm,
+        reset_playback_song_tracking,
+    )
+
+    session = st.session_state
+    new_identity = compute_active_song_identity(
+        pick_key=pick_key,
+        title=title,
+        artist=artist,
+        original_key=original_key,
+        is_custom=is_custom,
+        custom_revision=custom_revision,
+    )
+    prev_identity = session.get(ACTIVE_SONG_IDENTITY_KEY)
+    session[PREVIOUS_ACTIVE_SONG_IDENTITY_KEY] = prev_identity
+    identity_changed = force_reset or (
+        prev_identity is not None and prev_identity != new_identity
+    )
+
+    if identity_changed:
+        target_display = str(display_key if display_key is not None else original_key).strip() or original_key
+        song_identity = song_display_identity(title, artist, original_key)
+        apply_display_key_for_active_song(
+            st,
+            original_key,
+            song_identity,
+            pending_key=target_display,
+        )
+        reset_playback_song_tracking(st)
+        invalidate_backing(st)
+        try:
+            from studio_cache import invalidate_session_cache
+
+            invalidate_session_cache(session, "chart_bundle")
+        except Exception:
+            pass
+        prime_active_song_bpm(st, sync_id=sync_id, active_song_bpm=int(default_bpm))
+        canonicalize_backing_defaults_for_song(
+            st,
+            sync_id=sync_id,
+            active_song_bpm=int(default_bpm),
+            active_song_groove=str(default_groove),
+            active_song_meter=str(default_meter),
+        )
+
+    session[ACTIVE_SONG_IDENTITY_KEY] = new_identity
+    session[SONG_IDENTITY_DIAG_KEY] = {
+        "active_song_identity": new_identity,
+        "previous_active_song_identity": prev_identity,
+        "song_source": SOURCE_CUSTOM if is_custom else SOURCE_CATALOG,
+        "pick_key": pick_key,
+        "original_key": original_key,
+        "display_key": session.get("display_key"),
+        "default_bpm": default_bpm,
+        "backing_bpm": session.get("backing_track_bpm"),
+        "default_style": default_groove,
+        "backing_groove": session.get("backing_groove_style"),
+        "default_meter": default_meter,
+        "backing_meter": session.get("backing_time_signature"),
+        "identity_changed": identity_changed,
+    }
+    return identity_changed
+
+
 def active_source_labels(
     session_state: dict[str, Any],
     *,
@@ -721,10 +861,14 @@ def commit_custom_active_song(
         ensure_original_structure,
         prepare_cpl_backing_handoff,
         cpl_draft_written_key,
+        cpl_default_groove_for_active,
     )
-    from songs.key_state import (
-        apply_display_key_for_active_song,
-        song_display_identity,
+    from songs.playback_defaults import (
+        active_song_sync_id,
+        canonical_active_song_bpm,
+        get_song_default_meter,
+        normalize_groove_label,
+        playback_song_id,
     )
     from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
@@ -741,18 +885,40 @@ def commit_custom_active_song(
 
     set_custom_source(session)
     sync_song_picker_source_widget(session, force=True)
+
+    default_bpm = int(active.get("bpm") or canonical_active_song_bpm(active) or 100)
+    default_groove = normalize_groove_label(cpl_default_groove_for_active(active), song_data=active)
+    default_meter = str(active.get("time_signature") or get_song_default_meter(active) or "4/4")
+    song_id = playback_song_id(
+        is_custom=True,
+        song_title=str(active.get("name", "") or ""),
+        song_artist="",
+        custom_name=str(active.get("name", "") or ""),
+        custom_revision=str(active.get("id", "") or ""),
+    )
+    sync_id = active_song_sync_id(pick_key=pick_key, playback_song_id=song_id, is_custom=True)
+    on_active_song_identity_changed(
+        st,
+        pick_key=pick_key,
+        title=str(selected.get("title") or ""),
+        artist=str(selected.get("artist") or ""),
+        original_key=home_key,
+        is_custom=True,
+        sync_id=sync_id,
+        default_bpm=default_bpm,
+        default_groove=default_groove,
+        default_meter=default_meter,
+        display_key=practice_key,
+        custom_revision=str(active.get("id") or ""),
+        song_data=active,
+        invalidate_backing=invalidate_backing,
+        force_reset=True,
+    )
     note_active_source_change(st, invalidate_backing=invalidate_backing)
 
     session[SELECTED_SONG_STATE_KEY] = selected
     if pick_key:
         session[ACTIVE_CATALOG_PICK_KEY] = pick_key
-
-    identity = song_display_identity(
-        selected.get("title", ""),
-        selected.get("artist", ""),
-        home_key,
-    )
-    apply_display_key_for_active_song(st, home_key, identity, pending_key=practice_key)
 
     prepare_cpl_backing_handoff(session, active)
 
