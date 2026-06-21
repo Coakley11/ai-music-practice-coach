@@ -8,6 +8,7 @@ ACTIVE_MUSIC_SOURCE_KEY = "active_music_source"
 SOURCE_CATALOG = "catalog_song"
 SOURCE_CUSTOM = "custom_progression"
 _LAST_SOURCE_KEY = "_last_active_music_source"
+_LAST_ACTIVE_PICK_KEY = "_last_active_pick_key_for_reset"
 PENDING_CUSTOM_ACTIVE_SONG_KEY = "_pending_custom_active_song_activation"
 SONG_PICKER_SOURCE_CATALOG = "Song Selection (catalog song)"
 SONG_PICKER_SOURCE_CUSTOM = "Use Custom Progression / Create Your Own Song"
@@ -259,6 +260,9 @@ def commit_catalog_active_song(
         str(selected_song.get("artist") or ""),
         original_key,
     )
+    display_key = str(display_key or original_key).strip() or original_key
+    if reason == "catalog_source_switch":
+        display_key = original_key
     apply_display_key_for_active_song(
         st,
         original_key,
@@ -359,7 +363,7 @@ def switch_to_catalog_from_custom(
         )
         if data:
             original_key = str(data.get("key") or "C").strip() or "C"
-            display_key = str(session.get("display_key") or original_key).strip() or original_key
+            display_key = original_key
             commit_catalog_active_song(
                 st,
                 pick_key=pick_key,
@@ -459,7 +463,7 @@ def resolve_active_song_keys(
             if not meta_pick or not live_pick or meta_pick == live_pick:
                 canonical = str(meta.get("display_key") or "").strip()
         live = str(session_state.get("display_key") or "").strip()
-        display = canonical or live or original
+        display = live or canonical or original
     from instrument_transposition import (
         chart_in_instrument_key,
         effective_chart_key,
@@ -505,16 +509,31 @@ def active_song_written_chart_key(
 
 
 def note_active_source_change(st: Any, *, invalidate_backing) -> bool:
-    """Invalidate backing cache when the user switches catalog ↔ custom."""
+    """Invalidate backing/chart caches when active song source or pick changes."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
     from .playback_defaults import reset_playback_song_tracking
 
     session_state = st.session_state
-    current = session_state.get(ACTIVE_MUSIC_SOURCE_KEY, SOURCE_CATALOG)
-    previous = session_state.get(_LAST_SOURCE_KEY)
-    session_state[_LAST_SOURCE_KEY] = current
-    if previous is not None and previous != current:
+    current_source = session_state.get(ACTIVE_MUSIC_SOURCE_KEY, SOURCE_CATALOG)
+    previous_source = session_state.get(_LAST_SOURCE_KEY)
+    current_pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    previous_pick = session_state.get(_LAST_ACTIVE_PICK_KEY)
+
+    session_state[_LAST_SOURCE_KEY] = current_source
+    session_state[_LAST_ACTIVE_PICK_KEY] = current_pick
+
+    source_changed = previous_source is not None and previous_source != current_source
+    pick_changed = previous_pick is not None and previous_pick != current_pick
+    if source_changed or pick_changed:
         reset_playback_song_tracking(st)
         invalidate_backing(st)
+        try:
+            from studio_cache import invalidate_session_cache
+
+            invalidate_session_cache(session_state, "chart_bundle")
+        except Exception:
+            pass
         return True
     return False
 
@@ -718,12 +737,7 @@ def commit_custom_active_song(
     home_key = cpl_draft_written_key(active)
     selected = custom_selected_song_record(active)
     pick_key = str(selected.get("pick_key") or "").strip()
-    existing_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-    live_display = str(session.get("display_key") or "").strip()
-    if pick_key and existing_pick == pick_key and live_display:
-        practice_key = live_display
-    else:
-        practice_key = home_key
+    practice_key = home_key
 
     set_custom_source(session)
     sync_song_picker_source_widget(session, force=True)

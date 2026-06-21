@@ -131,6 +131,7 @@ from songs.music_source import (
     SOURCE_CUSTOM,
     active_source_banner,
     build_active_chart_bundle,
+    cpl_session_is_active,
     display_key_context,
     ensure_active_music_source,
     is_custom_progression,
@@ -9237,23 +9238,11 @@ original_key, _song_identity = display_key_context(
     catalog_song_data=_catalog_song_data,
     cpl_active_key=CPL_ACTIVE_KEY,
 )
-from songs.key_state import IDENTITY_KEY as _DISPLAY_IDENTITY_KEY
-from songs.key_state import PENDING_DISPLAY_KEY as _PENDING_DISPLAY_KEY
 from songs.music_source import cpl_session_is_active as _cpl_session_is_active
-from songs.music_source import resolve_active_song_keys as _resolve_active_song_keys
 
-_resolved_orig, _resolved_display, _resolved_written = _resolve_active_song_keys(
-    st.session_state,
-    _catalog_song_data,
-)
-if (
-    st.session_state.get(_DISPLAY_IDENTITY_KEY) == _song_identity
-    and _resolved_display
-):
-    st.session_state[_PENDING_DISPLAY_KEY] = _resolved_display
 _display_key_options = sync_display_key_before_widget(
     st,
-    _resolved_orig if _cpl_session_is_active(st.session_state) else original_key,
+    original_key,
     _song_identity,
 )
 
@@ -9596,9 +9585,9 @@ _chart_bundle = session_cache_get_or_set(
     "chart_bundle",
     (
         st.session_state.get(ACTIVE_CATALOG_PICK_KEY),
-        "custom" if custom_progression_is_active(st.session_state) else "catalog",
+        "custom" if cpl_session_is_active(st.session_state) else "catalog",
         str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("id", ""))
-        if is_custom_progression(st.session_state)
+        if cpl_session_is_active(st.session_state)
         else "",
         str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("original_key_center", "")),
         str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("progression_style", "")),
@@ -9687,7 +9676,7 @@ _default_groove = str(
     _chart_bundle.get("default_groove")
     or default_groove_for_song(song_data, infer_fn=infer_groove_style)
 )
-if custom_progression_is_active(st.session_state) and _cpl_active:
+if cpl_session_is_active(st.session_state) and _cpl_active:
     from custom_progression_lab import cpl_default_groove_for_active
 
     _default_bpm = int(_cpl_active.get("bpm", _default_bpm) or _default_bpm)
@@ -9701,7 +9690,7 @@ _default_meter = default_time_signature_for_record(
     sections_for_backing,
     song_title=song,
 )
-if custom_progression_is_active(st.session_state) and _cpl_active:
+if cpl_session_is_active(st.session_state) and _cpl_active:
     _default_meter = str(_cpl_active.get("time_signature") or _default_meter)
 _playback_id = playback_song_id(
     is_custom=is_custom_progression(st.session_state),
@@ -9714,7 +9703,7 @@ _active_pick_key = str((st.session_state.get("selected_song") or {}).get("pick_k
 _bpm_sync_id = active_song_sync_id(
     pick_key=_active_pick_key,
     playback_song_id=_playback_id,
-    is_custom=custom_progression_is_active(st.session_state),
+    is_custom=cpl_session_is_active(st.session_state),
 )
 _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     st,
@@ -9724,7 +9713,7 @@ _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     song_data=song_data,
     infer_fn=infer_groove_style,
     pick_key=_active_pick_key,
-    is_custom=custom_progression_is_active(st.session_state),
+    is_custom=cpl_session_is_active(st.session_state),
 )
 _default_song_bpm = _synced_bpm
 
@@ -11026,14 +11015,20 @@ elif _studio_page == "backing":
             all_records=ALL_SONG_RECORDS,
         )
 
-    _backing_card_record = dict(_catalog_song_data or song_data)
-    if custom_progression_is_active(st.session_state) and _cpl_active:
-        _backing_card_record = {
-            **_backing_card_record,
-            "title": str(_cpl_active.get("name") or song),
-            "artist": "Custom progression",
-            "genre": genre or "Custom",
-        }
+    from songs.music_source import custom_selected_song_record as _custom_selected_song_record
+
+    if cpl_session_is_active(st.session_state) and _cpl_active:
+        _backing_card_record = dict(_custom_selected_song_record(_cpl_active))
+        _backing_card_record.update(
+            {
+                "title": str(_cpl_active.get("name") or song),
+                "artist": "Custom progression",
+                "genre": genre or "Custom",
+                "key": str(_backing_card_record.get("key") or _cpl_active.get("original_key_center") or "C"),
+            }
+        )
+    else:
+        _backing_card_record = dict(song_data or _catalog_song_data or {})
     # Apply meter from canonical state (no separate apply_backing_meter_for_song
     # call - canonicalize_backing_defaults_for_song handled that already).
     _applied_meter_pre = str(_backing_canon["applied_meter"])
@@ -11070,6 +11065,7 @@ elif _studio_page == "backing":
         _backing_card_record,
         level=level,
         applied_bpm=_synced_bpm,
+        song_default_bpm=int(_default_bpm),
         applied_groove=default_groove_style,
         applied_meter=_applied_meter_pre,
         original_key=_backing_orig_key,

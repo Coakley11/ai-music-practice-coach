@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "cpl-live-paths-v29b-backing-ui-meter-fix"
+MUSIC_PERSIST_DEPLOY_VERSION = "cpl-live-paths-v29c-song-identity-reset"
 
 TRACE_KEY = "_music_persist_trace"
 

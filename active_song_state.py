@@ -340,6 +340,12 @@ def _resolve_custom_display_key_for_session(
     canonical = ""
     if isinstance(meta, dict):
         canonical = str(meta.get("display_key") or "").strip()
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        meta_pick = str(meta.get("pick_key") or "").strip()
+        live_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if meta_pick and live_pick and meta_pick != live_pick:
+            canonical = ""
     change_source = str(session.get("display_key_change_source") or "").strip()
     user_override = bool(live and live != home and change_source)
     if user_override:

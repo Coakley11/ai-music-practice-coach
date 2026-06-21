@@ -21,6 +21,7 @@ def render_backing_active_song_card(
     *,
     level: str = "Intermediate",
     applied_bpm: int | None = None,
+    song_default_bpm: int | None = None,
     applied_groove: str | None = None,
     applied_meter: str | None = None,
     original_key: str = "C",
@@ -76,6 +77,7 @@ def render_backing_active_song_card(
     raw_genre = str(record.get("genre") or details.get("visual_genre") or "Song")
     genre = html.escape(str(details.get("genre") or details.get("visual_genre") or "Song"))
     bpm = int(applied_bpm if applied_bpm is not None else details.get("bpm") or 100)
+    default_bpm = int(song_default_bpm if song_default_bpm is not None else bpm)
     groove = html.escape(str(applied_groove or details.get("style_label") or "Auto"))
     meter = html.escape(str(applied_meter or details.get("time_signature") or "4/4"))
     visual = genre_visual_style(raw_genre)
@@ -118,6 +120,15 @@ def render_backing_active_song_card(
         else title
     )
 
+    bpm_badges = (
+        f'<span class="ui-backing-badge bpm-default">Default {default_bpm} BPM</span>'
+        + (
+            f'<span class="ui-backing-badge bpm">Backing {bpm} BPM</span>'
+            if bpm != default_bpm
+            else ""
+        )
+    )
+
     st.markdown(
         f'<div class="ui-backing-active-song{modifier_cls}">'
         f'<div class="ui-backing-active-art" style="background:{html.escape(gradient)};">'
@@ -129,8 +140,7 @@ def render_backing_active_song_card(
         f'<span class="ui-backing-active-source">{source_badge}</span></p>'
         f"{key_row}"
         f'<div class="ui-backing-active-badges">'
-        f"{written_badge}"
-        f'<span class="ui-backing-badge bpm">{bpm} BPM</span>'
+        f"{written_badge}{bpm_badges}"
         f'<span class="ui-backing-badge meter">{meter}</span>'
         f'<span class="ui-backing-badge groove">{groove}</span>'
         f"</div></div></div>",

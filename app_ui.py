@@ -2918,6 +2918,14 @@ body.backing-studio-page .ui-studio-meta-badges .tone-key,
 body.backing-studio-page .ui-studio-meta-badges .tone-display {
   display: none !important;
 }
+body.backing-studio-page .ui-active-song-card,
+body.backing-studio-page .ui-active-song-hub {
+  display: none !important;
+}
+.ui-backing-badge.bpm-default {
+  background: rgba(249, 115, 22, 0.22);
+  border-color: rgba(251, 146, 60, 0.42);
+}
 .ui-backing-setup-context {
   display: flex;
   flex-wrap: wrap;
@@ -6537,7 +6545,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-19-cpl-live-paths-v29b"
+STUDIO_UI_RELEASE = "2026-06-19-cpl-live-paths-v29c"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"

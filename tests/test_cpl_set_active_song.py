@@ -62,6 +62,14 @@ from songs.music_source import (
     SONG_PICKER_SOURCE_CUSTOM,
 )
 from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+from song_catalog.catalog import format_pick_key
+
+PK_A = format_pick_key("Pop", "Song A — Artist A")
+_CATALOG_FIXTURE = {
+    "Pop": {
+        "Song A — Artist A": {"title": "Song A", "artist": "Artist A", "key": "G"},
+    }
+}
 
 
 class TestCplSetActiveSong(unittest.TestCase):
@@ -296,7 +304,7 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(session["display_key"], "Eb")
         self.assertEqual(session[ACTIVE_SONG_STATE_KEY]["display_key"], "Eb")
 
-    def test_commit_preserves_display_key_on_same_custom_reactivation(self) -> None:
+    def test_set_active_custom_resets_display_to_original_key(self) -> None:
         active = self._draft_with_chords()
         active["original_key_center"] = "D"
         st = SimpleNamespace(session_state={
@@ -308,10 +316,11 @@ class TestCplSetActiveSong(unittest.TestCase):
         })
         with patch("songs.state.persist_music_local_state"):
             commit_custom_active_song(st, active, invalidate_backing=lambda _st: None)
+            self.assertEqual(st.session_state["display_key"], "D")
             st.session_state["display_key"] = "Eb"
             commit_custom_active_song(st, active, invalidate_backing=lambda _st: None)
-        self.assertEqual(st.session_state["display_key"], "Eb")
-        self.assertEqual(st.session_state[ACTIVE_SONG_STATE_KEY]["display_key"], "Eb")
+        self.assertEqual(st.session_state["display_key"], "D")
+        self.assertEqual(st.session_state[ACTIVE_SONG_STATE_KEY]["display_key"], "D")
 
     def test_cpl_default_groove_maps_bossa_style(self) -> None:
         from custom_progression_lab import cpl_default_groove_for_active
@@ -668,6 +677,72 @@ class TestCplSetActiveSong(unittest.TestCase):
         original, practice = active_song_key_pair(session, {"key": "G"})
         self.assertEqual(original, "D")
         self.assertEqual(practice, "Eb")
+
+    def test_resolve_active_song_keys_prefers_live_session_over_stale_canonical(self) -> None:
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: PK_A,
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": PK_A,
+                "title": "Song A",
+                "artist": "Artist A",
+                "key": "G",
+            },
+            "display_key": "G",
+            ACTIVE_SONG_STATE_KEY: {
+                "pick_key": PK_A,
+                "display_key": "C",
+                "music_source": SOURCE_CATALOG,
+            },
+        }
+        original, display, _written = resolve_active_song_keys(session, {"key": "G"})
+        self.assertEqual(original, "G")
+        self.assertEqual(display, "G")
+
+    def test_switch_to_catalog_from_custom_resets_display_to_song_key(self) -> None:
+        from songs.key_state import IDENTITY_KEY
+
+        session = {
+            "active_music_source": SOURCE_CUSTOM,
+            ACTIVE_CATALOG_PICK_KEY: "custom::my-progression",
+            "display_key": "Eb",
+            CPL_ACTIVE_KEY: self._draft_with_chords(),
+            LAST_CATALOG_STATE_KEY: {
+                "pick_key": PK_A,
+                "selected_song": {
+                    "pick_key": PK_A,
+                    "title": "Song A",
+                    "artist": "Artist A",
+                    "key": "G",
+                },
+                "original_key": "G",
+                "display_key": "G",
+            },
+        }
+        st = SimpleNamespace(session_state=session)
+
+        def _apply_pick_key(_st, pick_key, song_picker_catalog, **kwargs):
+            _st.session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
+            _st.session_state[SELECTED_SONG_STATE_KEY] = {
+                "pick_key": pick_key,
+                "title": "Song A",
+                "artist": "Artist A",
+                "key": "G",
+            }
+            return _st.session_state[SELECTED_SONG_STATE_KEY]
+
+        with patch("songs.state.persist_music_local_state"):
+            with patch("songs.state.apply_pick_key", side_effect=_apply_pick_key):
+                ok = switch_to_catalog_from_custom(
+                    st,
+                    song_picker_catalog=_CATALOG_FIXTURE,
+                    invalidate_backing=lambda _st: None,
+                )
+        self.assertTrue(ok)
+        self.assertEqual(st.session_state["display_key"], "G")
+        self.assertEqual(
+            st.session_state.get(IDENTITY_KEY),
+            song_display_identity("Song A", "Artist A", "G"),
+        )
 
     def test_resolve_active_song_keys_prefers_canonical_over_stale_session(self) -> None:
         active = self._draft_with_chords()

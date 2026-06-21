@@ -446,6 +446,16 @@ def apply_pick_key(
             st.session_state["chart_edit_mode"] = False
         except Exception:
             pass
+        if str(pick_key).startswith("custom::"):
+            from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY, set_custom_source
+
+            st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+            set_custom_source(st.session_state)
+        else:
+            from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY, set_catalog_source
+
+            st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+            set_catalog_source(st.session_state)
         from songs.key_state import apply_display_key_for_active_song, song_display_identity
 
         song_identity = song_display_identity(
