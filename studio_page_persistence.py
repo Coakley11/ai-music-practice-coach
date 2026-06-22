@@ -418,6 +418,21 @@ def capture_page_snapshot(session_state: dict, page_id: str) -> dict[str, Any]:
     return _encode_page_snapshot(out)
 
 
+_PAGE_SNAPSHOT_USER_TOUCH_GUARDS: dict[str, str] = {
+    "workspace_genre_filters": "_genre_filters_user_touched",
+    "improv_intelligence_tab": "_improv_tab_user_touched",
+    "creative_lab_analysis_mode": "_creative_mode_user_touched",
+}
+
+_VOLATILE_BACKING_SNAPSHOT_KEYS: frozenset[str] = frozenset(
+    {
+        "playback_start_time",
+        "_backing_autoplay",
+        "backing_lead_sheet_open",
+    }
+)
+
+
 def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) -> None:
     """Restore page-local keys; global musician settings are always preserved."""
     preserved = _preserve_global_state(session_state)
@@ -429,6 +444,14 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
     except ImportError:
         pass
     for key, val in local.items():
+        if key in _VOLATILE_BACKING_SNAPSHOT_KEYS:
+            continue
+        touch_guard = _PAGE_SNAPSHOT_USER_TOUCH_GUARDS.get(key)
+        if touch_guard and session_state.get(touch_guard):
+            continue
+        if key == "mt_tracks" and _multitrack_session_has_layers(session_state):
+            if not _snapshot_has_multitrack_content({"mt_tracks": val}):
+                continue
         session_state[key] = copy.deepcopy(val)
     _restore_preserved_globals(session_state, preserved)
 

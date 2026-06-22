@@ -125,9 +125,12 @@ def music_skip_master_song_init_reason(session_state: dict[str, Any]) -> str:
 
     payload = session_state.get("_suite_last_cloud_fetch_payload")
     if isinstance(payload, dict) and payload:
+        if _payload_has_custom_active_signals(payload):
+            return "cloud_payload_custom_active"
         core = payload.get("core") if isinstance(payload.get("core"), dict) else {}
         extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
-        if str(core.get("pick_key") or core.get("active_catalog_pick_key") or "").strip():
+        cloud_pk = str(core.get("pick_key") or core.get("active_catalog_pick_key") or "").strip()
+        if cloud_pk and not session_state.get("_music_default_song_ephemeral"):
             return "cloud_payload_pick_key"
         if str(extra.get("active_music_source") or "") == "custom_progression":
             return "cloud_payload_custom_source"
@@ -142,6 +145,72 @@ def music_skip_master_song_init_reason(session_state: dict[str, Any]) -> str:
             return "cloud_payload_studio_page"
 
     return ""
+
+
+def run_post_nav_music_startup_init(
+    st: Any,
+    *,
+    song_picker_catalog: dict,
+    song_library: dict | None,
+    default_song_records: list | None = None,
+) -> bool:
+    """Trusted-core default + startup diag after AMI hydrate and second workspace sync."""
+    from songs.state import ensure_master_song_initialized
+
+    ss = st.session_state
+    skip = music_should_skip_master_song_init(ss)
+    if not skip and default_song_records:
+        ensure_master_song_initialized(
+            st,
+            all_records=default_song_records,
+            song_library=song_library,
+            song_picker_catalog=song_picker_catalog,
+        )
+        ss["_music_default_init_this_run"] = True
+        try:
+            from music_persistence_trace import update_trace
+
+            update_trace(st, trusted_core_init_ran=True, default_init_called=True)
+        except Exception:
+            pass
+    else:
+        try:
+            from music_persistence_trace import update_trace
+
+            update_trace(st, trusted_core_init_ran=False, default_init_called=False)
+        except Exception:
+            pass
+
+    payload = ss.get("_suite_last_cloud_fetch_payload")
+    if isinstance(payload, dict) and payload:
+        try:
+            _finalize_music_workspace_restore(
+                st,
+                payload,
+                song_picker_catalog=song_picker_catalog,
+                song_library=song_library,
+            )
+        except Exception:
+            pass
+        diag = ss.get(MUSIC_STARTUP_RESTORE_DIAG_KEY)
+        if not isinstance(diag, dict):
+            _record_music_startup_restore_diag(
+                ss,
+                payload,
+                restored_studio_page=str(ss.get("studio_page") or ""),
+                blob_studio_page=str(ss.get("studio_page") or ""),
+                default_init_called=bool(ss.get("_music_default_init_this_run")),
+            )
+        else:
+            diag["default_init_called"] = bool(ss.get("_music_default_init_this_run"))
+            diag["skip_master_song_init_reason"] = ss.get("_music_skip_master_song_init_reason")
+        try:
+            from music_persistence_trace import update_trace
+
+            update_trace(st, **(ss.get(MUSIC_STARTUP_RESTORE_DIAG_KEY) or {}))
+        except Exception:
+            pass
+    return skip
 
 
 def music_should_skip_master_song_init(session_state: dict[str, Any]) -> bool:
@@ -236,6 +305,26 @@ def _finalize_music_workspace_restore(
             )
         except Exception:
             pass
+    elif _payload_has_custom_active_signals(payload):
+        session_extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+        cpl = session_extra.get("cpl_active_progression")
+        if not isinstance(cpl, dict):
+            cpl = ss.get("cpl_active_progression")
+        if isinstance(cpl, dict):
+            cid = str(cpl.get("id") or "").strip()
+            if cid:
+                try:
+                    from songs.state import apply_saved_custom_pick_key_context
+
+                    apply_saved_custom_pick_key_context(
+                        st,
+                        f"custom::{cid}",
+                        core if isinstance(core, dict) else {},
+                        song_picker_catalog=song_picker_catalog,
+                        song_library=song_library,
+                    )
+                except Exception:
+                    pass
 
     try:
         from multitrack_session_persistence import restore_multitrack_layers_from_workspace
@@ -1517,6 +1606,9 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     except Exception as exc:
         ss["_music_commit_error"] = str(exc)
     core = build_music_local_state(st)
+    if ss.get("_music_default_song_ephemeral"):
+        for drop_key in ("pick_key", "song", "artist"):
+            core.pop(drop_key, None)
     extra: dict[str, Any] = {}
     for key in _PERSIST_KEYS:
         if key in ss:
@@ -1577,6 +1669,15 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     snapshots = ss.get("_studio_page_snapshots")
     if isinstance(snapshots, dict) and snapshots:
         extra["_studio_page_snapshots"] = copy.deepcopy(snapshots)
+    try:
+        from multitrack_session_persistence import count_mt_layers
+        from studio_page_persistence import save_page_snapshot
+
+        if count_mt_layers(ss.get("mt_tracks") or {}) > 0:
+            save_page_snapshot(ss, "multitrack")
+            extra["_studio_page_snapshots"] = copy.deepcopy(ss.get("_studio_page_snapshots") or {})
+    except ImportError:
+        pass
     try:
         from custom_progression_lab import export_cpl_widget_state
 
@@ -2643,12 +2744,24 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
 
 def force_save_music_state(st: Any, *, reason: str = "") -> bool:
     ss = st.session_state
-    if ss.get("_music_default_song_ephemeral") and reason in ("song_edit", "autosave", "force_autosave", ""):
+    if ss.get("_music_default_song_ephemeral") and reason in (
+        "song_edit",
+        "autosave",
+        "force_autosave",
+        "page_change",
+        "",
+    ):
         ss["_music_force_save_ok"] = False
         ss["_music_force_save_blocked_reason"] = "ephemeral_default_song"
         return False
     ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
-    st.session_state["_music_force_save_ok"] = ok
+    cloud_ok = bool(st.session_state.get("_suite_persist_last_save_cloud"))
+    if reason in ("multitrack_upload", "multitrack_layer_save") and not cloud_ok:
+        ok = False
+        st.session_state["_music_force_save_ok"] = False
+        st.session_state["_music_force_save_blocked_reason"] = "multitrack_cloud_save_failed"
+    else:
+        st.session_state["_music_force_save_ok"] = ok
     if reason in ("multitrack_upload", "multitrack_layer_save"):
         try:
             from multitrack_session_persistence import record_multitrack_persist_diag

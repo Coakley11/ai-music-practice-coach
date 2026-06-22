@@ -57,6 +57,23 @@ def toggle_genre_filter(session_state: MutableMapping[str, object], genre: str) 
         filters.append(genre)
     session_state[WORKSPACE_GENRE_FILTERS_KEY] = filters
     session_state["_genre_filters_user_touched"] = True
+    try:
+        from studio_page_persistence import save_page_snapshot
+
+        save_page_snapshot(session_state, "picker")
+    except ImportError:
+        pass
+
+
+def mark_improv_tab_user_touched(session_state: MutableMapping[str, object]) -> None:
+    """Record that the user changed Creative mode tab (skip stale snapshot restore)."""
+    session_state["_improv_tab_user_touched"] = True
+    try:
+        from studio_page_persistence import save_page_snapshot
+
+        save_page_snapshot(session_state, "creative")
+    except ImportError:
+        pass
 
 
 def genre_filter_widget_key(genre: str) -> str:

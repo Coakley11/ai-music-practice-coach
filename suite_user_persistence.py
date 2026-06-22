@@ -1349,6 +1349,7 @@ def force_autosave(
             "song_edit",
             "autosave",
             "force_autosave",
+            "page_change",
             "",
         ):
             st.session_state["_suite_autosave_blocked_after_restore"] = True

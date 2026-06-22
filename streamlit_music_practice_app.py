@@ -1167,51 +1167,8 @@ def _music_has_saved_song_context(session_state) -> bool:
         return bool(str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip())
 
 
-_skip_master_song_init = _music_has_saved_song_context(st.session_state)
-if not _skip_master_song_init:
-    ensure_master_song_initialized(
-        st,
-        all_records=DEFAULT_SONG_RECORDS,
-        song_library=SONG_LIBRARY,
-        song_picker_catalog=SONG_PICKER_CATALOG,
-    )
-    st.session_state["_music_default_init_this_run"] = True
-    try:
-        from music_persistence_trace import update_trace
-
-        update_trace(st, trusted_core_init_ran=True, default_init_called=True)
-    except Exception:
-        pass
-else:
-    try:
-        from music_persistence_trace import update_trace
-
-        update_trace(st, trusted_core_init_ran=False, default_init_called=False)
-    except Exception:
-        pass
-
-try:
-    from music_persistent_state import MUSIC_STARTUP_RESTORE_DIAG_KEY, _record_music_startup_restore_diag
-
-    payload = st.session_state.get("_suite_last_cloud_fetch_payload")
-    if isinstance(payload, dict) and payload:
-        diag = st.session_state.get(MUSIC_STARTUP_RESTORE_DIAG_KEY)
-        if not isinstance(diag, dict):
-            _record_music_startup_restore_diag(
-                st.session_state,
-                payload,
-                restored_studio_page=str(st.session_state.get("studio_page") or ""),
-                blob_studio_page=str(st.session_state.get("studio_page") or ""),
-                default_init_called=bool(st.session_state.get("_music_default_init_this_run")),
-            )
-        else:
-            diag["default_init_called"] = bool(st.session_state.get("_music_default_init_this_run"))
-            diag["skip_master_song_init_reason"] = st.session_state.get("_music_skip_master_song_init_reason")
-        from music_persistence_trace import update_trace
-
-        update_trace(st, **(st.session_state.get(MUSIC_STARTUP_RESTORE_DIAG_KEY) or {}))
-except Exception:
-    pass
+# Defer trusted-core default + startup diag until after AMI hydrate and second workspace sync.
+_skip_master_song_init = True
 
 if st.session_state.get("_music_restore_error") and st.session_state.get("developer_mode"):
     st.sidebar.warning(
@@ -7205,6 +7162,7 @@ def _stop_backing_playback() -> None:
     st.session_state[BACKING_AUTOPLAY] = False
     st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
     st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback stopped"
+    st.session_state["backing_lead_sheet_open"] = False
     st.session_state.pop("playback_start_time", None)
     for key in list(st.session_state.keys()):
         if str(key).endswith("::follow_start_time"):
@@ -8008,7 +7966,7 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
         details = song_card_meta(rec)
     ext = rec.get("extensions") or {}
 
-    with st.container(key="active_song_hub"):
+    with st.container(key="picker_active_song_hub"):
         render_active_song_hub_open(st, extra_class="source-custom")
         st.caption(
             "This is **your** song — Practice, Backing Track, and charts follow this custom progression."
@@ -8123,7 +8081,7 @@ def _render_catalog_active_song_hub(
     empty_message: str,
 ) -> None:
     """Featured Active Song hub for catalog picks."""
-    with st.container(key="active_song_hub"):
+    with st.container(key="picker_active_song_hub"):
         render_active_song_hub_open(st)
         st.markdown(
             '<p class="ui-active-song-picker-label">Switch active song</p>',
@@ -9229,6 +9187,7 @@ try:
     from suite_user_persistence import record_page_navigation_startup_diagnostics, show_persistence_messages
 
     record_page_navigation_startup_diagnostics(st, "music")
+    st.session_state.pop("_music_workspace_prepared_for_run", None)
     prepare_music_workspace(
         st,
         song_picker_catalog=SONG_PICKER_CATALOG,
@@ -9246,6 +9205,18 @@ try:
             song_library=SONG_LIBRARY,
         )
         maybe_flush_deferred_page_change_save(st)
+        try:
+            from music_persistent_state import run_post_nav_music_startup_init
+
+            _skip_master_song_init = run_post_nav_music_startup_init(
+                st,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+                default_song_records=DEFAULT_SONG_RECORDS,
+            )
+            st.session_state["_music_post_nav_startup_done"] = True
+        except Exception:
+            pass
         try:
             from local_nav_trace import record_local_nav_checkpoint
 
@@ -12486,9 +12457,9 @@ elif _studio_page == "multitrack":
     except Exception:
         pass
     try:
-        from multitrack_session_persistence import restore_multitrack_session_if_needed
+        from multitrack_session_persistence import restore_multitrack_layers_from_workspace
 
-        restore_multitrack_session_if_needed(st.session_state)
+        restore_multitrack_layers_from_workspace(st.session_state)
     except Exception:
         pass
     if "mt_tracks" not in st.session_state:

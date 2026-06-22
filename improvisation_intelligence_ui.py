@@ -69,6 +69,7 @@ from studio_page_state import (
     apply_improv_song_source,
     init_improvisation_state,
 )
+from songs.picker_session import mark_improv_tab_user_touched
 
 
 def render_improvisation_intelligence_lab(
@@ -146,6 +147,8 @@ def render_improvisation_intelligence_lab(
             horizontal=True,
             key="improv_intelligence_tab",
             label_visibility="collapsed",
+            on_change=mark_improv_tab_user_touched,
+            kwargs={"session_state": session_state},
         )
         st.markdown("</div>", unsafe_allow_html=True)
 

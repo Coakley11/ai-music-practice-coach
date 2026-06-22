@@ -2954,19 +2954,31 @@ body.backing-studio-page .ui-active-song-hub {
 }
 /* Hide Songs-page active song hub only on non-picker studio pages (never default-hide). */
 body.backing-studio-page .st-key-active_song_hub,
+body.backing-studio-page .st-key-picker_active_song_hub,
 body.practice-page .st-key-active_song_hub,
+body.practice-page .st-key-picker_active_song_hub,
 body.custom-builder-page .st-key-active_song_hub,
+body.custom-builder-page .st-key-picker_active_song_hub,
 body[data-studio-page="backing"] .st-key-active_song_hub,
+body[data-studio-page="backing"] .st-key-picker_active_song_hub,
 body[data-studio-page="practice"] .st-key-active_song_hub,
+body[data-studio-page="practice"] .st-key-picker_active_song_hub,
 body[data-studio-page="custom"] .st-key-active_song_hub,
+body[data-studio-page="custom"] .st-key-picker_active_song_hub,
 body[data-studio-page="creative"] .st-key-active_song_hub,
+body[data-studio-page="creative"] .st-key-picker_active_song_hub,
 body[data-studio-page="multitrack"] .st-key-active_song_hub,
+body[data-studio-page="multitrack"] .st-key-picker_active_song_hub,
 body[data-studio-page="analysis"] .st-key-active_song_hub,
-body[data-studio-page="upload"] .st-key-active_song_hub {
+body[data-studio-page="analysis"] .st-key-picker_active_song_hub,
+body[data-studio-page="upload"] .st-key-active_song_hub,
+body[data-studio-page="upload"] .st-key-picker_active_song_hub {
   display: none !important;
 }
 body[data-studio-page="picker"] .st-key-active_song_hub,
-body[data-song-picker-ui] .st-key-active_song_hub {
+body[data-studio-page="picker"] .st-key-picker_active_song_hub,
+body[data-song-picker-ui] .st-key-active_song_hub,
+body[data-song-picker-ui] .st-key-picker_active_song_hub {
   display: block !important;
   visibility: visible !important;
 }
