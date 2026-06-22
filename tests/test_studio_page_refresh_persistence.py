@@ -126,6 +126,33 @@ def test_capture_encodes_bytes_for_json() -> None:
     assert restored.get("last_analysis_audio") == b"\xab\xcd"
 
 
+def test_multitrack_restore_when_slot_map_empty_but_snapshot_has_audio() -> None:
+    from studio_page_persistence import (
+        capture_page_snapshot,
+        reset_page_snapshot_tracker,
+        restore_current_page_snapshot_if_needed,
+    )
+
+    audio = b"guitar-take"
+    ss = {
+        "studio_page": "multitrack",
+        "mt_tracks": {"Guitar": None, "Bass": None},
+        "_studio_page_snapshots": {
+            "multitrack": capture_page_snapshot(
+                {
+                    "studio_page": "multitrack",
+                    "mt_tracks": {"Guitar": audio, "Bass": None},
+                    "mt_track_filenames": {"Guitar": "guitar.wav"},
+                },
+                "multitrack",
+            ),
+        },
+    }
+    reset_page_snapshot_tracker(ss)
+    restore_current_page_snapshot_if_needed(ss)
+    assert ss.get("mt_tracks", {}).get("Guitar") == audio
+
+
 def test_practice_history_file_survives_reload(tmp_path: Path, monkeypatch) -> None:
     import music_workspace_paths as mwp
 

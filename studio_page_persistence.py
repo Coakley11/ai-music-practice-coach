@@ -455,6 +455,20 @@ def reset_page_snapshot_tracker(session_state: dict) -> None:
     session_state.pop(_ACTIVE_PAGE_TRACKER, None)
 
 
+def _multitrack_session_has_layers(session_state: dict) -> bool:
+    mt = session_state.get("mt_tracks")
+    if not isinstance(mt, dict):
+        return False
+    return any(v for v in mt.values() if v)
+
+
+def _snapshot_has_multitrack_content(snap: dict[str, Any]) -> bool:
+    mt = snap.get("mt_tracks")
+    if isinstance(mt, dict) and any(v for v in mt.values() if v):
+        return True
+    return bool(snap.get("mixed_track_wav"))
+
+
 def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
     """After browser refresh / cloud restore — hydrate page-local UI for active page."""
     current = str(session_state.get("studio_page") or "practice").strip() or "practice"
@@ -465,8 +479,9 @@ def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
     needs_restore = session_state.get(_ACTIVE_PAGE_TRACKER) is None
     if current == "analysis" and not session_state.get("last_analysis_result"):
         needs_restore = True
-    if current == "multitrack" and not session_state.get("mt_tracks"):
-        needs_restore = True
+    if current == "multitrack" and isinstance(snap, dict) and _snapshot_has_multitrack_content(snap):
+        if not _multitrack_session_has_layers(session_state) and not session_state.get("mixed_track_wav"):
+            needs_restore = True
     if current == "creative" and not session_state.get("improv_motif_abc"):
         if any(k in snap for k in ("improv_motif_abc", "improv_generated_sections", "improv_jam_session")):
             needs_restore = True

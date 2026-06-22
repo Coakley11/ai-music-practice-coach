@@ -12420,6 +12420,13 @@ elif _studio_page == "multitrack":
         "Extra layer",
     ]
 
+
+    try:
+        from studio_page_persistence import restore_current_page_snapshot_if_needed
+
+        restore_current_page_snapshot_if_needed(st.session_state)
+    except Exception:
+        pass
     if "mt_tracks" not in st.session_state:
         st.session_state.mt_tracks = {slot: None for slot in MT_SLOTS}
     if "mt_track_filenames" not in st.session_state:
@@ -12539,6 +12546,12 @@ elif _studio_page == "multitrack":
                                 except Exception:
                                     pass
                                 st.success(f"{layer_name} saved.")
+                                try:
+                                    from music_persistent_state import force_save_music_state
+
+                                    force_save_music_state(st, reason="multitrack_layer_save")
+                                except Exception:
+                                    pass
                                 st.rerun()
                             st.warning("Record or upload audio first.")
 

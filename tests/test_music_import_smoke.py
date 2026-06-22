@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CLOUD_PERSISTENCE_MODULES = (
     "activity_time",
     "suite_storage_config",
+    "suite_storage",
     "suite_storage_supabase",
     "suite_cloud_state",
     "suite_user_persistence",
@@ -25,6 +26,7 @@ CLOUD_PERSISTENCE_MODULES = (
 
 COMPILE_TARGETS = (
     "activity_time.py",
+    "suite_storage.py",
     "suite_storage_supabase.py",
     "suite_cloud_state.py",
     "suite_user_persistence.py",
