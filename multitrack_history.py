@@ -1,0 +1,230 @@
+"""Multitrack project history library — metadata-first, cloud-backed."""
+
+from __future__ import annotations
+
+import base64
+from datetime import datetime, timezone
+from typing import Any
+
+from analysis_session_persistence import sanitize_analysis_result_for_persist
+from studio_history_cloud import (
+    MAX_PER_TRACK_EMBED_BYTES,
+    MAX_TOTAL_TRACK_EMBED_BYTES,
+    active_workspace_id,
+    decode_audio_b64,
+    encode_audio_if_safe,
+    json_safe,
+    list_history_items,
+    new_history_item_key,
+    save_history_item,
+)
+
+ITEM_TYPE = "multitrack_history"
+PAYLOAD_VERSION = 1
+
+MULTITRACK_SLOTS: tuple[str, ...] = (
+    "Guitar",
+    "Bass",
+    "Piano / Keys",
+    "Vocals",
+    "Sax / winds",
+    "Extra layer",
+)
+
+
+def _analysis_summary(session_state: dict[str, Any]) -> dict[str, Any] | None:
+    raw = session_state.get("last_analysis_result")
+    if not isinstance(raw, dict) or not raw.get("multitrack"):
+        return None
+    clean = sanitize_analysis_result_for_persist(raw)
+    return {
+        "coach_summary": str(clean.get("coach_summary") or "")[:500],
+        "scores": clean.get("scores") if isinstance(clean.get("scores"), dict) else {},
+        "layer_scores": clean.get("layer_scores") if isinstance(clean.get("layer_scores"), list) else [],
+    }
+
+
+def default_project_name(session_state: dict[str, Any], *, song_title: str = "") -> str:
+    song = str(song_title or session_state.get("active_song_title") or "Multitrack").strip()
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    loaded = [s for s in MULTITRACK_SLOTS if session_state.get("mt_tracks", {}).get(s)]
+    if loaded:
+        return f"{song} — {len(loaded)} layer(s) — {stamp}"
+    return f"{song} — {stamp}"
+
+
+def build_multitrack_history_payload(
+    session_state: dict[str, Any],
+    *,
+    project_name: str,
+    notes: str = "",
+    song_title: str = "",
+    st: Any | None = None,
+) -> dict[str, Any] | None:
+    mt_tracks = session_state.get("mt_tracks")
+    if not isinstance(mt_tracks, dict):
+        mt_tracks = {}
+    filenames = session_state.get("mt_track_filenames")
+    if not isinstance(filenames, dict):
+        filenames = {}
+    controls = session_state.get("mt_track_controls")
+    if not isinstance(controls, dict):
+        controls = {}
+
+    has_any = any(mt_tracks.get(slot) for slot in MULTITRACK_SLOTS) or session_state.get("mixed_track_wav")
+    if not has_any:
+        return None
+
+    tracks_meta: list[dict[str, Any]] = []
+    embedded_tracks: dict[str, str] = {}
+    embed_budget = MAX_TOTAL_TRACK_EMBED_BYTES
+
+    for slot in MULTITRACK_SLOTS:
+        audio = mt_tracks.get(slot)
+        ctrl = controls.get(slot, {}) if isinstance(controls.get(slot), dict) else {}
+        layer_name = str(session_state.get(f"mt_name_{slot}") or slot)
+        volume = session_state.get(f"mt_vol_{slot}", ctrl.get("volume", 1.0))
+        delay = session_state.get(f"mt_delay_{slot}", ctrl.get("delay", 0.0))
+        filename = str(filenames.get(slot) or f"{slot.replace(' ', '_').lower()}.wav")
+        has_audio = isinstance(audio, (bytes, bytearray)) and bool(audio)
+        meta: dict[str, Any] = {
+            "slot": slot,
+            "layer_name": layer_name[:80],
+            "filename": filename[:200],
+            "volume": float(volume) if volume is not None else 1.0,
+            "delay": float(delay) if delay is not None else 0.0,
+            "mute": bool(ctrl.get("mute", False)),
+            "solo": bool(ctrl.get("solo", False)),
+            "has_audio": has_audio,
+            "audio_embedded": False,
+        }
+        if has_audio:
+            raw = bytes(audio)
+            if len(raw) <= MAX_PER_TRACK_EMBED_BYTES and len(raw) <= embed_budget:
+                embedded_tracks[slot] = base64.b64encode(raw).decode("ascii")
+                meta["audio_embedded"] = True
+                embed_budget -= len(raw)
+        tracks_meta.append(meta)
+
+    mixed_b64, mixed_skip = encode_audio_if_safe(session_state.get("mixed_track_wav"))
+
+    return json_safe(
+        {
+            "version": PAYLOAD_VERSION,
+            "workspace_id": active_workspace_id(st=st),
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "project_name": str(project_name or default_project_name(session_state, song_title=song_title)).strip()[:120],
+            "song_title": str(song_title or "")[:120],
+            "notes": str(notes or "").strip()[:2000],
+            "tracks": tracks_meta,
+            "track_controls": controls,
+            "embedded_tracks": embedded_tracks,
+            "mixed_preview_b64": mixed_b64,
+            "mixed_skip_reason": mixed_skip,
+            "session_bpm": session_state.get("multitrack_bpm") or session_state.get("backing_track_bpm"),
+            "session_groove": str(session_state.get("backing_groove_style") or ""),
+            "analysis_summary": _analysis_summary(session_state),
+        }
+    )
+
+
+def save_multitrack_to_history(
+    session_state: dict[str, Any],
+    *,
+    project_name: str,
+    notes: str = "",
+    song_title: str = "",
+    st: Any | None = None,
+) -> tuple[bool, str]:
+    payload = build_multitrack_history_payload(
+        session_state,
+        project_name=project_name,
+        notes=notes,
+        song_title=song_title,
+        st=st,
+    )
+    if not payload:
+        return False, ""
+    item_key = new_history_item_key("mt")
+    ok = save_history_item(
+        item_type=ITEM_TYPE,
+        item_key=item_key,
+        title=str(payload.get("project_name") or "Multitrack project"),
+        payload=payload,
+    )
+    return ok, item_key
+
+
+def list_multitrack_history(*, st: Any | None = None, limit: int = 40) -> list[dict[str, Any]]:
+    return list_history_items(item_type=ITEM_TYPE, st=st, limit=limit)
+
+
+def apply_multitrack_history(session_state: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    """Restore project metadata and any embedded audio. Returns info flags for UI."""
+    info = {"restored_layers": 0, "metadata_only_layers": 0, "mixed_restored": False}
+
+    if "mt_tracks" not in session_state or not isinstance(session_state.get("mt_tracks"), dict):
+        session_state["mt_tracks"] = {slot: None for slot in MULTITRACK_SLOTS}
+    if "mt_track_filenames" not in session_state or not isinstance(session_state.get("mt_track_filenames"), dict):
+        session_state["mt_track_filenames"] = {
+            slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MULTITRACK_SLOTS
+        }
+
+    embedded = payload.get("embedded_tracks") if isinstance(payload.get("embedded_tracks"), dict) else {}
+    tracks = payload.get("tracks") if isinstance(payload.get("tracks"), list) else []
+
+    for row in tracks:
+        if not isinstance(row, dict):
+            continue
+        slot = str(row.get("slot") or "")
+        if slot not in MULTITRACK_SLOTS:
+            continue
+        session_state["mt_track_filenames"][slot] = str(row.get("filename") or session_state["mt_track_filenames"].get(slot, ""))
+        session_state[f"mt_name_{slot}"] = str(row.get("layer_name") or slot)
+        session_state[f"mt_vol_{slot}"] = float(row.get("volume", 1.0))
+        session_state[f"mt_delay_{slot}"] = float(row.get("delay", 0.0))
+        b64 = embedded.get(slot)
+        audio = decode_audio_b64(b64) if isinstance(b64, str) else None
+        if audio:
+            session_state["mt_tracks"][slot] = audio
+            info["restored_layers"] += 1
+        elif row.get("has_audio"):
+            session_state["mt_tracks"][slot] = None
+            info["metadata_only_layers"] += 1
+        else:
+            session_state["mt_tracks"][slot] = None
+
+    controls = payload.get("track_controls")
+    if isinstance(controls, dict):
+        session_state["mt_track_controls"] = controls
+
+    mixed = decode_audio_b64(payload.get("mixed_preview_b64"))
+    if mixed:
+        session_state["mixed_track_wav"] = mixed
+        info["mixed_restored"] = True
+
+    if payload.get("notes"):
+        session_state["multitrack_history_loaded_notes"] = str(payload.get("notes") or "")
+
+    analysis = payload.get("analysis_summary")
+    if isinstance(analysis, dict) and analysis.get("coach_summary"):
+        session_state["last_analysis_result"] = {
+            "ok": True,
+            "multitrack": True,
+            "coach_summary": analysis.get("coach_summary"),
+            "scores": analysis.get("scores") or {},
+            "layer_scores": analysis.get("layer_scores") or [],
+        }
+
+    return info
+
+
+def history_row_summary(row: dict[str, Any]) -> str:
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    name = str(payload.get("project_name") or row.get("title") or "Multitrack project")
+    tracks = payload.get("tracks") if isinstance(payload.get("tracks"), list) else []
+    loaded = sum(1 for t in tracks if isinstance(t, dict) and t.get("has_audio"))
+    song = str(payload.get("song_title") or "").strip()
+    if song:
+        return f"{name[:80]} · {song[:40]} · {loaded} layer(s)"
+    return f"{name[:100]} · {loaded} layer(s)"

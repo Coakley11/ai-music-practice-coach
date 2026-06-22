@@ -139,6 +139,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "analysis_audio_record",
             "last_analysis_result",
             "last_analysis_audio",
+            "last_analysis_source_label",
             "analysis_mission_ids",
             "analysis_ai_metric_ids",
             "analysis_sync_creative_mission",

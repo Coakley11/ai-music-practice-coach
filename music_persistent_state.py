@@ -71,6 +71,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "improv_intelligence_tab",
     "last_analysis_result",
     "last_analysis_audio",
+    "last_analysis_source_label",
     "song_picker_favorites_only",
     "cpl_active_progression",
     "cpl_saved_progressions",

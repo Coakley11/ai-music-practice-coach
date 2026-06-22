@@ -12003,6 +12003,9 @@ elif _studio_page == "analysis":
                         )
                     st.session_state["last_analysis_result"] = result
                     st.session_state["last_analysis_audio"] = audio_obj.getvalue()
+                    st.session_state["last_analysis_source_label"] = str(
+                        getattr(audio_obj, "name", None) or "recording.wav"
+                    )
                     try:
                         from analysis_session_persistence import save_analysis_session
                         from music_persistent_state import force_save_music_state
@@ -12148,6 +12151,12 @@ elif _studio_page == "analysis":
                     )
 
 
+    try:
+        from studio_history_ui import render_upload_history_panel
+
+        render_upload_history_panel(st)
+    except Exception:
+        pass
 
 
 # -------------------------------------------------
@@ -12660,6 +12669,13 @@ elif _studio_page == "multitrack":
                 st.session_state.mt_track_controls = {}
                 st.success("Layers cleared.")
                 st.rerun()
+
+            try:
+                from studio_history_ui import render_multitrack_history_panel
+
+                render_multitrack_history_panel(st, song_title=str(song or ""))
+            except Exception:
+                pass
 
 # -------------------------------------------------
 # OPENAI COACHING HUB
