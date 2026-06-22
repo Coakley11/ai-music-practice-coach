@@ -2035,11 +2035,26 @@ def save_progression(store, name, data):
         "created_at": existing.get("created_at") or now,
         "updated_at": now,
     }
+    try:
+        from custom_song_library import upsert_custom_song_to_cloud
+
+        upsert_custom_song_to_cloud(save_name, store[save_name])
+    except Exception:
+        pass
     return store
 
 
 def delete_progression(store, name):
+    existing = store.get(name) if isinstance(store.get(name), dict) else {}
+    song_id = str(existing.get("id") or "").strip()
     store.pop(name, None)
+    if song_id:
+        try:
+            from custom_song_library import delete_custom_song_from_cloud
+
+            delete_custom_song_from_cloud(song_id)
+        except Exception:
+            pass
     return store
 
 

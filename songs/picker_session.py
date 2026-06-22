@@ -56,3 +56,10 @@ def toggle_genre_filter(session_state: MutableMapping[str, object], genre: str) 
     else:
         filters.append(genre)
     session_state[WORKSPACE_GENRE_FILTERS_KEY] = filters
+
+
+def genre_filter_widget_key(genre: str) -> str:
+    """Stable Streamlit widget key suffix for a genre label."""
+    import re
+
+    return re.sub(r"[^a-zA-Z0-9_]", "_", str(genre or "genre"))[:48] or "genre"

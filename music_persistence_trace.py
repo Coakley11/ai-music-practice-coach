@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "upload-analysis-cloud-v5-storage-shim"
+MUSIC_PERSIST_DEPLOY_VERSION = "music-restore-custom-songs-v6"
 
 TRACE_KEY = "_music_persist_trace"
 

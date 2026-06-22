@@ -73,12 +73,25 @@ def _render_history_list(
     on_load: Callable[[dict[str, Any]], tuple[bool, str]],
     on_delete: Callable[[str], tuple[bool, str]],
     key_prefix: str,
+    active_item_key: str = "",
 ) -> None:
     if list_error:
         st_obj.error(f"Could not load history: {list_error}")
     if not rows:
         st_obj.caption("No saved items yet.")
         return
+
+    st_obj.markdown(
+        '<style>'
+        f"div[data-testid='stVerticalBlock']:has(.{key_prefix}-hist-row) "
+        "div[data-testid='column'] {padding-top:0;padding-bottom:0;}"
+        f".{key_prefix}-hist-row .stButton > button "
+        "{padding:0.18rem 0.45rem;font-size:0.82rem;line-height:1.25;text-align:left;}"
+        f".{key_prefix}-hist-del .stButton > button "
+        "{padding:0.12rem 0.35rem;min-width:2rem;}"
+        "</style>",
+        unsafe_allow_html=True,
+    )
 
     for row in rows:
         item_key = str(row.get("item_key") or "")
@@ -87,35 +100,43 @@ def _render_history_list(
         payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
         saved_at = format_saved_at(str(payload.get("saved_at") or row.get("updated_at") or ""))
         title = str(row.get("title") or payload.get("title") or payload.get("project_name") or "Saved item")
+        summary = summary_fn(row)
         suffix = widget_key_suffix(item_key)
+        is_active = bool(active_item_key and item_key == active_item_key)
+        row_label = f"{title}  ·  {saved_at}"
+        if summary:
+            row_label = f"{row_label}  ·  {summary}"
+        if is_active:
+            row_label = f"▸ {row_label}"
 
-        with st_obj.container(border=True):
-            st_obj.markdown(f"**{title}**")
-            st_obj.caption(f"{saved_at} · {summary_fn(row)}")
-            notes = str(payload.get("notes") or "").strip()
-            if notes:
-                st_obj.caption(f"Notes: {notes[:160]}{'…' if len(notes) > 160 else ''}")
-            if payload.get("audio_skip_reason") or payload.get("mixed_skip_reason"):
-                skip = payload.get("audio_skip_reason") or payload.get("mixed_skip_reason")
-                st_obj.caption(f"Audio preview not stored ({skip}). Report and metadata still saved.")
-
-            col_load, col_del = st_obj.columns(2)
-            with col_load:
-                if st_obj.button("Load", key=f"{key_prefix}_load_{suffix}", use_container_width=True):
-                    ok, msg = on_load(payload)
-                    if ok:
-                        st_obj.session_state[f"{key_prefix}_flash"] = msg
-                        st_obj.rerun()
-                    else:
-                        st_obj.error(msg)
-            with col_del:
-                if st_obj.button("Delete", key=f"{key_prefix}_del_{suffix}", use_container_width=True):
-                    ok, err = on_delete(item_key)
-                    if ok:
-                        st_obj.session_state[f"{key_prefix}_flash"] = "Deleted from history."
-                        st_obj.rerun()
-                    else:
-                        st_obj.error(_format_save_error(err))
+        row_cols = st_obj.columns([12, 1])
+        with row_cols[0]:
+            st_obj.markdown(f'<div class="{key_prefix}-hist-row"></div>', unsafe_allow_html=True)
+            if is_active:
+                st_obj.caption(row_label)
+            elif st_obj.button(
+                row_label,
+                key=f"{key_prefix}_open_{suffix}",
+                use_container_width=True,
+            ):
+                ok, msg = on_load(payload)
+                if ok:
+                    st_obj.session_state[f"{key_prefix}_flash"] = msg
+                    st_obj.session_state[f"{key_prefix}_active_item"] = item_key
+                    st_obj.rerun()
+                else:
+                    st_obj.error(msg)
+        with row_cols[1]:
+            st_obj.markdown(f'<div class="{key_prefix}-hist-del"></div>', unsafe_allow_html=True)
+            if st_obj.button("✕", key=f"{key_prefix}_del_{suffix}", help="Delete"):
+                ok, err = on_delete(item_key)
+                if ok:
+                    st_obj.session_state[f"{key_prefix}_flash"] = "Deleted from history."
+                    if st_obj.session_state.get(f"{key_prefix}_active_item") == item_key:
+                        st_obj.session_state.pop(f"{key_prefix}_active_item", None)
+                    st_obj.rerun()
+                else:
+                    st_obj.error(_format_save_error(err))
 
 
 def render_upload_history_panel(st_obj: Any) -> None:
@@ -151,6 +172,7 @@ def render_upload_history_panel(st_obj: Any) -> None:
                 ok, item_key, err = save_upload_to_history(ss, title=title, notes=notes, st=st_obj)
                 if ok:
                     ss[UPLOAD_FLASH_KEY] = f"Saved to Upload History ({item_key})."
+                    ss["upload_hist_active_item"] = item_key
                     st_obj.rerun()
                 else:
                     st_obj.error(_format_save_error(err))
@@ -158,6 +180,7 @@ def render_upload_history_panel(st_obj: Any) -> None:
         st_obj.markdown("##### Saved analyses")
 
         rows, list_err = list_upload_history(st=st_obj)
+        active_key = str(ss.get("upload_hist_active_item") or ss.get("upload_history_loaded_item_key") or "")
 
         def _load_upload(payload: dict[str, Any]) -> tuple[bool, str]:
             queue_upload_history_load(ss, payload)
@@ -175,6 +198,7 @@ def render_upload_history_panel(st_obj: Any) -> None:
             on_load=_load_upload,
             on_delete=_delete_upload,
             key_prefix="upload_hist",
+            active_item_key=active_key,
         )
 
 
@@ -224,6 +248,7 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             )
             if ok:
                 ss[MT_FLASH_KEY] = f"Saved to Project Library ({item_key})."
+                ss["mt_hist_active_item"] = item_key
                 st_obj.rerun()
             else:
                 st_obj.error(_format_save_error(err))
@@ -231,6 +256,7 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
         st_obj.markdown("##### Saved projects")
 
         rows, list_err = list_multitrack_history(st=st_obj)
+        active_key = str(ss.get("mt_hist_active_item") or ss.get("multitrack_history_loaded_item_key") or "")
 
         def _load_mt(payload: dict[str, Any]) -> tuple[bool, str]:
             queue_multitrack_history_load(ss, payload)
@@ -248,4 +274,5 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             on_load=_load_mt,
             on_delete=_delete_mt,
             key_prefix="mt_hist",
+            active_item_key=active_key,
         )

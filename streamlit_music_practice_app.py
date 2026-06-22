@@ -1156,18 +1156,18 @@ if hasattr(st, "session_state"):
         pass
 
 def _music_has_saved_song_context(session_state) -> bool:
-    sel = session_state.get(SELECTED_SONG_STATE_KEY)
-    if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip():
-        return True
-    return bool(str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip())
+    try:
+        from music_persistent_state import music_should_skip_master_song_init
+
+        return music_should_skip_master_song_init(session_state)
+    except Exception:
+        sel = session_state.get(SELECTED_SONG_STATE_KEY)
+        if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip():
+            return True
+        return bool(str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip())
 
 
-_skip_master_song_init = (
-    _music_has_saved_song_context(st.session_state)
-    or bool(st.session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY))
-    or bool(st.session_state.get("_music_restore_error"))
-    or bool(st.session_state.get("_suite_persist_restore_applied"))
-)
+_skip_master_song_init = _music_has_saved_song_context(st.session_state)
 if not _skip_master_song_init:
     ensure_master_song_initialized(
         st,
@@ -7678,9 +7678,8 @@ def _render_active_song_favorites_switch(
 
 def _render_custom_song_library_selector() -> None:
     """Pick a saved custom song to activate (Custom Progression source)."""
-    from custom_progression_lab import (
-        list_saved_progression_names,
-    )
+    from custom_progression_lab import list_saved_progression_names
+    from custom_song_library import _format_saved_at, progression_row_summary, row_widget_suffix
     from songs.music_source import (
         CUSTOM_RECENT_ACTIVE_NAMES_KEY,
         custom_progression_is_active,
@@ -7688,6 +7687,8 @@ def _render_custom_song_library_selector() -> None:
     )
 
     saved = st.session_state.get(CPL_SAVED_KEY) or {}
+    if not isinstance(saved, dict):
+        saved = {}
     names = list_saved_progression_names(saved)
     recent = [
         n
@@ -7715,13 +7716,30 @@ def _render_custom_song_library_selector() -> None:
         return
 
     for name in ordered:
-        safe_key = "".join(ch if ch.isalnum() else "_" for ch in name)[:48] or "song"
-        label = name
-        if name == active_name:
-            label = f"{name} (active)"
-        if st.button(label, key=f"custom_lib_pick_{safe_key}", use_container_width=True):
-            queue_custom_library_action(st, name=name, action="activate")
-            st.rerun()
+        data = saved.get(name) if isinstance(saved.get(name), dict) else {}
+        summary = progression_row_summary(data) if data else ""
+        saved_at = _format_saved_at(data.get("updated_at") or data.get("created_at"))
+        suffix = row_widget_suffix({"payload": {"progression": data}, "item_key": data.get("id") or name})
+        row_label = name
+        meta_parts = [p for p in (saved_at, summary) if p]
+        if meta_parts:
+            row_label = f"{name}  ·  {' · '.join(meta_parts)}"
+        is_active = name == active_name
+        row_cols = st.columns([12, 1])
+        with row_cols[0]:
+            if is_active:
+                st.caption(f"▸ {row_label}")
+            elif st.button(row_label, key=f"custom_lib_pick_{suffix}", use_container_width=True):
+                queue_custom_library_action(st, name=name, action="activate")
+                st.rerun()
+        with row_cols[1]:
+            if st.button("✕", key=f"custom_lib_del_{suffix}", help="Delete custom song"):
+                from custom_progression_lab import delete_progression
+
+                st.session_state[CPL_SAVED_KEY] = delete_progression(dict(saved), name)
+                if active_name == name:
+                    queue_custom_library_action(st, action="new_song")
+                st.rerun()
 
 
 def _render_last_catalog_song_shortcut(
@@ -7898,11 +7916,8 @@ def _apply_picker_catalog_filters(
         if is_custom_progression(st.session_state):
             active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
             return filtered, pick_options, active_pk
-        set_catalog_source(st.session_state)
-        from songs.state import queue_pending_catalog_pick
-
-        queue_pending_catalog_pick(st, default_pk)
-        st.rerun()
+        active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or default_pk)
+        return filtered, pick_options, active_pk
     active_pk = sync_matching_song_dropdown_before_widget(st, pick_options, default_pk)
     return filtered, pick_options, active_pk
 
@@ -8004,6 +8019,8 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
 
 def _render_genre_filter_pills(available_genres: list[str]) -> None:
     """Multi-select genre pill bar with clear + more-genres expander."""
+    from songs.picker_session import genre_filter_widget_key
+
     selected = set(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
     head_l, head_r = st.columns([3, 1])
     with head_l:
@@ -8032,9 +8049,10 @@ def _render_genre_filter_pills(available_genres: list[str]) -> None:
             for col, genre in zip(cols, chunk):
                 with col:
                     is_active = genre in selected
+                    genre_key = genre_filter_widget_key(genre)
                     st.button(
                         genre,
-                        key=f"{key_prefix}_{genre}",
+                        key=f"{key_prefix}_{genre_key}",
                         use_container_width=True,
                         type="primary" if is_active else "secondary",
                         on_click=toggle_genre_filter,
@@ -8045,7 +8063,22 @@ def _render_genre_filter_pills(available_genres: list[str]) -> None:
     if extra:
         with st.expander(f"More genres ({len(extra)})", expanded=False):
             for row_start in range(0, len(extra), 4):
-                _pill_row(extra[row_start : row_start + 4], f"genre_more_{row_start}")
+                chunk = extra[row_start : row_start + 4]
+                if not chunk:
+                    continue
+                cols = st.columns(len(chunk))
+                for col, genre in zip(cols, chunk):
+                    with col:
+                        is_active = genre in selected
+                        genre_key = genre_filter_widget_key(genre)
+                        st.button(
+                            genre,
+                            key=f"genre_more_{row_start}_{genre_key}",
+                            use_container_width=True,
+                            type="primary" if is_active else "secondary",
+                            on_click=toggle_genre_filter,
+                            kwargs={"session_state": st.session_state, "genre": genre},
+                        )
 
     if selected:
         st.markdown(

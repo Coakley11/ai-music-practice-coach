@@ -29,6 +29,69 @@ from suite_user_persistence import (
 APP_ID = "music"
 WORKSPACE_SCHEMA_VERSION = 1
 
+
+def music_should_skip_master_song_init(session_state: dict[str, Any]) -> bool:
+    """True when cold-start trusted-core pin would clobber restored workspace state."""
+    if session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY):
+        return True
+    if session_state.get("_music_restore_error"):
+        return True
+    if session_state.get("_suite_persist_restore_applied"):
+        return True
+    if session_state.get("_suite_cloud_workspace_applied"):
+        return True
+
+    sel = session_state.get(SELECTED_SONG_STATE_KEY)
+    if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip():
+        return True
+    if str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip():
+        return True
+    if str(session_state.get("active_music_source") or "").strip() == "custom_progression":
+        return True
+
+    try:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+
+        blob = session_state.get(ACTIVE_SONG_STATE_KEY)
+        if isinstance(blob, dict):
+            if str(blob.get("pick_key") or blob.get("active_catalog_pick_key") or "").strip():
+                return True
+            if str(blob.get("music_source") or "") == "custom_progression":
+                return True
+            if str(blob.get("custom_progression_name") or "").strip():
+                return True
+    except ImportError:
+        pass
+
+    if session_state.get("cpl_saved_progressions") or session_state.get("cpl_active_progression"):
+        return True
+
+    ws = session_state.get("music_workspace_state")
+    if isinstance(ws, dict):
+        ws_page = str(ws.get("studio_page") or ws.get("page") or "").strip()
+        if ws_page and ws_page not in {"practice"}:
+            return True
+
+    payload = session_state.get("_suite_last_cloud_fetch_payload")
+    if isinstance(payload, dict):
+        core = payload.get("core") if isinstance(payload.get("core"), dict) else {}
+        extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+        if str(core.get("pick_key") or core.get("active_catalog_pick_key") or "").strip():
+            return True
+        if str(extra.get("active_music_source") or "") == "custom_progression":
+            return True
+        if extra.get("cpl_saved_progressions") or extra.get("cpl_active_progression"):
+            return True
+        blob_page = str(extra.get("studio_page") or "").strip()
+        if not blob_page:
+            meta = payload.get("music_workspace_state")
+            if isinstance(meta, dict):
+                blob_page = str(meta.get("studio_page") or "").strip()
+        if blob_page and blob_page not in {"practice"}:
+            return True
+
+    return False
+
 # Content-edit saves must not clobber the last page_change-persisted studio_page.
 _PRESERVE_USER_NAV_SAVE_REASONS: frozenset[str] = frozenset(
     {
@@ -1716,6 +1779,13 @@ def apply_music_disk_state(
         from custom_progression_lab import reconcile_cpl_restored_session
 
         reconcile_cpl_restored_session(ss)
+    except Exception:
+        pass
+
+    try:
+        from custom_song_library import merge_custom_songs_from_cloud
+
+        merge_custom_songs_from_cloud(ss, st=st)
     except Exception:
         pass
 
