@@ -187,9 +187,14 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
         return _render_multitrack_dashboard(result)
 
     features = result.get("features")
-    peaks = getattr(features, "waveform_peaks", []) if features else []
-    times = getattr(features, "waveform_times", []) if features else []
-    regions = getattr(features, "highlight_regions", []) if features else []
+    if isinstance(features, dict):
+        peaks = list(features.get("waveform_peaks") or [])
+        times = list(features.get("waveform_times") or [])
+        regions = list(features.get("highlight_regions") or [])
+    else:
+        peaks = getattr(features, "waveform_peaks", []) if features else []
+        times = getattr(features, "waveform_times", []) if features else []
+        regions = getattr(features, "highlight_regions", []) if features else []
     scores = result.get("scores") or {}
 
     score_rows = "".join(

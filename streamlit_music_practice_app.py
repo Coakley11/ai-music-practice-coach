@@ -11777,7 +11777,7 @@ elif _studio_page == "analysis":
     try:
         from analysis_session_persistence import restore_analysis_session
 
-        restore_analysis_session(st.session_state)
+        restore_analysis_session(st.session_state, st=st)
     except Exception:
         pass
     ensure_page_initialized(st.session_state, "analysis")
@@ -12007,7 +12007,7 @@ elif _studio_page == "analysis":
                         from analysis_session_persistence import save_analysis_session
                         from music_persistent_state import force_save_music_state
 
-                        save_analysis_session(st.session_state)
+                        save_analysis_session(st.session_state, st=st)
                         force_save_music_state(st, reason="analysis_complete")
                     except Exception:
                         pass
@@ -12128,6 +12128,14 @@ elif _studio_page == "analysis":
                         )
 
                         append_performance_record(mt_result, ctx=ctx, source=SOURCE_MULTITRACK)
+                    try:
+                        from analysis_session_persistence import save_analysis_session
+                        from music_persistent_state import force_save_music_state
+
+                        save_analysis_session(st.session_state, st=st)
+                        force_save_music_state(st, reason="analysis_complete")
+                    except Exception:
+                        pass
             if st.session_state.get("last_analysis_result", {}).get("multitrack"):
                 with st.container(key="upload_results_panel", border=False):
                     st.markdown(

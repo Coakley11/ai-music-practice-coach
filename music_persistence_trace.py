@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "cpl-live-paths-v29e-custom-activation-display-key-sync"
+MUSIC_PERSIST_DEPLOY_VERSION = "upload-analysis-cloud-v1"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -914,7 +914,17 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
         st.caption(f"Commit: {trace.get('git_commit', 'unknown')}")
 
-
+        st.markdown("**Upload analysis session**")
+        for key in (
+            "_analysis_session_save_local",
+            "_analysis_session_save_cloud",
+            "_analysis_session_save_path",
+            "_analysis_session_saved_at",
+            "_analysis_session_restore_source",
+            "_analysis_session_restored_at",
+        ):
+            if key in ss:
+                st.text(f"{key}: {_trace_display(ss.get(key))}")
 
         try:
             from local_nav_trace import render_local_nav_trace_sidebar

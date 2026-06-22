@@ -1284,6 +1284,13 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     for key in _PERSIST_KEYS:
         if key in ss:
             val = copy.deepcopy(ss[key])
+            if key == "last_analysis_result":
+                try:
+                    from analysis_session_persistence import sanitize_analysis_result_for_persist
+
+                    val = sanitize_analysis_result_for_persist(val)
+                except ImportError:
+                    pass
             if key == "last_analysis_audio" and isinstance(val, bytes):
                 try:
                     from studio_page_persistence import _encode_snapshot_value
@@ -1300,13 +1307,6 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     snapshots = ss.get("_studio_page_snapshots")
     if isinstance(snapshots, dict) and snapshots:
         extra["_studio_page_snapshots"] = copy.deepcopy(snapshots)
-    if ss.get("last_analysis_result"):
-        try:
-            from analysis_session_persistence import save_analysis_session
-
-            save_analysis_session(ss)
-        except ImportError:
-            pass
     try:
         from custom_progression_lab import export_cpl_widget_state
 
@@ -1521,6 +1521,14 @@ def apply_music_disk_state(
                     ):
                         continue
                 except Exception:
+                    pass
+            if key == "last_analysis_result":
+                try:
+                    from analysis_session_persistence import analysis_result_ready
+
+                    if not analysis_result_ready(val):
+                        continue
+                except ImportError:
                     pass
             ss[key] = copy.deepcopy(val)
             if key == "last_analysis_audio":
@@ -1760,6 +1768,19 @@ def apply_music_disk_state(
             **practice_trace,
             **backing_trace,
         )
+    except Exception:
+        pass
+
+    try:
+        from analysis_session_persistence import (
+            analysis_result_ready,
+            restore_analysis_session,
+        )
+
+        if str(ss.get("studio_page") or "") == "analysis" and not analysis_result_ready(
+            ss.get("last_analysis_result")
+        ):
+            restore_analysis_session(ss, st=st)
     except Exception:
         pass
 
