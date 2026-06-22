@@ -40,6 +40,94 @@ def queue_pending_catalog_pick(st: Any, pick_key: str) -> None:
         st.session_state[PENDING_CATALOG_PICK_KEY] = pk
 
 
+def sync_catalog_pick_identity(
+    session: dict[str, Any],
+    pick_key: str,
+    song_picker_catalog: dict[str, dict[str, dict]],
+) -> bool:
+    """Mirror one catalog pick_key into all session identity keys (no backing reset)."""
+    resolved = resolve_pick_key(pick_key, song_picker_catalog=song_picker_catalog)
+    if not resolved:
+        return False
+    genre, label = parse_pick_key(resolved)
+    if genre not in song_picker_catalog or label not in song_picker_catalog[genre]:
+        return False
+    data = song_picker_catalog[genre][label]
+    session[ACTIVE_CATALOG_PICK_KEY] = resolved
+    session[SELECTED_SONG_STATE_KEY] = {
+        "pick_key": resolved,
+        "title": data["title"],
+        "artist": str(data.get("artist") or ""),
+        "genre": genre,
+        "label": label,
+        "key": str(data.get("key") or "C").strip() or "C",
+    }
+    session["active_genre"] = genre
+    session["active_song_title"] = data["title"]
+    session[PENDING_MATCHING_SONG_DROPDOWN] = resolved
+    session[_LAST_PICK_KEY] = resolved
+    try:
+        from music_state_writes import WriteOrigin, record_state_write_trace
+
+        record_state_write_trace(
+            session,
+            key=ACTIVE_CATALOG_PICK_KEY,
+            origin=WriteOrigin.RECONCILE,
+            writer="sync_catalog_pick_identity",
+            value=resolved,
+        )
+    except ImportError:
+        pass
+    return True
+
+
+def reconcile_active_song_identity(
+    session: dict[str, Any],
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+) -> str:
+    """Ensure ACTIVE, selected_song, and dropdown agree on one pick_key."""
+    if not song_picker_catalog:
+        return str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+
+    try:
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY, is_custom_progression
+
+        if is_custom_progression(session) and not session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+            return str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    except ImportError:
+        pass
+
+    active = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    sel = session.get(SELECTED_SONG_STATE_KEY)
+    sel_pk = str(sel.get("pick_key") or "").strip() if isinstance(sel, dict) else ""
+    dropdown = str(session.get("matching_song_dropdown") or "").strip()
+    pending = str(session.get(PENDING_CATALOG_PICK_KEY) or "").strip()
+
+    master = active or sel_pk
+    if pending and resolve_pick_key(pending, song_picker_catalog=song_picker_catalog):
+        master = pending
+    elif dropdown:
+        resolved_dd = resolve_pick_key(dropdown, song_picker_catalog=song_picker_catalog)
+        if resolved_dd and resolved_dd != master:
+            try:
+                from active_song_state import is_active_song_locally_dirty
+
+                dirty = is_active_song_locally_dirty(session)
+            except ImportError:
+                dirty = False
+            if dirty or resolved_dd == sel_pk or not master:
+                master = resolved_dd
+
+    if not master:
+        return ""
+
+    if master != active or master != sel_pk:
+        sync_catalog_pick_identity(session, master, song_picker_catalog)
+    elif dropdown and dropdown != master:
+        session[PENDING_MATCHING_SONG_DROPDOWN] = master
+    return master
+
+
 def apply_pending_catalog_pick_before_widgets(
     st: Any,
     song_picker_catalog: dict[str, dict[str, dict]],
@@ -79,6 +167,10 @@ def apply_pending_catalog_pick_before_widgets(
         song_library=song_library,
         skip_activity_log=True,
     )
+    try:
+        reconcile_active_song_identity(st.session_state, song_picker_catalog)
+    except Exception:
+        pass
     try:
         from songs.music_source import note_active_source_change
 
@@ -436,6 +528,8 @@ def sync_matching_song_dropdown_before_widget(
     st: Any,
     pick_options: list[str],
     fallback_pk: str,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
 ) -> str:
     """Align the dropdown widget with ``ACTIVE_CATALOG_PICK_KEY`` before it is drawn.
 
@@ -445,11 +539,45 @@ def sync_matching_song_dropdown_before_widget(
     if not pick_options:
         return fallback_pk
 
+    live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    dropdown = str(st.session_state.get("matching_song_dropdown") or "").strip()
+    if (
+        song_picker_catalog
+        and dropdown
+        and dropdown in pick_options
+        and dropdown != live_pk
+        and resolve_pick_key(dropdown, song_picker_catalog=song_picker_catalog)
+    ):
+        try:
+            from active_song_state import is_active_song_locally_dirty
+
+            if is_active_song_locally_dirty(st.session_state) or not live_pk:
+                sync_catalog_pick_identity(st.session_state, dropdown, song_picker_catalog)
+                live_pk = dropdown
+        except ImportError:
+            sync_catalog_pick_identity(st.session_state, dropdown, song_picker_catalog)
+            live_pk = dropdown
+
+    if live_pk and live_pk not in pick_options and song_picker_catalog:
+        if resolve_pick_key(live_pk, song_picker_catalog=song_picker_catalog):
+            pick_options.insert(0, live_pk)
+
     fallback = fallback_pk if fallback_pk in pick_options else pick_options[0]
-    active = st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or fallback
+    active = live_pk or fallback
     if active not in pick_options:
         active = fallback
-        st.session_state[ACTIVE_CATALOG_PICK_KEY] = active
+        try:
+            from music_state_writes import WriteOrigin, guarded_session_set
+
+            guarded_session_set(
+                st.session_state,
+                ACTIVE_CATALOG_PICK_KEY,
+                active,
+                origin=WriteOrigin.WIDGET_SYNC,
+                writer="sync_matching_song_dropdown_before_widget",
+            )
+        except ImportError:
+            st.session_state[ACTIVE_CATALOG_PICK_KEY] = active
 
     pending = st.session_state.pop(PENDING_MATCHING_SONG_DROPDOWN, None)
     if pending in pick_options:
@@ -540,6 +668,7 @@ def ensure_master_song_initialized(
     all_records: list[dict[str, Any]],
     song_library: dict[str, dict[str, dict]],
     song_picker_catalog: dict[str, dict[str, dict]],
+    origin: str = "default",
 ) -> None:
     """Pick a default song once; migrate legacy sidebar session keys if present."""
     sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
@@ -555,6 +684,7 @@ def ensure_master_song_initialized(
             song_library=song_library,
             skip_activity_log=True,
             persist=False,
+            origin=origin,
         )
         return
 
@@ -576,13 +706,13 @@ def ensure_master_song_initialized(
     ):
         label = _label_for_library_entry(legacy_g, legacy_t, song_library)
         if legacy_g in song_picker_catalog and label in song_picker_catalog[legacy_g]:
-            apply_pick_key(st, format_pick_key(legacy_g, label), song_picker_catalog, persist=False)
+            apply_pick_key(st, format_pick_key(legacy_g, label), song_picker_catalog, persist=False, origin=origin)
             return
 
     r0 = all_records[0]
     label0 = f"{r0['title']} — {r0['artist']}"
     pk = format_pick_key(r0["genre"], label0)
-    apply_pick_key(st, pk, song_picker_catalog, persist=False)
+    apply_pick_key(st, pk, song_picker_catalog, persist=False, origin=origin)
     st.session_state["_music_default_song_ephemeral"] = True
 
 
@@ -594,7 +724,17 @@ def apply_pick_key(
     song_library: dict[str, dict[str, dict]] | None = None,
     skip_activity_log: bool = False,
     persist: bool = True,
+    origin: str = "user",
 ) -> dict[str, Any]:
+    try:
+        from music_state_writes import WriteOrigin, may_write_contested, record_state_write_trace
+
+        origin_enum = WriteOrigin(origin)
+    except ImportError:
+        origin_enum = None
+        may_write_contested = None  # type: ignore[assignment,misc]
+        record_state_write_trace = None  # type: ignore[assignment,misc]
+
     resolved = resolve_pick_key(pick_key, song_picker_catalog=song_picker_catalog)
     if not resolved:
         existing = st.session_state.get(SELECTED_SONG_STATE_KEY)
@@ -607,6 +747,21 @@ def apply_pick_key(
             return {}
     pick_key = resolved
     prev = st.session_state.get(_LAST_PICK_KEY)
+    if origin_enum is not None and may_write_contested is not None:
+        if prev and prev != pick_key and not may_write_contested(
+            st.session_state, origin_enum, ACTIVE_CATALOG_PICK_KEY
+        ):
+            if record_state_write_trace is not None:
+                record_state_write_trace(
+                    st.session_state,
+                    key=ACTIVE_CATALOG_PICK_KEY,
+                    origin=origin_enum,
+                    writer="apply_pick_key",
+                    value=pick_key,
+                    blocked=True,
+                )
+            existing = st.session_state.get(SELECTED_SONG_STATE_KEY)
+            return existing if isinstance(existing, dict) else {}
     if (
         prev
         and prev != pick_key
@@ -702,6 +857,22 @@ def apply_pick_key(
         st.session_state[PENDING_DISPLAY_KEY] = data["key"]
     st.session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
     st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = pick_key
+    if origin_enum is not None and record_state_write_trace is not None:
+        record_state_write_trace(
+            st.session_state,
+            key=ACTIVE_CATALOG_PICK_KEY,
+            origin=origin_enum,
+            writer="apply_pick_key",
+            value=pick_key,
+            blocked=False,
+        )
+    if origin == "user" or (origin_enum is not None and origin_enum == WriteOrigin.USER):
+        try:
+            from active_song_state import mark_active_song_local_edit
+
+            mark_active_song_local_edit(st.session_state)
+        except ImportError:
+            pass
     try:
         from songs.user_lyrics_runtime import hydrate_user_lyrics_session
 
@@ -769,13 +940,13 @@ def get_song_context(
         custom_song_context_from_session = None  # type: ignore[assignment,misc]
 
     sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
-    pk = str(sel.get("pick_key") or "").strip()
+    pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or "").strip()
     if is_custom_progression(st.session_state) or pk.startswith("custom::"):
         if custom_song_context_from_session is not None:
             return custom_song_context_from_session(st.session_state)
 
     sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
-    pk = str(sel.get("pick_key") or "").strip()
+    pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or "").strip()
 
     def _commit(resolved_pk: str, *, notice: str | None = None) -> tuple[str, str, dict]:
         if notice:
@@ -786,6 +957,7 @@ def get_song_context(
                 resolved_pk,
                 song_picker_catalog,
                 song_library=song_library,
+                origin="recovery",
             )
         genre, label = parse_pick_key(resolved_pk)
         resolved = _build_library_from_picker(genre, label, song_picker_catalog, song_library)

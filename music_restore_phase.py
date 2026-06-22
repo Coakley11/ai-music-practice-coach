@@ -44,6 +44,16 @@ def music_restore_phase_complete(session_state: dict[str, Any]) -> bool:
     return bool(session_state.get(MUSIC_RESTORE_PHASE_COMPLETE_KEY))
 
 
+def authoritative_restore_in_progress(session_state: dict[str, Any]) -> bool:
+    """True only while startup restore is still stamping widgets — not forever after."""
+    if music_restore_phase_complete(session_state):
+        return False
+    return bool(
+        session_state.get("_cloud_workspace_restored_this_run")
+        or session_state.get("_suite_persist_restore_applied")
+    )
+
+
 def page_snapshot_hydrated(session_state: dict[str, Any], page_id: str) -> bool:
     return bool(session_state.get(f"{MUSIC_PAGE_SNAPSHOT_HYDRATED_PREFIX}{page_id}"))
 
@@ -67,24 +77,47 @@ def should_hydrate_page_snapshot(
 
 
 def workspace_is_truly_empty(session_state: dict[str, Any]) -> bool:
-    """True when cold start defaults (Say/Practice) are allowed."""
+    """True when cold-start default song seeding is allowed (never after failed restore)."""
     if session_state.get("_suite_persist_restore_applied"):
         return False
     if session_state.get("_music_workspace_blob_hydrated"):
         return False
-    if session_state.get("_suite_last_cloud_fetch_payload"):
+    if session_state.get("_cloud_workspace_restored_this_run"):
+        return False
+    if session_state.get("_music_restore_error"):
+        return False
+    if session_state.get("_suite_workspace_sync_attempted") and not session_state.get(
+        "_suite_persist_restore_applied"
+    ):
+        # Cloud/disk fetch ran but nothing durable restored — do not force Stay.
+        return False
+    payload = session_state.get("_suite_last_cloud_fetch_payload")
+    if isinstance(payload, dict) and payload:
         return False
     try:
         from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
         sel = session_state.get(SELECTED_SONG_STATE_KEY)
         if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip():
-            return False
-        if str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip():
+            if not session_state.get("_music_default_song_ephemeral"):
+                return False
+        live_pk = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if live_pk and not session_state.get("_music_default_song_ephemeral"):
             return False
     except ImportError:
         pass
+    try:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+
+        blob = session_state.get(ACTIVE_SONG_STATE_KEY)
+        if isinstance(blob, dict) and str(blob.get("pick_key") or "").strip():
+            if not session_state.get("_music_default_song_ephemeral"):
+                return False
+    except ImportError:
+        pass
     if session_state.get("cpl_saved_progressions") or session_state.get("cpl_active_progression"):
+        return False
+    if session_state.get("music_workspace_state"):
         return False
     page = str(session_state.get("studio_page") or "").strip()
     if page and page != "practice":

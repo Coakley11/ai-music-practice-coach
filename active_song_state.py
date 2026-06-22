@@ -322,12 +322,29 @@ def _merge_display_key_for_active_song(
     """Pick display key for canonical merge — cloud/canonical wins unless identity-scoped override."""
     live = str(session.get("display_key") or "").strip()
     canonical = str(ctx.get("display_key") or "").strip()
-    restored_this_run = bool(
-        session.get("_cloud_workspace_restored_this_run")
-        or session.get(SUITE_LOCAL_STATE_RESTORED_KEY)
-    )
-    if restored_this_run and canonical:
-        return canonical
+    try:
+        from music_restore_phase import authoritative_restore_in_progress
+
+        restore_applying = authoritative_restore_in_progress(session)
+    except ImportError:
+        restore_applying = bool(session.get("_cloud_workspace_restored_this_run"))
+    if restore_applying and canonical and _display_key_override_valid_for_identity(session) is False:
+        ctx_pick = str(ctx.get("pick_key") or "").strip()
+        try:
+            from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+            session_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or ctx_pick or "").strip()
+        except ImportError:
+            session_pick = ctx_pick
+        if not ctx_pick or not session_pick or ctx_pick == session_pick:
+            return canonical
+    try:
+        from music_restore_phase import authoritative_restore_in_progress
+
+        if not authoritative_restore_in_progress(session) and live:
+            return live
+    except ImportError:
+        pass
     ctx_pick = str(ctx.get("pick_key") or "").strip()
     try:
         from songs.state import ACTIVE_CATALOG_PICK_KEY
@@ -826,10 +843,25 @@ def _apply_context_to_session_keys(
         record_global_control_change = None  # type: ignore[assignment,misc]
 
     pick_key = str(ctx.get("pick_key") or "").strip()
+    master_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or pick_key or "").strip()
+    ctx_pick = str(ctx.get("pick_key") or "").strip()
+    stale_ctx = bool(ctx_pick and master_pick and ctx_pick != master_pick)
     if pick_key:
-        session[ACTIVE_CATALOG_PICK_KEY] = pick_key
+        try:
+            from music_state_writes import WriteOrigin, guarded_session_set
+
+            if not guarded_session_set(
+                session,
+                ACTIVE_CATALOG_PICK_KEY,
+                pick_key,
+                origin=WriteOrigin.CANONICAL,
+                writer=global_control_source or "canonical_apply",
+            ):
+                pick_key = str(session.get(ACTIVE_CATALOG_PICK_KEY) or pick_key).strip()
+        except ImportError:
+            session[ACTIVE_CATALOG_PICK_KEY] = pick_key
     display_key = str(ctx.get("display_key") or "").strip()
-    if display_key and apply_global_controls:
+    if display_key and apply_global_controls and not stale_ctx:
         session[PENDING_DISPLAY_KEY] = display_key
         if mutate_display_key:
             if record_global_control_change is not None:
@@ -843,6 +875,19 @@ def _apply_context_to_session_keys(
     for key in ("instrument", "level", "focus"):
         val = str(ctx.get(key) or "").strip()
         if val and apply_global_controls:
+            try:
+                from music_state_writes import WriteOrigin, guarded_session_set
+
+                if not guarded_session_set(
+                    session,
+                    key,
+                    val,
+                    origin=WriteOrigin.CANONICAL,
+                    writer=global_control_source or "canonical_apply",
+                ):
+                    continue
+            except ImportError:
+                pass
             if record_global_control_change is not None:
                 record_global_control_change(
                     session,
@@ -856,10 +901,35 @@ def _apply_context_to_session_keys(
                 _log_widget_bound_session_mutation_blocked(key, global_control_source, exc)
                 raise
     selected = _normalize_selected_song(ctx.get("selected_song"))
-    if selected:
+    if selected and not stale_ctx:
         if pick_key:
-            selected.setdefault("pick_key", pick_key)
-        session[SELECTED_SONG_STATE_KEY] = selected
+            selected.setdefault("pick_key", master_pick or pick_key)
+        try:
+            from music_state_writes import WriteOrigin, guarded_session_set
+
+            guarded_session_set(
+                session,
+                SELECTED_SONG_STATE_KEY,
+                selected,
+                origin=WriteOrigin.CANONICAL,
+                writer=global_control_source or "canonical_apply",
+            )
+        except ImportError:
+            session[SELECTED_SONG_STATE_KEY] = selected
+    elif stale_ctx:
+        try:
+            from music_state_writes import WriteOrigin, record_state_write_trace
+
+            record_state_write_trace(
+                session,
+                key=SELECTED_SONG_STATE_KEY,
+                origin=WriteOrigin.CANONICAL,
+                writer=global_control_source or "canonical_apply",
+                value=ctx_pick,
+                blocked=True,
+            )
+        except ImportError:
+            pass
     if mutate_written_key and _written_key_is_set(ctx):
         session[CHART_IN_INSTRUMENT_KEY_KEY] = bool(ctx[CHART_IN_INSTRUMENT_KEY_KEY])
     anchor = str(ctx.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
@@ -955,15 +1025,32 @@ def _seed_active_song_identity_from_session(session: dict[str, Any]) -> None:
 def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     """Reconcile session keys with canonical blob before widgets render."""
     try:
+        from songs.music_source import is_custom_progression
+
+        if not is_custom_progression(session):
+            from songs.state import reconcile_active_song_identity
+
+            # Caller passes catalog via prepare_canonical wrapper when available.
+            catalog = session.get("_reconcile_song_picker_catalog")
+            if isinstance(catalog, dict):
+                reconcile_active_song_identity(session, catalog)
+    except ImportError:
+        pass
+    try:
         from songs.music_source import ensure_active_music_source_from_canonical
 
         ensure_active_music_source_from_canonical(session)
     except ImportError:
         pass
-    restored_this_run = bool(
-        session.get("_cloud_workspace_restored_this_run")
-        or session.get(SUITE_LOCAL_STATE_RESTORED_KEY)
-    )
+    try:
+        from music_restore_phase import authoritative_restore_in_progress
+
+        restore_applying = authoritative_restore_in_progress(session)
+    except ImportError:
+        restore_applying = bool(
+            session.get("_cloud_workspace_restored_this_run")
+            or session.get(SUITE_LOCAL_STATE_RESTORED_KEY)
+        )
     if is_active_song_locally_dirty(session):
         ctx = gather_active_song_context(session)
         return write_canonical_active_song_state(
@@ -976,8 +1063,19 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     canonical = canonical_active_song_context(session)
     if canonical is not None:
         ctx = dict(canonical)
-        apply_globals = restored_this_run or not _session_has_live_global_controls(session)
-        if not restored_this_run:
+        has_live = _session_has_live_global_controls(session)
+        try:
+            from music_restore_phase import music_restore_phase_complete
+
+            phase_done = music_restore_phase_complete(session)
+        except ImportError:
+            phase_done = False
+        apply_globals = (
+            not is_active_song_locally_dirty(session)
+            and not (phase_done and has_live)
+            and (restore_applying or not has_live)
+        )
+        if not restore_applying:
             live = gather_active_song_context(session)
             live_pick = str(live.get("pick_key") or "").strip()
             canon_pick = str(ctx.get("pick_key") or "").strip()

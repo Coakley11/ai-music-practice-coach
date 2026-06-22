@@ -32,6 +32,8 @@ def is_custom_progression(session_state: dict[str, Any]) -> bool:
 
 def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     """True when Custom Progression is the active song (session or canonical blob)."""
+    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return False
     if is_custom_progression(session_state):
         return True
     from songs.state import ACTIVE_CATALOG_PICK_KEY
@@ -45,8 +47,6 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
             return True
         if str(meta.get("pick_key") or "").strip().startswith("custom::"):
             return True
-    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
-        return False
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
         return False
     return False
@@ -54,6 +54,8 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
 
 def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
     """True when the loaded song is a Custom Progression (for key display/sync)."""
+    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return False
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
     pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
@@ -61,8 +63,6 @@ def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
         return True
     if is_custom_progression(session_state):
         return True
-    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
-        return False
     meta = session_state.get("active_song_state")
     if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
         return True
@@ -77,6 +77,25 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
     """Align Songs page source radio with active song + active_music_source."""
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
+    try:
+        from music_restore_phase import music_restore_phase_complete
+
+        phase_done = music_restore_phase_complete(session_state)
+    except ImportError:
+        phase_done = False
+
+    if phase_done and session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        expected = SONG_PICKER_SOURCE_CATALOG
+        current = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+        changed = False
+        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
+            set_catalog_source(session_state)
+            changed = True
+        if current != expected:
+            session_state[SONG_PICKER_ACTIVE_SOURCE_KEY] = expected
+            changed = True
+        return changed
+
     pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     custom_active = custom_progression_is_active(session_state)
     expected = SONG_PICKER_SOURCE_CUSTOM if custom_active else SONG_PICKER_SOURCE_CATALOG
@@ -84,7 +103,6 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
     changed = False
 
     if custom_active:
-        session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
         if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CUSTOM:
             session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
             changed = True
@@ -103,15 +121,14 @@ def ensure_active_music_source_from_canonical(session_state: dict[str, Any]) -> 
     """After cloud/local restore, align session source flag with canonical custom songs."""
     if is_custom_progression(session_state):
         return
+    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return
     try:
-        from active_song_state import ACTIVE_SONG_STATE_KEY, SUITE_LOCAL_STATE_RESTORED_KEY
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+        from music_restore_phase import authoritative_restore_in_progress
     except ImportError:
         return
-    restored = bool(
-        session_state.get("_cloud_workspace_restored_this_run")
-        or session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY)
-    )
-    if not restored:
+    if not authoritative_restore_in_progress(session_state):
         return
     meta = session_state.get(ACTIVE_SONG_STATE_KEY)
     if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
@@ -372,12 +389,6 @@ def commit_catalog_active_song(
         "music_source": SOURCE_CATALOG,
     }
     write_canonical_active_song_state(session, ctx, reason=reason, local_edit=True)
-    try:
-        from active_song_state import clear_active_song_local_edit
-
-        clear_active_song_local_edit(session)
-    except ImportError:
-        pass
     try:
         from songs.state import persist_music_local_state
 

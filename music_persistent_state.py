@@ -158,13 +158,43 @@ def run_post_nav_music_startup_init(
     from songs.state import ensure_master_song_initialized
 
     ss = st.session_state
+
+    payload = ss.get("_suite_last_cloud_fetch_payload")
+    if isinstance(payload, dict) and payload:
+        try:
+            _finalize_music_workspace_restore(
+                st,
+                payload,
+                song_picker_catalog=song_picker_catalog,
+                song_library=song_library,
+            )
+        except Exception:
+            pass
+
+    try:
+        from music_restore_phase import complete_music_restore_phase
+
+        complete_music_restore_phase(ss)
+    except ImportError:
+        pass
+
     skip = music_should_skip_master_song_init(ss)
+    try:
+        from music_restore_phase import workspace_is_truly_empty
+
+        if not skip and not workspace_is_truly_empty(ss):
+            skip = True
+            ss["_music_skip_master_song_init_reason"] = "workspace_not_truly_empty"
+    except ImportError:
+        pass
+
     if not skip and default_song_records:
         ensure_master_song_initialized(
             st,
             all_records=default_song_records,
             song_library=song_library,
             song_picker_catalog=song_picker_catalog,
+            origin="default",
         )
         ss["_music_default_init_this_run"] = True
         try:
@@ -181,17 +211,7 @@ def run_post_nav_music_startup_init(
         except Exception:
             pass
 
-    payload = ss.get("_suite_last_cloud_fetch_payload")
     if isinstance(payload, dict) and payload:
-        try:
-            _finalize_music_workspace_restore(
-                st,
-                payload,
-                song_picker_catalog=song_picker_catalog,
-                song_library=song_library,
-            )
-        except Exception:
-            pass
         diag = ss.get(MUSIC_STARTUP_RESTORE_DIAG_KEY)
         if not isinstance(diag, dict):
             _record_music_startup_restore_diag(
@@ -2356,7 +2376,10 @@ def prepare_canonical_music_page_state(
             pass
 
         prepare_studio_nav(session)
+        if song_picker_catalog:
+            session["_reconcile_song_picker_catalog"] = song_picker_catalog
         prepare_active_song_context(session)
+        session.pop("_reconcile_song_picker_catalog", None)
         prepare_practice_page(session)
         prepare_backing_page(session)
     except ImportError:
@@ -2373,13 +2396,18 @@ def mark_active_song_edit_pending(session: dict[str, Any]) -> None:
 
 
 def _clear_canonical_dirty_after_save(session: dict[str, Any], *, reason: str = "") -> None:
+    """Clear page-local dirty flags after save; keep active-song dirty until user wins post-restore."""
+    _active_song_preserve_reasons = frozenset(
+        {"song_edit", "display_key_change", "active_song_edit", "last_catalog_restore", "catalog_source_switch"}
+    )
     try:
         from active_song_state import clear_active_song_local_edit
         from backing_track_state import clear_backing_local_edit
         from practice_state import clear_practice_local_edit
         from studio_nav_state import clear_studio_nav_local_edit
 
-        clear_active_song_local_edit(session)
+        if reason not in _active_song_preserve_reasons:
+            clear_active_song_local_edit(session)
         clear_practice_local_edit(session)
         clear_backing_local_edit(session)
         if reason == "page_change":

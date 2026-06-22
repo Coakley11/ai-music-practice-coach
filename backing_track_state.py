@@ -59,6 +59,8 @@ BACKING_SCALAR_KEYS = (
     "backing_time_signature",
     "backing_time_signature_override",
     "backing_quick_section",
+    "backing_autoplay",
+    "backing_transport_status",
 )
 
 _DURABLE_FILTER_KEYS = (
@@ -72,6 +74,8 @@ _DURABLE_FILTER_KEYS = (
     "backing_time_signature",
     "backing_time_signature_override",
     "backing_quick_section",
+    "backing_autoplay",
+    "backing_transport_status",
 )
 
 BACKING_WIDGETS_SEEDED_KEY = "_backing_durable_widgets_seeded"
@@ -360,6 +364,8 @@ def _normalize_filters(raw: dict[str, Any] | None) -> dict[str, Any]:
         "backing_time_signature": meter_norm,
         "backing_time_signature_override": bool(override_raw),
         "backing_quick_section": str(src.get("backing_quick_section") or "").strip(),
+        "backing_autoplay": bool(src.get("backing_autoplay")),
+        "backing_transport_status": str(src.get("backing_transport_status") or "").strip(),
     }
 
 
@@ -631,6 +637,8 @@ def gather_backing_filters(session: dict[str, Any]) -> dict[str, Any]:
             "backing_time_signature_override": bool(
                 session.get(BACKING_METER_OVERRIDE_WIDGET_KEY, False)
             ),
+            "backing_autoplay": bool(session.get("_backing_autoplay", False)),
+            "backing_transport_status": str(session.get("backing_transport_status") or "").strip(),
         }
     )
 
@@ -786,6 +794,48 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
     quick = str(filters.get("backing_quick_section") or "").strip()
     if quick:
         session["backing_quick_section"] = quick
+    if "backing_autoplay" in filters:
+        session["_backing_autoplay"] = bool(filters.get("backing_autoplay"))
+    transport = str(filters.get("backing_transport_status") or "").strip()
+    if transport:
+        session["backing_transport_status"] = transport
+
+
+def prepare_backing_transport_for_session(session: dict[str, Any]) -> None:
+    """Restore backing transport — never replay autoplay from cloud; default stopped."""
+    if session.get("_backing_transport_user_stopped"):
+        session["_backing_autoplay"] = False
+        session["backing_transport_status"] = "stopped"
+        return
+    canonical = canonical_backing_filters(session) or {}
+    transport = str(canonical.get("backing_transport_status") or "").strip().lower()
+    session["_backing_autoplay"] = False
+    if transport in ("ready", "generating", "preparing"):
+        session["backing_transport_status"] = "ready"
+    elif transport == "playing":
+        session["backing_transport_status"] = "stopped"
+    elif transport:
+        session["backing_transport_status"] = transport
+    else:
+        session["backing_transport_status"] = "stopped"
+
+
+def commit_backing_transport_from_session(session: dict[str, Any], *, reason: str = "transport") -> None:
+    """Persist transport flags into canonical backing blob without touching BPM widgets."""
+    session["_backing_autoplay"] = bool(session.get("_backing_autoplay", False))
+    transport = str(session.get("backing_transport_status") or "").strip().lower()
+    if session.get("_backing_transport_user_stopped") or not session["_backing_autoplay"]:
+        session["_backing_autoplay"] = False
+        session["backing_transport_status"] = "stopped"
+        transport = "stopped"
+    meta = session.get(BACKING_STATE_KEY)
+    if not isinstance(meta, dict):
+        meta = {}
+    meta = dict(meta)
+    meta["backing_autoplay"] = False
+    meta["backing_transport_status"] = transport or "stopped"
+    meta["last_write_reason"] = reason
+    session[BACKING_STATE_KEY] = meta
 
 
 def coerce_backing_groove_for_widget(session: dict[str, Any], *, default_groove: str = "") -> str:
@@ -906,6 +956,7 @@ def write_canonical_backing_state(
 def prepare_backing_page(session: dict[str, Any]) -> dict[str, Any]:
     """Reconcile Backing canonical blob before page widgets render."""
     _clear_spurious_backing_dirty(session)
+    prepare_backing_transport_for_session(session)
     if is_backing_user_dirty(session):
         gathered = gather_backing_filters(session)
         return write_canonical_backing_state(

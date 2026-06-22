@@ -1135,6 +1135,14 @@ if hasattr(st, "session_state"):
                 song_library=SONG_LIBRARY,
             )
             maybe_flush_deferred_page_change_save(st)
+            try:
+                from music_persistent_state import music_should_skip_master_song_init
+                from music_restore_phase import complete_music_restore_phase
+
+                if music_should_skip_master_song_init(st.session_state):
+                    complete_music_restore_phase(st.session_state)
+            except Exception:
+                pass
         except Exception:
             pass
     except Exception as _music_restore_exc:
@@ -1236,32 +1244,7 @@ if not _restored_pick_key:
     _restored_pick_key = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
 _music_state_restored = bool(st.session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY)) or bool(_restored_pick_key)
 
-# Pin to trusted-core default only on true first run — never replace restored or
-# user-selected songs (including non-core catalog entries).
-try:
-    from music_restore_phase import workspace_is_truly_empty as _workspace_is_truly_empty
-except ImportError:
-    def _workspace_is_truly_empty(_ss):
-        return False
-
-if (
-    not _skip_master_song_init
-    and _workspace_is_truly_empty(st.session_state)
-    and DEFAULT_SONG_RECORDS
-    and _normalize_library_mode(st.session_state.get("chart_library_mode", DEFAULT_CHART_LIBRARY_MODE))
-    == LIBRARY_MODE_CORE
-    and not _catalog_song_data.get("trusted_core")
-    and _catalog_song_data.get("chart_status") not in {"verified", "practice_level_verified"}
-):
-    _r0 = DEFAULT_SONG_RECORDS[0]
-    _pk0 = format_pick_key(_r0["genre"], f"{_r0['title']} — {_r0['artist']}")
-    apply_pick_key(st, _pk0, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY, persist=False)
-    st.session_state["_music_default_song_ephemeral"] = True
-    _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
-        st,
-        song_library=SONG_LIBRARY,
-        song_picker_catalog=SONG_PICKER_CATALOG,
-    )
+# Trusted-core default seeding runs only in run_post_nav_music_startup_init (after restore).
 
 # -------------------------------------------------
 # HELPER FUNCTIONS
@@ -7168,9 +7151,16 @@ def _stop_backing_playback() -> None:
     """Stop follow-along playback without clearing the generated WAV."""
     st.session_state[BACKING_AUTOPLAY] = False
     st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
+    st.session_state["_backing_transport_user_stopped"] = True
     st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback stopped"
     st.session_state["backing_lead_sheet_open"] = False
     st.session_state.pop("playback_start_time", None)
+    try:
+        from backing_track_state import commit_backing_transport_from_session
+
+        commit_backing_transport_from_session(st.session_state, reason="stop")
+    except ImportError:
+        pass
     for key in list(st.session_state.keys()):
         if str(key).endswith("::follow_start_time"):
             st.session_state.pop(key, None)
@@ -7187,10 +7177,17 @@ def _begin_backing_performance_follow_along(
     """Open follow-along UI, scroll to it, and arm playback + timeline."""
     import time
 
+    st.session_state.pop("_backing_transport_user_stopped", None)
     st.session_state[BACKING_AUTOPLAY] = True
     st.session_state[BACKING_TRANSPORT_STATUS] = "playing"
     st.session_state["backing_lead_sheet_open"] = True
     st.session_state["playback_start_time"] = time.time()
+    try:
+        from backing_track_state import commit_backing_transport_from_session
+
+        commit_backing_transport_from_session(st.session_state, reason="play")
+    except ImportError:
+        pass
     st.session_state[f"{follow_key_prefix}::follow_manual_index"] = 0
     set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
     if karaoke_voice:
@@ -7908,7 +7905,7 @@ def _apply_picker_catalog_filters(
             return filtered, pick_options, active_pk
         active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or default_pk)
         return filtered, pick_options, active_pk
-    active_pk = sync_matching_song_dropdown_before_widget(st, pick_options, default_pk)
+    active_pk = sync_matching_song_dropdown_before_widget(st, pick_options, default_pk, song_picker_catalog=SONG_PICKER_CATALOG)
     return filtered, pick_options, active_pk
 
 
@@ -8373,14 +8370,17 @@ def _render_catalog_song_picker_block(
         if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
             from songs.state import queue_pending_catalog_pick
 
+            live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+            target_pk = live_pk if live_pk else default_pk
             set_catalog_source(st.session_state)
-            queue_pending_catalog_pick(st, default_pk)
+            queue_pending_catalog_pick(st, target_pk)
             st.rerun()
 
         active_pick_key = sync_matching_song_dropdown_before_widget(
             st,
             pick_options,
             default_pk,
+            song_picker_catalog=SONG_PICKER_CATALOG,
         )
         _legacy_fav_set = set(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
 
@@ -9206,24 +9206,21 @@ try:
             prepare_canonical_music_page_state,
         )
 
+        from music_persistent_state import run_post_nav_music_startup_init
+
+        _skip_master_song_init = run_post_nav_music_startup_init(
+            st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+            default_song_records=DEFAULT_SONG_RECORDS,
+        )
+        st.session_state["_music_post_nav_startup_done"] = True
         prepare_canonical_music_page_state(
             st.session_state,
             song_picker_catalog=SONG_PICKER_CATALOG,
             song_library=SONG_LIBRARY,
         )
         maybe_flush_deferred_page_change_save(st)
-        try:
-            from music_persistent_state import run_post_nav_music_startup_init
-
-            _skip_master_song_init = run_post_nav_music_startup_init(
-                st,
-                song_picker_catalog=SONG_PICKER_CATALOG,
-                song_library=SONG_LIBRARY,
-                default_song_records=DEFAULT_SONG_RECORDS,
-            )
-            st.session_state["_music_post_nav_startup_done"] = True
-        except Exception:
-            pass
         try:
             from local_nav_trace import record_local_nav_checkpoint
 
@@ -9635,6 +9632,13 @@ if _developer_mode_enabled():
         from app_ui import render_quick_nav_dev_diagnostics
 
         render_quick_nav_dev_diagnostics(st)
+    except Exception:
+        pass
+
+    try:
+        from widget_control_debug import render_widget_control_debug
+
+        render_widget_control_debug(st, st.session_state)
     except Exception:
         pass
 
@@ -11657,7 +11661,7 @@ elif _studio_page == "backing":
         _show_countdown = bool(
             _karaoke_engaged
             and km.countdown_enabled(st.session_state)
-            and bool(st.session_state.get(BACKING_AUTOPLAY, True))
+            and bool(st.session_state.get(BACKING_AUTOPLAY, False))
         )
         # Karaoke section-aware lyric panel:
         # Build a {section: {lyrics, chords}} map from the user's saved
@@ -11719,7 +11723,7 @@ elif _studio_page == "backing":
                 st.session_state["_last_backing_wav"],
                 _follow_timeline,
                 chart_html,
-                autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, True)),
+                autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
                 audio_b64=_player_b64,
                 karaoke_auto_advance=(
                     _karaoke_engaged and km.auto_advance_enabled(st.session_state)

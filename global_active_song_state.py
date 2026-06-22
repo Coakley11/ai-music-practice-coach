@@ -27,10 +27,13 @@ _SONG_TRACE_MAX = 30
 
 
 def get_active_pick_key(session: dict[str, Any]) -> str:
+    active = str(session.get(GLOBAL_PICK_KEY) or "").strip()
+    if active:
+        return active
     song = session.get(GLOBAL_SONG_KEY)
     if isinstance(song, dict) and song.get("pick_key"):
         return str(song["pick_key"]).strip()
-    return str(session.get(GLOBAL_PICK_KEY) or "").strip()
+    return ""
 
 
 def get_active_song(session: dict[str, Any]) -> dict[str, Any]:
