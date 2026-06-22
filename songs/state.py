@@ -147,6 +147,128 @@ def persist_music_local_state(st: Any, **extra: Any) -> None:
                 pass
 
 
+def apply_saved_custom_pick_key_context(
+    st: Any,
+    pick_key: str,
+    saved: dict[str, Any],
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]] | None = None,
+    saved_display_key: str = "",
+) -> bool:
+    """Restore a custom:: pick_key from CPL active/saved library after cloud restore."""
+    from custom_progression_lab import (
+        CPL_ACTIVE_KEY,
+        default_active_progression,
+        ensure_original_structure,
+    )
+    from songs.music_source import (
+        custom_pick_key_for,
+        custom_selected_song_record,
+        set_custom_source,
+    )
+
+    suffix = str(pick_key or "").strip().removeprefix("custom::").strip()
+    if not suffix:
+        return False
+
+    active: dict[str, Any] | None = None
+    cpl_active = st.session_state.get(CPL_ACTIVE_KEY)
+    if isinstance(cpl_active, dict):
+        cand = ensure_original_structure(cpl_active)
+        if (
+            custom_pick_key_for(cand) == pick_key
+            or str(cand.get("id") or "").strip() == suffix
+            or str(cand.get("name") or "").strip() == suffix
+        ):
+            active = cand
+
+    if active is None:
+        saved_lib = st.session_state.get("cpl_saved_progressions") or {}
+        if isinstance(saved_lib, dict):
+            for name, prog in saved_lib.items():
+                if not isinstance(prog, dict):
+                    continue
+                cand = ensure_original_structure(prog)
+                if (
+                    custom_pick_key_for(cand) == pick_key
+                    or str(name).strip() == suffix
+                    or str(cand.get("id") or "").strip() == suffix
+                    or str(cand.get("name") or "").strip() == suffix
+                ):
+                    active = cand
+                    break
+
+    if active is None:
+        return False
+
+    st.session_state[CPL_ACTIVE_KEY] = active
+    set_custom_source(st.session_state)
+    selected = custom_selected_song_record(active)
+    st.session_state[SELECTED_SONG_STATE_KEY] = selected
+    st.session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
+
+    try:
+        from active_song_state import write_canonical_active_song_state, gather_active_song_context
+
+        ctx = gather_active_song_context(st.session_state)
+        write_canonical_active_song_state(st.session_state, ctx, reason="custom_pick_restore")
+    except ImportError:
+        pass
+
+    display_key = saved_display_key or str(saved.get("display_key") or "").strip()
+    from songs.key_state import PENDING_DISPLAY_KEY
+
+    if display_key:
+        st.session_state[PENDING_DISPLAY_KEY] = display_key
+    else:
+        try:
+            from custom_progression_lab import cpl_draft_written_key
+
+            st.session_state[PENDING_DISPLAY_KEY] = cpl_draft_written_key(active)
+        except ImportError:
+            pass
+
+    try:
+        from custom_progression_lab import cpl_draft_written_key
+        from songs.music_source import on_active_song_identity_changed
+        from songs.key_state import invalidate_backing_cache
+        from songs.playback_defaults import (
+            active_song_sync_id,
+            canonical_active_song_bpm,
+            default_groove_for_song,
+            get_song_default_meter,
+            playback_song_id,
+        )
+
+        home_key = cpl_draft_written_key(active)
+        title = str(selected.get("title") or active.get("name") or "Custom")
+        artist = str(selected.get("artist") or "Custom progression")
+        _pid = playback_song_id(is_custom=True, song_title=title, song_artist=artist)
+        _sync_id = active_song_sync_id(pick_key=pick_key, playback_song_id=_pid, is_custom=True)
+        on_active_song_identity_changed(
+            st,
+            pick_key=pick_key,
+            title=title,
+            artist=artist,
+            original_key=home_key,
+            is_custom=True,
+            sync_id=_sync_id,
+            default_bpm=canonical_active_song_bpm(active),
+            default_groove=default_groove_for_song(active, infer_fn=lambda _rec, _fb: "Auto"),
+            default_meter=get_song_default_meter(active),
+            display_key=display_key or home_key,
+            custom_revision=str(active.get("id") or "").strip(),
+            invalidate_backing=invalidate_backing_cache,
+            force_reset=True,
+        )
+    except Exception:
+        pass
+
+    st.session_state[SUITE_LOCAL_STATE_RESTORED_KEY] = True
+    return True
+
+
 def apply_saved_music_context(
     st: Any,
     saved: dict[str, Any],
@@ -154,6 +276,7 @@ def apply_saved_music_context(
     song_picker_catalog: dict[str, dict[str, dict]],
     song_library: dict[str, dict[str, dict]] | None = None,
     apply_studio_page: bool = True,
+    skip_catalog_pick_key: bool = False,
 ) -> bool:
     """Apply pick_key, instrument, studio page, and related fields from a snapshot dict."""
     if not isinstance(saved, dict) or not saved:
@@ -211,6 +334,25 @@ def apply_saved_music_context(
 
     if not pick_key:
         return False
+
+    if pick_key.startswith("custom::"):
+        return apply_saved_custom_pick_key_context(
+            st,
+            pick_key,
+            saved,
+            song_picker_catalog=song_picker_catalog,
+            song_library=song_library,
+            saved_display_key=saved_display_key,
+        )
+
+    if skip_catalog_pick_key:
+        return bool(
+            saved.get("instrument")
+            or saved.get("level")
+            or saved.get("focus")
+            or saved.get("practice_focus_section")
+            or saved.get("mode")
+        )
 
     resolved = resolve_pick_key(pick_key, song_picker_catalog=song_picker_catalog)
     target = resolved or pick_key

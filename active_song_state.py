@@ -1131,22 +1131,36 @@ def _custom_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
     meta = state.get(ACTIVE_SONG_STATE_KEY)
     if not source and isinstance(meta, dict):
         source = str(meta.get("music_source") or "").strip()
-    if source != SOURCE_CUSTOM:
-        return None
+    core = state.get("core") if isinstance(state.get("core"), dict) else {}
+    core_pk = str(core.get("pick_key") or "").strip()
+    if source != SOURCE_CUSTOM and not core_pk.startswith("custom::"):
+        if not (isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM):
+            return None
+    if not source:
+        source = SOURCE_CUSTOM
 
     from custom_progression_lab import default_active_progression, ensure_original_structure, cpl_draft_written_key
     from songs.music_source import custom_pick_key_for, custom_selected_song_record
 
     cpl = session_extra.get("cpl_active_progression")
+    if not isinstance(cpl, dict) and isinstance(meta, dict):
+        cpl = meta.get("cpl_active_progression")  # legacy
     if not isinstance(cpl, dict):
         cpl = default_active_progression()
     active = ensure_original_structure(cpl)
     selected = custom_selected_song_record(active)
+    if core_pk.startswith("custom::"):
+        selected["pick_key"] = core_pk
     home_key = cpl_draft_written_key(active)
     ctx = _normalize_context(meta if isinstance(meta, dict) else {})
     ctx.update(
         {
-            "pick_key": str(ctx.get("pick_key") or selected.get("pick_key") or custom_pick_key_for(active)).strip(),
+            "pick_key": str(
+                ctx.get("pick_key")
+                or core_pk
+                or selected.get("pick_key")
+                or custom_pick_key_for(active)
+            ).strip(),
             "display_key": _resolve_display_key_from_music_blob(
                 state,
                 ctx=ctx,

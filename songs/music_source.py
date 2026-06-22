@@ -865,6 +865,8 @@ def display_key_context(
     cpl_active_key: str,
 ) -> tuple[str, tuple]:
     """Original/home key and identity tuple for the global display-key widget."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
     if custom_progression_is_active(session_state) or cpl_session_is_active(session_state):
         from custom_progression_lab import (
             default_active_progression,
@@ -876,13 +878,33 @@ def display_key_context(
         )
         home = custom_original_key(active)
         title = active.get("name", "Custom Progression")
-        return home, (title, "Custom progression", home)
+        pick_key = str(
+            session_state.get(ACTIVE_CATALOG_PICK_KEY)
+            or (session_state.get(SELECTED_SONG_STATE_KEY) or {}).get("pick_key")
+            or ""
+        ).strip()
+        from songs.key_state import song_display_identity
+
+        return home, song_display_identity(
+            str(title),
+            "Custom progression",
+            home,
+            pick_key=pick_key,
+        )
 
     original = catalog_song_data.get("key", "C")
-    return original, (
-        catalog_song_data.get("title"),
-        catalog_song_data.get("artist"),
-        original,
+    pick_key = str(
+        session_state.get(ACTIVE_CATALOG_PICK_KEY)
+        or (session_state.get(SELECTED_SONG_STATE_KEY) or {}).get("pick_key")
+        or ""
+    ).strip()
+    from songs.key_state import song_display_identity
+
+    return original, song_display_identity(
+        str(catalog_song_data.get("title") or ""),
+        str(catalog_song_data.get("artist") or ""),
+        str(original),
+        pick_key=pick_key,
     )
 
 

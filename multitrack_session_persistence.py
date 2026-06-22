@@ -8,8 +8,8 @@ from typing import Any
 
 from studio_page_persistence import _B64_MARKER, _decode_snapshot_value, _encode_snapshot_value
 
-MAX_MT_TRACK_BYTES = 512_000
-MAX_MT_MIXED_BYTES = 768_000
+MAX_MT_TRACK_BYTES = 2_097_152
+MAX_MT_MIXED_BYTES = 2_621_440
 DIAG_KEY = "_multitrack_persist_diag"
 
 

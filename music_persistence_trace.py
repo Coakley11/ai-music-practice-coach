@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "music-genre-source-mt-v7"
+MUSIC_PERSIST_DEPLOY_VERSION = "music-reboot-restore-v8"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -127,6 +127,24 @@ WORKSPACE_RESTORE_TRACE_LABELS: tuple[str, ...] = (
     "should_skip_workspace_restore_for_resume",
 
     "ami_return_navigation_active",
+
+    "restored_active_song",
+
+    "final_active_song",
+
+    "custom_song_count_after_restore",
+
+    "default_init_called",
+
+    "skip_master_song_init_reason",
+
+    "first_autosave_reason",
+
+    "mt_tracks_count_after_restore",
+
+    "mt_audio_persisted",
+
+    "mt_skipped_due_to_size",
 
 )
 

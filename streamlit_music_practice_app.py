@@ -1175,19 +1175,43 @@ if not _skip_master_song_init:
         song_library=SONG_LIBRARY,
         song_picker_catalog=SONG_PICKER_CATALOG,
     )
+    st.session_state["_music_default_init_this_run"] = True
     try:
         from music_persistence_trace import update_trace
 
-        update_trace(st, trusted_core_init_ran=True)
+        update_trace(st, trusted_core_init_ran=True, default_init_called=True)
     except Exception:
         pass
 else:
     try:
         from music_persistence_trace import update_trace
 
-        update_trace(st, trusted_core_init_ran=False)
+        update_trace(st, trusted_core_init_ran=False, default_init_called=False)
     except Exception:
         pass
+
+try:
+    from music_persistent_state import MUSIC_STARTUP_RESTORE_DIAG_KEY, _record_music_startup_restore_diag
+
+    payload = st.session_state.get("_suite_last_cloud_fetch_payload")
+    if isinstance(payload, dict) and payload:
+        diag = st.session_state.get(MUSIC_STARTUP_RESTORE_DIAG_KEY)
+        if not isinstance(diag, dict):
+            _record_music_startup_restore_diag(
+                st.session_state,
+                payload,
+                restored_studio_page=str(st.session_state.get("studio_page") or ""),
+                blob_studio_page=str(st.session_state.get("studio_page") or ""),
+                default_init_called=bool(st.session_state.get("_music_default_init_this_run")),
+            )
+        else:
+            diag["default_init_called"] = bool(st.session_state.get("_music_default_init_this_run"))
+            diag["skip_master_song_init_reason"] = st.session_state.get("_music_skip_master_song_init_reason")
+        from music_persistence_trace import update_trace
+
+        update_trace(st, **(st.session_state.get(MUSIC_STARTUP_RESTORE_DIAG_KEY) or {}))
+except Exception:
+    pass
 
 if st.session_state.get("_music_restore_error") and st.session_state.get("developer_mode"):
     st.sidebar.warning(
@@ -1243,7 +1267,7 @@ if _pick_key_recovery:
 
 if CPL_ACTIVE_KEY not in st.session_state:
     st.session_state[CPL_ACTIVE_KEY] = default_active_progression()
-if CPL_SAVED_KEY not in st.session_state:
+if CPL_SAVED_KEY not in st.session_state and not st.session_state.get("_music_workspace_blob_applied"):
     st.session_state[CPL_SAVED_KEY] = {}
 ensure_active_music_source(st.session_state)
 
@@ -12565,6 +12589,23 @@ elif _studio_page == "multitrack":
                         except Exception:
                             recorded = None
                             st.caption("Recording unavailable in this build — upload still works.")
+
+                        _mt_audio_obj = recorded if recorded is not None else uploaded
+                        if _mt_audio_obj is not None:
+                            _mt_bytes = _mt_audio_obj.getvalue()
+                            if st.session_state.mt_tracks.get(slot) != _mt_bytes:
+                                st.session_state.mt_tracks[slot] = _mt_bytes
+                                st.session_state.mt_track_filenames[slot] = getattr(
+                                    _mt_audio_obj, "name", f"{slot}.wav"
+                                )
+                                try:
+                                    from music_persistent_state import force_save_music_state
+                                    from studio_page_persistence import flush_current_page_snapshot
+
+                                    flush_current_page_snapshot(st.session_state)
+                                    force_save_music_state(st, reason="multitrack_upload")
+                                except Exception:
+                                    pass
 
                         if st.button(f"Save layer — {slot}", key=f"mt_save_{slot}"):
                             audio_obj = recorded if recorded is not None else uploaded

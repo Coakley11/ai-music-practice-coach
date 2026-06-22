@@ -133,8 +133,17 @@ def _apply_display_key_before_widget(st: Any, key: str, *, source: str = "sync_d
     st.session_state["display_key"] = key
 
 
-def song_display_identity(title: str, artist: str, original_key: str) -> tuple[str, str, str]:
+def song_display_identity(
+    title: str,
+    artist: str,
+    original_key: str,
+    *,
+    pick_key: str = "",
+) -> tuple[str, str, str]:
     """Stable identity tuple for display-key reset when the active song changes."""
+    pk = str(pick_key or "").strip()
+    if pk:
+        return (pk, str(artist or "").strip(), str(original_key or "").strip())
     return (str(title or "").strip(), str(artist or "").strip(), str(original_key or "").strip())
 
 

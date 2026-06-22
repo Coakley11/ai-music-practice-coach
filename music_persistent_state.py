@@ -28,26 +28,59 @@ from suite_user_persistence import (
 
 APP_ID = "music"
 WORKSPACE_SCHEMA_VERSION = 1
+MUSIC_STARTUP_RESTORE_DIAG_KEY = "_music_startup_restore_diag"
 
 
-def music_should_skip_master_song_init(session_state: dict[str, Any]) -> bool:
-    """True when cold-start trusted-core pin would clobber restored workspace state."""
+def _payload_has_custom_active_signals(payload: dict[str, Any]) -> bool:
+    """True when cloud/disk blob indicates custom progression is the active song."""
+    if not isinstance(payload, dict):
+        return False
+    try:
+        from songs.music_source import SOURCE_CUSTOM
+    except ImportError:
+        SOURCE_CUSTOM = "custom_progression"  # type: ignore[misc]
+
+    session_extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    if str(session_extra.get("active_music_source") or "") == SOURCE_CUSTOM:
+        return True
+
+    meta = payload.get("active_song_state")
+    if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
+        return True
+
+    core = payload.get("core") if isinstance(payload.get("core"), dict) else {}
+    if str(core.get("pick_key") or "").strip().startswith("custom::"):
+        return True
+
+    cpl = session_extra.get("cpl_active_progression")
+    if isinstance(cpl, dict) and str(cpl.get("name") or cpl.get("id") or "").strip():
+        if str(session_extra.get("active_music_source") or meta.get("music_source") if isinstance(meta, dict) else "") == SOURCE_CUSTOM:
+            return True
+        if str(core.get("pick_key") or "").strip().startswith("custom::"):
+            return True
+    return False
+
+
+def music_skip_master_song_init_reason(session_state: dict[str, Any]) -> str:
+    """Human-readable reason when trusted-core default init must be skipped."""
     if session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY):
-        return True
+        return "suite_local_state_restored"
     if session_state.get("_music_restore_error"):
-        return True
+        return "music_restore_error"
     if session_state.get("_suite_persist_restore_applied"):
-        return True
+        return "suite_persist_restore_applied"
     if session_state.get("_suite_cloud_workspace_applied"):
-        return True
+        return "suite_cloud_workspace_applied"
+    if session_state.get("_music_workspace_blob_applied"):
+        return "music_workspace_blob_applied"
 
     sel = session_state.get(SELECTED_SONG_STATE_KEY)
     if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip():
-        return True
+        return "selected_song_pick_key"
     if str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip():
-        return True
+        return "active_catalog_pick_key"
     if str(session_state.get("active_music_source") or "").strip() == "custom_progression":
-        return True
+        return "active_music_source_custom"
 
     try:
         from active_song_state import ACTIVE_SONG_STATE_KEY
@@ -55,42 +88,139 @@ def music_should_skip_master_song_init(session_state: dict[str, Any]) -> bool:
         blob = session_state.get(ACTIVE_SONG_STATE_KEY)
         if isinstance(blob, dict):
             if str(blob.get("pick_key") or blob.get("active_catalog_pick_key") or "").strip():
-                return True
+                return "active_song_state_pick_key"
             if str(blob.get("music_source") or "") == "custom_progression":
-                return True
+                return "active_song_state_custom"
             if str(blob.get("custom_progression_name") or "").strip():
-                return True
+                return "active_song_state_custom_name"
     except ImportError:
         pass
 
     if session_state.get("cpl_saved_progressions") or session_state.get("cpl_active_progression"):
-        return True
+        return "cpl_library_present"
 
     ws = session_state.get("music_workspace_state")
-    if isinstance(ws, dict):
-        ws_page = str(ws.get("studio_page") or ws.get("page") or "").strip()
-        if ws_page and ws_page not in {"practice"}:
-            return True
+    if isinstance(ws, dict) and str(ws.get("studio_page") or ws.get("page") or "").strip():
+        return "music_workspace_state_page"
 
     payload = session_state.get("_suite_last_cloud_fetch_payload")
-    if isinstance(payload, dict):
+    if isinstance(payload, dict) and payload:
         core = payload.get("core") if isinstance(payload.get("core"), dict) else {}
         extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
         if str(core.get("pick_key") or core.get("active_catalog_pick_key") or "").strip():
-            return True
+            return "cloud_payload_pick_key"
         if str(extra.get("active_music_source") or "") == "custom_progression":
-            return True
+            return "cloud_payload_custom_source"
         if extra.get("cpl_saved_progressions") or extra.get("cpl_active_progression"):
-            return True
+            return "cloud_payload_cpl"
         blob_page = str(extra.get("studio_page") or "").strip()
         if not blob_page:
             meta = payload.get("music_workspace_state")
             if isinstance(meta, dict):
                 blob_page = str(meta.get("studio_page") or "").strip()
-        if blob_page and blob_page not in {"practice"}:
-            return True
+        if blob_page:
+            return "cloud_payload_studio_page"
 
+    return ""
+
+
+def music_should_skip_master_song_init(session_state: dict[str, Any]) -> bool:
+    """True when cold-start trusted-core pin would clobber restored workspace state."""
+    reason = music_skip_master_song_init_reason(session_state)
+    if reason:
+        session_state["_music_skip_master_song_init_reason"] = reason
+        return True
+    session_state["_music_skip_master_song_init_reason"] = "cold_start"
     return False
+
+
+def _record_music_startup_restore_diag(
+    ss: dict[str, Any],
+    payload: dict[str, Any],
+    *,
+    restored_studio_page: str,
+    blob_studio_page: str,
+    default_init_called: bool,
+) -> None:
+    """Capture reboot-restore diagnostics for ?dev=1 and Sprint D validation."""
+    sel = ss.get(SELECTED_SONG_STATE_KEY) if isinstance(ss.get(SELECTED_SONG_STATE_KEY), dict) else {}
+    restored_active = ""
+    try:
+        core = payload.get("core") if isinstance(payload.get("core"), dict) else {}
+        extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+        restored_active = str(
+            core.get("pick_key")
+            or extra.get("active_catalog_pick_key")
+            or ""
+        ).strip()
+        if not restored_active:
+            meta = payload.get("active_song_state")
+            if isinstance(meta, dict):
+                restored_active = str(meta.get("pick_key") or "").strip()
+    except Exception:
+        pass
+
+    custom_count = 0
+    saved = ss.get("cpl_saved_progressions")
+    if isinstance(saved, dict):
+        custom_count = len(saved)
+
+    mt_diag = ss.get("_multitrack_persist_diag") if isinstance(ss.get("_multitrack_persist_diag"), dict) else {}
+
+    ss[MUSIC_STARTUP_RESTORE_DIAG_KEY] = {
+        "restored_studio_page": restored_studio_page or blob_studio_page or None,
+        "final_studio_page": str(ss.get("studio_page") or "").strip() or None,
+        "restored_active_song": restored_active or None,
+        "final_active_song": str(sel.get("pick_key") or ss.get(ACTIVE_CATALOG_PICK_KEY) or "").strip() or None,
+        "custom_song_count_after_restore": custom_count,
+        "default_init_called": bool(default_init_called),
+        "skip_master_song_init_reason": ss.get("_music_skip_master_song_init_reason"),
+        "first_autosave_reason": ss.get("_suite_persist_last_save_reason"),
+        "mt_tracks_count_after_restore": mt_diag.get("mt_tracks_count_after_restore"),
+        "audio_persisted": mt_diag.get("audio_persisted"),
+        "skipped_due_to_size": mt_diag.get("skipped_due_to_size"),
+        "restore_source": mt_diag.get("restore_source"),
+    }
+
+
+def _finalize_music_workspace_restore(
+    st: Any,
+    payload: dict[str, Any],
+    *,
+    song_picker_catalog: dict,
+    song_library: dict | None,
+) -> None:
+    """Reconcile custom song + multitrack blobs after session_extra hydration."""
+    ss = st.session_state
+    try:
+        from active_song_state import apply_cloud_active_song_state_if_allowed
+
+        apply_cloud_active_song_state_if_allowed(ss, payload)
+    except ImportError:
+        pass
+
+    core = payload.get("core") if isinstance(payload.get("core"), dict) else {}
+    custom_pk = str(core.get("pick_key") or "").strip()
+    if custom_pk.startswith("custom::"):
+        try:
+            from songs.state import apply_saved_custom_pick_key_context
+
+            apply_saved_custom_pick_key_context(
+                st,
+                custom_pk,
+                core if isinstance(core, dict) else {},
+                song_picker_catalog=song_picker_catalog,
+                song_library=song_library,
+            )
+        except Exception:
+            pass
+
+    try:
+        from multitrack_session_persistence import restore_multitrack_session_if_needed
+
+        restore_multitrack_session_if_needed(ss)
+    except ImportError:
+        pass
 
 # Content-edit saves must not clobber the last page_change-persisted studio_page.
 _PRESERVE_USER_NAV_SAVE_REASONS: frozenset[str] = frozenset(
@@ -1559,6 +1689,7 @@ def apply_music_disk_state(
             blob_studio = str(meta.get("studio_page") or blob_studio).strip()
 
     applied = False
+    defer_catalog_pick = _payload_has_custom_active_signals(payload)
     if isinstance(core, dict) and core:
         applied = apply_saved_music_context(
             st,
@@ -1566,6 +1697,7 @@ def apply_music_disk_state(
             song_picker_catalog=song_picker_catalog,
             song_library=song_library,
             apply_studio_page=False,
+            skip_catalog_pick_key=defer_catalog_pick,
         )
         if applied:
             ss[SUITE_LOCAL_STATE_RESTORED_KEY] = True
@@ -1859,6 +1991,25 @@ def apply_music_disk_state(
         merge_custom_songs_from_cloud(ss, st=st)
     except Exception:
         pass
+
+    try:
+        _finalize_music_workspace_restore(
+            st,
+            payload,
+            song_picker_catalog=song_picker_catalog,
+            song_library=song_library,
+        )
+    except Exception:
+        pass
+
+    ss["_music_workspace_blob_applied"] = True
+    _record_music_startup_restore_diag(
+        ss,
+        payload,
+        restored_studio_page=active_studio or "",
+        blob_studio_page=blob_studio or "",
+        default_init_called=False,
+    )
 
     try:
         from music_coach_context import resolve_coach_source_page
@@ -2455,6 +2606,16 @@ def autosave_music_state(st: Any) -> dict[str, Any]:
         "cloud_ok": False,
         "cloud_error": None,
     }
+    ss = st.session_state
+    if ss.get("_music_default_init_this_run"):
+        result["skip_reason"] = "default_init_cooldown"
+        try:
+            from music_persistence_trace import update_trace
+
+            update_trace(st, autosave_ran=False, autosave_skip_reason="default_init_cooldown")
+        except Exception:
+            pass
+        return result
     try:
         result = autosave_if_changed(st, APP_ID, build_state=build_music_disk_state)
     except Exception as exc:
