@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "music-active-song-unify-v14"
+MUSIC_PERSIST_DEPLOY_VERSION = "music-display-key-unify-v15"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -84,6 +84,20 @@ PRACTICE_RESTORE_TRACE_LABELS: tuple[str, ...] = (
     "practice_restore_skipped",
     "practice_last_write",
     "practice_overwrite_source",
+)
+
+
+DISPLAY_KEY_UNIFY_TRACE_LABELS: tuple[str, ...] = (
+    "active_song_pick_key",
+    "display_key",
+    "practice_display_key",
+    "song_card_display_key",
+    "backing_card_display_key",
+    "sidebar_display_key",
+    "cloud_display_key",
+    "restore_display_key",
+    "display_key_last_write",
+    "display_key_split_surfaces",
 )
 
 
@@ -902,6 +916,35 @@ def _workspace_restore_row_values(st: Any, trace: dict[str, Any]) -> dict[str, A
 
 
 
+def collect_display_key_trace_rows(st: Any, trace: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Flatten authoritative display-key surfaces for ?dev=1 trace panel."""
+    ss = st.session_state
+    trace = trace if isinstance(trace, dict) else get_trace(st)
+    surface_trace = ss.get("_display_key_surface_trace")
+    if not isinstance(surface_trace, dict):
+        surface_trace = {}
+    pick_key = str(
+        ss.get("_display_key_active_song_pick_key")
+        or ss.get("active_catalog_pick_key")
+        or (ss.get("selected_song") or {}).get("pick_key")
+        or ""
+    ).strip()
+    session_dk = str(ss.get("display_key") or "").strip()
+    rows = {
+        "active_song_pick_key": pick_key,
+        "display_key": session_dk,
+        "practice_display_key": session_dk,
+        "song_card_display_key": (surface_trace.get("song_card") or {}).get("value", ""),
+        "backing_card_display_key": (surface_trace.get("backing_card") or {}).get("value", ""),
+        "sidebar_display_key": (surface_trace.get("sidebar") or {}).get("value", ""),
+        "cloud_display_key": trace.get("restored_display_key") or (surface_trace.get("cloud") or {}).get("value", ""),
+        "restore_display_key": trace.get("restored_display_key") or "",
+        "display_key_last_write": str(ss.get("_display_key_last_write_source") or ""),
+        "display_key_split_surfaces": ss.get("_display_key_split_trace") or "",
+    }
+    return rows
+
+
 def render_persistence_trace_sidebar(st: Any) -> None:
 
     if not music_developer_mode(st):
@@ -979,6 +1022,11 @@ def render_persistence_trace_sidebar(st: Any) -> None:
             height=280,
             label_visibility="collapsed",
         )
+
+        st.markdown("**Display key unification (v15)**")
+        display_key_rows = collect_display_key_trace_rows(st, trace)
+        for label in DISPLAY_KEY_UNIFY_TRACE_LABELS:
+            st.text(f"{label}: {_trace_display(display_key_rows.get(label))}")
 
         st.markdown("**Test E compare (AMI return)**")
         st.caption(

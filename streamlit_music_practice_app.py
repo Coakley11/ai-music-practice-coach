@@ -9682,6 +9682,20 @@ if display_key not in _display_key_options:
     )
     request_display_key(st, display_key)
 key_changed_this_run = note_display_key_change(st, display_key)
+try:
+    from songs.key_state import detect_display_key_split, trace_display_key_surface
+
+    trace_display_key_surface(
+        st.session_state,
+        "sidebar",
+        str(display_key or ""),
+        source="sidebar_after_widget",
+    )
+    _display_key_split = detect_display_key_split(st.session_state)
+    if _display_key_split:
+        st.session_state["_display_key_split_trace"] = _display_key_split
+except Exception:
+    pass
 
 apply_pending_transposing_instrument(st.session_state, instrument)
 try:
@@ -9838,7 +9852,7 @@ _playback_id = playback_song_id(
     custom_name=str(_cpl_active.get("name", "") if _cpl_active else ""),
     custom_revision=str(_cpl_active.get("id", "") if _cpl_active else ""),
 )
-_active_pick_key = str((st.session_state.get("selected_song") or {}).get("pick_key") or "")
+_active_pick_key = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or (st.session_state.get("selected_song") or {}).get("pick_key") or "")
 _bpm_sync_id = active_song_sync_id(
     pick_key=_active_pick_key,
     playback_song_id=_playback_id,
@@ -11092,6 +11106,12 @@ elif _studio_page == "backing":
     except Exception:
         pass
     try:
+        from backing_track_state import enable_backing_user_edits
+
+        enable_backing_user_edits(st.session_state)
+    except Exception:
+        pass
+    try:
         from backing_track_state import snapshot_backing_path_trace
 
         snapshot_backing_path_trace(st)
@@ -11194,6 +11214,17 @@ elif _studio_page == "backing":
         st.session_state,
         _backing_card_record,
     )
+    try:
+        from songs.key_state import trace_display_key_surface
+
+        trace_display_key_surface(
+            st.session_state,
+            "backing_card",
+            str(_backing_practice_key or ""),
+            source="backing_active_song_card",
+        )
+    except Exception:
+        pass
     _backing_written_key = str(_backing_written_key or "").strip()
     _backing_source_label = (
         "Custom Progression"
@@ -11530,6 +11561,13 @@ elif _studio_page == "backing":
                 if km.is_voice_mode(st.session_state)
                 else "Playback starting — opening lead sheet"
             )
+        st.session_state.pop("_backing_transport_user_stopped", None)
+        try:
+            from backing_track_state import commit_backing_transport_from_session
+
+            commit_backing_transport_from_session(st.session_state, reason="generate")
+        except ImportError:
+            pass
         clear_backing_needs_regen(st)
         st.rerun()
 

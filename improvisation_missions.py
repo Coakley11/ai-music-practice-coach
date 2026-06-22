@@ -444,6 +444,10 @@ def generate_mission_example(
         bpm=bpm,
     )
     motif = out["motif"]
+    family = _instrument_family(instrument)
+    abc = str(out.get("abc") or "")
+    tab = str(out.get("tab") or "")
+    piano_html = str(out.get("piano_html") or "")
 
     insight = chord_coach_insight(
         chord,

@@ -131,6 +131,13 @@ def _apply_display_key_before_widget(st: Any, key: str, *, source: str = "sync_d
     except Exception:
         pass
     st.session_state["display_key"] = key
+    record_display_key_write(st.session_state, key, source=source)
+    trace_display_key_surface(
+        st.session_state,
+        "sidebar",
+        key,
+        source=source,
+    )
 
 
 def song_display_identity(
@@ -250,3 +257,135 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
     except Exception:
         pass
     return True
+
+
+DISPLAY_KEY_TRACE_KEY = "_display_key_surface_trace"
+DISPLAY_KEY_LAST_WRITE_KEY = "_display_key_last_write_source"
+ACTIVE_SONG_PICK_TRACE_KEY = "_display_key_active_song_pick_key"
+
+
+def _active_catalog_pick_key(session: dict[str, Any]) -> str:
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+    return str(
+        session.get(ACTIVE_CATALOG_PICK_KEY)
+        or (session.get(SELECTED_SONG_STATE_KEY) or {}).get("pick_key")
+        or ""
+    ).strip()
+
+
+def trace_display_key_surface(
+    session: dict[str, Any],
+    surface: str,
+    value: str,
+    *,
+    pick_key: str = "",
+    source: str = "",
+) -> None:
+    """Record which surface read/wrote a display key (dev trace + split detection)."""
+    pk = str(pick_key or _active_catalog_pick_key(session) or "").strip()
+    if pk:
+        session[ACTIVE_SONG_PICK_TRACE_KEY] = pk
+    trace = session.get(DISPLAY_KEY_TRACE_KEY)
+    if not isinstance(trace, dict):
+        trace = {}
+    trace[str(surface or "unknown")] = {
+        "value": str(value or "").strip(),
+        "pick_key": pk,
+        "source": str(source or "").strip(),
+    }
+    session[DISPLAY_KEY_TRACE_KEY] = trace
+    if source:
+        session[DISPLAY_KEY_LAST_WRITE_KEY] = str(source)
+
+
+def _display_key_split_surfaces(trace: dict[str, Any]) -> str | None:
+    """Return a short disagreement summary when surfaces diverge."""
+    refs = (
+        ("sidebar", trace.get("sidebar", {})),
+        ("song_card", trace.get("song_card", {})),
+        ("backing_card", trace.get("backing_card", {})),
+        ("practice", trace.get("practice", {})),
+    )
+    values: dict[str, str] = {}
+    for name, row in refs:
+        if isinstance(row, dict):
+            val = str(row.get("value") or "").strip()
+            if val:
+                values[name] = val
+    if len(set(values.values())) <= 1:
+        return None
+    parts = [f"{name}={val}" for name, val in values.items()]
+    return " | ".join(parts)
+
+
+def record_display_key_write(session: dict[str, Any], value: str, *, source: str) -> None:
+    trace_display_key_surface(session, "write", value, source=source)
+    session[DISPLAY_KEY_LAST_WRITE_KEY] = str(source or "")
+
+
+def get_authoritative_display_key(
+    session: dict[str, Any],
+    *,
+    original_key: str = "",
+    surface: str = "",
+) -> str:
+    """Single authoritative practice/display key for cards, charts, cloud, and restore."""
+    from songs.music_source import SOURCE_CUSTOM, cpl_session_is_active, custom_progression_is_active
+    from active_song_state import _resolve_custom_display_key_for_session
+
+    pick_key = _active_catalog_pick_key(session)
+    home = str(original_key or "").strip()
+    if not home:
+        selected = session.get("selected_song") or {}
+        if pick_key and str(selected.get("pick_key") or "").strip() == pick_key:
+            home = str(selected.get("key") or "C").strip() or "C"
+        else:
+            home = "C"
+
+    if custom_progression_is_active(session) or cpl_session_is_active(session):
+        resolved = _resolve_custom_display_key_for_session(session, home)
+        source = "authoritative_custom"
+    else:
+        live = str(session.get("display_key") or "").strip()
+        meta = session.get("active_song_state")
+        canonical = ""
+        if isinstance(meta, dict):
+            meta_pick = str(meta.get("pick_key") or "").strip()
+            if not meta_pick or not pick_key or meta_pick == pick_key:
+                canonical = str(meta.get("display_key") or "").strip()
+        try:
+            from active_song_state import _display_key_override_valid_for_identity
+
+            if _display_key_override_valid_for_identity(session) and live:
+                resolved = live
+                source = "authoritative_live_override"
+            elif live:
+                resolved = live
+                source = "authoritative_live"
+            elif canonical:
+                resolved = canonical
+                source = "authoritative_canonical"
+            else:
+                resolved = home or "C"
+                source = "authoritative_home"
+        except ImportError:
+            resolved = live or canonical or home or "C"
+            source = "authoritative_fallback"
+
+    trace_display_key_surface(
+        session,
+        surface or "authoritative",
+        resolved,
+        pick_key=pick_key,
+        source=source,
+    )
+    return resolved
+
+
+def detect_display_key_split(session: dict[str, Any]) -> str | None:
+    """Compare traced surface keys; return disagreement summary or None."""
+    trace = session.get(DISPLAY_KEY_TRACE_KEY)
+    if not isinstance(trace, dict):
+        return None
+    return _display_key_split_surfaces(trace)

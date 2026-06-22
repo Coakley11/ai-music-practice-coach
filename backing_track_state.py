@@ -803,13 +803,19 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
 
 def prepare_backing_transport_for_session(session: dict[str, Any]) -> None:
     """Restore backing transport — never replay autoplay from cloud; default stopped."""
+    session["_backing_autoplay"] = False
     if session.get("_backing_transport_user_stopped"):
-        session["_backing_autoplay"] = False
         session["backing_transport_status"] = "stopped"
+        return
+    if session.get("_last_backing_wav") and str(session.get("backing_transport_status") or "").strip().lower() in (
+        "ready",
+        "generating",
+        "preparing",
+    ):
+        session["backing_transport_status"] = "ready"
         return
     canonical = canonical_backing_filters(session) or {}
     transport = str(canonical.get("backing_transport_status") or "").strip().lower()
-    session["_backing_autoplay"] = False
     if transport in ("ready", "generating", "preparing"):
         session["backing_transport_status"] = "ready"
     elif transport == "playing":

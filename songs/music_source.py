@@ -553,12 +553,34 @@ def custom_original_key(active: dict[str, Any]) -> str:
     return cpl_draft_written_key(ensure_original_structure(active))
 
 
+def _catalog_original_key_for_session(
+    session_state: dict[str, Any],
+    rec: dict[str, Any] | None = None,
+) -> str:
+    """Original/home key from active pick identity — not a stale card record."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+    selected = session_state.get(SELECTED_SONG_STATE_KEY) or {}
+    pick_key = str(
+        session_state.get(ACTIVE_CATALOG_PICK_KEY)
+        or selected.get("pick_key")
+        or ""
+    ).strip()
+    selected_pick = str(selected.get("pick_key") or "").strip()
+    if pick_key and selected_pick == pick_key and selected.get("key"):
+        return str(selected.get("key") or "C").strip() or "C"
+    record = rec or {}
+    if record.get("key"):
+        return str(record.get("key") or "C").strip() or "C"
+    return str(selected.get("key") or "C").strip() or "C"
+
+
 def resolve_active_song_keys(
     session_state: dict[str, Any],
     rec: dict[str, Any] | None = None,
 ) -> tuple[str, str, str | None]:
     """Single source of truth: original, display/practice, optional written chart key."""
-    from songs.state import SELECTED_SONG_STATE_KEY
+    from songs.key_state import get_authoritative_display_key, trace_display_key_surface
 
     if cpl_session_is_active(session_state):
         from custom_progression_lab import (
@@ -566,32 +588,29 @@ def resolve_active_song_keys(
             default_active_progression,
             ensure_original_structure,
         )
-        from active_song_state import _resolve_custom_display_key_for_session
 
         active = ensure_original_structure(
             session_state.get(CPL_ACTIVE_KEY) or default_active_progression()
         )
         original = custom_original_key(active)
-        display = _resolve_custom_display_key_for_session(session_state, original)
+        display = get_authoritative_display_key(
+            session_state,
+            original_key=original,
+            surface="song_card",
+        )
     else:
-        from songs.state import ACTIVE_CATALOG_PICK_KEY
-
-        record = rec or {}
-        selected = session_state.get(SELECTED_SONG_STATE_KEY) or {}
-        original = str(record.get("key") or selected.get("key") or "C").strip() or "C"
-        meta = session_state.get("active_song_state")
-        live_pick = str(
-            session_state.get(ACTIVE_CATALOG_PICK_KEY)
-            or selected.get("pick_key")
-            or ""
-        ).strip()
-        canonical = ""
-        if isinstance(meta, dict):
-            meta_pick = str(meta.get("pick_key") or "").strip()
-            if not meta_pick or not live_pick or meta_pick == live_pick:
-                canonical = str(meta.get("display_key") or "").strip()
-        live = str(session_state.get("display_key") or "").strip()
-        display = live or canonical or original
+        original = _catalog_original_key_for_session(session_state, rec)
+        display = get_authoritative_display_key(
+            session_state,
+            original_key=original,
+            surface="song_card",
+        )
+    trace_display_key_surface(
+        session_state,
+        "song_card",
+        display,
+        source="resolve_active_song_keys",
+    )
     from instrument_transposition import (
         chart_in_instrument_key,
         effective_chart_key,
