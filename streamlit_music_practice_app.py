@@ -11780,6 +11780,13 @@ elif _studio_page == "analysis":
         restore_analysis_session(st.session_state, st=st)
     except Exception:
         pass
+
+    try:
+        from studio_history_bootstrap import apply_pending_studio_history
+
+        apply_pending_studio_history(st.session_state, page="analysis", st=st)
+    except Exception:
+        pass
     ensure_page_initialized(st.session_state, "analysis")
     note_page_visit(st.session_state, "analysis")
     from recording_analysis import analyze_multitrack, analyze_recording
@@ -12387,6 +12394,13 @@ elif _studio_page == "multitrack":
         render_multitrack_setup_section_open = lambda *_a, **_k: None  # type: ignore
         render_multitrack_studio_panel_header = lambda *_a, **_k: None  # type: ignore
 
+
+    try:
+        from studio_history_bootstrap import apply_pending_studio_history
+
+        apply_pending_studio_history(st.session_state, page="multitrack", st=st)
+    except Exception:
+        pass
     _mt_orig_key, _mt_practice_key = _active_song_key_pair(song_data)
 
     inject_multitrack_studio_styles(st)
@@ -12511,7 +12525,6 @@ elif _studio_page == "multitrack":
                                 st.session_state.mt_track_filenames[slot] = getattr(
                                     audio_obj, "name", f"{slot}.wav"
                                 )
-                                st.session_state[f"mt_name_{slot}"] = layer_name
                                 try:
                                     from music_activity import log_media_upload
 

@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "upload-analysis-cloud-v3-studio-history"
+MUSIC_PERSIST_DEPLOY_VERSION = "upload-analysis-cloud-v4-history-fix"
 
 TRACE_KEY = "_music_persist_trace"
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 from datetime import datetime, timezone
 from typing import Any
 
@@ -21,6 +22,8 @@ from studio_history_cloud import (
 
 ITEM_TYPE = "multitrack_history"
 PAYLOAD_VERSION = 1
+PENDING_LOAD_KEY = "_pending_multitrack_history_payload"
+FLASH_KEY = "_multitrack_history_flash"
 
 MULTITRACK_SLOTS: tuple[str, ...] = (
     "Guitar",
@@ -30,6 +33,19 @@ MULTITRACK_SLOTS: tuple[str, ...] = (
     "Sax / winds",
     "Extra layer",
 )
+
+
+def clear_multitrack_widget_keys(session_state: dict[str, Any]) -> None:
+    """Drop widget-backed keys before restoring a saved project on the next run."""
+    for slot in MULTITRACK_SLOTS:
+        for key in (
+            f"mt_name_{slot}",
+            f"mt_vol_slider_{slot}",
+            f"mt_delay_slider_{slot}",
+            f"mt_upload_{slot}",
+            f"mt_record_{slot}",
+        ):
+            session_state.pop(key, None)
 
 
 def _analysis_summary(session_state: dict[str, Any]) -> dict[str, Any] | None:
@@ -60,7 +76,7 @@ def build_multitrack_history_payload(
     notes: str = "",
     song_title: str = "",
     st: Any | None = None,
-) -> dict[str, Any] | None:
+) -> tuple[dict[str, Any] | None, str]:
     mt_tracks = session_state.get("mt_tracks")
     if not isinstance(mt_tracks, dict):
         mt_tracks = {}
@@ -73,7 +89,7 @@ def build_multitrack_history_payload(
 
     has_any = any(mt_tracks.get(slot) for slot in MULTITRACK_SLOTS) or session_state.get("mixed_track_wav")
     if not has_any:
-        return None
+        return None, "no_layers_or_mix"
 
     tracks_meta: list[dict[str, Any]] = []
     embedded_tracks: dict[str, str] = {}
@@ -108,7 +124,7 @@ def build_multitrack_history_payload(
 
     mixed_b64, mixed_skip = encode_audio_if_safe(session_state.get("mixed_track_wav"))
 
-    return json_safe(
+    payload = json_safe(
         {
             "version": PAYLOAD_VERSION,
             "workspace_id": active_workspace_id(st=st),
@@ -126,6 +142,7 @@ def build_multitrack_history_payload(
             "analysis_summary": _analysis_summary(session_state),
         }
     )
+    return payload, ""
 
 
 def save_multitrack_to_history(
@@ -135,8 +152,8 @@ def save_multitrack_to_history(
     notes: str = "",
     song_title: str = "",
     st: Any | None = None,
-) -> tuple[bool, str]:
-    payload = build_multitrack_history_payload(
+) -> tuple[bool, str, str]:
+    payload, build_err = build_multitrack_history_payload(
         session_state,
         project_name=project_name,
         notes=notes,
@@ -144,19 +161,31 @@ def save_multitrack_to_history(
         st=st,
     )
     if not payload:
-        return False, ""
+        return False, "", build_err or "build_failed"
     item_key = new_history_item_key("mt")
-    ok = save_history_item(
+    ok, err = save_history_item(
         item_type=ITEM_TYPE,
         item_key=item_key,
         title=str(payload.get("project_name") or "Multitrack project"),
         payload=payload,
     )
-    return ok, item_key
+    return ok, item_key if ok else "", err
 
 
-def list_multitrack_history(*, st: Any | None = None, limit: int = 40) -> list[dict[str, Any]]:
+def list_multitrack_history(*, st: Any | None = None, limit: int = 40) -> tuple[list[dict[str, Any]], str | None]:
     return list_history_items(item_type=ITEM_TYPE, st=st, limit=limit)
+
+
+def queue_multitrack_history_load(session_state: dict[str, Any], payload: dict[str, Any]) -> None:
+    session_state[PENDING_LOAD_KEY] = copy.deepcopy(payload)
+
+
+def apply_pending_multitrack_history(session_state: dict[str, Any]) -> dict[str, Any] | None:
+    payload = session_state.pop(PENDING_LOAD_KEY, None)
+    if not isinstance(payload, dict):
+        return None
+    clear_multitrack_widget_keys(session_state)
+    return apply_multitrack_history(session_state, payload)
 
 
 def apply_multitrack_history(session_state: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
@@ -179,7 +208,9 @@ def apply_multitrack_history(session_state: dict[str, Any], payload: dict[str, A
         slot = str(row.get("slot") or "")
         if slot not in MULTITRACK_SLOTS:
             continue
-        session_state["mt_track_filenames"][slot] = str(row.get("filename") or session_state["mt_track_filenames"].get(slot, ""))
+        session_state["mt_track_filenames"][slot] = str(
+            row.get("filename") or session_state["mt_track_filenames"].get(slot, "")
+        )
         session_state[f"mt_name_{slot}"] = str(row.get("layer_name") or slot)
         session_state[f"mt_vol_{slot}"] = float(row.get("volume", 1.0))
         session_state[f"mt_delay_{slot}"] = float(row.get("delay", 0.0))
@@ -196,7 +227,7 @@ def apply_multitrack_history(session_state: dict[str, Any], payload: dict[str, A
 
     controls = payload.get("track_controls")
     if isinstance(controls, dict):
-        session_state["mt_track_controls"] = controls
+        session_state["mt_track_controls"] = copy.deepcopy(controls)
 
     mixed = decode_audio_b64(payload.get("mixed_preview_b64"))
     if mixed:

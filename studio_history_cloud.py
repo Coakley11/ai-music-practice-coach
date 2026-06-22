@@ -58,10 +58,23 @@ def decode_audio_b64(b64: str | None) -> bytes | None:
 def cloud_enabled() -> bool:
     try:
         from suite_storage_config import cloud_storage_enabled
-
-        return bool(cloud_storage_enabled())
     except ImportError:
         return False
+    return bool(cloud_storage_enabled())
+
+
+def cloud_block_reason() -> str | None:
+    if cloud_enabled():
+        return None
+    try:
+        from suite_storage_config import cloud_storage_enabled, get_cloud_config
+
+        cfg = get_cloud_config()
+        if cfg is None:
+            return "Supabase is not configured on this deployment."
+    except Exception:
+        pass
+    return "Cloud storage is disabled. Sign in to save history items."
 
 
 def _workspace_rows(rows: list[dict[str, Any]] | None, *, workspace_id: str) -> list[dict[str, Any]]:
@@ -78,19 +91,19 @@ def _workspace_rows(rows: list[dict[str, Any]] | None, *, workspace_id: str) -> 
     return out
 
 
-def list_history_items(*, item_type: str, st: Any | None = None, limit: int = 50) -> list[dict[str, Any]]:
+def list_history_items(*, item_type: str, st: Any | None = None, limit: int = 50) -> tuple[list[dict[str, Any]], str | None]:
     if not cloud_enabled():
-        return []
+        return [], cloud_block_reason()
     try:
         from suite_account import load_saved_items
 
         rows = load_saved_items(app=APP_ID, item_type=item_type, limit=limit)
-    except Exception:
-        return []
+    except Exception as exc:
+        return [], str(exc)
     ws = active_workspace_id(st=st)
     filtered = _workspace_rows(rows, workspace_id=ws)
     filtered.sort(key=lambda r: str(r.get("updated_at") or r.get("payload", {}).get("saved_at") or ""), reverse=True)
-    return filtered
+    return filtered, None
 
 
 def save_history_item(
@@ -99,34 +112,43 @@ def save_history_item(
     item_key: str,
     title: str,
     payload: dict[str, Any],
-) -> bool:
+) -> tuple[bool, str]:
     if not cloud_enabled():
-        return False
+        return False, cloud_block_reason() or "cloud_disabled"
+    title_clean = str(title or "").strip()
+    key_clean = str(item_key or "").strip()
+    if not title_clean:
+        return False, "missing_title"
+    if not key_clean:
+        return False, "missing_item_key"
     try:
         from suite_account import remember_saved_item
 
-        remember_saved_item(
+        safe_payload = json_safe(payload)
+        result = remember_saved_item(
             APP_ID,
             item_type,
-            item_key,
-            title=str(title or "Saved item")[:120],
-            payload=json_safe(payload),
+            key_clean,
+            title=title_clean[:120],
+            payload=safe_payload,
         )
-        return True
-    except Exception:
-        return False
+        if isinstance(result, dict) and str(result.get("write_mode") or "") == "skipped":
+            return False, "cloud_write_skipped"
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
 
 
-def delete_history_item(*, item_type: str, item_key: str) -> bool:
+def delete_history_item(*, item_type: str, item_key: str) -> tuple[bool, str]:
     if not item_key:
-        return False
+        return False, "missing_item_key"
     try:
         from suite_account import forget_saved_item
 
         forget_saved_item(APP_ID, item_type, item_key)
-        return True
-    except Exception:
-        return False
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
 
 
 def format_saved_at(value: str | None) -> str:

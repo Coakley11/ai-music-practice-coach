@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from datetime import datetime, timezone
 from typing import Any
 
@@ -18,6 +19,29 @@ from studio_history_cloud import (
 
 ITEM_TYPE = "upload_history"
 PAYLOAD_VERSION = 1
+PENDING_LOAD_KEY = "_pending_upload_history_payload"
+FLASH_KEY = "_upload_history_flash"
+
+_HISTORY_RESULT_KEYS = (
+    "ok",
+    "coach_summary",
+    "scores",
+    "categories",
+    "practice_plan",
+    "mission_results",
+    "overall_improv_score",
+    "features",
+    "multitrack",
+    "layer_scores",
+    "message",
+)
+
+
+def compact_analysis_for_history(result: dict[str, Any]) -> dict[str, Any]:
+    clean = sanitize_analysis_result_for_persist(result)
+    compact = {k: clean[k] for k in _HISTORY_RESULT_KEYS if k in clean}
+    compact.setdefault("ok", True)
+    return compact
 
 
 def scores_summary_from_result(result: dict[str, Any]) -> dict[str, Any]:
@@ -55,11 +79,15 @@ def build_upload_history_payload(
     title: str,
     notes: str = "",
     st: Any | None = None,
-) -> dict[str, Any] | None:
+) -> tuple[dict[str, Any] | None, str]:
     raw = session_state.get("last_analysis_result")
-    if not analysis_result_ready(raw):
-        return None
-    result = sanitize_analysis_result_for_persist(raw)
+    if not isinstance(raw, dict) or not raw:
+        return None, "no_analysis_result"
+    if raw.get("ok") is False:
+        return None, "analysis_failed"
+    result = compact_analysis_for_history(raw)
+    if not result:
+        return None, "analysis_not_serializable"
     audio = session_state.get("last_analysis_audio")
     audio_b64, audio_skip = encode_audio_if_safe(audio if isinstance(audio, (bytes, bytearray)) else None)
     source_label = str(
@@ -67,8 +95,10 @@ def build_upload_history_payload(
         or session_state.get("analysis_source_filename")
         or ""
     ).strip()
-    recording_type = str(session_state.get("analysis_recording_type") or session_state.get("last_analysis_recording_type") or "")
-    return json_safe(
+    recording_type = str(
+        session_state.get("analysis_recording_type") or session_state.get("last_analysis_recording_type") or ""
+    )
+    payload = json_safe(
         {
             "version": PAYLOAD_VERSION,
             "workspace_id": active_workspace_id(st=st),
@@ -83,6 +113,7 @@ def build_upload_history_payload(
             "audio_skip_reason": audio_skip,
         }
     )
+    return payload, ""
 
 
 def save_upload_to_history(
@@ -91,29 +122,42 @@ def save_upload_to_history(
     title: str,
     notes: str = "",
     st: Any | None = None,
-) -> tuple[bool, str]:
-    payload = build_upload_history_payload(session_state, title=title, notes=notes, st=st)
+) -> tuple[bool, str, str]:
+    payload, build_err = build_upload_history_payload(session_state, title=title, notes=notes, st=st)
     if not payload:
-        return False, ""
+        return False, "", build_err or "build_failed"
     item_key = new_history_item_key("upload")
-    ok = save_history_item(
+    ok, err = save_history_item(
         item_type=ITEM_TYPE,
         item_key=item_key,
         title=str(payload.get("title") or "Upload analysis"),
         payload=payload,
     )
-    return ok, item_key
+    return ok, item_key if ok else "", err
 
 
-def list_upload_history(*, st: Any | None = None, limit: int = 40) -> list[dict[str, Any]]:
+def list_upload_history(*, st: Any | None = None, limit: int = 40) -> tuple[list[dict[str, Any]], str | None]:
     return list_history_items(item_type=ITEM_TYPE, st=st, limit=limit)
+
+
+def queue_upload_history_load(session_state: dict[str, Any], payload: dict[str, Any]) -> None:
+    session_state[PENDING_LOAD_KEY] = copy.deepcopy(payload)
+
+
+def apply_pending_upload_history(session_state: dict[str, Any]) -> bool:
+    payload = session_state.pop(PENDING_LOAD_KEY, None)
+    if not isinstance(payload, dict):
+        return False
+    return apply_upload_history(session_state, payload)
 
 
 def apply_upload_history(session_state: dict[str, Any], payload: dict[str, Any]) -> bool:
     result = payload.get("analysis_result")
-    if not analysis_result_ready(result):
+    if not isinstance(result, dict) or not result:
         return False
-    session_state["last_analysis_result"] = sanitize_analysis_result_for_persist(result)
+    if result.get("ok") is False:
+        return False
+    session_state["last_analysis_result"] = compact_analysis_for_history(result)
     session_state["last_analysis_source_label"] = str(payload.get("source_label") or "")
     session_state["last_analysis_recording_type"] = str(payload.get("recording_type") or "")
     if payload.get("notes"):
