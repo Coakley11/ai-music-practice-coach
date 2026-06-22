@@ -571,6 +571,15 @@ def ensure_creative_improv_initialized(session_state: dict, *, is_custom_active:
 
 def handle_studio_page_transition(session_state: dict) -> None:
     """On page change, snapshot the page left and restore page-local state only."""
+    try:
+        from music_restore_phase import (
+            mark_page_snapshot_hydrated,
+            should_hydrate_page_snapshot,
+        )
+    except ImportError:
+        mark_page_snapshot_hydrated = None  # type: ignore[assignment]
+        should_hydrate_page_snapshot = None  # type: ignore[assignment]
+
     if not session_state.get("_snapshots_sanitized_once"):
         sanitize_persisted_snapshots(session_state)
         session_state["_snapshots_sanitized_once"] = True
@@ -579,6 +588,8 @@ def handle_studio_page_transition(session_state: dict) -> None:
     if last and last != current:
         save_page_snapshot(session_state, str(last))
         restore_page_snapshot(session_state, current)
+        if mark_page_snapshot_hydrated is not None:
+            mark_page_snapshot_hydrated(session_state, current)
         try:
             import streamlit as st
 
@@ -588,8 +599,24 @@ def handle_studio_page_transition(session_state: dict) -> None:
         except Exception:
             pass
     elif last is None:
-        restore_current_page_snapshot_if_needed(session_state)
+        hydrate = True
+        if should_hydrate_page_snapshot is not None:
+            hydrate = should_hydrate_page_snapshot(
+                session_state,
+                page_id=current,
+                page_changed=False,
+            )
+        if hydrate:
+            restore_current_page_snapshot_if_needed(session_state)
+            if mark_page_snapshot_hydrated is not None:
+                mark_page_snapshot_hydrated(session_state, current)
     session_state[_ACTIVE_PAGE_TRACKER] = current
+    try:
+        from music_restore_phase import complete_music_restore_phase
+
+        complete_music_restore_phase(session_state)
+    except ImportError:
+        pass
 
 
 def make_history_entry(session_state: dict, page_id: str) -> dict[str, Any]:

@@ -38,9 +38,9 @@ st.set_page_config(
 st.session_state["_script_run_seq"] = int(st.session_state.get("_script_run_seq") or 0) + 1
 
 try:
-    from studio_page_persistence import reset_page_snapshot_tracker
+    from music_restore_phase import begin_music_script_run
 
-    reset_page_snapshot_tracker(st.session_state)
+    begin_music_script_run(st.session_state)
 except Exception:
     pass
 
@@ -1238,8 +1238,15 @@ _music_state_restored = bool(st.session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY
 
 # Pin to trusted-core default only on true first run — never replace restored or
 # user-selected songs (including non-core catalog entries).
+try:
+    from music_restore_phase import workspace_is_truly_empty as _workspace_is_truly_empty
+except ImportError:
+    def _workspace_is_truly_empty(_ss):
+        return False
+
 if (
     not _skip_master_song_init
+    and _workspace_is_truly_empty(st.session_state)
     and DEFAULT_SONG_RECORDS
     and _normalize_library_mode(st.session_state.get("chart_library_mode", DEFAULT_CHART_LIBRARY_MODE))
     == LIBRARY_MODE_CORE

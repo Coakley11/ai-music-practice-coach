@@ -2552,6 +2552,13 @@ def prepare_music_workspace(
     )
     ss["_music_workspace_prepared_for_run"] = run_seq
     ss["_music_workspace_last_result"] = bool(result)
+    if result:
+        try:
+            from music_restore_phase import mark_music_workspace_restore_applied
+
+            mark_music_workspace_restore_applied(ss)
+        except ImportError:
+            pass
     return result
 
 

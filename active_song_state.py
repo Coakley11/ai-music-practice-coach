@@ -964,9 +964,7 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         session.get("_cloud_workspace_restored_this_run")
         or session.get(SUITE_LOCAL_STATE_RESTORED_KEY)
     )
-    if is_active_song_locally_dirty(session) and restored_this_run:
-        clear_active_song_local_edit(session)
-    elif is_active_song_locally_dirty(session):
+    if is_active_song_locally_dirty(session):
         ctx = gather_active_song_context(session)
         return write_canonical_active_song_state(
             session,
