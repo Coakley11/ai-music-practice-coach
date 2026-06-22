@@ -38,6 +38,13 @@ st.set_page_config(
 st.session_state["_script_run_seq"] = int(st.session_state.get("_script_run_seq") or 0) + 1
 
 try:
+    from studio_page_persistence import reset_page_snapshot_tracker
+
+    reset_page_snapshot_tracker(st.session_state)
+except Exception:
+    pass
+
+try:
     from app_ui import init_simple_music_nav_from_query
     from music_persistence_trace import init_developer_mode_from_query, render_persistence_trace_sidebar
 
@@ -11767,6 +11774,12 @@ elif _studio_page == "backing":
 
 elif _studio_page == "analysis":
 
+    try:
+        from analysis_session_persistence import restore_analysis_session
+
+        restore_analysis_session(st.session_state)
+    except Exception:
+        pass
     ensure_page_initialized(st.session_state, "analysis")
     note_page_visit(st.session_state, "analysis")
     from recording_analysis import analyze_multitrack, analyze_recording
@@ -11990,6 +12003,14 @@ elif _studio_page == "analysis":
                         )
                     st.session_state["last_analysis_result"] = result
                     st.session_state["last_analysis_audio"] = audio_obj.getvalue()
+                    try:
+                        from analysis_session_persistence import save_analysis_session
+                        from music_persistent_state import force_save_music_state
+
+                        save_analysis_session(st.session_state)
+                        force_save_music_state(st, reason="analysis_complete")
+                    except Exception:
+                        pass
                     if result.get("ok"):
                         try:
                             from music_activity import log_recording_reviewed

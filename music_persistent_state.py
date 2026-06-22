@@ -69,6 +69,8 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "improv_song_source",
     "creative_lab_analysis_mode",
     "improv_intelligence_tab",
+    "last_analysis_result",
+    "last_analysis_audio",
     "song_picker_favorites_only",
     "cpl_active_progression",
     "cpl_saved_progressions",
@@ -1281,7 +1283,15 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     extra: dict[str, Any] = {}
     for key in _PERSIST_KEYS:
         if key in ss:
-            extra[key] = copy.deepcopy(ss[key])
+            val = copy.deepcopy(ss[key])
+            if key == "last_analysis_audio" and isinstance(val, bytes):
+                try:
+                    from studio_page_persistence import _encode_snapshot_value
+
+                    val = _encode_snapshot_value(val)
+                except ImportError:
+                    pass
+            extra[key] = val
     for key in _LIST_KEYS:
         if key in ss:
             val = ss[key]
@@ -1290,6 +1300,13 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     snapshots = ss.get("_studio_page_snapshots")
     if isinstance(snapshots, dict) and snapshots:
         extra["_studio_page_snapshots"] = copy.deepcopy(snapshots)
+    if ss.get("last_analysis_result"):
+        try:
+            from analysis_session_persistence import save_analysis_session
+
+            save_analysis_session(ss)
+        except ImportError:
+            pass
     try:
         from custom_progression_lab import export_cpl_widget_state
 
@@ -1506,6 +1523,13 @@ def apply_music_disk_state(
                 except Exception:
                     pass
             ss[key] = copy.deepcopy(val)
+            if key == "last_analysis_audio":
+                try:
+                    from studio_page_persistence import _decode_snapshot_value
+
+                    ss[key] = _decode_snapshot_value(ss[key])
+                except ImportError:
+                    pass
             if key == "cpl_active_progression" and authoritative_restore:
                 try:
                     from custom_progression_lab import reset_cpl_widget_initialization

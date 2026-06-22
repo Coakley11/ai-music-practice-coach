@@ -70,6 +70,26 @@ def test_refresh_restores_current_page_when_tracker_missing() -> None:
     assert ss.get("_studio_active_page_id") == "creative"
 
 
+def test_reset_tracker_allows_analysis_restore_after_prior_run() -> None:
+    from studio_page_persistence import reset_page_snapshot_tracker
+
+    ss = {
+        "studio_page": "analysis",
+        "_studio_active_page_id": "analysis",
+        "_studio_page_snapshots": {
+            "analysis": capture_page_snapshot(
+                {
+                    "last_analysis_result": {"ok": True, "coach_summary": "Kept"},
+                },
+                "analysis",
+            ),
+        },
+    }
+    reset_page_snapshot_tracker(ss)
+    handle_studio_page_transition(ss)
+    assert ss.get("last_analysis_result", {}).get("coach_summary") == "Kept"
+
+
 def test_multitrack_binary_round_trips_through_json_disk_state() -> None:
     audio = b"\x00\x01track-audio\xff"
     ss = _FakeSessionState(

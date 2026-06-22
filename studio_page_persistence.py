@@ -449,10 +449,27 @@ def restore_page_snapshot(session_state: dict, page_id: str) -> None:
     apply_page_snapshot(session_state, store.get(page_id))
 
 
+def reset_page_snapshot_tracker(session_state: dict) -> None:
+    """Clear cross-run page tracker so refresh re-applies the active page snapshot."""
+    session_state.pop(_ACTIVE_PAGE_TRACKER, None)
+
+
 def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
     """After browser refresh / cloud restore — hydrate page-local UI for active page."""
     current = str(session_state.get("studio_page") or "practice").strip() or "practice"
-    if session_state.get(_ACTIVE_PAGE_TRACKER) is None:
+    store = session_state.get(_PAGE_SNAPSHOTS_KEY) or {}
+    snap = store.get(current) if isinstance(store, dict) else None
+    if not snap:
+        return
+    needs_restore = session_state.get(_ACTIVE_PAGE_TRACKER) is None
+    if current == "analysis" and not session_state.get("last_analysis_result"):
+        needs_restore = True
+    if current == "multitrack" and not session_state.get("mt_tracks"):
+        needs_restore = True
+    if current == "creative" and not session_state.get("improv_motif_abc"):
+        if any(k in snap for k in ("improv_motif_abc", "improv_generated_sections", "improv_jam_session")):
+            needs_restore = True
+    if needs_restore:
         restore_page_snapshot(session_state, current)
 
 
