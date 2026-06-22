@@ -55,15 +55,15 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
 
 def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
     """True when the loaded song is a Custom Progression (for key display/sync)."""
-    if is_custom_progression(session_state):
-        return True
-    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
-        return False
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
     pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if pick_key.startswith("custom::"):
         return True
+    if is_custom_progression(session_state):
+        return True
+    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return False
     meta = session_state.get("active_song_state")
     if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
         return True
@@ -72,6 +72,32 @@ def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
         if meta_pick.startswith("custom::"):
             return True
     return False
+
+
+def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
+    """Align Songs page source radio with active song + active_music_source."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    custom_active = custom_progression_is_active(session_state)
+    expected = SONG_PICKER_SOURCE_CUSTOM if custom_active else SONG_PICKER_SOURCE_CATALOG
+    current = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    changed = False
+
+    if custom_active:
+        session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CUSTOM:
+            session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
+            changed = True
+    elif pick_key and not pick_key.startswith("custom::"):
+        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
+            set_catalog_source(session_state)
+            changed = True
+
+    if current != expected:
+        session_state[SONG_PICKER_ACTIVE_SOURCE_KEY] = expected
+        changed = True
+    return changed
 
 
 def ensure_active_music_source_from_canonical(session_state: dict[str, Any]) -> None:
@@ -494,14 +520,13 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
         session_state.get("studio_page") or session_state.get("page") or ""
     ).strip()
     if page != "picker":
-        return False
+        return reconcile_music_picker_source_widget(session_state)
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-    if not choice:
-        return False
+    changed = reconcile_music_picker_source_widget(session_state)
     if choice.startswith("Use Custom") and not is_custom_progression(session_state):
         set_custom_source(session_state)
         return True
-    return False
+    return changed
 
 
 def custom_original_key(active: dict[str, Any]) -> str:
@@ -744,13 +769,23 @@ def on_active_song_identity_changed(
             pass
 
     session[ACTIVE_SONG_IDENTITY_KEY] = new_identity
+    try:
+        from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+
+        last_change_source = session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY)
+    except ImportError:
+        last_change_source = None
     session[SONG_IDENTITY_DIAG_KEY] = {
+        "active_song_id": new_identity,
         "active_song_identity": new_identity,
         "previous_active_song_identity": prev_identity,
+        "active_music_source": SOURCE_CUSTOM if is_custom else SOURCE_CATALOG,
         "song_source": SOURCE_CUSTOM if is_custom else SOURCE_CATALOG,
         "pick_key": pick_key,
         "original_key": original_key,
+        "practice_display_key": session.get("display_key"),
         "display_key": session.get("display_key"),
+        "last_song_change_source": last_change_source,
         "default_bpm": default_bpm,
         "backing_bpm": session.get("backing_track_bpm"),
         "default_style": default_groove,
@@ -830,7 +865,7 @@ def display_key_context(
     cpl_active_key: str,
 ) -> tuple[str, tuple]:
     """Original/home key and identity tuple for the global display-key widget."""
-    if cpl_session_is_active(session_state):
+    if custom_progression_is_active(session_state) or cpl_session_is_active(session_state):
         from custom_progression_lab import (
             default_active_progression,
             ensure_original_structure,

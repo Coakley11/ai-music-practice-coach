@@ -1,0 +1,109 @@
+"""Multitrack working-session persistence (layer audio + filenames)."""
+
+from __future__ import annotations
+
+import base64
+import copy
+from typing import Any
+
+from studio_page_persistence import _B64_MARKER, _decode_snapshot_value, _encode_snapshot_value
+
+MAX_MT_TRACK_BYTES = 512_000
+MAX_MT_MIXED_BYTES = 768_000
+DIAG_KEY = "_multitrack_persist_diag"
+
+
+def _track_has_audio(value: Any) -> bool:
+    return bool(value) and isinstance(value, (bytes, bytearray))
+
+
+def count_mt_layers(mt: dict[str, Any] | None) -> int:
+    if not isinstance(mt, dict):
+        return 0
+    return sum(1 for v in mt.values() if _track_has_audio(v))
+
+
+def encode_mt_tracks_for_persist(mt: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Encode ``mt_tracks`` slot map for JSON/cloud save with size guards."""
+    diag: dict[str, Any] = {
+        "tracks_before": 0,
+        "tracks_persisted": 0,
+        "audio_persisted": False,
+        "skipped_due_to_size": [],
+    }
+    if not isinstance(mt, dict):
+        return {}, diag
+    out: dict[str, Any] = {}
+    for slot, raw in mt.items():
+        if not _track_has_audio(raw):
+            out[str(slot)] = None
+            continue
+        diag["tracks_before"] += 1
+        data = bytes(raw)
+        if len(data) > MAX_MT_TRACK_BYTES:
+            out[str(slot)] = None
+            diag["skipped_due_to_size"].append({"slot": str(slot), "bytes": len(data)})
+            continue
+        out[str(slot)] = _encode_snapshot_value(data)
+        diag["tracks_persisted"] += 1
+    diag["audio_persisted"] = diag["tracks_persisted"] > 0
+    return out, diag
+
+
+def decode_mt_tracks_from_persist(encoded: Any) -> dict[str, Any | None]:
+    if not isinstance(encoded, dict):
+        return {}
+    out: dict[str, Any | None] = {}
+    for slot, raw in encoded.items():
+        if raw is None:
+            out[str(slot)] = None
+            continue
+        decoded = _decode_snapshot_value(raw)
+        out[str(slot)] = decoded if _track_has_audio(decoded) else None
+    return out
+
+
+def encode_mixed_track_for_persist(data: Any) -> tuple[Any, dict[str, Any]]:
+    if not _track_has_audio(data):
+        return None, {"mixed_persisted": False, "mixed_skipped_bytes": 0}
+    raw = bytes(data)
+    if len(raw) > MAX_MT_MIXED_BYTES:
+        return None, {"mixed_persisted": False, "mixed_skipped_bytes": len(raw)}
+    return _encode_snapshot_value(raw), {"mixed_persisted": True, "mixed_skipped_bytes": 0}
+
+
+def decode_mixed_track_from_persist(value: Any) -> bytes | None:
+    if value is None:
+        return None
+    decoded = _decode_snapshot_value(value)
+    return bytes(decoded) if _track_has_audio(decoded) else None
+
+
+def record_multitrack_persist_diag(session_state: dict[str, Any], diag: dict[str, Any]) -> None:
+    prior = session_state.get(DIAG_KEY) if isinstance(session_state.get(DIAG_KEY), dict) else {}
+    merged = dict(prior)
+    merged.update(diag)
+    merged["mt_tracks_count_after_save"] = count_mt_layers(session_state.get("mt_tracks"))
+    session_state[DIAG_KEY] = merged
+
+
+def record_multitrack_restore_diag(session_state: dict[str, Any], *, source: str) -> None:
+    session_state[DIAG_KEY] = {
+        "restore_source": source,
+        "mt_tracks_count_after_restore": count_mt_layers(session_state.get("mt_tracks")),
+        "mixed_track_restored": bool(session_state.get("mixed_track_wav")),
+    }
+
+
+def restore_multitrack_session_if_needed(session_state: dict[str, Any]) -> bool:
+    """Apply top-level persisted multitrack blobs when slots are empty after refresh."""
+    mt = session_state.get("mt_tracks")
+    if count_mt_layers(mt) > 0 or session_state.get("mixed_track_wav"):
+        record_multitrack_restore_diag(session_state, source="session_already_hydrated")
+        return False
+    encoded = session_state.get("_mt_tracks_persist_blob")
+    if isinstance(encoded, dict) and encoded:
+        session_state["mt_tracks"] = decode_mt_tracks_from_persist(encoded)
+        record_multitrack_restore_diag(session_state, source="mt_tracks_persist_blob")
+        return True
+    return False

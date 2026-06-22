@@ -56,6 +56,7 @@ def toggle_genre_filter(session_state: MutableMapping[str, object], genre: str) 
     else:
         filters.append(genre)
     session_state[WORKSPACE_GENRE_FILTERS_KEY] = filters
+    session_state["_genre_filters_user_touched"] = True
 
 
 def genre_filter_widget_key(genre: str) -> str:

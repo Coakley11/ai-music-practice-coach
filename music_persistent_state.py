@@ -143,10 +143,12 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "cpl_finished",
     "_cpl_editing_display_key",
     "cpl_last_display_key",
+    "mt_track_filenames",
+    "mt_tracks",
+    "mixed_track_wav",
 )
 
 _LIST_KEYS = (
-    "workspace_genre_filters",
     "backing_track_multi_sections",
     "karaoke_queue",
     "catalog_favorite_pick_keys",
@@ -1362,6 +1364,39 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
                     val = _encode_snapshot_value(val)
                 except ImportError:
                     pass
+            if key == "mt_tracks" and isinstance(val, dict):
+                try:
+                    from multitrack_session_persistence import (
+                        count_mt_layers,
+                        encode_mt_tracks_for_persist,
+                        record_multitrack_persist_diag,
+                    )
+
+                    if count_mt_layers(val) == 0:
+                        continue
+                    encoded, diag = encode_mt_tracks_for_persist(val)
+                    val = encoded
+                    record_multitrack_persist_diag(ss, {"save_diag": diag})
+                    ss["_mt_tracks_persist_blob"] = copy.deepcopy(encoded)
+                except ImportError:
+                    pass
+            if key == "mixed_track_wav" and isinstance(val, bytes):
+                try:
+                    from multitrack_session_persistence import (
+                        encode_mixed_track_for_persist,
+                        record_multitrack_persist_diag,
+                    )
+
+                    encoded, mix_diag = encode_mixed_track_for_persist(val)
+                    val = encoded
+                    record_multitrack_persist_diag(ss, {"mixed_save_diag": mix_diag})
+                except ImportError:
+                    try:
+                        from studio_page_persistence import _encode_snapshot_value
+
+                        val = _encode_snapshot_value(val)
+                    except ImportError:
+                        pass
             extra[key] = val
     for key in _LIST_KEYS:
         if key in ss:
@@ -1602,6 +1637,34 @@ def apply_music_disk_state(
                     ss[key] = _decode_snapshot_value(ss[key])
                 except ImportError:
                     pass
+            if key == "mt_tracks":
+                try:
+                    from multitrack_session_persistence import (
+                        decode_mt_tracks_from_persist,
+                        record_multitrack_restore_diag,
+                    )
+
+                    ss[key] = decode_mt_tracks_from_persist(ss[key])
+                    ss["_mt_tracks_persist_blob"] = copy.deepcopy(val)
+                    record_multitrack_restore_diag(ss, source="cloud_session_extra")
+                except ImportError:
+                    pass
+            if key == "mixed_track_wav":
+                try:
+                    from multitrack_session_persistence import (
+                        decode_mixed_track_from_persist,
+                        record_multitrack_restore_diag,
+                    )
+
+                    ss[key] = decode_mixed_track_from_persist(ss[key])
+                    record_multitrack_restore_diag(ss, source="cloud_session_extra")
+                except ImportError:
+                    try:
+                        from studio_page_persistence import _decode_snapshot_value
+
+                        ss[key] = _decode_snapshot_value(ss[key])
+                    except ImportError:
+                        pass
             if key == "cpl_active_progression" and authoritative_restore:
                 try:
                     from custom_progression_lab import reset_cpl_widget_initialization
@@ -1628,6 +1691,14 @@ def apply_music_disk_state(
                     ACTIVE_SONG_PENDING_SYNC_KEY,
                 ):
                     continue
+            except ImportError:
+                pass
+            try:
+                from songs.picker_session import WORKSPACE_GENRE_FILTERS_KEY
+
+                if key == WORKSPACE_GENRE_FILTERS_KEY:
+                    if ss.get("_genre_filters_user_touched") or ss.get(WORKSPACE_GENRE_FILTERS_KEY):
+                        continue
             except ImportError:
                 pass
             if not str(key).startswith("_ami_"):

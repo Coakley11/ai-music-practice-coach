@@ -7934,14 +7934,15 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
         "Use Custom Progression / Create Your Own Song",
     ]
     from songs.music_source import (
+        on_song_picker_source_change,
+        reconcile_music_picker_source_widget,
         restore_last_catalog_active_song,
         sync_song_picker_source_widget,
     )
 
-    from songs.music_source import on_song_picker_source_change
-
     if "song_picker_active_source" not in st.session_state:
         sync_song_picker_source_widget(st.session_state)
+    reconcile_music_picker_source_widget(st.session_state)
 
     def _picker_source_on_change() -> None:
         on_song_picker_source_change(
@@ -8172,14 +8173,15 @@ def _render_catalog_song_picker_block(
             "Use Custom Progression / Create Your Own Song",
         ]
         from songs.music_source import (
+            on_song_picker_source_change,
+            reconcile_music_picker_source_widget,
             restore_last_catalog_active_song,
             sync_song_picker_source_widget,
         )
 
-        from songs.music_source import on_song_picker_source_change
-
         if "song_picker_active_source" not in st.session_state:
             sync_song_picker_source_widget(st.session_state)
+        reconcile_music_picker_source_widget(st.session_state)
 
         def _library_source_on_change() -> None:
             on_song_picker_source_change(
@@ -12458,6 +12460,12 @@ elif _studio_page == "multitrack":
         from studio_page_persistence import restore_current_page_snapshot_if_needed
 
         restore_current_page_snapshot_if_needed(st.session_state)
+    except Exception:
+        pass
+    try:
+        from multitrack_session_persistence import restore_multitrack_session_if_needed
+
+        restore_multitrack_session_if_needed(st.session_state)
     except Exception:
         pass
     if "mt_tracks" not in st.session_state:

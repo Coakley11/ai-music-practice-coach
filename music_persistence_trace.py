@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "music-restore-custom-songs-v6"
+MUSIC_PERSIST_DEPLOY_VERSION = "music-genre-source-mt-v7"
 
 TRACE_KEY = "_music_persist_trace"
 
