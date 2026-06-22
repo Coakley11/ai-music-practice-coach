@@ -1238,6 +1238,12 @@ def _backing_filters_for_envelope(st: Any, state: dict[str, Any], *, save_reason
 
 def build_music_disk_state(st: Any) -> dict[str, Any]:
     ss = st.session_state
+    try:
+        from studio_page_persistence import flush_current_page_snapshot
+
+        flush_current_page_snapshot(ss)
+    except ImportError:
+        pass
     save_reason = str(ss.get("_suite_pending_save_reason") or "autosave")
     ss["_music_build_save_reason"] = save_reason
     page_change_target = ""

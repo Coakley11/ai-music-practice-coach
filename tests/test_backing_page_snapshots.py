@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from studio_page_persistence import capture_page_snapshot
+from studio_page_persistence import apply_page_snapshot, capture_page_snapshot
 
 
 def test_backing_snapshot_excludes_durable_scope_and_loops() -> None:
@@ -20,7 +20,9 @@ def test_backing_snapshot_excludes_durable_scope_and_loops() -> None:
     assert "backing_track_single_section" not in snap
     assert "backing_track_multi_sections" not in snap
     assert "backing_quick_section" not in snap
-    assert snap.get("_last_backing_wav") == b"audio"
+    restored: dict = {}
+    apply_page_snapshot(restored, snap)
+    assert restored.get("_last_backing_wav") == b"audio"
 
 
 def test_legacy_snapshot_restore_strips_durable_backing_keys() -> None:

@@ -12,9 +12,13 @@ Page-local (snapshotted per ``studio_page``):
 
 from __future__ import annotations
 
+import ast
+import base64
 import copy
 import re
 from typing import Any
+
+_B64_MARKER = "__suite_b64__"
 
 _LEGACY_IMPROV_CHORD_TILE_KEY = re.compile(r"^improv_(live|motif)_s\d+_c\d+$")
 
@@ -357,6 +361,48 @@ def _collect_keys_for_page(session_state: dict, page_id: str) -> set[str]:
     return keys
 
 
+def _encode_snapshot_value(val: Any) -> Any:
+    """JSON-safe encoding for page snapshots (bytes → base64 wrapper)."""
+    if isinstance(val, bytes):
+        return {_B64_MARKER: base64.b64encode(val).decode("ascii")}
+    if isinstance(val, dict):
+        return {k: _encode_snapshot_value(v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_encode_snapshot_value(v) for v in val]
+    return val
+
+
+def _decode_snapshot_value(val: Any) -> Any:
+    """Reverse ``_encode_snapshot_value``; tolerate legacy ``default=str`` bytes."""
+    if isinstance(val, dict):
+        if set(val.keys()) == {_B64_MARKER}:
+            raw = val.get(_B64_MARKER)
+            if isinstance(raw, str):
+                return base64.b64decode(raw.encode("ascii"))
+            return val
+        return {k: _decode_snapshot_value(v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_decode_snapshot_value(v) for v in val]
+    if isinstance(val, str) and len(val) >= 3 and val[0] == "b" and val[1] in ("'", '"'):
+        try:
+            decoded = ast.literal_eval(val)
+            if isinstance(decoded, bytes):
+                return decoded
+        except (SyntaxError, ValueError):
+            pass
+    return val
+
+
+def _encode_page_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    return {key: _encode_snapshot_value(val) for key, val in snapshot.items()}
+
+
+def _decode_page_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
+    if not snapshot:
+        return {}
+    return {key: _decode_snapshot_value(val) for key, val in snapshot.items()}
+
+
 def capture_page_snapshot(session_state: dict, page_id: str) -> dict[str, Any]:
     """Shallow copy of page-local session keys only."""
     out: dict[str, Any] = {}
@@ -368,13 +414,13 @@ def capture_page_snapshot(session_state: dict, page_id: str) -> dict[str, Any]:
             out[key] = copy.deepcopy(val)
         except Exception:
             out[key] = val
-    return out
+    return _encode_page_snapshot(out)
 
 
 def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) -> None:
     """Restore page-local keys; global musician settings are always preserved."""
     preserved = _preserve_global_state(session_state)
-    local = _filter_page_local_snapshot(snapshot)
+    local = _decode_page_snapshot(_filter_page_local_snapshot(snapshot))
     try:
         from backing_track_state import strip_durable_backing_snapshot_keys
 
@@ -391,9 +437,23 @@ def save_page_snapshot(session_state: dict, page_id: str) -> None:
     store[page_id] = capture_page_snapshot(session_state, page_id)
 
 
+def flush_current_page_snapshot(session_state: dict) -> str:
+    """Persist live page-local keys before disk/cloud autosave (same-page edits)."""
+    page_id = str(session_state.get("studio_page") or "practice").strip() or "practice"
+    save_page_snapshot(session_state, page_id)
+    return page_id
+
+
 def restore_page_snapshot(session_state: dict, page_id: str) -> None:
     store = session_state.get(_PAGE_SNAPSHOTS_KEY) or {}
     apply_page_snapshot(session_state, store.get(page_id))
+
+
+def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
+    """After browser refresh / cloud restore — hydrate page-local UI for active page."""
+    current = str(session_state.get("studio_page") or "practice").strip() or "practice"
+    if session_state.get(_ACTIVE_PAGE_TRACKER) is None:
+        restore_page_snapshot(session_state, current)
 
 
 def sanitize_persisted_snapshots(session_state: dict) -> None:
@@ -471,6 +531,8 @@ def handle_studio_page_transition(session_state: dict) -> None:
             log_studio_page_entered(st, current)
         except Exception:
             pass
+    elif last is None:
+        restore_current_page_snapshot_if_needed(session_state)
     session_state[_ACTIVE_PAGE_TRACKER] = current
 
 
