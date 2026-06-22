@@ -266,6 +266,12 @@ def apply_saved_custom_pick_key_context(
         pass
 
     st.session_state[SUITE_LOCAL_STATE_RESTORED_KEY] = True
+    try:
+        from music_persistent_state import clear_music_ephemeral_default_song
+
+        clear_music_ephemeral_default_song(st.session_state)
+    except ImportError:
+        pass
     return True
 
 
@@ -346,13 +352,7 @@ def apply_saved_music_context(
         )
 
     if skip_catalog_pick_key:
-        return bool(
-            saved.get("instrument")
-            or saved.get("level")
-            or saved.get("focus")
-            or saved.get("practice_focus_section")
-            or saved.get("mode")
-        )
+        return False
 
     resolved = resolve_pick_key(pick_key, song_picker_catalog=song_picker_catalog)
     target = resolved or pick_key
@@ -554,6 +554,7 @@ def ensure_master_song_initialized(
             song_picker_catalog,
             song_library=song_library,
             skip_activity_log=True,
+            persist=False,
         )
         return
 
@@ -575,13 +576,14 @@ def ensure_master_song_initialized(
     ):
         label = _label_for_library_entry(legacy_g, legacy_t, song_library)
         if legacy_g in song_picker_catalog and label in song_picker_catalog[legacy_g]:
-            apply_pick_key(st, format_pick_key(legacy_g, label), song_picker_catalog)
+            apply_pick_key(st, format_pick_key(legacy_g, label), song_picker_catalog, persist=False)
             return
 
     r0 = all_records[0]
     label0 = f"{r0['title']} — {r0['artist']}"
     pk = format_pick_key(r0["genre"], label0)
-    apply_pick_key(st, pk, song_picker_catalog)
+    apply_pick_key(st, pk, song_picker_catalog, persist=False)
+    st.session_state["_music_default_song_ephemeral"] = True
 
 
 def apply_pick_key(
@@ -739,6 +741,12 @@ def apply_pick_key(
         except Exception:
             pass
     if persist:
+        try:
+            from music_persistent_state import clear_music_ephemeral_default_song
+
+            clear_music_ephemeral_default_song(st.session_state)
+        except ImportError:
+            pass
         persist_music_local_state(st)
     return data
 

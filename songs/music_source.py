@@ -34,22 +34,21 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     """True when Custom Progression is the active song (session or canonical blob)."""
     if is_custom_progression(session_state):
         return True
-    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
-        return False
-    if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
-        return False
-    meta = session_state.get("active_song_state")
-    if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
-        return True
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
     pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if pick_key.startswith("custom::"):
         return True
+    meta = session_state.get("active_song_state")
     if isinstance(meta, dict):
-        meta_pick = str(meta.get("pick_key") or "").strip()
-        if meta_pick.startswith("custom::"):
+        if str(meta.get("music_source") or "") == SOURCE_CUSTOM:
             return True
+        if str(meta.get("pick_key") or "").strip().startswith("custom::"):
+            return True
+    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return False
+    if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
+        return False
     return False
 
 
@@ -501,6 +500,12 @@ def on_song_picker_source_change(
         if not is_custom_progression(st.session_state):
             set_custom_source(st.session_state)
             note_active_source_change(st, invalidate_backing=invalidate_backing)
+        try:
+            from custom_progression_lab import cpl_active_from_session
+
+            queue_custom_active_song_activation(st, cpl_active_from_session(st.session_state))
+        except Exception:
+            pass
         st.rerun()
         return
     st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
@@ -522,11 +527,12 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
     if page != "picker":
         return reconcile_music_picker_source_widget(session_state)
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-    changed = reconcile_music_picker_source_widget(session_state)
     if choice.startswith("Use Custom") and not is_custom_progression(session_state):
+        session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
         set_custom_source(session_state)
+        session_state[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
         return True
-    return changed
+    return reconcile_music_picker_source_widget(session_state)
 
 
 def custom_original_key(active: dict[str, Any]) -> str:
@@ -736,7 +742,7 @@ def on_active_song_identity_changed(
         except ImportError:
             pass
         target_display = str(display_key if display_key is not None else original_key).strip() or original_key
-        song_identity = song_display_identity(title, artist, original_key)
+        song_identity = song_display_identity(title, artist, original_key, pick_key=pick_key)
         apply_display_key_for_active_song(
             st,
             original_key,
@@ -1330,6 +1336,13 @@ def commit_custom_active_song(
         from songs.state import persist_music_local_state
 
         persist_music_local_state(st)
+    except ImportError:
+        pass
+
+    try:
+        from music_persistent_state import clear_music_ephemeral_default_song
+
+        clear_music_ephemeral_default_song(session)
     except ImportError:
         pass
 

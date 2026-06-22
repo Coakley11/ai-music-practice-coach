@@ -1291,7 +1291,8 @@ if (
 ):
     _r0 = DEFAULT_SONG_RECORDS[0]
     _pk0 = format_pick_key(_r0["genre"], f"{_r0['title']} — {_r0['artist']}")
-    apply_pick_key(st, _pk0, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
+    apply_pick_key(st, _pk0, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY, persist=False)
+    st.session_state["_music_default_song_ephemeral"] = True
     _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
         st,
         song_library=SONG_LIBRARY,
@@ -7979,7 +7980,6 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
     st.radio(
         "Music source",
         options,
-        index=1 if is_custom_progression(st.session_state) else 0,
         horizontal=True,
         key="song_picker_active_source",
         label_visibility="collapsed" if polished else "visible",
@@ -8218,8 +8218,7 @@ def _render_catalog_song_picker_block(
         st.radio(
             "Music source",
             _picker_source_options,
-            index=1 if is_custom_progression(st.session_state) else 0,
-            horizontal=True,
+                horizontal=True,
             key="song_picker_active_source",
             on_change=_library_source_on_change,
         )

@@ -149,17 +149,33 @@ def delete_custom_song_from_cloud(song_id: str, *, st: Any | None = None) -> tup
 
 def _merge_progression_store(local: dict[str, Any], cloud_rows: list[dict[str, Any]]) -> dict[str, Any]:
     merged = copy.deepcopy(local if isinstance(local, dict) else {})
+
+    def _prog_id(prog: dict[str, Any]) -> str:
+        return str(prog.get("id") or "").strip()
+
+    def _local_key_for_id(song_id: str) -> str | None:
+        if not song_id:
+            return None
+        for key, row in merged.items():
+            if isinstance(row, dict) and _prog_id(row) == song_id:
+                return str(key)
+        return None
+
     for row in cloud_rows:
         payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
         prog = payload.get("progression") if isinstance(payload.get("progression"), dict) else {}
         name = str(prog.get("name") or row.get("title") or "").strip()
         if not name:
             continue
-        local_row = merged.get(name) if isinstance(merged.get(name), dict) else {}
+        song_id = _prog_id(prog)
+        store_key = _local_key_for_id(song_id) if song_id else None
+        if not store_key:
+            store_key = name
+        local_row = merged.get(store_key) if isinstance(merged.get(store_key), dict) else {}
         cloud_ts = float(prog.get("updated_at") or 0)
         local_ts = float(local_row.get("updated_at") or 0) if isinstance(local_row, dict) else 0.0
         if not local_row or cloud_ts >= local_ts:
-            merged[name] = copy.deepcopy(prog)
+            merged[store_key] = copy.deepcopy(prog)
     return merged
 
 

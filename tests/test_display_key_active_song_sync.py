@@ -57,7 +57,7 @@ class TestDisplayKeyActiveSongSync(unittest.TestCase):
         self.assertEqual(st.session_state["display_key"], "C")
         self.assertEqual(
             st.session_state[IDENTITY_KEY],
-            song_display_identity("Song B", "Artist B", "C"),
+            song_display_identity("Song B", "Artist B", "C", pick_key=PK_B),
         )
 
     def test_manual_override_preserved_until_song_changes(self) -> None:

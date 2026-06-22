@@ -107,3 +107,27 @@ def restore_multitrack_session_if_needed(session_state: dict[str, Any]) -> bool:
         record_multitrack_restore_diag(session_state, source="mt_tracks_persist_blob")
         return True
     return False
+
+
+def restore_multitrack_layers_from_workspace(session_state: dict[str, Any]) -> bool:
+    """Hydrate multitrack layers from cloud/disk payload (top-level blob or page snapshot)."""
+    if count_mt_layers(session_state.get("mt_tracks")) > 0 or session_state.get("mixed_track_wav"):
+        record_multitrack_restore_diag(session_state, source="session_already_hydrated")
+        return False
+    if restore_multitrack_session_if_needed(session_state):
+        return True
+
+    store = session_state.get("_studio_page_snapshots")
+    snap = store.get("multitrack") if isinstance(store, dict) else None
+    if isinstance(snap, dict):
+        mt = snap.get("mt_tracks")
+        if isinstance(mt, dict):
+            decoded = decode_mt_tracks_from_persist(mt)
+            if count_mt_layers(decoded) > 0:
+                session_state["mt_tracks"] = decoded
+                filenames = snap.get("mt_track_filenames")
+                if isinstance(filenames, dict):
+                    session_state["mt_track_filenames"] = copy.deepcopy(filenames)
+                record_multitrack_restore_diag(session_state, source="multitrack_page_snapshot")
+                return True
+    return False

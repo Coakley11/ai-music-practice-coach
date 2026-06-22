@@ -10,9 +10,17 @@ class TestMusicRebootRestoreV8(unittest.TestCase):
     def test_skip_when_workspace_blob_applied(self) -> None:
         from music_persistent_state import music_should_skip_master_song_init
 
-        ss = {"_music_workspace_blob_applied": True}
+        ss = {"_music_workspace_blob_hydrated": True, "active_catalog_pick_key": "Pop::X — Y"}
         self.assertTrue(music_should_skip_master_song_init(ss))
-        self.assertEqual(ss.get("_music_skip_master_song_init_reason"), "music_workspace_blob_applied")
+
+    def test_ephemeral_default_does_not_skip_init(self) -> None:
+        from music_persistent_state import music_should_skip_master_song_init
+
+        ss = {
+            "active_catalog_pick_key": "Pop::Say — John Mayer",
+            "_music_default_song_ephemeral": True,
+        }
+        self.assertFalse(music_should_skip_master_song_init(ss))
 
     def test_skip_reason_recorded_on_cold_start(self) -> None:
         from music_persistent_state import music_should_skip_master_song_init
@@ -26,7 +34,10 @@ class TestMusicRebootRestoreV8(unittest.TestCase):
 
         payload = {
             "core": {"pick_key": "Pop::Say — John Mayer"},
-            "session": {"active_music_source": "custom_progression"},
+            "session": {
+                "active_music_source": "custom_progression",
+                "cpl_active_progression": {"id": "trial-1", "name": "Trial Song"},
+            },
         }
         self.assertTrue(_payload_has_custom_active_signals(payload))
 
@@ -72,6 +83,21 @@ class TestMusicRebootRestoreV8(unittest.TestCase):
         identity = song_display_identity("Trial Song", "Custom progression", "D", pick_key="custom::trial-1")
         apply_display_key_for_active_song(st, "D", identity)
         self.assertEqual(st.session_state["display_key"], "D")
+
+    def test_multitrack_snapshot_restore_from_workspace(self) -> None:
+        from multitrack_session_persistence import restore_multitrack_layers_from_workspace
+        from studio_page_persistence import _encode_snapshot_value
+
+        audio = b"guitar-layer-bytes"
+        ss = {
+            "_studio_page_snapshots": {
+                "multitrack": {
+                    "mt_tracks": {"Guitar": _encode_snapshot_value(audio), "Bass": None},
+                }
+            }
+        }
+        self.assertTrue(restore_multitrack_layers_from_workspace(ss))
+        self.assertEqual(ss["mt_tracks"]["Guitar"], audio)
 
     def test_multitrack_size_cap_raised(self) -> None:
         from multitrack_session_persistence import MAX_MT_TRACK_BYTES

@@ -1345,6 +1345,15 @@ def force_autosave(
 
         block_key = _autosave_block_key(app_id)
         bypass_block = reason in _FORCE_SAVE_CLOUD_REASONS
+        if st.session_state.get("_music_default_song_ephemeral") and reason in (
+            "song_edit",
+            "autosave",
+            "force_autosave",
+            "",
+        ):
+            st.session_state["_suite_autosave_blocked_after_restore"] = True
+            st.session_state["_suite_autosave_block_reason"] = "ephemeral_default_song"
+            return False
         if st.session_state.get(block_key) and not bypass_block:
             st.session_state["_suite_autosave_blocked_after_restore"] = True
             st.session_state["_suite_autosave_block_reason"] = st.session_state.get(

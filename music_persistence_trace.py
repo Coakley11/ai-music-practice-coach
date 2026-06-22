@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "music-reboot-restore-v8"
+MUSIC_PERSIST_DEPLOY_VERSION = "music-reboot-restore-v9"
 
 TRACE_KEY = "_music_persist_trace"
 

@@ -40,25 +40,43 @@ def _payload_has_custom_active_signals(payload: dict[str, Any]) -> bool:
     except ImportError:
         SOURCE_CUSTOM = "custom_progression"  # type: ignore[misc]
 
-    session_extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
-    if str(session_extra.get("active_music_source") or "") == SOURCE_CUSTOM:
+    core = payload.get("core") if isinstance(payload.get("core"), dict) else {}
+    core_pk = str(core.get("pick_key") or "").strip()
+    if core_pk.startswith("custom::"):
         return True
 
     meta = payload.get("active_song_state")
     if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
         return True
-
-    core = payload.get("core") if isinstance(payload.get("core"), dict) else {}
-    if str(core.get("pick_key") or "").strip().startswith("custom::"):
+    if isinstance(meta, dict) and str(meta.get("pick_key") or "").strip().startswith("custom::"):
         return True
 
-    cpl = session_extra.get("cpl_active_progression")
-    if isinstance(cpl, dict) and str(cpl.get("name") or cpl.get("id") or "").strip():
-        if str(session_extra.get("active_music_source") or meta.get("music_source") if isinstance(meta, dict) else "") == SOURCE_CUSTOM:
-            return True
-        if str(core.get("pick_key") or "").strip().startswith("custom::"):
+    session_extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    if str(session_extra.get("active_music_source") or "") == SOURCE_CUSTOM:
+        cpl = session_extra.get("cpl_active_progression")
+        if isinstance(cpl, dict) and str(cpl.get("name") or cpl.get("id") or "").strip():
             return True
     return False
+
+
+def _session_has_restored_song_context(session_state: dict[str, Any]) -> bool:
+    """True when session has a real active song (not ephemeral cold-start default)."""
+    if session_state.get("_music_default_song_ephemeral"):
+        return False
+    sel = session_state.get(SELECTED_SONG_STATE_KEY)
+    if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip():
+        return True
+    if str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip():
+        return True
+    if str(session_state.get("active_music_source") or "") == "custom_progression":
+        return True
+    return False
+
+
+def clear_music_ephemeral_default_song(session_state: dict[str, Any]) -> None:
+    """Allow persistence after user promotes a real song (not cold-start default)."""
+    session_state.pop("_music_default_song_ephemeral", None)
+    session_state.pop("_music_default_init_this_run", None)
 
 
 def music_skip_master_song_init_reason(session_state: dict[str, Any]) -> str:
@@ -71,14 +89,16 @@ def music_skip_master_song_init_reason(session_state: dict[str, Any]) -> str:
         return "suite_persist_restore_applied"
     if session_state.get("_suite_cloud_workspace_applied"):
         return "suite_cloud_workspace_applied"
-    if session_state.get("_music_workspace_blob_applied"):
-        return "music_workspace_blob_applied"
+    if session_state.get("_music_workspace_blob_hydrated") and _session_has_restored_song_context(session_state):
+        return "music_workspace_song_restored"
 
     sel = session_state.get(SELECTED_SONG_STATE_KEY)
     if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip():
-        return "selected_song_pick_key"
+        if not session_state.get("_music_default_song_ephemeral"):
+            return "selected_song_pick_key"
     if str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip():
-        return "active_catalog_pick_key"
+        if not session_state.get("_music_default_song_ephemeral"):
+            return "active_catalog_pick_key"
     if str(session_state.get("active_music_source") or "").strip() == "custom_progression":
         return "active_music_source_custom"
 
@@ -196,6 +216,8 @@ def _finalize_music_workspace_restore(
         from active_song_state import apply_cloud_active_song_state_if_allowed
 
         apply_cloud_active_song_state_if_allowed(ss, payload)
+        if _session_has_restored_song_context(ss):
+            clear_music_ephemeral_default_song(ss)
     except ImportError:
         pass
 
@@ -216,10 +238,29 @@ def _finalize_music_workspace_restore(
             pass
 
     try:
-        from multitrack_session_persistence import restore_multitrack_session_if_needed
+        from multitrack_session_persistence import restore_multitrack_layers_from_workspace
 
-        restore_multitrack_session_if_needed(ss)
+        restore_multitrack_layers_from_workspace(ss)
     except ImportError:
+        try:
+            from multitrack_session_persistence import restore_multitrack_session_if_needed
+
+            restore_multitrack_session_if_needed(ss)
+        except ImportError:
+            pass
+
+    try:
+        from studio_page_persistence import restore_current_page_snapshot_if_needed
+
+        restore_current_page_snapshot_if_needed(ss)
+    except ImportError:
+        pass
+
+    try:
+        from custom_song_library import merge_custom_songs_from_cloud
+
+        merge_custom_songs_from_cloud(ss, st=st)
+    except Exception:
         pass
 
 # Content-edit saves must not clobber the last page_change-persisted studio_page.
@@ -2002,7 +2043,9 @@ def apply_music_disk_state(
     except Exception:
         pass
 
-    ss["_music_workspace_blob_applied"] = True
+    ss["_music_workspace_blob_hydrated"] = True
+    if _session_has_restored_song_context(ss):
+        ss["_music_workspace_blob_applied"] = True
     _record_music_startup_restore_diag(
         ss,
         payload,
@@ -2198,6 +2241,16 @@ def prepare_canonical_music_page_state(
                     song_library=song_library,
                     invalidate_backing=invalidate_backing_cache,
                 )
+            reconcile_picker_music_source(session)
+            try:
+                from custom_song_library import merge_custom_songs_from_cloud
+
+                page = str(session.get("studio_page") or "").strip()
+                saved = session.get("cpl_saved_progressions")
+                if page == "picker" and not (isinstance(saved, dict) and saved):
+                    merge_custom_songs_from_cloud(session, st=_SessionProxy())
+            except Exception:
+                pass
         except ImportError:
             pass
 
@@ -2589,8 +2642,26 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
 
 
 def force_save_music_state(st: Any, *, reason: str = "") -> bool:
+    ss = st.session_state
+    if ss.get("_music_default_song_ephemeral") and reason in ("song_edit", "autosave", "force_autosave", ""):
+        ss["_music_force_save_ok"] = False
+        ss["_music_force_save_blocked_reason"] = "ephemeral_default_song"
+        return False
     ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
     st.session_state["_music_force_save_ok"] = ok
+    if reason in ("multitrack_upload", "multitrack_layer_save"):
+        try:
+            from multitrack_session_persistence import record_multitrack_persist_diag
+
+            record_multitrack_persist_diag(
+                st.session_state,
+                {
+                    "cloud_save_ok": bool(st.session_state.get("_suite_persist_last_save_cloud")),
+                    "save_reason": reason,
+                },
+            )
+        except ImportError:
+            pass
     if ok:
         _clear_canonical_dirty_after_save(st.session_state, reason=reason)
     if ok or reason == "page_change":
@@ -2607,7 +2678,7 @@ def autosave_music_state(st: Any) -> dict[str, Any]:
         "cloud_error": None,
     }
     ss = st.session_state
-    if ss.get("_music_default_init_this_run"):
+    if ss.get("_music_default_init_this_run") or ss.get("_music_default_song_ephemeral"):
         result["skip_reason"] = "default_init_cooldown"
         try:
             from music_persistence_trace import update_trace
