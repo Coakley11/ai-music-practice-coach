@@ -1075,7 +1075,13 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
             and not (phase_done and has_live)
             and (restore_applying or not has_live)
         )
-        if not restore_applying:
+        try:
+            from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+            user_chose_catalog = bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        except ImportError:
+            user_chose_catalog = False
+        if not restore_applying or user_chose_catalog:
             live = gather_active_song_context(session)
             live_pick = str(live.get("pick_key") or "").strip()
             canon_pick = str(ctx.get("pick_key") or "").strip()
@@ -1126,14 +1132,23 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
                     )
                     ctx.pop("custom_home_key", None)
                     ctx.pop("custom_progression_name", None)
-            elif live_pick and live_pick != canon_pick:
+            elif live_pick and live_pick != canon_pick and not restore_applying:
                 ctx["pick_key"] = live_pick
                 if live.get("selected_song"):
                     ctx["selected_song"] = live["selected_song"]
-                ctx.pop("display_key", None)
-                song_key = str((live.get("selected_song") or {}).get("key") or "").strip()
-                if song_key:
-                    session[PENDING_DISPLAY_KEY] = song_key
+                try:
+                    from songs.key_state import get_authoritative_display_key
+
+                    home = str((live.get("selected_song") or {}).get("key") or "C").strip() or "C"
+                    ctx["display_key"] = get_authoritative_display_key(
+                        session,
+                        original_key=home,
+                        surface="prepare_reconcile",
+                    )
+                except ImportError:
+                    live_dk = str(live.get("display_key") or session.get("display_key") or "").strip()
+                    if live_dk:
+                        ctx["display_key"] = live_dk
             else:
                 ctx = _merge_live_global_controls(session, ctx)
         ctx = write_canonical_active_song_state(
@@ -1350,6 +1365,14 @@ def apply_cloud_active_song_state_if_allowed(
     if is_active_song_locally_dirty(session):
         session["_active_song_restore_skipped_reason"] = "local_dirty"
         return False
+    try:
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+            session["_active_song_restore_skipped_reason"] = "user_chose_catalog"
+            return False
+    except ImportError:
+        pass
     custom_ctx = _custom_context_from_blob(state)
     if custom_ctx is not None:
         session["active_music_source"] = SOURCE_CUSTOM

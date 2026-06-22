@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "music-display-key-unify-v15"
+MUSIC_PERSIST_DEPLOY_VERSION = "music-persistence-restore-v16"
 
 TRACE_KEY = "_music_persist_trace"
 

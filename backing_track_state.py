@@ -803,6 +803,12 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
 
 def prepare_backing_transport_for_session(session: dict[str, Any]) -> None:
     """Restore backing transport — never replay autoplay from cloud; default stopped."""
+    # One-shot: honor an in-session Play / karaoke auto-generate across the next rerun.
+    if session.pop("_backing_play_request", False):
+        session.pop("_backing_transport_user_stopped", None)
+        session["_backing_autoplay"] = True
+        session["backing_transport_status"] = "playing"
+        return
     session["_backing_autoplay"] = False
     if session.get("_backing_transport_user_stopped"):
         session["backing_transport_status"] = "stopped"

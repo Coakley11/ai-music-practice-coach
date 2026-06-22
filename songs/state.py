@@ -948,6 +948,33 @@ def get_song_context(
     sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
     pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or "").strip()
 
+    def _recovery_may_persist() -> bool:
+        try:
+            from music_restore_phase import (
+                authoritative_restore_in_progress,
+                music_restore_phase_complete,
+            )
+
+            if authoritative_restore_in_progress(st.session_state):
+                return False
+            if not music_restore_phase_complete(st.session_state):
+                return False
+        except ImportError:
+            pass
+        return True
+
+    def _context_from_sel_only() -> tuple[str, str, dict] | None:
+        title = str(sel.get("title") or "").strip()
+        if not title:
+            return None
+        genre = str(sel.get("genre") or "").strip()
+        song_data = dict(sel)
+        if song_data.get("sections") or song_data.get("key"):
+            return genre, title, song_data
+        if song_library and genre and title in (song_library.get(genre) or {}):
+            return genre, title, dict(song_library[genre][title])
+        return genre, title, song_data
+
     def _commit(resolved_pk: str, *, notice: str | None = None) -> tuple[str, str, dict]:
         if notice:
             st.session_state[PICK_KEY_RECOVERY_NOTICE_KEY] = notice
@@ -958,6 +985,7 @@ def get_song_context(
                 song_picker_catalog,
                 song_library=song_library,
                 origin="recovery",
+                persist=_recovery_may_persist(),
             )
         genre, label = parse_pick_key(resolved_pk)
         resolved = _build_library_from_picker(genre, label, song_picker_catalog, song_library)
@@ -998,6 +1026,11 @@ def get_song_context(
             notice=f'"{old}" was moved or renamed in the catalog; selection updated.',
         )
 
+    if not _recovery_may_persist():
+        deferred = _context_from_sel_only()
+        if deferred is not None:
+            st.session_state["_pick_key_recovery_deferred"] = pk
+            return deferred
     fallback = first_valid_pick_key(song_picker_catalog)
     if not fallback:
         raise RuntimeError("Song catalog is empty — cannot recover from stale pick key.")

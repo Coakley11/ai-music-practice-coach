@@ -1695,7 +1695,13 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
 
         if count_mt_layers(ss.get("mt_tracks") or {}) > 0:
             save_page_snapshot(ss, "multitrack")
-            extra["_studio_page_snapshots"] = copy.deepcopy(ss.get("_studio_page_snapshots") or {})
+            snap = copy.deepcopy(ss.get("_studio_page_snapshots") or {})
+            mt_snap = snap.get("multitrack")
+            if isinstance(mt_snap, dict):
+                mt_snap.pop("mt_tracks", None)
+                mt_snap.pop("mixed_track_wav", None)
+                mt_snap.pop("mt_track_filenames", None)
+            extra["_studio_page_snapshots"] = snap
     except ImportError:
         pass
     try:
@@ -1801,9 +1807,11 @@ def apply_music_disk_state(
     ss = st.session_state
     if authoritative_restore:
         try:
+            from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
             from active_song_state import clear_active_song_local_edit
 
-            clear_active_song_local_edit(ss)
+            if not ss.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+                clear_active_song_local_edit(ss)
             ss.pop("_active_song_restore_skipped_reason", None)
         except ImportError:
             pass
@@ -2000,9 +2008,11 @@ def apply_music_disk_state(
 
     if authoritative_restore:
         try:
+            from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
             from active_song_state import clear_active_song_local_edit
 
-            clear_active_song_local_edit(ss)
+            if not ss.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+                clear_active_song_local_edit(ss)
             ss.pop("_active_song_restore_skipped_reason", None)
         except ImportError:
             pass
@@ -2783,7 +2793,6 @@ def force_save_music_state(st: Any, *, reason: str = "") -> bool:
         "song_edit",
         "autosave",
         "force_autosave",
-        "page_change",
         "",
     ):
         ss["_music_force_save_ok"] = False

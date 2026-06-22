@@ -47,7 +47,7 @@ MIRROR = format_pick_key("pop", "Man in the Mirror — Michael Jackson")
 
 class TestV13DeployMarker(unittest.TestCase):
     def test_deploy_marker_v13(self) -> None:
-        self.assertEqual(MUSIC_PERSIST_DEPLOY_VERSION, "music-display-key-unify-v15")
+        self.assertEqual(MUSIC_PERSIST_DEPLOY_VERSION, "music-persistence-restore-v16")
 
 
 class TestV13RestorePhase(unittest.TestCase):
@@ -228,6 +228,11 @@ class TestV13BackingTransport(unittest.TestCase):
         }
         prepare_backing_transport_for_session(ss5)
         self.assertEqual(ss5["backing_transport_status"], "ready")
+
+        ss6 = {"_backing_play_request": True, "_backing_autoplay": False}
+        prepare_backing_transport_for_session(ss6)
+        self.assertTrue(ss6["_backing_autoplay"])
+        self.assertEqual(ss6["backing_transport_status"], "playing")
 
 
 class TestV13RebootRestoreSim(unittest.TestCase):

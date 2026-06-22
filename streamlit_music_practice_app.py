@@ -5875,30 +5875,39 @@ def practice_text(level, instrument=None, sections=None, focus=None, *, groove_o
     return base
 
 def load_logs():
-    from music_workspace_paths import music_data_path
+    try:
+        import streamlit as st
 
-    data_file = music_data_path("practice_history")
-    if data_file.exists():
-        try:
-            return json.loads(
-                data_file.read_text(
-                    encoding="utf-8"
-                )
-            )
-        except Exception:
-            return []
-    return []
+        from practice_log_persistence import load_practice_logs
+
+        return load_practice_logs(st=st)
+    except Exception:
+        from music_workspace_paths import music_data_path
+
+        data_file = music_data_path("practice_history")
+        if data_file.exists():
+            try:
+                return json.loads(data_file.read_text(encoding="utf-8"))
+            except Exception:
+                return []
+        return []
 
 
 def save_logs(logs):
+    try:
+        import streamlit as st
+
+        from practice_log_persistence import save_practice_logs
+
+        save_practice_logs(logs, st=st)
+        return
+    except Exception:
+        pass
     from music_workspace_paths import music_data_path
 
     data_file = music_data_path("practice_history")
     data_file.parent.mkdir(parents=True, exist_ok=True)
-    data_file.write_text(
-        json.dumps(logs, indent=2),
-        encoding="utf-8"
-    )
+    data_file.write_text(json.dumps(logs, indent=2), encoding="utf-8")
 
 
 def _inject_practice_log_studio_styles() -> None:
@@ -7178,6 +7187,7 @@ def _begin_backing_performance_follow_along(
     import time
 
     st.session_state.pop("_backing_transport_user_stopped", None)
+    st.session_state["_backing_play_request"] = True
     st.session_state[BACKING_AUTOPLAY] = True
     st.session_state[BACKING_TRANSPORT_STATUS] = "playing"
     st.session_state["backing_lead_sheet_open"] = True
@@ -11552,6 +11562,8 @@ elif _studio_page == "backing":
         st.session_state["backing_time_signature_applied"] = backing_time_signature
         st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
         st.session_state[BACKING_AUTOPLAY] = bool(_karaoke_auto_gen)
+        if _karaoke_auto_gen:
+            st.session_state["_backing_play_request"] = True
         st.session_state[BACKING_TRANSPORT_STATUS] = "ready"
         st.session_state["backing_lead_sheet_open"] = True
         set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
