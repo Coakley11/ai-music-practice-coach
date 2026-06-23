@@ -998,6 +998,8 @@ def get_song_context(
     sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
     pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or "").strip()
     if not pk:
+        pk = _pick_key_from_cloud_payload(st.session_state)
+    if not pk:
         pk = _pick_key_from_canonical_session(st.session_state)
 
     def _recovery_may_persist() -> bool:
@@ -1068,6 +1070,11 @@ def get_song_context(
                     st.session_state["_pick_key_recovery_deferred"] = cloud_pk
                     return deferred
             return _commit(resolved_cloud)
+        if not _recovery_may_persist():
+            deferred = _context_from_sel_only()
+            if deferred is not None:
+                st.session_state["_pick_key_recovery_deferred"] = cloud_pk or pk
+                return deferred
         fallback = first_valid_pick_key(song_picker_catalog)
         if not fallback:
             raise RuntimeError("Master song not initialized — call ensure_master_song_initialized first.")

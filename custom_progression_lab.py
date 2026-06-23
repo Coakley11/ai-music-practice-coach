@@ -1122,7 +1122,9 @@ def apply_cpl_session_progression(
     """Install progression as active and reset CPL UI widget cache."""
     session_state[CPL_ACTIVE_KEY] = ensure_original_structure(active)
     session_state.pop("cpl_finished", None)
-    home_key = written_home_key(session_state[CPL_ACTIVE_KEY])
+    from custom_progression_lab import cpl_draft_written_key
+
+    home_key = cpl_draft_written_key(session_state[CPL_ACTIVE_KEY])
     if reset_display_key:
         try:
             from songs.key_state import PENDING_DISPLAY_KEY

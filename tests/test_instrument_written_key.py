@@ -113,7 +113,7 @@ def test_capo_shape_is_derived_without_mutating_display_key_widget():
     assert capo_written_display_key(ss) == "G"
     ctx = resolve_practice_keys(ss, "C", "Guitar")
     assert ctx["chart_key"] == "G"
-    assert ctx["global_display_key"] == "G"
+    assert ctx["global_display_key"] == "C"
 
 
 def test_sounding_key_follows_practice_display_key():
@@ -223,6 +223,50 @@ def test_music_active_song_cloud_drift_detects_display_key():
     )
     assert drift is True
     assert "display_key" in detail
+
+
+def test_music_active_song_cloud_drift_when_live_display_key_empty():
+    from unittest.mock import MagicMock
+
+    from music_persistent_state import music_active_song_cloud_drift
+
+    st = MagicMock()
+    st.session_state = {}
+    drift, detail = music_active_song_cloud_drift(
+        st,
+        {"active_song_state": {"display_key": "C#m"}, "core": {"display_key": "C#m"}},
+        "2026-06-22T00:00:00+00:00",
+    )
+    assert drift is True
+    assert "display_key" in detail
+
+
+def test_cpl_merge_preserves_sidebar_display_key():
+    from active_song_state import ACTIVE_SONG_STATE_KEY, _merge_display_key_for_active_song
+    from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+    from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+    from songs.music_source import SOURCE_CUSTOM
+
+    session = {
+        "display_key": "F",
+        DISPLAY_KEY_CHANGE_SOURCE_KEY: "sidebar_on_change",
+        DISPLAY_KEY_OWNER_IDENTITY_KEY: "cpl::test::F",
+        "active_music_source": "custom_progression",
+        ACTIVE_SONG_STATE_KEY: {
+            "music_source": SOURCE_CUSTOM,
+            "display_key": "G",
+            "custom_home_key": "D",
+            "pick_key": "custom::test",
+        },
+    }
+    ctx = {
+        "music_source": SOURCE_CUSTOM,
+        "display_key": "G",
+        "custom_home_key": "D",
+        "pick_key": "custom::test",
+    }
+    merged = _merge_display_key_for_active_song(session, ctx, home_key="D")
+    assert merged == "F"
 
 
 def test_flush_capo_edits_to_cloud_uses_streamlit_module_not_sidebar():

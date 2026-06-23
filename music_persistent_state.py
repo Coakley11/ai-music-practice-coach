@@ -171,13 +171,6 @@ def run_post_nav_music_startup_init(
         except Exception:
             pass
 
-    try:
-        from music_restore_phase import complete_music_restore_phase
-
-        complete_music_restore_phase(ss)
-    except ImportError:
-        pass
-
     skip = music_should_skip_master_song_init(ss)
     try:
         from music_restore_phase import workspace_is_truly_empty
@@ -2568,8 +2561,16 @@ def music_active_song_cloud_drift(
     ss = st.session_state
     cloud_dk = _resolve_display_key_from_music_blob(cloud_state)
     live_dk = str(ss.get("display_key") or "").strip()
-    if cloud_dk and live_dk and cloud_dk != live_dk:
-        return True, f"display_key:{cloud_dk}!={live_dk}"
+    canonical_dk = ""
+    cloud_meta = cloud_state.get(ACTIVE_SONG_STATE_KEY)
+    if isinstance(cloud_meta, dict):
+        canonical_dk = str(cloud_meta.get("display_key") or "").strip()
+    if cloud_dk and cloud_dk != live_dk:
+        return True, f"display_key:{cloud_dk}!={live_dk or 'empty'}"
+    if cloud_dk and canonical_dk and cloud_dk != canonical_dk:
+        return True, f"display_key:canonical:{canonical_dk}!={cloud_dk}"
+    if cloud_dk and not live_dk:
+        return True, f"display_key:cloud_has:{cloud_dk}"
 
     cloud_meta = cloud_state.get(ACTIVE_SONG_STATE_KEY)
     if isinstance(cloud_meta, dict):

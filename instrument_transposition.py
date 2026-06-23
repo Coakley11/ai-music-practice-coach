@@ -445,9 +445,7 @@ def resolve_practice_keys(
     if capo_shape:
         chart_key = capo_shape
         mode = "written"
-    global_display = chart_key if mode == "written" else concert_key
-    if capo_shape:
-        global_display = capo_shape
+    global_display = concert_key
     practice_key = effective_practice_key(
         session_state,
         concert_key,

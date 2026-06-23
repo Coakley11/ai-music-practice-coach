@@ -106,11 +106,24 @@ def render_backing_active_song_card(
     key_row = active_song_key_row_html(_orig, _practice)
     source_badge = html.escape(str(source_label or "Catalog Song").strip() or "Catalog Song")
     written_badge = ""
+    charts_badge = ""
     _written = html.escape(str(written_key or "").strip())
+    _shape_label = "Written"
+    if (
+        _session_state is not None
+        and _active_instrument == "Guitar"
+        and _session_state.get("guitar_capo_enabled")
+        and _written
+    ):
+        _shape_label = "Shape"
     if _written and _written != _practice:
         written_badge = (
-            f'<span class="ui-backing-badge written-key">Written {_written}</span>'
+            f'<span class="ui-backing-badge written-key">{html.escape(_shape_label)} {_written}</span>'
         )
+        if _shape_label == "Shape":
+            charts_badge = (
+                f'<span class="ui-backing-badge written-key">Charts in {_written}</span>'
+            )
 
     title = html.escape(str(details.get("title") or record.get("title") or "Active song"))
     artist = html.escape(str(details.get("artist") or record.get("artist") or ""))
@@ -140,7 +153,7 @@ def render_backing_active_song_card(
         f'<span class="ui-backing-active-source">{source_badge}</span></p>'
         f"{key_row}"
         f'<div class="ui-backing-active-badges">'
-        f"{written_badge}{bpm_badges}"
+        f"{written_badge}{charts_badge}{bpm_badges}"
         f'<span class="ui-backing-badge meter">{meter}</span>'
         f'<span class="ui-backing-badge groove">{groove}</span>'
         f"</div></div></div>",

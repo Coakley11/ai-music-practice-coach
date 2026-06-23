@@ -322,9 +322,14 @@ def _display_key_override_valid_for_identity(session: dict[str, Any]) -> bool:
 
     owner = str(session.get(DISPLAY_KEY_OWNER_IDENTITY_KEY) or "").strip()
     current = _current_active_song_identity(session)
+    sidebar_change = (
+        str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip() == "sidebar_on_change"
+    )
     if owner and current:
-        return owner == current
-    return str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip() == "sidebar_on_change"
+        if owner == current:
+            return True
+        return sidebar_change
+    return sidebar_change
 
 
 def _merge_display_key_for_active_song(
@@ -379,6 +384,8 @@ def _merge_display_key_for_active_song(
         ).strip() or "C"
         return catalog_home
     if same_song and live and (not canonical or live != canonical):
+        if restore_applying and canonical:
+            return canonical
         if _display_key_override_valid_for_identity(session):
             return live
     if custom_progression_is_active(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM:
@@ -1194,7 +1201,11 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
                     or (live.get("selected_song") or {}).get("key")
                     or "C"
                 ).strip() or "C"
-                ctx["display_key"] = _resolve_custom_display_key_for_session(session, home_key)
+                ctx["display_key"] = _merge_display_key_for_active_song(
+                    session,
+                    ctx,
+                    home_key=home_key,
+                )
                 if live_pick:
                     ctx["pick_key"] = live_pick
                 if live.get("custom_progression_name"):
@@ -1476,6 +1487,17 @@ def apply_cloud_active_song_state_if_allowed(
         pass
     custom_ctx = _custom_context_from_blob(state)
     if custom_ctx is not None:
+        try:
+            from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+            from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+
+            live_dk = str(session.get("display_key") or "").strip()
+            cloud_dk = str(custom_ctx.get("display_key") or "").strip()
+            if cloud_dk and cloud_dk != live_dk:
+                session.pop(DISPLAY_KEY_OWNER_IDENTITY_KEY, None)
+                session.pop(DISPLAY_KEY_CHANGE_SOURCE_KEY, None)
+        except ImportError:
+            pass
         session["active_music_source"] = SOURCE_CUSTOM
         session["_written_key_mode_cloud"] = (
             bool(custom_ctx[CHART_IN_INSTRUMENT_KEY_KEY])
@@ -1496,6 +1518,17 @@ def apply_cloud_active_song_state_if_allowed(
     ctx = _active_song_context_from_blob(state)
     if not ctx or not ctx.get("pick_key"):
         return False
+    try:
+        from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+
+        live_dk = str(session.get("display_key") or "").strip()
+        cloud_dk = str(ctx.get("display_key") or "").strip()
+        if cloud_dk and cloud_dk != live_dk:
+            session.pop(DISPLAY_KEY_OWNER_IDENTITY_KEY, None)
+            session.pop(DISPLAY_KEY_CHANGE_SOURCE_KEY, None)
+    except ImportError:
+        pass
     session["_written_key_mode_cloud"] = (
         bool(ctx[CHART_IN_INSTRUMENT_KEY_KEY]) if _written_key_is_set(ctx) else None
     )

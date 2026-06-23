@@ -1141,11 +1141,9 @@ if hasattr(st, "session_state"):
             )
             maybe_flush_deferred_page_change_save(st)
             try:
-                from music_persistent_state import music_should_skip_master_song_init
                 from music_restore_phase import complete_music_restore_phase
 
-                if music_should_skip_master_song_init(st.session_state):
-                    complete_music_restore_phase(st.session_state)
+                complete_music_restore_phase(st.session_state)
             except Exception:
                 pass
         except Exception:
@@ -7491,8 +7489,20 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         _written_k = _active_song_written_chart_key(st.session_state)
         if _written_k:
             _written_label = _format_key_label(_written_k)
+        _written_badge_label = "Written Key"
+        _charts_badge = ""
+        if (
+            active_instrument == "Guitar"
+            and st.session_state.get("guitar_capo_enabled")
+            and _written_label
+        ):
+            _written_badge_label = "Shape Key"
+            _charts_badge = _written_label
         _badge_html = _studio_song_meta_badges_html(
+            display_key=_format_key_label(_chart_practice_key) if show_key_row else "",
             written_key=_written_label if show_key_row else "",
+            written_key_label=_written_badge_label,
+            charts_key=_charts_badge,
             bpm=int(details.get("bpm") or 100),
             meter=str(details.get("time_signature") or "4/4"),
             style=_style_label,
@@ -9252,6 +9262,12 @@ try:
             song_library=SONG_LIBRARY,
             song_picker_catalog=SONG_PICKER_CATALOG,
         )
+        try:
+            from music_restore_phase import complete_music_restore_phase
+
+            complete_music_restore_phase(st.session_state)
+        except ImportError:
+            pass
         _pick_key_recovery = st.session_state.pop(PICK_KEY_RECOVERY_NOTICE_KEY, None)
         if _pick_key_recovery:
             st.warning(_pick_key_recovery)

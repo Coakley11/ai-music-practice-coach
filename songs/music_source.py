@@ -639,7 +639,7 @@ def active_song_written_chart_key(
     *,
     display_key: str | None = None,
 ) -> str | None:
-    """Written instrument key when transposing + chart-in-written-key mode is on."""
+    """Written/shape chart key for cards — transposing instrument or guitar capo shape."""
     from instrument_transposition import (
         chart_in_instrument_key,
         effective_chart_key,
@@ -652,6 +652,15 @@ def active_song_written_chart_key(
     if is_transposing_instrument(inst) and chart_in_instrument_key(session_state):
         chart_k, _ = effective_chart_key(concert, inst, session_state)
         return chart_k
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
+
+        if inst == "Guitar" and session_state.get(CAPO_ENABLED_KEY):
+            shape = str(session_state.get(CAPO_SHAPE_KEY) or "").strip()
+            if shape:
+                return shape
+    except ImportError:
+        pass
     return None
 
 

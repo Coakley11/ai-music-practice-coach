@@ -6963,6 +6963,8 @@ def studio_song_meta_badges_html(
     original_key: str = "",
     display_key: str = "",
     written_key: str = "",
+    written_key_label: str = "Written Key",
+    charts_key: str = "",
     bpm: int | None = None,
     meter: str = "",
     style: str = "",
@@ -6973,9 +6975,17 @@ def studio_song_meta_badges_html(
     if original_key:
         badges.append(studio_meta_badge("Original Key", original_key, tone="key", icon="🎹"))
     if display_key:
-        badges.append(studio_meta_badge("Display Key", display_key, tone="display", icon="🎼"))
+        badges.append(
+            studio_meta_badge("Display / Sounding Key", display_key, tone="display", icon="🎼")
+        )
     if written_key and written_key != display_key:
-        badges.append(studio_meta_badge("Written Key", written_key, tone="written", icon="🎷"))
+        badges.append(
+            studio_meta_badge(written_key_label, written_key, tone="written", icon="🎷")
+        )
+    if charts_key and charts_key != display_key:
+        badges.append(
+            studio_meta_badge("Charts shown in", charts_key, tone="written", icon="📊")
+        )
     if bpm is not None:
         badges.append(studio_meta_badge("BPM", str(int(bpm)), tone="tempo", icon="⏱"))
     if meter:

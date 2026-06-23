@@ -262,6 +262,8 @@ _FORCE_SAVE_CLOUD_REASONS = frozenset({
     "music_coach_send",
     "song_edit",
     "cpl_draft_edit",
+    "display_key_change",
+    "capo_widget",
     "practice_edit",
     "multitrack_layer_save",
     "multitrack_upload",
