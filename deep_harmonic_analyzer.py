@@ -335,10 +335,15 @@ def _wind_playbook(
     )
     if cycle:
         tones = chord_tone_names(cycle[0])
-        if len(tones) >= 3:
+        if len(tones) >= 4:
             lines.append(
                 f"- Home sonority **{cycle[0]}**: stable targets **{', '.join(tones[:3])}**; "
                 f"color with the 7th ({tones[3]}) if the chart includes it."
+            )
+        elif len(tones) >= 3:
+            lines.append(
+                f"- Home sonority **{cycle[0]}**: stable targets **{', '.join(tones[:3])}** "
+                "(root, 3rd, 5th) — land these chord tones on strong beats."
             )
     lines.append(
         f"- In **{key}**, chord-tone soloing beats running scales — land roots/3rds/5ths first, "
