@@ -93,7 +93,40 @@ def active_song_sync_id(
     """Stable id for BPM default tracking — prefer catalog pick_key when available."""
     if pick_key and not is_custom:
         return f"pk::{pick_key}"
-    return playback_song_id
+    return str(playback_song_id or "").strip() or "unknown_playback"
+
+
+def resolve_active_bpm_sync_id(
+    session: dict[str, Any],
+    *,
+    song_title: str = "",
+    song_artist: str = "",
+    custom_name: str = "",
+    custom_revision: str = "",
+    is_custom: bool = False,
+    pick_key: str = "",
+) -> str:
+    """Session-backed BPM sync id — safe when chart bundle globals are unavailable."""
+    cached = str(session.get("_active_bpm_sync_id") or session.get("_backing_trace_sync_id") or "").strip()
+    if cached:
+        return cached
+    pk = str(
+        pick_key
+        or session.get("active_catalog_pick_key")
+        or (session.get("selected_song") or {}).get("pick_key")
+        or ""
+    ).strip()
+    playback_id = playback_song_id(
+        is_custom=is_custom,
+        song_title=song_title,
+        song_artist=song_artist,
+        custom_name=custom_name,
+        custom_revision=custom_revision,
+    )
+    sync_id = active_song_sync_id(pick_key=pk, playback_song_id=playback_id, is_custom=is_custom)
+    session["_active_bpm_sync_id"] = sync_id
+    session["_backing_trace_sync_id"] = sync_id
+    return sync_id
 
 
 def backing_bpm_slider_widget_key(sync_id: str) -> str:
@@ -662,6 +695,7 @@ __all__ = [
     "BACKING_BPM_MAX",
     "BACKING_BPM_MIN",
     "active_song_sync_id",
+    "resolve_active_bpm_sync_id",
     "apply_backing_bpm_defaults",
     "apply_backing_defaults_for_song",
     "apply_backing_song_defaults_if_needed",

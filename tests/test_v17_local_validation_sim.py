@@ -1,4 +1,4 @@
-"""v17 lifecycle fixes — deferred song context, backing stop, display key owner."""
+"""v17/v18 lifecycle fixes — deferred song context, backing stop, display key owner, sync id."""
 
 from __future__ import annotations
 
@@ -7,6 +7,23 @@ import unittest
 from active_song_state import _push_resolved_display_key_to_session
 from backing_track_state import bind_backing_rendered_widgets_from_canonical
 from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+from songs.playback_defaults import resolve_active_bpm_sync_id
+
+
+class TestV18BpmSyncIdResolution(unittest.TestCase):
+    def test_resolve_from_pick_key_when_globals_missing(self) -> None:
+        ss = {
+            "active_catalog_pick_key": "Pop::Trial — Artist",
+            "selected_song": {"pick_key": "Pop::Trial — Artist"},
+        }
+        sync_id = resolve_active_bpm_sync_id(
+            ss,
+            song_title="Trial",
+            song_artist="Artist",
+            pick_key="Pop::Trial — Artist",
+        )
+        self.assertEqual(sync_id, "pk::Pop::Trial — Artist")
+        self.assertEqual(ss.get("_active_bpm_sync_id"), sync_id)
 
 
 class TestV17BackingStopGuard(unittest.TestCase):

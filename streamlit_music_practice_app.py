@@ -195,6 +195,7 @@ from songs.playback_defaults import (
     normalize_groove_label,
     playback_song_id,
     request_backing_groove,
+    resolve_active_bpm_sync_id,
     resolve_backing_bpm_for_slider,
     sync_backing_bpm_from_slider,
     sync_playback_defaults_for_active_song,
@@ -8897,6 +8898,12 @@ def _render_backing_step2_playback_action(
     song_just_reset: bool,
 ) -> tuple[int, bool, bool]:
     """Step 2 — tempo, quick controls, generate & play."""
+    song_id = str(song_id or st.session_state.get("_active_bpm_sync_id") or "").strip()
+    if not song_id:
+        song_id = resolve_active_bpm_sync_id(
+            st.session_state,
+            song_title=str(song_title or ""),
+        )
     try:
         from backing_track_state import prepare_backing_meter_for_widget
 
@@ -9267,6 +9274,21 @@ try:
         pass
 except Exception:
     pass
+
+# Fallback if post-restore init skipped get_song_context (v17 defer path).
+try:
+    _catalog_song_data
+    if not isinstance(_catalog_song_data, dict):
+        raise NameError("_catalog_song_data invalid")
+except NameError:
+    try:
+        _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
+            st,
+            song_library=SONG_LIBRARY,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+        )
+    except Exception:
+        _catalog_genre, _catalog_song, _catalog_song_data = "Pop", "", {}
 
 # Studio page bootstrap (sidebar order is rendered below Command Center link).
 _studio_page = ensure_studio_page(st.session_state)
@@ -9874,10 +9896,14 @@ _playback_id = playback_song_id(
     custom_revision=str(_cpl_active.get("id", "") if _cpl_active else ""),
 )
 _active_pick_key = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or (st.session_state.get("selected_song") or {}).get("pick_key") or "")
-_bpm_sync_id = active_song_sync_id(
-    pick_key=_active_pick_key,
-    playback_song_id=_playback_id,
+_bpm_sync_id = resolve_active_bpm_sync_id(
+    st.session_state,
+    song_title=str(song),
+    song_artist=str(song_data.get("artist", "")),
+    custom_name=str(_cpl_active.get("name", "") if _cpl_active else ""),
+    custom_revision=str(_cpl_active.get("id", "") if _cpl_active else ""),
     is_custom=cpl_session_is_active(st.session_state),
+    pick_key=_active_pick_key,
 )
 _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     st,
@@ -11063,6 +11089,15 @@ elif _studio_page == "backing":
 
     ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
+    _bpm_sync_id = resolve_active_bpm_sync_id(
+        st.session_state,
+        song_title=str(song),
+        song_artist=str(song_data.get("artist", "")),
+        custom_name=str(_cpl_active.get("name", "") if _cpl_active else ""),
+        custom_revision=str(_cpl_active.get("id", "") if _cpl_active else ""),
+        is_custom=cpl_session_is_active(st.session_state),
+        pick_key=str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""),
+    )
     try:
         from backing_track_state import begin_backing_page_widget_phase
 
