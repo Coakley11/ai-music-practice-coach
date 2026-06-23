@@ -207,3 +207,34 @@ def test_capo_shape_sections_from_sounding_sections():
     assert ctx.shape_key == "Gm"
     assert ctx.sounding_key == "Bm"
     assert ctx.shape_sections["Verse"][0] == "Gm"
+
+
+def test_music_active_song_cloud_drift_detects_display_key():
+    from unittest.mock import MagicMock
+
+    from music_persistent_state import music_active_song_cloud_drift
+
+    st = MagicMock()
+    st.session_state = {"display_key": "Bm"}
+    drift, detail = music_active_song_cloud_drift(
+        st,
+        {"active_song_state": {"display_key": "C#m"}},
+        "2026-06-22T00:00:00+00:00",
+    )
+    assert drift is True
+    assert "display_key" in detail
+
+
+def test_rehydrate_capo_from_canonical():
+    from active_song_state import ACTIVE_SONG_STATE_KEY, rehydrate_capo_from_canonical
+    from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
+
+    session = {
+        ACTIVE_SONG_STATE_KEY: {
+            CAPO_ENABLED_KEY: True,
+            CAPO_SHAPE_KEY: "Am",
+        }
+    }
+    rehydrate_capo_from_canonical(session)
+    assert session[CAPO_ENABLED_KEY] is True
+    assert session[CAPO_SHAPE_KEY] == "Am"

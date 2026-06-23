@@ -352,13 +352,6 @@ def _merge_display_key_for_active_song(
             session_pick = ctx_pick
         if not ctx_pick or not session_pick or ctx_pick == session_pick:
             return canonical
-    try:
-        from music_restore_phase import authoritative_restore_in_progress
-
-        if not authoritative_restore_in_progress(session) and live:
-            return live
-    except ImportError:
-        pass
     ctx_pick = str(ctx.get("pick_key") or "").strip()
     try:
         from songs.state import ACTIVE_CATALOG_PICK_KEY
@@ -689,6 +682,12 @@ def _merge_live_transposing_fields(
         ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
     else:
         ctx.pop(SELECTED_TRANSPOSING_INSTRUMENT_KEY, None)
+    try:
+        from guitar_capo import capo_fields_from_session
+
+        ctx.update(capo_fields_from_session(session))
+    except ImportError:
+        pass
     return ctx
 
 
@@ -765,6 +764,21 @@ def _merge_transposing_from_blob_sources(
     return ctx
 
 
+def _resolve_capo_from_receive_sources(
+    sources: list[dict[str, Any]],
+) -> dict[str, Any]:
+    try:
+        from guitar_capo import CAPO_PERSIST_KEYS
+    except ImportError:
+        return {}
+    out: dict[str, Any] = {}
+    for src in sources:
+        for key in CAPO_PERSIST_KEYS:
+            if key in src:
+                out[key] = src[key]
+    return out
+
+
 def finalize_transposing_receive_restore(
     session: dict[str, Any],
     payload: dict[str, Any],
@@ -772,14 +786,15 @@ def finalize_transposing_receive_restore(
     deferred_session: dict[str, Any] | None = None,
     source: str = "receive_finalize",
 ) -> None:
-    """Phone receive path — bind written-key + subtype from cloud payload after restore."""
+    """Phone receive path — bind written-key, subtype, and capo from cloud payload."""
     if not isinstance(payload, dict):
         return
     sources = _transposing_receive_source_dicts(payload, deferred_session=deferred_session)
     written = _resolve_written_key_from_receive_sources(sources)
     subtype = _resolve_subtype_from_receive_sources(sources)
     anchor = _resolve_written_key_anchor_from_receive_sources(sources)
-    if written is None and not subtype and not anchor:
+    capo = _resolve_capo_from_receive_sources(sources)
+    if written is None and not subtype and not anchor and not capo:
         return
 
     meta = session.get(ACTIVE_SONG_STATE_KEY)
@@ -804,9 +819,19 @@ def finalize_transposing_receive_restore(
         session["_transposing_subtype_restored"] = subtype
         session["_transposing_subtype_restore_source"] = source
         updated = True
+    if capo:
+        try:
+            from guitar_capo import apply_capo_context_fields
+
+            apply_capo_context_fields(session, capo)
+            meta.update(capo)
+        except ImportError:
+            pass
+        updated = True
     if updated:
         session[ACTIVE_SONG_STATE_KEY] = meta
     rehydrate_transposing_sidebar_from_canonical(session)
+    rehydrate_capo_from_canonical(session)
 
 
 def _record_transposing_restore_trace(
@@ -822,6 +847,19 @@ def _record_transposing_restore_trace(
     if subtype:
         session["_transposing_subtype_restored"] = subtype
         session["_transposing_subtype_restore_source"] = source
+
+
+def rehydrate_capo_from_canonical(session: dict[str, Any]) -> None:
+    """Bind guitar capo session keys from canonical blob before sidebar widgets."""
+    meta = session.get(ACTIVE_SONG_STATE_KEY)
+    if not isinstance(meta, dict):
+        return
+    try:
+        from guitar_capo import apply_capo_context_fields
+
+        apply_capo_context_fields(session, meta)
+    except ImportError:
+        pass
 
 
 def rehydrate_transposing_sidebar_from_canonical(session: dict[str, Any]) -> None:
@@ -1220,6 +1258,7 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         )
         _record_transposing_restore_trace(session, ctx, source="canonical_prepare")
         rehydrate_transposing_sidebar_from_canonical(session)
+        rehydrate_capo_from_canonical(session)
         _push_resolved_display_key_to_session(session, ctx)
         _seed_active_song_identity_from_session(session)
         return ctx
@@ -1232,6 +1271,7 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
             reason="reconcile_on_load",
         )
         rehydrate_transposing_sidebar_from_canonical(session)
+        rehydrate_capo_from_canonical(session)
         _push_resolved_display_key_to_session(session, ctx)
         _seed_active_song_identity_from_session(session)
         return ctx
@@ -1450,6 +1490,7 @@ def apply_cloud_active_song_state_if_allowed(
         _restore_display_key_owner_from_context(session, custom_ctx)
         _push_resolved_display_key_to_session(session, custom_ctx)
         rehydrate_transposing_sidebar_from_canonical(session)
+        rehydrate_capo_from_canonical(session)
         clear_active_song_local_edit(session)
         return True
     ctx = _active_song_context_from_blob(state)
@@ -1466,6 +1507,7 @@ def apply_cloud_active_song_state_if_allowed(
     _restore_display_key_owner_from_context(session, ctx)
     _push_resolved_display_key_to_session(session, ctx)
     rehydrate_transposing_sidebar_from_canonical(session)
+    rehydrate_capo_from_canonical(session)
     clear_active_song_local_edit(session)
     return True
 

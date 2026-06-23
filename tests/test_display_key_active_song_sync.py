@@ -116,6 +116,14 @@ class TestDisplayKeyActiveSongSync(unittest.TestCase):
         apply_display_key_for_active_song(st, "Bm", new_identity)
         self.assertEqual(st.session_state["display_key"], "C#m")
 
+    def test_merge_display_key_prefers_canonical_without_identity_override(self) -> None:
+        from active_song_state import _merge_display_key_for_active_song
+
+        session = {"display_key": "Bm"}
+        ctx = {"display_key": "C#m", "pick_key": "Pop::Song A — Artist A"}
+        merged = _merge_display_key_for_active_song(session, ctx)
+        self.assertEqual(merged, "C#m")
+
     def test_prepare_active_song_follows_live_pick_when_canonical_stale(self) -> None:
         session = {"display_key": "G"}
         write_canonical_active_song_state(

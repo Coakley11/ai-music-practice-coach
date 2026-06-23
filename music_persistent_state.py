@@ -2412,7 +2412,13 @@ def mark_active_song_edit_pending(session: dict[str, Any]) -> None:
 def _clear_canonical_dirty_after_save(session: dict[str, Any], *, reason: str = "") -> None:
     """Clear page-local dirty flags after save; keep active-song dirty until user wins post-restore."""
     _active_song_preserve_reasons = frozenset(
-        {"song_edit", "display_key_change", "active_song_edit", "last_catalog_restore", "catalog_source_switch"}
+        {
+            "song_edit",
+            "display_key_change",
+            "active_song_edit",
+            "last_catalog_restore",
+            "catalog_source_switch",
+        }
     )
     try:
         from active_song_state import clear_active_song_local_edit
@@ -2474,7 +2480,7 @@ def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> b
         should_flush = reason not in ("cpl_draft_edit",) and (
             ss.get(ACTIVE_SONG_PENDING_SYNC_KEY)
             or is_active_song_locally_dirty(ss)
-            or reason in ("song_edit", "display_key_change")
+            or reason in ("song_edit", "display_key_change", "capo_widget")
         )
         if should_flush:
             flush_active_song_edits(ss, reason=reason)
@@ -2537,6 +2543,59 @@ def maybe_flush_pending_backing_edits(st: Any) -> None:
         pass
 
 
+def music_active_song_cloud_drift(
+    st: Any,
+    cloud_state: dict[str, Any],
+    cloud_ts: str | None,
+) -> tuple[bool, str]:
+    """Detect cross-device drift in display key, capo, and written-key mode."""
+    _ = cloud_ts
+    if not isinstance(cloud_state, dict) or not cloud_state:
+        return False, ""
+    try:
+        from active_song_state import (
+            ACTIVE_SONG_STATE_KEY,
+            _resolve_display_key_from_music_blob,
+        )
+        from guitar_capo import CAPO_PERSIST_KEYS
+        from instrument_transposition import (
+            CHART_IN_INSTRUMENT_KEY_KEY,
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+        )
+    except ImportError:
+        return False, ""
+
+    ss = st.session_state
+    cloud_dk = _resolve_display_key_from_music_blob(cloud_state)
+    live_dk = str(ss.get("display_key") or "").strip()
+    if cloud_dk and live_dk and cloud_dk != live_dk:
+        return True, f"display_key:{cloud_dk}!={live_dk}"
+
+    cloud_meta = cloud_state.get(ACTIVE_SONG_STATE_KEY)
+    if isinstance(cloud_meta, dict):
+        for key in CAPO_PERSIST_KEYS:
+            if key not in cloud_meta:
+                continue
+            if ss.get(key) != cloud_meta.get(key):
+                return True, f"capo:{key}"
+        if CHART_IN_INSTRUMENT_KEY_KEY in cloud_meta and CHART_IN_INSTRUMENT_KEY_KEY in ss:
+            if bool(ss[CHART_IN_INSTRUMENT_KEY_KEY]) != bool(cloud_meta[CHART_IN_INSTRUMENT_KEY_KEY]):
+                return True, "written_key_mode"
+        cloud_subtype = str(cloud_meta.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
+        live_subtype = str(ss.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
+        if cloud_subtype and live_subtype and cloud_subtype != live_subtype:
+            return True, "transposing_subtype"
+
+    session_blob = cloud_state.get("session")
+    if isinstance(session_blob, dict):
+        for key in CAPO_PERSIST_KEYS:
+            if key not in session_blob:
+                continue
+            if ss.get(key) != session_blob.get(key):
+                return True, f"session_capo:{key}"
+    return False, ""
+
+
 def prepare_music_workspace(
     st: Any,
     *,
@@ -2591,6 +2650,7 @@ def prepare_music_workspace(
         APP_ID,
         apply_state=_apply,
         cloud_first=True,
+        content_resync_needed=music_active_song_cloud_drift,
     )
     ss["_music_workspace_prepared_for_run"] = run_seq
     ss["_music_workspace_last_result"] = bool(result)

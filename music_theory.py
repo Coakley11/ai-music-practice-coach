@@ -297,6 +297,6 @@ def transpose_sections_dict(sections, from_key, to_key):
     """Transpose a sections mapping from one key center to another."""
     steps = semitone_distance(from_key, to_key)
     return {
-        name: [transpose_chord(ch, steps, reference_key=from_key) for ch in chords]
+        name: [transpose_chord(ch, steps, reference_key=to_key) for ch in chords]
         for name, chords in sections.items()
     }

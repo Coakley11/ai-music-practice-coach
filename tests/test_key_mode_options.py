@@ -69,5 +69,15 @@ class TestKeyModeOptions(unittest.TestCase):
         self.assertIn(fixed, practice_keys_for_mode("minor"))
 
 
+    def test_transpose_sections_dict_uses_target_key_spelling(self) -> None:
+        from music_theory import transpose_sections_dict
+
+        sections = {"Verse": ["C", "F", "G"]}
+        out = transpose_sections_dict(sections, "C", "Bb")
+        self.assertEqual(out["Verse"][0], "Bb")
+        self.assertEqual(out["Verse"][1], "Eb")
+        self.assertEqual(out["Verse"][2], "F")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -131,7 +131,7 @@ def sync_capo_from_practice_display_key(
     return sounding
 
 
-def persist_capo_to_canonical(session_state: dict) -> None:
+def persist_capo_to_canonical(session_state: dict) -> bool:
     """Push capo state into active_song_state blob when values changed."""
     try:
         from active_song_state import (
@@ -143,7 +143,7 @@ def persist_capo_to_canonical(session_state: dict) -> None:
         live = capo_fields_from_session(session_state)
         meta = session_state.get(ACTIVE_SONG_STATE_KEY)
         if isinstance(meta, dict) and all(meta.get(k) == live.get(k) for k in live):
-            return
+            return False
         ctx = gather_active_song_context(session_state)
         write_canonical_active_song_blob_only(
             session_state,
@@ -151,8 +151,23 @@ def persist_capo_to_canonical(session_state: dict) -> None:
             reason="capo_widget",
             local_edit=True,
         )
+        return True
     except ImportError:
-        pass
+        return False
+
+
+def flush_capo_edits_to_cloud(st: Any) -> bool:
+    """Persist capo canonical blob to cloud after sidebar widgets render."""
+    try:
+        from active_song_state import clear_active_song_local_edit
+        from music_persistent_state import flush_active_song_edits_and_save
+
+        ok = bool(flush_active_song_edits_and_save(st, reason="capo_widget"))
+        if ok:
+            clear_active_song_local_edit(st.session_state)
+        return ok
+    except ImportError:
+        return False
 
 
 def init_capo_session_state(session_state: dict, *, concert_key: str) -> None:
@@ -290,6 +305,7 @@ def render_guitar_capo_sidebar(
             unsafe_allow_html=True,
         )
         persist_capo_to_canonical(session_state)
+        flush_capo_edits_to_cloud(st)
         return
 
     shape_opts = practice_keys_for_mode(key_mode(sounding))
@@ -314,6 +330,7 @@ def render_guitar_capo_sidebar(
         f"Play **{session_state[CAPO_SHAPE_KEY]}** shapes · music sounds in **{sounding}**"
     )
     persist_capo_to_canonical(session_state)
+    flush_capo_edits_to_cloud(st)
 
 
 def render_guitar_capo_practice_panel(

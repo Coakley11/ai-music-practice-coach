@@ -581,6 +581,8 @@ def sync_workspace_protocol(
     *,
     apply_state: Callable[[Any, dict[str, Any]], None],
     cloud_first: bool = True,
+    content_resync_needed: Callable[[Any, dict[str, Any], str | None], tuple[bool, str]]
+    | None = None,
 ) -> bool:
     """
     Authoritative workspace sync before sidebar widgets.
@@ -748,6 +750,19 @@ def sync_workspace_protocol(
     st.session_state["_suite_workspace_comparison_mismatch"] = comparison_mismatch
     st.session_state["_suite_already_synced_before_restore"] = already_synced
 
+    content_resync = False
+    content_resync_detail = ""
+    if content_resync_needed and cloud_state:
+        try:
+            content_resync, content_resync_detail = content_resync_needed(
+                st, cloud_state, cloud_ts
+            )
+        except Exception:
+            content_resync = False
+            content_resync_detail = ""
+    st.session_state["_suite_persist_content_resync_needed"] = content_resync
+    st.session_state["_suite_persist_content_resync_detail"] = content_resync_detail or None
+
     apply_reasons: list[str] = []
     if first_sync:
         apply_reasons.append("first_sync")
@@ -772,6 +787,8 @@ def sync_workspace_protocol(
         apply_reasons.append("comparison_mismatch")
     if comparison_mismatch_apply:
         apply_reasons.append("comparison_mismatch_apply")
+    if content_resync:
+        apply_reasons.append(f"content_resync:{content_resync_detail or 'drift'}")
 
     should_apply = bool(
         picked.state
@@ -781,6 +798,7 @@ def sync_workspace_protocol(
             or cloud_newer_than_disk
             or page_mismatch_apply
             or comparison_mismatch_apply
+            or content_resync
         )
     )
     apply_reason = ", ".join(apply_reasons) if apply_reasons else "none"
