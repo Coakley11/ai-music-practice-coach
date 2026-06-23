@@ -156,15 +156,18 @@ def persist_capo_to_canonical(session_state: dict) -> bool:
         return False
 
 
-def flush_capo_edits_to_cloud(st: Any) -> bool:
-    """Persist capo canonical blob to cloud after sidebar widgets render."""
+def flush_capo_edits_to_cloud(st_module: Any) -> bool:
+    """Persist capo canonical blob to cloud after sidebar widgets render.
+
+    ``st_module`` must be the Streamlit module (``st``), not ``st.sidebar``.
+    """
     try:
         from active_song_state import clear_active_song_local_edit
         from music_persistent_state import flush_active_song_edits_and_save
 
-        ok = bool(flush_active_song_edits_and_save(st, reason="capo_widget"))
+        ok = bool(flush_active_song_edits_and_save(st_module, reason="capo_widget"))
         if ok:
-            clear_active_song_local_edit(st.session_state)
+            clear_active_song_local_edit(st_module.session_state)
         return ok
     except ImportError:
         return False
@@ -270,24 +273,25 @@ def capo_status_banner_html(ctx: CapoContext) -> str:
 
 
 def render_guitar_capo_sidebar(
-    st: Any,
+    ui: Any,
     session_state: dict,
     *,
     practice_display_key: str,
+    persist_st: Any,
 ) -> None:
     """Compact capo controls in the sidebar (guitar only)."""
     sounding = sync_capo_from_practice_display_key(session_state, practice_display_key)
-    st.markdown(
+    ui.markdown(
         '<p class="ui-key-global-hint">Guitar capo — shape chords vs sounding key</p>',
         unsafe_allow_html=True,
     )
-    st.markdown(
+    ui.markdown(
         f'<p class="ui-sidebar-key-caption"><strong>Sounding Key:</strong> '
         f"{html.escape(sounding)}</p>",
         unsafe_allow_html=True,
     )
-    st.caption("Follows Practice / Display Key — what the music will sound in.")
-    session_state[CAPO_ENABLED_KEY] = st.checkbox(
+    ui.caption("Follows Practice / Display Key — what the music will sound in.")
+    session_state[CAPO_ENABLED_KEY] = ui.checkbox(
         "Capo Shape Mode",
         value=bool(session_state.get(CAPO_ENABLED_KEY)),
         key="guitar_capo_enabled_widget",
@@ -295,17 +299,17 @@ def render_guitar_capo_sidebar(
     )
     if not session_state.get(CAPO_ENABLED_KEY):
         session_state[CAPO_SHAPE_KEY] = sounding
-        st.markdown(
+        ui.markdown(
             f'<p class="ui-sidebar-key-caption"><strong>Shape Key:</strong> '
             f"{html.escape(sounding)}</p>",
             unsafe_allow_html=True,
         )
-        st.markdown(
+        ui.markdown(
             '<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> open (no capo)</p>',
             unsafe_allow_html=True,
         )
         persist_capo_to_canonical(session_state)
-        flush_capo_edits_to_cloud(st)
+        flush_capo_edits_to_cloud(persist_st)
         return
 
     shape_opts = practice_keys_for_mode(key_mode(sounding))
@@ -314,7 +318,7 @@ def render_guitar_capo_sidebar(
     )
     if cur_shape not in shape_opts:
         shape_opts = [cur_shape] + shape_opts
-    session_state[CAPO_SHAPE_KEY] = st.selectbox(
+    session_state[CAPO_SHAPE_KEY] = ui.selectbox(
         "Shape Key",
         shape_opts,
         index=shape_opts.index(cur_shape) if cur_shape in shape_opts else 0,
@@ -322,15 +326,15 @@ def render_guitar_capo_sidebar(
         help="Guitar fingering / written key — the grips you play.",
     )
     capo = capo_fret_for_shape(sounding, session_state[CAPO_SHAPE_KEY])
-    st.markdown(
+    ui.markdown(
         f'<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> {capo}</p>',
         unsafe_allow_html=True,
     )
-    st.caption(
+    ui.caption(
         f"Play **{session_state[CAPO_SHAPE_KEY]}** shapes · music sounds in **{sounding}**"
     )
     persist_capo_to_canonical(session_state)
-    flush_capo_edits_to_cloud(st)
+    flush_capo_edits_to_cloud(persist_st)
 
 
 def render_guitar_capo_practice_panel(

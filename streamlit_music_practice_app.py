@@ -9784,6 +9784,7 @@ if instrument == "Guitar":
         st.sidebar,
         st.session_state,
         practice_display_key=display_key,
+        persist_st=st,
     )
 
 _guitar_capo_on = instrument == "Guitar" and bool(st.session_state.get(CAPO_ENABLED_KEY))

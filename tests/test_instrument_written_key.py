@@ -225,6 +225,45 @@ def test_music_active_song_cloud_drift_detects_display_key():
     assert "display_key" in detail
 
 
+def test_flush_capo_edits_to_cloud_uses_streamlit_module_not_sidebar():
+    from unittest.mock import MagicMock, patch
+
+    from guitar_capo import flush_capo_edits_to_cloud
+
+    st_module = MagicMock()
+    ss: dict = {}
+    st_module.session_state = ss
+
+    with patch(
+        "music_persistent_state.flush_active_song_edits_and_save", return_value=True
+    ) as flush_save, patch("active_song_state.clear_active_song_local_edit") as clear_edit:
+        assert flush_capo_edits_to_cloud(st_module) is True
+        flush_save.assert_called_once_with(st_module, reason="capo_widget")
+        clear_edit.assert_called_once_with(ss)
+
+
+def test_render_guitar_capo_sidebar_passes_persist_st_to_cloud_flush():
+    from unittest.mock import MagicMock, patch
+
+    from guitar_capo import render_guitar_capo_sidebar
+
+    ui = MagicMock()
+    ui.checkbox.return_value = False
+    persist_st = MagicMock()
+    ss: dict = {}
+
+    with patch("guitar_capo.persist_capo_to_canonical"), patch(
+        "guitar_capo.flush_capo_edits_to_cloud"
+    ) as flush_cloud:
+        render_guitar_capo_sidebar(
+            ui,
+            ss,
+            practice_display_key="C",
+            persist_st=persist_st,
+        )
+        flush_cloud.assert_called_once_with(persist_st)
+
+
 def test_rehydrate_capo_from_canonical():
     from active_song_state import ACTIVE_SONG_STATE_KEY, rehydrate_capo_from_canonical
     from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
