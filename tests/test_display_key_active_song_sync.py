@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from active_song_state import prepare_active_song_context, write_canonical_active_song_state
@@ -315,6 +316,42 @@ class TestDisplayKeyActiveSongSync(unittest.TestCase):
         }
         merged = _merge_display_key_for_active_song(session, ctx, home_key="D")
         self.assertEqual(merged, "D")
+
+    def test_canonical_push_preserves_user_display_key_override(self) -> None:
+        from active_song_state import _push_resolved_display_key_to_session
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+        from songs.music_source import ACTIVE_SONG_IDENTITY_KEY
+
+        owner = "pk::pop::Trial"
+        session = {
+            "display_key": "F",
+            DISPLAY_KEY_OWNER_IDENTITY_KEY: owner,
+            ACTIVE_SONG_IDENTITY_KEY: owner,
+            "active_catalog_pick_key": "pop::Trial",
+        }
+        ctx = {"display_key": "D", "pick_key": "pop::Trial"}
+        _push_resolved_display_key_to_session(session, ctx)
+        self.assertEqual(session["display_key"], "F")
+
+    def test_mark_display_key_changed_sets_owner_before_save(self) -> None:
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY, mark_display_key_changed
+        from songs.music_source import ACTIVE_SONG_IDENTITY_KEY
+
+        st = SimpleNamespace(
+            session_state={
+                "display_key": "F",
+                ACTIVE_SONG_IDENTITY_KEY: "pk::pop::Trial",
+                "active_catalog_pick_key": "pop::Trial",
+                "selected_song": {"pick_key": "pop::Trial", "title": "Trial", "key": "D"},
+            }
+        )
+        with patch("music_persistent_state.flush_active_song_edits_and_save", return_value=False):
+            with patch("songs.state.persist_music_local_state"):
+                mark_display_key_changed(st)
+        self.assertEqual(
+            st.session_state.get(DISPLAY_KEY_OWNER_IDENTITY_KEY),
+            "pk::pop::Trial",
+        )
 
 
 if __name__ == "__main__":

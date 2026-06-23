@@ -6601,7 +6601,7 @@ def active_song_key_row_html(
         f'<span class="ui-active-song-key-value">{orig}</span></span>'
         f'<span class="ui-active-song-key-arrow" aria-hidden="true">→</span>'
         f'<span class="ui-active-song-key-chip practice">'
-        f'<span class="ui-active-song-key-label">Display / practice</span>'
+        f'<span class="ui-active-song-key-label">Practice / Concert Key</span>'
         f'<span class="ui-active-song-key-value">{practice}</span></span>'
         f"</div>"
     )
@@ -6976,7 +6976,7 @@ def studio_song_meta_badges_html(
         badges.append(studio_meta_badge("Original Key", original_key, tone="key", icon="🎹"))
     if display_key:
         badges.append(
-            studio_meta_badge("Display / Sounding Key", display_key, tone="display", icon="🎼")
+            studio_meta_badge("Practice / Concert Key", display_key, tone="display", icon="🎼")
         )
     if written_key and written_key != display_key:
         badges.append(
@@ -7043,7 +7043,7 @@ def custom_song_preview_card_html(
     key_line = (
         f'<p class="ui-custom-preview-key-row">'
         f"Original key <strong>{html.escape(key_label)}</strong>"
-        f" · Display / practice <strong>{html.escape(display_key_label or key_label)}</strong>"
+        f" · Practice / Concert Key <strong>{html.escape(display_key_label or key_label)}</strong>"
         f"</p>"
     )
     body = (
@@ -7235,8 +7235,8 @@ def render_backing_setup_context_strip(
         f'<div class="ui-backing-setup-context" role="group" aria-label="Playback context">'
         f'<span class="ui-backing-ctx-badge key-orig" title="{html.escape(_orig_title)}">'
         f'<span class="ui-backing-ctx-ico">🎹</span> Original Key <strong>{_orig}</strong></span>'
-        f'<span class="ui-backing-ctx-badge key-practice" title="Display / practice key">'
-        f'<span class="ui-backing-ctx-ico">🎼</span> Display Practice Key <strong>{_practice}</strong></span>'
+        f'<span class="ui-backing-ctx-badge key-practice" title="Practice / Concert Key">'
+        f'<span class="ui-backing-ctx-ico">🎼</span> Practice / Concert Key <strong>{_practice}</strong></span>'
         f"{written_badge}"
         f'<span class="ui-backing-ctx-badge meter" title="Time signature">'
         f'<span class="ui-backing-ctx-ico">🥁</span> <strong>{_meter}</strong></span>'

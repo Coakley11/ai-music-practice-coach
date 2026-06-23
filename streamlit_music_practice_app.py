@@ -219,13 +219,7 @@ from harmonic_rhythm_intelligence import (
     apply_harmonic_rhythm_intelligence,
 )
 import karaoke_mode as km
-from beginner_arrangement import (
-    beginner_view_of_song_data,
-    beginner_view_of_sections,
-    is_beginner_arrangement_active,
-    is_beginner_level,
-    select_beginner_section_names,
-)
+from chart_level_arrangement import resolve_level_chart
 from youtube_ui import (
     render_original_song_video_card,
     render_practice_learning_video_panel,
@@ -906,7 +900,7 @@ if not _APP_UI_LOADED:
             st.caption(kwargs.get("source_label", ""))
         with c2:
             st.selectbox(
-                "Display / practice key",
+                "Practice / Concert Key",
                 display_key_options,
                 key="display_key",
                 on_change=kwargs.get("on_display_key_change"),
@@ -1315,17 +1309,9 @@ def _advanced_chord(chord, genre_name):
 
 
 def sections_for_level(song_data, level):
-    explicit_versions = song_data.get("chart_versions") or {}
-    if level in explicit_versions and explicit_versions[level]:
-        return explicit_versions[level]
+    from chart_level_arrangement import sections_for_level as _sections_for_level
 
-    raw = song_data.get("sections", {})
-    genre_name = song_data.get("genre", "")
-    if level == "Beginner":
-        return {name: [_simplify_chord(ch, genre_name) for ch in chords] for name, chords in raw.items()}
-    if level == "Intermediate":
-        return {name: [_intermediate_chord(ch) for ch in chords] for name, chords in raw.items()}
-    return {name: [_advanced_chord(ch, song_data.get("genre", "")) for ch in chords] for name, chords in raw.items()}
+    return _sections_for_level(song_data, level)
 
 
 def chart_status_label(song_data):
@@ -9444,18 +9430,14 @@ _display_key_options = sync_display_key_before_widget(
 )
 
 st.sidebar.markdown(
-    '<p class="ui-key-global-hint">Practice / Display Key — concert pitch for the active song.</p>',
-    unsafe_allow_html=True,
-)
-st.sidebar.markdown(
-    f'<p class="ui-sidebar-key-caption">Song original key: <strong>{original_key}</strong></p>',
+    f'<p class="ui-sidebar-key-caption">Song Original Key: <strong>{original_key}</strong></p>',
     unsafe_allow_html=True,
 )
 st.sidebar.selectbox(
-    "Practice / Display Key (concert)",
+    "Practice / Concert Key",
     _display_key_options,
     key="display_key",
-    help="Concert-pitch center; charts may show your written key when transposing is enabled.",
+    help="Concert pitch for charts and backing audio.",
     on_change=lambda: mark_display_key_changed(st),
 )
 
@@ -9781,21 +9763,8 @@ global_display_key = _key_ctx["global_display_key"]
 chart_key_mode = _key_ctx["chart_key_mode"]
 written_key = _key_ctx["written_key"]
 
-if is_transposing_instrument(instrument):
-    _charts_sidebar = (
-        written_key
-        if chart_key_mode == "written"
-        else concert_key
-    )
-    st.sidebar.markdown(
-        f'<p class="ui-sidebar-key-caption"><strong>Concert:</strong> {concert_key} · '
-        f"<strong>Written:</strong> {written_key} · "
-        f"<strong>Charts shown in:</strong> {_charts_sidebar}</p>",
-        unsafe_allow_html=True,
-    )
-
 if instrument == "Guitar":
-    sidebar_section("Guitar capo", icon="🎸", tone="session")
+    sidebar_section("Guitar Capo / Chord Shapes", icon="🎸", tone="session")
     render_guitar_capo_sidebar(
         st.sidebar,
         st.session_state,
@@ -9857,21 +9826,11 @@ level_source_sections = _chart_bundle["level_source_sections"]
 sections = _chart_bundle["sections"]
 _cpl_active = _chart_bundle.get("cpl_active")
 
-# Beginner-mode arrangement simplification (derived view only). For
-# Intermediate / Advanced this is a no-op and ``song_data`` /
-# ``sections`` come through unchanged. For Beginner we trim
-# ``section_order`` to a short Intro -> Verse -> Chorus -> Verse ->
-# Chorus -> Outro arc, then filter ``sections`` so backing-track
-# generation, the lead sheet, and the chord-follow highlight all
-# follow the simplified arrangement.
-if is_beginner_level(level):
-    _beginner_song_data = beginner_view_of_song_data(song_data, level=level)
-    if _beginner_song_data and is_beginner_arrangement_active(_beginner_song_data):
-        _beginner_order = list(_beginner_song_data.get("section_order") or [])
-        sections = beginner_view_of_sections(
-            sections, section_order_for_level=_beginner_order
-        )
-        song_data = _beginner_song_data
+# Level-specific arrangement (chord complexity + section form). Beginner and
+# Intermediate use shorter forms; Advanced keeps the full catalog chart.
+_level_song_data, sections = resolve_level_chart(song_data, level)
+if _level_song_data:
+    song_data = _level_song_data
 
 _capo_ctx = build_capo_context(
     st.session_state,

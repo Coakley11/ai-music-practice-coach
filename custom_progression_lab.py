@@ -1467,7 +1467,7 @@ def cpl_transpose_explanation_markdown(
 **Written / Home Key — {home_key}**  
 The **tonal center** of your progression (where the harmony belongs). Chords below are stored in this key.
 
-**Practice / Display Key — {practice_key}**  
+**Practice / Concert Key — {practice_key}**  
 From the **sidebar** — the key you want to **practice and hear** right now. The app transposes from home → practice.
 
 #### Example

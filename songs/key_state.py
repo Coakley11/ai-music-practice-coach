@@ -100,6 +100,36 @@ def clear_backing_needs_regen(st: Any) -> None:
 def mark_display_key_changed(st: Any) -> None:
     """Sidebar widget callback — invalidate derived audio/analysis."""
     try:
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+        from songs.music_source import (
+            ACTIVE_SONG_IDENTITY_KEY,
+            compute_active_song_identity,
+            cpl_session_is_active,
+        )
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+        owner = str(st.session_state.get(ACTIVE_SONG_IDENTITY_KEY) or "").strip()
+        if not owner:
+            selected = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
+            owner = compute_active_song_identity(
+                pick_key=str(
+                    st.session_state.get(ACTIVE_CATALOG_PICK_KEY)
+                    or selected.get("pick_key")
+                    or ""
+                ).strip(),
+                title=str(selected.get("title") or ""),
+                artist=str(selected.get("artist") or ""),
+                original_key=str(selected.get("key") or "C"),
+                is_custom=cpl_session_is_active(st.session_state),
+                custom_revision=str(
+                    (st.session_state.get("cpl_active_progression") or {}).get("id") or ""
+                ).strip(),
+            )
+        if owner:
+            st.session_state[DISPLAY_KEY_OWNER_IDENTITY_KEY] = owner
+    except Exception:
+        pass
+    try:
         from practice_setup_globals import record_global_control_change
 
         record_global_control_change(
@@ -151,34 +181,6 @@ def mark_display_key_changed(st: Any) -> None:
 
                 clear_active_song_local_edit(st.session_state)
             except ImportError:
-                pass
-            try:
-                from songs.music_source import (
-                    ACTIVE_SONG_IDENTITY_KEY,
-                    compute_active_song_identity,
-                    cpl_session_is_active,
-                )
-                from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
-
-                owner = str(st.session_state.get(ACTIVE_SONG_IDENTITY_KEY) or "").strip()
-                if not owner:
-                    selected = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
-                    owner = compute_active_song_identity(
-                        pick_key=str(
-                            st.session_state.get(ACTIVE_CATALOG_PICK_KEY)
-                            or selected.get("pick_key")
-                            or ""
-                        ).strip(),
-                        title=str(selected.get("title") or ""),
-                        artist=str(selected.get("artist") or ""),
-                        original_key=str(selected.get("key") or "C"),
-                        is_custom=cpl_session_is_active(st.session_state),
-                        custom_revision=str(
-                            (st.session_state.get("cpl_active_progression") or {}).get("id") or ""
-                        ).strip(),
-                    )
-                st.session_state[DISPLAY_KEY_OWNER_IDENTITY_KEY] = owner
-            except Exception:
                 pass
     except Exception:
         st.session_state[LAST_DISPLAY_KEY_SAVE_OK_KEY] = False

@@ -537,6 +537,9 @@ def _push_resolved_display_key_to_session(
     if not resolved:
         return
     live = str(session.get("display_key") or "").strip()
+    if live and live != resolved and _display_key_override_valid_for_identity(session):
+        _restore_display_key_owner_from_context(session, ctx)
+        return
     if resolved == live:
         _restore_display_key_owner_from_context(session, ctx)
         return

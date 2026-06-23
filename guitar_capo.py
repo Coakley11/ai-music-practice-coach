@@ -115,7 +115,7 @@ def sync_capo_from_practice_display_key(
     session_state: dict,
     practice_display_key: str,
 ) -> str:
-    """Mirror Practice / Display Key into capo sounding key (reference only)."""
+    """Mirror Practice / Concert Key into capo sounding key (reference only)."""
     sounding = str(practice_display_key or "C").strip() or "C"
     session_state[CAPO_SOUNDING_KEY] = sounding
     last = str(session_state.get(CAPO_LAST_CONCERT_KEY) or "").strip()
@@ -267,7 +267,7 @@ def capo_status_banner_html(ctx: CapoContext) -> str:
         f"(concert / sounding) · <strong>Charts &amp; TAB shown as:</strong> "
         f"{html.escape(ctx.shape_key)} shapes</p>"
         "<p class=\"ui-card-sub\" style=\"font-size:0.82rem;color:#64748b;\">"
-        "Capo mode is not global transpose — use <em>Practice / Display Key</em> in the sidebar "
+        "Capo mode is not global transpose — use <em>Practice / Concert Key</em> in the sidebar "
         "to move the whole song.</p></div>"
     )
 
@@ -282,15 +282,10 @@ def render_guitar_capo_sidebar(
     """Compact capo controls in the sidebar (guitar only)."""
     sounding = sync_capo_from_practice_display_key(session_state, practice_display_key)
     ui.markdown(
-        '<p class="ui-key-global-hint">Guitar capo — shape chords vs sounding key</p>',
-        unsafe_allow_html=True,
-    )
-    ui.markdown(
         f'<p class="ui-sidebar-key-caption"><strong>Sounding Key:</strong> '
         f"{html.escape(sounding)}</p>",
         unsafe_allow_html=True,
     )
-    ui.caption("Follows Practice / Display Key — what the music will sound in.")
     session_state[CAPO_ENABLED_KEY] = ui.checkbox(
         "Capo Shape Mode",
         value=bool(session_state.get(CAPO_ENABLED_KEY)),
@@ -329,9 +324,6 @@ def render_guitar_capo_sidebar(
     ui.markdown(
         f'<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> {capo}</p>',
         unsafe_allow_html=True,
-    )
-    ui.caption(
-        f"Play **{session_state[CAPO_SHAPE_KEY]}** shapes · music sounds in **{sounding}**"
     )
     persist_capo_to_canonical(session_state)
     flush_capo_edits_to_cloud(persist_st)

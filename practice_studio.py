@@ -418,15 +418,11 @@ def active_song_card_details(
     # -> Chorus -> Verse -> Chorus -> Outro) so the song card matches
     # what the singer / player will actually hear.
     try:
-        from beginner_arrangement import (
-            is_beginner_level as _is_beginner_lvl,
-            select_beginner_section_names as _trim_for_beginner,
-        )
+        from chart_level_arrangement import select_section_names_for_level
 
-        if _is_beginner_lvl(level):
-            trimmed = _trim_for_beginner(section_labels)
-            if trimmed:
-                section_labels = trimmed
+        trimmed = select_section_names_for_level(section_labels, level)
+        if trimmed:
+            section_labels = trimmed
     except Exception:
         # Defensive: never break the song card if the helper module is
         # unavailable - fall back to the full section list.
@@ -643,7 +639,7 @@ def beginner_transpose_suggestions(
 
     if not tips:
         tips.append(
-            f"**Tip:** Use the sidebar **Practice / Display Key** to try a simpler center "
+            f"**Tip:** Use the sidebar **Practice / Concert Key** to try a simpler center "
             f"(C, G, D, A) if chord shapes feel crowded."
         )
     return tips

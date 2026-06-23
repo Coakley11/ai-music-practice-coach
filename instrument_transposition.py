@@ -538,7 +538,7 @@ def render_sidebar_transposing_widgets(
     checkbox_kwargs: dict[str, Any] = {
         "help": (
             "When on, charts stay in your instrument's written key while you change "
-            "Practice / Display Key. Turn off to read charts in concert pitch."
+            "Practice / Concert Key. Turn off to read charts in concert pitch."
         ),
     }
     if on_written_key_change is not None:
@@ -691,7 +691,7 @@ def render_practice_transposing_controls(
             f"Charts now use **{chart_k}** ({mode}). "
             f"Concert **{concert_key}** · written **{written}**."
             + (
-                " Written-key mode stays on when you change Practice / Display Key."
+                " Written-key mode stays on when you change Practice / Concert Key."
                 if show_written
                 else " Enable written-key mode in the sidebar to transpose all charts."
             )
