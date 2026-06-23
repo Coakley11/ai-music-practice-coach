@@ -512,11 +512,20 @@ def _push_resolved_display_key_to_session(
         return
     live = str(session.get("display_key") or "").strip()
     if resolved == live:
+        _restore_display_key_owner_from_context(session, ctx)
         return
     session[PENDING_DISPLAY_KEY] = resolved
     try:
         session["display_key"] = resolved
     except Exception:
+        pass
+    _restore_display_key_owner_from_context(session, ctx)
+    try:
+        from songs.key_state import record_display_key_write, trace_display_key_surface
+
+        record_display_key_write(session, resolved, source="canonical_push")
+        trace_display_key_surface(session, "canonical", resolved, source="canonical_push")
+    except ImportError:
         pass
 
 

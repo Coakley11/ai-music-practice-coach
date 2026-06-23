@@ -1221,15 +1221,6 @@ else:
     st.session_state.pop(km.KARAOKE_TRANSITION_LABEL_KEY, None)
     st.session_state.pop(km.KARAOKE_SONG_ENDED_KEY, None)
 
-_catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
-    st,
-    song_library=SONG_LIBRARY,
-    song_picker_catalog=SONG_PICKER_CATALOG,
-)
-_pick_key_recovery = st.session_state.pop(PICK_KEY_RECOVERY_NOTICE_KEY, None)
-if _pick_key_recovery:
-    st.warning(_pick_key_recovery)
-
 if CPL_ACTIVE_KEY not in st.session_state:
     st.session_state[CPL_ACTIVE_KEY] = default_active_progression()
 if CPL_SAVED_KEY not in st.session_state and not st.session_state.get("_music_workspace_blob_applied"):
@@ -7158,6 +7149,7 @@ def request_backing_loops_adjust(delta: int) -> None:
 
 def _stop_backing_playback() -> None:
     """Stop follow-along playback without clearing the generated WAV."""
+    st.session_state.pop("_backing_play_request", None)
     st.session_state[BACKING_AUTOPLAY] = False
     st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
     st.session_state["_backing_transport_user_stopped"] = True
@@ -7165,11 +7157,22 @@ def _stop_backing_playback() -> None:
     st.session_state["backing_lead_sheet_open"] = False
     st.session_state.pop("playback_start_time", None)
     try:
-        from backing_track_state import commit_backing_transport_from_session
+        from backing_track_state import (
+            commit_backing_transport_from_session,
+            flush_backing_edits,
+            mark_backing_user_edit,
+        )
 
+        mark_backing_user_edit(st.session_state)
         commit_backing_transport_from_session(st.session_state, reason="stop")
+        flush_backing_edits(st.session_state, reason="stop")
     except ImportError:
-        pass
+        try:
+            from backing_track_state import commit_backing_transport_from_session
+
+            commit_backing_transport_from_session(st.session_state, reason="stop")
+        except ImportError:
+            pass
     for key in list(st.session_state.keys()):
         if str(key).endswith("::follow_start_time"):
             st.session_state.pop(key, None)
@@ -9230,6 +9233,14 @@ try:
             song_picker_catalog=SONG_PICKER_CATALOG,
             song_library=SONG_LIBRARY,
         )
+        _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
+            st,
+            song_library=SONG_LIBRARY,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+        )
+        _pick_key_recovery = st.session_state.pop(PICK_KEY_RECOVERY_NOTICE_KEY, None)
+        if _pick_key_recovery:
+            st.warning(_pick_key_recovery)
         maybe_flush_deferred_page_change_save(st)
         try:
             from local_nav_trace import record_local_nav_checkpoint

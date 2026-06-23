@@ -525,7 +525,7 @@ def bind_backing_rendered_widgets_from_canonical(
     default_meter: str = "4/4",
 ) -> dict[str, Any]:
     """Push canonical blob into every visible widget key (incl. per-song BPM slider)."""
-    if is_backing_user_dirty(session):
+    if is_backing_user_dirty(session) or session.get("_backing_transport_user_stopped"):
         return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
 
     canonical = canonical_backing_filters(session)
