@@ -1,4 +1,4 @@
-"""Unified musical key resolver — concert, written, and guitar shape hierarchy."""
+"""Unified musical key resolver — separate practice/concert, written, shape, and chart keys."""
 
 from __future__ import annotations
 
@@ -8,13 +8,14 @@ from instrument_transposition import (
     CHART_IN_INSTRUMENT_KEY_KEY,
     SELECTED_TRANSPOSING_INSTRUMENT_KEY,
     WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+    written_key_for_type,
 )
 from songs.key_state import resolve_active_musical_key
 from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
 
 class TestResolveActiveMusicalKey(unittest.TestCase):
-    def test_concert_key_when_no_transposition(self) -> None:
+    def test_practice_concert_key_when_no_transposition(self) -> None:
         session = {
             "instrument": "Piano",
             "display_key": "C#m",
@@ -23,11 +24,14 @@ class TestResolveActiveMusicalKey(unittest.TestCase):
         }
         ctx = resolve_active_musical_key(session, rec={"key": "Bm"}, surface="test")
         self.assertEqual(ctx.original_key, "Bm")
+        self.assertEqual(ctx.practice_concert_key, "C#m")
         self.assertEqual(ctx.concert_key, "C#m")
-        self.assertEqual(ctx.musical_key, "C#m")
+        self.assertEqual(ctx.chart_key, "C#m")
+        self.assertEqual(ctx.written_key, "")
+        self.assertEqual(ctx.shape_key, "")
         self.assertEqual(ctx.chart_key_mode, "concert")
 
-    def test_written_key_for_sax_when_chart_in_written_mode(self) -> None:
+    def test_written_chart_key_does_not_replace_practice_concert_key(self) -> None:
         session = {
             "instrument": "Saxophone",
             WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
@@ -36,11 +40,28 @@ class TestResolveActiveMusicalKey(unittest.TestCase):
             "display_key": "F",
         }
         ctx = resolve_active_musical_key(session, rec={"key": "F"}, surface="test")
-        self.assertEqual(ctx.concert_key, "F")
-        self.assertEqual(ctx.musical_key, "G")
+        self.assertEqual(ctx.practice_concert_key, "F")
+        self.assertEqual(ctx.written_key, written_key_for_type("F", "Tenor saxophone (Bb)"))
+        self.assertEqual(ctx.chart_key, "G")
+        self.assertEqual(ctx.shape_key, "")
         self.assertEqual(ctx.chart_key_mode, "written")
 
-    def test_guitar_shape_key_when_capo_enabled(self) -> None:
+    def test_alto_sax_keeps_concert_e_with_written_chart(self) -> None:
+        session = {
+            "instrument": "Saxophone",
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+            CHART_IN_INSTRUMENT_KEY_KEY: True,
+            "display_key": "E",
+        }
+        ctx = resolve_active_musical_key(session, rec={"key": "E"}, surface="test")
+        self.assertEqual(ctx.practice_concert_key, "E")
+        expected_written = written_key_for_type("E", "Alto saxophone (Eb)")
+        self.assertEqual(ctx.written_key, expected_written)
+        self.assertEqual(ctx.chart_key, expected_written)
+        self.assertNotEqual(ctx.practice_concert_key, ctx.chart_key)
+
+    def test_guitar_capo_keeps_concert_and_shape_separate(self) -> None:
         session = {
             "instrument": "Guitar",
             ACTIVE_CATALOG_PICK_KEY: "pk::1",
@@ -52,9 +73,11 @@ class TestResolveActiveMusicalKey(unittest.TestCase):
             "guitar_capo_sounding_key": "C#m",
         }
         ctx = resolve_active_musical_key(session, rec={"key": "Bm"}, surface="test")
-        self.assertEqual(ctx.concert_key, "C#m")
-        self.assertEqual(ctx.musical_key, "Am")
+        self.assertEqual(ctx.practice_concert_key, "C#m")
+        self.assertEqual(ctx.shape_key, "Am")
+        self.assertEqual(ctx.chart_key, "Am")
         self.assertEqual(ctx.chart_key_mode, "shape")
+        self.assertNotEqual(ctx.practice_concert_key, ctx.chart_key)
 
 
 if __name__ == "__main__":

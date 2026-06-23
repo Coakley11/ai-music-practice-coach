@@ -653,7 +653,7 @@ def active_song_musical_key(
         rec=rec,
         instrument=instrument,
         surface=surface,
-    ).musical_key
+    ).chart_key
 
 
 def active_song_written_chart_key(

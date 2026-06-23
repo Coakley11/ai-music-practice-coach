@@ -394,6 +394,7 @@ def active_song_card_details(
     *,
     instrument: str = "",
     practice_key: str | None = None,
+    chart_key: str | None = None,
 ) -> dict[str, Any]:
     """Rich metadata for the highlighted Active Song card.
 
@@ -430,6 +431,7 @@ def active_song_card_details(
     concepts = chord_concepts_from_sections(sections, genre=genre)
     bpm = base.get("bpm") or _default_bpm_for_record(record)
     key = str(practice_key or base.get("key") or "C").strip() or "C"
+    coaching_key = str(chart_key or practice_key or base.get("key") or "C").strip() or key
     style_label = genre
     g = genre.lower()
     notes = (ext.get("arrangement_notes") or "").lower()
@@ -456,7 +458,7 @@ def active_song_card_details(
             sections,
             instrument=instrument,
             level=level,
-            practice_key=practice_key,
+            practice_key=coaching_key,
         )
         practice_focus_text = coaching_practice_focus(coaching)
     except Exception:

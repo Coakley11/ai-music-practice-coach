@@ -6862,7 +6862,7 @@ def _recording_analysis_context(recording_type: str = "practice") -> dict:
     return analysis_context_from_app(
         song=song,
         song_data=song_data,
-        display_key=musical_key,
+        display_key=chart_key,
         sections=sections_for_practice,
         target_chords=full_song_chords,
         instrument=instrument,
@@ -6887,10 +6887,13 @@ def current_song_context_lab():
         genre=genre,
         song=song,
         song_data=song_data,
-        display_key=musical_key,
-        musical_key=musical_key,
-        concert_key=concert_key,
+        display_key=chart_key,
+        chart_key=chart_key,
+        musical_key=chart_key,
+        concert_key=practice_concert_key,
         original_key=original_key,
+        written_key=written_key,
+        shape_key=shape_key,
         sections=sections_for_practice,
         instrument=instrument,
         level=level,
@@ -7353,13 +7356,13 @@ def _render_v2_chart_debug_pill(rec: dict) -> None:
 
 
 def _active_song_key_pair(rec: dict | None = None) -> tuple[str, str]:
-    """Original key and active musical (chart) key for the Active Song card."""
+    """Original key and Practice / Concert key for the Active Song card."""
     ctx = resolve_active_musical_key(
         st.session_state,
         rec=rec,
         surface="song_card",
     )
-    return ctx.original_key, ctx.musical_key
+    return ctx.original_key, ctx.practice_concert_key
 
 
 def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
@@ -7372,15 +7375,23 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     """
     level = st.session_state.get("level", "Intermediate")
     active_instrument = str(st.session_state.get("instrument") or "")
-    _original_key, _chart_practice_key = _active_song_key_pair(rec)
-    _coaching_chart_key = _chart_practice_key
+    _song_key_ctx = resolve_active_musical_key(
+        st.session_state,
+        rec=rec,
+        instrument=active_instrument,
+        surface="song_card",
+    )
+    _original_key = _song_key_ctx.original_key
+    _practice_concert_key = _song_key_ctx.practice_concert_key
+    _chart_key = _song_key_ctx.chart_key
     _details_error: Exception | None = None
     try:
         details = active_song_card_details(
             rec,
             level=level,
             instrument=active_instrument,
-            practice_key=_coaching_chart_key,
+            practice_key=_practice_concert_key,
+            chart_key=_chart_key,
         )
     except Exception as _details_exc:
         _details_error = _details_exc
@@ -7451,17 +7462,18 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     _fav_icon = "★" if _is_fav else "☆"
     _fav_title = "Remove from favorites" if _is_fav else "Add to favorites"
     _orig_label = _original_key
-    _practice_label = _chart_practice_key
+    _practice_label = _practice_concert_key
     _written_label = ""
+    _written_badge_label = "Written Key"
+    _charts_badge = ""
     _style_label = str(details.get("style_label") or rec.get("genre") or "Song")
     _source_label = "Catalog Song"
     try:
         from custom_progression_lab import format_key_label as _format_key_label
         from app_ui import studio_song_meta_badges_html as _studio_song_meta_badges_html
-        from songs.music_source import active_song_written_chart_key as _active_song_written_chart_key
 
         _orig_label = _format_key_label(_original_key)
-        _practice_label = _format_key_label(_chart_practice_key)
+        _practice_label = _format_key_label(_practice_concert_key)
         if is_custom_progression(st.session_state):
             _source_label = "Custom Progression"
             _cpl_style = ensure_original_structure(
@@ -7469,20 +7481,19 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             ).get("progression_style")
             if _cpl_style:
                 _style_label = str(_cpl_style)
-        _written_k = _active_song_written_chart_key(st.session_state)
-        if _written_k:
-            _written_label = _format_key_label(_written_k)
-        _written_badge_label = "Written Key"
-        _charts_badge = ""
-        if (
-            active_instrument == "Guitar"
-            and st.session_state.get("guitar_capo_enabled")
-            and _written_label
-        ):
+        if _song_key_ctx.shape_key:
+            _written_label = _format_key_label(_song_key_ctx.shape_key)
             _written_badge_label = "Shape Key"
-            _charts_badge = _written_label
+        elif (
+            _song_key_ctx.chart_key_mode == "written"
+            and _song_key_ctx.written_key
+            and _song_key_ctx.written_key != _practice_concert_key
+        ):
+            _written_label = _format_key_label(_song_key_ctx.written_key)
+        if _chart_key and _chart_key != _practice_concert_key:
+            _charts_badge = _format_key_label(_chart_key)
         _badge_html = _studio_song_meta_badges_html(
-            display_key=_format_key_label(_chart_practice_key) if show_key_row else "",
+            display_key=_practice_label if show_key_row else "",
             written_key=_written_label if show_key_row else "",
             written_key_label=_written_badge_label,
             charts_key=_charts_badge,
@@ -9760,10 +9771,11 @@ _musical_ctx = resolve_active_musical_key(
     instrument=instrument,
     surface="app",
 )
-concert_key = _musical_ctx.concert_key
+practice_concert_key = _musical_ctx.practice_concert_key
+concert_key = practice_concert_key
 chart_key = _musical_ctx.chart_key
-musical_key = _musical_ctx.musical_key
-global_display_key = concert_key
+shape_key = _musical_ctx.shape_key
+global_display_key = practice_concert_key
 chart_key_mode = _musical_ctx.chart_key_mode
 written_key = _musical_ctx.written_key
 
@@ -10204,7 +10216,7 @@ if _studio_page == "practice":
         st.session_state.pop(_old_key, None)
 
     _capo_shape = guitar_shape_chart_key if (_capo_ctx.enabled and instrument == "Guitar") else None
-    _practice_chart_key = musical_key
+    _practice_chart_key = chart_key
     _chart_key_mode = chart_key_mode
 
     if _capo_ctx.enabled and instrument == "Guitar":
@@ -10293,7 +10305,7 @@ if _studio_page == "practice":
         render_tuner_tone_section(
             st,
             instrument=instrument,
-            display_key=musical_key,
+            display_key=chart_key,
             key_prefix=tuner_key_prefix_for_song(song),
         )
 
@@ -11244,9 +11256,9 @@ elif _studio_page == "backing":
         surface="backing_card",
     )
     _backing_orig_key = _backing_mk.original_key
-    _backing_practice_key = _backing_mk.concert_key
-    _backing_written_key = (
-        _backing_mk.musical_key if _backing_mk.chart_key_mode != "concert" else None
+    _backing_practice_key = _backing_mk.practice_concert_key
+    _backing_written_key = _backing_mk.shape_key or (
+        _backing_mk.written_key if _backing_mk.chart_key_mode == "written" else ""
     )
     try:
         from songs.key_state import trace_display_key_surface
@@ -11254,7 +11266,7 @@ elif _studio_page == "backing":
         trace_display_key_surface(
             st.session_state,
             "backing_card",
-            str(_backing_mk.musical_key or ""),
+            str(_backing_mk.chart_key or ""),
             source="backing_active_song_card",
         )
     except Exception:
@@ -11498,7 +11510,7 @@ elif _studio_page == "backing":
             "to rebuild the backing track in the new settings."
         )
 
-    chart_display_key = musical_key
+    chart_display_key = chart_key
     chart_sections = performed_sections
 
     coach_section = (
@@ -12434,7 +12446,7 @@ elif _studio_page == "creative":
             st,
             ctx=ctx,
             session_state=st.session_state,
-            chart_key=musical_key,
+            chart_key=chart_key,
             sections=sections_for_practice,
             song_data=song_data,
             bpm=int(st.session_state.get("backing_track_bpm", _default_song_bpm)),

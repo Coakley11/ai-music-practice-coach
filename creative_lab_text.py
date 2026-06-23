@@ -14,17 +14,25 @@ def current_song_context_lab(
     musical_key: str | None = None,
     concert_key: str | None = None,
     original_key: str | None = None,
+    chart_key: str | None = None,
+    written_key: str | None = None,
+    shape_key: str | None = None,
 ):
-    active_key = str(musical_key or display_key or song_data.get("key", "") or "C").strip() or "C"
+    chart = str(chart_key or musical_key or display_key or song_data.get("key", "") or "C").strip() or "C"
+    concert = str(concert_key or display_key or chart or "C").strip() or "C"
     return {
         "genre": genre,
         "song": song,
         "artist": song_data.get("artist", ""),
         "composer": song_data.get("composer", ""),
         "key": str(original_key or song_data.get("key", "") or "C"),
-        "display_key": active_key,
-        "musical_key": active_key,
-        "concert_key": str(concert_key or display_key or active_key),
+        "display_key": chart,
+        "chart_key": chart,
+        "practice_concert_key": concert,
+        "musical_key": chart,
+        "written_key": str(written_key or ""),
+        "shape_key": str(shape_key or ""),
+        "concert_key": concert,
         "sections": sections,
         "section_order": list(song_data.get("section_order") or []),
         "lyric_cues": dict(song_data.get("lyric_cues") or {}),
@@ -446,7 +454,10 @@ def section_arrangement_idea(section_name, chords, ctx, target_style):
         ctx.get("level", "Intermediate"),
     )
     color_notes = chord_color_notes(chords, ctx.get("instrument", ""))
-    pattern = first_matching_pattern(chords, ctx.get("musical_key") or ctx.get("display_key") or ctx.get("key") or "C")
+    pattern = first_matching_pattern(
+        chords,
+        ctx.get("chart_key") or ctx.get("display_key") or ctx.get("practice_concert_key") or ctx.get("key") or "C",
+    )
     harmonic_behavior = pattern or f"{section_tension_label(section_name, chords)} through {root_path(chords, use_bass=True, limit=4)}"
 
     out = [f"### {section_name} - {len(chords)} bars"]

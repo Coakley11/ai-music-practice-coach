@@ -116,7 +116,7 @@ def render_improvisation_intelligence_lab(
     improv_ctx = ImprovSessionContext(
         song_title=song_title,
         artist=artist,
-        key_center=str(ctx.get("musical_key") or chart_key or "C"),
+        key_center=str(ctx.get("practice_concert_key") or ctx.get("concert_key") or chart_key or "C"),
         display_key=chart_key,
         instrument=instrument,
         level=level,

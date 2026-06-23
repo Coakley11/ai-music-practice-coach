@@ -464,16 +464,26 @@ def detect_display_key_split(session: dict[str, Any]) -> str | None:
 
 @dataclass(frozen=True)
 class ActiveMusicalKeyContext:
-    """Resolved keys for every chart, coach, backing, and creative surface."""
+    """Resolved keys — practice/concert, written, shape, and chart are kept separate."""
 
     original_key: str
-    concert_key: str
+    practice_concert_key: str
     written_key: str
+    shape_key: str
     chart_key: str
-    musical_key: str
     chart_key_mode: str
     instrument: str
     transposing_type: str = ""
+
+    @property
+    def concert_key(self) -> str:
+        """Alias for practice_concert_key (sounding / user-selected key)."""
+        return self.practice_concert_key
+
+    @property
+    def musical_key(self) -> str:
+        """Deprecated alias — use ``chart_key`` for charts, ``practice_concert_key`` for display."""
+        return self.chart_key
 
 
 def resolve_active_musical_key(
@@ -483,15 +493,16 @@ def resolve_active_musical_key(
     instrument: str | None = None,
     surface: str = "",
 ) -> ActiveMusicalKeyContext:
-    """Single authoritative musical key for charts, scales, coaching, and analysis.
+    """Resolve all key roles without collapsing display and chart keys.
 
-    Hierarchy:
-    1. **concert_key** — Practice / Concert Key (sounding pitch).
-    2. **chart_key** / **musical_key** — written key when transposing-instrument
-       charts are in written pitch; guitar **shape key** when capo shape mode is on;
-       otherwise concert_key.
+    - **practice_concert_key** — user Practice / Concert Key (always sounding pitch).
+    - **written_key** — transposing-instrument written spelling (may differ from concert).
+    - **shape_key** — guitar capo fingering key when capo shape mode is on.
+    - **chart_key** — key charts/coaching/scales should use (concert, written, or shape).
     """
     from instrument_transposition import (
+        chart_in_instrument_key,
+        effective_chart_key,
         is_transposing_instrument,
         resolve_practice_keys,
         selected_transposing_type,
@@ -501,36 +512,48 @@ def resolve_active_musical_key(
     inst = str(instrument or session.get("instrument") or "Piano").strip() or "Piano"
     original, concert, _written_opt = resolve_active_song_keys(session, rec)
     key_ctx = resolve_practice_keys(session, concert, inst)
-    musical_key = str(key_ctx.get("effective_practice_key") or key_ctx.get("chart_key") or concert or "C")
-    chart_key = str(key_ctx.get("chart_key") or musical_key or "C")
-    mode = str(key_ctx.get("chart_key_mode") or "concert")
+    practice_concert_key = str(key_ctx.get("concert_key") or concert or "C").strip() or "C"
+
+    written_key = ""
+    if is_transposing_instrument(inst):
+        written_key = str(key_ctx.get("written_key") or "").strip()
+
+    shape_key = ""
     try:
         from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
 
         if inst == "Guitar" and session.get(CAPO_ENABLED_KEY):
-            shape = str(session.get(CAPO_SHAPE_KEY) or "").strip()
-            if shape:
-                mode = "shape"
+            shape_key = str(session.get(CAPO_SHAPE_KEY) or "").strip()
     except ImportError:
-        pass
+        shape_key = ""
+
+    if shape_key:
+        chart_key = shape_key
+        mode = "shape"
+    elif is_transposing_instrument(inst) and chart_in_instrument_key(session):
+        chart_key, mode = effective_chart_key(practice_concert_key, inst, session)
+    else:
+        chart_key = practice_concert_key
+        mode = "concert"
+
     trace_display_key_surface(
         session,
-        surface or "musical_key",
-        musical_key,
+        surface or "practice_concert",
+        practice_concert_key,
         source="resolve_active_musical_key",
     )
     trace_display_key_surface(
         session,
-        "concert",
-        str(key_ctx.get("concert_key") or concert or "C"),
+        "chart",
+        chart_key,
         source="resolve_active_musical_key",
     )
     return ActiveMusicalKeyContext(
         original_key=str(original or "C").strip() or "C",
-        concert_key=str(key_ctx.get("concert_key") or concert or "C").strip() or "C",
-        written_key=str(key_ctx.get("written_key") or concert or "C").strip() or "C",
-        chart_key=chart_key.strip() or "C",
-        musical_key=musical_key.strip() or "C",
+        practice_concert_key=practice_concert_key,
+        written_key=written_key,
+        shape_key=shape_key,
+        chart_key=str(chart_key or practice_concert_key or "C").strip() or "C",
         chart_key_mode=mode,
         instrument=inst,
         transposing_type=(
