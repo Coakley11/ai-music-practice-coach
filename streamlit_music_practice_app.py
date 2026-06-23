@@ -9777,7 +9777,11 @@ if is_transposing_instrument(instrument):
 
 if instrument == "Guitar":
     sidebar_section("Guitar capo", icon="🎸", tone="session")
-    render_guitar_capo_sidebar(st.sidebar, st.session_state, concert_key=concert_key)
+    render_guitar_capo_sidebar(
+        st.sidebar,
+        st.session_state,
+        practice_display_key=display_key,
+    )
 
 _chart_bundle = session_cache_get_or_set(
     st.session_state,

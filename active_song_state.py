@@ -68,6 +68,7 @@ __all__ = (
     "TRANSPOSING_WIDGET_SESSION_KEYS",
     "transposing_subtype_from_blob",
     "written_key_mode_from_blob",
+    "write_canonical_active_song_blob_only",
     "write_canonical_active_song_state",
 )
 
@@ -979,6 +980,34 @@ def _apply_context_to_session_keys(
         pass
 
 
+def write_canonical_active_song_blob_only(
+    session: dict[str, Any],
+    context: dict[str, Any],
+    *,
+    reason: str = "",
+    local_edit: bool = False,
+) -> dict[str, Any]:
+    """Update canonical active-song blob without writing widget-backed session keys.
+
+    Safe after sidebar widgets render — use for capo persistence and similar
+    post-render paths instead of ``write_canonical_active_song_state``.
+    """
+    ctx = _normalize_context(context)
+    session[ACTIVE_SONG_STATE_KEY] = {
+        **ctx,
+        "last_write_reason": reason or None,
+    }
+    music_source = str(ctx.get("music_source") or "").strip()
+    if music_source == SOURCE_CUSTOM:
+        session["active_music_source"] = SOURCE_CUSTOM
+    elif music_source == SOURCE_CATALOG:
+        session["active_music_source"] = SOURCE_CATALOG
+    if local_edit:
+        mark_active_song_local_edit(session)
+    session.pop(ACTIVE_SONG_PENDING_SYNC_KEY, None)
+    return ctx
+
+
 def write_canonical_active_song_state(
     session: dict[str, Any],
     context: dict[str, Any],
@@ -991,16 +1020,12 @@ def write_canonical_active_song_state(
     apply_global_controls_to_session: bool | None = None,
 ) -> dict[str, Any]:
     """Single write path for active song context."""
-    ctx = _normalize_context(context)
-    session[ACTIVE_SONG_STATE_KEY] = {
-        **ctx,
-        "last_write_reason": reason or None,
-    }
-    music_source = str(ctx.get("music_source") or "").strip()
-    if music_source == SOURCE_CUSTOM:
-        session["active_music_source"] = SOURCE_CUSTOM
-    elif music_source == SOURCE_CATALOG:
-        session["active_music_source"] = SOURCE_CATALOG
+    ctx = write_canonical_active_song_blob_only(
+        session,
+        context,
+        reason=reason,
+        local_edit=local_edit,
+    )
     mutate_wk = True if mutate_written_key is None else mutate_written_key
     mutate_subtype = True if mutate_transposing_subtype is None else mutate_transposing_subtype
     if apply_global_controls_to_session is None:
@@ -1017,9 +1042,6 @@ def write_canonical_active_song_state(
         apply_global_controls=apply_global_controls_to_session,
         global_control_source=reason or "canonical_write",
     )
-    if local_edit:
-        mark_active_song_local_edit(session)
-    session.pop(ACTIVE_SONG_PENDING_SYNC_KEY, None)
     return ctx
 
 

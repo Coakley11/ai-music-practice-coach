@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from music_theory import (
-    display_key_options,
     key_mode,
     practice_keys_for_mode,
     semitone_distance,
@@ -95,13 +94,33 @@ def sync_capo_written_display_key(session_state: dict) -> None:
     return
 
 
+def sync_capo_from_practice_display_key(
+    session_state: dict,
+    practice_display_key: str,
+) -> str:
+    """Mirror Practice / Display Key into capo sounding key (reference only)."""
+    sounding = str(practice_display_key or "C").strip() or "C"
+    session_state[CAPO_SOUNDING_KEY] = sounding
+    last = str(session_state.get(CAPO_LAST_CONCERT_KEY) or "").strip()
+    if last != sounding:
+        session_state[CAPO_LAST_CONCERT_KEY] = sounding
+        if not session_state.get(CAPO_ENABLED_KEY):
+            session_state[CAPO_SHAPE_KEY] = sounding
+    if not session_state.get(CAPO_ENABLED_KEY):
+        session_state[CAPO_SHAPE_KEY] = sounding
+    session_state.setdefault(CAPO_ENABLED_KEY, False)
+    if CAPO_SHAPE_KEY not in session_state:
+        session_state[CAPO_SHAPE_KEY] = default_shape_key_for_sounding(sounding)
+    return sounding
+
+
 def persist_capo_to_canonical(session_state: dict) -> None:
-    """Push capo widget state into active_song_state when values changed."""
+    """Push capo state into active_song_state blob when values changed."""
     try:
         from active_song_state import (
             ACTIVE_SONG_STATE_KEY,
             gather_active_song_context,
-            write_canonical_active_song_state,
+            write_canonical_active_song_blob_only,
         )
 
         live = capo_fields_from_session(session_state)
@@ -109,7 +128,7 @@ def persist_capo_to_canonical(session_state: dict) -> None:
         if isinstance(meta, dict) and all(meta.get(k) == live.get(k) for k in live):
             return
         ctx = gather_active_song_context(session_state)
-        write_canonical_active_song_state(
+        write_canonical_active_song_blob_only(
             session_state,
             ctx,
             reason="capo_widget",
@@ -120,18 +139,8 @@ def persist_capo_to_canonical(session_state: dict) -> None:
 
 
 def init_capo_session_state(session_state: dict, *, concert_key: str) -> None:
-    session_state.setdefault(CAPO_ENABLED_KEY, False)
-    last = session_state.get(CAPO_LAST_CONCERT_KEY)
-    if last != concert_key:
-        session_state[CAPO_LAST_CONCERT_KEY] = concert_key
-        session_state[CAPO_SOUNDING_KEY] = concert_key
-        if CAPO_SHAPE_KEY not in session_state:
-            session_state[CAPO_SHAPE_KEY] = default_shape_key_for_sounding(concert_key)
-    session_state.setdefault(CAPO_SOUNDING_KEY, concert_key)
-    if CAPO_SHAPE_KEY not in session_state:
-        session_state[CAPO_SHAPE_KEY] = default_shape_key_for_sounding(
-            session_state[CAPO_SOUNDING_KEY]
-        )
+    """Initialize capo session keys from the current practice display key."""
+    sync_capo_from_practice_display_key(session_state, concert_key)
 
 
 @dataclass
@@ -228,53 +237,64 @@ def capo_status_banner_html(ctx: CapoContext) -> str:
     )
 
 
-def render_guitar_capo_sidebar(st: Any, session_state: dict, *, concert_key: str) -> None:
+def render_guitar_capo_sidebar(
+    st: Any,
+    session_state: dict,
+    *,
+    practice_display_key: str,
+) -> None:
     """Compact capo controls in the sidebar (guitar only)."""
-    init_capo_session_state(session_state, concert_key=concert_key)
+    sounding = sync_capo_from_practice_display_key(session_state, practice_display_key)
     st.markdown(
         '<p class="ui-key-global-hint">Guitar capo — shape chords vs sounding key</p>',
         unsafe_allow_html=True,
     )
+    st.markdown(
+        f'<p class="ui-sidebar-key-caption"><strong>Sounding Key:</strong> '
+        f"{html.escape(sounding)}</p>",
+        unsafe_allow_html=True,
+    )
+    st.caption("Follows Practice / Display Key — what the music will sound in.")
     session_state[CAPO_ENABLED_KEY] = st.checkbox(
-        "Capo shape mode",
+        "Capo Shape Mode",
         value=bool(session_state.get(CAPO_ENABLED_KEY)),
         key="guitar_capo_enabled_widget",
         help="Charts/TAB use grip shapes; backing audio stays in the sounding key.",
     )
     if not session_state.get(CAPO_ENABLED_KEY):
-        st.caption("Off — charts follow Practice / Display Key like other instruments.")
+        session_state[CAPO_SHAPE_KEY] = sounding
+        st.markdown(
+            f'<p class="ui-sidebar-key-caption"><strong>Shape Key:</strong> '
+            f"{html.escape(sounding)}</p>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> open (no capo)</p>',
+            unsafe_allow_html=True,
+        )
         persist_capo_to_canonical(session_state)
         return
 
-    key_opts = display_key_options(concert_key)
-    c1, c2 = st.columns(2)
-    with c1:
-        session_state[CAPO_SOUNDING_KEY] = st.selectbox(
-            "Sounding key",
-            key_opts,
-            index=key_opts.index(session_state.get(CAPO_SOUNDING_KEY, concert_key))
-            if session_state.get(CAPO_SOUNDING_KEY, concert_key) in key_opts
-            else 0,
-            key="guitar_capo_sounding_widget",
-        )
-    with c2:
-        shape_opts = practice_keys_for_mode(key_mode(concert_key))
-        cur_shape = str(session_state.get(CAPO_SHAPE_KEY, default_shape_key_for_sounding(concert_key)))
-        if cur_shape not in shape_opts:
-            shape_opts = [cur_shape] + shape_opts
-        session_state[CAPO_SHAPE_KEY] = st.selectbox(
-            "Shape key",
-            shape_opts,
-            index=shape_opts.index(cur_shape) if cur_shape in shape_opts else 0,
-            key="guitar_capo_shape_widget",
-        )
-    capo = capo_fret_for_shape(
-        session_state[CAPO_SOUNDING_KEY],
-        session_state[CAPO_SHAPE_KEY],
+    shape_opts = practice_keys_for_mode(key_mode(sounding))
+    cur_shape = str(
+        session_state.get(CAPO_SHAPE_KEY, default_shape_key_for_sounding(sounding))
+    )
+    if cur_shape not in shape_opts:
+        shape_opts = [cur_shape] + shape_opts
+    session_state[CAPO_SHAPE_KEY] = st.selectbox(
+        "Shape Key",
+        shape_opts,
+        index=shape_opts.index(cur_shape) if cur_shape in shape_opts else 0,
+        key="guitar_capo_shape_widget",
+        help="Guitar fingering / written key — the grips you play.",
+    )
+    capo = capo_fret_for_shape(sounding, session_state[CAPO_SHAPE_KEY])
+    st.markdown(
+        f'<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> {capo}</p>',
+        unsafe_allow_html=True,
     )
     st.caption(
-        f"Capo **{capo}** · backing = **{session_state[CAPO_SOUNDING_KEY]}** · "
-        f"charts = **{session_state[CAPO_SHAPE_KEY]}** shapes"
+        f"Play **{session_state[CAPO_SHAPE_KEY]}** shapes · music sounds in **{sounding}**"
     )
     persist_capo_to_canonical(session_state)
 
@@ -314,7 +334,7 @@ def render_guitar_capo_practice_panel(
             )
     else:
         st.info(
-            "Enable **Capo shape mode** in the sidebar to show grip-friendly shapes "
+            "Enable **Capo Shape Mode** in the sidebar to show grip-friendly shapes "
             "while keeping the backing track in the sounding key."
         )
     return ctx

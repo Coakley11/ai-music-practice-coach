@@ -114,3 +114,53 @@ def test_capo_shape_is_derived_without_mutating_display_key_widget():
     ctx = resolve_practice_keys(ss, "C", "Guitar")
     assert ctx["chart_key"] == "G"
     assert ctx["global_display_key"] == "G"
+
+
+def test_sounding_key_follows_practice_display_key():
+    from guitar_capo import (
+        CAPO_ENABLED_KEY,
+        CAPO_SHAPE_KEY,
+        CAPO_SOUNDING_KEY,
+        sync_capo_from_practice_display_key,
+    )
+
+    ss: dict = {CAPO_ENABLED_KEY: False}
+    assert sync_capo_from_practice_display_key(ss, "D") == "D"
+    assert ss[CAPO_SOUNDING_KEY] == "D"
+    assert ss[CAPO_SHAPE_KEY] == "D"
+    assert sync_capo_from_practice_display_key(ss, "F") == "F"
+    assert ss[CAPO_SOUNDING_KEY] == "F"
+    assert ss[CAPO_SHAPE_KEY] == "F"
+
+
+def test_capo_fret_d_sounding_g_shape():
+    from guitar_capo import capo_fret_for_shape
+
+    assert capo_fret_for_shape("D", "G") == 7
+
+
+def test_persist_capo_blob_only_skips_apply_context():
+    from unittest.mock import patch
+
+    from active_song_state import ACTIVE_SONG_STATE_KEY
+    from guitar_capo import (
+        CAPO_ENABLED_KEY,
+        CAPO_SHAPE_KEY,
+        CAPO_SOUNDING_KEY,
+        persist_capo_to_canonical,
+    )
+
+    session = {
+        "display_key": "D",
+        "instrument": "Guitar",
+        CAPO_ENABLED_KEY: True,
+        CAPO_SOUNDING_KEY: "D",
+        CAPO_SHAPE_KEY: "G",
+        ACTIVE_SONG_STATE_KEY: {CAPO_ENABLED_KEY: False},
+    }
+    with patch("active_song_state._apply_context_to_session_keys") as mock_apply:
+        persist_capo_to_canonical(session)
+        mock_apply.assert_not_called()
+    assert session["display_key"] == "D"
+    assert session[ACTIVE_SONG_STATE_KEY][CAPO_ENABLED_KEY] is True
+    assert session[ACTIVE_SONG_STATE_KEY][CAPO_SHAPE_KEY] == "G"
