@@ -52,16 +52,26 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     return False
 
 
+def picker_custom_progression_mode(session_state: dict[str, Any]) -> bool:
+    """True when the Songs page radio is on Custom Progression."""
+    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return False
+    choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    return choice == SONG_PICKER_SOURCE_CUSTOM or choice.startswith("Use Custom")
+
+
 def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
     """True when the loaded song is a Custom Progression (for key display/sync)."""
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return False
+    if is_custom_progression(session_state):
+        return True
+    if picker_custom_progression_mode(session_state):
+        return True
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
     pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if pick_key.startswith("custom::"):
-        return True
-    if is_custom_progression(session_state):
         return True
     meta = session_state.get("active_song_state")
     if isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM:
@@ -940,6 +950,7 @@ def display_key_context(
             ensure_original_structure,
         )
 
+        ensure_custom_active_song_identity(session_state, cpl_active_key=cpl_active_key)
         active = ensure_original_structure(
             session_state.get(cpl_active_key) or default_active_progression()
         )
@@ -1174,6 +1185,117 @@ def custom_selected_song_record(active: dict[str, Any]) -> dict[str, Any]:
         "source": SOURCE_CUSTOM,
         "is_custom": True,
     }
+
+
+def ensure_custom_active_song_identity(
+    session_state: dict[str, Any],
+    *,
+    cpl_active_key: str = "cpl_active_progression",
+) -> dict[str, Any] | None:
+    """Sync CPL pick_key, selected_song, and active identity before key widgets resolve."""
+    if not cpl_session_is_active(session_state):
+        return None
+    try:
+        from custom_progression_lab import default_active_progression, ensure_original_structure
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+    except ImportError:
+        return None
+
+    active_raw = session_state.get(cpl_active_key)
+    if active_raw is None:
+        selected = session_state.get(SELECTED_SONG_STATE_KEY)
+        if isinstance(selected, dict) and str(selected.get("pick_key") or "").strip():
+            return selected
+        return None
+
+    active = ensure_original_structure(active_raw or default_active_progression())
+    selected = custom_selected_song_record(active)
+    pick_key = str(selected.get("pick_key") or "").strip()
+    existing_pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if not existing_pick.startswith("custom::"):
+        selected_state = session_state.get(SELECTED_SONG_STATE_KEY) or {}
+        existing_pick = str(selected_state.get("pick_key") or "").strip()
+    if not existing_pick.startswith("custom::"):
+        try:
+            from active_song_state import ACTIVE_SONG_STATE_KEY
+
+            meta = session_state.get(ACTIVE_SONG_STATE_KEY)
+            if isinstance(meta, dict):
+                existing_pick = str(meta.get("pick_key") or "").strip()
+        except ImportError:
+            pass
+    if existing_pick.startswith("custom::"):
+        pick_key = existing_pick
+        selected = {**selected, "pick_key": pick_key}
+    if pick_key:
+        session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
+    session_state[SELECTED_SONG_STATE_KEY] = selected
+    identity = compute_active_song_identity(
+        pick_key=pick_key,
+        title=str(selected.get("title") or ""),
+        artist=str(selected.get("artist") or ""),
+        original_key=str(selected.get("key") or "C"),
+        is_custom=True,
+        custom_revision=str(active.get("id") or ""),
+    )
+    session_state[ACTIVE_SONG_IDENTITY_KEY] = identity
+    return selected
+
+
+def resolve_active_song_identity(
+    session_state: dict[str, Any],
+    *,
+    cpl_active_key: str = "cpl_active_progression",
+) -> str:
+    """Recompute stable identity for display-key ownership (CPL-aware)."""
+    try:
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+    except ImportError:
+        DISPLAY_KEY_OWNER_IDENTITY_KEY = "_display_key_owner_identity"
+
+    owner = str(session_state.get(DISPLAY_KEY_OWNER_IDENTITY_KEY) or "").strip()
+    cached = str(session_state.get(ACTIVE_SONG_IDENTITY_KEY) or "").strip()
+    if owner and cached and owner == cached:
+        return cached
+
+    if cpl_session_is_active(session_state):
+        ensure_custom_active_song_identity(session_state, cpl_active_key=cpl_active_key)
+        identity = str(session_state.get(ACTIVE_SONG_IDENTITY_KEY) or "").strip()
+        if identity:
+            return identity
+        try:
+            from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+        except ImportError:
+            return cached
+        selected = session_state.get(SELECTED_SONG_STATE_KEY) or {}
+        pick_key = str(
+            session_state.get(ACTIVE_CATALOG_PICK_KEY) or selected.get("pick_key") or ""
+        ).strip()
+        return compute_active_song_identity(
+            pick_key=pick_key,
+            title=str(selected.get("title") or ""),
+            artist=str(selected.get("artist") or ""),
+            original_key=str(selected.get("key") or "C"),
+            is_custom=True,
+            custom_revision="",
+        )
+
+    try:
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+    except ImportError:
+        return cached
+
+    selected = session_state.get(SELECTED_SONG_STATE_KEY) or {}
+    pick_key = str(
+        session_state.get(ACTIVE_CATALOG_PICK_KEY) or selected.get("pick_key") or ""
+    ).strip()
+    return compute_active_song_identity(
+        pick_key=pick_key,
+        title=str(selected.get("title") or ""),
+        artist=str(selected.get("artist") or ""),
+        original_key=str(selected.get("key") or "C"),
+        is_custom=False,
+    )
 
 
 def queue_custom_active_song_activation(

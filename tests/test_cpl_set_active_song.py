@@ -65,6 +65,7 @@ from songs.music_source import (
     display_key_context,
     switch_to_catalog_from_custom,
     sync_song_picker_source_widget,
+    SONG_PICKER_ACTIVE_SOURCE_KEY,
     SONG_PICKER_SOURCE_CATALOG,
     SONG_PICKER_SOURCE_CUSTOM,
 )
@@ -892,9 +893,32 @@ class TestCplSetActiveSong(unittest.TestCase):
             CPL_ACTIVE_KEY: active,
             "display_key": "Eb",
         }
+        from songs.key_state import sync_display_key_owner_identity
+
+        sync_display_key_owner_identity(session)
         original, practice = active_song_key_pair(session, {"key": "G"})
         self.assertEqual(original, "D")
-        self.assertEqual(practice, "D")
+        self.assertEqual(practice, "Eb")
+
+    def test_cpl_picker_mode_live_display_key_updates_resolver(self) -> None:
+        active = self._draft_with_chords()
+        active["original_key_center"] = "D"
+        active["id"] = "trial-1"
+        active["name"] = "Trial Song"
+        session = {
+            "active_music_source": SOURCE_CATALOG,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CUSTOM,
+            CPL_ACTIVE_KEY: active,
+            "display_key": "F",
+        }
+        from songs.key_state import sync_display_key_owner_identity
+        from songs.music_source import ensure_custom_active_song_identity
+
+        ensure_custom_active_song_identity(session, cpl_active_key=CPL_ACTIVE_KEY)
+        sync_display_key_owner_identity(session)
+        original, display, _written = resolve_active_song_keys(session, {"key": "G"})
+        self.assertEqual(original, "D")
+        self.assertEqual(display, "F")
 
     def test_resolve_active_song_keys_prefers_canonical_saved_override_for_same_pick(self) -> None:
         session = {

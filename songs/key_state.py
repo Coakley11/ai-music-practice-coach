@@ -98,38 +98,22 @@ def clear_backing_needs_regen(st: Any) -> None:
     st.session_state[BACKING_NEEDS_REGEN] = False
 
 
-def mark_display_key_changed(st: Any) -> None:
-    """Sidebar widget callback — invalidate derived audio/analysis."""
+def sync_display_key_owner_identity(session: dict[str, Any]) -> None:
+    """Attach display-key override ownership to the current active song identity."""
     try:
-        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
-        from songs.music_source import (
-            ACTIVE_SONG_IDENTITY_KEY,
-            compute_active_song_identity,
-            cpl_session_is_active,
-        )
-        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+        from songs.music_source import ACTIVE_SONG_IDENTITY_KEY, resolve_active_song_identity
 
-        owner = str(st.session_state.get(ACTIVE_SONG_IDENTITY_KEY) or "").strip()
-        if not owner:
-            selected = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
-            owner = compute_active_song_identity(
-                pick_key=str(
-                    st.session_state.get(ACTIVE_CATALOG_PICK_KEY)
-                    or selected.get("pick_key")
-                    or ""
-                ).strip(),
-                title=str(selected.get("title") or ""),
-                artist=str(selected.get("artist") or ""),
-                original_key=str(selected.get("key") or "C"),
-                is_custom=cpl_session_is_active(st.session_state),
-                custom_revision=str(
-                    (st.session_state.get("cpl_active_progression") or {}).get("id") or ""
-                ).strip(),
-            )
+        owner = resolve_active_song_identity(session)
         if owner:
-            st.session_state[DISPLAY_KEY_OWNER_IDENTITY_KEY] = owner
+            session[DISPLAY_KEY_OWNER_IDENTITY_KEY] = owner
+            session[ACTIVE_SONG_IDENTITY_KEY] = owner
     except Exception:
         pass
+
+
+def mark_display_key_changed(st: Any) -> None:
+    """Sidebar widget callback — invalidate derived audio/analysis."""
+    sync_display_key_owner_identity(st.session_state)
     try:
         from practice_setup_globals import record_global_control_change
 
@@ -313,6 +297,7 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
 
     previous = str(last or "")
     st.session_state[LAST_DISPLAY_KEY] = display_key
+    sync_display_key_owner_identity(st.session_state)
     try:
         from instrument_transposition import preserve_written_key_on_display_key_change
 

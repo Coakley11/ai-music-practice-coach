@@ -9725,6 +9725,13 @@ minutes = int(
 )
 
 instrument = st.session_state.get("instrument", "Piano")
+try:
+    from active_song_state import rehydrate_capo_from_canonical, rehydrate_transposing_sidebar_from_canonical
+
+    rehydrate_transposing_sidebar_from_canonical(st.session_state)
+    rehydrate_capo_from_canonical(st.session_state)
+except ImportError:
+    pass
 sync_written_key_instrument_anchor(st.session_state, instrument)
 level = st.session_state.get("level", "Intermediate")
 focus = st.session_state.get("focus", _focus_options[0])
@@ -9765,9 +9772,14 @@ _render_sidebar_transposing_controls_compat(
 )
 
 _key_ctx = resolve_practice_keys(st.session_state, display_key, instrument)
+_chart_rec = (
+    None
+    if (_cpl_session_is_active(st.session_state) or is_custom_progression(st.session_state))
+    else _catalog_song_data
+)
 _musical_ctx = resolve_active_musical_key(
     st.session_state,
-    rec=_catalog_song_data,
+    rec=_chart_rec,
     instrument=instrument,
     surface="app",
 )
@@ -11252,7 +11264,7 @@ elif _studio_page == "backing":
 
     _backing_mk = _resolve_active_musical_key(
         st.session_state,
-        _backing_card_record,
+        rec=_backing_card_record,
         surface="backing_card",
     )
     _backing_orig_key = _backing_mk.original_key

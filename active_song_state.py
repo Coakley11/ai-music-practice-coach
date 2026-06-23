@@ -278,38 +278,11 @@ def _session_has_live_global_controls(session: dict[str, Any]) -> bool:
 
 def _current_active_song_identity(session: dict[str, Any]) -> str:
     try:
-        from songs.music_source import (
-            ACTIVE_SONG_IDENTITY_KEY,
-            compute_active_song_identity,
-            cpl_session_is_active,
-        )
-        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+        from songs.music_source import resolve_active_song_identity
+
+        return resolve_active_song_identity(session)
     except ImportError:
         return ""
-
-    cached = str(session.get(ACTIVE_SONG_IDENTITY_KEY) or "").strip()
-    if cached:
-        return cached
-    selected = session.get(SELECTED_SONG_STATE_KEY) or {}
-    pick_key = str(session.get(ACTIVE_CATALOG_PICK_KEY) or selected.get("pick_key") or "").strip()
-    is_custom = cpl_session_is_active(session)
-    custom_revision = ""
-    if is_custom:
-        try:
-            from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
-
-            active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
-            custom_revision = str(active.get("id") or "").strip()
-        except ImportError:
-            pass
-    return compute_active_song_identity(
-        pick_key=pick_key,
-        title=str(selected.get("title") or ""),
-        artist=str(selected.get("artist") or ""),
-        original_key=str(selected.get("key") or "C"),
-        is_custom=is_custom,
-        custom_revision=custom_revision,
-    )
 
 
 def _display_key_override_valid_for_identity(session: dict[str, Any]) -> bool:
