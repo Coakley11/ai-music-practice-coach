@@ -429,7 +429,7 @@ def active_song_card_details(
         pass
     concepts = chord_concepts_from_sections(sections, genre=genre)
     bpm = base.get("bpm") or _default_bpm_for_record(record)
-    key = base.get("key") or "C"
+    key = str(practice_key or base.get("key") or "C").strip() or "C"
     style_label = genre
     g = genre.lower()
     notes = (ext.get("arrangement_notes") or "").lower()

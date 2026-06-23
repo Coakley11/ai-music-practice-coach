@@ -629,9 +629,31 @@ def active_song_key_pair(
     session_state: dict[str, Any],
     rec: dict[str, Any] | None = None,
 ) -> tuple[str, str]:
-    """Original key and display/practice (concert) key for Active Song cards."""
+    """Original key and Practice / Concert key for Active Song cards.
+
+    For chart/coach/analysis surfaces use ``resolve_active_musical_key()`` instead
+    (written or guitar shape key when those modes are active).
+    """
     original, display, _written = resolve_active_song_keys(session_state, rec)
     return original, display
+
+
+def active_song_musical_key(
+    session_state: dict[str, Any],
+    rec: dict[str, Any] | None = None,
+    *,
+    instrument: str | None = None,
+    surface: str = "song_card",
+) -> str:
+    """Chart/analysis key honoring written-instrument and guitar capo shape modes."""
+    from songs.key_state import resolve_active_musical_key
+
+    return resolve_active_musical_key(
+        session_state,
+        rec=rec,
+        instrument=instrument,
+        surface=surface,
+    ).musical_key
 
 
 def active_song_written_chart_key(

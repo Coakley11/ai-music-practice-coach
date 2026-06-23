@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from music_theory import coerce_key_to_mode, display_key_options, key_mode
@@ -459,3 +460,82 @@ def detect_display_key_split(session: dict[str, Any]) -> str | None:
     if not isinstance(trace, dict):
         return None
     return _display_key_split_surfaces(trace)
+
+
+@dataclass(frozen=True)
+class ActiveMusicalKeyContext:
+    """Resolved keys for every chart, coach, backing, and creative surface."""
+
+    original_key: str
+    concert_key: str
+    written_key: str
+    chart_key: str
+    musical_key: str
+    chart_key_mode: str
+    instrument: str
+    transposing_type: str = ""
+
+
+def resolve_active_musical_key(
+    session: dict[str, Any],
+    *,
+    rec: dict[str, Any] | None = None,
+    instrument: str | None = None,
+    surface: str = "",
+) -> ActiveMusicalKeyContext:
+    """Single authoritative musical key for charts, scales, coaching, and analysis.
+
+    Hierarchy:
+    1. **concert_key** — Practice / Concert Key (sounding pitch).
+    2. **chart_key** / **musical_key** — written key when transposing-instrument
+       charts are in written pitch; guitar **shape key** when capo shape mode is on;
+       otherwise concert_key.
+    """
+    from instrument_transposition import (
+        is_transposing_instrument,
+        resolve_practice_keys,
+        selected_transposing_type,
+    )
+    from songs.music_source import resolve_active_song_keys
+
+    inst = str(instrument or session.get("instrument") or "Piano").strip() or "Piano"
+    original, concert, _written_opt = resolve_active_song_keys(session, rec)
+    key_ctx = resolve_practice_keys(session, concert, inst)
+    musical_key = str(key_ctx.get("effective_practice_key") or key_ctx.get("chart_key") or concert or "C")
+    chart_key = str(key_ctx.get("chart_key") or musical_key or "C")
+    mode = str(key_ctx.get("chart_key_mode") or "concert")
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
+
+        if inst == "Guitar" and session.get(CAPO_ENABLED_KEY):
+            shape = str(session.get(CAPO_SHAPE_KEY) or "").strip()
+            if shape:
+                mode = "shape"
+    except ImportError:
+        pass
+    trace_display_key_surface(
+        session,
+        surface or "musical_key",
+        musical_key,
+        source="resolve_active_musical_key",
+    )
+    trace_display_key_surface(
+        session,
+        "concert",
+        str(key_ctx.get("concert_key") or concert or "C"),
+        source="resolve_active_musical_key",
+    )
+    return ActiveMusicalKeyContext(
+        original_key=str(original or "C").strip() or "C",
+        concert_key=str(key_ctx.get("concert_key") or concert or "C").strip() or "C",
+        written_key=str(key_ctx.get("written_key") or concert or "C").strip() or "C",
+        chart_key=chart_key.strip() or "C",
+        musical_key=musical_key.strip() or "C",
+        chart_key_mode=mode,
+        instrument=inst,
+        transposing_type=(
+            selected_transposing_type(session, inst)
+            if is_transposing_instrument(inst)
+            else ""
+        ),
+    )

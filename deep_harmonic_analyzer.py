@@ -674,8 +674,8 @@ def build_from_lab_context(ctx: dict[str, Any]) -> str:
         HarmonicAnalysisInput(
             song_title=str(ctx.get("song") or "Song"),
             artist=str(ctx.get("artist") or ""),
-            key_center=str(ctx.get("key") or ""),
-            display_key=str(ctx.get("display_key") or ctx.get("key") or "C"),
+            key_center=str(ctx.get("musical_key") or ctx.get("display_key") or ctx.get("key") or "C"),
+            display_key=str(ctx.get("musical_key") or ctx.get("display_key") or ctx.get("key") or "C"),
             sections=sections,
             section_order=section_names,
             instrument=str(ctx.get("instrument") or "Guitar"),
