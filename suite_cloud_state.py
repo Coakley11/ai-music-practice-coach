@@ -506,6 +506,15 @@ def pick_restore_session(
             disk_ts,
         )
 
+    if cloud_state and disk_state and disk_epoch > cloud_epoch:
+        return RestorePickResult(
+            disk_state,
+            "disk",
+            "disk newer than cloud",
+            cloud_ts,
+            disk_ts,
+        )
+
     if cloud_first and cloud_state:
         return RestorePickResult(
             cloud_state,

@@ -99,6 +99,20 @@ def test_turn_the_lights_back_on_scenario_blob(lights_catalog):
     assert restored.get("cpl_sub_half_Chorus") is None
 
 
+def test_pick_restore_session_prefers_newer_disk_when_cloud_first():
+    disk = {"core": {"display_key": "C#m"}}
+    cloud = {"core": {"display_key": "Bm"}}
+    picked = pick_restore_session(
+        cloud,
+        "2026-06-07T12:00:00+00:00",
+        disk,
+        "2026-06-08T12:00:00+00:00",
+        cloud_first=True,
+    )
+    assert picked.source == "disk"
+    assert picked.state["core"]["display_key"] == "C#m"
+
+
 def test_pick_restore_session_prefers_newer_cloud():
     disk = {"core": {"song": "disk"}}
     cloud = {"core": {"song": "cloud"}}

@@ -1858,9 +1858,19 @@ def apply_music_disk_state(
     applied = False
     defer_catalog_pick = _payload_has_custom_active_signals(payload)
     if isinstance(core, dict) and core:
+        core_for_apply = dict(core)
+        if not str(core_for_apply.get("display_key") or "").strip():
+            try:
+                from active_song_state import _resolve_display_key_from_music_blob
+
+                blob_dk = _resolve_display_key_from_music_blob(payload)
+                if blob_dk:
+                    core_for_apply["display_key"] = blob_dk
+            except ImportError:
+                pass
         applied = apply_saved_music_context(
             st,
-            core,
+            core_for_apply,
             song_picker_catalog=song_picker_catalog,
             song_library=song_library,
             apply_studio_page=False,

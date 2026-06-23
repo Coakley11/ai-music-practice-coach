@@ -456,17 +456,27 @@ def apply_saved_music_context(
 
     if resolved or in_catalog:
         try:
+            from songs.key_state import resolve_restore_display_key
+
+            restore_dk = resolve_restore_display_key(
+                st.session_state,
+                override=saved_display_key,
+            )
             apply_pick_key(
                 st,
                 target,
                 song_picker_catalog,
                 song_library=song_library,
                 skip_activity_log=True,
+                origin="recovery",
+                display_key_override=restore_dk or None,
             )
         except Exception:
             return False
         if saved_display_key:
             st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
+        elif restore_dk:
+            st.session_state[PENDING_DISPLAY_KEY] = restore_dk
         return True
 
     by_title = _recover_pick_key_by_title(
@@ -478,17 +488,27 @@ def apply_saved_music_context(
     )
     if by_title:
         try:
+            from songs.key_state import resolve_restore_display_key
+
+            restore_dk = resolve_restore_display_key(
+                st.session_state,
+                override=saved_display_key,
+            )
             apply_pick_key(
                 st,
                 by_title,
                 song_picker_catalog,
                 song_library=song_library,
                 skip_activity_log=True,
+                origin="recovery",
+                display_key_override=restore_dk or None,
             )
         except Exception:
             return False
         if saved_display_key:
             st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
+        elif restore_dk:
+            st.session_state[PENDING_DISPLAY_KEY] = restore_dk
         return True
 
     label = str(saved.get("song") or pick_key).strip() or "your last song"
@@ -725,6 +745,7 @@ def apply_pick_key(
     skip_activity_log: bool = False,
     persist: bool = True,
     origin: str = "user",
+    display_key_override: str | None = None,
 ) -> dict[str, Any]:
     try:
         from music_state_writes import WriteOrigin, may_write_contested, record_state_write_trace
@@ -791,6 +812,8 @@ def apply_pick_key(
     st.session_state[_LAST_PICK_KEY] = pick_key
     st.session_state["active_genre"] = genre
     st.session_state["active_song_title"] = data["title"]
+    is_restore = origin in ("recovery", "restore")
+    pick_changed = prev is not None and prev != pick_key
     if prev != pick_key:
         try:
             from picker_song_editor import PICKER_EDITOR_OPEN_KEY, PICKER_EDITOR_NOTICE_KEY
@@ -808,7 +831,8 @@ def apply_pick_key(
         else:
             from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY, set_catalog_source
 
-            st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+            if not is_restore:
+                st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
             set_catalog_source(st.session_state)
         lib_record = data
         if song_library is not None:
@@ -831,8 +855,19 @@ def apply_pick_key(
             song_artist=data.get("artist", ""),
         )
         _sync_id = active_song_sync_id(pick_key=pick_key, playback_song_id=_pid, is_custom=False)
+        from songs.key_state import PENDING_DISPLAY_KEY, resolve_restore_display_key
         from songs.music_source import on_active_song_identity_changed
 
+        restore_display_key = ""
+        if is_restore:
+            restore_display_key = resolve_restore_display_key(
+                st.session_state,
+                override=str(display_key_override or "").strip(),
+            )
+        effective_display_key = (
+            restore_display_key if (is_restore and restore_display_key) else original_key
+        )
+        user_song_change = pick_changed and not is_restore
         on_active_song_identity_changed(
             st,
             pick_key=pick_key,
@@ -844,11 +879,14 @@ def apply_pick_key(
             default_bpm=default_bpm,
             default_groove=default_groove,
             default_meter=default_meter,
-            display_key=original_key,
+            display_key=effective_display_key,
             song_data=lib_record,
             invalidate_backing=invalidate_backing_cache,
-            force_reset=prev != pick_key,
+            force_reset=user_song_change,
         )
+        if is_restore and restore_display_key:
+            st.session_state[PENDING_DISPLAY_KEY] = restore_display_key
+            st.session_state["display_key"] = restore_display_key
         st.session_state[BACKING_NEEDS_REGEN] = False
         st.session_state.pop("multitrack_backing_wav", None)
         st.session_state.pop("multitrack_backing_music_wav", None)
@@ -1033,6 +1071,12 @@ def get_song_context(
         if notice:
             st.session_state[PICK_KEY_RECOVERY_NOTICE_KEY] = notice
         if resolved_pk != pk or not sel.get("title"):
+            try:
+                from songs.key_state import resolve_restore_display_key
+
+                restore_dk = resolve_restore_display_key(st.session_state)
+            except ImportError:
+                restore_dk = ""
             apply_pick_key(
                 st,
                 resolved_pk,
@@ -1040,6 +1084,7 @@ def get_song_context(
                 song_library=song_library,
                 origin="recovery",
                 persist=_recovery_may_persist(),
+                display_key_override=restore_dk or None,
             )
         genre, label = parse_pick_key(resolved_pk)
         resolved = _build_library_from_picker(genre, label, song_picker_catalog, song_library)

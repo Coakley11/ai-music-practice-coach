@@ -152,5 +152,49 @@ class TestDisplayKeyActiveSongSync(unittest.TestCase):
         self.assertEqual(session.get("active_song_state", {}).get("pick_key"), PK_B)
 
 
+    def test_apply_pick_key_recovery_preserves_saved_display_key(self) -> None:
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+        st = _fake_st(
+            {
+                SELECTED_SONG_STATE_KEY: {
+                    "pick_key": PK_A,
+                    "title": "Song A",
+                    "artist": "Artist A",
+                    "key": "Bm",
+                },
+            }
+        )
+        with patch("songs.state.persist_music_local_state"):
+            apply_pick_key(
+                st,
+                PK_A,
+                CATALOG,
+                skip_activity_log=True,
+                origin="recovery",
+                display_key_override="C#m",
+            )
+
+        self.assertEqual(st.session_state["display_key"], "C#m")
+        self.assertNotIn(USER_CATALOG_SOURCE_CHOICE_KEY, st.session_state)
+
+    def test_apply_saved_music_context_restore_uses_core_display_key(self) -> None:
+        from songs.key_state import PENDING_DISPLAY_KEY
+        from songs.state import apply_saved_music_context
+
+        st = _fake_st({})
+        saved = {
+            "pick_key": PK_A,
+            "display_key": "C#m",
+            "instrument": "Piano",
+        }
+        with patch("songs.state.persist_music_local_state"):
+            ok = apply_saved_music_context(st, saved, song_picker_catalog=CATALOG)
+
+        self.assertTrue(ok)
+        self.assertEqual(st.session_state.get("display_key"), "C#m")
+        self.assertEqual(st.session_state.get(PENDING_DISPLAY_KEY), "C#m")
+
+
 if __name__ == "__main__":
     unittest.main()

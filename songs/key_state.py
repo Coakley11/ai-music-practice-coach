@@ -14,6 +14,46 @@ LAST_DISPLAY_KEY_SAVE_OK_KEY = "_last_display_key_save_ok"
 CPL_JUMP_HOME_TARGET = "_cpl_jump_home_target"
 BACKING_NEEDS_REGEN = "_backing_needs_regen"
 
+
+def resolve_restore_display_key(
+    session: dict[str, Any],
+    *,
+    override: str = "",
+    core_display_key: str = "",
+    workspace_payload: dict[str, Any] | None = None,
+) -> str:
+    """Best saved practice/display key for catalog restore (not catalog original)."""
+    dk = str(override or "").strip()
+    if dk:
+        return dk
+    dk = str(core_display_key or "").strip()
+    if dk:
+        return dk
+    try:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+
+        meta = session.get(ACTIVE_SONG_STATE_KEY)
+        if isinstance(meta, dict):
+            dk = str(meta.get("display_key") or "").strip()
+            if dk:
+                return dk
+    except ImportError:
+        pass
+    dk = str(session.get(PENDING_DISPLAY_KEY) or "").strip()
+    if dk:
+        return dk
+    if isinstance(workspace_payload, dict) and workspace_payload:
+        try:
+            from active_song_state import _resolve_display_key_from_music_blob
+
+            dk = _resolve_display_key_from_music_blob(workspace_payload)
+            if dk:
+                return dk
+        except ImportError:
+            pass
+    return ""
+
+
 _BACKING_CACHE_KEYS = (
     "_last_backing_wav",
     "_last_backing_wav_b64",

@@ -1478,9 +1478,18 @@ def apply_cloud_active_song_state_if_allowed(
         session["_active_song_restore_skipped_reason"] = "local_dirty"
         return False
     try:
+        from music_restore_phase import authoritative_restore_in_progress
+
+        restore_applying = authoritative_restore_in_progress(session)
+    except ImportError:
+        restore_applying = bool(
+            session.get("_cloud_workspace_restored_this_run")
+            or session.get("_suite_persist_restore_applied")
+        )
+    try:
         from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
 
-        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY) and not restore_applying:
             session["_active_song_restore_skipped_reason"] = "user_chose_catalog"
             return False
     except ImportError:

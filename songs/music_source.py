@@ -1306,6 +1306,21 @@ def commit_custom_active_song(
     selected = custom_selected_song_record(active)
     pick_key = str(selected.get("pick_key") or "").strip()
     practice_key = home_key
+    try:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+        from songs.key_state import resolve_restore_display_key
+
+        meta = session.get(ACTIVE_SONG_STATE_KEY)
+        if isinstance(meta, dict) and str(meta.get("pick_key") or "").strip() == pick_key:
+            saved_dk = str(meta.get("display_key") or "").strip()
+            if saved_dk:
+                practice_key = saved_dk
+        if practice_key == home_key:
+            resolved = resolve_restore_display_key(session, override="")
+            if resolved:
+                practice_key = resolved
+    except ImportError:
+        pass
 
     set_custom_source(session)
     sync_song_picker_source_widget(session, force=True)
