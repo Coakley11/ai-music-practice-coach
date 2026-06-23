@@ -154,7 +154,20 @@ def _normalize_context(raw: dict[str, Any] | None) -> dict[str, Any]:
         "custom_progression_name": str(src.get("custom_progression_name") or "").strip(),
         "custom_home_key": str(src.get("custom_home_key") or "").strip(),
         **_transposing_fields_from_raw(src),
+        **_capo_fields_from_raw(src),
     }
+
+
+def _capo_fields_from_raw(src: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from guitar_capo import CAPO_PERSIST_KEYS
+    except ImportError:
+        return {}
+    out: dict[str, Any] = {}
+    for key in CAPO_PERSIST_KEYS:
+        if key in src:
+            out[key] = src[key]
+    return out
 
 
 def _live_written_key_for_save(session: dict[str, Any]) -> bool:
@@ -598,6 +611,7 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
             subtype = _live_subtype_for_save(session, instrument_name)
             if subtype:
                 ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+        ctx.update(_capo_fields_from_session(session))
         return _attach_display_key_owner(session, ctx)
 
     sel = session.get(SELECTED_SONG_STATE_KEY)
@@ -625,7 +639,17 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         subtype = _live_subtype_for_save(session, instrument_name)
         if subtype:
             ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+    ctx.update(_capo_fields_from_session(session))
     return _attach_display_key_owner(session, ctx)
+
+
+def _capo_fields_from_session(session: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from guitar_capo import capo_fields_from_session
+
+        return capo_fields_from_session(session)
+    except ImportError:
+        return {}
 
 
 def canonical_active_song_context(session: dict[str, Any]) -> dict[str, Any] | None:
@@ -947,6 +971,13 @@ def _apply_context_to_session_keys(
     subtype = str(ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
     if mutate_transposing_subtype and subtype:
         session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+    try:
+        from guitar_capo import apply_capo_context_fields, sync_capo_written_display_key
+
+        apply_capo_context_fields(session, ctx)
+        sync_capo_written_display_key(session)
+    except ImportError:
+        pass
 
 
 def write_canonical_active_song_state(

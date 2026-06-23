@@ -156,7 +156,7 @@ def render_music_deploy_probe(st: Any) -> None:
     except Exception:
         pass
 
-    with st.sidebar.expander("Music deploy probe", expanded=True):
+    with st.sidebar.expander("Music deploy probe", expanded=False):
         st.markdown("**Live deploy**")
         st.text(f"commit: {info['commit']}")
         st.text(f"branch: {info['branch']}")

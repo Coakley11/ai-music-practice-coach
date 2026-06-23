@@ -47,7 +47,7 @@ MIRROR = format_pick_key("pop", "Man in the Mirror — Michael Jackson")
 
 class TestV13DeployMarker(unittest.TestCase):
     def test_deploy_marker_v13(self) -> None:
-        self.assertEqual(MUSIC_PERSIST_DEPLOY_VERSION, "music-persistence-restore-v18")
+        self.assertEqual(MUSIC_PERSIST_DEPLOY_VERSION, "music-persistence-restore-v19")
 
 
 class TestV13RestorePhase(unittest.TestCase):

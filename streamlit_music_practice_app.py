@@ -204,6 +204,7 @@ from backing_generation import (
     BackingGenProfile,
     prepare_wav_b64,
     profile_elapsed_ms,
+    record_backing_timing_event,
     render_backing_generation_debug,
 )
 from backing_display import (
@@ -7194,6 +7195,7 @@ def _begin_backing_performance_follow_along(
     st.session_state["_backing_play_request"] = True
     st.session_state[BACKING_AUTOPLAY] = True
     st.session_state[BACKING_TRANSPORT_STATUS] = "playing"
+    record_backing_timing_event(st.session_state, "play_start")
     st.session_state["backing_lead_sheet_open"] = True
     st.session_state["playback_start_time"] = time.time()
     try:
@@ -7385,6 +7387,12 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         st.session_state,
         _chart_practice_key,
         active_instrument,
+        capo_shape_key=(
+            str(st.session_state.get("guitar_capo_shape_key") or "").strip()
+            if active_instrument == "Guitar"
+            and st.session_state.get("guitar_capo_enabled")
+            else None
+        ),
     )
     _details_error: Exception | None = None
     try:
@@ -11427,6 +11435,7 @@ elif _studio_page == "backing":
     _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
     if _backing_audio_ready and not _leadsheet_open:
         st.markdown("#### Audio player")
+        record_backing_timing_event(st.session_state, "audio_load_complete")
         st.audio(
             st.session_state["_last_backing_wav"],
             format="audio/wav",
@@ -11492,7 +11501,7 @@ elif _studio_page == "backing":
         )
 
     chart_display_key = (
-        _capo_ctx.sounding_key if _capo_ctx.enabled else chart_key
+        _capo_ctx.shape_key if _capo_ctx.enabled else chart_key
     )
     chart_sections = performed_sections
 
@@ -11545,8 +11554,21 @@ elif _studio_page == "backing":
 
     if _gen_clicked or _karaoke_auto_gen:
         st.session_state[BACKING_TRANSPORT_STATUS] = "generating"
+        record_backing_timing_event(
+            st.session_state,
+            "generate_start",
+            signature=_current_backing_signature,
+        )
         _gen_profile = BackingGenProfile(bar_count=len(backing_events) * max(1, form_loops))
         _gen_t0 = time.perf_counter()
+        _session_wav_hit = False
+        _cached_session_wav = None
+        if (
+            st.session_state.get("_last_backing_signature") == _current_backing_signature
+            and st.session_state.get("_last_backing_wav")
+        ):
+            _cached_session_wav = st.session_state["_last_backing_wav"]
+            _session_wav_hit = True
         with st.spinner("Generating backing track…"):
             _tl_t0 = time.perf_counter()
             timeline, _tl_hit = _cached_backing_timeline(
@@ -11559,20 +11581,26 @@ elif _studio_page == "backing":
             _gen_profile.timeline_ms = profile_elapsed_ms(_tl_t0)
             _gen_profile.cache_hit_timeline = _tl_hit
 
-            _syn_t0 = time.perf_counter()
-            wav, _wav_hit = _cached_backing_wav(
-                _current_backing_signature,
-                backing_events=backing_events,
-                bpm=bpm,
-                loops=form_loops,
-                style=resolved_groove,
-                level=level,
-                song_title=str(song_data.get("title", song)),
-                song_artist=str(song_data.get("artist", "")),
-                time_signature=backing_time_signature,
-            )
-            _gen_profile.synthesis_ms = profile_elapsed_ms(_syn_t0)
-            _gen_profile.cache_hit_wav = _wav_hit
+            if _cached_session_wav is not None:
+                wav = _cached_session_wav
+                _wav_hit = True
+                _gen_profile.synthesis_ms = 0.0
+                _gen_profile.cache_hit_wav = True
+            else:
+                _syn_t0 = time.perf_counter()
+                wav, _wav_hit = _cached_backing_wav(
+                    _current_backing_signature,
+                    backing_events=backing_events,
+                    bpm=bpm,
+                    loops=form_loops,
+                    style=resolved_groove,
+                    level=level,
+                    song_title=str(song_data.get("title", song)),
+                    song_artist=str(song_data.get("artist", "")),
+                    time_signature=backing_time_signature,
+                )
+                _gen_profile.synthesis_ms = profile_elapsed_ms(_syn_t0)
+                _gen_profile.cache_hit_wav = _wav_hit
             _gen_profile.wav_kb = len(wav) / 1024.0
 
             st.session_state[BACKING_TRANSPORT_STATUS] = "preparing"
@@ -11584,6 +11612,18 @@ elif _studio_page == "backing":
 
         _gen_profile.total_ms = profile_elapsed_ms(_gen_t0)
         st.session_state["_backing_last_gen_profile"] = _gen_profile.as_dict()
+        record_backing_timing_event(
+            st.session_state,
+            "generate_complete",
+            signature=_current_backing_signature,
+            extra={
+                "session_cache_hit": _session_wav_hit,
+                "module_cache_hit_wav": bool(_gen_profile.cache_hit_wav and not _session_wav_hit),
+                "module_cache_hit_timeline": _gen_profile.cache_hit_timeline,
+                "module_cache_hit_b64": _gen_profile.cache_hit_b64,
+                "total_ms": round(_gen_profile.total_ms, 1),
+            },
+        )
         st.session_state["_last_backing_wav_b64"] = _b64
 
         st.session_state["_last_backing_wav"] = wav
@@ -11627,7 +11667,6 @@ elif _studio_page == "backing":
         except ImportError:
             pass
         clear_backing_needs_regen(st)
-        st.rerun()
 
     if _play_clicked:
         _karaoke_voice_play = bool(km.is_voice_mode(st.session_state))
@@ -11636,7 +11675,12 @@ elif _studio_page == "backing":
             follow_key_prefix=_follow_key_prefix,
             karaoke_voice=_karaoke_voice_play,
         )
-        st.rerun()
+
+    _backing_audio_ready = bool(
+        st.session_state.get("_last_backing_wav")
+        and st.session_state.get("_last_backing_signature") == _current_backing_signature
+    )
+    _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
 
     _stored_timeline = (
         st.session_state.get("_last_backing_timeline")
@@ -11808,6 +11852,7 @@ elif _studio_page == "backing":
                 st.session_state["_last_backing_wav"],
             )
             st.session_state["_last_backing_wav_b64"] = _player_b64
+        record_backing_timing_event(st.session_state, "audio_load_complete")
         render_scroll_anchor_marker(st, ANCHOR_BACKING_FOLLOW_ALONG)
         _play_feedback = str(
             st.session_state.get(BACKING_PLAY_FEEDBACK_KEY, "") or ""

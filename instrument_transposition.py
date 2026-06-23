@@ -434,12 +434,31 @@ def resolve_practice_keys(
     session_state[CONCERT_KEY_SESSION_KEY] = concert_key
     written = written_key_for_instrument(concert_key, instrument, session_state)
     chart_key, mode = effective_chart_key(concert_key, instrument, session_state)
+    capo_shape: str | None = None
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
+
+        if str(instrument or "").strip() == "Guitar" and session_state.get(CAPO_ENABLED_KEY):
+            capo_shape = str(session_state.get(CAPO_SHAPE_KEY) or "").strip() or None
+    except ImportError:
+        capo_shape = None
+    if capo_shape:
+        chart_key = capo_shape
+        mode = "written"
     global_display = chart_key if mode == "written" else concert_key
+    if capo_shape:
+        global_display = capo_shape
+    practice_key = effective_practice_key(
+        session_state,
+        concert_key,
+        instrument,
+        capo_shape_key=capo_shape,
+    )
     return {
         "concert_key": concert_key,
         "written_key": written,
         "chart_key": chart_key,
-        "effective_practice_key": chart_key,
+        "effective_practice_key": practice_key,
         "global_display_key": global_display,
         "chart_key_mode": mode,
         "transposing_type": selected_transposing_type(session_state, instrument)

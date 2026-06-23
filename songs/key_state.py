@@ -380,6 +380,25 @@ def get_authoritative_display_key(
         pick_key=pick_key,
         source=source,
     )
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
+
+        if (
+            str(session.get("instrument") or "").strip() == "Guitar"
+            and session.get(CAPO_ENABLED_KEY)
+        ):
+            shape = str(session.get(CAPO_SHAPE_KEY) or "").strip()
+            if shape:
+                trace_display_key_surface(
+                    session,
+                    surface or "authoritative_capo",
+                    shape,
+                    pick_key=pick_key,
+                    source="authoritative_capo_shape",
+                )
+                return shape
+    except ImportError:
+        pass
     return resolved
 
 

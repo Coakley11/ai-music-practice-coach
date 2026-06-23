@@ -426,6 +426,10 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "mt_track_filenames",
     "mt_tracks",
     "mixed_track_wav",
+    "guitar_capo_enabled",
+    "guitar_capo_sounding_key",
+    "guitar_capo_shape_key",
+    "guitar_capo_last_concert_key",
 )
 
 _LIST_KEYS = (

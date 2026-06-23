@@ -12,7 +12,7 @@ from typing import Any
 
 
 
-MUSIC_PERSIST_DEPLOY_VERSION = "music-persistence-restore-v18"
+MUSIC_PERSIST_DEPLOY_VERSION = "music-persistence-restore-v19"
 
 TRACE_KEY = "_music_persist_trace"
 
@@ -1214,12 +1214,6 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
             render_studio_nav_state_debug(st, ss)
             render_active_song_state_debug(st, ss)
-            try:
-                from widget_control_debug import render_widget_control_debug
-
-                render_widget_control_debug(st, ss)
-            except ImportError:
-                pass
             render_practice_state_debug(st, ss)
             render_backing_state_debug(st, ss)
 

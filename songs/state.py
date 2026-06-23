@@ -922,6 +922,34 @@ def apply_pick_key(
     return data
 
 
+def _pick_key_from_cloud_payload(session_state: dict[str, Any]) -> str:
+    """Best-effort pick_key from last cloud/disk workspace blob (restore guard)."""
+    payload = session_state.get("_suite_last_cloud_fetch_payload")
+    if not isinstance(payload, dict) or not payload:
+        return ""
+    core = payload.get("core") if isinstance(payload.get("core"), dict) else {}
+    pk = str(core.get("pick_key") or core.get("active_catalog_pick_key") or "").strip()
+    if pk:
+        return pk
+    extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    pk = str(extra.get("active_catalog_pick_key") or "").strip()
+    if pk:
+        return pk
+    meta = payload.get("active_song_state")
+    if isinstance(meta, dict):
+        pk = str(meta.get("pick_key") or meta.get("active_catalog_pick_key") or "").strip()
+        if pk:
+            return pk
+    ws = payload.get("music_workspace_state")
+    if isinstance(ws, dict):
+        active = ws.get("active_song")
+        if isinstance(active, dict):
+            pk = str(active.get("pick_key") or "").strip()
+            if pk:
+                return pk
+    return ""
+
+
 def get_song_context(
     st: Any,
     *,
@@ -990,6 +1018,12 @@ def get_song_context(
         genre, label = parse_pick_key(resolved_pk)
         resolved = _build_library_from_picker(genre, label, song_picker_catalog, song_library)
         if resolved is None:
+            cloud_pk = _pick_key_from_cloud_payload(st.session_state)
+            if cloud_pk and resolve_pick_key(cloud_pk, song_picker_catalog=song_picker_catalog):
+                return _commit(
+                    resolve_pick_key(cloud_pk, song_picker_catalog=song_picker_catalog) or cloud_pk,
+                    notice=notice or "Restored song selection from saved workspace.",
+                )
             fallback = first_valid_pick_key(song_picker_catalog)
             if not fallback:
                 raise RuntimeError("Song catalog is empty — cannot select a default song.")
@@ -1001,6 +1035,15 @@ def get_song_context(
         return genre, title, song_data
 
     if not pk:
+        cloud_pk = _pick_key_from_cloud_payload(st.session_state)
+        if cloud_pk and resolve_pick_key(cloud_pk, song_picker_catalog=song_picker_catalog):
+            resolved_cloud = resolve_pick_key(cloud_pk, song_picker_catalog=song_picker_catalog) or cloud_pk
+            if not _recovery_may_persist():
+                deferred = _context_from_sel_only()
+                if deferred is not None:
+                    st.session_state["_pick_key_recovery_deferred"] = cloud_pk
+                    return deferred
+            return _commit(resolved_cloud)
         fallback = first_valid_pick_key(song_picker_catalog)
         if not fallback:
             raise RuntimeError("Master song not initialized — call ensure_master_song_initialized first.")
@@ -1031,6 +1074,17 @@ def get_song_context(
         if deferred is not None:
             st.session_state["_pick_key_recovery_deferred"] = pk
             return deferred
+        cloud_pk = _pick_key_from_cloud_payload(st.session_state)
+        resolved_cloud = (
+            resolve_pick_key(cloud_pk, song_picker_catalog=song_picker_catalog) if cloud_pk else None
+        )
+        if resolved_cloud:
+            genre, label = parse_pick_key(resolved_cloud)
+            built = _build_library_from_picker(genre, label, song_picker_catalog, song_library)
+            if built is not None:
+                title, song_data = built
+                st.session_state["_pick_key_recovery_deferred"] = pk or cloud_pk
+                return genre, title, song_data
     fallback = first_valid_pick_key(song_picker_catalog)
     if not fallback:
         raise RuntimeError("Song catalog is empty — cannot recover from stale pick key.")

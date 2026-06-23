@@ -19,6 +19,13 @@ CAPO_SOUNDING_KEY = "guitar_capo_sounding_key"
 CAPO_SHAPE_KEY = "guitar_capo_shape_key"
 CAPO_LAST_CONCERT_KEY = "guitar_capo_last_concert_key"
 
+CAPO_PERSIST_KEYS: tuple[str, ...] = (
+    CAPO_ENABLED_KEY,
+    CAPO_SOUNDING_KEY,
+    CAPO_SHAPE_KEY,
+    CAPO_LAST_CONCERT_KEY,
+)
+
 _SHAPE_CANDIDATES: tuple[str, ...] = (
     "G",
     "E",
@@ -49,6 +56,61 @@ def default_shape_key_for_sounding(sounding_key: str) -> str:
             best_capo = capo
             best_shape = shape
     return best_shape
+
+
+def capo_fields_from_session(session_state: dict) -> dict[str, Any]:
+    """Capo blob fields for active_song_state / cloud persistence."""
+    return {
+        CAPO_ENABLED_KEY: bool(session_state.get(CAPO_ENABLED_KEY)),
+        CAPO_SOUNDING_KEY: str(session_state.get(CAPO_SOUNDING_KEY) or "").strip(),
+        CAPO_SHAPE_KEY: str(session_state.get(CAPO_SHAPE_KEY) or "").strip(),
+        CAPO_LAST_CONCERT_KEY: str(session_state.get(CAPO_LAST_CONCERT_KEY) or "").strip(),
+    }
+
+
+def apply_capo_context_fields(session_state: dict, ctx: dict[str, Any]) -> None:
+    """Hydrate live capo session keys from canonical/cloud context."""
+    if CAPO_ENABLED_KEY in ctx:
+        session_state[CAPO_ENABLED_KEY] = bool(ctx.get(CAPO_ENABLED_KEY))
+    for key in (CAPO_SOUNDING_KEY, CAPO_SHAPE_KEY, CAPO_LAST_CONCERT_KEY):
+        if key in ctx:
+            val = str(ctx.get(key) or "").strip()
+            if val:
+                session_state[key] = val
+
+
+def sync_capo_written_display_key(session_state: dict) -> None:
+    """When capo shape mode is on, shape key is the written/practice display key."""
+    if not session_state.get(CAPO_ENABLED_KEY):
+        return
+    shape = str(session_state.get(CAPO_SHAPE_KEY) or "").strip()
+    if shape:
+        session_state["display_key"] = shape
+
+
+def persist_capo_to_canonical(session_state: dict) -> None:
+    """Push capo widget state into active_song_state when values changed."""
+    try:
+        from active_song_state import (
+            ACTIVE_SONG_STATE_KEY,
+            gather_active_song_context,
+            write_canonical_active_song_state,
+        )
+
+        sync_capo_written_display_key(session_state)
+        live = capo_fields_from_session(session_state)
+        meta = session_state.get(ACTIVE_SONG_STATE_KEY)
+        if isinstance(meta, dict) and all(meta.get(k) == live.get(k) for k in live):
+            return
+        ctx = gather_active_song_context(session_state)
+        write_canonical_active_song_state(
+            session_state,
+            ctx,
+            reason="capo_widget",
+            local_edit=True,
+        )
+    except ImportError:
+        pass
 
 
 def init_capo_session_state(session_state: dict, *, concert_key: str) -> None:
@@ -175,6 +237,7 @@ def render_guitar_capo_sidebar(st: Any, session_state: dict, *, concert_key: str
     )
     if not session_state.get(CAPO_ENABLED_KEY):
         st.caption("Off — charts follow Practice / Display Key like other instruments.")
+        persist_capo_to_canonical(session_state)
         return
 
     key_opts = display_key_options(concert_key)
@@ -207,6 +270,8 @@ def render_guitar_capo_sidebar(st: Any, session_state: dict, *, concert_key: str
         f"Capo **{capo}** · backing = **{session_state[CAPO_SOUNDING_KEY]}** · "
         f"charts = **{session_state[CAPO_SHAPE_KEY]}** shapes"
     )
+    sync_capo_written_display_key(session_state)
+    persist_capo_to_canonical(session_state)
 
 
 def render_guitar_capo_practice_panel(
