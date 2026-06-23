@@ -54,6 +54,22 @@ def resolve_restore_display_key(
     return ""
 
 
+def canonical_display_key_for_pick(session: dict[str, Any], pick_key: str) -> str:
+    """Saved practice display key for one pick_key only (ignores other songs' canonical)."""
+    pk = str(pick_key or "").strip()
+    if not pk:
+        return ""
+    try:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+
+        meta = session.get(ACTIVE_SONG_STATE_KEY)
+        if isinstance(meta, dict) and str(meta.get("pick_key") or "").strip() == pk:
+            return str(meta.get("display_key") or "").strip()
+    except ImportError:
+        pass
+    return ""
+
+
 _BACKING_CACHE_KEYS = (
     "_last_backing_wav",
     "_last_backing_wav_b64",
@@ -214,19 +230,19 @@ def apply_display_key_for_active_song(
     if identity_changed:
         st.session_state[IDENTITY_KEY] = song_identity
         pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
+        identity_pk = str(song_identity[0] or "").strip() if song_identity else ""
         if pending_key is not None:
             target = pending_key
         else:
-            canonical = ""
-            try:
-                from active_song_state import ACTIVE_SONG_STATE_KEY
+            canonical = canonical_display_key_for_pick(st.session_state, identity_pk)
+            target = canonical or original_key
+        try:
+            from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
 
-                meta = st.session_state.get(ACTIVE_SONG_STATE_KEY)
-                if isinstance(meta, dict):
-                    canonical = str(meta.get("display_key") or "").strip()
-            except ImportError:
-                pass
-            target = canonical or str(pending or "").strip() or original_key
+            st.session_state.pop(DISPLAY_KEY_CHANGE_SOURCE_KEY, None)
+            st.session_state.pop(DISPLAY_KEY_OWNER_IDENTITY_KEY, None)
+        except ImportError:
+            pass
         _apply_display_key_before_widget(st, target, source="active_song_change")
         st.session_state[LAST_DISPLAY_KEY] = st.session_state["display_key"]
         invalidate_backing_cache(st)
@@ -415,9 +431,6 @@ def get_authoritative_display_key(
             if _display_key_override_valid_for_identity(session) and live:
                 resolved = live
                 source = "authoritative_live_override"
-            elif live:
-                resolved = live
-                source = "authoritative_live"
             elif canonical:
                 resolved = canonical
                 source = "authoritative_canonical"

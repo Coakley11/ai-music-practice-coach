@@ -244,7 +244,7 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertNotIn(PENDING_CUSTOM_ACTIVE_SONG_KEY, ss)
         self.assertEqual(
             ss[IDENTITY_KEY],
-            song_display_identity("My Progression", "Your progression", "C"),
+            song_display_identity("My Progression", "Your progression", "C", pick_key="custom::My Progression"),
         )
 
     def test_pending_display_key_applied_before_widget_on_next_run(self) -> None:
@@ -848,9 +848,9 @@ class TestCplSetActiveSong(unittest.TestCase):
         }
         original, practice = active_song_key_pair(session, {"key": "G"})
         self.assertEqual(original, "D")
-        self.assertEqual(practice, "Eb")
+        self.assertEqual(practice, "D")
 
-    def test_resolve_active_song_keys_prefers_live_session_over_stale_canonical(self) -> None:
+    def test_resolve_active_song_keys_prefers_canonical_saved_override_for_same_pick(self) -> None:
         session = {
             ACTIVE_CATALOG_PICK_KEY: PK_A,
             SELECTED_SONG_STATE_KEY: {
@@ -868,7 +868,7 @@ class TestCplSetActiveSong(unittest.TestCase):
         }
         original, display, _written = resolve_active_song_keys(session, {"key": "G"})
         self.assertEqual(original, "G")
-        self.assertEqual(display, "G")
+        self.assertEqual(display, "C")
 
     def test_switch_to_catalog_from_custom_resets_display_to_song_key(self) -> None:
         from songs.key_state import IDENTITY_KEY
@@ -913,7 +913,7 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(st.session_state["display_key"], "G")
         self.assertEqual(
             st.session_state.get(IDENTITY_KEY),
-            song_display_identity("Song A", "Artist A", "G"),
+            song_display_identity("Song A", "Artist A", "G", pick_key=PK_A),
         )
 
     def test_resolve_active_song_keys_prefers_canonical_over_stale_session(self) -> None:

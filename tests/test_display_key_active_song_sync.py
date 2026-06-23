@@ -196,5 +196,126 @@ class TestDisplayKeyActiveSongSync(unittest.TestCase):
         self.assertEqual(st.session_state.get(PENDING_DISPLAY_KEY), "C#m")
 
 
+    def test_switch_song_resets_display_key_to_new_original(self) -> None:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+        from songs.music_source import ACTIVE_SONG_IDENTITY_KEY, compute_active_song_identity
+
+        shape_owner = compute_active_song_identity(
+            pick_key=PK_A,
+            title="Song A",
+            artist="Artist A",
+            original_key="G",
+        )
+        st = _fake_st(
+            {
+                SELECTED_SONG_STATE_KEY: {
+                    "pick_key": PK_A,
+                    "title": "Song A",
+                    "artist": "Artist A",
+                    "key": "G",
+                },
+                ACTIVE_CATALOG_PICK_KEY: PK_A,
+                _LAST_PICK_KEY: PK_A,
+                "display_key": "C#m",
+                IDENTITY_KEY: song_display_identity("Song A", "Artist A", "G", pick_key=PK_A),
+                ACTIVE_SONG_IDENTITY_KEY: shape_owner,
+                ACTIVE_SONG_STATE_KEY: {
+                    "pick_key": PK_A,
+                    "display_key": "C#m",
+                },
+            }
+        )
+        with patch("songs.state.persist_music_local_state"):
+            apply_pick_key(st, PK_B, CATALOG, skip_activity_log=True)
+
+        self.assertEqual(st.session_state["display_key"], "C")
+
+    def test_switch_back_restores_per_song_display_key_override(self) -> None:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+        from songs.music_source import ACTIVE_SONG_IDENTITY_KEY, compute_active_song_identity
+
+        shape_owner = compute_active_song_identity(
+            pick_key=PK_A,
+            title="Song A",
+            artist="Artist A",
+            original_key="G",
+        )
+        st = _fake_st(
+            {
+                SELECTED_SONG_STATE_KEY: {
+                    "pick_key": PK_B,
+                    "title": "Song B",
+                    "artist": "Artist B",
+                    "key": "C",
+                },
+                ACTIVE_CATALOG_PICK_KEY: PK_B,
+                _LAST_PICK_KEY: PK_B,
+                "display_key": "C",
+                ACTIVE_SONG_STATE_KEY: {
+                    "pick_key": PK_A,
+                    "display_key": "C#m",
+                },
+            }
+        )
+        with patch("songs.state.persist_music_local_state"):
+            apply_pick_key(st, PK_A, CATALOG, skip_activity_log=True)
+
+        self.assertEqual(st.session_state["display_key"], "C#m")
+
+    def test_cpl_merge_preserves_sidebar_display_key_for_matching_identity(self) -> None:
+        from active_song_state import ACTIVE_SONG_STATE_KEY, _merge_display_key_for_active_song
+        from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+        from songs.music_source import ACTIVE_SONG_IDENTITY_KEY, SOURCE_CUSTOM
+
+        owner = "cpl::trial-1"
+        session = {
+            "display_key": "F",
+            DISPLAY_KEY_CHANGE_SOURCE_KEY: "sidebar_on_change",
+            DISPLAY_KEY_OWNER_IDENTITY_KEY: owner,
+            ACTIVE_SONG_IDENTITY_KEY: owner,
+            "active_catalog_pick_key": "custom::trial",
+            "active_music_source": "custom_progression",
+            ACTIVE_SONG_STATE_KEY: {
+                "music_source": SOURCE_CUSTOM,
+                "display_key": "G",
+                "custom_home_key": "D",
+                "pick_key": "custom::trial",
+            },
+        }
+        ctx = {
+            "music_source": SOURCE_CUSTOM,
+            "display_key": "G",
+            "custom_home_key": "D",
+            "pick_key": "custom::trial",
+        }
+        merged = _merge_display_key_for_active_song(session, ctx, home_key="D")
+        self.assertEqual(merged, "F")
+
+    def test_cpl_merge_ignores_stale_catalog_display_key(self) -> None:
+        from active_song_state import ACTIVE_SONG_STATE_KEY, _merge_display_key_for_active_song
+        from songs.music_source import SOURCE_CUSTOM
+
+        session = {
+            "display_key": "Eb",
+            "active_catalog_pick_key": "custom::trial",
+            "active_music_source": "custom_progression",
+            ACTIVE_SONG_STATE_KEY: {
+                "music_source": SOURCE_CUSTOM,
+                "display_key": "Eb",
+                "custom_home_key": "D",
+                "pick_key": "pop::Other Song",
+            },
+        }
+        ctx = {
+            "music_source": SOURCE_CUSTOM,
+            "display_key": "Eb",
+            "custom_home_key": "D",
+            "pick_key": "custom::trial",
+        }
+        merged = _merge_display_key_for_active_song(session, ctx, home_key="D")
+        self.assertEqual(merged, "D")
+
+
 if __name__ == "__main__":
     unittest.main()

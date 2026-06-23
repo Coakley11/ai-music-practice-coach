@@ -868,6 +868,15 @@ def apply_pick_key(
             restore_display_key if (is_restore and restore_display_key) else original_key
         )
         user_song_change = pick_changed and not is_restore
+        if user_song_change:
+            try:
+                from songs.key_state import canonical_display_key_for_pick
+
+                saved_for_pick = canonical_display_key_for_pick(st.session_state, pick_key)
+                if saved_for_pick:
+                    effective_display_key = saved_for_pick
+            except ImportError:
+                pass
         on_active_song_identity_changed(
             st,
             pick_key=pick_key,

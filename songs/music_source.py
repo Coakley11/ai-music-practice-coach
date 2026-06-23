@@ -34,6 +34,8 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     """True when Custom Progression is the active song (session or canonical blob)."""
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return False
+    if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
+        return False
     if is_custom_progression(session_state):
         return True
     from songs.state import ACTIVE_CATALOG_PICK_KEY
@@ -47,8 +49,6 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
             return True
         if str(meta.get("pick_key") or "").strip().startswith("custom::"):
             return True
-    if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
-        return False
     return False
 
 

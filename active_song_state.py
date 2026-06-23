@@ -322,14 +322,11 @@ def _display_key_override_valid_for_identity(session: dict[str, Any]) -> bool:
 
     owner = str(session.get(DISPLAY_KEY_OWNER_IDENTITY_KEY) or "").strip()
     current = _current_active_song_identity(session)
-    sidebar_change = (
+    if owner and current:
+        return owner == current
+    return (
         str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip() == "sidebar_on_change"
     )
-    if owner and current:
-        if owner == current:
-            return True
-        return sidebar_change
-    return sidebar_change
 
 
 def _merge_display_key_for_active_song(
@@ -364,6 +361,13 @@ def _merge_display_key_for_active_song(
         session_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or ctx_pick or "").strip()
     except ImportError:
         session_pick = ctx_pick
+    meta = session.get(ACTIVE_SONG_STATE_KEY)
+    if isinstance(meta, dict):
+        meta_pick = str(meta.get("pick_key") or "").strip()
+        if session_pick and meta_pick and meta_pick != session_pick:
+            canonical = ""
+            if not _display_key_override_valid_for_identity(session):
+                live = ""
     same_song = not ctx_pick or not session_pick or ctx_pick == session_pick
     is_catalog_ctx = not (
         custom_progression_is_active(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM
@@ -377,6 +381,24 @@ def _merge_display_key_for_active_song(
     if is_catalog_ctx and prev_identity.startswith("cpl::"):
         if canonical:
             return canonical
+        catalog_home = str(
+            home_key
+            or (ctx.get("selected_song") or {}).get("key")
+            or "C"
+        ).strip() or "C"
+        return catalog_home
+    if not same_song:
+        try:
+            from songs.key_state import canonical_display_key_for_pick
+
+            scoped = canonical_display_key_for_pick(session, session_pick)
+            if scoped:
+                return scoped
+        except ImportError:
+            pass
+        if custom_progression_is_active(session) or str(ctx.get("music_source") or "") == SOURCE_CUSTOM:
+            home = str(home_key or ctx.get("custom_home_key") or "C").strip() or "C"
+            return home
         catalog_home = str(
             home_key
             or (ctx.get("selected_song") or {}).get("key")
@@ -493,13 +515,8 @@ def _resolve_custom_display_key_for_session(
     change_source = str(session.get("display_key_change_source") or "").strip()
     if _display_key_override_valid_for_identity(session) and live:
         return live
-    user_override = bool(live and live != home and change_source)
-    if user_override:
-        return live
     if canonical:
         return canonical
-    if live:
-        return live
     return home
 
 

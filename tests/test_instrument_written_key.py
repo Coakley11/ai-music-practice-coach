@@ -245,12 +245,15 @@ def test_cpl_merge_preserves_sidebar_display_key():
     from active_song_state import ACTIVE_SONG_STATE_KEY, _merge_display_key_for_active_song
     from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
     from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
-    from songs.music_source import SOURCE_CUSTOM
+    from songs.music_source import ACTIVE_SONG_IDENTITY_KEY, SOURCE_CUSTOM
 
+    owner = "cpl::test"
     session = {
         "display_key": "F",
         DISPLAY_KEY_CHANGE_SOURCE_KEY: "sidebar_on_change",
-        DISPLAY_KEY_OWNER_IDENTITY_KEY: "cpl::test::F",
+        DISPLAY_KEY_OWNER_IDENTITY_KEY: owner,
+        ACTIVE_SONG_IDENTITY_KEY: owner,
+        "active_catalog_pick_key": "custom::test",
         "active_music_source": "custom_progression",
         ACTIVE_SONG_STATE_KEY: {
             "music_source": SOURCE_CUSTOM,

@@ -42,11 +42,19 @@ class TestAuthoritativeDisplayKey(unittest.TestCase):
         self.assertEqual((trace.get("sidebar") or {}).get("value"), "D")
         self.assertEqual((trace.get("song_card") or {}).get("value"), "G")
 
-    def test_get_authoritative_display_key_prefers_live(self) -> None:
+    def test_get_authoritative_display_key_prefers_live_override_for_same_identity(self) -> None:
+        from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+        from songs.music_source import ACTIVE_SONG_IDENTITY_KEY
+
+        owner = "pk::pk::1"
         session = {
             "display_key": "Eb",
             SELECTED_SONG_STATE_KEY: {"pick_key": "pk::1", "key": "C"},
             ACTIVE_CATALOG_PICK_KEY: "pk::1",
+            DISPLAY_KEY_OWNER_IDENTITY_KEY: owner,
+            ACTIVE_SONG_IDENTITY_KEY: owner,
+            DISPLAY_KEY_CHANGE_SOURCE_KEY: "sidebar_on_change",
         }
         self.assertEqual(
             get_authoritative_display_key(session, original_key="C", surface="practice"),
