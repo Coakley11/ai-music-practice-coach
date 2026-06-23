@@ -48,6 +48,30 @@ class V19RestoreGuardTests(unittest.TestCase):
         self.assertEqual(title, "Stay")
         self.assertEqual(st.session_state.get(ACTIVE_CATALOG_PICK_KEY), cloud_pk)
 
+    def test_get_song_context_uses_canonical_pick_key_before_catalog_default(self):
+        catalog = {
+            "Pop": {
+                "Say — Artist": {"title": "Say", "artist": "Artist", "key": "C", "sections": {}},
+                "Stay — Artist": {"title": "Stay", "artist": "Artist", "key": "G", "sections": {}},
+            }
+        }
+        saved_pk = format_pick_key("Pop", "Stay — Artist")
+        st = _FakeSt(
+            {
+                ACTIVE_CATALOG_PICK_KEY: "",
+                "selected_song": {},
+                "active_song_state": {"pick_key": saved_pk},
+                "_music_restore_phase_complete": True,
+            }
+        )
+        genre, title, _data = get_song_context(
+            st,
+            song_library=catalog,
+            song_picker_catalog=catalog,
+        )
+        self.assertEqual(title, "Stay")
+        self.assertEqual(st.session_state.get(ACTIVE_CATALOG_PICK_KEY), saved_pk)
+
     def test_capo_fields_round_trip(self):
         ss = {
             CAPO_ENABLED_KEY: True,

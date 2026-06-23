@@ -260,8 +260,11 @@ from practice_setup_controls import (
     render_setup_quick_controls,
 )
 from guitar_capo import (
+    CAPO_ENABLED_KEY,
+    CAPO_SHAPE_KEY,
     build_capo_context,
     capo_status_banner_html,
+    chart_bundle_transpose_key,
     render_guitar_capo_practice_panel,
     render_guitar_capo_sidebar,
 )
@@ -9783,6 +9786,19 @@ if instrument == "Guitar":
         practice_display_key=display_key,
     )
 
+_guitar_capo_on = instrument == "Guitar" and bool(st.session_state.get(CAPO_ENABLED_KEY))
+_chart_bundle_transpose_key = chart_bundle_transpose_key(
+    instrument=instrument,
+    capo_enabled=_guitar_capo_on,
+    concert_key=concert_key,
+    chart_key=chart_key,
+)
+_capo_shape_cache = (
+    str(st.session_state.get(CAPO_SHAPE_KEY) or "").strip()
+    if _guitar_capo_on
+    else ""
+)
+
 _chart_bundle = session_cache_get_or_set(
     st.session_state,
     "chart_bundle",
@@ -9795,8 +9811,9 @@ _chart_bundle = session_cache_get_or_set(
         str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("original_key_center", "")),
         str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("progression_style", "")),
         level,
-        chart_key,
+        _chart_bundle_transpose_key,
         chart_key_mode,
+        _capo_shape_cache,
         chart_transpose_cache_signature(st.session_state, instrument),
         st.session_state.get("_catalog_revision"),
         st.session_state.get("_user_chart_overrides_revision", 0),
@@ -9808,7 +9825,7 @@ _chart_bundle = session_cache_get_or_set(
         catalog_song=_catalog_song,
         catalog_song_data=_catalog_song_data,
         level=level,
-        display_key=chart_key,
+        display_key=_chart_bundle_transpose_key,
         cpl_active_key=CPL_ACTIVE_KEY,
         sections_for_level=sections_for_level,
         transpose_sections=transpose_sections,

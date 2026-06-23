@@ -94,6 +94,23 @@ def sync_capo_written_display_key(session_state: dict) -> None:
     return
 
 
+def chart_bundle_transpose_key(
+    *,
+    instrument: str,
+    capo_enabled: bool,
+    concert_key: str,
+    chart_key: str,
+) -> str:
+    """Key used to transpose catalog sections before capo shape split.
+
+    When guitar capo is on, sections must stay in the *sounding* (practice display)
+    key; ``build_capo_context`` applies the shape-key transpose once.
+    """
+    if str(instrument or "").strip() == "Guitar" and capo_enabled:
+        return str(concert_key or chart_key or "C").strip() or "C"
+    return str(chart_key or concert_key or "C").strip() or "C"
+
+
 def sync_capo_from_practice_display_key(
     session_state: dict,
     practice_display_key: str,

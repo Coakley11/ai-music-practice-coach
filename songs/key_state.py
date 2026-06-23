@@ -91,6 +91,12 @@ def mark_display_key_changed(st: Any) -> None:
         st.session_state[LAST_DISPLAY_KEY_SAVE_OK_KEY] = bool(ok)
         if ok:
             try:
+                from active_song_state import clear_active_song_local_edit
+
+                clear_active_song_local_edit(st.session_state)
+            except ImportError:
+                pass
+            try:
                 from songs.music_source import (
                     ACTIVE_SONG_IDENTITY_KEY,
                     compute_active_song_identity,
@@ -167,11 +173,20 @@ def apply_display_key_for_active_song(
 
     if identity_changed:
         st.session_state[IDENTITY_KEY] = song_identity
-        st.session_state.pop(PENDING_DISPLAY_KEY, None)
+        pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
         if pending_key is not None:
             target = pending_key
         else:
-            target = original_key
+            canonical = ""
+            try:
+                from active_song_state import ACTIVE_SONG_STATE_KEY
+
+                meta = st.session_state.get(ACTIVE_SONG_STATE_KEY)
+                if isinstance(meta, dict):
+                    canonical = str(meta.get("display_key") or "").strip()
+            except ImportError:
+                pass
+            target = canonical or str(pending or "").strip() or original_key
         _apply_display_key_before_widget(st, target, source="active_song_change")
         st.session_state[LAST_DISPLAY_KEY] = st.session_state["display_key"]
         invalidate_backing_cache(st)

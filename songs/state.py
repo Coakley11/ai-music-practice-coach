@@ -950,6 +950,28 @@ def _pick_key_from_cloud_payload(session_state: dict[str, Any]) -> str:
     return ""
 
 
+def _pick_key_from_canonical_session(session_state: dict[str, Any]) -> str:
+    """Pick key from hydrated canonical/session restore before catalog default."""
+    pk = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if pk:
+        return pk
+    sel = session_state.get(SELECTED_SONG_STATE_KEY) or {}
+    pk = str(sel.get("pick_key") or "").strip()
+    if pk:
+        return pk
+    try:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+
+        meta = session_state.get(ACTIVE_SONG_STATE_KEY)
+        if isinstance(meta, dict):
+            pk = str(meta.get("pick_key") or meta.get("active_catalog_pick_key") or "").strip()
+            if pk:
+                return pk
+    except ImportError:
+        pass
+    return ""
+
+
 def get_song_context(
     st: Any,
     *,
@@ -975,6 +997,8 @@ def get_song_context(
 
     sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
     pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or "").strip()
+    if not pk:
+        pk = _pick_key_from_canonical_session(st.session_state)
 
     def _recovery_may_persist() -> bool:
         try:

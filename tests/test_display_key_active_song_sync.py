@@ -101,6 +101,21 @@ class TestDisplayKeyActiveSongSync(unittest.TestCase):
         )
         self.assertEqual(st.session_state["display_key"], "G")
 
+    def test_identity_change_uses_canonical_display_key_over_original(self) -> None:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+
+        st = _fake_st(
+            {
+                ACTIVE_SONG_STATE_KEY: {
+                    "pick_key": PK_A,
+                    "display_key": "C#m",
+                },
+            }
+        )
+        new_identity = song_display_identity("Song A", "Artist A", "Bm", pick_key=PK_A)
+        apply_display_key_for_active_song(st, "Bm", new_identity)
+        self.assertEqual(st.session_state["display_key"], "C#m")
+
     def test_prepare_active_song_follows_live_pick_when_canonical_stale(self) -> None:
         session = {"display_key": "G"}
         write_canonical_active_song_state(

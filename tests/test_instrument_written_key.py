@@ -164,3 +164,46 @@ def test_persist_capo_blob_only_skips_apply_context():
     assert session["display_key"] == "D"
     assert session[ACTIVE_SONG_STATE_KEY][CAPO_ENABLED_KEY] is True
     assert session[ACTIVE_SONG_STATE_KEY][CAPO_SHAPE_KEY] == "G"
+
+
+def test_chart_bundle_transpose_key_uses_sounding_when_capo_on():
+    from guitar_capo import chart_bundle_transpose_key
+
+    assert (
+        chart_bundle_transpose_key(
+            instrument="Guitar",
+            capo_enabled=True,
+            concert_key="Bm",
+            chart_key="Gm",
+        )
+        == "Bm"
+    )
+    assert (
+        chart_bundle_transpose_key(
+            instrument="Guitar",
+            capo_enabled=False,
+            concert_key="Bm",
+            chart_key="Bm",
+        )
+        == "Bm"
+    )
+
+
+def test_capo_shape_sections_from_sounding_sections():
+    from guitar_capo import (
+        CAPO_ENABLED_KEY,
+        CAPO_SHAPE_KEY,
+        CAPO_SOUNDING_KEY,
+        build_capo_context,
+    )
+
+    sections = {"Verse": ["Bm", "G", "A"]}
+    ss = {
+        CAPO_ENABLED_KEY: True,
+        CAPO_SOUNDING_KEY: "Bm",
+        CAPO_SHAPE_KEY: "Gm",
+    }
+    ctx = build_capo_context(ss, sections, concert_key="Bm", instrument="Guitar")
+    assert ctx.shape_key == "Gm"
+    assert ctx.sounding_key == "Bm"
+    assert ctx.shape_sections["Verse"][0] == "Gm"
