@@ -3395,6 +3395,143 @@ def _iwantit_chart_pack() -> dict[str, Any]:
     }
 
 
+def _baby_one_more_time_chart_pack() -> dict[str, Any]:
+    """Baby One More Time — Britney Spears (C minor, pop, 4/4, 93 BPM).
+
+    Simplified practice catalog version stored in **C minor** (concert key).
+    Omits Vocal Break, Interlude, and Bridge. One list item = one bar;
+    ``|`` marks in-bar half-bar splits (e.g. ``Ab|Bb``).
+    """
+    def _hold(chord: str, bars: int) -> list[str]:
+        return [chord] * bars
+
+    def _verse_block() -> list[str]:
+        pattern = (
+            _hold("Cm", 2)
+            + _hold("G", 2)
+            + _hold("Eb", 2)
+            + _hold("Fm", 1)
+            + _hold("G", 1)
+        )
+        return pattern * 2
+
+    def _pre_chorus() -> list[str]:
+        return (
+            _hold("Cm", 2)
+            + _hold("G", 2)
+            + _hold("Eb", 2)
+            + _hold("Fm", 1)
+            + _hold("G", 1)
+        )
+
+    def _chorus() -> list[str]:
+        phrase_1 = (
+            _hold("Cm", 2)
+            + _hold("G", 2)
+            + _hold("Eb", 2)
+            + _hold("Fm", 1)
+            + _hold("G", 1)
+        )
+        phrase_2 = (
+            _hold("Cm", 2)
+            + _hold("G", 2)
+            + ["Ab|Bb"]
+            + _hold("Eb", 1)
+            + _hold("Fm", 1)
+            + _hold("G", 1)
+        )
+        return phrase_1 + phrase_2
+
+    intro = _hold("Cm", 8)
+    ending = _hold("Cm", 8)
+
+    intermediate = {
+        "Intro": list(intro),
+        "Verse 1": _verse_block(),
+        "Pre-Chorus 1": _pre_chorus(),
+        "Chorus 1": _chorus(),
+        "Verse 2": _verse_block(),
+        "Pre-Chorus 2": _pre_chorus(),
+        "Chorus 2": _chorus(),
+        "Final Chorus": _chorus(),
+        "Ending": list(ending),
+    }
+
+    beginner = dict(intermediate)
+
+    def _adv(ch: str) -> str:
+        if "|" in ch:
+            return "|".join(_adv(p.strip()) for p in ch.split("|") if p.strip())
+        return {
+            "Cm": "Cm7",
+            "G": "G7",
+            "Eb": "Ebmaj7",
+            "Fm": "Fm7",
+            "Ab": "Abmaj7",
+            "Bb": "Bb7",
+        }.get(ch, ch)
+
+    advanced = {
+        name: [_adv(c) for c in chords] for name, chords in intermediate.items()
+    }
+
+    section_order = list(intermediate.keys())
+    return {
+        "key": "Cm",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "composer": "Max Martin",
+        "lyric_cues": {
+            "Intro": ["Iconic Cm vamp — synth/piano pickup before verse"],
+            "Verse 1": [
+                "Oh baby, baby — (breath) intimate verse delivery",
+                "Cm · G · Eb · Fm · G loop — steady pop groove",
+            ],
+            "Pre-Chorus 1": ["Build into chorus — conserve energy for lift"],
+            "Chorus 1": [
+                "Hit me baby one more time — title hook",
+                "Ab|Bb half-bar lift into Eb turnaround",
+            ],
+            "Verse 2": ["Second verse — same groove as Verse 1"],
+            "Pre-Chorus 2": ["Pre-chorus 2 — push toward final lifts"],
+            "Chorus 2": ["Chorus 2 — fuller production feel"],
+            "Final Chorus": ["Final chorus — biggest energy, hold title hook"],
+            "Ending": ["Cm fade — 8-bar outro vamp"],
+        },
+        "extensions": _ext(
+            arrangement_notes=(
+                "**C minor** simplified practice chart (**4/4**, 93 BPM). "
+                "Stored and displayed in concert key **Cm**; no capo transpose. "
+                "Omits Vocal Break, Interlude, and Bridge for a consistent "
+                "practice-mode form. Tags: Pop · 90s Pop · Vocal Showcase."
+            ),
+            default_bpm=93,
+            default_groove="Pop",
+            time_signature="4/4",
+            repertoire_tags=["Pop", "90s Pop", "Vocal Showcase"],
+            vocal_showcase=True,
+            harmonic_analysis={
+                "progression_summary": "Cm–G–Eb–Fm–G verse/pre-chorus; chorus adds Ab–Bb lift",
+                "scale_suggestions": {
+                    "Cm": ["C natural minor", "C minor pentatonic"],
+                    "G": ["G major", "G mixolydian"],
+                    "Eb": ["Eb major"],
+                    "Fm": ["F natural minor"],
+                    "Ab": ["Ab major"],
+                    "Bb": ["Bb major"],
+                },
+            },
+            backing_character="pop_ballad_90s",
+        ),
+    }
+
+
 def _iwont_say_in_love_chart_pack() -> dict[str, Any]:
     """I Won't Say (I'm in Love) — Disney's Hercules (C, Broadway/gospel, 4/4).
 
@@ -6740,6 +6877,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("I'm Yours", "Jason Mraz"): _im_yours_chart_pack(),
         ("Take On Me (MTV Unplugged Version)", "a-ha"): _take_on_me_unplugged_chart_pack(),
         ("I Want It That Way", "Backstreet Boys"): _iwantit_chart_pack(),
+        ("Baby One More Time", "Britney Spears"): _baby_one_more_time_chart_pack(),
         (
             "I Won't Say (I'm in Love)",
             "Disney · Hercules",
@@ -7842,6 +7980,25 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             notes="Em → F#m modulation; full chart in override.",
             default_bpm=99,
             default_groove="Ballad",
+        ),
+        v(
+            "Baby One More Time",
+            "Britney Spears",
+            "Pop",
+            "Cm",
+            {
+                "Intro": ["Cm"] * 4,
+                "Verse 1": ["Cm", "G", "Eb", "Fm"],
+            },
+            {
+                "Intro": ["Cm"] * 4,
+                "Verse 1": ["Cm", "G", "Eb", "Fm"],
+            },
+            composer="Max Martin",
+            lyric_cues={"Intro": ["C minor synth vamp — simplified practice chart"]},
+            notes="C minor simplified practice form; full chart in override.",
+            default_bpm=93,
+            default_groove="Pop",
         ),
         v(
             "I Won't Say (I'm in Love)",
@@ -9553,6 +9710,24 @@ def curated_song_records() -> list[dict[str, Any]]:
                 default_groove="Ballad",
                 vocal_showcase=True,
                 repertoire_tags=["Vocal Showcase", "Boy Band", "90s Pop"],
+            ),
+            chart_status="practice_level_verified",
+        ),
+        _s(
+            "Baby One More Time",
+            "Britney Spears",
+            "Pop",
+            "Cm",
+            {
+                "Intro": ["Cm"],
+                "Verse 1": ["Cm", "G", "Eb", "Fm"],
+            },
+            composer="Max Martin",
+            extensions=_ext(
+                default_bpm=93,
+                default_groove="Pop",
+                time_signature="4/4",
+                repertoire_tags=["Pop", "90s Pop", "Vocal Showcase"],
             ),
             chart_status="practice_level_verified",
         ),
