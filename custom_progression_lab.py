@@ -1127,9 +1127,12 @@ def apply_cpl_session_progression(
     home_key = cpl_draft_written_key(session_state[CPL_ACTIVE_KEY])
     if reset_display_key:
         try:
-            from songs.key_state import PENDING_DISPLAY_KEY
+            from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+            from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY, PENDING_DISPLAY_KEY
 
             session_state.pop(PENDING_DISPLAY_KEY, None)
+            session_state.pop(DISPLAY_KEY_OWNER_IDENTITY_KEY, None)
+            session_state.pop(DISPLAY_KEY_CHANGE_SOURCE_KEY, None)
         except ImportError:
             pass
         session_state["display_key"] = home_key

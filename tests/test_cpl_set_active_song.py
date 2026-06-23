@@ -557,6 +557,32 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(st.session_state["display_key"], "D")
         self.assertEqual(st.session_state[CPL_ACTIVE_KEY]["name"], "Trial Song")
 
+    def test_commit_custom_ignores_stale_catalog_display_key_in_canonical(self) -> None:
+        from songs.music_source import commit_custom_active_song
+
+        active = self._draft_with_chords()
+        active["name"] = "Trial Song"
+        active["original_key_center"] = "D"
+        st = SimpleNamespace(
+            session_state={
+                "display_key": "Db",
+                ACTIVE_SONG_STATE_KEY: {
+                    "pick_key": "pop::Shape of You — Ed Sheeran",
+                    "display_key": "Db",
+                    "music_source": "catalog_song",
+                },
+                "active_music_source": SOURCE_CATALOG,
+            }
+        )
+        with patch("songs.state.persist_music_local_state"):
+            commit_custom_active_song(
+                st,
+                active,
+                invalidate_backing=lambda _st: None,
+            )
+        self.assertEqual(st.session_state["display_key"], "D")
+        self.assertEqual(st.session_state.get("active_music_source"), SOURCE_CUSTOM)
+
     def test_deferred_custom_library_edit_active_reseeds_without_crash(self) -> None:
         active = self._draft_with_chords()
         active["name"] = "Trial Song"
@@ -645,11 +671,13 @@ class TestCplSetActiveSong(unittest.TestCase):
         active["original_key_center"] = "D"
         session = {
             "active_music_source": SOURCE_CUSTOM,
+            ACTIVE_CATALOG_PICK_KEY: "custom::My Progression",
             CPL_ACTIVE_KEY: active,
             ACTIVE_SONG_STATE_KEY: {
                 "music_source": SOURCE_CUSTOM,
                 "display_key": "Eb",
                 "custom_home_key": "D",
+                "pick_key": "custom::My Progression",
             },
         }
         ctx = gather_active_song_context(session)
@@ -696,14 +724,32 @@ class TestCplSetActiveSong(unittest.TestCase):
         }
         self.assertFalse(custom_progression_is_active(session))
 
-    def test_resolve_custom_display_key_prefers_canonical_over_session_home(self) -> None:
+    def test_resolve_custom_display_key_prefers_pick_scoped_canonical(self) -> None:
         session = {
             "display_key": "D",
-            ACTIVE_SONG_STATE_KEY: {"display_key": "Eb"},
+            ACTIVE_CATALOG_PICK_KEY: "custom::trial",
+            ACTIVE_SONG_STATE_KEY: {
+                "display_key": "Eb",
+                "pick_key": "custom::trial",
+            },
         }
         self.assertEqual(
             _resolve_custom_display_key_for_session(session, home_key="D"),
             "Eb",
+        )
+
+    def test_resolve_custom_display_key_ignores_stale_canonical_pick(self) -> None:
+        session = {
+            "display_key": "Db",
+            ACTIVE_CATALOG_PICK_KEY: "custom::trial",
+            ACTIVE_SONG_STATE_KEY: {
+                "display_key": "Db",
+                "pick_key": "pop::Other Song",
+            },
+        }
+        self.assertEqual(
+            _resolve_custom_display_key_for_session(session, home_key="D"),
+            "D",
         )
 
     def test_prepare_active_song_context_does_not_force_custom_when_catalog_pick(self) -> None:

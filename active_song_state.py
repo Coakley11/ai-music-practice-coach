@@ -324,9 +324,7 @@ def _display_key_override_valid_for_identity(session: dict[str, Any]) -> bool:
     current = _current_active_song_identity(session)
     if owner and current:
         return owner == current
-    return (
-        str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip() == "sidebar_on_change"
-    )
+    return False
 
 
 def _merge_display_key_for_active_song(
@@ -499,24 +497,21 @@ def _resolve_custom_display_key_for_session(
     session: dict[str, Any],
     home_key: str,
 ) -> str:
-    """Resolve custom display key: user override, then canonical, then session, then home."""
+    """Resolve custom display key: identity-scoped override, then per-pick canonical, then home."""
     home = str(home_key or "C").strip() or "C"
     live = str(session.get("display_key") or "").strip()
-    meta = session.get(ACTIVE_SONG_STATE_KEY)
-    canonical = ""
-    if isinstance(meta, dict):
-        canonical = str(meta.get("display_key") or "").strip()
+    try:
+        from songs.key_state import canonical_display_key_for_pick
         from songs.state import ACTIVE_CATALOG_PICK_KEY
 
-        meta_pick = str(meta.get("pick_key") or "").strip()
         live_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-        if meta_pick and live_pick and meta_pick != live_pick:
-            canonical = ""
-    change_source = str(session.get("display_key_change_source") or "").strip()
+        scoped = canonical_display_key_for_pick(session, live_pick) if live_pick else ""
+    except ImportError:
+        scoped = ""
     if _display_key_override_valid_for_identity(session) and live:
         return live
-    if canonical:
-        return canonical
+    if scoped:
+        return scoped
     return home
 
 

@@ -792,6 +792,30 @@ def sync_workspace_protocol(
     if content_resync:
         apply_reasons.append(f"content_resync:{content_resync_detail or 'drift'}")
 
+    session_needs_rehydrate = False
+    try:
+        from music_persistent_state import _session_has_restored_song_context
+
+        if picked.state and not _session_has_restored_song_context(st.session_state):
+            core = picked.state.get("core") if isinstance(picked.state.get("core"), dict) else {}
+            extra = picked.state.get("session") if isinstance(picked.state.get("session"), dict) else {}
+            ws = picked.state.get("music_workspace_state")
+            ws_page = (
+                str(ws.get("studio_page") or "").strip()
+                if isinstance(ws, dict)
+                else ""
+            )
+            if (
+                str(core.get("pick_key") or "").strip()
+                or str(core.get("studio_page") or extra.get("studio_page") or ws_page).strip()
+                or extra.get("cpl_active_progression")
+                or extra.get("cpl_saved_progressions")
+            ):
+                session_needs_rehydrate = True
+                apply_reasons.append("session_empty_rehydrate")
+    except ImportError:
+        session_needs_rehydrate = False
+
     should_apply = bool(
         picked.state
         and (
@@ -801,6 +825,7 @@ def sync_workspace_protocol(
             or page_mismatch_apply
             or comparison_mismatch_apply
             or content_resync
+            or session_needs_rehydrate
         )
     )
     apply_reason = ", ".join(apply_reasons) if apply_reasons else "none"
