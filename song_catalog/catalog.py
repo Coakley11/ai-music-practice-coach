@@ -460,6 +460,32 @@ def first_valid_pick_key(
     return None
 
 
+def resolve_picker_catalog_selection(
+    pick_key: str,
+    song_picker_catalog: dict[str, dict[str, dict]] | None,
+    *,
+    records: list[dict[str, Any]] | None = None,
+) -> tuple[str, str, dict[str, Any]]:
+    """Safe catalog lookup for picker pages — never raises on stale genre/label."""
+    catalog = song_picker_catalog or {}
+    resolved = resolve_pick_key(
+        pick_key,
+        song_picker_catalog=catalog,
+        records=records,
+    )
+    candidate = str(resolved or pick_key or "").strip()
+    genre, label = parse_pick_key(candidate)
+    if genre and label and genre in catalog and label in catalog[genre]:
+        return genre, label, dict(catalog[genre][label])
+
+    fallback = first_valid_pick_key(catalog)
+    if fallback:
+        g, l = parse_pick_key(fallback)
+        if g in catalog and l in catalog[g]:
+            return g, l, dict(catalog[g][l])
+    return "", "", {}
+
+
 def record_for_pick_key(records: list[dict[str, Any]], pick_key: str) -> dict[str, Any] | None:
     """Resolve a picker/session key back to the merged catalog row."""
     canonical = resolve_pick_key(pick_key, records=records)

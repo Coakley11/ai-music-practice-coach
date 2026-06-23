@@ -220,7 +220,7 @@ from harmonic_rhythm_intelligence import (
     apply_harmonic_rhythm_intelligence,
 )
 import karaoke_mode as km
-from chart_level_arrangement import resolve_level_chart
+from chart_level_arrangement import level_view_of_sections, resolve_level_chart
 from youtube_ui import (
     render_original_song_video_card,
     render_practice_learning_video_panel,
@@ -9856,9 +9856,13 @@ _cpl_active = _chart_bundle.get("cpl_active")
 
 # Level-specific arrangement (chord complexity + section form). Beginner and
 # Intermediate use shorter forms; Advanced keeps the full catalog chart.
-_level_song_data, sections = resolve_level_chart(song_data, level)
+# Keep transposed chords from the chart bundle — only apply level metadata/order.
+_level_song_data, _ = resolve_level_chart(song_data, level)
 if _level_song_data:
     song_data = _level_song_data
+_level_order = list(song_data.get("section_order") or [])
+if _level_order:
+    sections = level_view_of_sections(sections, section_order_for_level=_level_order)
 
 _capo_ctx = build_capo_context(
     st.session_state,
@@ -11032,8 +11036,29 @@ elif _studio_page == "picker":
         pick_key = st.session_state.get(ACTIVE_CATALOG_PICK_KEY)
         if not pick_key:
             st.stop()
-        pick_genre, pick_label = parse_pick_key(pick_key)
-        selected_data = SONG_PICKER_CATALOG[pick_genre][pick_label]
+        from song_catalog import format_pick_key as _format_pick_key
+        from song_catalog import resolve_picker_catalog_selection
+
+        pick_genre, pick_label, selected_data = resolve_picker_catalog_selection(
+            str(pick_key),
+            SONG_PICKER_CATALOG,
+            records=ALL_SONG_RECORDS,
+        )
+        if not selected_data:
+            st.stop()
+        _resolved_pick_key = (
+            _format_pick_key(pick_genre, pick_label)
+            if pick_genre and pick_label
+            else str(pick_key)
+        )
+        if _resolved_pick_key and st.session_state.get(ACTIVE_CATALOG_PICK_KEY) != _resolved_pick_key:
+            apply_pick_key(
+                st,
+                _resolved_pick_key,
+                SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+                skip_activity_log=True,
+            )
 
         _picker_level_sections = sections_for_level(selected_data, level)
         if consume_open_lyrics_request(st.session_state):

@@ -265,6 +265,23 @@ class TestDisplayKeyCloudMerge(unittest.TestCase):
         )
         self.assertEqual(merged, "Eb")
 
+    def test_resolve_picker_catalog_selection_recovers_stale_genre(self) -> None:
+        from song_catalog.catalog import format_pick_key, resolve_picker_catalog_selection
+
+        stale_key = format_pick_key("Stale Genre", "Say — John Mayer")
+        genre, label, data = resolve_picker_catalog_selection(stale_key, CATALOG)
+        self.assertEqual(genre, "Pop")
+        self.assertEqual(label, "Say — John Mayer")
+        self.assertEqual(data.get("title"), "Say")
+
+    def test_resolve_picker_catalog_selection_falls_back_to_first_valid(self) -> None:
+        from song_catalog.catalog import resolve_picker_catalog_selection
+
+        genre, label, data = resolve_picker_catalog_selection("not-a-real-key", CATALOG)
+        self.assertTrue(data)
+        self.assertIn(genre, CATALOG)
+        self.assertIn(label, CATALOG[genre])
+
 
 if __name__ == "__main__":
     unittest.main()
