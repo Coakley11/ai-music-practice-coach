@@ -79,13 +79,20 @@ def apply_capo_context_fields(session_state: dict, ctx: dict[str, Any]) -> None:
                 session_state[key] = val
 
 
-def sync_capo_written_display_key(session_state: dict) -> None:
-    """When capo shape mode is on, shape key is the written/practice display key."""
+def capo_written_display_key(session_state: dict) -> str | None:
+    """Shape key used as written/practice display when capo mode is on (read-only)."""
     if not session_state.get(CAPO_ENABLED_KEY):
-        return
+        return None
     shape = str(session_state.get(CAPO_SHAPE_KEY) or "").strip()
-    if shape:
-        session_state["display_key"] = shape
+    return shape or None
+
+
+def sync_capo_written_display_key(session_state: dict) -> None:
+    """Deprecated no-op — do not mutate widget-backed ``display_key`` after render.
+
+    Capo shape is derived via ``capo_written_display_key`` and ``resolve_practice_keys``.
+    """
+    return
 
 
 def persist_capo_to_canonical(session_state: dict) -> None:
@@ -97,7 +104,6 @@ def persist_capo_to_canonical(session_state: dict) -> None:
             write_canonical_active_song_state,
         )
 
-        sync_capo_written_display_key(session_state)
         live = capo_fields_from_session(session_state)
         meta = session_state.get(ACTIVE_SONG_STATE_KEY)
         if isinstance(meta, dict) and all(meta.get(k) == live.get(k) for k in live):
@@ -270,7 +276,6 @@ def render_guitar_capo_sidebar(st: Any, session_state: dict, *, concert_key: str
         f"Capo **{capo}** · backing = **{session_state[CAPO_SOUNDING_KEY]}** · "
         f"charts = **{session_state[CAPO_SHAPE_KEY]}** shapes"
     )
-    sync_capo_written_display_key(session_state)
     persist_capo_to_canonical(session_state)
 
 

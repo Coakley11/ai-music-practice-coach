@@ -10,6 +10,7 @@ from backing_track_state import (
     BACKING_DIRTY_KEY,
     BACKING_DURABLE_WIDGET_KEYS,
     BACKING_RESTORED_KEY,
+    BACKING_USER_EDITS_ALLOWED_KEY,
     BACKING_WIDGETS_SEEDED_KEY,
     apply_backing_source_state_from_ami,
     apply_cloud_backing_state_if_allowed,
@@ -860,6 +861,36 @@ class TestBackingTrackState(unittest.TestCase):
         self.assertEqual(trace["cloud_payload_backing_loops"], 1)
         self.assertEqual(trace["cloud_payload_backing_meter"], "2/4")
         self.assertEqual(session.get("_backing_cloud_payload_source"), "last_write")
+
+    def test_write_canonical_skips_widget_keys_after_user_edits_enabled(self) -> None:
+        session = {
+            BACKING_USER_EDITS_ALLOWED_KEY: True,
+            "backing_groove_style": "Jazz swing",
+            "backing_track_state": dict(_SAMPLE),
+        }
+        write_canonical_backing_state(
+            session,
+            {**_SAMPLE, "backing_groove_style": "Rock groove"},
+            reason="stop",
+        )
+        self.assertEqual(session["backing_groove_style"], "Jazz swing")
+        self.assertEqual(session["backing_track_state"]["backing_groove_style"], "Rock groove")
+
+    def test_flush_stop_does_not_mutate_widget_backed_filters(self) -> None:
+        session = {
+            BACKING_USER_EDITS_ALLOWED_KEY: True,
+            "backing_track_state": dict(_SAMPLE),
+            "backing_groove_style": "Jazz swing",
+            "backing_track_scope": "Full song",
+            "backing_transport_status": "playing",
+            "_backing_autoplay": True,
+        }
+        session["backing_transport_status"] = "stopped"
+        session["_backing_autoplay"] = False
+        flush_backing_edits(session, reason="stop")
+        self.assertEqual(session["backing_groove_style"], "Jazz swing")
+        self.assertEqual(session["backing_track_state"]["backing_transport_status"], "stopped")
+        self.assertFalse(session["backing_track_state"]["backing_autoplay"])
 
 
 if __name__ == "__main__":

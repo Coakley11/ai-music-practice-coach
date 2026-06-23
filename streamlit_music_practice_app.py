@@ -7160,14 +7160,12 @@ def _stop_backing_playback() -> None:
     st.session_state.pop("playback_start_time", None)
     try:
         from backing_track_state import (
+            commit_backing_canonical_blob_only,
             commit_backing_transport_from_session,
-            flush_backing_edits,
-            mark_backing_user_edit,
         )
 
-        mark_backing_user_edit(st.session_state)
         commit_backing_transport_from_session(st.session_state, reason="stop")
-        flush_backing_edits(st.session_state, reason="stop")
+        commit_backing_canonical_blob_only(st.session_state, reason="stop")
     except ImportError:
         try:
             from backing_track_state import commit_backing_transport_from_session

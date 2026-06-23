@@ -93,3 +93,24 @@ def test_switch_sax_to_trumpet_keeps_written_mode():
     ctx = resolve_practice_keys(ss, "C", "Trumpet")
     assert ctx["chart_key_mode"] == "written"
     assert ctx["chart_key"] == written_key_for_type("C", "Bb Trumpet")
+
+
+def test_capo_shape_is_derived_without_mutating_display_key_widget():
+    from guitar_capo import (
+        CAPO_ENABLED_KEY,
+        CAPO_SHAPE_KEY,
+        capo_written_display_key,
+        sync_capo_written_display_key,
+    )
+
+    ss = {
+        "display_key": "C",
+        CAPO_ENABLED_KEY: True,
+        CAPO_SHAPE_KEY: "G",
+    }
+    sync_capo_written_display_key(ss)
+    assert ss["display_key"] == "C"
+    assert capo_written_display_key(ss) == "G"
+    ctx = resolve_practice_keys(ss, "C", "Guitar")
+    assert ctx["chart_key"] == "G"
+    assert ctx["global_display_key"] == "G"

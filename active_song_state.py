@@ -972,10 +972,9 @@ def _apply_context_to_session_keys(
     if mutate_transposing_subtype and subtype:
         session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
     try:
-        from guitar_capo import apply_capo_context_fields, sync_capo_written_display_key
+        from guitar_capo import apply_capo_context_fields
 
         apply_capo_context_fields(session, ctx)
-        sync_capo_written_display_key(session)
     except ImportError:
         pass
 

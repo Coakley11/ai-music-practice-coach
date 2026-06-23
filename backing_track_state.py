@@ -958,7 +958,8 @@ def write_canonical_backing_state(
         **normalized,
         "last_write_reason": reason or None,
     }
-    _apply_filters_to_session_keys(session, normalized)
+    if not session.get(BACKING_USER_EDITS_ALLOWED_KEY):
+        _apply_filters_to_session_keys(session, normalized)
     if local_edit:
         mark_backing_local_edit(session)
     session.pop(BACKING_PENDING_SYNC_KEY, None)
@@ -1040,6 +1041,8 @@ def commit_backing_state_from_session(session: dict[str, Any], *, reason: str = 
 
 def flush_backing_edits(session: dict[str, Any], *, reason: str = "backing_edit") -> dict[str, Any]:
     filters = gather_backing_filters(session)
+    if reason == "stop":
+        return commit_backing_canonical_blob_only(session, reason=reason)
     return write_canonical_backing_state(session, filters, reason=reason, local_edit=False)
 
 
