@@ -68,6 +68,82 @@ class TestDeploySmoke(unittest.TestCase):
         self.assertEqual(info["build_marker"], MUSIC_PERSIST_DEPLOY_VERSION)
         self.assertNotIn("phase-b-nav-stable-v14", info["build_marker"])
 
+    def test_streamlit_app_does_not_bare_render_catalog_song_data(self) -> None:
+        """Bare `_catalog_song_data` in the Streamlit script dumps the full song dict."""
+        text = (REPO_ROOT / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        self.assertNotRegex(
+            text,
+            r"(?m)^\s+_catalog_song_data\s*$",
+            "Remove bare _catalog_song_data — Streamlit renders it as st.write()",
+        )
+
+    def test_streamlit_app_has_no_module_level_bare_song_dumps(self) -> None:
+        """Any module-level bare name in the Streamlit script is auto-rendered via st.write."""
+        import ast
+
+        path = REPO_ROOT / "streamlit_music_practice_app.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        songish = {
+            "song_data",
+            "selected_song",
+            "active_song",
+            "active_workspace",
+            "current_song",
+            "_catalog_song_data",
+            "_catalog_song",
+            "song",
+            "SONG_LIBRARY",
+            "SONG_PICKER_CATALOG",
+            "music_workspace_state",
+            "workspace_state",
+            "song_library",
+            "_chart_bundle",
+            "ALL_SONG_RECORDS",
+            "level_source_sections",
+            "sections",
+        }
+
+        class _Finder(ast.NodeVisitor):
+            def __init__(self) -> None:
+                self.depth = 0
+                self.hits: list[tuple[int, str]] = []
+
+            def _enter(self) -> None:
+                self.depth += 1
+
+            def _exit(self) -> None:
+                self.depth -= 1
+
+            def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+                self._enter()
+                self.generic_visit(node)
+                self._exit()
+
+            visit_AsyncFunctionDef = visit_FunctionDef
+
+            def visit_ClassDef(self, node: ast.ClassDef) -> None:
+                self._enter()
+                self.generic_visit(node)
+                self._exit()
+
+            def visit_Expr(self, node: ast.Expr) -> None:
+                if self.depth == 0 and isinstance(node.value, ast.Name):
+                    self.hits.append((node.lineno, node.value.id))
+                self.generic_visit(node)
+
+        finder = _Finder()
+        finder.visit(tree)
+        offenders = [
+            (line, name)
+            for line, name in finder.hits
+            if name in songish or "song" in name.lower() or "workspace" in name.lower()
+        ]
+        self.assertEqual(
+            offenders,
+            [],
+            f"Module-level bare expressions auto-render in Streamlit: {offenders}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

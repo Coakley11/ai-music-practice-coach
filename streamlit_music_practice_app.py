@@ -7196,7 +7196,6 @@ def _begin_backing_performance_follow_along(
     st.session_state[BACKING_AUTOPLAY] = True
     st.session_state[BACKING_TRANSPORT_STATUS] = "playing"
     record_backing_timing_event(st.session_state, "play_start")
-    st.session_state["backing_lead_sheet_open"] = True
     st.session_state["playback_start_time"] = time.time()
     try:
         from backing_track_state import commit_backing_transport_from_session
@@ -7205,14 +7204,13 @@ def _begin_backing_performance_follow_along(
     except ImportError:
         pass
     st.session_state[f"{follow_key_prefix}::follow_manual_index"] = 0
-    set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
     if karaoke_voice:
         st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
-            "Karaoke starting — opening lyrics screen"
+            "Karaoke playback started — open the lead sheet below for lyrics and chord follow."
         )
     else:
         st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
-            "Playback starting — opening lead sheet"
+            "Playback started — use the audio player above. Open the lead sheet below for chord follow."
         )
 
 
@@ -9285,7 +9283,6 @@ except Exception:
 
 # Fallback if post-restore init skipped get_song_context (v17 defer path).
 try:
-    _catalog_song_data
     if not isinstance(_catalog_song_data, dict):
         raise NameError("_catalog_song_data invalid")
 except NameError:
@@ -10244,27 +10241,6 @@ if _studio_page == "practice":
         tuple(sorted(_view_sections.keys())),
         sections_tuple_signature(_view_sections),
     )
-    _chart_html = session_cache_get_or_set(
-        st.session_state,
-        "practice_chart_html",
-        _practice_chart_sig,
-        lambda: full_chord_markdown(
-            song,
-            song_data,
-            _view_sections,
-            instrument,
-            display_key=_practice_chart_key,
-            level=level,
-            lyric_cues=lyric_cues,
-            section_lyrics=section_lyrics,
-            groove_style=_practice_groove,
-            bpm=_practice_bpm,
-            time_signature=_time_sig,
-            current_section=_chart_current,
-            focus=focus,
-            chart_mode="practice",
-        ),
-    )
     _chart_scope = "full song" if _is_full_song else (_active_section_display or "section")
     _chart_key_note = ""
     if _chart_key_mode == "written" and is_transposing_instrument(instrument):
@@ -10380,7 +10356,7 @@ if _studio_page == "practice":
                 level=level,
                 practice_key=_practice_chart_key,
             )
-            with st.expander("Song coach", expanded=pp.feature_expander_default(st, default=True)):
+            with st.expander("Song coach", expanded=pp.feature_expander_default(st, default=False)):
                 st.markdown(coaching_markdown(_song_coaching))
             _coaching_scale_line = coaching_scale_summary(_song_coaching)
         except Exception:
@@ -10411,7 +10387,7 @@ if _studio_page == "practice":
                 _deep_focus_error = _deep_focus_exc
             with st.expander(
                 f"Section deep focus — {_active_section_display}",
-                expanded=pp.feature_expander_default(st, default=True),
+                expanded=pp.feature_expander_default(st, default=False),
             ):
                 if _deep_focus_md.strip() and not _deep_focus_md.strip().lower().startswith(
                     "no chords"
@@ -10564,7 +10540,7 @@ if _studio_page == "practice":
                 instrument,
                 level,
                 key_prefix=f"practice::{song}::{instrument}::{level}",
-                expanded=True,
+                expanded=False,
                 display_key=_practice_chart_key,
             )
 
@@ -10588,73 +10564,104 @@ if _studio_page == "practice":
                 render_abc(build_abc(song, sections))
 
     with _tab_chart:
+        _practice_chart_open = bool(st.session_state.get("practice_chart_panel_open", False))
         with st.expander(
             f"Chord chart — {_chart_scope}{_chart_key_note}",
-            expanded=True,
+            expanded=_practice_chart_open,
         ):
-            st.markdown(_chart_html, unsafe_allow_html=True)
-
-            # When the user has picked a *type* (Verse / Chorus / ...) and
-            # the song has more than one numbered version of that type
-            # (Verse 1 / Verse 2 / Verse 3 ...), offer opt-in toggles for
-            # the extra lyric versions. The chord progression doesn't
-            # change between versions, so we only surface their lyrics -
-            # keeps the main chart uncluttered.
-            if not _is_full_song and _active_section:
-                _focus_type = practice_section_type(_focus_pick)
-                _same_type_sections = practice_sections_for_type(
-                    sections_for_practice, _focus_type
+            if not _practice_chart_open:
+                st.caption("Chord chart is hidden by default to keep the page responsive.")
+                if st.button("Load chord chart", key="practice_chart_show_btn", type="secondary"):
+                    st.session_state["practice_chart_panel_open"] = True
+                    st.rerun()
+            else:
+                if st.button("Hide chord chart", key="practice_chart_hide_btn"):
+                    st.session_state["practice_chart_panel_open"] = False
+                    st.rerun()
+                _chart_html = session_cache_get_or_set(
+                    st.session_state,
+                    "practice_chart_html",
+                    _practice_chart_sig,
+                    lambda: full_chord_markdown(
+                        song,
+                        song_data,
+                        _view_sections,
+                        instrument,
+                        display_key=_practice_chart_key,
+                        level=level,
+                        lyric_cues=lyric_cues,
+                        section_lyrics=section_lyrics,
+                        groove_style=_practice_groove,
+                        bpm=_practice_bpm,
+                        time_signature=_time_sig,
+                        current_section=_chart_current,
+                        focus=focus,
+                        chart_mode="practice",
+                    ),
                 )
-                _other_versions = [
-                    n for n in _same_type_sections if n != _active_section
-                ]
-                _versions_with_lyrics = [
-                    name
-                    for name in _other_versions
-                    if _lyric_lines_for_section(
-                        name, lyric_cues, section_lyrics, limit=24
+                st.markdown(_chart_html, unsafe_allow_html=True)
+
+                # When the user has picked a *type* (Verse / Chorus / ...) and
+                # the song has more than one numbered version of that type
+                # (Verse 1 / Verse 2 / Verse 3 ...), offer opt-in toggles for
+                # the extra lyric versions. The chord progression doesn't
+                # change between versions, so we only surface their lyrics -
+                # keeps the main chart uncluttered.
+                if not _is_full_song and _active_section:
+                    _focus_type = practice_section_type(_focus_pick)
+                    _same_type_sections = practice_sections_for_type(
+                        sections_for_practice, _focus_type
                     )
-                ]
-                if _versions_with_lyrics:
-                    st.markdown(
-                        '<p class="ui-extra-lyrics-kicker">Other '
-                        f'{_html.escape(_focus_type or "section")} versions</p>',
-                        unsafe_allow_html=True,
-                    )
-                    st.caption(
-                        "Toggle any additional verse / chorus to add its lyrics below "
-                        "the chord chart. The chord progression stays the same."
-                    )
-                    for _ov_name in _versions_with_lyrics:
-                        _ov_key = (
-                            f"practice_show_extra_lyrics::{song}::{_focus_type}::{_ov_name}"
+                    _other_versions = [
+                        n for n in _same_type_sections if n != _active_section
+                    ]
+                    _versions_with_lyrics = [
+                        name
+                        for name in _other_versions
+                        if _lyric_lines_for_section(
+                            name, lyric_cues, section_lyrics, limit=24
                         )
-                        _show_ov = st.checkbox(
-                            f"Show {_ov_name} lyrics",
-                            key=_ov_key,
-                            value=False,
+                    ]
+                    if _versions_with_lyrics:
+                        st.markdown(
+                            '<p class="ui-extra-lyrics-kicker">Other '
+                            f'{_html.escape(_focus_type or "section")} versions</p>',
+                            unsafe_allow_html=True,
                         )
-                        if _show_ov:
-                            _ov_lines = _lyric_lines_for_section(
-                                _ov_name, lyric_cues, section_lyrics, limit=24
+                        st.caption(
+                            "Toggle any additional verse / chorus to add its lyrics below "
+                            "the chord chart. The chord progression stays the same."
+                        )
+                        for _ov_name in _versions_with_lyrics:
+                            _ov_key = (
+                                f"practice_show_extra_lyrics::{song}::{_focus_type}::{_ov_name}"
                             )
-                            _ov_html_parts = [
-                                '<div class="ui-extra-lyrics-block">',
-                                '<p class="ui-extra-lyrics-section">'
-                                f"{_html.escape(_ov_name)}"
-                                "</p>",
-                            ]
-                            for _ln in _ov_lines:
-                                _ov_html_parts.append(
-                                    '<p class="ui-extra-lyrics-line">'
-                                    f"{_html.escape(_ln)}"
-                                    "</p>"
+                            _show_ov = st.checkbox(
+                                f"Show {_ov_name} lyrics",
+                                key=_ov_key,
+                                value=False,
+                            )
+                            if _show_ov:
+                                _ov_lines = _lyric_lines_for_section(
+                                    _ov_name, lyric_cues, section_lyrics, limit=24
                                 )
-                            _ov_html_parts.append("</div>")
-                            st.markdown(
-                                "\n".join(_ov_html_parts),
-                                unsafe_allow_html=True,
-                            )
+                                _ov_html_parts = [
+                                    '<div class="ui-extra-lyrics-block">',
+                                    '<p class="ui-extra-lyrics-section">'
+                                    f"{_html.escape(_ov_name)}"
+                                    "</p>",
+                                ]
+                                for _ln in _ov_lines:
+                                    _ov_html_parts.append(
+                                        '<p class="ui-extra-lyrics-line">'
+                                        f"{_html.escape(_ln)}"
+                                        "</p>"
+                                    )
+                                _ov_html_parts.append("</div>")
+                                st.markdown(
+                                    "\n".join(_ov_html_parts),
+                                    unsafe_allow_html=True,
+                                )
 
         with st.expander(
             "Notation / TAB",
@@ -11197,47 +11204,10 @@ elif _studio_page == "backing":
                 "Generate accompaniment matched to your active song — then play along.",
                 page_id="backing",
             )
-        render_setup_quick_controls(
-            st,
-            session_state=st.session_state,
-            key_prefix="backing_panel",
-            instrument_options=_instrument_options,
-            label="Instrument · level · focus",
-            show_sync_caption=False,
-        )
-
     # The voice-mode `data-vocal-focus="true"` body attribute is set
     # globally at app init (search for `dataset.vocalFocus` upstream),
     # so the larger-lyric / vocal-focused CSS automatically applies on
     # this page whenever the active instrument is Voice.
-
-    # One-shot "Now Singing: <title>" banner immediately after a karaoke
-    # transition (consumed flag, only shows on the rerun after a skip).
-    render_karaoke_now_singing_banner(st)
-
-    # Karaoke session pill above the active song card.
-    render_karaoke_status_pill(st)
-
-    # Karaoke skip/end controls - voice-only, only visible during an
-    # active karaoke set. The "Skip to next song" button is also the
-    # auto-click target the JS audio-ended bridge searches for, so it
-    # must be in the DOM during a karaoke session even if the user
-    # never clicks it manually.
-    if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
-        from song_catalog import record_for_pick_key as _record_for_pick_key
-
-        # Compact "Now Singing / Next / 3rd" queue preview above controls.
-        render_karaoke_queue_preview(
-            st,
-            record_for_pick_key=_record_for_pick_key,
-            all_records=ALL_SONG_RECORDS,
-            max_upcoming=3,
-        )
-        render_karaoke_skip_controls(
-            st,
-            record_for_pick_key=_record_for_pick_key,
-            all_records=ALL_SONG_RECORDS,
-        )
 
     from songs.music_source import custom_selected_song_record as _custom_selected_song_record
 
@@ -11316,7 +11286,6 @@ elif _studio_page == "backing":
         inject_studio_ui_release_marker(st, page="backing")
     except Exception:
         pass
-    render_backing_studio_deck_header(st)
     if _developer_mode_enabled():
         try:
             from app_ui import BACKING_STUDIO_UI_VERSION as _bs_ui_ver
@@ -11336,11 +11305,6 @@ elif _studio_page == "backing":
     _from_practice_section = _apply_pending_backing_scope(st.session_state, _sec_names)
     _backing_audio_ready_pre = bool(st.session_state.get("_last_backing_wav"))
 
-    _render_backing_playback_setup_panel(
-        section_names=_sec_names,
-        from_practice_handoff=_from_practice_section,
-        backing_ready=_backing_audio_ready_pre,
-    )
     backing_time_signature = str(
         st.session_state.get("backing_time_signature", _default_meter)
     )
@@ -11445,8 +11409,42 @@ elif _studio_page == "backing":
             st.caption("Playback started — use the player controls above.")
         else:
             st.caption(
-                "Audio ready — press **▶ Play** in Step 2 or use the player **Play** button above."
+                "Audio ready — press **▶ Play** above or use the player **Play** button."
             )
+
+    # Karaoke session UI — collapsed by default; skip controls stay visible when
+    # a session is active (JS auto-advance needs the skip button in the DOM).
+    _karaoke_session_ui = (
+        km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)
+    )
+    if _karaoke_session_ui or km.is_voice_mode(st.session_state):
+        with st.expander("Karaoke session", expanded=_karaoke_session_ui):
+            render_karaoke_now_singing_banner(st)
+            render_karaoke_status_pill(st)
+            if _karaoke_session_ui:
+                from song_catalog import record_for_pick_key as _record_for_pick_key
+
+                render_karaoke_queue_preview(
+                    st,
+                    record_for_pick_key=_record_for_pick_key,
+                    all_records=ALL_SONG_RECORDS,
+                    max_upcoming=3,
+                )
+    if _karaoke_session_ui:
+        from song_catalog import record_for_pick_key as _record_for_pick_key
+
+        render_karaoke_skip_controls(
+            st,
+            record_for_pick_key=_record_for_pick_key,
+            all_records=ALL_SONG_RECORDS,
+        )
+
+    with st.expander("Playback range & loops", expanded=False):
+        _render_backing_playback_setup_panel(
+            section_names=_sec_names,
+            from_practice_handoff=_from_practice_section,
+            backing_ready=_backing_audio_ready_pre,
+        )
 
     # Voice mode: when the active karaoke song has no lyric cues yet,
     # surface a friendly "Add lyrics" prompt so the singer can fill them
@@ -11463,7 +11461,7 @@ elif _studio_page == "backing":
         active_song_title=str(song_data.get("title") or song),
         on_open_editor=_open_lyrics_editor_from_backing,
     )
-    if pp.show_developer_sidebar(st):
+    if _developer_mode_enabled():
         render_backing_defaults_debug(
             st,
             song_bpm=_default_bpm,
@@ -11525,7 +11523,7 @@ elif _studio_page == "backing":
     if coach_chords:
         with st.expander(
             f"💡 Quick coaching — {coach_section}",
-            expanded=pp.expander_default(st),
+            expanded=False,
         ):
             st.markdown(
                 _section_overlay(
@@ -11651,13 +11649,12 @@ elif _studio_page == "backing":
         if _karaoke_auto_gen:
             st.session_state["_backing_play_request"] = True
         st.session_state[BACKING_TRANSPORT_STATUS] = "ready"
-        st.session_state["backing_lead_sheet_open"] = True
         set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
         if _karaoke_auto_gen:
             st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
-                "Karaoke starting — opening lyrics screen"
+                "Karaoke backing generated — press Play to start."
                 if km.is_voice_mode(st.session_state)
-                else "Playback starting — opening lead sheet"
+                else "Backing generated — press Play to start."
             )
         st.session_state.pop("_backing_transport_user_stopped", None)
         try:
@@ -11695,9 +11692,7 @@ elif _studio_page == "backing":
     )
 
     # ---- Lead sheet open-state handling ------------------------------------
-    if _leadsheet_open:
-        pass  # resolved above for inline player vs chart player split
-    elif st.session_state.pop("_pending_open_backing_lead_sheet", False):
+    if st.session_state.pop("_pending_open_backing_lead_sheet", False):
         st.session_state["backing_lead_sheet_open"] = True
         _leadsheet_open = True
 
@@ -11751,65 +11746,51 @@ elif _studio_page == "backing":
     # session_state boolean that survives reruns without resetting playback,
     # audio, scroll position, song, karaoke queue, or section selection.
 
-    if _backing_audio_ready and _leadsheet_open:
-        # When the backing track is ready, render the lead sheet inline (no
-        # expander, no extra click) with a clear "auto-opened" badge so the
-        # user can immediately verify the auto-open worked. The chart
-        # highlights chord-by-chord while playback runs.
-        _hide_clicked = False
-        _hdr_col, _btn_col = st.columns([5, 1])
-        with _hdr_col:
-            st.markdown(
-                '<div class="ui-backing-leadsheet-card" '
-                'data-state="open" id="backing-lead-sheet-anchor">'
-                '<p class="ui-bar-label" style="color:#15803d;margin:0 0 0.35rem 0;'
-                'display:flex;align-items:center;gap:.55rem;">'
-                '<span style="display:inline-flex;align-items:center;gap:.3rem;'
-                'background:#dcfce7;color:#15803d;padding:2px 10px;border-radius:9999px;'
-                'font-size:0.78rem;font-weight:700;letter-spacing:0.02em;">'
-                '<span aria-hidden="true">\u2714</span> Lead Sheet open'
-                '</span>'
-                '<span style="font-weight:600;color:#15803d;">'
-                'Chord chart &middot; live chord follow'
-                '</span>'
-                '</p>',
-                unsafe_allow_html=True,
-            )
-        with _btn_col:
-            _hide_clicked = st.button(
-                "Hide chart",
-                key="backing_leadsheet_hide_btn",
-                help="Collapse the lead sheet (does not stop playback).",
+    # Lead sheet is opt-in only — the iframe chart player is heavy and stays
+    # off the page until the user explicitly opens it.
+    if _backing_audio_ready:
+        _ls_col_a, _ls_col_b = st.columns([1, 5])
+        with _ls_col_a:
+            if _leadsheet_open:
+                if st.button(
+                    "Close lead sheet",
+                    key="backing_leadsheet_hide_btn",
+                    use_container_width=True,
+                ):
+                    st.session_state["backing_lead_sheet_open"] = False
+                    st.rerun()
+            elif st.button(
+                "Open lead sheet",
+                key="backing_leadsheet_show_btn",
+                type="secondary",
                 use_container_width=True,
+            ):
+                st.session_state["backing_lead_sheet_open"] = True
+                st.rerun()
+        with _ls_col_b:
+            st.caption(
+                "Optional chord follow-along — opens on demand to keep the page light."
+                if not _leadsheet_open
+                else "Live chord highlighting while the backing track plays."
             )
-        if _hide_clicked:
-            st.session_state["backing_lead_sheet_open"] = False
-            st.rerun()
-        st.caption("Chord boxes highlight while the backing track plays.")
+
+    if _backing_audio_ready and _leadsheet_open:
+        st.markdown(
+            '<div class="ui-backing-leadsheet-card" data-state="open" id="backing-lead-sheet-anchor">',
+            unsafe_allow_html=True,
+        )
         if not st.session_state.get(BACKING_AUTOPLAY, False):
             st.info(
-                "Backing playback stopped — press **▶ Play** above (or the player **Play** "
-                "button below) to resume."
+                "Backing playback stopped — press **▶ Play** above to resume."
             )
         _karaoke_active = km.is_karaoke_session_active(st.session_state)
         _karaoke_voice = km.is_voice_mode(st.session_state)
-        # Every karaoke-flavoured JS feature (countdown overlay, audio-
-        # ended auto-advance bridge, transition overlays) is gated on
-        # `_karaoke_voice`. Non-voice instruments get a plain
-        # follow-along player with no karaoke behaviours injected.
         _karaoke_engaged = _karaoke_active and _karaoke_voice
         _show_countdown = bool(
             _karaoke_engaged
             and km.countdown_enabled(st.session_state)
             and bool(st.session_state.get(BACKING_AUTOPLAY, False))
         )
-        # Karaoke section-aware lyric panel:
-        # Build a {section: {lyrics, chords}} map from the user's saved
-        # Lyrics & Cues plus the section chord list. Voice-only - the
-        # panel is suppressed (None) for instrumentalists so the
-        # follow-along component renders exactly as before for them.
-        # Only builds when at least one section has user-entered lyrics
-        # (avoids showing an empty card when the song has none yet).
         _karaoke_lyric_panel: dict | None = None
         if _karaoke_voice:
             _user_section_text = section_lyrics or {}
@@ -11829,18 +11810,7 @@ elif _studio_page == "backing":
             if any(entry.get("lyrics") for entry in _panel_map.values()):
                 _karaoke_lyric_panel = _panel_map
         _karaoke_song_title = str(song_data.get("title") or song or "Now Singing")
-        # Karaoke voice mode behaviour:
-        # * When user-typed lyrics exist for at least one section,
-        #   the karaoke lyric panel becomes the main view and the
-        #   chord chart collapses into a "Show chord chart" toggle.
-        # * When no lyrics exist (or instrumentalists are playing),
-        #   the chord chart stays the primary view as a fallback so
-        #   singers still have something to follow.
         _karaoke_hide_chart = bool(_karaoke_voice and _karaoke_lyric_panel)
-        # Beginner mode swaps "Verse 1" / "Verse 2" / ... headers for
-        # the cleaner "Verse" / "Chorus" / "Bridge" labels. Pass the
-        # raw->display map so the JS shows the same labels in the
-        # karaoke "Now Singing" / "Next" lines as the lead sheet.
         _karaoke_display_labels = dict(
             song_data.get("_beginner_display_labels") or {}
         )
@@ -11875,71 +11845,47 @@ elif _studio_page == "backing":
                 karaoke_song_title=_karaoke_song_title,
                 karaoke_hide_chart=_karaoke_hide_chart,
                 karaoke_display_labels=_karaoke_display_labels,
-                # Voice-only setting; instrumentalists never reach this
-                # branch, but we still default-resolve via km.lyric_color
-                # so a stale session_state can never break rendering.
                 karaoke_lyric_color=km.lyric_color(st.session_state),
             ),
             height=820 if _karaoke_lyric_panel else 720,
             scrolling=True,
         )
         st.markdown("</div>", unsafe_allow_html=True)
-    elif _backing_audio_ready and not _leadsheet_open:
-        _show_col, _info_col = st.columns([1, 5])
-        with _show_col:
-            if st.button(
-                "Show chart",
-                key="backing_leadsheet_show_btn",
-                type="primary",
+
+    if _developer_mode_enabled():
+        with st.expander("📋 Form timeline & section order (dev)", expanded=False):
+            _tl_rows = form_timeline_rows(sections)
+
+            st.dataframe(
+                pd.DataFrame(_tl_rows).rename(
+                    columns={
+                        "section": "Section",
+                        "start_bar": "Start bar",
+                        "end_bar": "End bar",
+                        "bars": "Bars (chords)",
+                    }
+                ),
                 use_container_width=True,
-            ):
-                st.session_state["backing_lead_sheet_open"] = True
-                st.rerun()
-        with _info_col:
-            st.caption(
-                "Open the lead sheet for live chord follow-along while the track plays."
+                hide_index=True,
             )
-    else:
-        with st.expander(
-            "Lead-sheet chart & chord follow",
-            expanded=bool(st.session_state.get("backing_lead_sheet_open", False)),
-        ):
-            st.caption("Generate backing audio above to enable live chord highlighting.")
-            st.markdown(chart_html, unsafe_allow_html=True)
 
-    with st.expander("📋 Form timeline & section order", expanded=False):
-        _tl_rows = form_timeline_rows(sections)
-
-        st.dataframe(
-            pd.DataFrame(_tl_rows).rename(
-                columns={
-                    "section": "Section",
-                    "start_bar": "Start bar",
-                    "end_bar": "End bar",
-                    "bars": "Bars (chords)",
+            selected_rows = [
+                {
+                    "Section": name,
+                    "Bars": len(chords),
+                    "Included": "Yes" if (not selected_section_names or name in selected_section_names) else "No",
                 }
-            ),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        selected_rows = [
-            {
-                "Section": name,
-                "Bars": len(chords),
-                "Included": "Yes" if (not selected_section_names or name in selected_section_names) else "No",
-            }
-            for name, chords in section_order(
-                sections,
-                section_names=section_names_from_song(song_data),
+                for name, chords in section_order(
+                    sections,
+                    section_names=section_names_from_song(song_data),
+                )
+                if chords
+            ]
+            st.dataframe(
+                pd.DataFrame(selected_rows),
+                use_container_width=True,
+                hide_index=True,
             )
-            if chords
-        ]
-        st.dataframe(
-            pd.DataFrame(selected_rows),
-            use_container_width=True,
-            hide_index=True,
-        )
 
     try:
         from backing_track_state import enable_backing_user_edits

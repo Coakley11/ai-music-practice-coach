@@ -1203,23 +1203,22 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
 
 
-        st.markdown("**Phase C canonical state**")
+        with st.expander("Phase C canonical state", expanded=False):
+            try:
 
-        try:
+                from active_song_state import render_active_song_state_debug
+                from backing_track_state import render_backing_state_debug
+                from practice_state import render_practice_state_debug
+                from studio_nav_state import render_studio_nav_state_debug
 
-            from active_song_state import render_active_song_state_debug
-            from backing_track_state import render_backing_state_debug
-            from practice_state import render_practice_state_debug
-            from studio_nav_state import render_studio_nav_state_debug
+                render_studio_nav_state_debug(st, ss)
+                render_active_song_state_debug(st, ss)
+                render_practice_state_debug(st, ss)
+                render_backing_state_debug(st, ss)
 
-            render_studio_nav_state_debug(st, ss)
-            render_active_song_state_debug(st, ss)
-            render_practice_state_debug(st, ss)
-            render_backing_state_debug(st, ss)
+            except ImportError:
 
-        except ImportError:
-
-            st.text("Phase C modules not available")
+                st.text("Phase C modules not available")
 
 
 

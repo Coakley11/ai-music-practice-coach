@@ -111,66 +111,66 @@ def render_widget_control_debug(st: Any, session: dict[str, Any]) -> None:
     else:
         session["_mt_tracks_count_live"] = 0
 
-    mt_diag = session.get("_multitrack_persist_diag")
-    if isinstance(mt_diag, dict):
-        skipped = mt_diag.get("skipped_due_to_size") or []
-        if skipped:
-            st.sidebar.warning(f"Multitrack skipped_due_to_size: {skipped}")
+    with st.sidebar.expander("Widget control debug", expanded=False):
+        mt_diag = session.get("_multitrack_persist_diag")
+        if isinstance(mt_diag, dict):
+            skipped = mt_diag.get("skipped_due_to_size") or []
+            if skipped:
+                st.warning(f"Multitrack skipped_due_to_size: {skipped}")
 
-    canonical_pick = ""
-    meta = session.get("active_song_state")
-    if isinstance(meta, dict):
-        canonical_pick = str(meta.get("pick_key") or meta.get("active_catalog_pick_key") or "")
+        canonical_pick = ""
+        meta = session.get("active_song_state")
+        if isinstance(meta, dict):
+            canonical_pick = str(meta.get("pick_key") or meta.get("active_catalog_pick_key") or "")
 
-    st.sidebar.markdown("**Widget control debug**")
-    st.sidebar.caption(
-        f"restore_phase_done=`{music_restore_phase_complete(session)}` · "
-        f"restore_in_progress=`{authoritative_restore_in_progress(session)}` · "
-        f"workspace_empty=`{workspace_is_truly_empty(session)}` · "
-        f"local_edit=`{is_active_song_locally_dirty(session)}` · "
-        f"user_catalog=`{bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))}` · "
-        f"custom_active=`{custom_progression_is_active(session)}`"
-    )
-    st.sidebar.caption(
-        f"backing_autoplay=`{bool(session.get('_backing_autoplay'))}` · "
-        f"transport=`{session.get('backing_transport_status')}` · "
-        f"sync_attempted=`{bool(session.get('_suite_workspace_sync_attempted'))}` · "
-        f"canonical_pick=`{canonical_pick}`"
-    )
-
-    rows: list[str] = []
-    for spec in WIDGET_CONTROL_SPECS:
-        key = spec["session_key"]
-        live = session.get(key)
-        if key == "_mt_tracks_count_live":
-            live = session.get("_mt_tracks_count_live")
-        if key == "active_song_title":
-            sel = session.get("selected_song")
-            if isinstance(sel, dict) and sel.get("title"):
-                live = sel.get("title")
-        source = str(session.get(spec["source_key"]) or session.get("global_control_overwrite_source") or "")
-        write_trace = _last_write_for_key(session, key)
-        cloud = _cloud_value(payload, tuple(spec["cloud_path"])) if payload else ""
-        canonical = ""
-        if isinstance(meta, dict) and spec["session_key"] in {"instrument", "level", "focus", "display_key"}:
-            canonical = str(meta.get(spec["session_key"]) or "")
-        flag = ""
-        if authoritative_restore_in_progress(session) and cloud and str(live or "") != cloud:
-            flag = " ⚠ restore overwriting"
-        elif music_restore_phase_complete(session) and canonical and str(live or "") != canonical and source != "sidebar_on_change":
-            flag = " ⚠ canonical drift"
-        rows.append(
-            f"**{spec['label']}** (`{key}`) live=`{live}` cloud=`{cloud}` "
-            f"canonical=`{canonical}` src=`{source}` trace=`{write_trace}`{flag}"
+        st.caption(
+            f"restore_phase_done=`{music_restore_phase_complete(session)}` · "
+            f"restore_in_progress=`{authoritative_restore_in_progress(session)}` · "
+            f"workspace_empty=`{workspace_is_truly_empty(session)}` · "
+            f"local_edit=`{is_active_song_locally_dirty(session)}` · "
+            f"user_catalog=`{bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))}` · "
+            f"custom_active=`{custom_progression_is_active(session)}`"
         )
-    for row in rows:
-        st.sidebar.caption(row)
+        st.caption(
+            f"backing_autoplay=`{bool(session.get('_backing_autoplay'))}` · "
+            f"transport=`{session.get('backing_transport_status')}` · "
+            f"sync_attempted=`{bool(session.get('_suite_workspace_sync_attempted'))}` · "
+            f"canonical_pick=`{canonical_pick}`"
+        )
 
-    trace = session.get("_music_state_write_trace")
-    if isinstance(trace, list) and trace:
-        last = trace[-3:]
-        st.sidebar.caption(f"state_writes_tail: `{last}`")
+        rows: list[str] = []
+        for spec in WIDGET_CONTROL_SPECS:
+            key = spec["session_key"]
+            live = session.get(key)
+            if key == "_mt_tracks_count_live":
+                live = session.get("_mt_tracks_count_live")
+            if key == "active_song_title":
+                sel = session.get("selected_song")
+                if isinstance(sel, dict) and sel.get("title"):
+                    live = sel.get("title")
+            source = str(session.get(spec["source_key"]) or session.get("global_control_overwrite_source") or "")
+            write_trace = _last_write_for_key(session, key)
+            cloud = _cloud_value(payload, tuple(spec["cloud_path"])) if payload else ""
+            canonical = ""
+            if isinstance(meta, dict) and spec["session_key"] in {"instrument", "level", "focus", "display_key"}:
+                canonical = str(meta.get(spec["session_key"]) or "")
+            flag = ""
+            if authoritative_restore_in_progress(session) and cloud and str(live or "") != cloud:
+                flag = " ⚠ restore overwriting"
+            elif music_restore_phase_complete(session) and canonical and str(live or "") != canonical and source != "sidebar_on_change":
+                flag = " ⚠ canonical drift"
+            rows.append(
+                f"**{spec['label']}** (`{key}`) live=`{live}` cloud=`{cloud}` "
+                f"canonical=`{canonical}` src=`{source}` trace=`{write_trace}`{flag}"
+            )
+        for row in rows:
+            st.caption(row)
 
-    trace2 = session.get("_global_control_widget_trace")
-    if isinstance(trace2, dict) and trace2:
-        st.sidebar.caption(f"last_widget_trace: `{trace2}`")
+        trace = session.get("_music_state_write_trace")
+        if isinstance(trace, list) and trace:
+            last = trace[-3:]
+            st.caption(f"state_writes_tail: `{last}`")
+
+        trace2 = session.get("_global_control_widget_trace")
+        if isinstance(trace2, dict) and trace2:
+            st.caption(f"last_widget_trace: `{trace2}`")

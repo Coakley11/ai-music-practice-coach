@@ -6605,7 +6605,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-19-cpl-live-paths-v29c"
+STUDIO_UI_RELEASE = "2026-06-22-ui-lite-no-song-dump-v1"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -7988,25 +7988,26 @@ def render_quick_nav_dev_diagnostics(st: Any) -> None:
     ss = st.session_state
     count = int(ss.get("quick_nav_render_count") or 0)
     locations = ss.get("quick_nav_render_locations") or []
-    st.sidebar.caption(f"**quick_nav_render_count:** `{count}`")
-    if locations:
-        st.sidebar.caption("**quick_nav_render_locations:**")
-        for idx, loc in enumerate(locations, start=1):
-            if not isinstance(loc, dict):
-                continue
-            skipped = " (skipped duplicate)" if loc.get("skipped_duplicate") else ""
-            st.sidebar.caption(
-                f"{idx}. `{loc.get('caller', '?')}` page=`{loc.get('page', '')}` "
-                f"key_prefix=`{loc.get('key_prefix', '')}` "
-                f"container=`{loc.get('container_id') or 'none'}`{skipped}"
-            )
     stack = ss.get("quick_nav_render_stack") or []
-    if stack:
-        with st.sidebar.expander("quick_nav_render_stack", expanded=False):
-            st.code("\n".join(str(line) for line in stack))
     keys = ss.get("quick_nav_container_keys") or []
-    if keys:
-        st.sidebar.caption(f"**quick_nav_container_keys:** `{', '.join(keys)}`")
+    with st.sidebar.expander("Quick nav diagnostics", expanded=False):
+        st.caption(f"**quick_nav_render_count:** `{count}`")
+        if locations:
+            st.caption("**quick_nav_render_locations:**")
+            for idx, loc in enumerate(locations, start=1):
+                if not isinstance(loc, dict):
+                    continue
+                skipped = " (skipped duplicate)" if loc.get("skipped_duplicate") else ""
+                st.caption(
+                    f"{idx}. `{loc.get('caller', '?')}` page=`{loc.get('page', '')}` "
+                    f"key_prefix=`{loc.get('key_prefix', '')}` "
+                    f"container=`{loc.get('container_id') or 'none'}`{skipped}"
+                )
+        if stack:
+            with st.expander("quick_nav_render_stack", expanded=False):
+                st.code("\n".join(str(line) for line in stack))
+        if keys:
+            st.caption(f"**quick_nav_container_keys:** `{', '.join(keys)}`")
 
 
 def render_page_quick_nav(
