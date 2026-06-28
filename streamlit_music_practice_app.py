@@ -6261,22 +6261,29 @@ def mix_multitrack(backing_y, track_items, sr=44100):
 
 
 
-def ensure_multitrack_track_controls(track_names):
-    controls = st.session_state.setdefault("mt_track_controls", {})
-    for name in track_names:
-        controls.setdefault(
-            name,
-            {"volume": 1.0, "mute": False, "solo": False, "delay": 0.0},
-        )
-    return controls
+def ensure_multitrack_track_controls(session_state, track_names=None):
+    try:
+        from multitrack_mixer_state import ensure_multitrack_track_controls as _ensure
+
+        return _ensure(session_state)
+    except ImportError:
+        controls = session_state.setdefault("mt_track_controls", {})
+        names = track_names or []
+        for name in names:
+            controls.setdefault(
+                name,
+                {"volume": 1.0, "mute": False, "solo": False, "delay": 0.0},
+            )
+        return controls
 
 
 def multitrack_studio_track_payloads(track_items, controls):
     payloads = []
     for item in track_items:
         name = item["name"]
+        slot = str(item.get("slot") or name)
         track_id = "".join(ch if ch.isalnum() else "_" for ch in name.lower()).strip("_") or "track"
-        ctrl = controls.get(name, {})
+        ctrl = controls.get(slot) if isinstance(controls.get(slot), dict) else controls.get(name, {})
         filename = (item.get("filename") or "").lower()
         if filename.endswith(".mp3"):
             mime = "audio/mpeg"
@@ -12750,7 +12757,18 @@ elif _studio_page == "multitrack":
                 st.audio(monitor_wav, format="audio/wav")
 
         track_items_for_mix = []
-        mt_controls = ensure_multitrack_track_controls([])
+        try:
+            from multitrack_mixer_state import (
+                commit_all_multitrack_mixer_widgets,
+                prepare_multitrack_mixer_widgets,
+            )
+
+            prepare_multitrack_mixer_widgets(st.session_state)
+        except ImportError:
+            commit_all_multitrack_mixer_widgets = None  # type: ignore[assignment]
+            prepare_multitrack_mixer_widgets = None  # type: ignore[assignment]
+
+        mt_controls = ensure_multitrack_track_controls(st.session_state)
 
         with st.container(key="multitrack_layers_panel", border=False):
             st.markdown(
@@ -12833,52 +12851,71 @@ elif _studio_page == "multitrack":
                             st.warning("Record or upload audio first.")
 
                     with c2:
-                        st.session_state[f"mt_vol_{slot}"] = st.slider(
+                        st.slider(
                             "Volume",
                             0.0,
                             2.0,
-                            float(st.session_state.get(f"mt_vol_{slot}", 1.0)),
-                            0.05,
-                            key=f"mt_vol_slider_{slot}",
+                            step=0.05,
+                            key=f"mt_vol_{slot}",
                         )
-                        st.session_state[f"mt_delay_{slot}"] = st.slider(
+                        st.slider(
                             "Align (seconds ±)",
                             -3.0,
                             3.0,
-                            float(st.session_state.get(f"mt_delay_{slot}", 0.0)),
-                            0.05,
-                            key=f"mt_delay_slider_{slot}",
+                            step=0.05,
+                            key=f"mt_delay_{slot}",
                         )
                         st.caption("Positive = later. Negative = earlier.")
 
                     with c3:
-                        ctrl = mt_controls.setdefault(
-                            slot,
-                            {"volume": 1.0, "mute": False, "solo": False, "delay": 0.0},
-                        )
-                        ctrl["mute"] = st.checkbox("Mute", key=f"mt_mute_{slot}")
-                        ctrl["solo"] = st.checkbox("Solo", key=f"mt_solo_{slot}")
-                        ctrl["volume"] = st.session_state[f"mt_vol_{slot}"]
-                        ctrl["delay"] = st.session_state[f"mt_delay_{slot}"]
+                        st.checkbox("Mute", key=f"mt_mute_{slot}")
+                        st.checkbox("Solo", key=f"mt_solo_{slot}")
+                        try:
+                            from multitrack_mixer_state import commit_multitrack_mixer_widget
+
+                            ctrl = commit_multitrack_mixer_widget(
+                                st.session_state,
+                                slot,
+                                layer_name=layer_name,
+                            )
+                        except ImportError:
+                            ctrl = mt_controls.setdefault(
+                                slot,
+                                {"volume": 1.0, "mute": False, "solo": False, "delay": 0.0},
+                            )
+                            ctrl["volume"] = float(st.session_state.get(f"mt_vol_{slot}", 1.0))
+                            ctrl["delay"] = float(st.session_state.get(f"mt_delay_{slot}", 0.0))
+                            ctrl["mute"] = bool(st.session_state.get(f"mt_mute_{slot}", False))
+                            ctrl["solo"] = bool(st.session_state.get(f"mt_solo_{slot}", False))
 
                     saved_audio = st.session_state.mt_tracks.get(slot)
                     if saved_audio:
                         st.audio(saved_audio)
                         track_items_for_mix.append(
                             {
+                                "slot": slot,
                                 "name": layer_name,
                                 "audio_bytes": saved_audio,
                                 "filename": st.session_state.mt_track_filenames.get(
                                     slot, f"{slot}.wav"
                                 ),
-                                "volume": st.session_state[f"mt_vol_{slot}"],
-                                "delay": st.session_state[f"mt_delay_{slot}"],
-                                "mute": mt_controls.get(slot, {}).get("mute", False),
-                                "solo": mt_controls.get(slot, {}).get("solo", False),
+                                "volume": float(ctrl.get("volume", 1.0)),
+                                "delay": float(ctrl.get("delay", 0.0)),
+                                "mute": bool(ctrl.get("mute", False)),
+                                "solo": bool(ctrl.get("solo", False)),
                             }
                         )
 
-            st.session_state["mt_track_controls"] = dict(mt_controls)
+            if commit_all_multitrack_mixer_widgets is not None:
+                mt_controls = commit_all_multitrack_mixer_widgets(st.session_state)
+            else:
+                st.session_state["mt_track_controls"] = dict(mt_controls)
+            try:
+                from studio_page_persistence import flush_current_page_snapshot
+
+                flush_current_page_snapshot(st.session_state)
+            except Exception:
+                pass
 
         if track_items_for_mix:
             st.markdown(
@@ -12888,8 +12925,7 @@ elif _studio_page == "multitrack":
             )
 
         track_items_for_studio = list(track_items_for_mix)
-        layer_names = [item["name"] for item in track_items_for_studio]
-        ensure_multitrack_track_controls(layer_names)
+        ensure_multitrack_track_controls(st.session_state)
         studio_tracks = multitrack_studio_track_payloads(track_items_for_studio, mt_controls)
 
         with st.container(key="multitrack_transport_panel", border=False):

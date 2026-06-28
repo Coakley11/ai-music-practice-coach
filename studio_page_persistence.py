@@ -181,7 +181,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
 _PAGE_LOCAL_PREFIXES: dict[str, tuple[str, ...]] = {
     "practice": ("practice::", "exercise_variation::"),
     "backing": ("backing::", "_follow_", "follow_along::"),
-    "multitrack": ("mt_name_", "mt_vol_", "mt_delay_"),
+    "multitrack": ("mt_name_", "mt_vol_", "mt_delay_", "mt_mute_", "mt_solo_"),
     "log": ("practice_form",),
 }
 
@@ -475,6 +475,14 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
             val_has = bool(val) and isinstance(val, (bytes, bytearray)) and len(val) > 0
             if snap_has and not val_has:
                 continue
+        if key == "mt_track_controls":
+            try:
+                from multitrack_mixer_state import merge_mt_track_controls
+
+                session_state[key] = merge_mt_track_controls(val, session_state.get(key))
+            except ImportError:
+                session_state[key] = copy.deepcopy(val)
+            continue
         session_state[key] = copy.deepcopy(val)
     _restore_preserved_globals(session_state, preserved)
 

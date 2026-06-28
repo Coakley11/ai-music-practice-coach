@@ -405,8 +405,8 @@ def build_multitrack_catalog_fields(
         slot_controls[slot] = {
             "volume": float(session_state.get(f"mt_vol_{slot}", ctrl.get("volume", 1.0))),
             "delay": float(session_state.get(f"mt_delay_{slot}", ctrl.get("delay", 0.0))),
-            "mute": bool(ctrl.get("mute", False)),
-            "solo": bool(ctrl.get("solo", False)),
+            "mute": bool(session_state.get(f"mt_mute_{slot}", ctrl.get("mute", False))),
+            "solo": bool(session_state.get(f"mt_solo_{slot}", ctrl.get("solo", False))),
         }
 
     try:
@@ -836,6 +836,12 @@ def apply_catalog_multitrack_to_session(
 
     apply_multitrack_backing_fields(session_state, row)
     apply_multitrack_history(session_state, payload)
+    try:
+        from multitrack_mixer_state import prepare_multitrack_mixer_widgets
+
+        prepare_multitrack_mixer_widgets(session_state)
+    except ImportError:
+        pass
     mid = str(row.get("multitrack_id") or "")
     if mid:
         session_state[_ACTIVE_CATALOG_MULTITRACK_KEY] = mid

@@ -138,7 +138,7 @@ def clear_multitrack_persisted_state(session_state: dict[str, Any]) -> None:
     session_state.pop("_mt_tracks_persist_blob", None)
 
     for key in list(session_state.keys()):
-        if key.startswith(("mt_vol_", "mt_delay_", "mt_name_")):
+        if key.startswith(("mt_vol_", "mt_delay_", "mt_name_", "mt_mute_", "mt_solo_")):
             session_state.pop(key, None)
 
     store = session_state.get("_studio_page_snapshots")

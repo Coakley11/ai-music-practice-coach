@@ -44,8 +44,12 @@ def clear_multitrack_widget_keys(session_state: dict[str, Any]) -> None:
     for slot in MULTITRACK_SLOTS:
         for key in (
             f"mt_name_{slot}",
+            f"mt_vol_{slot}",
             f"mt_vol_slider_{slot}",
+            f"mt_delay_{slot}",
             f"mt_delay_slider_{slot}",
+            f"mt_mute_{slot}",
+            f"mt_solo_{slot}",
             f"mt_upload_{slot}",
             f"mt_record_{slot}",
         ):
@@ -103,33 +107,36 @@ def build_multitrack_history_payload(
     for slot in MULTITRACK_SLOTS:
         audio = mt_tracks.get(slot)
         ctrl, layer_name = _control_for_slot(controls, session_state, slot)
-        volume = session_state.get(f"mt_vol_{slot}", ctrl.get("volume", 1.0))
-        delay = session_state.get(f"mt_delay_{slot}", ctrl.get("delay", 0.0))
+        volume = session_state.get(f"mt_vol_{slot}", session_state.get(f"mt_vol_slider_{slot}", ctrl.get("volume", 1.0)))
+        delay = session_state.get(f"mt_delay_{slot}", session_state.get(f"mt_delay_slider_{slot}", ctrl.get("delay", 0.0)))
+        mute = bool(session_state.get(f"mt_mute_{slot}", ctrl.get("mute", False)))
+        solo = bool(session_state.get(f"mt_solo_{slot}", ctrl.get("solo", False)))
         slot_controls[slot] = {
             "volume": float(volume) if volume is not None else 1.0,
             "delay": float(delay) if delay is not None else 0.0,
-            "mute": bool(ctrl.get("mute", False)),
-            "solo": bool(ctrl.get("solo", False)),
+            "mute": mute,
+            "solo": solo,
         }
         filename = str(filenames.get(slot) or f"{slot.replace(' ', '_').lower()}.wav")
         has_audio = isinstance(audio, (bytes, bytearray)) and bool(audio)
+        if not has_audio:
+            continue
         meta: dict[str, Any] = {
             "slot": slot,
             "layer_name": layer_name[:80],
             "filename": filename[:200],
             "volume": float(volume) if volume is not None else 1.0,
             "delay": float(delay) if delay is not None else 0.0,
-            "mute": bool(ctrl.get("mute", False)),
-            "solo": bool(ctrl.get("solo", False)),
-            "has_audio": has_audio,
+            "mute": mute,
+            "solo": solo,
+            "has_audio": True,
             "audio_embedded": False,
         }
-        if has_audio:
-            raw = bytes(audio)
-            if len(raw) <= MAX_PER_TRACK_EMBED_BYTES and len(raw) <= embed_budget:
-                embedded_tracks[slot] = base64.b64encode(raw).decode("ascii")
-                meta["audio_embedded"] = True
-                embed_budget -= len(raw)
+        raw = bytes(audio)
+        if len(raw) <= MAX_PER_TRACK_EMBED_BYTES and len(raw) <= embed_budget:
+            embedded_tracks[slot] = base64.b64encode(raw).decode("ascii")
+            meta["audio_embedded"] = True
+            embed_budget -= len(raw)
         tracks_meta.append(meta)
 
     mixed_b64, mixed_skip = encode_audio_if_safe(session_state.get("mixed_track_wav"))
@@ -224,6 +231,8 @@ def apply_multitrack_history(session_state: dict[str, Any], payload: dict[str, A
         session_state[f"mt_name_{slot}"] = str(row.get("layer_name") or slot)
         session_state[f"mt_vol_{slot}"] = float(row.get("volume", 1.0))
         session_state[f"mt_delay_{slot}"] = float(row.get("delay", 0.0))
+        session_state[f"mt_mute_{slot}"] = bool(row.get("mute", False))
+        session_state[f"mt_solo_{slot}"] = bool(row.get("solo", False))
         b64 = embedded.get(slot)
         audio = decode_audio_b64(b64) if isinstance(b64, str) else None
         if audio:
@@ -255,6 +264,12 @@ def apply_multitrack_history(session_state: dict[str, Any], payload: dict[str, A
         }
     if slot_controls:
         session_state["mt_track_controls"] = copy.deepcopy(slot_controls)
+        try:
+            from multitrack_mixer_state import prepare_multitrack_mixer_widgets
+
+            prepare_multitrack_mixer_widgets(session_state)
+        except ImportError:
+            pass
 
     mixed = decode_audio_b64(payload.get("mixed_preview_b64"))
     if mixed:
