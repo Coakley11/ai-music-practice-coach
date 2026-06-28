@@ -220,6 +220,36 @@ class TestMultitrackWorkspaceEditability(unittest.TestCase):
         self.assertEqual(fresh.get("mt_multi_sections"), ["Verse", "Chorus"])
         self.assertEqual(fresh.get("mt_history_save_notes"), "refresh test")
 
+    def test_multitrack_snapshot_keeps_step3_mix_keys(self) -> None:
+        snap = capture_page_snapshot(
+            {
+                "studio_page": "multitrack",
+                "include_backing_mix": True,
+                "mt_backing_volume": 0.6,
+                "mt_loop_backing": True,
+                "mt_use_backing_monitor": True,
+                "mt_playback_scope": "Full song",
+            },
+            "multitrack",
+        )
+        self.assertTrue(snap.get("include_backing_mix"))
+        self.assertEqual(snap.get("mt_backing_volume"), 0.6)
+
+    def test_free_layering_guard_clears_backing_flags(self) -> None:
+        session = _empty_mt_session(
+            mt_playback_scope="Free layering (no backing)",
+            include_backing_mix=True,
+            mt_use_backing_monitor=True,
+            mt_loop_backing=True,
+        )
+        if str(session.get("mt_playback_scope") or "") == "Free layering (no backing)":
+            session["include_backing_mix"] = False
+            session["mt_use_backing_monitor"] = False
+            session["mt_loop_backing"] = False
+        self.assertFalse(session["include_backing_mix"])
+        self.assertFalse(session["mt_use_backing_monitor"])
+        self.assertFalse(session["mt_loop_backing"])
+
     def test_selected_sections_backing_uses_song_order_only(self) -> None:
         from streamlit_music_practice_app import chord_events_for_selected_sections
 

@@ -6352,8 +6352,6 @@ def _render_multitrack_session_setup_panel(
     list[str],
     list,
     float,
-    bool,
-    float,
     int,
     str,
 ]:
@@ -6400,6 +6398,16 @@ def _render_multitrack_session_setup_panel(
         key="mt_playback_scope",
         label_visibility="collapsed",
     )
+    _free_layering = mt_scope == "Free layering (no backing)"
+    if _free_layering:
+        st.session_state["include_backing_mix"] = False
+        st.session_state["mt_use_backing_monitor"] = False
+        st.session_state["mt_loop_backing"] = False
+        st.info(
+            "Free Layering mode records layers without a generated backing track. "
+            "Backing, section-repeat, and export-with-backing controls are disabled in Step 3. "
+            "You can still record layers and use the click/metronome."
+        )
     mt_selected_sections: list[str] = []
     if mt_scope == "Single section (verse, chorus, solo, …)" and mt_sec_names:
         field_label_fn(st, "Section")
@@ -6446,7 +6454,7 @@ def _render_multitrack_session_setup_panel(
             2,
             1,
             key="mt_section_loops",
-            disabled=mt_scope == "Free layering (no backing)",
+            disabled=_free_layering,
             help="Loops the selected section range while recording.",
         )
     with _kbpm_c3:
@@ -6462,58 +6470,31 @@ def _render_multitrack_session_setup_panel(
                 "Ballad",
             ],
             key="mt_groove_style",
-            disabled=mt_scope == "Free layering (no backing)",
+            disabled=_free_layering,
         )
     section_close_fn(st)
 
-    section_open_fn(st, "Recording & monitor", icon="🎙")
-    try:
-        from media_multitrack_catalog import seed_multitrack_backing_volume
-
-        seed_multitrack_backing_volume(st.session_state)
-    except ImportError:
-        if "mt_backing_volume" not in st.session_state:
-            st.session_state["mt_backing_volume"] = 0.75
-
-    _rec_top1, _rec_top2 = st.columns([1.0, 1.2], gap="small")
-    with _rec_top1:
-        count_in_label = st.selectbox(
-            "Count-in",
-            ["None", "1 bar", "2 bars"],
-            index=1,
-            key="mt_count_in_bars",
-            help="Bars of click before playback starts.",
-        )
-    with _rec_top2:
-        include_backing_in_mix = st.checkbox(
-            "Include backing in exported mix",
-            key="include_backing_mix",
-        )
-    _rec_bot1, _rec_bot2 = st.columns([1.25, 1], gap="small")
-    with _rec_bot1:
-        pass
-    with _rec_bot2:
-        backing_volume = st.slider(
-            "Backing level",
-            min_value=0.0,
-            max_value=1.5,
-            step=0.05,
-            key="mt_backing_volume",
-            help="Controls how loud the backing track is compared with your recorded layers.",
-        )
+    section_open_fn(st, "Count-in", icon="🎙")
+    count_in_label = st.selectbox(
+        "Count-in",
+        ["None", "1 bar", "2 bars"],
+        index=1,
+        key="mt_count_in_bars",
+        help="Bars of click before playback starts.",
+    )
     section_close_fn(st)
 
     mt_count_in_bars = {"None": 0, "1 bar": 1, "2 bars": 2}[count_in_label]
     mt_scope_label = (
         "free layering"
-        if mt_scope == "Free layering (no backing)"
+        if _free_layering
         else ("full song" if not mt_selected_sections else " + ".join(mt_selected_sections))
     )
     mt_events = (
         chord_events_for_selected_sections(
             sections, mt_selected_sections, song_data=song_data
         )
-        if mt_scope != "Free layering (no backing)"
+        if not _free_layering
         else []
     )
     mt_resolved_groove = infer_groove_style(song_data, mt_groove)
@@ -6522,9 +6503,9 @@ def _render_multitrack_session_setup_panel(
 
     _prep_info, _prep_btn = st.columns([2.1, 1], gap="small")
     with _prep_info:
-        if mt_scope != "Free layering (no backing)" and not mt_events:
+        if not _free_layering and not mt_events:
             st.warning("Choose at least one section (or use Free layering).")
-        else:
+        elif not _free_layering:
             st.markdown(
                 f'<p class="ui-mt-target-line">Target: <strong>{html.escape(mt_scope_label)}</strong> · '
                 f"{html.escape(mt_time_sig)} @ <strong>{int(mt_bpm)}</strong> BPM · "
@@ -6537,7 +6518,7 @@ def _render_multitrack_session_setup_panel(
             key="mt_prepare_backing",
             type="primary",
             use_container_width=True,
-            disabled=mt_scope == "Free layering (no backing)" or not mt_events,
+            disabled=_free_layering or not mt_events,
         )
     st.caption(
         "Prepare Backing uses only the selected sections in song order, repeated by Section repeats "
@@ -6592,8 +6573,6 @@ def _render_multitrack_session_setup_panel(
         mt_selected_sections,
         mt_events,
         mt_backing_duration,
-        include_backing_in_mix,
-        backing_volume,
         mt_count_in_bars,
         mt_scope_label,
     )
@@ -12700,8 +12679,6 @@ elif _studio_page == "multitrack":
                 mt_selected_sections,
                 mt_events,
                 mt_backing_duration,
-                include_backing_in_mix,
-                backing_volume,
                 mt_count_in_bars,
                 mt_scope_label,
             ) = _render_multitrack_session_setup_panel(
@@ -12934,6 +12911,23 @@ elif _studio_page == "multitrack":
                 '<p class="ui-multitrack-step-kicker">Step 3 · Transport &amp; mixer</p>',
                 unsafe_allow_html=True,
             )
+            _free_layering = (
+                str(st.session_state.get("mt_playback_scope") or "")
+                == "Free layering (no backing)"
+            )
+            _has_backing = bool(monitor_wav)
+            _backing_controls_disabled = _free_layering or not _has_backing
+            if _free_layering:
+                st.session_state["include_backing_mix"] = False
+                st.session_state["mt_use_backing_monitor"] = False
+                st.session_state["mt_loop_backing"] = False
+            try:
+                from media_multitrack_catalog import seed_multitrack_backing_volume
+
+                seed_multitrack_backing_volume(st.session_state)
+            except ImportError:
+                if "mt_backing_volume" not in st.session_state:
+                    st.session_state["mt_backing_volume"] = 0.75
             st.caption(
                 "Press **Play with count-in** for a studio-style start. "
                 "Volume, mute, and solo are edited in **Step 2** — the mixer below shows a read-only preview."
@@ -12943,6 +12937,7 @@ elif _studio_page == "multitrack":
                 mt_loop_backing = st.checkbox(
                     "Repeat selected section while recording",
                     key="mt_loop_backing",
+                    disabled=_backing_controls_disabled,
                     help="Keeps looping the selected section while you record.",
                 )
             with _tr2:
@@ -12955,12 +12950,42 @@ elif _studio_page == "multitrack":
                 use_backing_monitor = st.checkbox(
                     "Hear backing during playback",
                     key="mt_use_backing_monitor",
+                    disabled=_backing_controls_disabled,
                     help="Play the prepared backing track while transport runs.",
                 )
-            st.caption(
-                "Transport settings persist across refresh and saved projects. "
-                "Edit layer volume, mute, and solo in Step 2."
-            )
+            _mix1, _mix2 = st.columns([1.2, 1], gap="small")
+            with _mix1:
+                backing_volume = st.slider(
+                    "Backing level",
+                    min_value=0.0,
+                    max_value=1.5,
+                    step=0.05,
+                    key="mt_backing_volume",
+                    disabled=_backing_controls_disabled,
+                    help="Controls how loud the backing track is compared with your recorded layers.",
+                )
+            with _mix2:
+                include_backing_in_mix = st.checkbox(
+                    "Include backing in exported mix",
+                    key="include_backing_mix",
+                    disabled=_backing_controls_disabled,
+                    help="When enabled, Step 4 export mixes the prepared backing with your layers.",
+                )
+            if _free_layering:
+                st.caption(
+                    "Free Layering mode: backing monitor, section repeat, backing level, and "
+                    "export-with-backing are disabled. Layer recording and click monitor remain available."
+                )
+            elif not _has_backing:
+                st.caption(
+                    "Prepare backing in Step 1 to enable backing monitor, level, section repeat, "
+                    "and include-backing-in-export controls."
+                )
+            else:
+                st.caption(
+                    "Transport and mix-export settings persist across refresh and saved projects. "
+                    "Edit layer volume, mute, and solo in Step 2."
+                )
             try:
                 from studio_page_persistence import flush_current_page_snapshot
 
@@ -12968,6 +12993,8 @@ elif _studio_page == "multitrack":
             except Exception:
                 pass
             use_backing_monitor = bool(st.session_state.get("mt_use_backing_monitor", True))
+            include_backing_in_mix = bool(st.session_state.get("include_backing_mix", False))
+            backing_volume = float(st.session_state.get("mt_backing_volume", 0.75))
             backing_b64_for_studio = (
                 base64.b64encode(monitor_wav).decode("ascii")
                 if monitor_wav and use_backing_monitor
@@ -13006,7 +13033,9 @@ elif _studio_page == "multitrack":
             if st.button("Create mixed WAV", disabled=not track_items_for_mix, use_container_width=True):
                 try:
                     backing_y = None
-                    if include_backing_in_mix and mt_events:
+                    _include_backing_in_mix = bool(st.session_state.get("include_backing_mix", False))
+                    _backing_volume = float(st.session_state.get("mt_backing_volume", 0.75))
+                    if _include_backing_in_mix and mt_events:
                         backing_y = backing_bytes_to_float(
                             mt_events,
                             bpm=mt_bpm,
@@ -13015,7 +13044,7 @@ elif _studio_page == "multitrack":
                         )
                         if mt_loops > 1:
                             backing_y = np.tile(backing_y, int(mt_loops))
-                        backing_y = backing_y * backing_volume
+                        backing_y = backing_y * _backing_volume
 
                     mixed = mix_multitrack(backing_y, track_items_for_mix)
                     st.session_state.mixed_track_wav = wav_bytes_from_float(mixed)
