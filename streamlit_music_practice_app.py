@@ -6463,6 +6463,14 @@ def _render_multitrack_session_setup_panel(
     section_close_fn(st)
 
     section_open_fn(st, "Recording & monitor", icon="🎙")
+    try:
+        from media_multitrack_catalog import seed_multitrack_backing_volume
+
+        seed_multitrack_backing_volume(st.session_state)
+    except ImportError:
+        if "mt_backing_volume" not in st.session_state:
+            st.session_state["mt_backing_volume"] = 0.75
+
     _rec_top1, _rec_top2, _rec_top3, _rec_top4 = st.columns([0.95, 1.15, 1.15, 1.2], gap="small")
     with _rec_top1:
         count_in_label = st.selectbox(
@@ -6501,12 +6509,11 @@ def _render_multitrack_session_setup_panel(
     with _rec_bot2:
         backing_volume = st.slider(
             "Backing level",
-            0.0,
-            1.5,
-            0.75,
-            0.05,
-            key="backing_volume",
-            help="Monitor and export loudness.",
+            min_value=0.0,
+            max_value=1.5,
+            step=0.05,
+            key="mt_backing_volume",
+            help="Monitor and export loudness (0.00–1.50).",
         )
     section_close_fn(st)
 
@@ -6547,19 +6554,37 @@ def _render_multitrack_session_setup_panel(
             disabled=mt_scope == "Free layering (no backing)" or not mt_events,
         )
     if _prep_clicked:
+        practice_level = str(st.session_state.get("level") or "Intermediate")
         monitor_wav, _ = multitrack_monitor_backing_bytes(
             sections,
             mt_selected_sections,
             bpm=mt_bpm,
             loops=mt_loops,
             style=mt_resolved_groove,
-            level=level,
+            level=practice_level,
             time_signature=mt_time_sig,
         )
-        st.session_state.multitrack_backing_music_wav = monitor_wav
         st.session_state.mt_backing_scope = mt_scope_label
         st.session_state.mt_backing_duration = mt_backing_duration
-        st.success("Monitor backing ready — use Step 3 transport while recording.")
+        try:
+            from media_multitrack_catalog import persist_prepared_multitrack_backing
+
+            ok, msg = persist_prepared_multitrack_backing(
+                st.session_state,
+                monitor_wav,
+                st=st,
+                scope_label=mt_scope_label,
+            )
+            if ok and msg == "updated_project":
+                st.success("Monitor backing ready — updated the loaded project's backing.")
+            elif ok:
+                st.success("Monitor backing ready — save the project to sync backing across devices.")
+            else:
+                st.session_state.multitrack_backing_music_wav = monitor_wav
+                st.warning("Monitor backing ready locally — catalog update failed.")
+        except ImportError:
+            st.session_state.multitrack_backing_music_wav = monitor_wav
+            st.success("Monitor backing ready — use Step 3 transport while recording.")
 
     return (
         mt_bpm,
@@ -12649,6 +12674,7 @@ elif _studio_page == "multitrack":
         }
 
     mt_time_sig = default_time_signature(song, sections)
+    st.session_state["mt_time_signature"] = mt_time_sig
     mt_beats_per_bar = beats_per_bar_from_signature(mt_time_sig)
     mt_sec_names = [
         name

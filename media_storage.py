@@ -435,6 +435,22 @@ def track_media_relpath(
     return f"media/multitrack/{mid}/{tid}{ext}"
 
 
+def backing_media_relpath(multitrack_id: str) -> str:
+    mid = str(multitrack_id or "").strip()
+    return f"media/multitrack/{mid}/backing.wav"
+
+
+def build_backing_supabase_object_key(
+    user_id: str,
+    workspace_id: str,
+    multitrack_id: str,
+) -> str:
+    uid = str(user_id or "local").strip() or "local"
+    ws = str(workspace_id or "daniel").strip() or "daniel"
+    mid = str(multitrack_id or "").strip()
+    return f"{uid}/{ws}/multitrack/{mid}/backing.wav"
+
+
 def build_track_supabase_object_key(
     user_id: str,
     workspace_id: str,
@@ -530,6 +546,135 @@ def persist_track_audio(
         "playback_status": PLAYBACK_UPLOAD_FAILED,
         "storage_error": local_err or cloud_err,
     }
+
+
+def persist_backing_audio(
+    st: Any | None,
+    multitrack_id: str,
+    audio: Any,
+    *,
+    workspace_id: str | None = None,
+) -> dict[str, Any]:
+    """Save prepared monitor backing locally + cloud (same bucket as track layers)."""
+    mid = str(multitrack_id or "").strip()
+    ws = str(workspace_id or _resolve_workspace_id(st=st)).strip() or "daniel"
+    data, audio_err = _validate_audio_bytes(audio)
+    if not mid:
+        return {"ok": False, "error": "missing_multitrack_id", "playback_status": PLAYBACK_UPLOAD_FAILED}
+    if audio_err or data is None:
+        return {
+            "ok": False,
+            "error": audio_err or "missing_audio",
+            "playback_status": PLAYBACK_METADATA_ONLY,
+        }
+
+    rel = backing_media_relpath(mid)
+    path = recording_local_abs_path(ws, rel)
+    local_err = ""
+    local_ok = False
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        local_ok = path.is_file() and path.stat().st_size > 0
+    except Exception as exc:
+        local_err = str(exc)
+
+    storage_ref = ""
+    cloud_err = ""
+    if _cloud_storage_enabled():
+        client = _service_storage_client()
+        if client is None:
+            cloud_err = "cloud_client_unavailable"
+        else:
+            bucket = _media_bucket()
+            object_key = build_backing_supabase_object_key(_resolve_user_id(), ws, mid)
+            try:
+                client.storage.from_(bucket).upload(
+                    object_key,
+                    data,
+                    file_options={"content-type": "audio/wav", "upsert": "true"},
+                )
+                storage_ref = build_storage_ref(bucket, object_key)
+            except Exception as exc:
+                cloud_err = str(exc)
+
+    if local_ok or storage_ref:
+        return {
+            "ok": True,
+            "local_path": rel if local_ok else None,
+            "storage_ref": storage_ref or None,
+            "local_ok": local_ok,
+            "cloud_ok": bool(storage_ref),
+            "local_error": local_err or None,
+            "cloud_error": cloud_err or None,
+            "playback_status": PLAYBACK_PLAYABLE,
+        }
+    return {
+        "ok": False,
+        "error": local_err or cloud_err or "persist_failed",
+        "playback_status": PLAYBACK_UPLOAD_FAILED,
+        "storage_error": local_err or cloud_err,
+    }
+
+
+def backing_playback_status(
+    session: dict[str, Any],
+    *,
+    session_workspace: str = "",
+    st: Any | None = None,
+) -> str:
+    ws = str(session_workspace or session.get("workspace_id") or _resolve_workspace_id(st=st)).strip() or "daniel"
+    local_path = str(session.get("backing_local_path") or "").strip()
+    storage_ref = str(session.get("backing_storage_ref") or "").strip()
+    if local_path and _track_local_exists(ws, local_path):
+        return PLAYBACK_PLAYABLE
+    if storage_ref:
+        return PLAYBACK_PLAYABLE
+    if local_path or storage_ref or session.get("backing_prepared_at"):
+        return PLAYBACK_METADATA_ONLY
+    return ""
+
+
+def load_backing_audio(
+    session: dict[str, Any],
+    *,
+    st: Any | None = None,
+) -> tuple[bytes | None, str]:
+    ws = str(session.get("workspace_id") or _resolve_workspace_id(st=st)).strip() or "daniel"
+    local_path = str(session.get("backing_local_path") or "").strip()
+    storage_ref = str(session.get("backing_storage_ref") or "").strip()
+
+    if local_path:
+        path = recording_local_abs_path(ws, local_path)
+        if path.is_file() and path.stat().st_size > 0:
+            record_cache_hit(st=st, bytes_count=path.stat().st_size)
+            return path.read_bytes(), ""
+
+    if storage_ref:
+        data, err = download_recording_cloud(storage_ref, st=st)
+        if data:
+            if local_path:
+                try:
+                    path = recording_local_abs_path(ws, local_path)
+                    if not path.is_file():
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_bytes(data)
+                except Exception:
+                    pass
+            elif session.get("multitrack_id"):
+                rel = backing_media_relpath(str(session.get("multitrack_id")))
+                try:
+                    path = recording_local_abs_path(ws, rel)
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(data)
+                except Exception:
+                    pass
+            return data, ""
+        return None, err or "missing_file"
+
+    if local_path or storage_ref:
+        return None, "missing_file"
+    return None, "metadata_only"
 
 
 def _track_local_exists(workspace_id: str, local_path: str) -> bool:
@@ -654,6 +799,12 @@ def delete_multitrack_session_files(session: dict[str, Any], *, st: Any | None =
     mix_local = str(row.get("mix_local_path") or "").strip()
     if mix_local:
         delete_recording_local(ws, mix_local)
+    backing_ref = str(row.get("backing_storage_ref") or "").strip()
+    if backing_ref:
+        delete_recording_cloud(backing_ref)
+    backing_local = str(row.get("backing_local_path") or "").strip()
+    if backing_local:
+        delete_recording_local(ws, backing_local)
 
 
 def delete_recording_files(recording: dict[str, Any], *, st: Any | None = None) -> dict[str, str]:

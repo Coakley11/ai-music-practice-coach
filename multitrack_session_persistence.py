@@ -132,6 +132,8 @@ def clear_multitrack_persisted_state(session_state: dict[str, Any]) -> None:
     }
     session_state["mixed_track_wav"] = None
     session_state.pop("multitrack_backing_music_wav", None)
+    session_state.pop("mt_backing_prepared_at", None)
+    session_state.pop("mt_backing_volume", None)
     session_state["mt_track_controls"] = {}
     session_state.pop("_mt_tracks_persist_blob", None)
 

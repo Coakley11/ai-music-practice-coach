@@ -22,8 +22,11 @@ from media_state import (
 from media_storage import (
     PLAYBACK_METADATA_ONLY,
     PLAYBACK_PLAYABLE,
+    backing_playback_status,
     delete_multitrack_session_files,
+    load_backing_audio,
     load_track_audio,
+    persist_backing_audio,
     persist_track_audio,
     playback_status_label,
     track_playback_status,
@@ -38,6 +41,110 @@ from multitrack_slots import MULTITRACK_SLOTS
 _MIGRATION_FLAG = "_media_multitrack_history_migrated"
 _LAST_CATALOG_MULTITRACK_KEY = "_last_catalog_multitrack_id"
 _ACTIVE_CATALOG_MULTITRACK_KEY = "multitrack_catalog_active_id"
+
+_MT_COUNT_IN_LABELS = ("None", "1 bar", "2 bars")
+_MT_COUNT_IN_MAP = {"None": 0, "1 bar": 1, "2 bars": 2}
+_MT_COUNT_IN_REVERSE = {0: "None", 1: "1 bar", 2: "2 bars"}
+
+
+def _normalize_mt_backing_volume(val: Any, *, default: float = 0.75) -> float:
+    try:
+        from backing_track_state import normalize_backing_volume
+
+        return normalize_backing_volume(val, default=default)
+    except ImportError:
+        try:
+            n = float(val)
+        except (TypeError, ValueError):
+            return default
+        return max(0.0, min(1.5, round(n, 2)))
+
+
+def gather_multitrack_backing_fields(session_state: dict[str, Any]) -> dict[str, Any]:
+    """Collect multitrack session backing settings from live widget/session keys."""
+    count_label = str(session_state.get("mt_count_in_bars") or "1 bar")
+    count_bars = _MT_COUNT_IN_MAP.get(count_label, 1)
+    multi = session_state.get("mt_multi_sections")
+    return {
+        "backing_volume": _normalize_mt_backing_volume(session_state.get("mt_backing_volume")),
+        "backing_scope": str(session_state.get("mt_playback_scope") or "Full song").strip(),
+        "backing_single_section": str(session_state.get("mt_single_section") or "").strip(),
+        "backing_multi_sections": [str(x).strip() for x in multi if str(x).strip()]
+        if isinstance(multi, list)
+        else [],
+        "backing_loops": int(session_state.get("mt_section_loops") or 2),
+        "backing_groove": str(session_state.get("mt_groove_style") or "Auto").strip(),
+        "backing_meter": str(session_state.get("mt_time_signature") or session_state.get("backing_time_signature") or "").strip(),
+        "backing_count_in_bars": count_bars,
+        "backing_use_monitor": bool(session_state.get("mt_use_backing_monitor", True)),
+        "backing_include_in_mix": bool(session_state.get("include_backing_mix", False)),
+        "backing_metronome": bool(session_state.get("mt_metronome_playback", False)),
+        "backing_loop_section": bool(session_state.get("mt_loop_backing", True)),
+        "backing_scope_label": str(session_state.get("mt_backing_scope") or "").strip(),
+        "backing_prepared_at": str(session_state.get("mt_backing_prepared_at") or "").strip() or None,
+    }
+
+
+def apply_multitrack_backing_fields(session_state: dict[str, Any], row: dict[str, Any]) -> None:
+    """Restore multitrack backing widget keys from a catalog row before widgets render."""
+    migrated = migrate_multitrack_session(row)
+    vol = migrated.get("backing_volume")
+    if vol is not None:
+        session_state["mt_backing_volume"] = _normalize_mt_backing_volume(vol)
+    scope = str(migrated.get("backing_scope") or "").strip()
+    if scope:
+        session_state["mt_playback_scope"] = scope
+    single = str(migrated.get("backing_single_section") or "").strip()
+    if single:
+        session_state["mt_single_section"] = single
+    multi = migrated.get("backing_multi_sections")
+    if isinstance(multi, list) and multi:
+        session_state["mt_multi_sections"] = [str(x).strip() for x in multi if str(x).strip()]
+    loops = migrated.get("backing_loops")
+    if loops is not None:
+        session_state["mt_section_loops"] = int(loops)
+    groove = str(migrated.get("backing_groove") or "").strip()
+    if groove:
+        session_state["mt_groove_style"] = groove
+    meter = str(migrated.get("backing_meter") or "").strip()
+    if meter:
+        session_state["mt_time_signature"] = meter
+    count_bars = migrated.get("backing_count_in_bars")
+    if count_bars is not None:
+        session_state["mt_count_in_bars"] = _MT_COUNT_IN_REVERSE.get(int(count_bars), "1 bar")
+    if "backing_use_monitor" in migrated:
+        session_state["mt_use_backing_monitor"] = bool(migrated.get("backing_use_monitor"))
+    if "backing_include_in_mix" in migrated:
+        session_state["include_backing_mix"] = bool(migrated.get("backing_include_in_mix"))
+    if "backing_metronome" in migrated:
+        session_state["mt_metronome_playback"] = bool(migrated.get("backing_metronome"))
+    if "backing_loop_section" in migrated:
+        session_state["mt_loop_backing"] = bool(migrated.get("backing_loop_section"))
+    scope_label = str(migrated.get("backing_scope_label") or "").strip()
+    if scope_label:
+        session_state["mt_backing_scope"] = scope_label
+    prepared_at = str(migrated.get("backing_prepared_at") or "").strip()
+    if prepared_at:
+        session_state["mt_backing_prepared_at"] = prepared_at
+    bpm = migrated.get("bpm")
+    if bpm is not None:
+        session_state["multitrack_bpm"] = int(bpm)
+
+
+def multitrack_has_saved_backing(row: dict[str, Any]) -> bool:
+    migrated = migrate_multitrack_session(row)
+    if str(migrated.get("backing_prepared_at") or "").strip():
+        return True
+    return bool(str(migrated.get("backing_storage_ref") or "").strip() or str(migrated.get("backing_local_path") or "").strip())
+
+
+def seed_multitrack_backing_volume(session_state: dict[str, Any]) -> None:
+    if "mt_backing_volume" in session_state:
+        return
+    session_state["mt_backing_volume"] = _normalize_mt_backing_volume(
+        session_state.get("backing_volume"),
+        default=0.75,
+    )
 
 
 def _utc_now_iso() -> str:
@@ -121,6 +228,26 @@ def catalog_row_to_history_payload(session: dict[str, Any]) -> dict[str, Any]:
         "mixed_preview_b64": None,
         "session_bpm": row.get("bpm"),
         "analysis_summary": row.get("analysis_summary"),
+        "backing_settings": {
+            k: row.get(k)
+            for k in (
+                "backing_volume",
+                "backing_scope",
+                "backing_single_section",
+                "backing_multi_sections",
+                "backing_loops",
+                "backing_groove",
+                "backing_meter",
+                "backing_count_in_bars",
+                "backing_use_monitor",
+                "backing_include_in_mix",
+                "backing_metronome",
+                "backing_loop_section",
+                "backing_scope_label",
+                "backing_prepared_at",
+            )
+            if row.get(k) is not None or k in row
+        },
     }
 
 
@@ -203,6 +330,7 @@ def build_multitrack_catalog_fields(
         workspace_id = "daniel"
 
     bpm = payload.get("session_bpm") or session_state.get("multitrack_bpm") or session_state.get("backing_track_bpm")
+    backing_fields = gather_multitrack_backing_fields(session_state)
 
     return {
         "workspace_id": workspace_id,
@@ -219,6 +347,7 @@ def build_multitrack_catalog_fields(
         "track_controls": slot_controls,
         "mix_storage_ref": None,
         "mix_local_path": None,
+        **backing_fields,
         "analysis_summary": payload.get("analysis_summary") if isinstance(payload.get("analysis_summary"), dict) else {},
         "notes": str(notes or payload.get("notes") or "").strip()[:2000],
     }
@@ -290,6 +419,73 @@ def _persist_session_tracks(
     return fields
 
 
+def _persist_session_backing(
+    st: Any | None,
+    session_state: dict[str, Any],
+    multitrack_id: str,
+    fields: dict[str, Any],
+) -> dict[str, Any]:
+    """Upload prepared monitor backing to durable storage; update refs on fields."""
+    mid = str(multitrack_id or "").strip()
+    ws = str(fields.get("workspace_id") or "daniel").strip()
+    audio = session_state.get("multitrack_backing_music_wav")
+    if not audio or not isinstance(audio, (bytes, bytearray)):
+        return fields
+    store = persist_backing_audio(st, mid, bytes(audio), workspace_id=ws)
+    if store.get("local_path"):
+        fields["backing_local_path"] = store.get("local_path")
+    if store.get("storage_ref"):
+        fields["backing_storage_ref"] = store.get("storage_ref")
+    if not fields.get("backing_prepared_at"):
+        fields["backing_prepared_at"] = _utc_now_iso()
+    return fields
+
+
+def _merge_backing_refs(fields: dict[str, Any], existing_session: dict[str, Any] | None) -> None:
+    if not existing_session:
+        return
+    for key in ("backing_storage_ref", "backing_local_path", "backing_prepared_at"):
+        if not fields.get(key) and existing_session.get(key):
+            fields[key] = existing_session.get(key)
+
+
+def persist_prepared_multitrack_backing(
+    session_state: dict[str, Any],
+    monitor_wav: bytes,
+    *,
+    st: Any | None = None,
+    scope_label: str = "",
+) -> tuple[bool, str]:
+    """Store prepared backing in session; update active catalog project when one is loaded."""
+    session_state["multitrack_backing_music_wav"] = monitor_wav
+    session_state["mt_backing_prepared_at"] = _utc_now_iso()
+    if scope_label:
+        session_state["mt_backing_scope"] = scope_label
+
+    active_mid = str(session_state.get(_LAST_CATALOG_MULTITRACK_KEY) or "").strip()
+    if not active_mid:
+        return True, "session_only"
+
+    catalog = load_media_catalog(st=st)
+    rows = catalog.get("multitrack_sessions") if isinstance(catalog.get("multitrack_sessions"), list) else []
+    existing: dict[str, Any] | None = None
+    for row in rows:
+        if isinstance(row, dict) and str(row.get("multitrack_id") or "") == active_mid:
+            existing = migrate_multitrack_session(row)
+            break
+
+    fields = gather_multitrack_backing_fields(session_state)
+    if existing:
+        fields = {**existing, **fields, "updated_at": _utc_now_iso()}
+    else:
+        fields["updated_at"] = _utc_now_iso()
+    fields = _persist_session_backing(st, session_state, active_mid, fields)
+    row = update_multitrack_session(st, active_mid, fields)
+    if not row:
+        return False, "catalog_update_failed"
+    return True, "updated_project"
+
+
 def save_multitrack_session_with_notes(
     session_state: dict[str, Any],
     *,
@@ -319,6 +515,7 @@ def save_multitrack_session_with_notes(
                 existing_session = migrate_multitrack_session(row)
                 break
         _merge_track_ids(fields, existing_session)
+        _merge_backing_refs(fields, existing_session)
 
     if active_mid:
         row = update_multitrack_session(st, active_mid, fields)
@@ -330,6 +527,7 @@ def save_multitrack_session_with_notes(
     mid = str(row.get("multitrack_id") or "")
     if mid:
         fields = _persist_session_tracks(st, session_state, mid, dict(row))
+        fields = _persist_session_backing(st, session_state, mid, fields)
         row = update_multitrack_session(st, mid, fields)
         session_state[_LAST_CATALOG_MULTITRACK_KEY] = mid
         session_state[_ACTIVE_CATALOG_MULTITRACK_KEY] = mid
@@ -465,6 +663,10 @@ def catalog_multitrack_row_summary(row: dict[str, Any]) -> str:
     bits.append(f"{loaded} playable")
     if meta_only:
         bits.append(f"{meta_only} metadata-only")
+    if multitrack_has_saved_backing(payload):
+        bits.append("backing ready")
+    elif payload.get("backing_prepared_at"):
+        bits.append("backing metadata")
     return " · ".join(bits)
 
 
@@ -494,6 +696,7 @@ def apply_catalog_multitrack_to_session(
     if not payload.get("tracks"):
         return False, "no_tracks"
 
+    apply_multitrack_backing_fields(session_state, row)
     apply_multitrack_history(session_state, payload)
     mid = str(row.get("multitrack_id") or "")
     if mid:
@@ -535,6 +738,15 @@ def apply_catalog_multitrack_to_session(
             missing += 1
 
     session_state.pop("_mt_catalog_metadata_only", None)
+
+    backing_status = backing_playback_status(row, session_workspace=ws, st=st)
+    if backing_status == PLAYBACK_PLAYABLE:
+        audio, _err = load_backing_audio(row, st=st)
+        if audio:
+            session_state["multitrack_backing_music_wav"] = audio
+    elif backing_status == PLAYBACK_METADATA_ONLY and row.get("backing_prepared_at"):
+        session_state.pop("multitrack_backing_music_wav", None)
+
     if loaded == 0 and missing > 0:
         return True, "metadata_only"
     if missing:

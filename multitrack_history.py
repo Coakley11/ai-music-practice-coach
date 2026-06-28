@@ -264,6 +264,24 @@ def apply_multitrack_history(session_state: dict[str, Any], payload: dict[str, A
     if payload.get("notes"):
         session_state["multitrack_history_loaded_notes"] = str(payload.get("notes") or "")
 
+    session_bpm = payload.get("session_bpm")
+    if session_bpm is not None:
+        session_state["multitrack_bpm"] = int(session_bpm)
+
+    backing_settings = payload.get("backing_settings")
+    if isinstance(backing_settings, dict) and backing_settings:
+        apply_row = {**backing_settings}
+        if session_bpm is not None:
+            apply_row["bpm"] = int(session_bpm)
+        try:
+            from media_multitrack_catalog import apply_multitrack_backing_fields
+
+            apply_multitrack_backing_fields(session_state, apply_row)
+        except ImportError:
+            vol = backing_settings.get("backing_volume")
+            if vol is not None:
+                session_state["mt_backing_volume"] = float(vol)
+
     analysis = payload.get("analysis_summary")
     if isinstance(analysis, dict) and analysis.get("coach_summary"):
         session_state["last_analysis_result"] = {
