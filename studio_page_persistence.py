@@ -517,6 +517,17 @@ def flush_current_page_snapshot(session_state: dict) -> str:
 
 def restore_page_snapshot(session_state: dict, page_id: str) -> None:
     store = session_state.get(_PAGE_SNAPSHOTS_KEY) or {}
+    try:
+        from multitrack_project_load_trace import record_restore_event
+
+        record_restore_event(
+            session_state,
+            "restore_page_snapshot",
+            page_id=page_id,
+            has_snapshot=bool(store.get(page_id)),
+        )
+    except ImportError:
+        pass
     apply_page_snapshot(session_state, store.get(page_id))
 
 
@@ -541,7 +552,19 @@ def _snapshot_has_multitrack_content(snap: dict[str, Any]) -> bool:
 
 def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
     """After browser refresh / cloud restore — hydrate page-local UI for active page."""
-    if session_state.pop("_mt_skip_snapshot_restore_once", None):
+    skip_count = session_state.get("_mt_skip_snapshot_restore_count")
+    if isinstance(skip_count, int) and skip_count > 0:
+        session_state["_mt_skip_snapshot_restore_count"] = skip_count - 1
+        try:
+            from multitrack_project_load_trace import record_restore_event
+
+            record_restore_event(
+                session_state,
+                "restore_current_page_snapshot_skipped",
+                remaining=skip_count - 1,
+            )
+        except ImportError:
+            pass
         return
     current = str(session_state.get("studio_page") or "practice").strip() or "practice"
     store = session_state.get(_PAGE_SNAPSHOTS_KEY) or {}
@@ -558,6 +581,17 @@ def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
         if any(k in snap for k in ("improv_motif_abc", "improv_generated_sections", "improv_jam_session")):
             needs_restore = True
     if needs_restore:
+        try:
+            from multitrack_project_load_trace import record_restore_event
+
+            record_restore_event(
+                session_state,
+                "restore_current_page_snapshot_ran",
+                page=current,
+                reason="needs_restore",
+            )
+        except ImportError:
+            pass
         restore_page_snapshot(session_state, current)
 
 

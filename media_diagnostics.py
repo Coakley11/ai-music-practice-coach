@@ -280,6 +280,8 @@ def render_media_diagnostics(st: Any, session_state: dict[str, Any], *, page: st
         if page == "multitrack":
             st.markdown("**Multitrack project load (?dev=1)**")
             load_diag = stats.get("mt_catalog_load_diag") if isinstance(stats.get("mt_catalog_load_diag"), dict) else {}
+            trace = session_state.get("_mt_project_load_trace") if isinstance(session_state.get("_mt_project_load_trace"), dict) else {}
+            st.text(f"trace_started_at: {trace.get('started_at')}")
             st.text(f"requested_multitrack_id: {load_diag.get('requested_multitrack_id')}")
             st.text(f"loaded_multitrack_id: {load_diag.get('loaded_multitrack_id')}")
             st.text(f"active_catalog_multitrack_id: {load_diag.get('active_catalog_multitrack_id')}")
@@ -298,6 +300,7 @@ def render_media_diagnostics(st: Any, session_state: dict[str, Any], *, page: st
             st.text(f"last project load ok: {load_diag.get('ok')}")
             st.text(f"last project load message: {load_diag.get('message')}")
             st.text(f"last project load error: {stats.get('mt_last_catalog_load_error')}")
+            st.caption("Full field-by-field trace: Project Library → Project Load Debug Trace (?dev=1)")
 
         st.markdown("**Last load trace**")
         st.code(_json_preview(stats.get("last_load") or {"note": "no load trace yet"}), language="json")

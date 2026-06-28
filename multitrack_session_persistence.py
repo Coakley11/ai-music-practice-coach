@@ -244,12 +244,30 @@ def clear_multitrack_persisted_state(session_state: dict[str, Any]) -> None:
 
 def restore_multitrack_layers_from_workspace(session_state: dict[str, Any]) -> bool:
     """Hydrate multitrack layers from cloud/disk payload (top-level blob or page snapshot)."""
-    if session_state.pop("_mt_skip_layer_restore_once", None):
+    skip_count = session_state.get("_mt_skip_layer_restore_count")
+    if isinstance(skip_count, int) and skip_count > 0:
+        session_state["_mt_skip_layer_restore_count"] = skip_count - 1
+        try:
+            from multitrack_project_load_trace import record_restore_event
+
+            record_restore_event(
+                session_state,
+                "restore_multitrack_layers_skipped",
+                remaining=skip_count - 1,
+            )
+        except ImportError:
+            pass
         return False
     if count_mt_layers(session_state.get("mt_tracks")) > 0 or session_state.get("mixed_track_wav"):
         record_multitrack_restore_diag(session_state, source="session_already_hydrated")
         return False
     if restore_multitrack_session_if_needed(session_state):
+        try:
+            from multitrack_project_load_trace import record_restore_event
+
+            record_restore_event(session_state, "restore_multitrack_layers_from_persist_blob")
+        except ImportError:
+            pass
         return True
 
     store = session_state.get("_studio_page_snapshots")
@@ -264,5 +282,11 @@ def restore_multitrack_layers_from_workspace(session_state: dict[str, Any]) -> b
                 if isinstance(filenames, dict):
                     session_state["mt_track_filenames"] = copy.deepcopy(filenames)
                 record_multitrack_restore_diag(session_state, source="multitrack_page_snapshot")
+                try:
+                    from multitrack_project_load_trace import record_restore_event
+
+                    record_restore_event(session_state, "restore_multitrack_layers_from_page_snapshot")
+                except ImportError:
+                    pass
                 return True
     return False

@@ -103,7 +103,7 @@ def _render_history_list(
     rows: list[dict[str, Any]],
     list_error: str | None,
     summary_fn: Callable[[dict[str, Any]], str],
-    on_load: Callable[[dict[str, Any]], tuple[bool, str]],
+    on_load: Callable[..., tuple[bool, str]],
     on_delete: Callable[[str], tuple[bool, str]],
     key_prefix: str,
     active_item_key: str = "",
@@ -165,7 +165,7 @@ def _render_history_list(
                 key=f"{key_prefix}_load_{suffix}",
                 use_container_width=True,
             ):
-                ok, msg = on_load(payload)
+                ok, msg = on_load(payload, list_row=row)
                 if ok:
                     st_obj.session_state[f"{key_prefix}_flash"] = msg
                     st_obj.session_state[f"{key_prefix}_active_item"] = item_key
@@ -240,7 +240,7 @@ def render_upload_history_panel(st_obj: Any) -> None:
             or ""
         )
 
-        def _load_upload(payload: dict[str, Any]) -> tuple[bool, str]:
+        def _load_upload(payload: dict[str, Any], *, list_row: dict[str, Any] | None = None) -> tuple[bool, str]:
             rid = str(payload.get("recording_id") or payload.get("item_key") or "")
             try:
                 ok, msg = load_upload_recording_from_catalog(ss, rid, st=st_obj)
@@ -366,8 +366,28 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             or ""
         )
 
-        def _load_mt(payload: dict[str, Any]) -> tuple[bool, str]:
+        def _load_mt(payload: dict[str, Any], *, list_row: dict[str, Any] | None = None) -> tuple[bool, str]:
             mid = str(payload.get("multitrack_id") or payload.get("item_key") or "")
+            list_row = list_row if isinstance(list_row, dict) else {}
+            clicked_title = str(list_row.get("title") or payload.get("title") or "")
+            clicked_updated = str(
+                list_row.get("updated_at")
+                or payload.get("updated_at")
+                or payload.get("created_at")
+                or ""
+            )
+            try:
+                from multitrack_project_load_trace import begin_project_load_trace
+
+                begin_project_load_trace(
+                    ss,
+                    clicked_project_id=mid,
+                    clicked_project_title=clicked_title,
+                    clicked_project_updated_at=clicked_updated,
+                    payload_multitrack_id=str(payload.get("multitrack_id") or ""),
+                )
+            except ImportError:
+                pass
             try:
                 from media_multitrack_catalog import load_multitrack_project_from_catalog
 
@@ -402,3 +422,10 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             active_item_key=active_key,
             load_button_label="Load Project",
         )
+
+        try:
+            from multitrack_project_load_trace import render_project_load_debug_panel
+
+            render_project_load_debug_panel(st_obj, ss)
+        except ImportError:
+            pass

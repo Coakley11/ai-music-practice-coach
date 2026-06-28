@@ -6359,7 +6359,7 @@ def _render_multitrack_session_setup_panel(
 ]:
     """Step 1 — session setup card. Returns session control values for downstream steps."""
     setup_header_fn(st)
-    _mt_bpm_default = int(st.session_state.get("bpm", 100))
+    _mt_bpm_default = int(st.session_state.get("multitrack_bpm") or st.session_state.get("bpm", 100))
     _mt_groove_default = str(st.session_state.get("mt_groove_style", "Auto") or "Auto")
     _scope_default = st.session_state.get("mt_playback_scope", "Full song")
     _mt_single = str(st.session_state.get("mt_single_section", "") or "")
@@ -12670,7 +12670,9 @@ elif _studio_page == "multitrack":
         }
 
     mt_time_sig = default_time_signature(song, sections)
-    if not str(st.session_state.get("multitrack_catalog_active_id") or "").strip():
+    if str(st.session_state.get("multitrack_catalog_active_id") or "").strip():
+        mt_time_sig = str(st.session_state.get("mt_time_signature") or mt_time_sig)
+    else:
         st.session_state["mt_time_signature"] = mt_time_sig
     mt_beats_per_bar = beats_per_bar_from_signature(mt_time_sig)
     mt_sec_names = [
@@ -13049,6 +13051,13 @@ elif _studio_page == "multitrack":
                     st.session_state.mt_track_controls = {}
                 st.success("Layers cleared.")
                 st.rerun()
+
+            try:
+                from multitrack_project_load_trace import capture_post_render_session_trace
+
+                capture_post_render_session_trace(st.session_state, source="multitrack_page_pre_history")
+            except ImportError:
+                pass
 
             try:
                 from studio_history_ui import render_multitrack_history_panel

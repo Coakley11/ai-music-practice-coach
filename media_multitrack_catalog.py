@@ -746,7 +746,11 @@ def save_multitrack_session_with_notes(
         _merge_track_ids(fields, existing_session)
         _merge_backing_refs(fields, existing_session)
 
-    if active_mid:
+    save_title = str(fields.get("title") or project_name or "").strip()
+    existing_title = str(existing_session.get("title") or "").strip() if existing_session else ""
+    save_as_new = bool(active_mid and existing_title and save_title and save_title != existing_title)
+
+    if active_mid and not save_as_new:
         row = update_multitrack_session(st, active_mid, fields)
         if not row:
             row = add_multitrack_session(st, fields)
@@ -1113,6 +1117,21 @@ def apply_catalog_multitrack_to_session(
     elif mid:
         session_state["_mt_loaded_backing_project_id"] = mid
 
+    session_state["_mt_session_backing_storage_ref"] = backing_ref
+    try:
+        from multitrack_project_load_trace import record_load_stage
+
+        record_load_stage(
+            session_state,
+            "apply_catalog_complete",
+            multitrack_id=mid,
+            backing_ref=backing_ref,
+            loaded_layers=loaded,
+            missing_layers=missing,
+        )
+    except ImportError:
+        pass
+
     if loaded == 0 and missing > 0:
         return True, "metadata_only"
     if missing:
@@ -1129,6 +1148,7 @@ def _record_multitrack_catalog_load_diag(
     message: str,
     snapshot_flushed: bool,
 ) -> None:
+    """Legacy compact diag (also mirrored from project load trace)."""
     row = migrate_multitrack_session(loaded_row) if isinstance(loaded_row, dict) else {}
     mid = str(row.get("multitrack_id") or "")
     session_state["_mt_catalog_load_diag"] = {
@@ -1169,35 +1189,59 @@ def load_multitrack_project_from_catalog(
 ) -> tuple[bool, str]:
     """Reload catalog from cloud/disk and restore one saved multitrack project."""
     mid = str(multitrack_id or "").strip()
+
+    def _stage(name: str, **kw: Any) -> None:
+        try:
+            from multitrack_project_load_trace import record_load_stage
+
+            record_load_stage(session_state, name, **kw)
+        except ImportError:
+            pass
+
     if not mid:
-        _record_multitrack_catalog_load_diag(
-            session_state,
-            requested_id=mid,
-            loaded_row=None,
-            ok=False,
-            message="missing_multitrack_id",
-            snapshot_flushed=False,
-        )
+        _stage("error", reason="missing_multitrack_id")
+        try:
+            from multitrack_project_load_trace import finalize_project_load_trace
+
+            finalize_project_load_trace(
+                session_state,
+                catalog_row=None,
+                ok=False,
+                message="missing_multitrack_id",
+            )
+        except ImportError:
+            pass
         return False, "missing_multitrack_id"
+    _stage("catalog_reload_start", requested_id=mid)
     catalog = load_media_catalog(st=st)
     rows = normalize_multitrack_sessions(
         catalog.get("multitrack_sessions") if isinstance(catalog.get("multitrack_sessions"), list) else []
     )
     row = next((r for r in rows if str(r.get("multitrack_id") or "") == mid), None)
+    _stage(
+        "catalog_reload_done",
+        requested_id=mid,
+        found=isinstance(row, dict),
+        visible_row_count=len(rows),
+    )
     if not isinstance(row, dict):
-        _record_multitrack_catalog_load_diag(
-            session_state,
-            requested_id=mid,
-            loaded_row=None,
-            ok=False,
-            message="not_found",
-            snapshot_flushed=False,
-        )
+        try:
+            from multitrack_project_load_trace import finalize_project_load_trace
+
+            finalize_project_load_trace(
+                session_state,
+                catalog_row=None,
+                ok=False,
+                message="not_found",
+            )
+        except ImportError:
+            pass
         return False, "not_found"
     try:
         from multitrack_session_persistence import reset_multitrack_working_session
 
         reset_multitrack_working_session(session_state)
+        _stage("reset_working_session")
     except ImportError:
         try:
             from multitrack_history import clear_multitrack_widget_keys
@@ -1207,9 +1251,14 @@ def load_multitrack_project_from_catalog(
             pass
     ok, msg = apply_catalog_multitrack_to_session(session_state, row, st=st, load_audio=load_audio)
     snapshot_flushed = False
+    snapshot_restore_skipped = False
+    layer_restore_skipped = False
     if ok:
-        session_state["_mt_skip_snapshot_restore_once"] = True
-        session_state["_mt_skip_layer_restore_once"] = True
+        session_state["_mt_skip_snapshot_restore_count"] = 3
+        session_state["_mt_skip_layer_restore_count"] = 3
+        snapshot_restore_skipped = True
+        layer_restore_skipped = True
+        _stage("set_skip_restore_counters", count=3)
         try:
             from multitrack_mixer_state import (
                 prepare_multitrack_transport_widgets,
@@ -1218,6 +1267,7 @@ def load_multitrack_project_from_catalog(
 
             sync_mixer_widgets_from_canonical(session_state)
             prepare_multitrack_transport_widgets(session_state)
+            _stage("sync_mixer_and_transport_widgets")
         except ImportError:
             pass
         try:
@@ -1225,24 +1275,39 @@ def load_multitrack_project_from_catalog(
 
             save_page_snapshot(session_state, "multitrack")
             snapshot_flushed = True
-        except Exception:
-            pass
+            _stage("save_page_snapshot", page="multitrack")
+        except Exception as exc:
+            _stage("save_page_snapshot_error", error=str(exc))
         try:
             from studio_page_persistence import flush_current_page_snapshot
 
             flush_current_page_snapshot(session_state)
             snapshot_flushed = True
-        except Exception:
-            pass
-    _record_multitrack_catalog_load_diag(
-        session_state,
-        requested_id=mid,
-        loaded_row=row,
-        ok=ok,
-        message=msg,
-        snapshot_flushed=snapshot_flushed,
-    )
+            _stage("flush_current_page_snapshot")
+        except Exception as exc:
+            _stage("flush_snapshot_error", error=str(exc))
     session_state["_mt_last_catalog_load_error"] = "" if ok else msg
+    try:
+        from multitrack_project_load_trace import finalize_project_load_trace
+
+        finalize_project_load_trace(
+            session_state,
+            catalog_row=row,
+            ok=ok,
+            message=msg,
+            snapshot_flushed=snapshot_flushed,
+            snapshot_restore_skipped=snapshot_restore_skipped,
+            layer_restore_skipped=layer_restore_skipped,
+        )
+    except ImportError:
+        _record_multitrack_catalog_load_diag(
+            session_state,
+            requested_id=mid,
+            loaded_row=row,
+            ok=ok,
+            message=msg,
+            snapshot_flushed=snapshot_flushed,
+        )
     return ok, msg
 
 
