@@ -139,6 +139,17 @@ def render_practice_log_diagnostics(
         st.text(f"cloud_enabled: {cloud_enabled()}")
         st.text(f"cloud_block_reason: {cloud_block_reason()}")
 
+        st.markdown("**UI action trace**")
+        st.text(f"quick_log_clicked_at: {session_state.get('_practice_log_quick_log_clicked_at')}")
+        st.text(f"quick_log_prefill: {_json_preview(session_state.get('_practice_log_quick_log_prefill'), limit=600)}")
+        st.text(f"quick_log_error: {session_state.get('_practice_log_quick_log_error')}")
+        st.text(f"show_quick_form: {session_state.get('_plog_show_quick_form')}")
+        st.text(f"manual_save_clicked_at: {session_state.get('_practice_log_manual_save_clicked_at')}")
+        st.text(f"manual_save_error: {session_state.get('_practice_log_manual_save_error')}")
+        st.text(f"show_manual_form: {session_state.get('_plog_show_manual_form')}")
+        st.text(f"last_load_at: {session_state.get('_practice_log_last_load_at')}")
+        st.text(f"last_load_count: {session_state.get('_practice_log_last_load_count')}")
+
         st.markdown("**Last load trace**")
         st.code(_json_preview(last_load or {"note": "no load trace yet"}), language="json")
         st.markdown("**Last save trace**")
@@ -148,6 +159,57 @@ def render_practice_log_diagnostics(
             reloaded = reload_practice_log_entries(session_state, force=True)
             st.success(f"Reloaded {len(reloaded)} session(s) from storage.")
             st.rerun()
+
+        if st.button("Force test practice log save", key="plog_force_test_save"):
+            try:
+                entry = add_practice_log_entry(
+                    session_state,
+                    {
+                        "active_song": "Dev Test Entry",
+                        "duration_minutes": 5,
+                        "instrument": "Test",
+                        "notes": "Force test save from diagnostics",
+                        "practice_type": "other",
+                    },
+                )
+                sid = str(entry.get("session_id") or "")
+                reloaded = load_entries(session_state, force=True)
+                persisted = any(str(row.get("session_id") or "") == sid for row in reloaded)
+                if persisted:
+                    st.success(f"Force test save persisted ({sid[:8]}…, {len(reloaded)} total).")
+                else:
+                    st.error(f"Force test save wrote session {sid[:8]}… but reload did not find it.")
+            except Exception as exc:
+                st.error(f"Force test save failed: {exc}")
+            st.rerun()
+
+
+def _utc_now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _try_add_practice_log_entry(
+    st: Any,
+    session_state: dict[str, Any],
+    fields: dict[str, Any],
+    *,
+    on_saved: Any = None,
+    ok_message: str,
+    error_session_key: str,
+) -> bool:
+    try:
+        entry = add_practice_log_entry(session_state, fields)
+        session_state.pop(error_session_key, None)
+        if on_saved:
+            on_saved(entry)
+        _handle_save_result(st, session_state, ok_message=ok_message)
+        return True
+    except Exception as exc:
+        session_state[error_session_key] = str(exc)
+        st.error(f"Could not save practice log: {exc}")
+        return False
 
 
 def _handle_save_result(st: Any, session_state: dict[str, Any], *, ok_message: str) -> None:
@@ -346,18 +408,46 @@ def _index_in(options: tuple[str, ...] | list[str], value: Any, *, default: int 
     return default
 
 
-def render_quick_actions(st: Any, session_state: dict[str, Any]) -> None:
+def render_quick_actions(
+    st: Any,
+    session_state: dict[str, Any],
+    *,
+    on_saved: Any = None,
+) -> None:
     c1, c2, c3 = st.columns(3)
     with c1:
         if st.button("⚡ Log current setup", key="plog_quick_log_btn", use_container_width=True):
-            session_state["_plog_show_quick_form"] = True
+            session_state["_practice_log_quick_log_clicked_at"] = _utc_now_iso()
             session_state.pop("_plog_show_manual_form", None)
             session_state.pop("_plog_edit_session_id", None)
+            prefill = build_practice_log_prefill(session_state)
+            session_state["_practice_log_quick_log_prefill"] = {
+                "active_song": prefill.get("active_song"),
+                "instrument": prefill.get("instrument"),
+                "duration_minutes": prefill.get("duration_minutes"),
+                "practice_type": prefill.get("practice_type"),
+                "source_page": prefill.get("source_page"),
+            }
+            fields = {
+                **prefill,
+                "notes": str(prefill.get("notes") or "").strip() or "Quick log — current setup",
+            }
+            if not _try_add_practice_log_entry(
+                st,
+                session_state,
+                fields,
+                on_saved=on_saved,
+                ok_message="Practice session logged from current setup.",
+                error_session_key="_practice_log_quick_log_error",
+            ):
+                st.rerun()
     with c2:
         if st.button("✏️ Add session manually", key="plog_manual_log_btn", use_container_width=True):
+            session_state["_practice_log_manual_open_clicked_at"] = _utc_now_iso()
             session_state["_plog_show_manual_form"] = True
             session_state.pop("_plog_show_quick_form", None)
             session_state.pop("_plog_edit_session_id", None)
+            st.rerun()
     with c3:
         if st.button("🧠 Analyze My Practice", key="plog_analyze_ami_btn", use_container_width=True):
             result = submit_analyze_practice_to_ami(st, session_state)
@@ -367,6 +457,8 @@ def render_quick_actions(st: Any, session_state: dict[str, Any]) -> None:
             else:
                 st.success("Practice log sent to Command Center. Open Command Center for Music Coach analysis.")
             st.rerun()
+    if session_state.get("_plog_show_quick_form"):
+        st.caption("Tip: ⚡ Log current setup saves immediately. Use ✏️ Add session manually to edit fields first.")
 
 
 def render_entry_forms(st: Any, session_state: dict[str, Any], *, on_saved: Any = None) -> None:
@@ -393,19 +485,20 @@ def render_entry_forms(st: Any, session_state: dict[str, Any], *, on_saved: Any 
             return
 
     if session_state.get("_plog_show_quick_form"):
-        st.markdown("#### Quick log — current setup")
+        st.markdown("#### Quick log — review before save")
         prefill = build_practice_log_prefill(session_state)
         fields = _session_form_fields(st, prefix="quick", prefill=prefill, submit_label="Save quick log")
         if fields:
-            try:
-                entry = add_practice_log_entry(session_state, fields)
-            except Exception as exc:
-                st.error(f"Could not save practice log: {exc}")
-                return
+            session_state["_practice_log_manual_save_clicked_at"] = _utc_now_iso()
             session_state.pop("_plog_show_quick_form", None)
-            if on_saved:
-                on_saved(entry)
-            _handle_save_result(st, session_state, ok_message="Practice session logged.")
+            _try_add_practice_log_entry(
+                st,
+                session_state,
+                fields,
+                on_saved=on_saved,
+                ok_message="Practice session logged.",
+                error_session_key="_practice_log_manual_save_error",
+            )
 
     if session_state.get("_plog_show_manual_form"):
         st.markdown("#### Add session manually")
@@ -413,15 +506,16 @@ def render_entry_forms(st: Any, session_state: dict[str, Any], *, on_saved: Any 
         prefill["active_song"] = ""
         fields = _session_form_fields(st, prefix="manual", prefill=prefill, submit_label="Save session")
         if fields:
-            try:
-                entry = add_practice_log_entry(session_state, fields)
-            except Exception as exc:
-                st.error(f"Could not save practice log: {exc}")
-                return
+            session_state["_practice_log_manual_save_clicked_at"] = _utc_now_iso()
             session_state.pop("_plog_show_manual_form", None)
-            if on_saved:
-                on_saved(entry)
-            _handle_save_result(st, session_state, ok_message="Practice session logged.")
+            _try_add_practice_log_entry(
+                st,
+                session_state,
+                fields,
+                on_saved=on_saved,
+                ok_message="Practice session logged.",
+                error_session_key="_practice_log_manual_save_error",
+            )
 
 
 def render_filters(st: Any, entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -510,7 +604,7 @@ def render_practice_log_page(
     """Main Practice Log page body. Returns filtered entries."""
     entries = load_entries(session_state)
     render_summary_cards(st, entries)
-    render_quick_actions(st, session_state)
+    render_quick_actions(st, session_state, on_saved=on_saved)
     render_entry_forms(st, session_state, on_saved=on_saved)
 
     with st.container(key="log_filter_panel", border=False):

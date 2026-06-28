@@ -381,6 +381,8 @@ def load_entries(
             session_state.pop(PRACTICE_LOG_DEFERRED_EMPTY_KEY, None)
         session_state[PRACTICE_LOG_LOADED_WS_KEY] = ws
         session_state["practice_log_entries"] = entries
+        session_state["_practice_log_last_load_at"] = _utc_now_iso()
+        session_state["_practice_log_last_load_count"] = len(entries)
     return entries
 
 
