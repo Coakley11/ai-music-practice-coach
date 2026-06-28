@@ -195,13 +195,21 @@ def render_upload_history_panel(st_obj: Any) -> None:
         )
 
         def _load_upload(payload: dict[str, Any]) -> tuple[bool, str]:
-            if apply_catalog_recording_to_session(ss, payload):
+            ok, msg = apply_catalog_recording_to_session(ss, payload, st=st_obj)
+            if ok:
                 rid = str(payload.get("recording_id") or "")
                 if rid:
                     ss["upload_catalog_active_recording_id"] = rid
                 _after_history_load(ss, st_obj, page="analysis")
-                return True, "Loaded saved upload analysis."
-            return False, "Could not load recording metadata."
+                playback = str(ss.get("upload_catalog_playback_status") or "")
+                if playback == "metadata_only":
+                    return True, "Loaded analysis metadata only — audio file not stored for this recording."
+                if playback == "missing_file":
+                    return True, "Loaded analysis metadata, but the audio file is missing."
+                if msg:
+                    return True, f"Loaded saved upload. {msg}"
+                return True, "Loaded saved upload analysis with audio."
+            return False, msg or "Could not load recording metadata."
 
         def _delete_upload(item_key: str) -> tuple[bool, str]:
             return delete_catalog_upload_recording(item_key, st=st_obj)

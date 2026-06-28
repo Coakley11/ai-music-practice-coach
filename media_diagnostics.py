@@ -173,6 +173,16 @@ def render_media_diagnostics(st: Any, session_state: dict[str, Any], *, page: st
         st.text(f"song: {stats.get('last_upload_song')}")
         st.text(f"instrument: {stats.get('last_upload_instrument')}")
         st.text(f"date: {stats.get('last_upload_date')}")
+        try:
+            from media_storage import playback_status_label, recording_playback_status
+
+            catalog = load_media_catalog(st=st)
+            uploads = normalize_uploaded_recordings(catalog.get("uploaded_recordings") or [])
+            if uploads:
+                last_status = recording_playback_status(uploads[0], st=st)
+                st.text(f"last upload playback: {playback_status_label(last_status)} ({last_status})")
+        except ImportError:
+            pass
 
         st.markdown("**Cloud / save**")
         st.text(f"cloud_enabled: {stats.get('cloud_enabled')}")
@@ -204,18 +214,45 @@ def render_media_diagnostics(st: Any, session_state: dict[str, Any], *, page: st
             st.rerun()
 
         if st.button("Force test upload catalog entry", key=f"media_diag_force_upload_{page}"):
-            from media_persistence import add_uploaded_recording
+            from media_persistence import add_uploaded_recording, update_uploaded_recording
+            from media_storage import persist_recording_audio, recording_playback_status
 
+            tiny_wav = (
+                b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00"
+                b"D\xac\x00\x00\x88X\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00"
+            )
             row = add_uploaded_recording(
                 st,
                 {
                     "filename": "dev_test_upload.wav",
                     "song": "Dev Test Song",
                     "instrument": "Tenor Saxophone",
-                    "notes": "Forced metadata-only test entry from ?dev=1",
-                    "analysis_summary": {"coach_summary": "Dev test upload catalog entry"},
+                    "notes": "Forced test entry from ?dev=1 with playable audio blob",
+                    "analysis_summary": {"coach_summary": "Dev test upload catalog entry", "ok": True},
+                    "mime_type": "audio/wav",
                 },
             )
-            session_state["_last_catalog_recording_id"] = row.get("recording_id")
-            st.success(f"Added test recording {row.get('recording_id')}")
+            rid = str(row.get("recording_id") or "")
+            store = persist_recording_audio(
+                st,
+                rid,
+                tiny_wav,
+                filename="dev_test_upload.wav",
+                mime_type="audio/wav",
+                workspace_id=str(row.get("workspace_id") or "daniel"),
+            )
+            if rid and (store.get("local_path") or store.get("storage_ref")):
+                row = update_uploaded_recording(
+                    st,
+                    rid,
+                    {
+                        "local_path": store.get("local_path"),
+                        "storage_ref": store.get("storage_ref"),
+                        "playback_status": store.get("playback_status"),
+                        "storage_error": store.get("storage_error") or "",
+                    },
+                )
+            session_state["_last_catalog_recording_id"] = rid
+            status = recording_playback_status(row or {}, st=st)
+            st.success(f"Added test recording {rid} — playback status: {status}")
             st.rerun()

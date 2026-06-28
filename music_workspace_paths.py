@@ -43,8 +43,17 @@ _WORKSPACE_FILES: dict[str, tuple[str, tuple[Path, ...]]] = {
         (),
     ),
 }
-
 _migrated_keys: set[str] = set()
+
+
+def workspace_media_dir(workspace_id: str | None = None) -> Path:
+    """Workspace-scoped media root (recordings, future multitrack blobs)."""
+    from suite_workspace import workspace_dir
+
+    ws = normalize_workspace_id(
+        workspace_id if workspace_id not in (None, "") else resolve_workspace_id()
+    )
+    return workspace_dir(ws) / "media"
 
 
 def music_data_path(file_key: str, workspace_id: str | None = None) -> Path:

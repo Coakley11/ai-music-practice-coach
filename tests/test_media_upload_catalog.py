@@ -100,9 +100,11 @@ class TestMediaUploadCatalog(unittest.TestCase):
             }
         )
         session: dict = {}
-        self.assertTrue(apply_catalog_recording_to_session(session, rec))
+        ok, _msg = apply_catalog_recording_to_session(session, rec, st=None)
+        self.assertTrue(ok)
         self.assertEqual(session["last_analysis_result"]["coach_summary"], "Loaded note")
         self.assertEqual(session.get("upload_history_loaded_notes"), "Gig prep")
+        self.assertNotIn("last_analysis_audio", session)
 
     def test_save_with_notes_updates_catalog(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

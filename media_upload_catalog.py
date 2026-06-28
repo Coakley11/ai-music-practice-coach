@@ -16,6 +16,14 @@ from media_state import (
     migrate_uploaded_recording,
     normalize_uploaded_recordings,
 )
+from media_storage import (
+    PLAYBACK_METADATA_ONLY,
+    delete_recording_files,
+    load_recording_audio,
+    persist_recording_audio,
+    playback_status_label,
+    recording_playback_status,
+)
 from upload_history import (
     compact_analysis_for_history,
     list_upload_history,
@@ -143,6 +151,60 @@ def build_upload_recording_fields(
     }
 
 
+def _session_audio_bytes(session_state: dict[str, Any]) -> bytes | None:
+    raw = session_state.get("last_analysis_audio")
+    if isinstance(raw, (bytes, bytearray)) and raw:
+        return bytes(raw)
+    return None
+
+
+def _apply_storage_fields_to_recording(
+    st: Any | None,
+    recording_id: str,
+    session_state: dict[str, Any],
+    *,
+    fields: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Persist session audio and update catalog row with storage_ref/local_path."""
+    rid = str(recording_id or "").strip()
+    if not rid:
+        return None
+    audio = _session_audio_bytes(session_state)
+    if not audio:
+        return None
+    meta = dict(fields or {})
+    result = persist_recording_audio(
+        st,
+        rid,
+        audio,
+        filename=str(meta.get("filename") or session_state.get("last_analysis_source_label") or "recording.wav"),
+        mime_type=str(meta.get("mime_type") or "audio/wav"),
+        workspace_id=str(meta.get("workspace_id") or "").strip() or None,
+    )
+    if not result.get("local_path") and not result.get("storage_ref"):
+        update_uploaded_recording(
+            st,
+            rid,
+            {
+                "playback_status": result.get("playback_status") or PLAYBACK_METADATA_ONLY,
+                "storage_error": result.get("error") or result.get("storage_error") or "persist_failed",
+                "updated_at": _utc_now_iso(),
+            },
+        )
+        return result
+    return update_uploaded_recording(
+        st,
+        rid,
+        {
+            "local_path": result.get("local_path"),
+            "storage_ref": result.get("storage_ref"),
+            "playback_status": result.get("playback_status"),
+            "storage_error": result.get("storage_error") or "",
+            "updated_at": _utc_now_iso(),
+        },
+    )
+
+
 def register_upload_analysis_in_catalog(
     session_state: dict[str, Any],
     *,
@@ -150,7 +212,7 @@ def register_upload_analysis_in_catalog(
     notes: str = "",
     title: str = "",
 ) -> dict[str, Any] | None:
-    """Auto-add the current analysis to the media catalog (metadata only)."""
+    """Auto-add the current analysis to the media catalog and persist audio when available."""
     fields = build_upload_recording_fields(session_state, st=st, notes=notes, title=title)
     if not fields:
         return None
@@ -159,6 +221,9 @@ def register_upload_analysis_in_catalog(
     if rid:
         session_state[_LAST_CATALOG_RECORDING_KEY] = rid
         session_state[_ACTIVE_CATALOG_RECORDING_KEY] = rid
+        stored = _apply_storage_fields_to_recording(st, rid, session_state, fields=fields)
+        if stored:
+            row = stored
     return row
 
 
@@ -188,6 +253,9 @@ def save_upload_recording_with_notes(
     if rid:
         session_state[_LAST_CATALOG_RECORDING_KEY] = rid
         session_state[_ACTIVE_CATALOG_RECORDING_KEY] = rid
+        stored = _apply_storage_fields_to_recording(st, rid, session_state, fields=fields)
+        if stored:
+            row = stored
 
     legacy_ok, legacy_key, legacy_err = _save_legacy_upload_history(
         session_state,
@@ -242,6 +310,27 @@ def migrate_legacy_upload_history(*, st: Any | None = None) -> int:
             continue
         if item_key:
             migrated["legacy_item_key"] = item_key
+        try:
+            from studio_history_cloud import decode_audio_b64
+
+            audio = decode_audio_b64(payload.get("audio_b64"))
+            if audio:
+                store = persist_recording_audio(
+                    st,
+                    rid,
+                    audio,
+                    filename=str(migrated.get("filename") or "recording.wav"),
+                    mime_type=str(migrated.get("mime_type") or "audio/wav"),
+                    workspace_id=str(migrated.get("workspace_id") or ""),
+                )
+                if store.get("local_path"):
+                    migrated["local_path"] = store.get("local_path")
+                if store.get("storage_ref"):
+                    migrated["storage_ref"] = store.get("storage_ref")
+                if store.get("playback_status"):
+                    migrated["playback_status"] = store.get("playback_status")
+        except ImportError:
+            pass
         imported.append(migrated)
         known_ids.add(rid)
 
@@ -276,6 +365,7 @@ def list_catalog_upload_recordings(*, st: Any | None = None) -> tuple[list[dict[
                 "title": rec.get("song") or rec.get("filename") or "Upload analysis",
                 "updated_at": rec.get("updated_at") or rec.get("created_at"),
                 "payload": rec,
+                "playback_status": recording_playback_status(rec, st=st),
             }
         )
     rows.sort(key=lambda r: str(r.get("updated_at") or ""), reverse=True)
@@ -293,15 +383,23 @@ def catalog_upload_row_summary(row: dict[str, Any]) -> str:
         bits.append(instrument[:40])
     elif filename:
         bits.append(filename[:40])
+    status = str(row.get("playback_status") or recording_playback_status(payload)).strip()
+    if status:
+        bits.append(playback_status_label(status))
     return " · ".join(bits)
 
 
-def apply_catalog_recording_to_session(session_state: dict[str, Any], recording: dict[str, Any]) -> bool:
-    """Restore analysis metadata from a catalog recording (no audio blob)."""
+def apply_catalog_recording_to_session(
+    session_state: dict[str, Any],
+    recording: dict[str, Any],
+    *,
+    st: Any | None = None,
+) -> tuple[bool, str]:
+    """Restore analysis metadata and playable audio when storage_ref/local_path exists."""
     rec = migrate_uploaded_recording(recording)
     summary = rec.get("analysis_summary") if isinstance(rec.get("analysis_summary"), dict) else {}
     if not summary:
-        return False
+        return False, "missing_analysis_summary"
     result = dict(summary)
     result.setdefault("ok", True)
     session_state["last_analysis_result"] = compact_analysis_for_history(result)
@@ -309,17 +407,34 @@ def apply_catalog_recording_to_session(session_state: dict[str, Any], recording:
     session_state["last_analysis_recording_type"] = str(rec.get("legacy_recording_type") or "Practice take")
     if rec.get("notes"):
         session_state["upload_history_loaded_notes"] = str(rec.get("notes") or "")
-    session_state.pop("last_analysis_audio", None)
+
+    status = recording_playback_status(rec, st=st)
+    session_state["upload_catalog_playback_status"] = status
+    if status == PLAYBACK_METADATA_ONLY:
+        session_state.pop("last_analysis_audio", None)
+    else:
+        audio, err = load_recording_audio(rec, st=st)
+        if audio:
+            session_state["last_analysis_audio"] = audio
+        else:
+            session_state.pop("last_analysis_audio", None)
+            return True, err or "missing_file"
+
     rid = str(rec.get("recording_id") or "")
     if rid:
         session_state[_ACTIVE_CATALOG_RECORDING_KEY] = rid
         session_state[_LAST_CATALOG_RECORDING_KEY] = rid
-    return True
+    return True, ""
 
 
 def delete_catalog_upload_recording(recording_id: str, *, st: Any | None = None) -> tuple[bool, str]:
     rid = str(recording_id or "").strip()
     if not rid:
         return False, "missing_recording_id"
+    catalog = load_media_catalog(st=st)
+    rows = catalog.get("uploaded_recordings") if isinstance(catalog.get("uploaded_recordings"), list) else []
+    existing = next((r for r in rows if isinstance(r, dict) and str(r.get("recording_id") or "") == rid), None)
+    if isinstance(existing, dict):
+        delete_recording_files(existing, st=st)
     ok = delete_uploaded_recording(st, rid)
     return ok, "" if ok else "delete_failed"

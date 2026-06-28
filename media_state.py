@@ -216,6 +216,8 @@ def migrate_uploaded_recording(entry: dict[str, Any]) -> dict[str, Any]:
         "linked_practice_session_id": str(out.get("linked_practice_session_id") or "").strip() or None,
         "legacy_item_key": str(out.get("legacy_item_key") or out.get("item_key") or "").strip(),
         "legacy_recording_type": str(out.get("legacy_recording_type") or out.get("recording_type") or "").strip(),
+        "playback_status": str(out.get("playback_status") or "").strip(),
+        "storage_error": str(out.get("storage_error") or "").strip(),
         "deleted": False,
     }
 
