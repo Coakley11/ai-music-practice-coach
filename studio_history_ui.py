@@ -418,6 +418,8 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
 
         def _load_mt(payload: dict[str, Any], *, list_row: dict[str, Any] | None = None) -> tuple[bool, str]:
             mid = str(payload.get("multitrack_id") or payload.get("item_key") or "")
+            if not mid:
+                return False, "missing_multitrack_id"
             list_row = list_row if isinstance(list_row, dict) else {}
             clicked_title = str(list_row.get("title") or payload.get("title") or "")
             clicked_updated = str(
@@ -427,15 +429,18 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                 or ""
             )
             try:
-                from multitrack_project_load_trace import begin_project_load_trace
+                from media_multitrack_catalog import queue_multitrack_project_catalog_load
 
-                begin_project_load_trace(
+                queue_multitrack_project_catalog_load(
                     ss,
-                    clicked_project_id=mid,
-                    clicked_project_title=clicked_title,
-                    clicked_project_updated_at=clicked_updated,
-                    payload_multitrack_id=str(payload.get("multitrack_id") or ""),
+                    mid,
+                    clicked_meta={
+                        "clicked_project_title": clicked_title,
+                        "clicked_project_updated_at": clicked_updated,
+                        "payload_multitrack_id": str(payload.get("multitrack_id") or ""),
+                    },
                 )
+                return True, "Loading project…"
             except ImportError:
                 pass
             try:

@@ -8,13 +8,16 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from media_multitrack_catalog import (
+    PENDING_CATALOG_LOAD_ID_KEY,
     apply_catalog_multitrack_to_session,
+    apply_pending_multitrack_catalog_load,
     build_multitrack_catalog_fields,
     catalog_multitrack_row_summary,
     delete_catalog_multitrack_session,
     load_multitrack_project_from_catalog,
     loaded_multitrack_project_banner,
     migrate_legacy_multitrack_history,
+    queue_multitrack_project_catalog_load,
     save_multitrack_session_with_notes,
 )
 from multitrack_project_load_trace import begin_project_load_trace
@@ -544,6 +547,46 @@ class TestMediaMultitrackCatalog(unittest.TestCase):
                                 guitar = next(t for t in row["tracks"] if t["slot"] == "Guitar")
                                 self.assertEqual(guitar.get("playback_status"), "playable")
                                 self.assertTrue(guitar.get("local_path"))
+
+    def test_deferred_catalog_load_queue_then_apply(self) -> None:
+        """Load Project must queue + rerun; apply runs before widgets on the next run."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "media_catalog.json"
+
+            def _fake_path(*, st=None):
+                return path
+
+            session = self._session_with_guitar()
+            with patch("media_persistence._local_path", _fake_path):
+                with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
+                        with patch("media_persistence._save_cloud_catalog", lambda catalog, *, st=None: (True, "")):
+                            ok, mid, err = save_multitrack_session_with_notes(
+                                session,
+                                project_name="Project C",
+                                notes="Project C notes",
+                                song_title="Say",
+                            )
+                            self.assertTrue(ok, err)
+                            working: dict = {
+                                "mt_tracks": {slot: None for slot in MULTITRACK_SLOTS},
+                                "mt_history_save_notes": "Stale widget value",
+                            }
+                            queue_multitrack_project_catalog_load(
+                                working,
+                                mid,
+                                clicked_meta={"clicked_project_title": "Project C"},
+                            )
+                            self.assertEqual(working.get(PENDING_CATALOG_LOAD_ID_KEY), mid)
+                            self.assertEqual(working.get("mt_history_save_notes"), "Stale widget value")
+                            self.assertNotIn("multitrack_catalog_active_id", working)
+
+                            ok_apply, msg = apply_pending_multitrack_catalog_load(working, st=None)
+                            self.assertTrue(ok_apply, msg)
+                            self.assertNotIn(PENDING_CATALOG_LOAD_ID_KEY, working)
+                            self.assertEqual(working.get("mt_history_save_notes"), "Project C notes")
+                            self.assertEqual(working.get("mt_history_save_name"), "Project C")
+                            self.assertEqual(working.get("multitrack_catalog_active_id"), mid)
 
     def test_save_and_restore_notes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

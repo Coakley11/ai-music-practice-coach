@@ -12579,6 +12579,13 @@ elif _studio_page == "creative":
 
 elif _studio_page == "multitrack":
 
+    try:
+        from studio_history_bootstrap import apply_pending_studio_history
+
+        apply_pending_studio_history(st.session_state, page="multitrack", st=st)
+    except Exception:
+        pass
+
     ensure_page_initialized(st.session_state, "multitrack")
     note_page_visit(st.session_state, "multitrack")
     try:
@@ -12606,13 +12613,6 @@ elif _studio_page == "multitrack":
         render_multitrack_setup_section_open = lambda *_a, **_k: None  # type: ignore
         render_multitrack_studio_panel_header = lambda *_a, **_k: None  # type: ignore
 
-
-    try:
-        from studio_history_bootstrap import apply_pending_studio_history
-
-        apply_pending_studio_history(st.session_state, page="multitrack", st=st)
-    except Exception:
-        pass
 
     try:
         from media_multitrack_catalog import migrate_legacy_multitrack_history

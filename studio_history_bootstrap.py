@@ -30,6 +30,17 @@ def apply_pending_studio_history(session_state: dict[str, Any], *, page: str, st
 
     if page == "multitrack":
         try:
+            from media_multitrack_catalog import (
+                PENDING_CATALOG_LOAD_ID_KEY,
+                apply_pending_multitrack_catalog_load,
+            )
+
+            if session_state.get(PENDING_CATALOG_LOAD_ID_KEY):
+                apply_pending_multitrack_catalog_load(session_state, st=st)
+                return
+        except Exception:
+            pass
+        try:
             from multitrack_history import FLASH_KEY as MT_FLASH_KEY
             from multitrack_history import PENDING_LOAD_KEY, apply_pending_multitrack_history
 

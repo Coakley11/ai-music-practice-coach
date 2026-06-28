@@ -1211,6 +1211,94 @@ def _record_multitrack_catalog_load_diag(
     }
 
 
+PENDING_CATALOG_LOAD_ID_KEY = "_pending_multitrack_project_load_id"
+PENDING_CATALOG_LOAD_META_KEY = "_pending_multitrack_project_load_meta"
+
+
+def queue_multitrack_project_catalog_load(
+    session_state: dict[str, Any],
+    multitrack_id: str,
+    *,
+    clicked_meta: dict[str, Any] | None = None,
+) -> None:
+    """Defer catalog load until the next rerun, before Project Library widgets render."""
+    mid = str(multitrack_id or "").strip()
+    if not mid:
+        return
+    session_state[PENDING_CATALOG_LOAD_ID_KEY] = mid
+    if isinstance(clicked_meta, dict):
+        session_state[PENDING_CATALOG_LOAD_META_KEY] = copy.deepcopy(clicked_meta)
+    else:
+        session_state.pop(PENDING_CATALOG_LOAD_META_KEY, None)
+
+
+def apply_pending_multitrack_catalog_load(
+    session_state: dict[str, Any],
+    *,
+    st: Any | None = None,
+) -> tuple[bool, str]:
+    """Apply a queued catalog load (must run before widget keys are instantiated)."""
+    mid = session_state.pop(PENDING_CATALOG_LOAD_ID_KEY, None)
+    meta = session_state.pop(PENDING_CATALOG_LOAD_META_KEY, None)
+    if not mid:
+        return False, ""
+    mid = str(mid).strip()
+    if not mid:
+        return False, ""
+
+    if isinstance(meta, dict):
+        try:
+            from multitrack_project_load_trace import begin_project_load_trace
+
+            begin_project_load_trace(
+                session_state,
+                clicked_project_id=mid,
+                clicked_project_title=str(meta.get("clicked_project_title") or ""),
+                clicked_project_updated_at=str(meta.get("clicked_project_updated_at") or ""),
+                payload_multitrack_id=str(meta.get("payload_multitrack_id") or mid),
+            )
+        except ImportError:
+            pass
+
+    try:
+        ok, msg = load_multitrack_project_from_catalog(session_state, mid, st=st, load_audio=True)
+    except Exception as exc:
+        ok, msg = False, f"{exc.__class__.__name__}:{exc}"
+
+    if ok:
+        session_state["multitrack_catalog_active_id"] = mid
+        session_state["_last_catalog_multitrack_id"] = mid
+        session_state["mt_hist_active_item"] = mid
+        try:
+            from multitrack_history import FLASH_KEY as MT_FLASH_KEY
+
+            if msg == "metadata_only":
+                session_state[MT_FLASH_KEY] = (
+                    "Loaded project metadata — track audio not stored for this session."
+                )
+            elif msg.startswith("loaded_"):
+                session_state[MT_FLASH_KEY] = f"Loaded multitrack project ({msg.replace('_', ' ')})."
+            else:
+                session_state[MT_FLASH_KEY] = "Loaded multitrack project with audio."
+        except ImportError:
+            pass
+        try:
+            from music_persistent_state import force_save_music_state
+
+            if st is not None:
+                force_save_music_state(st, reason="history_load")
+        except Exception:
+            pass
+    else:
+        try:
+            from multitrack_history import FLASH_KEY as MT_FLASH_KEY
+
+            session_state[MT_FLASH_KEY] = f"Could not load project: {msg or 'unknown error'}"
+        except ImportError:
+            pass
+    return ok, msg
+
+
 def load_multitrack_project_from_catalog(
     session_state: dict[str, Any],
     multitrack_id: str,
