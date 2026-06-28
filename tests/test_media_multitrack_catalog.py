@@ -12,6 +12,8 @@ from media_multitrack_catalog import (
     build_multitrack_catalog_fields,
     catalog_multitrack_row_summary,
     delete_catalog_multitrack_session,
+    load_multitrack_project_from_catalog,
+    loaded_multitrack_project_banner,
     migrate_legacy_multitrack_history,
     save_multitrack_session_with_notes,
 )
@@ -541,3 +543,108 @@ class TestMediaMultitrackCatalog(unittest.TestCase):
                                 guitar = next(t for t in row["tracks"] if t["slot"] == "Guitar")
                                 self.assertEqual(guitar.get("playback_status"), "playable")
                                 self.assertTrue(guitar.get("local_path"))
+
+    def test_save_and_restore_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "media_catalog.json"
+
+            def _fake_path(*, st=None):
+                return path
+
+            session = self._session_with_guitar()
+            with patch("media_persistence._local_path", _fake_path):
+                with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
+                        with patch("media_persistence._save_cloud_catalog", lambda catalog, *, st=None: (True, "")):
+                            ok, mid, err = save_multitrack_session_with_notes(
+                                session,
+                                project_name="Project A",
+                                notes="Forest Park",
+                                song_title="Say",
+                            )
+                            self.assertTrue(ok, err)
+                            fresh: dict = {"mt_tracks": {slot: None for slot in MULTITRACK_SLOTS}}
+                            ok2, _msg = load_multitrack_project_from_catalog(fresh, mid, st=None, load_audio=False)
+                            self.assertTrue(ok2)
+                            self.assertEqual(fresh.get("mt_history_save_notes"), "Forest Park")
+                            self.assertEqual(fresh.get("mt_history_save_name"), "Project A")
+
+    def test_load_project_b_replaces_project_a_layers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "media_catalog.json"
+
+            def _fake_path(*, st=None):
+                return path
+
+            session_a = self._session_with_guitar()
+            session_b = {
+                **self._session_with_guitar(),
+                "mt_name_Guitar": "Rhythm",
+                "mt_tracks": {slot: (b"bass-bytes" if slot == "Bass" else None) for slot in MULTITRACK_SLOTS},
+                "mt_track_controls": {"Bass": {"volume": 0.5, "mute": False, "solo": True, "delay": 0.0}},
+            }
+            with patch("media_persistence._local_path", _fake_path):
+                with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
+                        with patch("media_persistence._save_cloud_catalog", lambda catalog, *, st=None: (True, "")):
+                            ok_a, mid_a, _ = save_multitrack_session_with_notes(
+                                session_a, project_name="Project A", notes="Forest Park", song_title="Say"
+                            )
+                            ok_b, mid_b, _ = save_multitrack_session_with_notes(
+                                session_b, project_name="Project B", notes="Other notes", song_title="Say"
+                            )
+                            self.assertTrue(ok_a and ok_b)
+                            working: dict = dict(session_a)
+                            ok_load, _ = load_multitrack_project_from_catalog(working, mid_a, st=None, load_audio=False)
+                            self.assertTrue(ok_load)
+                            self.assertEqual(working.get("mt_name_Guitar"), "Lead")
+                            self.assertEqual(working.get("mt_history_save_notes"), "Forest Park")
+                            ok_switch, _ = load_multitrack_project_from_catalog(working, mid_b, st=None, load_audio=False)
+                            self.assertTrue(ok_switch)
+                            self.assertEqual(working.get("mt_history_save_notes"), "Other notes")
+                            self.assertEqual(working.get("mt_history_save_name"), "Project B")
+                            self.assertIsNone(working.get("mt_tracks", {}).get("Guitar"))
+                            bass_controls = (working.get("mt_track_controls") or {}).get("Bass") or {}
+                            self.assertTrue(bass_controls.get("solo"))
+
+    def test_backing_only_project_loads(self) -> None:
+        session = {
+            "multitrack_id": "mt-backing-only",
+            "workspace_id": "daniel",
+            "title": "Backing only",
+            "tracks": [],
+            "notes": "Forest Park",
+            "backing_prepared_at": "2026-06-28T12:00:00+00:00",
+            "backing_storage_ref": "supabase://music-media/u/ws/backing.wav",
+            "backing_volume": 0.7,
+        }
+        fresh: dict = {"mt_tracks": {slot: None for slot in MULTITRACK_SLOTS}}
+        ok, msg = apply_catalog_multitrack_to_session(fresh, session, load_audio=False)
+        self.assertTrue(ok, msg)
+        self.assertEqual(fresh.get("mt_history_save_notes"), "Forest Park")
+        self.assertEqual(fresh.get("mt_backing_volume"), 0.7)
+
+    def test_loaded_project_banner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "media_catalog.json"
+
+            def _fake_path(*, st=None):
+                return path
+
+            with patch("media_persistence._local_path", _fake_path):
+                with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
+                        with patch("media_persistence._save_cloud_catalog", lambda catalog, *, st=None: (True, "")):
+                            ok, mid, _ = save_multitrack_session_with_notes(
+                                self._session_with_guitar(),
+                                project_name="Project A",
+                                notes="Forest Park",
+                                song_title="Say",
+                            )
+                            self.assertTrue(ok)
+                            ss = {"multitrack_catalog_active_id": mid}
+                            with patch("media_storage._cloud_storage_enabled", lambda: False):
+                                banner = loaded_multitrack_project_banner(ss, st=None)
+                            self.assertIn("Loaded project: Project A", banner)
+                            self.assertIn("Say", banner)
+                            self.assertIn("playable", banner)

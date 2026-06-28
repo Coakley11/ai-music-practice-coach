@@ -63,6 +63,33 @@ def session_has_layer_audio(session_state: dict[str, Any], *, slots: tuple[str, 
     return any(resolve_multitrack_slot_bytes(session_state, slot) for slot in target)
 
 
+def reset_multitrack_working_session(session_state: dict[str, Any]) -> None:
+    """Clear live multitrack layers/mixer widgets before loading a different saved project."""
+    try:
+        from multitrack_history import clear_multitrack_widget_keys
+        from multitrack_slots import MULTITRACK_SLOTS
+    except ImportError:
+        MULTITRACK_SLOTS = ()  # type: ignore[assignment]
+        clear_multitrack_widget_keys = lambda _ss: None  # type: ignore[assignment]
+    clear_multitrack_widget_keys(session_state)
+    session_state["mt_tracks"] = {slot: None for slot in MULTITRACK_SLOTS}
+    session_state["mt_track_filenames"] = {
+        slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MULTITRACK_SLOTS
+    }
+    session_state["mixed_track_wav"] = None
+    session_state["mt_track_controls"] = {}
+    session_state.pop("multitrack_history_loaded_notes", None)
+    session_state.pop("multitrack_backing_music_wav", None)
+    session_state.pop("_mt_loaded_backing_project_id", None)
+    session_state.pop("mt_backing_prepared_at", None)
+    try:
+        from media_multitrack_catalog import clear_multitrack_page_snapshot_backing
+
+        clear_multitrack_page_snapshot_backing(session_state)
+    except ImportError:
+        pass
+
+
 def encode_mt_tracks_for_persist(mt: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
     """Encode ``mt_tracks`` slot map for JSON/cloud save with size guards."""
     diag: dict[str, Any] = {

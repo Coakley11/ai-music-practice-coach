@@ -7,13 +7,13 @@ from typing import Any, Callable
 from multitrack_history import (
     FLASH_KEY as MT_FLASH_KEY,
     default_project_name,
-    queue_multitrack_history_load,
 )
 from media_multitrack_catalog import (
     apply_catalog_multitrack_to_session,
     catalog_multitrack_row_summary,
     delete_catalog_multitrack_session,
     list_catalog_multitrack_sessions,
+    loaded_multitrack_project_banner,
     save_multitrack_session_with_notes,
 )
 from studio_history_cloud import (
@@ -31,6 +31,8 @@ from media_upload_catalog import (
     catalog_upload_row_summary,
     delete_catalog_upload_recording,
     list_catalog_upload_recordings,
+    loaded_upload_recording_banner,
+    load_upload_recording_from_catalog,
     save_upload_recording_with_notes,
 )
 
@@ -67,11 +69,6 @@ def _after_history_load(session_state: dict[str, Any], st_obj: Any, *, page: str
         pass
 
 
-def _merge_track_refs(fields: dict[str, Any], existing_session: dict[str, Any] | None) -> None:
-    """Preserve durable layer refs when re-saving without live session bytes."""
-    _merge_track_ids(fields, existing_session)
-
-
 def _compose_history_row_label(
     row: dict[str, Any],
     summary: str,
@@ -94,6 +91,11 @@ def _compose_history_row_label(
     return " · ".join(parts)
 
 
+def _history_row_notes(row: dict[str, Any]) -> str:
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    return str(payload.get("notes") or row.get("notes") or "").strip()
+
+
 def _render_history_list(
     st_obj: Any,
     *,
@@ -105,6 +107,7 @@ def _render_history_list(
     on_delete: Callable[[str], tuple[bool, str]],
     key_prefix: str,
     active_item_key: str = "",
+    load_button_label: str = "Load",
 ) -> None:
     if list_error:
         st_obj.error(f"Could not load history: {list_error}")
@@ -116,8 +119,8 @@ def _render_history_list(
         '<style>'
         f"div[data-testid='stVerticalBlock']:has(.{key_prefix}-hist-row) "
         "div[data-testid='column'] {padding-top:0;padding-bottom:0;}"
-        f".{key_prefix}-hist-row .stButton > button "
-        "{padding:0.18rem 0.45rem;font-size:0.82rem;line-height:1.25;text-align:left;}"
+        f".{key_prefix}-hist-load .stButton > button "
+        "{padding:0.18rem 0.45rem;font-size:0.82rem;line-height:1.25;}"
         f".{key_prefix}-hist-del .stButton > button "
         "{padding:0.12rem 0.35rem;min-width:2rem;}"
         "</style>",
@@ -133,17 +136,33 @@ def _render_history_list(
         suffix = widget_key_suffix(item_key)
         is_active = bool(active_item_key and item_key == active_item_key)
         row_label = _compose_history_row_label(row, summary, item_type=item_type)
-        if is_active:
-            row_label = f"▸ {row_label}"
+        notes = _history_row_notes(row)
 
-        row_cols = st_obj.columns([12, 1])
+        row_cols = st_obj.columns([10, 2, 1])
         with row_cols[0]:
             st_obj.markdown(f'<div class="{key_prefix}-hist-row"></div>', unsafe_allow_html=True)
             if is_active:
+                st_obj.caption(f"▸ Currently loaded · {row_label}")
+            else:
                 st_obj.caption(row_label)
-            elif st_obj.button(
-                row_label,
-                key=f"{key_prefix}_open_{suffix}",
+            detail_bits: list[str] = []
+            if notes:
+                detail_bits.append(f"**Notes:** {notes[:500]}")
+            if item_type == "uploaded_recording":
+                song = str(payload.get("song") or "").strip()
+                instrument = str(payload.get("instrument") or "").strip()
+                if song:
+                    detail_bits.append(f"**Song:** {song}")
+                if instrument:
+                    detail_bits.append(f"**Instrument:** {instrument}")
+            if detail_bits:
+                with st_obj.expander("Details", expanded=is_active and bool(notes)):
+                    st_obj.markdown("\n\n".join(detail_bits))
+        with row_cols[1]:
+            st_obj.markdown(f'<div class="{key_prefix}-hist-load"></div>', unsafe_allow_html=True)
+            if not is_active and st_obj.button(
+                load_button_label,
+                key=f"{key_prefix}_load_{suffix}",
                 use_container_width=True,
             ):
                 ok, msg = on_load(payload)
@@ -153,7 +172,7 @@ def _render_history_list(
                     st_obj.rerun()
                 else:
                     st_obj.error(msg)
-        with row_cols[1]:
+        with row_cols[2]:
             st_obj.markdown(f'<div class="{key_prefix}-hist-del"></div>', unsafe_allow_html=True)
             if st_obj.button("✕", key=f"{key_prefix}_del_{suffix}", help="Delete"):
                 ok, err = on_delete(item_key)
@@ -209,6 +228,10 @@ def render_upload_history_panel(st_obj: Any) -> None:
 
         st_obj.markdown("##### Saved analyses")
 
+        banner = loaded_upload_recording_banner(ss, st=st_obj)
+        if banner:
+            st_obj.info(banner)
+
         rows, list_err = list_catalog_upload_recordings(st=st_obj)
         active_key = str(
             ss.get("upload_catalog_active_recording_id")
@@ -218,11 +241,15 @@ def render_upload_history_panel(st_obj: Any) -> None:
         )
 
         def _load_upload(payload: dict[str, Any]) -> tuple[bool, str]:
-            ok, msg = apply_catalog_recording_to_session(ss, payload, st=st_obj)
+            rid = str(payload.get("recording_id") or payload.get("item_key") or "")
+            try:
+                ok, msg = load_upload_recording_from_catalog(ss, rid, st=st_obj)
+            except ImportError:
+                ok, msg = apply_catalog_recording_to_session(ss, payload, st=st_obj)
             if ok:
-                rid = str(payload.get("recording_id") or "")
                 if rid:
                     ss["upload_catalog_active_recording_id"] = rid
+                    ss["upload_hist_active_item"] = rid
                 _after_history_load(ss, st_obj, page="analysis")
                 playback = str(ss.get("upload_catalog_playback_status") or "")
                 if playback == "metadata_only":
@@ -327,6 +354,10 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
 
         st_obj.markdown("##### Saved projects")
 
+        banner = loaded_multitrack_project_banner(ss, st=st_obj)
+        if banner:
+            st_obj.info(banner)
+
         rows, list_err = list_catalog_multitrack_sessions(st=st_obj)
         active_key = str(
             ss.get("multitrack_catalog_active_id")
@@ -347,14 +378,14 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                 if mid:
                     ss["multitrack_catalog_active_id"] = mid
                     ss["_last_catalog_multitrack_id"] = mid
+                    ss["mt_hist_active_item"] = mid
                 _after_history_load(ss, st_obj, page="multitrack")
                 if msg == "metadata_only":
                     return True, "Loaded project metadata — track audio not stored for this session."
                 if msg.startswith("loaded_"):
                     return True, f"Loaded multitrack project ({msg.replace('_', ' ')})."
                 return True, "Loaded multitrack project with audio."
-            queue_multitrack_history_load(ss, payload)
-            return True, "Queued legacy project load — applying on next render."
+            return False, msg or "Could not load multitrack project."
 
         def _delete_mt(item_key: str) -> tuple[bool, str]:
             return delete_catalog_multitrack_session(item_key, st=st_obj)
@@ -369,4 +400,5 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             on_delete=_delete_mt,
             key_prefix="mt_hist",
             active_item_key=active_key,
+            load_button_label="Load Project",
         )

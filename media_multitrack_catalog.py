@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from datetime import datetime, timezone
 from typing import Any
 
@@ -960,6 +961,46 @@ def clear_multitrack_page_snapshot_backing(session_state: dict[str, Any]) -> Non
     store["multitrack"] = updated
 
 
+def apply_multitrack_catalog_ui_state(session_state: dict[str, Any], row: dict[str, Any]) -> None:
+    """Restore Project Library form fields and active-project markers after load."""
+    migrated = migrate_multitrack_session(row)
+    mid = str(migrated.get("multitrack_id") or "").strip()
+    title = str(migrated.get("title") or "").strip()
+    notes = str(migrated.get("notes") or "").strip()
+    if title:
+        session_state["mt_history_save_name"] = title
+    session_state["mt_history_save_notes"] = notes
+    session_state["multitrack_history_loaded_notes"] = notes
+    if mid:
+        session_state[_ACTIVE_CATALOG_MULTITRACK_KEY] = mid
+        session_state[_LAST_CATALOG_MULTITRACK_KEY] = mid
+        session_state["multitrack_catalog_active_id"] = mid
+        session_state["mt_hist_active_item"] = mid
+
+
+def loaded_multitrack_project_banner(session_state: dict[str, Any], *, st: Any | None = None) -> str:
+    """Human-readable label for the currently loaded multitrack project."""
+    mid = active_catalog_multitrack_id(session_state)
+    if not mid:
+        return ""
+    catalog = load_media_catalog(st=st)
+    rows = normalize_multitrack_sessions(
+        catalog.get("multitrack_sessions") if isinstance(catalog.get("multitrack_sessions"), list) else []
+    )
+    row = next((r for r in rows if str(r.get("multitrack_id") or "") == mid), None)
+    if not isinstance(row, dict):
+        return f"Loaded project: {mid}"
+    title = str(row.get("title") or "Multitrack session").strip()
+    song = str(row.get("song") or "").strip()
+    status = catalog_multitrack_row_summary({"payload": row, "title": title})
+    parts = [f"Loaded project: {title}"]
+    if song and song.lower() not in title.lower():
+        parts.append(song)
+    if status:
+        parts.append(status)
+    return " · ".join(parts)
+
+
 def apply_catalog_multitrack_to_session(
     session_state: dict[str, Any],
     session: dict[str, Any],
@@ -970,8 +1011,10 @@ def apply_catalog_multitrack_to_session(
     """Restore multitrack metadata; optionally lazy-load track audio blobs."""
     row = migrate_multitrack_session(session)
     payload = catalog_row_to_history_payload(row)
-    if not payload.get("tracks"):
-        return False, "no_tracks"
+    has_tracks = bool(payload.get("tracks"))
+    has_backing = multitrack_has_saved_backing(row) or bool(row.get("backing_prepared_at"))
+    if not has_tracks and not has_backing:
+        return False, "nothing_to_load"
 
     mid = str(row.get("multitrack_id") or "")
     session_state.pop("multitrack_backing_music_wav", None)
@@ -986,6 +1029,10 @@ def apply_catalog_multitrack_to_session(
     except ImportError:
         pass
     apply_multitrack_history(session_state, payload)
+    row_controls = row.get("track_controls")
+    if isinstance(row_controls, dict) and row_controls:
+        session_state["mt_track_controls"] = copy.deepcopy(row_controls)
+    apply_multitrack_catalog_ui_state(session_state, row)
     try:
         from multitrack_mixer_state import sync_mixer_widgets_from_canonical
 
@@ -997,39 +1044,38 @@ def apply_catalog_multitrack_to_session(
         session_state[_LAST_CATALOG_MULTITRACK_KEY] = mid
         session_state["multitrack_catalog_active_id"] = mid
 
-    if not load_audio:
-        session_state["_mt_catalog_metadata_only"] = True
-        return True, "metadata_only"
-
-    if "mt_tracks" not in session_state or not isinstance(session_state.get("mt_tracks"), dict):
-        session_state["mt_tracks"] = {slot: None for slot in MULTITRACK_SLOTS}
-
     loaded = 0
     missing = 0
     ws = str(row.get("workspace_id") or "daniel")
-    for track in row.get("tracks") or []:
-        if not isinstance(track, dict) or track.get("deleted"):
-            continue
-        if not is_real_multitrack_track(track):
-            continue
-        slot = str(track.get("slot") or "")
-        if slot not in MULTITRACK_SLOTS:
-            continue
-        status = track_playback_status(track, session_workspace=ws, st=st)
-        if not status:
-            continue
-        if status != PLAYBACK_PLAYABLE:
-            if status == PLAYBACK_METADATA_ONLY:
+    if load_audio and has_tracks:
+        if "mt_tracks" not in session_state or not isinstance(session_state.get("mt_tracks"), dict):
+            session_state["mt_tracks"] = {slot: None for slot in MULTITRACK_SLOTS}
+
+        for track in row.get("tracks") or []:
+            if not isinstance(track, dict) or track.get("deleted"):
+                continue
+            if not is_real_multitrack_track(track):
+                continue
+            slot = str(track.get("slot") or "")
+            if slot not in MULTITRACK_SLOTS:
+                continue
+            status = track_playback_status(track, session_workspace=ws, st=st)
+            if not status:
+                continue
+            if status != PLAYBACK_PLAYABLE:
+                if status == PLAYBACK_METADATA_ONLY:
+                    missing += 1
+                session_state["mt_tracks"][slot] = None
+                continue
+            audio, err = load_track_audio(track, session=row, st=st)
+            if audio:
+                session_state["mt_tracks"][slot] = audio
+                loaded += 1
+            else:
+                session_state["mt_tracks"][slot] = None
                 missing += 1
-            session_state["mt_tracks"][slot] = None
-            continue
-        audio, err = load_track_audio(track, session=row, st=st)
-        if audio:
-            session_state["mt_tracks"][slot] = audio
-            loaded += 1
-        else:
-            session_state["mt_tracks"][slot] = None
-            missing += 1
+    elif not load_audio:
+        session_state["_mt_catalog_metadata_only"] = True
 
     session_state.pop("_mt_catalog_metadata_only", None)
 
@@ -1085,10 +1131,16 @@ def load_multitrack_project_from_catalog(
         return False, "not_found"
     try:
         from multitrack_history import clear_multitrack_widget_keys
+        from multitrack_session_persistence import reset_multitrack_working_session
 
-        clear_multitrack_widget_keys(session_state)
+        reset_multitrack_working_session(session_state)
     except ImportError:
-        pass
+        try:
+            from multitrack_history import clear_multitrack_widget_keys
+
+            clear_multitrack_widget_keys(session_state)
+        except ImportError:
+            pass
     ok, msg = apply_catalog_multitrack_to_session(session_state, row, st=st, load_audio=load_audio)
     if ok:
         clear_multitrack_page_snapshot_backing(session_state)

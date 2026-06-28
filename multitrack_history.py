@@ -294,7 +294,9 @@ def apply_multitrack_history(session_state: dict[str, Any], payload: dict[str, A
         info["mixed_restored"] = True
 
     if payload.get("notes"):
-        session_state["multitrack_history_loaded_notes"] = str(payload.get("notes") or "")
+        notes = str(payload.get("notes") or "")
+        session_state["multitrack_history_loaded_notes"] = notes
+        session_state["mt_history_save_notes"] = notes
 
     session_bpm = payload.get("session_bpm")
     if session_bpm is not None:

@@ -389,6 +389,81 @@ def catalog_upload_row_summary(row: dict[str, Any]) -> str:
     return " · ".join(bits)
 
 
+def active_catalog_recording_id(session_state: dict[str, Any]) -> str:
+    return str(
+        session_state.get(_ACTIVE_CATALOG_RECORDING_KEY)
+        or session_state.get("upload_hist_active_item")
+        or session_state.get("upload_history_loaded_item_key")
+        or ""
+    ).strip()
+
+
+def apply_upload_catalog_ui_state(session_state: dict[str, Any], row: dict[str, Any]) -> None:
+    """Restore Upload History form fields and active-recording markers after load."""
+    rec = migrate_uploaded_recording(row)
+    rid = str(rec.get("recording_id") or "").strip()
+    title = str(rec.get("title") or rec.get("filename") or "").strip()
+    notes = str(rec.get("notes") or "").strip()
+    if title:
+        session_state["upload_history_save_title"] = title
+    session_state["upload_history_save_notes"] = notes
+    session_state["upload_history_loaded_notes"] = notes
+    if rid:
+        session_state[_ACTIVE_CATALOG_RECORDING_KEY] = rid
+        session_state[_LAST_CATALOG_RECORDING_KEY] = rid
+        session_state["upload_hist_active_item"] = rid
+
+
+def loaded_upload_recording_banner(session_state: dict[str, Any], *, st: Any | None = None) -> str:
+    """Human-readable label for the currently loaded upload recording."""
+    rid = active_catalog_recording_id(session_state)
+    if not rid:
+        return ""
+    catalog = load_media_catalog(st=st)
+    rows = normalize_uploaded_recordings(
+        catalog.get("uploaded_recordings") if isinstance(catalog.get("uploaded_recordings"), list) else []
+    )
+    rec = next((r for r in rows if str(r.get("recording_id") or "") == rid), None)
+    if not isinstance(rec, dict):
+        return f"Loaded upload: {rid}"
+    title = str(rec.get("title") or rec.get("filename") or "Saved upload").strip()
+    song = str(rec.get("song") or "").strip()
+    instrument = str(rec.get("instrument") or "").strip()
+    notes = str(rec.get("notes") or "").strip()
+    status = catalog_upload_row_summary({"payload": rec, "title": title})
+    parts = [f"Loaded upload: {title}"]
+    if song and song.lower() not in title.lower():
+        parts.append(song)
+    if instrument:
+        parts.append(instrument)
+    if status:
+        parts.append(status)
+    if notes:
+        parts.append(f"notes: {notes[:80]}")
+    return " · ".join(parts)
+
+
+def load_upload_recording_from_catalog(
+    session_state: dict[str, Any],
+    recording_id: str,
+    *,
+    st: Any | None = None,
+) -> tuple[bool, str]:
+    """Reload catalog from cloud/disk and restore one saved upload recording."""
+    rid = str(recording_id or "").strip()
+    if not rid:
+        return False, "missing_recording_id"
+    catalog = load_media_catalog(st=st)
+    rows = normalize_uploaded_recordings(
+        catalog.get("uploaded_recordings") if isinstance(catalog.get("uploaded_recordings"), list) else []
+    )
+    row = next((r for r in rows if str(r.get("recording_id") or "") == rid), None)
+    if not isinstance(row, dict):
+        return False, "not_found"
+    ok, msg = apply_catalog_recording_to_session(session_state, row, st=st)
+    return ok, msg
+
+
 def apply_catalog_recording_to_session(
     session_state: dict[str, Any],
     recording: dict[str, Any],
@@ -405,8 +480,7 @@ def apply_catalog_recording_to_session(
     session_state["last_analysis_result"] = compact_analysis_for_history(result)
     session_state["last_analysis_source_label"] = str(rec.get("filename") or "")
     session_state["last_analysis_recording_type"] = str(rec.get("legacy_recording_type") or "Practice take")
-    if rec.get("notes"):
-        session_state["upload_history_loaded_notes"] = str(rec.get("notes") or "")
+    apply_upload_catalog_ui_state(session_state, rec)
 
     status = recording_playback_status(rec, st=st)
     session_state["upload_catalog_playback_status"] = status
@@ -424,6 +498,7 @@ def apply_catalog_recording_to_session(
     if rid:
         session_state[_ACTIVE_CATALOG_RECORDING_KEY] = rid
         session_state[_LAST_CATALOG_RECORDING_KEY] = rid
+        session_state["upload_hist_active_item"] = rid
     return True, ""
 
 

@@ -11,6 +11,8 @@ from unittest.mock import patch
 from media_upload_catalog import (
     apply_catalog_recording_to_session,
     build_upload_recording_fields,
+    load_upload_recording_from_catalog,
+    loaded_upload_recording_banner,
     migrate_legacy_upload_history,
     register_upload_analysis_in_catalog,
     save_upload_recording_with_notes,
@@ -104,6 +106,7 @@ class TestMediaUploadCatalog(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(session["last_analysis_result"]["coach_summary"], "Loaded note")
         self.assertEqual(session.get("upload_history_loaded_notes"), "Gig prep")
+        self.assertEqual(session.get("upload_history_save_notes"), "Gig prep")
         self.assertNotIn("last_analysis_audio", session)
 
     def test_save_with_notes_updates_catalog(self) -> None:
@@ -134,6 +137,38 @@ class TestMediaUploadCatalog(unittest.TestCase):
             data = json.loads(path.read_text(encoding="utf-8"))
             visible = normalize_uploaded_recordings(data.get("uploaded_recordings") or [])
             self.assertEqual(visible[0].get("notes"), "Notes here")
+
+    def test_load_upload_from_catalog_restores_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "media_catalog.json"
+
+            def _fake_path(*, st=None):
+                return path
+
+            session = self._session()
+            with patch("media_persistence._local_path", _fake_path):
+                with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
+                        with patch("media_persistence._save_cloud_catalog", lambda catalog, *, st=None: (True, "")):
+                            with patch("media_upload_catalog.list_upload_history", return_value=([], None)):
+                                with patch(
+                                    "media_upload_catalog._save_legacy_upload_history",
+                                    return_value=(True, "legacy-key", ""),
+                                ):
+                                    ok, rid, _ = save_upload_recording_with_notes(
+                                        session,
+                                        title="My titled take",
+                                        notes="Rehearsal notes",
+                                        st=None,
+                                    )
+                                    self.assertTrue(ok)
+                                    fresh: dict = {}
+                                    ok2, _ = load_upload_recording_from_catalog(fresh, rid, st=None)
+                                    self.assertTrue(ok2)
+                                    self.assertEqual(fresh.get("upload_history_save_notes"), "Rehearsal notes")
+                                    banner = loaded_upload_recording_banner(fresh, st=None)
+                                    self.assertIn("Loaded upload:", banner)
+                                    self.assertIn("Rehearsal notes", banner)
 
     def test_upload_row_summary_does_not_repeat_filename(self) -> None:
         from media_upload_catalog import catalog_upload_row_summary
