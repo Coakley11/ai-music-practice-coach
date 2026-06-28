@@ -558,7 +558,7 @@ def track_playback_status(
         summary = track.get("analysis_summary") if isinstance(track.get("analysis_summary"), dict) else {}
         if summary.get("has_audio"):
             return PLAYBACK_METADATA_ONLY
-        return PLAYBACK_METADATA_ONLY
+        return ""
 
     ws = str(session_workspace or _resolve_workspace_id(st=st)).strip() or "daniel"
     current_ws = _resolve_workspace_id(st=st)

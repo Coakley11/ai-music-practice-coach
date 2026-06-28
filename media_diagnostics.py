@@ -15,6 +15,7 @@ from media_persistence import (
 )
 from media_state import (
     is_multitrack_tombstone,
+    is_real_multitrack_track,
     is_recording_tombstone,
     normalize_multitrack_sessions,
     normalize_uploaded_recordings,
@@ -63,11 +64,13 @@ def collect_media_catalog_stats(*, st: Any | None = None) -> dict[str, Any]:
             else:
                 metadata_only += 1
             for track in row.get("tracks") or []:
-                if not isinstance(track, dict):
+                if not isinstance(track, dict) or track.get("deleted"):
+                    continue
+                if not is_real_multitrack_track(track):
                     continue
                 if track.get("storage_ref") or track.get("local_path"):
                     storage_refs += 1
-                elif not track.get("deleted"):
+                else:
                     metadata_only += 1
             if row.get("mix_storage_ref") or row.get("mix_local_path"):
                 storage_refs += 1
@@ -85,6 +88,8 @@ def collect_media_catalog_stats(*, st: Any | None = None) -> dict[str, Any]:
             ws_sess = str(session.get("workspace_id") or ws)
             for track in session.get("tracks") or []:
                 if not isinstance(track, dict) or track.get("deleted"):
+                    continue
+                if not is_real_multitrack_track(track):
                     continue
                 mt_track_count += 1
                 if track.get("storage_ref"):

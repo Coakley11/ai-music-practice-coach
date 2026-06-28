@@ -130,6 +130,11 @@ def migrate_track_entry(track: dict[str, Any]) -> dict[str, Any]:
             "deleted": True,
             "updated_at": updated,
         }
+    raw_summary = track.get("analysis_summary") if isinstance(track.get("analysis_summary"), dict) else {}
+    summary = _compact_analysis_summary(raw_summary)
+    for key in ("has_audio", "volume", "delay", "mute", "solo"):
+        if key in raw_summary and key not in summary:
+            summary[key] = raw_summary[key]
     return {
         "track_id": tid,
         "slot": str(track.get("slot") or "").strip(),
@@ -142,9 +147,28 @@ def migrate_track_entry(track: dict[str, Any]) -> dict[str, Any]:
         "playback_status": str(track.get("playback_status") or "").strip(),
         "created_at": created,
         "updated_at": updated,
-        "analysis_summary": _compact_analysis_summary(track.get("analysis_summary")),
+        "analysis_summary": summary,
         "deleted": False,
     }
+
+
+def is_real_multitrack_track(track: dict[str, Any]) -> bool:
+    """True for a saved layer; false for empty slot placeholders in legacy catalogs."""
+    if not isinstance(track, dict) or track.get("deleted"):
+        return False
+    if str(track.get("storage_ref") or "").strip() or str(track.get("local_path") or "").strip():
+        return True
+    summary = track.get("analysis_summary") if isinstance(track.get("analysis_summary"), dict) else {}
+    if summary.get("has_audio"):
+        return True
+    status = str(track.get("playback_status") or "").strip()
+    if status in ("playable", "metadata_only", "missing_file", "upload_failed"):
+        return True
+    return False
+
+
+def real_multitrack_tracks(tracks: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    return [t for t in (tracks or []) if isinstance(t, dict) and is_real_multitrack_track(t)]
 
 
 def migrate_uploaded_recording(entry: dict[str, Any]) -> dict[str, Any]:
@@ -444,7 +468,7 @@ def compact_multitrack_for_ami(entry: dict[str, Any]) -> dict[str, Any]:
     if is_multitrack_tombstone(row):
         return {}
     summary = row.get("analysis_summary") if isinstance(row.get("analysis_summary"), dict) else {}
-    tracks = row.get("tracks") if isinstance(row.get("tracks"), list) else []
+    tracks = real_multitrack_tracks(row.get("tracks") if isinstance(row.get("tracks"), list) else [])
     return {
         "multitrack_id": row.get("multitrack_id"),
         "created_at": row.get("created_at"),
@@ -453,10 +477,8 @@ def compact_multitrack_for_ami(entry: dict[str, Any]) -> dict[str, Any]:
         "instrument": row.get("instrument"),
         "bpm": row.get("bpm"),
         "notes": row.get("notes"),
-        "track_count": len([t for t in tracks if isinstance(t, dict) and not t.get("deleted")]),
-        "track_names": [
-            str(t.get("name") or "") for t in tracks if isinstance(t, dict) and not t.get("deleted")
-        ][:8],
+        "track_count": len(tracks),
+        "track_names": [str(t.get("name") or "") for t in tracks][:8],
         "coach_summary": summary.get("coach_summary"),
         "scores": summary.get("scores"),
         "linked_practice_session_id": row.get("linked_practice_session_id"),
