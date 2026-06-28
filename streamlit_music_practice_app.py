@@ -13058,6 +13058,12 @@ elif _studio_page == "multitrack":
                 capture_post_render_session_trace(st.session_state, source="multitrack_page_pre_history")
             except ImportError:
                 pass
+            try:
+                from multitrack_session_persistence import flush_multitrack_workspace_snapshot
+
+                flush_multitrack_workspace_snapshot(st.session_state)
+            except ImportError:
+                pass
 
             try:
                 from studio_history_ui import render_multitrack_history_panel

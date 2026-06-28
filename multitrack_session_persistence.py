@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import copy
+from datetime import datetime, timezone
 from typing import Any
 
 from studio_page_persistence import _B64_MARKER, _decode_snapshot_value, _encode_snapshot_value
@@ -90,6 +91,62 @@ def reset_multitrack_working_session(session_state: dict[str, Any]) -> None:
     try:
         clear_multitrack_page_snapshot(session_state)
     except Exception:
+        pass
+
+
+def start_new_multitrack_project(session_state: dict[str, Any], *, song_title: str = "") -> None:
+    """Clear the working multitrack session without deleting saved Project Library rows."""
+    reset_multitrack_working_session(session_state)
+    for key in (
+        "multitrack_catalog_active_id",
+        "_last_catalog_multitrack_id",
+        "mt_hist_active_item",
+        "multitrack_history_loaded_item_key",
+        "_mt_loaded_backing_project_id",
+        "_mt_session_backing_storage_ref",
+        "_mt_loaded_project_song",
+        "_mt_last_catalog_load_error",
+    ):
+        session_state.pop(key, None)
+    try:
+        from multitrack_history import default_project_name
+
+        session_state["mt_history_save_name"] = default_project_name(session_state, song_title=song_title)
+    except ImportError:
+        session_state["mt_history_save_name"] = str(song_title or "Multitrack").strip() or "Multitrack"
+    session_state["mt_history_save_notes"] = ""
+    session_state.pop("multitrack_history_loaded_notes", None)
+    session_state["_mt_editing_new_project"] = True
+    try:
+        from studio_page_persistence import save_page_snapshot
+
+        save_page_snapshot(session_state, "multitrack")
+        session_state["_mt_workspace_snapshot_saved_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    except ImportError:
+        pass
+
+
+def record_multitrack_workspace_restore(session_state: dict[str, Any], *, source: str) -> None:
+    session_state["_mt_workspace_snapshot_loaded_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    session_state["_mt_workspace_restore_source"] = str(source or "")
+    try:
+        from multitrack_project_load_trace import record_restore_event
+
+        record_restore_event(session_state, "workspace_restore", source=source)
+    except ImportError:
+        pass
+
+
+def flush_multitrack_workspace_snapshot(session_state: dict[str, Any]) -> None:
+    """Persist current multitrack page-local workspace before refresh/autosave."""
+    try:
+        from multitrack_mixer_state import commit_all_multitrack_mixer_widgets
+        from studio_page_persistence import flush_current_page_snapshot
+
+        commit_all_multitrack_mixer_widgets(session_state)
+        flush_current_page_snapshot(session_state)
+        session_state["_mt_workspace_snapshot_saved_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    except ImportError:
         pass
 
 
@@ -282,6 +339,7 @@ def restore_multitrack_layers_from_workspace(session_state: dict[str, Any]) -> b
                 if isinstance(filenames, dict):
                     session_state["mt_track_filenames"] = copy.deepcopy(filenames)
                 record_multitrack_restore_diag(session_state, source="multitrack_page_snapshot")
+                record_multitrack_workspace_restore(session_state, source="multitrack_page_snapshot")
                 try:
                     from multitrack_project_load_trace import record_restore_event
 

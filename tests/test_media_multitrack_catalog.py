@@ -17,6 +17,7 @@ from media_multitrack_catalog import (
     migrate_legacy_multitrack_history,
     save_multitrack_session_with_notes,
 )
+from multitrack_project_load_trace import begin_project_load_trace
 from media_persistence import build_media_ami_payload, load_media_catalog
 from media_state import is_real_multitrack_track, merge_catalog, migrate_multitrack_session, normalize_multitrack_sessions, real_multitrack_tracks
 from multitrack_history import build_multitrack_history_payload
@@ -759,5 +760,64 @@ class TestMediaMultitrackCatalog(unittest.TestCase):
                                             self.assertTrue(ok3)
                                             self.assertEqual(working.get("mt_history_save_notes"), "Notes A")
                                             self.assertEqual(working.get("multitrack_backing_music_wav"), b"backing-a")
-                                            diag = working.get("_mt_catalog_load_diag") or {}
-                                            self.assertTrue(diag.get("snapshot_flushed"))
+                                            trace = working.get("_mt_project_load_trace") or {}
+                                            self.assertTrue((trace.get("snapshot") or {}).get("snapshot_flushed_after_load"))
+
+
+class TestMultitrackLoadPipeline(unittest.TestCase):
+    def test_metadata_only_project_loads(self) -> None:
+        session = {
+            "multitrack_id": "mt-notes-only",
+            "title": "Project C",
+            "song": "Say",
+            "notes": "Forest Park",
+            "tracks": [],
+            "track_controls": {},
+            "backing_volume": 0.55,
+            "transport_loop_backing": True,
+            "transport_metronome": False,
+        }
+        fresh: dict = {"mt_tracks": {slot: None for slot in MULTITRACK_SLOTS}}
+        ok, msg = apply_catalog_multitrack_to_session(fresh, session, load_audio=False)
+        self.assertTrue(ok, msg)
+        self.assertEqual(fresh.get("mt_history_save_notes"), "Forest Park")
+        self.assertEqual(fresh.get("mt_history_save_name"), "Project C")
+        self.assertEqual(fresh.get("multitrack_catalog_active_id"), "mt-notes-only")
+
+    def test_load_finalize_records_ok_even_on_apply_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "media_catalog.json"
+
+            def _fake_path(*, st=None):
+                return path
+
+            session = {
+                "mt_tracks": {slot: None for slot in MULTITRACK_SLOTS},
+                "mt_backing_prepared_at": "2026-06-28T12:00:00+00:00",
+                "mt_backing_volume": 0.5,
+                "active_song_title": "Say",
+            }
+            with patch("media_persistence._local_path", _fake_path):
+                with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
+                        with patch("media_persistence._save_cloud_catalog", lambda catalog, *, st=None: (True, "")):
+                            ok, mid, _ = save_multitrack_session_with_notes(
+                                session,
+                                project_name="Project C",
+                                notes="Forest Park",
+                                song_title="Say",
+                            )
+                            self.assertTrue(ok)
+                            working: dict = {}
+                            begin_project_load_trace(
+                                working, clicked_project_id=mid, clicked_project_title="Project C"
+                            )
+                            ok_load, msg = load_multitrack_project_from_catalog(working, mid, load_audio=False)
+                            self.assertTrue(ok_load, msg)
+                            trace = working.get("_mt_project_load_trace") or {}
+                            self.assertIs(trace.get("ok"), True)
+                            self.assertEqual((trace.get("catalog_row") or {}).get("loaded_project_title"), "Project C")
+                            stages = [s.get("stage") for s in trace.get("load_stages") or []]
+                            self.assertIn("apply_catalog_start", stages)
+                            self.assertIn("apply_catalog_done", stages)
+                            self.assertIn("load_complete", stages)

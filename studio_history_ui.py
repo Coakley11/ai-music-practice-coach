@@ -299,10 +299,34 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             )
 
         st_obj.markdown("##### Save current project")
+        active_catalog_id = str(
+            ss.get("multitrack_catalog_active_id")
+            or ss.get("_last_catalog_multitrack_id")
+            or ""
+        )
+        if active_catalog_id:
+            editing_title = str(ss.get("mt_history_save_name") or "Multitrack session").strip()
+            st_obj.info(f"Editing project: **{editing_title}**")
+        else:
+            st_obj.caption("Working on a new unsaved project — use **Save New Project** to add it to Project Library.")
+
+        new_cols = st_obj.columns([1, 1])
+        with new_cols[0]:
+            if st_obj.button("New Project", key="mt_new_project_btn", use_container_width=True):
+                try:
+                    from multitrack_session_persistence import start_new_multitrack_project
+
+                    start_new_multitrack_project(ss, song_title=song_title)
+                    ss[MT_FLASH_KEY] = "Started a new empty project (saved library rows unchanged)."
+                    st_obj.rerun()
+                except ImportError:
+                    st_obj.error("Could not reset workspace.")
+        with new_cols[1]:
+            st_obj.caption("Clears layers/backing/mixer/notes. Does not delete saved library rows.")
+
         st_obj.caption(
-            "Each saved row is a **project version** in Project Library — for example Project A, Project B, or "
-            "Trial 1 / Trial 2. Enter a **Project name** below, then click **Save to History** to keep your "
-            "current layers, mixer settings, and prepared backing (no export/mix required)."
+            "Each saved row is a **project version** in Project Library. Enter a **Project name** and notes, "
+            "then save your current layers, mixer settings, and prepared backing."
         )
         name_default = default_project_name(ss, song_title=song_title)
         if "mt_history_save_name" not in ss:
@@ -321,19 +345,14 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             st_obj.caption(
                 "Record or upload at least one layer, or prepare backing, before saving."
             )
-        if st_obj.button(
-            "Save to History",
-            type="primary",
-            key="mt_history_save_btn",
-            use_container_width=True,
-            disabled=not has_saveable,
-        ):
+
+        def _commit_and_save(save_mode: str, success_label: str) -> None:
             try:
                 from multitrack_mixer_state import commit_all_multitrack_mixer_widgets
-                from studio_page_persistence import flush_current_page_snapshot
+                from multitrack_session_persistence import flush_multitrack_workspace_snapshot
 
                 commit_all_multitrack_mixer_widgets(ss)
-                flush_current_page_snapshot(ss)
+                flush_multitrack_workspace_snapshot(ss)
             except ImportError:
                 pass
             ok, item_key, err = save_multitrack_session_with_notes(
@@ -342,15 +361,46 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                 notes=notes,
                 song_title=song_title,
                 st=st_obj,
+                save_mode=save_mode,
             )
             if ok:
-                ss[MT_FLASH_KEY] = f"Saved to media catalog ({item_key})."
+                ss[MT_FLASH_KEY] = f"{success_label} ({item_key})."
                 ss["mt_hist_active_item"] = item_key
                 ss["multitrack_catalog_active_id"] = item_key
                 ss["_last_catalog_multitrack_id"] = item_key
+                ss.pop("_mt_editing_new_project", None)
                 st_obj.rerun()
             else:
                 st_obj.error(_format_save_error(err))
+
+        save_cols = st_obj.columns([1, 1])
+        with save_cols[0]:
+            if active_catalog_id:
+                if st_obj.button(
+                    "Save Changes",
+                    type="primary",
+                    key="mt_history_save_changes_btn",
+                    use_container_width=True,
+                    disabled=not has_saveable,
+                ):
+                    _commit_and_save("update", "Saved changes to project")
+            else:
+                if st_obj.button(
+                    "Save New Project",
+                    type="primary",
+                    key="mt_history_save_new_btn",
+                    use_container_width=True,
+                    disabled=not has_saveable,
+                ):
+                    _commit_and_save("new", "Saved new project")
+        with save_cols[1]:
+            if active_catalog_id and st_obj.button(
+                "Save as New Project",
+                key="mt_history_save_as_new_btn",
+                use_container_width=True,
+                disabled=not has_saveable,
+            ):
+                _commit_and_save("new", "Saved as new project")
 
         st_obj.markdown("##### Saved projects")
 
@@ -427,5 +477,11 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             from multitrack_project_load_trace import render_project_load_debug_panel
 
             render_project_load_debug_panel(st_obj, ss)
+        except ImportError:
+            pass
+        try:
+            from multitrack_project_load_trace import render_workspace_persistence_panel
+
+            render_workspace_persistence_panel(st_obj, ss)
         except ImportError:
             pass

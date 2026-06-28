@@ -203,19 +203,6 @@ def finalize_project_load_trace(
         "layer_restore_skipped_on_load": layer_restore_skipped,
         "skip_snapshot_restore_remaining": session_state.get("_mt_skip_snapshot_restore_count"),
     }
-    try:
-        from media_multitrack_catalog import _record_multitrack_catalog_load_diag  # type: ignore[attr-defined]
-
-        _record_multitrack_catalog_load_diag(
-            session_state,
-            requested_id=str((trace.get("clicked") or {}).get("clicked_project_id") or ""),
-            loaded_row=catalog_row,
-            ok=ok,
-            message=message,
-            snapshot_flushed=snapshot_flushed,
-        )
-    except ImportError:
-        pass
     _push_history(session_state, trace)
 
 
@@ -426,3 +413,35 @@ def render_project_load_debug_panel(st_obj: Any, session_state: dict[str, Any]) 
                     st_obj.warning(
                         f"{row.get('field')}: expected `{row.get('expected')}` · session `{row.get('actual')}`"
                     )
+
+
+def render_workspace_persistence_panel(st_obj: Any, session_state: dict[str, Any]) -> None:
+    """Show current multitrack workspace persistence state (?dev=1)."""
+    if not _developer_mode(st_obj):
+        return
+    active_id = str(
+        session_state.get("multitrack_catalog_active_id")
+        or session_state.get("_last_catalog_multitrack_id")
+        or ""
+    )
+    with st_obj.expander("Current Multitrack Workspace Persistence (?dev=1)", expanded=False):
+        st_obj.text(f"active loaded project id: {active_id or '(none — new workspace)'}")
+        st_obj.text(f"current project title: {session_state.get('mt_history_save_name')}")
+        st_obj.text(f"current notes: {session_state.get('mt_history_save_notes')}")
+        st_obj.text(f"current song: {session_state.get('active_song_title')}")
+        st_obj.text(f"backing ref: {session_state.get('_mt_session_backing_storage_ref')}")
+        st_obj.text(f"backing prepared at: {session_state.get('mt_backing_prepared_at')}")
+        mt = session_state.get("mt_tracks") if isinstance(session_state.get("mt_tracks"), dict) else {}
+        playable = sum(1 for v in mt.values() if v)
+        st_obj.text(f"playable track count: {playable}")
+        st_obj.text(f"mixer settings: {session_state.get('mt_track_controls')}")
+        st_obj.text(f"loop: {session_state.get('mt_loop_backing')}")
+        st_obj.text(f"click monitor: {session_state.get('mt_metronome_playback')}")
+        st_obj.text(f"hear backing monitor: {session_state.get('mt_use_backing_monitor')}")
+        st_obj.text(f"last snapshot save: {session_state.get('_mt_workspace_snapshot_saved_at')}")
+        st_obj.text(f"last snapshot load: {session_state.get('_mt_workspace_snapshot_loaded_at')}")
+        st_obj.text(f"restore source: {session_state.get('_mt_workspace_restore_source')}")
+        st_obj.text(f"skip snapshot restore remaining: {session_state.get('_mt_skip_snapshot_restore_count')}")
+        st_obj.text(f"active song bpm (global): {session_state.get('bpm')}")
+        st_obj.text(f"session multitrack bpm: {session_state.get('multitrack_bpm')}")
+        st_obj.text(f"session meter: {session_state.get('mt_time_signature')}")

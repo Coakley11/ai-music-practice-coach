@@ -102,6 +102,20 @@ class TestMultitrackProjectLoadTrace(unittest.TestCase):
                             result = verify_loaded_project_matches_catalog(working)
                             self.assertTrue(result.get("match"), result.get("mismatches"))
 
+    def test_start_new_project_clears_active_id(self) -> None:
+        from multitrack_session_persistence import start_new_multitrack_project
+
+        session = {
+            "multitrack_catalog_active_id": "old-id",
+            "_last_catalog_multitrack_id": "old-id",
+            "mt_history_save_notes": "Old notes",
+            "mt_tracks": {slot: b"x" if slot == "Guitar" else None for slot in MULTITRACK_SLOTS},
+        }
+        start_new_multitrack_project(session, song_title="Say")
+        self.assertNotIn("multitrack_catalog_active_id", session)
+        self.assertEqual(session.get("mt_history_save_notes"), "")
+        self.assertIsNone(session.get("mt_tracks", {}).get("Guitar"))
+
 
 if __name__ == "__main__":
     unittest.main()

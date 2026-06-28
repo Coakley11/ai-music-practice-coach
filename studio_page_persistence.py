@@ -136,6 +136,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "multitrack_bpm",
             "mt_section_loops",
             "mt_groove_style",
+            "mt_time_signature",
             "mt_count_in_bars",
             "mt_metronome_playback",
             "mt_loop_backing",
@@ -144,9 +145,15 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "mt_backing_scope",
             "mt_backing_duration",
             "mt_backing_prepared_at",
+            "mt_history_save_name",
+            "mt_history_save_notes",
+            "multitrack_history_loaded_notes",
             "_last_catalog_multitrack_id",
             "multitrack_catalog_active_id",
+            "mt_hist_active_item",
             "_mt_loaded_backing_project_id",
+            "_mt_session_backing_storage_ref",
+            "_mt_loaded_project_song",
         }
     ),
     "analysis": frozenset(
@@ -550,6 +557,20 @@ def _snapshot_has_multitrack_content(snap: dict[str, Any]) -> bool:
     return bool(snap.get("mixed_track_wav"))
 
 
+def _snapshot_has_multitrack_workspace(snap: dict[str, Any]) -> bool:
+    if _snapshot_has_multitrack_content(snap):
+        return True
+    return bool(
+        snap.get("mt_history_save_notes")
+        or snap.get("mt_history_save_name")
+        or snap.get("multitrack_catalog_active_id")
+        or snap.get("_last_catalog_multitrack_id")
+        or snap.get("mt_backing_prepared_at")
+        or snap.get("multitrack_bpm") is not None
+        or snap.get("mt_backing_volume") is not None
+    )
+
+
 def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
     """After browser refresh / cloud restore — hydrate page-local UI for active page."""
     skip_count = session_state.get("_mt_skip_snapshot_restore_count")
@@ -574,8 +595,12 @@ def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
     needs_restore = session_state.get(_ACTIVE_PAGE_TRACKER) is None
     if current == "analysis" and not session_state.get("last_analysis_result"):
         needs_restore = True
-    if current == "multitrack" and isinstance(snap, dict) and _snapshot_has_multitrack_content(snap):
+    if current == "multitrack" and isinstance(snap, dict) and _snapshot_has_multitrack_workspace(snap):
         if not _multitrack_session_has_layers(session_state) and not session_state.get("mixed_track_wav"):
+            needs_restore = True
+        elif not session_state.get("mt_history_save_notes") and snap.get("mt_history_save_notes"):
+            needs_restore = True
+        elif not session_state.get("multitrack_catalog_active_id") and snap.get("multitrack_catalog_active_id"):
             needs_restore = True
     if current == "creative" and not session_state.get("improv_motif_abc"):
         if any(k in snap for k in ("improv_motif_abc", "improv_generated_sections", "improv_jam_session")):
@@ -593,6 +618,13 @@ def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
         except ImportError:
             pass
         restore_page_snapshot(session_state, current)
+        if current == "multitrack":
+            try:
+                from multitrack_session_persistence import record_multitrack_workspace_restore
+
+                record_multitrack_workspace_restore(session_state, source="restore_current_page_snapshot")
+            except ImportError:
+                pass
 
 
 def sanitize_persisted_snapshots(session_state: dict) -> None:
