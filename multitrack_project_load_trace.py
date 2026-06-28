@@ -440,24 +440,35 @@ def render_workspace_persistence_panel(st_obj: Any, session_state: dict[str, Any
         st_obj.text(f"hear backing monitor: {session_state.get('mt_use_backing_monitor')}")
         st_obj.text(f"last snapshot save: {session_state.get('_mt_workspace_snapshot_saved_at')}")
         st_obj.text(f"last snapshot load: {session_state.get('_mt_workspace_snapshot_loaded_at')}")
-        st_obj.text(f"restore source: {session_state.get('_mt_workspace_restore_source')}")
         st_obj.text(f"skip snapshot restore remaining: {session_state.get('_mt_skip_snapshot_restore_count')}")
         try:
             from music_restore_phase import page_snapshot_hydrated
 
-            st_obj.text(f"page snapshot hydrated: {page_snapshot_hydrated(session_state, 'multitrack')}")
+            hydrated = page_snapshot_hydrated(session_state, "multitrack")
+            st_obj.text(f"page snapshot hydrated: {hydrated}")
+            if hydrated:
+                st_obj.caption("Hydration guard skipped repeat snapshot restore this session.")
         except ImportError:
             pass
         diag = session_state.get("_mt_workspace_persist_diag")
         if isinstance(diag, dict):
             st_obj.markdown("**Workspace restore / flush (this run)**")
             st_obj.text(f"restore count this run: {diag.get('restore_count_this_run', 0)}")
-            st_obj.text(f"last restore source: {diag.get('last_restore_source') or '(none)'}")
+            st_obj.text(f"restore source: {session_state.get('_mt_workspace_restore_source') or diag.get('last_restore_source_detail') or '(none)'}")
+            restored_vals = diag.get("last_restored_values")
+            if restored_vals:
+                st_obj.text(f"restored values: {restored_vals}")
             restored = diag.get("last_restored_keys")
             st_obj.text(f"last restored keys: {restored if restored else '(none)'}")
             st_obj.text(f"flush count this run: {diag.get('flush_count_this_run', 0)}")
+            st_obj.text(f"last flush target: {diag.get('last_flush_target', '(unknown)')}")
+            st_obj.text(f"last flush durable ok: {diag.get('last_flush_durable_ok')}")
+            flushed_vals = diag.get("last_flushed_values")
+            if flushed_vals:
+                st_obj.text(f"last flushed values: {flushed_vals}")
             flushed = diag.get("last_flushed_keys")
             st_obj.text(f"last flushed keys: {flushed if flushed else '(none)'}")
+            st_obj.text(f"durable snapshot updated_at: {session_state.get('_mt_durable_snapshot_updated_at') or '(none)'}")
             overwrites = diag.get("active_song_overwrites")
             if overwrites:
                 st_obj.text(f"active song default overwrites: {overwrites}")

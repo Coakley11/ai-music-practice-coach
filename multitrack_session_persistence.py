@@ -13,6 +13,22 @@ MAX_MT_TRACK_BYTES = 2_097_152
 MAX_MT_MIXED_BYTES = 2_621_440
 DIAG_KEY = "_multitrack_persist_diag"
 MT_WORKSPACE_PERSIST_DIAG_KEY = "_mt_workspace_persist_diag"
+MT_WORKSPACE_WATCH_KEYS = (
+    "multitrack_bpm",
+    "mt_groove_style",
+    "mt_section_loops",
+    "mt_playback_scope",
+    "mt_single_section",
+    "mt_multi_sections",
+    "mt_history_save_notes",
+    "mt_history_save_name",
+    "mt_backing_volume",
+    "mt_time_signature",
+    "mt_loop_backing",
+    "mt_metronome_playback",
+    "mt_use_backing_monitor",
+    "include_backing_mix",
+)
 
 
 def reset_mt_workspace_run_diag(session_state: dict[str, Any]) -> None:
@@ -50,6 +66,21 @@ def record_mt_workspace_flush_keys(session_state: dict[str, Any], *, keys: list[
     diag = _mt_workspace_persist_diag(session_state)
     diag["flush_count_this_run"] = int(diag.get("flush_count_this_run") or 0) + 1
     diag["last_flushed_keys"] = list(keys)
+    diag["last_flushed_values"] = {
+        key: copy.deepcopy(session_state.get(key))
+        for key in MT_WORKSPACE_WATCH_KEYS
+        if key in session_state
+    }
+
+
+def record_mt_workspace_restore_values(session_state: dict[str, Any], *, source: str) -> None:
+    diag = _mt_workspace_persist_diag(session_state)
+    diag["last_restored_values"] = {
+        key: copy.deepcopy(session_state.get(key))
+        for key in MT_WORKSPACE_WATCH_KEYS
+        if key in session_state
+    }
+    diag["last_restore_source_detail"] = str(source or "")
 
 
 def record_mt_active_song_overwrite(
@@ -198,6 +229,7 @@ def start_new_multitrack_project(session_state: dict[str, Any], *, song_title: s
 def record_multitrack_workspace_restore(session_state: dict[str, Any], *, source: str) -> None:
     session_state["_mt_workspace_snapshot_loaded_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     session_state["_mt_workspace_restore_source"] = str(source or "")
+    record_mt_workspace_restore_values(session_state, source=source)
     try:
         from multitrack_project_load_trace import record_restore_event
 
@@ -206,8 +238,13 @@ def record_multitrack_workspace_restore(session_state: dict[str, Any], *, source
         pass
 
 
-def flush_multitrack_workspace_snapshot(session_state: dict[str, Any]) -> None:
-    """Persist current multitrack page-local workspace before refresh/autosave."""
+def flush_multitrack_workspace_snapshot(
+    session_state: dict[str, Any],
+    *,
+    st: Any | None = None,
+) -> bool:
+    """Persist current multitrack page-local workspace to session + durable disk/cloud."""
+    durable_ok = False
     try:
         from multitrack_mixer_state import commit_all_multitrack_mixer_widgets
         from studio_page_persistence import capture_page_snapshot, flush_current_page_snapshot
@@ -220,8 +257,29 @@ def flush_multitrack_workspace_snapshot(session_state: dict[str, Any]) -> None:
             keys=sorted(pre_flush.keys()) if isinstance(pre_flush, dict) else [],
         )
         session_state["_mt_workspace_snapshot_saved_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        diag = _mt_workspace_persist_diag(session_state)
+        if st is not None:
+            try:
+                from music_persistent_state import force_save_music_state
+
+                durable_ok = bool(
+                    force_save_music_state(st, reason="multitrack_workspace_flush")
+                )
+                diag["last_flush_target"] = "disk+cloud" if durable_ok else "session_only"
+                diag["last_flush_durable_ok"] = durable_ok
+                if durable_ok:
+                    session_state["_mt_durable_snapshot_updated_at"] = session_state[
+                        "_mt_workspace_snapshot_saved_at"
+                    ]
+            except ImportError:
+                diag["last_flush_target"] = "session_only"
+                diag["last_flush_durable_ok"] = False
+        else:
+            diag["last_flush_target"] = "session_only"
+            diag["last_flush_durable_ok"] = False
     except ImportError:
         pass
+    return durable_ok
 
 
 def clear_multitrack_page_snapshot(session_state: dict[str, Any]) -> None:

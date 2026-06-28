@@ -9269,12 +9269,6 @@ try:
             song_library=SONG_LIBRARY,
             song_picker_catalog=SONG_PICKER_CATALOG,
         )
-        try:
-            from music_restore_phase import complete_music_restore_phase
-
-            complete_music_restore_phase(st.session_state)
-        except ImportError:
-            pass
         _pick_key_recovery = st.session_state.pop(PICK_KEY_RECOVERY_NOTICE_KEY, None)
         if _pick_key_recovery:
             st.warning(_pick_key_recovery)
@@ -13071,7 +13065,7 @@ elif _studio_page == "multitrack":
             try:
                 from multitrack_session_persistence import flush_multitrack_workspace_snapshot
 
-                flush_multitrack_workspace_snapshot(st.session_state)
+                flush_multitrack_workspace_snapshot(st.session_state, st=st)
             except ImportError:
                 pass
 

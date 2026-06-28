@@ -267,6 +267,7 @@ _FORCE_SAVE_CLOUD_REASONS = frozenset({
     "practice_edit",
     "multitrack_layer_save",
     "multitrack_upload",
+    "multitrack_workspace_flush",
     "team_change",
     "nba_settings_change",
 })

@@ -352,7 +352,7 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                 from multitrack_session_persistence import flush_multitrack_workspace_snapshot
 
                 commit_all_multitrack_mixer_widgets(ss)
-                flush_multitrack_workspace_snapshot(ss)
+                flush_multitrack_workspace_snapshot(ss, st=st_obj)
             except ImportError:
                 pass
             ok, item_key, err = save_multitrack_session_with_notes(

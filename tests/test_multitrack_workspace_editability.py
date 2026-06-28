@@ -13,14 +13,23 @@ from media_multitrack_catalog import (
     queue_multitrack_project_catalog_load,
     save_multitrack_session_with_notes,
 )
-from music_restore_phase import complete_music_restore_phase, mark_page_snapshot_hydrated
+from music_persistent_state import apply_music_disk_state, build_music_disk_state
+from music_restore_phase import (
+    begin_music_script_run,
+    complete_music_restore_phase,
+    mark_page_snapshot_hydrated,
+    mark_music_workspace_restore_applied,
+)
+from multitrack_session_persistence import flush_multitrack_workspace_snapshot
 from multitrack_slots import MULTITRACK_SLOTS
 from studio_page_persistence import (
     capture_page_snapshot,
     flush_current_page_snapshot,
+    handle_studio_page_transition,
     reset_page_snapshot_tracker,
     restore_current_page_snapshot_if_needed,
 )
+from tests.test_studio_page_refresh_persistence import _FakeSessionState, _FakeSt
 
 
 def _empty_mt_session(**extra) -> dict:
@@ -166,6 +175,50 @@ class TestMultitrackWorkspaceEditability(unittest.TestCase):
         restore_current_page_snapshot_if_needed(ss)
         self.assertEqual(ss.get("multitrack_bpm"), 128)
         self.assertEqual(ss.get("mt_time_signature"), "3/4")
+
+    def test_real_browser_refresh_restores_from_durable_workspace(self) -> None:
+        """Simulate flush → durable save → cleared session → cloud reload → multitrack restore."""
+        ss = _FakeSessionState(
+            _empty_mt_session(
+                multitrack_bpm=132,
+                mt_groove_style="Jazz swing",
+                mt_section_loops=2,
+                mt_playback_scope="Multiple sections",
+                mt_multi_sections=["Verse", "Chorus"],
+                mt_history_save_notes="refresh test",
+            )
+        )
+        st = _FakeSt(ss)
+        durable_ok = flush_multitrack_workspace_snapshot(ss, st=st)
+        self.assertTrue(durable_ok)
+        disk_payload = build_music_disk_state(st)
+        mt_snap = (
+            disk_payload.get("session", {})
+            .get("_studio_page_snapshots", {})
+            .get("multitrack", {})
+        )
+        self.assertEqual(mt_snap.get("multitrack_bpm"), 132)
+        self.assertEqual(mt_snap.get("mt_groove_style"), "Jazz swing")
+        self.assertEqual(mt_snap.get("mt_history_save_notes"), "refresh test")
+
+        fresh = _FakeSessionState({"studio_page": "multitrack", "bpm": 100})
+        fresh_st = _FakeSt(fresh)
+        apply_music_disk_state(
+            fresh_st,
+            disk_payload,
+            song_picker_catalog={},
+            song_library=None,
+        )
+        begin_music_script_run(fresh)
+        mark_music_workspace_restore_applied(fresh)
+        reset_page_snapshot_tracker(fresh)
+        handle_studio_page_transition(fresh)
+
+        self.assertEqual(fresh.get("multitrack_bpm"), 132)
+        self.assertEqual(fresh.get("mt_groove_style"), "Jazz swing")
+        self.assertEqual(fresh.get("mt_section_loops"), 2)
+        self.assertEqual(fresh.get("mt_multi_sections"), ["Verse", "Chorus"])
+        self.assertEqual(fresh.get("mt_history_save_notes"), "refresh test")
 
     def test_selected_sections_backing_uses_song_order_only(self) -> None:
         from streamlit_music_practice_app import chord_events_for_selected_sections
