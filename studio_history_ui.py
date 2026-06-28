@@ -6,17 +6,19 @@ from typing import Any, Callable
 
 from multitrack_history import (
     FLASH_KEY as MT_FLASH_KEY,
-    ITEM_TYPE as MT_ITEM_TYPE,
     default_project_name,
-    history_row_summary as mt_row_summary,
-    list_multitrack_history,
     queue_multitrack_history_load,
-    save_multitrack_to_history,
+)
+from media_multitrack_catalog import (
+    apply_catalog_multitrack_to_session,
+    catalog_multitrack_row_summary,
+    delete_catalog_multitrack_session,
+    list_catalog_multitrack_sessions,
+    save_multitrack_session_with_notes,
 )
 from studio_history_cloud import (
     cloud_block_reason,
     cloud_enabled,
-    delete_history_item,
     format_saved_at,
     widget_key_suffix,
 )
@@ -228,8 +230,10 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
         if flash:
             st_obj.success(str(flash))
         if not cloud_enabled():
-            st_obj.warning(cloud_block_reason() or "Cloud storage is required for Project Library.")
-            return
+            st_obj.caption(
+                cloud_block_reason()
+                or "Cloud storage is disabled — saved projects use local media catalog on this device."
+            )
 
         st_obj.markdown("##### Save current project")
         name_default = default_project_name(ss, song_title=song_title)
@@ -254,7 +258,7 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             use_container_width=True,
             disabled=not has_layers,
         ):
-            ok, item_key, err = save_multitrack_to_history(
+            ok, item_key, err = save_multitrack_session_with_notes(
                 ss,
                 project_name=project_name,
                 notes=notes,
@@ -262,30 +266,42 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                 st=st_obj,
             )
             if ok:
-                ss[MT_FLASH_KEY] = f"Saved to Project Library ({item_key})."
+                ss[MT_FLASH_KEY] = f"Saved to media catalog ({item_key})."
                 ss["mt_hist_active_item"] = item_key
+                ss["multitrack_catalog_active_id"] = item_key
                 st_obj.rerun()
             else:
                 st_obj.error(_format_save_error(err))
 
         st_obj.markdown("##### Saved projects")
 
-        rows, list_err = list_multitrack_history(st=st_obj)
-        active_key = str(ss.get("mt_hist_active_item") or ss.get("multitrack_history_loaded_item_key") or "")
+        rows, list_err = list_catalog_multitrack_sessions(st=st_obj)
+        active_key = str(
+            ss.get("multitrack_catalog_active_id")
+            or ss.get("mt_hist_active_item")
+            or ss.get("multitrack_history_loaded_item_key")
+            or ""
+        )
 
         def _load_mt(payload: dict[str, Any]) -> tuple[bool, str]:
+            if apply_catalog_multitrack_to_session(ss, payload):
+                mid = str(payload.get("multitrack_id") or "")
+                if mid:
+                    ss["multitrack_catalog_active_id"] = mid
+                _after_history_load(ss, st_obj, page="multitrack")
+                return True, "Loaded saved multitrack project metadata."
             queue_multitrack_history_load(ss, payload)
             return True, "Queued project load — applying on next render."
 
         def _delete_mt(item_key: str) -> tuple[bool, str]:
-            return delete_history_item(item_type=MT_ITEM_TYPE, item_key=item_key)
+            return delete_catalog_multitrack_session(item_key, st=st_obj)
 
         _render_history_list(
             st_obj,
             item_type=MT_ITEM_TYPE,
             rows=rows,
             list_error=list_err,
-            summary_fn=mt_row_summary,
+            summary_fn=catalog_multitrack_row_summary,
             on_load=_load_mt,
             on_delete=_delete_mt,
             key_prefix="mt_hist",

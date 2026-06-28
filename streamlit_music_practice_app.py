@@ -11964,6 +11964,13 @@ elif _studio_page == "analysis":
         pass
 
     try:
+        from media_diagnostics import render_media_diagnostics
+
+        render_media_diagnostics(st, st.session_state, page="analysis")
+    except Exception:
+        pass
+
+    try:
         from studio_history_bootstrap import apply_pending_studio_history
 
         apply_pending_studio_history(st.session_state, page="analysis", st=st)
@@ -12595,6 +12602,21 @@ elif _studio_page == "multitrack":
         apply_pending_studio_history(st.session_state, page="multitrack", st=st)
     except Exception:
         pass
+
+    try:
+        from media_multitrack_catalog import migrate_legacy_multitrack_history
+
+        migrate_legacy_multitrack_history(st=st)
+    except Exception:
+        pass
+
+    try:
+        from media_diagnostics import render_media_diagnostics
+
+        render_media_diagnostics(st, st.session_state, page="multitrack")
+    except Exception:
+        pass
+
     _mt_orig_key, _mt_practice_key = _active_song_key_pair(song_data)
 
     inject_multitrack_studio_styles(st)
@@ -12605,15 +12627,7 @@ elif _studio_page == "multitrack":
         "Overdub layers with monitor backing, mix, and export — synced to your active song.",
     )
 
-    MT_SLOTS = [
-        "Guitar",
-        "Bass",
-        "Piano / Keys",
-        "Vocals",
-        "Sax / winds",
-        "Extra layer",
-    ]
-
+    from multitrack_slots import MT_SLOTS
 
     try:
         from studio_page_persistence import restore_current_page_snapshot_if_needed
@@ -12793,7 +12807,7 @@ elif _studio_page == "multitrack":
 
                     with c3:
                         ctrl = mt_controls.setdefault(
-                            layer_name,
+                            slot,
                             {"volume": 1.0, "mute": False, "solo": False, "delay": 0.0},
                         )
                         ctrl["mute"] = st.checkbox("Mute", key=f"mt_mute_{slot}")
@@ -12813,10 +12827,12 @@ elif _studio_page == "multitrack":
                                 ),
                                 "volume": st.session_state[f"mt_vol_{slot}"],
                                 "delay": st.session_state[f"mt_delay_{slot}"],
-                                "mute": mt_controls.get(layer_name, {}).get("mute", False),
-                                "solo": mt_controls.get(layer_name, {}).get("solo", False),
+                                "mute": mt_controls.get(slot, {}).get("mute", False),
+                                "solo": mt_controls.get(slot, {}).get("solo", False),
                             }
                         )
+
+            st.session_state["mt_track_controls"] = dict(mt_controls)
 
         if track_items_for_mix:
             st.markdown(
@@ -12903,13 +12919,22 @@ elif _studio_page == "multitrack":
                 )
 
             if st.button("Clear all multitrack layers", use_container_width=True):
-                st.session_state.mt_tracks = {slot: None for slot in MT_SLOTS}
-                st.session_state.mt_track_filenames = {
-                    slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MT_SLOTS
-                }
-                st.session_state.mixed_track_wav = None
-                st.session_state.multitrack_backing_music_wav = None
-                st.session_state.mt_track_controls = {}
+                try:
+                    from multitrack_session_persistence import clear_multitrack_persisted_state
+                    from music_persistent_state import force_save_music_state
+                    from studio_page_persistence import flush_current_page_snapshot
+
+                    clear_multitrack_persisted_state(st.session_state)
+                    flush_current_page_snapshot(st.session_state)
+                    force_save_music_state(st, reason="multitrack_clear_all")
+                except Exception:
+                    st.session_state.mt_tracks = {slot: None for slot in MT_SLOTS}
+                    st.session_state.mt_track_filenames = {
+                        slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MT_SLOTS
+                    }
+                    st.session_state.mixed_track_wav = None
+                    st.session_state.pop("multitrack_backing_music_wav", None)
+                    st.session_state.mt_track_controls = {}
                 st.success("Layers cleared.")
                 st.rerun()
 

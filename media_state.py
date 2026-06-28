@@ -270,6 +270,8 @@ def migrate_multitrack_session(entry: dict[str, Any]) -> dict[str, Any]:
         "analysis_summary": analysis,
         "notes": str(out.get("notes") or "").strip()[:2000],
         "linked_practice_session_id": str(out.get("linked_practice_session_id") or "").strip() or None,
+        "legacy_item_key": str(out.get("legacy_item_key") or out.get("item_key") or "").strip(),
+        "track_controls": out.get("track_controls") if isinstance(out.get("track_controls"), dict) else {},
         "deleted": False,
     }
 

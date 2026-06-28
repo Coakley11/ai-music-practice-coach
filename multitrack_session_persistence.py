@@ -109,6 +109,46 @@ def restore_multitrack_session_if_needed(session_state: dict[str, Any]) -> bool:
     return False
 
 
+def clear_multitrack_persisted_state(session_state: dict[str, Any]) -> None:
+    """Clear live multitrack layers and persisted blobs so stale audio cannot restore."""
+    try:
+        from multitrack_history import clear_multitrack_widget_keys
+        from multitrack_slots import MULTITRACK_SLOTS
+    except ImportError:
+        MULTITRACK_SLOTS = (  # type: ignore[misc, assignment]
+            "Guitar",
+            "Bass",
+            "Piano / Keys",
+            "Vocals",
+            "Sax / winds",
+            "Extra layer",
+        )
+        clear_multitrack_widget_keys = lambda _ss: None  # type: ignore[misc, assignment]
+
+    clear_multitrack_widget_keys(session_state)
+    session_state["mt_tracks"] = {slot: None for slot in MULTITRACK_SLOTS}
+    session_state["mt_track_filenames"] = {
+        slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MULTITRACK_SLOTS
+    }
+    session_state["mixed_track_wav"] = None
+    session_state.pop("multitrack_backing_music_wav", None)
+    session_state["mt_track_controls"] = {}
+    session_state.pop("_mt_tracks_persist_blob", None)
+
+    for key in list(session_state.keys()):
+        if key.startswith(("mt_vol_", "mt_delay_", "mt_name_")):
+            session_state.pop(key, None)
+
+    store = session_state.get("_studio_page_snapshots")
+    if isinstance(store, dict) and isinstance(store.get("multitrack"), dict):
+        snap = dict(store["multitrack"])
+        snap["mt_tracks"] = {slot: None for slot in MULTITRACK_SLOTS}
+        snap.pop("mixed_track_wav", None)
+        snap.pop("multitrack_backing_music_wav", None)
+        snap.pop("_mt_tracks_persist_blob", None)
+        store["multitrack"] = snap
+
+
 def restore_multitrack_layers_from_workspace(session_state: dict[str, Any]) -> bool:
     """Hydrate multitrack layers from cloud/disk payload (top-level blob or page snapshot)."""
     if count_mt_layers(session_state.get("mt_tracks")) > 0 or session_state.get("mixed_track_wav"):

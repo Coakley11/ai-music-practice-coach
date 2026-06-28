@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from analysis_session_persistence import sanitize_analysis_result_for_persist
+from multitrack_slots import MULTITRACK_SLOTS
 from studio_history_cloud import (
     MAX_PER_TRACK_EMBED_BYTES,
     MAX_TOTAL_TRACK_EMBED_BYTES,
@@ -25,14 +26,17 @@ PAYLOAD_VERSION = 1
 PENDING_LOAD_KEY = "_pending_multitrack_history_payload"
 FLASH_KEY = "_multitrack_history_flash"
 
-MULTITRACK_SLOTS: tuple[str, ...] = (
-    "Guitar",
-    "Bass",
-    "Piano / Keys",
-    "Vocals",
-    "Sax / winds",
-    "Extra layer",
-)
+def _control_for_slot(
+    controls: dict[str, Any],
+    session_state: dict[str, Any],
+    slot: str,
+) -> tuple[dict[str, Any], str]:
+    layer_name = str(session_state.get(f"mt_name_{slot}") or slot)
+    if isinstance(controls.get(slot), dict):
+        return controls[slot], layer_name
+    if isinstance(controls.get(layer_name), dict):
+        return controls[layer_name], layer_name
+    return {}, layer_name
 
 
 def clear_multitrack_widget_keys(session_state: dict[str, Any]) -> None:
@@ -94,13 +98,19 @@ def build_multitrack_history_payload(
     tracks_meta: list[dict[str, Any]] = []
     embedded_tracks: dict[str, str] = {}
     embed_budget = MAX_TOTAL_TRACK_EMBED_BYTES
+    slot_controls: dict[str, dict[str, Any]] = {}
 
     for slot in MULTITRACK_SLOTS:
         audio = mt_tracks.get(slot)
-        ctrl = controls.get(slot, {}) if isinstance(controls.get(slot), dict) else {}
-        layer_name = str(session_state.get(f"mt_name_{slot}") or slot)
+        ctrl, layer_name = _control_for_slot(controls, session_state, slot)
         volume = session_state.get(f"mt_vol_{slot}", ctrl.get("volume", 1.0))
         delay = session_state.get(f"mt_delay_{slot}", ctrl.get("delay", 0.0))
+        slot_controls[slot] = {
+            "volume": float(volume) if volume is not None else 1.0,
+            "delay": float(delay) if delay is not None else 0.0,
+            "mute": bool(ctrl.get("mute", False)),
+            "solo": bool(ctrl.get("solo", False)),
+        }
         filename = str(filenames.get(slot) or f"{slot.replace(' ', '_').lower()}.wav")
         has_audio = isinstance(audio, (bytes, bytearray)) and bool(audio)
         meta: dict[str, Any] = {
@@ -133,7 +143,7 @@ def build_multitrack_history_payload(
             "song_title": str(song_title or "")[:120],
             "notes": str(notes or "").strip()[:2000],
             "tracks": tracks_meta,
-            "track_controls": controls,
+            "track_controls": slot_controls,
             "embedded_tracks": embedded_tracks,
             "mixed_preview_b64": mixed_b64,
             "mixed_skip_reason": mixed_skip,
@@ -225,9 +235,26 @@ def apply_multitrack_history(session_state: dict[str, Any], payload: dict[str, A
         else:
             session_state["mt_tracks"][slot] = None
 
-    controls = payload.get("track_controls")
-    if isinstance(controls, dict):
-        session_state["mt_track_controls"] = copy.deepcopy(controls)
+    controls_src = payload.get("track_controls") if isinstance(payload.get("track_controls"), dict) else {}
+    slot_controls: dict[str, dict[str, Any]] = {}
+    for row in tracks:
+        if not isinstance(row, dict):
+            continue
+        slot = str(row.get("slot") or "")
+        if slot not in MULTITRACK_SLOTS:
+            continue
+        layer_name = str(row.get("layer_name") or slot)
+        base = controls_src.get(slot) if isinstance(controls_src.get(slot), dict) else {}
+        if not base and isinstance(controls_src.get(layer_name), dict):
+            base = controls_src[layer_name]
+        slot_controls[slot] = {
+            "volume": float(row.get("volume", base.get("volume", 1.0))),
+            "delay": float(row.get("delay", base.get("delay", 0.0))),
+            "mute": bool(row.get("mute", base.get("mute", False))),
+            "solo": bool(row.get("solo", base.get("solo", False))),
+        }
+    if slot_controls:
+        session_state["mt_track_controls"] = copy.deepcopy(slot_controls)
 
     mixed = decode_audio_b64(payload.get("mixed_preview_b64"))
     if mixed:
