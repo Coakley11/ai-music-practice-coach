@@ -12,7 +12,16 @@ from media_persistence import (
     save_media_catalog,
     update_multitrack_session,
 )
-from media_state import migrate_multitrack_session, normalize_multitrack_sessions
+from media_state import migrate_multitrack_session, new_track_id, normalize_multitrack_sessions
+from media_storage import (
+    PLAYBACK_METADATA_ONLY,
+    PLAYBACK_PLAYABLE,
+    delete_multitrack_session_files,
+    load_track_audio,
+    persist_track_audio,
+    playback_status_label,
+    track_playback_status,
+)
 from multitrack_history import (
     apply_multitrack_history,
     build_multitrack_history_payload,
@@ -144,19 +153,21 @@ def build_multitrack_catalog_fields(
             ctrl = controls.get(layer_name) if isinstance(controls.get(layer_name), dict) else {}
         tracks.append(
             {
+                "track_id": str(row.get("track_id") or "").strip() or new_track_id(),
                 "slot": slot,
                 "name": str(row.get("layer_name") or slot)[:120],
-                "instrument": "",
+                "instrument": str(session_state.get("instrument") or "").strip(),
+                "role": slot,
                 "duration_seconds": None,
                 "local_path": None,
                 "storage_ref": None,
+                "playback_status": PLAYBACK_METADATA_ONLY if row.get("has_audio") else "",
                 "analysis_summary": {
                     "volume": float(row.get("volume", ctrl.get("volume", 1.0))),
                     "delay": float(row.get("delay", ctrl.get("delay", 0.0))),
                     "mute": bool(row.get("mute", ctrl.get("mute", False))),
                     "solo": bool(row.get("solo", ctrl.get("solo", False))),
                     "has_audio": bool(row.get("has_audio")),
-                    "metadata_only": bool(row.get("has_audio")) and not row.get("audio_embedded"),
                 },
             }
         )
@@ -203,6 +214,72 @@ def build_multitrack_catalog_fields(
     }
 
 
+def _merge_track_ids(fields: dict[str, Any], existing_session: dict[str, Any] | None) -> None:
+    if not existing_session:
+        return
+    by_slot: dict[str, str] = {}
+    for track in existing_session.get("tracks") or []:
+        if isinstance(track, dict):
+            slot = str(track.get("slot") or "")
+            tid = str(track.get("track_id") or "")
+            if slot and tid:
+                by_slot[slot] = tid
+    for track in fields.get("tracks") or []:
+        if not isinstance(track, dict):
+            continue
+        slot = str(track.get("slot") or "")
+        if slot in by_slot:
+            track["track_id"] = by_slot[slot]
+
+
+def _persist_session_tracks(
+    st: Any | None,
+    session_state: dict[str, Any],
+    multitrack_id: str,
+    fields: dict[str, Any],
+) -> dict[str, Any]:
+    """Upload each live layer blob to durable storage; update track refs on fields."""
+    mid = str(multitrack_id or "").strip()
+    ws = str(fields.get("workspace_id") or "daniel").strip()
+    mt_tracks = session_state.get("mt_tracks") if isinstance(session_state.get("mt_tracks"), dict) else {}
+    filenames = session_state.get("mt_track_filenames") if isinstance(session_state.get("mt_track_filenames"), dict) else {}
+    updated_tracks: list[dict[str, Any]] = []
+
+    for track in fields.get("tracks") or []:
+        if not isinstance(track, dict):
+            continue
+        slot = str(track.get("slot") or "")
+        tid = str(track.get("track_id") or "").strip() or new_track_id()
+        track["track_id"] = tid
+        audio = mt_tracks.get(slot)
+        if not audio or not isinstance(audio, (bytes, bytearray)):
+            updated_tracks.append(track)
+            continue
+        filename = str(filenames.get(slot) or f"{slot.replace(' ', '_').lower()}.wav")
+        store = persist_track_audio(
+            st,
+            mid,
+            tid,
+            bytes(audio),
+            filename=filename,
+            workspace_id=ws,
+        )
+        if store.get("local_path"):
+            track["local_path"] = store.get("local_path")
+        if store.get("storage_ref"):
+            track["storage_ref"] = store.get("storage_ref")
+        track["playback_status"] = store.get("playback_status") or PLAYBACK_METADATA_ONLY
+        if store.get("storage_error"):
+            track["storage_error"] = store.get("storage_error")
+        summary = track.get("analysis_summary") if isinstance(track.get("analysis_summary"), dict) else {}
+        summary["has_audio"] = True
+        track["analysis_summary"] = summary
+        updated_tracks.append(track)
+
+    fields["tracks"] = updated_tracks
+    return fields
+
+
 def save_multitrack_session_with_notes(
     session_state: dict[str, Any],
     *,
@@ -223,6 +300,16 @@ def save_multitrack_session_with_notes(
         return False, "", "no_layers_or_mix"
 
     active_mid = str(session_state.get(_LAST_CATALOG_MULTITRACK_KEY) or "").strip()
+    existing_session: dict[str, Any] | None = None
+    if active_mid:
+        catalog = load_media_catalog(st=st)
+        rows = catalog.get("multitrack_sessions") if isinstance(catalog.get("multitrack_sessions"), list) else []
+        for row in rows:
+            if isinstance(row, dict) and str(row.get("multitrack_id") or "") == active_mid:
+                existing_session = migrate_multitrack_session(row)
+                break
+        _merge_track_ids(fields, existing_session)
+
     if active_mid:
         row = update_multitrack_session(st, active_mid, fields)
         if not row:
@@ -232,6 +319,8 @@ def save_multitrack_session_with_notes(
 
     mid = str(row.get("multitrack_id") or "")
     if mid:
+        fields = _persist_session_tracks(st, session_state, mid, dict(row))
+        row = update_multitrack_session(st, mid, fields)
         session_state[_LAST_CATALOG_MULTITRACK_KEY] = mid
         session_state[_ACTIVE_CATALOG_MULTITRACK_KEY] = mid
 
@@ -328,6 +417,12 @@ def list_catalog_multitrack_sessions(*, st: Any | None = None) -> tuple[list[dic
                 "title": session.get("title") or "Multitrack session",
                 "updated_at": session.get("updated_at") or session.get("created_at"),
                 "payload": session,
+                "track_count": len([t for t in session.get("tracks") or [] if isinstance(t, dict) and not t.get("deleted")]),
+                "storage_ref_count": sum(
+                    1
+                    for t in session.get("tracks") or []
+                    if isinstance(t, dict) and not t.get("deleted") and t.get("storage_ref")
+                ),
             }
         )
     rows.sort(key=lambda r: str(r.get("updated_at") or ""), reverse=True)
@@ -338,35 +433,109 @@ def catalog_multitrack_row_summary(row: dict[str, Any]) -> str:
     payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
     name = str(payload.get("title") or row.get("title") or "Multitrack session")
     tracks = payload.get("tracks") if isinstance(payload.get("tracks"), list) else []
+    ws = str(payload.get("workspace_id") or "daniel")
     loaded = sum(
         1
         for t in tracks
         if isinstance(t, dict)
         and not t.get("deleted")
-        and (t.get("storage_ref") or t.get("local_path") or (t.get("analysis_summary") or {}).get("has_audio"))
+        and track_playback_status(t, session_workspace=ws) == PLAYBACK_PLAYABLE
+    )
+    meta_only = sum(
+        1
+        for t in tracks
+        if isinstance(t, dict)
+        and not t.get("deleted")
+        and track_playback_status(t, session_workspace=ws) == PLAYBACK_METADATA_ONLY
     )
     song = str(payload.get("song") or "").strip()
+    bits = [name[:80]]
     if song:
-        return f"{name[:80]} · {song[:40]} · {loaded} layer(s)"
-    return f"{name[:100]} · {loaded} layer(s)"
+        bits.append(song[:40])
+    bits.append(f"{loaded} playable")
+    if meta_only:
+        bits.append(f"{meta_only} metadata-only")
+    return " · ".join(bits)
 
 
-def apply_catalog_multitrack_to_session(session_state: dict[str, Any], session: dict[str, Any]) -> bool:
-    """Restore multitrack metadata from catalog (embedded audio only when present in legacy payload)."""
-    payload = catalog_row_to_history_payload(session)
+def multitrack_session_stats(session: dict[str, Any], *, st: Any | None = None) -> dict[str, int]:
+    row = migrate_multitrack_session(session)
+    ws = str(row.get("workspace_id") or "daniel")
+    tracks = [t for t in row.get("tracks") or [] if isinstance(t, dict) and not t.get("deleted")]
+    return {
+        "track_count": len(tracks),
+        "storage_ref_count": sum(1 for t in tracks if t.get("storage_ref")),
+        "local_path_count": sum(1 for t in tracks if t.get("local_path")),
+        "playable_count": sum(1 for t in tracks if track_playback_status(t, session_workspace=ws, st=st) == PLAYBACK_PLAYABLE),
+        "metadata_only_count": sum(1 for t in tracks if track_playback_status(t, session_workspace=ws, st=st) == PLAYBACK_METADATA_ONLY),
+    }
+
+
+def apply_catalog_multitrack_to_session(
+    session_state: dict[str, Any],
+    session: dict[str, Any],
+    *,
+    st: Any | None = None,
+    load_audio: bool = True,
+) -> tuple[bool, str]:
+    """Restore multitrack metadata; optionally lazy-load track audio blobs."""
+    row = migrate_multitrack_session(session)
+    payload = catalog_row_to_history_payload(row)
     if not payload.get("tracks"):
-        return False
+        return False, "no_tracks"
+
     apply_multitrack_history(session_state, payload)
-    mid = str(migrate_multitrack_session(session).get("multitrack_id") or "")
+    mid = str(row.get("multitrack_id") or "")
     if mid:
         session_state[_ACTIVE_CATALOG_MULTITRACK_KEY] = mid
         session_state[_LAST_CATALOG_MULTITRACK_KEY] = mid
-    return True
+
+    if not load_audio:
+        session_state["_mt_catalog_metadata_only"] = True
+        return True, "metadata_only"
+
+    if "mt_tracks" not in session_state or not isinstance(session_state.get("mt_tracks"), dict):
+        session_state["mt_tracks"] = {slot: None for slot in MULTITRACK_SLOTS}
+
+    loaded = 0
+    missing = 0
+    ws = str(row.get("workspace_id") or "daniel")
+    for track in row.get("tracks") or []:
+        if not isinstance(track, dict) or track.get("deleted"):
+            continue
+        slot = str(track.get("slot") or "")
+        if slot not in MULTITRACK_SLOTS:
+            continue
+        status = track_playback_status(track, session_workspace=ws, st=st)
+        if status != PLAYBACK_PLAYABLE:
+            if status == PLAYBACK_METADATA_ONLY:
+                missing += 1
+            session_state["mt_tracks"][slot] = None
+            continue
+        audio, err = load_track_audio(track, session=row, st=st)
+        if audio:
+            session_state["mt_tracks"][slot] = audio
+            loaded += 1
+        else:
+            session_state["mt_tracks"][slot] = None
+            missing += 1
+
+    session_state.pop("_mt_catalog_metadata_only", None)
+    if loaded == 0 and missing > 0:
+        return True, "metadata_only"
+    if missing:
+        return True, f"loaded_{loaded}_missing_{missing}"
+    return True, ""
 
 
 def delete_catalog_multitrack_session(multitrack_id: str, *, st: Any | None = None) -> tuple[bool, str]:
     mid = str(multitrack_id or "").strip()
     if not mid:
         return False, "missing_multitrack_id"
+    catalog = load_media_catalog(st=st)
+    rows = catalog.get("multitrack_sessions") if isinstance(catalog.get("multitrack_sessions"), list) else []
+    existing = next((r for r in rows if isinstance(r, dict) and str(r.get("multitrack_id") or "") == mid), None)
+    if isinstance(existing, dict):
+        delete_multitrack_session_files(existing, st=st)
     ok = delete_multitrack_session(st, mid)
     return ok, "" if ok else "delete_failed"

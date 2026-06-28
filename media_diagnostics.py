@@ -75,6 +75,33 @@ def collect_media_catalog_stats(*, st: Any | None = None) -> dict[str, Any]:
 
     meta_only, storage_ref_count = _count_refs(visible_uploads + visible_mt)
 
+    mt_track_count = 0
+    mt_track_storage_refs = 0
+    mt_track_metadata_only = 0
+    try:
+        from media_storage import PLAYBACK_METADATA_ONLY, PLAYBACK_PLAYABLE, track_playback_status
+
+        for session in visible_mt:
+            ws_sess = str(session.get("workspace_id") or ws)
+            for track in session.get("tracks") or []:
+                if not isinstance(track, dict) or track.get("deleted"):
+                    continue
+                mt_track_count += 1
+                if track.get("storage_ref"):
+                    mt_track_storage_refs += 1
+                status = track_playback_status(track, session_workspace=ws_sess, st=st)
+                if status == PLAYBACK_METADATA_ONLY:
+                    mt_track_metadata_only += 1
+    except ImportError:
+        pass
+
+    try:
+        from media_storage import get_media_egress_stats
+
+        egress = get_media_egress_stats(st=st)
+    except ImportError:
+        egress = {"cloud_downloads": 0, "downloaded_bytes": 0, "cache_hits": 0}
+
     ss = None
     if st is not None:
         try:
@@ -110,6 +137,12 @@ def collect_media_catalog_stats(*, st: Any | None = None) -> dict[str, Any]:
         "tombstone_total": tomb_rec + tomb_mt,
         "metadata_only_count": meta_only,
         "storage_ref_count": storage_ref_count,
+        "multitrack_track_count": mt_track_count,
+        "multitrack_track_storage_refs": mt_track_storage_refs,
+        "multitrack_track_metadata_only": mt_track_metadata_only,
+        "media_egress_cloud_downloads": egress.get("cloud_downloads"),
+        "media_egress_downloaded_bytes": egress.get("downloaded_bytes"),
+        "media_egress_cache_hits": egress.get("cache_hits"),
         "deleted_hidden": True,
         "cloud_load_error": cloud_load_err,
         "cloud_enabled": bool(cloud_enabled()),
@@ -165,7 +198,15 @@ def render_media_diagnostics(st: Any, session_state: dict[str, Any], *, page: st
         st.text(f"tombstones (multitracks): {stats.get('tombstone_multitrack_count')}")
         st.text(f"metadata-only entries: {stats.get('metadata_only_count')}")
         st.text(f"storage_ref entries: {stats.get('storage_ref_count')}")
+        st.text(f"multitrack tracks (visible): {stats.get('multitrack_track_count')}")
+        st.text(f"multitrack track storage_refs: {stats.get('multitrack_track_storage_refs')}")
+        st.text(f"multitrack metadata-only tracks: {stats.get('multitrack_track_metadata_only')}")
         st.text(f"deleted items hidden from UI lists: {stats.get('deleted_hidden')}")
+
+        st.markdown("**Media egress (this session)**")
+        st.text(f"cloud downloads: {stats.get('media_egress_cloud_downloads')}")
+        st.text(f"downloaded bytes: {stats.get('media_egress_downloaded_bytes')}")
+        st.text(f"local cache hits: {stats.get('media_egress_cache_hits')}")
 
         st.markdown("**Last uploaded recording (visible)**")
         st.text(f"recording_id: {stats.get('last_upload_recording_id')}")

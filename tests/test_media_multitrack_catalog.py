@@ -154,8 +154,77 @@ class TestMediaMultitrackCatalog(unittest.TestCase):
         )
         assert fields is not None
         fresh: dict = {"mt_tracks": {slot: None for slot in MULTITRACK_SLOTS}}
-        self.assertTrue(apply_catalog_multitrack_to_session(fresh, {**fields, "multitrack_id": "mt-1"}))
+        ok, _msg = apply_catalog_multitrack_to_session(
+            fresh,
+            {**fields, "multitrack_id": "mt-1", "workspace_id": "daniel"},
+            load_audio=False,
+        )
+        self.assertTrue(ok)
         self.assertEqual(fresh.get("mt_name_Guitar"), "Lead")
+        self.assertIsNone(fresh.get("mt_tracks", {}).get("Guitar"))
+
+    def test_save_persists_track_storage_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "media_catalog.json"
+            root = Path(tmp)
+
+            def _fake_path(*, st=None):
+                return path
+
+            def _fake_ws_dir(ws=None):
+                d = root / "workspaces" / str(ws or "daniel")
+                d.mkdir(parents=True, exist_ok=True)
+                return d
+
+            with patch("media_persistence._local_path", _fake_path):
+                with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
+                        with patch("media_persistence._save_cloud_catalog", lambda catalog, *, st=None: (True, "")):
+                            with patch("media_storage.recording_local_abs_path", lambda ws, rel: _fake_ws_dir(ws) / rel):
+                                with patch("media_storage._cloud_storage_enabled", lambda: False):
+                                    ok, mid, err = save_multitrack_session_with_notes(
+                                        self._session_with_guitar(),
+                                        project_name="Persist tracks",
+                                        song_title="Say",
+                                    )
+                                    self.assertTrue(ok, err)
+                                    visible = normalize_multitrack_sessions(
+                                        load_media_catalog(st=None).get("multitrack_sessions") or []
+                                    )
+                                    guitar = next(
+                                        t for t in visible[0].get("tracks") or [] if t.get("slot") == "Guitar"
+                                    )
+                                    self.assertTrue(guitar.get("local_path"))
+                                    self.assertEqual(guitar.get("playback_status"), "playable")
+
+    def test_lazy_load_resolves_track_from_storage_ref(self) -> None:
+        audio = b"guitar-track-bytes"
+        storage_ref = "supabase://music-media/user/daniel/multitrack/mt-1/track-1.wav"
+        session = {
+            "multitrack_id": "mt-1",
+            "workspace_id": "daniel",
+            "title": "Test",
+            "tracks": [
+                {
+                    "track_id": "track-1",
+                    "slot": "Guitar",
+                    "name": "Lead",
+                    "storage_ref": storage_ref,
+                    "local_path": "media/multitrack/mt-1/track-1.wav",
+                    "playback_status": "playable",
+                    "analysis_summary": {"has_audio": True, "volume": 1.0, "delay": 0.0},
+                }
+            ],
+            "track_controls": {"Guitar": {"volume": 1.0, "delay": 0.0, "mute": False, "solo": False}},
+        }
+        fresh: dict = {"mt_tracks": {slot: None for slot in MULTITRACK_SLOTS}}
+        with patch("media_storage._resolve_workspace_id", lambda *, st=None: "daniel"):
+            with patch("media_storage._cloud_storage_enabled", lambda: True):
+                with patch("media_storage.download_recording_cloud", lambda ref, st=None: (audio, "")):
+                    with patch("media_storage._track_local_exists", lambda ws, rel: False):
+                        ok, msg = apply_catalog_multitrack_to_session(fresh, session, st=None, load_audio=True)
+                        self.assertTrue(ok, msg)
+                        self.assertEqual(fresh["mt_tracks"]["Guitar"], audio)
 
     def test_migrate_legacy_multitrack_history(self) -> None:
         legacy_rows = [

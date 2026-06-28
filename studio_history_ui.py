@@ -292,21 +292,26 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
         )
 
         def _load_mt(payload: dict[str, Any]) -> tuple[bool, str]:
-            if apply_catalog_multitrack_to_session(ss, payload):
+            ok, msg = apply_catalog_multitrack_to_session(ss, payload, st=st_obj, load_audio=True)
+            if ok:
                 mid = str(payload.get("multitrack_id") or "")
                 if mid:
                     ss["multitrack_catalog_active_id"] = mid
                 _after_history_load(ss, st_obj, page="multitrack")
-                return True, "Loaded saved multitrack project metadata."
+                if msg == "metadata_only":
+                    return True, "Loaded project metadata — track audio not stored for this session."
+                if msg.startswith("loaded_"):
+                    return True, f"Loaded multitrack project ({msg.replace('_', ' ')})."
+                return True, "Loaded multitrack project with audio."
             queue_multitrack_history_load(ss, payload)
-            return True, "Queued project load — applying on next render."
+            return True, "Queued legacy project load — applying on next render."
 
         def _delete_mt(item_key: str) -> tuple[bool, str]:
             return delete_catalog_multitrack_session(item_key, st=st_obj)
 
         _render_history_list(
             st_obj,
-            item_type=MT_ITEM_TYPE,
+            item_type="multitrack_session",
             rows=rows,
             list_error=list_err,
             summary_fn=catalog_multitrack_row_summary,

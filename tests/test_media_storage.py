@@ -129,7 +129,7 @@ class TestMediaStorage(unittest.TestCase):
                                         "storage_ref": storage_ref,
                                     },
                                 )
-                                with patch("media_storage.download_recording_cloud", lambda ref: (audio, "")):
+                                with patch("media_storage.download_recording_cloud", lambda ref, st=None: (audio, "")):
                                     with patch("media_storage._resolve_workspace_id", lambda *, st=None: "daniel"):
                                         loaded, err = load_recording_audio(row, st=None)
                                     self.assertEqual(loaded, audio, err)
