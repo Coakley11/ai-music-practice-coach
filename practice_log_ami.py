@@ -8,6 +8,9 @@ from practice_log_state import (
     compute_practice_log_summary,
     load_entries,
     normalize_practice_log_entries,
+    practice_key_field_label,
+    SHAPE_KEY_LABEL,
+    is_guitar_instrument,
 )
 
 
@@ -28,6 +31,7 @@ def _entry_minutes(entry: dict[str, Any]) -> int:
 
 def _compact_session(entry: dict[str, Any]) -> dict[str, Any]:
     ratings = entry.get("ratings") if isinstance(entry.get("ratings"), dict) else {}
+    instrument = str(entry.get("instrument") or "")
     out: dict[str, Any] = {
         "session_id": entry.get("session_id"),
         "date": entry.get("date"),
@@ -36,7 +40,9 @@ def _compact_session(entry: dict[str, Any]) -> dict[str, Any]:
         "active_song": _entry_song(entry),
         "song_id": entry.get("song_id"),
         "original_key": entry.get("original_key"),
+        "original_key_label": "Original key",
         "display_key": entry.get("display_key"),
+        "display_key_label": practice_key_field_label(instrument),
         "bpm": entry.get("bpm"),
         "section_practiced": entry.get("section_practiced"),
         "focus_area": entry.get("focus_area") or entry.get("focus"),
@@ -49,6 +55,10 @@ def _compact_session(entry: dict[str, Any]) -> dict[str, Any]:
         "tags": entry.get("tags") or [],
         "source_page": entry.get("source_page"),
     }
+    shape = str(entry.get("guitar_shape_key") or "").strip()
+    if shape or is_guitar_instrument(instrument):
+        out["guitar_shape_key"] = shape or entry.get("guitar_shape_key")
+        out["shape_key_label"] = SHAPE_KEY_LABEL
     return {k: v for k, v in out.items() if v not in (None, "", [], {})}
 
 

@@ -235,6 +235,134 @@ def format_quick_save_success_message(entry: dict[str, Any]) -> str:
     return " · ".join(parts)
 
 
+PRACTICE_CONCERT_KEY_LABEL = "Practice concert key"
+WRITTEN_KEY_LABEL = "Written key"
+SHAPE_KEY_LABEL = "Shape key"
+ORIGINAL_KEY_LABEL = "Original key"
+
+
+def is_guitar_instrument(instrument: str) -> bool:
+    return str(instrument or "").strip().lower() == "guitar"
+
+
+def practice_key_field_label(instrument: str) -> str:
+    """User-facing label for display_key / written key field."""
+    try:
+        from instrument_transposition import is_transposing_instrument
+
+        if is_transposing_instrument(instrument):
+            return WRITTEN_KEY_LABEL
+    except ImportError:
+        inst = str(instrument or "").strip().lower()
+        if inst in ("saxophone", "trumpet", "clarinet"):
+            return WRITTEN_KEY_LABEL
+    return PRACTICE_CONCERT_KEY_LABEL
+
+
+def entry_key_display_parts(entry: dict[str, Any]) -> list[tuple[str, str]]:
+    """User-facing key label/value pairs for session cards."""
+    instrument = str(entry.get("instrument") or "")
+    key_label = practice_key_field_label(instrument)
+    display = str(entry.get("display_key") or "—")
+    original = str(entry.get("original_key") or "—")
+    parts: list[tuple[str, str]] = [(key_label, display)]
+    shape = str(entry.get("guitar_shape_key") or "").strip()
+    if shape or is_guitar_instrument(instrument):
+        parts.append((SHAPE_KEY_LABEL, shape or "—"))
+    parts.append((ORIGINAL_KEY_LABEL, original))
+    return parts
+
+
+def format_entry_keys_display(entry: dict[str, Any]) -> str:
+    """Plain-text key summary (label: value pairs)."""
+    return " · ".join(f"{label}: {value}" for label, value in entry_key_display_parts(entry))
+
+
+def _normalize_search_token(text: str) -> str:
+    """Lowercase alphanumeric-only token for partial matching."""
+    return "".join(ch for ch in str(text or "").lower() if ch.isalnum())
+
+
+def _entry_search_blob(entry: dict[str, Any]) -> str:
+    """Concatenate all searchable entry text (normalized)."""
+    tags = entry.get("tags")
+    tag_text = " ".join(str(t) for t in tags) if isinstance(tags, list) else str(tags or "")
+    ratings = entry.get("ratings")
+    rating_text = ""
+    if isinstance(ratings, dict):
+        rating_text = " ".join(f"{k} {v}" for k, v in ratings.items())
+    legacy_rating = entry.get("rating")
+    bpm_source = _BPM_SOURCE_LABELS.get(str(entry.get("bpm_source") or "").strip().lower(), "")
+    parts = [
+        entry.get("active_song"),
+        entry.get("song"),
+        entry.get("artist"),
+        entry.get("instrument"),
+        entry.get("focus_area"),
+        entry.get("focus"),
+        entry.get("practice_type"),
+        entry.get("mode"),
+        entry.get("source_mode"),
+        entry.get("section_practiced"),
+        entry.get("section_name"),
+        section_display_label(entry),
+        entry.get("notes"),
+        entry.get("practice"),
+        entry.get("what_went_well"),
+        entry.get("what_was_hard"),
+        entry.get("next_step"),
+        tag_text,
+        entry.get("original_key"),
+        entry.get("display_key"),
+        entry.get("written_key"),
+        entry.get("guitar_shape_key"),
+        entry.get("bpm"),
+        entry.get("bpm_source"),
+        bpm_source,
+        format_bpm_display(entry),
+        entry.get("source_page"),
+        entry.get("genre"),
+        entry.get("groove"),
+        entry.get("level"),
+        rating_text,
+        legacy_rating,
+        entry.get("minutes"),
+        entry.get("duration_minutes"),
+    ]
+    return _normalize_search_token(" ".join(str(p) for p in parts if p not in (None, "")))
+
+
+def _search_matches(entry: dict[str, Any], search: str) -> bool:
+    token = _normalize_search_token(search)
+    if not token:
+        return True
+    return token in _entry_search_blob(entry)
+
+
+def _instrument_filter_matches(entry: dict[str, Any], filter_instrument: str) -> bool:
+    choice = str(filter_instrument or "").strip()
+    if not choice or choice.lower() in ("all", "all instruments"):
+        return True
+    entry_inst = str(entry.get("instrument") or "").strip()
+    return entry_inst.lower() == choice.lower()
+
+
+def _focus_filter_matches(entry: dict[str, Any], filter_focus: str) -> bool:
+    choice = str(filter_focus or "").strip().lower()
+    if not choice or choice in ("all", "all focus areas"):
+        return True
+    entry_focus = _normalize_focus_area(entry.get("focus_area"), legacy_focus=entry.get("focus")).lower()
+    legacy = str(entry.get("focus") or "").strip().lower()
+    return entry_focus == choice or legacy == choice or choice in entry_focus or choice in legacy
+
+
+def _practice_type_filter_matches(entry: dict[str, Any], filter_type: str) -> bool:
+    choice = str(filter_type or "").strip()
+    if not choice or choice.lower() in ("all", "all types", "all modes"):
+        return True
+    return _normalize_practice_type(entry.get("practice_type")) == _normalize_practice_type(choice)
+
+
 def _normalize_section_prefill(
     session_state: dict[str, Any],
     *,
@@ -808,36 +936,14 @@ def filter_practice_log_entries(
         log_date = _parse_log_date(entry)
         if start_date and (log_date is None or log_date < start_date):
             continue
-        if instrument and instrument.lower() not in ("all", "all instruments"):
-            if str(entry.get("instrument") or "").strip() != instrument:
-                continue
-        if focus_area and focus_area not in ("all", "all focus areas"):
-            if str(entry.get("focus_area") or "").strip().lower() != focus_area:
-                continue
-        if practice_type and practice_type not in ("all", "all types", "all modes"):
-            if _normalize_practice_type(entry.get("practice_type")) != _normalize_practice_type(practice_type):
-                continue
-        if search:
-            blob = " ".join(
-                str(entry.get(k) or "")
-                for k in (
-                    "active_song",
-                    "song",
-                    "artist",
-                    "notes",
-                    "practice",
-                    "what_went_well",
-                    "what_was_hard",
-                    "next_step",
-                    "genre",
-                    "groove",
-                    "practice_type",
-                    "mode",
-                    "tags",
-                )
-            ).lower()
-            if search not in blob:
-                continue
+        if not _instrument_filter_matches(entry, instrument):
+            continue
+        if not _focus_filter_matches(entry, focus_area):
+            continue
+        if not _practice_type_filter_matches(entry, practice_type):
+            continue
+        if not _search_matches(entry, search):
+            continue
         out.append(entry)
     return out
 

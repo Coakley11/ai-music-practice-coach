@@ -13,9 +13,11 @@ from practice_log_state import (
     compute_practice_log_summary,
     delete_practice_log_entry,
     deterministic_session_id,
+    entry_key_display_parts,
     filter_practice_log_entries,
     migrate_practice_log_entry,
     normalize_practice_log_entries,
+    practice_key_field_label,
     update_practice_log_entry,
 )
 
@@ -149,6 +151,131 @@ class TestPracticeLogFilterSummary(unittest.TestCase):
         self.assertGreaterEqual(summary.get("session_count", 0), 1)
         self.assertIn("Autumn Leaves", summary.get("most_practiced_songs") or [])
         self.assertIn("timing/rhythm", summary.get("most_common_focus_areas") or [])
+
+
+class TestPracticeLogSearchFilter(unittest.TestCase):
+    def _entries(self) -> list[dict]:
+        today = date.today().isoformat()
+        return normalize_practice_log_entries(
+            [
+                migrate_practice_log_entry(
+                    {
+                        "session_id": "say-piano",
+                        "date": today,
+                        "active_song": "Say",
+                        "instrument": "Piano",
+                        "duration_minutes": 30,
+                        "focus_area": "chords",
+                        "practice_type": "song practice",
+                        "display_key": "D",
+                        "original_key": "D",
+                    }
+                ),
+                migrate_practice_log_entry(
+                    {
+                        "session_id": "sax-tone",
+                        "date": today,
+                        "active_song": "Autumn Leaves",
+                        "instrument": "Alto Saxophone",
+                        "duration_minutes": 25,
+                        "focus_area": "tone",
+                        "practice_type": "song practice",
+                        "display_key": "G",
+                        "notes": "Worked long tones",
+                    }
+                ),
+                migrate_practice_log_entry(
+                    {
+                        "session_id": "legacy-row",
+                        "date": today,
+                        "song": "Blue Bossa",
+                        "minutes": 20,
+                        "mode": "Song Work",
+                        "practice": "Transcription warmup",
+                        "instrument": "Tenor Sax",
+                        "rating": 8,
+                    }
+                ),
+            ]
+        )
+
+    def test_search_piano_matches_instrument(self) -> None:
+        rows = filter_practice_log_entries(self._entries(), {"search": "piano"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("instrument"), "Piano")
+
+    def test_search_tone_matches_focus_area(self) -> None:
+        rows = filter_practice_log_entries(self._entries(), {"search": "tone"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("focus_area"), "tone")
+
+    def test_search_tone_matches_notes_text(self) -> None:
+        rows = filter_practice_log_entries(self._entries(), {"search": "long tone"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("session_id"), "sax-tone")
+
+    def test_search_say_matches_song(self) -> None:
+        rows = filter_practice_log_entries(self._entries(), {"search": "say"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("active_song"), "Say")
+
+    def test_search_sax_matches_saxophone_entries(self) -> None:
+        rows = filter_practice_log_entries(self._entries(), {"search": "sax"})
+        self.assertEqual(len(rows), 2)
+        instruments = {r.get("instrument") for r in rows}
+        self.assertIn("Alto Saxophone", instruments)
+        self.assertIn("Tenor Sax", instruments)
+
+    def test_instrument_dropdown_piano(self) -> None:
+        rows = filter_practice_log_entries(self._entries(), {"instrument": "Piano"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("instrument"), "Piano")
+
+    def test_focus_dropdown_tone(self) -> None:
+        rows = filter_practice_log_entries(self._entries(), {"focus_area": "tone"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("focus_area"), "tone")
+
+    def test_search_and_dropdown_combined(self) -> None:
+        rows = filter_practice_log_entries(
+            self._entries(),
+            {"search": "say", "instrument": "Piano"},
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("active_song"), "Say")
+
+    def test_search_and_dropdown_no_match(self) -> None:
+        rows = filter_practice_log_entries(
+            self._entries(),
+            {"search": "say", "instrument": "Alto Saxophone"},
+        )
+        self.assertEqual(len(rows), 0)
+
+    def test_legacy_fields_searchable(self) -> None:
+        rows = filter_practice_log_entries(self._entries(), {"search": "transcription"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("active_song"), "Blue Bossa")
+
+    def test_legacy_mode_filter(self) -> None:
+        rows = filter_practice_log_entries(self._entries(), {"practice_type": "song practice"})
+        self.assertGreaterEqual(len(rows), 2)
+
+
+class TestPracticeLogKeyLabels(unittest.TestCase):
+    def test_piano_uses_practice_concert_key(self) -> None:
+        self.assertEqual(practice_key_field_label("Piano"), "Practice concert key")
+
+    def test_saxophone_uses_written_key(self) -> None:
+        self.assertEqual(practice_key_field_label("Saxophone"), "Written key")
+
+    def test_guitar_shows_shape_key_part(self) -> None:
+        entry = migrate_practice_log_entry(
+            {"instrument": "Guitar", "display_key": "C", "guitar_shape_key": "G", "original_key": "C"}
+        )
+        labels = [label for label, _ in entry_key_display_parts(entry)]
+        self.assertIn("Practice concert key", labels)
+        self.assertIn("Shape key", labels)
+        self.assertIn("Original key", labels)
 
 
 if __name__ == "__main__":

@@ -16,11 +16,23 @@ from practice_log_state import (
     delete_practice_log_entry,
     filter_practice_log_entries,
     format_bpm_display,
+    format_entry_keys_display,
     format_quick_save_success_message,
+    is_guitar_instrument,
     load_entries,
+    entry_key_display_parts,
+    practice_key_field_label,
     reload_practice_log_entries,
     section_display_label,
     update_practice_log_entry,
+)
+
+_FILTER_WIDGET_KEYS: tuple[str, ...] = (
+    "plog_filter_search",
+    "plog_filter_window",
+    "plog_filter_instrument",
+    "plog_filter_focus",
+    "plog_filter_type",
 )
 
 _DATE_WINDOWS: tuple[tuple[str, int | None], ...] = (
@@ -334,13 +346,21 @@ def _session_form_fields(
     prefill: dict[str, Any],
     submit_label: str = "Save session",
 ) -> dict[str, Any] | None:
+    form_instrument = str(prefill.get("instrument") or "")
+    practice_key_label = practice_key_field_label(form_instrument)
     with st.form(f"{prefix}_practice_session_form"):
         c1, c2 = st.columns(2)
         with c1:
             active_song = st.text_input("Song", value=str(prefill.get("active_song") or ""))
-            instrument = st.text_input("Instrument", value=str(prefill.get("instrument") or ""))
-            display_key = st.text_input("Display / practice key", value=str(prefill.get("display_key") or ""))
+            instrument = st.text_input("Instrument", value=form_instrument)
+            display_key = st.text_input(practice_key_label, value=str(prefill.get("display_key") or ""))
             original_key = st.text_input("Original key", value=str(prefill.get("original_key") or ""))
+            guitar_shape_key = ""
+            if is_guitar_instrument(form_instrument):
+                guitar_shape_key = st.text_input(
+                    "Shape key",
+                    value=str(prefill.get("guitar_shape_key") or ""),
+                )
             bpm_val = prefill.get("bpm")
             bpm = st.number_input("BPM", min_value=0, max_value=240, value=int(bpm_val or 0), step=1)
         with c2:
@@ -383,7 +403,7 @@ def _session_form_fields(
         "instrument": instrument,
         "display_key": display_key,
         "original_key": original_key,
-        "guitar_shape_key": prefill.get("guitar_shape_key"),
+        "guitar_shape_key": guitar_shape_key or prefill.get("guitar_shape_key"),
         "capo_fret": prefill.get("capo_fret"),
         "bpm": bpm if bpm > 0 else None,
         "duration_minutes": duration,
@@ -531,6 +551,11 @@ def render_entry_forms(st: Any, session_state: dict[str, Any], *, on_saved: Any 
             )
 
 
+def _clear_practice_log_filters(session_state: dict[str, Any]) -> None:
+    for key in _FILTER_WIDGET_KEYS:
+        session_state.pop(key, None)
+
+
 def render_filters(st: Any, entries: list[dict[str, Any]]) -> dict[str, Any]:
     inst_opts = ["All instruments"] + sorted({str(e.get("instrument") or "") for e in entries if e.get("instrument")})
     focus_opts = ["All focus areas"] + list(FOCUS_AREAS)
@@ -539,7 +564,7 @@ def render_filters(st: Any, entries: list[dict[str, Any]]) -> dict[str, Any]:
 
     c1, c2, c3, c4, c5 = st.columns([1.4, 1, 1, 1, 1])
     with c1:
-        search = st.text_input("Search", placeholder="Song, notes, tags…", key="plog_filter_search").strip()
+        search = st.text_input("Search", placeholder="Song, instrument, notes, tags…", key="plog_filter_search").strip()
     with c2:
         window_label = st.selectbox("Date range", window_labels, key="plog_filter_window")
     with c3:
@@ -551,7 +576,7 @@ def render_filters(st: Any, entries: list[dict[str, Any]]) -> dict[str, Any]:
 
     window_days = dict(_DATE_WINDOWS).get(window_label)
     return {
-        "search": search.lower(),
+        "search": search,
         "window_days": window_days,
         "instrument": instrument,
         "focus_area": focus_area,
@@ -559,9 +584,21 @@ def render_filters(st: Any, entries: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def render_session_list(st: Any, session_state: dict[str, Any], entries: list[dict[str, Any]]) -> None:
+def render_session_list(
+    st: Any,
+    session_state: dict[str, Any],
+    entries: list[dict[str, Any]],
+    *,
+    total_entries: int = 0,
+) -> None:
     if not entries:
-        st.info("No practice sessions match your filters. Log your first session above.")
+        if total_entries > 0:
+            st.info("No practice sessions match these filters.")
+            if st.button("Clear filters", key="plog_clear_filters"):
+                _clear_practice_log_filters(session_state)
+                st.rerun()
+        else:
+            st.info("No practice sessions yet. Log your first session above.")
         return
 
     for entry in entries[:120]:
@@ -577,8 +614,12 @@ def render_session_list(st: Any, session_state: dict[str, Any], entries: list[di
         with st.expander(f"{date_label} · {song} · {mins} min · {instrument}", expanded=False):
             bpm_label = html.escape(format_bpm_display(entry))
             section_label = html.escape(section_display_label(entry))
+            keys_line = " · ".join(
+                f"**{html.escape(label)}:** {html.escape(value)}"
+                for label, value in entry_key_display_parts(entry)
+            )
             st.markdown(
-                f"**Keys:** {entry.get('display_key') or '—'} (practice) · {entry.get('original_key') or '—'} (original)  \n"
+                f"{keys_line}  \n"
                 f"**BPM:** {bpm_label} · **Section:** {section_label}  \n"
                 f"**Focus:** {focus} · **Type:** {ptype}"
             )
@@ -633,5 +674,5 @@ def render_practice_log_page(
             filters=filters,
             filtered=filtered,
         )
-        render_session_list(st, session_state, filtered)
+        render_session_list(st, session_state, filtered, total_entries=len(entries))
     return filtered
