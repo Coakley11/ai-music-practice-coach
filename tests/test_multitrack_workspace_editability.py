@@ -20,7 +20,13 @@ from music_restore_phase import (
     mark_page_snapshot_hydrated,
     mark_music_workspace_restore_applied,
 )
-from multitrack_session_persistence import flush_multitrack_workspace_snapshot
+from multitrack_session_persistence import (
+    BACKING_SCOPES,
+    FREE_LAYERING_SCOPE,
+    apply_multitrack_free_layering_guard,
+    flush_multitrack_workspace_snapshot,
+    multitrack_step3_backing_controls_disabled,
+)
 from multitrack_slots import MULTITRACK_SLOTS
 from studio_page_persistence import (
     capture_page_snapshot,
@@ -237,18 +243,41 @@ class TestMultitrackWorkspaceEditability(unittest.TestCase):
 
     def test_free_layering_guard_clears_backing_flags(self) -> None:
         session = _empty_mt_session(
-            mt_playback_scope="Free layering (no backing)",
+            mt_playback_scope=FREE_LAYERING_SCOPE,
             include_backing_mix=True,
             mt_use_backing_monitor=True,
             mt_loop_backing=True,
         )
-        if str(session.get("mt_playback_scope") or "") == "Free layering (no backing)":
-            session["include_backing_mix"] = False
-            session["mt_use_backing_monitor"] = False
-            session["mt_loop_backing"] = False
+        self.assertTrue(apply_multitrack_free_layering_guard(session))
         self.assertFalse(session["include_backing_mix"])
         self.assertFalse(session["mt_use_backing_monitor"])
         self.assertFalse(session["mt_loop_backing"])
+
+    def test_step3_backing_controls_disabled_only_in_free_layering(self) -> None:
+        for scope in BACKING_SCOPES:
+            session = _empty_mt_session(mt_playback_scope=scope)
+            disabled = multitrack_step3_backing_controls_disabled(session)
+            if scope == FREE_LAYERING_SCOPE:
+                self.assertTrue(disabled, scope)
+            else:
+                self.assertFalse(disabled, scope)
+
+    def test_step3_backing_controls_enabled_without_prepared_backing(self) -> None:
+        for scope in ("Full song", "Single section (verse, chorus, solo, …)", "Multiple sections"):
+            session = _empty_mt_session(mt_playback_scope=scope)
+            self.assertFalse(multitrack_step3_backing_controls_disabled(session))
+
+    def test_free_layering_guard_noop_for_backing_modes(self) -> None:
+        session = _empty_mt_session(
+            mt_playback_scope="Full song",
+            include_backing_mix=True,
+            mt_use_backing_monitor=True,
+            mt_loop_backing=True,
+        )
+        self.assertFalse(apply_multitrack_free_layering_guard(session))
+        self.assertTrue(session["include_backing_mix"])
+        self.assertTrue(session["mt_use_backing_monitor"])
+        self.assertTrue(session["mt_loop_backing"])
 
     def test_selected_sections_backing_uses_song_order_only(self) -> None:
         from streamlit_music_practice_app import chord_events_for_selected_sections

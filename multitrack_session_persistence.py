@@ -30,6 +30,33 @@ MT_WORKSPACE_WATCH_KEYS = (
     "include_backing_mix",
 )
 
+FREE_LAYERING_SCOPE = "Free layering (no backing)"
+BACKING_SCOPES = (
+    "Full song",
+    "Single section (verse, chorus, solo, …)",
+    "Multiple sections",
+    FREE_LAYERING_SCOPE,
+)
+
+
+def multitrack_is_free_layering_mode(session_state: dict[str, Any]) -> bool:
+    return str(session_state.get("mt_playback_scope") or "") == FREE_LAYERING_SCOPE
+
+
+def multitrack_step3_backing_controls_disabled(session_state: dict[str, Any]) -> bool:
+    """Step 3 backing/mix widgets are disabled only in Free Layering mode."""
+    return multitrack_is_free_layering_mode(session_state)
+
+
+def apply_multitrack_free_layering_guard(session_state: dict[str, Any]) -> bool:
+    """Force backing transport/export flags off in Free Layering mode."""
+    if not multitrack_is_free_layering_mode(session_state):
+        return False
+    session_state["include_backing_mix"] = False
+    session_state["mt_use_backing_monitor"] = False
+    session_state["mt_loop_backing"] = False
+    return True
+
 
 def reset_mt_workspace_run_diag(session_state: dict[str, Any]) -> None:
     """Reset per-script-run workspace persistence counters (not cross-run snapshot data)."""

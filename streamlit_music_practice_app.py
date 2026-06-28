@@ -6399,10 +6399,16 @@ def _render_multitrack_session_setup_panel(
         label_visibility="collapsed",
     )
     _free_layering = mt_scope == "Free layering (no backing)"
+    try:
+        from multitrack_session_persistence import apply_multitrack_free_layering_guard
+
+        apply_multitrack_free_layering_guard(st.session_state)
+    except ImportError:
+        if _free_layering:
+            st.session_state["include_backing_mix"] = False
+            st.session_state["mt_use_backing_monitor"] = False
+            st.session_state["mt_loop_backing"] = False
     if _free_layering:
-        st.session_state["include_backing_mix"] = False
-        st.session_state["mt_use_backing_monitor"] = False
-        st.session_state["mt_loop_backing"] = False
         st.info(
             "Free Layering mode records layers without a generated backing track. "
             "Backing, section-repeat, and export-with-backing controls are disabled in Step 3. "
@@ -12911,16 +12917,29 @@ elif _studio_page == "multitrack":
                 '<p class="ui-multitrack-step-kicker">Step 3 · Transport &amp; mixer</p>',
                 unsafe_allow_html=True,
             )
-            _free_layering = (
-                str(st.session_state.get("mt_playback_scope") or "")
-                == "Free layering (no backing)"
-            )
+            try:
+                from multitrack_session_persistence import (
+                    apply_multitrack_free_layering_guard,
+                    multitrack_is_free_layering_mode,
+                    multitrack_step3_backing_controls_disabled,
+                )
+
+                _free_layering = multitrack_is_free_layering_mode(st.session_state)
+                _backing_controls_disabled = multitrack_step3_backing_controls_disabled(
+                    st.session_state
+                )
+                apply_multitrack_free_layering_guard(st.session_state)
+            except ImportError:
+                _free_layering = (
+                    str(st.session_state.get("mt_playback_scope") or "")
+                    == "Free layering (no backing)"
+                )
+                _backing_controls_disabled = _free_layering
+                if _free_layering:
+                    st.session_state["include_backing_mix"] = False
+                    st.session_state["mt_use_backing_monitor"] = False
+                    st.session_state["mt_loop_backing"] = False
             _has_backing = bool(monitor_wav)
-            _backing_controls_disabled = _free_layering or not _has_backing
-            if _free_layering:
-                st.session_state["include_backing_mix"] = False
-                st.session_state["mt_use_backing_monitor"] = False
-                st.session_state["mt_loop_backing"] = False
             try:
                 from media_multitrack_catalog import seed_multitrack_backing_volume
 
@@ -12978,8 +12997,8 @@ elif _studio_page == "multitrack":
                 )
             elif not _has_backing:
                 st.caption(
-                    "Prepare backing in Step 1 to enable backing monitor, level, section repeat, "
-                    "and include-backing-in-export controls."
+                    "Prepare a backing track in Step 1 before playback/export uses these settings. "
+                    "You can still configure backing level, monitor, repeat, and export options here."
                 )
             else:
                 st.caption(
