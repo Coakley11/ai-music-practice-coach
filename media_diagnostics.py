@@ -184,6 +184,8 @@ def collect_media_catalog_stats(*, st: Any | None = None) -> dict[str, Any]:
         "session_backing_last_upload_error": (ss or {}).get("_mt_backing_last_upload_error") if isinstance(ss, dict) else None,
         "session_backing_last_download_error": (ss or {}).get("_mt_backing_last_download_error") if isinstance(ss, dict) else None,
         "session_backing_last_upload_storage_ref": (ss or {}).get("_mt_backing_last_upload_storage_ref") if isinstance(ss, dict) else None,
+        "mt_catalog_load_diag": (ss or {}).get("_mt_catalog_load_diag") if isinstance(ss, dict) else None,
+        "mt_last_catalog_load_error": (ss or {}).get("_mt_last_catalog_load_error") if isinstance(ss, dict) else None,
     }
 
 
@@ -274,6 +276,28 @@ def render_media_diagnostics(st: Any, session_state: dict[str, Any], *, page: st
         st.text(f"last backing cloud upload error: {stats.get('session_backing_last_upload_error')}")
         st.text(f"last backing cloud download error: {stats.get('session_backing_last_download_error')}")
         st.text(f"last backing upload storage_ref: {stats.get('session_backing_last_upload_storage_ref')}")
+
+        if page == "multitrack":
+            st.markdown("**Multitrack project load (?dev=1)**")
+            load_diag = stats.get("mt_catalog_load_diag") if isinstance(stats.get("mt_catalog_load_diag"), dict) else {}
+            st.text(f"requested_multitrack_id: {load_diag.get('requested_multitrack_id')}")
+            st.text(f"loaded_multitrack_id: {load_diag.get('loaded_multitrack_id')}")
+            st.text(f"active_catalog_multitrack_id: {load_diag.get('active_catalog_multitrack_id')}")
+            st.text(f"loaded_backing_storage_ref: {load_diag.get('loaded_backing_storage_ref')}")
+            st.text(f"session_backing_project_id: {load_diag.get('session_backing_project_id')}")
+            st.text(f"notes_loaded: {load_diag.get('notes_loaded')}")
+            st.text(f"song_loaded: {load_diag.get('song_loaded')}")
+            st.text(f"backing_volume_loaded: {load_diag.get('backing_volume_loaded')}")
+            st.text(f"transport_loop_backing: {load_diag.get('transport_loop_backing')}")
+            st.text(f"transport_metronome: {load_diag.get('transport_metronome')}")
+            st.text(f"transport_use_backing_monitor: {load_diag.get('transport_use_backing_monitor')}")
+            st.text(f"track_controls_slots: {load_diag.get('track_controls_slots')}")
+            st.text(f"layer_count: {load_diag.get('layer_count')}")
+            st.text(f"backing_bytes: {load_diag.get('backing_bytes')}")
+            st.text(f"snapshot_flushed: {load_diag.get('snapshot_flushed')}")
+            st.text(f"last project load ok: {load_diag.get('ok')}")
+            st.text(f"last project load message: {load_diag.get('message')}")
+            st.text(f"last project load error: {stats.get('mt_last_catalog_load_error')}")
 
         st.markdown("**Last load trace**")
         st.code(_json_preview(stats.get("last_load") or {"note": "no load trace yet"}), language="json")

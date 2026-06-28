@@ -187,6 +187,31 @@ class TestMediaUploadCatalog(unittest.TestCase):
         self.assertIn("Piano", summary)
         self.assertNotIn("2026-05-31", summary)
 
+    def test_loaded_upload_banner_dedupes_song_and_instrument(self) -> None:
+        from media_upload_catalog import loaded_upload_recording_banner
+
+        rec = migrate_uploaded_recording(
+            {
+                "recording_id": "rec-banner",
+                "filename": "2026-05-31-214959714.wav",
+                "title": "2026-05-31-214959714.wav",
+                "song": "Annie's song",
+                "instrument": "Piano",
+                "notes": "forest park",
+                "playback_status": "playable",
+                "analysis_summary": {"ok": True},
+            }
+        )
+        session = {"upload_catalog_active_recording_id": "rec-banner"}
+        with patch("media_upload_catalog.load_media_catalog", return_value={"uploaded_recordings": [rec]}):
+            banner = loaded_upload_recording_banner(session, st=None)
+        self.assertEqual(
+            banner,
+            "Loaded upload: 2026-05-31-214959714.wav · Annie's song · Piano · Playable · notes: forest park",
+        )
+        self.assertEqual(banner.count("Annie's song"), 1)
+        self.assertEqual(banner.count("Piano"), 1)
+
     def test_history_row_label_is_non_repetitive(self) -> None:
         from studio_history_ui import _compose_history_row_label
 

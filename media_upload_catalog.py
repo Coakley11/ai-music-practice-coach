@@ -430,14 +430,17 @@ def loaded_upload_recording_banner(session_state: dict[str, Any], *, st: Any | N
     song = str(rec.get("song") or "").strip()
     instrument = str(rec.get("instrument") or "").strip()
     notes = str(rec.get("notes") or "").strip()
-    status = catalog_upload_row_summary({"payload": rec, "title": title})
+    status = str(rec.get("playback_status") or recording_playback_status(rec, st=st)).strip()
+    status_label = playback_status_label(status) if status else ""
     parts = [f"Loaded upload: {title}"]
-    if song and song.lower() not in title.lower():
+    joined = title.lower()
+    if song and song.lower() not in joined:
         parts.append(song)
-    if instrument:
+        joined = f"{joined} · {song.lower()}"
+    if instrument and instrument.lower() not in joined:
         parts.append(instrument)
-    if status:
-        parts.append(status)
+    if status_label:
+        parts.append(status_label)
     if notes:
         parts.append(f"notes: {notes[:80]}")
     return " · ".join(parts)

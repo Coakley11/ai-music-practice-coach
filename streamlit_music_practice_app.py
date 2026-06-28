@@ -12670,7 +12670,8 @@ elif _studio_page == "multitrack":
         }
 
     mt_time_sig = default_time_signature(song, sections)
-    st.session_state["mt_time_signature"] = mt_time_sig
+    if not str(st.session_state.get("multitrack_catalog_active_id") or "").strip():
+        st.session_state["mt_time_signature"] = mt_time_sig
     mt_beats_per_bar = beats_per_bar_from_signature(mt_time_sig)
     mt_sec_names = [
         name

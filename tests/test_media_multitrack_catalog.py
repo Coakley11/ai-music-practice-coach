@@ -5,7 +5,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from media_multitrack_catalog import (
     apply_catalog_multitrack_to_session,
@@ -648,3 +648,116 @@ class TestMediaMultitrackCatalog(unittest.TestCase):
                             self.assertIn("Loaded project: Project A", banner)
                             self.assertIn("Say", banner)
                             self.assertIn("playable", banner)
+
+    def test_full_project_ab_switch_restores_all_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "media_catalog.json"
+
+            def _fake_path(*, st=None):
+                return path
+
+            def _persist_backing(_st, mid, audio, **kw):
+                return {
+                    "ok": True,
+                    "local_path": f"media/multitrack/{mid}/backing.wav",
+                    "storage_ref": f"supabase://music-media/u/ws/{mid}/backing.wav",
+                    "playback_status": "playable",
+                }
+
+            session_a = {
+                **self._session_with_guitar(),
+                "multitrack_backing_music_wav": b"backing-a",
+                "mt_backing_volume": 0.3,
+                "mt_loop_backing": False,
+                "mt_metronome_playback": True,
+                "mt_use_backing_monitor": True,
+                "mt_mute_Guitar": True,
+                "mt_solo_Guitar": False,
+                "transport_loop_backing": False,
+                "transport_metronome": True,
+            }
+            session_b = {
+                **self._session_with_guitar(),
+                "mt_tracks": {slot: (b"bass-bytes" if slot == "Bass" else None) for slot in MULTITRACK_SLOTS},
+                "mt_name_Guitar": "Rhythm",
+                "mt_track_controls": {"Bass": {"volume": 0.5, "mute": False, "solo": True, "delay": 0.2}},
+                "multitrack_backing_music_wav": b"backing-b",
+                "mt_backing_volume": 0.9,
+                "mt_loop_backing": True,
+                "mt_metronome_playback": False,
+                "mt_use_backing_monitor": False,
+            }
+            with patch("media_persistence._local_path", _fake_path):
+                with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
+                        with patch("media_persistence._save_cloud_catalog", lambda catalog, *, st=None: (True, "")):
+                            with patch("media_multitrack_catalog.persist_backing_audio", _persist_backing):
+                                with patch(
+                                    "media_multitrack_catalog.persist_track_audio",
+                                    MagicMock(return_value={"ok": True, "playback_status": "playable", "local_path": "x.wav"}),
+                                ):
+                                    ok_a, mid_a, _ = save_multitrack_session_with_notes(
+                                        session_a,
+                                        project_name="Project A",
+                                        notes="Notes A",
+                                        song_title="Song A",
+                                    )
+                                    session_b.pop("multitrack_catalog_active_id", None)
+                                    session_b.pop("_last_catalog_multitrack_id", None)
+                                    ok_b, mid_b, _ = save_multitrack_session_with_notes(
+                                        session_b,
+                                        project_name="Project B",
+                                        notes="Notes B",
+                                        song_title="Song B",
+                                    )
+                                    self.assertTrue(ok_a and ok_b)
+                                    self.assertNotEqual(mid_a, mid_b)
+
+                                    working: dict = {"_studio_page_snapshots": {"multitrack": {"mt_tracks": {"Guitar": b"stale"}}}}
+                                    with patch(
+                                        "media_multitrack_catalog.load_backing_audio",
+                                        lambda session, st=None: (
+                                            (b"backing-a", "")
+                                            if str(session.get("multitrack_id") or "") == mid_a
+                                            else (b"backing-b", "")
+                                        ),
+                                    ):
+                                        with patch(
+                                            "media_multitrack_catalog.load_track_audio",
+                                            lambda track, session=None, st=None: (
+                                                (b"guitar-a", "")
+                                                if str(track.get("slot") or "") == "Guitar"
+                                                and str(session.get("multitrack_id") or "") == mid_a
+                                                else (b"bass-b", "")
+                                                if str(track.get("slot") or "") == "Bass"
+                                                else (None, "missing")
+                                            ),
+                                        ):
+                                            ok1, _ = load_multitrack_project_from_catalog(working, mid_a, load_audio=True)
+                                            self.assertTrue(ok1)
+                                            self.assertEqual(working.get("mt_history_save_notes"), "Notes A")
+                                            self.assertEqual(working.get("active_song_title"), "Song A")
+                                            self.assertEqual(working.get("mt_backing_volume"), 0.3)
+                                            self.assertFalse(working.get("mt_loop_backing"))
+                                            self.assertTrue(working.get("mt_metronome_playback"))
+                                            self.assertEqual(working.get("multitrack_backing_music_wav"), b"backing-a")
+                                            self.assertEqual(working.get("_mt_loaded_backing_project_id"), mid_a)
+
+                                            ok2, _ = load_multitrack_project_from_catalog(working, mid_b, load_audio=True)
+                                            self.assertTrue(ok2)
+                                            self.assertEqual(working.get("mt_history_save_notes"), "Notes B")
+                                            self.assertEqual(working.get("active_song_title"), "Song B")
+                                            self.assertEqual(working.get("mt_backing_volume"), 0.9)
+                                            self.assertTrue(working.get("mt_loop_backing"))
+                                            self.assertFalse(working.get("mt_use_backing_monitor"))
+                                            self.assertEqual(working.get("multitrack_backing_music_wav"), b"backing-b")
+                                            self.assertIsNone(working.get("mt_tracks", {}).get("Guitar"))
+                                            bass = (working.get("mt_track_controls") or {}).get("Bass") or {}
+                                            self.assertTrue(bass.get("solo"))
+
+                                            ok3, _ = load_multitrack_project_from_catalog(working, mid_a, load_audio=True)
+                                            self.assertTrue(ok3)
+                                            self.assertEqual(working.get("mt_history_save_notes"), "Notes A")
+                                            self.assertEqual(working.get("multitrack_backing_music_wav"), b"backing-a")
+                                            diag = working.get("_mt_catalog_load_diag") or {}
+                                            self.assertTrue(diag.get("snapshot_flushed"))

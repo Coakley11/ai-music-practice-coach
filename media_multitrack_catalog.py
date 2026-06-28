@@ -202,9 +202,8 @@ def gather_multitrack_backing_fields(session_state: dict[str, Any]) -> dict[str,
 def apply_multitrack_backing_fields(session_state: dict[str, Any], row: dict[str, Any]) -> None:
     """Restore multitrack backing widget keys from a catalog row before widgets render."""
     migrated = migrate_multitrack_session(row)
-    vol = migrated.get("backing_volume")
-    if vol is not None:
-        session_state["mt_backing_volume"] = _normalize_mt_backing_volume(vol)
+    if "backing_volume" in migrated:
+        session_state["mt_backing_volume"] = _normalize_mt_backing_volume(migrated.get("backing_volume"))
     scope = str(migrated.get("backing_scope") or "").strip()
     if scope:
         session_state["mt_playback_scope"] = scope
@@ -212,20 +211,18 @@ def apply_multitrack_backing_fields(session_state: dict[str, Any], row: dict[str
     if single:
         session_state["mt_single_section"] = single
     multi = migrated.get("backing_multi_sections")
-    if isinstance(multi, list) and multi:
+    if isinstance(multi, list):
         session_state["mt_multi_sections"] = [str(x).strip() for x in multi if str(x).strip()]
-    loops = migrated.get("backing_loops")
-    if loops is not None:
-        session_state["mt_section_loops"] = int(loops)
+    if "backing_loops" in migrated:
+        session_state["mt_section_loops"] = int(migrated.get("backing_loops") or 2)
     groove = str(migrated.get("backing_groove") or "").strip()
     if groove:
         session_state["mt_groove_style"] = groove
     meter = str(migrated.get("backing_meter") or "").strip()
     if meter:
         session_state["mt_time_signature"] = meter
-    count_bars = migrated.get("backing_count_in_bars")
-    if count_bars is not None:
-        session_state["mt_count_in_bars"] = _MT_COUNT_IN_REVERSE.get(int(count_bars), "1 bar")
+    if "backing_count_in_bars" in migrated:
+        session_state["mt_count_in_bars"] = _MT_COUNT_IN_REVERSE.get(int(migrated.get("backing_count_in_bars") or 0), "1 bar")
     if "backing_use_monitor" in migrated:
         session_state["mt_use_backing_monitor"] = bool(migrated.get("backing_use_monitor"))
     if "backing_include_in_mix" in migrated:
@@ -240,9 +237,10 @@ def apply_multitrack_backing_fields(session_state: dict[str, Any], row: dict[str
     prepared_at = str(migrated.get("backing_prepared_at") or "").strip()
     if prepared_at:
         session_state["mt_backing_prepared_at"] = prepared_at
-    bpm = migrated.get("bpm")
-    if bpm is not None:
-        session_state["multitrack_bpm"] = int(bpm)
+    elif "backing_prepared_at" in migrated:
+        session_state.pop("mt_backing_prepared_at", None)
+    if "bpm" in migrated and migrated.get("bpm") is not None:
+        session_state["multitrack_bpm"] = int(migrated.get("bpm"))
 
 
 def multitrack_has_saved_backing(row: dict[str, Any]) -> bool:
@@ -950,6 +948,13 @@ def multitrack_session_stats(session: dict[str, Any], *, st: Any | None = None) 
 
 def clear_multitrack_page_snapshot_backing(session_state: dict[str, Any]) -> None:
     """Drop stale monitor backing bytes from the stored multitrack page snapshot."""
+    try:
+        from multitrack_session_persistence import clear_multitrack_page_snapshot
+
+        clear_multitrack_page_snapshot(session_state)
+        return
+    except ImportError:
+        pass
     store = session_state.get("_studio_page_snapshots")
     if not isinstance(store, dict):
         return
@@ -971,6 +976,10 @@ def apply_multitrack_catalog_ui_state(session_state: dict[str, Any], row: dict[s
         session_state["mt_history_save_name"] = title
     session_state["mt_history_save_notes"] = notes
     session_state["multitrack_history_loaded_notes"] = notes
+    song = str(migrated.get("song") or "").strip()
+    if song:
+        session_state["active_song_title"] = song
+        session_state["_mt_loaded_project_song"] = song
     if mid:
         session_state[_ACTIVE_CATALOG_MULTITRACK_KEY] = mid
         session_state[_LAST_CATALOG_MULTITRACK_KEY] = mid
@@ -1111,6 +1120,46 @@ def apply_catalog_multitrack_to_session(
     return True, ""
 
 
+def _record_multitrack_catalog_load_diag(
+    session_state: dict[str, Any],
+    *,
+    requested_id: str,
+    loaded_row: dict[str, Any] | None,
+    ok: bool,
+    message: str,
+    snapshot_flushed: bool,
+) -> None:
+    row = migrate_multitrack_session(loaded_row) if isinstance(loaded_row, dict) else {}
+    mid = str(row.get("multitrack_id") or "")
+    session_state["_mt_catalog_load_diag"] = {
+        "requested_multitrack_id": str(requested_id or ""),
+        "loaded_multitrack_id": mid,
+        "active_catalog_multitrack_id": active_catalog_multitrack_id(session_state),
+        "loaded_backing_storage_ref": str(row.get("backing_storage_ref") or ""),
+        "session_backing_project_id": str(session_state.get("_mt_loaded_backing_project_id") or ""),
+        "notes_loaded": str(row.get("notes") or session_state.get("mt_history_save_notes") or ""),
+        "song_loaded": str(row.get("song") or ""),
+        "backing_volume_loaded": session_state.get("mt_backing_volume"),
+        "transport_loop_backing": session_state.get("mt_loop_backing"),
+        "transport_metronome": session_state.get("mt_metronome_playback"),
+        "transport_use_backing_monitor": session_state.get("mt_use_backing_monitor"),
+        "track_controls_slots": sorted((session_state.get("mt_track_controls") or {}).keys())
+        if isinstance(session_state.get("mt_track_controls"), dict)
+        else [],
+        "layer_count": sum(
+            1 for v in (session_state.get("mt_tracks") or {}).values() if v
+        )
+        if isinstance(session_state.get("mt_tracks"), dict)
+        else 0,
+        "backing_bytes": len(session_state["multitrack_backing_music_wav"])
+        if isinstance(session_state.get("multitrack_backing_music_wav"), (bytes, bytearray))
+        else 0,
+        "snapshot_flushed": snapshot_flushed,
+        "ok": ok,
+        "message": message,
+    }
+
+
 def load_multitrack_project_from_catalog(
     session_state: dict[str, Any],
     multitrack_id: str,
@@ -1121,6 +1170,14 @@ def load_multitrack_project_from_catalog(
     """Reload catalog from cloud/disk and restore one saved multitrack project."""
     mid = str(multitrack_id or "").strip()
     if not mid:
+        _record_multitrack_catalog_load_diag(
+            session_state,
+            requested_id=mid,
+            loaded_row=None,
+            ok=False,
+            message="missing_multitrack_id",
+            snapshot_flushed=False,
+        )
         return False, "missing_multitrack_id"
     catalog = load_media_catalog(st=st)
     rows = normalize_multitrack_sessions(
@@ -1128,9 +1185,16 @@ def load_multitrack_project_from_catalog(
     )
     row = next((r for r in rows if str(r.get("multitrack_id") or "") == mid), None)
     if not isinstance(row, dict):
+        _record_multitrack_catalog_load_diag(
+            session_state,
+            requested_id=mid,
+            loaded_row=None,
+            ok=False,
+            message="not_found",
+            snapshot_flushed=False,
+        )
         return False, "not_found"
     try:
-        from multitrack_history import clear_multitrack_widget_keys
         from multitrack_session_persistence import reset_multitrack_working_session
 
         reset_multitrack_working_session(session_state)
@@ -1142,20 +1206,43 @@ def load_multitrack_project_from_catalog(
         except ImportError:
             pass
     ok, msg = apply_catalog_multitrack_to_session(session_state, row, st=st, load_audio=load_audio)
+    snapshot_flushed = False
     if ok:
-        clear_multitrack_page_snapshot_backing(session_state)
+        session_state["_mt_skip_snapshot_restore_once"] = True
+        session_state["_mt_skip_layer_restore_once"] = True
         try:
-            from multitrack_mixer_state import prepare_multitrack_transport_widgets
+            from multitrack_mixer_state import (
+                prepare_multitrack_transport_widgets,
+                sync_mixer_widgets_from_canonical,
+            )
 
+            sync_mixer_widgets_from_canonical(session_state)
             prepare_multitrack_transport_widgets(session_state)
         except ImportError:
+            pass
+        try:
+            from studio_page_persistence import save_page_snapshot
+
+            save_page_snapshot(session_state, "multitrack")
+            snapshot_flushed = True
+        except Exception:
             pass
         try:
             from studio_page_persistence import flush_current_page_snapshot
 
             flush_current_page_snapshot(session_state)
+            snapshot_flushed = True
         except Exception:
             pass
+    _record_multitrack_catalog_load_diag(
+        session_state,
+        requested_id=mid,
+        loaded_row=row,
+        ok=ok,
+        message=msg,
+        snapshot_flushed=snapshot_flushed,
+    )
+    session_state["_mt_last_catalog_load_error"] = "" if ok else msg
     return ok, msg
 
 

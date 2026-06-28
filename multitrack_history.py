@@ -54,6 +54,24 @@ def clear_multitrack_widget_keys(session_state: dict[str, Any]) -> None:
             f"mt_record_{slot}",
         ):
             session_state.pop(key, None)
+    for key in (
+        "mt_loop_backing",
+        "mt_metronome_playback",
+        "mt_use_backing_monitor",
+        "include_backing_mix",
+        "mt_backing_volume",
+        "mt_playback_scope",
+        "mt_single_section",
+        "mt_multi_sections",
+        "mt_section_loops",
+        "mt_groove_style",
+        "mt_time_signature",
+        "mt_count_in_bars",
+        "mt_backing_scope",
+        "mt_backing_prepared_at",
+        "multitrack_bpm",
+    ):
+        session_state.pop(key, None)
 
 
 def _analysis_summary(session_state: dict[str, Any]) -> dict[str, Any] | None:

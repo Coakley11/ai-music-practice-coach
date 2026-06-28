@@ -81,13 +81,37 @@ def reset_multitrack_working_session(session_state: dict[str, Any]) -> None:
     session_state.pop("multitrack_history_loaded_notes", None)
     session_state.pop("multitrack_backing_music_wav", None)
     session_state.pop("_mt_loaded_backing_project_id", None)
-    session_state.pop("mt_backing_prepared_at", None)
+    session_state.pop("_mt_tracks_persist_blob", None)
+    session_state.pop("_mt_backing_playback_status", None)
+    session_state.pop("_mt_backing_load_error", None)
+    for key in list(session_state.keys()):
+        if key.startswith(("mt_vol_", "mt_delay_", "mt_name_", "mt_mute_", "mt_solo_")):
+            session_state.pop(key, None)
     try:
-        from media_multitrack_catalog import clear_multitrack_page_snapshot_backing
-
-        clear_multitrack_page_snapshot_backing(session_state)
-    except ImportError:
+        clear_multitrack_page_snapshot(session_state)
+    except Exception:
         pass
+
+
+def clear_multitrack_page_snapshot(session_state: dict[str, Any]) -> None:
+    """Replace the multitrack page snapshot with an empty working session."""
+    try:
+        from multitrack_slots import MULTITRACK_SLOTS
+    except ImportError:
+        MULTITRACK_SLOTS = ()  # type: ignore[assignment]
+    store = session_state.get("_studio_page_snapshots")
+    if not isinstance(store, dict):
+        session_state["_studio_page_snapshots"] = {}
+        store = session_state["_studio_page_snapshots"]
+    store["multitrack"] = {
+        "mt_tracks": {slot: None for slot in MULTITRACK_SLOTS},
+        "mt_track_filenames": {
+            slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MULTITRACK_SLOTS
+        },
+        "mt_track_controls": {},
+        "mixed_track_wav": None,
+    }
+    store["multitrack"].pop("multitrack_backing_music_wav", None)
 
 
 def encode_mt_tracks_for_persist(mt: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -220,6 +244,8 @@ def clear_multitrack_persisted_state(session_state: dict[str, Any]) -> None:
 
 def restore_multitrack_layers_from_workspace(session_state: dict[str, Any]) -> bool:
     """Hydrate multitrack layers from cloud/disk payload (top-level blob or page snapshot)."""
+    if session_state.pop("_mt_skip_layer_restore_once", None):
+        return False
     if count_mt_layers(session_state.get("mt_tracks")) > 0 or session_state.get("mixed_track_wav"):
         record_multitrack_restore_diag(session_state, source="session_already_hydrated")
         return False

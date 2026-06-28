@@ -541,6 +541,8 @@ def _snapshot_has_multitrack_content(snap: dict[str, Any]) -> bool:
 
 def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
     """After browser refresh / cloud restore — hydrate page-local UI for active page."""
+    if session_state.pop("_mt_skip_snapshot_restore_once", None):
+        return
     current = str(session_state.get("studio_page") or "practice").strip() or "practice"
     store = session_state.get(_PAGE_SNAPSHOTS_KEY) or {}
     snap = store.get(current) if isinstance(store, dict) else None
