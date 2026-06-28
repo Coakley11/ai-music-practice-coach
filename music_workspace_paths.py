@@ -38,6 +38,10 @@ _WORKSPACE_FILES: dict[str, tuple[str, tuple[Path, ...]]] = {
         "analysis_last_session.json",
         (Path("analysis_last_session.json"),),
     ),
+    "media_catalog": (
+        "media_catalog.json",
+        (),
+    ),
 }
 
 _migrated_keys: set[str] = set()
