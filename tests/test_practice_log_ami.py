@@ -8,6 +8,30 @@ from practice_log_ami import build_practice_log_ami_payload
 from practice_log_state import migrate_practice_log_entry
 
 
+class TestPracticeLogAnalysisHandoff(unittest.TestCase):
+    def test_analyze_practice_handoff_title(self) -> None:
+        from suite_analytical_question import (
+            PRACTICE_LOG_ANALYSIS_TITLE,
+            analytical_question_continue_copy,
+            is_practice_log_analysis_context,
+            source_question_card_title,
+        )
+
+        ctx = {
+            "user_request": "analyze_practice",
+            "intent": "practice_history_analysis",
+            "display_category": "analysis_handoff",
+            "practice_log_summary": {"session_count": 3, "total_minutes": 75},
+        }
+        self.assertTrue(is_practice_log_analysis_context(ctx))
+        self.assertEqual(source_question_card_title("music", ctx), PRACTICE_LOG_ANALYSIS_TITLE)
+        title, subtitle, _btn = analytical_question_continue_copy(
+            {"source_app": "music", "question": "Analyze my practice history", "context": ctx}
+        )
+        self.assertEqual(title, PRACTICE_LOG_ANALYSIS_TITLE)
+        self.assertIn("session", subtitle.lower())
+
+
 class TestPracticeLogAmiPayload(unittest.TestCase):
     def _entries(self) -> list[dict]:
         return [

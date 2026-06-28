@@ -320,7 +320,11 @@ def _persist_raw(session_state: dict[str, Any] | None, raw_rows: list[dict[str, 
     from practice_log_persistence import save_practice_logs
 
     migrated = [migrate_practice_log_entry(e) for e in (raw_rows or []) if isinstance(e, dict)]
-    save_practice_logs(migrated, st=_st_wrapper(session_state))
+    ok, err = save_practice_logs(migrated, st=_st_wrapper(session_state))
+    if session_state is not None:
+        session_state["_practice_log_last_save_ok"] = bool(ok)
+        if err:
+            session_state["_practice_log_last_save_error"] = err
     visible = normalize_practice_log_entries(migrated)
     if session_state is not None:
         session_state["practice_log_entries"] = visible

@@ -72,7 +72,10 @@ def submit_analyze_practice_to_ami(st: Any, session_state: dict[str, Any]) -> di
     """Build payload, cache in session, and send to Command Center."""
     from music_coach_context import build_source_state
     from practice_log_ami import build_practice_log_ami_payload
-    from suite_analytical_question import build_submit_context, submit_analytical_question
+    from suite_analytical_question import (
+        build_submit_context,
+        submit_practice_log_analysis_handoff,
+    )
 
     entries = load_entries(session_state)
     payload = build_practice_log_ami_payload(session_state, entries=entries, window_days=14)
@@ -91,9 +94,13 @@ def submit_analyze_practice_to_ami(st: Any, session_state: dict[str, Any]) -> di
             **payload,
             "practice_log_summary": payload.get("practice_log_summary"),
             "recent_practice_history": payload.get("recent_sessions"),
+            "practice_log_ami_payload": payload,
             "user_request": "analyze_practice",
             "routing_hint": "practice_history_analysis",
             "intent": "practice_history_analysis",
+            "display_category": "analysis_handoff",
+            "handoff_kind": "practice_log_analysis",
+            "handoff_title": "Music Practice Log Analysis",
         },
     )
     try:
@@ -112,12 +119,11 @@ def submit_analyze_practice_to_ami(st: Any, session_state: dict[str, Any]) -> di
     except Exception:
         pass
 
-    return submit_analytical_question(
-        source_app="music",
+    return submit_practice_log_analysis_handoff(
         source_page="log",
         question=question,
         context=ctx,
-        context_summary="Practice log analysis",
+        context_summary="Music Practice Log Analysis",
         source_state=source_state,
         session_state=session_state,
     )

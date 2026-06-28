@@ -48,12 +48,18 @@ class TestPracticeLogCrud(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self._path = Path(self._tmpdir.name) / "practice_history.json"
-        self._patch = patch("practice_log_persistence._local_path", lambda: self._path)
+        self._patch = patch("practice_log_persistence._local_path", lambda *, st=None: self._path)
+        self._patch_ws = patch("practice_log_persistence._resolve_workspace_id", lambda *, st=None: "daniel")
+        self._patch_cloud = patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: [])
         self._patch.start()
+        self._patch_ws.start()
+        self._patch_cloud.start()
         self.session: dict = {}
 
     def tearDown(self) -> None:
         self._patch.stop()
+        self._patch_ws.stop()
+        self._patch_cloud.stop()
         self._tmpdir.cleanup()
 
     def test_add_entry_creates_canonical_fields(self) -> None:

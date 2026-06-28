@@ -131,8 +131,10 @@ class TestPracticeLogAmiSnapshot(unittest.TestCase):
                 "selected_song": {"title": "Autumn Leaves", "pick_key": "jazz:autumn"},
                 "active_catalog_pick_key": "jazz:autumn",
             }
-            with patch("practice_log_persistence._local_path", lambda: path):
-                snap = gather_practice_ami_snapshot(session)
+            with patch("practice_log_persistence._local_path", lambda *, st=None: path):
+                with patch("practice_log_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: []):
+                        snap = gather_practice_ami_snapshot(session)
             history = snap.get("recent_practice_history") or []
             self.assertTrue(history)
             self.assertEqual(history[0].get("active_song"), "Autumn Leaves")
@@ -163,12 +165,14 @@ class TestPracticeLogAmiSnapshot(unittest.TestCase):
                 "selected_song": {"title": "Blue Bossa", "pick_key": "jazz:blue"},
                 "active_catalog_pick_key": "jazz:blue",
             }
-            with patch("practice_log_persistence._local_path", lambda: path):
-                ctx = build_music_applied_math_context(
-                    "log",
-                    session,
-                    question="Analyze my practice history",
-                )
+            with patch("practice_log_persistence._local_path", lambda *, st=None: path):
+                with patch("practice_log_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: []):
+                        ctx = build_music_applied_math_context(
+                            "log",
+                            session,
+                            question="Analyze my practice history",
+                        )
             self.assertTrue(ctx.get("recent_practice_history"))
             self.assertIn("practice_log_ami_payload", ctx)
             self.assertEqual(ctx.get("routing_hint"), "practice_history_analysis")

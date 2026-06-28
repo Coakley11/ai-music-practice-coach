@@ -24,6 +24,7 @@ AMI_SIDEBAR_DEPLOY_LABEL = "Applied Math question sender live"
 AMI_SIDEBAR_DEPLOY_VERSION = "2026-06-08-return-insight-restore-v12"
 _CTX_JSON_SUBTITLE_LIMIT = 8000
 _CONTEXT_ITEM_TYPE = "analytical_question_context"
+PRACTICE_LOG_ANALYSIS_TITLE = "Music Practice Log Analysis"
 ANALYTICAL_QUESTION_CONTINUE_PRIORITY = 64
 ANALYTICAL_QUESTION_BUTTON_LABEL = "Continue in Applied Mathematics →"
 _SEND_COOLDOWN_SECONDS = 120
@@ -215,12 +216,25 @@ def source_app_label(source_app: str) -> str:
     return _SOURCE_LABELS.get(key, key.replace("_", " ").title())
 
 
+def is_practice_log_analysis_context(context: dict[str, Any] | None) -> bool:
+    ctx = dict(context or {})
+    return (
+        str(ctx.get("user_request") or "") == "analyze_practice"
+        or str(ctx.get("intent") or "") in {"practice_history_analysis", "practice_log_analysis"}
+        or str(ctx.get("display_category") or "") == "analysis_handoff"
+        or str(ctx.get("handoff_kind") or "") == "practice_log_analysis"
+    )
+
+
 def source_question_card_title(
     source_app: str,
     context: dict[str, Any] | None = None,
 ) -> str:
     """Normalized Continue / activity title for cross-app questions."""
-    app = normalize_source_app_id(source_app, context)
+    ctx = dict(context or {})
+    app = normalize_source_app_id(source_app, ctx)
+    if app == "music" and is_practice_log_analysis_context(ctx):
+        return PRACTICE_LOG_ANALYSIS_TITLE
     if app == "music":
         return "Music Coach question from Music"
     label = _SOURCE_LABELS.get(app, app.replace("_", " ").title())
@@ -571,6 +585,12 @@ def analytical_question_continue_copy(payload: dict[str, Any]) -> tuple[str, str
     ctx = payload.get("context") if isinstance(payload.get("context"), dict) else {}
     app = normalize_source_app_id(str(payload.get("source_app") or ""), ctx)
     question = str(payload.get("question") or "").strip()
+    if app == "music" and is_practice_log_analysis_context(ctx):
+        summary = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
+        count = int(summary.get("session_count") or 0)
+        mins = int(summary.get("total_minutes") or 0)
+        subtitle = f"{count} session(s), {mins} min logged — review patterns and next focus"
+        return (PRACTICE_LOG_ANALYSIS_TITLE, subtitle, "Continue Practice Log Analysis →")
     title = source_question_card_title(app, ctx)
     if app == "music":
         return (title, question, "Continue with Music Coach →")
@@ -806,6 +826,85 @@ def submit_analytical_question(
             "source_app": payload["source_app"],
             "submitted_at": utc_now_iso(),
         }
+    card_title, card_subtitle, _ = analytical_question_continue_copy(payload)
+    return {
+        **payload,
+        "action_url": action_url,
+        "continue_title": card_title,
+        "continue_subtitle": card_subtitle,
+        "duplicate": duplicate,
+        "submitted_at": utc_now_iso(),
+    }
+
+
+def submit_practice_log_analysis_handoff(
+    *,
+    source_page: str,
+    question: str,
+    context: dict[str, Any] | None = None,
+    context_summary: str = "",
+    source_state: dict[str, Any] | None = None,
+    session_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Structured Practice Log analysis handoff — Continue card, not Recent AMI Questions."""
+    ctx = dict(context or {})
+    ctx.setdefault("display_category", "analysis_handoff")
+    ctx.setdefault("analysis_handoff", True)
+    ctx.setdefault("user_request", "analyze_practice")
+    ctx.setdefault("intent", "practice_history_analysis")
+    ctx.setdefault("handoff_kind", "practice_log_analysis")
+    ctx.setdefault("handoff_title", PRACTICE_LOG_ANALYSIS_TITLE)
+    payload = build_question_payload(
+        source_app="music",
+        source_page=source_page,
+        question=question,
+        context=ctx,
+        context_summary=context_summary or "Music Practice Log Analysis",
+        source_state=source_state,
+    )
+    payload["resume_key"] = f"ai:practice_log_analysis:{payload['question_id']}"
+    payload["display_title"] = PRACTICE_LOG_ANALYSIS_TITLE
+    payload["handoff_kind"] = "practice_log_analysis"
+    action_url = build_applied_math_resume_url(payload)
+    duplicate = _recent_duplicate_send(session_state, payload["question_id"])
+    if not duplicate:
+        metrics = metrics_for_applied_math_resume(payload)
+        metrics["source_app"] = "music"
+        metrics["display_category"] = "analysis_handoff"
+        metrics["handoff_kind"] = "practice_log_analysis"
+        metrics["handoff_title"] = PRACTICE_LOG_ANALYSIS_TITLE
+        metrics["activity_event"] = "practice_log_analysis"
+        try:
+            from suite_activity_client import record_activity
+
+            record_activity(
+                "music",
+                "practice_log_analysis",
+                page=source_page,
+                metrics=metrics,
+                summary=PRACTICE_LOG_ANALYSIS_TITLE,
+                resume_key=payload["resume_key"],
+                resume_title=PRACTICE_LOG_ANALYSIS_TITLE,
+                resume_subtitle=str(payload.get("context_summary") or "Practice log analysis handoff"),
+            )
+        except Exception as exc:
+            log.warning("record_activity failed for practice_log_analysis: %s", exc)
+    _upsert_applied_intelligence_resume(payload, action_url=action_url)
+    ss = payload.get("source_state")
+    refresh_blob = not duplicate or (
+        isinstance(ss, dict) and bool(ss.get("entity_params"))
+    )
+    if refresh_blob:
+        _store_question_context_blob(payload)
+    if session_state is not None:
+        session_state["_ami_last_send"] = {
+            "question_id": payload["question_id"],
+            "question": payload["question"],
+            "source_app": "music",
+            "handoff_kind": "practice_log_analysis",
+            "submitted_at": utc_now_iso(),
+        }
+        session_state["_practice_log_ami_handoff"] = payload
     card_title, card_subtitle, _ = analytical_question_continue_copy(payload)
     return {
         **payload,
