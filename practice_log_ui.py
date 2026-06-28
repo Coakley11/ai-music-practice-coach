@@ -378,15 +378,15 @@ def render_entry_forms(st: Any, session_state: dict[str, Any], *, on_saved: Any 
             st.markdown("#### Edit session")
             fields = _session_form_fields(st, prefix=f"edit_{edit_id[:8]}", prefill=existing, submit_label="Update session")
             if fields:
-            try:
-                update_practice_log_entry(session_state, edit_id, fields)
-            except Exception as exc:
-                st.error(f"Could not update session: {exc}")
-                return
-            session_state.pop("_plog_edit_session_id", None)
-            if on_saved:
-                on_saved(fields)
-            _handle_save_result(st, session_state, ok_message="Session updated.")
+                try:
+                    update_practice_log_entry(session_state, edit_id, fields)
+                except Exception as exc:
+                    st.error(f"Could not update session: {exc}")
+                    return
+                session_state.pop("_plog_edit_session_id", None)
+                if on_saved:
+                    on_saved(fields)
+                _handle_save_result(st, session_state, ok_message="Session updated.")
             if st.button("Cancel edit", key="plog_cancel_edit"):
                 session_state.pop("_plog_edit_session_id", None)
                 st.rerun()
