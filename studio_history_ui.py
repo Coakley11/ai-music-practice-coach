@@ -22,12 +22,14 @@ from studio_history_cloud import (
 )
 from upload_history import (
     FLASH_KEY as UPLOAD_FLASH_KEY,
-    ITEM_TYPE as UPLOAD_ITEM_TYPE,
     default_upload_title,
-    history_row_summary as upload_row_summary,
-    list_upload_history,
-    queue_upload_history_load,
-    save_upload_to_history,
+)
+from media_upload_catalog import (
+    apply_catalog_recording_to_session,
+    catalog_upload_row_summary,
+    delete_catalog_upload_recording,
+    list_catalog_upload_recordings,
+    save_upload_recording_with_notes,
 )
 
 
@@ -150,8 +152,10 @@ def render_upload_history_panel(st_obj: Any) -> None:
         if flash:
             st_obj.success(str(flash))
         if not cloud_enabled():
-            st_obj.warning(cloud_block_reason() or "Cloud storage is required for Upload History.")
-            return
+            st_obj.caption(
+                cloud_block_reason()
+                or "Cloud storage is disabled — saved uploads use local media catalog on this device."
+            )
 
         if has_result:
             st_obj.markdown("##### Save current analysis")
@@ -169,32 +173,43 @@ def render_upload_history_panel(st_obj: Any) -> None:
                 placeholder="Rehearsal take, gig prep, etc.",
             )
             if st_obj.button("Save to History", type="primary", key="upload_history_save_btn", use_container_width=True):
-                ok, item_key, err = save_upload_to_history(ss, title=title, notes=notes, st=st_obj)
+                ok, item_key, err = save_upload_recording_with_notes(ss, title=title, notes=notes, st=st_obj)
                 if ok:
-                    ss[UPLOAD_FLASH_KEY] = f"Saved to Upload History ({item_key})."
+                    ss[UPLOAD_FLASH_KEY] = f"Saved to media catalog ({item_key})."
                     ss["upload_hist_active_item"] = item_key
+                    ss["upload_catalog_active_recording_id"] = item_key
                     st_obj.rerun()
                 else:
                     st_obj.error(_format_save_error(err))
 
         st_obj.markdown("##### Saved analyses")
 
-        rows, list_err = list_upload_history(st=st_obj)
-        active_key = str(ss.get("upload_hist_active_item") or ss.get("upload_history_loaded_item_key") or "")
+        rows, list_err = list_catalog_upload_recordings(st=st_obj)
+        active_key = str(
+            ss.get("upload_catalog_active_recording_id")
+            or ss.get("upload_hist_active_item")
+            or ss.get("upload_history_loaded_item_key")
+            or ""
+        )
 
         def _load_upload(payload: dict[str, Any]) -> tuple[bool, str]:
-            queue_upload_history_load(ss, payload)
-            return True, "Loaded saved upload analysis."
+            if apply_catalog_recording_to_session(ss, payload):
+                rid = str(payload.get("recording_id") or "")
+                if rid:
+                    ss["upload_catalog_active_recording_id"] = rid
+                _after_history_load(ss, st_obj, page="analysis")
+                return True, "Loaded saved upload analysis."
+            return False, "Could not load recording metadata."
 
         def _delete_upload(item_key: str) -> tuple[bool, str]:
-            return delete_history_item(item_type=UPLOAD_ITEM_TYPE, item_key=item_key)
+            return delete_catalog_upload_recording(item_key, st=st_obj)
 
         _render_history_list(
             st_obj,
-            item_type=UPLOAD_ITEM_TYPE,
+            item_type="uploaded_recording",
             rows=rows,
             list_error=list_err,
-            summary_fn=upload_row_summary,
+            summary_fn=catalog_upload_row_summary,
             on_load=_load_upload,
             on_delete=_delete_upload,
             key_prefix="upload_hist",

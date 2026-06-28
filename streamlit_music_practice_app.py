@@ -11957,6 +11957,13 @@ elif _studio_page == "analysis":
         pass
 
     try:
+        from media_upload_catalog import migrate_legacy_upload_history
+
+        migrate_legacy_upload_history(st=st)
+    except Exception:
+        pass
+
+    try:
         from studio_history_bootstrap import apply_pending_studio_history
 
         apply_pending_studio_history(st.session_state, page="analysis", st=st)
@@ -12194,6 +12201,12 @@ elif _studio_page == "analysis":
 
                         save_analysis_session(st.session_state, st=st)
                         force_save_music_state(st, reason="analysis_complete")
+                        try:
+                            from media_upload_catalog import register_upload_analysis_in_catalog
+
+                            register_upload_analysis_in_catalog(st.session_state, st=st)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                     if result.get("ok"):
@@ -12319,6 +12332,12 @@ elif _studio_page == "analysis":
 
                         save_analysis_session(st.session_state, st=st)
                         force_save_music_state(st, reason="analysis_complete")
+                        try:
+                            from media_upload_catalog import register_upload_analysis_in_catalog
+
+                            register_upload_analysis_in_catalog(st.session_state, st=st)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
             if st.session_state.get("last_analysis_result", {}).get("multitrack"):

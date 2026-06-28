@@ -214,6 +214,8 @@ def migrate_uploaded_recording(entry: dict[str, Any]) -> dict[str, Any]:
         "analysis_summary": analysis if isinstance(analysis, dict) else {},
         "notes": str(out.get("notes") or "").strip()[:2000],
         "linked_practice_session_id": str(out.get("linked_practice_session_id") or "").strip() or None,
+        "legacy_item_key": str(out.get("legacy_item_key") or out.get("item_key") or "").strip(),
+        "legacy_recording_type": str(out.get("legacy_recording_type") or out.get("recording_type") or "").strip(),
         "deleted": False,
     }
 
