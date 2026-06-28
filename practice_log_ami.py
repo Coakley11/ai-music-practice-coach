@@ -8,9 +8,12 @@ from practice_log_state import (
     compute_practice_log_summary,
     load_entries,
     normalize_practice_log_entries,
-    practice_key_field_label,
+    PRACTICE_CONCERT_KEY_LABEL,
+    WRITTEN_KEY_LABEL,
     SHAPE_KEY_LABEL,
+    ORIGINAL_KEY_LABEL,
     is_guitar_instrument,
+    is_transposing_log_instrument,
 )
 
 
@@ -40,9 +43,11 @@ def _compact_session(entry: dict[str, Any]) -> dict[str, Any]:
         "active_song": _entry_song(entry),
         "song_id": entry.get("song_id"),
         "original_key": entry.get("original_key"),
-        "original_key_label": "Original key",
+        "original_key_label": ORIGINAL_KEY_LABEL,
+        "practice_concert_key": entry.get("practice_concert_key") or entry.get("display_key"),
+        "practice_concert_key_label": PRACTICE_CONCERT_KEY_LABEL,
         "display_key": entry.get("display_key"),
-        "display_key_label": practice_key_field_label(instrument),
+        "display_key_label": PRACTICE_CONCERT_KEY_LABEL,
         "bpm": entry.get("bpm"),
         "section_practiced": entry.get("section_practiced"),
         "focus_area": entry.get("focus_area") or entry.get("focus"),
@@ -59,6 +64,10 @@ def _compact_session(entry: dict[str, Any]) -> dict[str, Any]:
     if shape or is_guitar_instrument(instrument):
         out["guitar_shape_key"] = shape or entry.get("guitar_shape_key")
         out["shape_key_label"] = SHAPE_KEY_LABEL
+    written = str(entry.get("written_key") or "").strip()
+    if written and is_transposing_log_instrument(instrument):
+        out["written_key"] = written
+        out["written_key_label"] = WRITTEN_KEY_LABEL
     return {k: v for k, v in out.items() if v not in (None, "", [], {})}
 
 

@@ -18,10 +18,12 @@ from practice_log_state import (
     format_bpm_display,
     format_entry_keys_display,
     format_quick_save_success_message,
-    is_guitar_instrument,
     load_entries,
     entry_key_display_parts,
-    practice_key_field_label,
+    practice_log_form_key_spec,
+    PRACTICE_CONCERT_KEY_LABEL,
+    WRITTEN_KEY_LABEL,
+    SHAPE_KEY_LABEL,
     reload_practice_log_entries,
     section_display_label,
     update_practice_log_entry,
@@ -347,20 +349,29 @@ def _session_form_fields(
     submit_label: str = "Save session",
 ) -> dict[str, Any] | None:
     form_instrument = str(prefill.get("instrument") or "")
-    practice_key_label = practice_key_field_label(form_instrument)
+    key_spec = practice_log_form_key_spec(form_instrument)
     with st.form(f"{prefix}_practice_session_form"):
         c1, c2 = st.columns(2)
         with c1:
             active_song = st.text_input("Song", value=str(prefill.get("active_song") or ""))
             instrument = st.text_input("Instrument", value=form_instrument)
-            display_key = st.text_input(practice_key_label, value=str(prefill.get("display_key") or ""))
-            original_key = st.text_input("Original key", value=str(prefill.get("original_key") or ""))
+            practice_concert_key = st.text_input(
+                PRACTICE_CONCERT_KEY_LABEL,
+                value=str(prefill.get("practice_concert_key") or prefill.get("display_key") or ""),
+            )
+            written_key = ""
+            if key_spec["written_key"]:
+                written_key = st.text_input(
+                    WRITTEN_KEY_LABEL,
+                    value=str(prefill.get("written_key") or ""),
+                )
             guitar_shape_key = ""
-            if is_guitar_instrument(form_instrument):
+            if key_spec["shape_key"]:
                 guitar_shape_key = st.text_input(
-                    "Shape key",
+                    SHAPE_KEY_LABEL,
                     value=str(prefill.get("guitar_shape_key") or ""),
                 )
+            original_key = st.text_input("Original key", value=str(prefill.get("original_key") or ""))
             bpm_val = prefill.get("bpm")
             bpm = st.number_input("BPM", min_value=0, max_value=240, value=int(bpm_val or 0), step=1)
         with c2:
@@ -401,9 +412,11 @@ def _session_form_fields(
         "song_id": prefill.get("song_id"),
         "artist": prefill.get("artist"),
         "instrument": instrument,
-        "display_key": display_key,
+        "display_key": practice_concert_key,
+        "practice_concert_key": practice_concert_key,
+        "written_key": written_key,
         "original_key": original_key,
-        "guitar_shape_key": guitar_shape_key or prefill.get("guitar_shape_key"),
+        "guitar_shape_key": guitar_shape_key,
         "capo_fret": prefill.get("capo_fret"),
         "bpm": bpm if bpm > 0 else None,
         "duration_minutes": duration,

@@ -235,7 +235,7 @@ def format_quick_save_success_message(entry: dict[str, Any]) -> str:
     return " · ".join(parts)
 
 
-PRACTICE_CONCERT_KEY_LABEL = "Practice concert key"
+PRACTICE_CONCERT_KEY_LABEL = "Practice/Concert key"
 WRITTEN_KEY_LABEL = "Written key"
 SHAPE_KEY_LABEL = "Shape key"
 ORIGINAL_KEY_LABEL = "Original key"
@@ -245,30 +245,110 @@ def is_guitar_instrument(instrument: str) -> bool:
     return str(instrument or "").strip().lower() == "guitar"
 
 
-def practice_key_field_label(instrument: str) -> str:
-    """User-facing label for display_key / written key field."""
+def is_transposing_log_instrument(instrument: str) -> bool:
+    if is_guitar_instrument(instrument):
+        return False
     try:
         from instrument_transposition import is_transposing_instrument
 
-        if is_transposing_instrument(instrument):
-            return WRITTEN_KEY_LABEL
+        return bool(is_transposing_instrument(instrument))
     except ImportError:
         inst = str(instrument or "").strip().lower()
-        if inst in ("saxophone", "trumpet", "clarinet"):
-            return WRITTEN_KEY_LABEL
+        return inst in ("saxophone", "trumpet", "clarinet")
+
+
+def practice_log_form_key_spec(instrument: str) -> dict[str, bool]:
+    """Which key fields to show on manual/edit forms for this instrument."""
+    guitar = is_guitar_instrument(instrument)
+    transposing = is_transposing_log_instrument(instrument)
+    return {
+        "practice_concert_key": True,
+        "written_key": transposing,
+        "shape_key": guitar,
+        "original_key": True,
+    }
+
+
+def practice_key_field_label(instrument: str) -> str:
+    """Primary key field label — always Practice/Concert key."""
     return PRACTICE_CONCERT_KEY_LABEL
+
+
+def _written_key_value_for_log(ctx: Any) -> str:
+    """Written chart key shown in the left panel for transposing instruments."""
+    if ctx.chart_key_mode == "written" and str(ctx.chart_key or "").strip():
+        return str(ctx.chart_key).strip()
+    return str(ctx.written_key or "").strip()
+
+
+def gather_practice_log_keys(session_state: dict[str, Any]) -> dict[str, str]:
+    """Resolve keys from canonical active setup (same source as left panel)."""
+    ss = session_state or {}
+    instrument = ""
+    try:
+        from practice_setup_globals import get_active_instrument
+
+        instrument = str(get_active_instrument(ss) or "").strip()
+    except ImportError:
+        instrument = str(ss.get("instrument") or "").strip()
+
+    selected: dict[str, Any] = {}
+    try:
+        from active_song_state import gather_active_song_context
+
+        song_ctx = gather_active_song_context(ss)
+        raw = song_ctx.get("selected_song")
+        selected = raw if isinstance(raw, dict) else {}
+    except ImportError:
+        raw = ss.get("selected_song")
+        selected = raw if isinstance(raw, dict) else {}
+
+    fallback_original = str(selected.get("key") or ss.get("custom_home_key") or "").strip()
+    fallback_concert = str(ss.get("display_key") or ss.get("concert_practice_key") or "").strip()
+
+    try:
+        from songs.key_state import resolve_active_musical_key
+
+        ctx = resolve_active_musical_key(ss, rec=selected or None, instrument=instrument or None)
+    except ImportError:
+        return {
+            "original_key": fallback_original,
+            "display_key": fallback_concert,
+            "practice_concert_key": fallback_concert,
+            "written_key": "",
+            "guitar_shape_key": "",
+        }
+
+    written = _written_key_value_for_log(ctx) if is_transposing_log_instrument(instrument) else ""
+    shape = str(ctx.shape_key or "").strip() if is_guitar_instrument(instrument) else ""
+
+    return {
+        "original_key": str(ctx.original_key or fallback_original or "").strip(),
+        "display_key": str(ctx.practice_concert_key or fallback_concert or "").strip(),
+        "practice_concert_key": str(ctx.practice_concert_key or fallback_concert or "").strip(),
+        "written_key": written,
+        "guitar_shape_key": shape,
+    }
 
 
 def entry_key_display_parts(entry: dict[str, Any]) -> list[tuple[str, str]]:
     """User-facing key label/value pairs for session cards."""
     instrument = str(entry.get("instrument") or "")
-    key_label = practice_key_field_label(instrument)
-    display = str(entry.get("display_key") or "—")
-    original = str(entry.get("original_key") or "—")
-    parts: list[tuple[str, str]] = [(key_label, display)]
-    shape = str(entry.get("guitar_shape_key") or "").strip()
-    if shape or is_guitar_instrument(instrument):
+    concert = str(entry.get("practice_concert_key") or entry.get("display_key") or "—").strip() or "—"
+    original = str(entry.get("original_key") or "—").strip() or "—"
+    parts: list[tuple[str, str]] = [(PRACTICE_CONCERT_KEY_LABEL, concert)]
+
+    if is_guitar_instrument(instrument):
+        shape = str(entry.get("guitar_shape_key") or "").strip()
         parts.append((SHAPE_KEY_LABEL, shape or "—"))
+    elif is_transposing_log_instrument(instrument):
+        written = str(entry.get("written_key") or "").strip()
+        parts.append((WRITTEN_KEY_LABEL, written or "—"))
+    else:
+        written = str(entry.get("written_key") or "").strip()
+        if written and written.lower() != concert.lower() and concert != "—":
+            parts.append((WRITTEN_KEY_LABEL, written))
+
     parts.append((ORIGINAL_KEY_LABEL, original))
     return parts
 
@@ -314,8 +394,12 @@ def _entry_search_blob(entry: dict[str, Any]) -> str:
         tag_text,
         entry.get("original_key"),
         entry.get("display_key"),
+        entry.get("practice_concert_key"),
         entry.get("written_key"),
         entry.get("guitar_shape_key"),
+        PRACTICE_CONCERT_KEY_LABEL,
+        WRITTEN_KEY_LABEL,
+        SHAPE_KEY_LABEL,
         entry.get("bpm"),
         entry.get("bpm_source"),
         bpm_source,
@@ -541,8 +625,14 @@ def migrate_practice_log_entry(entry: dict[str, Any]) -> dict[str, Any]:
     out["song_id"] = str(out.get("song_id") or out.get("pick_key") or "").strip()
     out["instrument"] = str(out.get("instrument") or "").strip()
     out["original_key"] = str(out.get("original_key") or "").strip()
-    out["display_key"] = str(out.get("display_key") or "").strip()
-    out["guitar_shape_key"] = str(out.get("guitar_shape_key") or "").strip()
+    concert = str(out.get("practice_concert_key") or out.get("display_key") or "").strip()
+    out["practice_concert_key"] = concert
+    out["display_key"] = concert
+    out["written_key"] = str(out.get("written_key") or "").strip()
+    if is_guitar_instrument(out.get("instrument") or ""):
+        out["guitar_shape_key"] = str(out.get("guitar_shape_key") or "").strip()
+    else:
+        out["guitar_shape_key"] = ""
     capo = _coerce_int(out.get("capo_fret"), 0)
     out["capo_fret"] = capo if capo is not None else 0
     bpm = _coerce_int(out.get("bpm"))
@@ -771,8 +861,14 @@ def build_practice_log_prefill(session_state: dict[str, Any]) -> dict[str, Any]:
     prefill["active_song"] = title
     prefill["song_id"] = pick_key
     prefill["artist"] = artist
-    prefill["original_key"] = str(selected.get("key") or song_ctx.get("custom_home_key") or "").strip()
-    prefill["display_key"] = str(song_ctx.get("display_key") or ss.get("display_key") or "").strip()
+    key_fields = gather_practice_log_keys(ss)
+    prefill["original_key"] = key_fields.get("original_key") or str(
+        selected.get("key") or song_ctx.get("custom_home_key") or ""
+    ).strip()
+    prefill["display_key"] = key_fields.get("display_key") or ""
+    prefill["practice_concert_key"] = key_fields.get("practice_concert_key") or prefill["display_key"]
+    prefill["written_key"] = key_fields.get("written_key") or ""
+    prefill["guitar_shape_key"] = key_fields.get("guitar_shape_key") or ""
 
     try:
         from practice_setup_globals import get_active_focus, get_active_instrument, get_active_level
@@ -816,7 +912,6 @@ def build_practice_log_prefill(session_state: dict[str, Any]) -> dict[str, Any]:
             }
             prefill["bpm_source"] = source_map.get(bpm_source, bpm_source.replace(" ", "_"))
 
-    prefill["guitar_shape_key"] = str(ss.get("guitar_capo_shape_key") or "").strip()
     prefill["capo_fret"] = _coerce_int(ss.get("guitar_capo_fret"), 0) or 0
 
     studio_page = str(ss.get("studio_page") or "practice").strip().lower()

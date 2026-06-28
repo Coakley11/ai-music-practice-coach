@@ -15,9 +15,13 @@ from practice_log_state import (
     deterministic_session_id,
     entry_key_display_parts,
     filter_practice_log_entries,
+    gather_practice_log_keys,
     migrate_practice_log_entry,
     normalize_practice_log_entries,
-    practice_key_field_label,
+    practice_log_form_key_spec,
+    PRACTICE_CONCERT_KEY_LABEL,
+    WRITTEN_KEY_LABEL,
+    SHAPE_KEY_LABEL,
     update_practice_log_entry,
 )
 
@@ -262,20 +266,126 @@ class TestPracticeLogSearchFilter(unittest.TestCase):
 
 
 class TestPracticeLogKeyLabels(unittest.TestCase):
-    def test_piano_uses_practice_concert_key(self) -> None:
-        self.assertEqual(practice_key_field_label("Piano"), "Practice concert key")
-
-    def test_saxophone_uses_written_key(self) -> None:
-        self.assertEqual(practice_key_field_label("Saxophone"), "Written key")
-
-    def test_guitar_shows_shape_key_part(self) -> None:
+    def test_piano_shows_practice_concert_and_original_only(self) -> None:
         entry = migrate_practice_log_entry(
-            {"instrument": "Guitar", "display_key": "C", "guitar_shape_key": "G", "original_key": "C"}
+            {"instrument": "Piano", "display_key": "C#m", "original_key": "Bm"}
         )
         labels = [label for label, _ in entry_key_display_parts(entry)]
-        self.assertIn("Practice concert key", labels)
-        self.assertIn("Shape key", labels)
+        self.assertIn(PRACTICE_CONCERT_KEY_LABEL, labels)
         self.assertIn("Original key", labels)
+        self.assertNotIn(SHAPE_KEY_LABEL, labels)
+        self.assertNotIn(WRITTEN_KEY_LABEL, labels)
+
+    def test_alto_sax_shows_all_three_key_fields(self) -> None:
+        entry = migrate_practice_log_entry(
+            {
+                "instrument": "Saxophone",
+                "practice_concert_key": "G",
+                "display_key": "G",
+                "written_key": "E",
+                "original_key": "G",
+            }
+        )
+        parts = dict(entry_key_display_parts(entry))
+        self.assertEqual(parts[PRACTICE_CONCERT_KEY_LABEL], "G")
+        self.assertEqual(parts[WRITTEN_KEY_LABEL], "E")
+        self.assertEqual(parts["Original key"], "G")
+        self.assertNotIn(SHAPE_KEY_LABEL, parts)
+
+    def test_guitar_shows_shape_not_written(self) -> None:
+        entry = migrate_practice_log_entry(
+            {
+                "instrument": "Guitar",
+                "display_key": "C#m",
+                "guitar_shape_key": "Am",
+                "original_key": "Bm",
+            }
+        )
+        parts = dict(entry_key_display_parts(entry))
+        self.assertEqual(parts[PRACTICE_CONCERT_KEY_LABEL], "C#m")
+        self.assertEqual(parts[SHAPE_KEY_LABEL], "Am")
+        self.assertNotIn(WRITTEN_KEY_LABEL, parts)
+
+    def test_non_guitar_clears_stale_shape_key_on_migrate(self) -> None:
+        entry = migrate_practice_log_entry(
+            {"instrument": "Piano", "guitar_shape_key": "Am", "display_key": "C"}
+        )
+        self.assertEqual(entry.get("guitar_shape_key"), "")
+        labels = [label for label, _ in entry_key_display_parts(entry)]
+        self.assertNotIn(SHAPE_KEY_LABEL, labels)
+
+    def test_guitar_form_spec_uses_shape_not_written(self) -> None:
+        spec = practice_log_form_key_spec("Guitar")
+        self.assertTrue(spec["shape_key"])
+        self.assertFalse(spec["written_key"])
+
+    def test_sax_form_spec_uses_written_not_shape(self) -> None:
+        spec = practice_log_form_key_spec("Saxophone")
+        self.assertTrue(spec["written_key"])
+        self.assertFalse(spec["shape_key"])
+
+    def test_gather_keys_from_alto_sax_session(self) -> None:
+        from instrument_transposition import (
+            CHART_IN_INSTRUMENT_KEY_KEY,
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+            written_key_for_type,
+        )
+
+        session = {
+            "instrument": "Saxophone",
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+            CHART_IN_INSTRUMENT_KEY_KEY: True,
+            "display_key": "G",
+            "selected_song": {"key": "G", "title": "Say"},
+        }
+        keys = gather_practice_log_keys(session)
+        self.assertEqual(keys["practice_concert_key"], "G")
+        self.assertEqual(keys["original_key"], "G")
+        expected_written = written_key_for_type("G", "Alto saxophone (Eb)")
+        self.assertEqual(keys["written_key"], expected_written)
+        self.assertEqual(keys["guitar_shape_key"], "")
+
+    def test_gather_keys_from_guitar_capo_session(self) -> None:
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+        session = {
+            "instrument": "Guitar",
+            ACTIVE_CATALOG_PICK_KEY: "pk::1",
+            SELECTED_SONG_STATE_KEY: {"pick_key": "pk::1", "key": "Bm"},
+            "active_song_state": {"pick_key": "pk::1", "display_key": "C#m"},
+            "display_key": "C#m",
+            "guitar_capo_enabled": True,
+            "guitar_capo_shape_key": "Am",
+            "guitar_capo_sounding_key": "C#m",
+        }
+        keys = gather_practice_log_keys(session)
+        self.assertEqual(keys["practice_concert_key"], "C#m")
+        self.assertEqual(keys["guitar_shape_key"], "Am")
+        self.assertEqual(keys["written_key"], "")
+
+    def test_quick_save_prefill_uses_canonical_keys(self) -> None:
+        from instrument_transposition import (
+            CHART_IN_INSTRUMENT_KEY_KEY,
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+        )
+        from practice_log_state import build_practice_log_prefill
+
+        session = {
+            "instrument": "Saxophone",
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+            CHART_IN_INSTRUMENT_KEY_KEY: True,
+            "display_key": "E",
+            "selected_song": {"key": "E", "title": "Test"},
+            "studio_page": "practice",
+        }
+        prefill = build_practice_log_prefill(session)
+        self.assertEqual(prefill["practice_concert_key"], "E")
+        self.assertTrue(prefill.get("written_key"))
+        self.assertNotEqual(prefill["written_key"], prefill["practice_concert_key"])
 
 
 if __name__ == "__main__":
