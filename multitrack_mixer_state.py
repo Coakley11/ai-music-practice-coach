@@ -67,21 +67,70 @@ def resolve_slot_control(
     return normalized
 
 
+def _seed_widget_key(session_state: dict[str, Any], key: str, value: Any) -> None:
+    if key not in session_state:
+        session_state[key] = value
+
+
 def prepare_multitrack_mixer_widgets(
     session_state: dict[str, Any],
     *,
     slots: list[str] | None = None,
+    force: bool = False,
 ) -> None:
     """Seed widget keys from canonical slot controls before widgets render."""
     target_slots = slots if slots is not None else list(MULTITRACK_SLOTS)
     for slot in target_slots:
-        if not slot_has_audio(session_state, slot):
+        if not slot_has_audio(session_state, slot) and not force:
             continue
         ctrl = resolve_slot_control(session_state, slot)
-        session_state[f"mt_vol_{slot}"] = float(ctrl["volume"])
-        session_state[f"mt_delay_{slot}"] = float(ctrl["delay"])
-        session_state[f"mt_mute_{slot}"] = bool(ctrl["mute"])
-        session_state[f"mt_solo_{slot}"] = bool(ctrl["solo"])
+        if force or f"mt_vol_{slot}" not in session_state:
+            session_state[f"mt_vol_{slot}"] = float(ctrl["volume"])
+        if force or f"mt_delay_{slot}" not in session_state:
+            session_state[f"mt_delay_{slot}"] = float(ctrl["delay"])
+        if force or f"mt_mute_{slot}" not in session_state:
+            session_state[f"mt_mute_{slot}"] = bool(ctrl["mute"])
+        if force or f"mt_solo_{slot}" not in session_state:
+            session_state[f"mt_solo_{slot}"] = bool(ctrl["solo"])
+    if force:
+        session_state.pop("_mt_mixer_force_seed", None)
+
+
+def sync_mixer_widgets_from_canonical(session_state: dict[str, Any], *, slots: list[str] | None = None) -> None:
+    """Push canonical slot controls into widget keys (after project load)."""
+    prepare_multitrack_mixer_widgets(session_state, slots=slots, force=True)
+
+
+def prepare_multitrack_transport_widgets(session_state: dict[str, Any]) -> None:
+    """Seed transport toggle defaults without overwriting user/session values."""
+    defaults = {
+        "mt_loop_backing": True,
+        "mt_metronome_playback": False,
+        "mt_use_backing_monitor": True,
+        "include_backing_mix": False,
+    }
+    for key, default in defaults.items():
+        _seed_widget_key(session_state, key, default)
+
+
+def gather_multitrack_transport_fields(session_state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "transport_loop_backing": bool(session_state.get("mt_loop_backing", True)),
+        "transport_metronome": bool(session_state.get("mt_metronome_playback", False)),
+        "transport_use_backing_monitor": bool(session_state.get("mt_use_backing_monitor", True)),
+        "transport_include_backing_in_mix": bool(session_state.get("include_backing_mix", False)),
+    }
+
+
+def apply_multitrack_transport_fields(session_state: dict[str, Any], row: dict[str, Any]) -> None:
+    if "transport_loop_backing" in row:
+        session_state["mt_loop_backing"] = bool(row.get("transport_loop_backing"))
+    if "transport_metronome" in row:
+        session_state["mt_metronome_playback"] = bool(row.get("transport_metronome"))
+    if "transport_use_backing_monitor" in row:
+        session_state["mt_use_backing_monitor"] = bool(row.get("transport_use_backing_monitor"))
+    if "transport_include_backing_in_mix" in row:
+        session_state["include_backing_mix"] = bool(row.get("transport_include_backing_in_mix"))
 
 
 def _widget_volume(session_state: dict[str, Any], slot: str) -> float:

@@ -46,16 +46,75 @@ class TestMultitrackMixerPersistence(unittest.TestCase):
             "active_song_title": "Say",
         }
 
-    def test_commit_and_prepare_round_trip(self) -> None:
+    def test_prepare_seeds_missing_keys_without_clobbering_user_edits(self) -> None:
         session = self._two_layer_session()
-        committed = commit_all_multitrack_mixer_widgets(session)
-        self.assertTrue(committed["Guitar"]["mute"])
-        self.assertTrue(committed["Piano / Keys"]["solo"])
+        commit_all_multitrack_mixer_widgets(session)
         session["mt_vol_Guitar"] = 0.2
         session["mt_mute_Guitar"] = False
         prepare_multitrack_mixer_widgets(session)
+        self.assertEqual(session["mt_vol_Guitar"], 0.2)
+        self.assertFalse(session["mt_mute_Guitar"])
+        from multitrack_mixer_state import sync_mixer_widgets_from_canonical
+
+        sync_mixer_widgets_from_canonical(session)
         self.assertEqual(session["mt_vol_Guitar"], 0.55)
         self.assertTrue(session["mt_mute_Guitar"])
+
+    def test_page_snapshot_restores_mute_solo_after_refresh(self) -> None:
+        session = self._two_layer_session()
+        session["studio_page"] = "multitrack"
+        commit_all_multitrack_mixer_widgets(session)
+        snap = capture_page_snapshot(session, "multitrack")
+        fresh: dict = {"studio_page": "multitrack"}
+        apply_page_snapshot(fresh, snap)
+        self.assertTrue(fresh["mt_mute_Guitar"])
+        self.assertTrue(fresh["mt_solo_Piano / Keys"])
+        self.assertTrue(fresh["mt_track_controls"]["Guitar"]["mute"])
+
+    def test_transport_toggles_persist_in_snapshot(self) -> None:
+        session = self._two_layer_session()
+        session.update(
+            {
+                "studio_page": "multitrack",
+                "mt_loop_backing": False,
+                "mt_metronome_playback": True,
+            }
+        )
+        snap = capture_page_snapshot(session, "multitrack")
+        fresh: dict = {"studio_page": "multitrack"}
+        apply_page_snapshot(fresh, snap)
+        self.assertFalse(fresh["mt_loop_backing"])
+        self.assertTrue(fresh["mt_metronome_playback"])
+
+    def test_transport_fields_save_and_reload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "media_catalog.json"
+
+            def _fake_path(*, st=None):
+                return path
+
+            session = self._two_layer_session()
+            session["mt_loop_backing"] = False
+            session["mt_metronome_playback"] = True
+            with patch("media_persistence._local_path", _fake_path):
+                with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
+                        with patch("media_persistence._save_cloud_catalog", lambda catalog, *, st=None: (True, "")):
+                            with patch("media_multitrack_catalog.persist_track_audio", MagicMock(return_value={"ok": True, "playback_status": "playable"})):
+                                ok, mid, err = save_multitrack_session_with_notes(
+                                    session,
+                                    project_name="Transport test",
+                                    song_title="Say",
+                                )
+                                self.assertTrue(ok, err)
+                                catalog = load_media_catalog(st=None)
+                                row = migrate_multitrack_session(catalog["multitrack_sessions"][0])
+                                phone: dict = {}
+                                with patch("media_multitrack_catalog.load_track_audio", lambda track, session=None, st=None: (b"layer", "")):
+                                    ok2, _msg = apply_catalog_multitrack_to_session(phone, row, load_audio=False)
+                                    self.assertTrue(ok2)
+                                    self.assertFalse(phone["mt_loop_backing"])
+                                    self.assertTrue(phone["mt_metronome_playback"])
 
     def test_page_snapshot_restores_mixer_controls(self) -> None:
         session = self._two_layer_session()

@@ -15,6 +15,7 @@ from media_multitrack_catalog import (
     catalog_multitrack_row_summary,
     gather_multitrack_backing_fields,
     list_catalog_multitrack_sessions,
+    load_multitrack_project_from_catalog,
     persist_prepared_multitrack_backing,
     resolve_multitrack_backing_bytes,
     save_multitrack_session_with_notes,
@@ -398,6 +399,64 @@ class TestMultitrackBackingPersistence(unittest.TestCase):
                                     self.assertTrue(ok, err)
                                     persist_mock.assert_called_once()
                                     self.assertEqual(persist_mock.call_args.args[2], b"disk-save-backing")
+
+    def test_project_a_and_b_restore_distinct_backing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "media_catalog.json"
+
+            def _fake_path(*, st=None):
+                return path
+
+            def _persist_backing(_st, mid, audio, **kw):
+                return {
+                    "ok": True,
+                    "local_path": f"media/multitrack/{mid}/backing.wav",
+                    "storage_ref": f"supabase://music-media/u/ws/{mid}/backing.wav",
+                    "playback_status": "playable",
+                }
+
+            base = self._session_with_layers()
+            with patch("media_persistence._local_path", _fake_path):
+                with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
+                        with patch("media_persistence._save_cloud_catalog", lambda catalog, *, st=None: (True, "")):
+                            with patch("media_multitrack_catalog.persist_backing_audio", _persist_backing):
+                                with patch("media_multitrack_catalog.persist_track_audio", MagicMock(return_value={"ok": True, "playback_status": "playable"})):
+                                    session_a = {**base, "multitrack_backing_music_wav": b"backing-a"}
+                                    ok_a, mid_a, err_a = save_multitrack_session_with_notes(
+                                        session_a,
+                                        project_name="Trial 1 · Say",
+                                        song_title="Say",
+                                    )
+                                    self.assertTrue(ok_a, err_a)
+                                    session_b = {**base, "multitrack_backing_music_wav": b"backing-b"}
+                                    ok_b, mid_b, err_b = save_multitrack_session_with_notes(
+                                        session_b,
+                                        project_name="Trial 2 · Say",
+                                        song_title="Say",
+                                    )
+                                    self.assertTrue(ok_b, err_b)
+                                    self.assertNotEqual(mid_a, mid_b)
+
+                                    phone: dict = {"multitrack_backing_music_wav": b"stale-phone-session"}
+                                    with patch(
+                                        "media_multitrack_catalog.load_backing_audio",
+                                        lambda session, st=None: (
+                                            (b"backing-a", "")
+                                            if str(session.get("multitrack_id") or "") == mid_a
+                                            else (b"backing-b", "")
+                                        ),
+                                    ):
+                                        with patch("media_multitrack_catalog.load_track_audio", lambda track, session=None, st=None: (b"layer", "")):
+                                            ok1, _ = load_multitrack_project_from_catalog(phone, mid_a, load_audio=True)
+                                            self.assertTrue(ok1)
+                                            self.assertEqual(phone["multitrack_backing_music_wav"], b"backing-a")
+                                            self.assertEqual(phone["_mt_loaded_backing_project_id"], mid_a)
+
+                                            ok2, _ = load_multitrack_project_from_catalog(phone, mid_b, load_audio=True)
+                                            self.assertTrue(ok2)
+                                            self.assertEqual(phone["multitrack_backing_music_wav"], b"backing-b")
+                                            self.assertEqual(phone["_mt_loaded_backing_project_id"], mid_b)
 
     def test_apply_backing_fields_before_widgets(self) -> None:
         session: dict = {}

@@ -297,11 +297,17 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
         )
 
         def _load_mt(payload: dict[str, Any]) -> tuple[bool, str]:
-            ok, msg = apply_catalog_multitrack_to_session(ss, payload, st=st_obj, load_audio=True)
+            mid = str(payload.get("multitrack_id") or payload.get("item_key") or "")
+            try:
+                from media_multitrack_catalog import load_multitrack_project_from_catalog
+
+                ok, msg = load_multitrack_project_from_catalog(ss, mid, st=st_obj, load_audio=True)
+            except ImportError:
+                ok, msg = apply_catalog_multitrack_to_session(ss, payload, st=st_obj, load_audio=True)
             if ok:
-                mid = str(payload.get("multitrack_id") or "")
                 if mid:
                     ss["multitrack_catalog_active_id"] = mid
+                    ss["_last_catalog_multitrack_id"] = mid
                 _after_history_load(ss, st_obj, page="multitrack")
                 if msg == "metadata_only":
                     return True, "Loaded project metadata — track audio not stored for this session."

@@ -146,6 +146,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "mt_backing_prepared_at",
             "_last_catalog_multitrack_id",
             "multitrack_catalog_active_id",
+            "_mt_loaded_backing_project_id",
         }
     ),
     "analysis": frozenset(
@@ -470,6 +471,21 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
             if not _snapshot_has_multitrack_content({"mt_tracks": val}):
                 continue
         if key == "multitrack_backing_music_wav":
+            snap_project = str(
+                local.get("_last_catalog_multitrack_id")
+                or local.get("multitrack_catalog_active_id")
+                or ""
+            ).strip()
+            live_project = str(
+                session_state.get("_last_catalog_multitrack_id")
+                or session_state.get("multitrack_catalog_active_id")
+                or ""
+            ).strip()
+            loaded_project = str(session_state.get("_mt_loaded_backing_project_id") or "").strip()
+            if loaded_project and snap_project and loaded_project != snap_project:
+                continue
+            if loaded_project and live_project and loaded_project != live_project:
+                continue
             live = session_state.get(key)
             snap_has = bool(live) and isinstance(live, (bytes, bytearray)) and len(live) > 0
             val_has = bool(val) and isinstance(val, (bytes, bytearray)) and len(val) > 0

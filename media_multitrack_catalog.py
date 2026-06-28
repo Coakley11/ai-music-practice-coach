@@ -418,6 +418,12 @@ def build_multitrack_catalog_fields(
 
     bpm = payload.get("session_bpm") or session_state.get("multitrack_bpm") or session_state.get("backing_track_bpm")
     backing_fields = gather_multitrack_backing_fields(session_state)
+    try:
+        from multitrack_mixer_state import gather_multitrack_transport_fields
+
+        transport_fields = gather_multitrack_transport_fields(session_state)
+    except ImportError:
+        transport_fields = {}
 
     return {
         "workspace_id": workspace_id,
@@ -435,6 +441,7 @@ def build_multitrack_catalog_fields(
         "mix_storage_ref": None,
         "mix_local_path": None,
         **backing_fields,
+        **transport_fields,
         "analysis_summary": payload.get("analysis_summary") if isinstance(payload.get("analysis_summary"), dict) else {},
         "notes": str(notes or payload.get("notes") or "").strip()[:2000],
     }
@@ -579,6 +586,7 @@ def persist_prepared_multitrack_backing(
 
     active_mid = active_catalog_multitrack_id(session_state)
     if not active_mid:
+        session_state.pop("_mt_loaded_backing_project_id", None)
         return True, "session_only"
 
     catalog = load_media_catalog(st=st)
@@ -798,7 +806,11 @@ def catalog_multitrack_row_summary(row: dict[str, Any]) -> str:
     if meta_only:
         bits.append(f"{meta_only} metadata-only")
     if multitrack_has_saved_backing(payload):
-        bits.append("backing ready")
+        prepared = str(payload.get("backing_prepared_at") or "").strip()
+        if prepared:
+            bits.append(f"backing ready · {prepared[:16]}")
+        else:
+            bits.append("backing ready")
     elif payload.get("backing_prepared_at"):
         status = str(payload.get("backing_playback_status") or "").strip()
         if status == PLAYBACK_METADATA_ONLY:
@@ -821,6 +833,19 @@ def multitrack_session_stats(session: dict[str, Any], *, st: Any | None = None) 
     }
 
 
+def clear_multitrack_page_snapshot_backing(session_state: dict[str, Any]) -> None:
+    """Drop stale monitor backing bytes from the stored multitrack page snapshot."""
+    store = session_state.get("_studio_page_snapshots")
+    if not isinstance(store, dict):
+        return
+    snap = store.get("multitrack")
+    if not isinstance(snap, dict):
+        return
+    updated = dict(snap)
+    updated.pop("multitrack_backing_music_wav", None)
+    store["multitrack"] = updated
+
+
 def apply_catalog_multitrack_to_session(
     session_state: dict[str, Any],
     session: dict[str, Any],
@@ -834,18 +859,29 @@ def apply_catalog_multitrack_to_session(
     if not payload.get("tracks"):
         return False, "no_tracks"
 
-    apply_multitrack_backing_fields(session_state, row)
-    apply_multitrack_history(session_state, payload)
-    try:
-        from multitrack_mixer_state import prepare_multitrack_mixer_widgets
+    mid = str(row.get("multitrack_id") or "")
+    session_state.pop("multitrack_backing_music_wav", None)
+    session_state.pop("_mt_loaded_backing_project_id", None)
+    clear_multitrack_page_snapshot_backing(session_state)
 
-        prepare_multitrack_mixer_widgets(session_state)
+    apply_multitrack_backing_fields(session_state, row)
+    try:
+        from multitrack_mixer_state import apply_multitrack_transport_fields
+
+        apply_multitrack_transport_fields(session_state, row)
     except ImportError:
         pass
-    mid = str(row.get("multitrack_id") or "")
+    apply_multitrack_history(session_state, payload)
+    try:
+        from multitrack_mixer_state import sync_mixer_widgets_from_canonical
+
+        sync_mixer_widgets_from_canonical(session_state)
+    except ImportError:
+        pass
     if mid:
         session_state[_ACTIVE_CATALOG_MULTITRACK_KEY] = mid
         session_state[_LAST_CATALOG_MULTITRACK_KEY] = mid
+        session_state["multitrack_catalog_active_id"] = mid
 
     if not load_audio:
         session_state["_mt_catalog_metadata_only"] = True
@@ -892,20 +928,69 @@ def apply_catalog_multitrack_to_session(
             audio, err = load_backing_audio(row, st=st)
             if audio:
                 session_state["multitrack_backing_music_wav"] = audio
+                session_state["_mt_loaded_backing_project_id"] = mid
                 _record_backing_load_diag(session_state, status=PLAYBACK_PLAYABLE, byte_count=len(audio))
             else:
                 session_state.pop("multitrack_backing_music_wav", None)
+                if mid:
+                    session_state["_mt_loaded_backing_project_id"] = mid
                 load_status = PLAYBACK_METADATA_ONLY if status == PLAYBACK_METADATA_ONLY else PLAYBACK_MISSING_FILE
                 _record_backing_load_diag(session_state, status=load_status, error=err or "missing_file")
         elif row.get("backing_prepared_at"):
             session_state.pop("multitrack_backing_music_wav", None)
+            if mid:
+                session_state["_mt_loaded_backing_project_id"] = mid
             _record_backing_load_diag(session_state, status=PLAYBACK_METADATA_ONLY, error="no_backing_ref")
+    elif mid:
+        session_state["_mt_loaded_backing_project_id"] = mid
 
     if loaded == 0 and missing > 0:
         return True, "metadata_only"
     if missing:
         return True, f"loaded_{loaded}_missing_{missing}"
     return True, ""
+
+
+def load_multitrack_project_from_catalog(
+    session_state: dict[str, Any],
+    multitrack_id: str,
+    *,
+    st: Any | None = None,
+    load_audio: bool = True,
+) -> tuple[bool, str]:
+    """Reload catalog from cloud/disk and restore one saved multitrack project."""
+    mid = str(multitrack_id or "").strip()
+    if not mid:
+        return False, "missing_multitrack_id"
+    catalog = load_media_catalog(st=st)
+    rows = normalize_multitrack_sessions(
+        catalog.get("multitrack_sessions") if isinstance(catalog.get("multitrack_sessions"), list) else []
+    )
+    row = next((r for r in rows if str(r.get("multitrack_id") or "") == mid), None)
+    if not isinstance(row, dict):
+        return False, "not_found"
+    try:
+        from multitrack_history import clear_multitrack_widget_keys
+
+        clear_multitrack_widget_keys(session_state)
+    except ImportError:
+        pass
+    ok, msg = apply_catalog_multitrack_to_session(session_state, row, st=st, load_audio=load_audio)
+    if ok:
+        clear_multitrack_page_snapshot_backing(session_state)
+        try:
+            from multitrack_mixer_state import prepare_multitrack_transport_widgets
+
+            prepare_multitrack_transport_widgets(session_state)
+        except ImportError:
+            pass
+        try:
+            from studio_page_persistence import flush_current_page_snapshot
+
+            flush_current_page_snapshot(session_state)
+        except Exception:
+            pass
+    return ok, msg
 
 
 def delete_catalog_multitrack_session(multitrack_id: str, *, st: Any | None = None) -> tuple[bool, str]:

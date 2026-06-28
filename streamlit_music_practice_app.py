@@ -6354,8 +6354,6 @@ def _render_multitrack_session_setup_panel(
     float,
     bool,
     bool,
-    bool,
-    bool,
     float,
     int,
     str,
@@ -6478,7 +6476,7 @@ def _render_multitrack_session_setup_panel(
         if "mt_backing_volume" not in st.session_state:
             st.session_state["mt_backing_volume"] = 0.75
 
-    _rec_top1, _rec_top2, _rec_top3, _rec_top4 = st.columns([0.95, 1.15, 1.15, 1.2], gap="small")
+    _rec_top1, _rec_top2, _rec_top3 = st.columns([1.0, 1.2, 1.2], gap="small")
     with _rec_top1:
         count_in_label = st.selectbox(
             "Count-in",
@@ -6488,31 +6486,21 @@ def _render_multitrack_session_setup_panel(
             help="Bars of click before playback starts.",
         )
     with _rec_top2:
-        mt_metronome_playback = st.checkbox(
-            "Metronome click during playback",
-            value=False,
-            key="mt_metronome_playback",
+        if "mt_use_backing_monitor" not in st.session_state:
+            st.session_state["mt_use_backing_monitor"] = mt_scope != "Free layering (no backing)"
+        use_backing_monitor = st.checkbox(
+            "Hear backing while recording",
+            help="Play the backing track in your headphones or speakers while you record.",
+            key="mt_use_backing_monitor",
         )
     with _rec_top3:
-        mt_loop_backing = st.checkbox(
-            "Loop section while recording",
-            value=True,
-            key="mt_loop_backing",
-        )
-    with _rec_top4:
-        use_backing_monitor = st.checkbox(
-            "Monitor backing while recording",
-            value=mt_scope != "Free layering (no backing)",
-            help="Plays in headphones for timing — not baked into layers unless you export with it.",
-            key="mt_use_backing_monitor",
+        include_backing_in_mix = st.checkbox(
+            "Include backing in exported mix",
+            key="include_backing_mix",
         )
     _rec_bot1, _rec_bot2 = st.columns([1.25, 1], gap="small")
     with _rec_bot1:
-        include_backing_in_mix = st.checkbox(
-            "Include backing in exported mix",
-            value=False,
-            key="include_backing_mix",
-        )
+        pass
     with _rec_bot2:
         backing_volume = st.slider(
             "Backing level",
@@ -6520,7 +6508,7 @@ def _render_multitrack_session_setup_panel(
             max_value=1.5,
             step=0.05,
             key="mt_backing_volume",
-            help="Monitor and export loudness (0.00–1.50).",
+            help="Controls how loud the backing track is compared with your recorded layers.",
         )
     section_close_fn(st)
 
@@ -6614,8 +6602,6 @@ def _render_multitrack_session_setup_panel(
         mt_backing_duration,
         use_backing_monitor,
         include_backing_in_mix,
-        mt_metronome_playback,
-        mt_loop_backing,
         backing_volume,
         mt_count_in_bars,
         mt_scope_label,
@@ -6639,8 +6625,6 @@ def multitrack_studio_html(
 ):
     tracks_json = json.dumps(tracks)
     bar_duration = meter_timing(bpm, time_signature).bar_sec
-    loop_checked = "checked" if loop_backing else ""
-    metro_checked = "checked" if metronome_during_playback else ""
     config = json.dumps({
         "bpm": bpm,
         "beatsPerBar": beats_per_bar,
@@ -6675,6 +6659,8 @@ def multitrack_studio_html(
     .mt-track-row {{ border:1px solid #e2e8f0; border-radius:12px; padding:12px; background:#fff; display:grid; grid-template-columns: 1.2fr 1fr 1fr 1fr; gap:10px; align-items:center; box-shadow:0 1px 6px rgba(15,23,42,0.05); }}
     .mt-track-row.muted {{ opacity:0.42; }}
     .mt-track-row.soloed {{ outline:2px solid #f59e0b; background:#fffbeb; }}
+    .mt-track-row input[disabled] {{ opacity:0.85; cursor:not-allowed; }}
+    .mt-track-row .mt-readonly {{ font-size:0.72rem; color:#94a3b8; font-weight:600; }}
     .mt-help {{ color:#64748b; font-size:0.8rem; margin-top:8px; line-height:1.45; }}
     .mt-beat {{ font-variant-numeric: tabular-nums; font-weight:800; color:#b45309; }}
     .mt-transport-readout {{ font-size:0.84rem; font-weight:700; color:#475569; margin-bottom:6px; }}
@@ -6691,8 +6677,6 @@ def multitrack_studio_html(
   <div class="mt-toolbar">
     <button class="primary" id="mt-play">▶ Play with count-in</button>
     <button id="mt-stop">■ Stop</button>
-    <label><input type="checkbox" id="mt-loop" {loop_checked}> Loop</label>
-    <label><input type="checkbox" id="mt-metronome" {metro_checked}> Click</label>
     <label>Monitor <input type="range" id="mt-backing-vol" min="0" max="150" value="{int(backing_monitor_volume * 100)}"></label>
   </div>
 
@@ -6700,7 +6684,7 @@ def multitrack_studio_html(
   <div class="mt-timeline"><div class="mt-cursor" id="mt-cursor"></div></div>
 
   <div class="mt-track-list" id="mt-track-list"></div>
-  <div class="mt-help">Adjust mute, solo, and volume per track. Record layers in the panel below while transport runs.</div>
+  <div class="mt-help">Read-only preview from Step 2. Edit volume, mute, and solo in Layer controls above.</div>
 
   <script>
     const cfg = {config};
@@ -6709,8 +6693,6 @@ def multitrack_studio_html(
     const listEl = document.getElementById("mt-track-list");
     const playBtn = document.getElementById("mt-play");
     const stopBtn = document.getElementById("mt-stop");
-    const loopCb = document.getElementById("mt-loop");
-    const metroCb = document.getElementById("mt-metronome");
     const backingVol = document.getElementById("mt-backing-vol");
     const timeEl = document.getElementById("mt-time");
     const barEl = document.getElementById("mt-bar");
@@ -6738,9 +6720,10 @@ def multitrack_studio_html(
         row.dataset.trackId = track.id;
         row.innerHTML = `
           <div><strong>${{track.name}}</strong><div style="font-size:12px;color:#64748b;">delay ${{track.delay}}s</div></div>
-          <label>Vol <input type="range" min="0" max="200" value="${{Math.round((track.volume || 1) * 100)}}" data-vol></label>
-          <label><input type="checkbox" data-mute> Mute</label>
-          <label><input type="checkbox" data-solo> Solo</label>
+          <label>Vol <input type="range" min="0" max="200" value="${{Math.round((track.volume || 1) * 100)}}" data-vol disabled></label>
+          <label><input type="checkbox" data-mute disabled> Mute</label>
+          <label><input type="checkbox" data-solo disabled> Solo</label>
+          <span class="mt-readonly">Step 2</span>
         `;
         row.querySelector("[data-mute]").checked = !!track.mute;
         row.querySelector("[data-solo]").checked = !!track.solo;
@@ -6756,9 +6739,9 @@ def multitrack_studio_html(
         const meta = tracks.find((t) => t.id === id) || {{}};
         return {{
           id,
-          mute: row.querySelector("[data-mute]").checked,
-          solo: row.querySelector("[data-solo]").checked,
-          volume: Number(row.querySelector("[data-vol]").value) / 100,
+          mute: !!meta.mute,
+          solo: !!meta.solo,
+          volume: Number(meta.volume || 1),
           delay: Number(meta.delay || 0),
         }};
       }});
@@ -6845,13 +6828,13 @@ def multitrack_studio_html(
         const backingBuf = await decodeTrack({{ b64: backingEl.src }});
         const src = audioCtx.createBufferSource();
         src.buffer = backingBuf;
-        src.loop = loopCb.checked;
+        src.loop = cfg.loopBacking;
         backingGain = audioCtx.createGain();
         backingGain.gain.value = Number(backingVol.value) / 100;
         src.connect(backingGain);
         backingGain.connect(masterGain);
         src.start(musicStart);
-        const backingLen = backingBuf.duration * (loopCb.checked ? 4 : 1);
+        const backingLen = backingBuf.duration * (cfg.loopBacking ? 4 : 1);
         maxEnd = Math.max(maxEnd, musicStart + backingLen);
         trackNodes.push({{ source: src }});
       }}
@@ -6880,7 +6863,7 @@ def multitrack_studio_html(
       labelEl.textContent = "Playing. Count-in finished — music started on beat 1.";
       updateTransport();
 
-      if (metroCb.checked) {{
+      if (cfg.metronomeDuringPlayback) {{
         let beat = 0;
         metroTimer = setInterval(() => {{
           if (!audioCtx) return;
@@ -12679,6 +12662,16 @@ elif _studio_page == "multitrack":
     except Exception:
         pass
     try:
+        from multitrack_mixer_state import (
+            prepare_multitrack_mixer_widgets,
+            prepare_multitrack_transport_widgets,
+        )
+
+        prepare_multitrack_transport_widgets(st.session_state)
+        prepare_multitrack_mixer_widgets(st.session_state)
+    except ImportError:
+        pass
+    try:
         from multitrack_session_persistence import restore_multitrack_layers_from_workspace
 
         restore_multitrack_layers_from_workspace(st.session_state)
@@ -12717,8 +12710,6 @@ elif _studio_page == "multitrack":
                 mt_backing_duration,
                 use_backing_monitor,
                 include_backing_in_mix,
-                mt_metronome_playback,
-                mt_loop_backing,
                 backing_volume,
                 mt_count_in_bars,
                 mt_scope_label,
@@ -12776,6 +12767,12 @@ elif _studio_page == "multitrack":
                 unsafe_allow_html=True,
             )
             st.caption("Record or upload each instrument slot, then adjust volume, mute, and solo.")
+            st.caption(
+                "**How this works:** Align = shift a layer earlier/later · "
+                "Mute = silence a layer · Solo = hear one layer by itself · "
+                "Monitor backing = hear the backing while recording · "
+                "Loop section = repeat the selected section while recording"
+            )
 
             for slot in MT_SLOTS:
                 _slot_ready = bool(st.session_state.mt_tracks.get(slot))
@@ -12859,17 +12856,29 @@ elif _studio_page == "multitrack":
                             key=f"mt_vol_{slot}",
                         )
                         st.slider(
-                            "Align (seconds ±)",
+                            "Align timing",
                             -3.0,
                             3.0,
                             step=0.05,
                             key=f"mt_delay_{slot}",
+                            help="Move this layer earlier or later to line it up with the backing.",
                         )
-                        st.caption("Positive = later. Negative = earlier.")
+                        st.caption(
+                            "Negative = earlier. Positive = later. "
+                            "Use this if the layer sounds ahead of or behind the backing."
+                        )
 
                     with c3:
-                        st.checkbox("Mute", key=f"mt_mute_{slot}")
-                        st.checkbox("Solo", key=f"mt_solo_{slot}")
+                        st.checkbox(
+                            "Mute",
+                            key=f"mt_mute_{slot}",
+                            help="Temporarily silence this layer during playback.",
+                        )
+                        st.checkbox(
+                            "Solo",
+                            key=f"mt_solo_{slot}",
+                            help="Hear this layer by itself to check it more clearly.",
+                        )
                         try:
                             from multitrack_mixer_state import commit_multitrack_mixer_widget
 
@@ -12935,8 +12944,31 @@ elif _studio_page == "multitrack":
             )
             st.caption(
                 "Press **Play with count-in** for a studio-style start. "
-                "Mute, solo, and volume mirror your layer controls."
+                "Volume, mute, and solo are edited in **Step 2** — the mixer below shows a read-only preview."
             )
+            _tr1, _tr2, _tr3 = st.columns(3, gap="small")
+            with _tr1:
+                mt_loop_backing = st.checkbox(
+                    "Repeat selected section while recording",
+                    key="mt_loop_backing",
+                    help="Keeps looping the selected section while you record.",
+                )
+            with _tr2:
+                mt_metronome_playback = st.checkbox(
+                    "Click monitor",
+                    key="mt_metronome_playback",
+                    help="Metronome click during playback.",
+                )
+            with _tr3:
+                st.caption(
+                    "Transport settings persist across refresh and saved projects."
+                )
+            try:
+                from studio_page_persistence import flush_current_page_snapshot
+
+                flush_current_page_snapshot(st.session_state)
+            except Exception:
+                pass
             components.html(
                 multitrack_studio_html(
                     backing_b64=backing_b64,
