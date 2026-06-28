@@ -17,6 +17,12 @@ MUSIC_SCRIPT_SESSION_KEY = "_music_script_browser_session_id"
 
 def begin_music_script_run(session_state: dict[str, Any]) -> None:
     """Start-of-script hook — reset page tracker only on true new browser session."""
+    try:
+        from multitrack_session_persistence import reset_mt_workspace_run_diag
+
+        reset_mt_workspace_run_diag(session_state)
+    except ImportError:
+        pass
     run_seq = int(session_state.get("_script_run_seq") or 0)
     last_seq = session_state.get(MUSIC_SCRIPT_SESSION_KEY)
     if last_seq is None:

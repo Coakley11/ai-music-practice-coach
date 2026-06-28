@@ -468,6 +468,7 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
         local = strip_durable_backing_snapshot_keys(local)
     except ImportError:
         pass
+    restored_keys: list[str] = []
     for key, val in local.items():
         if key in _VOLATILE_BACKING_SNAPSHOT_KEYS:
             continue
@@ -573,6 +574,12 @@ def _snapshot_has_multitrack_workspace(snap: dict[str, Any]) -> bool:
 
 def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
     """After browser refresh / cloud restore — hydrate page-local UI for active page."""
+    try:
+        from music_restore_phase import mark_page_snapshot_hydrated, page_snapshot_hydrated
+    except ImportError:
+        mark_page_snapshot_hydrated = None  # type: ignore[assignment]
+        page_snapshot_hydrated = lambda _ss, _pid: False  # type: ignore[assignment]
+
     skip_count = session_state.get("_mt_skip_snapshot_restore_count")
     if isinstance(skip_count, int) and skip_count > 0:
         session_state["_mt_skip_snapshot_restore_count"] = skip_count - 1
@@ -588,14 +595,22 @@ def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
             pass
         return
     current = str(session_state.get("studio_page") or "practice").strip() or "practice"
+    if page_snapshot_hydrated(session_state, current):
+        return
     store = session_state.get(_PAGE_SNAPSHOTS_KEY) or {}
     snap = store.get(current) if isinstance(store, dict) else None
     if not snap:
         return
+    multitrack_hydrated = current == "multitrack" and page_snapshot_hydrated(session_state, current)
     needs_restore = session_state.get(_ACTIVE_PAGE_TRACKER) is None
     if current == "analysis" and not session_state.get("last_analysis_result"):
         needs_restore = True
-    if current == "multitrack" and isinstance(snap, dict) and _snapshot_has_multitrack_workspace(snap):
+    if (
+        current == "multitrack"
+        and isinstance(snap, dict)
+        and _snapshot_has_multitrack_workspace(snap)
+        and not multitrack_hydrated
+    ):
         if not _multitrack_session_has_layers(session_state) and not session_state.get("mixed_track_wav"):
             needs_restore = True
         elif not session_state.get("mt_history_save_notes") and snap.get("mt_history_save_notes"):
@@ -618,6 +633,8 @@ def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
         except ImportError:
             pass
         restore_page_snapshot(session_state, current)
+        if mark_page_snapshot_hydrated is not None:
+            mark_page_snapshot_hydrated(session_state, current)
         if current == "multitrack":
             try:
                 from multitrack_session_persistence import record_multitrack_workspace_restore

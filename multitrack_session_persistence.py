@@ -12,6 +12,75 @@ from studio_page_persistence import _B64_MARKER, _decode_snapshot_value, _encode
 MAX_MT_TRACK_BYTES = 2_097_152
 MAX_MT_MIXED_BYTES = 2_621_440
 DIAG_KEY = "_multitrack_persist_diag"
+MT_WORKSPACE_PERSIST_DIAG_KEY = "_mt_workspace_persist_diag"
+
+
+def reset_mt_workspace_run_diag(session_state: dict[str, Any]) -> None:
+    """Reset per-script-run workspace persistence counters (not cross-run snapshot data)."""
+    diag = session_state.get(MT_WORKSPACE_PERSIST_DIAG_KEY)
+    if not isinstance(diag, dict):
+        return
+    diag["restore_count_this_run"] = 0
+    diag["flush_count_this_run"] = 0
+    diag.pop("active_song_overwrites", None)
+    diag.pop("widget_changes_this_run", None)
+
+
+def _mt_workspace_persist_diag(session_state: dict[str, Any]) -> dict[str, Any]:
+    raw = session_state.get(MT_WORKSPACE_PERSIST_DIAG_KEY)
+    if not isinstance(raw, dict):
+        raw = {}
+        session_state[MT_WORKSPACE_PERSIST_DIAG_KEY] = raw
+    return raw
+
+
+def record_mt_workspace_restore_keys(
+    session_state: dict[str, Any],
+    *,
+    source: str,
+    keys: list[str],
+) -> None:
+    diag = _mt_workspace_persist_diag(session_state)
+    diag["restore_count_this_run"] = int(diag.get("restore_count_this_run") or 0) + 1
+    diag["last_restore_source"] = str(source or "")
+    diag["last_restored_keys"] = list(keys)
+
+
+def record_mt_workspace_flush_keys(session_state: dict[str, Any], *, keys: list[str]) -> None:
+    diag = _mt_workspace_persist_diag(session_state)
+    diag["flush_count_this_run"] = int(diag.get("flush_count_this_run") or 0) + 1
+    diag["last_flushed_keys"] = list(keys)
+
+
+def record_mt_active_song_overwrite(
+    session_state: dict[str, Any],
+    *,
+    key: str,
+    previous: Any,
+    new: Any,
+) -> None:
+    diag = _mt_workspace_persist_diag(session_state)
+    overwrites = diag.setdefault("active_song_overwrites", [])
+    if not isinstance(overwrites, list):
+        overwrites = []
+        diag["active_song_overwrites"] = overwrites
+    overwrites.append({"key": key, "previous": previous, "new": new})
+
+
+def record_mt_widget_change(
+    session_state: dict[str, Any],
+    *,
+    key: str,
+    previous: Any,
+    new: Any,
+    flushed: bool = False,
+) -> None:
+    diag = _mt_workspace_persist_diag(session_state)
+    changes = diag.setdefault("widget_changes_this_run", [])
+    if not isinstance(changes, list):
+        changes = []
+        diag["widget_changes_this_run"] = changes
+    changes.append({"key": key, "previous": previous, "new": new, "flushed": flushed})
 
 
 def _track_has_audio(value: Any) -> bool:
@@ -141,10 +210,15 @@ def flush_multitrack_workspace_snapshot(session_state: dict[str, Any]) -> None:
     """Persist current multitrack page-local workspace before refresh/autosave."""
     try:
         from multitrack_mixer_state import commit_all_multitrack_mixer_widgets
-        from studio_page_persistence import flush_current_page_snapshot
+        from studio_page_persistence import capture_page_snapshot, flush_current_page_snapshot
 
         commit_all_multitrack_mixer_widgets(session_state)
+        pre_flush = capture_page_snapshot(session_state, "multitrack")
         flush_current_page_snapshot(session_state)
+        record_mt_workspace_flush_keys(
+            session_state,
+            keys=sorted(pre_flush.keys()) if isinstance(pre_flush, dict) else [],
+        )
         session_state["_mt_workspace_snapshot_saved_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     except ImportError:
         pass

@@ -6540,8 +6540,9 @@ def _render_multitrack_session_setup_panel(
             disabled=mt_scope == "Free layering (no backing)" or not mt_events,
         )
     st.caption(
-        "Prepare Backing updates the monitor backing for the current session. "
-        "If a project is loaded from Project Library, it replaces that project's backing. "
+        "Prepare Backing uses only the selected sections in song order, repeated by Section repeats "
+        "(e.g. Verse + Chorus × 2 → Verse → Chorus → Verse → Chorus). "
+        "If a project is loaded from Project Library, Prepare Backing replaces that project's monitor backing. "
         "Save to History to keep a separate version or sync across devices."
     )
     if _prep_clicked:
@@ -12641,9 +12642,16 @@ elif _studio_page == "multitrack":
     from multitrack_slots import MT_SLOTS
 
     try:
+        from music_restore_phase import mark_page_snapshot_hydrated, should_hydrate_page_snapshot
         from studio_page_persistence import restore_current_page_snapshot_if_needed
 
-        restore_current_page_snapshot_if_needed(st.session_state)
+        if should_hydrate_page_snapshot(
+            st.session_state,
+            page_id="multitrack",
+            page_changed=False,
+        ):
+            restore_current_page_snapshot_if_needed(st.session_state)
+            mark_page_snapshot_hydrated(st.session_state, "multitrack")
     except Exception:
         pass
     try:
@@ -12669,11 +12677,13 @@ elif _studio_page == "multitrack":
             slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MT_SLOTS
         }
 
-    mt_time_sig = default_time_signature(song, sections)
-    if str(st.session_state.get("multitrack_catalog_active_id") or "").strip():
-        mt_time_sig = str(st.session_state.get("mt_time_signature") or mt_time_sig)
+    _default_mt_time_sig = default_time_signature(song, sections)
+    _existing_mt_time_sig = str(st.session_state.get("mt_time_signature") or "").strip()
+    if not _existing_mt_time_sig:
+        st.session_state["mt_time_signature"] = _default_mt_time_sig
+        mt_time_sig = _default_mt_time_sig
     else:
-        st.session_state["mt_time_signature"] = mt_time_sig
+        mt_time_sig = _existing_mt_time_sig
     mt_beats_per_bar = beats_per_bar_from_signature(mt_time_sig)
     mt_sec_names = [
         name

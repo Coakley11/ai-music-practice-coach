@@ -442,6 +442,32 @@ def render_workspace_persistence_panel(st_obj: Any, session_state: dict[str, Any
         st_obj.text(f"last snapshot load: {session_state.get('_mt_workspace_snapshot_loaded_at')}")
         st_obj.text(f"restore source: {session_state.get('_mt_workspace_restore_source')}")
         st_obj.text(f"skip snapshot restore remaining: {session_state.get('_mt_skip_snapshot_restore_count')}")
+        try:
+            from music_restore_phase import page_snapshot_hydrated
+
+            st_obj.text(f"page snapshot hydrated: {page_snapshot_hydrated(session_state, 'multitrack')}")
+        except ImportError:
+            pass
+        diag = session_state.get("_mt_workspace_persist_diag")
+        if isinstance(diag, dict):
+            st_obj.markdown("**Workspace restore / flush (this run)**")
+            st_obj.text(f"restore count this run: {diag.get('restore_count_this_run', 0)}")
+            st_obj.text(f"last restore source: {diag.get('last_restore_source') or '(none)'}")
+            restored = diag.get("last_restored_keys")
+            st_obj.text(f"last restored keys: {restored if restored else '(none)'}")
+            st_obj.text(f"flush count this run: {diag.get('flush_count_this_run', 0)}")
+            flushed = diag.get("last_flushed_keys")
+            st_obj.text(f"last flushed keys: {flushed if flushed else '(none)'}")
+            overwrites = diag.get("active_song_overwrites")
+            if overwrites:
+                st_obj.text(f"active song default overwrites: {overwrites}")
+            else:
+                st_obj.text("active song default overwrites: (none)")
+            widget_changes = diag.get("widget_changes_this_run")
+            if widget_changes:
+                st_obj.text(f"widget changes this run: {widget_changes}")
+            else:
+                st_obj.text("widget changes this run: (none recorded)")
         st_obj.text(f"active song bpm (global): {session_state.get('bpm')}")
         st_obj.text(f"session multitrack bpm: {session_state.get('multitrack_bpm')}")
         st_obj.text(f"session meter: {session_state.get('mt_time_signature')}")
