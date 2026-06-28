@@ -97,7 +97,20 @@ def build_multitrack_history_payload(
 
     has_any = any(mt_tracks.get(slot) for slot in MULTITRACK_SLOTS) or session_state.get("mixed_track_wav")
     if not has_any:
-        return None, "no_layers_or_mix"
+        try:
+            from multitrack_session_persistence import session_has_layer_audio
+
+            has_any = session_has_layer_audio(session_state)
+        except ImportError:
+            pass
+    if not has_any:
+        try:
+            from media_multitrack_catalog import session_has_saveable_multitrack_content
+
+            if not session_has_saveable_multitrack_content(session_state):
+                return None, "no_layers_or_mix"
+        except ImportError:
+            return None, "no_layers_or_mix"
 
     tracks_meta: list[dict[str, Any]] = []
     embedded_tracks: dict[str, str] = {}
@@ -105,7 +118,11 @@ def build_multitrack_history_payload(
     slot_controls: dict[str, dict[str, Any]] = {}
 
     for slot in MULTITRACK_SLOTS:
-        audio = mt_tracks.get(slot)
+        try:
+            from multitrack_session_persistence import resolve_multitrack_slot_bytes
+        except ImportError:
+            resolve_multitrack_slot_bytes = lambda _ss, _slot: None  # type: ignore[assignment]
+        audio = resolve_multitrack_slot_bytes(session_state, slot)
         ctrl, layer_name = _control_for_slot(controls, session_state, slot)
         volume = session_state.get(f"mt_vol_{slot}", session_state.get(f"mt_vol_slider_{slot}", ctrl.get("volume", 1.0)))
         delay = session_state.get(f"mt_delay_{slot}", session_state.get(f"mt_delay_slider_{slot}", ctrl.get("delay", 0.0)))

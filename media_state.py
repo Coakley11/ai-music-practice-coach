@@ -161,9 +161,6 @@ def is_real_multitrack_track(track: dict[str, Any]) -> bool:
     summary = track.get("analysis_summary") if isinstance(track.get("analysis_summary"), dict) else {}
     if summary.get("has_audio"):
         return True
-    status = str(track.get("playback_status") or "").strip()
-    if status in ("playable", "metadata_only", "missing_file", "upload_failed"):
-        return True
     return False
 
 

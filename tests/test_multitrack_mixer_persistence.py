@@ -71,6 +71,14 @@ class TestMultitrackMixerPersistence(unittest.TestCase):
         self.assertTrue(fresh["mt_solo_Piano / Keys"])
         self.assertTrue(fresh["mt_track_controls"]["Guitar"]["mute"])
 
+    def test_transport_monitor_persist_in_snapshot(self) -> None:
+        session = self._two_layer_session()
+        session.update({"studio_page": "multitrack", "mt_use_backing_monitor": False})
+        snap = capture_page_snapshot(session, "multitrack")
+        fresh: dict = {"studio_page": "multitrack"}
+        apply_page_snapshot(fresh, snap)
+        self.assertFalse(fresh["mt_use_backing_monitor"])
+
     def test_transport_toggles_persist_in_snapshot(self) -> None:
         session = self._two_layer_session()
         session.update(
@@ -96,6 +104,7 @@ class TestMultitrackMixerPersistence(unittest.TestCase):
             session = self._two_layer_session()
             session["mt_loop_backing"] = False
             session["mt_metronome_playback"] = True
+            session["mt_use_backing_monitor"] = False
             with patch("media_persistence._local_path", _fake_path):
                 with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
                     with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
@@ -115,6 +124,7 @@ class TestMultitrackMixerPersistence(unittest.TestCase):
                                     self.assertTrue(ok2)
                                     self.assertFalse(phone["mt_loop_backing"])
                                     self.assertTrue(phone["mt_metronome_playback"])
+                                    self.assertFalse(phone["mt_use_backing_monitor"])
 
     def test_page_snapshot_restores_mixer_controls(self) -> None:
         session = self._two_layer_session()

@@ -6353,7 +6353,6 @@ def _render_multitrack_session_setup_panel(
     list,
     float,
     bool,
-    bool,
     float,
     int,
     str,
@@ -6476,7 +6475,7 @@ def _render_multitrack_session_setup_panel(
         if "mt_backing_volume" not in st.session_state:
             st.session_state["mt_backing_volume"] = 0.75
 
-    _rec_top1, _rec_top2, _rec_top3 = st.columns([1.0, 1.2, 1.2], gap="small")
+    _rec_top1, _rec_top2 = st.columns([1.0, 1.2], gap="small")
     with _rec_top1:
         count_in_label = st.selectbox(
             "Count-in",
@@ -6486,14 +6485,6 @@ def _render_multitrack_session_setup_panel(
             help="Bars of click before playback starts.",
         )
     with _rec_top2:
-        if "mt_use_backing_monitor" not in st.session_state:
-            st.session_state["mt_use_backing_monitor"] = mt_scope != "Free layering (no backing)"
-        use_backing_monitor = st.checkbox(
-            "Hear backing while recording",
-            help="Play the backing track in your headphones or speakers while you record.",
-            key="mt_use_backing_monitor",
-        )
-    with _rec_top3:
         include_backing_in_mix = st.checkbox(
             "Include backing in exported mix",
             key="include_backing_mix",
@@ -6600,7 +6591,6 @@ def _render_multitrack_session_setup_panel(
         mt_selected_sections,
         mt_events,
         mt_backing_duration,
-        use_backing_monitor,
         include_backing_in_mix,
         backing_volume,
         mt_count_in_bars,
@@ -6677,7 +6667,6 @@ def multitrack_studio_html(
   <div class="mt-toolbar">
     <button class="primary" id="mt-play">▶ Play with count-in</button>
     <button id="mt-stop">■ Stop</button>
-    <label>Monitor <input type="range" id="mt-backing-vol" min="0" max="150" value="{int(backing_monitor_volume * 100)}"></label>
   </div>
 
   <div class="mt-transport-readout">Position: <span class="mt-beat" id="mt-time">0.0s</span> · Bar <span class="mt-beat" id="mt-bar">1</span> · Beat <span class="mt-beat" id="mt-beat">1</span></div>
@@ -6693,7 +6682,6 @@ def multitrack_studio_html(
     const listEl = document.getElementById("mt-track-list");
     const playBtn = document.getElementById("mt-play");
     const stopBtn = document.getElementById("mt-stop");
-    const backingVol = document.getElementById("mt-backing-vol");
     const timeEl = document.getElementById("mt-time");
     const barEl = document.getElementById("mt-bar");
     const beatEl = document.getElementById("mt-beat");
@@ -6830,7 +6818,7 @@ def multitrack_studio_html(
         src.buffer = backingBuf;
         src.loop = cfg.loopBacking;
         backingGain = audioCtx.createGain();
-        backingGain.gain.value = Number(backingVol.value) / 100;
+        backingGain.gain.value = cfg.backingMonitorVolume;
         src.connect(backingGain);
         backingGain.connect(masterGain);
         src.start(musicStart);
@@ -6876,9 +6864,6 @@ def multitrack_studio_html(
     renderTracks();
     playBtn.addEventListener("click", playSession);
     stopBtn.addEventListener("click", stopAll);
-    backingVol.addEventListener("input", () => {{
-      if (backingGain) backingGain.gain.value = Number(backingVol.value) / 100;
-    }});
   </script>
 </div>
 """
@@ -12708,7 +12693,6 @@ elif _studio_page == "multitrack":
                 mt_selected_sections,
                 mt_events,
                 mt_backing_duration,
-                use_backing_monitor,
                 include_backing_in_mix,
                 backing_volume,
                 mt_count_in_bars,
@@ -12737,6 +12721,7 @@ elif _studio_page == "multitrack":
             )
         elif backing_playback_status == "metadata_only" and not monitor_wav:
             st.info("Saved backing settings loaded — prepare backing again or reload when cloud audio is available.")
+        use_backing_monitor = bool(st.session_state.get("mt_use_backing_monitor", True))
         backing_b64 = (
             base64.b64encode(monitor_wav).decode("ascii")
             if monitor_wav and use_backing_monitor
@@ -12960,26 +12945,38 @@ elif _studio_page == "multitrack":
                     help="Metronome click during playback.",
                 )
             with _tr3:
-                st.caption(
-                    "Transport settings persist across refresh and saved projects."
+                use_backing_monitor = st.checkbox(
+                    "Hear backing during playback",
+                    key="mt_use_backing_monitor",
+                    help="Play the prepared backing track while transport runs.",
                 )
+            st.caption(
+                "Transport settings persist across refresh and saved projects. "
+                "Edit layer volume, mute, and solo in Step 2."
+            )
             try:
                 from studio_page_persistence import flush_current_page_snapshot
 
                 flush_current_page_snapshot(st.session_state)
             except Exception:
                 pass
+            use_backing_monitor = bool(st.session_state.get("mt_use_backing_monitor", True))
+            backing_b64_for_studio = (
+                base64.b64encode(monitor_wav).decode("ascii")
+                if monitor_wav and use_backing_monitor
+                else None
+            )
             components.html(
                 multitrack_studio_html(
-                    backing_b64=backing_b64,
+                    backing_b64=backing_b64_for_studio,
                     tracks=studio_tracks,
                     bpm=mt_bpm,
                     beats_per_bar=mt_beats_per_bar,
                     count_in_bars=mt_count_in_bars,
                     metronome_during_playback=mt_metronome_playback,
                     loop_backing=mt_loop_backing,
-                    backing_monitor_enabled=bool(backing_b64),
-                    backing_monitor_volume=backing_volume,
+                    backing_monitor_enabled=bool(backing_b64_for_studio),
+                    backing_monitor_volume=float(st.session_state.get("mt_backing_volume", backing_volume)),
                     scope_label=st.session_state.get("mt_backing_scope", mt_scope_label),
                     time_signature=mt_time_sig,
                     backing_duration_sec=float(

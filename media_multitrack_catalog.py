@@ -86,6 +86,33 @@ def _backing_bytes_from_local_path(
     return None
 
 
+def resolve_multitrack_slot_bytes(session_state: dict[str, Any], slot: str) -> bytes | None:
+    try:
+        from multitrack_session_persistence import resolve_multitrack_slot_bytes as _resolve
+
+        return _resolve(session_state, slot)
+    except ImportError:
+        return None
+
+
+def session_has_saveable_multitrack_content(session_state: dict[str, Any]) -> bool:
+    """True when the session has layer audio, a mix, or prepared backing to save."""
+    try:
+        from multitrack_session_persistence import session_has_layer_audio
+    except ImportError:
+        session_has_layer_audio = lambda _ss, **kw: False  # type: ignore[assignment]
+
+    if session_has_layer_audio(session_state):
+        return True
+    if isinstance(session_state.get("mixed_track_wav"), (bytes, bytearray)) and session_state.get("mixed_track_wav"):
+        return True
+    if _backing_bytes_from_session(session_state):
+        return True
+    if str(session_state.get("mt_backing_prepared_at") or "").strip():
+        return True
+    return False
+
+
 def resolve_multitrack_backing_bytes(
     session_state: dict[str, Any],
     multitrack_id: str,
@@ -484,8 +511,12 @@ def _persist_session_tracks(
         slot = str(track.get("slot") or "")
         tid = str(track.get("track_id") or "").strip() or new_track_id()
         track["track_id"] = tid
-        audio = mt_tracks.get(slot)
-        if not audio or not isinstance(audio, (bytes, bytearray)):
+        audio = resolve_multitrack_slot_bytes(session_state, slot)
+        if not audio:
+            summary = track.get("analysis_summary") if isinstance(track.get("analysis_summary"), dict) else {}
+            summary["has_audio"] = True
+            track["analysis_summary"] = summary
+            track["playback_status"] = PLAYBACK_METADATA_ONLY
             updated_tracks.append(track)
             continue
         filename = str(filenames.get(slot) or f"{slot.replace(' ', '_').lower()}.wav")
@@ -635,7 +666,26 @@ def save_multitrack_session_with_notes(
         st=st,
     )
     if not fields:
-        return False, "", "no_layers_or_mix"
+        if not session_has_saveable_multitrack_content(session_state):
+            return False, "", "nothing_to_save"
+        try:
+            from studio_history_cloud import active_workspace_id
+        except ImportError:
+            active_workspace_id = lambda *, st=None: "daniel"  # type: ignore[assignment]
+        fields = {
+            "workspace_id": active_workspace_id(st=st),
+            "title": str(project_name or "Multitrack session").strip()[:120],
+            "song": str(song_title or session_state.get("active_song_title") or "").strip(),
+            "tracks": [],
+            "track_controls": {},
+            **gather_multitrack_backing_fields(session_state),
+        }
+        try:
+            from multitrack_mixer_state import gather_multitrack_transport_fields
+
+            fields.update(gather_multitrack_transport_fields(session_state))
+        except ImportError:
+            pass
 
     active_mid = active_catalog_multitrack_id(session_state)
     existing_session: dict[str, Any] | None = None
@@ -783,40 +833,69 @@ def list_catalog_multitrack_sessions(*, st: Any | None = None) -> tuple[list[dic
     return rows, None
 
 
+def multitrack_layer_status_counts(
+    payload: dict[str, Any],
+    *,
+    session_workspace: str = "",
+    st: Any | None = None,
+) -> tuple[int, int]:
+    """Return (playable_layers, metadata_only_layers) for saved project summary."""
+    ws = str(session_workspace or payload.get("workspace_id") or "daniel")
+    tracks = real_multitrack_tracks(payload.get("tracks") if isinstance(payload.get("tracks"), list) else [])
+    playable = 0
+    meta_only = 0
+    for track in tracks:
+        status = track_playback_status(track, session_workspace=ws, st=st)
+        if status == PLAYBACK_PLAYABLE:
+            playable += 1
+        elif status in (PLAYBACK_METADATA_ONLY, PLAYBACK_MISSING_FILE, PLAYBACK_UPLOAD_FAILED):
+            summary = track.get("analysis_summary") if isinstance(track.get("analysis_summary"), dict) else {}
+            if summary.get("has_audio") or track.get("storage_ref") or track.get("local_path"):
+                meta_only += 1
+    return playable, meta_only
+
+
+def _multitrack_backing_summary_part(payload: dict[str, Any], *, session_workspace: str = "", st: Any | None = None) -> str:
+    ws = str(session_workspace or payload.get("workspace_id") or "daniel")
+    if multitrack_has_saved_backing(payload):
+        prepared = str(payload.get("backing_prepared_at") or "").strip()
+        if prepared:
+            return f"backing ready · {prepared[:16]}"
+        return "backing ready"
+    has_settings = bool(
+        payload.get("backing_prepared_at")
+        or payload.get("backing_volume") is not None
+        or str(payload.get("backing_scope") or "").strip()
+        or payload.get("backing_loops") is not None
+    )
+    if not has_settings:
+        return ""
+    status = backing_playback_status(payload, session_workspace=ws, st=st)
+    if status == PLAYBACK_PLAYABLE:
+        return "backing ready"
+    if status == PLAYBACK_METADATA_ONLY:
+        return "backing settings saved · backing audio missing"
+    return "backing settings saved · backing audio missing"
+
+
 def catalog_multitrack_row_summary(row: dict[str, Any]) -> str:
     payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
     name = str(payload.get("title") or row.get("title") or "Multitrack session")
     ws = str(payload.get("workspace_id") or "daniel")
-    tracks = real_multitrack_tracks(payload.get("tracks") if isinstance(payload.get("tracks"), list) else [])
-    loaded = sum(
-        1
-        for t in tracks
-        if track_playback_status(t, session_workspace=ws) == PLAYBACK_PLAYABLE
-    )
-    meta_only = sum(
-        1
-        for t in tracks
-        if track_playback_status(t, session_workspace=ws) == PLAYBACK_METADATA_ONLY
-    )
+    playable, meta_only = multitrack_layer_status_counts(payload, session_workspace=ws)
     song = str(payload.get("song") or "").strip()
     bits = [name[:80]]
     if song:
         bits.append(song[:40])
-    bits.append(f"{loaded} playable")
+    if playable:
+        bits.append(f"{playable} playable")
     if meta_only:
-        bits.append(f"{meta_only} metadata-only")
-    if multitrack_has_saved_backing(payload):
-        prepared = str(payload.get("backing_prepared_at") or "").strip()
-        if prepared:
-            bits.append(f"backing ready · {prepared[:16]}")
-        else:
-            bits.append("backing ready")
-    elif payload.get("backing_prepared_at"):
-        status = str(payload.get("backing_playback_status") or "").strip()
-        if status == PLAYBACK_METADATA_ONLY:
-            bits.append("backing metadata-only")
-        else:
-            bits.append("backing metadata")
+        bits.append(f"{meta_only} recorded layer(s) · audio missing")
+    if not playable and not meta_only:
+        bits.append("0 recorded layers")
+    backing_part = _multitrack_backing_summary_part(payload, session_workspace=ws)
+    if backing_part:
+        bits.append(backing_part)
     return " · ".join(bits)
 
 

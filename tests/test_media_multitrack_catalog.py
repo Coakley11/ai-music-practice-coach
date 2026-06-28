@@ -16,7 +16,7 @@ from media_multitrack_catalog import (
     save_multitrack_session_with_notes,
 )
 from media_persistence import build_media_ami_payload, load_media_catalog
-from media_state import is_real_multitrack_track, merge_catalog, normalize_multitrack_sessions, real_multitrack_tracks
+from media_state import is_real_multitrack_track, merge_catalog, migrate_multitrack_session, normalize_multitrack_sessions, real_multitrack_tracks
 from multitrack_history import build_multitrack_history_payload
 from multitrack_session_persistence import clear_multitrack_persisted_state, count_mt_layers
 from multitrack_slots import MULTITRACK_SLOTS
@@ -342,7 +342,7 @@ class TestMediaMultitrackCatalog(unittest.TestCase):
                 with patch("media_storage._track_local_exists", lambda ws, rel: "t1" in rel):
                     summary = catalog_multitrack_row_summary(row)
         self.assertIn("1 playable", summary)
-        self.assertIn("1 metadata-only", summary)
+        self.assertIn("1 recorded layer(s) · audio missing", summary)
 
     def test_ami_payload_excludes_empty_slot_tracks(self) -> None:
         import json
@@ -374,3 +374,140 @@ class TestMediaMultitrackCatalog(unittest.TestCase):
         text = json.dumps(payload)
         self.assertNotIn("Bass", text)
         self.assertFalse(is_real_multitrack_track({"slot": "Bass", "analysis_summary": {"has_audio": False}}))
+
+    def test_summary_empty_slots_only(self) -> None:
+        session = {
+            "multitrack_id": "mt-empty",
+            "title": "Project A",
+            "tracks": [
+                {"track_id": "e1", "slot": "Guitar", "name": "Guitar", "analysis_summary": {"has_audio": False}},
+                {"track_id": "e2", "slot": "Piano / Keys", "name": "Piano", "analysis_summary": {"has_audio": False}},
+            ],
+        }
+        summary = catalog_multitrack_row_summary({"payload": session})
+        self.assertIn("0 recorded layers", summary)
+        self.assertNotIn("metadata-only", summary)
+
+    def test_summary_two_playable_layers(self) -> None:
+        session = {
+            "multitrack_id": "mt-two",
+            "title": "Project A",
+            "workspace_id": "daniel",
+            "tracks": [
+                {
+                    "track_id": "t1",
+                    "slot": "Guitar",
+                    "storage_ref": "supabase://music-media/u/ws/t1.wav",
+                    "local_path": "media/multitrack/mt/t1.wav",
+                    "playback_status": "playable",
+                    "analysis_summary": {"has_audio": True},
+                },
+                {
+                    "track_id": "t2",
+                    "slot": "Piano / Keys",
+                    "storage_ref": "supabase://music-media/u/ws/t2.wav",
+                    "local_path": "media/multitrack/mt/t2.wav",
+                    "playback_status": "playable",
+                    "analysis_summary": {"has_audio": True},
+                },
+            ],
+        }
+        with patch("media_storage._resolve_workspace_id", lambda *, st=None: "daniel"):
+            with patch("media_storage._cloud_storage_enabled", lambda: True):
+                with patch("media_storage._track_local_exists", lambda ws, rel: True):
+                    summary = catalog_multitrack_row_summary({"payload": session})
+        self.assertIn("2 playable", summary)
+
+    def test_summary_backing_only(self) -> None:
+        session = {
+            "multitrack_id": "mt-backing",
+            "title": "Backing only",
+            "tracks": [],
+            "backing_storage_ref": "supabase://music-media/u/ws/backing.wav",
+            "backing_local_path": "media/multitrack/mt/backing.wav",
+            "backing_prepared_at": "2026-06-28T12:00:00+00:00",
+        }
+        with patch("media_storage._resolve_workspace_id", lambda *, st=None: "daniel"):
+            with patch("media_storage._cloud_storage_enabled", lambda: True):
+                summary = catalog_multitrack_row_summary({"payload": session})
+        self.assertIn("0 recorded layers", summary)
+        self.assertIn("backing ready", summary)
+
+    def test_summary_two_layers_and_backing(self) -> None:
+        session = {
+            "multitrack_id": "mt-full",
+            "title": "Project A",
+            "workspace_id": "daniel",
+            "tracks": [
+                {
+                    "track_id": "t1",
+                    "slot": "Guitar",
+                    "storage_ref": "supabase://music-media/u/ws/t1.wav",
+                    "local_path": "media/multitrack/mt/t1.wav",
+                    "playback_status": "playable",
+                    "analysis_summary": {"has_audio": True},
+                },
+                {
+                    "track_id": "t2",
+                    "slot": "Piano / Keys",
+                    "storage_ref": "supabase://music-media/u/ws/t2.wav",
+                    "local_path": "media/multitrack/mt/t2.wav",
+                    "playback_status": "playable",
+                    "analysis_summary": {"has_audio": True},
+                },
+            ],
+            "backing_storage_ref": "supabase://music-media/u/ws/backing.wav",
+            "backing_prepared_at": "2026-06-28T12:00:00+00:00",
+        }
+        with patch("media_storage._resolve_workspace_id", lambda *, st=None: "daniel"):
+            with patch("media_storage._cloud_storage_enabled", lambda: True):
+                with patch("media_storage._track_local_exists", lambda ws, rel: True):
+                    summary = catalog_multitrack_row_summary({"payload": session})
+        self.assertIn("2 playable", summary)
+        self.assertIn("backing ready", summary)
+
+    def test_save_resolves_layer_audio_from_page_snapshot(self) -> None:
+        from multitrack_session_persistence import encode_mt_tracks_for_persist
+
+        encoded, _diag = encode_mt_tracks_for_persist(
+            {slot: (b"guitar-bytes" if slot == "Guitar" else None) for slot in MULTITRACK_SLOTS}
+        )
+        session = {
+            "mt_tracks": {slot: None for slot in MULTITRACK_SLOTS},
+            "_studio_page_snapshots": {"multitrack": {"mt_tracks": encoded}},
+            "mt_track_filenames": {"Guitar": "guitar.wav"},
+            "mt_name_Guitar": "Lead",
+            "mt_track_controls": {"Guitar": {"volume": 1.0, "mute": False, "solo": False, "delay": 0.0}},
+            "active_song_title": "Say",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "media_catalog.json"
+
+            def _fake_path(*, st=None):
+                return path
+
+            with patch("media_persistence._local_path", _fake_path):
+                with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
+                        with patch("media_persistence._save_cloud_catalog", lambda catalog, *, st=None: (True, "")):
+                            with patch(
+                                "media_multitrack_catalog.persist_track_audio",
+                                lambda st, mid, tid, audio, **kw: {
+                                    "ok": True,
+                                    "local_path": f"media/multitrack/{mid}/{tid}.wav",
+                                    "storage_ref": "supabase://music-media/u/ws/t.wav",
+                                    "playback_status": "playable",
+                                },
+                            ):
+                                ok, mid, err = save_multitrack_session_with_notes(
+                                    session,
+                                    project_name="Snapshot layer",
+                                    song_title="Say",
+                                )
+                                self.assertTrue(ok, err)
+                                row = migrate_multitrack_session(
+                                    load_media_catalog(st=None)["multitrack_sessions"][0]
+                                )
+                                guitar = next(t for t in row["tracks"] if t["slot"] == "Guitar")
+                                self.assertEqual(guitar.get("playback_status"), "playable")
+                                self.assertTrue(guitar.get("local_path"))

@@ -230,7 +230,12 @@ def render_upload_history_panel(st_obj: Any) -> None:
 def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> None:
     ss = st_obj.session_state
     mt = ss.get("mt_tracks") if isinstance(ss.get("mt_tracks"), dict) else {}
-    has_layers = any(mt.get(slot) for slot in mt) or ss.get("mixed_track_wav")
+    try:
+        from media_multitrack_catalog import session_has_saveable_multitrack_content
+
+        has_saveable = session_has_saveable_multitrack_content(ss)
+    except ImportError:
+        has_saveable = bool(any(mt.get(slot) for slot in mt) or ss.get("mixed_track_wav"))
 
     flash = ss.pop(MT_FLASH_KEY, None) or ss.pop("mt_hist_flash", None)
 
@@ -245,8 +250,9 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
 
         st_obj.markdown("##### Save current project")
         st_obj.caption(
-            "Save to History stores the current layers and prepared backing as a Project Library version. "
-            "Use separate names (e.g. Trial 1, Trial 2) for multiple backing/project versions."
+            "Each saved row is a **project version** in Project Library — for example Project A, Project B, or "
+            "Trial 1 / Trial 2. Enter a **Project name** below, then click **Save to History** to keep your "
+            "current layers, mixer settings, and prepared backing (no export/mix required)."
         )
         name_default = default_project_name(ss, song_title=song_title)
         if "mt_history_save_name" not in ss:
@@ -261,15 +267,25 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             height=68,
             placeholder="Arrangement idea, mix notes, etc.",
         )
-        if not has_layers:
-            st_obj.caption("Load at least one layer or create a mix before saving.")
+        if not has_saveable:
+            st_obj.caption(
+                "Record or upload at least one layer, or prepare backing, before saving."
+            )
         if st_obj.button(
             "Save to History",
             type="primary",
             key="mt_history_save_btn",
             use_container_width=True,
-            disabled=not has_layers,
+            disabled=not has_saveable,
         ):
+            try:
+                from multitrack_mixer_state import commit_all_multitrack_mixer_widgets
+                from studio_page_persistence import flush_current_page_snapshot
+
+                commit_all_multitrack_mixer_widgets(ss)
+                flush_current_page_snapshot(ss)
+            except ImportError:
+                pass
             ok, item_key, err = save_multitrack_session_with_notes(
                 ss,
                 project_name=project_name,

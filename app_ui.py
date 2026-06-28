@@ -6826,8 +6826,8 @@ def multitrack_session_context_html(
 
 def multitrack_layer_badge_html(*, ready: bool) -> str:
     if ready:
-        return '<span class="ui-mt-layer-badge ready">● Ready</span>'
-    return '<span class="ui-mt-layer-badge empty">○ Empty</span>'
+        return '<span class="ui-mt-layer-badge ready" title="Recorded or uploaded audio saved for this slot">● Has audio</span>'
+    return '<span class="ui-mt-layer-badge empty" title="No recorded or uploaded audio yet">○ Empty</span>'
 
 
 def render_multitrack_session_setup_header(st: Any) -> None:

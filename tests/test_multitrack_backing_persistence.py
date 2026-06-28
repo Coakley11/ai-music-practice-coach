@@ -238,7 +238,7 @@ class TestMultitrackBackingPersistence(unittest.TestCase):
             }
         }
         summary = catalog_multitrack_row_summary(row)
-        self.assertIn("backing metadata-only", summary)
+        self.assertIn("backing settings saved · backing audio missing", summary)
 
     def test_second_device_loads_same_backing_ref(self) -> None:
         row = {

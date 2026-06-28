@@ -23,6 +23,46 @@ def count_mt_layers(mt: dict[str, Any] | None) -> int:
     return sum(1 for v in mt.values() if _track_has_audio(v))
 
 
+def resolve_multitrack_slot_bytes(session_state: dict[str, Any], slot: str) -> bytes | None:
+    """Resolve one layer's audio bytes from live session, persist blob, or page snapshot."""
+    def _bytes_from_map(mt: Any) -> bytes | None:
+        if not isinstance(mt, dict):
+            return None
+        raw = mt.get(slot)
+        if _track_has_audio(raw):
+            return bytes(raw)
+        decoded = decode_mt_tracks_from_persist(mt)
+        if isinstance(decoded, dict):
+            cached = decoded.get(slot)
+            if _track_has_audio(cached):
+                return bytes(cached)
+        return None
+
+    live = _bytes_from_map(session_state.get("mt_tracks"))
+    if live:
+        return live
+    blob = _bytes_from_map(session_state.get("_mt_tracks_persist_blob"))
+    if blob:
+        return blob
+    store = session_state.get("_studio_page_snapshots")
+    if isinstance(store, dict):
+        snap = store.get("multitrack")
+        if isinstance(snap, dict):
+            cached = _bytes_from_map(snap.get("mt_tracks"))
+            if cached:
+                return cached
+    return None
+
+
+def session_has_layer_audio(session_state: dict[str, Any], *, slots: tuple[str, ...] | None = None) -> bool:
+    try:
+        from multitrack_slots import MULTITRACK_SLOTS
+    except ImportError:
+        MULTITRACK_SLOTS = ()  # type: ignore[assignment]
+    target = slots if slots is not None else MULTITRACK_SLOTS
+    return any(resolve_multitrack_slot_bytes(session_state, slot) for slot in target)
+
+
 def encode_mt_tracks_for_persist(mt: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
     """Encode ``mt_tracks`` slot map for JSON/cloud save with size guards."""
     diag: dict[str, Any] = {
