@@ -189,14 +189,38 @@ def _skill_mentions_from_text(text: str) -> Counter[str]:
     return counts
 
 
+def _entry_song(entry: dict[str, Any]) -> str:
+    return str(entry.get("active_song") or entry.get("song") or "").strip()
+
+
+def _entry_notes(entry: dict[str, Any]) -> str:
+    return str(entry.get("notes") or entry.get("practice") or "").strip()
+
+
+def _entry_minutes(entry: dict[str, Any]) -> int:
+    try:
+        return int(entry.get("duration_minutes") or entry.get("minutes") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _entry_focus(entry: dict[str, Any]) -> str:
+    return str(entry.get("focus_area") or entry.get("focus") or "").strip()
+
+
 def _aggregate_log_stats(logs: list[dict[str, Any]]) -> dict[str, Any]:
     if not logs:
         return {}
-    songs = Counter(str(e.get("song") or "").strip() for e in logs if e.get("song"))
+    songs = Counter(_entry_song(e) for e in logs if _entry_song(e))
     instruments = Counter(str(e.get("instrument") or "").strip() for e in logs if e.get("instrument"))
-    focuses = Counter(str(e.get("focus") or "").strip() for e in logs if e.get("focus"))
+    focuses = Counter(_entry_focus(e) for e in logs if _entry_focus(e))
     genres = Counter(str(e.get("genre") or "").strip() for e in logs if e.get("genre"))
     levels = Counter(str(e.get("level") or "").strip() for e in logs if e.get("level"))
+    hard_parts = Counter(
+        str(e.get("what_was_hard") or "").strip().lower()
+        for e in logs
+        if str(e.get("what_was_hard") or "").strip()
+    )
     ratings: list[tuple[date | None, float]] = []
     skill_mentions: Counter[str] = Counter()
     dated: list[tuple[date, dict[str, Any]]] = []
@@ -205,11 +229,19 @@ def _aggregate_log_stats(logs: list[dict[str, Any]]) -> dict[str, Any]:
         d = _parse_log_date(entry)
         if d:
             dated.append((d, entry))
+        rating_val = entry.get("rating")
+        ratings_dict = entry.get("ratings") if isinstance(entry.get("ratings"), dict) else {}
+        if rating_val is None and ratings_dict.get("confidence") is not None:
+            try:
+                rating_val = float(ratings_dict["confidence"]) * 2
+            except (TypeError, ValueError):
+                rating_val = None
         try:
-            ratings.append((d, float(entry.get("rating", 0))))
+            ratings.append((d, float(rating_val or 0)))
         except (TypeError, ValueError):
             pass
-        skill_mentions.update(_skill_mentions_from_text(str(entry.get("practice") or "")))
+        skill_mentions.update(_skill_mentions_from_text(_entry_notes(entry)))
+        skill_mentions.update(_skill_mentions_from_text(str(entry.get("what_was_hard") or "")))
 
     dated.sort(key=lambda x: x[0])
     today = date.today()
@@ -234,7 +266,8 @@ def _aggregate_log_stats(logs: list[dict[str, Any]]) -> dict[str, Any]:
         "recent_ratings": recent_ratings,
         "older_ratings": older_ratings,
         "avg_rating": sum(rating_vals) / len(rating_vals) if rating_vals else None,
-        "recent_songs": Counter(str(e.get("song") or "") for e in last_14 if e.get("song")),
+        "recent_songs": Counter(_entry_song(e) for e in last_14 if _entry_song(e)),
+        "hard_parts": hard_parts,
     }
 
 
@@ -678,6 +711,18 @@ def generate_practice_log_insights(
                 f"Your written logs mention **{skill}** often — treat it as an active growth area."
             )
 
+    hard_parts: Counter[str] = stats.get("hard_parts") or Counter()
+    for part, count in hard_parts.most_common(2):
+        if part:
+            label = part[:80] + ("…" if len(part) > 80 else "")
+            out.weak_areas.append(f"Repeated challenge in your log: **{label}** ({count}×).")
+
+    recent_next_steps = [
+        str(e.get("next_step") or "").strip()
+        for e in sorted(logs, key=lambda x: str(x.get("date") or ""), reverse=True)
+        if str(e.get("next_step") or "").strip()
+    ]
+
     if mission_stats.get("has_data"):
         m_deltas = mission_stats.get("deltas") or {}
         declining_m = sorted(
@@ -737,6 +782,9 @@ def generate_practice_log_insights(
         )
 
     # --- Recommended practice (20–30 min) ---
+    if recent_next_steps:
+        out.recommended_practice.append(f"- Your last next step: {recent_next_steps[0]}")
+
     plan = build_practice_session_from_logs(
         logs,
         all_song_records or [],

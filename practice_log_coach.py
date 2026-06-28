@@ -31,30 +31,40 @@ class PracticeLogCoachView:
 
 def describe_practice_session(entry: dict[str, Any]) -> str:
     """One supportive sentence about a single logged session."""
-    song = str(entry.get("song") or "your song").strip()
-    mins = int(entry.get("minutes") or 0)
+    song = str(entry.get("active_song") or entry.get("song") or "your song").strip()
+    try:
+        mins = int(entry.get("duration_minutes") or entry.get("minutes") or 0)
+    except (TypeError, ValueError):
+        mins = 0
     minutes = str(mins) if mins > 0 else "a short"
     instrument = str(entry.get("instrument") or "your instrument").strip()
-    focus = str(entry.get("focus") or "").strip()
-    mode = str(entry.get("mode") or "").strip()
+    focus = str(entry.get("focus_area") or entry.get("focus") or "").strip()
+    mode = str(entry.get("practice_type") or entry.get("mode") or "").strip()
     sections = int(entry.get("section_count") or 0)
+    section_label = str(entry.get("section_practiced") or "").strip()
 
     line = f"You practiced **{song}** for **{minutes}** minutes on **{instrument}**"
     focus_bits: list[str] = []
     if focus and focus.lower() not in {"general", "any", ""}:
         focus_bits.append(f"**{focus}**")
-    if mode and mode not in {"Song Work", ""}:
+    if mode and mode.lower() not in {"song practice", "song work", ""}:
         focus_bits.append(f"{mode.lower()}")
-    if sections > 0:
+    if section_label and section_label not in {"unspecified", ""}:
+        focus_bits.append(f"**{section_label}**")
+    elif sections > 0:
         focus_bits.append(f"about **{sections}** section(s)")
     if focus_bits:
         line += ", focused on " + ", ".join(focus_bits)
     line += "."
 
-    notes = str(entry.get("practice") or "").strip()
+    notes = str(entry.get("notes") or entry.get("practice") or "").strip()
     if notes:
         excerpt = notes if len(notes) <= 200 else notes[:197] + "…"
         line += f' You wrote: “{excerpt}”'
+    went_well = str(entry.get("what_went_well") or "").strip()
+    if went_well:
+        excerpt = went_well if len(went_well) <= 120 else went_well[:117] + "…"
+        line += f" What went well: {excerpt}"
     return line
 
 

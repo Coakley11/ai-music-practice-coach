@@ -116,7 +116,11 @@ def _active_level_for_ami(session_state: dict[str, Any], song_ctx: dict[str, Any
     return str(song_ctx.get("level") or session_state.get("level") or "").strip()
 
 
-def gather_practice_ami_snapshot(session_state: dict[str, Any]) -> dict[str, Any]:
+def gather_practice_ami_snapshot(
+    session_state: dict[str, Any],
+    *,
+    include_practice_logs: bool = True,
+) -> dict[str, Any]:
     """JSON-safe practice + active song context for AMI."""
     try:
         from active_song_state import gather_active_song_context
@@ -149,9 +153,27 @@ def gather_practice_ami_snapshot(session_state: dict[str, Any]) -> dict[str, Any
         sections = [str(s) for s in song["sections"] if str(s).strip()][:12]
 
     history: list[dict[str, Any]] = []
-    log = session_state.get("practice_log_entries") or session_state.get("practice_history")
-    if isinstance(log, list):
-        history = [dict(x) for x in log[:8] if isinstance(x, dict)]
+    practice_log_summary: dict[str, Any] = {}
+    practice_log_ami_payload: dict[str, Any] = {}
+    if include_practice_logs:
+        try:
+            from practice_log_ami import build_practice_log_ami_payload
+            from practice_log_state import load_entries
+
+            entries = load_entries(session_state)
+            practice_log_ami_payload = build_practice_log_ami_payload(
+                session_state,
+                entries=entries,
+                window_days=14,
+            )
+            practice_log_summary = dict(practice_log_ami_payload.get("practice_log_summary") or {})
+            recent = practice_log_ami_payload.get("recent_sessions")
+            if isinstance(recent, list):
+                history = [dict(x) for x in recent[:8] if isinstance(x, dict)]
+        except Exception:
+            log = session_state.get("practice_log_entries") or session_state.get("practice_history")
+            if isinstance(log, list):
+                history = [dict(x) for x in log[:8] if isinstance(x, dict)]
 
     snap: dict[str, Any] = {
         "coach_page": "practice",
@@ -176,6 +198,8 @@ def gather_practice_ami_snapshot(session_state: dict[str, Any]) -> dict[str, Any
         "practice_notation_difficulty": practice.get("practice_notation_difficulty"),
         "sections": sections,
         "recent_practice_history": history,
+        "practice_log_summary": practice_log_summary,
+        "practice_log_ami_payload": practice_log_ami_payload,
         "studio_page": str(session_state.get("studio_page") or "practice"),
     }
     return {k: v for k, v in snap.items() if v is not None and v != "" and v != []}
@@ -354,6 +378,22 @@ def detect_music_send_intent(question: str, coach_page: str = "") -> str:
         return "music_general"
     page = str(coach_page or "").strip().lower()
 
+    if any(
+        p in low
+        for p in (
+            "analyze my practice",
+            "analyze my practice history",
+            "practice history analysis",
+            "practice log analysis",
+            "patterns in my practice",
+            "what patterns are showing",
+            "am i avoiding",
+        )
+    ):
+        return "practice_history_analysis"
+    if page == "log" and any(p in low for p in ("analyze", "pattern", "history", "trend", "avoid")):
+        return "practice_history_analysis"
+
     if _is_transposition_question(low):
         return "music_transposition"
     if _is_similar_songs_question(low):
@@ -521,6 +561,11 @@ def build_music_applied_math_context(
         "genre": snap.get("genre"),
         "sections": snap.get("sections"),
         "recent_practice_history": snap.get("recent_practice_history"),
+        "practice_log_summary": snap.get("practice_log_summary"),
+        "practice_log_ami_payload": snap.get("practice_log_ami_payload"),
+        "recent_sessions": (snap.get("practice_log_ami_payload") or {}).get("recent_sessions")
+        if isinstance(snap.get("practice_log_ami_payload"), dict)
+        else None,
         "cache_build_action": cache_trace.get("cache_action"),
     }
     if song.get("title"):

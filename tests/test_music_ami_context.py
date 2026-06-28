@@ -37,6 +37,12 @@ class TestMusicSendIntent(unittest.TestCase):
             "tempo_key",
         )
 
+    def test_practice_history_analysis_intent(self) -> None:
+        self.assertEqual(
+            detect_music_send_intent("Analyze my practice history and tell me what to focus on", "log"),
+            "practice_history_analysis",
+        )
+
     def test_difficulty_intent(self) -> None:
         self.assertEqual(
             detect_music_send_intent("Is this song too difficult for my level?", "practice"),
@@ -98,6 +104,74 @@ class TestPracticeSnapshot(unittest.TestCase):
         self.assertEqual(snap["practice_focus_section"], "Chorus")
         self.assertEqual(snap["genre"], "Rock")
         self.assertEqual(snap["bpm"], 120)
+
+
+class TestPracticeLogAmiSnapshot(unittest.TestCase):
+    def test_recent_practice_history_from_persistence_fixture(self) -> None:
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from practice_log_state import migrate_practice_log_entry
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "practice_history.json"
+            entry = migrate_practice_log_entry(
+                {
+                    "session_id": "fixture-1",
+                    "date": "2026-06-26",
+                    "active_song": "Autumn Leaves",
+                    "duration_minutes": 30,
+                    "updated_at": "2026-06-26T12:00:00+00:00",
+                }
+            )
+            path.write_text(json.dumps([entry]), encoding="utf-8")
+            session = {
+                "selected_song": {"title": "Autumn Leaves", "pick_key": "jazz:autumn"},
+                "active_catalog_pick_key": "jazz:autumn",
+            }
+            with patch("practice_log_persistence._local_path", lambda: path):
+                snap = gather_practice_ami_snapshot(session)
+            history = snap.get("recent_practice_history") or []
+            self.assertTrue(history)
+            self.assertEqual(history[0].get("active_song"), "Autumn Leaves")
+            payload = snap.get("practice_log_ami_payload") or {}
+            self.assertIn("practice_log_summary", payload)
+
+    def test_analyze_practice_context_includes_payload(self) -> None:
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from practice_log_state import migrate_practice_log_entry
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "practice_history.json"
+            entry = migrate_practice_log_entry(
+                {
+                    "session_id": "fixture-2",
+                    "date": "2026-06-26",
+                    "active_song": "Blue Bossa",
+                    "duration_minutes": 20,
+                    "updated_at": "2026-06-26T12:00:00+00:00",
+                }
+            )
+            path.write_text(json.dumps([entry]), encoding="utf-8")
+            session = {
+                "selected_song": {"title": "Blue Bossa", "pick_key": "jazz:blue"},
+                "active_catalog_pick_key": "jazz:blue",
+            }
+            with patch("practice_log_persistence._local_path", lambda: path):
+                ctx = build_music_applied_math_context(
+                    "log",
+                    session,
+                    question="Analyze my practice history",
+                )
+            self.assertTrue(ctx.get("recent_practice_history"))
+            self.assertIn("practice_log_ami_payload", ctx)
+            self.assertEqual(ctx.get("routing_hint"), "practice_history_analysis")
 
 
 class TestFinalizeMusicContext(unittest.TestCase):

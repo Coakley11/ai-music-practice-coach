@@ -33,23 +33,52 @@ def _save_local_logs(logs: list[dict[str, Any]]) -> None:
     path.write_text(json.dumps(logs, indent=2), encoding="utf-8")
 
 
-def _entry_key(entry: dict[str, Any]) -> str:
-    return "|".join(
-        str(entry.get(k) or "").strip()
-        for k in ("date", "song", "minutes", "notes", "id")
-    ).strip()
+def _parse_updated_at(entry: dict[str, Any]) -> str:
+    return str(entry.get("updated_at") or entry.get("created_at") or entry.get("date") or "")
+
+
+def _entry_session_id(entry: dict[str, Any]) -> str:
+    sid = str(entry.get("session_id") or "").strip()
+    if sid:
+        return sid
+    try:
+        from practice_log_state import deterministic_session_id, migrate_practice_log_entry
+
+        return str(migrate_practice_log_entry(entry).get("session_id") or deterministic_session_id(entry))
+    except Exception:
+        return ""
 
 
 def _merge_logs(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Merge by session_id; higher updated_at wins. Migrate legacy rows first."""
+    try:
+        from practice_log_state import is_tombstone, migrate_practice_log_entry
+    except ImportError:
+        migrate_practice_log_entry = lambda e: dict(e)  # type: ignore[misc,assignment]
+        is_tombstone = lambda e: bool(e.get("deleted"))  # type: ignore[misc,assignment]
+
     merged: dict[str, dict[str, Any]] = {}
     for group in groups:
         for entry in group or []:
             if not isinstance(entry, dict):
                 continue
-            key = _entry_key(entry) or json.dumps(entry, sort_keys=True, default=str)
-            merged[key] = entry
+            row = migrate_practice_log_entry(entry)
+            sid = _entry_session_id(row)
+            if not sid:
+                sid = json.dumps(row, sort_keys=True, default=str)
+            prev = merged.get(sid)
+            if prev is None or _parse_updated_at(row) >= _parse_updated_at(prev):
+                merged[sid] = row
+
     out = list(merged.values())
-    out.sort(key=lambda e: str(e.get("date") or ""), reverse=True)
+    out.sort(
+        key=lambda e: (
+            str(e.get("date") or ""),
+            _parse_updated_at(e),
+            str(e.get("session_id") or ""),
+        ),
+        reverse=True,
+    )
     return out
 
 
@@ -75,7 +104,7 @@ def load_practice_logs(*, st: Any | None = None) -> list[dict[str, Any]]:
 
 def save_practice_logs(logs: list[dict[str, Any]], *, st: Any | None = None) -> tuple[bool, str]:
     """Persist practice log to local disk and cloud saved_item."""
-    safe = [e for e in (logs or []) if isinstance(e, dict)]
+    safe = _merge_logs([e for e in (logs or []) if isinstance(e, dict)])
     try:
         _save_local_logs(safe)
     except Exception as exc:
