@@ -244,6 +244,10 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             )
 
         st_obj.markdown("##### Save current project")
+        st_obj.caption(
+            "Save to History stores the current layers and prepared backing as a Project Library version. "
+            "Use separate names (e.g. Trial 1, Trial 2) for multiple backing/project versions."
+        )
         name_default = default_project_name(ss, song_title=song_title)
         if "mt_history_save_name" not in ss:
             ss["mt_history_save_name"] = name_default
@@ -277,6 +281,7 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                 ss[MT_FLASH_KEY] = f"Saved to media catalog ({item_key})."
                 ss["mt_hist_active_item"] = item_key
                 ss["multitrack_catalog_active_id"] = item_key
+                ss["_last_catalog_multitrack_id"] = item_key
                 st_obj.rerun()
             else:
                 st_obj.error(_format_save_error(err))

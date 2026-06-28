@@ -6553,6 +6553,11 @@ def _render_multitrack_session_setup_panel(
             use_container_width=True,
             disabled=mt_scope == "Free layering (no backing)" or not mt_events,
         )
+    st.caption(
+        "Prepare Backing updates the monitor backing for the current session. "
+        "If a project is loaded from Project Library, it replaces that project's backing. "
+        "Save to History to keep a separate version or sync across devices."
+    )
     if _prep_clicked:
         practice_level = str(st.session_state.get("level") or "Intermediate")
         monitor_wav, _ = multitrack_monitor_backing_bytes(
@@ -6585,6 +6590,12 @@ def _render_multitrack_session_setup_panel(
         except ImportError:
             st.session_state.multitrack_backing_music_wav = monitor_wav
             st.success("Monitor backing ready — use Step 3 transport while recording.")
+        try:
+            from studio_page_persistence import flush_current_page_snapshot
+
+            flush_current_page_snapshot(st.session_state)
+        except Exception:
+            pass
 
     return (
         mt_bpm,
@@ -12719,6 +12730,15 @@ elif _studio_page == "multitrack":
             )
 
         monitor_wav = st.session_state.get("multitrack_backing_music_wav")
+        backing_load_error = str(st.session_state.get("_mt_backing_load_error") or "").strip()
+        backing_playback_status = str(st.session_state.get("_mt_backing_playback_status") or "").strip()
+        if backing_load_error and not monitor_wav:
+            st.warning(
+                "Saved backing settings loaded, but monitor backing audio is not playable on this device "
+                f"({backing_load_error.replace('_', ' ')})."
+            )
+        elif backing_playback_status == "metadata_only" and not monitor_wav:
+            st.info("Saved backing settings loaded — prepare backing again or reload when cloud audio is available.")
         backing_b64 = (
             base64.b64encode(monitor_wav).decode("ascii")
             if monitor_wav and use_backing_monitor

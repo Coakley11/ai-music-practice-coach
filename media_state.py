@@ -313,6 +313,8 @@ def migrate_multitrack_session(entry: dict[str, Any]) -> dict[str, Any]:
         "backing_prepared_at": str(out.get("backing_prepared_at") or "").strip() or None,
         "backing_storage_ref": out.get("backing_storage_ref"),
         "backing_local_path": out.get("backing_local_path"),
+        "backing_playback_status": str(out.get("backing_playback_status") or "").strip(),
+        "backing_storage_error": str(out.get("backing_storage_error") or "").strip(),
         "analysis_summary": analysis,
         "notes": str(out.get("notes") or "").strip()[:2000],
         "linked_practice_session_id": str(out.get("linked_practice_session_id") or "").strip() or None,

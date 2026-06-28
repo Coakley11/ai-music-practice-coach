@@ -81,11 +81,24 @@ def collect_media_catalog_stats(*, st: Any | None = None) -> dict[str, Any]:
     mt_track_count = 0
     mt_track_storage_refs = 0
     mt_track_metadata_only = 0
+    mt_backing_with_refs = 0
+    mt_backing_storage_refs = 0
+    mt_backing_playable = 0
+    mt_backing_metadata_only = 0
     try:
-        from media_storage import PLAYBACK_METADATA_ONLY, PLAYBACK_PLAYABLE, track_playback_status
+        from media_storage import PLAYBACK_METADATA_ONLY, PLAYBACK_PLAYABLE, backing_playback_status, track_playback_status
 
         for session in visible_mt:
             ws_sess = str(session.get("workspace_id") or ws)
+            if session.get("backing_prepared_at") or session.get("backing_storage_ref") or session.get("backing_local_path"):
+                mt_backing_with_refs += 1
+            if session.get("backing_storage_ref"):
+                mt_backing_storage_refs += 1
+            bstatus = backing_playback_status(session, session_workspace=ws_sess, st=st)
+            if bstatus == PLAYBACK_PLAYABLE:
+                mt_backing_playable += 1
+            elif bstatus == PLAYBACK_METADATA_ONLY:
+                mt_backing_metadata_only += 1
             for track in session.get("tracks") or []:
                 if not isinstance(track, dict) or track.get("deleted"):
                     continue
@@ -145,6 +158,10 @@ def collect_media_catalog_stats(*, st: Any | None = None) -> dict[str, Any]:
         "multitrack_track_count": mt_track_count,
         "multitrack_track_storage_refs": mt_track_storage_refs,
         "multitrack_track_metadata_only": mt_track_metadata_only,
+        "multitrack_backing_sessions": mt_backing_with_refs,
+        "multitrack_backing_storage_refs": mt_backing_storage_refs,
+        "multitrack_backing_playable": mt_backing_playable,
+        "multitrack_backing_metadata_only": mt_backing_metadata_only,
         "media_egress_cloud_downloads": egress.get("cloud_downloads"),
         "media_egress_downloaded_bytes": egress.get("downloaded_bytes"),
         "media_egress_cache_hits": egress.get("cache_hits"),
@@ -161,6 +178,12 @@ def collect_media_catalog_stats(*, st: Any | None = None) -> dict[str, Any]:
         "last_upload_date": last_upload.get("updated_at") or last_upload.get("created_at"),
         "session_last_save_ok": (ss or {}).get("_media_last_save_ok") if isinstance(ss, dict) else None,
         "session_last_save_error": (ss or {}).get("_media_last_save_error") if isinstance(ss, dict) else None,
+        "session_backing_bytes_in_session": (ss or {}).get("_mt_backing_bytes_in_session") if isinstance(ss, dict) else None,
+        "session_backing_playback_status": (ss or {}).get("_mt_backing_playback_status") if isinstance(ss, dict) else None,
+        "session_backing_load_error": (ss or {}).get("_mt_backing_load_error") if isinstance(ss, dict) else None,
+        "session_backing_last_upload_error": (ss or {}).get("_mt_backing_last_upload_error") if isinstance(ss, dict) else None,
+        "session_backing_last_download_error": (ss or {}).get("_mt_backing_last_download_error") if isinstance(ss, dict) else None,
+        "session_backing_last_upload_storage_ref": (ss or {}).get("_mt_backing_last_upload_storage_ref") if isinstance(ss, dict) else None,
     }
 
 
@@ -206,6 +229,10 @@ def render_media_diagnostics(st: Any, session_state: dict[str, Any], *, page: st
         st.text(f"multitrack tracks (visible): {stats.get('multitrack_track_count')}")
         st.text(f"multitrack track storage_refs: {stats.get('multitrack_track_storage_refs')}")
         st.text(f"multitrack metadata-only tracks: {stats.get('multitrack_track_metadata_only')}")
+        st.text(f"multitrack sessions with backing: {stats.get('multitrack_backing_sessions')}")
+        st.text(f"multitrack backing storage_refs: {stats.get('multitrack_backing_storage_refs')}")
+        st.text(f"multitrack backing playable: {stats.get('multitrack_backing_playable')}")
+        st.text(f"multitrack backing metadata-only: {stats.get('multitrack_backing_metadata_only')}")
         st.text(f"deleted items hidden from UI lists: {stats.get('deleted_hidden')}")
 
         st.markdown("**Media egress (this session)**")
@@ -241,6 +268,12 @@ def render_media_diagnostics(st: Any, session_state: dict[str, Any], *, page: st
         st.text(f"last save cloud_error: {stats.get('last_save', {}).get('cloud_error')}")
         st.text(f"session _media_last_save_ok: {stats.get('session_last_save_ok')}")
         st.text(f"session _media_last_save_error: {stats.get('session_last_save_error')}")
+        st.text(f"loaded project backing bytes in session: {stats.get('session_backing_bytes_in_session')}")
+        st.text(f"loaded project backing playback status: {stats.get('session_backing_playback_status')}")
+        st.text(f"loaded project backing load error: {stats.get('session_backing_load_error')}")
+        st.text(f"last backing cloud upload error: {stats.get('session_backing_last_upload_error')}")
+        st.text(f"last backing cloud download error: {stats.get('session_backing_last_download_error')}")
+        st.text(f"last backing upload storage_ref: {stats.get('session_backing_last_upload_storage_ref')}")
 
         st.markdown("**Last load trace**")
         st.code(_json_preview(stats.get("last_load") or {"note": "no load trace yet"}), language="json")

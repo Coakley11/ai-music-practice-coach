@@ -6,7 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from media_multitrack_catalog import (
     apply_catalog_multitrack_to_session,
@@ -14,14 +14,17 @@ from media_multitrack_catalog import (
     build_multitrack_catalog_fields,
     catalog_multitrack_row_summary,
     gather_multitrack_backing_fields,
+    list_catalog_multitrack_sessions,
     persist_prepared_multitrack_backing,
+    resolve_multitrack_backing_bytes,
     save_multitrack_session_with_notes,
     seed_multitrack_backing_volume,
 )
 from media_persistence import build_media_ami_payload, load_media_catalog
 from media_state import migrate_multitrack_session
+from media_storage import PLAYBACK_METADATA_ONLY, backing_media_relpath
 from multitrack_slots import MULTITRACK_SLOTS
-from studio_page_persistence import capture_page_snapshot, restore_page_snapshot
+from studio_page_persistence import apply_page_snapshot, capture_page_snapshot, restore_page_snapshot
 
 
 class TestMultitrackBackingPersistence(unittest.TestCase):
@@ -44,6 +47,7 @@ class TestMultitrackBackingPersistence(unittest.TestCase):
             "mt_use_backing_monitor": True,
             "include_backing_mix": True,
             "multitrack_backing_music_wav": b"backing-wav-bytes",
+            "mt_backing_prepared_at": "2026-06-28T10:00:00+00:00",
             "mt_backing_scope": "full song",
         }
 
@@ -96,6 +100,8 @@ class TestMultitrackBackingPersistence(unittest.TestCase):
                                 self.assertEqual(row["backing_groove"], "Rock groove")
                                 self.assertTrue(row.get("backing_storage_ref"))
                                 self.assertTrue(row.get("backing_local_path"))
+                                self.assertEqual(row.get("backing_playback_status"), "playable")
+                                self.assertEqual(row.get("backing_prepared_at"), session["mt_backing_prepared_at"])
 
     def test_reload_restores_backing_level_and_audio(self) -> None:
         session: dict = {}
@@ -133,6 +139,105 @@ class TestMultitrackBackingPersistence(unittest.TestCase):
                 self.assertEqual(session["mt_backing_volume"], 1.25)
                 self.assertEqual(session["multitrack_bpm"], 96)
                 self.assertEqual(session["multitrack_backing_music_wav"], b"backing-wav")
+                self.assertEqual(session.get("_mt_backing_playback_status"), "playable")
+                self.assertEqual(session.get("_mt_backing_bytes_in_session"), len(b"backing-wav"))
+
+    def test_settings_only_backing_shows_metadata_status(self) -> None:
+        session: dict = {}
+        row = migrate_multitrack_session(
+            {
+                "multitrack_id": "m1",
+                "title": "Say layers",
+                "backing_prepared_at": "2026-06-28T10:00:00+00:00",
+                "backing_volume": 0.8,
+                "tracks": [
+                    {
+                        "track_id": "t1",
+                        "slot": "Guitar",
+                        "name": "Lead",
+                        "analysis_summary": {"has_audio": True},
+                    }
+                ],
+            }
+        )
+        with patch("media_multitrack_catalog.load_track_audio", lambda track, session=None, st=None: (None, "metadata_only")):
+            ok, msg = apply_catalog_multitrack_to_session(session, row, load_audio=True)
+            self.assertTrue(ok, msg)
+            self.assertNotIn("multitrack_backing_music_wav", session)
+            self.assertEqual(session.get("_mt_backing_playback_status"), PLAYBACK_METADATA_ONLY)
+            self.assertEqual(session.get("_mt_backing_load_error"), "no_backing_ref")
+
+    def test_missing_backing_blob_reports_download_error(self) -> None:
+        session: dict = {}
+        row = migrate_multitrack_session(
+            {
+                "multitrack_id": "m1",
+                "backing_storage_ref": "supabase://music-media/u/ws/m1/backing.wav",
+                "backing_prepared_at": "2026-06-28T10:00:00+00:00",
+                "tracks": [
+                    {
+                        "track_id": "t1",
+                        "slot": "Guitar",
+                        "name": "Lead",
+                        "analysis_summary": {"has_audio": True},
+                    }
+                ],
+            }
+        )
+        with patch("media_multitrack_catalog.load_track_audio", lambda track, session=None, st=None: (None, "metadata_only")):
+            with patch("media_multitrack_catalog.load_backing_audio", lambda session, st=None: (None, "missing_file")):
+                ok, _msg = apply_catalog_multitrack_to_session(session, row, load_audio=True)
+                self.assertTrue(ok)
+                self.assertIsNone(session.get("multitrack_backing_music_wav"))
+                self.assertEqual(session.get("_mt_backing_load_error"), "missing_file")
+
+    def test_resolve_backing_bytes_from_local_disk_when_session_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = "daniel"
+            mid = "m-local"
+            rel = backing_media_relpath(mid)
+            path = Path(tmp) / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"disk-backing")
+            with patch("media_multitrack_catalog.recording_local_abs_path", lambda workspace_id, rel_path: Path(tmp) / rel_path):
+                session: dict = {}
+                resolved = resolve_multitrack_backing_bytes(session, mid, workspace_id=ws)
+                self.assertEqual(resolved, b"disk-backing")
+                self.assertEqual(session.get("multitrack_backing_music_wav"), b"disk-backing")
+
+    def test_snapshot_restore_does_not_clobber_live_backing_wav(self) -> None:
+        session = self._session_with_layers()
+        session["studio_page"] = "multitrack"
+        snap = capture_page_snapshot({**session, "multitrack_backing_music_wav": None}, "multitrack")
+        session["multitrack_backing_music_wav"] = b"fresh-backing"
+        apply_page_snapshot(session, snap)
+        self.assertEqual(session["multitrack_backing_music_wav"], b"fresh-backing")
+
+    def test_list_catalog_does_not_load_backing_audio(self) -> None:
+        with patch("media_multitrack_catalog.load_backing_audio") as load_mock:
+            with patch("media_multitrack_catalog.migrate_legacy_multitrack_history", lambda *, st=None: 0):
+                with patch("media_persistence.load_media_catalog", lambda *, st=None: {"multitrack_sessions": [], "uploaded_recordings": []}):
+                    rows, err = list_catalog_multitrack_sessions(st=None)
+                    self.assertIsNone(err)
+                    self.assertEqual(rows, [])
+                    load_mock.assert_not_called()
+
+    def test_metadata_only_project_summary(self) -> None:
+        row = {
+            "payload": {
+                "title": "Say layers",
+                "backing_prepared_at": "2026-06-28T10:00:00+00:00",
+                "backing_playback_status": PLAYBACK_METADATA_ONLY,
+                "tracks": [
+                    {
+                        "slot": "Guitar",
+                        "analysis_summary": {"has_audio": True},
+                    }
+                ],
+            }
+        }
+        summary = catalog_multitrack_row_summary(row)
+        self.assertIn("backing metadata-only", summary)
 
     def test_second_device_loads_same_backing_ref(self) -> None:
         row = {
@@ -214,6 +319,8 @@ class TestMultitrackBackingPersistence(unittest.TestCase):
         self.assertEqual(snap["mt_backing_volume"], 1.1)
 
         fresh: dict = {"studio_page": "multitrack", "_studio_page_snapshots": {"multitrack": snap}}
+        from studio_page_persistence import restore_page_snapshot
+
         restore_page_snapshot(fresh, "multitrack")
         self.assertEqual(fresh["mt_backing_volume"], 1.1)
 
@@ -253,6 +360,44 @@ class TestMultitrackBackingPersistence(unittest.TestCase):
         text = json.dumps(payload)
         self.assertNotIn("supabase://", text)
         self.assertNotIn("backing_local_path", text)
+
+    def test_save_without_session_wav_uses_local_disk(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "media_catalog.json"
+            session = self._session_with_layers()
+            session.pop("multitrack_backing_music_wav")
+
+            def _fake_path(*, st=None):
+                return path
+
+            with patch("media_persistence._local_path", _fake_path):
+                with patch("media_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
+                    with patch("media_persistence._load_cloud_catalog", lambda *, st=None: ({}, None)):
+                        with patch("media_persistence._save_cloud_catalog", lambda catalog, *, st=None: (True, "")):
+                            with patch(
+                                "media_multitrack_catalog.resolve_multitrack_backing_bytes",
+                                return_value=b"disk-save-backing",
+                            ):
+                                with patch(
+                                    "media_multitrack_catalog.persist_backing_audio",
+                                    MagicMock(
+                                        return_value={
+                                            "ok": True,
+                                            "local_path": "media/multitrack/m1/backing.wav",
+                                            "storage_ref": "supabase://music-media/u/daniel/m1/backing.wav",
+                                            "playback_status": "playable",
+                                            "cloud_ok": True,
+                                        }
+                                    ),
+                                ) as persist_mock:
+                                    ok, saved_mid, err = save_multitrack_session_with_notes(
+                                        session,
+                                        project_name="Disk backing",
+                                        song_title="Say",
+                                    )
+                                    self.assertTrue(ok, err)
+                                    persist_mock.assert_called_once()
+                                    self.assertEqual(persist_mock.call_args.args[2], b"disk-save-backing")
 
     def test_apply_backing_fields_before_widgets(self) -> None:
         session: dict = {}

@@ -21,7 +21,10 @@ from media_state import (
 )
 from media_storage import (
     PLAYBACK_METADATA_ONLY,
+    PLAYBACK_MISSING_FILE,
     PLAYBACK_PLAYABLE,
+    PLAYBACK_UPLOAD_FAILED,
+    backing_media_relpath,
     backing_playback_status,
     delete_multitrack_session_files,
     load_backing_audio,
@@ -29,6 +32,7 @@ from media_storage import (
     persist_backing_audio,
     persist_track_audio,
     playback_status_label,
+    recording_local_abs_path,
     track_playback_status,
 )
 from multitrack_history import (
@@ -45,6 +49,88 @@ _ACTIVE_CATALOG_MULTITRACK_KEY = "multitrack_catalog_active_id"
 _MT_COUNT_IN_LABELS = ("None", "1 bar", "2 bars")
 _MT_COUNT_IN_MAP = {"None": 0, "1 bar": 1, "2 bars": 2}
 _MT_COUNT_IN_REVERSE = {0: "None", 1: "1 bar", 2: "2 bars"}
+
+
+def active_catalog_multitrack_id(session_state: dict[str, Any]) -> str:
+    """Resolved loaded/saved multitrack project id (one active project at a time)."""
+    return str(
+        session_state.get(_LAST_CATALOG_MULTITRACK_KEY)
+        or session_state.get(_ACTIVE_CATALOG_MULTITRACK_KEY)
+        or session_state.get("multitrack_catalog_active_id")
+        or ""
+    ).strip()
+
+
+def _backing_bytes_from_session(session_state: dict[str, Any]) -> bytes | None:
+    raw = session_state.get("multitrack_backing_music_wav")
+    if isinstance(raw, bytearray):
+        return bytes(raw) if raw else None
+    if isinstance(raw, bytes) and raw:
+        return raw
+    return None
+
+
+def _backing_bytes_from_local_path(
+    workspace_id: str,
+    local_path: str,
+) -> bytes | None:
+    rel = str(local_path or "").strip()
+    if not rel:
+        return None
+    try:
+        path = recording_local_abs_path(workspace_id, rel)
+        if path.is_file() and path.stat().st_size > 0:
+            return path.read_bytes()
+    except Exception:
+        return None
+    return None
+
+
+def resolve_multitrack_backing_bytes(
+    session_state: dict[str, Any],
+    multitrack_id: str,
+    *,
+    existing_session: dict[str, Any] | None = None,
+    workspace_id: str = "daniel",
+) -> bytes | None:
+    """Resolve prepared monitor backing bytes from session or durable local cache."""
+    live = _backing_bytes_from_session(session_state)
+    if live:
+        return live
+    ws = str(workspace_id or "daniel").strip() or "daniel"
+    mid = str(multitrack_id or "").strip()
+    row = migrate_multitrack_session(existing_session) if isinstance(existing_session, dict) else {}
+    for rel in (
+        str(row.get("backing_local_path") or "").strip(),
+        backing_media_relpath(mid) if mid else "",
+    ):
+        cached = _backing_bytes_from_local_path(ws, rel)
+        if cached:
+            session_state["multitrack_backing_music_wav"] = cached
+            return cached
+    return None
+
+
+def _record_backing_upload_diag(session_state: dict[str, Any], store: dict[str, Any]) -> None:
+    err = str(store.get("cloud_error") or store.get("storage_error") or store.get("error") or "").strip()
+    session_state["_mt_backing_last_upload_error"] = err or None
+    session_state["_mt_backing_last_upload_ok"] = bool(store.get("ok"))
+    session_state["_mt_backing_last_upload_cloud_ok"] = bool(store.get("cloud_ok"))
+    session_state["_mt_backing_last_upload_storage_ref"] = store.get("storage_ref")
+
+
+def _record_backing_load_diag(
+    session_state: dict[str, Any],
+    *,
+    status: str,
+    error: str = "",
+    byte_count: int = 0,
+) -> None:
+    session_state["_mt_backing_playback_status"] = status
+    session_state["_mt_backing_load_error"] = str(error or "").strip() or None
+    session_state["_mt_backing_bytes_in_session"] = byte_count
+    if error:
+        session_state["_mt_backing_last_download_error"] = error
 
 
 def _normalize_mt_backing_volume(val: Any, *, default: float = 0.75) -> float:
@@ -133,9 +219,10 @@ def apply_multitrack_backing_fields(session_state: dict[str, Any], row: dict[str
 
 def multitrack_has_saved_backing(row: dict[str, Any]) -> bool:
     migrated = migrate_multitrack_session(row)
-    if str(migrated.get("backing_prepared_at") or "").strip():
-        return True
-    return bool(str(migrated.get("backing_storage_ref") or "").strip() or str(migrated.get("backing_local_path") or "").strip())
+    return bool(
+        str(migrated.get("backing_storage_ref") or "").strip()
+        or str(migrated.get("backing_local_path") or "").strip()
+    )
 
 
 def seed_multitrack_backing_volume(session_state: dict[str, Any]) -> None:
@@ -424,27 +511,55 @@ def _persist_session_backing(
     session_state: dict[str, Any],
     multitrack_id: str,
     fields: dict[str, Any],
+    *,
+    audio: bytes | None = None,
+    existing_session: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Upload prepared monitor backing to durable storage; update refs on fields."""
     mid = str(multitrack_id or "").strip()
     ws = str(fields.get("workspace_id") or "daniel").strip()
-    audio = session_state.get("multitrack_backing_music_wav")
-    if not audio or not isinstance(audio, (bytes, bytearray)):
+    data = audio if isinstance(audio, (bytes, bytearray)) and audio else None
+    if data is None:
+        data = resolve_multitrack_backing_bytes(
+            session_state,
+            mid,
+            existing_session=existing_session,
+            workspace_id=ws,
+        )
+    if not data:
+        if fields.get("backing_prepared_at"):
+            fields["backing_playback_status"] = PLAYBACK_METADATA_ONLY
         return fields
-    store = persist_backing_audio(st, mid, bytes(audio), workspace_id=ws)
+
+    store = persist_backing_audio(st, mid, bytes(data), workspace_id=ws)
+    _record_backing_upload_diag(session_state, store)
     if store.get("local_path"):
         fields["backing_local_path"] = store.get("local_path")
     if store.get("storage_ref"):
         fields["backing_storage_ref"] = store.get("storage_ref")
+    elif fields.get("backing_prepared_at"):
+        fields.pop("backing_storage_ref", None)
     if not fields.get("backing_prepared_at"):
         fields["backing_prepared_at"] = _utc_now_iso()
+    fields["backing_playback_status"] = store.get("playback_status") or (
+        PLAYBACK_PLAYABLE if store.get("ok") else PLAYBACK_UPLOAD_FAILED
+    )
+    err = str(store.get("cloud_error") or store.get("storage_error") or store.get("error") or "").strip()
+    fields["backing_storage_error"] = err
+    if store.get("ok"):
+        session_state["multitrack_backing_music_wav"] = bytes(data)
     return fields
 
 
 def _merge_backing_refs(fields: dict[str, Any], existing_session: dict[str, Any] | None) -> None:
+    """Preserve durable refs only when the live session has no newer prepared backing."""
     if not existing_session:
         return
-    for key in ("backing_storage_ref", "backing_local_path", "backing_prepared_at"):
+    if fields.get("backing_prepared_at") and str(fields.get("backing_prepared_at")) >= str(
+        existing_session.get("backing_prepared_at") or ""
+    ):
+        return
+    for key in ("backing_storage_ref", "backing_local_path", "backing_prepared_at", "backing_playback_status"):
         if not fields.get(key) and existing_session.get(key):
             fields[key] = existing_session.get(key)
 
@@ -462,7 +577,7 @@ def persist_prepared_multitrack_backing(
     if scope_label:
         session_state["mt_backing_scope"] = scope_label
 
-    active_mid = str(session_state.get(_LAST_CATALOG_MULTITRACK_KEY) or "").strip()
+    active_mid = active_catalog_multitrack_id(session_state)
     if not active_mid:
         return True, "session_only"
 
@@ -479,10 +594,19 @@ def persist_prepared_multitrack_backing(
         fields = {**existing, **fields, "updated_at": _utc_now_iso()}
     else:
         fields["updated_at"] = _utc_now_iso()
-    fields = _persist_session_backing(st, session_state, active_mid, fields)
+    fields = _persist_session_backing(
+        st,
+        session_state,
+        active_mid,
+        fields,
+        audio=monitor_wav,
+        existing_session=existing,
+    )
     row = update_multitrack_session(st, active_mid, fields)
     if not row:
         return False, "catalog_update_failed"
+    session_state[_LAST_CATALOG_MULTITRACK_KEY] = active_mid
+    session_state[_ACTIVE_CATALOG_MULTITRACK_KEY] = active_mid
     return True, "updated_project"
 
 
@@ -505,7 +629,7 @@ def save_multitrack_session_with_notes(
     if not fields:
         return False, "", "no_layers_or_mix"
 
-    active_mid = str(session_state.get(_LAST_CATALOG_MULTITRACK_KEY) or "").strip()
+    active_mid = active_catalog_multitrack_id(session_state)
     existing_session: dict[str, Any] | None = None
     if active_mid:
         catalog = load_media_catalog(st=st)
@@ -527,10 +651,17 @@ def save_multitrack_session_with_notes(
     mid = str(row.get("multitrack_id") or "")
     if mid:
         fields = _persist_session_tracks(st, session_state, mid, dict(row))
-        fields = _persist_session_backing(st, session_state, mid, fields)
+        fields = _persist_session_backing(
+            st,
+            session_state,
+            mid,
+            fields,
+            existing_session=existing_session if active_mid == mid else migrate_multitrack_session(dict(row)),
+        )
         row = update_multitrack_session(st, mid, fields)
         session_state[_LAST_CATALOG_MULTITRACK_KEY] = mid
         session_state[_ACTIVE_CATALOG_MULTITRACK_KEY] = mid
+        session_state["multitrack_catalog_active_id"] = mid
 
     legacy_ok, legacy_key, legacy_err = (False, "", "cloud_disabled")
     try:
@@ -635,6 +766,9 @@ def list_catalog_multitrack_sessions(*, st: Any | None = None) -> tuple[list[dic
                     for t in session.get("tracks") or []
                     if isinstance(t, dict) and not t.get("deleted") and t.get("storage_ref")
                 ),
+                "backing_storage_ref": str(session.get("backing_storage_ref") or "").strip() or None,
+                "backing_playable": backing_playback_status(session, session_workspace=str(session.get("workspace_id") or "daniel"), st=st)
+                == PLAYBACK_PLAYABLE,
             }
         )
     rows.sort(key=lambda r: str(r.get("updated_at") or ""), reverse=True)
@@ -666,7 +800,11 @@ def catalog_multitrack_row_summary(row: dict[str, Any]) -> str:
     if multitrack_has_saved_backing(payload):
         bits.append("backing ready")
     elif payload.get("backing_prepared_at"):
-        bits.append("backing metadata")
+        status = str(payload.get("backing_playback_status") or "").strip()
+        if status == PLAYBACK_METADATA_ONLY:
+            bits.append("backing metadata-only")
+        else:
+            bits.append("backing metadata")
     return " · ".join(bits)
 
 
@@ -739,13 +877,23 @@ def apply_catalog_multitrack_to_session(
 
     session_state.pop("_mt_catalog_metadata_only", None)
 
-    backing_status = backing_playback_status(row, session_workspace=ws, st=st)
-    if backing_status == PLAYBACK_PLAYABLE:
-        audio, _err = load_backing_audio(row, st=st)
-        if audio:
-            session_state["multitrack_backing_music_wav"] = audio
-    elif backing_status == PLAYBACK_METADATA_ONLY and row.get("backing_prepared_at"):
-        session_state.pop("multitrack_backing_music_wav", None)
+    backing_ref = str(row.get("backing_storage_ref") or "").strip()
+    backing_local = str(row.get("backing_local_path") or "").strip()
+    has_backing_meta = bool(row.get("backing_prepared_at") or backing_ref or backing_local)
+    if load_audio and has_backing_meta:
+        status = backing_playback_status(row, session_workspace=ws, st=st)
+        if backing_ref or backing_local:
+            audio, err = load_backing_audio(row, st=st)
+            if audio:
+                session_state["multitrack_backing_music_wav"] = audio
+                _record_backing_load_diag(session_state, status=PLAYBACK_PLAYABLE, byte_count=len(audio))
+            else:
+                session_state.pop("multitrack_backing_music_wav", None)
+                load_status = PLAYBACK_METADATA_ONLY if status == PLAYBACK_METADATA_ONLY else PLAYBACK_MISSING_FILE
+                _record_backing_load_diag(session_state, status=load_status, error=err or "missing_file")
+        elif row.get("backing_prepared_at"):
+            session_state.pop("multitrack_backing_music_wav", None)
+            _record_backing_load_diag(session_state, status=PLAYBACK_METADATA_ONLY, error="no_backing_ref")
 
     if loaded == 0 and missing > 0:
         return True, "metadata_only"

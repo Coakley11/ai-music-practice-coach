@@ -469,6 +469,12 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
         if key == "mt_tracks" and _multitrack_session_has_layers(session_state):
             if not _snapshot_has_multitrack_content({"mt_tracks": val}):
                 continue
+        if key == "multitrack_backing_music_wav":
+            live = session_state.get(key)
+            snap_has = bool(live) and isinstance(live, (bytes, bytearray)) and len(live) > 0
+            val_has = bool(val) and isinstance(val, (bytes, bytearray)) and len(val) > 0
+            if snap_has and not val_has:
+                continue
         session_state[key] = copy.deepcopy(val)
     _restore_preserved_globals(session_state, preserved)
 
