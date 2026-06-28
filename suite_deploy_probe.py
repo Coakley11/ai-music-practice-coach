@@ -167,6 +167,12 @@ def render_music_deploy_probe(st: Any) -> None:
         st.text(f"commit: {info['commit']}")
         st.text(f"branch: {info['branch']}")
         st.text(f"build_marker: {info['build_marker']}")
+        try:
+            from practice_log_persistence import PRACTICE_LOG_PERSIST_VERSION
+
+            st.text(f"practice_log_persist: {PRACTICE_LOG_PERSIST_VERSION}")
+        except ImportError:
+            pass
         st.text(f"git_commit: {info['commit']}")
         st.text(f"git_branch: {info['branch']}")
         if info.get("nav_ui_marker"):

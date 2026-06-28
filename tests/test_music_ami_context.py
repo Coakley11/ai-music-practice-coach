@@ -133,7 +133,7 @@ class TestPracticeLogAmiSnapshot(unittest.TestCase):
             }
             with patch("practice_log_persistence._local_path", lambda *, st=None: path):
                 with patch("practice_log_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
-                    with patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: []):
+                    with patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: ([], None)):
                         snap = gather_practice_ami_snapshot(session)
             history = snap.get("recent_practice_history") or []
             self.assertTrue(history)
@@ -167,7 +167,7 @@ class TestPracticeLogAmiSnapshot(unittest.TestCase):
             }
             with patch("practice_log_persistence._local_path", lambda *, st=None: path):
                 with patch("practice_log_persistence._resolve_workspace_id", lambda *, st=None: "daniel"):
-                    with patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: []):
+                    with patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: ([], None)):
                         ctx = build_music_applied_math_context(
                             "log",
                             session,

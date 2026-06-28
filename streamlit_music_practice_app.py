@@ -12968,6 +12968,10 @@ elif _studio_page == "log":
 
     ensure_page_initialized(st.session_state, "log")
     note_page_visit(st.session_state, "log")
+    st.session_state.setdefault(
+        "_practice_log_load_workspace_at_page_open",
+        st.session_state.get("_suite_active_workspace_id"),
+    )
     _studio_page_header(
         "📓",
         "Practice Log",

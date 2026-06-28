@@ -29,7 +29,7 @@ class TestPracticeLogRefreshPersistence(unittest.TestCase):
         self._patches = [
             patch("practice_log_persistence._local_path", _fake_local_path),
             patch("practice_log_persistence._resolve_workspace_id", _fake_resolve),
-            patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: []),
+            patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: ([], None)),
             patch("studio_history_cloud.cloud_enabled", return_value=False),
         ]
         for p in self._patches:
@@ -96,6 +96,69 @@ class TestPracticeLogRefreshPersistence(unittest.TestCase):
         self.assertTrue(snap.get("recent_practice_history"))
         self.assertIn("practice_log_ami_payload", snap)
         self.assertIsNotNone(sid)
+
+    def test_workspace_change_reloads_from_new_path(self) -> None:
+        guest_path = Path(self._tmpdir.name) / "workspaces" / "guest" / "practice_history.json"
+        daniel_path = self._path
+        paths = {"guest": guest_path, "daniel": daniel_path}
+
+        def _fake_local_path(*, st=None):
+            ws = "daniel"
+            if st is not None and hasattr(st, "session_state"):
+                ss = st.session_state
+                if isinstance(ss, dict):
+                    ws = str(ss.get("_suite_active_workspace_id") or "daniel")
+            return paths.get(ws, daniel_path)
+
+        def _fake_resolve(*, st=None):
+            if st is not None and hasattr(st, "session_state"):
+                ss = st.session_state
+                if isinstance(ss, dict):
+                    return str(ss.get("_suite_active_workspace_id") or "daniel")
+            return "daniel"
+
+        with patch("practice_log_persistence._local_path", _fake_local_path):
+            with patch("practice_log_persistence._resolve_workspace_id", _fake_resolve):
+                session: dict = {
+                    "_suite_active_workspace_id": "daniel",
+                    "_suite_workspace_initialized": True,
+                    "studio_page": "log",
+                }
+                entry = add_practice_log_entry(
+                    session,
+                    {"active_song": "Workspace Song", "duration_minutes": 12, "instrument": "Guitar"},
+                )
+                sid = str(entry.get("session_id") or "")
+                self.assertTrue(sid)
+                self.assertTrue(daniel_path.is_file())
+
+                session["_suite_active_workspace_id"] = "guest"
+                empty = load_entries(session, force=True)
+                self.assertFalse(any(str(row.get("session_id") or "") == sid for row in empty))
+
+                session["_suite_active_workspace_id"] = "daniel"
+                restored = load_entries(session, force=True)
+                self.assertTrue(any(str(row.get("session_id") or "") == sid for row in restored))
+
+    def test_deferred_load_when_workspace_becomes_ready(self) -> None:
+        session: dict = {"studio_page": "log"}
+        first = load_entries(session)
+        self.assertEqual(first, [])
+        self.assertTrue(session.get("_practice_log_deferred_empty_load"))
+
+        session["_suite_active_workspace_id"] = self._ws
+        session["_suite_workspace_initialized"] = True
+        add_practice_log_entry(
+            session,
+            {"active_song": "Deferred WS", "duration_minutes": 18, "instrument": "Flute"},
+        )
+        session.clear()
+        session["_suite_active_workspace_id"] = self._ws
+        session["_suite_workspace_initialized"] = True
+
+        reloaded = load_entries(session)
+        self.assertGreaterEqual(len(reloaded), 1)
+        self.assertFalse(session.get("_practice_log_deferred_empty_load"))
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@ from practice_log_state import (
     delete_practice_log_entry,
     filter_practice_log_entries,
     load_entries,
+    reload_practice_log_entries,
     update_practice_log_entry,
 )
 
@@ -40,6 +41,122 @@ def _parse_log_date(raw: Any) -> date | None:
     from practice_log_state import _parse_log_date as _parse
 
     return _parse({"date": raw} if not isinstance(raw, dict) else raw)
+
+
+def _practice_log_dev_mode(st: Any, session_state: dict[str, Any]) -> bool:
+    try:
+        from suite_workspace import can_show_developer_tools
+
+        if can_show_developer_tools(st=st):
+            return True
+    except ImportError:
+        pass
+    return bool(session_state.get("developer_mode"))
+
+
+def _json_preview(value: Any, *, limit: int = 2400) -> str:
+    import json
+
+    try:
+        text = json.dumps(value, indent=2, default=str)
+    except Exception:
+        text = repr(value)
+    if len(text) > limit:
+        return text[: limit - 3] + "..."
+    return text
+
+
+def render_practice_log_diagnostics(
+    st: Any,
+    session_state: dict[str, Any],
+    *,
+    entries: list[dict[str, Any]],
+    filters: dict[str, Any],
+    filtered: list[dict[str, Any]],
+) -> None:
+    if not _practice_log_dev_mode(st, session_state):
+        return
+
+    try:
+        from practice_log_persistence import PRACTICE_LOG_PERSIST_VERSION, _local_path, _resolve_workspace_id
+        from suite_deploy_probe import deploy_info
+    except ImportError:
+        return
+
+    deploy = deploy_info()
+    ws = _resolve_workspace_id(st=st)
+    path = _local_path(st=st)
+    trace = list(session_state.get("_practice_log_persist_trace") or [])
+    last_save = next((row for row in reversed(trace) if row.get("phase") == "save"), {})
+    last_load = next((row for row in reversed(trace) if row.get("phase") == "load"), {})
+
+    try:
+        from studio_history_cloud import cloud_block_reason, cloud_enabled
+    except ImportError:
+        cloud_enabled = lambda: False  # type: ignore[misc, assignment]
+        cloud_block_reason = lambda: None  # type: ignore[misc, assignment]
+
+    disk_count = 0
+    if path.is_file():
+        try:
+            import json
+
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            disk_count = len(raw) if isinstance(raw, list) else 0
+        except Exception:
+            disk_count = -1
+
+    with st.expander("Practice Log persistence diagnostics (?dev=1)", expanded=False):
+        st.caption(
+            f"Deploy commit `{deploy.get('commit', 'unknown')}` · "
+            f"persist `{PRACTICE_LOG_PERSIST_VERSION}`"
+        )
+        st.markdown("**Workspace / path**")
+        st.text(f"workspace_id: {ws}")
+        st.text(f"loaded_workspace_id: {session_state.get('_practice_log_loaded_workspace_id')}")
+        st.text(f"before_restore_ws: {session_state.get('_practice_log_load_workspace_before_restore')}")
+        st.text(f"after_restore_ws: {session_state.get('_practice_log_load_workspace_after_restore')}")
+        st.text(f"local_path: {path}")
+        st.text(f"entries_on_disk: {disk_count}")
+
+        st.markdown("**Session counts**")
+        st.text(f"session_state practice_log_entries: {len(session_state.get('practice_log_entries') or [])}")
+        st.text(f"load_entries (canonical): {len(entries)}")
+        st.text(f"filtered visible: {len(filtered)}")
+        st.text(f"filters: {_json_preview(filters, limit=400)}")
+
+        st.markdown("**Last save**")
+        st.text(f"_practice_log_last_save_ok: {session_state.get('_practice_log_last_save_ok')}")
+        st.text(f"session_id: {session_state.get('_practice_log_last_save_session_id')}")
+        st.text(f"workspace_id: {session_state.get('_practice_log_last_save_workspace')}")
+        st.text(f"local_path: {session_state.get('_practice_log_last_save_local_path')}")
+        st.text(f"local_ok: {session_state.get('_practice_log_last_save_local_ok')}")
+        st.text(f"local_error: {session_state.get('_practice_log_last_save_local_error')}")
+        st.text(f"cloud_ok: {session_state.get('_practice_log_last_save_cloud')}")
+        st.text(f"cloud_error: {session_state.get('_practice_log_last_save_cloud_error')}")
+
+        st.markdown("**Cloud**")
+        st.text(f"cloud_enabled: {cloud_enabled()}")
+        st.text(f"cloud_block_reason: {cloud_block_reason()}")
+
+        st.markdown("**Last load trace**")
+        st.code(_json_preview(last_load or {"note": "no load trace yet"}), language="json")
+        st.markdown("**Last save trace**")
+        st.code(_json_preview(last_save or {"note": "no save trace yet"}), language="json")
+
+        if st.button("Reload Practice Log from disk/cloud", key="plog_reload_from_storage"):
+            reloaded = reload_practice_log_entries(session_state, force=True)
+            st.success(f"Reloaded {len(reloaded)} session(s) from storage.")
+            st.rerun()
+
+
+def _handle_save_result(st: Any, session_state: dict[str, Any], *, ok_message: str) -> None:
+    if session_state.get("_practice_log_last_save_ok") is False:
+        err = str(session_state.get("_practice_log_last_save_error") or "Save failed")
+        st.error(f"Practice log could not be saved: {err}")
+        return
+    st.success(ok_message)
+    st.rerun()
 
 
 def render_summary_cards(st: Any, entries: list[dict[str, Any]]) -> None:
@@ -261,12 +378,15 @@ def render_entry_forms(st: Any, session_state: dict[str, Any], *, on_saved: Any 
             st.markdown("#### Edit session")
             fields = _session_form_fields(st, prefix=f"edit_{edit_id[:8]}", prefill=existing, submit_label="Update session")
             if fields:
+            try:
                 update_practice_log_entry(session_state, edit_id, fields)
-                session_state.pop("_plog_edit_session_id", None)
-                if on_saved:
-                    on_saved(fields)
-                st.success("Session updated.")
-                st.rerun()
+            except Exception as exc:
+                st.error(f"Could not update session: {exc}")
+                return
+            session_state.pop("_plog_edit_session_id", None)
+            if on_saved:
+                on_saved(fields)
+            _handle_save_result(st, session_state, ok_message="Session updated.")
             if st.button("Cancel edit", key="plog_cancel_edit"):
                 session_state.pop("_plog_edit_session_id", None)
                 st.rerun()
@@ -277,12 +397,15 @@ def render_entry_forms(st: Any, session_state: dict[str, Any], *, on_saved: Any 
         prefill = build_practice_log_prefill(session_state)
         fields = _session_form_fields(st, prefix="quick", prefill=prefill, submit_label="Save quick log")
         if fields:
-            entry = add_practice_log_entry(session_state, fields)
+            try:
+                entry = add_practice_log_entry(session_state, fields)
+            except Exception as exc:
+                st.error(f"Could not save practice log: {exc}")
+                return
             session_state.pop("_plog_show_quick_form", None)
             if on_saved:
                 on_saved(entry)
-            st.success("Practice session logged.")
-            st.rerun()
+            _handle_save_result(st, session_state, ok_message="Practice session logged.")
 
     if session_state.get("_plog_show_manual_form"):
         st.markdown("#### Add session manually")
@@ -290,12 +413,15 @@ def render_entry_forms(st: Any, session_state: dict[str, Any], *, on_saved: Any 
         prefill["active_song"] = ""
         fields = _session_form_fields(st, prefix="manual", prefill=prefill, submit_label="Save session")
         if fields:
-            entry = add_practice_log_entry(session_state, fields)
+            try:
+                entry = add_practice_log_entry(session_state, fields)
+            except Exception as exc:
+                st.error(f"Could not save practice log: {exc}")
+                return
             session_state.pop("_plog_show_manual_form", None)
             if on_saved:
                 on_saved(entry)
-            st.success("Practice session logged.")
-            st.rerun()
+            _handle_save_result(st, session_state, ok_message="Practice session logged.")
 
 
 def render_filters(st: Any, entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -391,5 +517,12 @@ def render_practice_log_page(
         st.markdown('<p class="ui-log-section-title">Session history</p>', unsafe_allow_html=True)
         filters = render_filters(st, entries)
         filtered = filter_practice_log_entries(entries, filters)
+        render_practice_log_diagnostics(
+            st,
+            session_state,
+            entries=entries,
+            filters=filters,
+            filtered=filtered,
+        )
         render_session_list(st, session_state, filtered)
     return filtered

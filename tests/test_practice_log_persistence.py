@@ -60,7 +60,7 @@ class TestPracticeLogPersistence(unittest.TestCase):
 
             with patch("practice_log_persistence._local_path", _fake_path):
                 with patch("practice_log_persistence._resolve_workspace_id", _fake_ws):
-                    with patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: []):
+                    with patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: ([], None)):
                         with patch("studio_history_cloud.cloud_enabled", return_value=False):
                             entry = migrate_practice_log_entry(
                                 {
@@ -110,7 +110,7 @@ class TestPracticeLogPersistence(unittest.TestCase):
             )
             with patch("practice_log_persistence._local_path", _fake_path):
                 with patch("practice_log_persistence._resolve_workspace_id", _fake_ws):
-                    with patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: []):
+                    with patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: ([], None)):
                         with patch("studio_history_cloud.cloud_enabled", return_value=False):
                             save_practice_logs([new_entry], st=None)
                             loaded = load_practice_logs(st=None)

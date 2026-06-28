@@ -135,6 +135,12 @@ def _on_active_workspace_changed(st: Any) -> None:
             ss.pop(key, None)
         elif sk.startswith(("_suite_ai_", "ps_")) or sk in ("view_mode", "ps_library_problem"):
             ss.pop(key, None)
+    for key in (
+        "practice_log_entries",
+        "_practice_log_loaded_workspace_id",
+        "_practice_log_deferred_empty_load",
+    ):
+        ss.pop(key, None)
     for key in DEVELOPER_SESSION_FLAG_KEYS:
         ss.pop(key, None)
     try:

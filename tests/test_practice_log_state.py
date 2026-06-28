@@ -50,7 +50,7 @@ class TestPracticeLogCrud(unittest.TestCase):
         self._path = Path(self._tmpdir.name) / "practice_history.json"
         self._patch = patch("practice_log_persistence._local_path", lambda *, st=None: self._path)
         self._patch_ws = patch("practice_log_persistence._resolve_workspace_id", lambda *, st=None: "daniel")
-        self._patch_cloud = patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: [])
+        self._patch_cloud = patch("practice_log_persistence._load_cloud_logs", lambda *, st=None: ([], None))
         self._patch.start()
         self._patch_ws.start()
         self._patch_cloud.start()

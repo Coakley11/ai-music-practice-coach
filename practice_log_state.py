@@ -7,6 +7,9 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+PRACTICE_LOG_LOADED_WS_KEY = "_practice_log_loaded_workspace_id"
+PRACTICE_LOG_DEFERRED_EMPTY_KEY = "_practice_log_deferred_empty_load"
+
 FOCUS_AREAS: tuple[str, ...] = (
     "tone",
     "timing/rhythm",
@@ -306,27 +309,96 @@ def _st_wrapper(session_state: dict[str, Any] | None) -> Any | None:
     return wrap
 
 
-def load_entries(session_state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+def _current_workspace_id(session_state: dict[str, Any] | None) -> str:
+    try:
+        return _resolve_workspace_from_session(session_state)
+    except Exception:
+        pass
+    ss = session_state or {}
+    raw = str(ss.get("_suite_active_workspace_id") or "").strip()
+    return raw or "daniel"
+
+
+def _resolve_workspace_from_session(session_state: dict[str, Any] | None) -> str:
+    from practice_log_persistence import _resolve_workspace_id
+
+    return _resolve_workspace_id(st=_st_wrapper(session_state))
+
+
+def _workspace_persistence_ready(session_state: dict[str, Any] | None) -> bool:
+    if not session_state:
+        return True
+    if session_state.get("_suite_workspace_initialized"):
+        return True
+    if session_state.get("_music_restore_phase_complete"):
+        return True
+    if session_state.get("_music_workspace_prepared_for_run"):
+        return True
+    return bool(str(session_state.get("_suite_active_workspace_id") or "").strip())
+
+
+def invalidate_practice_log_cache(session_state: dict[str, Any]) -> None:
+    session_state.pop(PRACTICE_LOG_LOADED_WS_KEY, None)
+    session_state.pop(PRACTICE_LOG_DEFERRED_EMPTY_KEY, None)
+    session_state.pop("practice_log_entries", None)
+
+
+def reload_practice_log_entries(
+    session_state: dict[str, Any],
+    *,
+    force: bool = True,
+) -> list[dict[str, Any]]:
+    """Dev/diagnostic: drop cached session list and reload from disk + cloud."""
+    invalidate_practice_log_cache(session_state)
+    return load_entries(session_state, force=force)
+
+
+def load_entries(
+    session_state: dict[str, Any] | None = None,
+    *,
+    force: bool = False,
+) -> list[dict[str, Any]]:
     from practice_log_persistence import load_practice_logs
+
+    ws = _current_workspace_id(session_state)
+    prev_ws = str((session_state or {}).get(PRACTICE_LOG_LOADED_WS_KEY) or "").strip()
+    workspace_ready = _workspace_persistence_ready(session_state)
+    deferred = bool((session_state or {}).get(PRACTICE_LOG_DEFERRED_EMPTY_KEY))
+
+    if session_state is not None and prev_ws and prev_ws != ws:
+        session_state["_practice_log_workspace_changed"] = {"from": prev_ws, "to": ws}
+        force = True
+
+    if force or deferred and workspace_ready:
+        invalidate_practice_log_cache(session_state)
 
     raw = load_practice_logs(st=_st_wrapper(session_state))
     entries = normalize_practice_log_entries(raw)
     if session_state is not None:
+        if not entries and not workspace_ready and not prev_ws:
+            session_state[PRACTICE_LOG_DEFERRED_EMPTY_KEY] = True
+        elif entries or workspace_ready:
+            session_state.pop(PRACTICE_LOG_DEFERRED_EMPTY_KEY, None)
+        session_state[PRACTICE_LOG_LOADED_WS_KEY] = ws
         session_state["practice_log_entries"] = entries
     return entries
 
 
 def _persist_raw(session_state: dict[str, Any] | None, raw_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    from practice_log_persistence import save_practice_logs
+    from practice_log_persistence import load_practice_logs, save_practice_logs
 
     migrated = [migrate_practice_log_entry(e) for e in (raw_rows or []) if isinstance(e, dict)]
     ok, err = save_practice_logs(migrated, st=_st_wrapper(session_state))
+    raw_reloaded = load_practice_logs(st=_st_wrapper(session_state))
+    visible = normalize_practice_log_entries(raw_reloaded)
     if session_state is not None:
         session_state["_practice_log_last_save_ok"] = bool(ok)
+        session_state[PRACTICE_LOG_LOADED_WS_KEY] = _current_workspace_id(session_state)
         if err:
             session_state["_practice_log_last_save_error"] = err
-    visible = normalize_practice_log_entries(migrated)
-    if session_state is not None:
+        else:
+            session_state.pop("_practice_log_last_save_error", None)
+        session_state.pop(PRACTICE_LOG_DEFERRED_EMPTY_KEY, None)
         session_state["practice_log_entries"] = visible
     return visible
 
@@ -452,7 +524,16 @@ def add_practice_log_entry(session_state: dict[str, Any], fields: dict[str, Any]
     entry = _new_entry_fields(session_state, fields)
     visible = load_entries(session_state)
     visible = [entry] + [e for e in visible if e.get("session_id") != entry.get("session_id")]
-    save_entries(session_state, visible)
+    saved = save_entries(session_state, visible)
+    sid = str(entry.get("session_id") or "")
+    if sid and not any(str(row.get("session_id") or "") == sid for row in saved):
+        raise RuntimeError(
+            str(session_state.get("_practice_log_last_save_error") or "practice_log_save_failed")
+        )
+    if session_state.get("_practice_log_last_save_ok") is False:
+        raise RuntimeError(
+            str(session_state.get("_practice_log_last_save_error") or "practice_log_save_failed")
+        )
     return entry
 
 
