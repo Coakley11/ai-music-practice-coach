@@ -378,6 +378,7 @@ def _entry_search_blob(entry: dict[str, Any]) -> str:
         entry.get("song"),
         entry.get("artist"),
         entry.get("instrument"),
+        entry.get("instrument_family"),
         entry.get("focus_area"),
         entry.get("focus"),
         entry.get("practice_type"),
@@ -624,6 +625,7 @@ def migrate_practice_log_entry(entry: dict[str, Any]) -> dict[str, Any]:
     out["active_song"] = str(out.get("active_song") or out.get("song") or "").strip()
     out["song_id"] = str(out.get("song_id") or out.get("pick_key") or "").strip()
     out["instrument"] = str(out.get("instrument") or "").strip()
+    out["instrument_family"] = str(out.get("instrument_family") or "").strip()
     out["original_key"] = str(out.get("original_key") or "").strip()
     concert = str(out.get("practice_concert_key") or out.get("display_key") or "").strip()
     out["practice_concert_key"] = concert
@@ -871,13 +873,21 @@ def build_practice_log_prefill(session_state: dict[str, Any]) -> dict[str, Any]:
     prefill["guitar_shape_key"] = key_fields.get("guitar_shape_key") or ""
 
     try:
-        from practice_setup_globals import get_active_focus, get_active_instrument, get_active_level
+        from practice_setup_globals import (
+            get_active_focus,
+            get_active_instrument,
+            get_active_instrument_display_name,
+            get_active_level,
+        )
 
-        prefill["instrument"] = str(get_active_instrument(ss) or "").strip()
+        instrument_family = str(get_active_instrument(ss) or "").strip()
+        prefill["instrument"] = str(get_active_instrument_display_name(ss) or instrument_family).strip()
+        prefill["instrument_family"] = instrument_family
         prefill["level"] = str(get_active_level(ss) or "").strip()
         legacy_focus = str(get_active_focus(ss) or "").strip()
     except ImportError:
         prefill["instrument"] = str(ss.get("instrument") or "").strip()
+        prefill["instrument_family"] = prefill["instrument"]
         prefill["level"] = str(ss.get("level") or "").strip()
         legacy_focus = str(ss.get("focus") or "").strip()
 

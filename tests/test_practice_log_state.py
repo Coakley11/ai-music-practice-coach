@@ -265,6 +265,60 @@ class TestPracticeLogSearchFilter(unittest.TestCase):
         self.assertGreaterEqual(len(rows), 2)
 
 
+class TestPracticeLogInstrumentSpecificity(unittest.TestCase):
+    def _sax_entries(self) -> list[dict]:
+        today = date.today().isoformat()
+        return normalize_practice_log_entries(
+            [
+                migrate_practice_log_entry(
+                    {
+                        "session_id": "tenor",
+                        "date": today,
+                        "active_song": "Autumn Leaves",
+                        "instrument": "Tenor Saxophone",
+                        "focus_area": "tone",
+                        "notes": "long tones",
+                    }
+                ),
+                migrate_practice_log_entry(
+                    {
+                        "session_id": "alto",
+                        "date": today,
+                        "active_song": "Blue Bossa",
+                        "instrument": "Alto Saxophone",
+                        "focus_area": "chords",
+                    }
+                ),
+            ]
+        )
+
+    def test_filter_tenor_vs_alto(self) -> None:
+        entries = self._sax_entries()
+        tenor = filter_practice_log_entries(entries, {"instrument": "Tenor Saxophone"})
+        alto = filter_practice_log_entries(entries, {"instrument": "Alto Saxophone"})
+        self.assertEqual(len(tenor), 1)
+        self.assertEqual(tenor[0].get("instrument"), "Tenor Saxophone")
+        self.assertEqual(len(alto), 1)
+        self.assertEqual(alto[0].get("instrument"), "Alto Saxophone")
+
+    def test_search_sax_matches_both(self) -> None:
+        entries = self._sax_entries()
+        rows = filter_practice_log_entries(entries, {"search": "sax"})
+        self.assertEqual(len(rows), 2)
+
+    def test_search_tenor_matches_tenor_only(self) -> None:
+        entries = self._sax_entries()
+        rows = filter_practice_log_entries(entries, {"search": "tenor"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("instrument"), "Tenor Saxophone")
+
+    def test_search_alto_matches_alto_only(self) -> None:
+        entries = self._sax_entries()
+        rows = filter_practice_log_entries(entries, {"search": "alto"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("instrument"), "Alto Saxophone")
+
+
 class TestPracticeLogKeyLabels(unittest.TestCase):
     def test_piano_shows_practice_concert_and_original_only(self) -> None:
         entry = migrate_practice_log_entry(

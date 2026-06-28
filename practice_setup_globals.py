@@ -67,6 +67,7 @@ __all__ = (
     "DISPLAY_KEY_CHANGE_SOURCE_KEY",
     "GLOBAL_CONTROL_OVERWRITE_SOURCE_KEY",
     "get_active_instrument",
+    "get_active_instrument_display_name",
     "get_active_level",
     "get_active_focus",
     "set_active_instrument",
@@ -92,6 +93,26 @@ def _as_str(value: Any, fallback: str) -> str:
 
 def get_active_instrument(session_state: Any) -> str:
     return _as_str(session_state.get(GLOBAL_INSTRUMENT_KEY), DEFAULT_INSTRUMENT)
+
+
+def get_active_instrument_display_name(session_state: Any) -> str:
+    """Exact instrument label from current setup (e.g. Tenor Saxophone, not Saxophone)."""
+    instrument = get_active_instrument(session_state)
+    try:
+        from instrument_transposition import (
+            instrument_display_name,
+            is_transposing_instrument,
+            selected_transposing_type,
+        )
+
+        if is_transposing_instrument(instrument):
+            t_type = selected_transposing_type(session_state, instrument)
+            display = instrument_display_name(t_type, instrument)
+            if display and display != "Instrument":
+                return display
+    except ImportError:
+        pass
+    return instrument
 
 
 def get_active_level(session_state: Any) -> str:

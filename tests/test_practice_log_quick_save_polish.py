@@ -91,9 +91,34 @@ class TestPracticeLogSectionLabels(unittest.TestCase):
 
 
 class TestPracticeLogQuickSavePayload(unittest.TestCase):
-    def test_prefill_instrument_from_canonical_setup(self) -> None:
+    def test_prefill_tenor_saxophone_display_name(self) -> None:
+        from instrument_transposition import SELECTED_TRANSPOSING_INSTRUMENT_KEY
+
         ss = {
             "instrument": "Saxophone",
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Tenor saxophone (Bb)",
+            "studio_page": "practice",
+            "selected_song": {"title": "Say", "key": "D"},
+        }
+        prefill = build_practice_log_prefill(ss)
+        self.assertEqual(prefill["instrument"], "Tenor Saxophone")
+        self.assertEqual(prefill["instrument_family"], "Saxophone")
+
+    def test_prefill_alto_saxophone_display_name(self) -> None:
+        from instrument_transposition import SELECTED_TRANSPOSING_INSTRUMENT_KEY
+
+        ss = {
+            "instrument": "Saxophone",
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+            "studio_page": "practice",
+            "selected_song": {"title": "Blue Bossa", "key": "F"},
+        }
+        prefill = build_practice_log_prefill(ss)
+        self.assertEqual(prefill["instrument"], "Alto Saxophone")
+
+    def test_prefill_instrument_from_canonical_setup(self) -> None:
+        ss = {
+            "instrument": "Piano",
             "level": "Intermediate",
             "focus": "Scales",
             "studio_page": "practice",
@@ -103,7 +128,7 @@ class TestPracticeLogQuickSavePayload(unittest.TestCase):
         }
         with patch("practice_log_state.resolve_practice_log_bpm", return_value=(82, "metronome")):
             prefill = build_practice_log_prefill(ss)
-        self.assertEqual(prefill["instrument"], "Saxophone")
+        self.assertEqual(prefill["instrument"], "Piano")
         self.assertEqual(prefill["active_song"], "Say")
         self.assertEqual(prefill["section_name"], "Chorus")
         self.assertEqual(prefill["bpm"], 82)
