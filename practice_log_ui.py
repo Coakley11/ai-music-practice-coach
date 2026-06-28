@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import html
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Callable
 
 from practice_log_state import (
     FOCUS_AREAS,
@@ -15,8 +15,11 @@ from practice_log_state import (
     compute_practice_log_summary,
     delete_practice_log_entry,
     filter_practice_log_entries,
+    format_bpm_display,
+    format_quick_save_success_message,
     load_entries,
     reload_practice_log_entries,
+    section_display_label,
     update_practice_log_entry,
 )
 
@@ -196,7 +199,7 @@ def _try_add_practice_log_entry(
     fields: dict[str, Any],
     *,
     on_saved: Any = None,
-    ok_message: str,
+    ok_message: str | Callable[[dict[str, Any]], str] = "",
     error_session_key: str,
 ) -> bool:
     try:
@@ -204,7 +207,8 @@ def _try_add_practice_log_entry(
         session_state.pop(error_session_key, None)
         if on_saved:
             on_saved(entry)
-        _handle_save_result(st, session_state, ok_message=ok_message)
+        message = ok_message(entry) if callable(ok_message) else ok_message
+        _handle_save_result(st, session_state, ok_message=message)
         return True
     except Exception as exc:
         session_state[error_session_key] = str(exc)
@@ -221,8 +225,8 @@ def _handle_save_result(st: Any, session_state: dict[str, Any], *, ok_message: s
     st.rerun()
 
 
-def render_summary_cards(st: Any, entries: list[dict[str, Any]]) -> None:
-    summary = compute_practice_log_summary(entries, window_days=14)
+def render_summary_cards(st: Any, entries: list[dict[str, Any]], session_state: dict[str, Any]) -> None:
+    summary = compute_practice_log_summary(entries, window_days=14, session_state=session_state)
     challenge = summary.get("repeated_challenge") or "—"
     if challenge and len(str(challenge)) > 48:
         challenge = str(challenge)[:45] + "…"
@@ -416,7 +420,7 @@ def render_quick_actions(
 ) -> None:
     c1, c2, c3 = st.columns(3)
     with c1:
-        if st.button("⚡ Log current setup", key="plog_quick_log_btn", use_container_width=True):
+        if st.button("⚡ Quick Save Practice Session", key="plog_quick_log_btn", use_container_width=True):
             session_state["_practice_log_quick_log_clicked_at"] = _utc_now_iso()
             session_state.pop("_plog_show_manual_form", None)
             session_state.pop("_plog_edit_session_id", None)
@@ -427,22 +431,25 @@ def render_quick_actions(
                 "duration_minutes": prefill.get("duration_minutes"),
                 "practice_type": prefill.get("practice_type"),
                 "source_page": prefill.get("source_page"),
+                "bpm": prefill.get("bpm"),
+                "bpm_source": prefill.get("bpm_source"),
+                "section_name": prefill.get("section_name"),
             }
             fields = {
                 **prefill,
-                "notes": str(prefill.get("notes") or "").strip() or "Quick log — current setup",
+                "notes": str(prefill.get("notes") or "").strip() or "Quick save — current setup",
             }
             if not _try_add_practice_log_entry(
                 st,
                 session_state,
                 fields,
                 on_saved=on_saved,
-                ok_message="Practice session logged from current setup.",
+                ok_message=format_quick_save_success_message,
                 error_session_key="_practice_log_quick_log_error",
             ):
                 st.rerun()
     with c2:
-        if st.button("✏️ Add session manually", key="plog_manual_log_btn", use_container_width=True):
+        if st.button("✏️ Add Session Manually", key="plog_manual_log_btn", use_container_width=True):
             session_state["_practice_log_manual_open_clicked_at"] = _utc_now_iso()
             session_state["_plog_show_manual_form"] = True
             session_state.pop("_plog_show_quick_form", None)
@@ -457,8 +464,14 @@ def render_quick_actions(
             else:
                 st.success("Practice log sent to Command Center. Open Command Center for Music Coach analysis.")
             st.rerun()
+    st.caption(
+        "Quick Save uses your current song, instrument, key, BPM, and focus. "
+        "Use Add Session Manually if you want to write detailed notes."
+    )
+    if session_state.get("_practice_log_quick_log_error"):
+        st.error(f"Quick save failed: {session_state.get('_practice_log_quick_log_error')}")
     if session_state.get("_plog_show_quick_form"):
-        st.caption("Tip: ⚡ Log current setup saves immediately. Use ✏️ Add session manually to edit fields first.")
+        st.caption("Tip: Quick Save saves immediately. Use Add Session Manually to edit fields first.")
 
 
 def render_entry_forms(st: Any, session_state: dict[str, Any], *, on_saved: Any = None) -> None:
@@ -562,9 +575,11 @@ def render_session_list(st: Any, session_state: dict[str, Any], entries: list[di
         ptype = html.escape(str(entry.get("practice_type") or entry.get("mode") or ""))
 
         with st.expander(f"{date_label} · {song} · {mins} min · {instrument}", expanded=False):
+            bpm_label = html.escape(format_bpm_display(entry))
+            section_label = html.escape(section_display_label(entry))
             st.markdown(
                 f"**Keys:** {entry.get('display_key') or '—'} (practice) · {entry.get('original_key') or '—'} (original)  \n"
-                f"**BPM:** {entry.get('bpm') or '—'} · **Section:** {entry.get('section_practiced') or '—'}  \n"
+                f"**BPM:** {bpm_label} · **Section:** {section_label}  \n"
                 f"**Focus:** {focus} · **Type:** {ptype}"
             )
             if entry.get("notes") or entry.get("practice"):
@@ -603,14 +618,14 @@ def render_practice_log_page(
 ) -> list[dict[str, Any]]:
     """Main Practice Log page body. Returns filtered entries."""
     entries = load_entries(session_state)
-    render_summary_cards(st, entries)
+    render_summary_cards(st, entries, session_state)
     render_quick_actions(st, session_state, on_saved=on_saved)
     render_entry_forms(st, session_state, on_saved=on_saved)
 
     with st.container(key="log_filter_panel", border=False):
         st.markdown('<p class="ui-log-section-title">Session history</p>', unsafe_allow_html=True)
         filters = render_filters(st, entries)
-        filtered = filter_practice_log_entries(entries, filters)
+        filtered = filter_practice_log_entries(entries, filters, session_state=session_state)
         render_practice_log_diagnostics(
             st,
             session_state,

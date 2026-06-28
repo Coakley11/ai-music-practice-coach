@@ -6,6 +6,7 @@ import hashlib
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 PRACTICE_LOG_LOADED_WS_KEY = "_practice_log_loaded_workspace_id"
 PRACTICE_LOG_DEFERRED_EMPTY_KEY = "_practice_log_deferred_empty_load"
@@ -72,6 +73,190 @@ _STUDIO_PAGE_TO_PRACTICE_TYPE: dict[str, str] = {
     "picker": "song practice",
     "creative": "custom progression",
 }
+
+DEFAULT_PRACTICE_LOG_TZ = "America/New_York"
+
+_BPM_SOURCE_LABELS: dict[str, str] = {
+    "backing_track": "backing track",
+    "song_setting": "song setting",
+    "metronome": "metronome",
+    "default": "default",
+}
+
+
+def get_practice_log_timezone(session_state: dict[str, Any] | None = None) -> ZoneInfo:
+    """User/app timezone for practice log dates (defaults to America/New_York)."""
+    ss = session_state or {}
+    tz_name = str(
+        ss.get("user_timezone")
+        or ss.get("practice_log_timezone")
+        or DEFAULT_PRACTICE_LOG_TZ
+    ).strip()
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:
+        return ZoneInfo(DEFAULT_PRACTICE_LOG_TZ)
+
+
+def practice_log_local_date(
+    session_state: dict[str, Any] | None = None,
+    *,
+    now_utc: datetime | None = None,
+) -> date:
+    """Local calendar date for practice log entries (not server UTC)."""
+    now = now_utc or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return now.astimezone(get_practice_log_timezone(session_state)).date()
+
+
+def resolve_practice_log_bpm(session_state: dict[str, Any]) -> tuple[int | None, str | None]:
+    """Resolve BPM + source label for quick-save.
+
+    Priority: backing-track BPM → active song BPM → metronome/current BPM → default.
+    Returns (None, None) when no trustworthy BPM exists.
+    """
+    ss = session_state or {}
+    studio_page = str(ss.get("studio_page") or "practice").strip().lower()
+    last_mode = str(ss.get("last_practice_mode") or "").strip().lower()
+
+    live_bpm = _coerce_int(ss.get("backing_track_bpm"))
+    canon_bpm: int | None = None
+    try:
+        from backing_track_state import canonical_backing_filters
+
+        backing = canonical_backing_filters(ss) or {}
+        canon_bpm = _coerce_int(backing.get("backing_track_bpm"))
+    except ImportError:
+        pass
+
+    backing_bpm = live_bpm if live_bpm is not None else canon_bpm
+    if backing_bpm is not None and (
+        studio_page == "backing"
+        or last_mode in ("backing", "backing track")
+        or str(ss.get("practice_type") or "").strip().lower() == "backing track"
+    ):
+        return backing_bpm, "backing track"
+
+    song_bpm = _coerce_int(ss.get("active_song_bpm"))
+    selected: dict[str, Any] = {}
+    try:
+        from active_song_state import gather_active_song_context
+
+        song_ctx = gather_active_song_context(ss)
+        raw = song_ctx.get("selected_song")
+        selected = raw if isinstance(raw, dict) else {}
+    except ImportError:
+        raw = ss.get("selected_song")
+        selected = raw if isinstance(raw, dict) else {}
+
+    if song_bpm is None and selected:
+        try:
+            from songs.playback_defaults import canonical_active_song_bpm
+
+            song_bpm = canonical_active_song_bpm(selected)
+        except ImportError:
+            pass
+
+    if song_bpm is not None and backing_bpm is not None and backing_bpm == song_bpm:
+        return song_bpm, "song setting"
+    if song_bpm is not None and backing_bpm is None:
+        return song_bpm, "song setting"
+
+    if backing_bpm is not None:
+        if studio_page == "practice" or last_mode in ("practice", "song practice", "song work"):
+            return backing_bpm, "metronome"
+        return backing_bpm, "metronome"
+
+    if song_bpm is not None:
+        return song_bpm, "song setting"
+
+    return None, None
+
+
+def format_bpm_display(entry: dict[str, Any]) -> str:
+    """Human-readable BPM line for session cards."""
+    bpm = _coerce_int(entry.get("bpm"))
+    if bpm is None:
+        return "—"
+    source_key = str(entry.get("bpm_source") or "").strip().lower()
+    source = _BPM_SOURCE_LABELS.get(source_key) or source_key
+    if source:
+        return f"{bpm} · {source}"
+    return str(bpm)
+
+
+def section_display_label(entry: dict[str, Any]) -> str:
+    """Map internal section codes to user-facing labels."""
+    raw_name = str(entry.get("section_name") or "").strip()
+    if raw_name:
+        try:
+            from practice_state import normalize_practice_focus_section
+
+            norm = normalize_practice_focus_section(raw_name)
+        except ImportError:
+            norm = raw_name
+        low = norm.lower()
+        if low in ("full song", "whole song", "full form"):
+            return "Full song"
+        if low not in ("custom", "unspecified", ""):
+            return norm
+
+    section = str(entry.get("section_practiced") or "").strip().lower()
+    ptype = str(entry.get("practice_type") or entry.get("source_mode") or "").strip().lower()
+    page = str(entry.get("source_page") or "").strip().lower()
+
+    if section in ("whole song", "unspecified", ""):
+        return "Full song"
+    if section == "custom":
+        if ptype == "custom progression" or page in ("creative", "custom"):
+            return "Custom progression"
+        return "Custom section"
+    return section.replace("_", " ").title()
+
+
+def format_quick_save_success_message(entry: dict[str, Any]) -> str:
+    """Success toast after quick-save."""
+    song = str(entry.get("active_song") or entry.get("song") or "Session").strip()
+    instrument = str(entry.get("instrument") or "").strip()
+    mins = _coerce_int(entry.get("duration_minutes"), 0) or 0
+    parts = [f"Practice session saved: {song}"]
+    if instrument:
+        parts.append(instrument)
+    parts.append(f"{mins} min")
+    bpm = _coerce_int(entry.get("bpm"))
+    if bpm is not None:
+        source_key = str(entry.get("bpm_source") or "").strip().lower()
+        source = _BPM_SOURCE_LABELS.get(source_key) or source_key
+        if source:
+            parts.append(f"BPM {bpm} from {source}")
+        else:
+            parts.append(f"BPM {bpm}")
+    return " · ".join(parts)
+
+
+def _normalize_section_prefill(
+    session_state: dict[str, Any],
+    *,
+    practice: dict[str, Any],
+) -> tuple[str, str]:
+    """Return (section_practiced canonical, section_name display raw)."""
+    ss = session_state or {}
+    section = str(practice.get("practice_focus_section") or ss.get("practice_focus_section") or "").strip()
+    if not section:
+        return "unspecified", ""
+    try:
+        from practice_state import normalize_practice_focus_section
+
+        section = normalize_practice_focus_section(section)
+    except ImportError:
+        pass
+    low = section.lower()
+    if low in ("full song", "whole song", "full form"):
+        return "whole song", section
+    if low in SECTIONS_PRACTICED:
+        return low, section
+    return "custom", section
 
 
 def _utc_now_iso() -> str:
@@ -219,7 +404,7 @@ def migrate_practice_log_entry(entry: dict[str, Any]) -> dict[str, Any]:
 
     if not str(out.get("date") or "").strip():
         parsed = _parse_log_date(out)
-        out["date"] = parsed.isoformat() if parsed else date.today().isoformat()
+        out["date"] = parsed.isoformat() if parsed else practice_log_local_date().isoformat()
 
     mins = _coerce_int(out.get("duration_minutes"), _coerce_int(out.get("minutes"), 30))
     out["duration_minutes"] = mins if mins is not None else 30
@@ -235,6 +420,13 @@ def migrate_practice_log_entry(entry: dict[str, Any]) -> dict[str, Any]:
     bpm = _coerce_int(out.get("bpm"))
     if bpm is not None:
         out["bpm"] = bpm
+    bpm_source = str(out.get("bpm_source") or "").strip().lower()
+    if bpm_source:
+        out["bpm_source"] = bpm_source
+
+    section_name = str(out.get("section_name") or "").strip()
+    if section_name:
+        out["section_name"] = section_name
 
     section = str(out.get("section_practiced") or "").strip().lower()
     if not section:
@@ -417,9 +609,10 @@ def build_practice_log_prefill(session_state: dict[str, Any]) -> dict[str, Any]:
     """Build default field values from active song / practice setup."""
     ss = session_state or {}
     prefill: dict[str, Any] = {
-        "date": date.today().isoformat(),
+        "date": practice_log_local_date(ss).isoformat(),
         "duration_minutes": 30,
         "section_practiced": "unspecified",
+        "section_name": "",
         "focus_area": "general",
         "practice_type": "song practice",
         "source_page": str(ss.get("studio_page") or "practice").strip(),
@@ -474,23 +667,26 @@ def build_practice_log_prefill(session_state: dict[str, Any]) -> dict[str, Any]:
     except ImportError:
         practice = {}
 
-    section = str(practice.get("practice_focus_section") or ss.get("practice_focus_section") or "").strip()
-    if section:
-        low = section.lower()
-        prefill["section_practiced"] = low if low in SECTIONS_PRACTICED else "custom"
+    section_practiced, section_name = _normalize_section_prefill(ss, practice=practice)
+    prefill["section_practiced"] = section_practiced
+    prefill["section_name"] = section_name
     prefill["last_practice_mode"] = str(practice.get("last_practice_mode") or ss.get("last_practice_mode") or "").strip()
 
-    bpm = _coerce_int(ss.get("backing_track_bpm"), _coerce_int(ss.get("bpm")))
-    if bpm is None:
-        try:
-            from backing_track_state import canonical_backing_filters
+    mins = _coerce_int(practice.get("practice_minutes"), _coerce_int(ss.get("practice_minutes")))
+    if mins is not None and mins > 0:
+        prefill["duration_minutes"] = mins
 
-            backing = canonical_backing_filters(ss) or {}
-            bpm = _coerce_int(backing.get("backing_track_bpm"))
-        except ImportError:
-            pass
+    bpm, bpm_source = resolve_practice_log_bpm(ss)
     if bpm is not None:
         prefill["bpm"] = bpm
+        if bpm_source:
+            source_map = {
+                "backing track": "backing_track",
+                "song setting": "song_setting",
+                "metronome": "metronome",
+                "default": "default",
+            }
+            prefill["bpm_source"] = source_map.get(bpm_source, bpm_source.replace(" ", "_"))
 
     prefill["guitar_shape_key"] = str(ss.get("guitar_capo_shape_key") or "").strip()
     prefill["capo_fret"] = _coerce_int(ss.get("guitar_capo_fret"), 0) or 0
@@ -518,7 +714,7 @@ def _new_entry_fields(session_state: dict[str, Any], fields: dict[str, Any]) -> 
     merged.setdefault("created_at", now)
     merged["updated_at"] = now
     if not str(merged.get("date") or "").strip():
-        merged["date"] = date.today().isoformat()
+        merged["date"] = practice_log_local_date(session_state).isoformat()
     return migrate_practice_log_entry(merged)
 
 
@@ -586,7 +782,12 @@ def delete_practice_log_entry(session_state: dict[str, Any], session_id: str) ->
     return True
 
 
-def filter_practice_log_entries(entries: list[dict[str, Any]], filters: dict[str, Any]) -> list[dict[str, Any]]:
+def filter_practice_log_entries(
+    entries: list[dict[str, Any]],
+    filters: dict[str, Any],
+    *,
+    session_state: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     rows = normalize_practice_log_entries(entries)
     search = str(filters.get("search") or "").strip().lower()
     instrument = str(filters.get("instrument") or "").strip()
@@ -598,7 +799,7 @@ def filter_practice_log_entries(entries: list[dict[str, Any]], filters: dict[str
         try:
             days = int(window_days)
             if days > 0:
-                start_date = date.today() - timedelta(days=days - 1)
+                start_date = practice_log_local_date(session_state) - timedelta(days=days - 1)
         except (TypeError, ValueError):
             pass
 
@@ -641,11 +842,16 @@ def filter_practice_log_entries(entries: list[dict[str, Any]], filters: dict[str
     return out
 
 
-def compute_practice_log_summary(entries: list[dict[str, Any]], *, window_days: int = 14) -> dict[str, Any]:
+def compute_practice_log_summary(
+    entries: list[dict[str, Any]],
+    *,
+    window_days: int = 14,
+    session_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     from collections import Counter
 
-    rows = filter_practice_log_entries(entries, {"window_days": window_days})
-    today = date.today()
+    rows = filter_practice_log_entries(entries, {"window_days": window_days}, session_state=session_state)
+    today = practice_log_local_date(session_state)
     week_start = today - timedelta(days=today.weekday())
 
     sessions_this_week = 0
