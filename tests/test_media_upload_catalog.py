@@ -135,6 +135,46 @@ class TestMediaUploadCatalog(unittest.TestCase):
             visible = normalize_uploaded_recordings(data.get("uploaded_recordings") or [])
             self.assertEqual(visible[0].get("notes"), "Notes here")
 
+    def test_upload_row_summary_does_not_repeat_filename(self) -> None:
+        from media_upload_catalog import catalog_upload_row_summary
+
+        row = {
+            "title": "2026-05-31-214959714.wav",
+            "playback_status": "playable",
+            "payload": {
+                "filename": "2026-05-31-214959714.wav",
+                "song": "Annie's Song",
+                "instrument": "Piano",
+            },
+        }
+        summary = catalog_upload_row_summary(row)
+        self.assertIn("Annie's Song", summary)
+        self.assertIn("Piano", summary)
+        self.assertNotIn("2026-05-31", summary)
+
+    def test_history_row_label_is_non_repetitive(self) -> None:
+        from studio_history_ui import _compose_history_row_label
+
+        row = {
+            "title": "Project A backing",
+            "updated_at": "2026-06-28T12:20:00+00:00",
+            "payload": {
+                "title": "Project A backing",
+                "song": "Say",
+                "updated_at": "2026-06-28T12:20:00+00:00",
+            },
+        }
+        label = _compose_history_row_label(
+            row,
+            "2 playable · backing ready",
+            item_type="multitrack_session",
+        )
+        self.assertEqual(label.count("Project A backing"), 1)
+        self.assertIn("Say", label)
+        self.assertIn("2 playable", label)
+        self.assertIn("updated", label)
+        self.assertNotIn("Project A backing · Say · Project A backing", label)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -362,7 +362,7 @@ def list_catalog_upload_recordings(*, st: Any | None = None) -> tuple[list[dict[
         rows.append(
             {
                 "item_key": rid,
-                "title": rec.get("song") or rec.get("filename") or "Upload analysis",
+                "title": rec.get("filename") or rec.get("song") or "Upload analysis",
                 "updated_at": rec.get("updated_at") or rec.get("created_at"),
                 "payload": rec,
                 "playback_status": recording_playback_status(rec, st=st),
@@ -373,16 +373,16 @@ def list_catalog_upload_recordings(*, st: Any | None = None) -> tuple[list[dict[
 
 
 def catalog_upload_row_summary(row: dict[str, Any]) -> str:
+    """Status-only summary; filename/timestamp are composed by the history list UI."""
     payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
-    summary = payload.get("analysis_summary") if isinstance(payload.get("analysis_summary"), dict) else {}
-    coach = str(summary.get("coach_summary") or row.get("title") or "Upload analysis")
+    title = str(row.get("title") or "").strip()
+    song = str(payload.get("song") or "").strip()
     instrument = str(payload.get("instrument") or "").strip()
-    filename = str(payload.get("filename") or "").strip()
-    bits = [coach[:100]]
+    bits: list[str] = []
+    if song and song != title:
+        bits.append(song[:40])
     if instrument:
         bits.append(instrument[:40])
-    elif filename:
-        bits.append(filename[:40])
     status = str(row.get("playback_status") or recording_playback_status(payload)).strip()
     if status:
         bits.append(playback_status_label(status))

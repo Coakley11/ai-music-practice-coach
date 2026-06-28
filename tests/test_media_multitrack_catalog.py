@@ -466,6 +466,36 @@ class TestMediaMultitrackCatalog(unittest.TestCase):
         self.assertIn("2 playable", summary)
         self.assertIn("backing ready", summary)
 
+    def test_summary_storage_ref_counts_playable_without_local_file(self) -> None:
+        session = {
+            "multitrack_id": "mt-refs",
+            "title": "Project A backing",
+            "song": "Say",
+            "workspace_id": "daniel",
+            "tracks": [
+                {
+                    "track_id": "t1",
+                    "slot": "Guitar",
+                    "storage_ref": "supabase://music-media/u/ws/t1.wav",
+                    "analysis_summary": {"has_audio": True},
+                    "playback_status": "metadata_only",
+                },
+                {
+                    "track_id": "t2",
+                    "slot": "Piano / Keys",
+                    "storage_ref": "supabase://music-media/u/ws/t2.wav",
+                    "analysis_summary": {"has_audio": True},
+                    "playback_status": "metadata_only",
+                },
+            ],
+            "backing_storage_ref": "supabase://music-media/u/ws/backing.wav",
+        }
+        with patch("media_storage._cloud_storage_enabled", lambda: False):
+            summary = catalog_multitrack_row_summary({"payload": session, "title": "Project A backing"})
+        self.assertIn("2 playable", summary)
+        self.assertIn("backing ready", summary)
+        self.assertNotIn("audio missing", summary)
+
     def test_save_resolves_layer_audio_from_page_snapshot(self) -> None:
         from multitrack_session_persistence import encode_mt_tracks_for_persist
 

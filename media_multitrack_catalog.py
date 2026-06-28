@@ -478,18 +478,62 @@ def _merge_track_ids(fields: dict[str, Any], existing_session: dict[str, Any] | 
     if not existing_session:
         return
     by_slot: dict[str, str] = {}
+    by_slot_track: dict[str, dict[str, Any]] = {}
     for track in existing_session.get("tracks") or []:
         if isinstance(track, dict):
             slot = str(track.get("slot") or "")
             tid = str(track.get("track_id") or "")
             if slot and tid:
                 by_slot[slot] = tid
+            if slot:
+                by_slot_track[slot] = track
     for track in fields.get("tracks") or []:
         if not isinstance(track, dict):
             continue
         slot = str(track.get("slot") or "")
         if slot in by_slot:
             track["track_id"] = by_slot[slot]
+        existing = by_slot_track.get(slot)
+        if not isinstance(existing, dict):
+            continue
+        for key in ("local_path", "storage_ref", "playback_status"):
+            if not track.get(key) and existing.get(key):
+                track[key] = existing.get(key)
+
+
+def _merge_track_refs(fields: dict[str, Any], existing_session: dict[str, Any] | None) -> None:
+    """Preserve durable layer refs when re-saving without live session bytes."""
+    _merge_track_ids(fields, existing_session)
+
+
+def _track_has_durable_ref(track: dict[str, Any]) -> bool:
+    return bool(str(track.get("storage_ref") or "").strip() or str(track.get("local_path") or "").strip())
+
+
+def _catalog_track_is_playable(
+    track: dict[str, Any],
+    *,
+    session_workspace: str = "",
+    st: Any | None = None,
+) -> bool:
+    """True when layer audio was saved durably (refs) or is locally playable."""
+    if _track_has_durable_ref(track):
+        return True
+    ws = str(session_workspace or "daniel")
+    return track_playback_status(track, session_workspace=ws, st=st) == PLAYBACK_PLAYABLE
+
+
+def _catalog_track_audio_missing(
+    track: dict[str, Any],
+    *,
+    session_workspace: str = "",
+    st: Any | None = None,
+) -> bool:
+    """True when metadata says audio exists but no durable ref/playable file."""
+    if _catalog_track_is_playable(track, session_workspace=session_workspace, st=st):
+        return False
+    summary = track.get("analysis_summary") if isinstance(track.get("analysis_summary"), dict) else {}
+    return bool(summary.get("has_audio"))
 
 
 def _persist_session_tracks(
@@ -514,9 +558,13 @@ def _persist_session_tracks(
         audio = resolve_multitrack_slot_bytes(session_state, slot)
         if not audio:
             summary = track.get("analysis_summary") if isinstance(track.get("analysis_summary"), dict) else {}
-            summary["has_audio"] = True
+            if _track_has_durable_ref(track):
+                track["playback_status"] = track.get("playback_status") or PLAYBACK_PLAYABLE
+                summary["has_audio"] = True
+            else:
+                summary["has_audio"] = False
+                track["playback_status"] = ""
             track["analysis_summary"] = summary
-            track["playback_status"] = PLAYBACK_METADATA_ONLY
             updated_tracks.append(track)
             continue
         filename = str(filenames.get(slot) or f"{slot.replace(' ', '_').lower()}.wav")
@@ -839,28 +887,21 @@ def multitrack_layer_status_counts(
     session_workspace: str = "",
     st: Any | None = None,
 ) -> tuple[int, int]:
-    """Return (playable_layers, metadata_only_layers) for saved project summary."""
+    """Return (playable_layers, missing_audio_layers) for saved project summary."""
     ws = str(session_workspace or payload.get("workspace_id") or "daniel")
     tracks = real_multitrack_tracks(payload.get("tracks") if isinstance(payload.get("tracks"), list) else [])
     playable = 0
-    meta_only = 0
+    missing = 0
     for track in tracks:
-        status = track_playback_status(track, session_workspace=ws, st=st)
-        if status == PLAYBACK_PLAYABLE:
+        if _catalog_track_is_playable(track, session_workspace=ws, st=st):
             playable += 1
-        elif status in (PLAYBACK_METADATA_ONLY, PLAYBACK_MISSING_FILE, PLAYBACK_UPLOAD_FAILED):
-            summary = track.get("analysis_summary") if isinstance(track.get("analysis_summary"), dict) else {}
-            if summary.get("has_audio") or track.get("storage_ref") or track.get("local_path"):
-                meta_only += 1
-    return playable, meta_only
+        elif _catalog_track_audio_missing(track, session_workspace=ws, st=st):
+            missing += 1
+    return playable, missing
 
 
 def _multitrack_backing_summary_part(payload: dict[str, Any], *, session_workspace: str = "", st: Any | None = None) -> str:
-    ws = str(session_workspace or payload.get("workspace_id") or "daniel")
     if multitrack_has_saved_backing(payload):
-        prepared = str(payload.get("backing_prepared_at") or "").strip()
-        if prepared:
-            return f"backing ready · {prepared[:16]}"
         return "backing ready"
     has_settings = bool(
         payload.get("backing_prepared_at")
@@ -870,28 +911,22 @@ def _multitrack_backing_summary_part(payload: dict[str, Any], *, session_workspa
     )
     if not has_settings:
         return ""
-    status = backing_playback_status(payload, session_workspace=ws, st=st)
-    if status == PLAYBACK_PLAYABLE:
+    if str(payload.get("backing_storage_ref") or "").strip() or str(payload.get("backing_local_path") or "").strip():
         return "backing ready"
-    if status == PLAYBACK_METADATA_ONLY:
-        return "backing settings saved · backing audio missing"
     return "backing settings saved · backing audio missing"
 
 
 def catalog_multitrack_row_summary(row: dict[str, Any]) -> str:
+    """Status-only summary; title/song/timestamp are composed by the history list UI."""
     payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
-    name = str(payload.get("title") or row.get("title") or "Multitrack session")
     ws = str(payload.get("workspace_id") or "daniel")
-    playable, meta_only = multitrack_layer_status_counts(payload, session_workspace=ws)
-    song = str(payload.get("song") or "").strip()
-    bits = [name[:80]]
-    if song:
-        bits.append(song[:40])
+    playable, missing = multitrack_layer_status_counts(payload, session_workspace=ws)
+    bits: list[str] = []
     if playable:
         bits.append(f"{playable} playable")
-    if meta_only:
-        bits.append(f"{meta_only} recorded layer(s) · audio missing")
-    if not playable and not meta_only:
+    if missing:
+        bits.append(f"{missing} recorded layer(s) · audio missing")
+    if not playable and not missing:
         bits.append("0 recorded layers")
     backing_part = _multitrack_backing_summary_part(payload, session_workspace=ws)
     if backing_part:

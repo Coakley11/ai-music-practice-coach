@@ -67,6 +67,33 @@ def _after_history_load(session_state: dict[str, Any], st_obj: Any, *, page: str
         pass
 
 
+def _merge_track_refs(fields: dict[str, Any], existing_session: dict[str, Any] | None) -> None:
+    """Preserve durable layer refs when re-saving without live session bytes."""
+    _merge_track_ids(fields, existing_session)
+
+
+def _compose_history_row_label(
+    row: dict[str, Any],
+    summary: str,
+    *,
+    item_type: str,
+) -> str:
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    title = str(row.get("title") or payload.get("title") or payload.get("project_name") or "Saved item").strip()
+    updated = format_saved_at(str(payload.get("saved_at") or row.get("updated_at") or ""))
+    parts = [title[:120]]
+    if item_type == "multitrack_session":
+        song = str(payload.get("song") or payload.get("song_title") or "").strip()
+        if song and song.lower() not in title.lower():
+            parts.append(song[:40])
+    summary = str(summary or "").strip()
+    if summary:
+        parts.append(summary)
+    if updated and updated != "Unknown date":
+        parts.append(f"updated {updated}")
+    return " · ".join(parts)
+
+
 def _render_history_list(
     st_obj: Any,
     *,
@@ -102,14 +129,10 @@ def _render_history_list(
         if not item_key:
             continue
         payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
-        saved_at = format_saved_at(str(payload.get("saved_at") or row.get("updated_at") or ""))
-        title = str(row.get("title") or payload.get("title") or payload.get("project_name") or "Saved item")
         summary = summary_fn(row)
         suffix = widget_key_suffix(item_key)
         is_active = bool(active_item_key and item_key == active_item_key)
-        row_label = f"{title}  ·  {saved_at}"
-        if summary:
-            row_label = f"{row_label}  ·  {summary}"
+        row_label = _compose_history_row_label(row, summary, item_type=item_type)
         if is_active:
             row_label = f"▸ {row_label}"
 
