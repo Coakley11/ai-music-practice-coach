@@ -644,6 +644,12 @@ def metrics_for_applied_math_resume(payload: dict[str, Any]) -> dict[str, Any]:
     return metrics
 
 
+def _resume_upsert_succeeded(result: Any) -> bool:
+    if isinstance(result, dict):
+        return str(result.get("write_mode") or "") not in {"", "skipped"}
+    return bool(result)
+
+
 def _upsert_applied_intelligence_resume(
     payload: dict[str, Any],
     *,
@@ -657,29 +663,68 @@ def _upsert_applied_intelligence_resume(
     try:
         from suite_storage_supabase import upsert_resume_item
 
-        upsert_resume_item(
+        result = upsert_resume_item(
             "applied_intelligence",
             resume_key,
             title=title,
             subtitle=subtitle,
             action_url=action_url,
         )
-        return True
+        return _resume_upsert_succeeded(result)
     except Exception as exc:
         log.warning("suite_storage_supabase upsert_resume_item failed: %s", exc)
     try:
         from suite_storage import upsert_resume_item
 
-        upsert_resume_item(
+        result = upsert_resume_item(
             "applied_intelligence",
             resume_key,
             title=title,
             subtitle=subtitle,
             action_url=action_url,
         )
-        return True
+        return _resume_upsert_succeeded(result)
     except Exception as exc:
         log.warning("suite_storage upsert_resume_item failed: %s", exc)
+    return False
+
+
+def _upsert_music_practice_log_resume(
+    payload: dict[str, Any],
+    *,
+    action_url: str,
+) -> bool:
+    """Keep one current Music Practice Log Analysis resume card on the music app."""
+    resume_key = str(payload.get("resume_key") or "").strip()
+    if not resume_key:
+        return False
+    subtitle = analytical_question_storage_subtitle(payload)
+    try:
+        from suite_storage_supabase import upsert_resume_item
+
+        result = upsert_resume_item(
+            "music",
+            resume_key,
+            title=PRACTICE_LOG_ANALYSIS_TITLE,
+            subtitle=subtitle,
+            action_url=action_url,
+        )
+        return _resume_upsert_succeeded(result)
+    except Exception as exc:
+        log.warning("suite_storage_supabase music resume upsert failed: %s", exc)
+    try:
+        from suite_storage import upsert_resume_item
+
+        result = upsert_resume_item(
+            "music",
+            resume_key,
+            title=PRACTICE_LOG_ANALYSIS_TITLE,
+            subtitle=subtitle,
+            action_url=action_url,
+        )
+        return _resume_upsert_succeeded(result)
+    except Exception as exc:
+        log.warning("suite_storage music resume upsert failed: %s", exc)
     return False
 
 
@@ -930,16 +975,13 @@ def submit_practice_log_analysis_handoff(
     else:
         activity_recorded = True
     resume_upsert_ok = _upsert_applied_intelligence_resume(payload, action_url=action_url)
+    music_resume_ok = _upsert_music_practice_log_resume(payload, action_url=action_url)
     if not resume_upsert_ok and not handoff_error:
         handoff_error = "Command Center resume item was not written"
-    ss = payload.get("source_state")
-    refresh_blob = not duplicate or (
-        isinstance(ss, dict) and bool(ss.get("entity_params"))
-    )
-    context_blob_stored = False
-    if refresh_blob:
-        context_blob_stored = _store_question_context_blob(payload)
-    handoff_success = resume_upsert_ok and context_blob_stored and (duplicate or activity_recorded)
+    if not music_resume_ok and not handoff_error:
+        handoff_error = "Music resume item was not updated"
+    context_blob_stored = _store_question_context_blob(payload)
+    handoff_success = resume_upsert_ok and music_resume_ok and context_blob_stored
     if session_state is not None:
         session_state["_ami_last_send"] = {
             "question_id": payload["question_id"],
@@ -960,6 +1002,7 @@ def submit_practice_log_analysis_handoff(
         "handoff_success": handoff_success,
         "activity_recorded": activity_recorded,
         "resume_upsert_ok": resume_upsert_ok,
+        "music_resume_ok": music_resume_ok,
         "context_blob_stored": context_blob_stored,
         "record_trace": record_trace,
         "handoff_error": handoff_error,

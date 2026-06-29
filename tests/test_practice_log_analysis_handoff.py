@@ -240,14 +240,15 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
         with patch("suite_activity_client.record_activity", _fake_record):
             with patch("suite_activity_client.last_record_trace", return_value={"recorded": True, "supabase_write_ok": True}):
                 with patch("suite_analytical_question._upsert_applied_intelligence_resume", return_value=True):
-                    with patch("suite_analytical_question._store_question_context_blob", return_value=True):
-                        with patch("suite_analytical_question._recent_duplicate_send", return_value=False):
-                            result = submit_practice_log_analysis_handoff(
-                                source_page="log",
-                                question="Analyze my practice history",
-                                context=ctx,
-                                session_state={},
-                            )
+                    with patch("suite_analytical_question._upsert_music_practice_log_resume", return_value=True):
+                        with patch("suite_analytical_question._store_question_context_blob", return_value=True):
+                            with patch("suite_analytical_question._recent_duplicate_send", return_value=False):
+                                result = submit_practice_log_analysis_handoff(
+                                    source_page="log",
+                                    question="Analyze my practice history",
+                                    context=ctx,
+                                    session_state={},
+                                )
         self.assertTrue(recorded)
         _, _, kwargs = recorded[0]
         self.assertTrue(str(kwargs.get("action_url") or "").strip())
@@ -271,6 +272,96 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
         status = session.get("latest_practice_analysis_handoff_status") or {}
         self.assertFalse(status.get("success"))
         self.assertFalse(status.get("sent_at"))
+
+    def test_second_handoff_updates_existing_resume_item_without_failure(self) -> None:
+        from suite_analytical_question import submit_practice_log_analysis_handoff
+
+        ctx = {
+            "user_request": "analyze_practice",
+            "analysis_type": "practice_history_analysis",
+            "progress_report": {"executive_summary": "run 2"},
+            "practice_history_payload": {"practice_log_summary": {"entry_count_total": 2}},
+            "log_page_summary": {"practice_summary": "updated"},
+            "practice_log_summary": {"session_count": 2, "total_minutes": 60},
+        }
+        upsert_calls: list[tuple[str, str]] = []
+
+        def _fake_music_upsert(payload, *, action_url):
+            upsert_calls.append(("music", str(payload.get("resume_key") or "")))
+            return True
+
+        def _fake_ai_upsert(payload, *, action_url):
+            upsert_calls.append(("applied_intelligence", str(payload.get("resume_key") or "")))
+            return True
+
+        stored_blobs: list[dict] = []
+
+        def _fake_store_blob(payload):
+            stored_blobs.append(dict(payload.get("context") or {}))
+            return True
+
+        with patch("suite_analytical_question._recent_duplicate_send", return_value=False):
+            with patch("suite_activity_client.record_activity"):
+                with patch(
+                    "suite_activity_client.last_record_trace",
+                    return_value={"recorded": True, "supabase_write_ok": True},
+                ):
+                    with patch(
+                        "suite_analytical_question._upsert_music_practice_log_resume",
+                        side_effect=_fake_music_upsert,
+                    ):
+                        with patch(
+                            "suite_analytical_question._upsert_applied_intelligence_resume",
+                            side_effect=_fake_ai_upsert,
+                        ):
+                            with patch(
+                                "suite_analytical_question._store_question_context_blob",
+                                side_effect=_fake_store_blob,
+                            ):
+                                first = submit_practice_log_analysis_handoff(
+                                    source_page="log",
+                                    question="Analyze my practice history",
+                                    context={**ctx, "progress_report": {"executive_summary": "run 1"}},
+                                    session_state={},
+                                )
+                                second = submit_practice_log_analysis_handoff(
+                                    source_page="log",
+                                    question="Analyze my practice history",
+                                    context=ctx,
+                                    session_state={},
+                                )
+        self.assertTrue(first.get("handoff_success"))
+        self.assertTrue(second.get("handoff_success"))
+        self.assertEqual(first.get("resume_key"), second.get("resume_key"))
+        self.assertTrue(str(first.get("resume_key") or "").startswith("ai:practice_log_analysis:"))
+        self.assertEqual(upsert_calls.count(("music", first.get("resume_key"))), 2)
+        self.assertEqual(upsert_calls.count(("applied_intelligence", first.get("resume_key"))), 2)
+        self.assertEqual(len(stored_blobs), 2)
+        self.assertEqual(stored_blobs[-1].get("progress_report", {}).get("executive_summary"), "run 2")
+
+    def test_duplicate_cooldown_still_refreshes_blob_and_resume(self) -> None:
+        from suite_analytical_question import submit_practice_log_analysis_handoff
+
+        ctx = {
+            "user_request": "analyze_practice",
+            "progress_report": {"executive_summary": "cooldown refresh"},
+            "practice_log_summary": {"session_count": 1},
+        }
+        with patch("suite_analytical_question._recent_duplicate_send", return_value=True):
+            with patch("suite_analytical_question._upsert_applied_intelligence_resume", return_value=True):
+                with patch("suite_analytical_question._upsert_music_practice_log_resume", return_value=True) as music_upsert:
+                    with patch("suite_analytical_question._store_question_context_blob", return_value=True) as store_blob:
+                        result = submit_practice_log_analysis_handoff(
+                            source_page="log",
+                            question="Analyze my practice history",
+                            context=ctx,
+                            session_state={"_ami_last_send": {"question_id": "x", "submitted_at": "2026-06-29T00:00:00+00:00"}},
+                        )
+        self.assertTrue(result.get("duplicate"))
+        self.assertTrue(result.get("handoff_success"))
+        music_upsert.assert_called_once()
+        store_blob.assert_called_once()
+        self.assertNotIn("409", str(result.get("handoff_error") or ""))
 
 
 if __name__ == "__main__":

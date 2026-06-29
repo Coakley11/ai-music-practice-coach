@@ -30,6 +30,7 @@ _TABLE_RESUME = "suite_resume_items"
 _TABLE_SAVED = "suite_saved_items"
 _TABLE_SETTINGS = "suite_user_settings"
 _SAVED_ITEM_CONFLICT_COLS = "user_id,app,item_type,item_key"
+_RESUME_ITEM_CONFLICT_COLS = "user_id,app,item_key"
 _FULL_SESSION_KEY = "full_session"
 _READ_CACHE_KEY = "_suite_supabase_get_cache"
 
@@ -485,16 +486,23 @@ def upsert_resume_item(
     title: str,
     subtitle: str = "",
     action_url: str = "",
-) -> None:
+) -> dict[str, Any]:
+    """
+    Idempotent write for ``suite_resume_items``.
+
+    Uses PostgREST upsert on ``(user_id, app, item_key)``; falls back to PATCH
+    when a duplicate-key 409 still occurs (older PostgREST / missing on_conflict).
+    """
     logical_app = normalize_app_key(app)
     app_key = _scoped_storage_app(app)
     key = str(item_key or "").strip()
     title_clean = str(title or "").strip()
     if not app_key or not key or not title_clean:
-        return
+        return {"write_mode": "skipped", "duplicate_handled": False}
     if logical_app not in ACTIVE_APP_KEYS:
-        return
-    body: dict[str, Any] = {
+        return {"write_mode": "skipped", "duplicate_handled": False}
+    uid = _scoped_user_id()
+    row_body: dict[str, Any] = {
         "app": app_key,
         "item_key": key,
         "title": title_clean,
@@ -503,15 +511,41 @@ def upsert_resume_item(
         "valid": True,
         "updated_at": _now_iso(),
     }
-    uid = _cloud_user_id()
     if uid:
-        body["user_id"] = uid
-    _request(
-        "POST",
-        _TABLE_RESUME,
-        json_body=body,
-        prefer="resolution=merge-duplicates,return=minimal",
-    )
+        row_body["user_id"] = uid
+    patch_body = {
+        "title": title_clean,
+        "subtitle": subtitle or "",
+        "action_url": action_url or "",
+        "valid": True,
+        "updated_at": _now_iso(),
+    }
+    patch_params: dict[str, str] = {
+        "app": f"eq.{app_key}",
+        "item_key": f"eq.{key}",
+    }
+    if uid:
+        patch_params["user_id"] = f"eq.{uid}"
+    try:
+        _request(
+            "POST",
+            _TABLE_RESUME,
+            params={"on_conflict": _RESUME_ITEM_CONFLICT_COLS},
+            json_body=row_body,
+            prefer="resolution=merge-duplicates,return=minimal",
+        )
+        return {"write_mode": "upsert", "duplicate_handled": False}
+    except RuntimeError as exc:
+        if not _is_duplicate_key_error(exc):
+            raise
+        _request(
+            "PATCH",
+            _TABLE_RESUME,
+            params=patch_params,
+            json_body=patch_body,
+            prefer="return=minimal",
+        )
+        return {"write_mode": "update", "duplicate_handled": True}
 
 
 def invalidate_resume_item(app: str, item_key: str) -> None:
