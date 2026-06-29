@@ -12208,7 +12208,7 @@ elif _studio_page == "analysis":
                             ]
                         st.session_state["last_analysis_result"] = result
                         if st.session_state.get(ANALYSIS_RETURN_TO_METRICS):
-                            st.session_state["creative_lab_analysis_mode"] = (
+                            st.session_state["creative_lab_last_mode"] = (
                                 "Improvisation Intelligence"
                             )
                             st.session_state["improv_intelligence_tab"] = "Metrics & AI"

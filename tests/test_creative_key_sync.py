@@ -8,6 +8,7 @@ from creative_key_sync import (
     IMPROV_STYLE_KEY_TRACKER,
     creative_entry_concert_key,
     ensure_creative_analysis_mode_restored,
+    persist_creative_analysis_mode,
     retranspose_generated_sections,
     sync_creative_key_change,
 )
@@ -110,6 +111,26 @@ class TestCreativeKeySync(unittest.TestCase):
         mode = ensure_creative_analysis_mode_restored(session)
         self.assertEqual(mode, "Improvisation Intelligence")
         self.assertEqual(session["creative_lab_analysis_mode"], "Improvisation Intelligence")
+
+    def test_persist_analysis_mode_never_writes_widget_key(self) -> None:
+        session = {
+            "creative_lab_analysis_mode": "Improvisation Intelligence",
+            "creative_lab_last_mode": "Deep Harmonic Analyzer",
+        }
+        mode = persist_creative_analysis_mode(session)
+        self.assertEqual(mode, "Improvisation Intelligence")
+        self.assertEqual(session["creative_lab_analysis_mode"], "Improvisation Intelligence")
+        self.assertEqual(session["creative_lab_last_mode"], "Improvisation Intelligence")
+        self.assertTrue(session.get("_creative_mode_user_touched"))
+
+    def test_persist_analysis_mode_falls_back_to_last_mode(self) -> None:
+        session = {
+            "creative_lab_last_mode": "Creative Arrangement Assistant",
+        }
+        mode = persist_creative_analysis_mode(session)
+        self.assertEqual(mode, "Creative Arrangement Assistant")
+        self.assertEqual(session["creative_lab_last_mode"], "Creative Arrangement Assistant")
+        self.assertNotIn("creative_lab_analysis_mode", session)
 
 
 class TestWrittenKeyLabels(unittest.TestCase):

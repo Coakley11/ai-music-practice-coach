@@ -170,15 +170,19 @@ def ensure_creative_analysis_mode_restored(session_state: dict[str, Any]) -> str
     return default
 
 
-def persist_creative_analysis_mode(session_state: dict[str, Any]) -> None:
-    """Write the current Analysis Mode before leaving the Creative page."""
+def persist_creative_analysis_mode(session_state: dict[str, Any]) -> str:
+    """Persist Analysis Mode to a non-widget key before leaving Creative.
+
+    Reads the widget-owned ``creative_lab_analysis_mode`` but never writes it back
+    after the selectbox may have rendered in the same run.
+    """
     mode = str(session_state.get("creative_lab_analysis_mode") or "").strip()
     if not mode:
         mode = str(session_state.get("creative_lab_last_mode") or "").strip()
     if mode:
-        session_state["creative_lab_analysis_mode"] = mode
         session_state["creative_lab_last_mode"] = mode
         session_state["_creative_mode_user_touched"] = True
+    return mode
 
 
 def on_creative_analysis_mode_change() -> None:
