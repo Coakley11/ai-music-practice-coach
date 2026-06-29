@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-06-27
+**Last updated:** 2026-06-29
 
 Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
@@ -22,6 +22,18 @@ Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadma
 
 **Acceptance:** Record/save Flute + Tenor Sax takes; switch instrument → correct default history; play/delete; AMI summarizes by instrument.
 
+### P0 — AMI Analyze My Practice synthesis
+
+**Plan:** [plans/2026-06-29-ami-practice-history-synthesis.md](./plans/2026-06-29-ami-practice-history-synthesis.md)
+
+- [x] Full practice-history payload (logs + upload analyses + tone takes + export metadata)
+- [x] 10-section local progress report + instant solver route
+- [x] Analyzed vs unanalyzed export distinction (exports not playing evidence alone)
+- [x] Safety checks + `?dev=1` AMI synthesis diagnostics on Practice Log
+- [x] `tests/test_practice_history_synthesis.py`
+
+**Acceptance:** Analyze My Practice synthesizes cross-source evidence; no raw audio in payload; report shows improvements, needs work, and next steps.
+
 ### P0 — Uploads + Multitrack persistence (media layer sprint)
 
 **Practice Log v1 baseline:** quick save, refresh/delete persistence, search/filter, instrument/key labels, AMI handoff title — working.
@@ -35,7 +47,7 @@ Implementation order:
 - [x] **B** — `media_state.py` + `media_persistence.py` (canonical model, tombstones, merge; no blobs in workspace envelope) — scaffold + tests
 - [ ] **C** — Upload auto-catalog + legacy `upload_history` migration + storage refs
 - [ ] **D** — Multitrack catalog + slot/control fix + storage refs
-- [ ] **E** — AMI payload: `uploaded_recordings` + `multitrack_sessions`; solver references recordings
+- [ ] **E** — AMI payload: `uploaded_recordings` + `multitrack_sessions`; **Command Center solver** references recordings (local synthesis shipped; external solver TBD)
 - [ ] **F** — UI lists, notes, delete; `?dev=1` media diagnostics
 - [ ] **G** — Tests + focused commits per step
 

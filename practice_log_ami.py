@@ -112,16 +112,34 @@ def _active_song_context(session_state: dict[str, Any]) -> dict[str, Any]:
         return {}
 
 
-def _recording_analysis_context() -> list[dict[str, Any]]:
+def _recording_analysis_context_from_summary(upload_summary: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in upload_summary.get("recent_analyses") or []:
+        if not isinstance(row, dict):
+            continue
+        out.append(
+            {
+                "date": row.get("created_at"),
+                "song": row.get("song_title") or row.get("song"),
+                "instrument": row.get("instrument"),
+                "weakest_category": row.get("weakest_category"),
+                "strongest_category": row.get("strongest_category"),
+                "next_focus": (row.get("improvement_suggestions") or [None])[0],
+                "coach_summary": str(row.get("coach_summary") or "")[:240],
+                "source": row.get("source"),
+                "recording_type": row.get("recording_type"),
+            }
+        )
+    if out:
+        return out[:8]
     try:
         from practice_log_insights import load_analysis_history
 
-        rows = load_analysis_history()
-        out: list[dict[str, Any]] = []
-        for row in rows[-8:]:
+        legacy: list[dict[str, Any]] = []
+        for row in load_analysis_history()[-8:]:
             if not isinstance(row, dict):
                 continue
-            out.append(
+            legacy.append(
                 {
                     "date": row.get("date"),
                     "song": row.get("song"),
@@ -132,7 +150,7 @@ def _recording_analysis_context() -> list[dict[str, Any]]:
                     "coach_summary": str(row.get("coach_summary") or "")[:240],
                 }
             )
-        return out
+        return legacy
     except Exception:
         return []
 
@@ -142,8 +160,18 @@ def build_practice_log_ami_payload(
     entries: list[dict[str, Any]] | None = None,
     *,
     window_days: int = 14,
+    st: Any | None = None,
 ) -> dict[str, Any]:
     """Build structured practice history payload for AMI / Command Center."""
+    from practice_history_synthesis import build_practice_history_ami_payload
+
+    synthesized = build_practice_history_ami_payload(
+        session_state,
+        entries=entries,
+        window_days=window_days,
+        st=st,
+    )
+
     if entries is None:
         entries = load_entries(session_state)
     else:
@@ -168,9 +196,11 @@ def build_practice_log_ami_payload(
         )
         repeated = [c for c, _ in hard.most_common(5)]
 
+    pl_block = dict(synthesized.get("practice_log_summary") or {})
     practice_log_summary = {
+        **pl_block,
         "window_days": window_days,
-        "session_count": summary.get("session_count", 0),
+        "session_count": summary.get("session_count", pl_block.get("entry_count_total", 0)),
         "total_minutes": summary.get("total_minutes", 0),
         "sessions_this_week": summary.get("sessions_this_week", 0),
         "minutes_this_week": summary.get("minutes_this_week", 0),
@@ -182,23 +212,29 @@ def build_practice_log_ami_payload(
         "trends": _build_trends(entries, window_days=window_days),
     }
 
-    tone_history: dict[str, Any] = {}
-    media_payload: dict[str, Any] = {}
-    try:
-        from media_persistence import build_media_ami_payload
+    upload_summary = synthesized.get("upload_analysis_summary") or {}
+    tone_history = synthesized.get("tone_history_summary") or {}
+    export_summary = synthesized.get("multitrack_export_summary") or {}
 
-        media_payload = build_media_ami_payload(None, window_days=max(window_days, 30))
-        tone_history = dict(media_payload.get("tone_history") or {})
-    except Exception:
-        pass
-
-    return {
+    result: dict[str, Any] = {
+        **synthesized,
         "practice_log_summary": practice_log_summary,
         "recent_sessions": [_compact_session(e) for e in window_entries[:30]],
         "active_song_context": _active_song_context(session_state),
-        "recording_analysis_context": _recording_analysis_context(),
+        "recording_analysis_context": _recording_analysis_context_from_summary(upload_summary),
         "tone_history": tone_history,
-        "multitrack_exports": media_payload.get("multitrack_exports") or {},
-        "media_summary": media_payload.get("media_summary") or {},
+        "multitrack_exports": export_summary,
+        "media_summary": {
+            "upload_count": upload_summary.get("analysis_count_total", 0),
+            "multitrack_count": 0,
+            "multitrack_export_count": export_summary.get("export_count_total", 0),
+            "tone_take_count": tone_history.get("tone_take_count_total", 0),
+            "analyzed_export_count": export_summary.get("analyzed_export_count", 0),
+            "window_days": max(window_days, 30),
+        },
         "user_request": "analyze_practice",
     }
+    from practice_history_synthesis import build_practice_progress_report
+
+    result["progress_report"] = build_practice_progress_report(result)
+    return result

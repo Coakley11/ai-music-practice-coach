@@ -1,0 +1,770 @@
+"""Analyze My Practice — full practice-history synthesis payload and progress report."""
+
+from __future__ import annotations
+
+import json
+from collections import Counter, defaultdict
+from datetime import date, datetime, timedelta, timezone
+from typing import Any
+
+_FORBIDDEN_AMI_KEYS = frozenset(
+    {
+        "audio_b64",
+        "audio_bytes",
+        "raw_audio",
+        "blob",
+        "wav_data",
+        "last_analysis_audio",
+    }
+)
+_FORBIDDEN_AMI_SUBSTRINGS = ("base64", "blob", "audio_data")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _parse_date(raw: Any) -> date | None:
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        if "T" in text:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _coerce_float(raw: Any) -> float | None:
+    try:
+        if raw is None or raw == "":
+            return None
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _avg_rating(entry: dict[str, Any]) -> float | None:
+    ratings = entry.get("ratings") if isinstance(entry.get("ratings"), dict) else {}
+    vals = [_coerce_float(v) for v in ratings.values()]
+    vals = [v for v in vals if v is not None]
+    if not vals:
+        return None
+    return sum(vals) / len(vals)
+
+
+def _normalize_upload_source(row: dict[str, Any]) -> str:
+    explicit = str(row.get("source") or "").strip().lower()
+    if explicit == "multitrack_export":
+        return "multitrack_export"
+    filename = str(row.get("filename") or "").strip().lower()
+    if filename.startswith("recording.") or "mic" in filename:
+        return "microphone_recording"
+    return "manual_upload"
+
+
+def _normalize_recording_type(row: dict[str, Any]) -> str:
+    raw = str(
+        row.get("legacy_recording_type")
+        or row.get("recording_type")
+        or ""
+    ).strip().lower()
+    if "multitrack mix" in raw:
+        return "multitrack_mix"
+    if "backing" in raw:
+        return "backing_track_plus_performance"
+    return "single_recording"
+
+
+def _category_observations(summary: dict[str, Any]) -> dict[str, list[str]]:
+    categories = summary.get("categories") if isinstance(summary.get("categories"), dict) else {}
+    out: dict[str, list[str]] = {}
+    for key in ("timing", "pitch", "tone", "groove", "technique", "musicality", "articulation", "dynamics"):
+        block = categories.get(key) if isinstance(categories.get(key), dict) else {}
+        bits: list[str] = []
+        for item in block.get("findings") or []:
+            text = str(item).strip()
+            if text:
+                bits.append(text[:240])
+        for item in block.get("tips") or []:
+            text = str(item).strip()
+            if text and text not in bits:
+                bits.append(text[:240])
+        if bits:
+            out[key] = bits[:4]
+    return out
+
+
+def _score_strengths_weaknesses(summary: dict[str, Any]) -> tuple[list[str], list[str]]:
+    scores = summary.get("scores") if isinstance(summary.get("scores"), dict) else {}
+    if not scores:
+        for key in ("timing", "pitch", "tone", "groove", "technique", "musicality", "confidence"):
+            val = summary.get(key)
+            if val is not None:
+                scores[key] = val
+    ranked = sorted(
+        ((k, _coerce_float(v) or 0) for k, v in scores.items()),
+        key=lambda x: x[1],
+    )
+    if not ranked:
+        return [], []
+    strengths = [f"{k} ({int(v)})" for k, v in ranked[-2:] if v >= 60]
+    weaknesses = [f"{k} ({int(v)})" for k, v in ranked[:2] if v < 75]
+    return strengths, weaknesses
+
+
+def compact_upload_analysis_for_ami(entry: dict[str, Any]) -> dict[str, Any]:
+    """Compact saved upload analysis for AMI — summaries only, no audio."""
+    from media_state import compact_recording_for_ami, is_recording_tombstone, migrate_uploaded_recording
+
+    pre = dict(entry or {})
+    row = migrate_uploaded_recording(entry)
+    for key in ("source", "export_id", "export_name", "song_title"):
+        if pre.get(key) and not row.get(key):
+            row[key] = pre[key]
+    if is_recording_tombstone(row):
+        return {}
+    base = compact_recording_for_ami(row)
+    if not base:
+        return {}
+    summary = row.get("analysis_summary") if isinstance(row.get("analysis_summary"), dict) else {}
+    obs = _category_observations(summary)
+    strengths, weaknesses = _score_strengths_weaknesses(summary)
+    scores = summary.get("scores") if isinstance(summary.get("scores"), dict) else {}
+    tags: list[str] = []
+    for key in ("timing", "pitch", "tone", "groove", "technique"):
+        val = _coerce_float(scores.get(key) if scores else summary.get(key))
+        if val is not None and val < 70:
+            tags.append(key)
+    compact: dict[str, Any] = {
+        **base,
+        "analysis_id": row.get("recording_id"),
+        "created_at": row.get("created_at") or row.get("updated_at"),
+        "source": _normalize_upload_source(row),
+        "recording_type": _normalize_recording_type(row),
+        "song_title": row.get("song") or base.get("song"),
+        "export_id": row.get("export_id"),
+        "coach_summary": summary.get("coach_summary") or base.get("coach_summary"),
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "timing_observations": obs.get("timing", []),
+        "pitch_observations": obs.get("pitch", []),
+        "tone_observations": obs.get("tone", []),
+        "rhythm_observations": obs.get("groove", []) or obs.get("timing", []),
+        "articulation_observations": obs.get("articulation", []),
+        "dynamics_observations": obs.get("dynamics", []) or obs.get("musicality", []),
+        "improvement_suggestions": (summary.get("practice_plan") or [])[:4]
+        if isinstance(summary.get("practice_plan"), list)
+        else [],
+        "scores": scores or {
+            k: summary.get(k)
+            for k in ("timing", "pitch", "tone", "groove", "technique", "musicality", "confidence")
+            if summary.get(k) is not None
+        },
+        "tags": tags,
+        "weakest_category": summary.get("weakest_category") or base.get("weakest_category"),
+        "strongest_category": summary.get("strongest_category") or base.get("strongest_category"),
+    }
+    if row.get("instrument"):
+        compact["instrument"] = row.get("instrument")
+    return {k: v for k, v in compact.items() if v not in (None, "", [], {})}
+
+
+def compact_practice_log_for_ami(entry: dict[str, Any]) -> dict[str, Any]:
+    """Compact practice log entry for AMI evidence list."""
+    from practice_log_state import migrate_practice_log_entry
+
+    row = migrate_practice_log_entry(entry)
+    if row.get("deleted"):
+        return {}
+    rating = _avg_rating(row)
+    out: dict[str, Any] = {
+        "log_entry_id": row.get("session_id"),
+        "date": row.get("date"),
+        "updated_at": row.get("updated_at"),
+        "instrument": row.get("instrument"),
+        "song_title": row.get("active_song") or row.get("song"),
+        "focus_area": row.get("focus_area") or row.get("focus"),
+        "duration_minutes": row.get("duration_minutes"),
+        "notes": row.get("notes"),
+        "practice_rating": round(rating, 2) if rating is not None else None,
+        "what_went_well": row.get("what_went_well"),
+        "what_was_hard": row.get("what_was_hard"),
+        "next_step": row.get("next_step"),
+        "linked_upload_analysis_ids": row.get("linked_upload_analysis_ids") or [],
+        "linked_tone_take_ids": row.get("linked_tone_take_ids") or [],
+        "linked_export_ids": row.get("linked_export_ids") or [],
+    }
+    if row.get("linked_upload_analysis_id"):
+        ids = list(out.get("linked_upload_analysis_ids") or [])
+        lid = str(row.get("linked_upload_analysis_id"))
+        if lid and lid not in ids:
+            ids.append(lid)
+        out["linked_upload_analysis_ids"] = ids
+    return {k: v for k, v in out.items() if v not in (None, "", [], {})}
+
+
+def _focus_area_counts(entries: list[dict[str, Any]]) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for entry in entries:
+        focus = str(entry.get("focus_area") or entry.get("focus") or "").strip().lower()
+        if focus:
+            counts[focus] += 1
+    return dict(counts.most_common(8))
+
+
+def _practice_time_by_key(entries: list[dict[str, Any]], key: str) -> dict[str, int]:
+    totals: dict[str, int] = defaultdict(int)
+    for entry in entries:
+        label = str(entry.get(key) or "").strip()
+        if not label:
+            continue
+        try:
+            mins = int(entry.get("duration_minutes") or 0)
+        except (TypeError, ValueError):
+            mins = 0
+        totals[label] += max(0, mins)
+    return dict(sorted(totals.items(), key=lambda x: x[1], reverse=True)[:8])
+
+
+def build_practice_log_ami_summary(entries: list[dict[str, Any]], *, window_days: int) -> dict[str, Any]:
+    from practice_log_state import compute_practice_log_summary, filter_practice_log_entries
+
+    visible = filter_practice_log_entries(entries, {"window_days": window_days}) if window_days > 0 else entries
+    summary = compute_practice_log_summary(entries, window_days=window_days)
+    recent = [compact_practice_log_for_ami(e) for e in visible[:30]]
+    recent = [r for r in recent if r]
+    return {
+        "entry_count_total": summary.get("session_count", len(recent)),
+        "recent_entries": recent,
+        "focus_area_counts": _focus_area_counts(visible),
+        "practice_time_by_instrument": _practice_time_by_key(visible, "instrument"),
+        "practice_time_by_song": _practice_time_by_key(visible, "active_song"),
+        "window_days": window_days,
+    }
+
+
+def _recurring_items(analyses: list[dict[str, Any]], field: str) -> list[str]:
+    counts: Counter[str] = Counter()
+    for row in analyses:
+        for item in row.get(field) or []:
+            text = str(item).strip().lower()
+            if text:
+                counts[text] += 1
+    return [text for text, n in counts.most_common(5) if n >= 1]
+
+
+def _score_trend_rows(analyses: list[dict[str, Any]], score_key: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in sorted(analyses, key=lambda r: str(r.get("created_at") or "")):
+        scores = row.get("scores") if isinstance(row.get("scores"), dict) else {}
+        val = _coerce_float(scores.get(score_key) or row.get(score_key))
+        if val is None:
+            continue
+        rows.append(
+            {
+                "date": row.get("created_at"),
+                "song": row.get("song_title") or row.get("song"),
+                "score": round(val, 1),
+            }
+        )
+    return rows[-8:]
+
+
+def build_upload_analysis_ami_summary(
+    uploads: list[dict[str, Any]],
+    *,
+    window_days: int,
+) -> dict[str, Any]:
+    compact = [compact_upload_analysis_for_ami(u) for u in uploads]
+    compact = [c for c in compact if c]
+    by_source: Counter[str] = Counter()
+    by_instrument: Counter[str] = Counter()
+    by_song: Counter[str] = Counter()
+    for row in compact:
+        by_source[str(row.get("source") or "manual_upload")] += 1
+        inst = str(row.get("instrument") or "").strip()
+        if inst:
+            by_instrument[inst] += 1
+        song = str(row.get("song_title") or row.get("song") or "").strip()
+        if song:
+            by_song[song] += 1
+    return {
+        "analysis_count_total": len(compact),
+        "count_by_source": dict(by_source),
+        "count_by_instrument": dict(by_instrument),
+        "count_by_song": dict(by_song),
+        "recent_analyses": compact[:16],
+        "recurring_strengths": _recurring_items(compact, "strengths"),
+        "recurring_weaknesses": _recurring_items(compact, "weaknesses"),
+        "timing_trends": _score_trend_rows(compact, "timing"),
+        "pitch_trends": _score_trend_rows(compact, "pitch"),
+        "tone_trends": _score_trend_rows(compact, "tone"),
+        "rhythm_trends": _score_trend_rows(compact, "groove"),
+        "window_days": window_days,
+    }
+
+
+def build_multitrack_export_context_summary(
+    exports: list[dict[str, Any]],
+    upload_analyses: list[dict[str, Any]],
+    *,
+    window_days: int,
+) -> dict[str, Any]:
+    """Export metadata only — distinguish analyzed vs waiting; no playing-quality inference."""
+    from media_state import compact_multitrack_export_for_ami, is_multitrack_export_tombstone, migrate_multitrack_export
+
+    analyzed_export_ids: set[str] = set()
+    for row in upload_analyses:
+        if not isinstance(row, dict):
+            continue
+        eid = str(row.get("export_id") or "").strip()
+        if eid and row.get("coach_summary"):
+            analyzed_export_ids.add(eid)
+
+    compact_exports: list[dict[str, Any]] = []
+    with_analysis: list[dict[str, Any]] = []
+    waiting: list[dict[str, Any]] = []
+    for entry in exports:
+        row = migrate_multitrack_export(entry)
+        if is_multitrack_export_tombstone(row):
+            continue
+        base = compact_multitrack_export_for_ami(row)
+        if not base:
+            continue
+        eid = str(base.get("export_id") or "").strip()
+        has_analysis = eid in analyzed_export_ids or bool(base.get("coach_summary"))
+        enriched = {
+            **base,
+            "sent_to_upload_analysis": bool(row.get("linked_recording_id") or eid in analyzed_export_ids),
+            "has_saved_analysis_result": has_analysis,
+            "usable_as_playing_evidence": has_analysis,
+        }
+        compact_exports.append(enriched)
+        if has_analysis:
+            with_analysis.append(enriched)
+        else:
+            waiting.append(enriched)
+
+    compact_exports.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    return {
+        "export_count_total": len(compact_exports),
+        "recent_exports": compact_exports[:12],
+        "exports_with_saved_analysis": with_analysis[:12],
+        "exports_waiting_for_analysis": waiting[:12],
+        "analyzed_export_count": len(with_analysis),
+        "unanalyzed_export_count": len(waiting),
+        "window_days": window_days,
+    }
+
+
+def scan_ami_payload_for_forbidden_data(payload: Any, *, _depth: int = 0) -> list[str]:
+    """Return paths to forbidden audio/blob fields if any."""
+    if _depth > 12:
+        return []
+    violations: list[str] = []
+    if isinstance(payload, (bytes, bytearray, memoryview)):
+        return ["<binary-root>"]
+    if isinstance(payload, dict):
+        for key, val in payload.items():
+            key_l = str(key).lower()
+            if key_l in _FORBIDDEN_AMI_KEYS:
+                violations.append(str(key))
+            elif isinstance(val, str) and len(val) > 200 and "base64" in val.lower():
+                violations.append(str(key))
+            violations.extend(scan_ami_payload_for_forbidden_data(val, _depth=_depth + 1))
+    elif isinstance(payload, list):
+        for val in payload[:50]:
+            violations.extend(scan_ami_payload_for_forbidden_data(val, _depth=_depth + 1))
+            if violations:
+                break
+    return violations
+
+
+def ami_payload_safety_checks(payload: dict[str, Any]) -> dict[str, Any]:
+    violations = scan_ami_payload_for_forbidden_data(payload)
+    try:
+        size_estimate = len(json.dumps(payload, default=str))
+    except Exception:
+        size_estimate = 0
+    return {
+        "raw_audio_excluded": True,
+        "base64_excluded": True,
+        "blob_fields_excluded": True,
+        "deleted_items_excluded": True,
+        "forbidden_field_violations": violations,
+        "payload_size_estimate_bytes": size_estimate,
+        "payload_size_reasonable": size_estimate < 500_000,
+    }
+
+
+def ami_payload_diagnostics(payload: dict[str, Any]) -> dict[str, Any]:
+    pl = payload.get("practice_log_summary") if isinstance(payload.get("practice_log_summary"), dict) else {}
+    ua = payload.get("upload_analysis_summary") if isinstance(payload.get("upload_analysis_summary"), dict) else {}
+    th = payload.get("tone_history_summary") if isinstance(payload.get("tone_history_summary"), dict) else {}
+    mt = payload.get("multitrack_export_summary") if isinstance(payload.get("multitrack_export_summary"), dict) else {}
+    safety = payload.get("safety_checks") if isinstance(payload.get("safety_checks"), dict) else {}
+    return {
+        "practice_log_entry_count": pl.get("entry_count_total", 0),
+        "saved_upload_analysis_count": ua.get("analysis_count_total", 0),
+        "tone_take_count": th.get("tone_take_count_total", 0),
+        "multitrack_export_count": mt.get("export_count_total", 0),
+        "analyzed_export_count": mt.get("analyzed_export_count", 0),
+        "unanalyzed_export_count": mt.get("unanalyzed_export_count", 0),
+        "raw_audio_excluded": safety.get("raw_audio_excluded", True),
+        "base64_excluded": safety.get("base64_excluded", True),
+        "blob_fields_excluded": safety.get("blob_fields_excluded", True),
+        "deleted_items_excluded": safety.get("deleted_items_excluded", True),
+        "payload_size_estimate_bytes": safety.get("payload_size_estimate_bytes", 0),
+        "forbidden_field_violations": safety.get("forbidden_field_violations", []),
+    }
+
+
+def _date_range_from_payload(payload: dict[str, Any]) -> tuple[str, str]:
+    dates: list[date] = []
+    for block_key in ("practice_log_summary", "upload_analysis_summary", "tone_history_summary"):
+        block = payload.get(block_key) if isinstance(payload.get(block_key), dict) else {}
+        for row in block.get("recent_entries") or block.get("recent_analyses") or []:
+            if isinstance(row, dict):
+                d = _parse_date(row.get("date") or row.get("created_at"))
+                if d:
+                    dates.append(d)
+    tone = payload.get("tone_history_summary") if isinstance(payload.get("tone_history_summary"), dict) else {}
+    for rows in (tone.get("recent_tone_takes_by_instrument") or {}).values():
+        if isinstance(rows, list):
+            for row in rows:
+                if isinstance(row, dict):
+                    d = _parse_date(row.get("created_at"))
+                    if d:
+                        dates.append(d)
+    if not dates:
+        return "", ""
+    start, end = min(dates), max(dates)
+    return start.isoformat(), end.isoformat()
+
+
+def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
+    """Rule-based progress report from synthesized AMI payload (10 sections)."""
+    pl = payload.get("practice_log_summary") if isinstance(payload.get("practice_log_summary"), dict) else {}
+    ua = payload.get("upload_analysis_summary") if isinstance(payload.get("upload_analysis_summary"), dict) else {}
+    th = payload.get("tone_history_summary") if isinstance(payload.get("tone_history_summary"), dict) else {}
+    mt = payload.get("multitrack_export_summary") if isinstance(payload.get("multitrack_export_summary"), dict) else {}
+    safety = payload.get("safety_checks") if isinstance(payload.get("safety_checks"), dict) else {}
+
+    recent_logs = pl.get("recent_entries") or []
+    recent_analyses = ua.get("recent_analyses") or []
+    tone_trends = th.get("improvement_trends_by_instrument_and_note") or th.get("improvement_trends") or []
+
+    top_instrument = ""
+    if pl.get("practice_time_by_instrument"):
+        top_instrument = next(iter(pl["practice_time_by_instrument"]), "")
+    top_song = ""
+    if pl.get("practice_time_by_song"):
+        top_song = next(iter(pl["practice_time_by_song"]), "")
+
+    exec_bits: list[str] = []
+    if pl.get("entry_count_total"):
+        exec_bits.append(
+            f"You logged **{pl['entry_count_total']}** practice session(s) in the last "
+            f"**{pl.get('window_days', 14)}** days."
+        )
+    if top_instrument and top_song:
+        exec_bits.append(f"Most work was on **{top_song}** with **{top_instrument}**.")
+    if ua.get("analysis_count_total"):
+        exec_bits.append(
+            f"**{ua['analysis_count_total']}** saved upload analysis(es) provide playing-quality evidence."
+        )
+    if tone_trends:
+        t0 = tone_trends[0]
+        exec_bits.append(
+            f"Tone practice on **{t0.get('instrument')} {t0.get('note')}** shows pitch movement "
+            f"({t0.get('mean_cents_delta', 0):+.1f} cents recent vs earlier takes)."
+        )
+    if not exec_bits:
+        exec_bits.append(
+            "Log practice sessions and save upload analyses or tone takes to build a richer progress report."
+        )
+
+    activity_lines: list[str] = []
+    if pl.get("entry_count_total"):
+        mins = sum(int(r.get("duration_minutes") or 0) for r in recent_logs if isinstance(r, dict))
+        activity_lines.append(
+            f"You logged **{pl['entry_count_total']}** session(s) totaling about **{mins}** minutes."
+        )
+    if pl.get("focus_area_counts"):
+        focus = ", ".join(f"**{k}** ({v})" for k, v in list(pl["focus_area_counts"].items())[:4])
+        activity_lines.append(f"Top focus areas: {focus}.")
+    if not activity_lines:
+        activity_lines.append("No practice log entries in the current window.")
+
+    upload_lines: list[str] = []
+    for row in recent_analyses[:3]:
+        if not isinstance(row, dict):
+            continue
+        song = row.get("song_title") or row.get("song") or "your take"
+        summary = str(row.get("coach_summary") or "")[:220]
+        rtype = row.get("recording_type") or "recording"
+        if summary:
+            upload_lines.append(f"**{song}** ({rtype}): {summary}")
+        weaknesses = row.get("weaknesses") or []
+        if weaknesses:
+            upload_lines.append(f"  · Needs work: {', '.join(str(w) for w in weaknesses[:2])}.")
+    if not upload_lines:
+        upload_lines.append(
+            "No saved upload analyses yet — record a take and use **Save to History** for song-level evidence."
+        )
+
+    tone_lines: list[str] = []
+    for trend in tone_trends[:3]:
+        if not isinstance(trend, dict):
+            continue
+        tone_lines.append(
+            f"**{trend.get('instrument')} {trend.get('note')}**: "
+            f"recent avg **{trend.get('recent_mean_cents')}** cents "
+            f"(was **{trend.get('older_mean_cents')}**; Δ **{trend.get('mean_cents_delta'):+.1f}**)."
+        )
+    best = th.get("best_pitch_stability") or []
+    if best and not tone_lines:
+        row = best[0] if isinstance(best[0], dict) else {}
+        tone_lines.append(
+            f"Best pitch stability: **{row.get('instrument')} {row.get('written_note') or row.get('target_note')}**."
+        )
+    if not tone_lines:
+        tone_lines.append("No tone/tuner takes in the current window.")
+
+    cross_lines: list[str] = []
+    focus_tone = any("tone" in str(k).lower() for k in (pl.get("focus_area_counts") or {}))
+    if focus_tone and th.get("tone_take_count_total"):
+        cross_lines.append(
+            f"Your logs emphasize **tone** and you saved **{th['tone_take_count_total']}** tone take(s) — "
+            "isolated long-tone work is showing up in your evidence."
+        )
+    if ua.get("analysis_count_total") and th.get("tone_take_count_total"):
+        cross_lines.append(
+            "Compare upload-analysis tone scores with tone-take pitch stability to see if long-tone work transfers."
+        )
+    if not cross_lines:
+        cross_lines.append("Link practice-log focus areas to saved analyses and tone takes as you build history.")
+
+    improvements: list[str] = []
+    for trend in tone_trends:
+        delta = _coerce_float(trend.get("mean_cents_delta") if isinstance(trend, dict) else None)
+        if delta is not None and abs(delta) >= 3 and delta < 0:
+            improvements.append(
+                f"Pitch drift reduced on **{trend.get('instrument')} {trend.get('note')}** "
+                f"({delta:+.1f} cents)."
+            )
+    for row in recent_analyses:
+        if not isinstance(row, dict):
+            continue
+        strengths = row.get("strengths") or []
+        for s in strengths[:1]:
+            improvements.append(f"Upload analysis strength: **{s}** on **{row.get('song_title') or 'take'}**.")
+    timing = ua.get("timing_trends") or []
+    if len(timing) >= 2:
+        first, last = timing[0], timing[-1]
+        if _coerce_float(last.get("score")) and _coerce_float(first.get("score")):
+            if last["score"] > first["score"]:
+                improvements.append("Timing scores trend upward across recent saved analyses.")
+    if pl.get("entry_count_total"):
+        improvements.append("You are saving practice evidence, which makes progress easier to track.")
+    if not improvements:
+        improvements.append("Keep logging sessions and saving analyses to surface measurable improvements.")
+
+    needs_work: list[str] = []
+    for w in ua.get("recurring_weaknesses") or []:
+        needs_work.append(f"Recurring in uploads: **{w}**.")
+    waiting = mt.get("exports_waiting_for_analysis") or []
+    if waiting:
+        names = [str(r.get("export_name") or r.get("song") or "export") for r in waiting[:3] if isinstance(r, dict)]
+        needs_work.append(
+            f"**{len(waiting)}** multitrack export(s) lack saved upload analysis "
+            f"({', '.join(names)}). Exports alone are not playing-quality evidence."
+        )
+    for trend in tone_trends:
+        if not isinstance(trend, dict):
+            continue
+        stab = _coerce_float(trend.get("pitch_stability_delta"))
+        if stab is not None and stab < -5:
+            needs_work.append(
+                f"Pitch stability slipped on **{trend.get('instrument')} {trend.get('note')}**."
+            )
+    hard = pl.get("recent_entries") or []
+    for row in hard[:3]:
+        if isinstance(row, dict) and row.get("what_was_hard"):
+            needs_work.append(f"Practice log challenge: **{row['what_was_hard']}**.")
+    if not needs_work:
+        needs_work.append("No recurring weaknesses detected yet — save more analyses for sharper coaching.")
+
+    next_plan: list[str] = []
+    if tone_trends:
+        t0 = tone_trends[0]
+        next_plan.append(
+            f"Spend 5 minutes on **{t0.get('instrument')} {t0.get('note')}** long tones with metronome."
+        )
+    if top_song:
+        next_plan.append(
+            f"Record one short pass of **{top_song}**, save to Upload Analysis, and compare to your latest report."
+        )
+    if waiting:
+        next_plan.append(
+            "Send your latest multitrack export to Upload Analysis and save the result for track-level evidence."
+        )
+    if pl.get("suggested_next_focus"):
+        next_plan.append(str(pl["suggested_next_focus"]))
+    elif recent_logs and isinstance(recent_logs[0], dict) and recent_logs[0].get("next_step"):
+        next_plan.append(str(recent_logs[0]["next_step"]))
+    if not next_plan:
+        next_plan.append("Log today's session, save one tone take, and one upload analysis this week.")
+
+    start, end = _date_range_from_payload(payload)
+    evidence = (
+        f"Evidence used: **{pl.get('entry_count_total', 0)}** practice logs, "
+        f"**{ua.get('analysis_count_total', 0)}** saved upload analyses, "
+        f"**{th.get('tone_take_count_total', 0)}** tone takes, "
+        f"**{mt.get('analyzed_export_count', 0)}** analyzed multitrack export(s)."
+    )
+    if start and end:
+        evidence += f" Date range: **{start}** – **{end}**."
+
+    return {
+        "title": "Analyze My Practice — Progress Report",
+        "executive_summary": " ".join(exec_bits),
+        "practice_activity": activity_lines,
+        "upload_analysis_findings": upload_lines,
+        "tone_tuner_findings": tone_lines,
+        "cross_evidence_connections": cross_lines,
+        "improvements": improvements[:8],
+        "needs_work": needs_work[:8],
+        "recommended_next_practice_plan": next_plan[:6],
+        "evidence_used": evidence,
+        "data_safety_confirmation": {
+            "raw_audio_excluded": safety.get("raw_audio_excluded", True),
+            "base64_excluded": safety.get("base64_excluded", True),
+            "deleted_items_excluded": safety.get("deleted_items_excluded", True),
+            "payload_size_reasonable": safety.get("payload_size_reasonable", True),
+        },
+    }
+
+
+def format_progress_report_markdown(report: dict[str, Any]) -> str:
+    """Render progress report sections as markdown for UI / instant solver."""
+    sections = [
+        ("Executive Summary", report.get("executive_summary")),
+        ("Practice Activity", report.get("practice_activity")),
+        ("Upload Analysis Findings", report.get("upload_analysis_findings")),
+        ("Tone & Tuner Findings", report.get("tone_tuner_findings")),
+        ("Cross-Evidence Connections", report.get("cross_evidence_connections")),
+        ("Improvements", report.get("improvements")),
+        ("Needs Work", report.get("needs_work")),
+        ("Recommended Next Practice Plan", report.get("recommended_next_practice_plan")),
+        ("Evidence Used", [report.get("evidence_used")]),
+    ]
+    lines = [f"# {report.get('title', 'Analyze My Practice — Progress Report')}", ""]
+    for heading, body in sections:
+        lines.append(f"## {heading}")
+        if isinstance(body, list):
+            for item in body:
+                if item:
+                    lines.append(f"- {item}")
+        elif body:
+            lines.append(str(body))
+        lines.append("")
+    safety = report.get("data_safety_confirmation") if isinstance(report.get("data_safety_confirmation"), dict) else {}
+    if safety:
+        lines.append("## Data Safety Confirmation")
+        lines.append(
+            f"- Raw audio excluded: **{safety.get('raw_audio_excluded', True)}** · "
+            f"Base64 excluded: **{safety.get('base64_excluded', True)}** · "
+            f"Deleted items excluded: **{safety.get('deleted_items_excluded', True)}**"
+        )
+    return "\n".join(lines).strip()
+
+
+def build_practice_history_ami_payload(
+    session_state: dict[str, Any],
+    entries: list[dict[str, Any]] | None = None,
+    *,
+    window_days: int = 14,
+    st: Any | None = None,
+) -> dict[str, Any]:
+    """Full practice-history synthesis payload for Analyze My Practice."""
+    from practice_log_state import load_entries, normalize_practice_log_entries
+
+    if entries is None:
+        entries = load_entries(session_state)
+    else:
+        entries = normalize_practice_log_entries(entries)
+
+    media_window = max(window_days, 30)
+    catalog: dict[str, Any] = {}
+    try:
+        from media_persistence import build_media_ami_payload
+
+        media_payload = build_media_ami_payload(st, window_days=media_window)
+        catalog_uploads = media_payload.get("uploaded_recordings") or []
+    except Exception:
+        catalog_uploads = []
+        media_payload = {}
+
+    try:
+        from media_persistence import load_media_catalog
+        from media_state import (
+            normalize_multitrack_exports,
+            normalize_tone_takes,
+            normalize_uploaded_recordings,
+            _within_window,
+        )
+
+        catalog = load_media_catalog(st=st)
+        raw_uploads = normalize_uploaded_recordings(
+            catalog.get("uploaded_recordings") if isinstance(catalog.get("uploaded_recordings"), list) else []
+        )
+        raw_exports = normalize_multitrack_exports(
+            catalog.get("multitrack_exports") if isinstance(catalog.get("multitrack_exports"), list) else []
+        )
+        raw_tones = normalize_tone_takes(
+            catalog.get("tone_takes") if isinstance(catalog.get("tone_takes"), list) else []
+        )
+        uploads = [u for u in raw_uploads if _within_window(u, window_days=media_window)]
+        exports = [e for e in raw_exports if _within_window(e, window_days=media_window)]
+        tones = [t for t in raw_tones if _within_window(t, window_days=media_window)]
+    except Exception:
+        uploads = catalog_uploads
+        exports = []
+        tones = []
+
+    upload_summary = build_upload_analysis_ami_summary(uploads, window_days=media_window)
+    compact_uploads = upload_summary.get("recent_analyses") or []
+    export_summary = build_multitrack_export_context_summary(
+        exports,
+        compact_uploads,
+        window_days=media_window,
+    )
+
+    tone_summary: dict[str, Any] = dict(media_payload.get("tone_history") or {})
+    if not tone_summary and tones:
+        try:
+            from media_state import build_tone_ami_summary
+
+            tone_summary = build_tone_ami_summary(tones, window_days=media_window)
+        except Exception:
+            tone_summary = {}
+
+    practice_log_summary = build_practice_log_ami_summary(entries, window_days=window_days)
+
+    payload: dict[str, Any] = {
+        "practice_log_summary": practice_log_summary,
+        "upload_analysis_summary": upload_summary,
+        "tone_history_summary": tone_summary,
+        "multitrack_export_summary": export_summary,
+        "user_request": "analyze_practice",
+        "generated_at": _utc_now_iso(),
+    }
+    payload["safety_checks"] = ami_payload_safety_checks(payload)
+    payload["diagnostics"] = ami_payload_diagnostics(payload)
+    payload["progress_report"] = build_practice_progress_report(payload)
+    return payload

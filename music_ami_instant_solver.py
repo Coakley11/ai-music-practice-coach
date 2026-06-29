@@ -10,6 +10,7 @@ MUSIC_AMI_BUILD_ID = "music-ami-v5-canonical-insight"
 _MUSIC_SOLVER_INTENTS = frozenset(
     {
         "practice_plan",
+        "practice_history_analysis",
         "chord_transition",
         "section_focus",
         "tempo_key",
@@ -465,9 +466,50 @@ def _music_theory_answer(question: str, ctx: dict[str, Any]) -> MusicSolverResul
     )
 
 
+def _practice_history_analysis_answer(ctx: dict[str, Any]) -> MusicSolverResult:
+    from practice_history_synthesis import format_progress_report_markdown
+
+    payload = ctx.get("practice_log_ami_payload")
+    if not isinstance(payload, dict):
+        payload = ctx
+    report = payload.get("progress_report") if isinstance(payload.get("progress_report"), dict) else {}
+    if not report:
+        try:
+            from practice_history_synthesis import build_practice_progress_report
+
+            report = build_practice_progress_report(payload)
+        except Exception:
+            report = {}
+    markdown = format_progress_report_markdown(report) if report else (
+        "Log practice sessions and save upload analyses or tone takes to generate a progress report."
+    )
+    diag = payload.get("diagnostics") if isinstance(payload.get("diagnostics"), dict) else {}
+    return MusicSolverResult(
+        short_answer=markdown,
+        math_idea="Cross-source practice synthesis: logs + saved analyses + tone takes + export metadata.",
+        problem_type="practice_history_analysis",
+        model_name="Music Coach practice history synthesizer",
+        variables=(
+            f"logs={diag.get('practice_log_entry_count', 0)}; "
+            f"analyses={diag.get('saved_upload_analysis_count', 0)}; "
+            f"tone_takes={diag.get('tone_take_count', 0)}"
+        ),
+        assumptions=[
+            "Multitrack exports count as evidence only when a saved Upload Analysis exists.",
+            "Raw audio and base64 are excluded from the AMI payload.",
+        ],
+        confidence_pct=84,
+        computed=dict(diag),
+    )
+
+
 def _route_for_intent(intent: str) -> MusicSolverRoute:
     labels = {
         "practice_plan": ("practice_plan", "Music Coach practice planner"),
+        "practice_history_analysis": (
+            "practice_history_analysis",
+            "Music Coach practice history synthesizer",
+        ),
         "chord_transition": ("chord_transition", "Music Coach chord transitions"),
         "section_focus": ("section_focus", "Music Coach section focus"),
         "tempo_key": ("tempo_key", "Music Coach tempo & key"),
@@ -512,6 +554,8 @@ def solve_instant_music_insight(
 
     if intent == "practice_plan":
         result = _practice_plan_answer(q, ctx, chord_focus=chord_focus)
+    elif intent == "practice_history_analysis":
+        result = _practice_history_analysis_answer(ctx)
     elif intent == "chord_transition":
         result = _chord_transition_answer(ctx, q)
     elif intent == "section_focus":

@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-06-09 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
+**Last updated:** 2026-06-29 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 This is the master planning document. Related files:
 
@@ -65,7 +65,7 @@ This is the master planning document. Related files:
 
 **Policy (accepted 2026-06-09):** Tests **A–E are frozen**. Do not modify persistence unless a new `?dev=1` trace proves regression. Baseline: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).
 
-**Next focus:** **P0** [UI polish](./plans/2026-06-09-ui-polish-phase.md) first (visual/layout only, separate commits). **P1** [Back/Forward nav audit](./plans/2026-06-09-back-forward-nav-audit.md) later — not immediate unless nav blocks normal use.
+**Next focus:** **P0** [Uploads + Multitrack persistence sprint](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) — dedicated media channel, cross-device sync, AMI summaries. **P1** [UI polish](./plans/2026-06-09-ui-polish-phase.md) (visual/layout only). **P2** [Back/Forward nav audit](./plans/2026-06-09-back-forward-nav-audit.md) later.
 
 **Trace:** Music persistence sidebar (`?dev=1`) — Test D compare, Test E compare, **Transposing save (last cloud write)**, workspace restore, Local nav checkpoints.
 
@@ -73,8 +73,8 @@ This is the master planning document. Related files:
 
 ## High-priority future enhancements
 
-- **P0 UI polish** (immediate) — decorative headers, logos/icons, Upload/Multitrack nav visibility, Practice layout, written-key badge, song cards — **rendering/CSS/layout only**; preserve page routing, restore, cloud sync, AMI return, nav ownership, active-song architecture ([plan](./plans/2026-06-09-ui-polish-phase.md), rule `.cursor/rules/ui-polish-architecture-preservation.mdc`).
-- **P1 Back/Forward nav audit** (later) — manual audit / rebuild if needed after architecture changes; isolated fix only ([plan](./plans/2026-06-09-back-forward-nav-audit.md)).
+- **P0 Uploads + Multitrack persistence** (immediate) — canonical `uploaded_recordings` / `multitrack_sessions`, Supabase Storage refs, tombstone sync, AMI media summaries ([plan](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md)).
+- **P1 UI polish** — decorative headers, logos/icons, Upload/Multitrack nav visibility, Practice layout, written-key badge, song cards — **rendering/CSS/layout only** ([plan](./plans/2026-06-09-ui-polish-phase.md)).
 - Fix Practice **Section Focus** when type labels (e.g. “Verse”) do not resolve to chart section keys (“Verse 1”).
 - Expand **OpenAI Coaching hub** beyond “coming soon” cards (active-song coach, session plans).
 - **Karaoke vocal scoring** — implement stubs in `karaoke_mode.py` (pitch tracking / score).
@@ -87,7 +87,8 @@ This is the master planning document. Related files:
 
 | Issue | Area | Notes |
 |-------|------|-------|
-| Back arrow under sidebar / pinning | Navigation | Fixed on `dev` (`9e0728a`); verify deploy marker `nav-back-left-fix-1` |
+| Upload/multitrack not cross-device | Upload / Multitrack | Audio embedded in JSON with 512 KB cap; no blob store; history cloud-only |
+| Back/Forward nav unverified post-architecture | Navigation | Defer audit unless broken |
 | Section focus empty panels | Practice | Type label vs section key mismatch; dev warning exists |
 | `practice_studio` import fallback | Practice | Degraded resolver if import fails |
 | OpenAI page mostly placeholders | OpenAI | Hub links out; many features “coming soon” |

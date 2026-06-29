@@ -25,6 +25,7 @@ AMI_SIDEBAR_DEPLOY_VERSION = "2026-06-08-return-insight-restore-v12"
 _CTX_JSON_SUBTITLE_LIMIT = 8000
 _CONTEXT_ITEM_TYPE = "analytical_question_context"
 PRACTICE_LOG_ANALYSIS_TITLE = "Music Practice Log Analysis"
+PRACTICE_LOG_ANALYSIS_CONTINUE_PRIORITY = 65
 ANALYTICAL_QUESTION_CONTINUE_PRIORITY = 64
 ANALYTICAL_QUESTION_BUTTON_LABEL = "Continue in Applied Mathematics →"
 _SEND_COOLDOWN_SECONDS = 120
@@ -233,7 +234,7 @@ def source_question_card_title(
     """Normalized Continue / activity title for cross-app questions."""
     ctx = dict(context or {})
     app = normalize_source_app_id(source_app, ctx)
-    if app == "music" and is_practice_log_analysis_context(ctx):
+    if is_practice_log_analysis_context(ctx):
         return PRACTICE_LOG_ANALYSIS_TITLE
     if app == "music":
         return "Music Coach question from Music"
@@ -585,11 +586,13 @@ def analytical_question_continue_copy(payload: dict[str, Any]) -> tuple[str, str
     ctx = payload.get("context") if isinstance(payload.get("context"), dict) else {}
     app = normalize_source_app_id(str(payload.get("source_app") or ""), ctx)
     question = str(payload.get("question") or "").strip()
-    if app == "music" and is_practice_log_analysis_context(ctx):
+    if is_practice_log_analysis_context(ctx):
         summary = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
         count = int(summary.get("session_count") or 0)
         mins = int(summary.get("total_minutes") or 0)
         subtitle = f"{count} session(s), {mins} min logged — review patterns and next focus"
+        if count <= 0:
+            subtitle = "Practice history analysis from Music Practice Coach"
         return (PRACTICE_LOG_ANALYSIS_TITLE, subtitle, "Continue Practice Log Analysis →")
     title = source_question_card_title(app, ctx)
     if app == "music":
@@ -874,6 +877,7 @@ def submit_practice_log_analysis_handoff(
         metrics["handoff_kind"] = "practice_log_analysis"
         metrics["handoff_title"] = PRACTICE_LOG_ANALYSIS_TITLE
         metrics["activity_event"] = "practice_log_analysis"
+        metrics["saved_item_title"] = PRACTICE_LOG_ANALYSIS_TITLE
         try:
             from suite_activity_client import record_activity
 

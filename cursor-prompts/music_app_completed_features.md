@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-06-27
+**Last updated:** 2026-06-29
 
 ---
 
@@ -23,6 +23,15 @@
 ---
 
 ## Completed Features
+
+### AMI Analyze My Practice synthesis (2026-06-29)
+
+- [x] Full practice-history AMI payload: practice logs, saved upload analyses, tone takes, export metadata
+- [x] 10-section progress report (executive summary through evidence used + data safety)
+- [x] Multitrack exports as context only unless saved Upload Analysis exists
+- [x] No raw audio/base64/blob fields in payload; tombstones excluded
+- [x] Local instant solver route + Practice Log progress report panel + `?dev=1` diagnostics
+- [x] Plan: [plans/2026-06-29-ami-practice-history-synthesis.md](./plans/2026-06-29-ami-practice-history-synthesis.md)
 
 ### Tone & Tuner History (2026-06-27)
 
