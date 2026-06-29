@@ -25,7 +25,7 @@ AMI_SIDEBAR_DEPLOY_LABEL = "Applied Math question sender live"
 AMI_SIDEBAR_DEPLOY_VERSION = "2026-06-08-return-insight-restore-v12"
 _CTX_JSON_SUBTITLE_LIMIT = 8000
 _CONTEXT_ITEM_TYPE = "analytical_question_context"
-PRACTICE_LOG_ANALYSIS_TITLE = "Music Practice Log Analysis"
+PRACTICE_LOG_ANALYSIS_TITLE = "Practice Analysis"
 PRACTICE_LOG_ANALYSIS_CONTINUE_PRIORITY = 65
 ANALYTICAL_QUESTION_CONTINUE_PRIORITY = 64
 ANALYTICAL_QUESTION_BUTTON_LABEL = "Continue in Applied Mathematics →"
@@ -228,6 +228,15 @@ def is_practice_log_analysis_context(context: dict[str, Any] | None) -> bool:
     )
 
 
+def is_practice_log_analysis_payload(payload: dict[str, Any] | None) -> bool:
+    """True for Practice Analysis resume/handoff payloads (context or top-level flags)."""
+    data = dict(payload or {})
+    if str(data.get("handoff_kind") or "") == "practice_log_analysis":
+        return True
+    ctx = data.get("context") if isinstance(data.get("context"), dict) else {}
+    return is_practice_log_analysis_context(ctx)
+
+
 def source_question_card_title(
     source_app: str,
     context: dict[str, Any] | None = None,
@@ -415,10 +424,10 @@ def _practice_log_instrument_label(payload: dict[str, Any]) -> str:
     except Exception:
         fmt = lambda key: str(key).replace("_", " ").title()
     if len(items) == 1:
-        return f"Main instrument: {fmt(items[0][0])}"
+        return fmt(items[0][0])
     top_key, top_mins = items[0]
     if top_mins / total >= 0.6:
-        return f"Main instrument: {fmt(top_key)}"
+        return fmt(top_key)
     return "Multiple instruments"
 
 
@@ -427,7 +436,7 @@ def practice_log_analysis_instrument_song_line(payload: dict[str, Any]) -> str:
     parts: list[str] = []
     top_song = _practice_log_top_song(payload)
     if top_song:
-        parts.append(f"Top song: {top_song}")
+        parts.append(top_song)
     inst = _practice_log_instrument_label(payload)
     if inst:
         parts.append(inst)
@@ -444,7 +453,7 @@ def practice_log_analysis_card_subtitle(payload: dict[str, Any]) -> str:
     parts: list[str] = []
     top_song = _practice_log_top_song(payload)
     if top_song:
-        parts.append(f"Top song: {top_song}")
+        parts.append(top_song)
     inst = _practice_log_instrument_label(payload)
     if inst:
         parts.append(inst)
@@ -889,7 +898,7 @@ def analytical_question_continue_copy(payload: dict[str, Any]) -> tuple[str, str
     ctx = payload.get("context") if isinstance(payload.get("context"), dict) else {}
     app = normalize_source_app_id(str(payload.get("source_app") or ""), ctx)
     question = str(payload.get("question") or "").strip()
-    if is_practice_log_analysis_context(ctx):
+    if is_practice_log_analysis_payload(payload):
         card_payload = {
             "source_app": payload.get("source_app") or app,
             "context": ctx,
@@ -906,7 +915,7 @@ def analytical_question_continue_copy(payload: dict[str, Any]) -> tuple[str, str
 def analytical_question_storage_subtitle(payload: dict[str, Any]) -> str:
     """Resume-item subtitle for storage/rebuild — question only on CC cards; context stays in metrics/URL."""
     ctx = dict(payload.get("context") or {})
-    if is_practice_log_analysis_context(ctx):
+    if is_practice_log_analysis_payload(payload):
         return practice_log_analysis_resume_subtitle(payload)
     question = str(payload.get("question") or "").strip()
     ctx_json = json.dumps(ctx, ensure_ascii=False) if ctx else ""

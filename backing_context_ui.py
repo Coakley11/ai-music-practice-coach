@@ -17,6 +17,16 @@ def render_backing_context_banner(st: Any, session: dict[str, Any]) -> bool:
     label = format_backing_context_banner(ctx)
     if not label:
         return False
+    try:
+        from songs.key_state import resolve_active_musical_key
+
+        mk = resolve_active_musical_key(session)
+        chart = str(mk.chart_key or "").strip()
+        concert = str(mk.practice_concert_key or "").strip()
+        if chart and concert and chart != concert:
+            label = f"{label} · Charts shown in {chart}"
+    except Exception:
+        pass
     accent = "#2563eb" if ctx and ctx.source == "entry_jam" else "#7c3aed"
     if ctx and ctx.source == "mission":
         accent = "#9333ea"

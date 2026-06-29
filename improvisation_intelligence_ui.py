@@ -33,6 +33,7 @@ from improvisation_intelligence import (
     generate_style_progression,
     level_coaching_summary,
 )
+from creative_key_sync import on_improv_style_jam_setting_change, on_improv_style_key_change
 from improvisation_harmony import (
     HARMONY_MAP_CHIP_CSS,
     analyze_chord_for_harmony_map,
@@ -325,23 +326,37 @@ def _tab_entry_modes(
         st.markdown('<p class="ui-creative-section-label">Style jam generator</p>', unsafe_allow_html=True)
         c1, c2, c3 = st.columns(3)
         with c1:
-            style = st.selectbox("Style", list(STYLE_JAM_STYLES), key="improv_style")
-            key_center = st.selectbox(
+            st.selectbox(
+                "Style",
+                list(STYLE_JAM_STYLES),
+                key="improv_style",
+                on_change=on_improv_style_jam_setting_change,
+            )
+            st.selectbox(
                 "Key",
                 ["C", "D", "Eb", "E", "F", "G", "A", "Bb", "Dm", "Em", "Am"],
                 key="improv_style_key",
+                on_change=on_improv_style_key_change,
             )
         with c2:
-            difficulty = st.selectbox(
+            st.selectbox(
                 "Difficulty", list(DIFFICULTY_LEVELS), key="improv_difficulty"
             )
-            mood = st.selectbox("Mood", list(MOOD_OPTIONS), key="improv_mood")
+            st.selectbox("Mood", list(MOOD_OPTIONS), key="improv_mood")
         with c3:
-            tempo = st.slider(
-                "Tempo (BPM)", 60, 200, key="improv_style_bpm", step=5
+            st.slider(
+                "Tempo (BPM)",
+                60,
+                200,
+                key="improv_style_bpm",
+                step=5,
+                on_change=on_improv_style_jam_setting_change,
             )
-            groove = st.selectbox(
-                "Groove intensity", list(GROOVE_INTENSITY), key="improv_groove"
+            st.selectbox(
+                "Groove intensity",
+                list(GROOVE_INTENSITY),
+                key="improv_groove",
+                on_change=on_improv_style_jam_setting_change,
             )
 
         prompt = st.text_input(
@@ -350,27 +365,35 @@ def _tab_entry_modes(
             key="improv_style_prompt",
         )
         if st.button("Generate progression", type="primary", key="improv_gen_style"):
-            k = key_center
+            from creative_key_sync import (
+                IMPROV_STYLE_KEY_TRACKER,
+                apply_creative_concert_key,
+                sync_creative_style_jam_meta,
+            )
+
+            k = str(session_state.get("improv_style_key") or "C")
+            style = str(session_state.get("improv_style") or STYLE_JAM_STYLES[0])
             if "d minor" in (prompt or "").lower():
                 k = "Dm"
+                session_state["improv_style_key"] = k
             session_state["improv_generated_sections"] = generate_style_progression(
                 style=style,
                 key_center=k,
-                difficulty=difficulty,
-                mood=mood,
+                difficulty=str(session_state.get("improv_difficulty") or "Intermediate"),
+                mood=str(session_state.get("improv_mood") or "Mellow"),
             )
-            session_state["improv_style_meta"] = {
-                "style": style,
-                "bpm": int(session_state.get("improv_style_bpm", tempo)),
-                "groove": groove,
-                "prompt": prompt,
-            }
+            sync_creative_style_jam_meta(session_state)
+            apply_creative_concert_key(session_state, k, st_like=st)
+            session_state[IMPROV_STYLE_KEY_TRACKER] = k
             st.rerun()
 
         gen = session_state.get("improv_generated_sections")
         if gen:
+            _style_label = str(session_state.get("improv_style") or "Style jam")
+            _key_label = str(session_state.get("improv_style_key") or "C")
             st.success(
-                f"Generated **{style}** in **{key_center}** · {mood} · "
+                f"Generated **{_style_label}** in **{_key_label}** · "
+                f"{str(session_state.get('improv_mood') or 'Mellow')} · "
                 f"{int(session_state.get('improv_style_bpm', 110))} BPM"
             )
             for sec, chs in gen.items():

@@ -12340,6 +12340,10 @@ elif _studio_page == "creative":
 
     ctx = current_song_context_lab()
 
+    from creative_key_sync import ensure_creative_analysis_mode_restored, on_creative_analysis_mode_change
+
+    ensure_creative_analysis_mode_restored(st.session_state)
+
     lab_mode = st.selectbox(
         "Analysis mode",
         [
@@ -12350,6 +12354,7 @@ elif _studio_page == "creative":
             "AI-Guided Musical Development Tracking",
         ],
         key="creative_lab_analysis_mode",
+        on_change=on_creative_analysis_mode_change,
     )
     st.session_state["creative_lab_last_mode"] = lab_mode
 

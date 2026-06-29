@@ -86,8 +86,9 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
 def init_creative_lab_state(session_state: dict) -> None:
     session_state.setdefault(
         "creative_lab_analysis_mode",
-        "Improvisation Intelligence",
+        "Deep Harmonic Analyzer",
     )
+    session_state.setdefault("creative_lab_last_mode", session_state["creative_lab_analysis_mode"])
     session_state.setdefault("creative_arrangement_target_style", "Jobim / Bossa")
     session_state.setdefault("creative_arrangement_section_focus", "Full song")
 

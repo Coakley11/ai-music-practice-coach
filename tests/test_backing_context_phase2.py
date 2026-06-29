@@ -146,7 +146,7 @@ class TestBackingContextPhase2(unittest.TestCase):
         )
         banner = format_backing_context_banner(ctx)
         self.assertIn("Entry & Jam", banner)
-        self.assertIn("Say", banner)
+        self.assertIn("Concert G", banner)
         self.assertIn("82 BPM", banner)
 
 

@@ -198,6 +198,18 @@ def _display_keys_from_session(session: dict[str, Any]) -> tuple[str, str, str]:
     return key, display or key, concert or key
 
 
+def _creative_concert_keys(session: dict[str, Any]) -> tuple[str, str, str] | None:
+    try:
+        from creative_key_sync import creative_entry_concert_key
+
+        creative = creative_entry_concert_key(session)
+    except ImportError:
+        creative = ""
+    if not creative:
+        return None
+    return creative, creative, creative
+
+
 def _default_bpm(session: dict[str, Any]) -> int:
     for key in ("backing_track_bpm", "active_song_bpm", "bpm"):
         try:
@@ -247,7 +259,11 @@ def build_regular_song_context(session: dict[str, Any]) -> BackingContext:
 
 def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
     pick_key = _current_pick_key(session)
-    key, display_key, concert_key = _display_keys_from_session(session)
+    creative_keys = _creative_concert_keys(session)
+    if creative_keys:
+        key, display_key, concert_key = creative_keys
+    else:
+        key, display_key, concert_key = _display_keys_from_session(session)
     entry_mode = str(session.get("improv_entry_mode") or "Song-Based Mode").strip()
     style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
     style = str(style_meta.get("style") or session.get("improv_style") or "").strip()
@@ -280,8 +296,8 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         source="entry_jam",
         source_label=_SOURCE_LABELS["entry_jam"],
         active_song_id=pick_key,
-        song_title=_song_title_from_session(session) or (style or "Style jam"),
-        key=str(session.get("improv_style_key") or key).strip() or key,
+        song_title=style or _song_title_from_session(session) or "Style jam",
+        key=key,
         display_key=display_key,
         concert_key=concert_key,
         bpm=bpm,
@@ -474,10 +490,11 @@ def format_backing_context_banner(ctx: BackingContext | None) -> str:
         return " · ".join(parts)
     if ctx.source == "entry_jam":
         parts = ["Backing source: Entry & Jam"]
-        if ctx.song_title:
-            parts.append(ctx.song_title)
-        if ctx.display_key:
-            parts.append(ctx.display_key)
+        if ctx.style:
+            parts.append(ctx.style)
+        concert = str(ctx.concert_key or ctx.key or ctx.display_key or "").strip()
+        if concert:
+            parts.append(f"Concert {concert}")
         if ctx.bpm:
             parts.append(f"{ctx.bpm} BPM")
         return " · ".join(parts)

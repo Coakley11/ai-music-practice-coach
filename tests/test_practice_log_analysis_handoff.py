@@ -102,7 +102,7 @@ class TestPracticeAnalysisContentCleanup(unittest.TestCase):
         }
         self.assertEqual(_count_analyzed_multitrack_exports(payload), 1)
         report = build_practice_progress_report(payload)
-        self.assertIn("linked analyzed export", report.get("evidence_used", ""))
+        self.assertIn("1 linked analyzed export", report.get("evidence_used", ""))
         self.assertNotIn("lack saved upload analysis", " ".join(report.get("needs_work") or []))
         upload_text = " ".join(report.get("upload_analysis_findings") or [])
         self.assertIn("Multitrack export", upload_text)
@@ -505,7 +505,8 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
                 },
             }
         )
-        self.assertIn("Top song: Say", subtitle)
+        self.assertIn("Say", subtitle)
+        self.assertNotIn("Top song:", subtitle)
         self.assertIn("Updated", subtitle)
         self.assertIn("ET", subtitle)
         self.assertIn("Jun 29, 2026", subtitle)
@@ -543,7 +544,8 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
                 },
             }
         )
-        self.assertIn("Main instrument: Tenor Saxophone", subtitle)
+        self.assertIn("Tenor Saxophone", subtitle)
+        self.assertNotIn("Main instrument:", subtitle)
 
     def test_eastern_time_june_uses_edt_offset(self) -> None:
         from activity_time import format_eastern_time_label, parse_activity_timestamp

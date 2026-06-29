@@ -130,7 +130,7 @@ def _format_tone_cents_phrase(cents: Any, *, role: str = "recent avg") -> str:
         return ""
     if abs(value) > _FAR_CENTS_THRESHOLD:
         return (
-            "Detected pitch was far from target; this take may have captured the wrong note or octave."
+            "The detected pitch was far from target, so this take may have captured the wrong note or octave."
         )
     return f"{role} **{value:.1f}** cents"
 
@@ -244,12 +244,13 @@ def _format_evidence_used_line(payload: dict[str, Any]) -> str:
         f"and {th_count} tone takes."
     )
     if export_total:
-        export_word = "export" if export_total == 1 else "exports"
-        analyzed_word = "export" if analyzed_exports == 1 else "exports"
-        evidence += (
-            f" Multitrack: {export_total} saved {export_word}, "
-            f"{analyzed_exports} linked analyzed {analyzed_word}."
+        saved_exports = _plural(export_total, "saved export", "saved exports")
+        analyzed_exports_phrase = _plural(
+            analyzed_exports,
+            "linked analyzed export",
+            "linked analyzed exports",
         )
+        evidence += f" Multitrack: {saved_exports}, {analyzed_exports_phrase}."
     start, end = _date_range_from_payload(payload)
     if start and end:
         try:
@@ -949,8 +950,10 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
         ]
     if waiting:
         names = [str(r.get("export_name") or r.get("song") or "export") for r in waiting[:3] if isinstance(r, dict)]
+        export_phrase = _plural(len(waiting), "export", "exports")
+        verb = "needs" if len(waiting) == 1 else "need"
         needs_work.append(
-            f"**{len(waiting)}** saved multitrack export(s) still need a linked Upload Analysis "
+            f"**{len(waiting)}** saved multitrack {export_phrase} still {verb} a linked Upload Analysis "
             f"({', '.join(names)})."
         )
     for trend in tone_trends:
@@ -1146,7 +1149,7 @@ def _build_coach_executive_summary(payload: dict[str, Any]) -> str:
         return (
             "Log practice sessions and save upload analyses or tone takes to build a richer progress report."
         )
-    return " ".join(sentences)
+    return " ".join(sentences[:3])
 
 
 def _build_thirty_minute_plan(payload: dict[str, Any]) -> list[str]:
