@@ -11857,11 +11857,18 @@ elif _studio_page == "analysis":
         )
 
         with st.container(key="upload_mode_segment", border=False):
+            from upload_analysis_modes import (
+                WORKFLOW_OPTIONS,
+                is_multitrack_workflow,
+                normalize_analysis_workflow,
+            )
+
+            normalize_analysis_workflow(st.session_state)
             col_mode, col_type = st.columns([1, 1])
             with col_mode:
                 analysis_mode = st.radio(
                     "Workflow",
-                    ["Single recording", "Multitrack comparison"],
+                    list(WORKFLOW_OPTIONS),
                     horizontal=True,
                     key="analysis_mode",
                 )
@@ -11878,7 +11885,7 @@ elif _studio_page == "analysis":
                     key="analysis_recording_type",
                 )
 
-        if analysis_mode == "Single recording":
+        if not is_multitrack_workflow(st.session_state):
             from mission_analysis_ui import (
                 is_analysis_criteria_locked,
                 render_analysis_criteria_summary,
@@ -11915,11 +11922,13 @@ elif _studio_page == "analysis":
                         loaded_multitrack_export_analysis_banner,
                         resolve_upload_analysis_prepared_upload,
                     )
+                    from media_upload_catalog import clear_upload_analysis_saved_edit_state
                 except ImportError:
                     analysis_export_handoff_ready = lambda _ss: False  # type: ignore[assignment,misc]
                     loaded_multitrack_export_analysis_banner = lambda _ss: ""  # type: ignore[assignment,misc]
                     clear_multitrack_export_analysis_handoff = lambda _ss: None  # type: ignore[assignment,misc]
                     resolve_upload_analysis_prepared_upload = lambda _ss, **_: None  # type: ignore[assignment,misc]
+                    clear_upload_analysis_saved_edit_state = lambda _ss: None  # type: ignore[assignment,misc]
 
                 _export_handoff_label = loaded_multitrack_export_analysis_banner(st.session_state)
                 _handoff_prepared = resolve_upload_analysis_prepared_upload(
@@ -11954,6 +11963,7 @@ elif _studio_page == "analysis":
                 audio_obj = None
                 if mic_audio is not None:
                     clear_multitrack_export_analysis_handoff(st.session_state)
+                    clear_upload_analysis_saved_edit_state(st.session_state)
                     audio_obj = PreparedUpload(
                         mic_audio.getvalue(),
                         str(getattr(mic_audio, "name", None) or "recording.wav"),
@@ -11962,6 +11972,7 @@ elif _studio_page == "analysis":
                     import hashlib
 
                     clear_multitrack_export_analysis_handoff(st.session_state)
+                    clear_upload_analysis_saved_edit_state(st.session_state)
                     _raw = analysis_audio.getvalue()
                     _raw_name = str(getattr(analysis_audio, "name", None) or "upload.wav")
                     _sig = (
@@ -12173,7 +12184,7 @@ elif _studio_page == "analysis":
                     unsafe_allow_html=True,
                 )
                 st.caption(
-                    "Upload 2–6 layers (e.g. guitar, vocal, keys) to compare timing and mix balance."
+                    "Upload 2–6 layers (e.g. guitar, vocal, keys) for multitrack recording analysis."
                 )
                 st.markdown(upload_format_chips_html(), unsafe_allow_html=True)
                 mt_files = st.file_uploader(

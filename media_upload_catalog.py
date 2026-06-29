@@ -89,16 +89,6 @@ def build_upload_recording_fields(
     song = str(session_state.get("active_song_title") or "").strip()
     instrument = ""
     instrument_family = ""
-    try:
-        from practice_setup_globals import (
-            get_active_instrument,
-            get_active_instrument_display_name,
-        )
-
-        instrument_family = str(get_active_instrument(session_state) or "").strip()
-        instrument = str(get_active_instrument_display_name(session_state) or instrument_family).strip()
-    except ImportError:
-        instrument = str(session_state.get("instrument") or "").strip()
 
     key_fields: dict[str, str] = {}
     bpm: int | None = None
@@ -262,6 +252,7 @@ def save_upload_recording_with_notes(
     title: str,
     notes: str = "",
     st: Any | None = None,
+    save_mode: str = "auto",
 ) -> tuple[bool, str, str]:
     """Save current analysis to catalog; optionally mirror legacy upload_history when cloud allows."""
     fields = build_upload_recording_fields(session_state, st=st, notes=notes, title=title)
@@ -270,18 +261,23 @@ def save_upload_recording_with_notes(
     if title:
         fields["song"] = str(title).strip()[:120] or fields.get("song") or ""
 
-    active_rid = str(session_state.get(_LAST_CATALOG_RECORDING_KEY) or "").strip()
-    if active_rid:
+    active_rid = active_catalog_recording_id(session_state)
+    mode = str(save_mode or "auto").strip().lower()
+    creating_new = mode == "new" or (mode == "auto" and not active_rid)
+
+    if creating_new:
+        row = add_uploaded_recording(st, fields)
+    else:
         row = update_uploaded_recording(st, active_rid, fields)
         if not row:
             row = add_uploaded_recording(st, fields)
-    else:
-        row = add_uploaded_recording(st, fields)
 
     rid = str(row.get("recording_id") or "")
     if rid:
         session_state[_LAST_CATALOG_RECORDING_KEY] = rid
         session_state[_ACTIVE_CATALOG_RECORDING_KEY] = rid
+        session_state["upload_hist_active_item"] = rid
+        session_state["_upload_analysis_editing_saved_id"] = rid
         stored = _apply_storage_fields_to_recording(st, rid, session_state, fields=fields)
         if stored:
             row = stored
@@ -406,12 +402,12 @@ def catalog_upload_row_summary(row: dict[str, Any]) -> str:
     payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
     title = str(row.get("title") or "").strip()
     song = str(payload.get("song") or "").strip()
-    instrument = str(payload.get("instrument") or "").strip()
     bits: list[str] = []
     if song and song != title:
         bits.append(song[:40])
-    if instrument:
-        bits.append(instrument[:40])
+    recording_type = str(payload.get("legacy_recording_type") or payload.get("recording_type") or "").strip()
+    if recording_type:
+        bits.append(recording_type[:40])
     status = str(row.get("playback_status") or recording_playback_status(payload)).strip()
     if status:
         bits.append(playback_status_label(status))
@@ -431,7 +427,7 @@ def apply_upload_catalog_ui_state(session_state: dict[str, Any], row: dict[str, 
     """Restore Upload History form fields and active-recording markers after load."""
     rec = migrate_uploaded_recording(row)
     rid = str(rec.get("recording_id") or "").strip()
-    title = str(rec.get("title") or rec.get("filename") or "").strip()
+    title = str(rec.get("song") or rec.get("title") or rec.get("filename") or "").strip()
     notes = str(rec.get("notes") or "").strip()
     if title:
         session_state["upload_history_save_title"] = title
@@ -441,6 +437,16 @@ def apply_upload_catalog_ui_state(session_state: dict[str, Any], row: dict[str, 
         session_state[_ACTIVE_CATALOG_RECORDING_KEY] = rid
         session_state[_LAST_CATALOG_RECORDING_KEY] = rid
         session_state["upload_hist_active_item"] = rid
+        session_state["_upload_analysis_editing_saved_id"] = rid
+
+
+def clear_upload_analysis_saved_edit_state(session_state: dict[str, Any]) -> None:
+    """Drop loaded-saved-analysis markers when the user captures a new upload."""
+    session_state.pop(_ACTIVE_CATALOG_RECORDING_KEY, None)
+    session_state.pop(_LAST_CATALOG_RECORDING_KEY, None)
+    session_state.pop("upload_hist_active_item", None)
+    session_state.pop("upload_history_loaded_item_key", None)
+    session_state.pop("_upload_analysis_editing_saved_id", None)
 
 
 def loaded_upload_recording_banner(session_state: dict[str, Any], *, st: Any | None = None) -> str:
@@ -457,7 +463,6 @@ def loaded_upload_recording_banner(session_state: dict[str, Any], *, st: Any | N
         return f"Loaded upload: {rid}"
     title = str(rec.get("title") or rec.get("filename") or "Saved upload").strip()
     song = str(rec.get("song") or "").strip()
-    instrument = str(rec.get("instrument") or "").strip()
     notes = str(rec.get("notes") or "").strip()
     status = str(rec.get("playback_status") or recording_playback_status(rec, st=st)).strip()
     status_label = playback_status_label(status) if status else ""
@@ -466,8 +471,6 @@ def loaded_upload_recording_banner(session_state: dict[str, Any], *, st: Any | N
     if song and song.lower() not in joined:
         parts.append(song)
         joined = f"{joined} · {song.lower()}"
-    if instrument and instrument.lower() not in joined:
-        parts.append(instrument)
     if status_label:
         parts.append(status_label)
     if notes:

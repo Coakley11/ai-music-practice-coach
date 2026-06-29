@@ -24,6 +24,7 @@ from media_multitrack_export_catalog import (
     resolve_upload_analysis_prepared_upload,
     send_export_to_upload_analysis,
 )
+from upload_analysis_modes import MULTITRACK_RECORDING_LEGACY, WORKFLOW_OPTIONS
 from media_state import compact_multitrack_export_for_ami, migrate_multitrack_export
 from media_storage import PLAYBACK_PLAYABLE
 from upload_media import PreparedUpload
@@ -291,16 +292,19 @@ class TestAnalysisExportHandoff(unittest.TestCase):
             self.assertEqual(bytes(rehydrated.getvalue()), audio)
 
     def test_upload_analysis_ui_uses_resolved_prepared_upload(self) -> None:
-        app_source = (
-            Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py"
-        ).read_text(encoding="utf-8")
-        bootstrap_source = (
-            Path(__file__).resolve().parents[1] / "studio_history_bootstrap.py"
-        ).read_text(encoding="utf-8")
+        root = Path(__file__).resolve().parents[1]
+        app_source = (root / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        bootstrap_source = (root / "studio_history_bootstrap.py").read_text(encoding="utf-8")
+        modes_source = (root / "upload_analysis_modes.py").read_text(encoding="utf-8")
         self.assertIn("resolve_upload_analysis_prepared_upload", app_source)
         self.assertIn("upload_analysis_has_export_handoff", app_source)
         self.assertIn("apply_pending_multitrack_export_analysis", bootstrap_source)
         self.assertIn("Multitrack mix", app_source)
+        self.assertIn("upload_analysis_modes", app_source)
+        self.assertIn("WORKFLOW_OPTIONS", app_source)
+        self.assertIn("Multitrack recording", modes_source)
+        self.assertNotIn(MULTITRACK_RECORDING_LEGACY, WORKFLOW_OPTIONS)
+        self.assertNotIn("Multitrack comparison", app_source)
 
     def test_run_analysis_enabled_when_handoff_ready(self) -> None:
         audio = _sample_wav_bytes()

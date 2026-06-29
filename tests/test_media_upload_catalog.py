@@ -179,12 +179,12 @@ class TestMediaUploadCatalog(unittest.TestCase):
             "payload": {
                 "filename": "2026-05-31-214959714.wav",
                 "song": "Annie's Song",
-                "instrument": "Piano",
+                "legacy_recording_type": "Practice take",
             },
         }
         summary = catalog_upload_row_summary(row)
         self.assertIn("Annie's Song", summary)
-        self.assertIn("Piano", summary)
+        self.assertIn("Practice take", summary)
         self.assertNotIn("2026-05-31", summary)
 
     def test_loaded_upload_banner_dedupes_song_and_instrument(self) -> None:
@@ -207,10 +207,10 @@ class TestMediaUploadCatalog(unittest.TestCase):
             banner = loaded_upload_recording_banner(session, st=None)
         self.assertEqual(
             banner,
-            "Loaded upload: 2026-05-31-214959714.wav · Annie's song · Piano · Playable · notes: forest park",
+            "Loaded upload: 2026-05-31-214959714.wav · Annie's song · Playable · notes: forest park",
         )
         self.assertEqual(banner.count("Annie's song"), 1)
-        self.assertEqual(banner.count("Piano"), 1)
+        self.assertNotIn("Piano", banner)
 
     def test_history_row_label_is_non_repetitive(self) -> None:
         from studio_history_ui import _compose_history_row_label

@@ -27,6 +27,7 @@ from upload_history import (
     default_upload_title,
 )
 from media_upload_catalog import (
+    active_catalog_recording_id,
     apply_catalog_recording_to_session,
     catalog_upload_row_summary,
     delete_catalog_upload_recording,
@@ -96,6 +97,28 @@ def _history_row_notes(row: dict[str, Any]) -> str:
     return str(payload.get("notes") or row.get("notes") or "").strip()
 
 
+def upload_recording_detail_lines(row: dict[str, Any], *, notes: str = "") -> list[str]:
+    """Ordered detail lines for Upload Analysis saved rows (Song/Title before Notes)."""
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    row_notes = notes or _history_row_notes(row)
+    song = str(payload.get("song") or payload.get("filename") or row.get("title") or "").strip()
+    recording_type = str(payload.get("legacy_recording_type") or payload.get("recording_type") or "").strip()
+    source = str(payload.get("source") or "").strip()
+    saved_at = format_saved_at(str(payload.get("saved_at") or row.get("updated_at") or ""))
+    lines: list[str] = []
+    if song:
+        lines.append(f"**Song / Title:** {song}")
+    if row_notes:
+        lines.append(f"**Notes:** {row_notes[:500]}")
+    if recording_type:
+        lines.append(f"**Recording type:** {recording_type}")
+    if source:
+        lines.append(f"**Source:** {source}")
+    if saved_at and saved_at != "Unknown date":
+        lines.append(f"**Saved:** {saved_at}")
+    return lines
+
+
 def _render_history_list(
     st_obj: Any,
     *,
@@ -146,15 +169,10 @@ def _render_history_list(
             else:
                 st_obj.caption(row_label)
             detail_bits: list[str] = []
-            if notes:
-                detail_bits.append(f"**Notes:** {notes[:500]}")
             if item_type == "uploaded_recording":
-                song = str(payload.get("song") or "").strip()
-                instrument = str(payload.get("instrument") or "").strip()
-                if song:
-                    detail_bits.append(f"**Song:** {song}")
-                if instrument:
-                    detail_bits.append(f"**Instrument:** {instrument}")
+                detail_bits = upload_recording_detail_lines(row, notes=notes)
+            elif notes:
+                detail_bits.append(f"**Notes:** {notes[:500]}")
             if detail_bits:
                 with st_obj.expander("Details", expanded=is_active and bool(notes)):
                     st_obj.markdown("\n\n".join(detail_bits))
@@ -202,29 +220,74 @@ def render_upload_history_panel(st_obj: Any) -> None:
             )
 
         if has_result:
-            st_obj.markdown("##### Save current analysis")
+            editing_saved = bool(active_catalog_recording_id(ss))
+            st_obj.markdown(
+                "##### Update saved analysis" if editing_saved else "##### Save current analysis"
+            )
+            if editing_saved:
+                edit_title = str(ss.get("upload_history_save_title") or "Saved analysis").strip()
+                st_obj.info(f"Editing saved analysis: **{edit_title}**")
             title_default = default_upload_title(ss)
             if "upload_history_save_title" not in ss:
                 ss["upload_history_save_title"] = title_default
             title = st_obj.text_input(
-                "Title / name",
+                "Song / Title",
                 key="upload_history_save_title",
             )
             notes = st_obj.text_area(
                 "Notes (optional)",
                 key="upload_history_save_notes",
                 height=68,
-                placeholder="Rehearsal take, gig prep, etc.",
+                placeholder="Piano version of Say, tenor sax with backing track, full multitrack mix, etc.",
             )
-            if st_obj.button("Save to History", type="primary", key="upload_history_save_btn", use_container_width=True):
-                ok, item_key, err = save_upload_recording_with_notes(ss, title=title, notes=notes, st=st_obj)
-                if ok:
-                    ss[UPLOAD_FLASH_KEY] = f"Saved to media catalog ({item_key})."
-                    ss["upload_hist_active_item"] = item_key
-                    ss["upload_catalog_active_recording_id"] = item_key
-                    st_obj.rerun()
-                else:
-                    st_obj.error(_format_save_error(err))
+            save_cols = st_obj.columns([1, 1] if editing_saved else [1])
+            with save_cols[0]:
+                save_label = "Save Changes" if editing_saved else "Save to History"
+                if st_obj.button(
+                    save_label,
+                    type="primary",
+                    key="upload_history_save_btn",
+                    use_container_width=True,
+                ):
+                    ok, item_key, err = save_upload_recording_with_notes(
+                        ss,
+                        title=title,
+                        notes=notes,
+                        st=st_obj,
+                        save_mode="update" if editing_saved else "new",
+                    )
+                    if ok:
+                        ss[UPLOAD_FLASH_KEY] = (
+                            f"Updated saved analysis ({item_key})."
+                            if editing_saved
+                            else f"Saved to media catalog ({item_key})."
+                        )
+                        ss["upload_hist_active_item"] = item_key
+                        ss["upload_catalog_active_recording_id"] = item_key
+                        st_obj.rerun()
+                    else:
+                        st_obj.error(_format_save_error(err))
+            if editing_saved:
+                with save_cols[1]:
+                    if st_obj.button(
+                        "Save as New Copy",
+                        key="upload_history_save_as_new_btn",
+                        use_container_width=True,
+                    ):
+                        ok, item_key, err = save_upload_recording_with_notes(
+                            ss,
+                            title=title,
+                            notes=notes,
+                            st=st_obj,
+                            save_mode="new",
+                        )
+                        if ok:
+                            ss[UPLOAD_FLASH_KEY] = f"Saved new copy ({item_key})."
+                            ss["upload_hist_active_item"] = item_key
+                            ss["upload_catalog_active_recording_id"] = item_key
+                            st_obj.rerun()
+                        else:
+                            st_obj.error(_format_save_error(err))
 
         st_obj.markdown("##### Saved analyses")
 
