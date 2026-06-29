@@ -1197,6 +1197,32 @@ def store_latest_practice_analysis(
     return summary
 
 
+def hydrate_latest_practice_analysis(session_state: dict[str, Any]) -> bool:
+    """Ensure latest Practice Analysis keys are present after disk/cloud restore."""
+    summary = session_state.get(LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY)
+    if isinstance(summary, dict) and any(str(v or "").strip() for v in summary.values()):
+        return True
+
+    full_report = session_state.get(LATEST_PRACTICE_ANALYSIS_FULL_REPORT_KEY)
+    if not isinstance(full_report, dict) or not full_report:
+        return False
+
+    evidence_counts = session_state.get(LATEST_PRACTICE_ANALYSIS_EVIDENCE_COUNTS_KEY)
+    counts = evidence_counts if isinstance(evidence_counts, dict) else {}
+    synthetic_payload: dict[str, Any] = {
+        "progress_report": full_report,
+        "practice_log_summary": {
+            "entry_count_total": int(counts.get("practice_logs") or 0),
+            "window_days": 14,
+        },
+        "upload_analysis_summary": {"analysis_count_total": int(counts.get("upload_analyses") or 0)},
+        "tone_history_summary": {"tone_take_count_total": int(counts.get("tone_takes") or 0)},
+        "multitrack_export_summary": {"export_count_total": int(counts.get("multitrack_exports") or 0)},
+    }
+    session_state[LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY] = build_log_page_analysis_summary(synthetic_payload)
+    return True
+
+
 def build_practice_history_ami_payload(
     session_state: dict[str, Any],
     entries: list[dict[str, Any]] | None = None,

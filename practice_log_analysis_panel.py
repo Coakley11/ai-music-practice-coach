@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # Session keys — kept inline so this module does not depend on practice_history_synthesis at import time.
@@ -9,7 +10,9 @@ LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY = "latest_practice_analysis_summary"
 LATEST_PRACTICE_ANALYSIS_CREATED_AT_KEY = "latest_practice_analysis_created_at"
 LATEST_PRACTICE_ANALYSIS_HANDOFF_STATUS_KEY = "latest_practice_analysis_handoff_status"
 
-__all__ = ["render_practice_analysis_panel"]
+PRACTICE_ANALYSIS_OPEN_KEY = "_plog_practice_analysis_open"
+
+__all__ = ["render_practice_analysis_panel", "PRACTICE_ANALYSIS_OPEN_KEY"]
 
 _PRACTICE_ANALYSIS_SECTIONS: tuple[tuple[str, str], ...] = (
     ("Practice Summary", "practice_summary"),
@@ -22,16 +25,56 @@ _PRACTICE_ANALYSIS_SECTIONS: tuple[tuple[str, str], ...] = (
 )
 
 
-def render_practice_analysis_panel(st: Any, session_state: dict[str, Any]) -> None:
-    """Visible Practice Analysis panel — concise local summary after Analyze My Practice."""
-    summary = session_state.get(LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY)
+def _top_song_from_summary(summary: dict[str, Any]) -> str:
+    practice = str(summary.get("practice_summary") or "")
+    match = re.search(r"\*\*([^*]+)\*\*", practice)
+    if match:
+        return match.group(1).strip()
+    for key in ("upload_recording_review", "recommended_next_session"):
+        text = str(summary.get(key) or "")
+        song_match = re.search(r"\*\*([^*]+)\*\*", text)
+        if song_match:
+            return song_match.group(1).strip()
+    return ""
+
+
+def _compact_header(session_state: dict[str, Any], summary: dict[str, Any]) -> str:
+    parts = ["Practice Analysis"]
+    top_song = _top_song_from_summary(summary)
+    if top_song:
+        parts.append(f"Top song: {top_song}")
     created_at = str(session_state.get(LATEST_PRACTICE_ANALYSIS_CREATED_AT_KEY) or "").strip()
+    if created_at:
+        try:
+            from suite_analytical_question import format_practice_analysis_updated_label
+
+            updated = format_practice_analysis_updated_label(created_at)
+        except Exception:
+            updated = created_at[:19].replace("T", " ")
+        if updated:
+            parts.append(f"Last updated {updated}")
+    return " · ".join(parts)
+
+
+def render_practice_analysis_panel(st: Any, session_state: dict[str, Any]) -> None:
+    """Compact Practice Analysis tab — expands after Analyze My Practice."""
+    try:
+        from practice_history_synthesis import hydrate_latest_practice_analysis
+
+        hydrate_latest_practice_analysis(session_state)
+    except ImportError:
+        pass
+
+    summary = session_state.get(LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY)
     handoff = session_state.get(LATEST_PRACTICE_ANALYSIS_HANDOFF_STATUS_KEY)
     handoff = handoff if isinstance(handoff, dict) else {}
+    has_summary = isinstance(summary, dict) and any(str(v or "").strip() for v in summary.values())
 
-    st.markdown('<p class="ui-log-section-title">Practice Analysis</p>', unsafe_allow_html=True)
-    with st.container(key="log_practice_analysis_panel", border=True):
-        if not isinstance(summary, dict) or not summary:
+    header = _compact_header(session_state, summary) if has_summary else "Practice Analysis"
+    expanded = bool(session_state.get(PRACTICE_ANALYSIS_OPEN_KEY)) and has_summary
+
+    with st.expander(header, expanded=expanded):
+        if not has_summary:
             st.markdown(
                 "**No analysis yet.** Click **Analyze My Practice** above to generate a concise summary "
                 "from your practice logs, saved upload analyses, tone takes, and export metadata."
@@ -41,8 +84,6 @@ def render_practice_analysis_panel(st: Any, session_state: dict[str, Any]) -> No
             )
             return
 
-        if created_at:
-            st.caption(f"Last updated: {created_at}")
         if handoff.get("success"):
             if handoff.get("duplicate"):
                 st.info("Full report available in Command Center (recent send — use **Continue** there).")

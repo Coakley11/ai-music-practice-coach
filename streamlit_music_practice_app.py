@@ -13118,7 +13118,6 @@ elif _studio_page == "log":
     _inject_practice_log_studio_styles()
 
     from practice_log_state import load_entries
-    from practice_log_analysis_panel import render_practice_analysis_panel
     from practice_log_ui import render_practice_log_page
 
     def _on_practice_log_saved(saved_entry: dict) -> None:
@@ -13161,8 +13160,6 @@ elif _studio_page == "log":
 
     with st.container(key="log_add_session_panel", border=False):
         render_practice_log_page(st, st.session_state, on_saved=_on_practice_log_saved)
-
-    render_practice_analysis_panel(st, st.session_state)
 
     with st.expander("Timed session planner", expanded=False):
         st.session_state.setdefault("ai_session_builder_minutes", 30)

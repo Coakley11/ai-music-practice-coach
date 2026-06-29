@@ -132,6 +132,12 @@ def submit_practice_analysis_command_center_handoff(
 
     handoff_success = bool(result.get("handoff_success"))
     store_latest_practice_analysis(session_state, payload, handoff_result=result, handoff_success=handoff_success)
+    try:
+        from music_persistent_state import force_save_music_state
+
+        force_save_music_state(st, reason="practice_analysis")
+    except Exception:
+        pass
 
     cc_trace = {
         "attempted_at": result.get("submitted_at"),

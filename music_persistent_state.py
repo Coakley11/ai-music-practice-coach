@@ -423,6 +423,11 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "guitar_capo_sounding_key",
     "guitar_capo_shape_key",
     "guitar_capo_last_concert_key",
+    "latest_practice_analysis_summary",
+    "latest_practice_analysis_created_at",
+    "latest_practice_analysis_evidence_counts",
+    "latest_practice_analysis_full_report",
+    "latest_practice_analysis_handoff_status",
 )
 
 _LIST_KEYS = (
