@@ -133,6 +133,58 @@ class TestCreativeKeySync(unittest.TestCase):
         self.assertNotIn("creative_lab_analysis_mode", session)
 
 
+    def test_entry_jam_handoff_includes_style_jam_meta(self) -> None:
+        session = {
+            "active_catalog_pick_key": "say|artist",
+            "song": "Say",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Jazz Swing",
+            "improv_style_key": "F",
+            "improv_style_bpm": 110,
+            "improv_mood": "Bright",
+            "improv_groove": "Light",
+            "improv_difficulty": "Intermediate",
+            "improv_style_meta": {
+                "style": "Jazz Swing",
+                "bpm": 110,
+                "groove": "Light",
+                "groove_intensity": "Light",
+                "mood": "Bright",
+                "difficulty": "Intermediate",
+                "key": "F",
+                "meter": "4/4",
+            },
+            "improv_generated_sections": {
+                "Head (Jazz Swing)": ["Dm7", "G7", "Cmaj7", "A7"],
+            },
+        }
+        ctx = build_entry_jam_context(session)
+        self.assertEqual(ctx.concert_key, "F")
+        self.assertEqual(ctx.bpm, 110)
+        self.assertEqual(ctx.mood, "Bright")
+        self.assertEqual(ctx.groove_intensity, "Light")
+        self.assertEqual(ctx.difficulty, "Intermediate")
+        self.assertEqual(ctx.style, "Jazz Swing")
+
+    def test_sections_chart_display_transposes_for_written_key(self) -> None:
+        from backing_context import sections_dict_for_chart_display
+
+        session = {
+            "instrument": "Saxophone",
+            "chart_in_instrument_key": True,
+            "selected_transposing_instrument": "Alto saxophone (Eb)",
+            "concert_key": "Eb",
+            "display_key": "Eb",
+        }
+        concert_sections = {"Head": ["Fm7", "Bb7", "Ebmaj7"]}
+        out = sections_dict_for_chart_display(
+            session,
+            concert_sections,
+            concert_key="Eb",
+        )
+        self.assertNotEqual(out["Head"][0], concert_sections["Head"][0])
+
+
 class TestWrittenKeyLabels(unittest.TestCase):
     def test_alto_sax_written_key_for_concert_eb(self) -> None:
         from instrument_transposition import (

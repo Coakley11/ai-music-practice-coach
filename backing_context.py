@@ -31,9 +31,14 @@ _SIGNATURE_FIELDS = (
     "key",
     "display_key",
     "concert_key",
+    "chart_display_key",
     "bpm",
     "style",
     "groove",
+    "mood",
+    "groove_intensity",
+    "difficulty",
+    "meter",
     "section",
     "scope",
     "loops",
@@ -73,6 +78,13 @@ class BackingContext:
     jam_id: str | None = None
     entry_mode: str | None = None
     custom_revision_id: str | None = None
+    mode_label: str = ""
+    mood: str = ""
+    groove_intensity: str = ""
+    difficulty: str = ""
+    meter: str = "4/4"
+    chart_display_key: str = ""
+    section_labels: list[str] = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
     source_signature: str = ""
@@ -121,6 +133,13 @@ class BackingContext:
             jam_id=str(raw.get("jam_id") or "").strip() or None,
             entry_mode=str(raw.get("entry_mode") or "").strip() or None,
             custom_revision_id=str(raw.get("custom_revision_id") or "").strip() or None,
+            mode_label=str(raw.get("mode_label") or ""),
+            mood=str(raw.get("mood") or ""),
+            groove_intensity=str(raw.get("groove_intensity") or ""),
+            difficulty=str(raw.get("difficulty") or ""),
+            meter=str(raw.get("meter") or "4/4"),
+            chart_display_key=str(raw.get("chart_display_key") or ""),
+            section_labels=[str(s) for s in (raw.get("section_labels") or []) if str(s).strip()],
             created_at=str(raw.get("created_at") or ""),
             updated_at=str(raw.get("updated_at") or ""),
             source_signature=str(raw.get("source_signature") or ""),
@@ -210,6 +229,56 @@ def _creative_concert_keys(session: dict[str, Any]) -> tuple[str, str, str] | No
     return creative, creative, creative
 
 
+def _resolve_chart_display_key(session: dict[str, Any], concert_key: str) -> str:
+    try:
+        from songs.key_state import resolve_active_musical_key
+
+        mk = resolve_active_musical_key(session)
+        chart = str(mk.chart_key or "").strip()
+        if chart:
+            return chart
+    except Exception:
+        pass
+    return str(concert_key or "C").strip() or "C"
+
+
+def _entry_jam_sections_dict(session: dict[str, Any], entry_mode: str) -> dict[str, list[str]]:
+    if entry_mode == "Jam Session Generator":
+        jam = session.get("improv_jam_session")
+        if isinstance(jam, dict):
+            raw = jam.get("sections")
+            if isinstance(raw, dict) and raw:
+                return {
+                    str(name): [str(c) for c in chords if str(c).strip()]
+                    for name, chords in raw.items()
+                    if isinstance(chords, list)
+                }
+    gen = session.get("improv_generated_sections")
+    if isinstance(gen, dict) and gen:
+        return {
+            str(name): [str(c) for c in chords if str(c).strip()]
+            for name, chords in gen.items()
+            if isinstance(chords, list)
+        }
+    return {}
+
+
+def _filter_sections_dict(
+    sections: dict[str, list[str]],
+    *,
+    section: str | None,
+    selected: list[str],
+) -> dict[str, list[str]]:
+    if not sections:
+        return sections
+    names = [str(s).strip() for s in selected if str(s).strip()]
+    if names:
+        return {k: v for k, v in sections.items() if k in names}
+    if section and section in sections:
+        return {section: sections[section]}
+    return sections
+
+
 def _default_bpm(session: dict[str, Any]) -> int:
     for key in ("backing_track_bpm", "active_song_bpm", "bpm"):
         try:
@@ -258,57 +327,101 @@ def build_regular_song_context(session: dict[str, Any]) -> BackingContext:
 
 
 def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
+    try:
+        from studio_page_state import resolve_improv_song_source
+    except ImportError:
+        resolve_improv_song_source = lambda s: str(s.get("improv_song_source") or "Active song")  # type: ignore
+
     pick_key = _current_pick_key(session)
     creative_keys = _creative_concert_keys(session)
     if creative_keys:
         key, display_key, concert_key = creative_keys
     else:
         key, display_key, concert_key = _display_keys_from_session(session)
-    entry_mode = str(session.get("improv_entry_mode") or "Song-Based Mode").strip()
+    chart_display_key = _resolve_chart_display_key(session, concert_key)
+    entry_mode = str(session.get("improv_entry_mode") or "Song-Based Improvisation").strip()
     style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
-    style = str(style_meta.get("style") or session.get("improv_style") or "").strip()
-    groove = str(style_meta.get("groove") or session.get("improv_groove") or _default_groove(session)).strip()
-    bpm = int(style_meta.get("bpm") or session.get("improv_style_bpm") or _default_bpm(session))
+
+    if entry_mode == "Jam Session Generator":
+        style = str(session.get("improv_jam_style") or style_meta.get("style") or "").strip()
+        groove = str(style_meta.get("groove") or session.get("improv_groove") or _default_groove(session)).strip()
+        bpm = int(session.get("improv_jam_bpm") or style_meta.get("bpm") or _default_bpm(session))
+        mood = str(session.get("improv_jam_mood") or style_meta.get("mood") or "Mellow").strip()
+    else:
+        style = str(style_meta.get("style") or session.get("improv_style") or "").strip()
+        groove = str(style_meta.get("groove") or session.get("improv_groove") or _default_groove(session)).strip()
+        bpm = int(style_meta.get("bpm") or session.get("improv_style_bpm") or _default_bpm(session))
+        mood = str(style_meta.get("mood") or session.get("improv_mood") or "Mellow").strip()
+
+    groove_intensity = str(
+        style_meta.get("groove_intensity") or session.get("improv_groove") or "Medium"
+    ).strip()
+    difficulty = str(
+        style_meta.get("difficulty") or session.get("improv_difficulty") or "Intermediate"
+    ).strip()
+    meter = str(
+        style_meta.get("meter") or session.get("improv_style_meter") or session.get("backing_time_signature") or "4/4"
+    ).strip()
     jam_id = str(style or entry_mode).strip() or None
+    mode_label = entry_mode.replace(" Mode", "").replace(" Generator", "")
+
+    sections_dict = _entry_jam_sections_dict(session, entry_mode)
+    if not sections_dict and resolve_improv_song_source(session) == "Custom progression":
+        return build_custom_progression_context(session)
 
     progression: list[str] = []
     progression_label = ""
-    gen = session.get("improv_generated_sections")
-    if isinstance(gen, dict) and gen:
+    section_labels = list(sections_dict.keys())
+    if sections_dict:
         try:
             from improvisation_intelligence import flatten_sections
 
-            progression = flatten_sections(gen)
-            first_sec = next(iter(gen.keys()), "")
-            progression_label = f"{style or entry_mode} · {first_sec}" if first_sec else (style or entry_mode)
+            progression = flatten_sections(sections_dict)
+            first_sec = next(iter(sections_dict.keys()), "")
+            progression_label = f"{style or mode_label} · {first_sec}" if first_sec else (style or mode_label)
         except ImportError:
-            for chords in gen.values():
+            for chords in sections_dict.values():
                 if isinstance(chords, list):
                     progression.extend(str(c) for c in chords if str(c).strip())
-    elif session.get("improv_song_source") == "Custom progression":
-        return build_custom_progression_context(session)
 
-    scope, section, sections = _default_scope(session)
+    scope, section, selected_sections = _default_scope(session)
     if not section:
         section = str(session.get("improv_selected_section") or session.get("II_SELECTED_SECTION") or "").strip() or None
+    if selected_sections:
+        sections_dict = _filter_sections_dict(sections_dict, section=section, selected=selected_sections)
+        section_labels = list(sections_dict.keys())
+        if sections_dict:
+            try:
+                from improvisation_intelligence import flatten_sections
+
+                progression = flatten_sections(sections_dict)
+            except ImportError:
+                progression = [c for chs in sections_dict.values() for c in chs]
 
     return BackingContext(
         source="entry_jam",
         source_label=_SOURCE_LABELS["entry_jam"],
         active_song_id=pick_key,
-        song_title=style or _song_title_from_session(session) or "Style jam",
+        song_title=style or _song_title_from_session(session) or mode_label or "Style jam",
         key=key,
         display_key=display_key,
         concert_key=concert_key,
+        chart_display_key=chart_display_key,
         bpm=bpm,
         style=style,
         groove=groove,
+        mood=mood,
+        groove_intensity=groove_intensity,
+        difficulty=difficulty,
+        meter=meter,
+        mode_label=mode_label,
         section=section,
-        sections=sections,
+        sections=selected_sections or section_labels,
         scope=scope,
         loops=int(session.get("backing_track_loops") or 2),
         progression=progression,
         progression_label=progression_label or " · ".join(progression[:4]),
+        section_labels=section_labels,
         loop=True,
         jam_id=jam_id,
         entry_mode=entry_mode,
@@ -552,7 +665,12 @@ def apply_backing_context_to_session(
         except ImportError:
             pass
     elif ctx.source in {"entry_jam", "mission"}:
-        source = session.get("improv_song_source", "Active song")
+        try:
+            from studio_page_state import resolve_improv_song_source
+
+            source = resolve_improv_song_source(session)
+        except ImportError:
+            source = str(session.get("improv_song_source") or "Active song")
         if source == "Custom progression":
             try:
                 from songs.music_source import set_custom_source
@@ -635,6 +753,23 @@ def apply_backing_context_to_session(
     )
     session[BACKING_NEEDS_REGEN] = True
     session[BACKING_AUTOPLAY] = True
+    if ctx.source in {"entry_jam", "mission"} and ctx.groove_intensity:
+        try:
+            from harmonic_rhythm_intelligence import BACKING_HUMANIZE_LEVEL_KEY
+
+            session[BACKING_HUMANIZE_LEVEL_KEY] = humanize_level_for_groove_intensity(ctx.groove_intensity)
+        except ImportError:
+            session["backing_humanize_level"] = humanize_level_for_groove_intensity(ctx.groove_intensity)
+    if ctx.meter:
+        if widget_safe:
+            session["_pending_backing_meter"] = str(ctx.meter)
+        else:
+            try:
+                from songs.meter_state import BACKING_METER_KEY
+
+                session[BACKING_METER_KEY] = str(ctx.meter)
+            except ImportError:
+                session["backing_time_signature"] = str(ctx.meter)
     if widget_safe:
         session[PENDING_BACKING_CONTEXT_APPLY] = True
 
@@ -653,19 +788,46 @@ def sections_dict_from_backing_context(
     session: dict[str, Any],
     ctx: BackingContext | None = None,
 ) -> dict[str, list[str]]:
-    """Chord sections for backing generation when Creative context is active."""
+    """Chord sections in concert key for backing generation when Creative context is active."""
     ctx = ctx or active_creative_backing_context(session)
-    gen = session.get("improv_generated_sections")
-    if isinstance(gen, dict) and gen:
-        return {
-            str(name): [str(c) for c in chords if str(c).strip()]
-            for name, chords in gen.items()
-            if isinstance(chords, list)
-        }
-    if ctx and ctx.progression:
+    entry_mode = str(ctx.entry_mode if ctx else session.get("improv_entry_mode") or "").strip()
+    sections = _entry_jam_sections_dict(session, entry_mode)
+    if not sections and ctx and ctx.progression:
         label = str(ctx.progression_label or "Creative").strip() or "Creative"
         return {label: list(ctx.progression)}
-    return {}
+    if ctx:
+        section = ctx.section
+        selected = list(ctx.sections or [])
+        sections = _filter_sections_dict(sections, section=section, selected=selected)
+    return sections
+
+
+def sections_dict_for_chart_display(
+    session: dict[str, Any],
+    sections_concert: dict[str, list[str]],
+    *,
+    concert_key: str = "",
+    ctx: BackingContext | None = None,
+) -> dict[str, list[str]]:
+    """Transpose Creative sections to chart/shape/written display key when needed."""
+    if not sections_concert:
+        return sections_concert
+    ctx = ctx or active_creative_backing_context(session)
+    concert = str(concert_key or (ctx.concert_key if ctx else "") or session.get("concert_key") or "C").strip()
+    chart = str((ctx.chart_display_key if ctx else "") or _resolve_chart_display_key(session, concert)).strip()
+    if not chart or chart == concert:
+        return sections_concert
+    try:
+        from creative_key_sync import retranspose_generated_sections
+
+        return retranspose_generated_sections(sections_concert, from_key=concert, to_key=chart)
+    except ImportError:
+        return sections_concert
+
+
+def humanize_level_for_groove_intensity(intensity: str) -> str:
+    mapping = {"Light": "Light", "Medium": "Moderate", "Heavy": "Strong"}
+    return mapping.get(str(intensity or "").strip(), "Moderate")
 
 
 def flush_pending_backing_context_handoff(session: dict[str, Any]) -> bool:
@@ -729,6 +891,8 @@ __all__ = [
     "apply_backing_context_to_session",
     "active_creative_backing_context",
     "sections_dict_from_backing_context",
+    "sections_dict_for_chart_display",
+    "humanize_level_for_groove_intensity",
     "flush_pending_backing_context_handoff",
     "format_backing_context_banner",
     "open_backing_from_creative",

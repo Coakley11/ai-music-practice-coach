@@ -33,7 +33,12 @@ from improvisation_intelligence import (
     generate_style_progression,
     level_coaching_summary,
 )
-from creative_key_sync import on_improv_style_jam_setting_change, on_improv_style_key_change
+from creative_key_sync import (
+    CREATIVE_MAJOR_KEY_OPTIONS,
+    on_improv_jam_key_change,
+    on_improv_style_jam_setting_change,
+    on_improv_style_key_change,
+)
 from improvisation_harmony import (
     HARMONY_MAP_CHIP_CSS,
     analyze_chord_for_harmony_map,
@@ -68,7 +73,9 @@ from studio_page_state import (
     IMPROV_SONG_SOURCES,
     IMPROV_TAB_NAMES,
     apply_improv_song_source,
+    flush_pending_improv_song_source,
     init_improvisation_state,
+    resolve_improv_song_source,
 )
 from songs.picker_session import mark_improv_tab_user_touched
 
@@ -96,6 +103,7 @@ def render_improvisation_intelligence_lab(
     from studio_page_persistence import ensure_creative_improv_initialized
 
     ensure_creative_improv_initialized(session_state, is_custom_active=is_custom)
+    flush_pending_improv_song_source(session_state)
 
     instrument = str(ctx.get("instrument") or "Guitar")
     level = str(ctx.get("level") or "Intermediate")
@@ -243,9 +251,7 @@ def _tab_entry_modes(
     if entry == "Song-Based Improvisation":
         def _sync_song_source() -> None:
             if on_song_source_change:
-                on_song_source_change(
-                    str(session_state.get("improv_song_source", "Active song"))
-                )
+                on_song_source_change(resolve_improv_song_source(session_state))
 
         st.markdown('<p class="ui-creative-section-label">Song source</p>', unsafe_allow_html=True)
         with st.container(key="creative_song_source_panel", border=False):
@@ -334,7 +340,7 @@ def _tab_entry_modes(
             )
             st.selectbox(
                 "Key",
-                ["C", "D", "Eb", "E", "F", "G", "A", "Bb", "Dm", "Em", "Am"],
+                list(CREATIVE_MAJOR_KEY_OPTIONS),
                 key="improv_style_key",
                 on_change=on_improv_style_key_change,
             )
@@ -428,13 +434,16 @@ def _tab_entry_modes(
         with e2:
             key_c = st.selectbox(
                 "Key",
-                ["Eb", "C", "D", "F", "G", "Am", "Dm", "Bbm"],
+                list(CREATIVE_MAJOR_KEY_OPTIONS),
                 key="improv_jam_key",
+                on_change=on_improv_jam_key_change,
             )
             tempo = st.slider("Tempo", 70, 180, key="improv_jam_bpm", step=5)
             mood = st.selectbox("Atmosphere", list(MOOD_OPTIONS), key="improv_jam_mood")
 
         if st.button("Generate jam session", type="primary", key="improv_gen_jam"):
+            from creative_key_sync import IMPROV_JAM_KEY_TRACKER, apply_creative_concert_key
+
             session_state["improv_jam_session"] = generate_jam_session(
                 ensemble=ensemble,
                 style=style,
@@ -442,6 +451,9 @@ def _tab_entry_modes(
                 tempo=int(session_state.get("improv_jam_bpm", tempo)),
                 mood=mood,
             )
+            k = str(session_state.get("improv_jam_key") or key_c or "C")
+            apply_creative_concert_key(session_state, k, st_like=st)
+            session_state[IMPROV_JAM_KEY_TRACKER] = k
             st.rerun()
 
         jam = session_state.get("improv_jam_session")

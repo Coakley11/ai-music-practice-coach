@@ -23,6 +23,27 @@ IMPROV_ENTRY_MODES: tuple[str, ...] = (
     "Jam Session Generator",
 )
 
+# Major keys only — includes common enharmonic spellings (C#/Db, F#/Gb, etc.).
+CREATIVE_MAJOR_KEY_OPTIONS: tuple[str, ...] = (
+    "C",
+    "C#",
+    "Db",
+    "D",
+    "Eb",
+    "E",
+    "F",
+    "F#",
+    "Gb",
+    "G",
+    "Ab",
+    "A",
+    "Bb",
+    "B",
+)
+
+CREATIVE_BACKING_SONG_SOURCE_KEY = "creative_backing_song_source"
+PENDING_IMPROV_SONG_SOURCE = "_pending_improv_song_source"
+
 _LEGACY_SONG_SOURCE_MAP: dict[str, str] = {
     "Use active studio song": "Active song",
     "Custom progression (CPL)": "Custom progression",
@@ -130,19 +151,69 @@ def init_analysis_page_state(session_state: dict) -> None:
     session_state.setdefault("analysis_ai_metric_ids", [])
 
 
-def apply_improv_song_source(
+def resolve_improv_song_source(session_state: dict) -> str:
+    """Read Creative song source without writing widget keys."""
+    for key in (
+        CREATIVE_BACKING_SONG_SOURCE_KEY,
+        PENDING_IMPROV_SONG_SOURCE,
+        "improv_song_source",
+    ):
+        val = str(session_state.get(key) or "").strip()
+        if val:
+            return val
+    return "Active song"
+
+
+def sync_improv_song_source_for_handoff(
     session_state: dict,
     source: str,
     *,
     set_catalog_source: Callable[[dict], None],
     set_custom_source: Callable[[dict], None],
 ) -> None:
-    """Align global music source with Creative Lab song source choice."""
-    session_state["improv_song_source"] = source
-    if source == "Custom progression":
+    """Align music source for handoff — never writes widget-owned improv_song_source."""
+    src = str(source or "Active song").strip() or "Active song"
+    session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = src
+    session_state[PENDING_IMPROV_SONG_SOURCE] = src
+    if src == "Custom progression":
         set_custom_source(session_state)
     else:
         set_catalog_source(session_state)
+
+
+def apply_improv_song_source(
+    session_state: dict,
+    source: str,
+    *,
+    set_catalog_source: Callable[[dict], None],
+    set_custom_source: Callable[[dict], None],
+    widget_safe: bool = False,
+) -> None:
+    """Align global music source with Creative Lab song source choice."""
+    src = str(source or "Active song").strip() or "Active song"
+    if widget_safe:
+        sync_improv_song_source_for_handoff(
+            session_state,
+            src,
+            set_catalog_source=set_catalog_source,
+            set_custom_source=set_custom_source,
+        )
+        return
+    session_state["improv_song_source"] = src
+    session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = src
+    if src == "Custom progression":
+        set_custom_source(session_state)
+    else:
+        set_catalog_source(session_state)
+
+
+def flush_pending_improv_song_source(session_state: dict) -> None:
+    """Seed widget key from pending saved source before Creative widgets render."""
+    pending = str(session_state.pop(PENDING_IMPROV_SONG_SOURCE, None) or "").strip()
+    if not pending:
+        return
+    session_state.setdefault("improv_song_source", pending)
+    session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = pending
 
 
 def note_page_visit(session_state: dict, page_id: str) -> None:

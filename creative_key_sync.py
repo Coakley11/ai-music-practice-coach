@@ -4,8 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from studio_page_state import CREATIVE_MAJOR_KEY_OPTIONS
+
 IMPROV_STYLE_KEY_TRACKER = "_improv_style_key_tracker"
+IMPROV_JAM_KEY_TRACKER = "_improv_jam_key_tracker"
 CREATIVE_CONCERT_KEY_SOURCE = "_creative_concert_key_source"
+
+# Re-export for UI pickers.
+CREATIVE_MAJOR_KEY_OPTIONS = CREATIVE_MAJOR_KEY_OPTIONS
 
 
 def _key_steps_to_center(key_center: str) -> int:
@@ -127,12 +133,40 @@ def sync_creative_key_change(
 
 def sync_creative_style_jam_meta(session: dict[str, Any]) -> None:
     """Keep improv_style_meta aligned with Style Jam widgets."""
+    groove_intensity = str(session.get("improv_groove") or "Medium").strip()
     session["improv_style_meta"] = {
         "style": str(session.get("improv_style") or "").strip(),
         "bpm": int(session.get("improv_style_bpm") or 110),
-        "groove": str(session.get("improv_groove") or "Medium").strip(),
+        "groove": groove_intensity,
+        "groove_intensity": groove_intensity,
         "key": str(session.get("improv_style_key") or "").strip(),
+        "mood": str(session.get("improv_mood") or "Mellow").strip(),
+        "difficulty": str(session.get("improv_difficulty") or "Intermediate").strip(),
+        "meter": str(session.get("improv_style_meter") or session.get("backing_time_signature") or "4/4").strip(),
+        "entry_mode": str(session.get("improv_entry_mode") or "").strip(),
     }
+
+
+def on_improv_jam_key_change() -> None:
+    import streamlit as st
+
+    prev = str(st.session_state.get(IMPROV_JAM_KEY_TRACKER) or "").strip()
+    new = str(st.session_state.get("improv_jam_key") or "").strip()
+    if not new:
+        return
+    gen = st.session_state.get("improv_jam_session")
+    if isinstance(gen, dict) and gen.get("sections") and prev and prev != new:
+        st.session_state["improv_jam_session"] = {
+            **gen,
+            "sections": retranspose_generated_sections(
+                dict(gen.get("sections") or {}),
+                from_key=prev,
+                to_key=new,
+            ),
+        }
+    apply_creative_concert_key(st.session_state, new, st_like=st, source="creative_jam_session")
+    st.session_state[IMPROV_JAM_KEY_TRACKER] = new
+    invalidate_creative_backing_context(st.session_state)
 
 
 def on_improv_style_key_change() -> None:

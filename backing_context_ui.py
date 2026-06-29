@@ -10,8 +10,18 @@ from backing_context import (
     format_backing_context_banner,
     get_backing_context,
     restore_regular_song_backing,
+    sections_dict_for_chart_display,
     sections_dict_from_backing_context,
 )
+
+
+def _badge(label: str, value: str) -> str:
+    if not str(value or "").strip():
+        return ""
+    return (
+        f'<span class="ui-backing-badge groove">{html.escape(label)}: '
+        f"{html.escape(str(value).strip())}</span>"
+    )
 
 
 def render_backing_context_banner(st: Any, session: dict[str, Any]) -> bool:
@@ -24,7 +34,7 @@ def render_backing_context_banner(st: Any, session: dict[str, Any]) -> bool:
         from songs.key_state import resolve_active_musical_key
 
         mk = resolve_active_musical_key(session)
-        chart = str(mk.chart_key or "").strip()
+        chart = str(mk.chart_key or ctx.chart_display_key if ctx else "").strip()
         concert = str(mk.practice_concert_key or "").strip()
         if chart and concert and chart != concert:
             label = f"{label} · Charts shown in {chart}"
@@ -58,44 +68,57 @@ def render_backing_creative_context_card(
     written_key: str = "",
 ) -> None:
     """Replace the blue active-song card when Creative/custom backing is active."""
-    source_titles = {
-        "entry_jam": "Entry & Jam",
-        "mission": "Mission",
-        "custom_progression": "Custom progression",
-    }
-    source_title = source_titles.get(ctx.source, ctx.source_label or "Creative")
-    mode_label = ""
-    if ctx.source == "entry_jam":
-        mode_label = str(ctx.entry_mode or "Style Jam").strip()
-    elif ctx.source == "mission":
-        mode_label = str(ctx.mission_id or "Mission").strip()
-    style_groove = str(ctx.style or ctx.groove or applied_groove or "Auto").strip()
+    source_title = "Entry & Jam" if ctx.source == "entry_jam" else ctx.source_label
+    mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").strip()
+    style_label = str(ctx.style or applied_groove or "Auto").strip()
     concert = html.escape(str(practice_key or ctx.concert_key or ctx.display_key or ctx.key or "C"))
+    chart_key = html.escape(str(written_key or ctx.chart_display_key or "").strip())
     groove = html.escape(str(applied_groove or ctx.groove or "Auto"))
-    meter = html.escape(str(applied_meter or "4/4"))
+    meter = html.escape(str(applied_meter or ctx.meter or "4/4"))
     bpm = int(applied_bpm or ctx.bpm or 100)
-    title = html.escape(str(ctx.style or ctx.song_title or "Creative backing"))
-    subtitle_parts = [html.escape(source_title)]
-    if mode_label and mode_label not in subtitle_parts:
-        subtitle_parts.append(html.escape(mode_label))
-    if style_groove and style_groove not in {title, mode_label}:
-        subtitle_parts.append(html.escape(style_groove))
-    subtitle = " · ".join(subtitle_parts)
+    title = html.escape(style_label or ctx.song_title or "Creative backing")
+    subtitle = html.escape(f"{source_title} · {mode_label}")
 
-    section_names = list(sections_dict_from_backing_context(session, ctx).keys())
+    concert_sections = sections_dict_from_backing_context(session, ctx)
+    chart_sections = sections_dict_for_chart_display(
+        session,
+        concert_sections,
+        concert_key=str(practice_key or ctx.concert_key or "C"),
+        ctx=ctx,
+    )
+    display_sections = chart_sections or concert_sections
     if ctx.section:
         progression_line = html.escape(str(ctx.section))
-    elif section_names:
-        progression_line = html.escape(" / ".join(section_names[:4]))
+    elif ctx.section_labels:
+        progression_line = html.escape(" + ".join(ctx.section_labels[:4]))
+    elif display_sections:
+        progression_line = html.escape(" / ".join(list(display_sections.keys())[:4]))
+        sample = [c for chs in display_sections.values() for c in chs[:4]]
+        if sample:
+            progression_line += html.escape(" · " + " – ".join(sample[:6]))
     elif ctx.progression:
         progression_line = html.escape(" – ".join(ctx.progression[:6]))
     else:
         progression_line = html.escape(str(ctx.progression_label or "Full form"))
 
-    written_badge = ""
-    _written = html.escape(str(written_key or "").strip())
-    if _written and _written != concert:
-        written_badge = f'<span class="ui-backing-badge written-key">Charts in {_written}</span>'
+    badges = [
+        _badge("Style", style_label),
+        _badge("Mood", ctx.mood),
+        _badge("Groove intensity", ctx.groove_intensity),
+        _badge("Difficulty", ctx.difficulty),
+        _badge("Concert key", concert),
+        _badge("BPM", str(bpm)),
+        _badge("Meter", meter),
+    ]
+    if ctx.sections or ctx.section_labels:
+        sec_label = " + ".join((ctx.sections or ctx.section_labels)[:4])
+        badges.append(_badge("Sections", sec_label))
+    badges_html = "".join(b for b in badges if b)
+    chart_line = ""
+    if chart_key and chart_key != concert:
+        chart_line = (
+            f'<p class="ui-backing-active-key-line">Charts shown in: <strong>{chart_key}</strong></p>'
+        )
 
     st.markdown(
         f'<div class="ui-backing-active-song mode-creative-backing">'
@@ -107,14 +130,11 @@ def render_backing_creative_context_card(
         f'<span class="ui-backing-active-dash"> · </span>'
         f'<span class="ui-backing-active-source">{subtitle}</span></p>'
         f'<p class="ui-backing-active-key-line">Concert key: <strong>{concert}</strong>'
-        f" · BPM: <strong>{bpm}</strong> · Groove: <strong>{groove}</strong></p>"
+        f" · BPM: <strong>{bpm}</strong> · Groove: <strong>{groove}</strong> · Meter: <strong>{meter}</strong></p>"
+        f"{chart_line}"
         f'<p class="ui-backing-active-key-line">Progression: <strong>{progression_line}</strong></p>'
-        f'<div class="ui-backing-active-badges">'
-        f"{written_badge}"
-        f'<span class="ui-backing-badge bpm">Backing {bpm} BPM</span>'
-        f'<span class="ui-backing-badge meter">{meter}</span>'
-        f'<span class="ui-backing-badge groove">{groove}</span>'
-        f"</div></div></div>",
+        f'<div class="ui-backing-active-badges">{badges_html}</div>'
+        f"</div></div>",
         unsafe_allow_html=True,
     )
 
@@ -141,10 +161,15 @@ def render_backing_context_dev_diagnostics(st: Any, session: dict[str, Any], *, 
                 [
                     f"- **source:** `{ctx.source}`",
                     f"- **source_label:** `{ctx.source_label}`",
+                    f"- **mode_label:** `{ctx.mode_label}`",
                     f"- **concert_key:** `{ctx.concert_key}`",
+                    f"- **chart_display_key:** `{ctx.chart_display_key}`",
                     f"- **display_key:** `{ctx.display_key}`",
                     f"- **bpm:** `{ctx.bpm}`",
+                    f"- **meter:** `{ctx.meter}`",
+                    f"- **mood / intensity / difficulty:** `{ctx.mood}` / `{ctx.groove_intensity}` / `{ctx.difficulty}`",
                     f"- **groove/style:** `{ctx.groove}` / `{ctx.style}`",
+                    f"- **sections:** `{ctx.sections or ctx.section_labels}`",
                     f"- **progression_label:** `{ctx.progression_label}`",
                     f"- **source_signature:** `{ctx.source_signature}`",
                     f"- **skipped regular-song defaults:** `{skipped_song_defaults}`",

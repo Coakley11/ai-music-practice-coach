@@ -11163,15 +11163,26 @@ elif _studio_page == "backing":
 
         _creative_backing_ctx = active_creative_backing_context(st.session_state)
         if _creative_backing_ctx is not None:
-            from backing_context import sections_dict_from_backing_context
+            from backing_context import (
+                sections_dict_for_chart_display,
+                sections_dict_from_backing_context,
+            )
             from backing_context_ui import render_backing_creative_context_card
 
-            _creative_sections = sections_dict_from_backing_context(
+            _creative_sections_concert = sections_dict_from_backing_context(
                 st.session_state,
                 _creative_backing_ctx,
             )
-            if _creative_sections:
-                sections_for_backing = _creative_sections
+            if _creative_sections_concert:
+                sections_for_backing = _creative_sections_concert
+                _creative_chart_sections = sections_dict_for_chart_display(
+                    st.session_state,
+                    _creative_sections_concert,
+                    concert_key=_backing_practice_key,
+                    ctx=_creative_backing_ctx,
+                )
+                if _creative_chart_sections and _creative_chart_sections != _creative_sections_concert:
+                    st.session_state["_backing_creative_chart_sections"] = _creative_chart_sections
             render_backing_creative_context_card(
                 st,
                 _creative_backing_ctx,
@@ -12421,15 +12432,18 @@ elif _studio_page == "creative":
             source,
             set_catalog_source=set_catalog_source,
             set_custom_source=set_custom_source,
+            widget_safe=True,
         )
 
     def _improv_open_backing() -> None:
         from backing_context import open_backing_from_creative
-        from creative_key_sync import persist_creative_analysis_mode
+        from creative_key_sync import persist_creative_analysis_mode, sync_creative_style_jam_meta
         from studio_page_persistence import save_page_snapshot
+        from studio_page_state import resolve_improv_song_source, sync_improv_song_source_for_handoff
 
-        source = st.session_state.get("improv_song_source", "Active song")
-        apply_improv_song_source(
+        sync_creative_style_jam_meta(st.session_state)
+        source = resolve_improv_song_source(st.session_state)
+        sync_improv_song_source_for_handoff(
             st.session_state,
             source,
             set_catalog_source=set_catalog_source,
@@ -12443,14 +12457,15 @@ elif _studio_page == "creative":
         persist_creative_analysis_mode(st.session_state)
         save_page_snapshot(st.session_state, "creative")
         open_backing_from_creative(st.session_state, source=creative_source, st_like=st)
-        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
         navigate_studio_page(st.session_state, "backing")
         st.rerun()
 
     def _improv_open_practice() -> None:
-        source = st.session_state.get("improv_song_source", "Active song")
-        apply_improv_song_source(
+        from studio_page_state import resolve_improv_song_source, sync_improv_song_source_for_handoff
+
+        source = resolve_improv_song_source(st.session_state)
+        sync_improv_song_source_for_handoff(
             st.session_state,
             source,
             set_catalog_source=set_catalog_source,
