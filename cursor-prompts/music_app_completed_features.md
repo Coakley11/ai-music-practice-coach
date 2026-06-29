@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-06-09 (Tests A–E passed)
+**Last updated:** 2026-06-27
 
 ---
 
@@ -23,6 +23,25 @@
 ---
 
 ## Completed Features
+
+### Tone & Tuner History (2026-06-27)
+
+- [x] Save tone takes after Practice page sustain analysis (`tone_takes[]` media catalog)
+- [x] Instrument-specific default library + All instruments view
+- [x] Written/concert note context for transposing instruments
+- [x] Lazy audio playback via `media/tone_takes/` + Supabase storage refs
+- [x] Delete tombstones; excluded from default history and AMI
+- [x] AMI payload: counts, trends, best/worst stability by instrument (metadata only)
+- [x] Plan: [plans/2026-06-27-tone-tuner-history-sprint.md](./plans/2026-06-27-tone-tuner-history-sprint.md)
+
+### Practice Log (v1 — 2026-06-27)
+
+- [x] Quick Save with exact instrument labels (Tenor/Alto Saxophone, etc.)
+- [x] Refresh + delete persistence (local + Supabase, tombstones)
+- [x] Search/filter (song, instrument, focus, keys)
+- [x] Practice/Concert + written/shape key display from canonical setup
+- [x] Analyze My Practice → AMI / Command Center **Music Practice Log Analysis** handoff
+- [x] AMI practice log answer quality (structured patterns + 30-min plan)
 
 ### Platform & navigation
 

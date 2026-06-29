@@ -1,4 +1,4 @@
-"""Canonical media catalog schema — uploaded recordings and multitrack sessions."""
+"""Canonical media catalog schema — uploaded recordings, multitrack sessions, tone takes."""
 
 from __future__ import annotations
 
@@ -50,6 +50,10 @@ def new_multitrack_id() -> str:
     return str(uuid.uuid4())
 
 
+def new_tone_take_id() -> str:
+    return str(uuid.uuid4())
+
+
 def new_track_id() -> str:
     return str(uuid.uuid4())
 
@@ -81,6 +85,10 @@ def is_multitrack_tombstone(entry: dict[str, Any]) -> bool:
     return bool(entry.get("deleted")) and bool(str(entry.get("multitrack_id") or "").strip())
 
 
+def is_tone_take_tombstone(entry: dict[str, Any]) -> bool:
+    return bool(entry.get("deleted")) and bool(str(entry.get("tone_take_id") or "").strip())
+
+
 def _recording_id(entry: dict[str, Any]) -> str:
     rid = str(entry.get("recording_id") or entry.get("item_key") or "").strip()
     if rid:
@@ -93,6 +101,10 @@ def _multitrack_id(entry: dict[str, Any]) -> str:
     if mid:
         return mid
     return f"legacy-mt-{_legacy_multitrack_fingerprint(entry)}"
+
+
+def _tone_take_id(entry: dict[str, Any]) -> str:
+    return str(entry.get("tone_take_id") or "").strip()
 
 
 def _compact_analysis_summary(raw: Any) -> dict[str, Any]:
@@ -325,6 +337,106 @@ def migrate_multitrack_session(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def migrate_tone_take(entry: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a single tone/tuner practice take row."""
+    if not isinstance(entry, dict):
+        return {}
+
+    if is_tone_take_tombstone(entry):
+        deleted_at = str(entry.get("deleted_at") or entry.get("updated_at") or _utc_now_iso())
+        return {
+            "tone_take_id": _tone_take_id(entry),
+            "deleted": True,
+            "deleted_at": deleted_at,
+            "updated_at": deleted_at,
+        }
+
+    out = dict(entry)
+    tid = _tone_take_id(out) or new_tone_take_id()
+    now = _utc_now_iso()
+    created = str(out.get("created_at") or now)
+    updated = str(out.get("updated_at") or created)
+
+    feedback = out.get("feedback")
+    if isinstance(feedback, list):
+        feedback_lines = [str(x).strip() for x in feedback if str(x).strip()]
+    else:
+        feedback_lines = [str(feedback).strip()] if str(feedback or "").strip() else []
+
+    coach = str(out.get("coach_summary") or out.get("coach_report") or "").strip()
+    if not coach and feedback_lines:
+        coach = " · ".join(x.replace("**", "") for x in feedback_lines[:4])[:500]
+
+    pitch_score = _coerce_float(out.get("pitch_stability_score") or out.get("pitch_stability"))
+    vol_score = _coerce_float(out.get("volume_stability_score") or out.get("sustain_steadiness"))
+    mean_cents = _coerce_float(out.get("mean_cents") or out.get("average_cents"))
+    tone_consistency = _coerce_float(out.get("tone_consistency_score"))
+    if tone_consistency is None and pitch_score is not None and vol_score is not None:
+        tone_consistency = round((pitch_score + vol_score) / 2.0, 1)
+
+    sustain_seconds = _coerce_float(out.get("sustain_seconds"))
+    max_drift = _coerce_float(out.get("max_cents_drift"))
+    user_notes = str(out.get("notes") or out.get("user_notes") or "").strip()[:2000]
+
+    raw_analysis = out.get("analysis_summary")
+    if isinstance(raw_analysis, dict) and raw_analysis:
+        analysis_summary = dict(raw_analysis)
+    else:
+        analysis_summary = {
+            "pitch_stability_score": pitch_score,
+            "volume_stability_score": vol_score,
+            "sustain_steadiness": vol_score,
+            "mean_cents": mean_cents,
+            "max_cents_drift": max_drift,
+            "sustain_seconds": sustain_seconds,
+            "tone_consistency_score": tone_consistency,
+            "attack_quality": out.get("attack_quality"),
+            "feedback": feedback_lines,
+        }
+        analysis_summary = {k: v for k, v in analysis_summary.items() if v not in (None, "", [], {})}
+
+    return {
+        "tone_take_id": tid,
+        "created_at": created,
+        "updated_at": updated,
+        "workspace_id": str(out.get("workspace_id") or "daniel").strip(),
+        "instrument": str(out.get("instrument") or "").strip(),
+        "instrument_family": str(out.get("instrument_family") or "").strip(),
+        "transposing_type": str(out.get("transposing_type") or "").strip(),
+        "target_note": str(out.get("target_note") or "").strip() or None,
+        "detected_note": str(out.get("detected_note") or "").strip() or None,
+        "written_note": str(out.get("written_note") or "").strip() or None,
+        "concert_note": str(out.get("concert_note") or "").strip() or None,
+        "written_key": str(out.get("written_key") or "").strip(),
+        "practice_concert_key": str(out.get("practice_concert_key") or out.get("display_key") or "").strip(),
+        "duration_seconds": _coerce_float(out.get("duration_seconds") or out.get("duration_sec")),
+        "median_note": str(out.get("median_note") or out.get("detected_note") or "").strip() or None,
+        "mean_cents": mean_cents,
+        "average_cents": mean_cents,
+        "max_cents_drift": max_drift,
+        "pitch_stability_score": pitch_score,
+        "pitch_stability": pitch_score,
+        "volume_stability_score": vol_score,
+        "sustain_steadiness": vol_score,
+        "sustain_seconds": sustain_seconds,
+        "tone_consistency_score": tone_consistency,
+        "attack_quality": str(out.get("attack_quality") or "").strip() or None,
+        "feedback": feedback_lines,
+        "coach_summary": coach[:500] if coach else "",
+        "coach_report": coach[:500] if coach else "",
+        "analysis_summary": analysis_summary,
+        "notes": user_notes,
+        "user_notes": user_notes,
+        "mime_type": str(out.get("mime_type") or "audio/wav").strip(),
+        "local_path": out.get("local_path"),
+        "storage_ref": out.get("storage_ref"),
+        "playback_status": str(out.get("playback_status") or "").strip(),
+        "storage_error": str(out.get("storage_error") or "").strip(),
+        "deleted": False,
+        "deleted_at": None,
+    }
+
+
 def _parse_updated_at(entry: dict[str, Any]) -> str:
     return str(entry.get("updated_at") or entry.get("created_at") or "")
 
@@ -415,6 +527,16 @@ def normalize_multitrack_sessions(entries: list[dict[str, Any]]) -> list[dict[st
     )
 
 
+def normalize_tone_takes(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply tombstones; return visible tone takes newest-first."""
+    return _apply_tombstones(
+        entries,
+        id_key="tone_take_id",
+        is_tombstone=is_tone_take_tombstone,
+        migrate=migrate_tone_take,
+    )
+
+
 def merge_catalog(local: dict[str, Any] | None, cloud: dict[str, Any] | None) -> dict[str, Any]:
     """Merge local and cloud catalog payloads."""
     loc = dict(local or {})
@@ -433,6 +555,12 @@ def merge_catalog(local: dict[str, Any] | None, cloud: dict[str, Any] | None) ->
         migrate=migrate_multitrack_session,
         id_key="multitrack_id",
     )
+    tone_takes = merge_media_records(
+        loc.get("tone_takes") if isinstance(loc.get("tone_takes"), list) else [],
+        cld.get("tone_takes") if isinstance(cld.get("tone_takes"), list) else [],
+        migrate=migrate_tone_take,
+        id_key="tone_take_id",
+    )
     updated = max(
         (_parse_updated_at(loc), _parse_updated_at(cld)),
         default="",
@@ -443,6 +571,7 @@ def merge_catalog(local: dict[str, Any] | None, cloud: dict[str, Any] | None) ->
         "updated_at": updated or _utc_now_iso(),
         "uploaded_recordings": uploads,
         "multitrack_sessions": multitracks,
+        "tone_takes": tone_takes,
     }
 
 
@@ -507,6 +636,172 @@ def compact_multitrack_for_ami(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def compact_tone_take_for_ami(entry: dict[str, Any]) -> dict[str, Any]:
+    row = migrate_tone_take(entry)
+    if is_tone_take_tombstone(row):
+        return {}
+    audio_available = bool(row.get("storage_ref") or row.get("local_path"))
+    analysis = row.get("analysis_summary") if isinstance(row.get("analysis_summary"), dict) else {}
+    return {
+        "tone_take_id": row.get("tone_take_id"),
+        "created_at": row.get("created_at"),
+        "instrument": row.get("instrument"),
+        "instrument_family": row.get("instrument_family"),
+        "target_note": row.get("target_note"),
+        "detected_note": row.get("detected_note"),
+        "written_note": row.get("written_note"),
+        "concert_note": row.get("concert_note"),
+        "duration_seconds": row.get("duration_seconds"),
+        "average_cents": row.get("average_cents") or row.get("mean_cents"),
+        "mean_cents": row.get("mean_cents"),
+        "pitch_stability": row.get("pitch_stability") or row.get("pitch_stability_score"),
+        "pitch_stability_score": row.get("pitch_stability_score"),
+        "sustain_steadiness": row.get("sustain_steadiness") or row.get("volume_stability_score"),
+        "tone_consistency_score": row.get("tone_consistency_score"),
+        "attack_quality": row.get("attack_quality"),
+        "sustain_seconds": row.get("sustain_seconds"),
+        "coach_report": row.get("coach_report") or row.get("coach_summary"),
+        "analysis_summary": analysis,
+        "user_notes": row.get("user_notes") or row.get("notes"),
+        "playback_status": row.get("playback_status"),
+        "audio_available": audio_available,
+    }
+
+
+def _tone_take_quality_label(row: dict[str, Any]) -> str:
+    score = _coerce_float(row.get("pitch_stability_score")) or 0.0
+    cents = abs(_coerce_float(row.get("mean_cents")) or 0.0)
+    if score >= 78 and cents <= 10:
+        return "best"
+    if score < 55 or cents > 20:
+        return "needs_work"
+    return "steady"
+
+
+def _tone_improvement_trends(takes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    from collections import defaultdict
+
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in takes:
+        inst = str(row.get("instrument") or "").strip()
+        note = str(row.get("written_note") or row.get("concert_note") or row.get("target_note") or "").strip()
+        if not inst or not note:
+            continue
+        groups[(inst, note)].append(row)
+
+    trends: list[dict[str, Any]] = []
+    for (inst, note), rows in groups.items():
+        if len(rows) < 2:
+            continue
+        ordered = sorted(rows, key=lambda r: str(r.get("created_at") or ""))
+        recent = ordered[-3:]
+        older = ordered[:-3] or ordered[:1]
+
+        def _avg_cents(group: list[dict[str, Any]]) -> float | None:
+            vals = [_coerce_float(r.get("mean_cents")) for r in group]
+            vals = [v for v in vals if v is not None]
+            if not vals:
+                return None
+            return sum(vals) / len(vals)
+
+        def _avg_stability(group: list[dict[str, Any]]) -> float | None:
+            vals = [_coerce_float(r.get("pitch_stability_score")) for r in group]
+            vals = [v for v in vals if v is not None]
+            if not vals:
+                return None
+            return sum(vals) / len(vals)
+
+        old_cents = _avg_cents(older)
+        new_cents = _avg_cents(recent)
+        old_stab = _avg_stability(older)
+        new_stab = _avg_stability(recent)
+        if old_cents is None or new_cents is None:
+            continue
+        trends.append(
+            {
+                "instrument": inst,
+                "note": note,
+                "take_count": len(rows),
+                "mean_cents_delta": round(new_cents - old_cents, 1),
+                "pitch_stability_delta": round((new_stab or 0) - (old_stab or 0), 1)
+                if new_stab is not None and old_stab is not None
+                else None,
+                "recent_mean_cents": round(new_cents, 1),
+                "older_mean_cents": round(old_cents, 1),
+            }
+        )
+    trends.sort(key=lambda t: abs(t.get("mean_cents_delta") or 0), reverse=True)
+    return trends[:12]
+
+
+def _best_worst_pitch_by_instrument(
+    compact: list[dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    from collections import defaultdict
+
+    by_inst: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in compact:
+        inst = str(row.get("instrument") or "Unknown").strip() or "Unknown"
+        by_inst[inst].append(row)
+
+    best: dict[str, dict[str, Any]] = {}
+    worst: dict[str, dict[str, Any]] = {}
+    for inst, rows in by_inst.items():
+        scored = [r for r in rows if r.get("pitch_stability_score") is not None or r.get("pitch_stability") is not None]
+        if not scored:
+            continue
+        best[inst] = max(
+            scored,
+            key=lambda r: (_coerce_float(r.get("pitch_stability_score") or r.get("pitch_stability")) or 0),
+        )
+        worst[inst] = min(
+            scored,
+            key=lambda r: (_coerce_float(r.get("pitch_stability_score") or r.get("pitch_stability")) or 0),
+        )
+    return best, worst
+
+
+def build_tone_ami_summary(takes: list[dict[str, Any]], *, window_days: int = 30) -> dict[str, Any]:
+    """Structured tone/tuner summaries for AMI — metadata only, no audio blobs."""
+    compact = [c for c in (compact_tone_take_for_ami(t) for t in takes) if c]
+    by_instrument: dict[str, int] = {}
+    recent_by_instrument: dict[str, list[dict[str, Any]]] = {}
+    for row in compact:
+        inst = str(row.get("instrument") or "Unknown").strip() or "Unknown"
+        by_instrument[inst] = by_instrument.get(inst, 0) + 1
+        recent_by_instrument.setdefault(inst, []).append(row)
+
+    for inst in recent_by_instrument:
+        recent_by_instrument[inst] = sorted(
+            recent_by_instrument[inst],
+            key=lambda r: str(r.get("created_at") or ""),
+            reverse=True,
+        )[:8]
+
+    scored = [r for r in compact if r.get("pitch_stability_score") is not None]
+    best = sorted(scored, key=lambda r: (_coerce_float(r.get("pitch_stability_score")) or 0), reverse=True)[:5]
+    worst = sorted(scored, key=lambda r: (_coerce_float(r.get("pitch_stability_score")) or 0))[:5]
+    best_by_inst, worst_by_inst = _best_worst_pitch_by_instrument(compact)
+    trends = _tone_improvement_trends(compact)
+    audio_available_count = sum(1 for r in compact if r.get("audio_available"))
+
+    return {
+        "tone_take_count_total": len(compact),
+        "tone_take_count_by_instrument": by_instrument,
+        "recent_tone_takes_by_instrument": recent_by_instrument,
+        "recent_tone_reports": compact[:16],
+        "best_pitch_stability": best,
+        "worst_pitch_stability": worst,
+        "best_pitch_stability_by_instrument": best_by_inst,
+        "worst_pitch_stability_by_instrument": worst_by_inst,
+        "improvement_trends": trends,
+        "improvement_trends_by_instrument_and_note": trends,
+        "audio_available": audio_available_count > 0,
+        "audio_available_count": audio_available_count,
+        "window_days": window_days,
+    }
+
+
 def build_media_ami_payload_from_catalog(
     catalog: dict[str, Any],
     *,
@@ -518,11 +813,16 @@ def build_media_ami_payload_from_catalog(
     multitracks = normalize_multitrack_sessions(
         catalog.get("multitrack_sessions") if isinstance(catalog.get("multitrack_sessions"), list) else []
     )
+    tone_takes = normalize_tone_takes(
+        catalog.get("tone_takes") if isinstance(catalog.get("tone_takes"), list) else []
+    )
     uploads = [u for u in uploads if _within_window(u, window_days=window_days)]
     multitracks = [m for m in multitracks if _within_window(m, window_days=window_days)]
+    tone_takes = [t for t in tone_takes if _within_window(t, window_days=window_days)]
 
     upload_compact = [c for c in (compact_recording_for_ami(u) for u in uploads) if c]
     mt_compact = [c for c in (compact_multitrack_for_ami(m) for m in multitracks) if c]
+    tone_summary = build_tone_ami_summary(tone_takes, window_days=window_days)
 
     recording_context: list[dict[str, Any]] = []
     for row in upload_compact:
@@ -547,14 +847,31 @@ def build_media_ami_payload_from_catalog(
                 "source": "multitrack_session",
             }
         )
+    for row in tone_summary.get("recent_tone_reports") or []:
+        if not isinstance(row, dict):
+            continue
+        recording_context.append(
+            {
+                "date": row.get("created_at"),
+                "instrument": row.get("instrument"),
+                "written_note": row.get("written_note"),
+                "concert_note": row.get("concert_note"),
+                "coach_summary": row.get("coach_summary"),
+                "pitch_stability_score": row.get("pitch_stability_score"),
+                "mean_cents": row.get("mean_cents"),
+                "source": "tone_take",
+            }
+        )
 
     return {
         "uploaded_recordings": upload_compact,
         "multitrack_sessions": mt_compact,
-        "recording_analysis_context": recording_context[:16],
+        "tone_history": tone_summary,
+        "recording_analysis_context": recording_context[:20],
         "media_summary": {
             "upload_count": len(upload_compact),
             "multitrack_count": len(mt_compact),
+            "tone_take_count": tone_summary.get("tone_take_count_total", 0),
             "window_days": window_days,
         },
     }

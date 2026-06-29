@@ -22,6 +22,8 @@ from tuner_tone import (
     parse_note_token,
     pitch_trace_svg,
 )
+from tone_take_history_ui import render_pending_tone_save, render_tone_take_history_section
+from media_tone_catalog import cache_pending_tone_take
 
 def _safe_key_part(text: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(text).strip())
@@ -162,6 +164,14 @@ def render_tuner_tone_section(
                     f"Practice target: **{html.escape(expected_note)}** — "
                     "match this note while the tuner listens."
                 )
+            render_tone_take_history_section(
+                st_module,
+                st_module.session_state,
+                key_prefix=key_prefix,
+                instrument=instrument,
+                display_key=display_key,
+                transposing_type=transposing_type,
+            )
             return
 
         _render_tone_practice_mode(
@@ -169,6 +179,17 @@ def render_tuner_tone_section(
             key_prefix=key_prefix,
             target_note=target_note,
             profile=profile,
+            instrument=instrument,
+            display_key=display_key,
+            transposing_type=transposing_type,
+        )
+        render_tone_take_history_section(
+            st_module,
+            st_module.session_state,
+            key_prefix=key_prefix,
+            instrument=instrument,
+            display_key=display_key,
+            transposing_type=transposing_type,
         )
 
 
@@ -178,6 +199,9 @@ def _render_tone_practice_mode(
     key_prefix: str,
     target_note: str | None,
     profile: InstrumentTunerProfile,
+    instrument: str = "",
+    display_key: str = "",
+    transposing_type: str = "",
 ) -> None:
     """Sustain / tone analysis — still uses recorded clip + librosa."""
     if not librosa_available():
@@ -215,6 +239,10 @@ def _render_tone_practice_mode(
         raw,
         target_note=target_note,
         profile=profile,
+        instrument=instrument,
+        display_key=display_key,
+        transposing_type=transposing_type,
+        key_prefix=key_prefix,
     )
 
 
@@ -224,6 +252,10 @@ def _render_tone_practice_result(
     *,
     target_note: str | None,
     profile: InstrumentTunerProfile,
+    instrument: str = "",
+    display_key: str = "",
+    transposing_type: str = "",
+    key_prefix: str = "practice_tuner",
 ) -> None:
     hold_goal = 5.0 if profile.mode in ("wind", "voice") else 4.0
     try:
@@ -274,3 +306,18 @@ def _render_tone_practice_result(
         st_module.caption(
             f"Tip: hold one steady note for **{hold_goal:.0f}+ seconds** for richer feedback."
         )
+
+    cache_pending_tone_take(
+        st_module.session_state,
+        result=result,
+        audio_bytes=audio_bytes,
+        target_note=target_note,
+    )
+    render_pending_tone_save(
+        st_module,
+        st_module.session_state,
+        key_prefix=key_prefix,
+        instrument=instrument,
+        display_key=display_key,
+        transposing_type=transposing_type,
+    )

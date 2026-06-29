@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-06-19
+**Last updated:** 2026-06-27
 
 Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
@@ -9,11 +9,43 @@ Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadma
 
 ## Current Priorities
 
-### P0 — AMI improvements (primary suite focus)
+### P0 — Tone & Tuner History (Practice page)
 
-Music Coach AMI: expand send context (song, section, mission, analysis, practice history); add music analysis router/solvers; teaching-style answers (harmony, rhythm, practice steps). Return restore already strong (Test E).
+**Plan:** [plans/2026-06-27-tone-tuner-history-sprint.md](./plans/2026-06-27-tone-tuner-history-sprint.md)
 
-**Sync audit (2026-06-11):** See Command Center [plans/2026-06-11-ami-enhancement-roadmap.md](../../daniel-ai-command-center/cursor-prompts/plans/2026-06-11-ami-enhancement-roadmap.md). Optional later: practice log + analysis history → Supabase (Medium, 3–8h).
+- [x] `tone_takes[]` catalog schema + tombstones + merge
+- [x] Save tone take after sustain analysis; lazy audio via `music-media`
+- [x] Instrument-filtered library + All instruments + note/quality filters
+- [x] Written + concert note fields for transposing instruments
+- [x] AMI summaries in Analyze My Practice (no raw audio)
+- [x] `?dev=1` diagnostics + `tests/test_media_tone_catalog.py`
+
+**Acceptance:** Record/save Flute + Tenor Sax takes; switch instrument → correct default history; play/delete; AMI summarizes by instrument.
+
+### P0 — Uploads + Multitrack persistence (media layer sprint)
+
+**Practice Log v1 baseline:** quick save, refresh/delete persistence, search/filter, instrument/key labels, AMI handoff title — working.
+
+**Goal:** Uploads and Multitrack as persistent, cross-device music memory (like Practice Log).
+
+**Plan (audit complete):** [plans/2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md)
+
+Implementation order:
+
+- [x] **B** — `media_state.py` + `media_persistence.py` (canonical model, tombstones, merge; no blobs in workspace envelope) — scaffold + tests
+- [ ] **C** — Upload auto-catalog + legacy `upload_history` migration + storage refs
+- [ ] **D** — Multitrack catalog + slot/control fix + storage refs
+- [ ] **E** — AMI payload: `uploaded_recordings` + `multitrack_sessions`; solver references recordings
+- [ ] **F** — UI lists, notes, delete; `?dev=1` media diagnostics
+- [ ] **G** — Tests + focused commits per step
+
+**Acceptance:** phone↔Dell upload/multitrack sync; delete tombstones; refresh survival; Analyze My Practice includes media summaries.
+
+### P1 — AMI improvements (ongoing)
+
+Music Coach AMI: expand send context (song, section, mission, analysis, practice history, **upload/multitrack summaries**); music analysis router/solvers; teaching-style answers. Return restore already strong (Test E).
+
+**Sync audit (2026-06-11):** See Command Center [plans/2026-06-11-ami-enhancement-roadmap.md](../../daniel-ai-command-center/cursor-prompts/plans/2026-06-11-ami-enhancement-roadmap.md). Upload/multitrack metadata → dedicated media channel (not main envelope) — see media sprint plan above.
 
 ### P1 — UI polish (ongoing)
 

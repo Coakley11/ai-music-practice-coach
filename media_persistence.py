@@ -11,12 +11,16 @@ from media_state import (
     build_media_ami_payload_from_catalog,
     is_multitrack_tombstone,
     is_recording_tombstone,
+    is_tone_take_tombstone,
     merge_catalog,
     migrate_multitrack_session,
+    migrate_tone_take,
     migrate_uploaded_recording,
     new_multitrack_id,
     new_recording_id,
+    new_tone_take_id,
     normalize_multitrack_sessions,
+    normalize_tone_takes,
     normalize_uploaded_recordings,
     _utc_now_iso,
 )
@@ -61,6 +65,7 @@ def _empty_catalog(*, workspace_id: str) -> dict[str, Any]:
         "updated_at": _utc_now_iso(),
         "uploaded_recordings": [],
         "multitrack_sessions": [],
+        "tone_takes": [],
     }
 
 
@@ -163,8 +168,10 @@ def load_media_catalog(*, st: Any | None = None) -> dict[str, Any]:
 
     uploads_raw = merged.get("uploaded_recordings") if isinstance(merged.get("uploaded_recordings"), list) else []
     mt_raw = merged.get("multitrack_sessions") if isinstance(merged.get("multitrack_sessions"), list) else []
+    tone_raw = merged.get("tone_takes") if isinstance(merged.get("tone_takes"), list) else []
     tomb_rec = sum(1 for row in uploads_raw if isinstance(row, dict) and is_recording_tombstone(row))
     tomb_mt = sum(1 for row in mt_raw if isinstance(row, dict) and is_multitrack_tombstone(row))
+    tomb_tone = sum(1 for row in tone_raw if isinstance(row, dict) and is_tone_take_tombstone(row))
 
     cloud_enabled_flag = False
     cloud_block = None
@@ -185,17 +192,22 @@ def load_media_catalog(*, st: Any | None = None) -> dict[str, Any]:
             "local_path": str(_local_path(st=st)),
             "local_upload_count": len(local.get("uploaded_recordings") or []) if isinstance(local.get("uploaded_recordings"), list) else 0,
             "local_multitrack_count": len(local.get("multitrack_sessions") or []) if isinstance(local.get("multitrack_sessions"), list) else 0,
+            "local_tone_take_count": len(local.get("tone_takes") or []) if isinstance(local.get("tone_takes"), list) else 0,
             "cloud_upload_count": len(cloud.get("uploaded_recordings") or []) if isinstance(cloud.get("uploaded_recordings"), list) else 0,
             "cloud_multitrack_count": len(cloud.get("multitrack_sessions") or []) if isinstance(cloud.get("multitrack_sessions"), list) else 0,
+            "cloud_tone_take_count": len(cloud.get("tone_takes") or []) if isinstance(cloud.get("tone_takes"), list) else 0,
             "cloud_load_error": cloud_load_err,
             "cloud_enabled": cloud_enabled_flag,
             "cloud_block_reason": cloud_block,
             "merged_upload_count": len(uploads_raw),
             "merged_multitrack_count": len(mt_raw),
+            "merged_tone_take_count": len(tone_raw),
             "visible_upload_count": len(normalize_uploaded_recordings(uploads_raw)),
             "visible_multitrack_count": len(normalize_multitrack_sessions(mt_raw)),
+            "visible_tone_take_count": len(normalize_tone_takes(tone_raw)),
             "tombstone_recording_count": tomb_rec,
             "tombstone_multitrack_count": tomb_mt,
+            "tombstone_tone_take_count": tomb_tone,
         },
     )
 
@@ -302,6 +314,16 @@ def _replace_multitrack(catalog: dict[str, Any], row: dict[str, Any]) -> dict[st
     rows = [r for r in rows if str(r.get("multitrack_id") or "") != mid]
     rows.append(row)
     out["multitrack_sessions"] = rows
+    return out
+
+
+def _replace_tone_take(catalog: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+    out = dict(catalog)
+    rows = list(out.get("tone_takes") or [])
+    tid = str(row.get("tone_take_id") or "")
+    rows = [r for r in rows if str(r.get("tone_take_id") or "") != tid]
+    rows.append(row)
+    out["tone_takes"] = rows
     return out
 
 
@@ -423,6 +445,67 @@ def delete_multitrack_session(st: Any | None, multitrack_id: str) -> bool:
     return bool(result.get("ok"))
 
 
+def add_tone_take(st: Any | None, fields: dict[str, Any]) -> dict[str, Any]:
+    catalog = _catalog_from_st(st, None)
+    now = _utc_now_iso()
+    ws = _resolve_workspace_id(st=st)
+    row = migrate_tone_take(
+        {
+            **dict(fields or {}),
+            "tone_take_id": new_tone_take_id(),
+            "created_at": now,
+            "updated_at": now,
+            "workspace_id": ws,
+            "deleted": False,
+        }
+    )
+    updated = _replace_tone_take(catalog, row)
+    save_media_catalog(updated, st=st)
+    return row
+
+
+def update_tone_take(
+    st: Any | None,
+    tone_take_id: str,
+    updates: dict[str, Any],
+) -> dict[str, Any]:
+    tid = str(tone_take_id or "").strip()
+    if not tid:
+        return {}
+    catalog = _catalog_from_st(st, None)
+    rows = catalog.get("tone_takes") if isinstance(catalog.get("tone_takes"), list) else []
+    existing = None
+    for row in rows:
+        if isinstance(row, dict) and str(row.get("tone_take_id") or "") == tid:
+            existing = migrate_tone_take(row)
+            break
+    if not existing or is_tone_take_tombstone(existing):
+        return {}
+    merged = {**existing, **dict(updates or {}), "tone_take_id": tid, "updated_at": _utc_now_iso()}
+    row = migrate_tone_take(merged)
+    updated = _replace_tone_take(catalog, row)
+    save_media_catalog(updated, st=st)
+    return row
+
+
+def delete_tone_take(st: Any | None, tone_take_id: str) -> bool:
+    tid = str(tone_take_id or "").strip()
+    if not tid:
+        return False
+    catalog = _catalog_from_st(st, None)
+    now = _utc_now_iso()
+    tomb = {
+        "tone_take_id": tid,
+        "deleted": True,
+        "deleted_at": now,
+        "updated_at": now,
+        "workspace_id": _resolve_workspace_id(st=st),
+    }
+    updated = _replace_tone_take(catalog, tomb)
+    result = save_media_catalog(updated, st=st)
+    return bool(result.get("ok"))
+
+
 def build_media_ami_payload(
     st: Any | None,
     catalog: dict[str, Any] | None = None,
@@ -448,6 +531,9 @@ __all__ = [
     "add_multitrack_session",
     "update_multitrack_session",
     "delete_multitrack_session",
+    "add_tone_take",
+    "update_tone_take",
+    "delete_tone_take",
     "build_media_ami_payload",
     "merge_media_records",
 ]

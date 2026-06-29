@@ -114,6 +114,27 @@ def recording_media_relpath(recording_id: str, *, filename: str = "", mime_type:
     return f"media/recordings/{rid}{ext}"
 
 
+def tone_take_media_relpath(tone_take_id: str, *, filename: str = "", mime_type: str = "") -> str:
+    ext = _recording_extension(filename, mime_type)
+    tid = str(tone_take_id or "").strip()
+    return f"media/tone_takes/{tid}{ext}"
+
+
+def build_tone_take_object_key(
+    user_id: str,
+    workspace_id: str,
+    tone_take_id: str,
+    *,
+    filename: str = "",
+    mime_type: str = "",
+) -> str:
+    ext = _recording_extension(filename, mime_type)
+    uid = str(user_id or "local").strip() or "local"
+    ws = str(workspace_id or "daniel").strip() or "daniel"
+    tid = str(tone_take_id or "").strip()
+    return f"{uid}/{ws}/tone_takes/{tid}{ext}"
+
+
 def recording_local_abs_path(workspace_id: str, rel_path: str) -> Path:
     from suite_workspace import workspace_dir
 
@@ -348,6 +369,206 @@ def persist_recording_audio(
         "storage_error": err or None,
         "playback_status": status,
     }
+
+
+def save_tone_take_local(
+    workspace_id: str,
+    tone_take_id: str,
+    audio: bytes,
+    *,
+    filename: str = "",
+    mime_type: str = "",
+) -> tuple[str, str]:
+    rel = tone_take_media_relpath(tone_take_id, filename=filename, mime_type=mime_type)
+    path = recording_local_abs_path(workspace_id, rel)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(audio)
+        try:
+            with path.open("r+b") as handle:
+                handle.flush()
+                os.fsync(handle.fileno())
+        except Exception:
+            pass
+        if not path.is_file() or path.stat().st_size <= 0:
+            return "", "local_write_empty"
+        return rel, ""
+    except Exception as exc:
+        return "", str(exc)
+
+
+def upload_tone_take_cloud(
+    workspace_id: str,
+    tone_take_id: str,
+    audio: bytes,
+    *,
+    filename: str = "",
+    mime_type: str = "audio/wav",
+    user_id: str | None = None,
+) -> tuple[str, str]:
+    if not _cloud_storage_enabled():
+        return "", "cloud_disabled"
+    client = _service_storage_client()
+    if client is None:
+        return "", "cloud_client_unavailable"
+    bucket = _media_bucket()
+    uid = user_id or _resolve_user_id()
+    object_key = build_tone_take_object_key(uid, workspace_id, tone_take_id, filename=filename, mime_type=mime_type)
+    content_type = str(mime_type or "audio/wav").strip() or "audio/wav"
+    try:
+        storage = client.storage.from_(bucket)
+        storage.upload(
+            object_key,
+            audio,
+            file_options={"content-type": content_type, "upsert": "true"},
+        )
+        return build_storage_ref(bucket, object_key), ""
+    except Exception as exc:
+        return "", str(exc)
+
+
+def persist_tone_take_audio(
+    st: Any | None,
+    tone_take_id: str,
+    audio: Any,
+    *,
+    filename: str = "",
+    mime_type: str = "audio/wav",
+    workspace_id: str | None = None,
+) -> dict[str, Any]:
+    """Save tone take audio locally and to Supabase Storage when cloud is enabled."""
+    tid = str(tone_take_id or "").strip()
+    ws = str(workspace_id or _resolve_workspace_id(st=st)).strip() or "daniel"
+    data, audio_err = _validate_audio_bytes(audio)
+    if not tid:
+        return {"ok": False, "error": "missing_tone_take_id", "playback_status": PLAYBACK_UPLOAD_FAILED}
+    if audio_err or data is None:
+        return {
+            "ok": False,
+            "error": audio_err or "missing_audio",
+            "playback_status": PLAYBACK_METADATA_ONLY,
+        }
+
+    local_path, local_err = save_tone_take_local(ws, tid, data, filename=filename, mime_type=mime_type)
+    storage_ref, cloud_err = upload_tone_take_cloud(
+        ws,
+        tid,
+        data,
+        filename=filename,
+        mime_type=mime_type,
+    )
+
+    local_ok = bool(local_path) and not local_err
+    cloud_ok = bool(storage_ref) and not cloud_err
+
+    if local_ok or cloud_ok:
+        status = PLAYBACK_PLAYABLE
+        ok = True
+        err = cloud_err if not cloud_ok and _cloud_storage_enabled() else ""
+    else:
+        status = PLAYBACK_UPLOAD_FAILED
+        ok = False
+        err = local_err or cloud_err or "persist_failed"
+
+    return {
+        "ok": ok,
+        "local_path": local_path or None,
+        "storage_ref": storage_ref or None,
+        "local_ok": local_ok,
+        "cloud_ok": cloud_ok,
+        "local_error": local_err or None,
+        "cloud_error": cloud_err or None,
+        "storage_error": err or None,
+        "playback_status": status,
+    }
+
+
+def _tone_take_workspace(tone_take: dict[str, Any]) -> str:
+    from media_state import migrate_tone_take
+
+    row = migrate_tone_take(tone_take)
+    return str(row.get("workspace_id") or "daniel").strip() or "daniel"
+
+
+def load_tone_take_audio(tone_take: dict[str, Any], *, st: Any | None = None) -> tuple[bytes | None, str]:
+    """Resolve playable bytes for a tone take (lazy load — local first, then cloud)."""
+    from media_state import migrate_tone_take
+
+    row = migrate_tone_take(tone_take)
+    current_ws = _resolve_workspace_id(st=st)
+    take_ws = _tone_take_workspace(row)
+    if take_ws != current_ws:
+        return None, "workspace_mismatch"
+
+    local_path = str(row.get("local_path") or "").strip()
+    if local_path:
+        path = recording_local_abs_path(take_ws, local_path)
+        if path.is_file() and path.stat().st_size > 0:
+            try:
+                data = path.read_bytes()
+                record_cache_hit(st=st, bytes_count=len(data))
+                return data, ""
+            except Exception:
+                pass
+
+    storage_ref = str(row.get("storage_ref") or "").strip()
+    if storage_ref:
+        data, err = download_recording_cloud(storage_ref, st=st)
+        if data:
+            if local_path and not recording_local_abs_path(take_ws, local_path).is_file():
+                save_tone_take_local(
+                    take_ws,
+                    str(row.get("tone_take_id") or ""),
+                    data,
+                    filename="",
+                    mime_type=str(row.get("mime_type") or ""),
+                )
+            return data, ""
+        if not local_path:
+            return None, err or "missing_file"
+
+    if local_path or storage_ref:
+        return None, "missing_file"
+    return None, "metadata_only"
+
+
+def delete_tone_take_files(tone_take: dict[str, Any], *, st: Any | None = None) -> dict[str, str]:
+    from media_state import migrate_tone_take
+
+    row = migrate_tone_take(tone_take)
+    ws = _tone_take_workspace(row)
+    local_path = str(row.get("local_path") or "").strip()
+    storage_ref = str(row.get("storage_ref") or "").strip()
+    return {
+        "local_error": delete_recording_local(ws, local_path) if local_path else "",
+        "cloud_error": delete_recording_cloud(storage_ref) if storage_ref else "",
+    }
+
+
+def tone_take_playback_status(tone_take: dict[str, Any], *, st: Any | None = None) -> str:
+    from media_state import migrate_tone_take
+
+    row = migrate_tone_take(tone_take)
+    if row.get("deleted"):
+        return PLAYBACK_METADATA_ONLY
+    local_path = str(row.get("local_path") or "").strip()
+    storage_ref = str(row.get("storage_ref") or "").strip()
+    if not local_path and not storage_ref:
+        cached = str(row.get("playback_status") or "").strip()
+        if cached == PLAYBACK_UPLOAD_FAILED:
+            return PLAYBACK_UPLOAD_FAILED
+        return PLAYBACK_METADATA_ONLY
+
+    ws = _tone_take_workspace(row)
+    if local_path:
+        path = recording_local_abs_path(ws, local_path)
+        if path.is_file() and path.stat().st_size > 0:
+            return PLAYBACK_PLAYABLE
+    if storage_ref and _cloud_storage_enabled():
+        return PLAYBACK_PLAYABLE
+    if storage_ref or local_path:
+        return PLAYBACK_METADATA_ONLY
+    return PLAYBACK_METADATA_ONLY
 
 
 def _recording_workspace(recording: dict[str, Any]) -> str:

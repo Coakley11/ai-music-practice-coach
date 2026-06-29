@@ -182,10 +182,22 @@ def build_practice_log_ami_payload(
         "trends": _build_trends(entries, window_days=window_days),
     }
 
+    tone_history: dict[str, Any] = {}
+    media_payload: dict[str, Any] = {}
+    try:
+        from media_persistence import build_media_ami_payload
+
+        media_payload = build_media_ami_payload(None, window_days=max(window_days, 30))
+        tone_history = dict(media_payload.get("tone_history") or {})
+    except Exception:
+        pass
+
     return {
         "practice_log_summary": practice_log_summary,
         "recent_sessions": [_compact_session(e) for e in window_entries[:30]],
         "active_song_context": _active_song_context(session_state),
         "recording_analysis_context": _recording_analysis_context(),
+        "tone_history": tone_history,
+        "media_summary": media_payload.get("media_summary") or {},
         "user_request": "analyze_practice",
     }

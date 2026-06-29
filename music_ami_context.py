@@ -155,6 +155,7 @@ def gather_practice_ami_snapshot(
     history: list[dict[str, Any]] = []
     practice_log_summary: dict[str, Any] = {}
     practice_log_ami_payload: dict[str, Any] = {}
+    tone_history: dict[str, Any] = {}
     if include_practice_logs:
         try:
             from practice_log_ami import build_practice_log_ami_payload
@@ -174,6 +175,14 @@ def gather_practice_ami_snapshot(
             log = session_state.get("practice_log_entries") or session_state.get("practice_history")
             if isinstance(log, list):
                 history = [dict(x) for x in log[:8] if isinstance(x, dict)]
+
+    try:
+        from media_persistence import build_media_ami_payload
+
+        media_payload = build_media_ami_payload(None, window_days=30)
+        tone_history = dict(media_payload.get("tone_history") or {})
+    except Exception:
+        tone_history = {}
 
     snap: dict[str, Any] = {
         "coach_page": "practice",
@@ -200,6 +209,7 @@ def gather_practice_ami_snapshot(
         "recent_practice_history": history,
         "practice_log_summary": practice_log_summary,
         "practice_log_ami_payload": practice_log_ami_payload,
+        "tone_history": tone_history,
         "studio_page": str(session_state.get("studio_page") or "practice"),
     }
     return {k: v for k, v in snap.items() if v is not None and v != "" and v != []}
