@@ -465,9 +465,12 @@ class TestLogPagePracticeAnalysis(unittest.TestCase):
 
         root = Path(__file__).resolve().parents[1]
         app_source = (root / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        panel_source = (root / "practice_log_analysis_panel.py").read_text(encoding="utf-8")
         ui_source = (root / "practice_log_ui.py").read_text(encoding="utf-8")
-        self.assertIn("render_practice_analysis_panel", app_source)
-        self.assertIn("Practice Analysis", ui_source)
+        self.assertIn("from practice_log_analysis_panel import render_practice_analysis_panel", app_source)
+        self.assertIn("def render_practice_analysis_panel", panel_source)
+        self.assertIn("Practice Analysis", panel_source)
+        self.assertIn("render_practice_analysis_panel", ui_source)
         self.assertNotIn('expander("Coach notes"', app_source)
         self.assertNotIn("render_practice_progress_report_panel", ui_source)
 

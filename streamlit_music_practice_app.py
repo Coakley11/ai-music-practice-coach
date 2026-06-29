@@ -13118,7 +13118,8 @@ elif _studio_page == "log":
     _inject_practice_log_studio_styles()
 
     from practice_log_state import load_entries
-    from practice_log_ui import render_practice_analysis_panel, render_practice_log_page
+    from practice_log_analysis_panel import render_practice_analysis_panel
+    from practice_log_ui import render_practice_log_page
 
     def _on_practice_log_saved(saved_entry: dict) -> None:
         try:

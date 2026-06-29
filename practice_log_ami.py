@@ -234,9 +234,7 @@ def build_practice_log_ami_payload(
         },
         "user_request": "analyze_practice",
     }
-    from practice_history_synthesis import build_practice_progress_report
-
-    from practice_history_synthesis import build_practice_progress_report, build_log_page_analysis_summary
+    from practice_history_synthesis import build_log_page_analysis_summary, build_practice_progress_report
 
     result["progress_report"] = build_practice_progress_report(result)
     result["log_page_summary"] = build_log_page_analysis_summary(result)
