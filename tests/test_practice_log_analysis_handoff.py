@@ -417,7 +417,7 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
 
         subtitle = practice_log_analysis_card_subtitle(
             {
-                "report_generated_at": "2026-06-29T01:42:00+00:00",
+                "report_generated_at": "2026-06-29T13:28:00+00:00",
                 "context": {
                     "practice_log_summary": {
                         "session_count": 2,
@@ -428,9 +428,54 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
                 },
             }
         )
+        self.assertIn("Top song: Say", subtitle)
         self.assertIn("Updated", subtitle)
-        self.assertIn("Say", subtitle)
+        self.assertIn("ET", subtitle)
+        self.assertIn("Jun 29, 2026", subtitle)
+        self.assertNotIn("Guitar / Say", subtitle)
         self.assertNotIn("__ctx_json__", subtitle)
+
+    def test_mixed_instruments_subtitle_shows_multiple(self) -> None:
+        from suite_analytical_question import practice_log_analysis_card_subtitle
+
+        subtitle = practice_log_analysis_card_subtitle(
+            {
+                "report_generated_at": "2026-06-29T13:28:00+00:00",
+                "context": {
+                    "practice_log_summary": {
+                        "practice_time_by_instrument": {"Tenor Saxophone": 30, "Guitar": 30},
+                        "practice_time_by_song": {"Say": 45},
+                    }
+                },
+            }
+        )
+        self.assertIn("Multiple instruments", subtitle)
+        self.assertNotIn("Guitar / Say", subtitle)
+
+    def test_single_dominant_instrument_subtitle(self) -> None:
+        from suite_analytical_question import practice_log_analysis_card_subtitle
+
+        subtitle = practice_log_analysis_card_subtitle(
+            {
+                "report_generated_at": "2026-06-29T13:28:00+00:00",
+                "context": {
+                    "practice_log_summary": {
+                        "practice_time_by_instrument": {"Tenor Saxophone": 90, "Guitar": 10},
+                        "practice_time_by_song": {"Say": 45},
+                    }
+                },
+            }
+        )
+        self.assertIn("Main instrument: Tenor Saxophone", subtitle)
+
+    def test_eastern_time_june_uses_edt_offset(self) -> None:
+        from activity_time import format_eastern_time_label, parse_activity_timestamp
+
+        dt = parse_activity_timestamp("2026-06-29T13:28:00+00:00")
+        assert dt is not None
+        label = format_eastern_time_label(dt)
+        self.assertIn("9:28 AM ET", label)
+        self.assertNotIn("+00:00", label)
 
     def test_handoff_metrics_include_resume_key_and_sort_at(self) -> None:
         from suite_analytical_question import _build_practice_log_activity_metrics

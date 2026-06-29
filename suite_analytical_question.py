@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from collections.abc import Callable
 from typing import Any
 
-from activity_time import parse_activity_timestamp, utc_now_iso
+from activity_time import format_eastern_time_label, parse_activity_timestamp, utc_now_iso
 
 log = logging.getLogger(__name__)
 
@@ -372,57 +372,87 @@ def clean_analytical_question_display(text: str) -> str:
 
 
 def format_practice_analysis_updated_label(generated_at: str) -> str:
-    """Human-readable updated timestamp for Command Center cards."""
+    """Human-readable updated timestamp for Command Center cards (America/New_York, ET)."""
     raw = str(generated_at or "").strip()
     if not raw:
         return ""
     dt = parse_activity_timestamp(raw)
     if dt is None:
         return raw[:19].replace("T", " ")
-    return dt.strftime("%Y-%m-%d %I:%M %p")
+    return format_eastern_time_label(dt)
 
 
-def practice_log_analysis_instrument_song_line(payload: dict[str, Any]) -> str:
-    """Instrument / song detail line for practice analysis cards."""
+def _practice_log_top_song(payload: dict[str, Any]) -> str:
     ctx = dict(payload.get("context") or {})
     pl = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
-    top_instrument = ""
-    top_song = ""
-    if pl.get("practice_time_by_instrument"):
-        top_instrument = str(next(iter(pl["practice_time_by_instrument"]), "") or "").strip()
-    if pl.get("practice_time_by_song"):
-        top_song = str(next(iter(pl["practice_time_by_song"]), "") or "").strip()
-    inst_display = top_instrument.replace("_", " ").title() if top_instrument else ""
-    try:
-        from practice_history_synthesis import format_instrument_display_name
-
-        inst_display = format_instrument_display_name(top_instrument, payload={"practice_log_summary": pl})
-    except Exception:
-        pass
-    if inst_display and top_song:
-        return f"{inst_display} / {top_song}"
-    if inst_display:
-        return inst_display
-    if top_song:
-        return top_song
+    by_song = pl.get("practice_time_by_song") if isinstance(pl.get("practice_time_by_song"), dict) else {}
+    if by_song:
+        top_key = max(by_song, key=lambda k: int(by_song.get(k) or 0))
+        return str(top_key or "").strip()
+    songs = pl.get("most_practiced_songs")
+    if isinstance(songs, list) and songs:
+        return str(songs[0] or "").strip()
+    if isinstance(songs, str) and songs.strip():
+        return songs.strip()
     return ""
 
 
+def _practice_log_instrument_label(payload: dict[str, Any]) -> str:
+    ctx = dict(payload.get("context") or {})
+    pl = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
+    by_inst = pl.get("practice_time_by_instrument") if isinstance(pl.get("practice_time_by_instrument"), dict) else {}
+    if not by_inst:
+        return ""
+    items = [(str(k), int(v or 0)) for k, v in by_inst.items() if str(k).strip()]
+    if not items:
+        return ""
+    items.sort(key=lambda row: -row[1])
+    total = sum(mins for _, mins in items) or 1
+    try:
+        from practice_history_synthesis import format_instrument_display_name
+
+        fmt = lambda key: format_instrument_display_name(key, payload={"practice_log_summary": pl})
+    except Exception:
+        fmt = lambda key: str(key).replace("_", " ").title()
+    if len(items) == 1:
+        return f"Main instrument: {fmt(items[0][0])}"
+    top_key, top_mins = items[0]
+    if top_mins / total >= 0.6:
+        return f"Main instrument: {fmt(top_key)}"
+    return "Multiple instruments"
+
+
+def practice_log_analysis_instrument_song_line(payload: dict[str, Any]) -> str:
+    """Legacy detail line — prefer practice_log_analysis_card_subtitle."""
+    parts: list[str] = []
+    top_song = _practice_log_top_song(payload)
+    if top_song:
+        parts.append(f"Top song: {top_song}")
+    inst = _practice_log_instrument_label(payload)
+    if inst:
+        parts.append(inst)
+    return " · ".join(parts)
+
+
 def practice_log_analysis_card_subtitle(payload: dict[str, Any]) -> str:
-    """Command Center card subtitle — Updated timestamp + instrument/song, no raw JSON."""
+    """Command Center card subtitle — top song, instrument summary, ET updated time."""
     generated = str(
         payload.get("report_generated_at")
         or (payload.get("context") or {}).get("report_generated_at")
         or ""
     ).strip()
+    parts: list[str] = []
+    top_song = _practice_log_top_song(payload)
+    if top_song:
+        parts.append(f"Top song: {top_song}")
+    inst = _practice_log_instrument_label(payload)
+    if inst:
+        parts.append(inst)
     updated = format_practice_analysis_updated_label(generated)
-    detail = practice_log_analysis_instrument_song_line(payload)
-    if updated and detail:
-        return f"Updated {updated} — {detail}"
     if updated:
-        return f"Updated {updated}"
-    if detail:
-        return detail
+        parts.append(f"Updated {updated}")
+    if parts:
+        return " · ".join(parts)
     ctx = dict(payload.get("context") or {})
     pl = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
     count = int(pl.get("session_count") or 0)
