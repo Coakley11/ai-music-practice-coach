@@ -13166,34 +13166,42 @@ elif _studio_page == "log":
 
         render_practice_analysis_panel(st, st.session_state)
 
-    with st.expander("Timed session planner", expanded=False):
-        st.session_state.setdefault("ai_session_builder_minutes", 30)
-        _session_mins = st.slider(
-            "Target session length (minutes)",
-            20,
-            90,
-            int(st.session_state.get("ai_session_builder_minutes", 30)),
-            5,
-            key="ai_session_builder_minutes",
+    with st.container(key="log_timed_planner_panel", border=False):
+        st.markdown(
+            '<div class="ui-plog-planner-banner">'
+            '<p class="ui-plog-planner-banner-title">Timed Session Planner</p>'
+            '<p class="ui-plog-planner-banner-sub">Plan your next practice session by time block</p>'
+            "</div>",
+            unsafe_allow_html=True,
         )
-        if st.button("Build timed session plan", key="build_session_from_logs", use_container_width=False):
-            st.session_state["_ai_practice_session_plan"] = build_practice_session_from_logs(
-                load_entries(st.session_state),
-                ALL_SONG_RECORDS,
-                minutes=int(_session_mins),
+        with st.expander("Build a timed session plan", expanded=False):
+            st.session_state.setdefault("ai_session_builder_minutes", 30)
+            _session_mins = st.slider(
+                "Target session length (minutes)",
+                20,
+                90,
+                int(st.session_state.get("ai_session_builder_minutes", 30)),
+                5,
+                key="ai_session_builder_minutes",
             )
-        _plan = st.session_state.get("_ai_practice_session_plan")
-        if _plan:
-            st.caption(_plan.get("summary", ""))
-            for label, icon in (
-                ("warmup", "🌅"),
-                ("technique", "⚙️"),
-                ("main", "🎯"),
-                ("challenge", "🔥"),
-                ("cooldown", "🌙"),
-            ):
-                if _plan.get(label):
-                    st.markdown(f"{icon} **{label.title()}** — {_plan[label]}")
+            if st.button("Build timed session plan", key="build_session_from_logs", use_container_width=False):
+                st.session_state["_ai_practice_session_plan"] = build_practice_session_from_logs(
+                    load_entries(st.session_state),
+                    ALL_SONG_RECORDS,
+                    minutes=int(_session_mins),
+                )
+            _plan = st.session_state.get("_ai_practice_session_plan")
+            if _plan:
+                st.caption(_plan.get("summary", ""))
+                for label, icon in (
+                    ("warmup", "🌅"),
+                    ("technique", "⚙️"),
+                    ("main", "🎯"),
+                    ("challenge", "🔥"),
+                    ("cooldown", "🌙"),
+                ):
+                    if _plan.get(label):
+                        st.markdown(f"{icon} **{label.title()}** — {_plan[label]}")
 
 try:
     from studio_nav_history import flush_deferred_history_nav_save, record_nav_history_trace

@@ -272,7 +272,7 @@ def _render_minimal_account_workspace_body(
     """Normal mode — email + logout only."""
     email = _signed_in_email(ctx, session_state)
     if email:
-        ui.markdown(f"Signed in: **{email}**")
+        ui.markdown(f"Signed in as **{email}**")
     try:
         from suite_auth import is_auth_enabled, is_authenticated, logout
 

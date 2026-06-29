@@ -15,6 +15,7 @@ PRACTICE_ANALYSIS_OPEN_KEY = "_plog_practice_analysis_open"
 PRACTICE_ANALYSIS_EXPANDER_KEY = "plog_practice_analysis_expander"
 
 __all__ = [
+    "inject_practice_analysis_panel_styles",
     "render_practice_analysis_panel",
     "PRACTICE_ANALYSIS_OPEN_KEY",
     "PRACTICE_ANALYSIS_EXPANDER_KEY",
@@ -37,6 +38,8 @@ _INSTRUMENT_LABELS = frozenset(
     }
 )
 
+_INVALID_SONG_LABELS = frozenset({"top song", "top song:", "untitled", "—", "-"})
+
 _PRACTICE_ANALYSIS_SECTIONS: tuple[tuple[str, str], ...] = (
     ("Practice Summary", "practice_summary"),
     ("Improvement Notes", "improvement_notes"),
@@ -46,6 +49,50 @@ _PRACTICE_ANALYSIS_SECTIONS: tuple[tuple[str, str], ...] = (
     ("Recommended Focus This Week", "recommended_focus_this_week"),
     ("Evidence Used", "evidence_used"),
 )
+
+
+def inject_practice_analysis_panel_styles(st: Any) -> None:
+    """Blue-accent styles for Practice Analysis vs Session History."""
+    st.markdown(
+        """
+<style>
+.st-key-log_practice_analysis_panel{
+  border:1px solid rgba(37,99,235,.35)!important;border-radius:16px!important;
+  background:linear-gradient(180deg,rgba(239,246,255,.98),rgba(255,255,255,.96))!important;
+  box-shadow:0 14px 32px rgba(37,99,235,.12)!important;padding:.15rem .35rem .55rem!important;
+  margin:.65rem 0!important;
+}
+.st-key-log_practice_analysis_panel [data-testid="stExpander"]{
+  border:none!important;background:transparent!important;box-shadow:none!important;
+}
+.st-key-log_practice_analysis_panel [data-testid="stExpander"] summary{
+  font-size:1.02rem!important;font-weight:850!important;color:#1e3a8a!important;
+}
+.ui-plog-analysis-banner{
+  border-left:4px solid #2563eb;border-radius:10px;padding:.55rem .75rem;margin:.35rem .2rem .15rem;
+  background:rgba(37,99,235,.08);
+}
+.ui-plog-analysis-banner-title{font-size:.92rem;font-weight:850;color:#1e3a8a;margin:0;line-height:1.35;}
+.ui-plog-analysis-banner-sub{font-size:.78rem;color:#475569;margin:.15rem 0 0;}
+.st-key-log_timed_planner_panel{
+  border:1px solid rgba(5,150,105,.32)!important;border-radius:16px!important;
+  background:linear-gradient(180deg,rgba(236,253,245,.98),rgba(255,255,255,.96))!important;
+  box-shadow:0 14px 32px rgba(5,150,105,.10)!important;padding:.55rem .75rem .65rem!important;
+  margin:.65rem 0!important;
+}
+.st-key-log_timed_planner_panel [data-testid="stExpander"] summary{
+  font-size:1rem!important;font-weight:850!important;color:#065f46!important;
+}
+.ui-plog-planner-banner{
+  border-left:4px solid #059669;border-radius:10px;padding:.45rem .7rem;margin:0 0 .35rem;
+  background:rgba(5,150,105,.08);
+}
+.ui-plog-planner-banner-title{font-size:.88rem;font-weight:850;color:#065f46;margin:0;}
+.ui-plog-planner-banner-sub{font-size:.76rem;color:#475569;margin:.12rem 0 0;}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _hydrate_panel_state(session_state: dict[str, Any], st: Any | None = None) -> None:
@@ -67,16 +114,30 @@ def _analysis_metadata(session_state: dict[str, Any]) -> dict[str, Any]:
     return meta if isinstance(meta, dict) else {}
 
 
+def _normalize_song_label(raw: str) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    lowered = text.lower()
+    if lowered in _INVALID_SONG_LABELS:
+        return ""
+    if lowered.startswith("top song"):
+        return ""
+    return text
+
+
 def _top_song_from_summary(summary: dict[str, Any], session_state: dict[str, Any]) -> str:
     meta = _analysis_metadata(session_state)
-    song = str(meta.get("top_song") or "").strip()
+    song = _normalize_song_label(str(meta.get("top_song") or ""))
     if song:
         return song
     for key in ("upload_recording_review", "recommended_next_session", "practice_summary"):
         text = str(summary.get(key) or "")
         for match in re.finditer(r"\*\*([^*]+)\*\*", text):
-            candidate = match.group(1).strip()
-            if candidate.lower() in _INSTRUMENT_LABELS or candidate.lower() == "top song":
+            candidate = _normalize_song_label(match.group(1).strip())
+            if not candidate:
+                continue
+            if candidate.lower() in _INSTRUMENT_LABELS:
                 continue
             if candidate.lower().startswith("upload analysis"):
                 continue
@@ -119,6 +180,7 @@ def _compact_header(session_state: dict[str, Any], summary: dict[str, Any]) -> s
 
 def render_practice_analysis_panel(st: Any, session_state: dict[str, Any]) -> None:
     """Compact Practice Analysis tab — always visible on the Practice Log page."""
+    inject_practice_analysis_panel_styles(st)
     _hydrate_panel_state(session_state, st=st)
 
     summary = session_state.get(LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY)
@@ -128,6 +190,14 @@ def render_practice_analysis_panel(st: Any, session_state: dict[str, Any]) -> No
 
     header = _compact_header(session_state, summary) if has_summary else "Practice Analysis"
     expanded = bool(session_state.get(PRACTICE_ANALYSIS_OPEN_KEY))
+
+    st.markdown(
+        '<div class="ui-plog-analysis-banner">'
+        '<p class="ui-plog-analysis-banner-title">Practice Analysis</p>'
+        '<p class="ui-plog-analysis-banner-sub">Coaching insight from your saved practice evidence</p>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     with st.expander(header, expanded=expanded, key=PRACTICE_ANALYSIS_EXPANDER_KEY):
         if not has_summary:

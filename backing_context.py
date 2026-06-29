@@ -1,0 +1,480 @@
+"""Canonical backing context — metadata + handoff driver for Backing Track.
+
+Does not replace ``backing_track_state`` (canonical backing blob). Phase 1: build,
+validate, invalidate, and signature helpers only — no page wiring yet.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Literal
+
+BACKING_CONTEXT_KEY = "backing_context"
+
+BackingSource = Literal["regular_song", "entry_jam", "mission", "custom_progression"]
+
+_SOURCE_LABELS: dict[BackingSource, str] = {
+    "regular_song": "Regular song",
+    "entry_jam": "Entry & Jam",
+    "mission": "Mission",
+    "custom_progression": "Custom progression",
+}
+
+_SIGNATURE_FIELDS = (
+    "source",
+    "bound_pick_key",
+    "active_song_id",
+    "key",
+    "display_key",
+    "concert_key",
+    "bpm",
+    "style",
+    "groove",
+    "section",
+    "scope",
+    "loops",
+    "progression",
+    "mission_id",
+    "jam_id",
+    "entry_mode",
+    "custom_revision_id",
+)
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+@dataclass
+class BackingContext:
+    source: BackingSource
+    source_label: str
+    active_song_id: str
+    song_title: str
+    key: str
+    display_key: str
+    concert_key: str
+    bpm: int
+    style: str
+    groove: str
+    section: str | None = None
+    sections: list[str] = field(default_factory=list)
+    scope: str = "Full song"
+    loops: int = 2
+    progression: list[str] = field(default_factory=list)
+    progression_label: str = ""
+    duration_bars: int | None = None
+    loop: bool = True
+    mission_id: str | None = None
+    jam_id: str | None = None
+    entry_mode: str | None = None
+    custom_revision_id: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
+    source_signature: str = ""
+    bound_pick_key: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.source_label:
+            self.source_label = _SOURCE_LABELS.get(self.source, self.source.replace("_", " ").title())
+        if not self.created_at:
+            self.created_at = utc_now_iso()
+        if not self.updated_at:
+            self.updated_at = self.created_at
+        if not self.source_signature:
+            self.source_signature = compute_source_signature(self)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> BackingContext | None:
+        if not isinstance(raw, dict):
+            return None
+        source = str(raw.get("source") or "regular_song").strip()
+        if source not in _SOURCE_LABELS:
+            return None
+        return cls(
+            source=source,  # type: ignore[arg-type]
+            source_label=str(raw.get("source_label") or ""),
+            active_song_id=str(raw.get("active_song_id") or ""),
+            song_title=str(raw.get("song_title") or ""),
+            key=str(raw.get("key") or ""),
+            display_key=str(raw.get("display_key") or ""),
+            concert_key=str(raw.get("concert_key") or ""),
+            bpm=int(raw.get("bpm") or 100),
+            style=str(raw.get("style") or ""),
+            groove=str(raw.get("groove") or ""),
+            section=str(raw.get("section") or "").strip() or None,
+            sections=[str(s) for s in (raw.get("sections") or []) if str(s).strip()],
+            scope=str(raw.get("scope") or "Full song"),
+            loops=int(raw.get("loops") or 2),
+            progression=[str(c) for c in (raw.get("progression") or []) if str(c).strip()],
+            progression_label=str(raw.get("progression_label") or ""),
+            duration_bars=int(raw["duration_bars"]) if raw.get("duration_bars") not in (None, "") else None,
+            loop=bool(raw.get("loop", True)),
+            mission_id=str(raw.get("mission_id") or "").strip() or None,
+            jam_id=str(raw.get("jam_id") or "").strip() or None,
+            entry_mode=str(raw.get("entry_mode") or "").strip() or None,
+            custom_revision_id=str(raw.get("custom_revision_id") or "").strip() or None,
+            created_at=str(raw.get("created_at") or ""),
+            updated_at=str(raw.get("updated_at") or ""),
+            source_signature=str(raw.get("source_signature") or ""),
+            bound_pick_key=str(raw.get("bound_pick_key") or ""),
+        )
+
+
+def compute_source_signature(ctx: BackingContext | dict[str, Any]) -> str:
+    """Deterministic hash of fields that affect backing generation."""
+    if isinstance(ctx, BackingContext):
+        data = ctx.to_dict()
+    else:
+        data = dict(ctx)
+    payload = {key: data.get(key) for key in _SIGNATURE_FIELDS}
+    progression = payload.get("progression")
+    if isinstance(progression, list):
+        payload["progression"] = "|".join(str(c) for c in progression)
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+def refresh_backing_context_timestamps(ctx: BackingContext) -> BackingContext:
+    now = utc_now_iso()
+    if not ctx.created_at:
+        ctx.created_at = now
+    ctx.updated_at = now
+    ctx.source_signature = compute_source_signature(ctx)
+    return ctx
+
+
+def get_backing_context(session: dict[str, Any]) -> BackingContext | None:
+    return BackingContext.from_dict(session.get(BACKING_CONTEXT_KEY))
+
+
+def set_backing_context(session: dict[str, Any], ctx: BackingContext) -> None:
+    session[BACKING_CONTEXT_KEY] = refresh_backing_context_timestamps(ctx).to_dict()
+
+
+def clear_backing_context(session: dict[str, Any]) -> None:
+    session.pop(BACKING_CONTEXT_KEY, None)
+
+
+def _current_pick_key(session: dict[str, Any]) -> str:
+    try:
+        from active_song_state import canonical_active_song_context
+
+        ctx = canonical_active_song_context(session)
+        if isinstance(ctx, dict):
+            pick = str(ctx.get("pick_key") or "").strip()
+            if pick:
+                return pick
+    except ImportError:
+        pass
+    return str(
+        session.get("active_catalog_pick_key")
+        or session.get("pick_key")
+        or ""
+    ).strip()
+
+
+def _song_title_from_session(session: dict[str, Any]) -> str:
+    title = str(session.get("song") or session.get("active_song_title") or "").strip()
+    if title:
+        return title
+    sel = session.get("selected_song")
+    if isinstance(sel, dict):
+        return str(sel.get("title") or sel.get("name") or "").strip()
+    return ""
+
+
+def _display_keys_from_session(session: dict[str, Any]) -> tuple[str, str, str]:
+    display = str(session.get("display_key") or "").strip()
+    concert = str(session.get("concert_key") or session.get("original_key") or display).strip()
+    key = concert or display or "C"
+    return key, display or key, concert or key
+
+
+def _default_bpm(session: dict[str, Any]) -> int:
+    for key in ("backing_track_bpm", "active_song_bpm", "bpm"):
+        try:
+            return int(session.get(key) or 0) or 100
+        except (TypeError, ValueError):
+            continue
+    return 100
+
+
+def _default_groove(session: dict[str, Any]) -> str:
+    return str(session.get("backing_groove_style") or session.get("backing_groove") or "Pop groove").strip()
+
+
+def _default_scope(session: dict[str, Any]) -> tuple[str, str | None, list[str]]:
+    scope = str(session.get("backing_track_scope") or "Full song").strip()
+    section = str(session.get("backing_track_single_section") or "").strip() or None
+    multi = session.get("backing_track_multi_sections")
+    sections = [str(s) for s in multi if str(s).strip()] if isinstance(multi, list) else []
+    return scope, section, sections
+
+
+def build_regular_song_context(session: dict[str, Any]) -> BackingContext:
+    pick_key = _current_pick_key(session)
+    key, display_key, concert_key = _display_keys_from_session(session)
+    scope, section, sections = _default_scope(session)
+    return BackingContext(
+        source="regular_song",
+        source_label=_SOURCE_LABELS["regular_song"],
+        active_song_id=pick_key,
+        song_title=_song_title_from_session(session),
+        key=key,
+        display_key=display_key,
+        concert_key=concert_key,
+        bpm=_default_bpm(session),
+        style="",
+        groove=_default_groove(session),
+        section=section,
+        sections=sections,
+        scope=scope,
+        loops=int(session.get("backing_track_loops") or 2),
+        progression=[],
+        progression_label="",
+        loop=True,
+        bound_pick_key=pick_key,
+    )
+
+
+def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
+    pick_key = _current_pick_key(session)
+    key, display_key, concert_key = _display_keys_from_session(session)
+    entry_mode = str(session.get("improv_entry_mode") or "Song-Based Mode").strip()
+    style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
+    style = str(style_meta.get("style") or session.get("improv_style") or "").strip()
+    groove = str(style_meta.get("groove") or session.get("improv_groove") or _default_groove(session)).strip()
+    bpm = int(style_meta.get("bpm") or session.get("improv_style_bpm") or _default_bpm(session))
+    jam_id = str(style or entry_mode).strip() or None
+
+    progression: list[str] = []
+    progression_label = ""
+    gen = session.get("improv_generated_sections")
+    if isinstance(gen, dict) and gen:
+        try:
+            from improvisation_intelligence import flatten_sections
+
+            progression = flatten_sections(gen)
+            first_sec = next(iter(gen.keys()), "")
+            progression_label = f"{style or entry_mode} · {first_sec}" if first_sec else (style or entry_mode)
+        except ImportError:
+            for chords in gen.values():
+                if isinstance(chords, list):
+                    progression.extend(str(c) for c in chords if str(c).strip())
+    elif session.get("improv_song_source") == "Custom progression":
+        return build_custom_progression_context(session)
+
+    scope, section, sections = _default_scope(session)
+    if not section:
+        section = str(session.get("improv_selected_section") or session.get("II_SELECTED_SECTION") or "").strip() or None
+
+    return BackingContext(
+        source="entry_jam",
+        source_label=_SOURCE_LABELS["entry_jam"],
+        active_song_id=pick_key,
+        song_title=_song_title_from_session(session) or (style or "Style jam"),
+        key=str(session.get("improv_style_key") or key).strip() or key,
+        display_key=display_key,
+        concert_key=concert_key,
+        bpm=bpm,
+        style=style,
+        groove=groove,
+        section=section,
+        sections=sections,
+        scope=scope,
+        loops=int(session.get("backing_track_loops") or 2),
+        progression=progression,
+        progression_label=progression_label or " · ".join(progression[:4]),
+        loop=True,
+        jam_id=jam_id,
+        entry_mode=entry_mode,
+        bound_pick_key=pick_key,
+    )
+
+
+def build_mission_context(session: dict[str, Any]) -> BackingContext:
+    pick_key = _current_pick_key(session)
+    key, display_key, concert_key = _display_keys_from_session(session)
+    mission_id = str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip()
+    style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
+
+    progression: list[str] = []
+    section = str(session.get("II_SELECTED_SECTION") or session.get("improv_selected_section") or "").strip() or None
+    stored = session.get("improv_mission_progression")
+    if isinstance(stored, list):
+        progression = [str(c) for c in stored if str(c).strip()]
+    else:
+        home = session.get("home_sections") if isinstance(session.get("home_sections"), dict) else {}
+        if home:
+            try:
+                from improvisation_intelligence import flatten_sections
+
+                progression = flatten_sections(home, section_names=[section] if section else None)
+            except ImportError:
+                pass
+
+    bpm = int(style_meta.get("bpm") or session.get("improv_style_bpm") or _default_bpm(session))
+    groove = str(style_meta.get("groove") or session.get("improv_groove") or _default_groove(session)).strip()
+    scope = "Single section" if section else "Full song"
+
+    return BackingContext(
+        source="mission",
+        source_label=_SOURCE_LABELS["mission"],
+        active_song_id=pick_key,
+        song_title=_song_title_from_session(session),
+        key=key,
+        display_key=display_key,
+        concert_key=concert_key,
+        bpm=bpm,
+        style=str(style_meta.get("style") or "").strip(),
+        groove=groove,
+        section=section,
+        scope=scope,
+        loops=int(session.get("backing_track_loops") or 2),
+        progression=progression,
+        progression_label=mission_id or "Mission",
+        loop=True,
+        mission_id=mission_id or None,
+        bound_pick_key=pick_key,
+    )
+
+
+def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
+    try:
+        from custom_progression_lab import (
+            CPL_ACTIVE_KEY,
+            all_chords_from_lab_sections,
+            ensure_original_structure,
+            written_home_key,
+        )
+    except ImportError:
+        return build_regular_song_context(session)
+
+    active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+    name = str(active.get("name") or "Custom progression").strip()
+    revision = str(active.get("id") or active.get("revision") or "").strip()
+    pick_key = revision or _current_pick_key(session)
+    home_key = str(written_home_key(active) or active.get("original_key_center") or "C").strip()
+    display_key = str(session.get("display_key") or home_key).strip()
+    sections = active.get("original_sections") if isinstance(active.get("original_sections"), dict) else {}
+    progression = all_chords_from_lab_sections(sections)
+
+    label = name
+    if progression:
+        label = f"{name} · {'–'.join(progression[:4])}"
+
+    return BackingContext(
+        source="custom_progression",
+        source_label=_SOURCE_LABELS["custom_progression"],
+        active_song_id=pick_key,
+        song_title=name,
+        key=home_key,
+        display_key=display_key,
+        concert_key=home_key,
+        bpm=int(active.get("bpm") or _default_bpm(session)),
+        style=str(active.get("progression_style") or "").strip(),
+        groove=str(active.get("groove_style") or _default_groove(session)).strip(),
+        scope=str(session.get("backing_track_scope") or "Full song"),
+        loops=int(active.get("loops") or session.get("backing_track_loops") or 2),
+        progression=progression,
+        progression_label=label,
+        loop=True,
+        custom_revision_id=revision or None,
+        bound_pick_key=_current_pick_key(session),
+    )
+
+
+def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None = None) -> bool:
+    ctx = ctx or get_backing_context(session)
+    if ctx is None:
+        return False
+    if ctx.source == "regular_song":
+        return True
+    current_pick = _current_pick_key(session)
+    if ctx.bound_pick_key and current_pick and ctx.bound_pick_key != current_pick:
+        return False
+    if ctx.source == "mission":
+        current_mission = str(session.get("improv_active_mission") or "").strip()
+        if ctx.mission_id and current_mission and ctx.mission_id != current_mission:
+            return False
+    if ctx.source == "custom_progression" and ctx.custom_revision_id:
+        try:
+            from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+
+            active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+            revision = str(active.get("id") or active.get("revision") or "").strip()
+            if revision and revision != ctx.custom_revision_id:
+                return False
+        except ImportError:
+            pass
+    return True
+
+
+def invalidate_if_song_changed(session: dict[str, Any], new_pick_key: str | None = None) -> bool:
+    """Clear stale Creative context when active song changes. Returns True if cleared."""
+    ctx = get_backing_context(session)
+    if ctx is None or ctx.source == "regular_song":
+        return False
+    current = str(new_pick_key or _current_pick_key(session)).strip()
+    if not ctx.bound_pick_key or not current:
+        return False
+    if ctx.bound_pick_key == current:
+        return False
+    clear_backing_context(session)
+    return True
+
+
+def invalidate_if_mission_changed(session: dict[str, Any]) -> bool:
+    ctx = get_backing_context(session)
+    if ctx is None or ctx.source != "mission":
+        return False
+    current = str(session.get("improv_active_mission") or "").strip()
+    if ctx.mission_id and current and ctx.mission_id != current:
+        clear_backing_context(session)
+        return True
+    return False
+
+
+def invalidate_if_progression_changed(session: dict[str, Any]) -> bool:
+    ctx = get_backing_context(session)
+    if ctx is None or ctx.source != "custom_progression":
+        return False
+    if not is_backing_context_valid(session, ctx):
+        clear_backing_context(session)
+        return True
+    return False
+
+
+def context_is_stale(session: dict[str, Any]) -> bool:
+    ctx = get_backing_context(session)
+    if ctx is None:
+        return False
+    return not is_backing_context_valid(session, ctx)
+
+
+__all__ = [
+    "BACKING_CONTEXT_KEY",
+    "BackingContext",
+    "BackingSource",
+    "build_custom_progression_context",
+    "build_entry_jam_context",
+    "build_mission_context",
+    "build_regular_song_context",
+    "clear_backing_context",
+    "compute_source_signature",
+    "context_is_stale",
+    "get_backing_context",
+    "invalidate_if_mission_changed",
+    "invalidate_if_progression_changed",
+    "invalidate_if_song_changed",
+    "is_backing_context_valid",
+    "refresh_backing_context_timestamps",
+    "set_backing_context",
+]

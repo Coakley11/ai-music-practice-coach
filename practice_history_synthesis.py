@@ -222,8 +222,11 @@ def _format_evidence_used_line(payload: dict[str, Any]) -> str:
         f"and {th_count} tone takes."
     )
     if export_total:
+        export_word = "export" if export_total == 1 else "exports"
+        analyzed_word = "export" if analyzed_exports == 1 else "exports"
         evidence += (
-            f" Multitrack: {export_total} saved export(s), {analyzed_exports} linked analyzed export(s)."
+            f" Multitrack: {export_total} saved {export_word}, "
+            f"{analyzed_exports} linked analyzed {analyzed_word}."
         )
     start, end = _date_range_from_payload(payload)
     if start and end:
@@ -287,7 +290,14 @@ def format_instrument_display_name(raw: Any, *, payload: dict[str, Any] | None =
     if text and text.lower() != "saxophone":
         return text
     for c in candidates:
-        if c and c.lower() != "saxophone":
+        cl = c.lower()
+        if c and cl != "saxophone":
+            return c
+    for c in candidates:
+        if c and "tenor sax" in c.lower():
+            return c
+    for c in candidates:
+        if c and "alto sax" in c.lower():
             return c
     return text or "your instrument"
 
@@ -879,7 +889,7 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
         if delta is not None and abs(delta) >= 3 and delta < 0 and abs(delta) <= _FAR_CENTS_THRESHOLD:
             improvements.append(
                 f"Pitch drift reduced on **{format_instrument_display_name(trend.get('instrument'), payload=payload)} "
-                f"{trend.get('note')}** ({delta:+.1f} cents)."
+                f"{_format_written_note(trend.get('note') or trend.get('written_note'))}** ({delta:+.1f} cents)."
             )
     for row in recent_analyses:
         if not isinstance(row, dict):
@@ -928,7 +938,7 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
         if stab is not None and stab < -5:
             needs_work.append(
                 f"Pitch stability slipped on **{format_instrument_display_name(trend.get('instrument'), payload=payload)} "
-                f"{trend.get('note')}**."
+                f"{_format_written_note(trend.get('note') or trend.get('written_note'))}**."
             )
     hard = pl.get("recent_entries") or []
     for row in hard[:3]:
