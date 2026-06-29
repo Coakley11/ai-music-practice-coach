@@ -18,6 +18,10 @@ from media_multitrack_export_catalog import (
     suggest_export_name,
 )
 from media_state import migrate_multitrack_export
+from multitrack_session_persistence import resolve_mixed_export_wav_bytes
+
+MT_EXPORT_SAVE_NAME_KEY = "mt_export_save_name"
+MT_MIXED_EXPORT_SIG_KEY = "_mt_mixed_export_sig"
 
 
 def _dev_mode(st: Any, session_state: dict[str, Any]) -> bool:
@@ -31,6 +35,27 @@ def _dev_mode(st: Any, session_state: dict[str, Any]) -> bool:
     return bool(session_state.get("developer_mode"))
 
 
+def _mixed_export_signature(mixed: bytes, song_title: str) -> tuple[Any, ...]:
+    head = mixed[:32]
+    return (str(song_title or "").strip(), len(mixed), head)
+
+
+def ensure_mixed_export_save_name(
+    session_state: dict[str, Any],
+    *,
+    song_title: str,
+    mixed: bytes,
+) -> str:
+    """Initialize or refresh the Save Export name field when a new mix is ready."""
+    sig = _mixed_export_signature(mixed, song_title)
+    if session_state.get(MT_MIXED_EXPORT_SIG_KEY) != sig:
+        session_state[MT_MIXED_EXPORT_SIG_KEY] = sig
+        session_state[MT_EXPORT_SAVE_NAME_KEY] = suggest_export_name(song_title=song_title)
+    elif MT_EXPORT_SAVE_NAME_KEY not in session_state:
+        session_state[MT_EXPORT_SAVE_NAME_KEY] = suggest_export_name(song_title=song_title)
+    return str(session_state.get(MT_EXPORT_SAVE_NAME_KEY) or "")
+
+
 def render_step4_save_export_panel(
     st_module: Any,
     session_state: dict[str, Any],
@@ -39,19 +64,17 @@ def render_step4_save_export_panel(
     track_items_for_mix: list[dict[str, Any]],
     include_backing: bool,
     backing_volume: float,
+    mixed_wav: bytes | None = None,
 ) -> None:
     """Save Export controls shown when a mixed WAV exists in session."""
-    mixed = session_state.get("mixed_track_wav")
+    mixed = mixed_wav if mixed_wav is not None else resolve_mixed_export_wav_bytes(session_state)
     if not mixed:
         return
 
-    st_module.markdown("---")
-    default_name = suggest_export_name(song_title=song_title)
-    export_name = st_module.text_input(
-        "Export name",
-        value=default_name,
-        key="mt_export_save_name",
-    )
+    ensure_mixed_export_save_name(session_state, song_title=song_title, mixed=mixed)
+
+    st_module.markdown("##### Save Export")
+    export_name = st_module.text_input("Export name", key=MT_EXPORT_SAVE_NAME_KEY)
     if st_module.button("Save Export", key="mt_export_save_btn", type="primary", use_container_width=True):
         ok, eid, err = save_multitrack_export_from_session(
             session_state,

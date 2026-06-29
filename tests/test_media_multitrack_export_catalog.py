@@ -245,6 +245,8 @@ class TestMultitrackExportCatalog(unittest.TestCase):
         self.assertIn("Download mixed track WAV", app_source)
         self.assertIn("Save Export", ui_source)
         self.assertIn("render_multitrack_export_library", app_source)
+        self.assertIn("resolve_mixed_export_wav_bytes", app_source)
+        self.assertIn("mixed_wav=mixed_export_wav", app_source)
 
     def test_deleted_export_excluded_from_ami_compact(self) -> None:
         tomb = migrate_multitrack_export({"export_id": "e1", "deleted": True})

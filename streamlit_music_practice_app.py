@@ -12902,38 +12902,36 @@ elif _studio_page == "multitrack":
                 except Exception as e:
                     st.error(f"Could not create mix: {e}")
 
-            if st.session_state.get("mixed_track_wav"):
-                st.audio(st.session_state.mixed_track_wav, format="audio/wav")
+            from multitrack_export_ui import (
+                render_multitrack_export_library,
+                render_step4_save_export_panel,
+            )
+            from multitrack_session_persistence import resolve_mixed_export_wav_bytes
+
+            mixed_export_wav = resolve_mixed_export_wav_bytes(st.session_state)
+            if mixed_export_wav:
+                st.audio(mixed_export_wav, format="audio/wav")
                 st.download_button(
                     "Download mixed track WAV",
-                    st.session_state.mixed_track_wav,
+                    mixed_export_wav,
                     file_name=f"{song.replace(' ', '_')}_multitrack_mix.wav",
                     mime="audio/wav",
                     use_container_width=True,
                 )
-                try:
-                    from multitrack_export_ui import render_step4_save_export_panel
-
-                    render_step4_save_export_panel(
-                        st,
-                        st.session_state,
-                        song_title=str(song or ""),
-                        track_items_for_mix=track_items_for_mix,
-                        include_backing=bool(st.session_state.get("include_backing_mix", False)),
-                        backing_volume=float(st.session_state.get("mt_backing_volume", 0.75)),
-                    )
-                except ImportError:
-                    pass
+                render_step4_save_export_panel(
+                    st,
+                    st.session_state,
+                    song_title=str(song or ""),
+                    track_items_for_mix=track_items_for_mix,
+                    include_backing=bool(st.session_state.get("include_backing_mix", False)),
+                    backing_volume=float(st.session_state.get("mt_backing_volume", 0.75)),
+                    mixed_wav=mixed_export_wav,
+                )
                 st.caption(
                     "Want AI coaching on this take? Save the export, then use **Send to Upload Analysis** below."
                 )
 
-            try:
-                from multitrack_export_ui import render_multitrack_export_library
-
-                render_multitrack_export_library(st, st.session_state, song_title=str(song or ""))
-            except ImportError:
-                pass
+            render_multitrack_export_library(st, st.session_state, song_title=str(song or ""))
 
             if st.button("Clear all multitrack layers", use_container_width=True):
                 try:

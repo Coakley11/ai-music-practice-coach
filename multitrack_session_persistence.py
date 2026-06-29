@@ -205,6 +205,8 @@ def reset_multitrack_working_session(session_state: dict[str, Any]) -> None:
         slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MULTITRACK_SLOTS
     }
     session_state["mixed_track_wav"] = None
+    session_state.pop("mt_export_save_name", None)
+    session_state.pop("_mt_mixed_export_sig", None)
     session_state["mt_track_controls"] = {}
     session_state.pop("multitrack_history_loaded_notes", None)
     session_state.pop("multitrack_backing_music_wav", None)
@@ -386,6 +388,23 @@ def decode_mixed_track_from_persist(value: Any) -> bytes | None:
     return bytes(decoded) if _track_has_audio(decoded) else None
 
 
+def resolve_mixed_export_wav_bytes(session_state: dict[str, Any]) -> bytes | None:
+    """Normalized mixed WAV bytes for Step 4 download + Save Export (handles persist encoding)."""
+    raw = session_state.get("mixed_track_wav")
+    if _track_has_audio(raw):
+        return bytes(raw)
+    decoded = decode_mixed_track_from_persist(raw)
+    if _track_has_audio(decoded):
+        session_state["mixed_track_wav"] = decoded
+        return decoded
+    return None
+
+
+def mixed_export_is_ready(session_state: dict[str, Any]) -> bool:
+    """True when Step 4 can offer direct download and Save Export for the current mix."""
+    return resolve_mixed_export_wav_bytes(session_state) is not None
+
+
 def record_multitrack_persist_diag(session_state: dict[str, Any], diag: dict[str, Any]) -> None:
     prior = session_state.get(DIAG_KEY) if isinstance(session_state.get(DIAG_KEY), dict) else {}
     merged = dict(prior)
@@ -438,6 +457,8 @@ def clear_multitrack_persisted_state(session_state: dict[str, Any]) -> None:
         slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MULTITRACK_SLOTS
     }
     session_state["mixed_track_wav"] = None
+    session_state.pop("mt_export_save_name", None)
+    session_state.pop("_mt_mixed_export_sig", None)
     session_state.pop("multitrack_backing_music_wav", None)
     session_state.pop("mt_backing_prepared_at", None)
     session_state.pop("mt_backing_volume", None)
