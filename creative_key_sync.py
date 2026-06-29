@@ -153,16 +153,32 @@ def on_improv_style_jam_setting_change() -> None:
 
 def ensure_creative_analysis_mode_restored(session_state: dict[str, Any]) -> str:
     """Restore Creative analysis mode before the selectbox renders."""
-    mode = str(session_state.get("creative_lab_analysis_mode") or "").strip()
-    if mode:
-        return mode
     last = str(session_state.get("creative_lab_last_mode") or "").strip()
+    current = str(session_state.get("creative_lab_analysis_mode") or "").strip()
+    if last and last != current:
+        session_state["creative_lab_analysis_mode"] = last
+        return last
+    if current:
+        session_state["creative_lab_last_mode"] = current
+        return current
     if last:
         session_state["creative_lab_analysis_mode"] = last
         return last
     default = "Deep Harmonic Analyzer"
     session_state["creative_lab_analysis_mode"] = default
+    session_state["creative_lab_last_mode"] = default
     return default
+
+
+def persist_creative_analysis_mode(session_state: dict[str, Any]) -> None:
+    """Write the current Analysis Mode before leaving the Creative page."""
+    mode = str(session_state.get("creative_lab_analysis_mode") or "").strip()
+    if not mode:
+        mode = str(session_state.get("creative_lab_last_mode") or "").strip()
+    if mode:
+        session_state["creative_lab_analysis_mode"] = mode
+        session_state["creative_lab_last_mode"] = mode
+        session_state["_creative_mode_user_touched"] = True
 
 
 def on_creative_analysis_mode_change() -> None:

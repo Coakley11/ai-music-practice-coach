@@ -446,7 +446,6 @@ def capture_page_snapshot(session_state: dict, page_id: str) -> dict[str, Any]:
 _PAGE_SNAPSHOT_USER_TOUCH_GUARDS: dict[str, str] = {
     "workspace_genre_filters": "_genre_filters_user_touched",
     "improv_intelligence_tab": "_improv_tab_user_touched",
-    "creative_lab_analysis_mode": "_creative_mode_user_touched",
 }
 
 _VOLATILE_BACKING_SNAPSHOT_KEYS: frozenset[str] = frozenset(

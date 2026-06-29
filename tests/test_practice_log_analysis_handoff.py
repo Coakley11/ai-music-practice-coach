@@ -108,6 +108,39 @@ class TestPracticeAnalysisContentCleanup(unittest.TestCase):
         self.assertIn("Multitrack export", upload_text)
         self.assertIn("Say", upload_text)
 
+    def test_needs_work_single_export_no_duplicate_count(self) -> None:
+        payload = {
+            "practice_log_summary": {"entry_count_total": 0, "recent_entries": [], "window_days": 14},
+            "upload_analysis_summary": {"analysis_count_total": 0, "recent_analyses": []},
+            "tone_history_summary": {},
+            "multitrack_export_summary": {
+                "exports_waiting_for_analysis": [{"export_name": "Say export 1", "export_id": "exp-1"}],
+                "export_count_total": 1,
+                "analyzed_export_count": 0,
+            },
+            "safety_checks": {},
+        }
+        report = build_practice_progress_report(payload)
+        needs = " ".join(report.get("needs_work") or [])
+        self.assertIn("saved multitrack export still needs", needs)
+        self.assertNotIn("multitrack 1 export", needs)
+
+    def test_evidence_zero_linked_analyzed_exports_plural(self) -> None:
+        payload = {
+            "practice_log_summary": {"entry_count_total": 0},
+            "upload_analysis_summary": {"analysis_count_total": 0, "recent_analyses": []},
+            "tone_history_summary": {"tone_take_count_total": 0},
+            "multitrack_export_summary": {
+                "export_count_total": 2,
+                "analyzed_export_count": 0,
+            },
+            "safety_checks": {},
+        }
+        report = build_practice_progress_report(payload)
+        evidence = str(report.get("evidence_used") or "")
+        self.assertIn("0 linked analyzed exports", evidence)
+        self.assertNotIn("export(s)", evidence)
+
     def test_equal_instruments_do_not_overstate_dominance(self) -> None:
         payload = {
             "practice_log_summary": {

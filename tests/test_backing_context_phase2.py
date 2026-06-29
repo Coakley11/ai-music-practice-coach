@@ -149,6 +149,39 @@ class TestBackingContextPhase2(unittest.TestCase):
         self.assertIn("Concert G", banner)
         self.assertIn("82 BPM", banner)
 
+    def test_reconcile_does_not_queue_rerun(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, reconcile_backing_context_on_backing_page
+
+        session = {
+            "active_catalog_pick_key": "say|artist",
+            "song": "Say",
+            "display_key": "F",
+            "concert_key": "F",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Jazz Swing",
+            "improv_style_key": "F",
+            "improv_style_meta": {"style": "Jazz Swing", "bpm": 110, "groove": "Jazz swing"},
+            "improv_generated_sections": {"Head (Jazz Swing)": ["Dm7", "G7", "Cmaj7"]},
+            BACKING_CONTEXT_KEY: {
+                "source": "entry_jam",
+                "source_label": "Entry & Jam",
+                "active_song_id": "say|artist",
+                "song_title": "Jazz Swing",
+                "key": "F",
+                "display_key": "F",
+                "concert_key": "F",
+                "bpm": 110,
+                "style": "Jazz Swing",
+                "groove": "Jazz swing",
+                "bound_pick_key": "say|artist",
+            },
+        }
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            reconcile_backing_context_on_backing_page(session, st_like=st_like)
+        self.assertEqual(session.get("backing_track_bpm"), 110)
+        self.assertNotIn(PENDING_BACKING_CONTEXT_APPLY, session)
+
 
 if __name__ == "__main__":
     unittest.main()

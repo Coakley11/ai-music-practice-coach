@@ -11032,15 +11032,9 @@ elif _studio_page == "backing":
     try:
         from backing_context import reconcile_backing_context_on_backing_page
 
-        _needs_backing_handoff_rerun = reconcile_backing_context_on_backing_page(
-            st.session_state,
-            st_like=st,
-        )
+        reconcile_backing_context_on_backing_page(st.session_state, st_like=st)
     except Exception:
-        _needs_backing_handoff_rerun = False
-
-    if _needs_backing_handoff_rerun:
-        st.rerun()
+        pass
 
     # Seed durable widget keys from canonical before Step 1 widgets render.
     # Practice handoff (_apply_pending_backing_scope) runs later and may override scope/loops.
@@ -11086,7 +11080,11 @@ elif _studio_page == "backing":
                 page_id="backing",
             )
         try:
-            from backing_context_ui import render_backing_context_banner, render_backing_context_reset
+            from backing_context_ui import (
+                render_backing_context_banner,
+                render_backing_context_dev_diagnostics,
+                render_backing_context_reset,
+            )
 
             render_backing_context_banner(st, st.session_state)
             render_backing_context_reset(st, st.session_state)
@@ -11159,19 +11157,70 @@ elif _studio_page == "backing":
         if _cpl_session_is_active(st.session_state)
         else "Catalog Song"
     )
-    render_backing_active_song_card(
-        st,
-        _backing_card_record,
-        level=level,
-        applied_bpm=_synced_bpm,
-        song_default_bpm=int(_default_bpm),
-        applied_groove=default_groove_style,
-        applied_meter=_applied_meter_pre,
-        original_key=_backing_orig_key,
-        practice_key=_backing_practice_key,
-        source_label=_backing_source_label,
-        written_key=_backing_written_key,
-    )
+    _creative_backing_ctx = None
+    try:
+        from backing_context import active_creative_backing_context
+
+        _creative_backing_ctx = active_creative_backing_context(st.session_state)
+        if _creative_backing_ctx is not None:
+            from backing_context import sections_dict_from_backing_context
+            from backing_context_ui import render_backing_creative_context_card
+
+            _creative_sections = sections_dict_from_backing_context(
+                st.session_state,
+                _creative_backing_ctx,
+            )
+            if _creative_sections:
+                sections_for_backing = _creative_sections
+            render_backing_creative_context_card(
+                st,
+                _creative_backing_ctx,
+                st.session_state,
+                applied_bpm=_synced_bpm,
+                applied_groove=default_groove_style,
+                applied_meter=_applied_meter_pre,
+                practice_key=_backing_practice_key,
+                written_key=_backing_written_key,
+            )
+        else:
+            render_backing_active_song_card(
+                st,
+                _backing_card_record,
+                level=level,
+                applied_bpm=_synced_bpm,
+                song_default_bpm=int(_default_bpm),
+                applied_groove=default_groove_style,
+                applied_meter=_applied_meter_pre,
+                original_key=_backing_orig_key,
+                practice_key=_backing_practice_key,
+                source_label=_backing_source_label,
+                written_key=_backing_written_key,
+            )
+    except Exception:
+        render_backing_active_song_card(
+            st,
+            _backing_card_record,
+            level=level,
+            applied_bpm=_synced_bpm,
+            song_default_bpm=int(_default_bpm),
+            applied_groove=default_groove_style,
+            applied_meter=_applied_meter_pre,
+            original_key=_backing_orig_key,
+            practice_key=_backing_practice_key,
+            source_label=_backing_source_label,
+            written_key=_backing_written_key,
+        )
+    if _developer_mode_enabled() and _creative_backing_ctx is not None:
+        try:
+            from backing_context_ui import render_backing_context_dev_diagnostics
+
+            render_backing_context_dev_diagnostics(
+                st,
+                st.session_state,
+                skipped_song_defaults=bool(_backing_canon.get("skipped_for_creative_context")),
+            )
+        except Exception:
+            pass
 
     inject_backing_studio_styles(st)
     try:
@@ -12376,6 +12425,8 @@ elif _studio_page == "creative":
 
     def _improv_open_backing() -> None:
         from backing_context import open_backing_from_creative
+        from creative_key_sync import persist_creative_analysis_mode
+        from studio_page_persistence import save_page_snapshot
 
         source = st.session_state.get("improv_song_source", "Active song")
         apply_improv_song_source(
@@ -12389,6 +12440,8 @@ elif _studio_page == "creative":
             if str(st.session_state.get("improv_intelligence_tab") or "") == "Missions"
             else "entry_jam"
         )
+        persist_creative_analysis_mode(st.session_state)
+        save_page_snapshot(st.session_state, "creative")
         open_backing_from_creative(st.session_state, source=creative_source, st_like=st)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)

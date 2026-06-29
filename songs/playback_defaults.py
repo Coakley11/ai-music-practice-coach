@@ -311,6 +311,31 @@ def canonicalize_backing_defaults_for_song(
     norm_groove = normalize_groove_label(active_song_groove)
     norm_meter = normalize_time_signature(active_song_meter)
 
+    try:
+        from backing_context import active_creative_backing_context
+
+        creative_ctx = active_creative_backing_context(st.session_state)
+        if creative_ctx is not None:
+            norm_bpm = int(creative_ctx.bpm or norm_bpm)
+            norm_groove = normalize_groove_label(str(creative_ctx.groove or norm_groove))
+            st.session_state[BPM_WIDGET_KEY] = norm_bpm
+            st.session_state[BACKING_GROOVE_KEY] = norm_groove
+            st.session_state["backing_track_bpm"] = norm_bpm
+            st.session_state["backing_groove_style"] = norm_groove
+            return {
+                "sync_id": sync_id,
+                "active_song_bpm": int(active_song_bpm),
+                "active_song_groove": normalize_groove_label(active_song_groove),
+                "active_song_meter": norm_meter,
+                "applied_bpm": norm_bpm,
+                "applied_groove": norm_groove,
+                "applied_meter": str(st.session_state.get(BACKING_METER_KEY, norm_meter)),
+                "did_reset": False,
+                "skipped_for_creative_context": True,
+            }
+    except ImportError:
+        pass
+
     previous_id = st.session_state.get(_CANONICAL_BACKING_ID_KEY)
     did_reset = previous_id != sync_id
     if did_reset and previous_id is None and _cloud_refresh_has_canonical_backing(st):

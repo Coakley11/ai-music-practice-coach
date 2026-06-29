@@ -639,6 +639,35 @@ def apply_backing_context_to_session(
         session[PENDING_BACKING_CONTEXT_APPLY] = True
 
 
+def active_creative_backing_context(session: dict[str, Any]) -> BackingContext | None:
+    """Return valid non-regular backing context, or None."""
+    ctx = get_backing_context(session)
+    if ctx is None or ctx.source == "regular_song":
+        return None
+    if not is_backing_context_valid(session, ctx):
+        return None
+    return ctx
+
+
+def sections_dict_from_backing_context(
+    session: dict[str, Any],
+    ctx: BackingContext | None = None,
+) -> dict[str, list[str]]:
+    """Chord sections for backing generation when Creative context is active."""
+    ctx = ctx or active_creative_backing_context(session)
+    gen = session.get("improv_generated_sections")
+    if isinstance(gen, dict) and gen:
+        return {
+            str(name): [str(c) for c in chords if str(c).strip()]
+            for name, chords in gen.items()
+            if isinstance(chords, list)
+        }
+    if ctx and ctx.progression:
+        label = str(ctx.progression_label or "Creative").strip() or "Creative"
+        return {label: list(ctx.progression)}
+    return {}
+
+
 def flush_pending_backing_context_handoff(session: dict[str, Any]) -> bool:
     """Return True when a Creative/custom backing handoff is queued for this run."""
     return bool(session.pop(PENDING_BACKING_CONTEXT_APPLY, None))
@@ -672,21 +701,12 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     return ctx
 
 
-def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> bool:
-    """Re-apply valid non-regular context after backing page canonical reset.
-
-    Returns True when widget keys were queued for a follow-up rerun.
-    """
-    ctx = get_backing_context(session)
+def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
+    """Re-sync valid Creative/custom context after backing page song-default logic."""
+    ctx = active_creative_backing_context(session)
     if ctx is None:
-        return False
-    if ctx.source == "regular_song":
-        return False
-    if not is_backing_context_valid(session, ctx):
-        clear_backing_context(session)
-        return False
-    apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
-    return True
+        return
+    apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=False)
 
 
 __all__ = [
@@ -707,6 +727,8 @@ __all__ = [
     "is_backing_context_valid",
     "refresh_backing_context_timestamps",
     "apply_backing_context_to_session",
+    "active_creative_backing_context",
+    "sections_dict_from_backing_context",
     "flush_pending_backing_context_handoff",
     "format_backing_context_banner",
     "open_backing_from_creative",

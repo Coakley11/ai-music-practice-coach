@@ -136,8 +136,12 @@ def _format_tone_cents_phrase(cents: Any, *, role: str = "recent avg") -> str:
 
 
 def _plural(count: int, singular: str, plural: str | None = None) -> str:
-    word = singular if int(count) == 1 else (plural or f"{singular}s")
+    word = _plural_word(count, singular, plural)
     return f"{int(count)} {word}"
+
+
+def _plural_word(count: int, singular: str, plural: str | None = None) -> str:
+    return singular if int(count) == 1 else (plural or f"{singular}s")
 
 
 def _join_natural(items: list[str]) -> str:
@@ -243,7 +247,7 @@ def _format_evidence_used_line(payload: dict[str, Any]) -> str:
         f"Evidence used: {pl_count} practice logs, {ua_count} saved upload analyses, "
         f"and {th_count} tone takes."
     )
-    if export_total:
+    if export_total or analyzed_exports:
         saved_exports = _plural(export_total, "saved export", "saved exports")
         analyzed_exports_phrase = _plural(
             analyzed_exports,
@@ -950,12 +954,18 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
         ]
     if waiting:
         names = [str(r.get("export_name") or r.get("song") or "export") for r in waiting[:3] if isinstance(r, dict)]
-        export_phrase = _plural(len(waiting), "export", "exports")
-        verb = "needs" if len(waiting) == 1 else "need"
-        needs_work.append(
-            f"**{len(waiting)}** saved multitrack {export_phrase} still {verb} a linked Upload Analysis "
-            f"({', '.join(names)})."
-        )
+        n = len(waiting)
+        export_word = _plural_word(n, "export", "exports")
+        verb = "needs" if n == 1 else "need"
+        if n == 1 and names:
+            needs_work.append(
+                f"**1** saved multitrack export still needs a linked Upload Analysis ({names[0]})."
+            )
+        else:
+            analysis_word = _plural_word(n, "Upload Analysis", "Upload Analyses")
+            needs_work.append(
+                f"**{n}** saved multitrack {export_word} still {verb} linked {analysis_word}."
+            )
     for trend in tone_trends:
         if not isinstance(trend, dict):
             continue

@@ -94,6 +94,23 @@ class TestCreativeKeySync(unittest.TestCase):
         mode = ensure_creative_analysis_mode_restored(session)
         self.assertEqual(mode, "Deep Harmonic Analyzer")
 
+    def test_analysis_mode_survives_backing_navigation(self) -> None:
+        from studio_page_persistence import restore_page_snapshot, save_page_snapshot
+
+        session: dict = {
+            "studio_page": "creative",
+            "creative_lab_analysis_mode": "Improvisation Intelligence",
+            "creative_lab_last_mode": "Improvisation Intelligence",
+        }
+        save_page_snapshot(session, "creative")
+        session["studio_page"] = "backing"
+        session["creative_lab_analysis_mode"] = "Deep Harmonic Analyzer"
+        session["studio_page"] = "creative"
+        restore_page_snapshot(session, "creative")
+        mode = ensure_creative_analysis_mode_restored(session)
+        self.assertEqual(mode, "Improvisation Intelligence")
+        self.assertEqual(session["creative_lab_analysis_mode"], "Improvisation Intelligence")
+
 
 class TestWrittenKeyLabels(unittest.TestCase):
     def test_alto_sax_written_key_for_concert_eb(self) -> None:
