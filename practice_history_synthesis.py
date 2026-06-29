@@ -107,17 +107,96 @@ def _format_tone_trend_line(trend: dict[str, Any]) -> str:
     note = str(trend.get("note") or "").strip()
     recent = _format_tone_cents_phrase(trend.get("recent_mean_cents"), role="recent avg")
     older = _format_tone_cents_phrase(trend.get("older_mean_cents"), role="earlier avg")
-    delta = _coerce_float(trend.get("mean_cents_delta"))
     if "wrong note or octave" in recent or "wrong note or octave" in older:
-        return f"**{instrument} {note}**: {recent or older}"
+        return (
+            f"**{instrument} {note}**: Recent tone takes need a cleaner re-recording "
+            f"before pitch progress can be judged ({recent or older})."
+        )
     parts = [f"**{instrument} {note}**:"]
     if recent:
         parts.append(recent)
     if older:
         parts.append(f"({older})")
-    if delta is not None and abs(delta) <= _FAR_CENTS_THRESHOLD:
+    delta = _coerce_float(trend.get("mean_cents_delta"))
+    if delta is not None and abs(delta) <= _FAR_CENTS_THRESHOLD and abs(delta) >= 1.0:
         parts.append(f"Δ **{delta:+.1f}**")
     return " ".join(parts) + "."
+
+
+def _tone_trend_unreliable(trend: dict[str, Any]) -> bool:
+    recent = _format_tone_cents_phrase(trend.get("recent_mean_cents"), role="recent avg")
+    older = _format_tone_cents_phrase(trend.get("older_mean_cents"), role="earlier avg")
+    if "wrong note or octave" in recent or "wrong note or octave" in older:
+        return True
+    for key in ("recent_mean_cents", "older_mean_cents"):
+        val = _coerce_float(trend.get(key))
+        if val is not None and abs(val) > _FAR_CENTS_THRESHOLD:
+            return True
+    return False
+
+
+def _executive_practice_instrument_line(top_song: str, pl: dict[str, Any], *, payload: dict[str, Any]) -> str:
+    by_inst = pl.get("practice_time_by_instrument") if isinstance(pl.get("practice_time_by_instrument"), dict) else {}
+    if not top_song or not by_inst:
+        return ""
+    items = sorted(((str(k), int(v or 0)) for k, v in by_inst.items() if str(k).strip()), key=lambda row: -row[1])
+    if not items:
+        return ""
+    total = sum(mins for _, mins in items) or 1
+    names = [format_instrument_display_name(key, payload=payload) for key, _ in items]
+    if len(items) == 1:
+        return f"Most work was on **{top_song}** with **{names[0]}**."
+    top_mins = items[0][1]
+    if top_mins / total >= 0.6:
+        return f"Most work was on **{top_song}** with **{names[0]}**."
+    if len(items) == 2 and items[0][1] == items[1][1]:
+        return f"Recent work includes **{top_song}** on **{names[0]}** and **{names[1]}**."
+    return f"Most work was on **{top_song}** across multiple instruments."
+
+
+def _format_suggested_next_focus_line(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    token = _normalize_focus_token(text)
+    if token and len(text.split()) == 1 and token in {
+        "tone",
+        "timing",
+        "pitch",
+        "groove",
+        "technique",
+        "intonation",
+        "articulation",
+        "dynamics",
+    }:
+        return f"Prioritize **{token}** in your next session and save one take as evidence."
+    return text
+
+
+def _format_evidence_used_line(payload: dict[str, Any]) -> str:
+    pl = payload.get("practice_log_summary") if isinstance(payload.get("practice_log_summary"), dict) else {}
+    ua = payload.get("upload_analysis_summary") if isinstance(payload.get("upload_analysis_summary"), dict) else {}
+    th = payload.get("tone_history_summary") if isinstance(payload.get("tone_history_summary"), dict) else {}
+    mt = payload.get("multitrack_export_summary") if isinstance(payload.get("multitrack_export_summary"), dict) else {}
+    analyzed_exports = _count_analyzed_multitrack_exports(payload)
+    export_total = int(mt.get("export_count_total") or 0)
+    parts = [
+        f"Evidence used: **{pl.get('entry_count_total', 0)}** practice logs",
+        f"**{ua.get('analysis_count_total', 0)}** saved upload analyses",
+        f"**{th.get('tone_take_count_total', 0)}** tone takes",
+    ]
+    if export_total:
+        parts.append(
+            f"Multitrack exports: **{export_total}** saved export(s), "
+            f"**{analyzed_exports}** linked analyzed export(s)"
+        )
+    else:
+        parts.append(f"**{analyzed_exports}** analyzed multitrack export(s)")
+    evidence = ", ".join(parts) + "."
+    start, end = _date_range_from_payload(payload)
+    if start and end:
+        evidence += f" Date range: **{start}** – **{end}**."
+    return evidence
 
 
 def _instrument_is_wind(name: str) -> bool:
@@ -132,6 +211,19 @@ def _instrument_is_wind(name: str) -> bool:
 def format_instrument_display_name(raw: Any, *, payload: dict[str, Any] | None = None) -> str:
     """Prefer specific instrument names (Tenor Saxophone, Alto Saxophone, Flute)."""
     text = str(raw or "").strip()
+    if text:
+        lowered = text.lower()
+        if lowered not in {"saxophone", "instrument", ""} and (
+            "guitar" in lowered
+            or "flute" in lowered
+            or "tenor" in lowered
+            or "alto" in lowered
+            or "trumpet" in lowered
+            or "piano" in lowered
+            or "clarinet" in lowered
+            or "trombone" in lowered
+        ):
+            return text
     candidates: list[str] = []
     if text:
         candidates.append(text)
@@ -216,10 +308,11 @@ def _count_analyzed_multitrack_exports(payload: dict[str, Any]) -> int:
     for row in ua.get("recent_analyses") or []:
         if not isinstance(row, dict):
             continue
-        if str(row.get("source") or "").strip().lower() != "multitrack_export":
-            continue
         eid = str(row.get("export_id") or "").strip()
-        if eid:
+        if not eid:
+            continue
+        source = str(row.get("source") or "").strip().lower()
+        if source == "multitrack_export" or row.get("coach_summary"):
             export_ids.add(eid)
     return max(count, len(export_ids))
 
@@ -237,6 +330,8 @@ def _normalize_upload_source(row: dict[str, Any]) -> str:
     explicit = str(row.get("source") or "").strip().lower()
     if explicit == "multitrack_export":
         return "multitrack_export"
+    if str(row.get("export_id") or "").strip():
+        return "multitrack_export"
     filename = str(row.get("filename") or "").strip().lower()
     if filename.startswith("recording.") or "mic" in filename:
         return "microphone_recording"
@@ -249,11 +344,30 @@ def _normalize_recording_type(row: dict[str, Any]) -> str:
         or row.get("recording_type")
         or ""
     ).strip().lower()
+    source = str(row.get("source") or "").strip().lower()
+    has_export = bool(str(row.get("export_id") or "").strip())
+    if source == "multitrack_export" or has_export:
+        if "mix" in raw or "multitrack mix" in raw:
+            return "multitrack_mix"
+        return "multitrack_export"
     if "multitrack mix" in raw:
         return "multitrack_mix"
     if "backing" in raw:
         return "backing_track_plus_performance"
     return "single_recording"
+
+
+def _upload_analysis_display_label(row: dict[str, Any]) -> str:
+    """User-facing upload line label — distinguish multitrack-linked analyses."""
+    song = row.get("song_title") or row.get("song") or "your take"
+    source = str(row.get("source") or "").strip().lower()
+    export_name = str(row.get("export_name") or "").strip()
+    rtype = _format_recording_type_label(row.get("recording_type") or "recording")
+    if source == "multitrack_export" or row.get("export_id"):
+        if export_name:
+            return f"**{export_name}** (Multitrack export → Upload Analysis)"
+        return f"**{song}** (Multitrack export → Upload Analysis)"
+    return f"**{song}** ({rtype})"
 
 
 def _category_observations(summary: dict[str, Any]) -> dict[str, list[str]]:
@@ -646,7 +760,11 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
         top_instrument = next(iter(pl["practice_time_by_instrument"]), "")
     top_song = ""
     if pl.get("practice_time_by_song"):
-        top_song = next(iter(pl["practice_time_by_song"]), "")
+        items = sorted(
+            ((str(k), int(v or 0)) for k, v in pl["practice_time_by_song"].items()),
+            key=lambda row: -row[1],
+        )
+        top_song = items[0][0] if items else ""
 
     exec_bits: list[str] = []
     if pl.get("entry_count_total"):
@@ -654,22 +772,31 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
             f"You logged **{pl['entry_count_total']}** practice session(s) in the last "
             f"**{pl.get('window_days', 14)}** days."
         )
-    if top_instrument and top_song:
-        exec_bits.append(
-            f"Most work was on **{top_song}** with **{format_instrument_display_name(top_instrument, payload=payload)}**."
-        )
+    if top_song:
+        inst_line = _executive_practice_instrument_line(top_song, pl, payload=payload)
+        if inst_line:
+            exec_bits.append(inst_line)
     if ua.get("analysis_count_total"):
         exec_bits.append(
             f"**{ua['analysis_count_total']}** saved upload analysis(es) provide playing-quality evidence."
         )
     if tone_trends:
         t0 = tone_trends[0]
-        delta = _coerce_float(t0.get("mean_cents_delta"))
-        if delta is not None and abs(delta) <= _FAR_CENTS_THRESHOLD:
-            exec_bits.append(
-                f"Tone practice on **{format_instrument_display_name(t0.get('instrument'), payload=payload)} "
-                f"{t0.get('note')}** shows pitch movement ({delta:+.1f} cents recent vs earlier takes)."
-            )
+        if isinstance(t0, dict):
+            if _tone_trend_unreliable(t0):
+                inst = format_instrument_display_name(t0.get("instrument"), payload=payload)
+                note = str(t0.get("note") or "").strip()
+                exec_bits.append(
+                    f"Recent **{inst} {note}** tone takes need a cleaner re-recording "
+                    f"before pitch progress can be judged."
+                )
+            else:
+                delta = _coerce_float(t0.get("mean_cents_delta"))
+                if delta is not None and 1.0 <= abs(delta) <= _FAR_CENTS_THRESHOLD:
+                    exec_bits.append(
+                        f"Tone practice on **{format_instrument_display_name(t0.get('instrument'), payload=payload)} "
+                        f"{t0.get('note')}** shows pitch movement ({delta:+.1f} cents recent vs earlier takes)."
+                    )
     if not exec_bits:
         exec_bits.append(
             "Log practice sessions and save upload analyses or tone takes to build a richer progress report."
@@ -682,8 +809,13 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
             f"You logged **{pl['entry_count_total']}** session(s) totaling about **{mins}** minutes."
         )
     if pl.get("focus_area_counts"):
-        focus = ", ".join(f"**{k}** ({v})" for k, v in list(pl["focus_area_counts"].items())[:4])
-        activity_lines.append(f"Top focus areas: {focus}.")
+        focus_labels = []
+        for key, count in list(pl["focus_area_counts"].items())[:4]:
+            label = _normalize_focus_token(key) or str(key).strip()
+            if label:
+                focus_labels.append(f"**{label}** ({count})")
+        if focus_labels:
+            activity_lines.append(f"Top focus areas: {', '.join(focus_labels)}.")
     if not activity_lines:
         activity_lines.append("No practice log entries in the current window.")
 
@@ -693,9 +825,9 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
             continue
         song = row.get("song_title") or row.get("song") or "your take"
         summary = _clip_summary_at_sentence(str(row.get("coach_summary") or ""))
-        rtype = _format_recording_type_label(row.get("recording_type") or "recording")
+        label = _upload_analysis_display_label(row)
         if summary:
-            upload_lines.append(f"**{song}** ({rtype}): {summary}")
+            upload_lines.append(f"{label}: {summary}")
         weaknesses = row.get("weaknesses") or []
         if weaknesses:
             upload_lines.append(f"  · Needs work: {', '.join(str(w) for w in weaknesses[:2])}.")
@@ -762,11 +894,24 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
     for w in ua.get("recurring_weaknesses") or []:
         needs_work.append(f"Recurring in uploads: **{w}**.")
     waiting = mt.get("exports_waiting_for_analysis") or []
+    linked_export_ids: set[str] = set()
+    for row in ua.get("recent_analyses") or []:
+        if not isinstance(row, dict):
+            continue
+        eid = str(row.get("export_id") or "").strip()
+        if eid and (str(row.get("source") or "").strip().lower() == "multitrack_export" or row.get("coach_summary")):
+            linked_export_ids.add(eid)
+    if linked_export_ids:
+        waiting = [
+            row
+            for row in waiting
+            if isinstance(row, dict) and str(row.get("export_id") or "").strip() not in linked_export_ids
+        ]
     if waiting:
         names = [str(r.get("export_name") or r.get("song") or "export") for r in waiting[:3] if isinstance(r, dict)]
         needs_work.append(
-            f"**{len(waiting)}** multitrack export(s) lack saved upload analysis "
-            f"({', '.join(names)}). Exports alone are not playing-quality evidence."
+            f"**{len(waiting)}** saved multitrack export(s) still need a linked Upload Analysis "
+            f"({', '.join(names)})."
         )
     for trend in tone_trends:
         if not isinstance(trend, dict):
@@ -800,22 +945,17 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
             "Send your latest multitrack export to Upload Analysis and save the result for track-level evidence."
         )
     if pl.get("suggested_next_focus"):
-        next_plan.append(str(pl["suggested_next_focus"]))
+        focus_line = _format_suggested_next_focus_line(pl["suggested_next_focus"])
+        if focus_line:
+            next_plan.append(focus_line)
     elif recent_logs and isinstance(recent_logs[0], dict) and recent_logs[0].get("next_step"):
-        next_plan.append(str(recent_logs[0]["next_step"]))
+        step_line = _format_suggested_next_focus_line(recent_logs[0]["next_step"])
+        if step_line:
+            next_plan.append(step_line)
     if not next_plan:
         next_plan.append("Log today's session, save one tone take, and one upload analysis this week.")
 
-    start, end = _date_range_from_payload(payload)
-    analyzed_exports = _count_analyzed_multitrack_exports(payload)
-    evidence = (
-        f"Evidence used: **{pl.get('entry_count_total', 0)}** practice logs, "
-        f"**{ua.get('analysis_count_total', 0)}** saved upload analyses, "
-        f"**{th.get('tone_take_count_total', 0)}** tone takes, "
-        f"**{analyzed_exports}** analyzed multitrack export(s)."
-    )
-    if start and end:
-        evidence += f" Date range: **{start}** – **{end}**."
+    evidence = _format_evidence_used_line(payload)
 
     return {
         "title": "Analyze My Practice — Progress Report",
@@ -839,6 +979,12 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
 
 def format_progress_report_markdown(report: dict[str, Any]) -> str:
     """Render progress report sections as markdown for UI / instant solver."""
+    _BARE = frozenset({"tone", "timing", "pitch", "groove", "technique", "intonation"})
+
+    def _clean(item: Any) -> str:
+        text = str(item or "").strip()
+        return "" if not text or text.lower() in _BARE else text
+
     sections = [
         ("Executive Summary", report.get("executive_summary")),
         ("Practice Activity", report.get("practice_activity")),
@@ -848,18 +994,28 @@ def format_progress_report_markdown(report: dict[str, Any]) -> str:
         ("Improvements", report.get("improvements")),
         ("Needs Work", report.get("needs_work")),
         ("Recommended Next Practice Plan", report.get("recommended_next_practice_plan")),
-        ("Evidence Used", [report.get("evidence_used")]),
+        ("Evidence Used", report.get("evidence_used")),
     ]
     lines = [f"# {report.get('title', 'Analyze My Practice — Progress Report')}", ""]
     for heading, body in sections:
-        lines.append(f"## {heading}")
         if isinstance(body, list):
-            for item in body:
-                if item:
-                    lines.append(f"- {item}")
-        elif body:
-            lines.append(str(body))
-        lines.append("")
+            items = [line for line in (_clean(item) for item in body) if line]
+            if not items:
+                continue
+            lines.append(f"## {heading}")
+            for item in items:
+                lines.append(f"- {item}")
+            lines.append("")
+        else:
+            cleaned = _clean(body)
+            if not cleaned:
+                continue
+            lines.append(f"## {heading}")
+            if heading == "Executive Summary":
+                lines.append(cleaned)
+            else:
+                lines.append(f"- {cleaned}")
+            lines.append("")
     safety = report.get("data_safety_confirmation") if isinstance(report.get("data_safety_confirmation"), dict) else {}
     if safety:
         lines.append("## Data Safety Confirmation")

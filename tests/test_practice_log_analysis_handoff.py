@@ -80,16 +80,91 @@ class TestPracticeAnalysisContentCleanup(unittest.TestCase):
 
     def test_analyzed_export_count_from_upload_source(self) -> None:
         payload = {
-            "multitrack_export_summary": {"analyzed_export_count": 0, "export_count_total": 0},
-            "upload_analysis_summary": {
-                "recent_analyses": [
-                    {"source": "multitrack_export", "export_id": "exp-42", "coach_summary": "Good timing."}
-                ]
+            "multitrack_export_summary": {
+                "analyzed_export_count": 0,
+                "export_count_total": 1,
+                "exports_waiting_for_analysis": [{"export_name": "Say export 1", "export_id": "exp-42"}],
             },
+            "upload_analysis_summary": {
+                "analysis_count_total": 1,
+                "recent_analyses": [
+                    {
+                        "source": "multitrack_export",
+                        "export_id": "exp-42",
+                        "export_name": "Say export 1",
+                        "song_title": "Say",
+                        "coach_summary": "Good timing.",
+                    }
+                ],
+            },
+            "practice_log_summary": {"entry_count_total": 0},
+            "tone_history_summary": {"tone_take_count_total": 0},
         }
         self.assertEqual(_count_analyzed_multitrack_exports(payload), 1)
         report = build_practice_progress_report(payload)
-        self.assertIn("**1** analyzed multitrack export", report.get("evidence_used", ""))
+        self.assertIn("linked analyzed export", report.get("evidence_used", ""))
+        self.assertNotIn("lack saved upload analysis", " ".join(report.get("needs_work") or []))
+        upload_text = " ".join(report.get("upload_analysis_findings") or [])
+        self.assertIn("Multitrack export → Upload Analysis", upload_text)
+
+    def test_equal_instruments_do_not_overstate_dominance(self) -> None:
+        payload = {
+            "practice_log_summary": {
+                "entry_count_total": 2,
+                "window_days": 14,
+                "practice_time_by_instrument": {"Tenor Saxophone": 30, "Guitar": 30},
+                "practice_time_by_song": {"Say": 60},
+            },
+            "upload_analysis_summary": {"analysis_count_total": 0},
+            "tone_history_summary": {"tone_take_count_total": 0},
+            "multitrack_export_summary": {"export_count_total": 0},
+        }
+        report = build_practice_progress_report(payload)
+        summary = str(report.get("executive_summary") or "")
+        self.assertIn("Say", summary)
+        self.assertNotIn("Most work was on **Say** with **Tenor Saxophone**", summary)
+        self.assertTrue(
+            "across multiple instruments" in summary or "Tenor Saxophone** and **Guitar" in summary
+        )
+
+    def test_invalid_tone_cents_not_described_as_progress(self) -> None:
+        payload = {
+            "practice_log_summary": {"entry_count_total": 1, "window_days": 14},
+            "upload_analysis_summary": {"analysis_count_total": 0},
+            "tone_history_summary": {
+                "tone_take_count_total": 2,
+                "improvement_trends_by_instrument_and_note": [
+                    {
+                        "instrument": "Tenor Saxophone",
+                        "note": "F#4",
+                        "recent_mean_cents": 250.0,
+                        "older_mean_cents": 250.0,
+                        "mean_cents_delta": 0.0,
+                    }
+                ],
+            },
+            "multitrack_export_summary": {"export_count_total": 0},
+        }
+        report = build_practice_progress_report(payload)
+        summary = str(report.get("executive_summary") or "")
+        self.assertNotIn("pitch movement (+0.0 cents", summary)
+        self.assertIn("cleaner re-recording", summary)
+
+    def test_orphan_focus_token_not_in_next_plan(self) -> None:
+        payload = {
+            "practice_log_summary": {
+                "entry_count_total": 1,
+                "window_days": 14,
+                "suggested_next_focus": "tone",
+            },
+            "upload_analysis_summary": {"analysis_count_total": 0},
+            "tone_history_summary": {"tone_take_count_total": 0},
+            "multitrack_export_summary": {"export_count_total": 0},
+        }
+        report = build_practice_progress_report(payload)
+        plan = report.get("recommended_next_practice_plan") or []
+        self.assertTrue(all(str(line).strip().lower() != "tone" for line in plan))
+        self.assertTrue(any("Prioritize" in str(line) for line in plan))
 
     def test_log_page_summary_avoids_raw_enum_labels(self) -> None:
         payload = {
