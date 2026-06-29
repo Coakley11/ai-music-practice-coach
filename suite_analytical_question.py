@@ -371,17 +371,112 @@ def clean_analytical_question_display(text: str) -> str:
     return cleaned
 
 
+def format_practice_analysis_updated_label(generated_at: str) -> str:
+    """Human-readable updated timestamp for Command Center cards."""
+    raw = str(generated_at or "").strip()
+    if not raw:
+        return ""
+    dt = parse_activity_timestamp(raw)
+    if dt is None:
+        return raw[:19].replace("T", " ")
+    return dt.strftime("%Y-%m-%d %I:%M %p")
+
+
+def practice_log_analysis_instrument_song_line(payload: dict[str, Any]) -> str:
+    """Instrument / song detail line for practice analysis cards."""
+    ctx = dict(payload.get("context") or {})
+    pl = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
+    top_instrument = ""
+    top_song = ""
+    if pl.get("practice_time_by_instrument"):
+        top_instrument = str(next(iter(pl["practice_time_by_instrument"]), "") or "").strip()
+    if pl.get("practice_time_by_song"):
+        top_song = str(next(iter(pl["practice_time_by_song"]), "") or "").strip()
+    inst_display = top_instrument.replace("_", " ").title() if top_instrument else ""
+    try:
+        from practice_history_synthesis import format_instrument_display_name
+
+        inst_display = format_instrument_display_name(top_instrument, payload={"practice_log_summary": pl})
+    except Exception:
+        pass
+    if inst_display and top_song:
+        return f"{inst_display} / {top_song}"
+    if inst_display:
+        return inst_display
+    if top_song:
+        return top_song
+    return ""
+
+
+def practice_log_analysis_card_subtitle(payload: dict[str, Any]) -> str:
+    """Command Center card subtitle — Updated timestamp + instrument/song, no raw JSON."""
+    generated = str(
+        payload.get("report_generated_at")
+        or (payload.get("context") or {}).get("report_generated_at")
+        or ""
+    ).strip()
+    updated = format_practice_analysis_updated_label(generated)
+    detail = practice_log_analysis_instrument_song_line(payload)
+    if updated and detail:
+        return f"Updated {updated} — {detail}"
+    if updated:
+        return f"Updated {updated}"
+    if detail:
+        return detail
+    ctx = dict(payload.get("context") or {})
+    pl = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
+    count = int(pl.get("session_count") or 0)
+    mins = int(pl.get("total_minutes") or 0)
+    if count > 0:
+        return f"{count} session(s), {mins} min logged — review patterns and next focus"
+    return "Practice history analysis from Music Practice Coach"
+
+
 def practice_log_analysis_resume_subtitle(payload: dict[str, Any]) -> str:
-    """Clean CC card subtitle — no raw __ctx_json__ blob."""
-    _, subtitle, _ = analytical_question_continue_copy(payload)
-    run_id = str(payload.get("analysis_run_id") or (payload.get("context") or {}).get("analysis_run_id") or "").strip()
-    generated = str(payload.get("report_generated_at") or (payload.get("context") or {}).get("report_generated_at") or "").strip()
-    bits = [subtitle]
-    if generated:
-        bits.append(f"Updated {generated[:19]}")
-    if run_id:
-        bits.append(f"Run {run_id[:8]}")
-    return " · ".join(b for b in bits if b)
+    """Clean CC resume subtitle — no raw __ctx_json__ blob."""
+    return practice_log_analysis_card_subtitle(payload)
+
+
+def _build_practice_log_activity_metrics(
+    payload: dict[str, Any],
+    *,
+    extra_metrics: dict[str, Any],
+    action_url: str,
+) -> dict[str, Any]:
+    """Metrics bundle for practice_log_analysis activity rows and current state."""
+    analysis_run_id = str(payload.get("analysis_run_id") or "").strip()
+    report_generated_at = str(payload.get("report_generated_at") or "").strip()
+    ctx = dict(payload.get("context") or {})
+    metrics = metrics_for_applied_math_resume(payload)
+    metrics.update(extra_metrics)
+    metrics["source_app"] = "music"
+    metrics["display_category"] = "analysis_handoff"
+    metrics["handoff_kind"] = "practice_log_analysis"
+    metrics["handoff_title"] = PRACTICE_LOG_ANALYSIS_TITLE
+    metrics["activity_event"] = "practice_log_analysis"
+    metrics["analysis_type"] = "practice_history_analysis"
+    metrics["resume_key"] = str(payload.get("resume_key") or "").strip()
+    metrics["activity_sort_at"] = report_generated_at or utc_now_iso()
+    metrics["report_date"] = (report_generated_at or utc_now_iso())[:10]
+    metrics["continue_action_url"] = action_url
+    metrics["saved_item_title"] = PRACTICE_LOG_ANALYSIS_TITLE
+    metrics["saved_item_payload"] = {
+        "analysis_type": "practice_history_analysis",
+        "title": PRACTICE_LOG_ANALYSIS_TITLE,
+        "analysis_run_id": analysis_run_id,
+        "report_generated_at": report_generated_at,
+        "progress_report": ctx.get("progress_report"),
+        "practice_history_payload": ctx.get("practice_history_payload"),
+        "log_page_summary": ctx.get("log_page_summary"),
+        "recent_sessions": ctx.get("recent_sessions"),
+        "tone_history": ctx.get("tone_history"),
+        "upload_analysis_summary": ctx.get("upload_analysis_summary"),
+        "multitrack_export_summary": ctx.get("multitrack_export_summary"),
+        "raw_audio_excluded": ctx.get("raw_audio_excluded", True),
+        "base64_excluded": ctx.get("base64_excluded", True),
+        "blob_fields_excluded": ctx.get("blob_fields_excluded", True),
+    }
+    return metrics
 
 
 def _store_practice_analysis_context_blob(payload: dict[str, Any]) -> bool:
@@ -765,12 +860,12 @@ def analytical_question_continue_copy(payload: dict[str, Any]) -> tuple[str, str
     app = normalize_source_app_id(str(payload.get("source_app") or ""), ctx)
     question = str(payload.get("question") or "").strip()
     if is_practice_log_analysis_context(ctx):
-        summary = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
-        count = int(summary.get("session_count") or 0)
-        mins = int(summary.get("total_minutes") or 0)
-        subtitle = f"{count} session(s), {mins} min logged — review patterns and next focus"
-        if count <= 0:
-            subtitle = "Practice history analysis from Music Practice Coach"
+        card_payload = {
+            "source_app": payload.get("source_app") or app,
+            "context": ctx,
+            "report_generated_at": payload.get("report_generated_at") or ctx.get("report_generated_at"),
+        }
+        subtitle = practice_log_analysis_card_subtitle(card_payload)
         return (PRACTICE_LOG_ANALYSIS_TITLE, subtitle, "Continue Practice Log Analysis →")
     title = source_question_card_title(app, ctx)
     if app == "music":
@@ -1135,55 +1230,32 @@ def submit_practice_log_analysis_handoff(
     record_trace: dict[str, Any] = {}
     activity_recorded = False
     handoff_error = ""
-    if not duplicate:
-        metrics = metrics_for_applied_math_resume(payload)
-        metrics.update(extra_metrics)
-        metrics["source_app"] = "music"
-        metrics["display_category"] = "analysis_handoff"
-        metrics["handoff_kind"] = "practice_log_analysis"
-        metrics["handoff_title"] = PRACTICE_LOG_ANALYSIS_TITLE
-        metrics["activity_event"] = "practice_log_analysis"
-        metrics["analysis_type"] = "practice_history_analysis"
-        metrics["saved_item_title"] = PRACTICE_LOG_ANALYSIS_TITLE
-        metrics["saved_item_payload"] = {
-            "analysis_type": "practice_history_analysis",
-            "title": PRACTICE_LOG_ANALYSIS_TITLE,
-            "analysis_run_id": analysis_run_id,
-            "report_generated_at": report_generated_at,
-            "progress_report": ctx.get("progress_report"),
-            "practice_history_payload": ctx.get("practice_history_payload"),
-            "log_page_summary": ctx.get("log_page_summary"),
-            "recent_sessions": ctx.get("recent_sessions"),
-            "tone_history": ctx.get("tone_history"),
-            "upload_analysis_summary": ctx.get("upload_analysis_summary"),
-            "multitrack_export_summary": ctx.get("multitrack_export_summary"),
-            "raw_audio_excluded": ctx.get("raw_audio_excluded", True),
-            "base64_excluded": ctx.get("base64_excluded", True),
-            "blob_fields_excluded": ctx.get("blob_fields_excluded", True),
-        }
-        try:
-            from suite_activity_client import last_record_trace, record_activity
+    metrics = _build_practice_log_activity_metrics(
+        payload,
+        extra_metrics=extra_metrics,
+        action_url=action_url,
+    )
+    try:
+        from suite_activity_client import last_record_trace, record_activity
 
-            record_activity(
-                "music",
-                "practice_log_analysis",
-                page=source_page,
-                metrics=metrics,
-                summary=PRACTICE_LOG_ANALYSIS_TITLE,
-                resume_key=payload["resume_key"],
-                resume_title=PRACTICE_LOG_ANALYSIS_TITLE,
-                resume_subtitle=clean_subtitle,
-                action_url=action_url,
-            )
-            record_trace = last_record_trace()
-            activity_recorded = bool(record_trace.get("recorded"))
-            if not activity_recorded:
-                handoff_error = str(record_trace.get("error") or "record_activity did not persist")
-        except Exception as exc:
-            handoff_error = str(exc)
-            log.warning("record_activity failed for practice_log_analysis: %s", exc)
-    else:
-        activity_recorded = True
+        record_activity(
+            "music",
+            "practice_log_analysis",
+            page=source_page,
+            metrics=metrics,
+            summary=PRACTICE_LOG_ANALYSIS_TITLE,
+            resume_key=payload["resume_key"],
+            resume_title=PRACTICE_LOG_ANALYSIS_TITLE,
+            resume_subtitle=clean_subtitle,
+            action_url=action_url,
+        )
+        record_trace = last_record_trace()
+        activity_recorded = bool(record_trace.get("recorded"))
+        if not activity_recorded:
+            handoff_error = str(record_trace.get("error") or "record_activity did not persist")
+    except Exception as exc:
+        handoff_error = str(exc)
+        log.warning("record_activity failed for practice_log_analysis: %s", exc)
     resume_upsert_ok = _upsert_applied_intelligence_resume(payload, action_url=action_url)
     music_resume_ok = _upsert_music_practice_log_resume(payload, action_url=action_url)
     if not resume_upsert_ok and not handoff_error:

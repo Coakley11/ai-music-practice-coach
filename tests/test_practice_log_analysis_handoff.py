@@ -360,19 +360,31 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
             "progress_report": {"executive_summary": "cooldown refresh"},
             "practice_log_summary": {"session_count": 1},
         }
+        recorded: list[tuple] = []
+
+        def _fake_record(app, event, **kwargs):
+            recorded.append((app, event, kwargs))
+
         with patch("suite_analytical_question._recent_duplicate_send", return_value=True):
-            with patch("suite_analytical_question._upsert_applied_intelligence_resume", return_value=True):
-                with patch("suite_analytical_question._upsert_music_practice_log_resume", return_value=True) as music_upsert:
-                    with patch("suite_analytical_question._store_practice_analysis_context_blob", return_value=True) as store_blob:
-                        with patch("suite_analytical_question._stage_practice_analysis_instant_insight", return_value="pa:cooldown"):
-                            result = submit_practice_log_analysis_handoff(
-                            source_page="log",
-                            question="Analyze my practice history",
-                            context=ctx,
-                            session_state={"_ami_last_send": {"question_id": "x", "submitted_at": "2026-06-29T00:00:00+00:00"}},
-                        )
+            with patch("suite_activity_client.record_activity", side_effect=_fake_record):
+                with patch("suite_activity_client.last_record_trace", return_value={"recorded": True, "supabase_write_ok": True}):
+                    with patch("suite_analytical_question._upsert_applied_intelligence_resume", return_value=True):
+                        with patch("suite_analytical_question._upsert_music_practice_log_resume", return_value=True) as music_upsert:
+                            with patch("suite_analytical_question._store_practice_analysis_context_blob", return_value=True) as store_blob:
+                                with patch("suite_analytical_question._stage_practice_analysis_instant_insight", return_value="pa:cooldown"):
+                                    result = submit_practice_log_analysis_handoff(
+                                    source_page="log",
+                                    question="Analyze my practice history",
+                                    context=ctx,
+                                    session_state={"_ami_last_send": {"question_id": "x", "submitted_at": "2026-06-29T00:00:00+00:00"}},
+                                )
         self.assertTrue(result.get("duplicate"))
         self.assertTrue(result.get("handoff_success"))
+        self.assertTrue(result.get("activity_recorded"))
+        self.assertEqual(recorded[0][1], "practice_log_analysis")
+        metrics = recorded[0][2].get("metrics") or {}
+        self.assertTrue(str(metrics.get("resume_key") or "").startswith("ai:practice_log_analysis:"))
+        self.assertTrue(str(metrics.get("activity_sort_at") or "").strip())
         music_upsert.assert_called_once()
         store_blob.assert_called_once()
         self.assertNotIn("409", str(result.get("handoff_error") or ""))
@@ -399,6 +411,45 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
         self.assertNotIn("__ctx_json__", str(st.session_state.get("ps_library_problem") or ""))
         loaded = __import__("json").loads(st.session_state.get("_suite_ai_context") or "{}")
         self.assertEqual(loaded.get("progress_report", {}).get("executive_summary"), "fresh run")
+
+    def test_practice_log_card_subtitle_includes_updated_line(self) -> None:
+        from suite_analytical_question import practice_log_analysis_card_subtitle
+
+        subtitle = practice_log_analysis_card_subtitle(
+            {
+                "report_generated_at": "2026-06-29T01:42:00+00:00",
+                "context": {
+                    "practice_log_summary": {
+                        "session_count": 2,
+                        "total_minutes": 60,
+                        "practice_time_by_instrument": {"tenor_saxophone": 60},
+                        "practice_time_by_song": {"Say": 45},
+                    }
+                },
+            }
+        )
+        self.assertIn("Updated", subtitle)
+        self.assertIn("Say", subtitle)
+        self.assertNotIn("__ctx_json__", subtitle)
+
+    def test_handoff_metrics_include_resume_key_and_sort_at(self) -> None:
+        from suite_analytical_question import _build_practice_log_activity_metrics
+
+        payload = {
+            "question_id": "q1",
+            "resume_key": "ai:practice_log_analysis:q1",
+            "analysis_run_id": "run123",
+            "report_generated_at": "2026-06-29T01:42:00+00:00",
+            "context": {"user_request": "analyze_practice"},
+        }
+        metrics = _build_practice_log_activity_metrics(
+            payload,
+            extra_metrics={"analysis_run_id": "run123"},
+            action_url="https://example.test/ami?suite_practice_analysis_run_id=run123",
+        )
+        self.assertEqual(metrics.get("resume_key"), "ai:practice_log_analysis:q1")
+        self.assertEqual(metrics.get("activity_sort_at"), "2026-06-29T01:42:00+00:00")
+        self.assertIn("continue_action_url", metrics)
 
     def test_clean_analytical_question_display_strips_ctx_json(self) -> None:
         from suite_analytical_question import clean_analytical_question_display

@@ -408,9 +408,21 @@ def resume_metrics_from_item_key(app: str, item_key: str, *, subtitle: str = "")
             if qid:
                 metrics["question_id"] = qid
                 metrics["dedupe_fingerprint"] = qid
+            metrics.setdefault("source_app", "music")
+            metrics.setdefault("handoff_kind", "practice_log_analysis")
+            metrics.setdefault("display_category", "analysis_handoff")
+            metrics.setdefault(
+                "context",
+                {
+                    "user_request": "analyze_practice",
+                    "handoff_kind": "practice_log_analysis",
+                    "display_category": "analysis_handoff",
+                },
+            )
             if subtitle:
-                metrics["question"] = "Music Practice Log Analysis"
                 metrics["context_summary"] = subtitle.split("\n__ctx_json__:", 1)[0].strip()
+                if not subtitle.startswith("Updated"):
+                    metrics["question"] = "Music Practice Log Analysis"
         elif key.startswith("ai:question:"):
             page = "Solve a Problem"
             qid = key.split(":", 2)[-1].strip() if key.count(":") >= 2 else ""
