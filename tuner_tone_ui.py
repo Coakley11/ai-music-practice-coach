@@ -9,14 +9,18 @@ from typing import Any
 from instrument_transposition import (
     is_transposing_instrument,
     selected_transposing_type,
-    written_key_for_instrument,
 )
 from media_tone_catalog import (
     CHROMATIC_NOTE_OPTIONS,
     cache_pending_tone_take,
+    live_tuner_display_settings,
+    pending_tone_take_ready,
     resolve_tone_target_from_pitch_class,
 )
-from tone_take_history_ui import render_pending_tone_save, render_tone_take_history_section
+from tone_take_history_ui import (
+    render_pending_tone_save,
+    render_tone_take_history_section,
+)
 from tuner_live import render_live_tuner
 from tuner_tone import (
     InstrumentTunerProfile,
@@ -105,13 +109,12 @@ def _render_tone_target_selector(
 
     if transposing and ctx.get("display_written") and ctx.get("display_concert"):
         st_module.markdown(
-            f"**Written {html.escape(str(ctx['display_written']))} / "
-            f"Concert {html.escape(str(ctx['display_concert']))}** — "
-            "finger the written note; the app evaluates concert pitch from your recording."
+            f"**Written {html.escape(selected)} / "
+            f"Concert {html.escape(str(ctx['display_concert']))}**"
         )
     else:
         st_module.markdown(
-            f"**Target note:** {html.escape(str(ctx.get('display_concert') or selected))} (concert pitch)"
+            f"**Target note:** {html.escape(str(ctx.get('display_concert') or selected))}"
         )
     return ctx
 
@@ -146,17 +149,6 @@ def render_tuner_tone_section(
                 "**Tone focus:** " + " · ".join(profile.tone_focus),
             )
 
-        if is_transposing_instrument(instrument):
-            written = written_key_for_instrument(
-                display_key,
-                instrument,
-                st_module.session_state,
-            )
-            st_module.info(
-                f"Song practice key (concert): **{display_key}** · "
-                f"Your written key: **{written}** — long tones in written key help intonation."
-            )
-
         mode = st_module.radio(
             "Mode",
             [MODE_TUNE_LIVE, MODE_TONE_SUSTAIN],
@@ -180,12 +172,36 @@ def render_tuner_tone_section(
                 "Press **Start Tuner** — your browser listens continuously. "
                 "Play any note; the needle shows flat ← in tune → sharp."
             )
+            instrument_label = instrument
+            try:
+                from practice_setup_globals import get_active_instrument_display_name
+
+                instrument_label = str(
+                    get_active_instrument_display_name(st_module.session_state) or instrument
+                ).strip()
+            except ImportError:
+                pass
+            live_display = live_tuner_display_settings(
+                instrument=instrument,
+                transposing_type=transposing_type,
+                instrument_display_name=instrument_label,
+            )
+            if live_display.get("display_mode") == "transposing_written":
+                st_module.caption(
+                    f"Showing **{html.escape(instrument_label)}** written note — "
+                    "concert pitch shown as secondary info."
+                )
+            else:
+                st_module.caption("Showing concert pitch.")
             render_live_tuner(
                 st_module,
                 key_prefix=key_prefix,
                 target_note=None,
                 expected_note=expected_note,
                 string_targets=string_targets,
+                display_mode=str(live_display.get("display_mode") or "concert"),
+                concert_to_written_semitones=int(live_display.get("concert_to_written_semitones") or 0),
+                instrument_label=str(live_display.get("instrument_label") or ""),
             )
             if expected_note:
                 st_module.caption(
@@ -221,6 +237,15 @@ def render_tuner_tone_section(
             display_key=display_key,
             transposing_type=transposing_type,
         )
+        if pending_tone_take_ready(st_module.session_state):
+            render_pending_tone_save(
+                st_module,
+                st_module.session_state,
+                key_prefix=key_prefix,
+                instrument=instrument,
+                display_key=display_key,
+                transposing_type=transposing_type,
+            )
         render_tone_take_history_section(
             st_module,
             st_module.session_state,
@@ -361,12 +386,13 @@ def _render_tone_practice_result(
         result=result,
         audio_bytes=audio_bytes,
         target_note=ui_target_note or None,
-    )
-    render_pending_tone_save(
-        st_module,
-        st_module.session_state,
-        key_prefix=key_prefix,
-        instrument=instrument,
-        display_key=display_key,
-        transposing_type=transposing_type,
+        meta={
+            "instrument": instrument,
+            "display_key": display_key,
+            "transposing_type": transposing_type,
+            "pitch_class_label": st_module.session_state.get(
+                _pitch_class_storage_key(key_prefix),
+                "",
+            ),
+        },
     )

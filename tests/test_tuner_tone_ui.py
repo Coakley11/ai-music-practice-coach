@@ -7,6 +7,8 @@ import unittest
 from media_tone_catalog import (
     CHROMATIC_NOTE_OPTIONS,
     build_tone_take_fields,
+    concert_note_to_written_display,
+    live_tuner_display_settings,
     pitch_class_from_option,
     resolve_tone_target_from_pitch_class,
 )
@@ -55,6 +57,47 @@ class TestTunerToneModes(unittest.TestCase):
         self.assertTrue(is_tune_live_mode(MODE_TUNE_LIVE))
         self.assertTrue(is_tone_sustain_mode(MODE_TONE_SUSTAIN))
 
+    def test_no_song_practice_key_helper_in_tuner_section(self) -> None:
+        source = open(render_tuner_tone_section.__code__.co_filename, encoding="utf-8").read()
+        self.assertNotIn("Song practice key (concert)", source)
+        self.assertNotIn("long tones in written key help intonation", source)
+        self.assertNotIn("st_module.info", source)
+
+
+class TestLiveTunerTranspositionDisplay(unittest.TestCase):
+    def test_flute_live_display_is_concert(self) -> None:
+        cfg = live_tuner_display_settings(instrument="Flute", transposing_type="")
+        self.assertEqual(cfg["display_mode"], "concert")
+        row = concert_note_to_written_display("C4", "")
+        self.assertEqual(row["concert_pitch_class"], "C")
+        self.assertIsNone(row["written_pitch_class"])
+
+    def test_alto_sax_concert_c_maps_to_written_a(self) -> None:
+        row = concert_note_to_written_display("C5", "Alto saxophone (Eb)")
+        self.assertEqual(row["concert_pitch_class"], "C")
+        self.assertEqual(row["written_pitch_class"], "A")
+
+    def test_tenor_sax_concert_g_maps_to_written_a(self) -> None:
+        row = concert_note_to_written_display("G4", "Tenor saxophone (Bb)")
+        self.assertEqual(row["concert_pitch_class"], "G")
+        self.assertEqual(row["written_pitch_class"], "A")
+
+    def test_live_tuner_html_includes_transposing_display_config(self) -> None:
+        from tuner_live import build_live_tuner_html, live_tuner_config
+
+        html_doc = build_live_tuner_html(
+            live_tuner_config(
+                key_prefix="x",
+                display_mode="transposing_written",
+                concert_to_written_semitones=2,
+                instrument_label="Tenor Saxophone",
+            )
+        )
+        self.assertIn("transposing_written", html_doc)
+        self.assertIn("Written note", html_doc)
+        self.assertIn("Concert pitch", html_doc)
+        self.assertIn("Showing concert pitch", html_doc)
+
 
 class TestToneTargetTransposition(unittest.TestCase):
     def test_tenor_sax_written_a_concert_g(self) -> None:
@@ -67,6 +110,17 @@ class TestToneTargetTransposition(unittest.TestCase):
         self.assertEqual(ctx["display_concert"], "G")
         self.assertEqual(ctx["target_note"], "A4")
         self.assertEqual(ctx["analysis_target_note"], "G4")
+
+    def test_tone_sustain_shows_written_concert_mapping(self) -> None:
+        ctx = resolve_tone_target_from_pitch_class(
+            "D#/Eb",
+            "Tenor saxophone (Bb)",
+            is_transposing=True,
+        )
+        self.assertEqual(ctx["display_written"], "D#")
+        self.assertEqual(ctx["display_concert"], "C#")
+        self.assertEqual(ctx["target_note"], "D#4")
+        self.assertEqual(ctx["analysis_target_note"], "C#4")
 
     def test_alto_sax_written_a_concert_c(self) -> None:
         ctx = resolve_tone_target_from_pitch_class(

@@ -26,6 +26,9 @@ def live_tuner_config(
     reference_hz: float = 440.0,
     in_tune_cents: float = 5.0,
     yellow_cents: float = 15.0,
+    display_mode: str = "concert",
+    concert_to_written_semitones: int = 0,
+    instrument_label: str = "",
 ) -> dict[str, Any]:
     """Build config passed into the embedded live tuner component."""
     target_midi = parse_note_token(target_note) if target_note else None
@@ -47,6 +50,9 @@ def live_tuner_config(
         "inTuneCents": float(in_tune_cents),
         "yellowCents": float(yellow_cents),
         "noteNames": NOTE_NAMES_JS,
+        "displayMode": str(display_mode or "concert"),
+        "concertToWrittenSemitones": int(concert_to_written_semitones or 0),
+        "instrumentLabel": str(instrument_label or ""),
     }
 
 
@@ -332,6 +338,25 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
     return CFG.targetNote || (hasTarget() ? midiToLabel(targetMidi) : "");
   }}
 
+  function isTransposingDisplay() {{
+    return CFG.displayMode === "transposing_written";
+  }}
+
+  function pitchClassFromMidi(midi) {{
+    const midiRound = Math.round(midi);
+    return NOTE_NAMES[((midiRound % 12) + 12) % 12];
+  }}
+
+  function writtenDisplayFromConcert(parts) {{
+    const writtenMidi = parts.midi + (CFG.concertToWrittenSemitones || 0);
+    return {{
+      writtenLabel: midiToLabel(writtenMidi),
+      writtenPc: pitchClassFromMidi(writtenMidi),
+      concertPc: pitchClassFromMidi(parts.midi),
+      writtenMidi,
+    }};
+  }}
+
   function midiToLabel(midi) {{
     const midiRound = Math.round(midi);
     const name = NOTE_NAMES[((midiRound % 12) + 12) % 12];
@@ -494,10 +519,14 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
         feedbackLine("Target", targetLabel(), "") +
         feedbackLine("Mode", "Fixed target — needle centered on " + targetLabel(), "") +
         '<div class="lt-row"><span class="lt-k">Status</span><span class="lt-v">Press Start and play this string</span></div>';
+    }} else if (isTransposingDisplay()) {{
+      feedbackEl.className = "lt-feedback-idle";
+      feedbackEl.textContent =
+        "Free tuning — written note shown first, concert pitch secondary. Press Start and play.";
     }} else {{
       feedbackEl.className = "lt-feedback-idle";
       feedbackEl.textContent =
-        "No fixed target — chromatic mode (nearest note). Tap a string above or enter a target.";
+        "No fixed target — chromatic mode (nearest note). Showing concert pitch. Press Start and play.";
     }}
   }}
 
@@ -529,7 +558,15 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
     }} else {{
       html += feedbackLine("Target", "None (chromatic)", "");
     }}
-    html += feedbackLine("Detected", parts.label, parts.wrongNote ? "bad" : "");
+    if (isTransposingDisplay()) {{
+      const wd = writtenDisplayFromConcert(parts);
+      html += feedbackLine("Written note", wd.writtenPc, "");
+      html += feedbackLine("Concert pitch", wd.concertPc, "");
+      html += feedbackLine("Detected (concert)", parts.label, parts.wrongNote ? "bad" : "");
+    }} else {{
+      html += feedbackLine("Detected note", parts.label, parts.wrongNote ? "bad" : "");
+      html += feedbackLine("Mode", "Showing concert pitch", "");
+    }}
     html += feedbackLine("Frequency", parts.hz.toFixed(1) + " Hz", "");
     html += feedbackLine("Cents", centsLabel, fb.cls);
     html += feedbackLine("Feedback", fb.text, fb.cls);
@@ -550,7 +587,9 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
     noteEl.className = "lt-note idle";
     metaEl.textContent = msg || (hasTarget()
       ? "Listening for " + targetLabel()
-      : "Chromatic — play a single note");
+      : (isTransposingDisplay()
+        ? "Showing " + (CFG.instrumentLabel || "instrument") + " written note"
+        : "Showing concert pitch — play a single note"));
     dirEl.textContent = hasTarget() ? "Target: " + targetLabel() : "No fixed target";
     dirEl.style.color = "#64748b";
     needleEl.style.left = "50%";
@@ -567,17 +606,28 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
       return;
     }}
     const cents = parts.cents;
-    const displayNote = hasTarget() && !parts.wrongNote ? targetLabel() : parts.label;
+    let displayNote = hasTarget() && !parts.wrongNote ? targetLabel() : parts.label;
+    if (!hasTarget() && isTransposingDisplay()) {{
+      displayNote = writtenDisplayFromConcert(parts).writtenPc;
+    }} else if (!hasTarget() && !isTransposingDisplay()) {{
+      displayNote = pitchClassFromMidi(parts.midi);
+    }}
     noteEl.textContent = displayNote;
     noteEl.className = "lt-note";
     if (hasTarget()) {{
       metaEl.textContent =
         "Detected " + parts.label + " · " + parts.hz.toFixed(1) + " Hz · " +
         (cents >= 0 ? "+" : "") + cents.toFixed(0) + "¢ vs " + targetLabel();
+    }} else if (isTransposingDisplay()) {{
+      const wd = writtenDisplayFromConcert(parts);
+      metaEl.textContent =
+        "Written note: " + wd.writtenPc + " · Concert pitch: " + wd.concertPc + " · " +
+        parts.hz.toFixed(1) + " Hz · " +
+        (parts.nearestCents >= 0 ? "+" : "") + parts.nearestCents.toFixed(0) + "¢ from nearest";
     }} else {{
       metaEl.textContent =
-        parts.hz.toFixed(1) + " Hz · " + (parts.nearestCents >= 0 ? "+" : "") +
-        parts.nearestCents.toFixed(0) + "¢ from nearest pitch";
+        "Showing concert pitch · " + parts.hz.toFixed(1) + " Hz · " +
+        (parts.nearestCents >= 0 ? "+" : "") + parts.nearestCents.toFixed(0) + "¢ from nearest pitch";
     }}
     const clamped = Math.max(-50, Math.min(50, cents));
     const leftPct = 50 + (clamped / 50) * 45;
@@ -686,6 +736,9 @@ def render_live_tuner(
     expected_note: str | None = None,
     string_targets: list[str] | None = None,
     height: int = 520,
+    display_mode: str = "concert",
+    concert_to_written_semitones: int = 0,
+    instrument_label: str = "",
 ) -> None:
     """Embed the real-time tuner via Streamlit ``components.html``."""
     import streamlit.components.v1 as components
@@ -695,6 +748,9 @@ def render_live_tuner(
         target_note=target_note,
         expected_note=expected_note,
         string_targets=string_targets,
+        display_mode=display_mode,
+        concert_to_written_semitones=concert_to_written_semitones,
+        instrument_label=instrument_label,
     )
     widget_html = build_live_tuner_html(config)
     components.html(widget_html, height=height, scrolling=False)

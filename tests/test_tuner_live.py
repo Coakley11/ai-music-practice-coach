@@ -27,3 +27,15 @@ def test_live_tuner_html_includes_start_stop():
     assert "autoCorrelate" in html_doc
     assert "lt-str-btn" in html_doc
     assert "String targets" in html_doc
+
+
+def test_live_tuner_config_transposing_display_fields():
+    cfg = live_tuner_config(
+        key_prefix="practice_tuner_test",
+        display_mode="transposing_written",
+        concert_to_written_semitones=2,
+        instrument_label="Tenor Saxophone",
+    )
+    assert cfg["displayMode"] == "transposing_written"
+    assert cfg["concertToWrittenSemitones"] == 2
+    assert cfg["instrumentLabel"] == "Tenor Saxophone"

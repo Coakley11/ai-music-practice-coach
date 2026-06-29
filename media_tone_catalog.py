@@ -27,6 +27,7 @@ from tuner_tone import NOTE_NAMES, TonePracticeResult, parse_note_token
 
 _PENDING_TONE_AUDIO_KEY = "_pending_tone_take_audio"
 _PENDING_TONE_RESULT_KEY = "_pending_tone_practice_result"
+_PENDING_TONE_META_KEY = "_pending_tone_take_meta"
 _LAST_TONE_SAVE_STATUS_KEY = "_tone_take_last_save_status"
 _LAST_TONE_LOAD_STATUS_KEY = "_tone_take_last_load_status"
 _LAST_TONE_PLAYBACK_STATUS_KEY = "_tone_take_last_playback_status"
@@ -94,6 +95,65 @@ def pitch_class_from_option(option: str) -> str:
 
 def pitch_class_option_to_token(option: str, *, octave: int = DEFAULT_TONE_PRACTICE_OCTAVE) -> str:
     return f"{pitch_class_from_option(option)}{int(octave)}"
+
+
+def concert_note_to_written_display(
+    concert_token: str,
+    transposing_type: str,
+) -> dict[str, str | None]:
+    """Map a detected concert note to written pitch for live tuner display."""
+    from instrument_transposition import TRANSPOSING_SEMITONE_STEPS
+
+    concert = str(concert_token or "").strip()
+    if not concert or not str(transposing_type or "").strip():
+        return {
+            "concert_note": concert or None,
+            "written_note": None,
+            "written_pitch_class": None,
+            "concert_pitch_class": _note_pitch_class(concert) if concert else None,
+        }
+
+    steps = TRANSPOSING_SEMITONE_STEPS.get(transposing_type)
+    if steps is None:
+        return {
+            "concert_note": concert,
+            "written_note": concert,
+            "written_pitch_class": _note_pitch_class(concert),
+            "concert_pitch_class": _note_pitch_class(concert),
+        }
+
+    written_token = transpose_note_token(concert, steps)
+    return {
+        "concert_note": concert,
+        "written_note": written_token,
+        "written_pitch_class": _note_pitch_class(written_token or ""),
+        "concert_pitch_class": _note_pitch_class(concert),
+    }
+
+
+def live_tuner_display_settings(
+    *,
+    instrument: str,
+    transposing_type: str,
+    instrument_display_name: str = "",
+) -> dict[str, Any]:
+    """Display-layer config for Tune Live (engine stays concert; UI may show written first)."""
+    from instrument_transposition import TRANSPOSING_SEMITONE_STEPS, is_transposing_instrument
+
+    if not is_transposing_instrument(instrument) or not str(transposing_type or "").strip():
+        return {
+            "display_mode": "concert",
+            "concert_to_written_semitones": 0,
+            "instrument_label": "",
+        }
+
+    steps = TRANSPOSING_SEMITONE_STEPS.get(transposing_type, 0)
+    label = str(instrument_display_name or instrument or "").strip()
+    return {
+        "display_mode": "transposing_written",
+        "concert_to_written_semitones": int(steps),
+        "instrument_label": label,
+    }
 
 
 def resolve_tone_target_from_pitch_class(
@@ -193,6 +253,7 @@ def build_tone_take_fields(
     display_key: str = "",
     transposing_type: str = "",
     notes: str = "",
+    selected_pitch_class: str = "",
 ) -> dict[str, Any]:
     instrument_family = ""
     instrument_label = str(instrument or "").strip()
@@ -254,6 +315,7 @@ def build_tone_take_fields(
         "instrument_family": fam,
         "transposing_type": transposing_type,
         "target_note": target_note,
+        "selected_pitch_class": str(selected_pitch_class or "").strip(),
         "detected_note": result.median_note,
         "written_note": written_note,
         "concert_note": concert_note,
@@ -282,12 +344,56 @@ def build_tone_take_fields(
     }
 
 
+def _note_filter_tokens(note_filter: str) -> list[str]:
+    text = str(note_filter or "").strip().lower()
+    if not text:
+        return []
+    parts = [text]
+    if "/" in text:
+        parts.extend(p.strip() for p in text.split("/") if p.strip())
+    return parts
+
+
+def note_filter_matches_row(row: dict[str, Any], note_filter: str) -> bool:
+    tokens = _note_filter_tokens(note_filter)
+    if not tokens:
+        return True
+    selected_pc = str(row.get("selected_pitch_class") or "").lower()
+    if selected_pc and any(t in selected_pc or selected_pc in t for t in tokens):
+        return True
+    for key in ("written_note", "concert_note", "target_note", "detected_note", "median_note"):
+        val = str(row.get(key) or "")
+        if not val:
+            continue
+        val_low = val.lower()
+        pc = _note_pitch_class(val).lower()
+        for token in tokens:
+            if token in val_low or token == pc:
+                return True
+    return False
+
+
+def format_tone_take_display_time(created_at: str) -> str:
+    text = str(created_at or "").strip()
+    if not text:
+        return "—"
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        ts = datetime.fromisoformat(text)
+        hour = ts.strftime("%I").lstrip("0") or "12"
+        return f"{ts.strftime('%Y-%m-%d')} {hour}:{ts.strftime('%M %p')}"
+    except ValueError:
+        return text[:16]
+
+
 def cache_pending_tone_take(
     session_state: dict[str, Any],
     *,
     result: TonePracticeResult,
     audio_bytes: bytes,
     target_note: str | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> None:
     session_state[_PENDING_TONE_RESULT_KEY] = {
         "duration_sec": result.duration_sec,
@@ -301,15 +407,25 @@ def cache_pending_tone_take(
         "feedback": list(result.feedback or []),
     }
     session_state[_PENDING_TONE_AUDIO_KEY] = bytes(audio_bytes)
+    if meta:
+        session_state[_PENDING_TONE_META_KEY] = dict(meta)
 
 
 def clear_pending_tone_take(session_state: dict[str, Any]) -> None:
     session_state.pop(_PENDING_TONE_RESULT_KEY, None)
     session_state.pop(_PENDING_TONE_AUDIO_KEY, None)
+    session_state.pop(_PENDING_TONE_META_KEY, None)
 
 
 def pending_tone_take_ready(session_state: dict[str, Any]) -> bool:
-    return isinstance(session_state.get(_PENDING_TONE_RESULT_KEY), dict)
+    has_result = isinstance(session_state.get(_PENDING_TONE_RESULT_KEY), dict)
+    has_audio = bool(session_state.get(_PENDING_TONE_AUDIO_KEY))
+    return has_result and has_audio
+
+
+def pending_tone_take_meta(session_state: dict[str, Any]) -> dict[str, Any]:
+    raw = session_state.get(_PENDING_TONE_META_KEY)
+    return dict(raw) if isinstance(raw, dict) else {}
 
 
 def save_pending_tone_take(
@@ -325,6 +441,12 @@ def save_pending_tone_take(
     audio = session_state.get(_PENDING_TONE_AUDIO_KEY)
     if not isinstance(raw, dict) or not audio:
         return False, "", "no_pending_tone_take"
+
+    meta = pending_tone_take_meta(session_state)
+    instrument = str(instrument or meta.get("instrument") or "").strip()
+    display_key = str(display_key or meta.get("display_key") or "").strip()
+    transposing_type = str(transposing_type or meta.get("transposing_type") or "").strip()
+    selected_pitch_class = str(meta.get("pitch_class_label") or meta.get("selected_pitch_class") or "").strip()
 
     result = TonePracticeResult(
         duration_sec=float(raw.get("duration_sec") or 0),
@@ -346,6 +468,7 @@ def save_pending_tone_take(
         display_key=display_key,
         transposing_type=transposing_type,
         notes=notes,
+        selected_pitch_class=selected_pitch_class,
     )
     row = add_tone_take(st, fields)
     tid = str(row.get("tone_take_id") or "")
@@ -393,15 +516,7 @@ def list_tone_takes(
         rows = [r for r in rows if str(r.get("instrument") or "").strip().lower() == inst]
 
     if note_filter:
-        nf = note_filter.strip().lower()
-        filtered: list[dict[str, Any]] = []
-        for row in rows:
-            for key in ("written_note", "concert_note", "target_note", "detected_note"):
-                val = str(row.get(key) or "")
-                if nf in val.lower() or _note_pitch_class(val).lower() == nf:
-                    filtered.append(row)
-                    break
-        rows = filtered
+        rows = [r for r in rows if note_filter_matches_row(r, note_filter)]
 
     if quality_filter == "best":
         rows = [r for r in rows if tone_take_quality(r) == "best"]
@@ -416,19 +531,21 @@ def tone_take_row_summary(row: dict[str, Any]) -> str:
     inst = str(row.get("instrument") or "Instrument")
     written = str(row.get("written_note") or "")
     concert = str(row.get("concert_note") or "")
+    selected_pc = str(row.get("selected_pitch_class") or "").strip()
     if written and concert:
-        note_part = f"written {_note_pitch_class(written)} / concert {_note_pitch_class(concert)}"
+        w_label = selected_pc or _note_pitch_class(written)
+        note_part = f"written {w_label} / concert {_note_pitch_class(concert)}"
     elif written or concert:
         note_part = written or concert
     else:
-        note_part = str(row.get("target_note") or row.get("detected_note") or "—")
+        note_part = selected_pc or str(row.get("target_note") or row.get("detected_note") or "—")
 
     dur = float(row.get("duration_seconds") or 0)
     cents = row.get("mean_cents")
     cents_part = f"avg {float(cents):+.0f} cents" if cents is not None else "avg — cents"
     score = float(row.get("pitch_stability_score") or 0)
     stab = "stable" if score >= 78 else ("moderate" if score >= 55 else "unstable")
-    created = str(row.get("created_at") or "")[:10]
+    created = format_tone_take_display_time(str(row.get("created_at") or ""))
     return f"{inst} · {note_part} · {dur:.0f} sec · {cents_part} · {stab} · {created}"
 
 
