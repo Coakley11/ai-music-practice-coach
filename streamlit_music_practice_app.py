@@ -11858,6 +11858,7 @@ elif _studio_page == "analysis":
                         "Solo performance",
                         "Over backing track",
                         "Multitrack layer",
+                        "Multitrack mix",
                     ],
                     key="analysis_recording_type",
                 )
@@ -11892,20 +11893,44 @@ elif _studio_page == "analysis":
                     VideoExtractionError,
                     is_video_filename,
                 )
-
-                analysis_audio = st.file_uploader(
-                    "Drop your recording here",
-                    type=UPLOAD_ACCEPT_TYPES,
-                    key="analysis_audio_upload",
-                )
                 try:
-                    mic_audio = st.audio_input("Or record live", key="analysis_audio_record")
-                except Exception:
-                    mic_audio = None
-                    st.caption("Live mic may be unavailable in this build — file upload still works.")
+                    from media_multitrack_export_catalog import (
+                        analysis_export_handoff_ready,
+                        clear_multitrack_export_analysis_handoff,
+                        loaded_multitrack_export_analysis_banner,
+                    )
+                except ImportError:
+                    analysis_export_handoff_ready = lambda _ss: False  # type: ignore[assignment,misc]
+                    loaded_multitrack_export_analysis_banner = lambda _ss: ""  # type: ignore[assignment,misc]
+                    clear_multitrack_export_analysis_handoff = lambda _ss: None  # type: ignore[assignment,misc]
+
+                _export_handoff_ready = analysis_export_handoff_ready(st.session_state)
+                _export_handoff_label = loaded_multitrack_export_analysis_banner(st.session_state)
+                if _export_handoff_ready and _export_handoff_label:
+                    st.success(_export_handoff_label)
+                    _handoff_prepared = st.session_state.get("_analysis_prepared_upload")
+                    if _handoff_prepared is not None:
+                        st.markdown("**Preview**")
+                        st.audio(_handoff_prepared.getvalue(), format="audio/wav")
+                    _capture_expander = st.expander("Replace with a different file", expanded=False)
+                else:
+                    _capture_expander = st.container()
+
+                with _capture_expander:
+                    analysis_audio = st.file_uploader(
+                        "Drop your recording here",
+                        type=UPLOAD_ACCEPT_TYPES,
+                        key="analysis_audio_upload",
+                    )
+                    try:
+                        mic_audio = st.audio_input("Or record live", key="analysis_audio_record")
+                    except Exception:
+                        mic_audio = None
+                        st.caption("Live mic may be unavailable in this build — file upload still works.")
 
                 audio_obj = None
                 if mic_audio is not None:
+                    clear_multitrack_export_analysis_handoff(st.session_state)
                     audio_obj = PreparedUpload(
                         mic_audio.getvalue(),
                         str(getattr(mic_audio, "name", None) or "recording.wav"),
@@ -11913,6 +11938,7 @@ elif _studio_page == "analysis":
                 elif analysis_audio is not None:
                     import hashlib
 
+                    clear_multitrack_export_analysis_handoff(st.session_state)
                     _raw = analysis_audio.getvalue()
                     _raw_name = str(getattr(analysis_audio, "name", None) or "upload.wav")
                     _sig = (
@@ -11979,7 +12005,12 @@ elif _studio_page == "analysis":
                             if _detail_bits:
                                 st.caption(" · ".join(_detail_bits))
 
-                if audio_obj is not None:
+                elif _export_handoff_ready:
+                    audio_obj = st.session_state.get("_analysis_prepared_upload")
+                elif st.session_state.get("_analysis_prepared_upload") is not None:
+                    audio_obj = st.session_state.get("_analysis_prepared_upload")
+
+                if audio_obj is not None and not (_export_handoff_ready and _export_handoff_label):
                     st.markdown("**Preview**")
                     st.audio(audio_obj.getvalue(), format="audio/wav")
 

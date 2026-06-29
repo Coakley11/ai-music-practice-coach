@@ -13,6 +13,8 @@ from unittest.mock import patch
 from media_persistence import add_multitrack_export, delete_multitrack_export, load_media_catalog
 from media_state import compact_multitrack_export_for_ami, migrate_multitrack_export
 from media_multitrack_export_catalog import (
+    ANALYSIS_RECORDING_TYPE_MULTITRACK_MIX,
+    PENDING_EXPORT_ANALYSIS_KEY,
     build_multitrack_export_fields,
     delete_multitrack_export_entry,
     export_row_summary,
@@ -197,9 +199,9 @@ class TestMultitrackExportCatalog(unittest.TestCase):
                     with patch("media_storage.recording_local_abs_path", lambda ws, rel: Path(tmp) / "daniel" / rel):
                         ok, err = send_export_to_upload_analysis(session, "e1", st=None)
         self.assertTrue(ok, err)
-        self.assertEqual(session.get("analysis_recording_type"), "Multitrack mix export")
+        self.assertEqual(session.get("analysis_recording_type"), ANALYSIS_RECORDING_TYPE_MULTITRACK_MIX)
         self.assertTrue(session.get("last_analysis_audio"))
-        pending = session.get("_pending_multitrack_export_analysis") or {}
+        pending = session.get(PENDING_EXPORT_ANALYSIS_KEY) or {}
         self.assertEqual(pending.get("source"), "multitrack_export")
         self.assertEqual(pending.get("export_id"), "e1")
 

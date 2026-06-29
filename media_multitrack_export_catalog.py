@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import wave
 from datetime import datetime, timezone
@@ -28,7 +29,11 @@ _LAST_EXPORT_SAVE_STATUS_KEY = "_multitrack_export_last_save_status"
 _LAST_EXPORT_LOAD_STATUS_KEY = "_multitrack_export_last_load_status"
 _LAST_EXPORT_PLAYBACK_STATUS_KEY = "_multitrack_export_last_playback_status"
 _LAST_SEND_TO_ANALYSIS_STATUS_KEY = "_multitrack_export_last_send_analysis_status"
-_PENDING_EXPORT_ANALYSIS_KEY = "_pending_multitrack_export_analysis"
+PENDING_EXPORT_ANALYSIS_KEY = "_pending_multitrack_export_analysis"
+ANALYSIS_EXPORT_LOADED_LABEL_KEY = "analysis_multitrack_export_loaded_label"
+ANALYSIS_EXPORT_HANDOFF_ID_KEY = "_analysis_export_handoff_id"
+ANALYSIS_EXPORT_HANDOFF_META_KEY = "_analysis_export_handoff_meta"
+ANALYSIS_RECORDING_TYPE_MULTITRACK_MIX = "Multitrack mix"
 
 
 def _utc_now_iso() -> str:
@@ -344,6 +349,108 @@ def delete_multitrack_export_entry(st: Any | None, export_id: str, *, row: dict[
     return delete_multitrack_export(st, eid)
 
 
+def _export_filename_from_meta(meta: dict[str, Any]) -> str:
+    name = str(meta.get("export_name") or "multitrack_export").strip()
+    if not name.lower().endswith(".wav"):
+        name = f"{name}.wav"
+    return name
+
+
+def _compact_export_handoff_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source": "multitrack_export",
+        "export_id": meta.get("export_id"),
+        "export_name": meta.get("export_name"),
+        "song_title": meta.get("song_title") or meta.get("song"),
+        "duration_seconds": meta.get("duration_seconds"),
+        "format": meta.get("format"),
+        "storage_ref": meta.get("storage_ref"),
+        "track_count": meta.get("track_count"),
+        "included_tracks": meta.get("included_tracks"),
+    }
+
+
+def clear_multitrack_export_analysis_handoff(session_state: dict[str, Any]) -> None:
+    session_state.pop(PENDING_EXPORT_ANALYSIS_KEY, None)
+    session_state.pop(ANALYSIS_EXPORT_LOADED_LABEL_KEY, None)
+    session_state.pop(ANALYSIS_EXPORT_HANDOFF_ID_KEY, None)
+    session_state.pop(ANALYSIS_EXPORT_HANDOFF_META_KEY, None)
+    session_state.pop("_analysis_export_handoff_name", None)
+
+
+def apply_multitrack_export_analysis_handoff(
+    session_state: dict[str, Any],
+    meta: dict[str, Any],
+    *,
+    audio: bytes,
+) -> tuple[bool, str]:
+    """Wire saved export audio into Upload Analysis session keys the UI already reads."""
+    if not audio:
+        return False, "missing_audio"
+    try:
+        from upload_media import PreparedUpload
+    except ImportError:
+        return False, "upload_media_unavailable"
+
+    raw = bytes(audio)
+    filename = _export_filename_from_meta(meta)
+    prepared = PreparedUpload(raw, filename)
+    sig = (
+        hashlib.sha256(raw[:65536] + str(len(raw)).encode()).hexdigest()[:20],
+        filename,
+    )
+    compact = _compact_export_handoff_meta(meta)
+
+    session_state["last_analysis_audio"] = raw
+    session_state["last_analysis_source_label"] = filename
+    session_state["analysis_mode"] = "Single recording"
+    session_state["analysis_recording_type"] = ANALYSIS_RECORDING_TYPE_MULTITRACK_MIX
+    session_state["_analysis_prepared_upload"] = prepared
+    session_state["_analysis_upload_prep_sig"] = sig
+    session_state[ANALYSIS_EXPORT_LOADED_LABEL_KEY] = f"Loaded from Multitrack Export: {filename}"
+    session_state[ANALYSIS_EXPORT_HANDOFF_ID_KEY] = str(meta.get("export_id") or "")
+    session_state["_analysis_export_handoff_name"] = str(meta.get("export_name") or "")
+    session_state[ANALYSIS_EXPORT_HANDOFF_META_KEY] = compact
+    session_state.pop("last_analysis_result", None)
+    session_state.pop(PENDING_EXPORT_ANALYSIS_KEY, None)
+    return True, ""
+
+
+def apply_pending_multitrack_export_analysis(session_state: dict[str, Any]) -> tuple[bool, str]:
+    """Apply pending export handoff on Upload Analysis page load."""
+    pending = session_state.get(PENDING_EXPORT_ANALYSIS_KEY)
+    if isinstance(pending, dict) and pending.get("source") == "multitrack_export":
+        audio = session_state.get("last_analysis_audio")
+        if not audio:
+            return False, "missing_audio"
+        return apply_multitrack_export_analysis_handoff(session_state, pending, audio=bytes(audio))
+
+    handoff_id = str(session_state.get(ANALYSIS_EXPORT_HANDOFF_ID_KEY) or "").strip()
+    if handoff_id and not session_state.get("_analysis_prepared_upload"):
+        audio = session_state.get("last_analysis_audio")
+        if not audio:
+            return False, "missing_audio"
+        meta = session_state.get(ANALYSIS_EXPORT_HANDOFF_META_KEY)
+        if not isinstance(meta, dict):
+            meta = {
+                "source": "multitrack_export",
+                "export_id": handoff_id,
+                "export_name": session_state.get("_analysis_export_handoff_name") or "",
+            }
+        return apply_multitrack_export_analysis_handoff(session_state, meta, audio=bytes(audio))
+    return False, "no_pending"
+
+
+def loaded_multitrack_export_analysis_banner(session_state: dict[str, Any]) -> str:
+    return str(session_state.get(ANALYSIS_EXPORT_LOADED_LABEL_KEY) or "").strip()
+
+
+def analysis_export_handoff_ready(session_state: dict[str, Any]) -> bool:
+    return bool(session_state.get("_analysis_prepared_upload")) and bool(
+        session_state.get(ANALYSIS_EXPORT_LOADED_LABEL_KEY)
+    )
+
+
 def send_export_to_upload_analysis(
     session_state: dict[str, Any],
     export_id: str,
@@ -361,25 +468,22 @@ def send_export_to_upload_analysis(
         return False, err or "missing_audio"
 
     row = migrate_multitrack_export(row)
-    filename = f"{row.get('export_name') or 'multitrack_export'}.wav"
+    filename = _export_filename_from_meta(row)
     session_state["last_analysis_audio"] = data
     session_state["last_analysis_source_label"] = filename
-    session_state["analysis_recording_type"] = "Multitrack mix export"
+    session_state["analysis_mode"] = "Single recording"
+    session_state["analysis_recording_type"] = ANALYSIS_RECORDING_TYPE_MULTITRACK_MIX
     session_state.pop("last_analysis_result", None)
-    session_state[_PENDING_EXPORT_ANALYSIS_KEY] = {
-        "source": "multitrack_export",
-        "export_id": row.get("export_id"),
-        "export_name": row.get("export_name"),
-        "song_title": row.get("song") or row.get("song_title"),
-        "storage_ref": row.get("storage_ref"),
-        "duration_seconds": row.get("duration_seconds"),
-        "format": row.get("format"),
-        "created_at": row.get("created_at"),
-        "track_count": row.get("track_count"),
-        "included_tracks": row.get("included_tracks"),
-        "mix_settings": row.get("mix_settings"),
-        "multitrack_id": row.get("multitrack_id"),
-    }
+    session_state[PENDING_EXPORT_ANALYSIS_KEY] = _compact_export_handoff_meta(
+        {
+            **row,
+            "song_title": row.get("song") or row.get("song_title"),
+        }
+    )
+    session_state[PENDING_EXPORT_ANALYSIS_KEY]["created_at"] = row.get("created_at")
+    session_state[PENDING_EXPORT_ANALYSIS_KEY]["mix_settings"] = row.get("mix_settings")
+    session_state[PENDING_EXPORT_ANALYSIS_KEY]["multitrack_id"] = row.get("multitrack_id")
+    session_state[PENDING_EXPORT_ANALYSIS_KEY]["local_path"] = row.get("local_path")
     ss = _session_state(st) or session_state
     ss[_LAST_SEND_TO_ANALYSIS_STATUS_KEY] = {
         "ok": True,
