@@ -13,7 +13,11 @@ from practice_history_synthesis import (
     hydrate_latest_practice_analysis,
     store_latest_practice_analysis,
 )
-from practice_log_analysis_panel import PRACTICE_ANALYSIS_OPEN_KEY, render_practice_analysis_panel
+from practice_log_analysis_panel import (
+    PRACTICE_ANALYSIS_OPEN_KEY,
+    _compact_header,
+    render_practice_analysis_panel,
+)
 
 
 class _FakeExpander:
@@ -144,6 +148,28 @@ class TestPracticeLogAnalysisPanel(unittest.TestCase):
         ):
             render_practice_analysis_panel(st, session)
         self.assertTrue(st.expanders[0][1])
+
+    def test_compact_header_shows_song_not_top_song_label(self) -> None:
+        session = {
+            LATEST_PRACTICE_ANALYSIS_EVIDENCE_COUNTS_KEY: {
+                "top_song": "Say",
+                "top_instrument": "Tenor Saxophone",
+            },
+            LATEST_PRACTICE_ANALYSIS_CREATED_AT_KEY: "2026-06-29T15:58:00+00:00",
+        }
+        summary = {
+            "practice_summary": "You worked mostly on **Tenor Saxophone** with focus on pitch.",
+            "upload_recording_review": "**Say** (Single recording): Strongest area — timing.",
+        }
+        with patch(
+            "suite_analytical_question.format_practice_analysis_updated_label",
+            return_value="Jun 29, 2026, 11:58 AM ET",
+        ):
+            header = _compact_header(session, summary)
+        self.assertIn("Practice Analysis", header)
+        self.assertIn("Say", header)
+        self.assertNotIn("Top song", header)
+        self.assertIn("Tenor Saxophone", header)
 
     def test_panel_always_visible_with_empty_state(self) -> None:
         st = _FakeSt()

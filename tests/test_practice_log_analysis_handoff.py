@@ -105,7 +105,8 @@ class TestPracticeAnalysisContentCleanup(unittest.TestCase):
         self.assertIn("linked analyzed export", report.get("evidence_used", ""))
         self.assertNotIn("lack saved upload analysis", " ".join(report.get("needs_work") or []))
         upload_text = " ".join(report.get("upload_analysis_findings") or [])
-        self.assertIn("Multitrack export → Upload Analysis", upload_text)
+        self.assertIn("Multitrack export", upload_text)
+        self.assertIn("Say", upload_text)
 
     def test_equal_instruments_do_not_overstate_dominance(self) -> None:
         payload = {
@@ -124,7 +125,7 @@ class TestPracticeAnalysisContentCleanup(unittest.TestCase):
         self.assertIn("Say", summary)
         self.assertNotIn("Most work was on **Say** with **Tenor Saxophone**", summary)
         self.assertTrue(
-            "across multiple instruments" in summary or "Tenor Saxophone** and **Guitar" in summary
+            "Tenor Saxophone and Guitar" in summary or "across multiple instruments" in summary
         )
 
     def test_invalid_tone_cents_not_described_as_progress(self) -> None:
@@ -164,7 +165,8 @@ class TestPracticeAnalysisContentCleanup(unittest.TestCase):
         report = build_practice_progress_report(payload)
         plan = report.get("recommended_next_practice_plan") or []
         self.assertTrue(all(str(line).strip().lower() != "tone" for line in plan))
-        self.assertTrue(any("Prioritize" in str(line) for line in plan))
+        self.assertEqual(len(plan), 5)
+        self.assertTrue(any("5 min" in str(line) for line in plan))
 
     def test_log_page_summary_avoids_raw_enum_labels(self) -> None:
         payload = {

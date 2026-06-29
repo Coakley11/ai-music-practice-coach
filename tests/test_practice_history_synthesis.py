@@ -509,5 +509,86 @@ class TestLogPagePracticeAnalysis(unittest.TestCase):
         self.assertIn("progress_report", handoff_ctx)
 
 
+class TestPracticeReportPolish(unittest.TestCase):
+    def test_evidence_used_uses_friendly_date_range(self) -> None:
+        from datetime import date
+
+        from practice_history_synthesis import _format_date_range_label, _format_evidence_used_line
+
+        label = _format_date_range_label(date(2026, 6, 22), date(2026, 6, 29))
+        self.assertEqual(label, "Jun 22–Jun 29, 2026")
+        evidence = _format_evidence_used_line(
+            {
+                "practice_log_summary": {
+                    "entry_count_total": 2,
+                    "recent_entries": [{"date": "2026-06-22"}, {"date": "2026-06-29"}],
+                },
+                "upload_analysis_summary": {"analysis_count_total": 4, "recent_analyses": []},
+                "tone_history_summary": {"tone_take_count_total": 2},
+                "multitrack_export_summary": {"export_count_total": 1},
+            }
+        )
+        self.assertIn("Jun 22–Jun 29, 2026", evidence)
+        self.assertNotIn("2026-06-22", evidence)
+
+    def test_written_note_strips_octave_and_uses_enharmonic(self) -> None:
+        from practice_history_synthesis import _format_tone_trend_line, _format_written_note
+
+        self.assertEqual(_format_written_note("F#4"), "F#/Gb")
+        line = _format_tone_trend_line(
+            {
+                "instrument": "Tenor Saxophone",
+                "note": "F#4",
+                "recent_mean_cents": 250.0,
+                "older_mean_cents": 240.0,
+            }
+        )
+        self.assertIn("Tenor Saxophone F#/Gb", line)
+        self.assertNotIn(".).", line)
+        self.assertIn("wrong note or octave", line)
+
+    def test_thirty_minute_plan_has_five_steps(self) -> None:
+        from practice_history_synthesis import _build_thirty_minute_plan
+
+        plan = _build_thirty_minute_plan(
+            {
+                "practice_log_summary": {
+                    "entry_count_total": 2,
+                    "practice_time_by_song": {"Say": 60},
+                    "practice_time_by_instrument": {"Tenor Saxophone": 60},
+                },
+                "tone_history_summary": {
+                    "improvement_trends": [{"instrument": "Tenor Saxophone", "note": "F#4"}]
+                },
+            }
+        )
+        self.assertEqual(len(plan), 5)
+        self.assertTrue(any("5 min" in step for step in plan))
+        self.assertTrue(any("Say" in step for step in plan))
+
+    def test_coach_executive_summary_is_paragraph(self) -> None:
+        from practice_history_synthesis import _build_coach_executive_summary
+
+        summary = _build_coach_executive_summary(
+            {
+                "practice_log_summary": {
+                    "entry_count_total": 2,
+                    "recent_entries": [{"duration_minutes": 30}, {"duration_minutes": 30}],
+                    "practice_time_by_song": {"Say": 60},
+                    "practice_time_by_instrument": {"Tenor Saxophone": 30, "Guitar": 30},
+                },
+                "upload_analysis_summary": {
+                    "analysis_count_total": 1,
+                    "recent_analyses": [
+                        {"strengths": ["timing"], "weaknesses": ["pitch/intonation"]},
+                    ],
+                },
+                "tone_history_summary": {},
+            }
+        )
+        self.assertIn("2 practice sessions", summary)
+        self.assertIn("Upload Analysis", summary)
+
+
 if __name__ == "__main__":
     unittest.main()

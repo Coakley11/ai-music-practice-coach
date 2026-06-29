@@ -247,6 +247,46 @@ def render_global_workspace_badge(st: Any, *, sidebar: bool = True) -> None:
     )
 
 
+def _signed_in_email(ctx: dict[str, Any], session_state: dict[str, Any]) -> str:
+    try:
+        from suite_auth import current_auth_email, is_auth_enabled, is_authenticated
+
+        if is_auth_enabled() and is_authenticated(session_state):
+            email = str(current_auth_email(session_state) or "").strip()
+            if email:
+                return email
+    except ImportError:
+        pass
+    email = str(ctx.get("email_display") or "").strip()
+    if email and email != "(not configured — set suite_user_email in secrets)":
+        return email
+    return ""
+
+
+def _render_minimal_account_workspace_body(
+    st: Any,
+    ui: Any,
+    session_state: dict[str, Any],
+    ctx: dict[str, Any],
+) -> None:
+    """Normal mode — email + logout only."""
+    email = _signed_in_email(ctx, session_state)
+    if email:
+        ui.markdown(f"Signed in: **{email}**")
+    try:
+        from suite_auth import is_auth_enabled, is_authenticated, logout
+
+        if is_auth_enabled() and is_authenticated(session_state):
+            if ui.button("Log out", key="suite_account_workspace_logout_btn", use_container_width=True):
+                logout(session_state, st=st)
+                st.rerun()
+            return
+    except ImportError:
+        pass
+    if not email:
+        ui.caption("Shared suite profile (no individual sign-in on this deploy).")
+
+
 def render_user_account_access(st: Any, *, for_homepage: bool = False, sidebar: bool = False) -> None:
     """Deprecated alias — use render_account_workspace_access."""
     render_account_workspace_access(st, for_homepage=for_homepage, sidebar=sidebar)
@@ -296,24 +336,7 @@ def render_account_workspace_access(
 
     header = account_workspace_expander_label(ctx)
     with ui.expander(header, expanded=False):
-        render_global_workspace_badge(st, sidebar=sidebar)
-        display = str(ctx.get("display_name") or ctx.get("email_display") or "").strip()
-        if display and display != "(not configured — set suite_user_email in secrets)":
-            ui.markdown(f"Signed in as **{display}**")
-        elif ctx.get("email_display"):
-            ui.caption(str(ctx.get("email_display")))
-        for issue in detect_workspace_namespace_issues(st=st):
-            if str(issue.get("severity") or "") != "error":
-                continue
-            title = str(issue.get("title") or "Workspace notice").strip()
-            detail = str(issue.get("detail") or "").strip()
-            if detail:
-                ui.error(f"**{title}** — {detail}")
-        if for_homepage or ctx.get("password_auth_available"):
-            if ctx.get("password_auth_available"):
-                render_auth_panel(st, expanded=False)
-            else:
-                ui.caption("This deployment uses shared suite profile settings.")
+        _render_minimal_account_workspace_body(st, ui, st.session_state, ctx)
 
 
 def render_account_settings_panel(

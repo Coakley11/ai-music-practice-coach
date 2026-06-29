@@ -8,6 +8,7 @@ from typing import Any
 # Session keys — kept inline so this module does not depend on practice_history_synthesis at import time.
 LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY = "latest_practice_analysis_summary"
 LATEST_PRACTICE_ANALYSIS_CREATED_AT_KEY = "latest_practice_analysis_created_at"
+LATEST_PRACTICE_ANALYSIS_EVIDENCE_COUNTS_KEY = "latest_practice_analysis_evidence_counts"
 LATEST_PRACTICE_ANALYSIS_HANDOFF_STATUS_KEY = "latest_practice_analysis_handoff_status"
 
 PRACTICE_ANALYSIS_OPEN_KEY = "_plog_practice_analysis_open"
@@ -18,6 +19,23 @@ __all__ = [
     "PRACTICE_ANALYSIS_OPEN_KEY",
     "PRACTICE_ANALYSIS_EXPANDER_KEY",
 ]
+
+_INSTRUMENT_LABELS = frozenset(
+    {
+        "tenor saxophone",
+        "alto saxophone",
+        "soprano saxophone",
+        "baritone saxophone",
+        "flute",
+        "guitar",
+        "piano",
+        "clarinet",
+        "trumpet",
+        "trombone",
+        "saxophone",
+        "your instrument",
+    }
+)
 
 _PRACTICE_ANALYSIS_SECTIONS: tuple[tuple[str, str], ...] = (
     ("Practice Summary", "practice_summary"),
@@ -44,24 +62,48 @@ def _hydrate_panel_state(session_state: dict[str, Any], st: Any | None = None) -
             pass
 
 
-def _top_song_from_summary(summary: dict[str, Any]) -> str:
+def _analysis_metadata(session_state: dict[str, Any]) -> dict[str, Any]:
+    meta = session_state.get(LATEST_PRACTICE_ANALYSIS_EVIDENCE_COUNTS_KEY)
+    return meta if isinstance(meta, dict) else {}
+
+
+def _top_song_from_summary(summary: dict[str, Any], session_state: dict[str, Any]) -> str:
+    meta = _analysis_metadata(session_state)
+    song = str(meta.get("top_song") or "").strip()
+    if song:
+        return song
+    for key in ("upload_recording_review", "recommended_next_session", "practice_summary"):
+        text = str(summary.get(key) or "")
+        for match in re.finditer(r"\*\*([^*]+)\*\*", text):
+            candidate = match.group(1).strip()
+            if candidate.lower() in _INSTRUMENT_LABELS or candidate.lower() == "top song":
+                continue
+            if candidate.lower().startswith("upload analysis"):
+                continue
+            return candidate
+    return ""
+
+
+def _top_instrument_from_summary(summary: dict[str, Any], session_state: dict[str, Any]) -> str:
+    meta = _analysis_metadata(session_state)
+    instrument = str(meta.get("top_instrument") or "").strip()
+    if instrument:
+        return instrument
     practice = str(summary.get("practice_summary") or "")
-    match = re.search(r"\*\*([^*]+)\*\*", practice)
+    match = re.search(r"worked mostly on \*\*([^*]+)\*\*", practice, flags=re.IGNORECASE)
     if match:
         return match.group(1).strip()
-    for key in ("upload_recording_review", "recommended_next_session"):
-        text = str(summary.get(key) or "")
-        song_match = re.search(r"\*\*([^*]+)\*\*", text)
-        if song_match:
-            return song_match.group(1).strip()
     return ""
 
 
 def _compact_header(session_state: dict[str, Any], summary: dict[str, Any]) -> str:
     parts = ["Practice Analysis"]
-    top_song = _top_song_from_summary(summary)
+    top_song = _top_song_from_summary(summary, session_state)
     if top_song:
-        parts.append(f"Top song: {top_song}")
+        parts.append(top_song)
+    top_instrument = _top_instrument_from_summary(summary, session_state)
+    if top_instrument and top_instrument.lower() != top_song.lower():
+        parts.append(top_instrument)
     created_at = str(session_state.get(LATEST_PRACTICE_ANALYSIS_CREATED_AT_KEY) or "").strip()
     if created_at:
         try:
