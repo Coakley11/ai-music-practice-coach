@@ -14,7 +14,11 @@ from media_tone_catalog import (
     TONE_HISTORY_NOTE_FILTER_OPTIONS,
     list_tone_takes,
     note_filter_matches_row,
+    pitch_class_index,
     tone_history_note_filter_label,
+    tone_take_display_instrument,
+    tone_take_history_detail_fields,
+    tone_take_instrument_matches,
     tone_take_row_summary,
 )
 from tone_take_history_ui import render_tone_take_history_section
@@ -70,6 +74,15 @@ def _alto_f_sharp_row(**overrides) -> dict:
     }
     base.update(overrides)
     return migrate_tone_take(base)
+
+
+def _alto_saved_as_saxophone_family(**overrides) -> dict:
+    """Legacy/family save shape: instrument=Saxophone + alto transposing_type."""
+    return _alto_f_sharp_row(
+        instrument="Saxophone",
+        instrument_family="Saxophone",
+        **overrides,
+    )
 
 
 class TestToneHistoryNoteFilterOptions(unittest.TestCase):
@@ -220,6 +233,80 @@ class TestToneHistoryAllInstrumentsFilter(unittest.TestCase):
         summary = tone_take_row_summary(_alto_f_sharp_row())
         self.assertIn("Alto Saxophone", summary)
         self.assertIn("written F#/Gb / concert A", summary)
+
+
+class TestToneHistoryAltoSaxCurrentInstrument(unittest.TestCase):
+    def test_saxophone_family_row_matches_alto_saxophone_filter(self) -> None:
+        row = _alto_saved_as_saxophone_family()
+        self.assertTrue(tone_take_instrument_matches(row, "Alto Saxophone"))
+        self.assertTrue(tone_take_instrument_matches(row, "Alto Sax"))
+        self.assertFalse(tone_take_instrument_matches(row, "Tenor Saxophone"))
+
+    def test_alto_current_instrument_view_filters_by_written_f_sharp(self) -> None:
+        row = _alto_saved_as_saxophone_family()
+        catalog = {"tone_takes": [row]}
+        with patch("media_tone_catalog.load_media_catalog", lambda *, st=None: catalog):
+            rows = list_tone_takes(
+                st=None,
+                instrument="Alto Saxophone",
+                note_filter="F#/Gb",
+                current_instrument_is_transposing=True,
+            )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("tone_take_id"), "alto-fs")
+
+    def test_alto_all_instruments_player_facing_f_sharp(self) -> None:
+        row = _alto_saved_as_saxophone_family()
+        catalog = {"tone_takes": [row]}
+        with patch("media_tone_catalog.load_media_catalog", lambda *, st=None: catalog):
+            rows = list_tone_takes(
+                st=None,
+                instrument=None,
+                note_filter="F#/Gb",
+                note_filter_mode=NOTE_FILTER_MODE_PLAYER,
+                all_instruments_view=True,
+            )
+        self.assertEqual(len(rows), 1)
+
+    def test_alto_all_instruments_concert_pitch_a(self) -> None:
+        row = _alto_saved_as_saxophone_family()
+        catalog = {"tone_takes": [row]}
+        with patch("media_tone_catalog.load_media_catalog", lambda *, st=None: catalog):
+            rows = list_tone_takes(
+                st=None,
+                instrument=None,
+                note_filter="A",
+                note_filter_mode=NOTE_FILTER_MODE_CONCERT,
+                all_instruments_view=True,
+            )
+        self.assertEqual(len(rows), 1)
+
+    def test_pitch_class_aliases_f_sharp_gb(self) -> None:
+        idx_fs = pitch_class_index("F#/Gb")
+        idx_f = pitch_class_index("F#")
+        idx_gb = pitch_class_index("Gb")
+        idx_f4 = pitch_class_index("F#4")
+        self.assertIsNotNone(idx_fs)
+        self.assertEqual(idx_fs, idx_f)
+        self.assertEqual(idx_fs, idx_gb)
+        self.assertEqual(idx_fs, idx_f4)
+
+    def test_written_note_pitch_class_label_matches_filter(self) -> None:
+        row = _alto_saved_as_saxophone_family(written_note="F#/Gb", target_note="F#/Gb")
+        self.assertTrue(
+            note_filter_matches_row(row, "F#/Gb", current_instrument_is_transposing=True)
+        )
+        self.assertTrue(
+            note_filter_matches_row(row, "Gb", current_instrument_is_transposing=True)
+        )
+
+    def test_row_and_detail_include_instrument_name(self) -> None:
+        row = _alto_saved_as_saxophone_family()
+        summary = tone_take_row_summary(row)
+        self.assertIn("Alto Saxophone", summary)
+        detail = dict(tone_take_history_detail_fields(row))
+        self.assertEqual(detail.get("Instrument"), "Alto Saxophone")
+        self.assertEqual(tone_take_display_instrument(row), "Alto Saxophone")
 
 
 if __name__ == "__main__":

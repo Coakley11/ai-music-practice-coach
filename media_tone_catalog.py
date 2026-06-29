@@ -90,6 +90,136 @@ NOTE_FILTER_MODE_OPTIONS: tuple[str, ...] = (NOTE_FILTER_MODE_PLAYER, NOTE_FILTE
 
 DEFAULT_TONE_PRACTICE_OCTAVE = 4
 
+_PITCH_CLASS_ALIASES: dict[str, int] | None = None
+
+
+def _pitch_class_alias_map() -> dict[str, int]:
+    global _PITCH_CLASS_ALIASES
+    if _PITCH_CLASS_ALIASES is not None:
+        return _PITCH_CLASS_ALIASES
+    aliases: dict[str, int] = {}
+    for idx, name in enumerate(NOTE_NAMES):
+        aliases[name.lower()] = idx
+    for opt in CHROMATIC_NOTE_OPTIONS:
+        canonical = pitch_class_from_option(opt)
+        idx = NOTE_NAMES.index(canonical)
+        aliases[opt.lower()] = idx
+        for part in opt.split("/"):
+            aliases[part.strip().lower()] = idx
+    _PITCH_CLASS_ALIASES = aliases
+    return aliases
+
+
+def pitch_class_index(token: str) -> int | None:
+    """Map a note token or dropdown label to a chromatic pitch-class index (0–11)."""
+    text = str(token or "").strip()
+    if not text:
+        return None
+    midi = parse_note_token(text)
+    if midi is not None:
+        return midi % 12
+    aliases = _pitch_class_alias_map()
+    low = text.lower()
+    if low in aliases:
+        return aliases[low]
+    if "/" in text:
+        for part in text.split("/"):
+            part_low = part.strip().lower()
+            if part_low in aliases:
+                return aliases[part_low]
+    if not any(ch.isdigit() for ch in text):
+        for octave in (4, 3, 5, 2, 6):
+            midi = parse_note_token(f"{text}{octave}")
+            if midi is not None:
+                return midi % 12
+    return None
+
+
+def _canonical_tone_instrument_key(name: str, *, transposing_type: str = "") -> str:
+    text = str(name or "").strip().lower().replace("_", " ").replace("-", " ")
+    while "  " in text:
+        text = text.replace("  ", " ")
+    type_low = str(transposing_type or "").strip().lower()
+
+    def _from_transposing_type() -> str | None:
+        if "alto" in type_low:
+            return "alto saxophone"
+        if "tenor" in type_low:
+            return "tenor saxophone"
+        if "soprano" in type_low:
+            return "soprano saxophone"
+        if "baritone" in type_low or "bari" in type_low:
+            return "baritone saxophone"
+        if "trumpet" in type_low:
+            return "trumpet"
+        if "clarinet" in type_low:
+            return "clarinet"
+        return None
+
+    if "alto" in text and "sax" in text:
+        return "alto saxophone"
+    if "tenor" in text and "sax" in text:
+        return "tenor saxophone"
+    if "soprano" in text and "sax" in text:
+        return "soprano saxophone"
+    if ("baritone" in text or "bari" in text) and "sax" in text:
+        return "baritone saxophone"
+    if text == "saxophone" or text == "sax":
+        return _from_transposing_type() or "saxophone"
+    if "trumpet" in text:
+        return "trumpet"
+    if "clarinet" in text:
+        return "clarinet"
+    if "flute" in text:
+        return "flute"
+    if "piano" in text:
+        return "piano"
+    if "guitar" in text:
+        return "guitar"
+    if "voice" in text or "vocal" in text:
+        return "voice"
+    typed = _from_transposing_type()
+    if typed and text in {"saxophone", "sax"}:
+        return typed
+    return text
+
+
+def tone_take_display_instrument(row: dict[str, Any]) -> str:
+    row = migrate_tone_take(row)
+    inst = str(row.get("instrument") or "").strip()
+    transposing_type = str(row.get("transposing_type") or "").strip()
+    if inst and inst.lower() not in {"saxophone", "sax", "instrument"}:
+        return inst
+    if transposing_type:
+        try:
+            from instrument_transposition import instrument_display_name
+
+            display = str(instrument_display_name(transposing_type, inst) or "").strip()
+            if display and display != "Instrument":
+                return display
+        except ImportError:
+            pass
+    family = str(row.get("instrument_family") or "").strip()
+    return inst or family or "Instrument"
+
+
+def tone_take_instrument_matches(row: dict[str, Any], filter_instrument: str) -> bool:
+    choice = str(filter_instrument or "").strip()
+    if not choice or choice.lower() in {"all instruments", "all"}:
+        return True
+    row = migrate_tone_take(row)
+    transposing_type = str(row.get("transposing_type") or "").strip()
+    row_inst = str(row.get("instrument") or "").strip()
+    row_family = str(row.get("instrument_family") or "").strip()
+
+    filter_key = _canonical_tone_instrument_key(choice)
+    for candidate in (row_inst, row_family):
+        if not candidate:
+            continue
+        if _canonical_tone_instrument_key(candidate, transposing_type=transposing_type) == filter_key:
+            return True
+    return row_inst.lower() == choice.lower()
+
 
 def pitch_class_from_option(option: str) -> str:
     """First spelling from an enharmonic dropdown label (e.g. ``A#/Bb`` → ``A#``)."""
@@ -270,8 +400,11 @@ def build_tone_take_fields(
         )
 
         instrument_family = str(get_active_instrument(session_state) or instrument_label).strip()
-        if not instrument_label:
-            instrument_label = str(get_active_instrument_display_name(session_state) or instrument_family).strip()
+        display_name = str(get_active_instrument_display_name(session_state) or "").strip()
+        if display_name:
+            instrument_label = display_name
+        elif not instrument_label:
+            instrument_label = instrument_family
     except ImportError:
         instrument_family = instrument_label
 
@@ -296,6 +429,11 @@ def build_tone_take_fields(
         detected_note=result.median_note,
         transposing_type=transposing_type,
     )
+    player_target = str(written_note or target_note or "").strip() or None
+    if transposing_type and written_note:
+        target_note = written_note
+    elif player_target:
+        target_note = player_target
 
     tone_consistency = round((result.pitch_stability_score + result.volume_stability_score) / 2.0, 1)
     coach = " · ".join(x.replace("**", "") for x in (result.feedback or [])[:4])
@@ -375,12 +513,20 @@ def is_transposing_tone_take(row: dict[str, Any]) -> bool:
 def _pitch_class_matches_option(field_value: str, note_filter: str) -> bool:
     if not field_value or not note_filter or note_filter == TONE_HISTORY_NOTE_FILTER_ALL:
         return False
-    tokens = _note_filter_tokens(note_filter)
-    if not tokens:
-        return False
+    field_idx = pitch_class_index(field_value)
+    filter_indices: set[int] = set()
+    for token in _note_filter_tokens(note_filter):
+        idx = pitch_class_index(token)
+        if idx is not None:
+            filter_indices.add(idx)
+        elif token:
+            aliases = _pitch_class_alias_map()
+            if token in aliases:
+                filter_indices.add(aliases[token])
+    if field_idx is not None and filter_indices:
+        return field_idx in filter_indices
     val_low = field_value.lower()
-    pc = _note_pitch_class(field_value).lower()
-    return any(token == pc or token in val_low for token in tokens)
+    return any(token in val_low for token in _note_filter_tokens(note_filter))
 
 
 def _selected_pitch_class_matches(row: dict[str, Any], note_filter: str) -> bool:
@@ -456,6 +602,28 @@ def tone_take_row_note_part(row: dict[str, Any]) -> str:
     if not target_label or target_label == "—":
         target_label = str(row.get("target_note") or row.get("detected_note") or "—")
     return f"target {target_label}"
+
+
+def tone_take_history_detail_fields(row: dict[str, Any]) -> list[tuple[str, str]]:
+    """Display labels for the Tone History detail panel."""
+    row = migrate_tone_take(row)
+    inst = tone_take_display_instrument(row)
+    fields: list[tuple[str, str]] = [("Instrument", inst)]
+
+    target = str(row.get("target_note") or "—")
+    fields.append(("Target note (player-facing)", target))
+
+    written = str(row.get("written_note") or "")
+    concert = str(row.get("concert_note") or "")
+    if is_transposing_tone_take(row) and (written or concert):
+        fields.append(("Written note (player/instrument)", written or "—"))
+        fields.append(("Concert note (sounding pitch)", concert or "—"))
+    elif concert or written:
+        fields.append(("Concert note (sounding pitch)", concert or written or "—"))
+
+    detected = str(row.get("detected_note") or row.get("median_note") or "—")
+    fields.append(("Detected concert note (heard)", detected))
+    return fields
 
 
 def format_tone_take_display_time(created_at: str) -> str:
@@ -600,8 +768,7 @@ def list_tone_takes(
     rows = normalize_tone_takes(catalog.get("tone_takes") if isinstance(catalog.get("tone_takes"), list) else [])
 
     if instrument and instrument != "All instruments":
-        inst = str(instrument).strip().lower()
-        rows = [r for r in rows if str(r.get("instrument") or "").strip().lower() == inst]
+        rows = [r for r in rows if tone_take_instrument_matches(r, instrument)]
 
     if note_filter and note_filter != TONE_HISTORY_NOTE_FILTER_ALL:
         rows = [
@@ -626,7 +793,7 @@ def list_tone_takes(
 
 def tone_take_row_summary(row: dict[str, Any]) -> str:
     row = migrate_tone_take(row)
-    inst = str(row.get("instrument") or "Instrument")
+    inst = tone_take_display_instrument(row)
     note_part = tone_take_row_note_part(row)
 
     dur = float(row.get("duration_seconds") or 0)

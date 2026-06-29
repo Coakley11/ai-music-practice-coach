@@ -132,6 +132,7 @@ class TestToneTakeSaveFlow(unittest.TestCase):
             self.assertTrue(str(row.get("created_at") or "").strip())
             self.assertEqual(row.get("written_note"), "A4")
             self.assertEqual(row.get("concert_note"), "G4")
+            self.assertEqual(row.get("target_note"), row.get("written_note"))
             self.assertFalse(row.get("deleted"))
 
     def test_saved_take_appears_in_history_and_note_filter(self) -> None:

@@ -21,6 +21,8 @@ from media_tone_catalog import (
     tone_catalog_diagnostics,
     tone_history_note_filter_label,
     tone_improvement_card,
+    tone_take_history_detail_fields,
+    tone_take_display_instrument,
     tone_take_quality,
     tone_take_row_summary,
 )
@@ -109,7 +111,11 @@ def render_tone_take_history_section(
     try:
         from instrument_transposition import is_transposing_instrument
 
-        instrument_is_transposing = bool(is_transposing_instrument(instrument))
+        instrument_is_transposing = bool(
+            is_transposing_instrument(instrument)
+            or is_transposing_instrument(active_label)
+            or str(transposing_type or "").strip()
+        )
     except ImportError:
         instrument_is_transposing = bool(str(transposing_type or "").strip())
 
@@ -168,19 +174,8 @@ def render_tone_take_history_section(
         badge = {"best": "✓", "needs_work": "!", "steady": "·"}.get(quality_tag, "·")
 
         with st_module.expander(f"{badge} {summary}"):
-            st_module.markdown(f"**Instrument:** {html.escape(str(row.get('instrument') or '—'))}")
-            if row.get("target_note") or row.get("detected_note"):
-                st_module.markdown(
-                    f"**Target / detected:** "
-                    f"{html.escape(str(row.get('target_note') or '—'))} / "
-                    f"{html.escape(str(row.get('detected_note') or row.get('median_note') or '—'))}"
-                )
-            if row.get("written_note") or row.get("concert_note"):
-                st_module.markdown(
-                    f"**Written / concert:** "
-                    f"{html.escape(str(row.get('written_note') or '—'))} / "
-                    f"{html.escape(str(row.get('concert_note') or '—'))}"
-                )
+            for label, value in tone_take_history_detail_fields(row):
+                st_module.markdown(f"**{html.escape(label)}:** {html.escape(str(value))}")
             st_module.markdown(
                 f"**Pitch report:** {row.get('pitch_stability_score', row.get('pitch_stability', '—'))}% stability · "
                 f"{row.get('mean_cents', row.get('average_cents', 0)):+.0f}¢ avg · "
