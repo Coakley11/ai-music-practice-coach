@@ -11027,6 +11027,13 @@ elif _studio_page == "backing":
     default_groove_style = str(_backing_canon["applied_groove"])
     _backing_song_just_reset = bool(_backing_canon["did_reset"])
 
+    try:
+        from backing_context import reconcile_backing_context_on_backing_page
+
+        reconcile_backing_context_on_backing_page(st.session_state, st_like=st)
+    except Exception:
+        pass
+
     # Seed durable widget keys from canonical before Step 1 widgets render.
     # Practice handoff (_apply_pending_backing_scope) runs later and may override scope/loops.
     try:
@@ -11070,6 +11077,13 @@ elif _studio_page == "backing":
                 "Generate accompaniment matched to your active song — then play along.",
                 page_id="backing",
             )
+        try:
+            from backing_context_ui import render_backing_context_banner, render_backing_context_reset
+
+            render_backing_context_banner(st, st.session_state)
+            render_backing_context_reset(st, st.session_state)
+        except Exception:
+            pass
     # The voice-mode `data-vocal-focus="true"` body attribute is set
     # globally at app init (search for `dataset.vocalFocus` upstream),
     # so the larger-lyric / vocal-focused CSS automatically applies on
@@ -12348,6 +12362,8 @@ elif _studio_page == "creative":
         )
 
     def _improv_open_backing() -> None:
+        from backing_context import open_backing_from_creative
+
         source = st.session_state.get("improv_song_source", "Active song")
         apply_improv_song_source(
             st.session_state,
@@ -12355,7 +12371,12 @@ elif _studio_page == "creative":
             set_catalog_source=set_catalog_source,
             set_custom_source=set_custom_source,
         )
-        _improv_apply_playback_from_style()
+        creative_source = (
+            "mission"
+            if str(st.session_state.get("improv_intelligence_tab") or "") == "Missions"
+            else "entry_jam"
+        )
+        open_backing_from_creative(st.session_state, source=creative_source, st_like=st)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
         navigate_studio_page(st.session_state, "backing")

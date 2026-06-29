@@ -459,6 +459,187 @@ def context_is_stale(session: dict[str, Any]) -> bool:
     return not is_backing_context_valid(session, ctx)
 
 
+def format_backing_context_banner(ctx: BackingContext | None) -> str:
+    if ctx is None:
+        return ""
+    if ctx.source == "regular_song":
+        parts = ["Backing source: Regular song"]
+        if ctx.song_title:
+            parts.append(ctx.song_title)
+        if ctx.display_key:
+            parts.append(ctx.display_key)
+        if ctx.bpm:
+            parts.append(f"{ctx.bpm} BPM")
+        return " · ".join(parts)
+    if ctx.source == "entry_jam":
+        parts = ["Backing source: Entry & Jam"]
+        if ctx.song_title:
+            parts.append(ctx.song_title)
+        if ctx.display_key:
+            parts.append(ctx.display_key)
+        if ctx.bpm:
+            parts.append(f"{ctx.bpm} BPM")
+        return " · ".join(parts)
+    if ctx.source == "mission":
+        label = ctx.mission_id or ctx.progression_label or "Mission"
+        parts = ["Backing source: Mission", label]
+        if ctx.bpm:
+            parts.append(f"{ctx.bpm} BPM")
+        return " · ".join(parts)
+    if ctx.source == "custom_progression":
+        if ctx.progression:
+            prog = "–".join(ctx.progression[:4])
+            return f"Backing source: Custom progression · {prog}"
+        return f"Backing source: Custom progression · {ctx.song_title or 'Custom'}"
+    return f"Backing source: {ctx.source_label}"
+
+
+def apply_backing_context_to_session(
+    session: dict[str, Any],
+    ctx: BackingContext,
+    *,
+    st_like: Any | None = None,
+) -> None:
+    """Single writer: mirror BackingContext into existing backing session keys."""
+    from types import SimpleNamespace
+
+    from backing_track_state import write_canonical_backing_state
+    from custom_progression_lab import (
+        BACKING_AUTOPLAY,
+        PENDING_BACKING_SCOPE,
+        PENDING_BACKING_SINGLE_SECTION,
+    )
+    from songs.bpm_state import request_backing_bpm
+    from songs.key_state import BACKING_NEEDS_REGEN
+    from songs.playback_defaults import (
+        apply_backing_defaults_for_song,
+        playback_song_id,
+        prime_active_song_bpm,
+        request_backing_groove,
+    )
+
+    st_like = st_like or SimpleNamespace(session_state=session)
+
+    if ctx.source == "custom_progression":
+        try:
+            from songs.music_source import set_custom_source
+
+            set_custom_source(session)
+        except ImportError:
+            pass
+    elif ctx.source in {"entry_jam", "mission"}:
+        source = session.get("improv_song_source", "Active song")
+        if source == "Custom progression":
+            try:
+                from songs.music_source import set_custom_source
+
+                set_custom_source(session)
+            except ImportError:
+                pass
+        else:
+            try:
+                from songs.music_source import set_catalog_source
+
+                set_catalog_source(session)
+            except ImportError:
+                pass
+
+    if ctx.display_key:
+        session["display_key"] = ctx.display_key
+
+    is_custom = ctx.source == "custom_progression"
+    song_id = str(ctx.active_song_id or "").strip()
+    if not song_id:
+        song_id = playback_song_id(
+            is_custom=is_custom,
+            song_title=ctx.song_title,
+            song_artist="",
+            custom_name=ctx.song_title if is_custom else "",
+            custom_revision=str(ctx.custom_revision_id or ""),
+        )
+
+    session.pop("last_backing_defaults_song_id", None)
+    prime_active_song_bpm(st_like, sync_id=song_id, active_song_bpm=int(ctx.bpm))
+    request_backing_bpm(st_like, int(ctx.bpm))
+    request_backing_groove(st_like, str(ctx.groove or "Pop groove"))
+    apply_backing_defaults_for_song(
+        st_like,
+        song_id=song_id,
+        default_bpm=int(ctx.bpm),
+        default_groove=str(ctx.groove or "Pop groove"),
+        song_data={"name": ctx.song_title, "bpm": ctx.bpm} if is_custom else None,
+    )
+
+    session["backing_track_bpm"] = int(ctx.bpm)
+    session["backing_groove_style"] = str(ctx.groove or "Pop groove")
+    session["backing_track_loops"] = int(ctx.loops or 2)
+    session["backing_track_scope"] = str(ctx.scope or "Full song")
+    if ctx.section:
+        session["backing_track_single_section"] = ctx.section
+        session[PENDING_BACKING_SCOPE] = "Single section"
+        session[PENDING_BACKING_SINGLE_SECTION] = ctx.section
+    else:
+        session.pop("backing_track_single_section", None)
+        session[PENDING_BACKING_SCOPE] = str(ctx.scope or "Full song")
+        session.pop(PENDING_BACKING_SINGLE_SECTION, None)
+
+    canonical = {
+        "backing_track_bpm": int(ctx.bpm),
+        "backing_groove_style": str(ctx.groove or "Pop groove"),
+        "backing_track_scope": str(ctx.scope or "Full song"),
+        "backing_track_single_section": str(ctx.section or ""),
+        "backing_track_loops": int(ctx.loops or 2),
+    }
+    write_canonical_backing_state(
+        session,
+        canonical,
+        reason=f"backing_context_{ctx.source}",
+    )
+    session[BACKING_NEEDS_REGEN] = True
+    session[BACKING_AUTOPLAY] = True
+
+
+def open_backing_from_creative(
+    session: dict[str, Any],
+    *,
+    source: BackingSource,
+    st_like: Any | None = None,
+) -> BackingContext:
+    """Build, store, and apply Creative backing context."""
+    if source == "mission":
+        ctx = build_mission_context(session)
+    else:
+        ctx = build_entry_jam_context(session)
+    existing = get_backing_context(session)
+    if existing and existing.source_signature == ctx.source_signature and existing.source == ctx.source:
+        ctx.created_at = existing.created_at
+    set_backing_context(session, ctx)
+    apply_backing_context_to_session(session, ctx, st_like=st_like)
+    return ctx
+
+
+def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext:
+    """Clear Creative/custom override and restore active song backing."""
+    clear_backing_context(session)
+    ctx = build_regular_song_context(session)
+    set_backing_context(session, ctx)
+    apply_backing_context_to_session(session, ctx, st_like=st_like)
+    return ctx
+
+
+def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
+    """Re-apply valid non-regular context after backing page canonical reset."""
+    ctx = get_backing_context(session)
+    if ctx is None:
+        return
+    if ctx.source == "regular_song":
+        return
+    if not is_backing_context_valid(session, ctx):
+        clear_backing_context(session)
+        return
+    apply_backing_context_to_session(session, ctx, st_like=st_like)
+
+
 __all__ = [
     "BACKING_CONTEXT_KEY",
     "BackingContext",
@@ -476,5 +657,9 @@ __all__ = [
     "invalidate_if_song_changed",
     "is_backing_context_valid",
     "refresh_backing_context_timestamps",
-    "set_backing_context",
+    "apply_backing_context_to_session",
+    "format_backing_context_banner",
+    "open_backing_from_creative",
+    "reconcile_backing_context_on_backing_page",
+    "restore_regular_song_backing",
 ]

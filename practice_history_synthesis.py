@@ -135,8 +135,30 @@ def _format_tone_cents_phrase(cents: Any, *, role: str = "recent avg") -> str:
     return f"{role} **{value:.1f}** cents"
 
 
-def _format_tone_trend_line(trend: dict[str, Any]) -> str:
-    instrument = format_instrument_display_name(trend.get("instrument"))
+def _plural(count: int, singular: str, plural: str | None = None) -> str:
+    word = singular if int(count) == 1 else (plural or f"{singular}s")
+    return f"{int(count)} {word}"
+
+
+def _join_natural(items: list[str]) -> str:
+    cleaned = [str(x).strip() for x in items if str(x).strip()]
+    if not cleaned:
+        return ""
+    if len(cleaned) == 1:
+        return cleaned[0]
+    if len(cleaned) == 2:
+        return f"{cleaned[0]} and {cleaned[1]}"
+    return ", ".join(cleaned[:-1]) + f", and {cleaned[-1]}"
+
+
+def _format_tone_trend_line(trend: dict[str, Any], *, payload: dict[str, Any] | None = None) -> str:
+    top_inst = format_instrument_display_name(
+        _top_instrument_from_payload(payload or {}),
+        payload=payload,
+    )
+    instrument = format_instrument_display_name(trend.get("instrument"), payload=payload)
+    if instrument.lower() == "saxophone" and top_inst.lower() != "saxophone":
+        instrument = top_inst
     note = _format_written_note(trend.get("note") or trend.get("written_note") or trend.get("target_note"))
     if _tone_trend_unreliable(trend):
         return (
@@ -820,7 +842,7 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
     if pl.get("entry_count_total"):
         mins = sum(int(r.get("duration_minutes") or 0) for r in recent_logs if isinstance(r, dict))
         activity_lines.append(
-            f"You logged **{pl['entry_count_total']}** session(s) totaling about **{mins}** minutes."
+            f"You logged **{_plural(int(pl['entry_count_total']), 'session')}** totaling about **{mins}** minutes."
         )
     if pl.get("focus_area_counts"):
         focus_labels = []
@@ -858,7 +880,7 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
     for trend in tone_trends[:3]:
         if not isinstance(trend, dict):
             continue
-        tone_lines.append(_format_tone_trend_line(trend))
+        tone_lines.append(_format_tone_trend_line(trend, payload=payload))
     best = th.get("best_pitch_stability") or []
     if best and not tone_lines:
         row = best[0] if isinstance(best[0], dict) else {}
@@ -873,7 +895,7 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
     focus_tone = any("tone" in str(k).lower() for k in (pl.get("focus_area_counts") or {}))
     if focus_tone and th.get("tone_take_count_total"):
         cross_lines.append(
-            f"Your logs emphasize **tone** and you saved **{th['tone_take_count_total']}** tone take(s) — "
+            f"Your logs emphasize **tone** and you saved **{_plural(int(th['tone_take_count_total']), 'tone take')}** — "
             "isolated long-tone work is showing up in your evidence."
         )
     if ua.get("analysis_count_total") and th.get("tone_take_count_total"):
@@ -1093,8 +1115,8 @@ def _build_coach_executive_summary(payload: dict[str, Any]) -> str:
             if token and token not in weaknesses:
                 weaknesses.append(token)
     if strengths or weaknesses:
-        strength_text = ", ".join(strengths[:2]) if strengths else "steady playing"
-        weakness_text = ", ".join(weaknesses[:2]) if weaknesses else "consistency"
+        strength_text = _join_natural(strengths[:2]) if strengths else "steady playing"
+        weakness_text = _join_natural(weaknesses[:2]) if weaknesses else "consistency"
         sentences.append(
             f"Upload Analysis shows {strength_text} as strengths, while {weakness_text} are the main areas to improve."
         )

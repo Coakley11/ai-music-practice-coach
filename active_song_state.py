@@ -1053,6 +1053,8 @@ def write_canonical_active_song_state(
     apply_global_controls_to_session: bool | None = None,
 ) -> dict[str, Any]:
     """Single write path for active song context."""
+    old_meta = session.get(ACTIVE_SONG_STATE_KEY)
+    old_pick = str(old_meta.get("pick_key") or "").strip() if isinstance(old_meta, dict) else ""
     ctx = write_canonical_active_song_blob_only(
         session,
         context,
@@ -1075,6 +1077,14 @@ def write_canonical_active_song_state(
         apply_global_controls=apply_global_controls_to_session,
         global_control_source=reason or "canonical_write",
     )
+    new_pick = str(ctx.get("pick_key") or "").strip()
+    if old_pick and new_pick and old_pick != new_pick:
+        try:
+            from backing_context import invalidate_if_song_changed
+
+            invalidate_if_song_changed(session, new_pick)
+        except ImportError:
+            pass
     return ctx
 
 

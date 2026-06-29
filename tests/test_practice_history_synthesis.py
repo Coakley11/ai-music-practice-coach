@@ -541,11 +541,48 @@ class TestPracticeReportPolish(unittest.TestCase):
                 "note": "F#4",
                 "recent_mean_cents": 250.0,
                 "older_mean_cents": 240.0,
-            }
+            },
+            payload={},
         )
         self.assertIn("Tenor Saxophone F#/Gb", line)
         self.assertNotIn(".).", line)
-        self.assertIn("wrong note or octave", line)
+        self.assertIn("wrong note or octave.", line)
+
+    def test_tone_line_upgrades_generic_saxophone_from_payload(self) -> None:
+        from practice_history_synthesis import _format_tone_trend_line
+
+        payload = {
+            "practice_log_summary": {
+                "practice_time_by_instrument": {"Tenor Saxophone": 60},
+            },
+            "tone_history_summary": {
+                "improvement_trends": [{"instrument": "Saxophone", "note": "F#4", "recent_mean_cents": 200.0}],
+            },
+        }
+        line = _format_tone_trend_line(
+            {"instrument": "Saxophone", "note": "F#4", "recent_mean_cents": 200.0},
+            payload=payload,
+        )
+        self.assertIn("Tenor Saxophone F#/Gb", line)
+        self.assertTrue(line.startswith("**Tenor Saxophone F#/Gb"))
+        self.assertNotRegex(line, r"^\*\*Saxophone F#/Gb\b")
+
+    def test_coach_summary_uses_natural_and(self) -> None:
+        from practice_history_synthesis import _build_coach_executive_summary
+
+        summary = _build_coach_executive_summary(
+            {
+                "practice_log_summary": {"entry_count_total": 2, "recent_entries": [{"duration_minutes": 30}]},
+                "upload_analysis_summary": {
+                    "recent_analyses": [
+                        {"strengths": ["timing", "musicality"], "weaknesses": ["pitch", "tone"]},
+                    ],
+                },
+                "tone_history_summary": {},
+            }
+        )
+        self.assertIn("timing and musicality", summary)
+        self.assertIn("pitch and tone", summary)
 
     def test_thirty_minute_plan_has_five_steps(self) -> None:
         from practice_history_synthesis import _build_thirty_minute_plan
