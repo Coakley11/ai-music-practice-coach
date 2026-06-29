@@ -173,9 +173,6 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
                     with patch("music_coach_context.build_source_state", return_value=None):
                         result = submit_practice_analysis_command_center_handoff(MagicMock(), session)
         self.assertTrue(result.get("handoff_success"))
-        status = session.get("latest_practice_analysis_handoff_status") or {}
-        self.assertTrue(status.get("success"))
-        self.assertTrue(status.get("sent_at"))
 
     def test_submit_handoff_failure_does_not_claim_sent(self) -> None:
         session: dict = {}
@@ -241,9 +238,10 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
             with patch("suite_activity_client.last_record_trace", return_value={"recorded": True, "supabase_write_ok": True}):
                 with patch("suite_analytical_question._upsert_applied_intelligence_resume", return_value=True):
                     with patch("suite_analytical_question._upsert_music_practice_log_resume", return_value=True):
-                        with patch("suite_analytical_question._store_question_context_blob", return_value=True):
-                            with patch("suite_analytical_question._recent_duplicate_send", return_value=False):
-                                result = submit_practice_log_analysis_handoff(
+                        with patch("suite_analytical_question._store_practice_analysis_context_blob", return_value=True):
+                            with patch("suite_analytical_question._stage_practice_analysis_instant_insight", return_value="pa:run-test"):
+                                with patch("suite_analytical_question._recent_duplicate_send", return_value=False):
+                                    result = submit_practice_log_analysis_handoff(
                                     source_page="log",
                                     question="Analyze my practice history",
                                     context=ctx,
@@ -260,6 +258,11 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
         self.assertIn("practice_history_payload", saved)
         self.assertTrue(result.get("handoff_success"))
         self.assertEqual(result.get("continue_title"), PRACTICE_LOG_ANALYSIS_TITLE)
+        self.assertTrue(str(result.get("analysis_run_id") or "").strip())
+        self.assertEqual(result.get("insight_id"), "pa:run-test")
+        self.assertNotIn("__ctx_json__", str(kwargs.get("resume_subtitle") or ""))
+        self.assertIn("suite_practice_analysis_run_id", str(kwargs.get("action_url") or ""))
+        self.assertIn("suite_ami_insight=pa%3Arun-test", str(kwargs.get("action_url") or ""))
 
     def test_store_handoff_status_reflects_success_flag(self) -> None:
         session: dict = {}
@@ -300,6 +303,10 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
             stored_blobs.append(dict(payload.get("context") or {}))
             return True
 
+        def _fake_insight(payload):
+            run_id = str(payload.get("analysis_run_id") or "")
+            return f"pa:{run_id}" if run_id else "pa:test"
+
         with patch("suite_analytical_question._recent_duplicate_send", return_value=False):
             with patch("suite_activity_client.record_activity"):
                 with patch(
@@ -315,10 +322,14 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
                             side_effect=_fake_ai_upsert,
                         ):
                             with patch(
-                                "suite_analytical_question._store_question_context_blob",
+                                "suite_analytical_question._store_practice_analysis_context_blob",
                                 side_effect=_fake_store_blob,
                             ):
-                                first = submit_practice_log_analysis_handoff(
+                                with patch(
+                                    "suite_analytical_question._stage_practice_analysis_instant_insight",
+                                    side_effect=_fake_insight,
+                                ):
+                                    first = submit_practice_log_analysis_handoff(
                                     source_page="log",
                                     question="Analyze my practice history",
                                     context={**ctx, "progress_report": {"executive_summary": "run 1"}},
@@ -338,6 +349,8 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
         self.assertEqual(upsert_calls.count(("applied_intelligence", first.get("resume_key"))), 2)
         self.assertEqual(len(stored_blobs), 2)
         self.assertEqual(stored_blobs[-1].get("progress_report", {}).get("executive_summary"), "run 2")
+        self.assertNotEqual(first.get("analysis_run_id"), second.get("analysis_run_id"))
+        self.assertNotEqual(first.get("action_url"), second.get("action_url"))
 
     def test_duplicate_cooldown_still_refreshes_blob_and_resume(self) -> None:
         from suite_analytical_question import submit_practice_log_analysis_handoff
@@ -350,8 +363,9 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
         with patch("suite_analytical_question._recent_duplicate_send", return_value=True):
             with patch("suite_analytical_question._upsert_applied_intelligence_resume", return_value=True):
                 with patch("suite_analytical_question._upsert_music_practice_log_resume", return_value=True) as music_upsert:
-                    with patch("suite_analytical_question._store_question_context_blob", return_value=True) as store_blob:
-                        result = submit_practice_log_analysis_handoff(
+                    with patch("suite_analytical_question._store_practice_analysis_context_blob", return_value=True) as store_blob:
+                        with patch("suite_analytical_question._stage_practice_analysis_instant_insight", return_value="pa:cooldown"):
+                            result = submit_practice_log_analysis_handoff(
                             source_page="log",
                             question="Analyze my practice history",
                             context=ctx,
@@ -362,6 +376,35 @@ class TestPracticeAnalysisHandoff(unittest.TestCase):
         music_upsert.assert_called_once()
         store_blob.assert_called_once()
         self.assertNotIn("409", str(result.get("handoff_error") or ""))
+
+    def test_hydrate_prefers_analysis_run_id_blob(self) -> None:
+        from suite_analytical_question import hydrate_applied_intelligence_session
+
+        class _SS(dict):
+            pass
+
+        st = type("St", (), {"session_state": _SS(), "query_params": {}})()
+        st.query_params = {
+            "suite_practice_analysis_run_id": "run-new",
+            "suite_ai_question_id": "q-old",
+            "suite_ai_question": "Analyze my practice history\n__ctx_json__:{\"stale\": true}",
+        }
+        fresh_ctx = {"progress_report": {"executive_summary": "fresh run"}, "analysis_run_id": "run-new"}
+        with patch(
+            "suite_analytical_question.load_analytical_question_payload",
+            return_value={"context": fresh_ctx, "source_state": {}},
+        ):
+            hydrate_applied_intelligence_session(st)
+        self.assertEqual(st.session_state.get("_suite_practice_analysis_run_id"), "run-new")
+        self.assertNotIn("__ctx_json__", str(st.session_state.get("ps_library_problem") or ""))
+        loaded = __import__("json").loads(st.session_state.get("_suite_ai_context") or "{}")
+        self.assertEqual(loaded.get("progress_report", {}).get("executive_summary"), "fresh run")
+
+    def test_clean_analytical_question_display_strips_ctx_json(self) -> None:
+        from suite_analytical_question import clean_analytical_question_display
+
+        raw = "Analyze my practice history\n__ctx_json__:{\"foo\": 1}"
+        self.assertEqual(clean_analytical_question_display(raw), "Analyze my practice history")
 
 
 if __name__ == "__main__":

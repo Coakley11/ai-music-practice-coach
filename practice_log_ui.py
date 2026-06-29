@@ -185,6 +185,12 @@ def render_practice_log_diagnostics(
         st.text(f"activity error: {trace.get('error') or cc.get('error')}")
         st.text(f"question_id: {handoff.get('question_id')}")
         st.text(f"continue resume key: {handoff.get('resume_key')}")
+        st.text(f"latest analysis_run_id: {cc.get('analysis_run_id')}")
+        st.text(f"latest context blob id: {cc.get('context_blob_id')}")
+        st.text(f"action_url: {cc.get('action_url')}")
+        st.text(f"updated_at: {cc.get('updated_at')}")
+        st.text(f"AMI insight id: {cc.get('insight_id')}")
+        st.text(f"AMI restore id loaded: {session_state.get('_suite_ai_hydrate_ami_insight')}")
         st.text(f"payload session count: {handoff.get('session_count')}")
 
         st.markdown("**Analyze My Practice — AMI synthesis**")

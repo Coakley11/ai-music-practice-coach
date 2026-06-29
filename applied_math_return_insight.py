@@ -1497,8 +1497,18 @@ def load_applied_math_insight(insight_id: str, *, source_app: str = "") -> dict[
     return best
 
 
-def load_applied_math_insight_for_question(question_id: str, *, source_app: str = "") -> dict[str, Any]:
-    """Load the stored insight tied to a question_id (instant / canonical answer)."""
+def load_applied_math_insight_for_question(
+    question_id: str,
+    *,
+    source_app: str = "",
+    analysis_run_id: str = "",
+) -> dict[str, Any]:
+    """Load the stored insight tied to a question_id or practice analysis run."""
+    run_id = str(analysis_run_id or "").strip()
+    if run_id:
+        loaded = load_applied_math_insight(f"pa:{run_id}", source_app=source_app)
+        if loaded:
+            return loaded
     qid = str(question_id or "").strip()
     if not qid:
         return {}

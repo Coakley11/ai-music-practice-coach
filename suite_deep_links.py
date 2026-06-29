@@ -306,9 +306,14 @@ def build_resume_action_url(
         area = str(m.get("quant_area") or m.get("area") or "").strip()
         if area:
             params["suite_ai_area"] = area[:40]
+        run_id = str(m.get("analysis_run_id") or "").strip()
+        if run_id:
+            params["suite_practice_analysis_run_id"] = run_id[:40]
         ctx = str(m.get("context_summary") or "").strip()
         ctx_json = str(m.get("context_json") or "").strip()
-        if qid:
+        if run_id:
+            params["suite_ai_context"] = ""
+        elif qid:
             params["suite_ai_context"] = ctx_json[:400] if ctx_json else ""
         elif ctx_json:
             params["suite_ai_context"] = ctx_json[:800]
@@ -397,7 +402,16 @@ def resume_metrics_from_item_key(app: str, item_key: str, *, subtitle: str = "")
         elif key.startswith("future:"):
             page = page or "skills"
     elif app_key == "applied_intelligence":
-        if key.startswith("ai:question:"):
+        if key.startswith("ai:practice_log_analysis:"):
+            page = "Solve a Problem"
+            qid = key.split(":", 2)[-1].strip() if key.count(":") >= 2 else ""
+            if qid:
+                metrics["question_id"] = qid
+                metrics["dedupe_fingerprint"] = qid
+            if subtitle:
+                metrics["question"] = "Music Practice Log Analysis"
+                metrics["context_summary"] = subtitle.split("\n__ctx_json__:", 1)[0].strip()
+        elif key.startswith("ai:question:"):
             page = "Solve a Problem"
             qid = key.split(":", 2)[-1].strip() if key.count(":") >= 2 else ""
             if qid:

@@ -50,9 +50,10 @@ class TestPracticeLogAnalysisHandoff(unittest.TestCase):
             with unittest.mock.patch("suite_activity_client.last_record_trace", return_value={"recorded": True}):
                 with unittest.mock.patch("suite_analytical_question._upsert_applied_intelligence_resume", return_value=True):
                     with unittest.mock.patch("suite_analytical_question._upsert_music_practice_log_resume", return_value=True):
-                        with unittest.mock.patch("suite_analytical_question._store_question_context_blob", return_value=True):
-                            with unittest.mock.patch("suite_analytical_question._recent_duplicate_send", return_value=False):
-                                result = submit_practice_log_analysis_handoff(
+                        with unittest.mock.patch("suite_analytical_question._store_practice_analysis_context_blob", return_value=True):
+                            with unittest.mock.patch("suite_analytical_question._stage_practice_analysis_instant_insight", return_value="pa:ami-test"):
+                                with unittest.mock.patch("suite_analytical_question._recent_duplicate_send", return_value=False):
+                                    result = submit_practice_log_analysis_handoff(
                                 source_page="log",
                                 question="Analyze my practice history",
                                 context=ctx,

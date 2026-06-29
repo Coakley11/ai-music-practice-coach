@@ -11,6 +11,16 @@ LATEST_PRACTICE_ANALYSIS_HANDOFF_STATUS_KEY = "latest_practice_analysis_handoff_
 
 __all__ = ["render_practice_analysis_panel"]
 
+_PRACTICE_ANALYSIS_SECTIONS: tuple[tuple[str, str], ...] = (
+    ("Practice Summary", "practice_summary"),
+    ("Improvement Notes", "improvement_notes"),
+    ("Upload / Recording Review", "upload_recording_review"),
+    ("Tone & Tuner Notes", "tone_tuner_notes"),
+    ("Recommended Next Session", "recommended_next_session"),
+    ("Recommended Focus This Week", "recommended_focus_this_week"),
+    ("Evidence Used", "evidence_used"),
+)
+
 
 def render_practice_analysis_panel(st: Any, session_state: dict[str, Any]) -> None:
     """Visible Practice Analysis panel — concise local summary after Analyze My Practice."""
@@ -42,18 +52,10 @@ def render_practice_analysis_panel(st: Any, session_state: dict[str, Any]) -> No
             err = str(handoff.get("error") or "handoff did not complete").strip()
             st.warning(f"Command Center handoff did not complete. {err}")
 
-        sections: tuple[tuple[str, str], ...] = (
-            ("Practice Summary", "practice_summary"),
-            ("Improvement Notes", "improvement_notes"),
-            ("Upload / Recording Review", "upload_recording_review"),
-            ("Tone & Tuner Notes", "tone_tuner_notes"),
-            ("Recommended Next Session", "recommended_next_session"),
-            ("Recommended Focus This Week", "recommended_focus_this_week"),
-            ("Evidence Used", "evidence_used"),
-        )
-        for heading, key in sections:
+        for heading, key in _PRACTICE_ANALYSIS_SECTIONS:
             text = str(summary.get(key) or "").strip()
             if not text:
                 continue
-            st.markdown(f"**{heading}**")
-            st.markdown(text)
+            with st.container(border=True):
+                st.markdown(f"**{heading}**")
+                st.markdown(text)

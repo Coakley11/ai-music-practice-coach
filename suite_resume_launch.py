@@ -346,7 +346,15 @@ def _apply_applied_intelligence(st: Any, page: str) -> None:
             ("suite_ai_source_page", "_suite_ai_source_page"),
             ("suite_ai_area", "_suite_ai_area"),
             ("suite_ai_question_id", "_suite_ai_question_id"),
+            ("suite_practice_analysis_run_id", "_suite_practice_analysis_run_id"),
+            ("suite_ami_insight", "_suite_ami_insight"),
         ):
             val = _qp_get(st, qp)
             if val:
                 st.session_state[key] = val
+    try:
+        from applied_math_return_insight import apply_ami_insight_from_query
+
+        apply_ami_insight_from_query(st, "applied_intelligence")
+    except Exception:
+        pass
