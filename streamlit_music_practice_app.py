@@ -249,6 +249,7 @@ from songs.meter_state import (
     apply_backing_meter_for_song,
 )
 from tuner_tone_ui import render_tuner_tone_section, tuner_key_prefix_for_song
+from practice_metronome import render_metronome_widget
 from practice_setup_controls import (
     DEFAULT_INSTRUMENT_OPTIONS,
     focus_options_for_instrument,
@@ -2097,186 +2098,6 @@ def render_abc(abc_text):
         scrolling=True
     )
 
-
-def render_metronome_widget(
-    default_bpm=100,
-    default_signature="4/4",
-    *,
-    section_bars: int = 0,
-    section_label: str = "",
-    loop_section: bool = False,
-):
-    _timing = meter_timing(int(default_bpm), default_signature)
-    config = json.dumps({
-        "bpm": int(default_bpm),
-        "signature": default_signature,
-        "pulseIntervalMs": int(_timing.pulse_sec * 1000),
-        "beatsPerMeasure": _timing.pulses_per_bar,
-        "accentBeats": metronome_accents(default_signature),
-        "sectionBars": int(section_bars) if loop_section and section_bars > 0 else 0,
-        "sectionLabel": section_label or "",
-    })
-    loop_note = ""
-    if loop_section and section_bars > 0 and section_label:
-        loop_note = (
-            f"<p style='margin:0 0 8px 0;color:#166534;font-weight:650;'>"
-            f"Section loop: <strong>{html.escape(section_label)}</strong> "
-            f"({section_bars} bar{'s' if section_bars != 1 else ''}) — metronome resets after each pass.</p>"
-        )
-    widget_html = f"""
-    <div id="metro-root" style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; border:1px solid #ddd; border-radius:12px; padding:14px; max-width:760px;">
-      <h4 style="margin:0 0 10px 0;">Practice Metronome</h4>
-      {loop_note}
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:end;">
-        <label>BPM<br><input id="metro-bpm" type="range" min="40" max="240" value="{default_bpm}" style="width:220px;"></label>
-        <div><strong id="metro-bpm-label">{default_bpm}</strong> BPM</div>
-        <label>Time signature<br>
-          <select id="metro-sig">
-            <option>2/4</option><option>3/4</option><option selected>4/4</option>
-            <option>6/8</option><option>3/8</option><option>5/4</option><option>7/8</option>
-          </select>
-        </label>
-        <button id="metro-start" style="padding:8px 14px;">Start Metronome</button>
-        <button id="metro-stop" style="padding:8px 14px;">Stop Metronome</button>
-      </div>
-      <div style="margin-top:12px;">
-        <div>Beat: <strong id="metro-beat">-</strong> / <span id="metro-beats-per-measure">4</span> | Measure: <strong id="metro-measure">0</strong></div>
-        <div id="metro-dots" style="display:flex; gap:8px; margin-top:10px;"></div>
-      </div>
-      <p style="margin:10px 0 0 0; color:#666; font-size:13px;">First beat is accented higher/louder; other beats are softer/lower. Audio starts after pressing Start.</p>
-    </div>
-    <script>
-    (() => {{
-      const cfg = {config};
-      const bpmInput = document.getElementById("metro-bpm");
-      const bpmLabel = document.getElementById("metro-bpm-label");
-      const sigSelect = document.getElementById("metro-sig");
-      const beatEl = document.getElementById("metro-beat");
-      const measureEl = document.getElementById("metro-measure");
-      const beatsPerEl = document.getElementById("metro-beats-per-measure");
-      const dotsEl = document.getElementById("metro-dots");
-      let ctx = null;
-      let timer = null;
-      let beat = 0;
-      let measure = 0;
-
-      bpmInput.value = cfg.bpm;
-      bpmLabel.textContent = cfg.bpm;
-      sigSelect.value = cfg.signature;
-
-      function beatsPerMeasure() {{
-        if (cfg.beatsPerMeasure) return cfg.beatsPerMeasure;
-        return parseInt(sigSelect.value.split("/")[0], 10);
-      }}
-
-      function tickIntervalMs() {{
-        if (cfg.pulseIntervalMs) return cfg.pulseIntervalMs;
-        return 60000 / parseInt(bpmInput.value, 10);
-      }}
-
-      function isAccentBeat(n) {{
-        const accents = cfg.accentBeats || [1];
-        return accents.includes(n);
-      }}
-
-      function drawDots(activeBeat) {{
-        const beats = beatsPerMeasure();
-        beatsPerEl.textContent = beats;
-        dotsEl.innerHTML = "";
-        for (let i = 1; i <= beats; i++) {{
-          const dot = document.createElement("div");
-          dot.textContent = i;
-          dot.style.width = "34px";
-          dot.style.height = "34px";
-          dot.style.borderRadius = "50%";
-          dot.style.display = "flex";
-          dot.style.alignItems = "center";
-          dot.style.justifyContent = "center";
-          dot.style.border = "1px solid #aaa";
-          dot.style.background = i === activeBeat ? (i === 1 ? "#ffcc66" : "#b7e4ff") : "#f5f5f5";
-          dot.style.fontWeight = i === activeBeat ? "700" : "400";
-          dotsEl.appendChild(dot);
-        }}
-      }}
-
-      function click(accent) {{
-        if (!ctx) return;
-        const now = ctx.currentTime;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.frequency.value = accent ? 1180 : 760;
-        gain.gain.setValueAtTime(accent ? 0.42 : 0.20, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.08);
-      }}
-
-      function tick() {{
-        const beats = beatsPerMeasure();
-        beat += 1;
-        if (beat > beats) {{
-          beat = 1;
-          measure += 1;
-          if (cfg.sectionBars > 0 && measure > cfg.sectionBars) {{
-            measure = 1;
-          }}
-        }}
-        click(isAccentBeat(beat));
-        beatEl.textContent = beat;
-        measureEl.textContent = measure;
-        drawDots(beat);
-      }}
-
-      function start() {{
-        stop();
-        ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
-        beat = 0;
-        measure = 1;
-        tick();
-        const intervalMs = tickIntervalMs();
-        timer = setInterval(tick, intervalMs);
-      }}
-
-      function stop() {{
-        if (timer) clearInterval(timer);
-        timer = null;
-        beat = 0;
-        measure = 0;
-        beatEl.textContent = "-";
-        measureEl.textContent = "0";
-        drawDots(0);
-      }}
-
-      bpmInput.addEventListener("input", () => {{
-        bpmLabel.textContent = bpmInput.value;
-        if (timer) start();
-      }});
-      sigSelect.addEventListener("change", () => {{
-        const sig = sigSelect.value;
-        const num = parseInt(sig.split("/")[0], 10) || 4;
-        const den = parseInt(sig.split("/")[1], 10) || 4;
-        const bpmVal = parseInt(bpmInput.value, 10) || 100;
-        if (den === 8 && num % 3 === 0 && num >= 6) {{
-          cfg.pulseIntervalMs = Math.round((2 * (60000 / bpmVal)) / num);
-          cfg.beatsPerMeasure = num;
-          cfg.accentBeats = num === 6 ? [1, 4] : [1, 4, 7, 10];
-        }} else {{
-          cfg.pulseIntervalMs = Math.round((60000 / bpmVal) * (4 / den));
-          cfg.beatsPerMeasure = num;
-          cfg.accentBeats = [1];
-        }}
-        if (timer) start();
-        else drawDots(0);
-      }});
-      document.getElementById("metro-start").addEventListener("click", start);
-      document.getElementById("metro-stop").addEventListener("click", stop);
-      drawDots(0);
-    }})();
-    </script>
-    """
-    components.html(widget_html, height=230)
 
 def build_abc(song_name, sections):
 
@@ -10305,9 +10126,12 @@ if _studio_page == "practice":
             "Chart / TAB",
             "Lyrics",
             "Transpose / Instrument",
-            "Tone / Tuner",
+            "Tuner, Tone & Metronome",
         ]
     )
+
+    _metro_section_bars = _section_bar_count if (_active_section and not _is_full_song) else 0
+    _metro_loop = bool(_active_section and not _is_full_song and _metro_section_bars > 0)
 
     with _tab_tone:
         render_tuner_tone_section(
@@ -10315,16 +10139,23 @@ if _studio_page == "practice":
             instrument=instrument,
             display_key=chart_key,
             key_prefix=tuner_key_prefix_for_song(song),
+            metronome_bpm=_practice_bpm,
+            metronome_signature=_time_sig,
+            metronome_section_bars=_metro_section_bars,
+            metronome_section_label=_active_section or "",
+            metronome_loop_section=_metro_loop,
         )
 
     with _tab_timing:
         if _is_full_song:
             render_metronome_widget(
+                st,
                 default_bpm=_practice_bpm,
                 default_signature=_time_sig,
             )
         elif _active_section:
             render_metronome_widget(
+                st,
                 default_bpm=_practice_bpm,
                 default_signature=_time_sig,
                 section_bars=_section_bar_count,

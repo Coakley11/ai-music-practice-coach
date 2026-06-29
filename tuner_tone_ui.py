@@ -125,8 +125,13 @@ def render_tuner_tone_section(
     instrument: str,
     display_key: str,
     key_prefix: str = "practice_tuner",
+    metronome_bpm: int | None = None,
+    metronome_signature: str = "4/4",
+    metronome_section_bars: int = 0,
+    metronome_section_label: str = "",
+    metronome_loop_section: bool = False,
 ) -> None:
-    """Collapsible Tuner & Tone Development block for the Practice page."""
+    """Collapsible Tuner, Tone & Metronome block for the Practice page."""
     if "::" in key_prefix:
         parts = key_prefix.split("::", 1)
         key_prefix = tuner_key_prefix_for_song(parts[-1] if len(parts) > 1 else "song")
@@ -142,7 +147,22 @@ def render_tuner_tone_section(
 
     profile = _profile_for_instrument(instrument, sax_type=transposing_type)
 
-    with st_module.expander("🎵 Tuner & Tone Development", expanded=False):
+    expander_title = "🎵 Tuner, Tone & Metronome"
+    with st_module.expander(expander_title, expanded=False):
+        if metronome_bpm is not None:
+            from practice_metronome import render_metronome_widget
+
+            render_metronome_widget(
+                st_module,
+                default_bpm=int(metronome_bpm),
+                default_signature=str(metronome_signature or "4/4"),
+                section_bars=int(metronome_section_bars or 0),
+                section_label=str(metronome_section_label or ""),
+                loop_section=bool(metronome_loop_section),
+                compact=True,
+            )
+            st_module.markdown("---")
+
         st_module.caption(profile.hint)
         if profile.tone_focus:
             st_module.markdown(
