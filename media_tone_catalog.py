@@ -82,6 +82,12 @@ CHROMATIC_NOTE_OPTIONS: tuple[str, ...] = (
     "B",
 )
 
+TONE_HISTORY_NOTE_FILTER_ALL = "All notes"
+TONE_HISTORY_NOTE_FILTER_OPTIONS: tuple[str, ...] = (TONE_HISTORY_NOTE_FILTER_ALL,) + CHROMATIC_NOTE_OPTIONS
+NOTE_FILTER_MODE_PLAYER = "Player-facing note"
+NOTE_FILTER_MODE_CONCERT = "Concert pitch"
+NOTE_FILTER_MODE_OPTIONS: tuple[str, ...] = (NOTE_FILTER_MODE_PLAYER, NOTE_FILTER_MODE_CONCERT)
+
 DEFAULT_TONE_PRACTICE_OCTAVE = 4
 
 
@@ -345,32 +351,111 @@ def build_tone_take_fields(
 
 
 def _note_filter_tokens(note_filter: str) -> list[str]:
-    text = str(note_filter or "").strip().lower()
-    if not text:
+    text = str(note_filter or "").strip()
+    if not text or text == TONE_HISTORY_NOTE_FILTER_ALL:
         return []
-    parts = [text]
+    parts = [text.lower()]
     if "/" in text:
-        parts.extend(p.strip() for p in text.split("/") if p.strip())
+        parts.extend(p.strip().lower() for p in text.split("/") if p.strip())
     return parts
 
 
-def note_filter_matches_row(row: dict[str, Any], note_filter: str) -> bool:
+def is_transposing_tone_take(row: dict[str, Any]) -> bool:
+    """True when the take stores separate written vs concert pitch context."""
+    row = migrate_tone_take(row)
+    if str(row.get("transposing_type") or "").strip():
+        return True
+    written = str(row.get("written_note") or "").strip()
+    concert = str(row.get("concert_note") or "").strip()
+    if written and concert:
+        return _note_pitch_class(written) != _note_pitch_class(concert)
+    return False
+
+
+def _pitch_class_matches_option(field_value: str, note_filter: str) -> bool:
+    if not field_value or not note_filter or note_filter == TONE_HISTORY_NOTE_FILTER_ALL:
+        return False
     tokens = _note_filter_tokens(note_filter)
     if not tokens:
+        return False
+    val_low = field_value.lower()
+    pc = _note_pitch_class(field_value).lower()
+    return any(token == pc or token in val_low for token in tokens)
+
+
+def _selected_pitch_class_matches(row: dict[str, Any], note_filter: str) -> bool:
+    selected_pc = str(row.get("selected_pitch_class") or "").strip()
+    if not selected_pc:
+        return False
+    return _pitch_class_matches_option(selected_pc, note_filter)
+
+
+def note_filter_matches_row(
+    row: dict[str, Any],
+    note_filter: str,
+    *,
+    filter_mode: str = NOTE_FILTER_MODE_PLAYER,
+    current_instrument_is_transposing: bool = False,
+    all_instruments_view: bool = False,
+) -> bool:
+    if not note_filter or note_filter == TONE_HISTORY_NOTE_FILTER_ALL:
         return True
-    selected_pc = str(row.get("selected_pitch_class") or "").lower()
-    if selected_pc and any(t in selected_pc or selected_pc in t for t in tokens):
-        return True
-    for key in ("written_note", "concert_note", "target_note", "detected_note", "median_note"):
-        val = str(row.get(key) or "")
-        if not val:
-            continue
-        val_low = val.lower()
-        pc = _note_pitch_class(val).lower()
-        for token in tokens:
-            if token in val_low or token == pc:
-                return True
-    return False
+
+    row = migrate_tone_take(row)
+    transposing_take = is_transposing_tone_take(row)
+
+    if all_instruments_view and filter_mode == NOTE_FILTER_MODE_CONCERT:
+        return _pitch_class_matches_option(str(row.get("concert_note") or ""), note_filter)
+
+    if all_instruments_view:
+        if transposing_take:
+            return (
+                _pitch_class_matches_option(str(row.get("written_note") or ""), note_filter)
+                or _pitch_class_matches_option(str(row.get("target_note") or ""), note_filter)
+                or _selected_pitch_class_matches(row, note_filter)
+            )
+        return (
+            _pitch_class_matches_option(str(row.get("concert_note") or ""), note_filter)
+            or _pitch_class_matches_option(str(row.get("target_note") or ""), note_filter)
+            or _selected_pitch_class_matches(row, note_filter)
+        )
+
+    if current_instrument_is_transposing:
+        return (
+            _pitch_class_matches_option(str(row.get("written_note") or ""), note_filter)
+            or _pitch_class_matches_option(str(row.get("target_note") or ""), note_filter)
+            or _selected_pitch_class_matches(row, note_filter)
+        )
+
+    return (
+        _pitch_class_matches_option(str(row.get("concert_note") or ""), note_filter)
+        or _pitch_class_matches_option(str(row.get("target_note") or ""), note_filter)
+        or _selected_pitch_class_matches(row, note_filter)
+    )
+
+
+def tone_history_note_filter_label(*, all_instruments_view: bool, instrument_is_transposing: bool) -> str:
+    if all_instruments_view:
+        return "Filter by note"
+    if instrument_is_transposing:
+        return "Filter by written note"
+    return "Filter by concert note"
+
+
+def tone_take_row_note_part(row: dict[str, Any]) -> str:
+    row = migrate_tone_take(row)
+    written = str(row.get("written_note") or "")
+    concert = str(row.get("concert_note") or "")
+    selected_pc = str(row.get("selected_pitch_class") or "").strip()
+
+    if is_transposing_tone_take(row) and written and concert:
+        w_label = selected_pc or _note_pitch_class(written)
+        return f"written {w_label} / concert {_note_pitch_class(concert)}"
+
+    target_label = selected_pc or _note_pitch_class(concert or written or str(row.get("target_note") or ""))
+    if not target_label or target_label == "—":
+        target_label = str(row.get("target_note") or row.get("detected_note") or "—")
+    return f"target {target_label}"
 
 
 def format_tone_take_display_time(created_at: str) -> str:
@@ -506,6 +591,9 @@ def list_tone_takes(
     st: Any | None = None,
     instrument: str | None = None,
     note_filter: str = "",
+    note_filter_mode: str = NOTE_FILTER_MODE_PLAYER,
+    current_instrument_is_transposing: bool = False,
+    all_instruments_view: bool = False,
     quality_filter: str = "",
 ) -> list[dict[str, Any]]:
     catalog = load_media_catalog(st=st)
@@ -515,8 +603,18 @@ def list_tone_takes(
         inst = str(instrument).strip().lower()
         rows = [r for r in rows if str(r.get("instrument") or "").strip().lower() == inst]
 
-    if note_filter:
-        rows = [r for r in rows if note_filter_matches_row(r, note_filter)]
+    if note_filter and note_filter != TONE_HISTORY_NOTE_FILTER_ALL:
+        rows = [
+            r
+            for r in rows
+            if note_filter_matches_row(
+                r,
+                note_filter,
+                filter_mode=note_filter_mode,
+                current_instrument_is_transposing=current_instrument_is_transposing,
+                all_instruments_view=all_instruments_view,
+            )
+        ]
 
     if quality_filter == "best":
         rows = [r for r in rows if tone_take_quality(r) == "best"]
@@ -529,16 +627,7 @@ def list_tone_takes(
 def tone_take_row_summary(row: dict[str, Any]) -> str:
     row = migrate_tone_take(row)
     inst = str(row.get("instrument") or "Instrument")
-    written = str(row.get("written_note") or "")
-    concert = str(row.get("concert_note") or "")
-    selected_pc = str(row.get("selected_pitch_class") or "").strip()
-    if written and concert:
-        w_label = selected_pc or _note_pitch_class(written)
-        note_part = f"written {w_label} / concert {_note_pitch_class(concert)}"
-    elif written or concert:
-        note_part = written or concert
-    else:
-        note_part = selected_pc or str(row.get("target_note") or row.get("detected_note") or "—")
+    note_part = tone_take_row_note_part(row)
 
     dur = float(row.get("duration_seconds") or 0)
     cents = row.get("mean_cents")

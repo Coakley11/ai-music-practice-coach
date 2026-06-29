@@ -8,6 +8,10 @@ from typing import Any
 
 from media_state import migrate_tone_take
 from media_tone_catalog import (
+    NOTE_FILTER_MODE_CONCERT,
+    NOTE_FILTER_MODE_OPTIONS,
+    NOTE_FILTER_MODE_PLAYER,
+    TONE_HISTORY_NOTE_FILTER_OPTIONS,
     delete_tone_take_entry,
     list_tone_takes,
     load_tone_take_for_playback,
@@ -15,6 +19,7 @@ from media_tone_catalog import (
     playback_label_for_row,
     save_pending_tone_take,
     tone_catalog_diagnostics,
+    tone_history_note_filter_label,
     tone_improvement_card,
     tone_take_quality,
     tone_take_row_summary,
@@ -99,13 +104,26 @@ def render_tone_take_history_section(
         key=f"{key_prefix}::tone_history_view",
     )
     filter_inst = None if view == "All instruments" else active_label
+    all_instruments_view = view == "All instruments"
 
-    c1, c2, _c3 = st_module.columns([2, 2, 2])
+    try:
+        from instrument_transposition import is_transposing_instrument
+
+        instrument_is_transposing = bool(is_transposing_instrument(instrument))
+    except ImportError:
+        instrument_is_transposing = bool(str(transposing_type or "").strip())
+
+    note_filter_label = tone_history_note_filter_label(
+        all_instruments_view=all_instruments_view,
+        instrument_is_transposing=instrument_is_transposing,
+    )
+
+    c1, c2, c3 = st_module.columns([2, 2, 2])
     with c1:
-        note_filter = st_module.text_input(
-            "Filter by note",
+        note_filter = st_module.selectbox(
+            note_filter_label,
+            TONE_HISTORY_NOTE_FILTER_OPTIONS,
             key=f"{key_prefix}::tone_note_filter",
-            placeholder="e.g. A, Bb, G",
         )
     with c2:
         quality = st_module.selectbox(
@@ -113,6 +131,14 @@ def render_tone_take_history_section(
             ["All takes", "Best takes", "Needs work"],
             key=f"{key_prefix}::tone_quality_filter",
         )
+    note_filter_mode = NOTE_FILTER_MODE_PLAYER
+    if all_instruments_view:
+        with c3:
+            note_filter_mode = st_module.selectbox(
+                "Note filter mode",
+                NOTE_FILTER_MODE_OPTIONS,
+                key=f"{key_prefix}::tone_note_filter_mode",
+            )
     quality_key = ""
     if quality == "Best takes":
         quality_key = "best"
@@ -123,6 +149,9 @@ def render_tone_take_history_section(
         st=st_module,
         instrument=filter_inst,
         note_filter=str(note_filter or ""),
+        note_filter_mode=note_filter_mode,
+        current_instrument_is_transposing=instrument_is_transposing,
+        all_instruments_view=all_instruments_view,
         quality_filter=quality_key,
     )
 

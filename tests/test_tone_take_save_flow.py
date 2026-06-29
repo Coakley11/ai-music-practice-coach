@@ -151,7 +151,12 @@ class TestToneTakeSaveFlow(unittest.TestCase):
         )
         catalog = {"tone_takes": [row]}
         with patch("media_tone_catalog.load_media_catalog", lambda *, st=None: catalog):
-            rows = list_tone_takes(st=None, instrument="Tenor Saxophone", note_filter="G#/Ab")
+            rows = list_tone_takes(
+                st=None,
+                instrument="Tenor Saxophone",
+                note_filter="G#/Ab",
+                current_instrument_is_transposing=True,
+            )
         self.assertEqual(len(rows), 1)
         summary = tone_take_row_summary(row)
         self.assertIn("G#/Ab", summary)
@@ -165,8 +170,12 @@ class TestToneTakeSaveFlow(unittest.TestCase):
                 "concert_note": "F#4",
             }
         )
-        self.assertTrue(note_filter_matches_row(row, "G#/Ab"))
-        self.assertTrue(note_filter_matches_row(row, "Ab"))
+        self.assertTrue(
+            note_filter_matches_row(row, "G#/Ab", current_instrument_is_transposing=True)
+        )
+        self.assertFalse(
+            note_filter_matches_row(row, "E", current_instrument_is_transposing=True)
+        )
 
     def test_ami_compact_excludes_raw_audio(self) -> None:
         row = migrate_tone_take(

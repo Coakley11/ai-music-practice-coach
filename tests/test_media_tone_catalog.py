@@ -182,7 +182,11 @@ class TestMediaToneCatalog(unittest.TestCase):
             ]
         }
         with patch("media_tone_catalog.load_media_catalog", lambda *, st=None: catalog):
-            rows = list_tone_takes(st=None, note_filter="G")
+            rows = list_tone_takes(
+                st=None,
+                note_filter="G",
+                all_instruments_view=True,
+            )
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].get("tone_take_id"), "g1")
 
