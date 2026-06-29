@@ -66,6 +66,74 @@ def _note_pitch_class(token: str) -> str:
     return NOTE_NAMES[midi % 12]
 
 
+CHROMATIC_NOTE_OPTIONS: tuple[str, ...] = (
+    "C",
+    "C#/Db",
+    "D",
+    "D#/Eb",
+    "E",
+    "F",
+    "F#/Gb",
+    "G",
+    "G#/Ab",
+    "A",
+    "A#/Bb",
+    "B",
+)
+
+DEFAULT_TONE_PRACTICE_OCTAVE = 4
+
+
+def pitch_class_from_option(option: str) -> str:
+    """First spelling from an enharmonic dropdown label (e.g. ``A#/Bb`` → ``A#``)."""
+    text = str(option or "").strip()
+    if "/" in text:
+        return text.split("/", 1)[0].strip()
+    return text
+
+
+def pitch_class_option_to_token(option: str, *, octave: int = DEFAULT_TONE_PRACTICE_OCTAVE) -> str:
+    return f"{pitch_class_from_option(option)}{int(octave)}"
+
+
+def resolve_tone_target_from_pitch_class(
+    pitch_class_label: str,
+    transposing_type: str,
+    *,
+    is_transposing: bool,
+    default_octave: int = DEFAULT_TONE_PRACTICE_OCTAVE,
+) -> dict[str, Any]:
+    """Map UI pitch-class selection to storage + analysis concert/written tokens."""
+    selected_token = pitch_class_option_to_token(pitch_class_label, octave=default_octave)
+    selected_pc = pitch_class_from_option(pitch_class_label)
+
+    if not is_transposing or not str(transposing_type or "").strip():
+        return {
+            "target_note": selected_token,
+            "analysis_target_note": selected_token,
+            "written_note": None,
+            "concert_note": selected_token,
+            "display_written": None,
+            "display_concert": selected_pc,
+        }
+
+    _, written_note, concert_note = resolve_tone_note_context(
+        target_note=selected_token,
+        detected_note=None,
+        transposing_type=transposing_type,
+    )
+    written_pc = _note_pitch_class(str(written_note or selected_token))
+    concert_pc = _note_pitch_class(str(concert_note or ""))
+    return {
+        "target_note": selected_token,
+        "analysis_target_note": concert_note or selected_token,
+        "written_note": written_note,
+        "concert_note": concert_note,
+        "display_written": written_pc,
+        "display_concert": concert_pc,
+    }
+
+
 def resolve_tone_note_context(
     *,
     target_note: str | None,

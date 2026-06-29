@@ -6,13 +6,17 @@ import html
 import re
 from typing import Any
 
-import streamlit as st
-
 from instrument_transposition import (
     is_transposing_instrument,
     selected_transposing_type,
     written_key_for_instrument,
 )
+from media_tone_catalog import (
+    CHROMATIC_NOTE_OPTIONS,
+    cache_pending_tone_take,
+    resolve_tone_target_from_pitch_class,
+)
+from tone_take_history_ui import render_pending_tone_save, render_tone_take_history_section
 from tuner_live import render_live_tuner
 from tuner_tone import (
     InstrumentTunerProfile,
@@ -22,8 +26,13 @@ from tuner_tone import (
     parse_note_token,
     pitch_trace_svg,
 )
-from tone_take_history_ui import render_pending_tone_save, render_tone_take_history_section
-from media_tone_catalog import cache_pending_tone_take
+from tuner_tone_modes import (
+    MODE_TONE_SUSTAIN,
+    MODE_TUNE_LIVE,
+    is_tune_live_mode,
+    shows_tone_sustain_note_dropdown,
+)
+
 
 def _safe_key_part(text: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(text).strip())
@@ -42,24 +51,15 @@ def _target_storage_key(key_prefix: str) -> str:
     return f"{key_prefix}::tuner_target_note"
 
 
-def _get_persisted_target(session_state: dict, key_prefix: str) -> str | None:
-    """Read target note from session (scoped per song, then global)."""
-    raw = session_state.get(_target_storage_key(key_prefix)) or session_state.get(TUNER_TARGET_KEY)
-    if not raw:
-        return None
-    token = str(raw).strip()
-    if not token:
-        return None
-    return token if parse_note_token(token) is not None else None
+def _pitch_class_storage_key(key_prefix: str) -> str:
+    return f"{key_prefix}::tone_target_pitch_class"
 
 
-def _set_persisted_target(session_state: dict, key_prefix: str, note: str | None) -> None:
-    if note and parse_note_token(note) is not None:
-        session_state[TUNER_TARGET_KEY] = note
-        session_state[_target_storage_key(key_prefix)] = note
-    else:
-        session_state.pop(TUNER_TARGET_KEY, None)
-        session_state.pop(_target_storage_key(key_prefix), None)
+def _get_persisted_pitch_class(session_state: dict, key_prefix: str) -> str:
+    raw = session_state.get(_pitch_class_storage_key(key_prefix))
+    if raw in CHROMATIC_NOTE_OPTIONS:
+        return str(raw)
+    return CHROMATIC_NOTE_OPTIONS[9]  # default A
 
 
 def _practice_expected_note(session_state: dict) -> str | None:
@@ -69,6 +69,51 @@ def _practice_expected_note(session_state: dict) -> str | None:
         return None
     token = str(raw).strip()
     return token if parse_note_token(token) is not None else None
+
+
+def _render_tone_target_selector(
+    st_module: Any,
+    session_state: dict,
+    *,
+    key_prefix: str,
+    instrument: str,
+    transposing_type: str,
+) -> dict[str, Any] | None:
+    """Required chromatic target for Tone Sustain Practice."""
+    transposing = is_transposing_instrument(instrument)
+    default_pc = _get_persisted_pitch_class(session_state, key_prefix)
+    try:
+        default_index = CHROMATIC_NOTE_OPTIONS.index(default_pc)
+    except ValueError:
+        default_index = 9
+
+    selected = st_module.selectbox(
+        "Target note",
+        CHROMATIC_NOTE_OPTIONS,
+        index=default_index,
+        key=f"{key_prefix}::tone_target_select",
+    )
+    session_state[_pitch_class_storage_key(key_prefix)] = selected
+
+    ctx = resolve_tone_target_from_pitch_class(
+        selected,
+        transposing_type,
+        is_transposing=transposing,
+    )
+    session_state[_target_storage_key(key_prefix)] = ctx.get("target_note")
+    session_state[TUNER_TARGET_KEY] = ctx.get("target_note")
+
+    if transposing and ctx.get("display_written") and ctx.get("display_concert"):
+        st_module.markdown(
+            f"**Written {html.escape(str(ctx['display_written']))} / "
+            f"Concert {html.escape(str(ctx['display_concert']))}** — "
+            "finger the written note; the app evaluates concert pitch from your recording."
+        )
+    else:
+        st_module.markdown(
+            f"**Target note:** {html.escape(str(ctx.get('display_concert') or selected))} (concert pitch)"
+        )
+    return ctx
 
 
 def render_tuner_tone_section(
@@ -114,48 +159,31 @@ def render_tuner_tone_section(
 
         mode = st_module.radio(
             "Mode",
-            ["Tune (live)", "Tone practice (sustain)"],
+            [MODE_TUNE_LIVE, MODE_TONE_SUSTAIN],
             horizontal=True,
             key=f"{key_prefix}::mode",
         )
 
-        target_note = _get_persisted_target(st_module.session_state, key_prefix)
-        string_targets: list[str] | None = None
-
-        if profile.mode == "strings" and profile.string_targets:
-            string_targets = list(profile.string_targets)
-            st_module.caption(
-                "Tap a string inside the tuner — the active string lights up **red** "
-                "and tuning is judged against that note while you play."
-            )
-        elif profile.mode in ("wind", "voice", "chromatic"):
-            st_module.text_input(
-                "Target note (optional)",
-                value=_get_persisted_target(st_module.session_state, key_prefix) or "",
-                placeholder="e.g. A4, concert D4",
-                key=f"{key_prefix}::target_input",
-            )
-            raw = str(st_module.session_state.get(f"{key_prefix}::target_input", "") or "").strip()
-            if raw and parse_note_token(raw):
-                _set_persisted_target(st_module.session_state, key_prefix, raw)
-            elif not raw:
-                _set_persisted_target(st_module.session_state, key_prefix, None)
-            target_note = _get_persisted_target(st_module.session_state, key_prefix)
-            if target_note:
-                st_module.caption(f"Target locked: **{target_note}** — needle centered on this pitch.")
-
         expected_note = _practice_expected_note(st_module.session_state)
 
-        if mode.startswith("Tune"):
+        if is_tune_live_mode(mode):
+            string_targets: list[str] | None = None
+            if profile.mode == "strings" and profile.string_targets:
+                string_targets = list(profile.string_targets)
+                st_module.caption(
+                    "Tap a string inside the tuner — the active string lights up **red** "
+                    "and tuning is judged against that note while you play."
+                )
+
             st_module.markdown("##### Live tuner")
             st_module.caption(
                 "Press **Start Tuner** — your browser listens continuously. "
-                "Play one note at a time; the needle shows flat ← in tune → sharp."
+                "Play any note; the needle shows flat ← in tune → sharp."
             )
             render_live_tuner(
                 st_module,
                 key_prefix=key_prefix,
-                target_note=target_note,
+                target_note=None,
                 expected_note=expected_note,
                 string_targets=string_targets,
             )
@@ -174,10 +202,20 @@ def render_tuner_tone_section(
             )
             return
 
+        tone_target_ctx: dict[str, Any] | None = None
+        if shows_tone_sustain_note_dropdown(mode, profile.mode):
+            tone_target_ctx = _render_tone_target_selector(
+                st_module,
+                st_module.session_state,
+                key_prefix=key_prefix,
+                instrument=instrument,
+                transposing_type=transposing_type,
+            )
+
         _render_tone_practice_mode(
             st_module,
             key_prefix=key_prefix,
-            target_note=target_note,
+            tone_target_ctx=tone_target_ctx,
             profile=profile,
             instrument=instrument,
             display_key=display_key,
@@ -197,13 +235,13 @@ def _render_tone_practice_mode(
     st_module: Any,
     *,
     key_prefix: str,
-    target_note: str | None,
+    tone_target_ctx: dict[str, Any] | None,
     profile: InstrumentTunerProfile,
     instrument: str = "",
     display_key: str = "",
     transposing_type: str = "",
 ) -> None:
-    """Sustain / tone analysis — still uses recorded clip + librosa."""
+    """Sustain / tone analysis — recorded clip + librosa."""
     if not librosa_available():
         st_module.warning(
             "Install **librosa** and **soundfile** (see requirements.txt) to enable "
@@ -211,11 +249,16 @@ def _render_tone_practice_mode(
         )
         return
 
-    st_module.markdown("##### Tone practice (recorded)")
+    st_module.markdown("##### Tone Sustain Practice")
     st_module.caption(
-        "Record a **3–5 second** steady long tone. The app analyzes sustain, "
-        "pitch drift, and volume after you finish recording."
+        "Select a **target note**, then record a **3–5 second** steady long tone. "
+        "The app analyzes pitch drift, sustain steadiness, and tone consistency."
     )
+
+    if tone_target_ctx is None:
+        st_module.warning("Select a target note above before recording.")
+        return
+
     audio_clip = st_module.audio_input(
         "Record long tone",
         key=f"{key_prefix}::audio_in",
@@ -234,10 +277,14 @@ def _render_tone_practice_mode(
     if not raw:
         return
 
+    ui_target_note = str(tone_target_ctx.get("target_note") or "")
+    analysis_target = str(tone_target_ctx.get("analysis_target_note") or ui_target_note)
+
     _render_tone_practice_result(
         st_module,
         raw,
-        target_note=target_note,
+        ui_target_note=ui_target_note,
+        analysis_target_note=analysis_target,
         profile=profile,
         instrument=instrument,
         display_key=display_key,
@@ -250,7 +297,8 @@ def _render_tone_practice_result(
     st_module: Any,
     audio_bytes: bytes,
     *,
-    target_note: str | None,
+    ui_target_note: str,
+    analysis_target_note: str,
     profile: InstrumentTunerProfile,
     instrument: str = "",
     display_key: str = "",
@@ -261,7 +309,7 @@ def _render_tone_practice_result(
     try:
         result = analyze_tone_practice(
             audio_bytes,
-            target_note=target_note,
+            target_note=analysis_target_note or None,
             min_sustain_sec=hold_goal,
         )
     except Exception as exc:
@@ -290,8 +338,9 @@ def _render_tone_practice_result(
 
     if result.pitch_trace_hz and result.time_trace_sec:
         target_hz = None
-        if target_note:
-            tm = parse_note_token(target_note)
+        trace_target = analysis_target_note or ui_target_note
+        if trace_target:
+            tm = parse_note_token(trace_target)
             if tm is not None:
                 target_hz = 440.0 * (2 ** ((tm - 69) / 12))
         svg = pitch_trace_svg(result.time_trace_sec, result.pitch_trace_hz, target_hz=target_hz)
@@ -311,7 +360,7 @@ def _render_tone_practice_result(
         st_module.session_state,
         result=result,
         audio_bytes=audio_bytes,
-        target_note=target_note,
+        target_note=ui_target_note or None,
     )
     render_pending_tone_save(
         st_module,
