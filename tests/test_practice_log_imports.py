@@ -25,14 +25,14 @@ class TestPracticeLogImports(unittest.TestCase):
         self.assertTrue(callable(render_practice_analysis_panel))
         self.assertTrue(callable(render_practice_log_page))
 
-    def test_app_source_imports_analysis_panel_module(self) -> None:
+    def test_app_source_renders_analysis_panel_on_log_page(self) -> None:
         from pathlib import Path
 
         app_source = (
             Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py"
         ).read_text(encoding="utf-8")
-        self.assertIn("from practice_log_analysis_panel import render_practice_analysis_panel", app_source)
-        self.assertNotIn('expander("Coach notes"', app_source)
+        self.assertIn("log_practice_analysis_panel", app_source)
+        self.assertIn("render_practice_analysis_panel", app_source)
 
 
 if __name__ == "__main__":

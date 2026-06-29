@@ -469,7 +469,7 @@ class TestLogPagePracticeAnalysis(unittest.TestCase):
         ui_source = (root / "practice_log_ui.py").read_text(encoding="utf-8")
         self.assertIn("def render_practice_analysis_panel", panel_source)
         self.assertIn("Practice Analysis", panel_source)
-        self.assertIn("render_practice_analysis_panel", ui_source)
+        self.assertIn("render_practice_analysis_panel", app_source)
         self.assertNotIn('expander("Coach notes"', app_source)
         self.assertNotIn("render_practice_progress_report_panel", ui_source)
 

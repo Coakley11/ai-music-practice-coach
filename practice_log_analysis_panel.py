@@ -11,8 +11,13 @@ LATEST_PRACTICE_ANALYSIS_CREATED_AT_KEY = "latest_practice_analysis_created_at"
 LATEST_PRACTICE_ANALYSIS_HANDOFF_STATUS_KEY = "latest_practice_analysis_handoff_status"
 
 PRACTICE_ANALYSIS_OPEN_KEY = "_plog_practice_analysis_open"
+PRACTICE_ANALYSIS_EXPANDER_KEY = "plog_practice_analysis_expander"
 
-__all__ = ["render_practice_analysis_panel", "PRACTICE_ANALYSIS_OPEN_KEY"]
+__all__ = [
+    "render_practice_analysis_panel",
+    "PRACTICE_ANALYSIS_OPEN_KEY",
+    "PRACTICE_ANALYSIS_EXPANDER_KEY",
+]
 
 _PRACTICE_ANALYSIS_SECTIONS: tuple[tuple[str, str], ...] = (
     ("Practice Summary", "practice_summary"),
@@ -23,6 +28,20 @@ _PRACTICE_ANALYSIS_SECTIONS: tuple[tuple[str, str], ...] = (
     ("Recommended Focus This Week", "recommended_focus_this_week"),
     ("Evidence Used", "evidence_used"),
 )
+
+
+def _hydrate_panel_state(session_state: dict[str, Any], st: Any | None = None) -> None:
+    try:
+        from practice_history_synthesis import hydrate_latest_practice_analysis_from_storage
+
+        hydrate_latest_practice_analysis_from_storage(session_state, st=st)
+    except Exception:
+        try:
+            from practice_history_synthesis import hydrate_latest_practice_analysis
+
+            hydrate_latest_practice_analysis(session_state)
+        except Exception:
+            pass
 
 
 def _top_song_from_summary(summary: dict[str, Any]) -> str:
@@ -57,13 +76,8 @@ def _compact_header(session_state: dict[str, Any], summary: dict[str, Any]) -> s
 
 
 def render_practice_analysis_panel(st: Any, session_state: dict[str, Any]) -> None:
-    """Compact Practice Analysis tab — expands after Analyze My Practice."""
-    try:
-        from practice_history_synthesis import hydrate_latest_practice_analysis
-
-        hydrate_latest_practice_analysis(session_state)
-    except ImportError:
-        pass
+    """Compact Practice Analysis tab — always visible on the Practice Log page."""
+    _hydrate_panel_state(session_state, st=st)
 
     summary = session_state.get(LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY)
     handoff = session_state.get(LATEST_PRACTICE_ANALYSIS_HANDOFF_STATUS_KEY)
@@ -71,9 +85,9 @@ def render_practice_analysis_panel(st: Any, session_state: dict[str, Any]) -> No
     has_summary = isinstance(summary, dict) and any(str(v or "").strip() for v in summary.values())
 
     header = _compact_header(session_state, summary) if has_summary else "Practice Analysis"
-    expanded = bool(session_state.get(PRACTICE_ANALYSIS_OPEN_KEY)) and has_summary
+    expanded = bool(session_state.get(PRACTICE_ANALYSIS_OPEN_KEY))
 
-    with st.expander(header, expanded=expanded):
+    with st.expander(header, expanded=expanded, key=PRACTICE_ANALYSIS_EXPANDER_KEY):
         if not has_summary:
             st.markdown(
                 "**No analysis yet.** Click **Analyze My Practice** above to generate a concise summary "

@@ -1033,6 +1033,14 @@ LATEST_PRACTICE_ANALYSIS_EVIDENCE_COUNTS_KEY = "latest_practice_analysis_evidenc
 LATEST_PRACTICE_ANALYSIS_FULL_REPORT_KEY = "latest_practice_analysis_full_report"
 LATEST_PRACTICE_ANALYSIS_HANDOFF_STATUS_KEY = "latest_practice_analysis_handoff_status"
 
+PRACTICE_ANALYSIS_PERSIST_KEYS: tuple[str, ...] = (
+    LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY,
+    LATEST_PRACTICE_ANALYSIS_CREATED_AT_KEY,
+    LATEST_PRACTICE_ANALYSIS_EVIDENCE_COUNTS_KEY,
+    LATEST_PRACTICE_ANALYSIS_FULL_REPORT_KEY,
+    LATEST_PRACTICE_ANALYSIS_HANDOFF_STATUS_KEY,
+)
+
 
 def _evidence_counts_from_payload(payload: dict[str, Any]) -> dict[str, int]:
     pl = payload.get("practice_log_summary") if isinstance(payload.get("practice_log_summary"), dict) else {}
@@ -1195,6 +1203,26 @@ def store_latest_practice_analysis(
             "error": str(handoff_result.get("handoff_error") or ""),
         }
     return summary
+
+
+def hydrate_latest_practice_analysis_from_storage(session_state: dict[str, Any], *, st: Any = None) -> bool:
+    """Restore Practice Analysis keys from disk when session state is empty after refresh."""
+    import copy
+
+    has_any = any(session_state.get(key) for key in PRACTICE_ANALYSIS_PERSIST_KEYS)
+    if not has_any:
+        try:
+            from music_persistent_state import APP_ID
+            from suite_user_persistence import load_user_state
+
+            payload, _err = load_user_state(APP_ID)
+            session_extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+            for key in PRACTICE_ANALYSIS_PERSIST_KEYS:
+                if key in session_extra:
+                    session_state[key] = copy.deepcopy(session_extra[key])
+        except Exception:
+            pass
+    return hydrate_latest_practice_analysis(session_state)
 
 
 def hydrate_latest_practice_analysis(session_state: dict[str, Any]) -> bool:

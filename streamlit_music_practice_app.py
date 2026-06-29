@@ -5730,7 +5730,7 @@ def _inject_practice_log_studio_styles() -> None:
 .ui-log-kpi-label{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin:0 0 .2rem;}
 .ui-log-kpi-value{font-size:1.18rem;font-weight:850;color:#0f172a;line-height:1.2;margin:0;}
 .ui-log-kpi-sub{font-size:.76rem;color:#475569;margin:.12rem 0 0;}
-.st-key-log_filter_panel,.st-key-log_insights_panel,.st-key-log_add_session_panel,.st-key-log_history_panel,.st-key-log_summary_panel{
+.st-key-log_filter_panel,.st-key-log_insights_panel,.st-key-log_add_session_panel,.st-key-log_history_panel,.st-key-log_summary_panel,.st-key-log_practice_analysis_panel{
   border:1px solid rgba(148,163,184,.24);border-radius:14px;background:rgba(255,255,255,.94);padding:.78rem .85rem;margin:.45rem 0;
 }
 .ui-log-section-title{font-size:.96rem;font-weight:800;color:#0f172a;margin:0 0 .15rem;}
@@ -13160,6 +13160,11 @@ elif _studio_page == "log":
 
     with st.container(key="log_add_session_panel", border=False):
         render_practice_log_page(st, st.session_state, on_saved=_on_practice_log_saved)
+
+    with st.container(key="log_practice_analysis_panel", border=False):
+        from practice_log_analysis_panel import render_practice_analysis_panel
+
+        render_practice_analysis_panel(st, st.session_state)
 
     with st.expander("Timed session planner", expanded=False):
         st.session_state.setdefault("ai_session_builder_minutes", 30)

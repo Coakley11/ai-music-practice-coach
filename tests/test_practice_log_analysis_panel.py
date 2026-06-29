@@ -32,7 +32,7 @@ class _FakeSt:
     def __init__(self) -> None:
         self.expanders: list[tuple[str, bool]] = []
 
-    def expander(self, label, *, expanded=False):
+    def expander(self, label, *, expanded=False, key=None):
         self.expanders.append((str(label), expanded))
         return _FakeExpander(label, expanded)
 
@@ -105,6 +105,23 @@ class TestPracticeLogAnalysisPanel(unittest.TestCase):
         self.assertIsInstance(summary, dict)
         self.assertTrue(str(summary.get("practice_summary") or "").strip())
 
+    def test_hydrate_from_storage_loads_disk_keys(self) -> None:
+        session: dict = {}
+        disk_payload = {
+            "session": {
+                LATEST_PRACTICE_ANALYSIS_FULL_REPORT_KEY: {
+                    "executive_summary": "Saved from disk.",
+                    "improvements": ["Keep logging."],
+                },
+                LATEST_PRACTICE_ANALYSIS_EVIDENCE_COUNTS_KEY: {"practice_logs": 1},
+            }
+        }
+        with patch("suite_user_persistence.load_user_state", return_value=(disk_payload, None)):
+            from practice_history_synthesis import hydrate_latest_practice_analysis_from_storage
+
+            self.assertTrue(hydrate_latest_practice_analysis_from_storage(session))
+        self.assertIn(LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY, session)
+
     def test_panel_closed_by_default_on_refresh(self) -> None:
         session: dict = {}
         store_latest_practice_analysis(session, self._rich_payload())
@@ -128,11 +145,22 @@ class TestPracticeLogAnalysisPanel(unittest.TestCase):
             render_practice_analysis_panel(st, session)
         self.assertTrue(st.expanders[0][1])
 
-    def test_empty_state_when_no_saved_analysis(self) -> None:
+    def test_panel_always_visible_with_empty_state(self) -> None:
         st = _FakeSt()
         render_practice_analysis_panel(st, {})
-        self.assertFalse(st.expanders[0][1])
+        self.assertEqual(len(st.expanders), 1)
         self.assertEqual(st.expanders[0][0], "Practice Analysis")
+        self.assertFalse(st.expanders[0][1])
+
+    def test_log_page_wiring_renders_panel_in_app_not_ui_module(self) -> None:
+        from pathlib import Path
+
+        ui_source = (Path(__file__).resolve().parents[1] / "practice_log_ui.py").read_text(encoding="utf-8")
+        app_source = (
+            Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("render_practice_analysis_panel(st, session_state)", ui_source)
+        self.assertIn("log_practice_analysis_panel", app_source)
 
 
 class TestPracticeAnalysisPersistKeys(unittest.TestCase):

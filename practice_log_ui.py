@@ -691,17 +691,21 @@ def render_practice_log_page(
 ) -> list[dict[str, Any]]:
     """Main Practice Log page body. Returns filtered entries."""
     try:
-        from practice_history_synthesis import hydrate_latest_practice_analysis
+        from practice_history_synthesis import hydrate_latest_practice_analysis_from_storage
 
-        hydrate_latest_practice_analysis(session_state)
+        hydrate_latest_practice_analysis_from_storage(session_state, st=st)
     except ImportError:
-        pass
+        try:
+            from practice_history_synthesis import hydrate_latest_practice_analysis
+
+            hydrate_latest_practice_analysis(session_state)
+        except ImportError:
+            pass
     session_state.setdefault("_plog_practice_analysis_open", False)
 
     entries = load_entries(session_state)
     render_summary_cards(st, entries, session_state)
     render_quick_actions(st, session_state, on_saved=on_saved)
-    render_practice_analysis_panel(st, session_state)
     render_entry_forms(st, session_state, on_saved=on_saved)
 
     with st.container(key="log_filter_panel", border=False):
