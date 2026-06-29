@@ -169,13 +169,20 @@ def render_practice_log_diagnostics(
 
         st.markdown("**Analyze My Practice handoff**")
         handoff = session_state.get("_practice_log_analyze_handoff_trace") or {}
+        cc = session_state.get("_practice_log_cc_handoff_trace") or handoff
+        st.text(f"last CC handoff attempted: {cc.get('attempted_at')}")
+        st.text(f"last CC handoff success: {cc.get('success')}")
+        st.text(f"last CC activity id/key: {cc.get('activity_id') or cc.get('activity_key')}")
+        st.text(f"handoff payload title: {cc.get('payload_title')}")
+        st.text(f"handoff route/type: {cc.get('route_type')}")
+        st.text(f"Command Center activity count: {cc.get('command_center_activity_count')}")
         st.text(f"last activity event type: {handoff.get('event_type')}")
         st.text(f"last activity title: {handoff.get('title')}")
         trace = handoff.get("record_trace") if isinstance(handoff.get("record_trace"), dict) else {}
         st.text(f"record_activity succeeded: {trace.get('recorded')}")
         st.text(f"supabase_write_ok: {trace.get('supabase_write_ok')}")
         st.text(f"write_path: {trace.get('write_path')}")
-        st.text(f"activity error: {trace.get('error')}")
+        st.text(f"activity error: {trace.get('error') or cc.get('error')}")
         st.text(f"question_id: {handoff.get('question_id')}")
         st.text(f"continue resume key: {handoff.get('resume_key')}")
         st.text(f"payload session count: {handoff.get('session_count')}")
@@ -305,74 +312,9 @@ def render_summary_cards(st: Any, entries: list[dict[str, Any]], session_state: 
 
 def submit_analyze_practice_to_ami(st: Any, session_state: dict[str, Any]) -> dict[str, Any]:
     """Build payload, cache Log-page summary, and send full report to Command Center."""
-    from music_coach_context import build_source_state
-    from practice_log_ami import build_practice_log_ami_payload
-    from practice_history_synthesis import store_latest_practice_analysis
-    from suite_analytical_question import (
-        build_submit_context,
-        submit_practice_log_analysis_handoff,
-    )
+    from practice_log_analysis_handoff import submit_practice_analysis_command_center_handoff
 
-    entries = load_entries(session_state)
-    payload = build_practice_log_ami_payload(session_state, entries=entries, window_days=14, st=st)
-    session_state["_practice_log_ami_payload"] = payload
-    session_state["practice_log_ami_payload"] = payload
-    store_latest_practice_analysis(session_state, payload)
-
-    question = (
-        "Analyze my practice history. What patterns are showing up, what should I focus on next, "
-        "and what should my next 30-minute session look like?"
-    )
-    ctx = build_submit_context(
-        "music",
-        "log",
-        session_state,
-        context_extra_builder=lambda: {
-            **payload,
-            "practice_log_summary": payload.get("practice_log_summary"),
-            "recent_practice_history": payload.get("recent_sessions"),
-            "practice_log_ami_payload": payload,
-            "log_page_summary": payload.get("log_page_summary"),
-            "user_request": "analyze_practice",
-            "routing_hint": "practice_history_analysis",
-            "intent": "practice_history_analysis",
-            "display_category": "analysis_handoff",
-            "handoff_kind": "practice_log_analysis",
-            "handoff_title": "Music Practice Log Analysis",
-            "progress_report": payload.get("progress_report"),
-            "upload_analysis_summary": payload.get("upload_analysis_summary"),
-            "tone_history_summary": payload.get("tone_history_summary"),
-            "multitrack_export_summary": payload.get("multitrack_export_summary"),
-            "safety_checks": payload.get("safety_checks"),
-            "diagnostics": payload.get("diagnostics"),
-        },
-    )
-    try:
-        from music_ami_context import build_music_applied_math_context, finalize_music_context_for_send
-
-        full = build_music_applied_math_context("log", session_state, question=question)
-        full.update(ctx)
-        finalize_music_context_for_send(full, session_state, question=question, coach_page="log")
-        ctx = full
-    except Exception:
-        pass
-
-    source_state = None
-    try:
-        source_state = build_source_state("log", session_state)
-    except Exception:
-        pass
-
-    result = submit_practice_log_analysis_handoff(
-        source_page="log",
-        question=question,
-        context=ctx,
-        context_summary="Music Practice Log Analysis",
-        source_state=source_state,
-        session_state=session_state,
-    )
-    store_latest_practice_analysis(session_state, payload, handoff_result=result)
-    return result
+    return submit_practice_analysis_command_center_handoff(st, session_state)
 
 
 def _rating_fields_form(st: Any, prefix: str, existing: dict[str, Any] | None = None) -> dict[str, int]:
@@ -541,35 +483,22 @@ def render_quick_actions(
         if st.button("🧠 Analyze My Practice", key="plog_analyze_ami_btn", use_container_width=True):
             result = submit_analyze_practice_to_ami(st, session_state)
             session_state["_last_analytical_question"] = result
-            try:
-                from suite_activity_client import last_record_trace
-
-                session_state["_practice_log_analyze_handoff_trace"] = {
-                    "event_type": "practice_log_analysis",
-                    "display_category": "analysis_handoff",
-                    "handoff_kind": "practice_log_analysis",
-                    "title": result.get("display_title") or result.get("continue_title"),
-                    "question_id": result.get("question_id"),
-                    "resume_key": result.get("resume_key"),
-                    "duplicate": result.get("duplicate"),
-                    "session_count": (
-                        (result.get("context") or {}).get("practice_log_summary") or {}
-                    ).get("session_count")
-                    if isinstance(result.get("context"), dict)
-                    else None,
-                    "record_trace": last_record_trace(),
-                }
-            except ImportError:
-                session_state["_practice_log_analyze_handoff_trace"] = {"result_keys": list(result.keys())}
-            if result.get("duplicate"):
+            handoff_ok = bool(result.get("handoff_success"))
+            if result.get("duplicate") and handoff_ok:
                 st.info(
                     "Practice Analysis updated below. Full report was already sent recently — "
                     "open Command Center to continue."
                 )
-            else:
+            elif handoff_ok:
                 st.success(
                     "Practice Analysis updated below. Full detailed report sent to Command Center "
                     "→ Music Practice Log Analysis."
+                )
+            else:
+                err = str(result.get("handoff_error") or result.get("cc_trace", {}).get("error") or "unknown error")
+                st.warning(
+                    "Practice Analysis updated below, but Command Center handoff did not complete. "
+                    f"({err})"
                 )
             st.rerun()
     st.caption(

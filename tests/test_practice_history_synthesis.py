@@ -435,7 +435,7 @@ class TestLogPagePracticeAnalysis(unittest.TestCase):
             "tone_history_summary": {"tone_take_count_total": 0},
             "multitrack_export_summary": {},
         }
-        store_latest_practice_analysis(session, sparse, handoff_result={"duplicate": True, "question_id": "q1"})
+        store_latest_practice_analysis(session, sparse, handoff_result={"duplicate": True, "question_id": "q1"}, handoff_success=True)
         second = session.get("latest_practice_analysis_summary")
         self.assertNotEqual(first.get("practice_summary"), second.get("practice_summary"))
         self.assertIn("No saved practice evidence", str(second.get("practice_summary")))
@@ -480,21 +480,31 @@ class TestLogPagePracticeAnalysis(unittest.TestCase):
         from practice_log_ui import submit_analyze_practice_to_ami
 
         session: dict = {}
+        fake_payload = {
+            **self._rich_payload(),
+            "log_page_summary": build_log_page_analysis_summary(self._rich_payload()),
+            "safety_checks": {"raw_audio_excluded": True, "base64_excluded": True, "blob_fields_excluded": True},
+        }
         handoff_ctx: dict = {}
 
         def _fake_handoff(**kwargs):
             handoff_ctx.update(kwargs.get("context") or {})
-            return {"duplicate": False, "continue_title": "Music Practice Log Analysis", "question_id": "q-test"}
-
-        with patch("practice_log_ami.build_practice_log_ami_payload") as mock_build:
-            mock_build.return_value = {
-                **self._rich_payload(),
-                "log_page_summary": build_log_page_analysis_summary(self._rich_payload()),
+            return {
+                "duplicate": False,
+                "continue_title": "Music Practice Log Analysis",
+                "question_id": "q-test",
+                "handoff_success": True,
             }
-            with patch("suite_analytical_question.submit_practice_log_analysis_handoff", side_effect=_fake_handoff):
-                with patch("suite_analytical_question.build_submit_context", side_effect=lambda *a, **k: k.get("context_extra_builder", lambda: {})()):
+
+        with patch("practice_log_ami.build_practice_log_ami_payload", return_value=fake_payload):
+            with patch("practice_log_state.load_entries", return_value=[_sample_log()]):
+                with patch("suite_analytical_question.build_submit_context", side_effect=lambda *a, **k: k["context_extra_builder"]()):
                     with patch("music_coach_context.build_source_state", return_value=None):
-                        submit_analyze_practice_to_ami(MagicMock(), session)
+                        with patch(
+                            "suite_analytical_question.submit_practice_log_analysis_handoff",
+                            side_effect=_fake_handoff,
+                        ):
+                            submit_analyze_practice_to_ami(MagicMock(), session)
         self.assertIn("latest_practice_analysis_summary", session)
         self.assertIn("latest_practice_analysis_full_report", session)
         self.assertIn("progress_report", handoff_ctx)

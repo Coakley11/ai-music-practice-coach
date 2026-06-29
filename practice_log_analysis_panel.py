@@ -33,11 +33,14 @@ def render_practice_analysis_panel(st: Any, session_state: dict[str, Any]) -> No
 
         if created_at:
             st.caption(f"Last updated: {created_at}")
-        if handoff.get("sent_at"):
+        if handoff.get("success"):
             if handoff.get("duplicate"):
                 st.info("Full report available in Command Center (recent send — use **Continue** there).")
             else:
                 st.caption("Full detailed report sent to Command Center → **Music Practice Log Analysis**.")
+        elif handoff and handoff.get("success") is False:
+            err = str(handoff.get("error") or "handoff did not complete").strip()
+            st.warning(f"Command Center handoff did not complete. {err}")
 
         sections: tuple[tuple[str, str], ...] = (
             ("Practice Summary", "practice_summary"),

@@ -357,11 +357,11 @@ def _parse_context_from_resume_subtitle(subtitle: str) -> dict[str, Any]:
         return {}
 
 
-def _store_question_context_blob(payload: dict[str, Any]) -> None:
+def _store_question_context_blob(payload: dict[str, Any]) -> bool:
     """Persist full context server-side keyed by question_id (survives URL truncation)."""
     qid = str(payload.get("question_id") or "").strip()
     if not qid:
-        return
+        return False
     blob = {
         "question": payload.get("question"),
         "question_id": qid,
@@ -371,6 +371,12 @@ def _store_question_context_blob(payload: dict[str, Any]) -> None:
         "context": dict(payload.get("context") or {}),
         "source_state": dict(payload.get("source_state") or {}),
     }
+    title = str(
+        payload.get("display_title")
+        or payload.get("handoff_title")
+        or payload.get("question")
+        or "Applied Math question"
+    )[:200]
     try:
         from suite_account import remember_saved_item
 
@@ -383,12 +389,13 @@ def _store_question_context_blob(payload: dict[str, Any]) -> None:
                 app_name,
                 _CONTEXT_ITEM_TYPE,
                 qid,
-                title=str(payload.get("question") or "Applied Math question")[:200],
+                title=title,
                 payload=blob,
             )
-        return
+        return True
     except Exception as exc:
         log.warning("remember_saved_item failed for analytical context: %s", exc)
+        return False
 
 
 def persist_question_context_blob(payload: dict[str, Any]) -> None:
@@ -641,12 +648,12 @@ def _upsert_applied_intelligence_resume(
     payload: dict[str, Any],
     *,
     action_url: str,
-) -> None:
+) -> bool:
     title, _, _ = analytical_question_continue_copy(payload)
     subtitle = analytical_question_storage_subtitle(payload)
     resume_key = str(payload.get("resume_key") or "").strip()
     if not resume_key:
-        return
+        return False
     try:
         from suite_storage_supabase import upsert_resume_item
 
@@ -657,7 +664,7 @@ def _upsert_applied_intelligence_resume(
             subtitle=subtitle,
             action_url=action_url,
         )
-        return
+        return True
     except Exception as exc:
         log.warning("suite_storage_supabase upsert_resume_item failed: %s", exc)
     try:
@@ -670,8 +677,10 @@ def _upsert_applied_intelligence_resume(
             subtitle=subtitle,
             action_url=action_url,
         )
+        return True
     except Exception as exc:
         log.warning("suite_storage upsert_resume_item failed: %s", exc)
+    return False
 
 
 def build_question_payload(
@@ -854,6 +863,7 @@ def submit_practice_log_analysis_handoff(
     ctx.setdefault("display_category", "analysis_handoff")
     ctx.setdefault("analysis_handoff", True)
     ctx.setdefault("user_request", "analyze_practice")
+    ctx.setdefault("analysis_type", "practice_history_analysis")
     ctx.setdefault("intent", "practice_history_analysis")
     ctx.setdefault("handoff_kind", "practice_log_analysis")
     ctx.setdefault("handoff_title", PRACTICE_LOG_ANALYSIS_TITLE)
@@ -870,6 +880,9 @@ def submit_practice_log_analysis_handoff(
     payload["handoff_kind"] = "practice_log_analysis"
     action_url = build_applied_math_resume_url(payload)
     duplicate = _recent_duplicate_send(session_state, payload["question_id"])
+    record_trace: dict[str, Any] = {}
+    activity_recorded = False
+    handoff_error = ""
     if not duplicate:
         metrics = metrics_for_applied_math_resume(payload)
         metrics["source_app"] = "music"
@@ -877,9 +890,24 @@ def submit_practice_log_analysis_handoff(
         metrics["handoff_kind"] = "practice_log_analysis"
         metrics["handoff_title"] = PRACTICE_LOG_ANALYSIS_TITLE
         metrics["activity_event"] = "practice_log_analysis"
+        metrics["analysis_type"] = "practice_history_analysis"
         metrics["saved_item_title"] = PRACTICE_LOG_ANALYSIS_TITLE
+        metrics["saved_item_payload"] = {
+            "analysis_type": "practice_history_analysis",
+            "title": PRACTICE_LOG_ANALYSIS_TITLE,
+            "progress_report": ctx.get("progress_report"),
+            "practice_history_payload": ctx.get("practice_history_payload"),
+            "log_page_summary": ctx.get("log_page_summary"),
+            "recent_sessions": ctx.get("recent_sessions"),
+            "tone_history": ctx.get("tone_history"),
+            "upload_analysis_summary": ctx.get("upload_analysis_summary"),
+            "multitrack_export_summary": ctx.get("multitrack_export_summary"),
+            "raw_audio_excluded": ctx.get("raw_audio_excluded", True),
+            "base64_excluded": ctx.get("base64_excluded", True),
+            "blob_fields_excluded": ctx.get("blob_fields_excluded", True),
+        }
         try:
-            from suite_activity_client import record_activity
+            from suite_activity_client import last_record_trace, record_activity
 
             record_activity(
                 "music",
@@ -889,17 +917,29 @@ def submit_practice_log_analysis_handoff(
                 summary=PRACTICE_LOG_ANALYSIS_TITLE,
                 resume_key=payload["resume_key"],
                 resume_title=PRACTICE_LOG_ANALYSIS_TITLE,
-                resume_subtitle=str(payload.get("context_summary") or "Practice log analysis handoff"),
+                resume_subtitle=analytical_question_storage_subtitle(payload),
+                action_url=action_url,
             )
+            record_trace = last_record_trace()
+            activity_recorded = bool(record_trace.get("recorded"))
+            if not activity_recorded:
+                handoff_error = str(record_trace.get("error") or "record_activity did not persist")
         except Exception as exc:
+            handoff_error = str(exc)
             log.warning("record_activity failed for practice_log_analysis: %s", exc)
-    _upsert_applied_intelligence_resume(payload, action_url=action_url)
+    else:
+        activity_recorded = True
+    resume_upsert_ok = _upsert_applied_intelligence_resume(payload, action_url=action_url)
+    if not resume_upsert_ok and not handoff_error:
+        handoff_error = "Command Center resume item was not written"
     ss = payload.get("source_state")
     refresh_blob = not duplicate or (
         isinstance(ss, dict) and bool(ss.get("entity_params"))
     )
+    context_blob_stored = False
     if refresh_blob:
-        _store_question_context_blob(payload)
+        context_blob_stored = _store_question_context_blob(payload)
+    handoff_success = resume_upsert_ok and context_blob_stored and (duplicate or activity_recorded)
     if session_state is not None:
         session_state["_ami_last_send"] = {
             "question_id": payload["question_id"],
@@ -917,6 +957,12 @@ def submit_practice_log_analysis_handoff(
         "continue_subtitle": card_subtitle,
         "duplicate": duplicate,
         "submitted_at": utc_now_iso(),
+        "handoff_success": handoff_success,
+        "activity_recorded": activity_recorded,
+        "resume_upsert_ok": resume_upsert_ok,
+        "context_blob_stored": context_blob_stored,
+        "record_trace": record_trace,
+        "handoff_error": handoff_error,
     }
 
 
