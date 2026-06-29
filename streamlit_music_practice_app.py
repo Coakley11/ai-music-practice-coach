@@ -13117,13 +13117,8 @@ elif _studio_page == "log":
     )
     _inject_practice_log_studio_styles()
 
-    from practice_log_coach import render_practice_log_coach_ui
-    from practice_log_insights import load_analysis_history
     from practice_log_state import load_entries
-    from practice_log_ui import render_practice_log_page
-
-    _analysis_history = load_analysis_history()
-    _all_logs = load_entries(st.session_state)
+    from practice_log_ui import render_practice_analysis_panel, render_practice_log_page
 
     def _on_practice_log_saved(saved_entry: dict) -> None:
         try:
@@ -13162,26 +13157,11 @@ elif _studio_page == "log":
             )
         except Exception:
             pass
-        _refresh_practice_log_coach(
-            st.session_state,
-            highlight_entry=saved_entry,
-            openai_api_key=_openai_api_key,
-        )
 
     with st.container(key="log_add_session_panel", border=False):
         render_practice_log_page(st, st.session_state, on_saved=_on_practice_log_saved)
 
-    if st.session_state.get("practice_log_coach") is None and (_all_logs or _analysis_history):
-        _refresh_practice_log_coach(st.session_state, openai_api_key=_openai_api_key)
-
-    _coach_view = st.session_state.get("practice_log_coach")
-    if _coach_view is not None:
-        with st.expander("Coach notes", expanded=False):
-            with st.container(key="log_coach_panel", border=False):
-                render_practice_log_coach_ui(st, _coach_view)
-            if st.button("Refresh coach notes", key="refresh_practice_log_coach_main"):
-                _refresh_practice_log_coach(st.session_state, openai_api_key=_openai_api_key)
-                st.rerun()
+    render_practice_analysis_panel(st, st.session_state)
 
     with st.expander("Timed session planner", expanded=False):
         st.session_state.setdefault("ai_session_builder_minutes", 30)

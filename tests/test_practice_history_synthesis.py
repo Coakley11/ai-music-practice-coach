@@ -9,6 +9,7 @@ from unittest.mock import patch
 from practice_history_synthesis import (
     ami_payload_diagnostics,
     ami_payload_safety_checks,
+    build_log_page_analysis_summary,
     build_multitrack_export_context_summary,
     build_practice_history_ami_payload,
     build_practice_progress_report,
@@ -17,6 +18,7 @@ from practice_history_synthesis import (
     compact_upload_analysis_for_ami,
     format_progress_report_markdown,
     scan_ami_payload_for_forbidden_data,
+    store_latest_practice_analysis,
 )
 from practice_log_state import migrate_practice_log_entry
 
@@ -348,6 +350,151 @@ class TestPracticeHistorySynthesis(unittest.TestCase):
         text = json.dumps(payload, default=str)
         self.assertIn("upload_analysis_summary", text)
         self.assertNotIn("audio_b64", text)
+
+
+class TestLogPagePracticeAnalysis(unittest.TestCase):
+    def _rich_payload(self) -> dict:
+        uploads = [compact_upload_analysis_for_ami(u) for u in [_sample_upload(), _sample_upload(source="multitrack_export")]]
+        uploads[1]["recording_id"] = "rec-2"
+        return {
+            "practice_log_summary": {
+                "entry_count_total": 2,
+                "recent_entries": [compact_practice_log_for_ami(_sample_log())],
+                "focus_area_counts": {"tone and timing": 2},
+                "practice_time_by_instrument": {"Tenor Saxophone": 50},
+                "practice_time_by_song": {"Say": 50},
+                "window_days": 14,
+                "suggested_next_focus": "Loop bridge at 70% tempo",
+            },
+            "upload_analysis_summary": build_upload_analysis_ami_summary(
+                [_sample_upload(), _sample_upload(source="multitrack_export")],
+                window_days=30,
+            ),
+            "tone_history_summary": {
+                "tone_take_count_total": 3,
+                "improvement_trends_by_instrument_and_note": [
+                    {
+                        "instrument": "Tenor Saxophone",
+                        "note": "F#",
+                        "mean_cents_delta": -8.0,
+                        "recent_mean_cents": 6.0,
+                        "older_mean_cents": 14.0,
+                    }
+                ],
+            },
+            "multitrack_export_summary": build_multitrack_export_context_summary(
+                [_sample_export()],
+                uploads,
+                window_days=30,
+            ),
+            "safety_checks": ami_payload_safety_checks({}),
+            "progress_report": build_practice_progress_report(
+                {
+                    "practice_log_summary": {"entry_count_total": 2, "window_days": 14},
+                    "upload_analysis_summary": {"analysis_count_total": 1, "recent_analyses": uploads[:1]},
+                    "tone_history_summary": {"tone_take_count_total": 3},
+                    "multitrack_export_summary": {"analyzed_export_count": 1},
+                    "safety_checks": ami_payload_safety_checks({}),
+                }
+            ),
+        }
+
+    def test_log_page_summary_includes_required_sections(self) -> None:
+        summary = build_log_page_analysis_summary(self._rich_payload())
+        for key in (
+            "practice_summary",
+            "improvement_notes",
+            "upload_recording_review",
+            "tone_tuner_notes",
+            "recommended_next_session",
+            "recommended_focus_this_week",
+            "evidence_used",
+        ):
+            self.assertIn(key, summary)
+            self.assertTrue(str(summary[key]).strip(), msg=f"empty section {key}")
+
+    def test_sparse_evidence_empty_state(self) -> None:
+        summary = build_log_page_analysis_summary(
+            {
+                "practice_log_summary": {"entry_count_total": 0, "window_days": 14},
+                "upload_analysis_summary": {"analysis_count_total": 0},
+                "tone_history_summary": {"tone_take_count_total": 0},
+                "multitrack_export_summary": {"export_count_total": 0},
+            }
+        )
+        self.assertIn("No saved practice evidence", summary["practice_summary"])
+        self.assertIn("Evidence used", summary["evidence_used"])
+
+    def test_store_replaces_previous_summary(self) -> None:
+        session: dict = {}
+        store_latest_practice_analysis(session, self._rich_payload())
+        first = dict(session.get("latest_practice_analysis_summary") or {})
+        sparse = {
+            "practice_log_summary": {"entry_count_total": 0, "window_days": 14},
+            "upload_analysis_summary": {"analysis_count_total": 0},
+            "tone_history_summary": {"tone_take_count_total": 0},
+            "multitrack_export_summary": {},
+        }
+        store_latest_practice_analysis(session, sparse, handoff_result={"duplicate": True, "question_id": "q1"})
+        second = session.get("latest_practice_analysis_summary")
+        self.assertNotEqual(first.get("practice_summary"), second.get("practice_summary"))
+        self.assertIn("No saved practice evidence", str(second.get("practice_summary")))
+        self.assertTrue(session.get("latest_practice_analysis_handoff_status", {}).get("duplicate"))
+
+    def test_payload_includes_log_page_summary(self) -> None:
+        catalog = {
+            "uploaded_recordings": [_sample_upload()],
+            "tone_takes": [_sample_tone()],
+            "multitrack_exports": [],
+        }
+
+        def _fake_media(st=None, window_days=30):
+            from media_state import build_media_ami_payload_from_catalog
+
+            return build_media_ami_payload_from_catalog(catalog, window_days=window_days)
+
+        with patch("media_persistence.build_media_ami_payload", _fake_media):
+            with patch("media_persistence.load_media_catalog", return_value=catalog):
+                payload = build_practice_history_ami_payload({}, entries=[_sample_log()], window_days=14)
+        self.assertIn("log_page_summary", payload)
+        self.assertIn("progress_report", payload)
+        self.assertIn("executive_summary", payload["progress_report"])
+
+    def test_log_page_ui_wiring(self) -> None:
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        app_source = (root / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        ui_source = (root / "practice_log_ui.py").read_text(encoding="utf-8")
+        self.assertIn("render_practice_analysis_panel", app_source)
+        self.assertIn("Practice Analysis", ui_source)
+        self.assertNotIn('expander("Coach notes"', app_source)
+        self.assertNotIn("render_practice_progress_report_panel", ui_source)
+
+    def test_submit_analyze_updates_local_summary_and_handoff(self) -> None:
+        from unittest.mock import MagicMock
+
+        from practice_log_ui import submit_analyze_practice_to_ami
+
+        session: dict = {}
+        handoff_ctx: dict = {}
+
+        def _fake_handoff(**kwargs):
+            handoff_ctx.update(kwargs.get("context") or {})
+            return {"duplicate": False, "continue_title": "Music Practice Log Analysis", "question_id": "q-test"}
+
+        with patch("practice_log_ami.build_practice_log_ami_payload") as mock_build:
+            mock_build.return_value = {
+                **self._rich_payload(),
+                "log_page_summary": build_log_page_analysis_summary(self._rich_payload()),
+            }
+            with patch("suite_analytical_question.submit_practice_log_analysis_handoff", side_effect=_fake_handoff):
+                with patch("suite_analytical_question.build_submit_context", side_effect=lambda *a, **k: k.get("context_extra_builder", lambda: {})()):
+                    with patch("music_coach_context.build_source_state", return_value=None):
+                        submit_analyze_practice_to_ami(MagicMock(), session)
+        self.assertIn("latest_practice_analysis_summary", session)
+        self.assertIn("latest_practice_analysis_full_report", session)
+        self.assertIn("progress_report", handoff_ctx)
 
 
 if __name__ == "__main__":

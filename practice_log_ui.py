@@ -304,9 +304,10 @@ def render_summary_cards(st: Any, entries: list[dict[str, Any]], session_state: 
 
 
 def submit_analyze_practice_to_ami(st: Any, session_state: dict[str, Any]) -> dict[str, Any]:
-    """Build payload, cache in session, and send to Command Center."""
+    """Build payload, cache Log-page summary, and send full report to Command Center."""
     from music_coach_context import build_source_state
     from practice_log_ami import build_practice_log_ami_payload
+    from practice_history_synthesis import store_latest_practice_analysis
     from suite_analytical_question import (
         build_submit_context,
         submit_practice_log_analysis_handoff,
@@ -316,13 +317,7 @@ def submit_analyze_practice_to_ami(st: Any, session_state: dict[str, Any]) -> di
     payload = build_practice_log_ami_payload(session_state, entries=entries, window_days=14, st=st)
     session_state["_practice_log_ami_payload"] = payload
     session_state["practice_log_ami_payload"] = payload
-    try:
-        from practice_history_synthesis import format_progress_report_markdown
-
-        report = payload.get("progress_report") if isinstance(payload.get("progress_report"), dict) else {}
-        session_state["_practice_log_progress_report_md"] = format_progress_report_markdown(report) if report else ""
-    except ImportError:
-        pass
+    store_latest_practice_analysis(session_state, payload)
 
     question = (
         "Analyze my practice history. What patterns are showing up, what should I focus on next, "
@@ -337,6 +332,7 @@ def submit_analyze_practice_to_ami(st: Any, session_state: dict[str, Any]) -> di
             "practice_log_summary": payload.get("practice_log_summary"),
             "recent_practice_history": payload.get("recent_sessions"),
             "practice_log_ami_payload": payload,
+            "log_page_summary": payload.get("log_page_summary"),
             "user_request": "analyze_practice",
             "routing_hint": "practice_history_analysis",
             "intent": "practice_history_analysis",
@@ -367,7 +363,7 @@ def submit_analyze_practice_to_ami(st: Any, session_state: dict[str, Any]) -> di
     except Exception:
         pass
 
-    return submit_practice_log_analysis_handoff(
+    result = submit_practice_log_analysis_handoff(
         source_page="log",
         question=question,
         context=ctx,
@@ -375,6 +371,8 @@ def submit_analyze_practice_to_ami(st: Any, session_state: dict[str, Any]) -> di
         source_state=source_state,
         session_state=session_state,
     )
+    store_latest_practice_analysis(session_state, payload, handoff_result=result)
+    return result
 
 
 def _rating_fields_form(st: Any, prefix: str, existing: dict[str, Any] | None = None) -> dict[str, int]:
@@ -564,9 +562,15 @@ def render_quick_actions(
             except ImportError:
                 session_state["_practice_log_analyze_handoff_trace"] = {"result_keys": list(result.keys())}
             if result.get("duplicate"):
-                st.info("Practice analysis was already sent recently. Open Command Center to continue.")
+                st.info(
+                    "Practice Analysis updated below. Full report was already sent recently — "
+                    "open Command Center to continue."
+                )
             else:
-                st.success("Practice log sent to Command Center. Open Command Center for Music Coach analysis.")
+                st.success(
+                    "Practice Analysis updated below. Full detailed report sent to Command Center "
+                    "→ Music Practice Log Analysis."
+                )
             st.rerun()
     st.caption(
         "Quick Save uses your current song, instrument, key, BPM, and focus. "
@@ -735,37 +739,50 @@ def render_session_list(
                     st.rerun()
 
 
-def render_practice_progress_report_panel(st: Any, session_state: dict[str, Any]) -> None:
-    """Show cached local progress report from the last Analyze My Practice synthesis."""
-    payload = session_state.get("practice_log_ami_payload") or session_state.get("_practice_log_ami_payload")
-    report_md = str(session_state.get("_practice_log_progress_report_md") or "").strip()
-    if not report_md and isinstance(payload, dict) and payload.get("progress_report"):
-        try:
-            from practice_history_synthesis import format_progress_report_markdown
+def render_practice_analysis_panel(st: Any, session_state: dict[str, Any]) -> None:
+    """Visible Practice Analysis panel — concise local summary after Analyze My Practice."""
+    from practice_history_synthesis import LATEST_PRACTICE_ANALYSIS_CREATED_AT_KEY, LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY
 
-            report_md = format_progress_report_markdown(payload["progress_report"])
-        except ImportError:
-            report_md = ""
+    summary = session_state.get(LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY)
+    created_at = str(session_state.get(LATEST_PRACTICE_ANALYSIS_CREATED_AT_KEY) or "").strip()
+    handoff = session_state.get("latest_practice_analysis_handoff_status")
+    handoff = handoff if isinstance(handoff, dict) else {}
 
-    with st.expander("Analyze My Practice — Progress Report", expanded=bool(report_md)):
-        if report_md:
-            st.markdown(report_md)
-        else:
-            st.caption(
-                "Click **Analyze My Practice** to synthesize your practice logs, saved upload analyses, "
-                "tone takes, and export metadata into a progress report."
+    st.markdown('<p class="ui-log-section-title">Practice Analysis</p>', unsafe_allow_html=True)
+    with st.container(key="log_practice_analysis_panel", border=True):
+        if not isinstance(summary, dict) or not summary:
+            st.markdown(
+                "**No analysis yet.** Click **Analyze My Practice** above to generate a concise summary "
+                "from your practice logs, saved upload analyses, tone takes, and export metadata."
             )
-        if st.button("Refresh local progress report", key="plog_refresh_progress_report"):
-            from practice_log_ami import build_practice_log_ami_payload
-            from practice_history_synthesis import format_progress_report_markdown
+            st.caption(
+                "The Log page shows practical next steps here. Command Center receives the full detailed report."
+            )
+            return
 
-            entries = load_entries(session_state)
-            fresh = build_practice_log_ami_payload(session_state, entries=entries, window_days=14, st=st)
-            session_state["practice_log_ami_payload"] = fresh
-            session_state["_practice_log_ami_payload"] = fresh
-            report = fresh.get("progress_report") if isinstance(fresh.get("progress_report"), dict) else {}
-            session_state["_practice_log_progress_report_md"] = format_progress_report_markdown(report) if report else ""
-            st.rerun()
+        if created_at:
+            st.caption(f"Last updated: {created_at}")
+        if handoff.get("sent_at"):
+            if handoff.get("duplicate"):
+                st.info("Full report available in Command Center (recent send — use **Continue** there).")
+            else:
+                st.caption("Full detailed report sent to Command Center → **Music Practice Log Analysis**.")
+
+        sections: tuple[tuple[str, str], ...] = (
+            ("Practice Summary", "practice_summary"),
+            ("Improvement Notes", "improvement_notes"),
+            ("Upload / Recording Review", "upload_recording_review"),
+            ("Tone & Tuner Notes", "tone_tuner_notes"),
+            ("Recommended Next Session", "recommended_next_session"),
+            ("Recommended Focus This Week", "recommended_focus_this_week"),
+            ("Evidence Used", "evidence_used"),
+        )
+        for heading, key in sections:
+            text = str(summary.get(key) or "").strip()
+            if not text:
+                continue
+            st.markdown(f"**{heading}**")
+            st.markdown(text)
 
 
 def render_practice_log_page(
@@ -778,7 +795,6 @@ def render_practice_log_page(
     entries = load_entries(session_state)
     render_summary_cards(st, entries, session_state)
     render_quick_actions(st, session_state, on_saved=on_saved)
-    render_practice_progress_report_panel(st, session_state)
     render_entry_forms(st, session_state, on_saved=on_saved)
 
     with st.container(key="log_filter_panel", border=False):

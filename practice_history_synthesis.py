@@ -684,6 +684,167 @@ def format_progress_report_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines).strip()
 
 
+LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY = "latest_practice_analysis_summary"
+LATEST_PRACTICE_ANALYSIS_CREATED_AT_KEY = "latest_practice_analysis_created_at"
+LATEST_PRACTICE_ANALYSIS_EVIDENCE_COUNTS_KEY = "latest_practice_analysis_evidence_counts"
+LATEST_PRACTICE_ANALYSIS_FULL_REPORT_KEY = "latest_practice_analysis_full_report"
+LATEST_PRACTICE_ANALYSIS_HANDOFF_STATUS_KEY = "latest_practice_analysis_handoff_status"
+
+
+def _evidence_counts_from_payload(payload: dict[str, Any]) -> dict[str, int]:
+    pl = payload.get("practice_log_summary") if isinstance(payload.get("practice_log_summary"), dict) else {}
+    ua = payload.get("upload_analysis_summary") if isinstance(payload.get("upload_analysis_summary"), dict) else {}
+    th = payload.get("tone_history_summary") if isinstance(payload.get("tone_history_summary"), dict) else {}
+    mt = payload.get("multitrack_export_summary") if isinstance(payload.get("multitrack_export_summary"), dict) else {}
+    return {
+        "practice_logs": int(pl.get("entry_count_total") or 0),
+        "upload_analyses": int(ua.get("analysis_count_total") or 0),
+        "tone_takes": int(th.get("tone_take_count_total") or 0),
+        "multitrack_exports": int(mt.get("export_count_total") or 0),
+        "analyzed_exports": int(mt.get("analyzed_export_count") or 0),
+    }
+
+
+def _empty_log_page_analysis_summary(*, window_days: int = 14) -> dict[str, str]:
+    return {
+        "practice_summary": (
+            f"No saved practice evidence in the last **{window_days}** days yet. "
+            "Log a session, save an Upload Analysis, or record tone takes to build your first summary."
+        ),
+        "improvement_notes": (
+            "Once you have logs plus upload analyses or tone takes, improvement patterns will appear here."
+        ),
+        "upload_recording_review": (
+            "No saved upload analyses yet. Record a take on **Upload Analysis** and use **Save to History**."
+        ),
+        "tone_tuner_notes": (
+            "No tone/tuner takes saved yet. Use **Practice → Tone & Tuner** and save a take after analysis."
+        ),
+        "recommended_next_session": (
+            "Log today's practice, save one tone take, and send one recording to Upload Analysis this week."
+        ),
+        "recommended_focus_this_week": "Start with tone stability, timing, and saving evidence after each session.",
+        "evidence_used": "Evidence used: **0** practice logs, **0** upload analyses, **0** tone takes, **0** analyzed exports.",
+    }
+
+
+def build_log_page_analysis_summary(payload: dict[str, Any]) -> dict[str, str]:
+    """Concise action-oriented summary for the Practice Log page."""
+    counts = _evidence_counts_from_payload(payload)
+    total = counts["practice_logs"] + counts["upload_analyses"] + counts["tone_takes"]
+    window_days = int(
+        (payload.get("practice_log_summary") or {}).get("window_days")
+        or payload.get("window_days")
+        or 14
+    )
+    if total == 0 and counts["multitrack_exports"] == 0:
+        return _empty_log_page_analysis_summary(window_days=window_days)
+
+    report = payload.get("progress_report") if isinstance(payload.get("progress_report"), dict) else {}
+    if not report:
+        report = build_practice_progress_report(payload)
+
+    pl = payload.get("practice_log_summary") if isinstance(payload.get("practice_log_summary"), dict) else {}
+    ua = payload.get("upload_analysis_summary") if isinstance(payload.get("upload_analysis_summary"), dict) else {}
+    th = payload.get("tone_history_summary") if isinstance(payload.get("tone_history_summary"), dict) else {}
+
+    top_instrument = ""
+    top_focus = ""
+    if pl.get("practice_time_by_instrument"):
+        top_instrument = next(iter(pl["practice_time_by_instrument"]), "")
+    if pl.get("focus_area_counts"):
+        top_focus = next(iter(pl["focus_area_counts"]), "")
+
+    focus_phrase = top_focus.replace("_", " ") if top_focus else "general practice"
+    instrument_phrase = top_instrument or "your instrument"
+
+    practice_summary = (
+        f"You worked mostly on **{instrument_phrase}**"
+        + (f" with focus on **{focus_phrase}**" if top_focus else "")
+        + ". Recent saved evidence includes "
+        f"**{counts['practice_logs']}** practice log(s), **{counts['upload_analyses']}** upload analysis(es), "
+        f"**{counts['tone_takes']}** tone take(s)"
+        + (
+            f", and **{counts['analyzed_exports']}** analyzed multitrack export(s)."
+            if counts["analyzed_exports"]
+            else "."
+        )
+    )
+
+    improvements = report.get("improvements") or []
+    improvement_notes = " ".join(str(x) for x in improvements[:2]) if improvements else (
+        "Keep logging sessions and saving analyses to surface measurable improvements."
+    )
+
+    upload_lines = report.get("upload_analysis_findings") or []
+    upload_recording_review = str(upload_lines[0]) if upload_lines else (
+        "No saved upload analyses yet — record a take and save to history for song-level feedback."
+    )
+
+    tone_lines = report.get("tone_tuner_findings") or []
+    tone_tuner_notes = str(tone_lines[0]) if tone_lines else (
+        "No tone/tuner takes in the current window."
+    )
+
+    next_plan = report.get("recommended_next_practice_plan") or []
+    recommended_next_session = " ".join(str(x) for x in next_plan[:2]) if next_plan else (
+        str(pl.get("suggested_next_focus") or "Log a session and save one piece of evidence today.")
+    )
+
+    focus_bits: list[str] = []
+    if pl.get("focus_area_counts"):
+        focus_bits.extend(list(pl["focus_area_counts"].keys())[:3])
+    needs = report.get("needs_work") or []
+    for item in needs[:2]:
+        text = str(item).replace("Recurring in uploads: ", "").strip("* ")
+        if text and text not in focus_bits:
+            focus_bits.append(text[:80])
+    if focus_bits:
+        recommended_focus = "Prioritize " + ", ".join(f"**{f}**" for f in focus_bits[:4]) + "."
+    else:
+        recommended_focus = str(pl.get("suggested_next_focus") or "Prioritize tone, timing, and saving evidence after each session.")
+
+    evidence_used = str(report.get("evidence_used") or (
+        f"Evidence used: **{counts['practice_logs']}** practice logs, "
+        f"**{counts['upload_analyses']}** upload analyses, **{counts['tone_takes']}** tone takes, "
+        f"**{counts['analyzed_exports']}** analyzed multitrack export(s)."
+    ))
+
+    return {
+        "practice_summary": practice_summary,
+        "improvement_notes": improvement_notes,
+        "upload_recording_review": upload_recording_review,
+        "tone_tuner_notes": tone_tuner_notes,
+        "recommended_next_session": recommended_next_session,
+        "recommended_focus_this_week": recommended_focus,
+        "evidence_used": evidence_used,
+    }
+
+
+def store_latest_practice_analysis(
+    session_state: dict[str, Any],
+    payload: dict[str, Any],
+    *,
+    handoff_result: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    """Cache the latest Log-page Practice Analysis summary and related state."""
+    summary = build_log_page_analysis_summary(payload)
+    session_state[LATEST_PRACTICE_ANALYSIS_SUMMARY_KEY] = summary
+    session_state[LATEST_PRACTICE_ANALYSIS_CREATED_AT_KEY] = _utc_now_iso()
+    session_state[LATEST_PRACTICE_ANALYSIS_EVIDENCE_COUNTS_KEY] = _evidence_counts_from_payload(payload)
+    report = payload.get("progress_report") if isinstance(payload.get("progress_report"), dict) else {}
+    session_state[LATEST_PRACTICE_ANALYSIS_FULL_REPORT_KEY] = report
+    if handoff_result is not None:
+        session_state[LATEST_PRACTICE_ANALYSIS_HANDOFF_STATUS_KEY] = {
+            "duplicate": bool(handoff_result.get("duplicate")),
+            "question_id": handoff_result.get("question_id"),
+            "continue_title": handoff_result.get("continue_title"),
+            "resume_key": handoff_result.get("resume_key"),
+            "sent_at": _utc_now_iso(),
+        }
+    return summary
+
+
 def build_practice_history_ami_payload(
     session_state: dict[str, Any],
     entries: list[dict[str, Any]] | None = None,
@@ -767,4 +928,5 @@ def build_practice_history_ami_payload(
     payload["safety_checks"] = ami_payload_safety_checks(payload)
     payload["diagnostics"] = ami_payload_diagnostics(payload)
     payload["progress_report"] = build_practice_progress_report(payload)
+    payload["log_page_summary"] = build_log_page_analysis_summary(payload)
     return payload
