@@ -54,6 +54,10 @@ def new_tone_take_id() -> str:
     return str(uuid.uuid4())
 
 
+def new_multitrack_export_id() -> str:
+    return str(uuid.uuid4())
+
+
 def new_track_id() -> str:
     return str(uuid.uuid4())
 
@@ -89,6 +93,10 @@ def is_tone_take_tombstone(entry: dict[str, Any]) -> bool:
     return bool(entry.get("deleted")) and bool(str(entry.get("tone_take_id") or "").strip())
 
 
+def is_multitrack_export_tombstone(entry: dict[str, Any]) -> bool:
+    return bool(entry.get("deleted")) and bool(str(entry.get("export_id") or "").strip())
+
+
 def _recording_id(entry: dict[str, Any]) -> str:
     rid = str(entry.get("recording_id") or entry.get("item_key") or "").strip()
     if rid:
@@ -105,6 +113,10 @@ def _multitrack_id(entry: dict[str, Any]) -> str:
 
 def _tone_take_id(entry: dict[str, Any]) -> str:
     return str(entry.get("tone_take_id") or "").strip()
+
+
+def _multitrack_export_id(entry: dict[str, Any]) -> str:
+    return str(entry.get("export_id") or "").strip()
 
 
 def _compact_analysis_summary(raw: Any) -> dict[str, Any]:
@@ -438,6 +450,83 @@ def migrate_tone_take(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def migrate_multitrack_export(entry: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a saved multitrack mix export row."""
+    if not isinstance(entry, dict):
+        return {}
+
+    if is_multitrack_export_tombstone(entry):
+        deleted_at = str(entry.get("deleted_at") or entry.get("updated_at") or _utc_now_iso())
+        return {
+            "export_id": _multitrack_export_id(entry) or new_multitrack_export_id(),
+            "deleted": True,
+            "deleted_at": deleted_at,
+            "updated_at": deleted_at,
+        }
+
+    out = dict(entry)
+    eid = _multitrack_export_id(out) or new_multitrack_export_id()
+    now = _utc_now_iso()
+    created = str(out.get("created_at") or now)
+    updated = str(out.get("updated_at") or created)
+
+    included = out.get("included_tracks")
+    if isinstance(included, list):
+        included_tracks = [dict(x) for x in included if isinstance(x, dict)]
+    else:
+        included_tracks = []
+
+    mix_settings = out.get("mix_settings")
+    if not isinstance(mix_settings, dict):
+        mix_settings = {}
+
+    snapshot = out.get("source_multitrack_snapshot")
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+
+    analysis = out.get("analysis_summary")
+    if not isinstance(analysis, dict):
+        analysis = {}
+
+    fmt = str(out.get("format") or out.get("mime_type") or "wav").strip().lower()
+    if fmt.startswith("audio/"):
+        fmt = fmt.split("/", 1)[-1]
+    if not fmt:
+        fmt = "wav"
+
+    return {
+        "export_id": eid,
+        "multitrack_id": str(out.get("multitrack_id") or out.get("project_id") or "").strip() or None,
+        "export_name": str(out.get("export_name") or out.get("title") or "Multitrack export").strip()[:120],
+        "song": str(out.get("song") or out.get("song_title") or "").strip(),
+        "song_title": str(out.get("song_title") or out.get("song") or "").strip(),
+        "active_song_id": str(out.get("active_song_id") or "").strip() or None,
+        "created_at": created,
+        "updated_at": updated,
+        "workspace_id": str(out.get("workspace_id") or "daniel").strip(),
+        "instrument": str(out.get("instrument") or "").strip(),
+        "bpm": _coerce_int(out.get("bpm")),
+        "duration_seconds": _coerce_float(out.get("duration_seconds")),
+        "format": fmt,
+        "sample_rate": _coerce_int(out.get("sample_rate")),
+        "track_count": _coerce_int(out.get("track_count")) or len(included_tracks),
+        "included_tracks": included_tracks,
+        "mix_settings": mix_settings,
+        "source_multitrack_snapshot": snapshot,
+        "analysis_status": str(out.get("analysis_status") or "").strip(),
+        "analysis_summary": analysis,
+        "playback_status": str(out.get("playback_status") or "").strip(),
+        "storage_ref": out.get("storage_ref"),
+        "local_path": out.get("local_path"),
+        "storage_error": str(out.get("storage_error") or "").strip(),
+        "linked_recording_id": str(out.get("linked_recording_id") or "").strip() or None,
+        "linked_practice_session_id": str(out.get("linked_practice_session_id") or "").strip() or None,
+        "notes": str(out.get("notes") or "").strip()[:2000],
+        "deleted": False,
+        "deleted_at": None,
+    }
+
+
 def _parse_updated_at(entry: dict[str, Any]) -> str:
     return str(entry.get("updated_at") or entry.get("created_at") or "")
 
@@ -538,6 +627,16 @@ def normalize_tone_takes(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     )
 
 
+def normalize_multitrack_exports(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply tombstones; return visible multitrack exports newest-first."""
+    return _apply_tombstones(
+        entries,
+        id_key="export_id",
+        is_tombstone=is_multitrack_export_tombstone,
+        migrate=migrate_multitrack_export,
+    )
+
+
 def merge_catalog(local: dict[str, Any] | None, cloud: dict[str, Any] | None) -> dict[str, Any]:
     """Merge local and cloud catalog payloads."""
     loc = dict(local or {})
@@ -562,6 +661,12 @@ def merge_catalog(local: dict[str, Any] | None, cloud: dict[str, Any] | None) ->
         migrate=migrate_tone_take,
         id_key="tone_take_id",
     )
+    multitrack_exports = merge_media_records(
+        loc.get("multitrack_exports") if isinstance(loc.get("multitrack_exports"), list) else [],
+        cld.get("multitrack_exports") if isinstance(cld.get("multitrack_exports"), list) else [],
+        migrate=migrate_multitrack_export,
+        id_key="export_id",
+    )
     updated = max(
         (_parse_updated_at(loc), _parse_updated_at(cld)),
         default="",
@@ -573,6 +678,7 @@ def merge_catalog(local: dict[str, Any] | None, cloud: dict[str, Any] | None) ->
         "uploaded_recordings": uploads,
         "multitrack_sessions": multitracks,
         "tone_takes": tone_takes,
+        "multitrack_exports": multitrack_exports,
     }
 
 
@@ -803,6 +909,57 @@ def build_tone_ami_summary(takes: list[dict[str, Any]], *, window_days: int = 30
     }
 
 
+def compact_multitrack_export_for_ami(entry: dict[str, Any]) -> dict[str, Any]:
+    row = migrate_multitrack_export(entry)
+    if is_multitrack_export_tombstone(row):
+        return {}
+    audio_available = bool(row.get("storage_ref") or row.get("local_path"))
+    summary = row.get("analysis_summary") if isinstance(row.get("analysis_summary"), dict) else {}
+    included = row.get("included_tracks") if isinstance(row.get("included_tracks"), list) else []
+    return {
+        "export_id": row.get("export_id"),
+        "created_at": row.get("created_at"),
+        "export_name": row.get("export_name"),
+        "song": row.get("song") or row.get("song_title"),
+        "multitrack_id": row.get("multitrack_id"),
+        "duration_seconds": row.get("duration_seconds"),
+        "format": row.get("format"),
+        "track_count": row.get("track_count") or len(included),
+        "included_tracks": [str(t.get("name") or "") for t in included if isinstance(t, dict)][:8],
+        "analysis_status": row.get("analysis_status"),
+        "coach_summary": summary.get("coach_summary"),
+        "scores": summary.get("scores"),
+        "playback_status": row.get("playback_status"),
+        "audio_available": audio_available,
+        "linked_recording_id": row.get("linked_recording_id"),
+        "source": "multitrack_export",
+    }
+
+
+def build_multitrack_export_ami_summary(exports: list[dict[str, Any]], *, window_days: int = 30) -> dict[str, Any]:
+    compact = [c for c in (compact_multitrack_export_for_ami(e) for e in exports) if c]
+    by_song: dict[str, int] = {}
+    by_project: dict[str, int] = {}
+    for row in compact:
+        song = str(row.get("song") or "Unknown").strip() or "Unknown"
+        by_song[song] = by_song.get(song, 0) + 1
+        pid = str(row.get("multitrack_id") or "").strip()
+        if pid:
+            by_project[pid] = by_project.get(pid, 0) + 1
+    analysis_ready = [r for r in compact if r.get("analysis_status") == "analyzed" or r.get("coach_summary")]
+    audio_available_count = sum(1 for r in compact if r.get("audio_available"))
+    return {
+        "multitrack_export_count_total": len(compact),
+        "recent_multitrack_exports": compact[:16],
+        "exports_by_song": by_song,
+        "exports_by_project": by_project,
+        "analysis_ready_exports": analysis_ready[:12],
+        "audio_available": audio_available_count > 0,
+        "audio_available_count": audio_available_count,
+        "window_days": window_days,
+    }
+
+
 def build_media_ami_payload_from_catalog(
     catalog: dict[str, Any],
     *,
@@ -817,13 +974,19 @@ def build_media_ami_payload_from_catalog(
     tone_takes = normalize_tone_takes(
         catalog.get("tone_takes") if isinstance(catalog.get("tone_takes"), list) else []
     )
+    multitrack_exports = normalize_multitrack_exports(
+        catalog.get("multitrack_exports") if isinstance(catalog.get("multitrack_exports"), list) else []
+    )
     uploads = [u for u in uploads if _within_window(u, window_days=window_days)]
     multitracks = [m for m in multitracks if _within_window(m, window_days=window_days)]
     tone_takes = [t for t in tone_takes if _within_window(t, window_days=window_days)]
+    multitrack_exports = [e for e in multitrack_exports if _within_window(e, window_days=window_days)]
 
     upload_compact = [c for c in (compact_recording_for_ami(u) for u in uploads) if c]
     mt_compact = [c for c in (compact_multitrack_for_ami(m) for m in multitracks) if c]
+    export_compact = [c for c in (compact_multitrack_export_for_ami(e) for e in multitrack_exports) if c]
     tone_summary = build_tone_ami_summary(tone_takes, window_days=window_days)
+    export_summary = build_multitrack_export_ami_summary(multitrack_exports, window_days=window_days)
 
     recording_context: list[dict[str, Any]] = []
     for row in upload_compact:
@@ -864,14 +1027,28 @@ def build_media_ami_payload_from_catalog(
             }
         )
 
+    for row in export_summary.get("recent_multitrack_exports") or []:
+        if not isinstance(row, dict):
+            continue
+        recording_context.append(
+            {
+                "date": row.get("created_at"),
+                "song": row.get("song"),
+                "coach_summary": row.get("coach_summary"),
+                "source": "multitrack_export",
+            }
+        )
+
     return {
         "uploaded_recordings": upload_compact,
         "multitrack_sessions": mt_compact,
+        "multitrack_exports": export_summary,
         "tone_history": tone_summary,
         "recording_analysis_context": recording_context[:20],
         "media_summary": {
             "upload_count": len(upload_compact),
             "multitrack_count": len(mt_compact),
+            "multitrack_export_count": export_summary.get("multitrack_export_count_total", 0),
             "tone_take_count": tone_summary.get("tone_take_count_total", 0),
             "window_days": window_days,
         },

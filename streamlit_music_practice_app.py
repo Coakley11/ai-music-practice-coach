@@ -12911,9 +12911,29 @@ elif _studio_page == "multitrack":
                     mime="audio/wav",
                     use_container_width=True,
                 )
+                try:
+                    from multitrack_export_ui import render_step4_save_export_panel
+
+                    render_step4_save_export_panel(
+                        st,
+                        st.session_state,
+                        song_title=str(song or ""),
+                        track_items_for_mix=track_items_for_mix,
+                        include_backing=bool(st.session_state.get("include_backing_mix", False)),
+                        backing_volume=float(st.session_state.get("mt_backing_volume", 0.75)),
+                    )
+                except ImportError:
+                    pass
                 st.caption(
-                    "Want AI coaching on this take? Open **Upload Analysis** in the sidebar."
+                    "Want AI coaching on this take? Save the export, then use **Send to Upload Analysis** below."
                 )
+
+            try:
+                from multitrack_export_ui import render_multitrack_export_library
+
+                render_multitrack_export_library(st, st.session_state, song_title=str(song or ""))
+            except ImportError:
+                pass
 
             if st.button("Clear all multitrack layers", use_container_width=True):
                 try:

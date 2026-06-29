@@ -198,6 +198,7 @@ def build_practice_log_ami_payload(
         "active_song_context": _active_song_context(session_state),
         "recording_analysis_context": _recording_analysis_context(),
         "tone_history": tone_history,
+        "multitrack_exports": media_payload.get("multitrack_exports") or {},
         "media_summary": media_payload.get("media_summary") or {},
         "user_request": "analyze_practice",
     }

@@ -9,16 +9,20 @@ from typing import Any
 from media_state import (
     MEDIA_CATALOG_VERSION,
     build_media_ami_payload_from_catalog,
+    is_multitrack_export_tombstone,
     is_multitrack_tombstone,
     is_recording_tombstone,
     is_tone_take_tombstone,
     merge_catalog,
+    migrate_multitrack_export,
     migrate_multitrack_session,
     migrate_tone_take,
     migrate_uploaded_recording,
+    new_multitrack_export_id,
     new_multitrack_id,
     new_recording_id,
     new_tone_take_id,
+    normalize_multitrack_exports,
     normalize_multitrack_sessions,
     normalize_tone_takes,
     normalize_uploaded_recordings,
@@ -66,6 +70,7 @@ def _empty_catalog(*, workspace_id: str) -> dict[str, Any]:
         "uploaded_recordings": [],
         "multitrack_sessions": [],
         "tone_takes": [],
+        "multitrack_exports": [],
     }
 
 
@@ -327,6 +332,16 @@ def _replace_tone_take(catalog: dict[str, Any], row: dict[str, Any]) -> dict[str
     return out
 
 
+def _replace_multitrack_export(catalog: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+    out = dict(catalog)
+    rows = list(out.get("multitrack_exports") or [])
+    eid = str(row.get("export_id") or "")
+    rows = [r for r in rows if str(r.get("export_id") or "") != eid]
+    rows.append(row)
+    out["multitrack_exports"] = rows
+    return out
+
+
 def add_uploaded_recording(st: Any | None, fields: dict[str, Any]) -> dict[str, Any]:
     catalog = _catalog_from_st(st, None)
     now = _utc_now_iso()
@@ -506,6 +521,67 @@ def delete_tone_take(st: Any | None, tone_take_id: str) -> bool:
     return bool(result.get("ok"))
 
 
+def add_multitrack_export(st: Any | None, fields: dict[str, Any]) -> dict[str, Any]:
+    catalog = _catalog_from_st(st, None)
+    now = _utc_now_iso()
+    ws = _resolve_workspace_id(st=st)
+    row = migrate_multitrack_export(
+        {
+            **dict(fields or {}),
+            "export_id": new_multitrack_export_id(),
+            "created_at": now,
+            "updated_at": now,
+            "workspace_id": ws,
+            "deleted": False,
+        }
+    )
+    updated = _replace_multitrack_export(catalog, row)
+    save_media_catalog(updated, st=st)
+    return row
+
+
+def update_multitrack_export(
+    st: Any | None,
+    export_id: str,
+    updates: dict[str, Any],
+) -> dict[str, Any]:
+    eid = str(export_id or "").strip()
+    if not eid:
+        return {}
+    catalog = _catalog_from_st(st, None)
+    rows = catalog.get("multitrack_exports") if isinstance(catalog.get("multitrack_exports"), list) else []
+    existing = None
+    for row in rows:
+        if isinstance(row, dict) and str(row.get("export_id") or "") == eid:
+            existing = migrate_multitrack_export(row)
+            break
+    if not existing or is_multitrack_export_tombstone(existing):
+        return {}
+    merged = {**existing, **dict(updates or {}), "export_id": eid, "updated_at": _utc_now_iso()}
+    row = migrate_multitrack_export(merged)
+    updated = _replace_multitrack_export(catalog, row)
+    save_media_catalog(updated, st=st)
+    return row
+
+
+def delete_multitrack_export(st: Any | None, export_id: str) -> bool:
+    eid = str(export_id or "").strip()
+    if not eid:
+        return False
+    catalog = _catalog_from_st(st, None)
+    now = _utc_now_iso()
+    tomb = {
+        "export_id": eid,
+        "deleted": True,
+        "deleted_at": now,
+        "updated_at": now,
+        "workspace_id": _resolve_workspace_id(st=st),
+    }
+    updated = _replace_multitrack_export(catalog, tomb)
+    result = save_media_catalog(updated, st=st)
+    return bool(result.get("ok"))
+
+
 def build_media_ami_payload(
     st: Any | None,
     catalog: dict[str, Any] | None = None,
@@ -534,6 +610,9 @@ __all__ = [
     "add_tone_take",
     "update_tone_take",
     "delete_tone_take",
+    "add_multitrack_export",
+    "update_multitrack_export",
+    "delete_multitrack_export",
     "build_media_ami_payload",
     "merge_media_records",
 ]
