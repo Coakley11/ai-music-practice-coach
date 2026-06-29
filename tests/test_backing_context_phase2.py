@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from backing_context import (
     BACKING_CONTEXT_KEY,
+    PENDING_BACKING_CONTEXT_APPLY,
     apply_backing_context_to_session,
     build_entry_jam_context,
     build_mission_context,
@@ -18,6 +19,10 @@ from backing_context import (
     open_backing_from_creative,
     restore_regular_song_backing,
 )
+from custom_progression_lab import PENDING_BACKING_LOOPS, PENDING_BACKING_SCOPE
+from songs.bpm_state import PENDING_BACKING_TRACK_BPM
+from songs.key_state import PENDING_DISPLAY_KEY
+from songs.playback_defaults import PENDING_BACKING_GROOVE
 
 
 class TestBackingContextPhase2(unittest.TestCase):
@@ -32,9 +37,29 @@ class TestBackingContextPhase2(unittest.TestCase):
         ctx = build_entry_jam_context(session)
         st_like = SimpleNamespace(session_state=session)
         with patch("backing_track_state.write_canonical_backing_state"):
-            apply_backing_context_to_session(session, ctx, st_like=st_like)
+            apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=False)
         self.assertEqual(session.get("backing_track_bpm"), 90)
         self.assertEqual(session.get("backing_groove_style"), "Medium")
+
+    def test_widget_safe_handoff_queues_pending_keys(self) -> None:
+        session = {
+            "active_catalog_pick_key": "say|artist",
+            "song": "Say",
+            "display_key": "G",
+            "improv_style_meta": {"style": "Jazz", "bpm": 90, "groove": "Medium"},
+            "improv_style_key": "G",
+        }
+        ctx = build_entry_jam_context(session)
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
+        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "G")
+        self.assertEqual(session.get(PENDING_BACKING_TRACK_BPM), 90)
+        self.assertEqual(session.get(PENDING_BACKING_GROOVE), "Medium")
+        self.assertEqual(session.get(PENDING_BACKING_LOOPS), 2)
+        self.assertEqual(session.get(PENDING_BACKING_SCOPE), "Full song")
+        self.assertTrue(session.get(PENDING_BACKING_CONTEXT_APPLY))
+        self.assertNotIn("backing_track_bpm", session)
 
     def test_open_backing_from_mission(self) -> None:
         session = {

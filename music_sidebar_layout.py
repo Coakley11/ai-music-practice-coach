@@ -9,6 +9,7 @@ MUSIC_SIDEBAR_LAYOUT_MARKER = "sidebar-order-v2"
 
 # Primary sidebar blocks in render order (streamlit_music_practice_app.py).
 MUSIC_SIDEBAR_SECTION_ORDER: tuple[str, ...] = (
+    "account_workspace",
     "command_center",
     "saved_session",
     "active_song",

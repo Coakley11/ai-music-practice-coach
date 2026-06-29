@@ -74,6 +74,13 @@ try:
     apply_suite_auth_gate(st)
 except Exception:
     pass
+
+try:
+    from suite_app_shell import render_suite_sidebar_account_shell
+
+    render_suite_sidebar_account_shell(st, command_center_divider=False)
+except Exception:
+    pass
 # -------------------------------------------------
 # GLOBAL CONSTANTS + SONG CATALOG
 # -------------------------------------------------
@@ -9140,18 +9147,6 @@ if _studio_page == "openai" and not _openai_api_key:
     navigate_studio_page(st.session_state, "practice")
     st.rerun()
 
-try:
-    from suite_app_shell import render_suite_sidebar_account_shell
-
-    render_suite_sidebar_account_shell(st, command_center_divider=False)
-except Exception:
-    try:
-        from suite_command_center_link import render_command_center_sidebar_link
-
-        render_command_center_sidebar_link(st, show_divider=False)
-    except Exception:
-        pass
-
 if not st.session_state.get("_music_sidebar_suite_top_css"):
     st.session_state["_music_sidebar_suite_top_css"] = True
     st.sidebar.markdown(
@@ -9236,6 +9231,13 @@ from practice_setup_globals import ensure_global_setup_defaults as _ensure_globa
 # page widget reads them, so any page that changes one of these values
 # (sidebar, quick controls, YouTube panel, etc.) sees it everywhere.
 _ensure_global_setup_defaults(st.session_state)
+
+try:
+    from backing_context import flush_pending_backing_context_handoff
+
+    flush_pending_backing_context_handoff(st.session_state)
+except Exception:
+    pass
 
 original_key, _song_identity = display_key_context(
     st.session_state,
@@ -11030,9 +11032,15 @@ elif _studio_page == "backing":
     try:
         from backing_context import reconcile_backing_context_on_backing_page
 
-        reconcile_backing_context_on_backing_page(st.session_state, st_like=st)
+        _needs_backing_handoff_rerun = reconcile_backing_context_on_backing_page(
+            st.session_state,
+            st_like=st,
+        )
     except Exception:
-        pass
+        _needs_backing_handoff_rerun = False
+
+    if _needs_backing_handoff_rerun:
+        st.rerun()
 
     # Seed durable widget keys from canonical before Step 1 widgets render.
     # Practice handoff (_apply_pending_backing_scope) runs later and may override scope/loops.
