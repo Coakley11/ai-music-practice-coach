@@ -59,6 +59,21 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 
 **Sync audit (2026-06-11):** See Command Center [plans/2026-06-11-ami-enhancement-roadmap.md](../../daniel-ai-command-center/cursor-prompts/plans/2026-06-11-ami-enhancement-roadmap.md). Upload/multitrack metadata → dedicated media channel (not main envelope) — see media sprint plan above.
 
+### P1 — Creative → Backing Track routing
+
+**Plan:** [plans/2026-06-29-creative-backing-track-routing.md](./plans/2026-06-29-creative-backing-track-routing.md)
+
+**Goal:** Entry & Jam and Missions **Open Backing Track** applies full Creative settings; re-open updates; clear returns to regular song backing; active song change invalidates stale Creative context.
+
+- [ ] `backing_context.py` — canonical session object + signature + validate/clear
+- [ ] Handoff builders: Entry & Jam, Mission, Custom progression (unify CPL)
+- [ ] Replace `_improv_open_backing()` scattered keys with `apply_backing_context_to_session`
+- [ ] Backing page banner + **Use regular song backing** reset
+- [ ] Song-change invalidation hook in `active_song_state`
+- [ ] Persistence in workspace envelope; `tests/test_backing_context.py`
+
+**Acceptance:** Create → Entry & Jam or Missions → Open Backing Track reflects Creative settings; reset and song change restore normal backing; existing regular Backing flow unchanged (Tests A–E frozen).
+
 ### P1 — UI polish (ongoing)
 
 **Frozen:** Tests **A–E** passed — do not reopen persistence without `?dev=1` trace regression.  
