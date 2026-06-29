@@ -54,13 +54,14 @@ def render_pending_tone_save(
     if not pending_tone_take_ready(session_state):
         return
 
-    st_module.markdown("##### Save this tone take")
+    st_module.markdown("---")
+    st_module.success("Long-tone analysis ready — save this take to your Tone History library.")
     notes = st_module.text_area(
         "Notes (optional)",
         key=f"{key_prefix}::tone_save_notes",
         placeholder="What were you working on?",
     )
-    if st_module.button("Save Tone Take", key=f"{key_prefix}::tone_save_btn", type="primary"):
+    if st_module.button("Save Tone Take", key=f"{key_prefix}::tone_save_btn", type="primary", use_container_width=True):
         ok, _tid, err = save_pending_tone_take(
             session_state,
             st=st_module,

@@ -404,6 +404,7 @@ def migrate_tone_take(entry: dict[str, Any]) -> dict[str, Any]:
         "instrument_family": str(out.get("instrument_family") or "").strip(),
         "transposing_type": str(out.get("transposing_type") or "").strip(),
         "target_note": str(out.get("target_note") or "").strip() or None,
+        "selected_pitch_class": str(out.get("selected_pitch_class") or "").strip(),
         "detected_note": str(out.get("detected_note") or "").strip() or None,
         "written_note": str(out.get("written_note") or "").strip() or None,
         "concert_note": str(out.get("concert_note") or "").strip() or None,
