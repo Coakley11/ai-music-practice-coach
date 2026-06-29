@@ -11,7 +11,7 @@ def apply_pending_studio_history(session_state: dict[str, Any], *, page: str, st
             from media_multitrack_export_catalog import apply_pending_multitrack_export_analysis
             from upload_history import FLASH_KEY as UPLOAD_FLASH_KEY
 
-            ok, _ = apply_pending_multitrack_export_analysis(session_state)
+            ok, _ = apply_pending_multitrack_export_analysis(session_state, st=st)
             if ok:
                 session_state[UPLOAD_FLASH_KEY] = (
                     session_state.get("analysis_multitrack_export_loaded_label")

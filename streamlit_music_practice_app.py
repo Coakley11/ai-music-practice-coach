@@ -11772,9 +11772,24 @@ elif _studio_page == "backing":
 elif _studio_page == "analysis":
 
     try:
-        from analysis_session_persistence import restore_analysis_session
+        from media_multitrack_export_catalog import (
+            PENDING_EXPORT_ANALYSIS_KEY,
+            apply_pending_multitrack_export_analysis,
+            upload_analysis_has_export_handoff,
+        )
 
-        restore_analysis_session(st.session_state, st=st)
+        if st.session_state.get(PENDING_EXPORT_ANALYSIS_KEY):
+            apply_pending_multitrack_export_analysis(st.session_state, st=st)
+    except Exception:
+        pass
+
+    try:
+        from media_multitrack_export_catalog import upload_analysis_has_export_handoff
+
+        if not upload_analysis_has_export_handoff(st.session_state):
+            from analysis_session_persistence import restore_analysis_session
+
+            restore_analysis_session(st.session_state, st=st)
     except Exception:
         pass
 
@@ -11898,20 +11913,28 @@ elif _studio_page == "analysis":
                         analysis_export_handoff_ready,
                         clear_multitrack_export_analysis_handoff,
                         loaded_multitrack_export_analysis_banner,
+                        resolve_upload_analysis_prepared_upload,
                     )
                 except ImportError:
                     analysis_export_handoff_ready = lambda _ss: False  # type: ignore[assignment,misc]
                     loaded_multitrack_export_analysis_banner = lambda _ss: ""  # type: ignore[assignment,misc]
                     clear_multitrack_export_analysis_handoff = lambda _ss: None  # type: ignore[assignment,misc]
+                    resolve_upload_analysis_prepared_upload = lambda _ss, **_: None  # type: ignore[assignment,misc]
 
-                _export_handoff_ready = analysis_export_handoff_ready(st.session_state)
                 _export_handoff_label = loaded_multitrack_export_analysis_banner(st.session_state)
+                _handoff_prepared = resolve_upload_analysis_prepared_upload(
+                    st.session_state,
+                    st=st,
+                )
+                _export_handoff_ready = bool(
+                    _export_handoff_label
+                    and _handoff_prepared is not None
+                    and analysis_export_handoff_ready(st.session_state)
+                )
                 if _export_handoff_ready and _export_handoff_label:
                     st.success(_export_handoff_label)
-                    _handoff_prepared = st.session_state.get("_analysis_prepared_upload")
-                    if _handoff_prepared is not None:
-                        st.markdown("**Preview**")
-                        st.audio(_handoff_prepared.getvalue(), format="audio/wav")
+                    st.markdown("**Preview**")
+                    st.audio(_handoff_prepared.getvalue(), format="audio/wav")
                     _capture_expander = st.expander("Replace with a different file", expanded=False)
                 else:
                     _capture_expander = st.container()
@@ -12005,8 +12028,8 @@ elif _studio_page == "analysis":
                             if _detail_bits:
                                 st.caption(" · ".join(_detail_bits))
 
-                elif _export_handoff_ready:
-                    audio_obj = st.session_state.get("_analysis_prepared_upload")
+                elif _export_handoff_ready and _handoff_prepared is not None:
+                    audio_obj = _handoff_prepared
                 elif st.session_state.get("_analysis_prepared_upload") is not None:
                     audio_obj = st.session_state.get("_analysis_prepared_upload")
 

@@ -131,7 +131,7 @@ def build_upload_recording_fields(
     except ImportError:
         workspace_id = "daniel"
 
-    return {
+    fields: dict[str, Any] = {
         "workspace_id": workspace_id,
         "filename": filename[:200],
         "media_type": media_type,
@@ -150,8 +150,37 @@ def build_upload_recording_fields(
         "legacy_recording_type": recording_type[:80],
     }
 
+    try:
+        from media_multitrack_export_catalog import ANALYSIS_EXPORT_HANDOFF_META_KEY
+
+        handoff = session_state.get(ANALYSIS_EXPORT_HANDOFF_META_KEY)
+        if isinstance(handoff, dict) and handoff.get("source") == "multitrack_export":
+            fields["source"] = "multitrack_export"
+            fields["export_id"] = str(handoff.get("export_id") or "").strip()
+            fields["export_name"] = str(handoff.get("export_name") or "").strip()
+            fields["song_title"] = str(handoff.get("song_title") or fields.get("song") or "").strip()
+            fields["duration_seconds"] = handoff.get("duration_seconds")
+            fields["format"] = str(handoff.get("format") or "wav").strip()
+            fields["storage_ref"] = handoff.get("storage_ref")
+            fields["track_count"] = handoff.get("track_count")
+            fields["included_tracks"] = handoff.get("included_tracks")
+            if handoff.get("song_title"):
+                fields["song"] = str(handoff.get("song_title") or fields.get("song") or "").strip()
+    except ImportError:
+        pass
+
+    return fields
+
 
 def _session_audio_bytes(session_state: dict[str, Any]) -> bytes | None:
+    try:
+        from media_multitrack_export_catalog import resolve_upload_analysis_audio_bytes
+
+        resolved = resolve_upload_analysis_audio_bytes(session_state)
+        if resolved:
+            return resolved
+    except ImportError:
+        pass
     raw = session_state.get("last_analysis_audio")
     if isinstance(raw, (bytes, bytearray)) and raw:
         return bytes(raw)

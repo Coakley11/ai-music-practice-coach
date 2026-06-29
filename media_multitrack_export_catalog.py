@@ -33,7 +33,32 @@ PENDING_EXPORT_ANALYSIS_KEY = "_pending_multitrack_export_analysis"
 ANALYSIS_EXPORT_LOADED_LABEL_KEY = "analysis_multitrack_export_loaded_label"
 ANALYSIS_EXPORT_HANDOFF_ID_KEY = "_analysis_export_handoff_id"
 ANALYSIS_EXPORT_HANDOFF_META_KEY = "_analysis_export_handoff_meta"
+ANALYSIS_EXPORT_AUDIO_SIG_KEY = "_analysis_export_audio_sig"
 ANALYSIS_RECORDING_TYPE_MULTITRACK_MIX = "Multitrack mix"
+
+_UPLOAD_ANALYSIS_STALE_KEYS: tuple[str, ...] = (
+    "last_analysis_audio",
+    "last_analysis_result",
+    "last_analysis_source_label",
+    "last_analysis_recording_type",
+    "_analysis_prepared_upload",
+    "_analysis_upload_prep_sig",
+    "analysis_audio_upload",
+    "analysis_audio_record",
+    "upload_catalog_active_recording_id",
+    "_last_catalog_recording_id",
+    "upload_hist_active_item",
+    "upload_history_loaded_item_key",
+    "upload_history_loaded_notes",
+    "upload_catalog_playback_status",
+    "_analysis_session_restore_source",
+    "_analysis_session_restored_at",
+    ANALYSIS_EXPORT_LOADED_LABEL_KEY,
+    ANALYSIS_EXPORT_HANDOFF_ID_KEY,
+    ANALYSIS_EXPORT_HANDOFF_META_KEY,
+    ANALYSIS_EXPORT_AUDIO_SIG_KEY,
+    "_analysis_export_handoff_name",
+)
 
 
 def _utc_now_iso() -> str:
@@ -370,21 +395,51 @@ def _compact_export_handoff_meta(meta: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _upload_analysis_audio_hash(audio: bytes) -> str:
+    raw = bytes(audio)
+    return hashlib.sha256(raw[:65536] + str(len(raw)).encode()).hexdigest()[:20]
+
+
+def _build_export_audio_sig(export_id: str, audio: bytes, filename: str) -> tuple[str, str, str]:
+    eid = str(export_id or "").strip()
+    name = str(filename or "").strip()
+    return (eid, _upload_analysis_audio_hash(audio), name)
+
+
+def _build_upload_prep_sig(audio: bytes, filename: str) -> tuple[str, str]:
+    return (_upload_analysis_audio_hash(audio), str(filename or "").strip())
+
+
+def clear_upload_analysis_prepared_recording(session_state: dict[str, Any]) -> None:
+    """Remove stale Upload Analysis audio/upload widget state before export handoff."""
+    for key in _UPLOAD_ANALYSIS_STALE_KEYS:
+        session_state.pop(key, None)
+
+
 def clear_multitrack_export_analysis_handoff(session_state: dict[str, Any]) -> None:
+    """Clear export handoff markers when user chooses a different upload source."""
     session_state.pop(PENDING_EXPORT_ANALYSIS_KEY, None)
     session_state.pop(ANALYSIS_EXPORT_LOADED_LABEL_KEY, None)
     session_state.pop(ANALYSIS_EXPORT_HANDOFF_ID_KEY, None)
     session_state.pop(ANALYSIS_EXPORT_HANDOFF_META_KEY, None)
+    session_state.pop(ANALYSIS_EXPORT_AUDIO_SIG_KEY, None)
     session_state.pop("_analysis_export_handoff_name", None)
 
 
-def apply_multitrack_export_analysis_handoff(
+def upload_analysis_has_export_handoff(session_state: dict[str, Any]) -> bool:
+    if session_state.get(PENDING_EXPORT_ANALYSIS_KEY):
+        return True
+    return bool(str(session_state.get(ANALYSIS_EXPORT_HANDOFF_ID_KEY) or "").strip())
+
+
+def replace_upload_analysis_with_multitrack_export(
     session_state: dict[str, Any],
     meta: dict[str, Any],
     *,
     audio: bytes,
+    keep_pending: bool = False,
 ) -> tuple[bool, str]:
-    """Wire saved export audio into Upload Analysis session keys the UI already reads."""
+    """Fully replace Upload Analysis prepared recording with one multitrack export."""
     if not audio:
         return False, "missing_audio"
     try:
@@ -392,52 +447,154 @@ def apply_multitrack_export_analysis_handoff(
     except ImportError:
         return False, "upload_media_unavailable"
 
+    clear_upload_analysis_prepared_recording(session_state)
+
     raw = bytes(audio)
     filename = _export_filename_from_meta(meta)
+    export_id = str(meta.get("export_id") or "").strip()
     prepared = PreparedUpload(raw, filename)
-    sig = (
-        hashlib.sha256(raw[:65536] + str(len(raw)).encode()).hexdigest()[:20],
-        filename,
-    )
     compact = _compact_export_handoff_meta(meta)
+    audio_sig = _build_export_audio_sig(export_id, raw, filename)
 
     session_state["last_analysis_audio"] = raw
     session_state["last_analysis_source_label"] = filename
     session_state["analysis_mode"] = "Single recording"
     session_state["analysis_recording_type"] = ANALYSIS_RECORDING_TYPE_MULTITRACK_MIX
     session_state["_analysis_prepared_upload"] = prepared
-    session_state["_analysis_upload_prep_sig"] = sig
+    session_state["_analysis_upload_prep_sig"] = _build_upload_prep_sig(raw, filename)
+    session_state[ANALYSIS_EXPORT_AUDIO_SIG_KEY] = audio_sig
     session_state[ANALYSIS_EXPORT_LOADED_LABEL_KEY] = f"Loaded from Multitrack Export: {filename}"
-    session_state[ANALYSIS_EXPORT_HANDOFF_ID_KEY] = str(meta.get("export_id") or "")
+    session_state[ANALYSIS_EXPORT_HANDOFF_ID_KEY] = export_id
     session_state["_analysis_export_handoff_name"] = str(meta.get("export_name") or "")
     session_state[ANALYSIS_EXPORT_HANDOFF_META_KEY] = compact
-    session_state.pop("last_analysis_result", None)
-    session_state.pop(PENDING_EXPORT_ANALYSIS_KEY, None)
+    if keep_pending:
+        session_state[PENDING_EXPORT_ANALYSIS_KEY] = dict(meta)
+    else:
+        session_state.pop(PENDING_EXPORT_ANALYSIS_KEY, None)
     return True, ""
 
 
-def apply_pending_multitrack_export_analysis(session_state: dict[str, Any]) -> tuple[bool, str]:
+def apply_multitrack_export_analysis_handoff(
+    session_state: dict[str, Any],
+    meta: dict[str, Any],
+    *,
+    audio: bytes,
+    keep_pending: bool = False,
+) -> tuple[bool, str]:
+    """Wire saved export audio into Upload Analysis session keys the UI already reads."""
+    return replace_upload_analysis_with_multitrack_export(
+        session_state,
+        meta,
+        audio=audio,
+        keep_pending=keep_pending,
+    )
+
+
+def _handoff_prepared_matches(session_state: dict[str, Any], prepared: Any) -> bool:
+    sig = session_state.get(ANALYSIS_EXPORT_AUDIO_SIG_KEY)
+    handoff_id = str(session_state.get(ANALYSIS_EXPORT_HANDOFF_ID_KEY) or "").strip()
+    if not isinstance(sig, tuple) or len(sig) != 3 or not handoff_id:
+        return False
+    if sig[0] != handoff_id:
+        return False
+    try:
+        audio = bytes(prepared.getvalue())
+    except Exception:
+        return False
+    filename = str(getattr(prepared, "name", None) or sig[2] or "")
+    return _build_export_audio_sig(handoff_id, audio, filename) == sig
+
+
+def resolve_upload_analysis_prepared_upload(
+    session_state: dict[str, Any],
+    *,
+    st: Any | None = None,
+) -> Any | None:
+    """Return PreparedUpload for active export handoff; reload export audio when stale."""
+    handoff_id = str(session_state.get(ANALYSIS_EXPORT_HANDOFF_ID_KEY) or "").strip()
+    if not handoff_id:
+        return session_state.get("_analysis_prepared_upload")
+
+    prepared = session_state.get("_analysis_prepared_upload")
+    if prepared is not None and _handoff_prepared_matches(session_state, prepared):
+        return prepared
+
+    meta = session_state.get(ANALYSIS_EXPORT_HANDOFF_META_KEY)
+    if not isinstance(meta, dict):
+        meta = {
+            "source": "multitrack_export",
+            "export_id": handoff_id,
+            "export_name": session_state.get("_analysis_export_handoff_name") or "",
+        }
+    data, err, _row = load_export_for_playback(handoff_id, st=st)
+    if not data:
+        return None
+    ok, _ = replace_upload_analysis_with_multitrack_export(
+        session_state,
+        meta,
+        audio=bytes(data),
+        keep_pending=bool(session_state.get(PENDING_EXPORT_ANALYSIS_KEY)),
+    )
+    if not ok:
+        return None
+    return session_state.get("_analysis_prepared_upload")
+
+
+def resolve_upload_analysis_audio_bytes(
+    session_state: dict[str, Any],
+    *,
+    st: Any | None = None,
+) -> bytes | None:
+    prepared = resolve_upload_analysis_prepared_upload(session_state, st=st)
+    if prepared is not None:
+        try:
+            return bytes(prepared.getvalue())
+        except Exception:
+            pass
+    raw = session_state.get("last_analysis_audio")
+    if isinstance(raw, (bytes, bytearray)) and raw:
+        return bytes(raw)
+    return None
+
+
+def apply_pending_multitrack_export_analysis(
+    session_state: dict[str, Any],
+    *,
+    st: Any | None = None,
+) -> tuple[bool, str]:
     """Apply pending export handoff on Upload Analysis page load."""
     pending = session_state.get(PENDING_EXPORT_ANALYSIS_KEY)
     if isinstance(pending, dict) and pending.get("source") == "multitrack_export":
-        audio = session_state.get("last_analysis_audio")
-        if not audio:
-            return False, "missing_audio"
-        return apply_multitrack_export_analysis_handoff(session_state, pending, audio=bytes(audio))
+        export_id = str(pending.get("export_id") or "").strip()
+        if not export_id:
+            return False, "missing_export_id"
+        data, err, row = load_export_for_playback(export_id, st=st)
+        if not data:
+            return False, err or "missing_audio"
+        meta = dict(pending)
+        if isinstance(row, dict) and row:
+            meta = {
+                **meta,
+                **_compact_export_handoff_meta(
+                    {
+                        **row,
+                        "song_title": row.get("song") or row.get("song_title"),
+                    }
+                ),
+            }
+        return replace_upload_analysis_with_multitrack_export(
+            session_state,
+            meta,
+            audio=bytes(data),
+            keep_pending=False,
+        )
 
     handoff_id = str(session_state.get(ANALYSIS_EXPORT_HANDOFF_ID_KEY) or "").strip()
-    if handoff_id and not session_state.get("_analysis_prepared_upload"):
-        audio = session_state.get("last_analysis_audio")
-        if not audio:
-            return False, "missing_audio"
-        meta = session_state.get(ANALYSIS_EXPORT_HANDOFF_META_KEY)
-        if not isinstance(meta, dict):
-            meta = {
-                "source": "multitrack_export",
-                "export_id": handoff_id,
-                "export_name": session_state.get("_analysis_export_handoff_name") or "",
-            }
-        return apply_multitrack_export_analysis_handoff(session_state, meta, audio=bytes(audio))
+    if handoff_id:
+        prepared = resolve_upload_analysis_prepared_upload(session_state, st=st)
+        if prepared is not None:
+            return True, ""
+        return False, "missing_audio"
     return False, "no_pending"
 
 
@@ -446,9 +603,12 @@ def loaded_multitrack_export_analysis_banner(session_state: dict[str, Any]) -> s
 
 
 def analysis_export_handoff_ready(session_state: dict[str, Any]) -> bool:
-    return bool(session_state.get("_analysis_prepared_upload")) and bool(
-        session_state.get(ANALYSIS_EXPORT_LOADED_LABEL_KEY)
-    )
+    if not session_state.get(ANALYSIS_EXPORT_LOADED_LABEL_KEY):
+        return False
+    prepared = session_state.get("_analysis_prepared_upload")
+    if prepared is None:
+        return False
+    return _handoff_prepared_matches(session_state, prepared)
 
 
 def send_export_to_upload_analysis(
@@ -468,22 +628,31 @@ def send_export_to_upload_analysis(
         return False, err or "missing_audio"
 
     row = migrate_multitrack_export(row)
-    filename = _export_filename_from_meta(row)
-    session_state["last_analysis_audio"] = data
-    session_state["last_analysis_source_label"] = filename
-    session_state["analysis_mode"] = "Single recording"
-    session_state["analysis_recording_type"] = ANALYSIS_RECORDING_TYPE_MULTITRACK_MIX
-    session_state.pop("last_analysis_result", None)
-    session_state[PENDING_EXPORT_ANALYSIS_KEY] = _compact_export_handoff_meta(
+    meta = _compact_export_handoff_meta(
         {
             **row,
             "song_title": row.get("song") or row.get("song_title"),
         }
     )
-    session_state[PENDING_EXPORT_ANALYSIS_KEY]["created_at"] = row.get("created_at")
-    session_state[PENDING_EXPORT_ANALYSIS_KEY]["mix_settings"] = row.get("mix_settings")
-    session_state[PENDING_EXPORT_ANALYSIS_KEY]["multitrack_id"] = row.get("multitrack_id")
-    session_state[PENDING_EXPORT_ANALYSIS_KEY]["local_path"] = row.get("local_path")
+    meta["created_at"] = row.get("created_at")
+    meta["mix_settings"] = row.get("mix_settings")
+    meta["multitrack_id"] = row.get("multitrack_id")
+    meta["local_path"] = row.get("local_path")
+    session_state[PENDING_EXPORT_ANALYSIS_KEY] = meta
+    ok, err = replace_upload_analysis_with_multitrack_export(
+        session_state,
+        meta,
+        audio=bytes(data),
+        keep_pending=True,
+    )
+    if not ok:
+        ss = _session_state(st) or session_state
+        ss[_LAST_SEND_TO_ANALYSIS_STATUS_KEY] = {
+            "ok": False,
+            "export_id": export_id,
+            "error": err or "handoff_failed",
+        }
+        return False, err or "handoff_failed"
     ss = _session_state(st) or session_state
     ss[_LAST_SEND_TO_ANALYSIS_STATUS_KEY] = {
         "ok": True,
