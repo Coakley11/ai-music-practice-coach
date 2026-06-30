@@ -26,7 +26,7 @@ def render_backing_active_song_card(
     applied_meter: str | None = None,
     original_key: str = "C",
     practice_key: str = "C",
-    source_label: str = "Catalog Song",
+    source_label: str = "Catalog song",
     written_key: str = "",
 ) -> None:
     """Premium blue active-song card for Backing Track (keys live here only)."""
@@ -104,7 +104,7 @@ def render_backing_active_song_card(
     _orig = html.escape(str(original_key or "C").strip() or "C")
     _practice = html.escape(str(practice_key or original_key or "C").strip() or "C")
     key_row = active_song_key_row_html(_orig, _practice)
-    source_badge = html.escape(str(source_label or "Catalog Song").strip() or "Catalog Song")
+    source_badge = html.escape(str(source_label or "Catalog song").strip() or "Catalog song")
     written_badge = ""
     charts_badge = ""
     _written = html.escape(str(written_key or "").strip())

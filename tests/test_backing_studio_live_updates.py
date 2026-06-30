@@ -9,6 +9,7 @@ from unittest.mock import patch
 from backing_context import (
     BACKING_CONTEXT_KEY,
     build_entry_jam_context,
+    build_regular_song_context,
     build_song_improv_context,
     open_backing_from_creative,
     refresh_backing_context_from_session,
@@ -419,6 +420,101 @@ class TestSongImprovBackingHandoff(unittest.TestCase):
         self.assertEqual(state.practice_concert_key, "Cm")
         self.assertEqual(state.chart_mode, "shape")
         self.assertNotEqual(state.practice_concert_key, "Bm")
+
+
+class TestBackingSourceNavigation(unittest.TestCase):
+    def test_style_jam_restore_entry_mode_and_key(self) -> None:
+        from backing_source_navigation import prepare_return_to_backing_source
+
+        session = _entry_jam_session(bpm=75, key="F")
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        page = prepare_return_to_backing_source(session)
+        self.assertEqual(page, "creative")
+        self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
+        self.assertEqual(session.get("improv_style_key"), "F")
+        self.assertEqual(session.get("_pending_display_key"), "F")
+
+    def test_song_improv_restore_shape_of_you(self) -> None:
+        from backing_source_navigation import prepare_return_to_backing_source
+
+        session = {
+            "song": "Shape of You",
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_song_concert_sections": {"Verse": ["Cm", "Ab"]},
+        }
+        ctx = build_song_improv_context(session)
+        set_backing_context(session, ctx)
+        page = prepare_return_to_backing_source(session)
+        self.assertEqual(page, "creative")
+        self.assertEqual(session.get("improv_entry_mode"), "Song-Based Improvisation")
+        self.assertEqual(session.get("_pending_display_key"), "Cm")
+
+    def test_catalog_song_label_not_regular_song(self) -> None:
+        from backing_context import format_backing_context_banner
+
+        ctx = build_regular_song_context(
+            {"song": "Day Tripper", "display_key": "G", "concert_key": "G"}
+        )
+        banner = format_backing_context_banner(ctx)
+        self.assertIn("Catalog song", banner)
+        self.assertNotIn("Regular song", banner)
+
+
+class TestCreativePageKeySync(unittest.TestCase):
+    def test_day_tripper_original_e_practice_g_sidebar_uses_g(self) -> None:
+        from creative_key_sync import prepare_backing_context_sidebar_display_key, should_use_live_practice_key_sidebar
+
+        session = {
+            "studio_page": "creative",
+            "song": "Day Tripper",
+            "display_key": "G",
+            "concert_key": "G",
+            "improv_entry_mode": "Song-Based Improvisation",
+        }
+        self.assertTrue(should_use_live_practice_key_sidebar(session))
+        st = SimpleNamespace(session_state=session)
+        options = prepare_backing_context_sidebar_display_key(st, session)
+        self.assertEqual(session.get("display_key"), "G")
+        self.assertIn("G", options)
+
+    def test_song_improv_key_change_invalidates_context(self) -> None:
+        from creative_key_sync import sync_sidebar_creative_concert_key
+
+        session = _shape_of_you_session(improv_entry_mode="Song-Based Improvisation")
+        session.update(
+            {
+                "display_key": "Cm",
+                "concert_key": "Cm",
+                "improv_song_concert_sections": {"Verse": ["Cm"]},
+            }
+        )
+        ctx = build_song_improv_context(session)
+        set_backing_context(session, ctx)
+        session["display_key"] = "Dm"
+        sync_sidebar_creative_concert_key(session)
+        self.assertEqual(session.get("concert_key"), "Dm")
+
+
+class TestRefreshPersistence(unittest.TestCase):
+    def test_backing_context_in_persist_keys(self) -> None:
+        from music_persistent_state import _PERSIST_KEYS
+
+        self.assertIn("backing_context", _PERSIST_KEYS)
+        self.assertIn("improv_entry_mode", _PERSIST_KEYS)
+        self.assertIn("improv_generated_sections", _PERSIST_KEYS)
+
+
+class TestSinglePlayTransport(unittest.TestCase):
+    def test_play_button_label_in_step2(self) -> None:
+        import inspect
+        import streamlit_music_practice_app as app
+
+        src = inspect.getsource(app._render_backing_step2_playback_action)
+        self.assertIn("Play Backing Track", src)
+        self.assertNotIn("gen_backing_btn", src)
 
 
 class TestInstrumentChartModeReset(unittest.TestCase):

@@ -72,6 +72,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "current_chord_timeline",
             "selected_sections",
             "backing_volume",
+            "backing_context",
         }
     ),
     "custom": frozenset(

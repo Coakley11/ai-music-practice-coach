@@ -225,12 +225,27 @@ def render_backing_creative_context_card(
     )
 
 
+def render_backing_edit_source_action(
+    st: Any,
+    session: dict[str, Any],
+    ctx: BackingContext,
+    *,
+    on_navigate: Any,
+) -> None:
+    """Button row under the Creative backing card — return to the source editor."""
+    from backing_source_navigation import edit_in_creative_button_label
+
+    label = edit_in_creative_button_label(ctx)
+    if st.button(label, key="backing_edit_source_btn", use_container_width=False):
+        on_navigate()
+
+
 def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
-    """Reset Creative/custom backing to regular active song."""
+    """Reset Creative/custom backing to catalog active song."""
     ctx = get_backing_context(session)
     if ctx is None or ctx.source == "regular_song":
         return
-    if st.button("Use regular song backing", key="backing_context_reset_btn", use_container_width=False):
+    if st.button("Use catalog song backing", key="backing_context_reset_btn", use_container_width=False):
         restore_regular_song_backing(session, st_like=st)
         st.rerun()
 
@@ -258,7 +273,7 @@ def render_backing_context_dev_diagnostics(st: Any, session: dict[str, Any], *, 
                     f"- **sections:** `{ctx.sections or ctx.section_labels}`",
                     f"- **progression_label:** `{ctx.progression_label}`",
                     f"- **source_signature:** `{ctx.source_signature}`",
-                    f"- **skipped regular-song defaults:** `{skipped_song_defaults}`",
+                    f"- **skipped catalog-song defaults:** `{skipped_song_defaults}`",
                 ]
             )
         )

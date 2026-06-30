@@ -8718,10 +8718,10 @@ def _backing_transport_status_message(
     if explicit == "stopped":
         return "Playback stopped — press Play to start again.", "stopped"
     if stale_audio:
-        return "Settings changed — press Generate to rebuild audio.", "warn"
+        return "Settings changed — press Play to rebuild audio.", "warn"
     if backing_ready:
-        return "Audio ready — press Play or use the player below.", "ready"
-    return "Press Generate to build backing audio.", "idle"
+        return "Audio ready — press Play Backing Track or use the player below.", "ready"
+    return "Press Play Backing Track to generate and play.", "idle"
 
 
 def _render_backing_step2_playback_action(
@@ -8740,8 +8740,8 @@ def _render_backing_step2_playback_action(
     lock_style_meter: bool = False,
     locked_style: str = "",
     locked_meter: str = "",
-) -> tuple[int, bool, bool]:
-    """Step 2 — tempo, quick controls, generate & play."""
+) -> tuple[int, bool]:
+    """Step 2 — tempo, quick controls, play backing (generate-on-demand)."""
     song_id = str(song_id or st.session_state.get("_active_bpm_sync_id") or "").strip()
     if not song_id:
         song_id = resolve_active_bpm_sync_id(
@@ -8790,7 +8790,7 @@ def _render_backing_step2_playback_action(
             st,
             kicker="Step 2",
             title="Tempo & playback",
-            subtitle="Set tempo, generate, then play.",
+            subtitle="Set tempo, then play — audio generates automatically when needed.",
             badge_html="",
             compact=True,
         )
@@ -8934,24 +8934,16 @@ def _render_backing_step2_playback_action(
         render_backing_transport_feedback(st, message=_status_msg, state=_status_state)
 
         st.markdown('<div class="ui-backing-transport-toolbar">', unsafe_allow_html=True)
-        _btn1, _btn2, _btn3 = st.columns(3)
+        _btn1, _btn2 = st.columns(2)
         with _btn1:
-            _gen_clicked = st.button(
-                "⚡ Generate",
-                key="gen_backing_btn",
+            _play_clicked = st.button(
+                "▶ Play Backing Track",
+                key="play_backing_btn",
                 disabled=not bool(backing_chords),
                 type="primary",
                 use_container_width=True,
             )
         with _btn2:
-            _play_clicked = st.button(
-                "▶ Play",
-                key="play_backing_btn",
-                disabled=not backing_ready,
-                type="primary" if backing_ready else "secondary",
-                use_container_width=True,
-            )
-        with _btn3:
             if st.button(
                 "■ Stop",
                 key="stop_backing_btn",
@@ -8974,7 +8966,7 @@ def _render_backing_step2_playback_action(
             )
         render_backing_panel_shell_close(st)
 
-    return int(bpm), _gen_clicked, _play_clicked
+    return int(bpm), _play_clicked
 
 
 # -------------------------------------------------
@@ -9278,11 +9270,14 @@ try:
         on_sidebar_practice_concert_key_change,
         prepare_backing_context_sidebar_display_key,
         prepare_creative_sidebar_display_key,
+        should_use_live_practice_key_sidebar,
     )
 
     if is_creative_major_jam_active(st.session_state):
         _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
-    elif should_skip_regular_song_defaults(st.session_state):
+    elif should_skip_regular_song_defaults(st.session_state) or should_use_live_practice_key_sidebar(
+        st.session_state
+    ):
         _display_key_options = prepare_backing_context_sidebar_display_key(st, st.session_state)
     else:
         _display_key_options = sync_display_key_before_widget(
@@ -9629,8 +9624,11 @@ if display_key not in _display_key_options:
         _creative_key_mode = False
     try:
         from backing_musical_state import should_skip_regular_song_defaults
+        from creative_key_sync import should_use_live_practice_key_sidebar
 
-        _skip_song_key_clamp = should_skip_regular_song_defaults(st.session_state)
+        _skip_song_key_clamp = should_skip_regular_song_defaults(
+            st.session_state
+        ) or should_use_live_practice_key_sidebar(st.session_state)
     except Exception:
         _skip_song_key_clamp = False
     if not (_creative_key_mode or _skip_song_key_clamp):
@@ -11266,7 +11264,7 @@ elif _studio_page == "backing":
     _backing_source_label = (
         "Custom Progression"
         if _cpl_session_is_active(st.session_state)
-        else "Catalog Song"
+        else "Catalog song"
     )
     try:
         from backing_context import (
@@ -11299,6 +11297,26 @@ elif _studio_page == "backing":
                 written_key=_backing_written_key,
                 musical_state=_backing_musical,
             )
+            try:
+                from backing_context_ui import render_backing_edit_source_action
+
+                def _backing_edit_source_navigate() -> None:
+                    from backing_source_navigation import prepare_return_to_backing_source
+                    from studio_page_persistence import save_page_snapshot
+
+                    save_page_snapshot(st.session_state, "backing")
+                    target = prepare_return_to_backing_source(st.session_state)
+                    navigate_studio_page(st.session_state, target)
+                    st.rerun()
+
+                render_backing_edit_source_action(
+                    st,
+                    st.session_state,
+                    _creative_backing_ctx,
+                    on_navigate=_backing_edit_source_navigate,
+                )
+            except Exception:
+                pass
         else:
             render_backing_active_song_card(
                 st,
@@ -11313,6 +11331,14 @@ elif _studio_page == "backing":
                 source_label=_backing_source_label,
                 written_key=_backing_written_key,
             )
+            if st.button(
+                "Go to catalog song",
+                key="backing_go_catalog_song_btn",
+                use_container_width=False,
+            ):
+                set_pending_anchor(st.session_state, ANCHOR_CHOOSE_ACTIVE_SONG)
+                navigate_studio_page(st.session_state, "picker")
+                st.rerun()
     except Exception:
         render_backing_active_song_card(
             st,
@@ -11464,7 +11490,7 @@ elif _studio_page == "backing":
             _locked_creative_meter = str(_creative_backing_ctx.meter or _backing_source_default_meter)
         except ImportError:
             pass
-    bpm, _gen_clicked, _play_clicked = _render_backing_step2_playback_action(
+    bpm, _play_clicked = _render_backing_step2_playback_action(
         song_id=_bpm_sync_id,
         default_bpm=_backing_source_default_bpm,
         default_groove=default_groove_style,
@@ -11654,7 +11680,9 @@ elif _studio_page == "backing":
         if backing_chords and not _backing_audio_ready:
             _karaoke_auto_gen = True
 
-    if _gen_clicked or _karaoke_auto_gen:
+    _play_needs_generate = bool(_play_clicked and not _backing_audio_ready)
+
+    if _play_needs_generate or _karaoke_auto_gen:
         try:
             from backing_musical_state import (
                 preserve_backing_musical_keys_after_generate,
@@ -11798,8 +11826,8 @@ elif _studio_page == "backing":
         st.session_state["beats_per_bar"] = beats_per_bar_from_signature(backing_time_signature)
         st.session_state["backing_time_signature_applied"] = backing_time_signature
         st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
-        st.session_state[BACKING_AUTOPLAY] = bool(_karaoke_auto_gen)
-        if _karaoke_auto_gen:
+        st.session_state[BACKING_AUTOPLAY] = bool(_karaoke_auto_gen or _play_needs_generate)
+        if _karaoke_auto_gen or _play_needs_generate:
             st.session_state["_backing_play_request"] = True
         st.session_state[BACKING_TRANSPORT_STATUS] = "ready"
         set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
@@ -11809,6 +11837,8 @@ elif _studio_page == "backing":
                 if km.is_voice_mode(st.session_state)
                 else "Backing generated — press Play to start."
             )
+        elif _play_needs_generate:
+            st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Backing ready — starting playback."
         st.session_state.pop("_backing_transport_user_stopped", None)
         try:
             from backing_track_state import commit_backing_transport_from_session

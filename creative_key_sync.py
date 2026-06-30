@@ -388,14 +388,46 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
     return options
 
 
+def should_use_live_practice_key_sidebar(session: dict[str, Any]) -> bool:
+    """Use session practice concert key instead of catalog original-key defaults."""
+    try:
+        from backing_musical_state import should_skip_regular_song_defaults
+
+        if should_skip_regular_song_defaults(session):
+            return True
+    except ImportError:
+        pass
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page in {"creative", "backing"}:
+        return True
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry in {"Style Jam Mode", "Jam Session Generator", "Song-Based Improvisation"}:
+        return True
+    return False
+
+
 def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Retranspose Creative progressions when sidebar Practice Concert Key changes."""
-    if not is_creative_major_jam_active(session):
-        return
     new = str(session.get("display_key") or "").strip()
     if not new:
         return
     entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry == "Song-Based Improvisation":
+        session["concert_key"] = new
+        try:
+            from backing_musical_state import clear_stale_chart_session_keys
+            from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+
+            clear_stale_chart_session_keys(session)
+            if st_like is not None:
+                invalidate_backing_cache(st_like)
+            session[BACKING_NEEDS_REGEN] = True
+        except ImportError:
+            pass
+        invalidate_creative_backing_context(session)
+        return
+    if not is_creative_major_jam_active(session):
+        return
     if entry == "Style Jam Mode":
         prev = str(session.get(IMPROV_STYLE_KEY_TRACKER) or session.get("improv_style_key") or "").strip()
         session["improv_style_key"] = new

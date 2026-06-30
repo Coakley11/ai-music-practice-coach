@@ -20,7 +20,7 @@ BackingSource = Literal[
 ]
 
 _SOURCE_LABELS: dict[BackingSource, str] = {
-    "regular_song": "Regular song",
+    "regular_song": "Catalog song",
     "entry_jam": "Entry & Jam",
     "mission": "Mission",
     "custom_progression": "Custom progression",
@@ -747,7 +747,7 @@ def format_backing_context_banner(ctx: BackingContext | None) -> str:
     if ctx is None:
         return ""
     if ctx.source == "regular_song":
-        parts = ["Backing source: Regular song"]
+        parts = ["Backing source: Catalog song"]
         if ctx.song_title:
             parts.append(ctx.song_title)
         if ctx.display_key:
