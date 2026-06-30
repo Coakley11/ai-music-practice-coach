@@ -178,7 +178,7 @@ class TestCreativeKeySync(unittest.TestCase):
 
         session = {
             "instrument": "Saxophone",
-            "chart_in_instrument_key": True,
+            "show_chart_in_instrument_key": True,
             "selected_transposing_instrument": "Alto saxophone (Eb)",
             "concert_key": "Eb",
             "display_key": "Eb",

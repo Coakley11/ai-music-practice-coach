@@ -121,16 +121,26 @@ def flush_pending_creative_major_keys(session: dict[str, Any]) -> None:
 
 
 def invalidate_creative_backing_context(session: dict[str, Any]) -> None:
-    """Drop stale Creative backing handoff after key/BPM/groove changes."""
+    """Refresh Creative backing handoff after key/BPM/groove changes."""
     try:
-        from backing_context import clear_backing_context, get_backing_context
+        from backing_context import (
+            get_backing_context,
+            refresh_backing_context_from_session,
+            set_backing_context,
+        )
 
         ctx = get_backing_context(session)
-        if ctx is not None and ctx.source in {"entry_jam", "mission"}:
-            clear_backing_context(session)
+        if ctx is not None and ctx.source in {"entry_jam", "mission", "custom_progression"}:
+            refreshed = refresh_backing_context_from_session(session)
+            if refreshed is not None:
+                set_backing_context(session, refreshed)
+                session.pop("_pending_backing_context_apply", None)
+                session.pop("_backing_creative_chart_sections", None)
+                return
     except ImportError:
         pass
     session.pop("_pending_backing_context_apply", None)
+    session.pop("_backing_creative_chart_sections", None)
 
 
 def sync_creative_key_change(

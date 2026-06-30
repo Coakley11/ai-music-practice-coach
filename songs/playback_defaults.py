@@ -144,10 +144,23 @@ def resolve_backing_bpm_for_slider(
 ) -> int:
     """BPM for the slider *before* it renders — never clobber a user edit on rerun."""
     slider_key = backing_bpm_slider_widget_key(sync_id)
+    tracked_sync = str(
+        st.session_state.get(LAST_BPM_SONG)
+        or st.session_state.get(ACTIVE_PLAYBACK_SONG_ID_KEY)
+        or ""
+    ).strip()
 
     if song_just_reset:
-        canonical = normalize_backing_bpm(st.session_state.get(BPM_WIDGET_KEY, default_bpm))
+        canonical = normalize_backing_bpm(default_bpm)
         st.session_state[slider_key] = canonical
+        st.session_state[BPM_WIDGET_KEY] = canonical
+        st.session_state["bpm"] = canonical
+        return canonical
+
+    if tracked_sync and tracked_sync != sync_id:
+        canonical = normalize_backing_bpm(default_bpm)
+        st.session_state[slider_key] = canonical
+        st.session_state[BPM_WIDGET_KEY] = canonical
         st.session_state["bpm"] = canonical
         return canonical
 
@@ -320,7 +333,7 @@ def canonicalize_backing_defaults_for_song(
             previous_id = st.session_state.get(_CANONICAL_BACKING_ID_KEY)
             did_reset = previous_id != creative_sync_id
             norm_bpm = int(creative_ctx.bpm or norm_bpm)
-            norm_groove = normalize_groove_label(str(creative_ctx.groove or norm_groove))
+            norm_groove = normalize_groove_label(str(creative_ctx.style or creative_ctx.groove or norm_groove))
             if creative_ctx.meter:
                 norm_meter = normalize_time_signature(str(creative_ctx.meter))
             if did_reset:
@@ -343,7 +356,16 @@ def canonicalize_backing_defaults_for_song(
                 except ImportError:
                     pass
             else:
-                norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
+                try:
+                    from backing_track_state import is_backing_user_dirty
+
+                    if is_backing_user_dirty(st.session_state):
+                        norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
+                    else:
+                        norm_bpm = int(creative_ctx.bpm or norm_bpm)
+                        st.session_state[backing_bpm_slider_widget_key(creative_sync_id)] = norm_bpm
+                except ImportError:
+                    norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
             st.session_state[BPM_WIDGET_KEY] = norm_bpm
             st.session_state[BACKING_GROOVE_KEY] = norm_groove
             st.session_state["backing_track_bpm"] = norm_bpm

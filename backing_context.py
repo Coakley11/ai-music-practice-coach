@@ -230,16 +230,31 @@ def _creative_concert_keys(session: dict[str, Any]) -> tuple[str, str, str] | No
 
 
 def _resolve_chart_display_key(session: dict[str, Any], concert_key: str) -> str:
+    """Chart/shape/written display key for ``concert_key`` (not global sidebar drift)."""
+    concert = str(concert_key or session.get("concert_key") or session.get("display_key") or "C").strip() or "C"
     try:
-        from songs.key_state import resolve_active_musical_key
+        from instrument_transposition import (
+            chart_in_instrument_key,
+            effective_chart_key,
+            is_transposing_instrument,
+        )
 
-        mk = resolve_active_musical_key(session)
-        chart = str(mk.chart_key or "").strip()
-        if chart:
-            return chart
-    except Exception:
+        inst = str(session.get("instrument") or "Piano").strip() or "Piano"
+        if is_transposing_instrument(inst) and chart_in_instrument_key(session):
+            chart, _mode = effective_chart_key(concert, inst, session)
+            return str(chart or concert).strip() or concert
+        try:
+            from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
+
+            if inst == "Guitar" and session.get(CAPO_ENABLED_KEY):
+                shape = str(session.get(CAPO_SHAPE_KEY) or "").strip()
+                if shape:
+                    return shape
+        except ImportError:
+            pass
+    except ImportError:
         pass
-    return str(concert_key or "C").strip() or "C"
+    return concert
 
 
 def _entry_jam_sections_dict(session: dict[str, Any], entry_mode: str) -> dict[str, list[str]]:
@@ -886,6 +901,23 @@ def sections_dict_from_backing_context(
     return sections
 
 
+def refresh_backing_context_from_session(session: dict[str, Any]) -> BackingContext | None:
+    """Rebuild backing context snapshot from live session state."""
+    ctx = get_backing_context(session)
+    if ctx is None or ctx.source == "regular_song":
+        return None
+    if ctx.source == "entry_jam":
+        new_ctx = build_entry_jam_context(session)
+    elif ctx.source == "mission":
+        new_ctx = build_mission_context(session)
+    elif ctx.source == "custom_progression":
+        new_ctx = build_custom_progression_context(session)
+    else:
+        return ctx
+    new_ctx.created_at = ctx.created_at
+    return new_ctx
+
+
 def sections_dict_for_chart_display(
     session: dict[str, Any],
     sections_concert: dict[str, list[str]],
@@ -896,9 +928,14 @@ def sections_dict_for_chart_display(
     """Transpose Creative sections to chart/shape/written display key when needed."""
     if not sections_concert:
         return sections_concert
-    ctx = ctx or active_creative_backing_context(session)
-    concert = str(concert_key or (ctx.concert_key if ctx else "") or session.get("concert_key") or "C").strip()
-    chart = str((ctx.chart_display_key if ctx else "") or _resolve_chart_display_key(session, concert)).strip()
+    _ = ctx  # ctx retained for callers; chart key always comes from live session state.
+    concert = str(
+        concert_key
+        or session.get("concert_key")
+        or session.get("display_key")
+        or "C"
+    ).strip()
+    chart = _resolve_chart_display_key(session, concert)
     if not chart or chart == concert:
         return sections_concert
     try:
@@ -984,17 +1021,22 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
 
 def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Re-sync valid Creative/custom context after backing page song-default logic."""
-    ctx = active_creative_backing_context(session)
-    if ctx is None:
+    ctx = get_backing_context(session)
+    if ctx is not None and ctx.source != "regular_song" and is_backing_context_valid(session, ctx):
+        refreshed = refresh_backing_context_from_session(session)
+        if refreshed is not None:
+            set_backing_context(session, refreshed)
+            ctx = refreshed
+        apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
         flush_pending_backing_handoff_keys(
             session,
-            sync_id=str(session.get("_backing_trace_sync_id") or ""),
+            sync_id=backing_page_sync_id(session, song_sync_id=str(ctx.active_song_id or "")),
         )
+        session.pop(PENDING_BACKING_CONTEXT_APPLY, None)
         return
-    apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=False)
     flush_pending_backing_handoff_keys(
         session,
-        sync_id=backing_page_sync_id(session, song_sync_id=str(ctx.active_song_id or "")),
+        sync_id=str(session.get("_backing_trace_sync_id") or ""),
     )
 
 
@@ -1028,6 +1070,7 @@ __all__ = [
     "sync_creative_handoff_keys",
     "open_backing_from_creative",
     "PENDING_BACKING_CONTEXT_APPLY",
+    "refresh_backing_context_from_session",
     "reconcile_backing_context_on_backing_page",
     "restore_regular_song_backing",
 ]

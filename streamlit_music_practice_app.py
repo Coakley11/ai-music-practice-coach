@@ -11239,13 +11239,8 @@ elif _studio_page == "backing":
         if _creative_backing_ctx is None:
             _creative_backing_ctx = active_creative_backing_context(st.session_state)
         if _creative_backing_ctx is not None:
-            _ctx_practice_key = str(
-                _creative_backing_ctx.concert_key
-                or _creative_backing_ctx.display_key
-                or _creative_backing_ctx.key
-                or "C"
-            ).strip()
-            _ctx_written_key = str(_creative_backing_ctx.chart_display_key or "").strip()
+            _ctx_practice_key = str(_backing_practice_key or "C").strip()
+            _ctx_written_key = str(_backing_written_key or "").strip()
             _creative_sections_concert = sections_dict_from_backing_context(
                 st.session_state,
                 _creative_backing_ctx,
@@ -11256,7 +11251,6 @@ elif _studio_page == "backing":
                     st.session_state,
                     _creative_sections_concert,
                     concert_key=_ctx_practice_key,
-                    ctx=_creative_backing_ctx,
                 )
                 if _creative_chart_sections:
                     st.session_state["_backing_creative_chart_sections"] = _creative_chart_sections
@@ -11556,25 +11550,33 @@ elif _studio_page == "backing":
     chart_display_key = chart_key
     chart_sections = performed_sections
     if _creative_backing_ctx is not None:
-        _ctx_concert_key = str(
-            _creative_backing_ctx.concert_key
-            or _creative_backing_ctx.display_key
-            or chart_key
-        ).strip()
-        _ctx_chart_key = str(_creative_backing_ctx.chart_display_key or _ctx_concert_key).strip()
+        _ctx_concert_key = str(_backing_practice_key or chart_key).strip()
+        _ctx_chart_key = str(_backing_mk.chart_key or _ctx_concert_key).strip()
         chart_display_key = _ctx_chart_key or chart_key
-        _chart_src = st.session_state.get("_backing_creative_chart_sections")
-        if isinstance(_chart_src, dict) and _chart_src and _ctx_chart_key != _ctx_concert_key:
-            chart_sections, _ = _humanized_backing_sections(
-                _chart_src,
-                song_data=_humanize_song_data,
-                groove_style=resolved_groove,
-                time_signature=backing_time_signature,
-                humanize_level=_humanize_level,
-                preserve_exact_timing=_preserve_exact_timing,
-                section_lyrics=section_lyrics,
-                lyric_cues=lyric_cues,
-            )
+        _concert_src = sections_dict_from_backing_context(
+            st.session_state,
+            _creative_backing_ctx,
+        )
+        if _concert_src:
+            if _ctx_chart_key != _ctx_concert_key:
+                _chart_src = sections_dict_for_chart_display(
+                    st.session_state,
+                    _concert_src,
+                    concert_key=_ctx_concert_key,
+                )
+            else:
+                _chart_src = _concert_src
+            if isinstance(_chart_src, dict) and _chart_src:
+                chart_sections, _ = _humanized_backing_sections(
+                    _chart_src,
+                    song_data=_humanize_song_data,
+                    groove_style=resolved_groove,
+                    time_signature=backing_time_signature,
+                    humanize_level=_humanize_level,
+                    preserve_exact_timing=_preserve_exact_timing,
+                    section_lyrics=section_lyrics,
+                    lyric_cues=lyric_cues,
+                )
 
     coach_section = (
         selected_section_names[0]
