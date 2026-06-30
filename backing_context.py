@@ -1306,8 +1306,13 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
             if creative_session_is_active(session):
                 sess = get_creative_session(session)
                 creative_key = str((sess.concert_key if sess else "") or concert).strip() or concert
-                session["display_key"] = creative_key
-                session["_pending_display_key"] = creative_key
+                try:
+                    from session_widget_safe import safe_assign_display_key
+
+                    safe_assign_display_key(session, creative_key, widget_safe=False)
+                except ImportError:
+                    session["display_key"] = creative_key
+                    session["_pending_display_key"] = creative_key
             else:
                 session["display_key"] = concert
         except ImportError:

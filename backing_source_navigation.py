@@ -52,16 +52,22 @@ def _resolved_practice_display_key(session: dict[str, Any]) -> str:
 def restore_practice_source_display_key(session: dict[str, Any], *, st_like: Any | None = None) -> str:
     """Practice page owns the active song key — not the last Creative backing key."""
     key = _resolved_practice_display_key(session)
-    session["concert_key"] = key
-    session["display_key"] = key
-    session["_pending_display_key"] = key
     try:
-        from songs.key_state import request_display_key
+        from session_widget_safe import safe_assign_display_key
 
-        if st_like is not None:
-            request_display_key(st_like, key)
+        safe_assign_display_key(session, key, widget_safe=True, st_like=st_like)
     except ImportError:
-        pass
+        session["concert_key"] = key
+        session["_pending_display_key"] = key
+        if st_like is not None:
+            try:
+                from songs.key_state import request_display_key
+
+                request_display_key(st_like, key)
+            except ImportError:
+                pass
+        else:
+            session["display_key"] = key
     return key
 
 
@@ -118,9 +124,13 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         if ctx is not None and ctx.source != "regular_song":
             concert = str(ctx.concert_key or ctx.display_key or ctx.key or "").strip()
             if concert:
-                session["concert_key"] = concert
-                session["display_key"] = concert
-                session["_pending_display_key"] = concert
+                try:
+                    from session_widget_safe import safe_assign_display_key
+
+                    safe_assign_display_key(session, concert, widget_safe=True, st_like=st_like)
+                except ImportError:
+                    session["concert_key"] = concert
+                    session["_pending_display_key"] = concert
             session[PENDING_BACKING_CONTEXT_APPLY] = True
     except ImportError:
         pass
@@ -229,6 +239,8 @@ def target_page_for_backing_context(ctx: BackingContext | None) -> CreativeRetur
 def restore_session_widgets_from_backing_context(
     session: dict[str, Any],
     ctx: BackingContext,
+    *,
+    widget_safe: bool = True,
 ) -> None:
     """Push backing_context snapshot fields into Creative/custom session widgets."""
     try:
@@ -236,7 +248,7 @@ def restore_session_widgets_from_backing_context(
 
         sess = get_creative_session(session)
         if sess is not None:
-            apply_creative_session_to_session(session, sess)
+            apply_creative_session_to_session(session, sess, widget_safe=widget_safe)
             return
     except ImportError:
         pass
@@ -245,9 +257,14 @@ def restore_session_widgets_from_backing_context(
         ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
     ).strip()
     if concert:
-        session["concert_key"] = concert
-        session["display_key"] = concert
-        session["_pending_display_key"] = concert
+        try:
+            from session_widget_safe import safe_assign_display_key
+
+            safe_assign_display_key(session, concert, widget_safe=widget_safe)
+        except ImportError:
+            session["concert_key"] = concert
+            session["display_key"] = concert
+            session["_pending_display_key"] = concert
 
     if ctx.source in {"custom_progression", "regular_song"}:
         return

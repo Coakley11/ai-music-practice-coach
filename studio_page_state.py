@@ -100,7 +100,11 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
 
         _creative_sess = get_creative_session(session_state)
         if _creative_sess is not None and creative_session_is_active(session_state):
-            apply_creative_session_to_session(session_state, _creative_sess)
+            apply_creative_session_to_session(
+                session_state,
+                _creative_sess,
+                widget_safe=bool(session_state.get("display_key")),
+            )
     except ImportError:
         pass
     saved_tab = str(session_state.get(CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY) or "").strip()

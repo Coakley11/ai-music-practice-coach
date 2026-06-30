@@ -297,35 +297,63 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
     return sess
 
 
-def apply_creative_session_to_session(session: dict[str, Any], sess: CreativeSession) -> None:
+def apply_creative_session_to_session(
+    session: dict[str, Any],
+    sess: CreativeSession,
+    *,
+    widget_safe: bool | None = None,
+) -> None:
     """Project canonical Creative session into legacy improv_* widget keys."""
-    session["improv_entry_mode"] = sess.entry_mode
-    session["improv_intelligence_tab"] = sess.intelligence_tab
-    session["creative_improv_intelligence_tab"] = sess.intelligence_tab
-    session["creative_lab_analysis_mode"] = "Improvisation Intelligence"
-    session["creative_lab_last_mode"] = "Improvisation Intelligence"
-    session["improv_song_source"] = sess.song_source
+    if widget_safe is None:
+        try:
+            from session_widget_safe import widgets_likely_instantiated
+
+            widget_safe = widgets_likely_instantiated(session)
+        except ImportError:
+            widget_safe = False
+
+    try:
+        from session_widget_safe import safe_assign_display_key, safe_session_assign
+    except ImportError:
+        safe_assign_display_key = None  # type: ignore[assignment,misc]
+        safe_session_assign = None  # type: ignore[assignment,misc]
+
+    def _set(key: str, value: Any) -> None:
+        if safe_session_assign is not None:
+            safe_session_assign(session, key, value, widget_safe=widget_safe)
+        else:
+            session[key] = value
+
+    _set("improv_entry_mode", sess.entry_mode)
+    _set("improv_intelligence_tab", sess.intelligence_tab)
+    _set("creative_improv_intelligence_tab", sess.intelligence_tab)
+    _set("creative_lab_analysis_mode", "Improvisation Intelligence")
+    _set("creative_lab_last_mode", "Improvisation Intelligence")
+    _set("improv_song_source", sess.song_source)
 
     concert = str(sess.concert_key or sess.display_key or "C").strip() or "C"
     if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
         display = concert
     else:
         display = str(sess.display_key or concert).strip() or concert
-    session["concert_key"] = concert
-    session["display_key"] = display
-    session["_pending_display_key"] = display
+    if safe_assign_display_key is not None:
+        safe_assign_display_key(session, display, widget_safe=widget_safe)
+    else:
+        session["concert_key"] = concert
+        session["display_key"] = display
+        session["_pending_display_key"] = display
 
     if sess.instrument:
-        session["instrument"] = sess.instrument
+        _set("instrument", sess.instrument)
 
     if sess.tool_type == "mission":
         session["improv_active_mission"] = sess.mission_id
         session["improv_mission_pick"] = sess.mission_id
     elif sess.tool_type == "jam_session_generator":
-        session["improv_jam_style"] = sess.style
-        session["improv_jam_key"] = concert
-        session["improv_jam_bpm"] = int(sess.bpm)
-        session["improv_jam_mood"] = sess.mood
+        _set("improv_jam_style", sess.style)
+        _set("improv_jam_key", concert)
+        _set("improv_jam_bpm", int(sess.bpm))
+        _set("improv_jam_mood", sess.mood)
         if sess.sections:
             jam = dict(session.get("improv_jam_session") or {})
             if not isinstance(jam, dict):
@@ -336,13 +364,13 @@ def apply_creative_session_to_session(session: dict[str, Any], sess: CreativeSes
         if sess.sections:
             session["improv_song_concert_sections"] = {k: list(v) for k, v in sess.sections.items()}
     else:
-        session["improv_style"] = sess.style
-        session["improv_style_key"] = concert
-        session["improv_style_bpm"] = int(sess.bpm)
-        session["improv_mood"] = sess.mood
-        session["improv_groove"] = sess.groove_intensity
-        session["improv_difficulty"] = sess.difficulty
-        session["improv_style_meter"] = sess.meter
+        _set("improv_style", sess.style)
+        _set("improv_style_key", concert)
+        _set("improv_style_bpm", int(sess.bpm))
+        _set("improv_mood", sess.mood)
+        _set("improv_groove", sess.groove_intensity)
+        _set("improv_difficulty", sess.difficulty)
+        _set("improv_style_meter", sess.meter)
         if sess.sections:
             session["improv_generated_sections"] = {k: list(v) for k, v in sess.sections.items()}
 
@@ -429,7 +457,7 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
     """Apply persisted Creative session to widgets at page entry (after cloud restore)."""
     sess = get_creative_session(session)
     if sess is not None and creative_session_is_active(session):
-        apply_creative_session_to_session(session, sess)
+        apply_creative_session_to_session(session, sess, widget_safe=True)
         return
     if str(session.get("improv_entry_mode") or "").strip():
         sync_creative_session_from_session(session)
@@ -440,7 +468,7 @@ def hydrate_creative_session_after_restore(session: dict[str, Any]) -> bool:
     sess = get_creative_session(session)
     if sess is None or not creative_session_is_active(session):
         return False
-    apply_creative_session_to_session(session, sess)
+    apply_creative_session_to_session(session, sess, widget_safe=False)
     try:
         from backing_context import (
             PENDING_BACKING_CONTEXT_APPLY,
