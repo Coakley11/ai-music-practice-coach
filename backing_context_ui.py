@@ -95,20 +95,15 @@ def _chart_badge_label(session: dict[str, Any], chart_key: str) -> tuple[str, st
 
 def render_backing_context_banner(st: Any, session: dict[str, Any]) -> bool:
     """Show backing source banner. Returns True when a non-regular source is active."""
+    from backing_musical_state import resolve_current_backing_musical_state
+
     ctx = get_backing_context(session)
     label = format_backing_context_banner(ctx)
     if not label:
         return False
-    try:
-        from songs.key_state import resolve_active_musical_key
-
-        mk = resolve_active_musical_key(session)
-        chart = str(mk.chart_key or ctx.chart_display_key if ctx else "").strip()
-        concert = str(mk.practice_concert_key or "").strip()
-        if chart and concert and chart != concert:
-            label = f"{label} · Charts shown in {chart}"
-    except Exception:
-        pass
+    state = resolve_current_backing_musical_state(session)
+    if state.show_chart_badge:
+        label = f"{label} · {state.chart_badge_label} {state.chart_badge_value}"
     accent = "#2563eb" if ctx and ctx.source == "entry_jam" else "#7c3aed"
     if ctx and ctx.source == "mission":
         accent = "#9333ea"
@@ -135,29 +130,29 @@ def render_backing_creative_context_card(
     applied_meter: str = "4/4",
     practice_key: str = "",
     written_key: str = "",
+    musical_state: Any | None = None,
 ) -> None:
     """Replace the blue active-song card when Creative/custom backing is active."""
+    from backing_musical_state import resolve_current_backing_musical_state
+
+    state = musical_state or resolve_current_backing_musical_state(
+        session,
+        applied_bpm=applied_bpm,
+    )
     theme = _resolve_theme(ctx)
     source_title = "Entry & Jam" if ctx.source == "entry_jam" else ctx.source_label
     mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").strip()
     style_label = str(ctx.style or applied_groove or "Auto").strip()
     backing_style = html.escape(str(applied_groove or ctx.groove or style_label or "Auto"))
-    concert = html.escape(str(practice_key or ctx.concert_key or ctx.display_key or ctx.key or "C"))
-    chart_key_raw = str(written_key or ctx.chart_display_key or "").strip()
+    concert = html.escape(str(state.practice_concert_key or practice_key or "C"))
+    chart_key_raw = str(state.chart_badge_value or "").strip() if state.show_chart_badge else ""
     chart_key = html.escape(chart_key_raw)
-    meter = html.escape(str(applied_meter or ctx.meter or "4/4"))
-    bpm = int(applied_bpm or ctx.bpm or 100)
+    meter = html.escape(str(applied_meter or ctx.meter or state.meter or "4/4"))
+    bpm = int(state.applied_bpm or applied_bpm or ctx.bpm or 100)
     title = html.escape(style_label or ctx.song_title or "Creative backing")
     subtitle = html.escape(f"{source_title} · {mode_label}")
 
-    concert_sections = sections_dict_from_backing_context(session, ctx)
-    chart_sections = sections_dict_for_chart_display(
-        session,
-        concert_sections,
-        concert_key=str(practice_key or ctx.concert_key or "C"),
-        ctx=ctx,
-    )
-    display_sections = chart_sections or concert_sections
+    display_sections = state.chart_sections or state.concert_sections
     if ctx.section:
         progression_line = html.escape(str(ctx.section))
     elif ctx.section_labels:
@@ -183,26 +178,21 @@ def render_backing_creative_context_card(
         _themed_badge("⏱", "BPM", str(bpm), "badge-key"),
         _themed_badge("𝄞", "Meter", meter, "badge-key"),
     ]
-    if chart_key_raw and chart_key_raw != str(practice_key or ctx.concert_key or ""):
-        chart_label, chart_val = _chart_badge_label(session, chart_key_raw)
-        badges.append(_themed_badge("📄", chart_label, chart_val, "badge-key"))
+    if chart_key_raw and state.show_chart_badge:
+        chart_label = state.chart_badge_label or "Charts"
+        badges.append(_themed_badge("📄", chart_label, chart_key_raw, "badge-key"))
     if ctx.sections or ctx.section_labels:
         sec_label = " + ".join((ctx.sections or ctx.section_labels)[:4])
         badges.append(_themed_badge("🎵", "Sections", sec_label, "badge-meta"))
     badges_html = "".join(b for b in badges if b)
 
     chart_line = ""
-    if chart_key and chart_key != concert:
-        chart_label, _ = _chart_badge_label(session, chart_key_raw)
-        if "shape" in chart_label.lower() or "Written" in chart_label:
-            chart_line = (
-                f'<p class="ui-backing-active-key-line">{html.escape(chart_label)}: '
-                f"<strong>{chart_key}</strong></p>"
-            )
-        else:
-            chart_line = (
-                f'<p class="ui-backing-active-key-line">Charts shown in <strong>{chart_key}</strong></p>'
-            )
+    if chart_key and state.show_chart_badge:
+        chart_label = state.chart_badge_label or "Charts"
+        chart_line = (
+            f'<p class="ui-backing-active-key-line">{html.escape(chart_label)}: '
+            f"<strong>{chart_key}</strong></p>"
+        )
 
     st.markdown(
         f'<div class="ui-backing-active-song mode-creative-backing ui-creative-jam-card" '

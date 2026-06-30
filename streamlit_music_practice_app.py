@@ -9368,6 +9368,17 @@ def _sync_canonical_active_song_after_edit() -> None:
 def _on_written_key_checkbox_change() -> None:
     instrument = st.session_state.get("instrument", "Piano")
     sync_written_key_instrument_anchor(st.session_state, instrument)
+    try:
+        from backing_musical_state import clear_stale_chart_session_keys
+        from creative_key_sync import invalidate_creative_backing_context
+        from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+
+        clear_stale_chart_session_keys(st.session_state)
+        invalidate_creative_backing_context(st.session_state)
+        invalidate_backing_cache(st)
+        st.session_state[BACKING_NEEDS_REGEN] = True
+    except Exception:
+        pass
     _sync_canonical_active_song_after_edit()
 
 
@@ -11199,29 +11210,40 @@ elif _studio_page == "backing":
         did_reset=bool(_backing_canon["did_reset"]),
     )
     from songs.music_source import cpl_session_is_active as _cpl_session_is_active
-    from songs.key_state import resolve_active_musical_key as _resolve_active_musical_key
 
-    _backing_mk = _resolve_active_musical_key(
-        st.session_state,
-        rec=_backing_card_record,
-        surface="backing_card",
-    )
-    _backing_orig_key = _backing_mk.original_key
-    _backing_practice_key = _backing_mk.practice_concert_key
-    _backing_written_key = _backing_mk.shape_key or (
-        _backing_mk.written_key if _backing_mk.chart_key_mode == "written" else ""
-    )
+    _backing_musical = None
     try:
-        from songs.key_state import trace_display_key_surface
-
-        trace_display_key_surface(
-            st.session_state,
-            "backing_card",
-            str(_backing_mk.chart_key or ""),
-            source="backing_active_song_card",
+        from backing_musical_state import (
+            render_backing_key_state_diagnostics,
+            resolve_current_backing_musical_state,
         )
+
+        _backing_musical = resolve_current_backing_musical_state(
+            st.session_state,
+            rec=_backing_card_record,
+            applied_bpm=_synced_bpm,
+            sync_id=_bpm_sync_id,
+            song_sync_id=_song_bpm_sync_id,
+        )
+        _backing_orig_key = str(_backing_card_record.get("key") or "C")
+        _backing_practice_key = _backing_musical.practice_concert_key
+        _backing_written_key = (
+            _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
+        )
+        render_backing_key_state_diagnostics(st, st.session_state, _backing_musical)
     except Exception:
-        pass
+        from songs.key_state import resolve_active_musical_key as _resolve_active_musical_key
+
+        _backing_mk = _resolve_active_musical_key(
+            st.session_state,
+            rec=_backing_card_record,
+            surface="backing_card",
+        )
+        _backing_orig_key = _backing_mk.original_key
+        _backing_practice_key = _backing_mk.practice_concert_key
+        _backing_written_key = _backing_mk.shape_key or (
+            _backing_mk.written_key if _backing_mk.chart_key_mode == "written" else ""
+        )
     _backing_written_key = str(_backing_written_key or "").strip()
     _backing_source_label = (
         "Custom Progression"
@@ -11239,21 +11261,15 @@ elif _studio_page == "backing":
         if _creative_backing_ctx is None:
             _creative_backing_ctx = active_creative_backing_context(st.session_state)
         if _creative_backing_ctx is not None:
-            _ctx_practice_key = str(_backing_practice_key or "C").strip()
-            _ctx_written_key = str(_backing_written_key or "").strip()
-            _creative_sections_concert = sections_dict_from_backing_context(
-                st.session_state,
-                _creative_backing_ctx,
-            )
-            if _creative_sections_concert:
-                sections_for_backing = _creative_sections_concert
-                _creative_chart_sections = sections_dict_for_chart_display(
+            if _backing_musical and _backing_musical.concert_sections:
+                sections_for_backing = _backing_musical.concert_sections
+            else:
+                _creative_sections_concert = sections_dict_from_backing_context(
                     st.session_state,
-                    _creative_sections_concert,
-                    concert_key=_ctx_practice_key,
+                    _creative_backing_ctx,
                 )
-                if _creative_chart_sections:
-                    st.session_state["_backing_creative_chart_sections"] = _creative_chart_sections
+                if _creative_sections_concert:
+                    sections_for_backing = _creative_sections_concert
             render_backing_creative_context_card(
                 st,
                 _creative_backing_ctx,
@@ -11261,8 +11277,9 @@ elif _studio_page == "backing":
                 applied_bpm=_synced_bpm,
                 applied_groove=default_groove_style,
                 applied_meter=_applied_meter_pre,
-                practice_key=_ctx_practice_key,
-                written_key=_ctx_written_key,
+                practice_key=_backing_practice_key,
+                written_key=_backing_written_key,
+                musical_state=_backing_musical,
             )
         else:
             render_backing_active_song_card(
@@ -11549,34 +11566,19 @@ elif _studio_page == "backing":
 
     chart_display_key = chart_key
     chart_sections = performed_sections
-    if _creative_backing_ctx is not None:
-        _ctx_concert_key = str(_backing_practice_key or chart_key).strip()
-        _ctx_chart_key = str(_backing_mk.chart_key or _ctx_concert_key).strip()
-        chart_display_key = _ctx_chart_key or chart_key
-        _concert_src = sections_dict_from_backing_context(
-            st.session_state,
-            _creative_backing_ctx,
-        )
-        if _concert_src:
-            if _ctx_chart_key != _ctx_concert_key:
-                _chart_src = sections_dict_for_chart_display(
-                    st.session_state,
-                    _concert_src,
-                    concert_key=_ctx_concert_key,
-                )
-            else:
-                _chart_src = _concert_src
-            if isinstance(_chart_src, dict) and _chart_src:
-                chart_sections, _ = _humanized_backing_sections(
-                    _chart_src,
-                    song_data=_humanize_song_data,
-                    groove_style=resolved_groove,
-                    time_signature=backing_time_signature,
-                    humanize_level=_humanize_level,
-                    preserve_exact_timing=_preserve_exact_timing,
-                    section_lyrics=section_lyrics,
-                    lyric_cues=lyric_cues,
-                )
+    if _creative_backing_ctx is not None and _backing_musical is not None:
+        chart_display_key = _backing_musical.chart_display_key or chart_key
+        if _backing_musical.chart_sections:
+            chart_sections, _ = _humanized_backing_sections(
+                _backing_musical.chart_sections,
+                song_data=_humanize_song_data,
+                groove_style=resolved_groove,
+                time_signature=backing_time_signature,
+                humanize_level=_humanize_level,
+                preserve_exact_timing=_preserve_exact_timing,
+                section_lyrics=section_lyrics,
+                lyric_cues=lyric_cues,
+            )
 
     coach_section = (
         selected_section_names[0]

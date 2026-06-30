@@ -237,7 +237,7 @@ def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     if entry not in CREATIVE_MAJOR_JAM_MODES:
         return False
     page = str(session.get("studio_page") or "").strip().lower()
-    return page == "creative"
+    return page in {"creative", "backing"}
 
 
 def to_major_key_preserve_spelling(key: str) -> str:

@@ -782,8 +782,6 @@ def apply_backing_context_to_session(
         concert = str(ctx.concert_key or ctx.display_key or "").strip()
         if concert:
             session["concert_key"] = concert
-            if ctx.chart_display_key:
-                session["_creative_chart_display_key"] = str(ctx.chart_display_key).strip()
             if widget_safe:
                 request_display_key(st_like, concert)
             else:
@@ -990,14 +988,20 @@ def open_backing_from_creative(
     st_like: Any | None = None,
 ) -> BackingContext:
     """Build, store, and apply Creative backing context."""
+    from backing_musical_state import clear_stale_chart_session_keys
+    from songs.playback_defaults import _CANONICAL_BACKING_ID_KEY
+
     sync_creative_handoff_keys(session, st_like=st_like)
     if source == "mission":
         ctx = build_mission_context(session)
     else:
         ctx = build_entry_jam_context(session)
     existing = get_backing_context(session)
+    if not existing or existing.source_signature != ctx.source_signature or existing.source != ctx.source:
+        session.pop(_CANONICAL_BACKING_ID_KEY, None)
     if existing and existing.source_signature == ctx.source_signature and existing.source == ctx.source:
         ctx.created_at = existing.created_at
+    clear_stale_chart_session_keys(session)
     set_backing_context(session, ctx)
     apply_backing_context_to_session(session, ctx, st_like=st_like)
     return ctx

@@ -110,6 +110,16 @@ def render_improvisation_intelligence_lab(
 
     flush_pending_creative_major_keys(session_state)
     ensure_improv_intelligence_tab_restored(session_state)
+    try:
+        from backing_musical_state import (
+            render_backing_key_state_diagnostics,
+            resolve_current_backing_musical_state,
+        )
+
+        _creative_musical = resolve_current_backing_musical_state(session_state)
+        render_backing_key_state_diagnostics(st, session_state, _creative_musical)
+    except Exception:
+        pass
 
     instrument = str(ctx.get("instrument") or "Guitar")
     level = str(ctx.get("level") or "Intermediate")

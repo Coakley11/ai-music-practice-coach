@@ -9,10 +9,15 @@ from unittest.mock import patch
 from backing_context import (
     BACKING_CONTEXT_KEY,
     build_entry_jam_context,
+    open_backing_from_creative,
     refresh_backing_context_from_session,
     reconcile_backing_context_on_backing_page,
     sections_dict_for_chart_display,
     set_backing_context,
+)
+from backing_musical_state import (
+    clear_stale_chart_session_keys,
+    resolve_current_backing_musical_state,
 )
 from instrument_transposition import (
     SELECTED_TRANSPOSING_INSTRUMENT_KEY,
@@ -25,6 +30,27 @@ from songs.playback_defaults import (
     canonicalize_backing_defaults_for_song,
     resolve_backing_bpm_for_slider,
 )
+
+
+def _shape_of_you_session(**overrides) -> dict:
+    base = {
+        "active_catalog_pick_key": "shape|edsheeran",
+        "song": "Shape of You",
+        "display_key": "Bm",
+        "concert_key": "Bm",
+        "instrument": "Saxophone",
+        "show_chart_in_instrument_key": True,
+        SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+        "improv_entry_mode": "Style Jam Mode",
+        "improv_style": "Bossa Nova",
+        "improv_style_key": "F",
+        "improv_style_bpm": 75,
+        "improv_style_meta": {"style": "Bossa Nova", "bpm": 75, "groove": "Medium", "key": "F"},
+        "improv_generated_sections": {"Head (Bossa Nova)": ["Gm7", "C7", "Fmaj7", "D7"]},
+        "studio_page": "backing",
+    }
+    base.update(overrides)
+    return base
 
 
 def _entry_jam_session(*, bpm: int = 60, key: str = "C") -> dict:
@@ -198,6 +224,96 @@ class TestBackingContextLiveRefresh(unittest.TestCase):
         self.assertIsNotNone(live)
         self.assertEqual(live.source, "entry_jam")
         self.assertEqual(live.concert_key, "A")
+
+
+class TestBackingMusicalStateResolver(unittest.TestCase):
+    def test_shape_of_you_bm_style_jam_f_uses_concert_f_not_bm(self) -> None:
+        session = _shape_of_you_session()
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.practice_concert_key, "F")
+        self.assertEqual(state.key_mode, "major")
+        self.assertNotEqual(state.practice_concert_key, "Bm")
+
+    def test_alto_written_f_shows_d_not_g_sharp_minor(self) -> None:
+        session = _shape_of_you_session()
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.written_key, "D")
+        self.assertEqual(state.chart_display_key, "D")
+        self.assertNotIn("m", state.chart_display_key.lower())
+        self.assertNotEqual(state.chart_display_key, "G#m")
+
+    def test_written_chart_off_uses_concert_no_badge(self) -> None:
+        session = _shape_of_you_session(show_chart_in_instrument_key=False)
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        session["_creative_chart_display_key"] = "G#m"
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.chart_mode, "concert")
+        self.assertEqual(state.chart_display_key, "F")
+        self.assertFalse(state.show_chart_badge)
+        self.assertNotIn("_creative_chart_display_key", session)
+
+    def test_guitar_shape_off_uses_concert_no_badge(self) -> None:
+        session = _shape_of_you_session(
+            instrument="Guitar",
+            show_chart_in_instrument_key=False,
+            guitar_capo_enabled=False,
+            guitar_capo_shape_key="Eb minor",
+        )
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.chart_mode, "concert")
+        self.assertEqual(state.chart_display_key, "F")
+        self.assertFalse(state.show_chart_badge)
+
+    def test_key_change_after_generation_updates_resolver(self) -> None:
+        session = _shape_of_you_session()
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        session["improv_style_key"] = "C"
+        session["display_key"] = "C"
+        session["concert_key"] = "C"
+        session["improv_generated_sections"] = {
+            "Head (Bossa Nova)": ["Dm7", "G7", "Cmaj7", "A7"],
+        }
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.practice_concert_key, "C")
+        self.assertEqual(state.written_key, "A")
+        self.assertEqual(state.chart_display_key, "A")
+
+    def test_new_jam_bpm_90_resets_after_open_backing(self) -> None:
+        session = _entry_jam_session(bpm=75)
+        ctx75 = build_entry_jam_context(session)
+        set_backing_context(session, ctx75)
+        session[_CANONICAL_BACKING_ID_KEY] = f"creative:entry_jam:{ctx75.source_signature}"
+        session["improv_style_bpm"] = 90
+        session["improv_style_meta"] = {"style": "Bossa Nova", "bpm": 90, "groove": "Medium", "key": "C"}
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            open_backing_from_creative(session, source="entry_jam", st_like=st_like)
+        ctx90 = build_entry_jam_context(session)
+        sync_id = f"creative:entry_jam:{ctx90.source_signature}"
+        st = SimpleNamespace(session_state=session)
+        canon = canonicalize_backing_defaults_for_song(
+            st,
+            sync_id=sync_id,
+            active_song_bpm=108,
+            active_song_groove="Pop groove",
+            active_song_meter="4/4",
+        )
+        self.assertTrue(canon["did_reset"])
+        self.assertEqual(canon["applied_bpm"], 90)
+
+    def test_clear_stale_chart_keys_on_toggle(self) -> None:
+        session = {"_creative_chart_display_key": "G#m", "_backing_creative_chart_sections": {"A": ["C"]}}
+        clear_stale_chart_session_keys(session)
+        self.assertNotIn("_creative_chart_display_key", session)
+        self.assertNotIn("_backing_creative_chart_sections", session)
 
 
 if __name__ == "__main__":
