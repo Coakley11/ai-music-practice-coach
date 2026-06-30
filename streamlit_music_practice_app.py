@@ -11113,9 +11113,9 @@ elif _studio_page == "backing":
             )
             pp.render_executive_summary(
                 st,
-                "Generate and play AI-backed accompaniment aligned to chord charts and section scope.",
+                "Play AI-backed accompaniment aligned to chord charts and section scope in one click.",
                 "Shows audio + music-theory product engineering beyond static chord sheets.",
-                "BPM/groove/meter controls, section scope, generate & play, lead sheet, and coaching overlay.",
+                "BPM/groove/meter controls, section scope, play backing track, lead sheet, and coaching overlay.",
             )
 
     # === CANONICAL SONG DEFAULTS - single source of truth ===================
@@ -11174,7 +11174,7 @@ elif _studio_page == "backing":
             _studio_page_header(
                 "🎧",
                 "Backing Track Studio",
-                "Generate accompaniment matched to your active song — then play along.",
+                "Play accompaniment matched to your active song — then play along.",
                 page_id="backing",
             )
         try:
@@ -11277,6 +11277,23 @@ elif _studio_page == "backing":
         if _creative_backing_ctx is None:
             _creative_backing_ctx = active_creative_backing_context(st.session_state)
         if _creative_backing_ctx is not None:
+            try:
+                from backing_musical_state import resolve_current_backing_musical_state
+
+                _backing_musical = resolve_current_backing_musical_state(
+                    st.session_state,
+                    rec=_backing_card_record if _creative_backing_ctx.source == "regular_song" else None,
+                    applied_bpm=_synced_bpm,
+                    sync_id=_bpm_sync_id,
+                    song_sync_id=_song_bpm_sync_id,
+                )
+                _backing_practice_key = _backing_musical.practice_concert_key
+                _backing_written_key = (
+                    _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
+                )
+                render_backing_key_state_diagnostics(st, st.session_state, _backing_musical)
+            except Exception:
+                pass
             if _backing_musical and _backing_musical.concert_sections:
                 sections_for_backing = _backing_musical.concert_sections
             else:
@@ -11332,7 +11349,7 @@ elif _studio_page == "backing":
                 written_key=_backing_written_key,
             )
             if st.button(
-                "Go to catalog song",
+                "🎵 Return to Catalog Song",
                 key="backing_go_catalog_song_btn",
                 use_container_width=False,
             ):
@@ -11610,7 +11627,7 @@ elif _studio_page == "backing":
             " (" + ", ".join(_regen_reasons) + ")" if _regen_reasons else ""
         )
         st.warning(
-            f"Playback settings changed{_reason_text} - press **Generate** above "
+            f"Playback settings changed{_reason_text} - press **Play Backing Track** above "
             "to rebuild the backing track in the new settings."
         )
 

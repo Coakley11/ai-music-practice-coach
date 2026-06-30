@@ -220,6 +220,61 @@ def _display_keys_from_session(session: dict[str, Any]) -> tuple[str, str, str]:
     return key, display or key, concert or key
 
 
+def _live_backing_concert_keys(session: dict[str, Any]) -> tuple[str, str, str]:
+    """Practice concert key from live sidebar/session — not stale widget/improv snapshots."""
+    try:
+        from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE, creative_entry_concert_key
+        from songs.key_state import PENDING_DISPLAY_KEY
+
+        pending = str(
+            session.get(PENDING_DISPLAY_KEY)
+            or session.get("_pending_display_key")
+            or ""
+        ).strip()
+        if pending:
+            return pending, pending, pending
+
+        live = str(session.get("display_key") or "").strip()
+        concert = str(session.get("concert_key") or "").strip()
+        creative_sel = str(creative_entry_concert_key(session) or "").strip()
+        key_source = str(session.get(CREATIVE_CONCERT_KEY_SOURCE) or "").strip()
+        if live and key_source:
+            practice = live
+        elif creative_sel and live and live != creative_sel and not key_source:
+            practice = creative_sel
+        else:
+            practice = live or creative_sel or concert or "C"
+        practice = practice or "C"
+        return practice, practice, practice
+    except ImportError:
+        pass
+    display = str(session.get("display_key") or "").strip()
+    concert = display or str(session.get("concert_key") or "").strip()
+    if concert:
+        return concert, display or concert, concert
+    creative_keys = _creative_concert_keys(session)
+    if creative_keys:
+        return creative_keys
+    return _display_keys_from_session(session)
+
+
+def sync_improv_widgets_from_live_concert_key(session: dict[str, Any]) -> None:
+    """Keep Creative improv widget keys aligned with the live Practice Concert Key."""
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if not live:
+        return
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    meta = dict(session.get("improv_style_meta") or {})
+    if entry == "Style Jam Mode":
+        session["improv_style_key"] = live
+        meta["key"] = live
+    elif entry == "Jam Session Generator":
+        session["improv_jam_key"] = live
+        meta["key"] = live
+    if meta:
+        session["improv_style_meta"] = meta
+
+
 def _creative_concert_keys(session: dict[str, Any]) -> tuple[str, str, str] | None:
     try:
         from creative_key_sync import creative_entry_concert_key
@@ -420,7 +475,7 @@ def _song_improv_sections_dict(session: dict[str, Any]) -> dict[str, list[str]]:
 def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
     """Backing context for Song-Based Improvisation (active catalog song at current practice key)."""
     pick_key = _current_pick_key(session)
-    key, display_key, concert_key = _display_keys_from_session(session)
+    key, display_key, concert_key = _live_backing_concert_keys(session)
     chart_display_key = _resolve_chart_display_key(session, concert_key)
     scope, section, selected_sections = _default_scope(session)
     sections_dict = _song_improv_sections_dict(session)
@@ -470,11 +525,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         resolve_improv_song_source = lambda s: str(s.get("improv_song_source") or "Active song")  # type: ignore
 
     pick_key = _current_pick_key(session)
-    creative_keys = _creative_concert_keys(session)
-    if creative_keys:
-        key, display_key, concert_key = creative_keys
-    else:
-        key, display_key, concert_key = _display_keys_from_session(session)
+    key, display_key, concert_key = _live_backing_concert_keys(session)
     chart_display_key = _resolve_chart_display_key(session, concert_key)
     entry_mode = str(session.get("improv_entry_mode") or "Song-Based Improvisation").strip()
     style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
@@ -1119,6 +1170,13 @@ def open_backing_from_creative(
     clear_stale_chart_session_keys(session)
     set_backing_context(session, ctx)
     apply_backing_context_to_session(session, ctx, st_like=st_like)
+    try:
+        from studio_page_persistence import save_page_snapshot
+
+        save_page_snapshot(session, "backing")
+        save_page_snapshot(session, "creative")
+    except ImportError:
+        pass
     return ctx
 
 
@@ -1138,20 +1196,72 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     return ctx
 
 
+def _sync_creative_backing_transport_handoff(
+    session: dict[str, Any],
+    ctx: BackingContext,
+    *,
+    st_like: Any | None = None,
+) -> None:
+    """Queue BPM/groove/meter from refreshed context without overwriting practice key."""
+    from types import SimpleNamespace
+
+    from songs.bpm_state import request_backing_bpm
+    from songs.playback_defaults import request_backing_groove
+
+    st_like = st_like or SimpleNamespace(session_state=session)
+    backing_style = _backing_groove_style_from_ctx(ctx)
+    request_backing_bpm(st_like, int(ctx.bpm))
+    request_backing_groove(st_like, backing_style)
+    if ctx.meter:
+        session["_pending_backing_meter"] = str(ctx.meter)
+
+
+def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
+    """Re-apply persisted Creative/custom backing_context after cloud or disk restore."""
+    ctx = get_backing_context(session)
+    if ctx is None or ctx.source == "regular_song":
+        return
+    if not is_backing_context_valid(session, ctx):
+        clear_backing_context(session)
+        return
+    try:
+        from backing_source_navigation import restore_session_widgets_from_backing_context
+
+        restore_session_widgets_from_backing_context(session, ctx)
+    except ImportError:
+        pass
+    concert = str(
+        ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
+    ).strip()
+    if concert:
+        session["display_key"] = concert
+        session["concert_key"] = concert
+        sync_improv_widgets_from_live_concert_key(session)
+    refreshed = refresh_backing_context_from_session(session)
+    if refreshed is not None:
+        set_backing_context(session, refreshed)
+    session[PENDING_BACKING_CONTEXT_APPLY] = True
+
+
 def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Re-sync valid Creative/custom context after backing page song-default logic."""
     ctx = get_backing_context(session)
     if ctx is not None and ctx.source != "regular_song" and is_backing_context_valid(session, ctx):
+        sync_improv_widgets_from_live_concert_key(session)
+        pending_apply = bool(session.get(PENDING_BACKING_CONTEXT_APPLY))
         refreshed = refresh_backing_context_from_session(session)
         if refreshed is not None:
             set_backing_context(session, refreshed)
             ctx = refreshed
-        apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
+        if pending_apply:
+            apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
+            session.pop(PENDING_BACKING_CONTEXT_APPLY, None)
+        else:
+            _sync_creative_backing_transport_handoff(session, ctx, st_like=st_like)
         flush_pending_backing_handoff_keys(
             session,
             sync_id=backing_page_sync_id(session, song_sync_id=str(ctx.active_song_id or "")),
         )
-        session.pop(PENDING_BACKING_CONTEXT_APPLY, None)
         return
     flush_pending_backing_handoff_keys(
         session,
@@ -1192,5 +1302,8 @@ __all__ = [
     "PENDING_BACKING_CONTEXT_APPLY",
     "refresh_backing_context_from_session",
     "reconcile_backing_context_on_backing_page",
+    "hydrate_backing_context_after_restore",
     "restore_regular_song_backing",
+    "sync_improv_widgets_from_live_concert_key",
+    "_live_backing_concert_keys",
 ]

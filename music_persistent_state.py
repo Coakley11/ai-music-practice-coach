@@ -2189,6 +2189,13 @@ def apply_music_disk_state(
         pass
 
     try:
+        from backing_context import hydrate_backing_context_after_restore
+
+        hydrate_backing_context_after_restore(ss)
+    except ImportError:
+        pass
+
+    try:
         from custom_song_library import merge_custom_songs_from_cloud
 
         merge_custom_songs_from_cloud(ss, st=st)

@@ -24,23 +24,21 @@ def target_page_for_backing_context(ctx: BackingContext | None) -> CreativeRetur
     return "creative"
 
 
-def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnPage:
-    """Restore Creative/custom/picker widgets from the active backing_context snapshot."""
-    ctx = get_backing_context(session)
-    page = target_page_for_backing_context(ctx)
-    if ctx is None:
-        return page
-
-    concert = str(ctx.concert_key or ctx.display_key or "").strip()
+def restore_session_widgets_from_backing_context(
+    session: dict[str, Any],
+    ctx: BackingContext,
+) -> None:
+    """Push backing_context snapshot fields into Creative/custom session widgets."""
+    concert = str(
+        ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
+    ).strip()
     if concert:
         session["concert_key"] = concert
+        session["display_key"] = concert
         session["_pending_display_key"] = concert
 
-    if ctx.source == "custom_progression":
-        return page
-
-    if ctx.source == "regular_song":
-        return page
+    if ctx.source in {"custom_progression", "regular_song"}:
+        return
 
     session["creative_lab_analysis_mode"] = "Improvisation Intelligence"
     session["creative_lab_last_mode"] = "Improvisation Intelligence"
@@ -122,22 +120,31 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
         )
         session["improv_style_meta"] = meta
 
+
+def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnPage:
+    """Restore Creative/custom/picker widgets from the active backing_context snapshot."""
+    ctx = get_backing_context(session)
+    page = target_page_for_backing_context(ctx)
+    if ctx is None:
+        return page
+    restore_session_widgets_from_backing_context(session, ctx)
     return page
 
 
-def edit_in_creative_button_label(ctx: BackingContext | None) -> str:
+def return_to_source_button_label(ctx: BackingContext | None) -> str:
     """User-facing label for the return-to-source button."""
     if ctx is None:
-        return "Edit source"
+        return "Return to source"
     if ctx.source == "custom_progression":
-        return "Edit in Custom Progression"
+        return "✏️ Return to Custom Page"
     if ctx.source == "regular_song":
-        return "Go to catalog song"
-    if ctx.source == "song_improv":
-        return "Edit in Creative"
-    if ctx.source == "mission":
-        return "Edit in Creative"
-    return "Edit in Creative"
+        return "🎵 Return to Catalog Song"
+    return "🎨 Return to Creative Page"
+
+
+def edit_in_creative_button_label(ctx: BackingContext | None) -> str:
+    """Backward-compatible alias."""
+    return return_to_source_button_label(ctx)
 
 
 __all__ = [
@@ -145,5 +152,7 @@ __all__ = [
     "CreativeReturnPage",
     "edit_in_creative_button_label",
     "prepare_return_to_backing_source",
+    "restore_session_widgets_from_backing_context",
+    "return_to_source_button_label",
     "target_page_for_backing_context",
 ]

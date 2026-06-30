@@ -506,6 +506,88 @@ class TestRefreshPersistence(unittest.TestCase):
         self.assertIn("improv_entry_mode", _PERSIST_KEYS)
         self.assertIn("improv_generated_sections", _PERSIST_KEYS)
 
+    def test_entry_jam_disk_roundtrip_restores_creative_not_catalog(self) -> None:
+        from backing_context import active_creative_backing_context, get_backing_context
+        from music_persistent_state import apply_music_disk_state, build_music_disk_state
+
+        session = _entry_jam_session(bpm=82, key="D")
+        session.update(
+            {
+                "active_catalog_pick_key": "daytripper|beatles",
+                "song": "Day Tripper",
+                "display_key": "G",
+                "concert_key": "G",
+                "improv_style": "Bossa Nova",
+                "studio_page": "backing",
+            }
+        )
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            open_backing_from_creative(session, source="entry_jam", st_like=st_like)
+        blob = build_music_disk_state(SimpleNamespace(session_state=session))
+        restored: dict = {}
+        st2 = SimpleNamespace(session_state=restored)
+        apply_music_disk_state(st2, blob, song_picker_catalog={}, song_library={})
+        ctx = get_backing_context(restored)
+        self.assertIsNotNone(ctx)
+        self.assertEqual(ctx.source, "entry_jam")
+        self.assertIsNotNone(active_creative_backing_context(restored))
+        state = resolve_current_backing_musical_state(restored)
+        self.assertEqual(state.practice_concert_key, "D")
+        self.assertNotEqual(ctx.song_title, "Day Tripper")
+
+
+class TestKeyConsistencyCardSidebar(unittest.TestCase):
+    def test_catalog_leak_sidebar_and_card_both_use_creative_f(self) -> None:
+        from creative_key_sync import prepare_backing_context_sidebar_display_key
+
+        session = _shape_of_you_session()
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        st = SimpleNamespace(session_state=session)
+        prepare_backing_context_sidebar_display_key(st, session)
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(session.get("display_key"), "F")
+        self.assertEqual(state.practice_concert_key, "F")
+
+    def test_sidebar_key_change_updates_resolver(self) -> None:
+        from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE, invalidate_creative_backing_context
+
+        session = _entry_jam_session(key="D")
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        session["display_key"] = "E"
+        session["concert_key"] = "E"
+        session["improv_style_key"] = "E"
+        session[CREATIVE_CONCERT_KEY_SOURCE] = "backing_sidebar"
+        invalidate_creative_backing_context(session)
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.practice_concert_key, "E")
+
+    def test_alto_written_key_matches_between_resolver_and_sidebar(self) -> None:
+        from creative_key_sync import prepare_backing_context_sidebar_display_key
+
+        session = _shape_of_you_session(show_chart_in_instrument_key=True)
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        st = SimpleNamespace(session_state=session)
+        prepare_backing_context_sidebar_display_key(st, session)
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.written_key, "D")
+        self.assertEqual(state.chart_badge_value, "D")
+
+
+class TestReturnButtonLabels(unittest.TestCase):
+    def test_source_aware_return_labels(self) -> None:
+        from backing_source_navigation import return_to_source_button_label
+
+        entry = build_entry_jam_context(_entry_jam_session())
+        self.assertEqual(return_to_source_button_label(entry), "🎨 Return to Creative Page")
+        catalog = build_regular_song_context(
+            {"song": "Day Tripper", "display_key": "G", "concert_key": "G"}
+        )
+        self.assertEqual(return_to_source_button_label(catalog), "🎵 Return to Catalog Song")
+
 
 class TestSinglePlayTransport(unittest.TestCase):
     def test_play_button_label_in_step2(self) -> None:

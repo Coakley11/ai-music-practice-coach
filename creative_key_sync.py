@@ -333,13 +333,21 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
     flush_pending_creative_major_keys(session)
     try:
         from backing_context import active_creative_backing_context
+        from backing_musical_state import resolve_current_backing_musical_state
 
         creative = active_creative_backing_context(session)
     except ImportError:
         creative = None
+        resolve_current_backing_musical_state = None  # type: ignore[assignment]
     pending = session.pop(PENDING_DISPLAY_KEY, None)
+    resolver_key = ""
+    if creative and resolve_current_backing_musical_state is not None:
+        resolver_key = str(
+            resolve_current_backing_musical_state(session).practice_concert_key or ""
+        ).strip()
     selected = str(
         pending
+        or resolver_key
         or session.get("display_key")
         or (creative.concert_key if creative else "")
         or session.get("concert_key")
@@ -414,6 +422,12 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
     entry = str(session.get("improv_entry_mode") or "").strip()
     if entry == "Song-Based Improvisation":
         session["concert_key"] = new
+        try:
+            from backing_context import sync_improv_widgets_from_live_concert_key
+
+            sync_improv_widgets_from_live_concert_key(session)
+        except ImportError:
+            pass
         try:
             from backing_musical_state import clear_stale_chart_session_keys
             from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache

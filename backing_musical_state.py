@@ -97,6 +97,33 @@ def preserve_backing_musical_keys_after_generate(
         pass
 
 
+def _resolve_creative_practice_concert_key(
+    session: dict[str, Any],
+    *,
+    creative: Any,
+    major_jam: bool,
+) -> str:
+    """Resolve practice concert key for Creative backing — sidebar wins after user edits."""
+    from creative_key_sync import (
+        CREATIVE_CONCERT_KEY_SOURCE,
+        creative_entry_concert_key,
+        to_major_key_preserve_spelling,
+    )
+
+    live = str(session.get("display_key") or "").strip()
+    creative_sel = str(creative_entry_concert_key(session) or creative.concert_key or "").strip()
+    key_source = str(session.get(CREATIVE_CONCERT_KEY_SOURCE) or "").strip()
+    if live and key_source:
+        practice = live
+    elif creative_sel and live and live != creative_sel and not key_source:
+        practice = creative_sel
+    else:
+        practice = live or creative_sel or str(creative.concert_key or "C").strip() or "C"
+    if major_jam and practice:
+        practice = to_major_key_preserve_spelling(practice)
+    return practice
+
+
 def resolve_current_backing_musical_state(
     session: dict[str, Any],
     *,
@@ -146,21 +173,11 @@ def resolve_current_backing_musical_state(
     creative_selected = str(creative_entry_concert_key(session) or "").strip()
     live_practice = str(session.get("display_key") or "").strip()
     if creative_active and creative:
-        if creative.source == "song_improv":
-            practice = live_practice or str(creative.concert_key or "C").strip() or "C"
-        elif creative.source == "entry_jam":
-            practice = (
-                creative_selected
-                or live_practice
-                or str(creative.concert_key or "C").strip()
-                or "C"
-            )
-        elif live_practice:
-            practice = live_practice
-        elif str(creative.concert_key or "").strip():
-            practice = str(creative.concert_key).strip()
-        else:
-            practice = ""
+        practice = _resolve_creative_practice_concert_key(
+            session,
+            creative=creative,
+            major_jam=major_jam,
+        )
     else:
         practice = ""
     if not practice:
