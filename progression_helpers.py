@@ -52,6 +52,7 @@ def render_cpl_page_header() -> None:
             st,
             str(st.session_state.get("instrument") or "Guitar"),
             "custom",
+            st.session_state,
         )
     except Exception:
         pass

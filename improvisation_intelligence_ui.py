@@ -255,12 +255,22 @@ def _tab_entry_modes(
         unsafe_allow_html=True,
     )
     st.markdown('<div class="ui-creative-entry-segment">', unsafe_allow_html=True)
+
+    def _on_entry_mode_change() -> None:
+        try:
+            from creative_session_state import sync_creative_session_before_persist
+
+            sync_creative_session_before_persist(session_state)
+        except ImportError:
+            pass
+
     entry = st.radio(
         "Improvisation entry mode",
         list(IMPROV_ENTRY_MODES),
         horizontal=True,
         key="improv_entry_mode",
         label_visibility="collapsed",
+        on_change=_on_entry_mode_change,
     )
     st.markdown("</div>", unsafe_allow_html=True)
 

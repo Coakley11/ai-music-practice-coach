@@ -514,6 +514,13 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
 
 
 def save_page_snapshot(session_state: dict, page_id: str) -> None:
+    if page_id in {"creative", "backing"}:
+        try:
+            from creative_session_state import sync_creative_session_before_persist
+
+            sync_creative_session_before_persist(session_state)
+        except ImportError:
+            pass
     store = session_state.setdefault(_PAGE_SNAPSHOTS_KEY, {})
     store[page_id] = capture_page_snapshot(session_state, page_id)
 

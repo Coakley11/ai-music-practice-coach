@@ -1281,8 +1281,14 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
         ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
     ).strip()
     if concert:
-        session["display_key"] = concert
         session["concert_key"] = concert
+        try:
+            from creative_session_state import creative_session_is_active
+
+            if not creative_session_is_active(session):
+                session["display_key"] = concert
+        except ImportError:
+            session["display_key"] = concert
         sync_improv_widgets_from_live_concert_key(session)
     refreshed = refresh_backing_context_from_session(session)
     if refreshed is not None:

@@ -417,6 +417,24 @@ def migrate_legacy_creative_session(session: dict[str, Any]) -> CreativeSession 
     )
 
 
+def sync_creative_session_before_persist(session: dict[str, Any]) -> CreativeSession | None:
+    """Capture live Creative widget state immediately before disk/cloud save."""
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if not entry and not session.get(CREATIVE_SESSION_KEY):
+        return None
+    return sync_creative_session_from_session(session)
+
+
+def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
+    """Apply persisted Creative session to widgets at page entry (after cloud restore)."""
+    sess = get_creative_session(session)
+    if sess is not None and creative_session_is_active(session):
+        apply_creative_session_to_session(session, sess)
+        return
+    if str(session.get("improv_entry_mode") or "").strip():
+        sync_creative_session_from_session(session)
+
+
 def hydrate_creative_session_after_restore(session: dict[str, Any]) -> bool:
     """Re-apply persisted Creative session after cloud/disk restore. Returns True if applied."""
     sess = get_creative_session(session)
@@ -463,6 +481,38 @@ def resolve_creative_backing_sections(session: dict[str, Any]) -> dict[str, list
     return _sections_from_session(session, str(session.get("improv_entry_mode") or ""))
 
 
+def render_creative_session_diagnostic(st: Any, session: dict[str, Any]) -> None:
+    """Temporary deploy/state path visibility for Creative session debugging."""
+    try:
+        from suite_deploy_probe import deploy_info
+    except ImportError:
+        deploy_info = lambda: {"commit": "unknown"}  # type: ignore[misc, assignment]
+    deploy = deploy_info()
+    commit = str(deploy.get("commit") or "unknown").strip()[:12]
+    sess = get_creative_session(session)
+    if sess is None:
+        summary = "no creative_session"
+    else:
+        sec_count = len(sess.sections or {})
+        summary = (
+            f"{sess.tool_type} · {sess.entry_mode} · key {sess.concert_key} · "
+            f"bpm {sess.bpm} · {sec_count} section(s)"
+        )
+    active = creative_session_is_active(session)
+    ctx_src = ""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None:
+            ctx_src = f" · backing={ctx.source}"
+    except ImportError:
+        pass
+    st.caption(
+        f"State · commit `{commit}` · creative_session: {summary} · active={active}{ctx_src}"
+    )
+
+
 __all__ = [
     "CREATIVE_SESSION_KEY",
     "CreativeSession",
@@ -472,8 +522,11 @@ __all__ = [
     "compute_creative_session_signature",
     "creative_session_is_active",
     "get_creative_session",
+    "hydrate_creative_session_for_page",
     "hydrate_creative_session_after_restore",
+    "sync_creative_session_before_persist",
     "migrate_legacy_creative_session",
+    "render_creative_session_diagnostic",
     "resolve_creative_backing_sections",
     "set_creative_session",
     "sync_creative_session_from_session",

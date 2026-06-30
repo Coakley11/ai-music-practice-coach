@@ -82,18 +82,38 @@ def render_instrument_context_strip(
     st: Any,
     instrument: str,
     page_id: str,
+    session_state: dict[str, Any] | None = None,
 ) -> None:
     """Compact instrument accent below page title."""
     theme = instrument_theme(instrument)
     page = _PAGE_HINTS.get(page_id, {})
     lead = page.get("lead", "")
+    pitch_family = _transposing_pitch_family_label(instrument, session_state or {})
+    label = theme["label"]
+    if pitch_family:
+        label = f"{label} · {pitch_family}"
     st.markdown(
         f'<div class="ui-instrument-strip" style="border-left-color:{html.escape(theme["accent"])};">'
         f'<span class="ui-instrument-strip-icon">{html.escape(theme["icon"])}</span>'
         f'<span class="ui-instrument-strip-body">'
-        f'<strong>{html.escape(theme["label"])}</strong>'
+        f'<strong>{html.escape(label)}</strong>'
         f' · {html.escape(theme["hint"])}'
         + (f' · <span class="ui-instrument-strip-muted">{html.escape(lead)}</span>' if lead else "")
         + "</span></div>",
         unsafe_allow_html=True,
     )
+
+
+def _transposing_pitch_family_label(instrument: str, session_state: dict[str, Any]) -> str:
+    """B-flat / E-flat family label for saxophone, trumpet, and clarinet."""
+    if instrument not in {"Saxophone", "Trumpet", "Clarinet"}:
+        return ""
+    try:
+        from instrument_transposition import is_eb_instrument, selected_transposing_type
+
+        t_type = selected_transposing_type(session_state, instrument)
+        if not t_type:
+            return ""
+        return "E-flat instrument" if is_eb_instrument(t_type) else "B-flat instrument"
+    except ImportError:
+        return ""

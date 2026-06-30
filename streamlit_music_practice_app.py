@@ -8544,7 +8544,7 @@ def _studio_page_header(
     try:
         from instrument_aware import render_instrument_context_strip
 
-        render_instrument_context_strip(st, instrument, _studio_page)
+        render_instrument_context_strip(st, instrument, _studio_page, st.session_state)
     except Exception:
         pass
 
@@ -11063,15 +11063,19 @@ elif _studio_page == "backing":
     try:
         from creative_session_state import (
             creative_session_is_active,
+            hydrate_creative_session_for_page,
+            render_creative_session_diagnostic,
             resolve_creative_backing_sections,
-            sync_creative_session_from_session,
+            sync_creative_session_before_persist,
         )
 
+        hydrate_creative_session_for_page(st.session_state)
         if creative_session_is_active(st.session_state):
-            sync_creative_session_from_session(st.session_state)
+            sync_creative_session_before_persist(st.session_state)
             _creative_playback_sections = resolve_creative_backing_sections(st.session_state)
             if _creative_playback_sections:
                 sections_for_backing = _creative_playback_sections
+        render_creative_session_diagnostic(st, st.session_state)
     except Exception:
         pass
     st.session_state.pop("_active_bpm_sync_id", None)
@@ -11928,6 +11932,8 @@ elif _studio_page == "backing":
             follow_key_prefix=_follow_key_prefix,
             karaoke_voice=_karaoke_voice_play,
         )
+        if not (_play_needs_generate or _karaoke_auto_gen):
+            st.rerun()
 
     _backing_audio_ready = bool(
         st.session_state.get("_last_backing_wav")
@@ -12674,6 +12680,15 @@ elif _studio_page == "creative":
     ensure_page_initialized(st.session_state, "creative")
     note_page_visit(st.session_state, "creative")
     try:
+        from creative_session_state import (
+            hydrate_creative_session_for_page,
+            sync_creative_session_before_persist,
+        )
+
+        hydrate_creative_session_for_page(st.session_state)
+    except ImportError:
+        pass
+    try:
         from app_ui import inject_creative_studio_styles
 
         inject_creative_studio_styles(st)
@@ -12826,6 +12841,18 @@ elif _studio_page == "creative":
             on_go_song_selection=_improv_go_song_selection,
             on_go_custom_progression=_improv_go_custom_progression,
         )
+        try:
+            from creative_session_state import sync_creative_session_before_persist
+
+            sync_creative_session_before_persist(st.session_state)
+        except ImportError:
+            pass
+        try:
+            from creative_session_state import render_creative_session_diagnostic
+
+            render_creative_session_diagnostic(st, st.session_state)
+        except ImportError:
+            pass
     else:
         with st.expander(lab_mode, expanded=pp.feature_expander_default(st, default=True)):
             if lab_mode == "Deep Harmonic Analyzer":

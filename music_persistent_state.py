@@ -1652,6 +1652,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         for drop_key in ("pick_key", "song", "artist"):
             core.pop(drop_key, None)
     extra: dict[str, Any] = {}
+    try:
+        from creative_session_state import sync_creative_session_before_persist
+
+        sync_creative_session_before_persist(ss)
+    except ImportError:
+        pass
     for key in _PERSIST_KEYS:
         if key in ss:
             val = copy.deepcopy(ss[key])

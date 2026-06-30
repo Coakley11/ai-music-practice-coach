@@ -133,6 +133,12 @@ def restore_session_widgets_from_backing_context(
 
 def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnPage:
     """Restore Creative/custom/picker widgets from the active backing_context snapshot."""
+    try:
+        from creative_session_state import sync_creative_session_before_persist
+
+        sync_creative_session_before_persist(session)
+    except ImportError:
+        pass
     ctx = get_backing_context(session)
     page = target_page_for_backing_context(ctx)
     if ctx is None:
