@@ -1158,8 +1158,18 @@ def open_backing_from_creative(
     from songs.playback_defaults import _CANONICAL_BACKING_ID_KEY
 
     sync_creative_handoff_keys(session, st_like=st_like)
+    try:
+        from creative_session_state import sync_creative_session_from_session
+
+        sync_creative_session_from_session(session)
+    except ImportError:
+        pass
     if source == "mission":
         ctx = build_mission_context(session)
+    elif source == "song_improv":
+        ctx = build_song_improv_context(session)
+    elif source == "custom_progression":
+        ctx = build_custom_progression_context(session)
     else:
         ctx = build_entry_jam_context(session)
     existing = get_backing_context(session)
@@ -1216,8 +1226,45 @@ def _sync_creative_backing_transport_handoff(
         session["_pending_backing_meter"] = str(ctx.meter)
 
 
+def ensure_backing_context_from_creative_session(session: dict[str, Any]) -> BackingContext | None:
+    """Create or refresh backing_context from the canonical Creative session when missing."""
+    existing = get_backing_context(session)
+    if existing is not None and existing.source != "regular_song" and is_backing_context_valid(session, existing):
+        refreshed = refresh_backing_context_from_session(session)
+        if refreshed is not None:
+            set_backing_context(session, refreshed)
+        return refreshed or existing
+    try:
+        from creative_session_state import creative_session_is_active, get_creative_session
+
+        if not creative_session_is_active(session):
+            return existing
+        sess = get_creative_session(session)
+        if sess is None:
+            return existing
+        if sess.tool_type == "mission":
+            ctx = build_mission_context(session)
+        elif sess.tool_type == "song_based_improvisation":
+            ctx = build_song_improv_context(session)
+        elif sess.tool_type == "custom_progression":
+            ctx = build_custom_progression_context(session)
+        else:
+            ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        return ctx
+    except ImportError:
+        return existing
+
+
 def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
     """Re-apply persisted Creative/custom backing_context after cloud or disk restore."""
+    try:
+        from creative_session_state import hydrate_creative_session_after_restore
+
+        hydrate_creative_session_after_restore(session)
+    except ImportError:
+        pass
+    ensure_backing_context_from_creative_session(session)
     ctx = get_backing_context(session)
     if ctx is None or ctx.source == "regular_song":
         return
@@ -1246,6 +1293,8 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
 def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Re-sync valid Creative/custom context after backing page song-default logic."""
     ctx = get_backing_context(session)
+    if ctx is None or ctx.source == "regular_song":
+        ctx = ensure_backing_context_from_creative_session(session)
     if ctx is not None and ctx.source != "regular_song" and is_backing_context_valid(session, ctx):
         sync_improv_widgets_from_live_concert_key(session)
         pending_apply = bool(session.get(PENDING_BACKING_CONTEXT_APPLY))
@@ -1299,6 +1348,7 @@ __all__ = [
     "backing_page_sync_id",
     "sync_creative_handoff_keys",
     "open_backing_from_creative",
+    "ensure_backing_context_from_creative_session",
     "PENDING_BACKING_CONTEXT_APPLY",
     "refresh_backing_context_from_session",
     "reconcile_backing_context_on_backing_page",

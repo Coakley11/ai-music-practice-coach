@@ -65,9 +65,18 @@ def should_skip_regular_song_defaults(session: dict[str, Any]) -> bool:
     try:
         from backing_context import active_creative_backing_context
 
-        return active_creative_backing_context(session) is not None
+        if active_creative_backing_context(session) is not None:
+            return True
     except ImportError:
-        return False
+        pass
+    try:
+        from creative_session_state import creative_session_is_active
+
+        if creative_session_is_active(session):
+            return True
+    except ImportError:
+        pass
+    return False
 
 
 def preserve_backing_musical_keys_after_generate(

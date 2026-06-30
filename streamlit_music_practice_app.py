@@ -11060,6 +11060,20 @@ elif _studio_page == "backing":
         reconcile_backing_context_on_backing_page(st.session_state, st_like=st)
     except Exception:
         pass
+    try:
+        from creative_session_state import (
+            creative_session_is_active,
+            resolve_creative_backing_sections,
+            sync_creative_session_from_session,
+        )
+
+        if creative_session_is_active(st.session_state):
+            sync_creative_session_from_session(st.session_state)
+            _creative_playback_sections = resolve_creative_backing_sections(st.session_state)
+            if _creative_playback_sections:
+                sections_for_backing = _creative_playback_sections
+    except Exception:
+        pass
     st.session_state.pop("_active_bpm_sync_id", None)
     st.session_state.pop("_backing_trace_sync_id", None)
     _song_bpm_sync_id = resolve_active_bpm_sync_id(
@@ -11246,7 +11260,8 @@ elif _studio_page == "backing":
         _backing_written_key = (
             _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
         )
-        render_backing_key_state_diagnostics(st, st.session_state, _backing_musical)
+        if _developer_mode_enabled():
+            render_backing_key_state_diagnostics(st, st.session_state, _backing_musical)
     except Exception:
         from songs.key_state import resolve_active_musical_key as _resolve_active_musical_key
 
@@ -11277,12 +11292,27 @@ elif _studio_page == "backing":
         if _creative_backing_ctx is None:
             _creative_backing_ctx = active_creative_backing_context(st.session_state)
         if _creative_backing_ctx is not None:
-            try:
-                from backing_musical_state import resolve_current_backing_musical_state
+            if _backing_musical is None:
+                try:
+                    from backing_musical_state import resolve_current_backing_musical_state
 
+                    _backing_musical = resolve_current_backing_musical_state(
+                        st.session_state,
+                        rec=None,
+                        applied_bpm=_synced_bpm,
+                        sync_id=_bpm_sync_id,
+                        song_sync_id=_song_bpm_sync_id,
+                    )
+                    _backing_practice_key = _backing_musical.practice_concert_key
+                    _backing_written_key = (
+                        _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
+                    )
+                except Exception:
+                    pass
+            else:
                 _backing_musical = resolve_current_backing_musical_state(
                     st.session_state,
-                    rec=_backing_card_record if _creative_backing_ctx.source == "regular_song" else None,
+                    rec=None,
                     applied_bpm=_synced_bpm,
                     sync_id=_bpm_sync_id,
                     song_sync_id=_song_bpm_sync_id,
@@ -11291,9 +11321,6 @@ elif _studio_page == "backing":
                 _backing_written_key = (
                     _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
                 )
-                render_backing_key_state_diagnostics(st, st.session_state, _backing_musical)
-            except Exception:
-                pass
             if _backing_musical and _backing_musical.concert_sections:
                 sections_for_backing = _backing_musical.concert_sections
             else:
@@ -11322,6 +11349,7 @@ elif _studio_page == "backing":
                     from studio_page_persistence import save_page_snapshot
 
                     save_page_snapshot(st.session_state, "backing")
+                    save_page_snapshot(st.session_state, "creative")
                     target = prepare_return_to_backing_source(st.session_state)
                     navigate_studio_page(st.session_state, target)
                     st.rerun()
@@ -11356,7 +11384,9 @@ elif _studio_page == "backing":
                 set_pending_anchor(st.session_state, ANCHOR_CHOOSE_ACTIVE_SONG)
                 navigate_studio_page(st.session_state, "picker")
                 st.rerun()
-    except Exception:
+    except Exception as _backing_card_err:
+        if _developer_mode_enabled():
+            st.caption(f"Developer · backing card render: {_backing_card_err}")
         render_backing_active_song_card(
             st,
             _backing_card_record,
@@ -11462,6 +11492,30 @@ elif _studio_page == "backing":
     backing_events = chord_events_for_selected_sections(
         performed_sections, selected_section_names, song_data=song_data
     )
+    if not backing_chords and _creative_backing_ctx is not None:
+        try:
+            from creative_session_state import resolve_creative_backing_sections
+
+            _fallback_sections = resolve_creative_backing_sections(st.session_state)
+            if _fallback_sections:
+                _fb_performed, _ = _humanized_backing_sections(
+                    _fallback_sections,
+                    song_data=_humanize_song_data,
+                    groove_style=resolved_groove,
+                    time_signature=backing_time_signature,
+                    humanize_level=_humanize_level,
+                    preserve_exact_timing=_preserve_exact_timing,
+                    section_lyrics=section_lyrics,
+                    lyric_cues=lyric_cues,
+                )
+                backing_chords = chord_blocks_for_selected_sections(
+                    _fb_performed, selected_section_names, song_data=song_data
+                )
+                backing_events = chord_events_for_selected_sections(
+                    _fb_performed, selected_section_names, song_data=song_data
+                )
+        except Exception:
+            pass
     if not backing_chords:
         st.warning("Choose at least one section to generate a backing track.")
     section_scope_label = (
@@ -11864,6 +11918,8 @@ elif _studio_page == "backing":
         except ImportError:
             pass
         clear_backing_needs_regen(st)
+        if _play_needs_generate or _karaoke_auto_gen:
+            st.rerun()
 
     if _play_clicked:
         _karaoke_voice_play = bool(km.is_voice_mode(st.session_state))
@@ -12686,9 +12742,11 @@ elif _studio_page == "creative":
     def _improv_open_backing() -> None:
         from backing_context import open_backing_from_creative
         from creative_key_sync import persist_creative_analysis_mode, sync_creative_style_jam_meta
+        from creative_session_state import sync_creative_session_from_session
         from studio_page_persistence import save_page_snapshot
 
         sync_creative_style_jam_meta(st.session_state)
+        sync_creative_session_from_session(st.session_state)
         source = resolve_improv_song_source(st.session_state)
         sync_improv_song_source_for_handoff(
             st.session_state,

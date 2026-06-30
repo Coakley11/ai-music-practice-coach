@@ -408,6 +408,12 @@ def _tab_entry_modes(
             sync_creative_style_jam_meta(session_state)
             apply_creative_concert_key(session_state, k, st_like=st)
             session_state[IMPROV_STYLE_KEY_TRACKER] = k
+            try:
+                from creative_session_state import sync_creative_session_from_session
+
+                sync_creative_session_from_session(session_state)
+            except ImportError:
+                pass
             st.rerun()
 
         gen = session_state.get("improv_generated_sections")
@@ -473,6 +479,12 @@ def _tab_entry_modes(
             k = str(session_state.get("improv_jam_key") or key_c or "C")
             apply_creative_concert_key(session_state, k, st_like=st)
             session_state[IMPROV_JAM_KEY_TRACKER] = k
+            try:
+                from creative_session_state import sync_creative_session_from_session
+
+                sync_creative_session_from_session(session_state)
+            except ImportError:
+                pass
             st.rerun()
 
         jam = session_state.get("improv_jam_session")

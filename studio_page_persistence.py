@@ -73,6 +73,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "selected_sections",
             "backing_volume",
             "backing_context",
+            "creative_session",
         }
     ),
     "custom": frozenset(
@@ -91,6 +92,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "improv_intelligence_tab",
             "creative_improv_intelligence_tab",
             "improv_entry_mode",
+            "creative_session",
             "improv_generated_sections",
             "improv_style_meta",
             "improv_jam_session",

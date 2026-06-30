@@ -141,6 +141,12 @@ def invalidate_creative_backing_context(session: dict[str, Any]) -> None:
                 set_backing_context(session, refreshed)
                 session.pop("_pending_backing_context_apply", None)
                 session.pop("_backing_creative_chart_sections", None)
+                try:
+                    from creative_session_state import sync_creative_session_from_session
+
+                    sync_creative_session_from_session(session)
+                except ImportError:
+                    pass
                 return
     except ImportError:
         pass
@@ -196,6 +202,12 @@ def sync_creative_style_jam_meta(session: dict[str, Any]) -> None:
         "meter": str(session.get("improv_style_meter") or session.get("backing_time_signature") or "4/4").strip(),
         "entry_mode": str(session.get("improv_entry_mode") or "").strip(),
     }
+    try:
+        from creative_session_state import sync_creative_session_from_session
+
+        sync_creative_session_from_session(session)
+    except ImportError:
+        pass
 
 
 def on_improv_jam_key_change() -> None:
@@ -334,10 +346,16 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
     try:
         from backing_context import active_creative_backing_context
         from backing_musical_state import resolve_current_backing_musical_state
+        from creative_session_state import (
+            creative_session_is_active,
+            get_creative_session,
+        )
 
         creative = active_creative_backing_context(session)
+        creative_sess = get_creative_session(session) if creative is None else None
     except ImportError:
         creative = None
+        creative_sess = None
         resolve_current_backing_musical_state = None  # type: ignore[assignment]
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     resolver_key = ""
@@ -345,9 +363,12 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         resolver_key = str(
             resolve_current_backing_musical_state(session).practice_concert_key or ""
         ).strip()
+    elif creative_sess is not None and creative_session_is_active(session):
+        resolver_key = str(creative_sess.concert_key or creative_sess.display_key or "").strip()
     selected = str(
         pending
         or resolver_key
+        or (creative_sess.concert_key if creative_sess else "")
         or session.get("display_key")
         or (creative.concert_key if creative else "")
         or session.get("concert_key")

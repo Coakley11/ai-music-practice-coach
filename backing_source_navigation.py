@@ -29,6 +29,16 @@ def restore_session_widgets_from_backing_context(
     ctx: BackingContext,
 ) -> None:
     """Push backing_context snapshot fields into Creative/custom session widgets."""
+    try:
+        from creative_session_state import apply_creative_session_to_session, get_creative_session
+
+        sess = get_creative_session(session)
+        if sess is not None:
+            apply_creative_session_to_session(session, sess)
+            return
+    except ImportError:
+        pass
+
     concert = str(
         ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
     ).strip()

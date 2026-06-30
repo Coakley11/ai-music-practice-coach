@@ -91,6 +91,18 @@ def migrate_legacy_session_keys(session_state: dict) -> None:
 def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> None:
     """Set improv widget defaults only if the user has not visited before."""
     migrate_legacy_session_keys(session_state)
+    try:
+        from creative_session_state import (
+            apply_creative_session_to_session,
+            creative_session_is_active,
+            get_creative_session,
+        )
+
+        _creative_sess = get_creative_session(session_state)
+        if _creative_sess is not None and creative_session_is_active(session_state):
+            apply_creative_session_to_session(session_state, _creative_sess)
+    except ImportError:
+        pass
     saved_tab = str(session_state.get(CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY) or "").strip()
     session_state.setdefault(
         CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY,
@@ -98,6 +110,14 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
     )
     session_state.setdefault("improv_intelligence_tab", session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY])
     session_state.setdefault("improv_entry_mode", IMPROV_ENTRY_MODES[0])
+    try:
+        from creative_session_state import get_creative_session
+
+        _sess = get_creative_session(session_state)
+        if _sess and str(_sess.entry_mode or "").strip():
+            session_state["improv_entry_mode"] = str(_sess.entry_mode).strip()
+    except ImportError:
+        pass
     if "improv_song_source" not in session_state:
         session_state["improv_song_source"] = (
             "Custom progression" if is_custom_active else "Active song"

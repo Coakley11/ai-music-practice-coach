@@ -430,6 +430,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "latest_practice_analysis_full_report",
     "latest_practice_analysis_handoff_status",
     "backing_context",
+    "creative_session",
     "improv_entry_mode",
     "improv_generated_sections",
     "improv_style_meta",
@@ -2189,13 +2190,6 @@ def apply_music_disk_state(
         pass
 
     try:
-        from backing_context import hydrate_backing_context_after_restore
-
-        hydrate_backing_context_after_restore(ss)
-    except ImportError:
-        pass
-
-    try:
         from custom_song_library import merge_custom_songs_from_cloud
 
         merge_custom_songs_from_cloud(ss, st=st)
@@ -2210,6 +2204,20 @@ def apply_music_disk_state(
             song_library=song_library,
         )
     except Exception:
+        pass
+
+    try:
+        from creative_session_state import hydrate_creative_session_after_restore
+
+        hydrate_creative_session_after_restore(ss)
+    except ImportError:
+        pass
+
+    try:
+        from backing_context import hydrate_backing_context_after_restore
+
+        hydrate_backing_context_after_restore(ss)
+    except ImportError:
         pass
 
     ss["_music_workspace_blob_hydrated"] = True
