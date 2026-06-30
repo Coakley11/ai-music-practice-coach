@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 ChartMode = Literal["concert", "written", "shape"]
-SourceType = Literal["regular_song", "entry_jam", "mission", "custom_progression", "none"]
+SourceType = Literal[
+    "regular_song", "entry_jam", "mission", "custom_progression", "song_improv", "none"
+]
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,43 @@ def clear_stale_chart_session_keys(session: dict[str, Any]) -> None:
     session.pop("_backing_creative_chart_sections", None)
 
 
+def should_skip_regular_song_defaults(session: dict[str, Any]) -> bool:
+    """True when a non-catalog Creative/custom backing source owns the session."""
+    try:
+        from backing_context import active_creative_backing_context
+
+        return active_creative_backing_context(session) is not None
+    except ImportError:
+        return False
+
+
+def preserve_backing_musical_keys_after_generate(
+    st_like: Any,
+    session: dict[str, Any],
+    state: BackingMusicalState,
+) -> None:
+    """Keep sidebar practice concert key aligned with resolver after Generate reruns."""
+    if not state.creative_active:
+        return
+    practice = str(state.practice_concert_key or "").strip()
+    if not practice:
+        return
+    session["concert_key"] = practice
+    session["display_key"] = practice
+    try:
+        from songs.key_state import request_display_key
+
+        request_display_key(st_like, practice)
+    except ImportError:
+        session["_pending_display_key"] = practice
+    try:
+        from creative_key_sync import invalidate_creative_backing_context
+
+        invalidate_creative_backing_context(session)
+    except ImportError:
+        pass
+
+
 def resolve_current_backing_musical_state(
     session: dict[str, Any],
     *,
@@ -105,11 +144,26 @@ def resolve_current_backing_musical_state(
     ).strip()
 
     creative_selected = str(creative_entry_concert_key(session) or "").strip()
-    if creative_active and creative_selected:
-        practice = creative_selected
-    elif creative and str(creative.concert_key or "").strip():
-        practice = str(creative.concert_key).strip()
+    live_practice = str(session.get("display_key") or "").strip()
+    if creative_active and creative:
+        if creative.source == "song_improv":
+            practice = live_practice or str(creative.concert_key or "C").strip() or "C"
+        elif creative.source == "entry_jam":
+            practice = (
+                creative_selected
+                or live_practice
+                or str(creative.concert_key or "C").strip()
+                or "C"
+            )
+        elif live_practice:
+            practice = live_practice
+        elif str(creative.concert_key or "").strip():
+            practice = str(creative.concert_key).strip()
+        else:
+            practice = ""
     else:
+        practice = ""
+    if not practice:
         from songs.key_state import resolve_active_musical_key
 
         mk = resolve_active_musical_key(session, rec=rec, surface="backing_resolver")
@@ -287,6 +341,8 @@ __all__ = [
     "ChartMode",
     "SourceType",
     "clear_stale_chart_session_keys",
+    "preserve_backing_musical_keys_after_generate",
     "render_backing_key_state_diagnostics",
     "resolve_current_backing_musical_state",
+    "should_skip_regular_song_defaults",
 ]

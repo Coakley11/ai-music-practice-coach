@@ -130,7 +130,12 @@ def invalidate_creative_backing_context(session: dict[str, Any]) -> None:
         )
 
         ctx = get_backing_context(session)
-        if ctx is not None and ctx.source in {"entry_jam", "mission", "custom_progression"}:
+        if ctx is not None and ctx.source in {
+            "entry_jam",
+            "mission",
+            "custom_progression",
+            "song_improv",
+        }:
             refreshed = refresh_backing_context_from_session(session)
             if refreshed is not None:
                 set_backing_context(session, refreshed)
@@ -317,6 +322,34 @@ def creative_sidebar_key_options(session: dict[str, Any]) -> list[str]:
         return [selected] + options
     if selected:
         return [selected] + [k for k in options if k != selected]
+    return options
+
+
+def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]) -> list[str]:
+    """Apply non-major Creative backing concert key before the sidebar widget."""
+    from music_theory import key_mode, practice_keys_for_mode
+    from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
+
+    flush_pending_creative_major_keys(session)
+    try:
+        from backing_context import active_creative_backing_context
+
+        creative = active_creative_backing_context(session)
+    except ImportError:
+        creative = None
+    pending = session.pop(PENDING_DISPLAY_KEY, None)
+    selected = str(
+        pending
+        or session.get("display_key")
+        or (creative.concert_key if creative else "")
+        or session.get("concert_key")
+        or "C"
+    ).strip() or "C"
+    options = practice_keys_for_mode(key_mode(selected))
+    if selected not in options:
+        options = [selected] + options
+    _apply_display_key_before_widget(st, selected, source="backing_context_concert")
+    session["concert_key"] = selected
     return options
 
 

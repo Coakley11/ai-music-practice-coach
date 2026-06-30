@@ -140,17 +140,28 @@ def render_backing_creative_context_card(
         applied_bpm=applied_bpm,
     )
     theme = _resolve_theme(ctx)
-    source_title = "Entry & Jam" if ctx.source == "entry_jam" else ctx.source_label
-    mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").strip()
-    style_label = str(ctx.style or applied_groove or "Auto").strip()
+    source_title = (
+        "Entry & Jam"
+        if ctx.source == "entry_jam"
+        else ("Song-Based Improvisation" if ctx.source == "song_improv" else ctx.source_label)
+    )
+    if ctx.source == "song_improv":
+        mode_label = str(ctx.song_title or "Active song").strip()
+        style_label = str(ctx.song_title or applied_groove or "Active song").strip()
+        title = html.escape(style_label)
+        subtitle = html.escape(f"{source_title} · {mode_label}")
+    else:
+        mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").strip()
+        style_label = str(ctx.style or applied_groove or "Auto").strip()
+        title = html.escape(style_label or ctx.song_title or "Creative backing")
+        subtitle = html.escape(f"{source_title} · {mode_label}")
+
     backing_style = html.escape(str(applied_groove or ctx.groove or style_label or "Auto"))
     concert = html.escape(str(state.practice_concert_key or practice_key or "C"))
     chart_key_raw = str(state.chart_badge_value or "").strip() if state.show_chart_badge else ""
     chart_key = html.escape(chart_key_raw)
     meter = html.escape(str(applied_meter or ctx.meter or state.meter or "4/4"))
     bpm = int(state.applied_bpm or applied_bpm or ctx.bpm or 100)
-    title = html.escape(style_label or ctx.song_title or "Creative backing")
-    subtitle = html.escape(f"{source_title} · {mode_label}")
 
     display_sections = state.chart_sections or state.concert_sections
     if ctx.section:

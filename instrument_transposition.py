@@ -253,11 +253,7 @@ def chart_in_instrument_key(session_state: dict) -> bool:
 
 
 def sync_written_key_instrument_anchor(session_state: dict, instrument: str) -> None:
-    """Keep written-key preference across practice-key changes; reset only on instrument change.
-
-  When switching to a non-transposing instrument, written-key mode is turned off.
-  When switching between transposing instruments, the user's checkbox stays as-is.
-    """
+    """Reset chart helper modes when the global instrument changes."""
     instrument = str(instrument or "").strip()
     anchor = str(session_state.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
     if not anchor:
@@ -265,8 +261,23 @@ def sync_written_key_instrument_anchor(session_state: dict, instrument: str) -> 
         return
     if anchor == instrument:
         return
-    if is_transposing_instrument(anchor) and not is_transposing_instrument(instrument):
-        session_state[CHART_IN_INSTRUMENT_KEY_KEY] = False
+    session_state[CHART_IN_INSTRUMENT_KEY_KEY] = False
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY, sync_capo_from_practice_display_key
+
+        session_state[CAPO_ENABLED_KEY] = False
+        practice = str(
+            session_state.get("display_key") or session_state.get("concert_key") or "C"
+        ).strip() or "C"
+        sync_capo_from_practice_display_key(session_state, practice)
+    except ImportError:
+        pass
+    try:
+        from backing_musical_state import clear_stale_chart_session_keys
+
+        clear_stale_chart_session_keys(session_state)
+    except ImportError:
+        session_state.pop("_creative_chart_display_key", None)
     session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = instrument
 
 

@@ -85,14 +85,14 @@ def test_resolve_practice_keys_includes_effective_practice_key():
     assert ctx["effective_practice_key"] == ctx["chart_key"] == "G"
 
 
-def test_switch_sax_to_trumpet_keeps_written_mode():
+def test_switch_sax_to_trumpet_resets_written_mode():
     ss = _state()
     ss[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = "Bb Trumpet"
     sync_written_key_instrument_anchor(ss, "Trumpet")
-    assert chart_in_instrument_key(ss) is True
+    assert chart_in_instrument_key(ss) is False
     ctx = resolve_practice_keys(ss, "C", "Trumpet")
-    assert ctx["chart_key_mode"] == "written"
-    assert ctx["chart_key"] == written_key_for_type("C", "Bb Trumpet")
+    assert ctx["chart_key_mode"] == "concert"
+    assert ctx["chart_key"] == "C"
 
 
 def test_capo_shape_is_derived_without_mutating_display_key_widget():

@@ -622,6 +622,19 @@ def sync_playback_defaults_for_active_song(
     is_custom: bool = False,
 ) -> tuple[int, str]:
     """Sync BPM + groove when the active song changes; preserve manual tweaks otherwise."""
+    try:
+        from backing_musical_state import should_skip_regular_song_defaults
+
+        if should_skip_regular_song_defaults(st.session_state):
+            bpm = int(st.session_state.get("backing_track_bpm") or default_bpm)
+            groove = str(
+                st.session_state.get("backing_groove_style")
+                or st.session_state.get("practice_groove_style")
+                or default_groove
+            )
+            return bpm, groove
+    except ImportError:
+        pass
     active_bpm = canonical_active_song_bpm(song_data) if song_data else int(default_bpm)
     sync_id = active_song_sync_id(
         pick_key=pick_key,

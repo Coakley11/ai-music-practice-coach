@@ -15,13 +15,16 @@ from typing import Any, Literal
 BACKING_CONTEXT_KEY = "backing_context"
 PENDING_BACKING_CONTEXT_APPLY = "_pending_backing_context_apply"
 
-BackingSource = Literal["regular_song", "entry_jam", "mission", "custom_progression"]
+BackingSource = Literal[
+    "regular_song", "entry_jam", "mission", "custom_progression", "song_improv"
+]
 
 _SOURCE_LABELS: dict[BackingSource, str] = {
     "regular_song": "Regular song",
     "entry_jam": "Entry & Jam",
     "mission": "Mission",
     "custom_progression": "Custom progression",
+    "song_improv": "Song-Based Improvisation",
 }
 
 _SIGNATURE_FIELDS = (
@@ -403,6 +406,63 @@ def build_regular_song_context(session: dict[str, Any]) -> BackingContext:
     )
 
 
+def _song_improv_sections_dict(session: dict[str, Any]) -> dict[str, list[str]]:
+    stored = session.get("improv_song_concert_sections")
+    if isinstance(stored, dict) and stored:
+        return {
+            str(name): [str(c) for c in chords if str(c).strip()]
+            for name, chords in stored.items()
+            if isinstance(chords, list)
+        }
+    return {}
+
+
+def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
+    """Backing context for Song-Based Improvisation (active catalog song at current practice key)."""
+    pick_key = _current_pick_key(session)
+    key, display_key, concert_key = _display_keys_from_session(session)
+    chart_display_key = _resolve_chart_display_key(session, concert_key)
+    scope, section, selected_sections = _default_scope(session)
+    sections_dict = _song_improv_sections_dict(session)
+    progression: list[str] = []
+    section_labels = list(sections_dict.keys())
+    if sections_dict:
+        try:
+            from improvisation_intelligence import flatten_sections
+
+            progression = flatten_sections(sections_dict)
+        except ImportError:
+            progression = [c for chs in sections_dict.values() for c in chs if str(c).strip()]
+    song_title = _song_title_from_session(session) or "Active song"
+    progression_label = song_title
+    if progression:
+        progression_label = f"{song_title} · {'–'.join(progression[:4])}"
+    return BackingContext(
+        source="song_improv",
+        source_label=_SOURCE_LABELS["song_improv"],
+        active_song_id=pick_key,
+        song_title=song_title,
+        key=key,
+        display_key=display_key,
+        concert_key=concert_key,
+        chart_display_key=chart_display_key,
+        bpm=_default_bpm(session),
+        style="",
+        groove=_default_groove(session),
+        section=section,
+        sections=selected_sections or section_labels,
+        scope=scope,
+        loops=int(session.get("backing_track_loops") or 2),
+        progression=progression,
+        progression_label=progression_label,
+        section_labels=section_labels,
+        loop=True,
+        entry_mode="Song-Based Improvisation",
+        mode_label="Song-Based Improvisation",
+        bound_pick_key=pick_key,
+    )
+
+
 def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
     try:
         from studio_page_state import resolve_improv_song_source
@@ -640,6 +700,12 @@ def invalidate_if_song_changed(session: dict[str, Any], new_pick_key: str | None
         return False
     if ctx.source in {"entry_jam", "mission"}:
         return False
+    if ctx.source == "song_improv":
+        current = str(new_pick_key or _current_pick_key(session)).strip()
+        if ctx.bound_pick_key and current and ctx.bound_pick_key != current:
+            clear_backing_context(session)
+            return True
+        return False
     current = str(new_pick_key or _current_pick_key(session)).strip()
     if not ctx.bound_pick_key or not current:
         return False
@@ -756,14 +822,21 @@ def apply_backing_context_to_session(
             set_custom_source(session)
         except ImportError:
             pass
-    elif ctx.source in {"entry_jam", "mission"}:
+    elif ctx.source in {"entry_jam", "mission", "song_improv"}:
         try:
             from studio_page_state import resolve_improv_song_source
 
             source = resolve_improv_song_source(session)
         except ImportError:
             source = str(session.get("improv_song_source") or "Active song")
-        if source == "Custom progression":
+        if ctx.source == "song_improv" or source == "Active song":
+            try:
+                from songs.music_source import set_catalog_source
+
+                set_catalog_source(session)
+            except ImportError:
+                pass
+        elif source == "Custom progression":
             try:
                 from songs.music_source import set_custom_source
 
@@ -881,22 +954,62 @@ def active_creative_backing_context(session: dict[str, Any]) -> BackingContext |
     return ctx
 
 
+def _retranspose_sections_to_practice_key(
+    session: dict[str, Any],
+    sections: dict[str, list[str]],
+    *,
+    practice_key: str,
+    ctx: BackingContext,
+) -> dict[str, list[str]]:
+    """Retranspose generated jam sections when practice concert key diverges from tracker."""
+    if not sections or not practice_key:
+        return sections
+    if ctx.source != "entry_jam":
+        return sections
+    entry_mode = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()
+    try:
+        from creative_key_sync import IMPROV_JAM_KEY_TRACKER, IMPROV_STYLE_KEY_TRACKER, retranspose_generated_sections
+    except ImportError:
+        return sections
+    if entry_mode == "Jam Session Generator":
+        tracker = str(session.get(IMPROV_JAM_KEY_TRACKER) or session.get("improv_jam_key") or "").strip()
+    else:
+        tracker = str(session.get(IMPROV_STYLE_KEY_TRACKER) or session.get("improv_style_key") or "").strip()
+    origin = str(tracker or ctx.concert_key or "").strip()
+    if origin and origin != practice_key:
+        return retranspose_generated_sections(sections, from_key=origin, to_key=practice_key)
+    return sections
+
+
 def sections_dict_from_backing_context(
     session: dict[str, Any],
     ctx: BackingContext | None = None,
 ) -> dict[str, list[str]]:
     """Chord sections in concert key for backing generation when Creative context is active."""
     ctx = ctx or active_creative_backing_context(session)
-    entry_mode = str(ctx.entry_mode if ctx else session.get("improv_entry_mode") or "").strip()
-    sections = _entry_jam_sections_dict(session, entry_mode)
-    if not sections and ctx and ctx.progression:
-        label = str(ctx.progression_label or "Creative").strip() or "Creative"
-        return {label: list(ctx.progression)}
-    if ctx:
-        section = ctx.section
-        selected = list(ctx.sections or [])
-        sections = _filter_sections_dict(sections, section=section, selected=selected)
-    return sections
+    if ctx is None:
+        return {}
+    practice_key = str(session.get("display_key") or ctx.concert_key or "C").strip() or "C"
+    if ctx.source == "song_improv":
+        sections = _song_improv_sections_dict(session)
+        if not sections and ctx.progression:
+            label = str(ctx.song_title or ctx.progression_label or "Song").strip() or "Song"
+            sections = {label: list(ctx.progression)}
+    else:
+        entry_mode = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()
+        sections = _entry_jam_sections_dict(session, entry_mode)
+        if not sections and ctx.progression:
+            label = str(ctx.progression_label or "Creative").strip() or "Creative"
+            sections = {label: list(ctx.progression)}
+        sections = _retranspose_sections_to_practice_key(
+            session,
+            sections,
+            practice_key=practice_key,
+            ctx=ctx,
+        )
+    section = ctx.section
+    selected = list(ctx.sections or [])
+    return _filter_sections_dict(sections, section=section, selected=selected)
 
 
 def refresh_backing_context_from_session(session: dict[str, Any]) -> BackingContext | None:
@@ -906,6 +1019,8 @@ def refresh_backing_context_from_session(session: dict[str, Any]) -> BackingCont
         return None
     if ctx.source == "entry_jam":
         new_ctx = build_entry_jam_context(session)
+    elif ctx.source == "song_improv":
+        new_ctx = build_song_improv_context(session)
     elif ctx.source == "mission":
         new_ctx = build_mission_context(session)
     elif ctx.source == "custom_progression":
@@ -1051,6 +1166,7 @@ __all__ = [
     "build_custom_progression_context",
     "build_entry_jam_context",
     "build_mission_context",
+    "build_song_improv_context",
     "build_regular_song_context",
     "clear_backing_context",
     "compute_source_signature",

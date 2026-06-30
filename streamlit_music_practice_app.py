@@ -9272,14 +9272,18 @@ original_key, _song_identity = display_key_context(
 from songs.music_source import cpl_session_is_active as _cpl_session_is_active
 
 try:
+    from backing_musical_state import should_skip_regular_song_defaults
     from creative_key_sync import (
         is_creative_major_jam_active,
         on_sidebar_practice_concert_key_change,
+        prepare_backing_context_sidebar_display_key,
         prepare_creative_sidebar_display_key,
     )
 
     if is_creative_major_jam_active(st.session_state):
         _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
+    elif should_skip_regular_song_defaults(st.session_state):
+        _display_key_options = prepare_backing_context_sidebar_display_key(st, st.session_state)
     else:
         _display_key_options = sync_display_key_before_widget(
             st,
@@ -9597,11 +9601,19 @@ minutes = int(
 )
 
 instrument = st.session_state.get("instrument", "Piano")
+_skip_catalog_sidebar_rehydrate = False
+try:
+    from backing_musical_state import should_skip_regular_song_defaults
+
+    _skip_catalog_sidebar_rehydrate = should_skip_regular_song_defaults(st.session_state)
+except ImportError:
+    pass
 try:
     from active_song_state import rehydrate_capo_from_canonical, rehydrate_transposing_sidebar_from_canonical
 
-    rehydrate_transposing_sidebar_from_canonical(st.session_state)
-    rehydrate_capo_from_canonical(st.session_state)
+    if not _skip_catalog_sidebar_rehydrate:
+        rehydrate_transposing_sidebar_from_canonical(st.session_state)
+        rehydrate_capo_from_canonical(st.session_state)
 except ImportError:
     pass
 sync_written_key_instrument_anchor(st.session_state, instrument)
@@ -9615,7 +9627,13 @@ if display_key not in _display_key_options:
         _creative_key_mode = is_creative_major_jam_active(st.session_state)
     except Exception:
         _creative_key_mode = False
-    if not _creative_key_mode:
+    try:
+        from backing_musical_state import should_skip_regular_song_defaults
+
+        _skip_song_key_clamp = should_skip_regular_song_defaults(st.session_state)
+    except Exception:
+        _skip_song_key_clamp = False
+    if not (_creative_key_mode or _skip_song_key_clamp):
         display_key = (
             original_key
             if original_key in _display_key_options
@@ -11412,10 +11430,16 @@ elif _studio_page == "backing":
         st.session_state.get("backing_time_signature", backing_time_signature)
     )
 
+    _audio_signature_key = (
+        _backing_musical.practice_concert_key
+        if _backing_musical is not None and _creative_backing_ctx is not None
+        else chart_key
+    )
+
     def _backing_signature_for_bpm(bpm_val: int) -> tuple:
         return (
             song,
-            chart_key,
+            _audio_signature_key,
             level,
             resolved_groove,
             int(bpm_val),
@@ -11615,7 +11639,10 @@ elif _studio_page == "backing":
                 unsafe_allow_html=True,
             )
 
-    _follow_key_prefix = f"backing::{song}::{tuple(selected_section_names)}::{chart_key}::{bpm}::{form_loops}"
+    _follow_key_prefix = (
+        f"backing::{song}::{tuple(selected_section_names)}::"
+        f"{_audio_signature_key}::{bpm}::{form_loops}"
+    )
 
     # Karaoke auto-generate: when a transition flips the active song in a
     # karaoke set, the new song has no backing audio yet. Consume the
@@ -11628,6 +11655,55 @@ elif _studio_page == "backing":
             _karaoke_auto_gen = True
 
     if _gen_clicked or _karaoke_auto_gen:
+        try:
+            from backing_musical_state import (
+                preserve_backing_musical_keys_after_generate,
+                resolve_current_backing_musical_state,
+            )
+
+            _gen_musical = resolve_current_backing_musical_state(
+                st.session_state,
+                rec=song_data if _creative_backing_ctx is None else None,
+                applied_bpm=bpm,
+                sync_id=_bpm_sync_id,
+                song_sync_id=_song_bpm_sync_id,
+            )
+            if _gen_musical.creative_active and _gen_musical.concert_sections:
+                performed_sections, _hri_annotations = _humanized_backing_sections(
+                    _gen_musical.concert_sections,
+                    song_data=_humanize_song_data,
+                    groove_style=resolved_groove,
+                    time_signature=backing_time_signature,
+                    humanize_level=_humanize_level,
+                    preserve_exact_timing=_preserve_exact_timing,
+                    section_lyrics=section_lyrics,
+                    lyric_cues=lyric_cues,
+                )
+                st.session_state["_backing_hri_annotations"] = _hri_annotations
+                backing_chords = chord_blocks_for_selected_sections(
+                    performed_sections, selected_section_names, song_data=song_data
+                )
+                backing_events = chord_events_for_selected_sections(
+                    performed_sections, selected_section_names, song_data=song_data
+                )
+                bpm = int(_gen_musical.applied_bpm)
+                _audio_signature_key = _gen_musical.practice_concert_key
+                _current_backing_signature = _backing_signature_for_bpm(bpm)
+                if _gen_musical.chart_sections:
+                    chart_sections, _ = _humanized_backing_sections(
+                        _gen_musical.chart_sections,
+                        song_data=_humanize_song_data,
+                        groove_style=resolved_groove,
+                        time_signature=backing_time_signature,
+                        humanize_level=_humanize_level,
+                        preserve_exact_timing=_preserve_exact_timing,
+                        section_lyrics=section_lyrics,
+                        lyric_cues=lyric_cues,
+                    )
+                    chart_display_key = _gen_musical.chart_display_key or chart_display_key
+            preserve_backing_musical_keys_after_generate(st, st.session_state, _gen_musical)
+        except Exception:
+            pass
         st.session_state[BACKING_TRANSPORT_STATUS] = "generating"
         record_backing_timing_event(
             st.session_state,
@@ -12573,11 +12649,20 @@ elif _studio_page == "creative":
             set_catalog_source=set_catalog_source,
             set_custom_source=set_custom_source,
         )
-        creative_source = (
-            "mission"
-            if str(st.session_state.get("improv_intelligence_tab") or "") == "Missions"
-            else "entry_jam"
-        )
+        entry = str(st.session_state.get("improv_entry_mode") or "").strip()
+        if str(st.session_state.get("improv_intelligence_tab") or "") == "Missions":
+            creative_source = "mission"
+        elif entry == "Song-Based Improvisation":
+            if source == "Custom progression":
+                creative_source = "custom_progression"
+            else:
+                creative_source = "song_improv"
+                st.session_state["improv_song_concert_sections"] = dict(sections_for_backing)
+                st.session_state["improv_song_chart_sections"] = dict(sections_for_practice)
+        elif entry in ("Style Jam Mode", "Jam Session Generator"):
+            creative_source = "entry_jam"
+        else:
+            creative_source = "entry_jam"
         persist_creative_analysis_mode(st.session_state)
         persist_improv_intelligence_tab(st.session_state)
         save_page_snapshot(st.session_state, "creative")

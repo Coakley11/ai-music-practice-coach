@@ -9,15 +9,19 @@ from unittest.mock import patch
 from backing_context import (
     BACKING_CONTEXT_KEY,
     build_entry_jam_context,
+    build_song_improv_context,
     open_backing_from_creative,
     refresh_backing_context_from_session,
     reconcile_backing_context_on_backing_page,
     sections_dict_for_chart_display,
+    sections_dict_from_backing_context,
     set_backing_context,
 )
 from backing_musical_state import (
     clear_stale_chart_session_keys,
+    preserve_backing_musical_keys_after_generate,
     resolve_current_backing_musical_state,
+    should_skip_regular_song_defaults,
 )
 from instrument_transposition import (
     SELECTED_TRANSPOSING_INSTRUMENT_KEY,
@@ -314,6 +318,146 @@ class TestBackingMusicalStateResolver(unittest.TestCase):
         clear_stale_chart_session_keys(session)
         self.assertNotIn("_creative_chart_display_key", session)
         self.assertNotIn("_backing_creative_chart_sections", session)
+
+
+class TestGeneratePathResolver(unittest.TestCase):
+    def test_generate_preserves_f_d_sidebar_not_bm(self) -> None:
+        session = _shape_of_you_session()
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        st = SimpleNamespace(session_state=session)
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.practice_concert_key, "F")
+        session["display_key"] = "Bm"
+        session["concert_key"] = "Bm"
+        preserve_backing_musical_keys_after_generate(st, session, state)
+        self.assertEqual(session.get("display_key"), "F")
+        self.assertEqual(session.get("concert_key"), "F")
+
+    def test_key_change_e_uses_concert_sections_not_original_f(self) -> None:
+        from creative_key_sync import IMPROV_STYLE_KEY_TRACKER
+
+        session = _shape_of_you_session()
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        session["improv_style_key"] = "E"
+        session["display_key"] = "E"
+        session["concert_key"] = "E"
+        session[IMPROV_STYLE_KEY_TRACKER] = "F"
+        session["improv_generated_sections"] = {
+            "Head (Bossa Nova)": ["Gm7", "C7", "Fmaj7", "D7"],
+        }
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.practice_concert_key, "E")
+        flat = " ".join(next(iter(state.concert_sections.values()), []))
+        self.assertIn("F#m7", flat)
+        self.assertNotIn("Gm7", flat)
+
+    def test_creative_active_skips_catalog_defaults(self) -> None:
+        session = _shape_of_you_session()
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        self.assertTrue(should_skip_regular_song_defaults(session))
+
+    def test_shape_of_you_background_cannot_leak_on_generate_preserve(self) -> None:
+        session = _shape_of_you_session(show_chart_in_instrument_key=True)
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        st = SimpleNamespace(session_state=session)
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.written_key, "D")
+        session["display_key"] = "Bm"
+        preserve_backing_musical_keys_after_generate(st, session, state)
+        restored = resolve_current_backing_musical_state(session)
+        self.assertEqual(restored.practice_concert_key, "F")
+        self.assertEqual(restored.written_key, "D")
+
+
+class TestSongImprovBackingHandoff(unittest.TestCase):
+    def _shape_improv_session(self, **overrides) -> dict:
+        base = {
+            "active_catalog_pick_key": "shape|edsheeran",
+            "song": "Shape of You",
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "instrument": "Guitar",
+            "guitar_capo_enabled": True,
+            "guitar_capo_shape_key": "Ebm",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_song_concert_sections": {
+                "Verse": ["Cm", "Ab", "Eb", "Bb"],
+            },
+        }
+        base.update(overrides)
+        return base
+
+    def test_song_improv_context_not_entry_jam(self) -> None:
+        session = self._shape_improv_session()
+        ctx = build_song_improv_context(session)
+        self.assertEqual(ctx.source, "song_improv")
+        self.assertEqual(ctx.song_title, "Shape of You")
+        self.assertEqual(ctx.concert_key, "Cm")
+        self.assertEqual(ctx.entry_mode, "Song-Based Improvisation")
+
+    def test_open_backing_replaces_style_jam_with_song_improv(self) -> None:
+        session = _entry_jam_session(bpm=75, key="F")
+        old_ctx = build_entry_jam_context(session)
+        set_backing_context(session, old_ctx)
+        session.update(self._shape_improv_session())
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            open_backing_from_creative(session, source="song_improv", st_like=st_like)
+        live = build_song_improv_context(session)
+        self.assertEqual(live.source, "song_improv")
+        self.assertNotEqual(live.source_signature, old_ctx.source_signature)
+
+    def test_song_improv_resolver_uses_cm_not_bm(self) -> None:
+        session = self._shape_improv_session()
+        ctx = build_song_improv_context(session)
+        set_backing_context(session, ctx)
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.practice_concert_key, "Cm")
+        self.assertEqual(state.chart_mode, "shape")
+        self.assertNotEqual(state.practice_concert_key, "Bm")
+
+
+class TestInstrumentChartModeReset(unittest.TestCase):
+    def test_switch_flute_to_alto_written_off(self) -> None:
+        from instrument_transposition import (
+            CHART_IN_INSTRUMENT_KEY_KEY,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+            sync_written_key_instrument_anchor,
+        )
+
+        session = {
+            "instrument": "Alto Saxophone",
+            CHART_IN_INSTRUMENT_KEY_KEY: True,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Flute",
+            "display_key": "F",
+            "concert_key": "F",
+        }
+        sync_written_key_instrument_anchor(session, "Alto Saxophone")
+        self.assertFalse(session[CHART_IN_INSTRUMENT_KEY_KEY])
+
+    def test_switch_sax_to_guitar_capo_off_shape_matches_concert(self) -> None:
+        from instrument_transposition import (
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+            sync_written_key_instrument_anchor,
+        )
+
+        session = {
+            "instrument": "Guitar",
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+            "show_chart_in_instrument_key": True,
+            "guitar_capo_enabled": True,
+            "guitar_capo_shape_key": "Am",
+            "display_key": "C",
+            "concert_key": "C",
+        }
+        sync_written_key_instrument_anchor(session, "Guitar")
+        self.assertFalse(session["guitar_capo_enabled"])
+        self.assertEqual(session["guitar_capo_shape_key"], "C")
+        self.assertNotIn("_creative_chart_display_key", session)
 
 
 if __name__ == "__main__":
