@@ -312,25 +312,51 @@ def canonicalize_backing_defaults_for_song(
     norm_meter = normalize_time_signature(active_song_meter)
 
     try:
-        from backing_context import active_creative_backing_context
+        from backing_context import active_creative_backing_context, backing_page_sync_id
 
         creative_ctx = active_creative_backing_context(st.session_state)
         if creative_ctx is not None:
+            creative_sync_id = backing_page_sync_id(st.session_state, song_sync_id=sync_id)
+            previous_id = st.session_state.get(_CANONICAL_BACKING_ID_KEY)
+            did_reset = previous_id != creative_sync_id
             norm_bpm = int(creative_ctx.bpm or norm_bpm)
             norm_groove = normalize_groove_label(str(creative_ctx.groove or norm_groove))
+            if creative_ctx.meter:
+                norm_meter = normalize_time_signature(str(creative_ctx.meter))
+            if did_reset:
+                invalidate_backing_cache(st)
+                invalidate_backing_page_snapshots(st)
+                _set_bpm_tracking_ids(st, creative_sync_id, norm_bpm)
+                st.session_state[LAST_PLAYBACK_GROOVE_SONG] = creative_sync_id
+                st.session_state[BACKING_GROOVE_KEY] = norm_groove
+                st.session_state[BACKING_METER_KEY] = norm_meter
+                st.session_state[BACKING_METER_OVERRIDE_KEY] = False
+                st.session_state[LAST_BACKING_METER_SONG] = creative_sync_id
+                st.session_state.pop(PENDING_BACKING_TRACK_BPM, None)
+                st.session_state.pop(PENDING_BACKING_GROOVE, None)
+                st.session_state[BACKING_NEEDS_REGEN] = False
+                st.session_state[_CANONICAL_BACKING_ID_KEY] = creative_sync_id
+                try:
+                    from backing_track_state import BACKING_WIDGETS_SEEDED_KEY
+
+                    st.session_state.pop(BACKING_WIDGETS_SEEDED_KEY, None)
+                except ImportError:
+                    pass
+            else:
+                norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
             st.session_state[BPM_WIDGET_KEY] = norm_bpm
             st.session_state[BACKING_GROOVE_KEY] = norm_groove
             st.session_state["backing_track_bpm"] = norm_bpm
             st.session_state["backing_groove_style"] = norm_groove
             return {
-                "sync_id": sync_id,
+                "sync_id": creative_sync_id,
                 "active_song_bpm": int(active_song_bpm),
                 "active_song_groove": normalize_groove_label(active_song_groove),
                 "active_song_meter": norm_meter,
                 "applied_bpm": norm_bpm,
                 "applied_groove": norm_groove,
                 "applied_meter": str(st.session_state.get(BACKING_METER_KEY, norm_meter)),
-                "did_reset": False,
+                "did_reset": did_reset,
                 "skipped_for_creative_context": True,
             }
     except ImportError:

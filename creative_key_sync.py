@@ -50,7 +50,7 @@ def retranspose_generated_sections(
     out: dict[str, list[str]] = {}
     for label, chords in sections.items():
         if isinstance(chords, list):
-            out[label] = [transpose_chord(str(c), delta) for c in chords if str(c).strip()]
+            out[label] = [transpose_chord(str(c), delta, reference_key=to_key) for c in chords if str(c).strip()]
         else:
             out[label] = chords
     return out

@@ -266,7 +266,7 @@ def generate_style_progression(
     steps = _key_steps_to_center(key_center)
     sections: dict[str, list[str]] = {}
     for label, chords in template:
-        transposed = [transpose_chord(c, steps) for c in chords]
+        transposed = [transpose_chord(c, steps, reference_key=key_center) for c in chords]
         if difficulty == "Beginner" and style == "Modal Vamp":
             root = _chord_root(transposed[0])
             transposed = [f"{root}m7"] * len(transposed)

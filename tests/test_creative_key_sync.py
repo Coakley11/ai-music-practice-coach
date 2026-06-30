@@ -43,6 +43,13 @@ class TestCreativeKeySync(unittest.TestCase):
             list(out.values())[0][0],
         )
 
+    def test_retranspose_preserves_c_sharp_spelling(self) -> None:
+        sections = {"Head": ["Dmaj7"]}
+        out_cs = retranspose_generated_sections(sections, from_key="D", to_key="C#")
+        out_db = retranspose_generated_sections(sections, from_key="D", to_key="Db")
+        self.assertEqual(out_cs["Head"][0], "C#maj7")
+        self.assertEqual(out_db["Head"][0], "Dbmaj7")
+
     def test_entry_jam_handoff_uses_creative_key_and_bpm(self) -> None:
         session = {
             "active_catalog_pick_key": "say|artist",

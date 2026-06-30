@@ -116,13 +116,25 @@ def render_backing_creative_context_card(
     badges_html = "".join(b for b in badges if b)
     chart_line = ""
     if chart_key and chart_key != concert:
-        if str(session.get("instrument") or "") == "Guitar" and session.get("guitar_capo_enabled"):
+        inst = str(session.get("instrument") or "")
+        try:
+            from songs.key_state import resolve_active_musical_key
+
+            mk = resolve_active_musical_key(session)
+            mode = str(mk.chart_key_mode or "").strip()
+        except Exception:
+            mode = ""
+        if inst == "Guitar" and session.get("guitar_capo_enabled"):
             chart_line = (
                 f'<p class="ui-backing-active-key-line">Guitar shape key: <strong>{chart_key}</strong></p>'
             )
-        else:
+        elif mode == "written":
             chart_line = (
                 f'<p class="ui-backing-active-key-line">Written key: <strong>{chart_key}</strong></p>'
+            )
+        else:
+            chart_line = (
+                f'<p class="ui-backing-active-key-line">Charts shown in <strong>{chart_key}</strong></p>'
             )
 
     st.markdown(

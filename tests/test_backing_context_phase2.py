@@ -114,7 +114,7 @@ class TestBackingContextPhase2(unittest.TestCase):
         self.assertEqual(ctx.source, "regular_song")
         self.assertEqual(get_backing_context(session).source, "regular_song")
 
-    def test_invalidate_on_active_song_change(self) -> None:
+    def test_mission_context_survives_active_song_change(self) -> None:
         session = {
             "active_catalog_pick_key": "daughters|artist",
             BACKING_CONTEXT_KEY: {
@@ -130,6 +130,27 @@ class TestBackingContextPhase2(unittest.TestCase):
                 "groove": "Pop groove",
                 "mission_id": "ii–V–I drill",
                 "bound_pick_key": "say|artist",
+            },
+        }
+        self.assertFalse(invalidate_if_song_changed(session))
+        self.assertIsNotNone(get_backing_context(session))
+
+    def test_custom_progression_invalidates_on_song_change(self) -> None:
+        session = {
+            "active_catalog_pick_key": "daughters|artist",
+            BACKING_CONTEXT_KEY: {
+                "source": "custom_progression",
+                "source_label": "Custom progression",
+                "active_song_id": "custom-rev-1",
+                "song_title": "My progression",
+                "key": "G",
+                "display_key": "G",
+                "concert_key": "G",
+                "bpm": 82,
+                "style": "",
+                "groove": "Pop groove",
+                "bound_pick_key": "say|artist",
+                "custom_revision_id": "custom-rev-1",
             },
         }
         self.assertTrue(invalidate_if_song_changed(session))

@@ -527,6 +527,12 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
         return False
     if ctx.source == "regular_song":
         return True
+    if ctx.source in {"entry_jam", "mission"}:
+        if ctx.source == "mission":
+            current_mission = str(session.get("improv_active_mission") or "").strip()
+            if ctx.mission_id and current_mission and ctx.mission_id != current_mission:
+                return False
+        return True
     current_pick = _current_pick_key(session)
     if ctx.bound_pick_key and current_pick and ctx.bound_pick_key != current_pick:
         return False
@@ -551,6 +557,8 @@ def invalidate_if_song_changed(session: dict[str, Any], new_pick_key: str | None
     """Clear stale Creative context when active song changes. Returns True if cleared."""
     ctx = get_backing_context(session)
     if ctx is None or ctx.source == "regular_song":
+        return False
+    if ctx.source in {"entry_jam", "mission"}:
         return False
     current = str(new_pick_key or _current_pick_key(session)).strip()
     if not ctx.bound_pick_key or not current:
@@ -688,11 +696,16 @@ def apply_backing_context_to_session(
             except ImportError:
                 pass
 
-    if ctx.display_key:
-        if widget_safe:
-            request_display_key(st_like, ctx.display_key)
-        else:
-            session["display_key"] = ctx.display_key
+    if ctx.display_key or ctx.concert_key:
+        concert = str(ctx.concert_key or ctx.display_key or "").strip()
+        if concert:
+            session["concert_key"] = concert
+            if ctx.chart_display_key:
+                session["_creative_chart_display_key"] = str(ctx.chart_display_key).strip()
+            if widget_safe:
+                request_display_key(st_like, concert)
+            else:
+                session["display_key"] = concert
 
     is_custom = ctx.source == "custom_progression"
     song_id = str(ctx.active_song_id or "").strip()
@@ -837,6 +850,33 @@ def flush_pending_backing_context_handoff(session: dict[str, Any]) -> bool:
     return bool(session.pop(PENDING_BACKING_CONTEXT_APPLY, None))
 
 
+def backing_page_sync_id(session: dict[str, Any], *, song_sync_id: str) -> str:
+    """BPM/widget sync id — creative source signature when non-regular backing is active."""
+    ctx = active_creative_backing_context(session)
+    if ctx is None:
+        return str(song_sync_id or "").strip()
+    sig = str(ctx.source_signature or "").strip()
+    if sig:
+        return f"creative:{ctx.source}:{sig}"
+    return f"creative:{ctx.source}"
+
+
+def sync_creative_handoff_keys(session: dict[str, Any], *, st_like: Any | None = None) -> None:
+    """Read Creative widget values into canonical keys before building backing context."""
+    try:
+        from creative_key_sync import (
+            apply_creative_concert_key,
+            creative_entry_concert_key,
+            sync_creative_style_jam_meta,
+        )
+    except ImportError:
+        return
+    sync_creative_style_jam_meta(session)
+    key = creative_entry_concert_key(session)
+    if key:
+        apply_creative_concert_key(session, key, st_like=st_like)
+
+
 def open_backing_from_creative(
     session: dict[str, Any],
     *,
@@ -844,6 +884,7 @@ def open_backing_from_creative(
     st_like: Any | None = None,
 ) -> BackingContext:
     """Build, store, and apply Creative backing context."""
+    sync_creative_handoff_keys(session, st_like=st_like)
     if source == "mission":
         ctx = build_mission_context(session)
     else:
@@ -897,6 +938,8 @@ __all__ = [
     "humanize_level_for_groove_intensity",
     "flush_pending_backing_context_handoff",
     "format_backing_context_banner",
+    "backing_page_sync_id",
+    "sync_creative_handoff_keys",
     "open_backing_from_creative",
     "PENDING_BACKING_CONTEXT_APPLY",
     "reconcile_backing_context_on_backing_page",

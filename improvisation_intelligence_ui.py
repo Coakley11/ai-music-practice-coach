@@ -507,7 +507,7 @@ def _render_open_practice_backing_row(
             on_open_backing()
     with c2:
         if on_open_practice and st.button(
-            "Send to Practice Page",
+            "🎯 Send to Practice Page",
             key="improv_to_practice",
             use_container_width=True,
         ):

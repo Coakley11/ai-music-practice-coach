@@ -7032,7 +7032,7 @@ def _begin_backing_performance_follow_along(
         )
     else:
         st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
-            "Playback started — use the audio player above. Open the lead sheet below for chord follow."
+            "Playback started — use the audio player below. Open the lead sheet below for chord follow."
         )
 
 
@@ -10976,7 +10976,15 @@ elif _studio_page == "backing":
 
     ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
-    _bpm_sync_id = resolve_active_bpm_sync_id(
+    try:
+        from backing_context import reconcile_backing_context_on_backing_page
+
+        reconcile_backing_context_on_backing_page(st.session_state, st_like=st)
+    except Exception:
+        pass
+    st.session_state.pop("_active_bpm_sync_id", None)
+    st.session_state.pop("_backing_trace_sync_id", None)
+    _song_bpm_sync_id = resolve_active_bpm_sync_id(
         st.session_state,
         song_title=str(song),
         song_artist=str(song_data.get("artist", "")),
@@ -10984,6 +10992,21 @@ elif _studio_page == "backing":
         custom_revision=str(_cpl_active.get("id", "") if _cpl_active else ""),
         is_custom=cpl_session_is_active(st.session_state),
         pick_key=str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""),
+    )
+    _creative_backing_ctx = None
+    try:
+        from backing_context import active_creative_backing_context, backing_page_sync_id
+
+        _creative_backing_ctx = active_creative_backing_context(st.session_state)
+        _bpm_sync_id = backing_page_sync_id(st.session_state, song_sync_id=_song_bpm_sync_id)
+    except Exception:
+        _bpm_sync_id = _song_bpm_sync_id
+    _backing_source_default_bpm = int(_creative_backing_ctx.bpm) if _creative_backing_ctx else int(_default_bpm)
+    _backing_source_default_groove = (
+        str(_creative_backing_ctx.groove or _default_groove) if _creative_backing_ctx else str(_default_groove)
+    )
+    _backing_source_default_meter = (
+        str(_creative_backing_ctx.meter or _default_meter) if _creative_backing_ctx else str(_default_meter)
     )
     try:
         from backing_track_state import begin_backing_page_widget_phase
@@ -11025,20 +11048,13 @@ elif _studio_page == "backing":
     _backing_canon = canonicalize_backing_defaults_for_song(
         st,
         sync_id=_bpm_sync_id,
-        active_song_bpm=_default_bpm,
-        active_song_groove=_default_groove,
-        active_song_meter=_default_meter,
+        active_song_bpm=_backing_source_default_bpm,
+        active_song_groove=_backing_source_default_groove,
+        active_song_meter=_backing_source_default_meter,
     )
     _synced_bpm = int(_backing_canon["applied_bpm"])
     default_groove_style = str(_backing_canon["applied_groove"])
     _backing_song_just_reset = bool(_backing_canon["did_reset"])
-
-    try:
-        from backing_context import reconcile_backing_context_on_backing_page
-
-        reconcile_backing_context_on_backing_page(st.session_state, st_like=st)
-    except Exception:
-        pass
 
     # Seed durable widget keys from canonical before Step 1 widgets render.
     # Practice handoff (_apply_pending_backing_scope) runs later and may override scope/loops.
@@ -11049,9 +11065,9 @@ elif _studio_page == "backing":
         prepare_backing_durable_widgets(
             st.session_state,
             sync_id=_bpm_sync_id,
-            default_bpm=_default_bpm,
+            default_bpm=_backing_source_default_bpm,
             default_groove=default_groove_style,
-            default_meter=_default_meter,
+            default_meter=_backing_source_default_meter,
         )
     except Exception:
         pass
@@ -11161,18 +11177,24 @@ elif _studio_page == "backing":
         if _cpl_session_is_active(st.session_state)
         else "Catalog Song"
     )
-    _creative_backing_ctx = None
     try:
-        from backing_context import active_creative_backing_context
+        from backing_context import (
+            active_creative_backing_context,
+            sections_dict_for_chart_display,
+            sections_dict_from_backing_context,
+        )
+        from backing_context_ui import render_backing_creative_context_card
 
-        _creative_backing_ctx = active_creative_backing_context(st.session_state)
+        if _creative_backing_ctx is None:
+            _creative_backing_ctx = active_creative_backing_context(st.session_state)
         if _creative_backing_ctx is not None:
-            from backing_context import (
-                sections_dict_for_chart_display,
-                sections_dict_from_backing_context,
-            )
-            from backing_context_ui import render_backing_creative_context_card
-
+            _ctx_practice_key = str(
+                _creative_backing_ctx.concert_key
+                or _creative_backing_ctx.display_key
+                or _creative_backing_ctx.key
+                or "C"
+            ).strip()
+            _ctx_written_key = str(_creative_backing_ctx.chart_display_key or "").strip()
             _creative_sections_concert = sections_dict_from_backing_context(
                 st.session_state,
                 _creative_backing_ctx,
@@ -11182,10 +11204,10 @@ elif _studio_page == "backing":
                 _creative_chart_sections = sections_dict_for_chart_display(
                     st.session_state,
                     _creative_sections_concert,
-                    concert_key=_backing_practice_key,
+                    concert_key=_ctx_practice_key,
                     ctx=_creative_backing_ctx,
                 )
-                if _creative_chart_sections and _creative_chart_sections != _creative_sections_concert:
+                if _creative_chart_sections:
                     st.session_state["_backing_creative_chart_sections"] = _creative_chart_sections
             render_backing_creative_context_card(
                 st,
@@ -11194,8 +11216,8 @@ elif _studio_page == "backing":
                 applied_bpm=_synced_bpm,
                 applied_groove=default_groove_style,
                 applied_meter=_applied_meter_pre,
-                practice_key=_backing_practice_key,
-                written_key=_backing_written_key,
+                practice_key=_ctx_practice_key,
+                written_key=_ctx_written_key,
             )
         else:
             render_backing_active_song_card(
@@ -11252,11 +11274,14 @@ elif _studio_page == "backing":
         except Exception:
             pass
 
+    _creative_section_names = (
+        list(sections_for_backing.keys()) if _creative_backing_ctx and sections_for_backing else None
+    )
     _sec_names = [
         name
         for name, chs in section_order(
             sections_for_backing,
-            section_names=section_names_from_song(song_data),
+            section_names=_creative_section_names or section_names_from_song(song_data),
         )
         if chs
     ]
@@ -11288,11 +11313,17 @@ elif _studio_page == "backing":
     resolved_groove = infer_groove_style(song_data, groove_style)
     _humanize_level = "Strong"
     _preserve_exact_timing = bool(st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False))
+    _humanize_song_data = song_data
+    if _creative_backing_ctx is not None:
+        _humanize_song_data = {
+            "title": str(_creative_backing_ctx.style or _creative_backing_ctx.song_title or "Creative"),
+            "id": str(_creative_backing_ctx.source_signature or "creative"),
+        }
     if not _preserve_exact_timing:
         st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = _humanize_level
     performed_sections, _hri_annotations = _humanized_backing_sections(
         sections_for_backing,
-        song_data=song_data,
+        song_data=_humanize_song_data,
         groove_style=resolved_groove,
         time_signature=backing_time_signature,
         humanize_level=_humanize_level,
@@ -11337,9 +11368,9 @@ elif _studio_page == "backing":
     render_scroll_anchor_marker(st, ANCHOR_BACKING_MAIN_CONTROLS)
     bpm, _gen_clicked, _play_clicked = _render_backing_step2_playback_action(
         song_id=_bpm_sync_id,
-        default_bpm=_default_bpm,
+        default_bpm=_backing_source_default_bpm,
         default_groove=default_groove_style,
-        default_meter=_default_meter,
+        default_meter=_backing_source_default_meter,
         song_data=song_data,
         section_names=_sec_names,
         backing_chords=backing_chords,
@@ -11364,10 +11395,10 @@ elif _studio_page == "backing":
             autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
         )
         if st.session_state.get(BACKING_AUTOPLAY, False):
-            st.caption("Playback started — use the player controls above.")
+            st.caption("Playback started — use the player controls below.")
         else:
             st.caption(
-                "Audio ready — press **▶ Play** above or use the player **Play** button."
+                "Audio ready — press **▶ Play** below or use the player **Play** button."
             )
 
     # Karaoke session UI — collapsed by default; skip controls stay visible when
@@ -11458,6 +11489,26 @@ elif _studio_page == "backing":
 
     chart_display_key = chart_key
     chart_sections = performed_sections
+    if _creative_backing_ctx is not None:
+        _ctx_concert_key = str(
+            _creative_backing_ctx.concert_key
+            or _creative_backing_ctx.display_key
+            or chart_key
+        ).strip()
+        _ctx_chart_key = str(_creative_backing_ctx.chart_display_key or _ctx_concert_key).strip()
+        chart_display_key = _ctx_chart_key or chart_key
+        _chart_src = st.session_state.get("_backing_creative_chart_sections")
+        if isinstance(_chart_src, dict) and _chart_src and _ctx_chart_key != _ctx_concert_key:
+            chart_sections, _ = _humanized_backing_sections(
+                _chart_src,
+                song_data=_humanize_song_data,
+                groove_style=resolved_groove,
+                time_signature=backing_time_signature,
+                humanize_level=_humanize_level,
+                preserve_exact_timing=_preserve_exact_timing,
+                section_lyrics=section_lyrics,
+                lyric_cues=lyric_cues,
+            )
 
     coach_section = (
         selected_section_names[0]
