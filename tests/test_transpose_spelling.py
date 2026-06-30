@@ -22,6 +22,7 @@ class TestTransposeSpelling(unittest.TestCase):
         self.assertEqual(written_key_for_type("Db", "Alto saxophone (Eb)"), "Bb")
         self.assertEqual(written_key_for_type("G", "Tenor saxophone (Bb)"), "A")
         self.assertEqual(written_key_for_type("E", "Tenor saxophone (Bb)"), "F#")
+        self.assertEqual(written_key_for_type("Am", "Alto saxophone (Eb)"), "F#m")
 
 
 if __name__ == "__main__":

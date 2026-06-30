@@ -235,6 +235,9 @@ def on_improv_jam_key_change() -> None:
 
 def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     """True when Style Jam or Jam Session Generator owns major-key context."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page not in {"creative", "backing"}:
+        return False
     try:
         from backing_context import active_creative_backing_context, get_backing_context
 
@@ -254,8 +257,7 @@ def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     entry = str(session.get("improv_entry_mode") or "").strip()
     if entry not in CREATIVE_MAJOR_JAM_MODES:
         return False
-    page = str(session.get("studio_page") or "").strip().lower()
-    return page in {"creative", "backing"}
+    return True
 
 
 def to_major_key_preserve_spelling(key: str) -> str:
@@ -392,9 +394,9 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     selected = str(
         pending
-        or creative_entry_concert_key(session)
-        or session.get("concert_key")
         or session.get("display_key")
+        or session.get("concert_key")
+        or creative_entry_concert_key(session)
         or ""
     ).strip()
     selected = to_major_key_preserve_spelling(selected)
@@ -673,7 +675,7 @@ def creative_progression_display(
         chart_key = concert
         chart_sections = sections
     chart_line = " · ".join(flatten_sections(chart_sections)[:32])
-    show_chart = bool(chart_key and chart_key != concert and chart_line and chart_line != concert_line)
+    show_chart = bool(chart_line and (chart_key != concert or chart_line != concert_line))
     return {
         "concert_key": concert,
         "chart_key": chart_key if show_chart else "",
@@ -693,15 +695,15 @@ def render_creative_progression_block(st: Any, session: dict[str, Any], sections
     )
     if display["concert_line"]:
         st.markdown(
-            f'<p class="ui-creative-progression-preview"><strong>Concert progression:</strong> '
+            f'<p class="ui-creative-progression-preview"><strong>Concert Practice Key Progression:</strong> '
             f"{html.escape(display['concert_line'])}</p>",
             unsafe_allow_html=True,
         )
     if display["chart_line"]:
-        label = display["chart_label"] or "Chart"
+        label = display["chart_label"] or "Written Key"
         key_note = f" ({html.escape(display['chart_key'])})" if display.get("chart_key") else ""
         st.markdown(
-            f'<p class="ui-creative-progression-preview"><strong>{html.escape(label)}{key_note}:</strong> '
+            f'<p class="ui-creative-progression-preview"><strong>Written Key Progression{key_note}:</strong> '
             f"{html.escape(display['chart_line'])}</p>",
             unsafe_allow_html=True,
         )

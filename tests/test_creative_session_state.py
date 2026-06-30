@@ -80,6 +80,7 @@ class TestCreativeSessionState(unittest.TestCase):
     def test_resolve_sections_for_playback(self) -> None:
         session = _style_jam_session(display_key="E", concert_key="E")
         sync_creative_session_from_session(session)
+        open_backing_from_creative(session, source="entry_jam", st_like=SimpleNamespace(session_state=session))
         sections = resolve_creative_backing_sections(session)
         self.assertIn("Head (Bossa Nova)", sections)
         flat = " ".join(sections["Head (Bossa Nova)"])
@@ -115,6 +116,27 @@ class TestCreativeSessionState(unittest.TestCase):
         apply_creative_session_to_session(session, sess, widget_safe=True)
         self.assertEqual(session.get("improv_intelligence_tab"), "Harmony Map")
         self.assertEqual(session.get("creative_improv_intelligence_tab"), "Harmony Map")
+
+    def test_resolve_sections_empty_for_catalog_backing(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, set_backing_context
+        from backing_context import build_regular_song_context
+
+        session = _style_jam_session()
+        sync_creative_session_from_session(session)
+        ctx = build_regular_song_context(session)
+        set_backing_context(session, ctx)
+        sections = resolve_creative_backing_sections(session)
+        self.assertEqual(sections, {})
+
+    def test_merge_live_key_adopts_backing_key_for_style_jam(self) -> None:
+        from creative_session_state import merge_live_key_into_creative_session
+
+        session = _style_jam_session(display_key="D", concert_key="D")
+        sync_creative_session_from_session(session)
+        merge_live_key_into_creative_session(session)
+        sess = get_creative_session(session)
+        assert sess is not None
+        self.assertEqual(sess.concert_key, "D")
 
 
 if __name__ == "__main__":

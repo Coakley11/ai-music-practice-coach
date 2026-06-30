@@ -371,7 +371,15 @@ def apply_creative_session_to_session(
         session["improv_mission_pick"] = sess.mission_id
     elif sess.tool_type == "jam_session_generator":
         _set("improv_jam_style", sess.style)
-        _set("improv_jam_key", concert)
+        if widget_safe:
+            try:
+                from creative_key_sync import PENDING_IMPROV_JAM_KEY
+
+                session[PENDING_IMPROV_JAM_KEY] = concert
+            except ImportError:
+                session["_pending_improv_jam_key"] = concert
+        else:
+            _set("improv_jam_key", concert)
         _set("improv_jam_bpm", int(sess.bpm))
         _set("improv_jam_mood", sess.mood)
         if sess.sections:
@@ -385,7 +393,15 @@ def apply_creative_session_to_session(
             session["improv_song_concert_sections"] = {k: list(v) for k, v in sess.sections.items()}
     else:
         _set("improv_style", sess.style)
-        _set("improv_style_key", concert)
+        if widget_safe:
+            try:
+                from creative_key_sync import PENDING_IMPROV_STYLE_KEY
+
+                session[PENDING_IMPROV_STYLE_KEY] = concert
+            except ImportError:
+                session["_pending_improv_style_key"] = concert
+        else:
+            _set("improv_style_key", concert)
         _set("improv_style_bpm", int(sess.bpm))
         _set("improv_mood", sess.mood)
         _set("improv_groove", sess.groove_intensity)
@@ -473,8 +489,47 @@ def sync_creative_session_before_persist(session: dict[str, Any]) -> CreativeSes
     return sync_creative_session_from_session(session)
 
 
+def merge_live_key_into_creative_session(session: dict[str, Any]) -> None:
+    """Adopt live practice concert key into canonical Creative session before page hydrate."""
+    try:
+        from music_theory import key_is_minor
+    except ImportError:
+        key_is_minor = lambda _k: False  # type: ignore[assignment,misc]
+    sess = get_creative_session(session)
+    if sess is None or not creative_session_is_active(session):
+        return
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if not live:
+        return
+    if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+        try:
+            from creative_key_sync import (
+                PENDING_IMPROV_JAM_KEY,
+                PENDING_IMPROV_STYLE_KEY,
+                to_major_key_preserve_spelling,
+            )
+        except ImportError:
+            PENDING_IMPROV_STYLE_KEY = "_pending_improv_style_key"  # type: ignore[misc,assignment]
+            PENDING_IMPROV_JAM_KEY = "_pending_improv_jam_key"  # type: ignore[misc,assignment]
+            to_major_key_preserve_spelling = lambda k: k  # type: ignore[assignment,misc]
+        saved_major = to_major_key_preserve_spelling(str(sess.concert_key or "C"))
+        if key_is_minor(live):
+            live = saved_major
+        else:
+            live = to_major_key_preserve_spelling(live)
+        if sess.tool_type == "entry_style_jam":
+            session[PENDING_IMPROV_STYLE_KEY] = live
+        else:
+            session[PENDING_IMPROV_JAM_KEY] = live
+    if live != sess.concert_key or live != sess.display_key:
+        sess.concert_key = live
+        sess.display_key = live
+        set_creative_session(session, sess)
+
+
 def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
     """Apply persisted Creative session to widgets at page entry (after cloud restore)."""
+    merge_live_key_into_creative_session(session)
     sess = get_creative_session(session)
     if sess is not None and creative_session_is_active(session):
         apply_creative_session_to_session(session, sess, widget_safe=True)
@@ -503,7 +558,17 @@ def hydrate_creative_session_after_restore(session: dict[str, Any]) -> bool:
 
 
 def resolve_creative_backing_sections(session: dict[str, Any]) -> dict[str, list[str]]:
-    """Sections for backing playback — Creative session first, then backing_context."""
+    """Sections for backing playback — only when Creative/custom backing is active."""
+    try:
+        from backing_context import active_creative_backing_context, get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None and ctx.source == "regular_song":
+            return {}
+        if active_creative_backing_context(session) is None:
+            return {}
+    except ImportError:
+        pass
     sess = get_creative_session(session)
     if sess and sess.sections:
         practice = str(session.get("display_key") or sess.concert_key or "C").strip() or "C"
@@ -573,6 +638,7 @@ __all__ = [
     "hydrate_creative_session_for_page",
     "hydrate_creative_session_after_restore",
     "sync_creative_session_before_persist",
+    "merge_live_key_into_creative_session",
     "migrate_legacy_creative_session",
     "render_creative_session_diagnostic",
     "resolve_creative_backing_sections",

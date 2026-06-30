@@ -16,6 +16,7 @@ BACKING_OPEN_INTENT_KEY = "_backing_open_intent"
 BACKING_INTENT_RESTORE_LAST = "restore_last"
 BACKING_INTENT_FROM_PRACTICE = "from_practice"
 PRACTICE_SOURCE_DISPLAY_KEY = "_practice_source_display_key"
+PRACTICE_SOURCE_PICK_KEY = "_practice_source_pick_key"
 
 
 def set_backing_open_intent(session: dict[str, Any], intent: str) -> None:
@@ -30,10 +31,15 @@ def snapshot_practice_source_display_key(session: dict[str, Any]) -> None:
     """Remember the active practice-song concert key before Creative backing overrides it."""
     key = str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
     session[PRACTICE_SOURCE_DISPLAY_KEY] = key
+    session[PRACTICE_SOURCE_PICK_KEY] = str(session.get("active_catalog_pick_key") or "").strip()
 
 
 def _resolved_practice_display_key(session: dict[str, Any]) -> str:
     saved = str(session.get(PRACTICE_SOURCE_DISPLAY_KEY) or "").strip()
+    saved_pick = str(session.get(PRACTICE_SOURCE_PICK_KEY) or "").strip()
+    live_pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if saved and saved_pick and live_pick and saved_pick != live_pick:
+        saved = ""
     if saved:
         return saved
     try:
@@ -73,6 +79,44 @@ def restore_practice_source_display_key(session: dict[str, Any], *, st_like: Any
 
 def hydrate_practice_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Re-apply active practice song context when entering Practice (Case A)."""
+    try:
+        from backing_context import active_creative_backing_context
+
+        if active_creative_backing_context(session) is not None:
+            return
+    except ImportError:
+        pass
+    try:
+        from active_song_state import canonical_active_song_context
+
+        canon = canonical_active_song_context(session)
+        if isinstance(canon, dict):
+            pick = str(session.get("active_catalog_pick_key") or canon.get("pick_key") or "").strip()
+            original = str(canon.get("original_key") or canon.get("key") or "").strip()
+            key = original
+            if pick:
+                try:
+                    from songs.key_state import canonical_display_key_for_pick
+
+                    scoped = canonical_display_key_for_pick(session, pick)
+                    if scoped:
+                        key = scoped
+                except ImportError:
+                    pass
+            if key:
+                session[PRACTICE_SOURCE_DISPLAY_KEY] = key
+                session[PRACTICE_SOURCE_PICK_KEY] = pick
+                try:
+                    from session_widget_safe import safe_assign_display_key
+
+                    safe_assign_display_key(session, key, widget_safe=True, st_like=st_like)
+                except ImportError:
+                    session["display_key"] = key
+                    session["concert_key"] = key
+                    session["_pending_display_key"] = key
+                return
+    except ImportError:
+        pass
     restore_practice_source_display_key(session, st_like=st_like)
 
 

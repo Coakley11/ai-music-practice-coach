@@ -341,12 +341,17 @@ def _tab_entry_modes(
                     st.markdown("</div>", unsafe_allow_html=True)
 
         if preview_sections:
-            _preview = " | ".join(flatten_sections(preview_sections)[:14])
-            st.markdown(
-                f'<p class="ui-creative-progression-preview"><strong>Progression:</strong> '
-                f"{html.escape(_preview)}</p>",
-                unsafe_allow_html=True,
-            )
+            try:
+                from creative_key_sync import render_creative_progression_block
+
+                render_creative_progression_block(st, session_state, preview_sections)
+            except ImportError:
+                _preview = " | ".join(flatten_sections(preview_sections)[:14])
+                st.markdown(
+                    f'<p class="ui-creative-progression-preview"><strong>Progression:</strong> '
+                    f"{html.escape(_preview)}</p>",
+                    unsafe_allow_html=True,
+                )
 
         _render_open_practice_backing_row(
             st,
@@ -467,9 +472,18 @@ def _tab_entry_modes(
                 "Groove style", list(STYLE_JAM_STYLES), key="improv_jam_style"
             )
         with e2:
+            try:
+                from creative_key_sync import creative_major_shape_key_options
+
+                _jam_key_opts = creative_major_shape_key_options(
+                    session_state,
+                    selected=str(session_state.get("improv_jam_key") or "C"),
+                )
+            except ImportError:
+                _jam_key_opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
             key_c = st.selectbox(
                 "Key",
-                list(CREATIVE_MAJOR_KEY_OPTIONS),
+                _jam_key_opts,
                 key="improv_jam_key",
                 on_change=on_improv_jam_key_change,
             )

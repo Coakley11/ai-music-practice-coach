@@ -301,7 +301,24 @@ def chart_transpose_cache_signature(
 
 def written_key_for_type(concert_key: str, transposing_type: str) -> str:
     steps = TRANSPOSING_SEMITONE_STEPS.get(transposing_type, 0)
-    return _transpose_key_center(concert_key, steps, reference_key=concert_key)
+    if not steps:
+        return str(concert_key or "C")
+    natural = _transpose_key_center(concert_key, steps, reference_key=concert_key)
+    sharp = _transpose_key_center(concert_key, steps, reference_key="E")
+    if natural == sharp:
+        return natural
+    root_nat, _ = split_chord(natural)
+    root_shp, _ = split_chord(sharp)
+    from music_theory import key_is_minor, normalize_root, reference_spelling_mode
+
+    nr_nat = normalize_root(root_nat)
+    nr_shp = normalize_root(root_shp)
+    if nr_nat in {"Gb", "Cb"} and nr_shp in {"F#", "B"}:
+        return sharp
+    if key_is_minor(concert_key) and reference_spelling_mode(concert_key) in {"sharp", "natural"}:
+        if nr_shp in {"F#", "C#", "G#", "D#"}:
+            return sharp
+    return natural
 
 
 def transpose_key_for_instrument(

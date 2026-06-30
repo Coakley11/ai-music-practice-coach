@@ -821,9 +821,10 @@ def on_active_song_identity_changed(
             pending_key=target_display,
         )
         try:
-            from backing_source_navigation import PRACTICE_SOURCE_DISPLAY_KEY
+            from backing_source_navigation import PRACTICE_SOURCE_DISPLAY_KEY, PRACTICE_SOURCE_PICK_KEY
 
             session[PRACTICE_SOURCE_DISPLAY_KEY] = target_display
+            session[PRACTICE_SOURCE_PICK_KEY] = pick_key
         except ImportError:
             pass
         reset_playback_song_tracking(st)

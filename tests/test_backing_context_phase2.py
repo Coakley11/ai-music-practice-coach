@@ -116,6 +116,47 @@ class TestBackingContextPhase2(unittest.TestCase):
         self.assertEqual(ctx.source, "regular_song")
         self.assertEqual(get_backing_context(session).source, "regular_song")
 
+    def test_reconcile_does_not_rebuild_creative_after_catalog_switch(self) -> None:
+        from backing_context import (
+            BACKING_PREF_CATALOG,
+            BACKING_SOURCE_PREFERENCE_KEY,
+            reconcile_backing_context_on_backing_page,
+        )
+
+        session = {
+            "active_catalog_pick_key": "Pop::Shape of You",
+            "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": "Pop::Shape of You"},
+            "display_key": "Bm",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_generated_sections": {"12-bar blues": ["G7", "C7", "D7"]},
+            "creative_session": {
+                "tool_type": "entry_style_jam",
+                "entry_mode": "Style Jam Mode",
+                "concert_key": "G",
+                "sections": {"12-bar blues": ["G7", "C7", "D7"]},
+            },
+            BACKING_CONTEXT_KEY: {
+                "source": "regular_song",
+                "source_label": "Catalog song",
+                "active_song_id": "Pop::Shape of You",
+                "song_title": "Shape of You",
+                "key": "Bm",
+                "display_key": "Bm",
+                "concert_key": "Bm",
+                "bpm": 96,
+                "progression": [],
+            },
+            BACKING_SOURCE_PREFERENCE_KEY: BACKING_PREF_CATALOG,
+        }
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            reconcile_backing_context_on_backing_page(session, st_like=st_like)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(ctx.source, "regular_song")
+        self.assertEqual(ctx.progression, [])
+
     def test_mission_context_survives_active_song_change(self) -> None:
         session = {
             "active_catalog_pick_key": "daughters|artist",

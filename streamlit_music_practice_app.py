@@ -11094,6 +11094,7 @@ elif _studio_page == "backing":
     except Exception:
         pass
     try:
+        from backing_context import get_backing_context
         from creative_session_state import (
             creative_session_is_active,
             hydrate_creative_session_for_page,
@@ -11102,12 +11103,14 @@ elif _studio_page == "backing":
             sync_creative_session_before_persist,
         )
 
-        hydrate_creative_session_for_page(st.session_state)
-        if creative_session_is_active(st.session_state):
-            sync_creative_session_before_persist(st.session_state)
-            _creative_playback_sections = resolve_creative_backing_sections(st.session_state)
-            if _creative_playback_sections:
-                sections_for_backing = _creative_playback_sections
+        _backing_ctx_for_hydrate = get_backing_context(st.session_state)
+        if _backing_ctx_for_hydrate is None or _backing_ctx_for_hydrate.source != "regular_song":
+            hydrate_creative_session_for_page(st.session_state)
+            if creative_session_is_active(st.session_state):
+                sync_creative_session_before_persist(st.session_state)
+                _creative_playback_sections = resolve_creative_backing_sections(st.session_state)
+                if _creative_playback_sections:
+                    sections_for_backing = _creative_playback_sections
         render_creative_session_diagnostic(st, st.session_state)
     except Exception:
         pass
