@@ -32,6 +32,16 @@ _TOOL_TO_ENTRY_MODE: dict[CreativeToolType, str] = {
 }
 
 
+def _normalize_improv_intelligence_tab(tab: str) -> str:
+    """Clamp persisted tab names to the live Improvisation Intelligence radio set."""
+    try:
+        from studio_page_state import IMPROV_TAB_NAMES
+    except ImportError:
+        IMPROV_TAB_NAMES = ("Entry & Jam", "Missions")  # type: ignore[misc,assignment]
+    text = str(tab or "").strip()
+    return text if text in IMPROV_TAB_NAMES else IMPROV_TAB_NAMES[0]
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -291,7 +301,7 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
         selected_section=str(
             session.get("improv_selected_section") or session.get("II_SELECTED_SECTION") or ""
         ).strip(),
-        intelligence_tab=tab if tab in {"Entry & Jam", "Missions"} else "Entry & Jam",
+        intelligence_tab=_normalize_improv_intelligence_tab(tab),
     )
     set_creative_session(session, sess)
     return sess
@@ -325,8 +335,18 @@ def apply_creative_session_to_session(
             session[key] = value
 
     _set("improv_entry_mode", sess.entry_mode)
-    _set("improv_intelligence_tab", sess.intelligence_tab)
-    _set("creative_improv_intelligence_tab", sess.intelligence_tab)
+    try:
+        from studio_page_state import CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY
+    except ImportError:
+        CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY = "creative_improv_intelligence_tab"  # type: ignore[misc,assignment]
+    saved_tab = str(session.get(CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY) or sess.intelligence_tab or "").strip()
+    tab = _normalize_improv_intelligence_tab(saved_tab or sess.intelligence_tab)
+    if widget_safe:
+        if not session.get("_improv_tab_user_touched"):
+            session[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = tab
+    else:
+        _set("improv_intelligence_tab", tab)
+        _set("creative_improv_intelligence_tab", tab)
     _set("creative_lab_analysis_mode", "Improvisation Intelligence")
     _set("creative_lab_last_mode", "Improvisation Intelligence")
     _set("improv_song_source", sess.song_source)
@@ -441,7 +461,7 @@ def migrate_legacy_creative_session(session: dict[str, Any]) -> CreativeSession 
         meter=str(meta.get("meter") or session.get("improv_style_meter") or "4/4").strip(),
         sections=sections,
         mission_id=str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip(),
-        intelligence_tab=tab if tab in {"Entry & Jam", "Missions"} else "Entry & Jam",
+        intelligence_tab=_normalize_improv_intelligence_tab(tab),
     )
 
 

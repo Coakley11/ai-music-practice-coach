@@ -119,6 +119,6 @@ def _transposing_pitch_family_label(instrument: str, session_state: dict[str, An
         t_type = selected_transposing_type(session_state, instrument)
         if not t_type:
             return ""
-        return "E-flat instrument" if is_eb_instrument(t_type) else "B-flat instrument"
+        return "E♭ Instrument" if is_eb_instrument(t_type) else "B♭ Instrument"
     except ImportError:
         return ""

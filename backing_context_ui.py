@@ -9,6 +9,7 @@ from backing_context import (
     BackingContext,
     format_backing_context_banner,
     get_backing_context,
+    restore_custom_song_backing,
     restore_regular_song_backing,
     sections_dict_for_chart_display,
     sections_dict_from_backing_context,
@@ -245,13 +246,34 @@ def render_backing_edit_source_action(
 
 
 def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
-    """Reset Creative/custom backing to catalog active song."""
+    """Reset Creative/custom backing to catalog or custom active song."""
     ctx = get_backing_context(session)
     if ctx is None or ctx.source == "regular_song":
         return
-    if st.button("Use catalog song backing", key="backing_context_reset_btn", use_container_width=False):
-        restore_regular_song_backing(session, st_like=st)
-        st.rerun()
+    show_custom = _custom_progression_available(session) and ctx.source != "custom_progression"
+    cols = st.columns(2) if show_custom else [st.container()]
+    with cols[0]:
+        if st.button("Use catalog song backing", key="backing_context_reset_btn", use_container_width=False):
+            restore_regular_song_backing(session, st_like=st)
+            st.rerun()
+    if show_custom:
+        with cols[1]:
+            if st.button(
+                "Use custom progression backing",
+                key="backing_context_reset_custom_btn",
+                use_container_width=False,
+            ):
+                restore_custom_song_backing(session, st_like=st)
+                st.rerun()
+
+
+def _custom_progression_available(session: dict[str, Any]) -> bool:
+    try:
+        from songs.music_source import cpl_session_is_active, is_custom_progression
+
+        return bool(cpl_session_is_active(session) or is_custom_progression(session))
+    except ImportError:
+        return False
 
 
 def render_backing_context_dev_diagnostics(st: Any, session: dict[str, Any], *, skipped_song_defaults: bool = False) -> None:

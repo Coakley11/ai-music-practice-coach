@@ -820,6 +820,12 @@ def on_active_song_identity_changed(
             song_identity,
             pending_key=target_display,
         )
+        try:
+            from backing_source_navigation import PRACTICE_SOURCE_DISPLAY_KEY
+
+            session[PRACTICE_SOURCE_DISPLAY_KEY] = target_display
+        except ImportError:
+            pass
         reset_playback_song_tracking(st)
         invalidate_backing(st)
         try:

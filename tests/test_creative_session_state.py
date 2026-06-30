@@ -94,6 +94,28 @@ class TestCreativeSessionState(unittest.TestCase):
         self.assertEqual(bare.get("improv_entry_mode"), "Style Jam Mode")
         self.assertEqual(bare.get("improv_style_key"), "D")
 
+    def test_sync_preserves_non_entry_intelligence_tab(self) -> None:
+        session = _style_jam_session(
+            improv_intelligence_tab="Live Coach",
+            creative_improv_intelligence_tab="Live Coach",
+        )
+        sess = sync_creative_session_from_session(session)
+        assert sess is not None
+        self.assertEqual(sess.intelligence_tab, "Live Coach")
+
+    def test_widget_safe_hydrate_does_not_lock_tab_widget(self) -> None:
+        session = _style_jam_session(
+            improv_intelligence_tab="Harmony Map",
+            creative_improv_intelligence_tab="Harmony Map",
+            _improv_tab_user_touched=True,
+        )
+        sess = sync_creative_session_from_session(session)
+        assert sess is not None
+        sess.intelligence_tab = "Entry & Jam"
+        apply_creative_session_to_session(session, sess, widget_safe=True)
+        self.assertEqual(session.get("improv_intelligence_tab"), "Harmony Map")
+        self.assertEqual(session.get("creative_improv_intelligence_tab"), "Harmony Map")
+
 
 if __name__ == "__main__":
     unittest.main()

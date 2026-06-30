@@ -436,12 +436,77 @@ def should_use_live_practice_key_sidebar(session: dict[str, Any]) -> bool:
     return False
 
 
+def _resolve_creative_entry_mode(session: dict[str, Any]) -> str:
+    """Infer improv entry mode from widgets or active backing_context."""
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry:
+        return entry
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is None:
+            return ""
+        if ctx.source == "song_improv":
+            return "Song-Based Improvisation"
+        if ctx.source == "entry_jam":
+            return str(ctx.entry_mode or "Style Jam Mode").strip()
+    except ImportError:
+        pass
+    return ""
+
+
+def _creative_sidebar_key_sync_active(session: dict[str, Any]) -> bool:
+    """True when sidebar key changes should retranspose Creative / backing handoff."""
+    if is_creative_major_jam_active(session):
+        return True
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None and ctx.source in {
+            "entry_jam",
+            "mission",
+            "song_improv",
+            "custom_progression",
+        }:
+            page = str(session.get("studio_page") or "").strip().lower()
+            return page in {"creative", "backing"}
+    except ImportError:
+        pass
+    return False
+
+
+def _apply_pending_backing_context_on_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
+    """Apply refreshed backing_context to widgets during the same rerun (Backing page)."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "backing":
+        return
+    try:
+        from backing_context import (
+            PENDING_BACKING_CONTEXT_APPLY,
+            apply_backing_context_to_session,
+            get_backing_context,
+        )
+    except ImportError:
+        return
+    if not session.get(PENDING_BACKING_CONTEXT_APPLY):
+        return
+    ctx = get_backing_context(session)
+    if ctx is None:
+        return
+    apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
+    session.pop(PENDING_BACKING_CONTEXT_APPLY, None)
+
+
 def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Retranspose Creative progressions when sidebar Practice Concert Key changes."""
     new = str(session.get("display_key") or "").strip()
     if not new:
         return
-    entry = str(session.get("improv_entry_mode") or "").strip()
+    entry = _resolve_creative_entry_mode(session)
+    if entry and not str(session.get("improv_entry_mode") or "").strip():
+        session["improv_entry_mode"] = entry
     if entry == "Song-Based Improvisation":
         session["concert_key"] = new
         try:
@@ -461,8 +526,15 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
         except ImportError:
             pass
         invalidate_creative_backing_context(session)
+        _apply_pending_backing_context_on_page(session, st_like=st_like)
+        try:
+            from creative_session_state import sync_creative_session_from_session
+
+            sync_creative_session_from_session(session)
+        except ImportError:
+            pass
         return
-    if not is_creative_major_jam_active(session):
+    if not _creative_sidebar_key_sync_active(session):
         return
     if entry == "Style Jam Mode":
         prev = str(session.get(IMPROV_STYLE_KEY_TRACKER) or session.get("improv_style_key") or "").strip()
@@ -487,6 +559,13 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
         meta["key"] = new
         session["improv_style_meta"] = meta
         invalidate_creative_backing_context(session)
+    _apply_pending_backing_context_on_page(session, st_like=st_like)
+    try:
+        from creative_session_state import sync_creative_session_from_session
+
+        sync_creative_session_from_session(session)
+    except ImportError:
+        pass
 
 
 def on_sidebar_practice_concert_key_change() -> None:

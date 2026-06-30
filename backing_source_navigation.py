@@ -111,14 +111,11 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             ensure_backing_context_from_creative_session,
             get_backing_context,
         )
-        from creative_session_state import (
-            creative_session_is_active,
-            hydrate_creative_session_for_page,
-        )
+        from creative_session_state import hydrate_creative_session_for_page
 
         hydrate_creative_session_for_page(session)
         ctx = get_backing_context(session)
-        if ctx is None or (ctx.source == "regular_song" and creative_session_is_active(session)):
+        if ctx is None:
             ensure_backing_context_from_creative_session(session)
         ctx = active_creative_backing_context(session) or get_backing_context(session)
         if ctx is not None and ctx.source != "regular_song":
@@ -363,7 +360,40 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
     if ctx is None:
         return page
     restore_session_widgets_from_backing_context(session, ctx)
+    merge_live_practice_into_creative_session(session)
     return page
+
+
+def merge_live_practice_into_creative_session(session: dict[str, Any]) -> None:
+    """Return-to-Creative: keep saved workflow settings but adopt live key + instrument."""
+    try:
+        from creative_session_state import (
+            apply_creative_session_to_session,
+            get_creative_session,
+            set_creative_session,
+        )
+    except ImportError:
+        return
+    sess = get_creative_session(session)
+    if sess is None:
+        return
+    live_key = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    live_inst = str(session.get("instrument") or "").strip()
+    if live_key:
+        sess.concert_key = live_key
+        if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+            try:
+                from creative_key_sync import to_major_key_preserve_spelling
+
+                sess.display_key = to_major_key_preserve_spelling(live_key)
+            except ImportError:
+                sess.display_key = live_key
+        else:
+            sess.display_key = live_key
+    if live_inst:
+        sess.instrument = live_inst
+    set_creative_session(session, sess)
+    apply_creative_session_to_session(session, sess, widget_safe=True)
 
 
 def return_to_source_button_label(ctx: BackingContext | None) -> str:
@@ -393,6 +423,7 @@ __all__ = [
     "edit_in_creative_button_label",
     "hydrate_backing_source_for_page",
     "hydrate_practice_source_for_page",
+    "merge_live_practice_into_creative_session",
     "open_backing_for_practice_source",
     "prepare_return_to_backing_source",
     "render_source_context_debug",

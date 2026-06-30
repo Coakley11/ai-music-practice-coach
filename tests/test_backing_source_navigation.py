@@ -83,6 +83,66 @@ class TestBackingSourceNavigation(unittest.TestCase):
         hydrate_practice_source_for_page(session, st_like=SimpleNamespace(session_state=session))
         self.assertEqual(str(session.get("display_key")), "Bm")
 
+    def test_song_identity_change_updates_practice_source_key(self) -> None:
+        from songs.music_source import on_active_song_identity_changed
+
+        session = {
+            "display_key": "D",
+            "concert_key": "D",
+            PRACTICE_SOURCE_DISPLAY_KEY: "D",
+        }
+        st_like = SimpleNamespace(session_state=session)
+        on_active_song_identity_changed(
+            st_like,
+            pick_key="Pop::Shape of You",
+            title="Shape of You",
+            artist="Ed Sheeran",
+            original_key="Bm",
+            is_custom=False,
+            sync_id="test",
+            default_bpm=96,
+            default_groove="Pop groove",
+            default_meter="4/4",
+            invalidate_backing=lambda _s: None,
+            force_reset=True,
+        )
+        self.assertEqual(session.get(PRACTICE_SOURCE_DISPLAY_KEY), "Bm")
+        self.assertEqual(str(session.get("display_key")), "Bm")
+
+    def test_return_to_creative_merges_live_key_and_instrument(self) -> None:
+        from backing_source_navigation import merge_live_practice_into_creative_session
+
+        session = _style_jam_like_session()
+        st_like = SimpleNamespace(session_state=session)
+        open_backing_from_creative(session, source="entry_jam", st_like=st_like)
+        session["display_key"] = "F"
+        session["concert_key"] = "F"
+        session["instrument"] = "Trumpet"
+        merge_live_practice_into_creative_session(session)
+        sess = session.get("creative_session")
+        self.assertIsInstance(sess, dict)
+        self.assertEqual(sess.get("concert_key"), "F")
+        self.assertEqual(sess.get("instrument"), "Trumpet")
+
+
+def _style_jam_like_session() -> dict:
+    return {
+        "improv_entry_mode": "Style Jam Mode",
+        "improv_style": "Jazz Swing",
+        "improv_style_key": "D",
+        "improv_style_bpm": 120,
+        "improv_mood": "Mellow",
+        "improv_groove": "Medium",
+        "improv_difficulty": "Intermediate",
+        "improv_style_meter": "4/4",
+        "improv_generated_sections": {"Style Jam": ["Dmaj7", "Gmaj7", "A7", "Dmaj7"]},
+        "display_key": "D",
+        "concert_key": "D",
+        "instrument": "Piano",
+        "selected_song": {"title": "Shape of You", "pick_key": "Pop::Shape of You", "key": "Bm"},
+        "active_catalog_pick_key": "Pop::Shape of You",
+    }
+
 
 if __name__ == "__main__":
     unittest.main()

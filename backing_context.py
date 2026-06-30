@@ -1208,8 +1208,51 @@ def open_backing_from_creative(
     return ctx
 
 
+def _original_key_for_active_song(session: dict[str, Any]) -> str:
+    """Catalog/custom original key for the active practice song."""
+    sel = session.get("selected_song")
+    if isinstance(sel, dict):
+        key = str(sel.get("key") or "").strip()
+        if key:
+            return key
+    try:
+        from active_song_state import canonical_active_song_context
+
+        ctx = canonical_active_song_context(session)
+        if isinstance(ctx, dict):
+            key = str(ctx.get("original_key") or ctx.get("key") or "").strip()
+            if key:
+                return key
+    except ImportError:
+        pass
+    return str(session.get("original_key") or "C").strip() or "C"
+
+
+def _apply_original_song_display_key(
+    session: dict[str, Any],
+    original_key: str,
+    *,
+    st_like: Any | None = None,
+) -> None:
+    key = str(original_key or "C").strip() or "C"
+    try:
+        from session_widget_safe import safe_assign_display_key
+
+        safe_assign_display_key(session, key, widget_safe=True, st_like=st_like)
+    except ImportError:
+        session["concert_key"] = key
+        session["display_key"] = key
+        session["_pending_display_key"] = key
+    try:
+        from backing_source_navigation import PRACTICE_SOURCE_DISPLAY_KEY
+
+        session[PRACTICE_SOURCE_DISPLAY_KEY] = key
+    except ImportError:
+        pass
+
+
 def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext:
-    """Clear Creative/custom override and restore active song backing."""
+    """Clear Creative/custom override and restore active catalog song backing."""
     clear_backing_context(session)
     try:
         from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
@@ -1218,9 +1261,49 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     except ImportError:
         session.pop("_creative_concert_key_source", None)
     session.pop("_creative_chart_display_key", None)
+    original = _original_key_for_active_song(session)
+    _apply_original_song_display_key(session, original, st_like=st_like)
     ctx = build_regular_song_context(session)
     set_backing_context(session, ctx)
     apply_backing_context_to_session(session, ctx, st_like=st_like)
+    try:
+        from studio_page_persistence import save_page_snapshot
+
+        save_page_snapshot(session, "backing")
+    except ImportError:
+        pass
+    return ctx
+
+
+def restore_custom_song_backing(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext:
+    """Clear Creative/catalog override and restore active custom progression backing."""
+    clear_backing_context(session)
+    try:
+        from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
+
+        session.pop(CREATIVE_CONCERT_KEY_SOURCE, None)
+    except ImportError:
+        session.pop("_creative_concert_key_source", None)
+    session.pop("_creative_chart_display_key", None)
+    try:
+        from songs.music_source import cpl_session_is_active, set_custom_source
+
+        if cpl_session_is_active(session):
+            set_custom_source(session)
+    except ImportError:
+        pass
+    ctx = build_custom_progression_context(session)
+    concert = str(ctx.concert_key or ctx.display_key or ctx.key or "").strip()
+    if concert:
+        _apply_original_song_display_key(session, concert, st_like=st_like)
+    set_backing_context(session, ctx)
+    apply_backing_context_to_session(session, ctx, st_like=st_like)
+    try:
+        from studio_page_persistence import save_page_snapshot
+
+        save_page_snapshot(session, "backing")
+    except ImportError:
+        pass
     return ctx
 
 
@@ -1388,6 +1471,7 @@ __all__ = [
     "reconcile_backing_context_on_backing_page",
     "hydrate_backing_context_after_restore",
     "restore_regular_song_backing",
+    "restore_custom_song_backing",
     "sync_improv_widgets_from_live_concert_key",
     "_live_backing_concert_keys",
 ]
