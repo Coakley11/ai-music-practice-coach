@@ -9250,11 +9250,23 @@ original_key, _song_identity = display_key_context(
 )
 from songs.music_source import cpl_session_is_active as _cpl_session_is_active
 
-_display_key_options = sync_display_key_before_widget(
-    st,
-    original_key,
-    _song_identity,
-)
+try:
+    from creative_key_sync import is_creative_major_jam_active, prepare_creative_sidebar_display_key
+
+    if is_creative_major_jam_active(st.session_state):
+        _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
+    else:
+        _display_key_options = sync_display_key_before_widget(
+            st,
+            original_key,
+            _song_identity,
+        )
+except Exception:
+    _display_key_options = sync_display_key_before_widget(
+        st,
+        original_key,
+        _song_identity,
+    )
 
 st.sidebar.markdown(
     f'<p class="ui-sidebar-key-caption">Song Original Key: <strong>{original_key}</strong></p>',
@@ -9265,7 +9277,7 @@ st.sidebar.selectbox(
     _display_key_options,
     key="display_key",
     help="Concert pitch for charts and backing audio.",
-    on_change=lambda: mark_display_key_changed(st),
+    on_change=lambda: __import__("creative_key_sync", fromlist=["on_sidebar_practice_concert_key_change"]).on_sidebar_practice_concert_key_change(),
 )
 
 _instrument_options = DEFAULT_INSTRUMENT_OPTIONS
@@ -9556,12 +9568,21 @@ level = st.session_state.get("level", "Intermediate")
 focus = st.session_state.get("focus", _focus_options[0])
 display_key = st.session_state.get("display_key", original_key)
 if display_key not in _display_key_options:
-    display_key = (
-        original_key
-        if original_key in _display_key_options
-        else _display_key_options[0]
-    )
-    request_display_key(st, display_key)
+    try:
+        from creative_key_sync import is_creative_major_jam_active
+
+        _creative_key_mode = is_creative_major_jam_active(st.session_state)
+    except Exception:
+        _creative_key_mode = False
+    if not _creative_key_mode:
+        display_key = (
+            original_key
+            if original_key in _display_key_options
+            else _display_key_options[0]
+        )
+        request_display_key(st, display_key)
+    elif display_key:
+        request_display_key(st, display_key)
 key_changed_this_run = note_display_key_change(st, display_key)
 try:
     from songs.key_state import detect_display_key_split, trace_display_key_surface
@@ -12477,9 +12498,9 @@ elif _studio_page == "creative":
         meta = st.session_state.get("improv_style_meta") or {}
         if meta.get("bpm"):
             request_backing_bpm(st, int(meta["bpm"]))
-        groove = str(meta.get("groove") or "")
-        if groove and groove != "Auto":
-            request_backing_groove(st, groove)
+        style = str(meta.get("backing_style") or meta.get("style") or "").strip()
+        if style and style != "Auto":
+            request_backing_groove(st, style)
 
     def _improv_on_song_source(source: str) -> None:
         apply_improv_song_source(

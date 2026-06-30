@@ -201,11 +201,15 @@ def resolve_improv_chords(session_state: dict, improv_ctx: Any) -> list[str]:
     return flatten_section_map(resolve_improv_sections(session_state, improv_ctx))
 
 
-def chord_tone_names(chord: str) -> list[str]:
-    """Root, 3rd, 5th, and 7th when applicable."""
+def chord_tone_names(chord: str, *, reference_key: str = "") -> list[str]:
+    """Root, 3rd, 5th, and 7th when applicable — spelled for the selected key."""
+    from music_theory import reference_spelling_mode, spell_pitch_class, split_chord, normalize_root
+
     head = str(chord).split("/")[0].strip()
     root, suffix = split_chord(head)
     root = normalize_root(root)
+    ref = str(reference_key or root or "C")
+    mode = reference_spelling_mode(ref)
     base = NOTE_TO_MIDI.get(root, 60)
     low = suffix.lower()
     if "m7b5" in low:
@@ -220,8 +224,7 @@ def chord_tone_names(chord: str) -> list[str]:
         intervals = (0, 3, 7)
     else:
         intervals = (0, 4, 7)
-    names = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
-    return [names[(base + i) % 12] for i in intervals[:4]]
+    return [spell_pitch_class((base + i) % 12, mode=mode) for i in intervals[:4]]
 
 
 def _midi_from_note(name: str, octave: int = 4) -> int:
@@ -279,7 +282,7 @@ def generate_motif_for_chord(
     rhythm_key: str = "quarter-quarter-quarter",
 ) -> dict[str, Any]:
     """Build a 3-note motif from chord tones."""
-    tones = chord_tone_names(chord)
+    tones = chord_tone_names(chord, reference_key=key_center)
     notes = tones[:3] if len(tones) >= 3 else (tones + ["C", "E", "G"])[:3]
     rhythm_syms = _RHYTHM_PATTERNS.get(rhythm_key, _RHYTHM_PATTERNS["quarter-quarter-quarter"])
     rhythm = " ".join(rhythm_syms)

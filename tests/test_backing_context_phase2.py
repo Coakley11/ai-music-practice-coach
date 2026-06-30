@@ -31,7 +31,8 @@ class TestBackingContextPhase2(unittest.TestCase):
             "active_catalog_pick_key": "say|artist",
             "song": "Say",
             "display_key": "G",
-            "improv_style_meta": {"style": "Jazz", "bpm": 90, "groove": "Medium"},
+            "improv_style": "Jazz Swing",
+            "improv_style_meta": {"style": "Jazz Swing", "bpm": 90, "groove": "Medium"},
             "improv_style_key": "G",
         }
         ctx = build_entry_jam_context(session)
@@ -39,14 +40,15 @@ class TestBackingContextPhase2(unittest.TestCase):
         with patch("backing_track_state.write_canonical_backing_state"):
             apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=False)
         self.assertEqual(session.get("backing_track_bpm"), 90)
-        self.assertEqual(session.get("backing_groove_style"), "Medium")
+        self.assertEqual(session.get("backing_groove_style"), "Jazz swing")
 
     def test_widget_safe_handoff_queues_pending_keys(self) -> None:
         session = {
             "active_catalog_pick_key": "say|artist",
             "song": "Say",
             "display_key": "G",
-            "improv_style_meta": {"style": "Jazz", "bpm": 90, "groove": "Medium"},
+            "improv_style": "Jazz Swing",
+            "improv_style_meta": {"style": "Jazz Swing", "bpm": 90, "groove": "Medium"},
             "improv_style_key": "G",
         }
         ctx = build_entry_jam_context(session)
@@ -55,7 +57,7 @@ class TestBackingContextPhase2(unittest.TestCase):
             apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
         self.assertEqual(session.get(PENDING_DISPLAY_KEY), "G")
         self.assertEqual(session.get(PENDING_BACKING_TRACK_BPM), 90)
-        self.assertEqual(session.get(PENDING_BACKING_GROOVE), "Medium")
+        self.assertEqual(session.get(PENDING_BACKING_GROOVE), "Jazz swing")
         self.assertEqual(session.get(PENDING_BACKING_LOOPS), 2)
         self.assertEqual(session.get(PENDING_BACKING_SCOPE), "Full song")
         self.assertTrue(session.get(PENDING_BACKING_CONTEXT_APPLY))

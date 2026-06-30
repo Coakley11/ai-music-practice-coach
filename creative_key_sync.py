@@ -11,6 +11,8 @@ IMPROV_STYLE_KEY_TRACKER = "_improv_style_key_tracker"
 IMPROV_JAM_KEY_TRACKER = "_improv_jam_key_tracker"
 CREATIVE_CONCERT_KEY_SOURCE = "_creative_concert_key_source"
 
+CREATIVE_MAJOR_JAM_MODES: tuple[str, ...] = ("Style Jam Mode", "Jam Session Generator")
+
 # Re-export for UI pickers.
 CREATIVE_MAJOR_KEY_OPTIONS = CREATIVE_MAJOR_KEY_OPTIONS
 
@@ -134,14 +136,21 @@ def sync_creative_key_change(
 
 def sync_creative_style_jam_meta(session: dict[str, Any]) -> None:
     """Keep improv_style_meta aligned with Style Jam widgets."""
+    from songs.playback_defaults import normalize_groove_label
+
     groove_intensity = str(session.get("improv_groove") or "Medium").strip()
+    style_name = str(session.get("improv_style") or session.get("improv_jam_style") or "").strip()
+    backing_style = normalize_groove_label(style_name or "Pop groove")
     session["improv_style_meta"] = {
-        "style": str(session.get("improv_style") or "").strip(),
-        "bpm": int(session.get("improv_style_bpm") or 110),
+        "style": style_name,
+        "backing_style": backing_style,
+        "bpm": int(session.get("improv_style_bpm") or session.get("improv_jam_bpm") or 110),
         "groove": groove_intensity,
         "groove_intensity": groove_intensity,
-        "key": str(session.get("improv_style_key") or "").strip(),
-        "mood": str(session.get("improv_mood") or "Mellow").strip(),
+        "key": str(
+            session.get("improv_style_key") or session.get("improv_jam_key") or ""
+        ).strip(),
+        "mood": str(session.get("improv_mood") or session.get("improv_jam_mood") or "Mellow").strip(),
         "difficulty": str(session.get("improv_difficulty") or "Intermediate").strip(),
         "meter": str(session.get("improv_style_meter") or session.get("backing_time_signature") or "4/4").strip(),
         "entry_mode": str(session.get("improv_entry_mode") or "").strip(),
@@ -168,6 +177,108 @@ def on_improv_jam_key_change() -> None:
     apply_creative_concert_key(st.session_state, new, st_like=st, source="creative_jam_session")
     st.session_state[IMPROV_JAM_KEY_TRACKER] = new
     invalidate_creative_backing_context(st.session_state)
+
+
+def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
+    """True when Style Jam or Jam Session Generator owns the concert key."""
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry in CREATIVE_MAJOR_JAM_MODES:
+        return True
+    try:
+        from backing_context import active_creative_backing_context
+
+        ctx = active_creative_backing_context(session)
+        if ctx and ctx.source == "entry_jam":
+            mode = str(ctx.entry_mode or ctx.mode_label or "").strip()
+            if mode in CREATIVE_MAJOR_JAM_MODES or mode.replace(" Mode", "").replace(" Generator", "") in {
+                "Style Jam",
+                "Jam Session",
+            }:
+                return True
+    except ImportError:
+        pass
+    return False
+
+
+def creative_sidebar_key_options(session: dict[str, Any]) -> list[str]:
+    """Major key options for Creative jam — preserves user enharmonic spelling."""
+    selected = str(creative_entry_concert_key(session) or session.get("concert_key") or "").strip()
+    options = list(CREATIVE_MAJOR_KEY_OPTIONS)
+    if selected and selected not in options:
+        return [selected] + options
+    if selected:
+        return [selected] + [k for k in options if k != selected]
+    return options
+
+
+def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> list[str]:
+    """Apply Creative concert key before the sidebar Practice / Concert Key widget."""
+    from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
+
+    options = creative_sidebar_key_options(session)
+    pending = session.pop(PENDING_DISPLAY_KEY, None)
+    selected = str(
+        pending
+        or creative_entry_concert_key(session)
+        or session.get("concert_key")
+        or session.get("display_key")
+        or ""
+    ).strip()
+    if selected:
+        if selected not in options:
+            options = [selected] + [k for k in options if k != selected]
+        _apply_display_key_before_widget(st, selected, source="creative_concert_key")
+    elif session.get("display_key") not in options:
+        _apply_display_key_before_widget(st, options[0], source="creative_default")
+    session["concert_key"] = str(session.get("display_key") or options[0])
+    if str(session.get("improv_entry_mode") or "").strip() == "Style Jam Mode":
+        session["improv_style_key"] = session["concert_key"]
+    elif str(session.get("improv_entry_mode") or "").strip() == "Jam Session Generator":
+        session["improv_jam_key"] = session["concert_key"]
+    return options
+
+
+def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any | None = None) -> None:
+    """Retranspose Creative progressions when sidebar Practice Concert Key changes."""
+    if not is_creative_major_jam_active(session):
+        return
+    new = str(session.get("display_key") or "").strip()
+    if not new:
+        return
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry == "Style Jam Mode":
+        prev = str(session.get(IMPROV_STYLE_KEY_TRACKER) or session.get("improv_style_key") or "").strip()
+        session["improv_style_key"] = new
+        sync_creative_key_change(session, new, previous_key=prev, st_like=st_like)
+    elif entry == "Jam Session Generator":
+        prev = str(session.get(IMPROV_JAM_KEY_TRACKER) or session.get("improv_jam_key") or "").strip()
+        session["improv_jam_key"] = new
+        gen = session.get("improv_jam_session")
+        if isinstance(gen, dict) and gen.get("sections") and prev and prev != new:
+            session["improv_jam_session"] = {
+                **gen,
+                "sections": retranspose_generated_sections(
+                    dict(gen.get("sections") or {}),
+                    from_key=prev,
+                    to_key=new,
+                ),
+            }
+        apply_creative_concert_key(session, new, st_like=st_like, source="creative_jam_session")
+        session[IMPROV_JAM_KEY_TRACKER] = new
+        meta = dict(session.get("improv_style_meta") or {})
+        meta["key"] = new
+        session["improv_style_meta"] = meta
+        invalidate_creative_backing_context(session)
+
+
+def on_sidebar_practice_concert_key_change() -> None:
+    """Sidebar widget callback — global key change + Creative retransposition."""
+    import streamlit as st
+
+    from songs.key_state import mark_display_key_changed
+
+    mark_display_key_changed(st)
+    sync_sidebar_creative_concert_key(st.session_state, st_like=st)
 
 
 def on_improv_style_key_change() -> None:

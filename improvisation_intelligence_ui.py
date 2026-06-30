@@ -561,13 +561,13 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
         session_state,
         key_prefix="improv_live",
         source_id=_improv_source_id(session_state, improv_ctx),
-        key_center=improv_ctx.display_key,
+        key_center=improv_ctx.key_center,
     )
 
     nxt = chords[idx + 1] if idx + 1 < len(chords) else ""
     insight = chord_coach_insight(
         cur,
-        key_center=improv_ctx.display_key,
+        key_center=improv_ctx.key_center,
         next_chord=nxt,
         instrument=live_inst,
         level=live_level,
@@ -636,7 +636,7 @@ def _tab_motif(
         session_state,
         key_prefix="improv_motif",
         source_id=_improv_source_id(session_state, improv_ctx),
-        key_center=improv_ctx.display_key,
+        key_center=improv_ctx.key_center,
         generate_motif_on_select=True,
     )
 
@@ -649,7 +649,7 @@ def _tab_motif(
         use_container_width=True,
     ):
         session_state["improv_motif"] = generate_motif_for_chord(
-            cur, key_center=improv_ctx.display_key
+            cur, key_center=improv_ctx.key_center
         )
         _clear_motif_outputs(session_state)
         st.rerun()
@@ -682,11 +682,11 @@ def _tab_motif(
                 session_state["improv_motif"] = transform_motif(
                     motif,
                     op,
-                    key_center=improv_ctx.display_key,
+                    key_center=improv_ctx.key_center,
                 )
                 _refresh_motif_output_after_transform(
                     session_state,
-                    key_center=improv_ctx.display_key,
+                    key_center=improv_ctx.key_center,
                     bpm=bpm,
                 )
                 st.rerun()
@@ -703,7 +703,7 @@ def _tab_motif(
             session_state["improv_motif_output_mode"] = MOTIF_OUTPUT_NOTATION
             session_state["improv_motif_abc"] = build_motif_notation_abc(
                 session_state["improv_motif"],
-                key_center=improv_ctx.display_key,
+                key_center=improv_ctx.key_center,
                 bpm=bpm,
             )
             session_state.pop("improv_motif_tab", None)
@@ -957,7 +957,7 @@ def _tab_missions(
         session_state,
         key_prefix="improv_mission",
         source_id=_improv_source_id(session_state, improv_ctx),
-        key_center=improv_ctx.display_key,
+        key_center=improv_ctx.key_center,
     )
     cur_chord, _ = _selected_chord(session_state, chords)
     section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")

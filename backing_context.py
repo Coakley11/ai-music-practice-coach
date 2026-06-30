@@ -292,6 +292,68 @@ def _default_groove(session: dict[str, Any]) -> str:
     return str(session.get("backing_groove_style") or session.get("backing_groove") or "Pop groove").strip()
 
 
+def _backing_groove_style_from_ctx(ctx: BackingContext) -> str:
+    """Map Creative style name to Backing Studio groove/style control value."""
+    from songs.playback_defaults import normalize_groove_label
+
+    style = str(ctx.style or "").strip()
+    if style:
+        return normalize_groove_label(style)
+    groove = str(ctx.groove or "").strip()
+    if groove and groove not in {"Light", "Medium", "Heavy"}:
+        return normalize_groove_label(groove)
+    return normalize_groove_label("Pop groove")
+
+
+def flush_pending_backing_handoff_keys(
+    session: dict[str, Any],
+    *,
+    sync_id: str = "",
+) -> None:
+    """Apply queued BPM/groove/meter handoff before backing widgets render."""
+    from songs.bpm_state import BPM_WIDGET_KEY, PENDING_BACKING_TRACK_BPM
+    from songs.playback_defaults import backing_bpm_slider_widget_key
+    from songs.playback_defaults import (
+        BACKING_GROOVE_KEY,
+        PENDING_BACKING_GROOVE,
+        _set_bpm_tracking_ids,
+        normalize_groove_label,
+    )
+
+    pending_bpm = session.pop(PENDING_BACKING_TRACK_BPM, None)
+    pending_groove = session.pop(PENDING_BACKING_GROOVE, None)
+    pending_meter = session.pop("_pending_backing_meter", None)
+
+    if pending_bpm is not None:
+        bpm = int(pending_bpm)
+        session[BPM_WIDGET_KEY] = bpm
+        session["backing_track_bpm"] = bpm
+        session["bpm"] = bpm
+        sid = str(sync_id or session.get("_backing_trace_sync_id") or "").strip()
+        if sid:
+            from types import SimpleNamespace
+
+            from songs.playback_defaults import _set_bpm_tracking_ids
+
+            session[backing_bpm_slider_widget_key(sid)] = bpm
+            _set_bpm_tracking_ids(SimpleNamespace(session_state=session), sid, bpm)
+
+    if pending_groove is not None:
+        groove = normalize_groove_label(str(pending_groove))
+        session[BACKING_GROOVE_KEY] = groove
+        session["backing_groove_style"] = groove
+
+    if pending_meter is not None:
+        meter = str(pending_meter).strip()
+        try:
+            from songs.meter_state import BACKING_METER_KEY
+
+            session[BACKING_METER_KEY] = meter
+        except ImportError:
+            pass
+        session["backing_time_signature"] = meter
+
+
 def _default_scope(session: dict[str, Any]) -> tuple[str, str | None, list[str]]:
     scope = str(session.get("backing_track_scope") or "Full song").strip()
     section = str(session.get("backing_track_single_section") or "").strip() or None
@@ -356,6 +418,9 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
     groove_intensity = str(
         style_meta.get("groove_intensity") or session.get("improv_groove") or "Medium"
     ).strip()
+    from songs.playback_defaults import normalize_groove_label
+
+    backing_style = normalize_groove_label(style or "Pop groove")
     difficulty = str(
         style_meta.get("difficulty") or session.get("improv_difficulty") or "Intermediate"
     ).strip()
@@ -409,7 +474,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         chart_display_key=chart_display_key,
         bpm=bpm,
         style=style,
-        groove=groove,
+        groove=backing_style,
         mood=mood,
         groove_intensity=groove_intensity,
         difficulty=difficulty,
@@ -666,6 +731,8 @@ def apply_backing_context_to_session(
     )
 
     st_like = st_like or SimpleNamespace(session_state=session)
+    backing_style = _backing_groove_style_from_ctx(ctx)
+    sync_id = backing_page_sync_id(session, song_sync_id=str(ctx.active_song_id or ""))
 
     if ctx.source == "custom_progression":
         try:
@@ -721,20 +788,21 @@ def apply_backing_context_to_session(
     session.pop("last_backing_defaults_song_id", None)
     if widget_safe:
         request_backing_bpm(st_like, int(ctx.bpm))
-        request_backing_groove(st_like, str(ctx.groove or "Pop groove"))
+        request_backing_groove(st_like, backing_style)
     else:
-        prime_active_song_bpm(st_like, sync_id=song_id, active_song_bpm=int(ctx.bpm))
+        prime_active_song_bpm(st_like, sync_id=sync_id, active_song_bpm=int(ctx.bpm))
         request_backing_bpm(st_like, int(ctx.bpm))
-        request_backing_groove(st_like, str(ctx.groove or "Pop groove"))
+        request_backing_groove(st_like, backing_style)
         apply_backing_defaults_for_song(
             st_like,
-            song_id=song_id,
+            song_id=sync_id,
             default_bpm=int(ctx.bpm),
-            default_groove=str(ctx.groove or "Pop groove"),
+            default_groove=backing_style,
             song_data={"name": ctx.song_title, "bpm": ctx.bpm} if is_custom else None,
         )
         session["backing_track_bpm"] = int(ctx.bpm)
-        session["backing_groove_style"] = str(ctx.groove or "Pop groove")
+        session["backing_groove_style"] = backing_style
+        flush_pending_backing_handoff_keys(session, sync_id=sync_id)
 
     if ctx.section:
         session[PENDING_BACKING_SCOPE] = "Single section"
@@ -756,7 +824,8 @@ def apply_backing_context_to_session(
 
     canonical = {
         "backing_track_bpm": int(ctx.bpm),
-        "backing_groove_style": str(ctx.groove or "Pop groove"),
+        "backing_groove_style": backing_style,
+        "backing_time_signature": str(ctx.meter or "4/4"),
         "backing_track_scope": str(ctx.scope or "Full song"),
         "backing_track_single_section": str(ctx.section or ""),
         "backing_track_loops": int(ctx.loops or 2),
@@ -910,8 +979,16 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
     """Re-sync valid Creative/custom context after backing page song-default logic."""
     ctx = active_creative_backing_context(session)
     if ctx is None:
+        flush_pending_backing_handoff_keys(
+            session,
+            sync_id=str(session.get("_backing_trace_sync_id") or ""),
+        )
         return
     apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=False)
+    flush_pending_backing_handoff_keys(
+        session,
+        sync_id=backing_page_sync_id(session, song_sync_id=str(ctx.active_song_id or "")),
+    )
 
 
 __all__ = [
@@ -937,6 +1014,8 @@ __all__ = [
     "sections_dict_for_chart_display",
     "humanize_level_for_groove_intensity",
     "flush_pending_backing_context_handoff",
+    "flush_pending_backing_handoff_keys",
+    "_backing_groove_style_from_ctx",
     "format_backing_context_banner",
     "backing_page_sync_id",
     "sync_creative_handoff_keys",

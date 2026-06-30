@@ -46,14 +46,16 @@ class TestBackingContext(unittest.TestCase):
             "song": "Say",
             "display_key": "G",
             "improv_entry_mode": "Style Jam Mode",
-            "improv_style_meta": {"style": "Jazz", "bpm": 90, "groove": "Medium"},
+            "improv_style": "Jazz Swing",
+            "improv_style_meta": {"style": "Jazz Swing", "bpm": 90, "groove": "Medium"},
             "improv_style_key": "Dm",
             "improv_generated_sections": {"Verse (Jazz)": ["Dm7", "G7", "Cmaj7"]},
         }
         ctx = build_entry_jam_context(session)
         self.assertEqual(ctx.source, "entry_jam")
         self.assertEqual(ctx.bpm, 90)
-        self.assertEqual(ctx.groove, "Medium")
+        self.assertEqual(ctx.groove, "Jazz swing")
+        self.assertEqual(ctx.groove_intensity, "Medium")
         self.assertIn("Dm7", ctx.progression)
 
     def test_mission_context_carries_mission_id(self) -> None:

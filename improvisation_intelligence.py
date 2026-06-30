@@ -271,7 +271,7 @@ def generate_style_progression(
             root = _chord_root(transposed[0])
             transposed = [f"{root}m7"] * len(transposed)
         if mood == "Dark" and _chord_quality(transposed[0]) == "major":
-            transposed[0] = transpose_chord(transposed[0], -3)
+            transposed[0] = transpose_chord(transposed[0], -3, reference_key=key_center)
         sections[f"{label} ({style})"] = transposed
     if rng.random() < 0.3 and len(sections) >= 1:
         first_key = next(iter(sections))
@@ -298,12 +298,13 @@ def chord_coach_insight(
     level: str = "Intermediate",
 ) -> ChordCoachInsight:
     """Real-time improvisation suggestions for one harmony."""
+    ref = str(key_center or "C")
     root = _chord_root(chord)
     qual = _chord_quality(chord)
-    third = transpose_chord(root, 4 if qual in ("major", "maj7", "dom") else 3)
+    third = transpose_chord(root, 4 if qual in ("major", "maj7", "dom") else 3, reference_key=ref)
     if qual in ("minor", "m7", "half-dim"):
-        third = transpose_chord(root, 3)
-    fifth = transpose_chord(root, 7)
+        third = transpose_chord(root, 3, reference_key=ref)
+    fifth = transpose_chord(root, 7, reference_key=ref)
     seventh = ""
     scales: list[str] = []
     tensions: list[str] = []
@@ -312,19 +313,19 @@ def chord_coach_insight(
 
     if qual == "dom":
         scales = [f"{root} mixolydian", f"{root} blues", f"{root} altered (advanced)"]
-        seventh = transpose_chord(root, 10)
+        seventh = transpose_chord(root, 10, reference_key=ref)
         tensions = [f"9 on {root}", f"13 color", f"b9 / #9 (tension)"]
-        avoid = [f"Avoid lingering on {transpose_chord(root, 11)} without resolving"]
+        avoid = [f"Avoid lingering on {transpose_chord(root, 11, reference_key=ref)} without resolving"]
         targets = [third, seventh]
     elif qual in ("m7", "minor"):
         scales = [f"{root} dorian", f"{root} minor pentatonic", f"{root} melodic minor (jazz)"]
-        seventh = transpose_chord(root, 10)
+        seventh = transpose_chord(root, 10, reference_key=ref)
         tensions = [f"11 on {root}", "passing 9th"]
         avoid = [f"Major 3rd against {chord} (unless blues inflection)"]
         targets = [root, third, seventh or fifth]
     elif qual == "maj7":
         scales = [f"{root} major", f"{root} lydian", f"{root} major pentatonic"]
-        seventh = transpose_chord(root, 11)
+        seventh = transpose_chord(root, 11, reference_key=ref)
         tensions = [f"maj7", f"9", f"#11 (lydian)"]
         avoid = [f"b3 on {root} major sonority"]
         targets = [third, seventh or root]
@@ -332,7 +333,7 @@ def chord_coach_insight(
         scales = [f"{root} locrian", f"{root} locrian #2", "half-diminished scale"]
         tensions = ["b5 as color", "approach from below"]
         avoid = ["Natural major 3rd"]
-        targets = [root, transpose_chord(root, 3)]
+        targets = [root, transpose_chord(root, 3, reference_key=ref)]
     else:
         scales = [f"{root} major", f"{root} major pentatonic"]
         targets = [root, third, fifth]

@@ -1491,6 +1491,15 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 .ui-backing-badge.genre { background: rgba(139, 92, 246, 0.35); border-color: rgba(167, 139, 250, 0.45); }
 .ui-backing-badge.bpm { background: rgba(249, 115, 22, 0.28); border-color: rgba(251, 146, 60, 0.45); }
 .ui-backing-badge.groove { background: rgba(34, 197, 94, 0.22); border-color: rgba(74, 222, 128, 0.4); }
+.ui-backing-badge.badge-style { background: rgba(37, 99, 235, 0.24); border-color: rgba(96, 165, 250, 0.45); color: #eff6ff; }
+.ui-backing-badge.badge-mood { background: rgba(124, 58, 237, 0.24); border-color: rgba(167, 139, 250, 0.45); color: #f5f3ff; }
+.ui-backing-badge.badge-groove { background: rgba(234, 88, 12, 0.24); border-color: rgba(251, 146, 60, 0.45); color: #fff7ed; }
+.ui-backing-badge.badge-key { background: rgba(14, 165, 233, 0.22); border-color: rgba(56, 189, 248, 0.42); color: #f0f9ff; }
+.ui-backing-badge.badge-meta { background: rgba(100, 116, 139, 0.28); border-color: rgba(148, 163, 184, 0.45); color: #f8fafc; }
+.mode-creative-backing {
+  border-left: 4px solid var(--creative-accent, #5b21b6);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+}
 .ui-instrument-strip {
   display: flex;
   align-items: flex-start;
