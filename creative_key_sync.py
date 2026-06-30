@@ -10,6 +10,9 @@ from studio_page_state import CREATIVE_MAJOR_KEY_OPTIONS
 IMPROV_STYLE_KEY_TRACKER = "_improv_style_key_tracker"
 IMPROV_JAM_KEY_TRACKER = "_improv_jam_key_tracker"
 CREATIVE_CONCERT_KEY_SOURCE = "_creative_concert_key_source"
+PENDING_CAPO_SHAPE_KEY = "_pending_capo_shape_key"
+PENDING_IMPROV_STYLE_KEY = "_pending_improv_style_key"
+PENDING_IMPROV_JAM_KEY = "_pending_improv_jam_key"
 
 CREATIVE_MAJOR_JAM_MODES: tuple[str, ...] = ("Style Jam Mode", "Jam Session Generator")
 
@@ -94,7 +97,27 @@ def apply_creative_concert_key(
     except ImportError:
         pass
     if is_creative_major_jam_active(session):
-        sanitize_creative_major_chart_keys(session)
+        sanitize_creative_major_chart_keys(session, st_like=st_like)
+
+
+def flush_pending_creative_major_keys(session: dict[str, Any]) -> None:
+    """Apply queued Creative chart-key values before their widgets render."""
+    try:
+        from guitar_capo import CAPO_SHAPE_KEY
+    except ImportError:
+        CAPO_SHAPE_KEY = "guitar_capo_shape_key"
+
+    pending_shape = session.pop(PENDING_CAPO_SHAPE_KEY, None)
+    if pending_shape is not None:
+        session[CAPO_SHAPE_KEY] = str(pending_shape).strip()
+
+    pending_style = session.pop(PENDING_IMPROV_STYLE_KEY, None)
+    if pending_style is not None:
+        session["improv_style_key"] = str(pending_style).strip()
+
+    pending_jam = session.pop(PENDING_IMPROV_JAM_KEY, None)
+    if pending_jam is not None:
+        session["improv_jam_key"] = str(pending_jam).strip()
 
 
 def invalidate_creative_backing_context(session: dict[str, Any]) -> None:
@@ -235,26 +258,45 @@ def creative_major_shape_key_options(session: dict[str, Any], selected: str = ""
     return options
 
 
-def sanitize_creative_major_chart_keys(session: dict[str, Any]) -> None:
-    """Convert inherited minor shape/written keys to major spellings for Creative jams."""
+def sanitize_creative_major_chart_keys(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+) -> None:
+    """Convert inherited minor shape/written keys to major spellings for Creative jams.
+
+    Never writes widget-owned session keys (``display_key``, capo shape, improv key
+    pickers) after render — uses pending keys flushed before widgets instead.
+    """
     if not is_creative_major_jam_active(session):
         return
     try:
         from guitar_capo import CAPO_SHAPE_KEY
     except ImportError:
         CAPO_SHAPE_KEY = "guitar_capo_shape_key"
+    try:
+        from songs.key_state import PENDING_DISPLAY_KEY, request_display_key
+    except ImportError:
+        PENDING_DISPLAY_KEY = "_pending_display_key"
+        request_display_key = None  # type: ignore
+
     shape = str(session.get(CAPO_SHAPE_KEY) or "").strip()
     if shape:
-        session[CAPO_SHAPE_KEY] = to_major_key_preserve_spelling(shape)
+        session[PENDING_CAPO_SHAPE_KEY] = to_major_key_preserve_spelling(shape)
+
     concert = str(creative_entry_concert_key(session) or session.get("concert_key") or "").strip()
     if concert:
         concert = to_major_key_preserve_spelling(concert)
         session["concert_key"] = concert
-        session["display_key"] = concert
-        if str(session.get("improv_entry_mode") or "").strip() == "Style Jam Mode":
-            session["improv_style_key"] = concert
-        elif str(session.get("improv_entry_mode") or "").strip() == "Jam Session Generator":
-            session["improv_jam_key"] = concert
+        if request_display_key is not None and st_like is not None:
+            request_display_key(st_like, concert)
+        else:
+            session[PENDING_DISPLAY_KEY] = concert
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        if entry == "Style Jam Mode":
+            session[PENDING_IMPROV_STYLE_KEY] = concert
+        elif entry == "Jam Session Generator":
+            session[PENDING_IMPROV_JAM_KEY] = concert
 
 
 def creative_sidebar_key_options(session: dict[str, Any]) -> list[str]:
@@ -272,6 +314,7 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
     """Apply Creative concert key before the sidebar Practice / Concert Key widget."""
     from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
 
+    flush_pending_creative_major_keys(session)
     options = creative_sidebar_key_options(session)
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     selected = str(
@@ -289,11 +332,16 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
     elif session.get("display_key") not in options:
         _apply_display_key_before_widget(st, options[0], source="creative_default")
     session["concert_key"] = str(session.get("display_key") or options[0])
-    if str(session.get("improv_entry_mode") or "").strip() == "Style Jam Mode":
-        session["improv_style_key"] = session["concert_key"]
-    elif str(session.get("improv_entry_mode") or "").strip() == "Jam Session Generator":
-        session["improv_jam_key"] = session["concert_key"]
-    sanitize_creative_major_chart_keys(session)
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry == "Style Jam Mode":
+        session[PENDING_IMPROV_STYLE_KEY] = session["concert_key"]
+    elif entry == "Jam Session Generator":
+        session[PENDING_IMPROV_JAM_KEY] = session["concert_key"]
+    sanitize_creative_major_chart_keys(session, st_like=st)
+    post_sanitize = session.pop(PENDING_DISPLAY_KEY, None)
+    if post_sanitize is not None:
+        _apply_display_key_before_widget(st, str(post_sanitize), source="creative_sanitize")
+    flush_pending_creative_major_keys(session)
     return options
 
 

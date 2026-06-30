@@ -91,7 +91,11 @@ class TestCreativeMusicCorrectness(unittest.TestCase):
         self.assertNotIn("Bm", options)
 
     def test_eb_minor_shape_key_becomes_eb_not_d_sharp(self) -> None:
-        from creative_key_sync import sanitize_creative_major_chart_keys, to_major_key_preserve_spelling
+        from creative_key_sync import (
+            PENDING_CAPO_SHAPE_KEY,
+            sanitize_creative_major_chart_keys,
+            to_major_key_preserve_spelling,
+        )
 
         self.assertEqual(to_major_key_preserve_spelling("Eb minor"), "Eb")
         self.assertEqual(to_major_key_preserve_spelling("D# minor"), "D#")
@@ -104,8 +108,36 @@ class TestCreativeMusicCorrectness(unittest.TestCase):
             "display_key": "A",
             "guitar_capo_shape_key": "Eb minor",
         }
+        display_before = session["display_key"]
         sanitize_creative_major_chart_keys(session)
-        self.assertEqual(session["guitar_capo_shape_key"], "Eb")
+        self.assertEqual(session.get("display_key"), display_before)
+        self.assertEqual(session[PENDING_CAPO_SHAPE_KEY], "Eb")
+
+    def test_creative_major_key_options_include_d_sharp_and_eb(self) -> None:
+        from studio_page_state import CREATIVE_MAJOR_KEY_OPTIONS
+
+        opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
+        self.assertIn("D#", opts)
+        self.assertIn("Eb", opts)
+        self.assertIn("D#", creative_sidebar_key_options({"improv_entry_mode": "Style Jam Mode", "improv_style_key": "C"}))
+        self.assertIn("Eb", creative_sidebar_key_options({"improv_entry_mode": "Style Jam Mode", "improv_style_key": "C"}))
+
+    def test_sanitize_uses_pending_display_key_not_widget(self) -> None:
+        from creative_key_sync import PENDING_IMPROV_STYLE_KEY, sanitize_creative_major_chart_keys
+        from songs.key_state import PENDING_DISPLAY_KEY
+
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style_key": "Eb minor",
+            "concert_key": "Eb minor",
+            "display_key": "Bm",
+        }
+        sanitize_creative_major_chart_keys(session)
+        self.assertEqual(session.get("display_key"), "Bm")
+        self.assertEqual(session[PENDING_DISPLAY_KEY], "Eb")
+        self.assertEqual(session[PENDING_IMPROV_STYLE_KEY], "Eb")
+        self.assertEqual(session["concert_key"], "Eb")
 
     def test_regular_song_backing_disables_creative_major_jam(self) -> None:
         from backing_context import restore_regular_song_backing

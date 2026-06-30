@@ -311,6 +311,7 @@ def render_guitar_capo_sidebar(
     try:
         from creative_key_sync import (
             creative_major_shape_key_options,
+            flush_pending_creative_major_keys,
             is_creative_major_jam_active,
             to_major_key_preserve_spelling,
         )
@@ -318,6 +319,8 @@ def render_guitar_capo_sidebar(
         to_major_key_preserve_spelling = lambda k: str(k or "C")  # type: ignore
         is_creative_major_jam_active = lambda _s: False  # type: ignore
         creative_major_shape_key_options = lambda _s, selected="": list(shape_opts)  # type: ignore
+        flush_pending_creative_major_keys = lambda _s: None  # type: ignore
+    flush_pending_creative_major_keys(session_state)
     cur_shape = to_major_key_preserve_spelling(
         str(session_state.get(CAPO_SHAPE_KEY, default_shape_key_for_sounding(sounding)))
     )

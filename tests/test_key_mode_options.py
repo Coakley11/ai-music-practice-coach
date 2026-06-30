@@ -57,6 +57,21 @@ class TestKeyModeOptions(unittest.TestCase):
         self.assertIn("A#", opts)
         self.assertIn("Db", opts)
         self.assertIn("C#", opts)
+        self.assertIn("D#", opts)
+        self.assertIn("Eb", opts)
+
+    def test_enharmonic_minor_options_include_d_sharp_and_eb(self) -> None:
+        opts = practice_keys_for_mode("minor")
+        self.assertIn("D#m", opts)
+        self.assertIn("Ebm", opts)
+
+    def test_creative_major_key_options_include_d_sharp(self) -> None:
+        from studio_page_state import CREATIVE_MAJOR_KEY_OPTIONS
+
+        opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
+        self.assertIn("D#", opts)
+        self.assertIn("Eb", opts)
+        self.assertEqual(len(opts), len(practice_keys_for_mode("major")))
 
     def test_coerce_invalid_saved_minor_to_major(self) -> None:
         fixed = coerce_key_to_mode("Dm", "major")

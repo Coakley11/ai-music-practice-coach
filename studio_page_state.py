@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from music_theory import ENHARMONIC_MAJOR_KEYS
+
 # Creative Lab — Improvisation Intelligence
 IMPROV_TAB_NAMES: tuple[str, ...] = (
     "Entry & Jam",
@@ -23,23 +25,8 @@ IMPROV_ENTRY_MODES: tuple[str, ...] = (
     "Jam Session Generator",
 )
 
-# Major keys only — includes common enharmonic spellings (C#/Db, F#/Gb, etc.).
-CREATIVE_MAJOR_KEY_OPTIONS: tuple[str, ...] = (
-    "C",
-    "C#",
-    "Db",
-    "D",
-    "Eb",
-    "E",
-    "F",
-    "F#",
-    "Gb",
-    "G",
-    "Ab",
-    "A",
-    "Bb",
-    "B",
-)
+# Major keys only — both flat and sharp spellings (C#/Db, D#/Eb, etc.).
+CREATIVE_MAJOR_KEY_OPTIONS: tuple[str, ...] = tuple(ENHARMONIC_MAJOR_KEYS)
 
 CREATIVE_BACKING_SONG_SOURCE_KEY = "creative_backing_song_source"
 PENDING_IMPROV_SONG_SOURCE = "_pending_improv_song_source"

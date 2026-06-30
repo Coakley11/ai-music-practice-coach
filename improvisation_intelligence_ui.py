@@ -106,6 +106,9 @@ def render_improvisation_intelligence_lab(
 
     ensure_creative_improv_initialized(session_state, is_custom_active=is_custom)
     flush_pending_improv_song_source(session_state)
+    from creative_key_sync import flush_pending_creative_major_keys
+
+    flush_pending_creative_major_keys(session_state)
     ensure_improv_intelligence_tab_restored(session_state)
 
     instrument = str(ctx.get("instrument") or "Guitar")
