@@ -308,9 +308,21 @@ def render_guitar_capo_sidebar(
         return
 
     shape_opts = practice_keys_for_mode(key_mode(sounding))
-    cur_shape = str(
-        session_state.get(CAPO_SHAPE_KEY, default_shape_key_for_sounding(sounding))
+    try:
+        from creative_key_sync import (
+            creative_major_shape_key_options,
+            is_creative_major_jam_active,
+            to_major_key_preserve_spelling,
+        )
+    except ImportError:
+        to_major_key_preserve_spelling = lambda k: str(k or "C")  # type: ignore
+        is_creative_major_jam_active = lambda _s: False  # type: ignore
+        creative_major_shape_key_options = lambda _s, selected="": list(shape_opts)  # type: ignore
+    cur_shape = to_major_key_preserve_spelling(
+        str(session_state.get(CAPO_SHAPE_KEY, default_shape_key_for_sounding(sounding)))
     )
+    if is_creative_major_jam_active(session_state):
+        shape_opts = creative_major_shape_key_options(session_state, cur_shape)
     if cur_shape not in shape_opts:
         shape_opts = [cur_shape] + shape_opts
     session_state[CAPO_SHAPE_KEY] = ui.selectbox(

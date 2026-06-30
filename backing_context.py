@@ -969,6 +969,13 @@ def open_backing_from_creative(
 def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext:
     """Clear Creative/custom override and restore active song backing."""
     clear_backing_context(session)
+    try:
+        from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
+
+        session.pop(CREATIVE_CONCERT_KEY_SOURCE, None)
+    except ImportError:
+        session.pop("_creative_concert_key_source", None)
+    session.pop("_creative_chart_display_key", None)
     ctx = build_regular_song_context(session)
     set_backing_context(session, ctx)
     apply_backing_context_to_session(session, ctx, st_like=st_like)

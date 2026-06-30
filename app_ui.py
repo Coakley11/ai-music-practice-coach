@@ -1500,6 +1500,26 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border-left: 4px solid var(--creative-accent, #5b21b6);
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
 }
+.ui-creative-jam-card {
+  background: linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.92) 100%);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.ui-creative-jam-body {
+  background: linear-gradient(180deg, rgba(255,255,255,0.0) 0%, rgba(99,102,241,0.04) 100%);
+}
+.ui-backing-badge.badge-groove-light { background: rgba(45, 212, 191, 0.22); border-color: rgba(45, 212, 191, 0.45); }
+.ui-backing-badge.badge-groove-heavy { background: rgba(220, 38, 38, 0.24); border-color: rgba(248, 113, 113, 0.5); }
+.ui-backing-locked-setting {
+  margin: 0.15rem 0 0.35rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  font-size: 0.82rem;
+  color: #1e293b;
+}
+.ui-backing-locked-setting small { color: #64748b; }
 .ui-instrument-strip {
   display: flex;
   align-items: flex-start;

@@ -70,7 +70,8 @@ def apply_creative_concert_key(
     if not key:
         return
     session[CREATIVE_CONCERT_KEY_SOURCE] = source
-    session["concert_key"] = key
+    session["concert_key"] = to_major_key_preserve_spelling(key)
+    key = session["concert_key"]
     if st_like is None:
         st_like = type("_St", (), {"session_state": session})()
     try:
@@ -92,6 +93,8 @@ def apply_creative_concert_key(
         session[BACKING_NEEDS_REGEN] = True
     except ImportError:
         pass
+    if is_creative_major_jam_active(session):
+        sanitize_creative_major_chart_keys(session)
 
 
 def invalidate_creative_backing_context(session: dict[str, Any]) -> None:
@@ -180,24 +183,78 @@ def on_improv_jam_key_change() -> None:
 
 
 def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
-    """True when Style Jam or Jam Session Generator owns the concert key."""
-    entry = str(session.get("improv_entry_mode") or "").strip()
-    if entry in CREATIVE_MAJOR_JAM_MODES:
-        return True
+    """True when Style Jam or Jam Session Generator owns major-key context."""
     try:
-        from backing_context import active_creative_backing_context
+        from backing_context import active_creative_backing_context, get_backing_context
 
-        ctx = active_creative_backing_context(session)
-        if ctx and ctx.source == "entry_jam":
-            mode = str(ctx.entry_mode or ctx.mode_label or "").strip()
-            if mode in CREATIVE_MAJOR_JAM_MODES or mode.replace(" Mode", "").replace(" Generator", "") in {
-                "Style Jam",
-                "Jam Session",
-            }:
+        ctx = get_backing_context(session)
+        if ctx is not None and ctx.source == "regular_song":
+            return False
+        creative = active_creative_backing_context(session)
+        if creative is not None and creative.source == "entry_jam":
+            mode = str(creative.entry_mode or creative.mode_label or "").strip()
+            if mode in CREATIVE_MAJOR_JAM_MODES:
+                return True
+            short = mode.replace(" Mode", "").replace(" Generator", "")
+            if short in {"Style Jam", "Jam Session"}:
                 return True
     except ImportError:
         pass
-    return False
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry not in CREATIVE_MAJOR_JAM_MODES:
+        return False
+    page = str(session.get("studio_page") or "").strip().lower()
+    return page == "creative"
+
+
+def to_major_key_preserve_spelling(key: str) -> str:
+    """Strip minor quality while keeping the user's flat/sharp spelling family."""
+    from music_theory import CHROMATIC, key_is_minor, normalize_root, reference_spelling_mode, spell_pitch_class, split_chord
+
+    text = str(key or "C").strip() or "C"
+    if text.lower().endswith(" minor"):
+        text = text[: -len(" minor")].strip() or "C"
+    if not key_is_minor(text):
+        return text
+    root, _suffix = split_chord(text)
+    nr = normalize_root(root)
+    if nr not in CHROMATIC:
+        return text
+    mode = reference_spelling_mode(text)
+    return spell_pitch_class(CHROMATIC.index(nr), mode=mode)
+
+
+def creative_major_shape_key_options(session: dict[str, Any], selected: str = "") -> list[str]:
+    """Major-only shape/written key options for Creative jam contexts."""
+    pick = to_major_key_preserve_spelling(str(selected or "").strip())
+    options = list(CREATIVE_MAJOR_KEY_OPTIONS)
+    if pick and pick not in options:
+        return [pick] + options
+    if pick:
+        return [pick] + [k for k in options if k != pick]
+    return options
+
+
+def sanitize_creative_major_chart_keys(session: dict[str, Any]) -> None:
+    """Convert inherited minor shape/written keys to major spellings for Creative jams."""
+    if not is_creative_major_jam_active(session):
+        return
+    try:
+        from guitar_capo import CAPO_SHAPE_KEY
+    except ImportError:
+        CAPO_SHAPE_KEY = "guitar_capo_shape_key"
+    shape = str(session.get(CAPO_SHAPE_KEY) or "").strip()
+    if shape:
+        session[CAPO_SHAPE_KEY] = to_major_key_preserve_spelling(shape)
+    concert = str(creative_entry_concert_key(session) or session.get("concert_key") or "").strip()
+    if concert:
+        concert = to_major_key_preserve_spelling(concert)
+        session["concert_key"] = concert
+        session["display_key"] = concert
+        if str(session.get("improv_entry_mode") or "").strip() == "Style Jam Mode":
+            session["improv_style_key"] = concert
+        elif str(session.get("improv_entry_mode") or "").strip() == "Jam Session Generator":
+            session["improv_jam_key"] = concert
 
 
 def creative_sidebar_key_options(session: dict[str, Any]) -> list[str]:
@@ -224,6 +281,7 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
         or session.get("display_key")
         or ""
     ).strip()
+    selected = to_major_key_preserve_spelling(selected)
     if selected:
         if selected not in options:
             options = [selected] + [k for k in options if k != selected]
@@ -235,6 +293,7 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
         session["improv_style_key"] = session["concert_key"]
     elif str(session.get("improv_entry_mode") or "").strip() == "Jam Session Generator":
         session["improv_jam_key"] = session["concert_key"]
+    sanitize_creative_major_chart_keys(session)
     return options
 
 

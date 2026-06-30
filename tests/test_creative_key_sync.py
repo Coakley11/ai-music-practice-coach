@@ -207,6 +207,11 @@ class TestCreativeKeySync(unittest.TestCase):
         self.assertEqual(tab, "Metrics & AI")
         self.assertEqual(session["creative_improv_intelligence_tab"], "Metrics & AI")
 
+    def test_creative_key_sync_exports_sidebar_change_handler(self) -> None:
+        from creative_key_sync import on_sidebar_practice_concert_key_change
+
+        self.assertTrue(callable(on_sidebar_practice_concert_key_change))
+
 
 class TestWrittenKeyLabels(unittest.TestCase):
     def test_alto_sax_written_key_for_concert_eb(self) -> None:

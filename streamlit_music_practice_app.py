@@ -8737,6 +8737,9 @@ def _render_backing_step2_playback_action(
     song_title: str,
     signature_for_bpm,
     song_just_reset: bool,
+    lock_style_meter: bool = False,
+    locked_style: str = "",
+    locked_meter: str = "",
 ) -> tuple[int, bool, bool]:
     """Step 2 — tempo, quick controls, generate & play."""
     song_id = str(song_id or st.session_state.get("_active_bpm_sync_id") or "").strip()
@@ -8873,23 +8876,41 @@ def _render_backing_step2_playback_action(
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
             st.markdown('<span class="ui-backing-inline-label">Feel</span>', unsafe_allow_html=True)
-            st.selectbox(
-                "Groove style",
-                list(GROOVE_STYLE_CHOICES),
-                key="backing_groove_style",
-                label_visibility="collapsed",
-                on_change=_on_backing_filter_change,
-            )
+            if lock_style_meter:
+                _locked_style = str(locked_style or st.session_state.get("backing_groove_style") or default_groove)
+                st.session_state["backing_groove_style"] = _locked_style
+                st.markdown(
+                    f'<p class="ui-backing-locked-setting"><strong>{html.escape(_locked_style)}</strong>'
+                    f"<br><small>Inherited from your Creative jam — change style on the Creative page.</small></p>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.selectbox(
+                    "Groove style",
+                    list(GROOVE_STYLE_CHOICES),
+                    key="backing_groove_style",
+                    label_visibility="collapsed",
+                    on_change=_on_backing_filter_change,
+                )
             st.markdown("</div>", unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
             st.markdown('<span class="ui-backing-inline-label">Meter</span>', unsafe_allow_html=True)
-            applied_meter = render_backing_meter_selector(
-                st,
-                song_default_meter=default_meter,
-                applied_meter=applied_meter,
-                user_override=meter_override,
-                after_change=_on_backing_filter_change,
-            )
+            if lock_style_meter:
+                _locked_meter = str(locked_meter or applied_meter or default_meter)
+                st.session_state["backing_time_signature"] = _locked_meter
+                st.markdown(
+                    f'<p class="ui-backing-locked-setting"><strong>{html.escape(_locked_meter)}</strong>'
+                    f"<br><small>Locked to your Creative jam meter.</small></p>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                applied_meter = render_backing_meter_selector(
+                    st,
+                    song_default_meter=default_meter,
+                    applied_meter=applied_meter,
+                    user_override=meter_override,
+                    after_change=_on_backing_filter_change,
+                )
             st.markdown("</div>", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
             st.checkbox(
@@ -9251,7 +9272,11 @@ original_key, _song_identity = display_key_context(
 from songs.music_source import cpl_session_is_active as _cpl_session_is_active
 
 try:
-    from creative_key_sync import is_creative_major_jam_active, prepare_creative_sidebar_display_key
+    from creative_key_sync import (
+        is_creative_major_jam_active,
+        on_sidebar_practice_concert_key_change,
+        prepare_creative_sidebar_display_key,
+    )
 
     if is_creative_major_jam_active(st.session_state):
         _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
@@ -9267,6 +9292,11 @@ except Exception:
         original_key,
         _song_identity,
     )
+    try:
+        from creative_key_sync import on_sidebar_practice_concert_key_change
+    except ImportError:
+        def on_sidebar_practice_concert_key_change() -> None:  # type: ignore[misc]
+            mark_display_key_changed(st)
 
 st.sidebar.markdown(
     f'<p class="ui-sidebar-key-caption">Song Original Key: <strong>{original_key}</strong></p>',
@@ -9277,7 +9307,7 @@ st.sidebar.selectbox(
     _display_key_options,
     key="display_key",
     help="Concert pitch for charts and backing audio.",
-    on_change=lambda: __import__("creative_key_sync", fromlist=["on_sidebar_practice_concert_key_change"]).on_sidebar_practice_concert_key_change(),
+    on_change=on_sidebar_practice_concert_key_change,
 )
 
 _instrument_options = DEFAULT_INSTRUMENT_OPTIONS
@@ -11387,6 +11417,18 @@ elif _studio_page == "backing":
         )
 
     render_scroll_anchor_marker(st, ANCHOR_BACKING_MAIN_CONTROLS)
+    _lock_creative_style_meter = False
+    _locked_creative_style = default_groove_style
+    _locked_creative_meter = _backing_source_default_meter
+    if _creative_backing_ctx is not None and _creative_backing_ctx.source == "entry_jam":
+        try:
+            from creative_key_sync import is_creative_major_jam_active
+
+            _lock_creative_style_meter = is_creative_major_jam_active(st.session_state)
+            _locked_creative_style = str(_creative_backing_ctx.style or default_groove_style)
+            _locked_creative_meter = str(_creative_backing_ctx.meter or _backing_source_default_meter)
+        except ImportError:
+            pass
     bpm, _gen_clicked, _play_clicked = _render_backing_step2_playback_action(
         song_id=_bpm_sync_id,
         default_bpm=_backing_source_default_bpm,
@@ -11399,6 +11441,9 @@ elif _studio_page == "backing":
         song_title=str(song),
         signature_for_bpm=_backing_signature_for_bpm,
         song_just_reset=_backing_song_just_reset,
+        lock_style_meter=_lock_creative_style_meter,
+        locked_style=_locked_creative_style,
+        locked_meter=_locked_creative_meter,
     )
     _current_backing_signature = _backing_signature_for_bpm(bpm)
     _backing_audio_ready = bool(

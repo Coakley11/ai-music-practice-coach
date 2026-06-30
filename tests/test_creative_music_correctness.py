@@ -48,6 +48,7 @@ class TestCreativeMusicCorrectness(unittest.TestCase):
 
     def test_style_jam_c_stays_concert_c_not_d(self) -> None:
         session = {
+            "studio_page": "creative",
             "improv_entry_mode": "Style Jam Mode",
             "improv_style_key": "C",
             "concert_key": "C",
@@ -63,6 +64,7 @@ class TestCreativeMusicCorrectness(unittest.TestCase):
 
     def test_sidebar_key_change_retransposes_style_jam(self) -> None:
         session = {
+            "studio_page": "creative",
             "improv_entry_mode": "Style Jam Mode",
             "improv_style_key": "C",
             "improv_generated_sections": {"Head": ["Dm7", "G7", "Cmaj7"]},
@@ -76,6 +78,7 @@ class TestCreativeMusicCorrectness(unittest.TestCase):
 
     def test_major_jam_uses_major_sidebar_options_after_minor_song(self) -> None:
         session = {
+            "studio_page": "creative",
             "improv_entry_mode": "Jam Session Generator",
             "improv_jam_key": "C",
             "active_catalog_pick_key": "shape|artist",
@@ -86,6 +89,35 @@ class TestCreativeMusicCorrectness(unittest.TestCase):
         options = creative_sidebar_key_options(session)
         self.assertIn("C", options)
         self.assertNotIn("Bm", options)
+
+    def test_eb_minor_shape_key_becomes_eb_not_d_sharp(self) -> None:
+        from creative_key_sync import sanitize_creative_major_chart_keys, to_major_key_preserve_spelling
+
+        self.assertEqual(to_major_key_preserve_spelling("Eb minor"), "Eb")
+        self.assertEqual(to_major_key_preserve_spelling("D# minor"), "D#")
+        self.assertEqual(to_major_key_preserve_spelling("F# minor"), "F#")
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style_key": "A",
+            "concert_key": "A",
+            "display_key": "A",
+            "guitar_capo_shape_key": "Eb minor",
+        }
+        sanitize_creative_major_chart_keys(session)
+        self.assertEqual(session["guitar_capo_shape_key"], "Eb")
+
+    def test_regular_song_backing_disables_creative_major_jam(self) -> None:
+        from backing_context import restore_regular_song_backing
+
+        session = {
+            "studio_page": "backing",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style_key": "A",
+            "backing_context": {"source": "regular_song"},
+        }
+        restore_regular_song_backing(session)
+        self.assertFalse(is_creative_major_jam_active(session))
 
     def test_entry_jam_context_maps_bossa_style_to_backing_groove(self) -> None:
         session = {

@@ -38,6 +38,25 @@ _STYLE_THEMES: dict[str, dict[str, str]] = {
 }
 
 
+_MOOD_ICONS: dict[str, str] = {
+    "Bright": "☀️",
+    "Dreamy": "🌙",
+    "Dark": "🌙",
+    "Energetic": "⚡",
+    "Mellow": "🍃",
+    "Gritty": "🎸",
+}
+
+
+def _groove_badge_class(intensity: str) -> str:
+    low = str(intensity or "").strip().lower()
+    if low == "light":
+        return "badge-groove badge-groove-light"
+    if low == "heavy":
+        return "badge-groove badge-groove-heavy"
+    return "badge-groove"
+
+
 def _resolve_theme(ctx: BackingContext) -> dict[str, str]:
     mood = str(ctx.mood or "").strip()
     style = str(ctx.style or "").strip()
@@ -153,10 +172,12 @@ def render_backing_creative_context_card(
     else:
         progression_line = html.escape(str(ctx.progression_label or "Full form"))
 
+    mood_icon = _MOOD_ICONS.get(str(ctx.mood or "").strip(), "🌙")
+    groove_class = _groove_badge_class(str(ctx.groove_intensity or ""))
     badges = [
         _themed_badge("🎷", "Style", style_label, _STYLE_THEMES.get(style_label, {}).get("badge", "badge-style")),
-        _themed_badge("🌙", "Mood", ctx.mood, "badge-mood"),
-        _themed_badge("🔥", "Groove", ctx.groove_intensity, "badge-groove"),
+        _themed_badge(mood_icon, "Mood", ctx.mood, "badge-mood"),
+        _themed_badge("🔥", "Groove", ctx.groove_intensity, groove_class),
         _themed_badge("🎯", "Jam level", ctx.difficulty, "badge-groove"),
         _themed_badge("🎼", "Concert key", concert, "badge-key"),
         _themed_badge("⏱", "BPM", str(bpm), "badge-key"),
@@ -184,13 +205,13 @@ def render_backing_creative_context_card(
             )
 
     st.markdown(
-        f'<div class="ui-backing-active-song mode-creative-backing" '
+        f'<div class="ui-backing-active-song mode-creative-backing ui-creative-jam-card" '
         f'style="--creative-accent:{theme["accent"]};">'
-        f'<div class="ui-backing-active-art" style="background:{theme["gradient"]};">'
+        f'<div class="ui-backing-active-art ui-creative-jam-art" style="background:{theme["gradient"]};">'
         f"🎷<small>{html.escape(source_title)}</small></div>"
-        f'<div class="ui-backing-active-body">'
-        f'<p class="ui-backing-active-kicker">Creative backing track</p>'
-        f'<p class="ui-backing-active-title">{title}'
+        f'<div class="ui-backing-active-body ui-creative-jam-body">'
+        f'<p class="ui-backing-active-kicker ui-creative-jam-kicker">Creative backing track</p>'
+        f'<p class="ui-backing-active-title ui-creative-jam-title">{title}'
         f'<span class="ui-backing-active-dash"> · </span>'
         f'<span class="ui-backing-active-source">{subtitle}</span></p>'
         f'<p class="ui-backing-active-key-line">Practice concert key: <strong>{concert}</strong>'
