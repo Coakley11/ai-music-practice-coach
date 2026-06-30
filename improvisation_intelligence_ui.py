@@ -341,17 +341,7 @@ def _tab_entry_modes(
                     st.markdown("</div>", unsafe_allow_html=True)
 
         if preview_sections:
-            try:
-                from creative_key_sync import render_creative_progression_block
-
-                render_creative_progression_block(st, session_state, preview_sections)
-            except ImportError:
-                _preview = " | ".join(flatten_sections(preview_sections)[:14])
-                st.markdown(
-                    f'<p class="ui-creative-progression-preview"><strong>Progression:</strong> '
-                    f"{html.escape(_preview)}</p>",
-                    unsafe_allow_html=True,
-                )
+            render_creative_progression_block(st, session_state, preview_sections)
 
         _render_open_practice_backing_row(
             st,

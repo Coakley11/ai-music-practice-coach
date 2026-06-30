@@ -212,6 +212,74 @@ class TestCreativeKeySync(unittest.TestCase):
 
         self.assertTrue(callable(on_sidebar_practice_concert_key_change))
 
+    def test_entry_modes_progression_block_not_shadowed_by_local_import(self) -> None:
+        """Regression: local import in Song-Based branch caused UnboundLocalError in Style/Jam."""
+        from improvisation_intelligence_ui import _tab_entry_modes
+
+        self.assertNotIn(
+            "render_creative_progression_block",
+            _tab_entry_modes.__code__.co_varnames,
+        )
+
+    def test_style_jam_blues_f_progression_renders(self) -> None:
+        from creative_key_sync import render_creative_progression_block
+        from improvisation_intelligence import generate_style_progression
+
+        class _FakeSt:
+            def __init__(self) -> None:
+                self.markdown_calls: list[str] = []
+
+            def markdown(self, body: str, **kwargs: object) -> None:
+                self.markdown_calls.append(body)
+
+        session = {
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style_key": "F",
+            "concert_key": "F",
+            "display_key": "F",
+            "improv_mood": "Mellow",
+        }
+        sections = generate_style_progression(style="Blues", key_center="F", mood="Mellow")
+        st = _FakeSt()
+        for sec, chs in sections.items():
+            render_creative_progression_block(st, session, {sec: chs})
+        joined = " ".join(st.markdown_calls)
+        self.assertIn("Concert Practice Key Progression", joined)
+        self.assertIn("F", joined)
+
+    def test_jam_session_blues_f_progression_renders(self) -> None:
+        from creative_key_sync import render_creative_progression_block
+        from improvisation_intelligence import generate_jam_session
+
+        class _FakeSt:
+            def __init__(self) -> None:
+                self.markdown_calls: list[str] = []
+
+            def markdown(self, body: str, **kwargs: object) -> None:
+                self.markdown_calls.append(body)
+
+        session = {
+            "improv_entry_mode": "Jam Session Generator",
+            "improv_jam_key": "F",
+            "concert_key": "F",
+            "display_key": "F",
+            "improv_jam_mood": "Mellow",
+        }
+        jam = generate_jam_session(
+            ensemble="Rock trio",
+            style="Blues",
+            key_center="F",
+            tempo=70,
+            mood="Mellow",
+            seed=42,
+        )
+        st = _FakeSt()
+        for sec, chs in (jam.get("sections") or {}).items():
+            render_creative_progression_block(st, session, {sec: chs})
+        joined = " ".join(st.markdown_calls)
+        self.assertIn("Concert Practice Key Progression", joined)
+        self.assertIn("F", joined)
+
 
 class TestWrittenKeyLabels(unittest.TestCase):
     def test_alto_sax_written_key_for_concert_eb(self) -> None:
