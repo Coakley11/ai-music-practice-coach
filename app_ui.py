@@ -1536,6 +1536,16 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 .ui-instrument-strip-icon { font-size: 1.05rem; line-height: 1.2; }
 .ui-instrument-strip-body strong { color: #0f172a; font-weight: 800; }
 .ui-instrument-strip-muted { color: #64748b; }
+.ui-instrument-pitch-family {
+  margin: -0.35rem 0 0.75rem 0;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  display: inline-block;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
 /* Temporary deploy verification — remove after confirming Streamlit Cloud runs dev */
 .ui-nav-deploy-marker {
   position: fixed !important;

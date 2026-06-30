@@ -102,6 +102,11 @@ def render_instrument_context_strip(
         + "</span></div>",
         unsafe_allow_html=True,
     )
+    if pitch_family:
+        st.markdown(
+            f'<p class="ui-instrument-pitch-family"><strong>{html.escape(pitch_family)}</strong></p>',
+            unsafe_allow_html=True,
+        )
 
 
 def _transposing_pitch_family_label(instrument: str, session_state: dict[str, Any]) -> str:

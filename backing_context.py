@@ -333,6 +333,18 @@ def _entry_jam_sections_dict(session: dict[str, Any], entry_mode: str) -> dict[s
             for name, chords in gen.items()
             if isinstance(chords, list)
         }
+    try:
+        from creative_session_state import get_creative_session
+
+        sess = get_creative_session(session)
+        if sess is not None and sess.sections:
+            return {
+                str(name): [str(c) for c in chords if str(c).strip()]
+                for name, chords in sess.sections.items()
+                if isinstance(chords, list)
+            }
+    except ImportError:
+        pass
     return {}
 
 
@@ -1116,8 +1128,8 @@ def humanize_level_for_groove_intensity(intensity: str) -> str:
 
 
 def flush_pending_backing_context_handoff(session: dict[str, Any]) -> bool:
-    """Return True when a Creative/custom backing handoff is queued for this run."""
-    return bool(session.pop(PENDING_BACKING_CONTEXT_APPLY, None))
+    """Return True when a Creative/custom backing handoff is queued (does not consume)."""
+    return bool(session.get(PENDING_BACKING_CONTEXT_APPLY))
 
 
 def backing_page_sync_id(session: dict[str, Any], *, song_sync_id: str) -> str:
@@ -1157,6 +1169,12 @@ def open_backing_from_creative(
     from backing_musical_state import clear_stale_chart_session_keys
     from songs.playback_defaults import _CANONICAL_BACKING_ID_KEY
 
+    try:
+        from backing_source_navigation import snapshot_practice_source_display_key
+
+        snapshot_practice_source_display_key(session)
+    except ImportError:
+        pass
     sync_creative_handoff_keys(session, st_like=st_like)
     try:
         from creative_session_state import sync_creative_session_from_session
@@ -1283,9 +1301,14 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
     if concert:
         session["concert_key"] = concert
         try:
-            from creative_session_state import creative_session_is_active
+            from creative_session_state import creative_session_is_active, get_creative_session
 
-            if not creative_session_is_active(session):
+            if creative_session_is_active(session):
+                sess = get_creative_session(session)
+                creative_key = str((sess.concert_key if sess else "") or concert).strip() or concert
+                session["display_key"] = creative_key
+                session["_pending_display_key"] = creative_key
+            else:
                 session["display_key"] = concert
         except ImportError:
             session["display_key"] = concert

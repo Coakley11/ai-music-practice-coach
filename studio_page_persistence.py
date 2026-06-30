@@ -629,6 +629,21 @@ def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
     if current == "creative" and not session_state.get("improv_motif_abc"):
         if any(k in snap for k in ("improv_motif_abc", "improv_generated_sections", "improv_jam_session")):
             needs_restore = True
+    if current == "backing":
+        snap_ctx = snap.get("backing_context") if isinstance(snap, dict) else None
+        snap_creative = snap.get("creative_session") if isinstance(snap, dict) else None
+        live_ctx = session_state.get("backing_context")
+        if snap_ctx and not live_ctx:
+            needs_restore = True
+        if snap_creative and not session_state.get("creative_session"):
+            needs_restore = True
+        try:
+            from creative_session_state import creative_session_is_active
+
+            if creative_session_is_active(session_state) and not live_ctx:
+                needs_restore = True
+        except ImportError:
+            pass
     if needs_restore:
         try:
             from multitrack_project_load_trace import record_restore_event

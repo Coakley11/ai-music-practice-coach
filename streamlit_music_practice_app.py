@@ -6899,6 +6899,15 @@ BACKING_PLAY_FEEDBACK_KEY = "_backing_play_feedback"
 
 def _prepare_backing_from_practice(focus: str | None) -> None:
     """Carry Practice section focus into Backing Track (pending keys — safe for widgets)."""
+    try:
+        from backing_source_navigation import (
+            BACKING_INTENT_FROM_PRACTICE,
+            set_backing_open_intent,
+        )
+
+        set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_PRACTICE)
+    except ImportError:
+        pass
     if practice_is_full_song(focus):
         st.session_state[PENDING_BACKING_SCOPE] = "Full song"
         st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
@@ -9249,12 +9258,14 @@ from practice_setup_globals import ensure_global_setup_defaults as _ensure_globa
 # (sidebar, quick controls, YouTube panel, etc.) sees it everywhere.
 _ensure_global_setup_defaults(st.session_state)
 
-try:
-    from backing_context import flush_pending_backing_context_handoff
+_studio_page_for_hydrate = str(st.session_state.get("studio_page") or "practice").strip() or "practice"
+if _studio_page_for_hydrate == "practice":
+    try:
+        from backing_source_navigation import hydrate_practice_source_for_page
 
-    flush_pending_backing_context_handoff(st.session_state)
-except Exception:
-    pass
+        hydrate_practice_source_for_page(st.session_state, st_like=st)
+    except ImportError:
+        pass
 
 original_key, _song_identity = display_key_context(
     st.session_state,
@@ -9985,7 +9996,14 @@ if _studio_page == "practice":
             "🎯",
             "Song Practice",
             "Set up your session below — change key in the sidebar; pick songs on Song Selection.",
+            page_id="practice",
         )
+    try:
+        from backing_source_navigation import render_source_context_debug
+
+        render_source_context_debug(st, st.session_state)
+    except ImportError:
+        pass
     try:
         from music_coach_context import (
             build_music_coach_context,
@@ -10880,6 +10898,15 @@ elif _studio_page == "picker":
         from songs.state import apply_pick_key as _apply_pick_key
 
         def _navigate_to_backing_for_karaoke() -> None:
+            try:
+                from backing_source_navigation import (
+                    BACKING_INTENT_FROM_PRACTICE,
+                    set_backing_open_intent,
+                )
+
+                set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_PRACTICE)
+            except ImportError:
+                pass
             set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
             navigate_studio_page(st.session_state, "backing")
 
@@ -11055,6 +11082,12 @@ elif _studio_page == "backing":
     ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
     try:
+        from backing_source_navigation import hydrate_backing_source_for_page
+
+        hydrate_backing_source_for_page(st.session_state, st_like=st)
+    except ImportError:
+        pass
+    try:
         from backing_context import reconcile_backing_context_on_backing_page
 
         reconcile_backing_context_on_backing_page(st.session_state, st_like=st)
@@ -11077,6 +11110,12 @@ elif _studio_page == "backing":
                 sections_for_backing = _creative_playback_sections
         render_creative_session_diagnostic(st, st.session_state)
     except Exception:
+        pass
+    try:
+        from backing_source_navigation import render_source_context_debug
+
+        render_source_context_debug(st, st.session_state)
+    except ImportError:
         pass
     st.session_state.pop("_active_bpm_sync_id", None)
     st.session_state.pop("_backing_trace_sync_id", None)
@@ -11588,20 +11627,6 @@ elif _studio_page == "backing":
     )
 
     _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
-    if _backing_audio_ready and not _leadsheet_open:
-        st.markdown("#### Audio player")
-        record_backing_timing_event(st.session_state, "audio_load_complete")
-        st.audio(
-            st.session_state["_last_backing_wav"],
-            format="audio/wav",
-            autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
-        )
-        if st.session_state.get(BACKING_AUTOPLAY, False):
-            st.caption("Playback started — use the player controls below.")
-        else:
-            st.caption(
-                "Audio ready — press **▶ Play** below or use the player **Play** button."
-            )
 
     # Karaoke session UI — collapsed by default; skip controls stay visible when
     # a session is active (JS auto-advance needs the skip button in the DOM).
@@ -11940,6 +11965,20 @@ elif _studio_page == "backing":
         and st.session_state.get("_last_backing_signature") == _current_backing_signature
     )
     _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
+    if _backing_audio_ready and not _leadsheet_open:
+        st.markdown("#### Audio player")
+        record_backing_timing_event(st.session_state, "audio_load_complete")
+        st.audio(
+            st.session_state["_last_backing_wav"],
+            format="audio/wav",
+            autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+        )
+        if st.session_state.get(BACKING_AUTOPLAY, False):
+            st.caption("Playback started — use the player controls below.")
+        else:
+            st.caption(
+                "Audio ready — press **▶ Play** below or use the player **Play** button."
+            )
 
     _stored_timeline = (
         st.session_state.get("_last_backing_timeline")

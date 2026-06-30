@@ -124,6 +124,7 @@ def invalidate_creative_backing_context(session: dict[str, Any]) -> None:
     """Refresh Creative backing handoff after key/BPM/groove changes."""
     try:
         from backing_context import (
+            PENDING_BACKING_CONTEXT_APPLY,
             get_backing_context,
             refresh_backing_context_from_session,
             set_backing_context,
@@ -139,7 +140,7 @@ def invalidate_creative_backing_context(session: dict[str, Any]) -> None:
             refreshed = refresh_backing_context_from_session(session)
             if refreshed is not None:
                 set_backing_context(session, refreshed)
-                session.pop("_pending_backing_context_apply", None)
+                session[PENDING_BACKING_CONTEXT_APPLY] = True
                 session.pop("_backing_creative_chart_sections", None)
                 try:
                     from creative_session_state import sync_creative_session_from_session

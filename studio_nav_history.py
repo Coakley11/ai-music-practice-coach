@@ -245,6 +245,18 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
     current = str(session_state.get("studio_page", "practice"))
     if current == page_id:
         return False
+    if page_id == "backing":
+        try:
+            from backing_source_navigation import (
+                BACKING_OPEN_INTENT_KEY,
+                BACKING_INTENT_RESTORE_LAST,
+                set_backing_open_intent,
+            )
+
+            if not session_state.get(BACKING_OPEN_INTENT_KEY):
+                set_backing_open_intent(session_state, BACKING_INTENT_RESTORE_LAST)
+        except ImportError:
+            pass
     if not session_state.pop(_NAV_FROM_HISTORY, False):
         if current in STUDIO_PAGE_IDS:
             save_page_snapshot(session_state, current)

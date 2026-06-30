@@ -12,6 +12,208 @@ from backing_context import (
 
 CreativeReturnPage = Literal["creative", "custom", "picker", "practice"]
 
+BACKING_OPEN_INTENT_KEY = "_backing_open_intent"
+BACKING_INTENT_RESTORE_LAST = "restore_last"
+BACKING_INTENT_FROM_PRACTICE = "from_practice"
+PRACTICE_SOURCE_DISPLAY_KEY = "_practice_source_display_key"
+
+
+def set_backing_open_intent(session: dict[str, Any], intent: str) -> None:
+    session[BACKING_OPEN_INTENT_KEY] = str(intent or BACKING_INTENT_RESTORE_LAST).strip()
+
+
+def consume_backing_open_intent(session: dict[str, Any]) -> str:
+    return str(session.pop(BACKING_OPEN_INTENT_KEY, BACKING_INTENT_RESTORE_LAST) or BACKING_INTENT_RESTORE_LAST)
+
+
+def snapshot_practice_source_display_key(session: dict[str, Any]) -> None:
+    """Remember the active practice-song concert key before Creative backing overrides it."""
+    key = str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
+    session[PRACTICE_SOURCE_DISPLAY_KEY] = key
+
+
+def _resolved_practice_display_key(session: dict[str, Any]) -> str:
+    saved = str(session.get(PRACTICE_SOURCE_DISPLAY_KEY) or "").strip()
+    if saved:
+        return saved
+    try:
+        from active_song_state import canonical_active_song_context
+
+        ctx = canonical_active_song_context(session)
+        if isinstance(ctx, dict):
+            key = str(ctx.get("display_key") or ctx.get("concert_key") or "").strip()
+            if key:
+                return key
+    except ImportError:
+        pass
+    return str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
+
+
+def restore_practice_source_display_key(session: dict[str, Any], *, st_like: Any | None = None) -> str:
+    """Practice page owns the active song key — not the last Creative backing key."""
+    key = _resolved_practice_display_key(session)
+    session["concert_key"] = key
+    session["display_key"] = key
+    session["_pending_display_key"] = key
+    try:
+        from songs.key_state import request_display_key
+
+        if st_like is not None:
+            request_display_key(st_like, key)
+    except ImportError:
+        pass
+    return key
+
+
+def hydrate_practice_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
+    """Re-apply active practice song context when entering Practice (Case A)."""
+    restore_practice_source_display_key(session, st_like=st_like)
+
+
+def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext | None:
+    """Open Backing Studio for the current Practice catalog/custom source (Case C)."""
+    snapshot_practice_source_display_key(session)
+    try:
+        from backing_context import (
+            apply_backing_context_to_session,
+            build_custom_progression_context,
+            restore_regular_song_backing,
+            set_backing_context,
+        )
+        from songs.music_source import cpl_session_is_active, is_custom_progression
+
+        if cpl_session_is_active(session) or is_custom_progression(session):
+            ctx = build_custom_progression_context(session)
+            set_backing_context(session, ctx)
+            apply_backing_context_to_session(session, ctx, st_like=st_like)
+            return ctx
+        return restore_regular_song_backing(session, st_like=st_like)
+    except ImportError:
+        return None
+
+
+def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
+    """Apply backing navigation intent and preserve last Backing Studio source (Cases B + refresh)."""
+    intent = consume_backing_open_intent(session)
+    if intent == BACKING_INTENT_FROM_PRACTICE:
+        open_backing_for_practice_source(session, st_like=st_like)
+        return
+    try:
+        from backing_context import (
+            PENDING_BACKING_CONTEXT_APPLY,
+            active_creative_backing_context,
+            ensure_backing_context_from_creative_session,
+            get_backing_context,
+        )
+        from creative_session_state import (
+            creative_session_is_active,
+            hydrate_creative_session_for_page,
+        )
+
+        hydrate_creative_session_for_page(session)
+        ctx = get_backing_context(session)
+        if ctx is None or (ctx.source == "regular_song" and creative_session_is_active(session)):
+            ensure_backing_context_from_creative_session(session)
+        ctx = active_creative_backing_context(session) or get_backing_context(session)
+        if ctx is not None and ctx.source != "regular_song":
+            concert = str(ctx.concert_key or ctx.display_key or ctx.key or "").strip()
+            if concert:
+                session["concert_key"] = concert
+                session["display_key"] = concert
+                session["_pending_display_key"] = concert
+            session[PENDING_BACKING_CONTEXT_APPLY] = True
+    except ImportError:
+        pass
+
+
+def _practice_source_type(session: dict[str, Any]) -> str:
+    try:
+        from songs.music_source import cpl_session_is_active, is_custom_progression
+
+        if cpl_session_is_active(session) or is_custom_progression(session):
+            return "custom"
+    except ImportError:
+        pass
+    return "catalog"
+
+
+def _practice_source_name(session: dict[str, Any]) -> str:
+    try:
+        from songs.music_source import cpl_session_is_active
+
+        if cpl_session_is_active(session):
+            active = session.get("cpl_active_progression") or {}
+            if isinstance(active, dict):
+                return str(active.get("name") or "Custom progression").strip()
+    except ImportError:
+        pass
+    sel = session.get("selected_song")
+    if isinstance(sel, dict):
+        title = str(sel.get("title") or "").strip()
+        if title:
+            return title
+    return str(session.get("active_song_title") or session.get("selected_song") or "Song").strip() or "Song"
+
+
+def _backing_source_type(session: dict[str, Any]) -> str:
+    ctx = get_backing_context(session)
+    if ctx is None:
+        return "none"
+    return str(ctx.source or "none")
+
+
+def _backing_source_name(session: dict[str, Any]) -> str:
+    ctx = get_backing_context(session)
+    if ctx is None:
+        return ""
+    if ctx.source == "regular_song":
+        return str(ctx.song_title or _practice_source_name(session)).strip()
+    if ctx.source == "entry_jam":
+        entry = str(ctx.entry_mode or "").strip()
+        if entry == "Style Jam Mode":
+            return "Entry Style Jam"
+        if entry == "Jam Session Generator":
+            return "Jam Session Generator"
+        return str(ctx.style or ctx.song_title or "Creative backing").strip()
+    return str(ctx.song_title or ctx.style or ctx.source_label or "Backing").strip()
+
+
+def render_source_context_debug(st: Any, session: dict[str, Any]) -> None:
+    """Dev-only source context visibility (?dev=1)."""
+    try:
+        from suite_deploy_probe import deploy_info
+    except ImportError:
+        deploy_info = lambda: {"commit": "unknown"}  # type: ignore[misc, assignment]
+    try:
+        from suite_workspace import can_show_developer_tools
+
+        if not can_show_developer_tools(st=st):
+            return
+    except ImportError:
+        return
+    deploy = deploy_info()
+    commit = str(deploy.get("commit") or "unknown").strip()[:12]
+    tool = ""
+    try:
+        from creative_session_state import get_creative_session
+
+        sess = get_creative_session(session)
+        if sess is not None:
+            tool = str(sess.tool_type or "")
+    except ImportError:
+        pass
+    ctx = get_backing_context(session)
+    page = str(session.get("studio_page") or "").strip()
+    st.caption(
+        f"Context · commit `{commit}` · page `{page}` · "
+        f"practice={_practice_source_type(session)}/{_practice_source_name(session)} · "
+        f"backing={_backing_source_type(session)}/{_backing_source_name(session)} · "
+        f"creative_tool={tool or 'none'} · "
+        f"concert_key={session.get('display_key') or session.get('concert_key')} · "
+        f"instrument={session.get('instrument')} · "
+        f"backing_context={'yes' if ctx else 'no'}"
+    )
+
 
 def target_page_for_backing_context(ctx: BackingContext | None) -> CreativeReturnPage:
     """Resolve studio page id for Edit-in-Creative / return-to-source."""
@@ -165,10 +367,22 @@ def edit_in_creative_button_label(ctx: BackingContext | None) -> str:
 
 __all__ = [
     "BACKING_CONTEXT_KEY",
+    "BACKING_INTENT_FROM_PRACTICE",
+    "BACKING_INTENT_RESTORE_LAST",
+    "BACKING_OPEN_INTENT_KEY",
     "CreativeReturnPage",
+    "PRACTICE_SOURCE_DISPLAY_KEY",
+    "consume_backing_open_intent",
     "edit_in_creative_button_label",
+    "hydrate_backing_source_for_page",
+    "hydrate_practice_source_for_page",
+    "open_backing_for_practice_source",
     "prepare_return_to_backing_source",
+    "render_source_context_debug",
+    "restore_practice_source_display_key",
     "restore_session_widgets_from_backing_context",
     "return_to_source_button_label",
+    "set_backing_open_intent",
+    "snapshot_practice_source_display_key",
     "target_page_for_backing_context",
 ]
