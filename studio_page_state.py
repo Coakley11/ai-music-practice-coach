@@ -43,6 +43,31 @@ CREATIVE_MAJOR_KEY_OPTIONS: tuple[str, ...] = (
 
 CREATIVE_BACKING_SONG_SOURCE_KEY = "creative_backing_song_source"
 PENDING_IMPROV_SONG_SOURCE = "_pending_improv_song_source"
+CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY = "creative_improv_intelligence_tab"
+
+__all__ = (
+    "CREATIVE_BACKING_SONG_SOURCE_KEY",
+    "CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY",
+    "CREATIVE_MAJOR_KEY_OPTIONS",
+    "IMPROV_ENTRY_MODES",
+    "IMPROV_SONG_SOURCES",
+    "IMPROV_TAB_NAMES",
+    "PENDING_IMPROV_SONG_SOURCE",
+    "apply_improv_song_source",
+    "ensure_improv_intelligence_tab_restored",
+    "flush_pending_improv_song_source",
+    "init_analysis_page_state",
+    "init_backing_page_state",
+    "init_creative_lab_state",
+    "init_improvisation_state",
+    "init_practice_page_state",
+    "migrate_legacy_session_keys",
+    "note_page_visit",
+    "persist_improv_intelligence_tab",
+    "resolve_improv_song_source",
+    "setdefault_if_missing",
+    "sync_improv_song_source_for_handoff",
+)
 
 _LEGACY_SONG_SOURCE_MAP: dict[str, str] = {
     "Use active studio song": "Active song",
@@ -79,7 +104,12 @@ def migrate_legacy_session_keys(session_state: dict) -> None:
 def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> None:
     """Set improv widget defaults only if the user has not visited before."""
     migrate_legacy_session_keys(session_state)
-    session_state.setdefault("improv_intelligence_tab", IMPROV_TAB_NAMES[0])
+    saved_tab = str(session_state.get(CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY) or "").strip()
+    session_state.setdefault(
+        CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY,
+        saved_tab if saved_tab in IMPROV_TAB_NAMES else IMPROV_TAB_NAMES[0],
+    )
+    session_state.setdefault("improv_intelligence_tab", session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY])
     session_state.setdefault("improv_entry_mode", IMPROV_ENTRY_MODES[0])
     if "improv_song_source" not in session_state:
         session_state["improv_song_source"] = (
@@ -214,6 +244,35 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
         return
     session_state.setdefault("improv_song_source", pending)
     session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = pending
+
+
+def ensure_improv_intelligence_tab_restored(session_state: dict) -> str:
+    """Restore Improvisation Intelligence sub-tab before the radio renders."""
+    last = str(session_state.get(CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY) or "").strip()
+    current = str(session_state.get("improv_intelligence_tab") or "").strip()
+    if last and last in IMPROV_TAB_NAMES and last != current:
+        session_state["improv_intelligence_tab"] = last
+        return last
+    if current and current in IMPROV_TAB_NAMES:
+        session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = current
+        return current
+    if last and last in IMPROV_TAB_NAMES:
+        session_state["improv_intelligence_tab"] = last
+        return last
+    default = IMPROV_TAB_NAMES[0]
+    session_state["improv_intelligence_tab"] = default
+    session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = default
+    return default
+
+
+def persist_improv_intelligence_tab(session_state: dict) -> str:
+    """Persist sub-tab to a non-widget key (safe after radio renders)."""
+    tab = str(session_state.get("improv_intelligence_tab") or "").strip()
+    if not tab:
+        tab = str(session_state.get(CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY) or "").strip()
+    if tab and tab in IMPROV_TAB_NAMES:
+        session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = tab
+    return tab
 
 
 def note_page_visit(session_state: dict, page_id: str) -> None:

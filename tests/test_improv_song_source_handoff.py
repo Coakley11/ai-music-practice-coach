@@ -74,5 +74,17 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
         self.assertEqual(resolve_improv_song_source(session), "Custom progression")
 
 
+class TestImprovTabSnapshot(unittest.TestCase):
+    def test_creative_snapshot_includes_saved_sub_tab(self) -> None:
+        from studio_page_persistence import capture_page_snapshot
+
+        session = {
+            "creative_improv_intelligence_tab": "Harmony Map",
+            "improv_intelligence_tab": "Harmony Map",
+        }
+        snap = capture_page_snapshot(session, "creative")
+        self.assertEqual(snap.get("creative_improv_intelligence_tab"), "Harmony Map")
+
+
 if __name__ == "__main__":
     unittest.main()

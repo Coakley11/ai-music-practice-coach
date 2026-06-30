@@ -88,6 +88,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "creative_arrangement_target_style",
             "creative_arrangement_section_focus",
             "improv_intelligence_tab",
+            "creative_improv_intelligence_tab",
             "improv_entry_mode",
             "improv_generated_sections",
             "improv_style_meta",
@@ -445,7 +446,6 @@ def capture_page_snapshot(session_state: dict, page_id: str) -> dict[str, Any]:
 
 _PAGE_SNAPSHOT_USER_TOUCH_GUARDS: dict[str, str] = {
     "workspace_genre_filters": "_genre_filters_user_touched",
-    "improv_intelligence_tab": "_improv_tab_user_touched",
 }
 
 _VOLATILE_BACKING_SNAPSHOT_KEYS: frozenset[str] = frozenset(

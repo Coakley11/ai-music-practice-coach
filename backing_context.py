@@ -603,7 +603,9 @@ def format_backing_context_banner(ctx: BackingContext | None) -> str:
         return " · ".join(parts)
     if ctx.source == "entry_jam":
         parts = ["Backing source: Entry & Jam"]
-        if ctx.style:
+        if ctx.mood and ctx.style:
+            parts.append(f"{ctx.mood} {ctx.style}")
+        elif ctx.style:
             parts.append(ctx.style)
         concert = str(ctx.concert_key or ctx.key or ctx.display_key or "").strip()
         if concert:

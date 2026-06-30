@@ -38,6 +38,7 @@ from creative_key_sync import (
     on_improv_jam_key_change,
     on_improv_style_jam_setting_change,
     on_improv_style_key_change,
+    render_creative_progression_block,
 )
 from improvisation_harmony import (
     HARMONY_MAP_CHIP_CSS,
@@ -76,6 +77,7 @@ from studio_page_state import (
     flush_pending_improv_song_source,
     init_improvisation_state,
     resolve_improv_song_source,
+    ensure_improv_intelligence_tab_restored,
 )
 from songs.picker_session import mark_improv_tab_user_touched
 
@@ -104,6 +106,7 @@ def render_improvisation_intelligence_lab(
 
     ensure_creative_improv_initialized(session_state, is_custom_active=is_custom)
     flush_pending_improv_song_source(session_state)
+    ensure_improv_intelligence_tab_restored(session_state)
 
     instrument = str(ctx.get("instrument") or "Guitar")
     level = str(ctx.get("level") or "Intermediate")
@@ -403,7 +406,8 @@ def _tab_entry_modes(
                 f"{int(session_state.get('improv_style_bpm', 110))} BPM"
             )
             for sec, chs in gen.items():
-                st.markdown(f"**{sec}:** " + " | ".join(chs))
+                st.markdown(f"**{sec}**")
+                render_creative_progression_block(st, session_state, {sec: chs})
             if apply_style_to_playback:
                 apply_style_to_playback()
             _render_open_practice_backing_row(
@@ -461,7 +465,8 @@ def _tab_entry_modes(
             st.markdown(f"### {jam.get('title', 'Jam session')}")
             st.caption(jam.get("prompt", ""))
             for sec, chs in (jam.get("sections") or {}).items():
-                st.write(f"**{sec}:** " + " | ".join(chs))
+                st.markdown(f"**{sec}**")
+                render_creative_progression_block(st, session_state, {sec: chs})
             _render_open_practice_backing_row(
                 st,
                 on_open_backing=on_open_backing,
@@ -476,10 +481,10 @@ def _render_open_practice_backing_row(
     on_open_practice: Callable[[], None] | None,
 ) -> None:
     st.markdown("---")
-    c1, c2 = st.columns(2)
+    c1, c2 = st.columns([2, 1])
     with c1:
         if on_open_backing and st.button(
-            nav_icon_button_label("backing"),
+            "🎧 Open in Backing Studio",
             key="improv_to_backing",
             type="primary",
             use_container_width=True,
@@ -487,7 +492,7 @@ def _render_open_practice_backing_row(
             on_open_backing()
     with c2:
         if on_open_practice and st.button(
-            nav_icon_button_label("practice"),
+            "Practice",
             key="improv_to_practice",
             use_container_width=True,
         ):

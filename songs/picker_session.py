@@ -66,7 +66,10 @@ def toggle_genre_filter(session_state: MutableMapping[str, object], genre: str) 
 
 
 def mark_improv_tab_user_touched(session_state: MutableMapping[str, object]) -> None:
-    """Record that the user changed Creative mode tab (skip stale snapshot restore)."""
+    """Record sub-tab selection and persist for refresh/cloud restore."""
+    tab = str(session_state.get("improv_intelligence_tab") or "").strip()
+    if tab:
+        session_state["creative_improv_intelligence_tab"] = tab
     session_state["_improv_tab_user_touched"] = True
     try:
         from studio_page_persistence import save_page_snapshot

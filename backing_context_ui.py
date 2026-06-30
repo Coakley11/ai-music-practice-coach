@@ -116,9 +116,14 @@ def render_backing_creative_context_card(
     badges_html = "".join(b for b in badges if b)
     chart_line = ""
     if chart_key and chart_key != concert:
-        chart_line = (
-            f'<p class="ui-backing-active-key-line">Charts shown in: <strong>{chart_key}</strong></p>'
-        )
+        if str(session.get("instrument") or "") == "Guitar" and session.get("guitar_capo_enabled"):
+            chart_line = (
+                f'<p class="ui-backing-active-key-line">Guitar shape key: <strong>{chart_key}</strong></p>'
+            )
+        else:
+            chart_line = (
+                f'<p class="ui-backing-active-key-line">Written key: <strong>{chart_key}</strong></p>'
+            )
 
     st.markdown(
         f'<div class="ui-backing-active-song mode-creative-backing">'
@@ -129,7 +134,7 @@ def render_backing_creative_context_card(
         f'<p class="ui-backing-active-title">{title}'
         f'<span class="ui-backing-active-dash"> · </span>'
         f'<span class="ui-backing-active-source">{subtitle}</span></p>'
-        f'<p class="ui-backing-active-key-line">Concert key: <strong>{concert}</strong>'
+        f'<p class="ui-backing-active-key-line">Practice concert key: <strong>{concert}</strong>'
         f" · BPM: <strong>{bpm}</strong> · Groove: <strong>{groove}</strong> · Meter: <strong>{meter}</strong></p>"
         f"{chart_line}"
         f'<p class="ui-backing-active-key-line">Progression: <strong>{progression_line}</strong></p>'

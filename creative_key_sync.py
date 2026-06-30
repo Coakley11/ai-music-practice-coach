@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from typing import Any
 
 from studio_page_state import CREATIVE_MAJOR_KEY_OPTIONS
@@ -226,3 +227,73 @@ def on_creative_analysis_mode_change() -> None:
     if mode:
         st.session_state["creative_lab_last_mode"] = mode
     st.session_state["_creative_mode_user_touched"] = True
+
+
+def _chart_display_label(session: dict[str, Any]) -> str:
+    instrument = str(session.get("instrument") or "")
+    if instrument == "Guitar" and session.get("guitar_capo_enabled"):
+        return "Guitar shape chart"
+    try:
+        from instrument_transposition import chart_in_instrument_key, is_transposing_instrument
+
+        if is_transposing_instrument(instrument) and chart_in_instrument_key(session):
+            return "Written chart"
+    except ImportError:
+        pass
+    return "Chart"
+
+
+def creative_progression_display(
+    session: dict[str, Any],
+    sections: dict[str, list[str]],
+    *,
+    concert_key: str = "",
+) -> dict[str, str]:
+    """Build concert + written/shape progression lines for Creative display."""
+    from improvisation_intelligence import flatten_sections
+
+    concert = str(
+        concert_key or creative_entry_concert_key(session) or session.get("concert_key") or "C"
+    ).strip()
+    concert_line = " · ".join(flatten_sections(sections)[:32])
+    try:
+        from backing_context import _resolve_chart_display_key, sections_dict_for_chart_display
+
+        chart_key = _resolve_chart_display_key(session, concert)
+        chart_sections = sections_dict_for_chart_display(session, sections, concert_key=concert)
+    except ImportError:
+        chart_key = concert
+        chart_sections = sections
+    chart_line = " · ".join(flatten_sections(chart_sections)[:32])
+    show_chart = bool(chart_key and chart_key != concert and chart_line and chart_line != concert_line)
+    return {
+        "concert_key": concert,
+        "chart_key": chart_key if show_chart else "",
+        "concert_line": concert_line,
+        "chart_line": chart_line if show_chart else "",
+        "chart_label": _chart_display_label(session) if show_chart else "",
+    }
+
+
+def render_creative_progression_block(st: Any, session: dict[str, Any], sections: dict[str, list[str]]) -> None:
+    """Render concert progression and optional written/shape chart line."""
+    display = creative_progression_display(session, sections)
+    st.markdown(
+        f'<p class="ui-creative-progression-preview">Practice concert key: '
+        f"<strong>{html.escape(display['concert_key'])}</strong></p>",
+        unsafe_allow_html=True,
+    )
+    if display["concert_line"]:
+        st.markdown(
+            f'<p class="ui-creative-progression-preview"><strong>Concert progression:</strong> '
+            f"{html.escape(display['concert_line'])}</p>",
+            unsafe_allow_html=True,
+        )
+    if display["chart_line"]:
+        label = display["chart_label"] or "Chart"
+        key_note = f" ({html.escape(display['chart_key'])})" if display.get("chart_key") else ""
+        st.markdown(
+            f'<p class="ui-creative-progression-preview"><strong>{html.escape(label)}{key_note}:</strong> '
+            f"{html.escape(display['chart_line'])}</p>",
+            unsafe_allow_html=True,
+        )

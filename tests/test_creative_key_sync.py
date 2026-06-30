@@ -184,6 +184,22 @@ class TestCreativeKeySync(unittest.TestCase):
         )
         self.assertNotEqual(out["Head"][0], concert_sections["Head"][0])
 
+    def test_improv_tab_restores_missions_after_refresh(self) -> None:
+        from studio_page_state import ensure_improv_intelligence_tab_restored
+
+        session = {"creative_improv_intelligence_tab": "Missions", "improv_intelligence_tab": "Entry & Jam"}
+        tab = ensure_improv_intelligence_tab_restored(session)
+        self.assertEqual(tab, "Missions")
+        self.assertEqual(session["improv_intelligence_tab"], "Missions")
+
+    def test_improv_tab_persist_does_not_write_widget(self) -> None:
+        from studio_page_state import persist_improv_intelligence_tab
+
+        session = {"improv_intelligence_tab": "Metrics & AI"}
+        tab = persist_improv_intelligence_tab(session)
+        self.assertEqual(tab, "Metrics & AI")
+        self.assertEqual(session["creative_improv_intelligence_tab"], "Metrics & AI")
+
 
 class TestWrittenKeyLabels(unittest.TestCase):
     def test_alto_sax_written_key_for_concert_eb(self) -> None:

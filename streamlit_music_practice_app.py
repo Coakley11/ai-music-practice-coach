@@ -318,8 +318,12 @@ from picker_song_editor import (
 )
 from studio_page_state import (
     apply_improv_song_source,
+    flush_pending_improv_song_source,
     migrate_legacy_session_keys,
     note_page_visit,
+    persist_improv_intelligence_tab,
+    resolve_improv_song_source,
+    sync_improv_song_source_for_handoff,
 )
 from studio_page_persistence import (
     ensure_creative_improv_initialized,
@@ -12439,7 +12443,6 @@ elif _studio_page == "creative":
         from backing_context import open_backing_from_creative
         from creative_key_sync import persist_creative_analysis_mode, sync_creative_style_jam_meta
         from studio_page_persistence import save_page_snapshot
-        from studio_page_state import resolve_improv_song_source, sync_improv_song_source_for_handoff
 
         sync_creative_style_jam_meta(st.session_state)
         source = resolve_improv_song_source(st.session_state)
@@ -12455,6 +12458,7 @@ elif _studio_page == "creative":
             else "entry_jam"
         )
         persist_creative_analysis_mode(st.session_state)
+        persist_improv_intelligence_tab(st.session_state)
         save_page_snapshot(st.session_state, "creative")
         open_backing_from_creative(st.session_state, source=creative_source, st_like=st)
         set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
@@ -12462,8 +12466,6 @@ elif _studio_page == "creative":
         st.rerun()
 
     def _improv_open_practice() -> None:
-        from studio_page_state import resolve_improv_song_source, sync_improv_song_source_for_handoff
-
         source = resolve_improv_song_source(st.session_state)
         sync_improv_song_source_for_handoff(
             st.session_state,
