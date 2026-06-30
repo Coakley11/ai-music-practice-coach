@@ -329,6 +329,7 @@ def _tab_entry_modes(
             st,
             on_open_backing=on_open_backing,
             on_open_practice=on_open_practice,
+            workflow="song",
         )
 
     elif entry == "Style Jam Mode":
@@ -414,6 +415,7 @@ def _tab_entry_modes(
                 st,
                 on_open_backing=on_open_backing,
                 on_open_practice=on_open_practice,
+                workflow="jam",
             )
 
     else:
@@ -471,6 +473,7 @@ def _tab_entry_modes(
                 st,
                 on_open_backing=on_open_backing,
                 on_open_practice=on_open_practice,
+                workflow="jam",
             )
 
 
@@ -479,8 +482,20 @@ def _render_open_practice_backing_row(
     *,
     on_open_backing: Callable[[], None] | None,
     on_open_practice: Callable[[], None] | None,
+    workflow: str = "song",
 ) -> None:
+    """Song/custom workflows offer Practice; Style Jam / Jam Session focus on Backing Studio."""
     st.markdown("---")
+    if workflow == "jam":
+        if on_open_backing and st.button(
+            "🎧 Open in Backing Studio",
+            key="improv_to_backing_jam",
+            type="primary",
+            use_container_width=True,
+        ):
+            on_open_backing()
+        return
+
     c1, c2 = st.columns([2, 1])
     with c1:
         if on_open_backing and st.button(
@@ -492,7 +507,7 @@ def _render_open_practice_backing_row(
             on_open_backing()
     with c2:
         if on_open_practice and st.button(
-            "Practice",
+            "Send to Practice Page",
             key="improv_to_practice",
             use_container_width=True,
         ):
