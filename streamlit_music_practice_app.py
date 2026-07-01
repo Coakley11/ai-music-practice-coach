@@ -9287,6 +9287,18 @@ elif _studio_page_for_hydrate == "backing":
         hydrate_backing_source_for_page(st.session_state, st_like=st)
     except ImportError:
         pass
+elif _studio_page_for_hydrate == "creative":
+    try:
+        from backing_source_navigation import (
+            CREATIVE_RESTORE_FROM_BACKING_KEY,
+            rehydrate_creative_from_backing_context,
+        )
+
+        if st.session_state.get(CREATIVE_RESTORE_FROM_BACKING_KEY):
+            rehydrate_creative_from_backing_context(st.session_state, st_like=st)
+            st.session_state.pop(CREATIVE_RESTORE_FROM_BACKING_KEY, None)
+    except ImportError:
+        pass
 
 original_key, _song_identity = display_key_context(
     st.session_state,

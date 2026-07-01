@@ -510,6 +510,105 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(sess.entry_mode, "Style Jam Mode")
         self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
 
+    def test_return_to_creative_uses_backing_key_over_catalog_display_key(self) -> None:
+        from backing_context import open_backing_from_creative
+        from backing_source_navigation import (
+            CREATIVE_RESTORE_FROM_BACKING_KEY,
+            prepare_return_to_backing_source,
+        )
+        from creative_session_state import CREATIVE_SESSION_KEY, CreativeSession, get_creative_session
+        from songs.music_source import SOURCE_CATALOG, USER_CATALOG_SOURCE_CHOICE_KEY
+
+        session = _style_jam_like_session()
+        session.update(
+            {
+                USER_CATALOG_SOURCE_CHOICE_KEY: True,
+                "active_music_source": SOURCE_CATALOG,
+                "active_catalog_pick_key": "Rock::Day Tripper",
+                "selected_song": {
+                    "title": "Day Tripper",
+                    "pick_key": "Rock::Day Tripper",
+                    "key": "E",
+                    "bpm": 138,
+                },
+                "display_key": "G",
+                "concert_key": "G",
+                "improv_style_key": "F",
+                "improv_style": "Bright Bossa Nova",
+                "improv_style_bpm": 75,
+            }
+        )
+        session[CREATIVE_SESSION_KEY] = CreativeSession(
+            session_id="stale-sbi",
+            tool_type="song_based_improvisation",
+            entry_mode="Song-Based Improvisation",
+            concert_key="G",
+            display_key="G",
+            style="",
+            bpm=96,
+            sections={"Verse": ["Cm"]},
+        ).to_dict()
+        st_like = SimpleNamespace(session_state=session)
+        open_backing_from_creative(session, source="entry_jam", st_like=st_like)
+        session["studio_page"] = "backing"
+        session["display_key"] = "G"
+        session["concert_key"] = "G"
+        prepare_return_to_backing_source(session)
+        self.assertTrue(session.get(CREATIVE_RESTORE_FROM_BACKING_KEY))
+        sess = get_creative_session(session)
+        self.assertIsNotNone(sess)
+        assert sess is not None
+        self.assertEqual(sess.tool_type, "entry_style_jam")
+        self.assertEqual(sess.concert_key, "F")
+        self.assertEqual(sess.style, "Bright Bossa Nova")
+        self.assertEqual(sess.bpm, 75)
+        self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
+        self.assertEqual(session.get("concert_key"), "F")
+
+
+    def test_creative_page_hydrate_restores_from_backing_after_return(self) -> None:
+        from backing_context import open_backing_from_creative
+        from backing_source_navigation import (
+            CREATIVE_RESTORE_FROM_BACKING_KEY,
+            prepare_return_to_backing_source,
+        )
+        from creative_session_state import CREATIVE_SESSION_KEY, CreativeSession, get_creative_session, hydrate_creative_session_for_page
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+        session = _style_jam_like_session()
+        session.update(
+            {
+                USER_CATALOG_SOURCE_CHOICE_KEY: True,
+                "display_key": "G",
+                "concert_key": "G",
+                "improv_style_key": "F",
+                "improv_style": "Bright Bossa Nova",
+                "improv_style_bpm": 75,
+            }
+        )
+        session[CREATIVE_SESSION_KEY] = CreativeSession(
+            session_id="stale-sbi",
+            tool_type="song_based_improvisation",
+            entry_mode="Song-Based Improvisation",
+            concert_key="G",
+            display_key="G",
+            sections={"Verse": ["Cm"]},
+        ).to_dict()
+        session["_creative_session_hydrated_creative"] = True
+        open_backing_from_creative(session, source="entry_jam")
+        prepare_return_to_backing_source(session)
+        session["studio_page"] = "creative"
+        session["display_key"] = "G"
+        session["concert_key"] = "G"
+        session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
+        hydrate_creative_session_for_page(session)
+        sess = get_creative_session(session)
+        self.assertIsNotNone(sess)
+        assert sess is not None
+        self.assertEqual(sess.tool_type, "entry_style_jam")
+        self.assertEqual(sess.concert_key, "F")
+        self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
+
 
 def _style_jam_like_session() -> dict:
     return {

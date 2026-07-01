@@ -18,6 +18,7 @@ BACKING_INTENT_FROM_PRACTICE = "from_practice"
 BACKING_INTENT_FROM_CREATIVE = "from_creative"
 PRACTICE_SOURCE_DISPLAY_KEY = "_practice_source_display_key"
 PRACTICE_SOURCE_PICK_KEY = "_practice_source_pick_key"
+CREATIVE_RESTORE_FROM_BACKING_KEY = "_creative_restore_from_backing"
 
 
 def set_backing_open_intent(session: dict[str, Any], intent: str) -> None:
@@ -679,6 +680,52 @@ def _tool_type_for_backing_context(ctx: BackingContext) -> str:
     return "entry_style_jam"
 
 
+def _backing_creative_concert_key(session: dict[str, Any]) -> str:
+    """Concert key from active Creative backing_context — authoritative on return."""
+    try:
+        from backing_context import active_creative_backing_context
+
+        ctx = active_creative_backing_context(session)
+        if ctx is not None:
+            return str(ctx.concert_key or ctx.display_key or ctx.key or "").strip()
+    except ImportError:
+        pass
+    return ""
+
+
+def _clear_creative_page_hydrate_flags(session: dict[str, Any]) -> None:
+    for key in list(session.keys()):
+        if str(key).startswith("_creative_session_hydrated_"):
+            session.pop(key, None)
+
+
+def rehydrate_creative_from_backing_context(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+    widget_safe: bool = True,
+) -> bool:
+    """Restore Creative widgets + session blob from active entry_jam/song_improv/mission ctx."""
+    try:
+        from backing_context import active_creative_backing_context
+    except ImportError:
+        return False
+    ctx = active_creative_backing_context(session)
+    if ctx is None:
+        return False
+    restore_session_widgets_from_backing_context(session, ctx, widget_safe=widget_safe)
+    try:
+        from backing_context import sync_live_keys_from_backing_context
+
+        sync_live_keys_from_backing_context(session, st_like=st_like, widget_safe=widget_safe)
+    except ImportError:
+        pass
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page:
+        session[f"_creative_session_hydrated_{page}"] = True
+    return True
+
+
 def target_page_for_backing_context(ctx: BackingContext | None) -> CreativeReturnPage:
     """Resolve studio page id for Edit-in-Creative / return-to-source."""
     if ctx is None:
@@ -774,8 +821,12 @@ def restore_session_widgets_from_backing_context(
         session["improv_entry_mode"] = entry
         if entry == "Jam Session Generator":
             if concert:
-                session["improv_jam_key"] = concert
-                session["_pending_improv_jam_key"] = concert
+                try:
+                    from session_widget_safe import safe_session_assign
+
+                    safe_session_assign(session, "improv_jam_key", concert, widget_safe=widget_safe)
+                except ImportError:
+                    session["improv_jam_key"] = concert
             if ctx.style:
                 session["improv_jam_style"] = ctx.style
             if ctx.bpm:
@@ -791,12 +842,26 @@ def restore_session_widgets_from_backing_context(
                     session["improv_jam_session"] = jam
         else:
             if ctx.style:
-                session["improv_style"] = ctx.style
+                try:
+                    from session_widget_safe import safe_session_assign
+
+                    safe_session_assign(session, "improv_style", ctx.style, widget_safe=widget_safe)
+                except ImportError:
+                    session["improv_style"] = ctx.style
             if concert:
-                session["improv_style_key"] = concert
-                session["_pending_improv_style_key"] = concert
+                try:
+                    from session_widget_safe import safe_session_assign
+
+                    safe_session_assign(session, "improv_style_key", concert, widget_safe=widget_safe)
+                except ImportError:
+                    session["improv_style_key"] = concert
             if ctx.bpm:
-                session["improv_style_bpm"] = int(ctx.bpm)
+                try:
+                    from session_widget_safe import safe_session_assign
+
+                    safe_session_assign(session, "improv_style_bpm", int(ctx.bpm), widget_safe=widget_safe)
+                except ImportError:
+                    session["improv_style_bpm"] = int(ctx.bpm)
             if ctx.mood:
                 session["improv_mood"] = ctx.mood
             if ctx.groove_intensity:
@@ -890,12 +955,18 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
     page = target_page_for_backing_context(ctx)
     if ctx is None:
         return page
+    _clear_creative_page_hydrate_flags(session)
+    session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
     restore_session_widgets_from_backing_context(session, ctx)
-    merge_live_practice_into_creative_session(session)
+    merge_live_practice_into_creative_session(session, prefer_backing_context_key=True)
     return page
 
 
-def merge_live_practice_into_creative_session(session: dict[str, Any]) -> None:
+def merge_live_practice_into_creative_session(
+    session: dict[str, Any],
+    *,
+    prefer_backing_context_key: bool = False,
+) -> None:
     """Return-to-Creative: keep saved workflow settings but adopt live key + instrument."""
     try:
         from creative_session_state import (
@@ -913,12 +984,16 @@ def merge_live_practice_into_creative_session(session: dict[str, Any]) -> None:
         from songs.key_state import PENDING_DISPLAY_KEY
     except ImportError:
         PENDING_DISPLAY_KEY = "_pending_display_key"  # type: ignore[misc,assignment]
-    live_key = str(
-        session.get("display_key")
-        or session.get(PENDING_DISPLAY_KEY)
-        or session.get("concert_key")
-        or ""
-    ).strip()
+    ctx_key = _backing_creative_concert_key(session) if prefer_backing_context_key else ""
+    if ctx_key:
+        live_key = ctx_key
+    else:
+        live_key = str(
+            session.get("concert_key")
+            or session.get(PENDING_DISPLAY_KEY)
+            or session.get("display_key")
+            or ""
+        ).strip()
     live_inst = str(session.get("instrument") or "").strip()
     if live_key:
         if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
@@ -971,6 +1046,7 @@ __all__ = [
     "BACKING_OPEN_INTENT_KEY",
     "CreativeReturnPage",
     "PRACTICE_SOURCE_DISPLAY_KEY",
+    "CREATIVE_RESTORE_FROM_BACKING_KEY",
     "consume_backing_open_intent",
     "edit_in_creative_button_label",
     "hydrate_backing_source_for_page",
@@ -979,6 +1055,7 @@ __all__ = [
     "merge_live_practice_into_creative_session",
     "open_backing_for_practice_source",
     "prepare_return_to_backing_source",
+    "rehydrate_creative_from_backing_context",
     "render_source_context_debug",
     "render_source_ownership_dev_table",
     "source_ownership_diagnostics_enabled",

@@ -540,10 +540,28 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
     hydrate_flag = f"_creative_session_hydrated_{page}"
     if session.get(hydrate_flag):
         return
+    try:
+        from backing_source_navigation import (
+            CREATIVE_RESTORE_FROM_BACKING_KEY,
+            rehydrate_creative_from_backing_context,
+        )
+
+        if session.pop(CREATIVE_RESTORE_FROM_BACKING_KEY, False):
+            rehydrate_creative_from_backing_context(session)
+            return
+    except ImportError:
+        pass
     merge_live_key_into_creative_session(session)
     sess = get_creative_session(session)
     page = str(session.get("studio_page") or "").strip().lower()
     should_apply = sess is not None and creative_session_is_active(session)
+    try:
+        from backing_context import active_creative_backing_context
+
+        if page == "creative" and active_creative_backing_context(session) is not None:
+            should_apply = False
+    except ImportError:
+        pass
     if (
         sess is not None
         and page == "creative"
