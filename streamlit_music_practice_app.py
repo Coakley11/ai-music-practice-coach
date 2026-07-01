@@ -12890,6 +12890,12 @@ elif _studio_page == "creative":
         persist_improv_intelligence_tab(st.session_state)
         save_page_snapshot(st.session_state, "creative")
         open_backing_from_creative(st.session_state, source=creative_source, st_like=st)
+        try:
+            from backing_source_navigation import BACKING_INTENT_FROM_CREATIVE, set_backing_open_intent
+
+            set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_CREATIVE)
+        except ImportError:
+            pass
         set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
         navigate_studio_page(st.session_state, "backing")
         st.rerun()

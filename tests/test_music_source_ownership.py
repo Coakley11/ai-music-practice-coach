@@ -55,13 +55,48 @@ class TestMusicSourceOwnership(unittest.TestCase):
 
     def test_intended_practice_owner_none_during_intentional_creative_backing(self) -> None:
         session = {
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
             "active_music_source": SOURCE_CATALOG,
             "active_catalog_pick_key": "Pop::Shape of You",
             "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Jazz Swing",
+            "improv_style_bpm": 120,
+            "improv_style_key": "D",
+            "improv_generated_sections": {"Style Jam": ["Dmaj7", "Gmaj7", "A7", "Dmaj7"]},
         }
         set_backing_source_preference(session, BACKING_PREF_CREATIVE)
         open_backing_from_creative(session, source="entry_jam")
         self.assertIsNone(intended_practice_owner(session))
+
+    def test_reconcile_skips_creative_backing_when_catalog_choice_still_set(self) -> None:
+        session = {
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": "Rock::Day Tripper",
+            "selected_song": {
+                "title": "Day Tripper",
+                "pick_key": "Rock::Day Tripper",
+                "key": "E",
+                "bpm": 138,
+                "genre": "Rock",
+            },
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Bossa Nova",
+            "improv_style_bpm": 120,
+            "improv_style_key": "D",
+            "improv_generated_sections": {"Style Jam": ["Dmaj7", "Gmaj7", "A7", "Dmaj7"]},
+            "display_key": "D",
+            "concert_key": "D",
+        }
+        open_backing_from_creative(session, source="entry_jam")
+        before = get_backing_context(session)
+        self.assertIsNotNone(before)
+        assert before is not None
+        self.assertEqual(before.source, "entry_jam")
+        changed = reconcile_source_ownership(session)
+        self.assertFalse(changed)
+        after = get_backing_context(session)
+        self.assertEqual(after.source, "entry_jam")
 
     def test_reconcile_catalog_replaces_stale_entry_jam(self) -> None:
         session = {

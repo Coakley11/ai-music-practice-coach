@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from backing_context import PENDING_BACKING_CONTEXT_APPLY, get_backing_context, open_backing_from_creative
 from backing_source_navigation import (
+    BACKING_INTENT_FROM_CREATIVE,
     BACKING_INTENT_FROM_PRACTICE,
     BACKING_INTENT_RESTORE_LAST,
     PRACTICE_SOURCE_DISPLAY_KEY,
@@ -74,6 +75,47 @@ class TestBackingSourceNavigation(unittest.TestCase):
         self.assertEqual(ctx.source, "entry_jam")
         self.assertEqual(str(session.get("display_key")), "D")
         self.assertTrue(session.get(PENDING_BACKING_CONTEXT_APPLY))
+
+    def test_from_creative_intent_preserves_entry_jam_over_catalog_pick(self) -> None:
+        from backing_context import BACKING_PREF_CREATIVE, get_backing_source_preference
+        from music_source_ownership import current_backing_owner
+        from songs.music_source import SOURCE_CATALOG, USER_CATALOG_SOURCE_CHOICE_KEY
+
+        session = {
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": "Rock::Day Tripper",
+            "selected_song": {
+                "title": "Day Tripper",
+                "pick_key": "Rock::Day Tripper",
+                "key": "E",
+                "bpm": 138,
+                "genre": "Rock",
+            },
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Bossa Nova",
+            "improv_style_bpm": 120,
+            "improv_style_key": "D",
+            "improv_mood": "Mellow",
+            "improv_groove": "Medium",
+            "improv_difficulty": "Intermediate",
+            "improv_style_meter": "4/4",
+            "improv_generated_sections": {"Style Jam": ["Dmaj7", "Gmaj7", "A7", "Dmaj7"]},
+            "display_key": "D",
+            "concert_key": "D",
+            "instrument": "Piano",
+        }
+        st_like = SimpleNamespace(session_state=session)
+        open_backing_from_creative(session, source="entry_jam", st_like=st_like)
+        set_backing_open_intent(session, BACKING_INTENT_FROM_CREATIVE)
+        hydrate_backing_source_for_page(session, st_like=st_like)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(ctx.source, "entry_jam")
+        self.assertEqual(get_backing_source_preference(session), BACKING_PREF_CREATIVE)
+        self.assertEqual(current_backing_owner(session), "entry_jam")
+        self.assertEqual(consume_backing_open_intent(session), BACKING_INTENT_RESTORE_LAST)
 
     def test_practice_page_restores_saved_practice_key(self) -> None:
         session = {

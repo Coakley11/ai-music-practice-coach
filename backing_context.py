@@ -1923,9 +1923,10 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
 def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Re-sync valid Creative/custom context after backing page song-default logic."""
     try:
-        from music_source_ownership import reconcile_source_ownership
+        from music_source_ownership import intentional_creative_backing_active, reconcile_source_ownership
 
-        reconcile_source_ownership(session, st_like=st_like)
+        if not intentional_creative_backing_active(session):
+            reconcile_source_ownership(session, st_like=st_like)
     except ImportError:
         pass
     ctx = get_backing_context(session)

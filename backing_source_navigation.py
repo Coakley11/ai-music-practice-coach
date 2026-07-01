@@ -15,6 +15,7 @@ CreativeReturnPage = Literal["creative", "custom", "picker", "practice"]
 BACKING_OPEN_INTENT_KEY = "_backing_open_intent"
 BACKING_INTENT_RESTORE_LAST = "restore_last"
 BACKING_INTENT_FROM_PRACTICE = "from_practice"
+BACKING_INTENT_FROM_CREATIVE = "from_creative"
 PRACTICE_SOURCE_DISPLAY_KEY = "_practice_source_display_key"
 PRACTICE_SOURCE_PICK_KEY = "_practice_source_pick_key"
 
@@ -219,18 +220,56 @@ def _open_live_practice_backing(session: dict[str, Any], *, st_like: Any | None 
         open_backing_for_practice_source(session, st_like=st_like)
 
 
-def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
-    """Apply backing navigation intent and preserve last Backing Studio source (Cases B + refresh)."""
+def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext | None:
+    """Re-apply Creative backing when explicitly opening Backing Studio from Creative Lab."""
     try:
-        from music_source_ownership import reconcile_source_ownership
+        from music_source_ownership import (
+            activate_custom_ownership,
+            activate_entry_jam_ownership,
+            activate_mission_ownership,
+            activate_sbi_ownership,
+        )
 
-        reconcile_source_ownership(session, st_like=st_like, reason="backing_hydrate")
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        if str(session.get("improv_intelligence_tab") or "") == "Missions":
+            return activate_mission_ownership(session, st_like=st_like)
+        if entry == "Song-Based Improvisation":
+            try:
+                from studio_page_state import resolve_improv_song_source
+
+                source = resolve_improv_song_source(session)
+            except ImportError:
+                source = "Active song"
+            if source == "Custom progression":
+                return activate_custom_ownership(session, st_like=st_like)
+            return activate_sbi_ownership(session, st_like=st_like)
+        return activate_entry_jam_ownership(session, st_like=st_like)
     except ImportError:
         pass
+    try:
+        from backing_context import open_backing_from_creative
+
+        return open_backing_from_creative(session, source="entry_jam", st_like=st_like)
+    except ImportError:
+        return None
+
+
+def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
+    """Apply backing navigation intent and preserve last Backing Studio source (Cases B + refresh)."""
     intent = consume_backing_open_intent(session)
+    if intent == BACKING_INTENT_FROM_CREATIVE:
+        open_backing_for_creative_source(session, st_like=st_like)
+        return
     if intent == BACKING_INTENT_FROM_PRACTICE:
         open_backing_for_practice_source(session, st_like=st_like)
         return
+    try:
+        from music_source_ownership import intentional_creative_backing_active, reconcile_source_ownership
+
+        if not intentional_creative_backing_active(session):
+            reconcile_source_ownership(session, st_like=st_like, reason="backing_hydrate")
+    except ImportError:
+        pass
     try:
         from songs.music_source import (
             cpl_session_is_active,

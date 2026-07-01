@@ -81,6 +81,60 @@ def _write_catalog_bpm_diagnostics(
         session["catalog_rebuild_ctx_bpm"] = int(ctx.bpm or 0) if ctx else 0
 
 
+def _creative_session_blob_is_active(session: dict[str, Any]) -> bool:
+    """Creative session blob present without catalog/custom authority circular checks."""
+    try:
+        from creative_session_state import get_creative_session
+
+        sess = get_creative_session(session, allow_migrate=True)
+        if sess is None:
+            return False
+        if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+            return bool(sess.sections) or bool(sess.style)
+        if sess.tool_type == "song_based_improvisation":
+            return bool(sess.sections)
+        if sess.tool_type == "mission":
+            return bool(sess.mission_id)
+        return False
+    except ImportError:
+        return False
+
+
+def intentional_creative_backing_active(session: dict[str, Any]) -> bool:
+    """True when user explicitly opened Backing from Creative (not stale catalog ctx)."""
+    try:
+        from backing_context import (
+            BACKING_PREF_CATALOG,
+            BACKING_PREF_CREATIVE,
+            BACKING_PREF_CUSTOM,
+            get_backing_context,
+            get_backing_source_preference,
+        )
+
+        pref = get_backing_source_preference(session)
+        ctx = get_backing_context(session)
+    except ImportError:
+        return False
+    if ctx is None:
+        return False
+    src = str(ctx.source or "").strip()
+    if src not in {"entry_jam", "song_improv", "mission", "custom_progression"}:
+        return False
+    try:
+        from backing_source_navigation import BACKING_INTENT_FROM_CREATIVE, BACKING_OPEN_INTENT_KEY
+
+        if str(session.get(BACKING_OPEN_INTENT_KEY) or "") == BACKING_INTENT_FROM_CREATIVE:
+            return True
+    except ImportError:
+        pass
+    blob_active = _creative_session_blob_is_active(session)
+    if pref == BACKING_PREF_CREATIVE and blob_active:
+        return True
+    if blob_active and pref not in {BACKING_PREF_CATALOG, BACKING_PREF_CUSTOM}:
+        return True
+    return False
+
+
 def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
     """Live practice owner from active_music_source (not backing_pref or backing_context).
 
@@ -103,25 +157,10 @@ def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
             or custom_progression_is_active(session)
         ):
             return "custom"
+        if intentional_creative_backing_active(session):
+            return None
         if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
             return "catalog"
-        try:
-            from backing_context import (
-                BACKING_PREF_CREATIVE,
-                get_backing_context,
-                get_backing_source_preference,
-            )
-
-            pref = get_backing_source_preference(session)
-            ctx = get_backing_context(session)
-            if (
-                pref == BACKING_PREF_CREATIVE
-                and ctx is not None
-                and str(ctx.source or "") in {"entry_jam", "song_improv", "mission"}
-            ):
-                return None
-        except ImportError:
-            pass
         if str(session.get("active_music_source") or "").strip() == SOURCE_CATALOG:
             return "catalog"
         pick = str(session.get("active_catalog_pick_key") or "").strip()
@@ -567,6 +606,7 @@ __all__ = [
     "backing_preference_owner",
     "catalog_identity_aligns",
     "current_backing_owner",
+    "intentional_creative_backing_active",
     "intended_practice_owner",
     "practice_backing_owners_align",
     "rebuild_catalog_backing_from_canonical_pick",
