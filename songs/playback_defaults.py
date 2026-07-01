@@ -157,6 +157,19 @@ def resolve_backing_bpm_for_slider(
         st.session_state["bpm"] = canonical
         return canonical
 
+    try:
+        from songs.practice_key_state import consume_force_bpm_sync
+
+        if consume_force_bpm_sync(st.session_state, sync_id):
+            canonical = normalize_backing_bpm(default_bpm)
+            st.session_state[slider_key] = canonical
+            st.session_state[BPM_WIDGET_KEY] = canonical
+            st.session_state["bpm"] = canonical
+            st.session_state["backing_track_bpm"] = canonical
+            return canonical
+    except ImportError:
+        pass
+
     if tracked_sync and tracked_sync != sync_id:
         canonical = normalize_backing_bpm(default_bpm)
         st.session_state[slider_key] = canonical

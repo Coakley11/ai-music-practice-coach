@@ -448,6 +448,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "improv_jam_mood",
     "improv_song_concert_sections",
     "improv_song_chart_sections",
+    "practice_key_by_source",
     "_last_catalog_song_state",
     "_catalog_before_custom_state",
 )

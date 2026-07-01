@@ -371,6 +371,12 @@ def _clear_cross_owner_transport(session: dict[str, Any]) -> None:
         session.pop("_last_backing_meter_song", None)
     session.pop("backing_groove_style", None)
     session.pop("backing_track_bpm", None)
+    try:
+        from backing_track_state import clear_backing_local_edit
+
+        clear_backing_local_edit(session)
+    except ImportError:
+        pass
 
 
 def _release_creative_transport_authority(session: dict[str, Any]) -> None:
@@ -570,6 +576,12 @@ def _apply_catalog_transport_from_record(
             except ImportError:
                 session.pop("_canonical_active_backing_song_id", None)
         prime_active_song_bpm(st_like, sync_id=sync_id, active_song_bpm=bpm)
+        try:
+            from songs.practice_key_state import mark_force_bpm_sync
+
+            mark_force_bpm_sync(session, sync_id)
+        except ImportError:
+            pass
         canon_result = canonicalize_backing_defaults_for_song(
             st_like,
             sync_id=sync_id,
@@ -979,6 +991,18 @@ def maybe_reset_practice_key_on_source_activation(
             pass
     if not needs_reset and owner == "custom" and live and original and live != original:
         try:
+            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+            saved = get_practice_concert_key(
+                session,
+                resolve_practice_source_pick(session),
+                default=live,
+            )
+            if saved and saved == live:
+                return False
+        except ImportError:
+            pass
+        try:
             from custom_progression_lab import CPL_LAST_DISPLAY_KEY
 
             cpl_last = str(session.get(CPL_LAST_DISPLAY_KEY) or "").strip()
@@ -987,6 +1011,19 @@ def maybe_reset_practice_key_on_source_activation(
         intentional_transpose = cpl_last == live and live != original
         if not intentional_transpose:
             needs_reset = True
+    if not needs_reset and owner == "catalog" and live and original and live != original:
+        try:
+            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+            saved = get_practice_concert_key(
+                session,
+                resolve_practice_source_pick(session),
+                default=live,
+            )
+            if saved and saved == live:
+                return False
+        except ImportError:
+            pass
     if not needs_reset:
         return False
     _release_creative_transport_authority(session)

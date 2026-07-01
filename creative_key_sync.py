@@ -447,6 +447,15 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     resolver_key = ""
     ctx_source = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    sbi_custom_preview = False
+    try:
+        from songs.practice_key_state import sbi_uses_custom_progression_preview
+
+        sbi_custom_preview = sbi_uses_custom_progression_preview(session)
+    except ImportError:
+        pass
+    if ctx_source == "custom_progression" or sbi_custom_preview:
+        ctx_source = "custom_progression"
     if ctx_source == "regular_song":
         resolver_key = str(
             getattr(ctx, "concert_key", None)
@@ -466,8 +475,14 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                 or getattr(ctx, "key", None)
                 or ""
             ).strip()
+        try:
+            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+            saved = get_practice_concert_key(session, resolve_practice_source_pick(session))
+        except ImportError:
+            saved = ""
         live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-        selected = str(pending or live or resolver_key or "C").strip() or "C"
+        selected = str(pending or live or saved or resolver_key or "C").strip() or "C"
     elif creative and resolve_current_backing_musical_state is not None:
         resolver_key = str(
             resolve_current_backing_musical_state(session).practice_concert_key or ""
@@ -494,12 +509,11 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         options = [selected] + options
     if ctx_source == "custom_progression":
         live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        session["concert_key"] = live or selected
         if pending is not None:
             _apply_display_key_before_widget(st, selected, source="backing_context_concert")
             session["concert_key"] = selected
-        elif live:
-            session["concert_key"] = live
-        else:
+        elif not live:
             _apply_display_key_before_widget(st, selected, source="backing_context_concert")
             session["concert_key"] = selected
         return options
@@ -670,6 +684,16 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
         if ctx is not None and ctx.source == "custom_progression":
             session["concert_key"] = new
             try:
+                from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+
+                set_practice_concert_key(
+                    session,
+                    new,
+                    pick_key=resolve_practice_source_pick(session),
+                )
+            except ImportError:
+                pass
+            try:
                 from custom_progression_lab import on_global_display_key_change
 
                 on_global_display_key_change(session, new)
@@ -683,6 +707,32 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
     entry = _resolve_creative_entry_mode(session)
     if entry and not str(session.get("improv_entry_mode") or "").strip():
         session["improv_entry_mode"] = entry
+    try:
+        from studio_page_state import resolve_improv_song_source
+
+        if entry == "Song-Based Improvisation" and resolve_improv_song_source(session) == "Custom progression":
+            session["concert_key"] = new
+            try:
+                from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+
+                set_practice_concert_key(
+                    session,
+                    new,
+                    pick_key=resolve_practice_source_pick(session),
+                )
+            except ImportError:
+                pass
+            try:
+                from custom_progression_lab import on_global_display_key_change
+
+                on_global_display_key_change(session, new)
+            except ImportError:
+                pass
+            invalidate_creative_backing_context(session)
+            _apply_pending_backing_context_on_page(session, st_like=st_like)
+            return
+    except ImportError:
+        pass
     if entry == "Song-Based Improvisation":
         session["concert_key"] = new
         try:

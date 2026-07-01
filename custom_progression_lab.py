@@ -628,6 +628,16 @@ def on_global_display_key_change(session_state, display_key):
     if last is None:
         session_state[CPL_LAST_DISPLAY_KEY] = display_key
         try:
+            from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+
+            set_practice_concert_key(
+                session_state,
+                str(display_key or "").strip(),
+                pick_key=resolve_practice_source_pick(session_state),
+            )
+        except ImportError:
+            pass
+        try:
             from backing_context import get_backing_context, refresh_backing_context_from_session, set_backing_context
             from songs.key_state import BACKING_NEEDS_REGEN
 
@@ -643,6 +653,16 @@ def on_global_display_key_change(session_state, display_key):
         return False
     if last != display_key:
         session_state[CPL_LAST_DISPLAY_KEY] = display_key
+        try:
+            from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+
+            set_practice_concert_key(
+                session_state,
+                str(display_key or "").strip(),
+                pick_key=resolve_practice_source_pick(session_state),
+            )
+        except ImportError:
+            pass
         invalidate_cpl_derived_outputs(session_state)
         try:
             from backing_context import (

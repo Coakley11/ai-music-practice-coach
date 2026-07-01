@@ -156,8 +156,12 @@ def hydrate_practice_source_for_page(session: dict[str, Any], *, st_like: Any | 
             if pick:
                 try:
                     from songs.key_state import canonical_display_key_for_pick
+                    from songs.practice_key_state import get_practice_concert_key
 
-                    scoped = canonical_display_key_for_pick(session, pick)
+                    scoped = (
+                        get_practice_concert_key(session, pick)
+                        or canonical_display_key_for_pick(session, pick)
+                    )
                     if scoped:
                         key = scoped
                 except ImportError:

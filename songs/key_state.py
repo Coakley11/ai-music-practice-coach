@@ -61,6 +61,14 @@ def canonical_display_key_for_pick(session: dict[str, Any], pick_key: str) -> st
     if not pk:
         return ""
     try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        saved = get_practice_concert_key(session, pk)
+        if saved:
+            return saved
+    except ImportError:
+        pass
+    try:
         from active_song_state import ACTIVE_SONG_STATE_KEY
 
         meta = session.get(ACTIVE_SONG_STATE_KEY)
@@ -114,6 +122,18 @@ def sync_display_key_owner_identity(session: dict[str, Any]) -> None:
 def mark_display_key_changed(st: Any) -> None:
     """Sidebar widget callback — invalidate derived audio/analysis."""
     sync_display_key_owner_identity(st.session_state)
+    dk = str(st.session_state.get("display_key") or "").strip()
+    if dk:
+        try:
+            from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+
+            set_practice_concert_key(
+                st.session_state,
+                dk,
+                pick_key=resolve_practice_source_pick(st.session_state),
+            )
+        except ImportError:
+            pass
     try:
         from practice_setup_globals import record_global_control_change
 
@@ -243,11 +263,17 @@ def apply_display_key_for_active_song(
         st.session_state[BACKING_NEEDS_REGEN] = False
         return options
 
+    identity_pk = str(song_identity[0] or "").strip() if song_identity else ""
     pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
     if pending is not None:
         _apply_display_key_before_widget(st, pending, source="pending_display_key")
-    elif "display_key" not in st.session_state:
-        _apply_display_key_before_widget(st, original_key, source="initial_display_key")
+    else:
+        saved = canonical_display_key_for_pick(st.session_state, identity_pk)
+        if saved and saved != str(st.session_state.get("display_key") or "").strip():
+            _apply_display_key_before_widget(st, saved, source="practice_key_restore")
+            st.session_state[LAST_DISPLAY_KEY] = saved
+        elif "display_key" not in st.session_state:
+            _apply_display_key_before_widget(st, original_key, source="initial_display_key")
 
     current = st.session_state.get("display_key", original_key)
     if current not in options:

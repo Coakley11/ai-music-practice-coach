@@ -559,6 +559,10 @@ class TestCustomProgressionConcertKey(unittest.TestCase):
         session["display_key"] = "E"
         sync_sidebar_creative_concert_key(session)
         self.assertEqual(session.get("concert_key"), "E")
+        self.assertEqual(
+            session.get("practice_key_by_source", {}).get("custom::trial-1"),
+            "E",
+        )
         refreshed = get_backing_context(session)
         self.assertIsNotNone(refreshed)
         assert refreshed is not None
