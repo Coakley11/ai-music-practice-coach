@@ -485,7 +485,72 @@ def _song_improv_sections_dict(session: dict[str, Any]) -> dict[str, list[str]]:
 
 
 def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
-    """Backing context for Song-Based Improvisation (active catalog song at current practice key)."""
+    """Backing context for Song-Based Improvisation (catalog song or custom progression)."""
+    try:
+        from studio_page_state import resolve_improv_song_source
+    except ImportError:
+        resolve_improv_song_source = lambda s: str(s.get("improv_song_source") or "Active song")  # type: ignore
+
+    song_source = str(resolve_improv_song_source(session) or "Active song").strip()
+    if song_source == "Custom progression":
+        try:
+            from songs.music_source import ensure_custom_progression_for_backing
+
+            ensure_custom_progression_for_backing(session)
+            from custom_progression_lab import (
+                CPL_ACTIVE_KEY,
+                all_chords_from_lab_sections,
+                ensure_original_structure,
+                written_home_key,
+            )
+
+            active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+            name = str(active.get("name") or "My Progression").strip()
+            revision = str(active.get("id") or active.get("revision") or "").strip()
+            pick_key = revision or f"custom::{name.lower().replace(' ', '-')}"
+            home_key = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
+            key, display_key, concert_key = _live_backing_concert_keys(session)
+            if not concert_key or concert_key == str(session.get("original_key") or "").strip():
+                key = display_key = concert_key = home_key
+            sections_raw = active.get("original_sections") if isinstance(active.get("original_sections"), dict) else {}
+            sections_dict = {
+                str(sec): [str(c) for c in chords if str(c).strip()]
+                for sec, chords in sections_raw.items()
+                if isinstance(chords, list)
+            }
+            progression = all_chords_from_lab_sections(sections_raw) if sections_raw else []
+            progression_label = name
+            if progression:
+                progression_label = f"{name} · {'–'.join(progression[:4])}"
+            scope, section, selected_sections = _default_scope(session)
+            return BackingContext(
+                source="song_improv",
+                source_label=_SOURCE_LABELS["song_improv"],
+                active_song_id=pick_key,
+                song_title=name,
+                key=key,
+                display_key=display_key,
+                concert_key=concert_key,
+                chart_display_key=_resolve_chart_display_key(session, concert_key),
+                bpm=int(active.get("bpm") or _default_bpm(session)),
+                style=str(active.get("progression_style") or "").strip(),
+                groove=str(active.get("groove_style") or _default_groove(session)).strip(),
+                section=section,
+                sections=selected_sections or list(sections_dict.keys()),
+                scope=scope,
+                loops=int(active.get("loops") or session.get("backing_track_loops") or 2),
+                progression=progression,
+                progression_label=progression_label,
+                section_labels=list(sections_dict.keys()),
+                loop=True,
+                entry_mode="Song-Based Improvisation",
+                mode_label="Song-Based Improvisation",
+                bound_pick_key=pick_key,
+                custom_revision_id=revision or None,
+            )
+        except ImportError:
+            pass
+
     pick_key = _current_pick_key(session)
     key, display_key, concert_key = _live_backing_concert_keys(session)
     chart_display_key = _resolve_chart_display_key(session, concert_key)
@@ -730,11 +795,14 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
         return False
     if ctx.source == "regular_song":
         return True
-    if ctx.source in {"entry_jam", "mission"}:
+    if ctx.source in {"entry_jam", "mission", "song_improv"}:
         if ctx.source == "mission":
             current_mission = str(session.get("improv_active_mission") or "").strip()
             if ctx.mission_id and current_mission and ctx.mission_id != current_mission:
                 return False
+        current_pick = _current_pick_key(session)
+        if ctx.bound_pick_key and current_pick and ctx.bound_pick_key != current_pick:
+            return False
         return True
     current_pick = _current_pick_key(session)
     if ctx.bound_pick_key and current_pick and ctx.bound_pick_key != current_pick:
@@ -757,25 +825,46 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
 
 
 def invalidate_if_song_changed(session: dict[str, Any], new_pick_key: str | None = None) -> bool:
-    """Clear stale Creative context when active song changes. Returns True if cleared."""
+    """Clear stale Creative backing when active song changes. Returns True if reset."""
     ctx = get_backing_context(session)
     if ctx is None or ctx.source == "regular_song":
         return False
-    if ctx.source in {"entry_jam", "mission"}:
-        return False
-    if ctx.source == "song_improv":
-        current = str(new_pick_key or _current_pick_key(session)).strip()
-        if ctx.bound_pick_key and current and ctx.bound_pick_key != current:
-            clear_backing_context(session)
-            return True
-        return False
     current = str(new_pick_key or _current_pick_key(session)).strip()
-    if not ctx.bound_pick_key or not current:
+    if not current or not ctx.bound_pick_key:
         return False
     if ctx.bound_pick_key == current:
         return False
-    clear_backing_context(session)
+    reset_backing_on_active_song_change(session, new_pick_key=current)
     return True
+
+
+def reset_backing_on_active_song_change(
+    session: dict[str, Any],
+    *,
+    new_pick_key: str = "",
+) -> BackingContext:
+    """Active song changed: catalog/custom regular backing owns studio; preserve creative_session."""
+    _release_creative_backing_ownership(session)
+    try:
+        from songs.music_source import is_custom_progression, set_catalog_source, set_custom_source
+
+        if is_custom_progression(session):
+            set_custom_source(session)
+            set_backing_source_preference(session, BACKING_PREF_CUSTOM)
+            ctx = build_custom_progression_context(session)
+        else:
+            set_catalog_source(session)
+            set_backing_source_preference(session, BACKING_PREF_CATALOG)
+            ctx = build_regular_song_context(session)
+    except ImportError:
+        set_backing_source_preference(session, BACKING_PREF_CATALOG)
+        ctx = build_regular_song_context(session)
+    concert = str(ctx.concert_key or ctx.display_key or ctx.key or "").strip()
+    if concert:
+        _apply_original_song_display_key(session, concert)
+    set_backing_context(session, ctx)
+    _ = new_pick_key
+    return ctx
 
 
 def invalidate_if_mission_changed(session: dict[str, Any]) -> bool:
@@ -1414,8 +1503,9 @@ def restore_custom_song_backing(session: dict[str, Any], *, st_like: Any | None 
     try:
         from songs.music_source import ensure_custom_progression_for_backing
 
-        ensure_custom_progression_for_backing(session)
+        original = ensure_custom_progression_for_backing(session)
     except ImportError:
+        original = ""
         try:
             from songs.music_source import cpl_session_is_active, set_custom_source
 
@@ -1424,7 +1514,7 @@ def restore_custom_song_backing(session: dict[str, Any], *, st_like: Any | None 
         except ImportError:
             pass
     ctx = build_custom_progression_context(session)
-    concert = str(ctx.concert_key or ctx.display_key or ctx.key or "").strip()
+    concert = str(original or ctx.concert_key or ctx.display_key or ctx.key or "").strip()
     if concert:
         _apply_original_song_display_key(session, concert, st_like=st_like)
     set_backing_source_preference(session, BACKING_PREF_CUSTOM)
@@ -1625,6 +1715,7 @@ __all__ = [
     "invalidate_if_mission_changed",
     "invalidate_if_progression_changed",
     "invalidate_if_song_changed",
+    "reset_backing_on_active_song_change",
     "is_backing_context_valid",
     "refresh_backing_context_timestamps",
     "apply_backing_context_to_session",

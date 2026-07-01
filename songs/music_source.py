@@ -325,8 +325,14 @@ def restore_last_catalog_active_song(
         str(data.get("title") or ""),
         str(data.get("artist") or ""),
         original_key,
+        pick_key=pick_key,
     )
-    apply_display_key_for_active_song(st, original_key, identity, pending_key=display_key)
+    try:
+        from songs.music_source import set_catalog_source
+
+        set_catalog_source(session)
+    except ImportError:
+        pass
     note_active_source_change(st, invalidate_backing=invalidate_backing)
     return True
 
@@ -878,6 +884,13 @@ def on_active_song_identity_changed(
         "backing_meter": session.get("backing_time_signature"),
         "identity_changed": identity_changed,
     }
+    if identity_changed:
+        try:
+            from backing_context import reset_backing_on_active_song_change
+
+            reset_backing_on_active_song_change(session, new_pick_key=pick_key)
+        except ImportError:
+            pass
     return identity_changed
 
 
@@ -1738,18 +1751,35 @@ def activate_catalog_pick_for_backing(
     return original_key
 
 
-def ensure_custom_progression_for_backing(session_state: dict[str, Any]) -> None:
-    """Ensure CPL active progression exists for Use Custom Progression Backing."""
+def ensure_custom_progression_for_backing(session_state: dict[str, Any]) -> str:
+    """Ensure CPL active progression exists for Use Custom Progression Backing. Returns original key."""
     try:
         from custom_progression_lab import (
             CPL_ACTIVE_KEY,
             default_active_progression,
             ensure_original_structure,
+            written_home_key,
         )
     except ImportError:
-        return
+        return "C"
     active = session_state.get(CPL_ACTIVE_KEY)
     if not isinstance(active, dict) or not active.get("original_sections"):
         active = default_active_progression()
-    session_state[CPL_ACTIVE_KEY] = ensure_original_structure(active)
+    active = ensure_original_structure(active)
+    session_state[CPL_ACTIVE_KEY] = active
     set_custom_source(session_state)
+    name = str(active.get("name") or "My Progression").strip()
+    session_state["song"] = name
+    session_state["active_song_title"] = name
+    pick = str(active.get("id") or active.get("revision") or "").strip()
+    if pick:
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+        session_state[ACTIVE_CATALOG_PICK_KEY] = pick
+        session_state[SELECTED_SONG_STATE_KEY] = {
+            "pick_key": pick,
+            "title": name,
+            "artist": "Your progression",
+            "key": str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C",
+        }
+    return str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"

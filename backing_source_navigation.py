@@ -154,11 +154,21 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             active_creative_backing_context,
             ensure_backing_context_from_creative_session,
             get_backing_context,
+            is_backing_context_valid,
         )
         from creative_session_state import hydrate_creative_session_for_page
 
         hydrate_creative_session_for_page(session)
         ctx = get_backing_context(session)
+        if ctx is not None and ctx.source != "regular_song":
+            if not is_backing_context_valid(session, ctx):
+                try:
+                    from backing_context import reset_backing_on_active_song_change
+
+                    reset_backing_on_active_song_change(session)
+                    ctx = get_backing_context(session)
+                except ImportError:
+                    ctx = None
         if ctx is None:
             ensure_backing_context_from_creative_session(session)
         ctx = active_creative_backing_context(session) or get_backing_context(session)
@@ -335,7 +345,26 @@ def restore_session_widgets_from_backing_context(
     elif ctx.source == "song_improv":
         session["improv_intelligence_tab"] = "Entry & Jam"
         session["improv_entry_mode"] = "Song-Based Improvisation"
-        session["improv_song_source"] = "Active song"
+        custom_improv = bool(
+            ctx.custom_revision_id
+            or str(ctx.active_song_id or "").startswith("custom::")
+        )
+        if custom_improv:
+            session["improv_song_source"] = "Custom progression"
+            try:
+                from studio_page_state import CREATIVE_BACKING_SONG_SOURCE_KEY
+
+                session[CREATIVE_BACKING_SONG_SOURCE_KEY] = "Custom progression"
+            except ImportError:
+                pass
+            try:
+                from songs.music_source import set_custom_source
+
+                set_custom_source(session)
+            except ImportError:
+                pass
+        else:
+            session["improv_song_source"] = "Active song"
     elif ctx.source == "entry_jam":
         session["improv_intelligence_tab"] = "Entry & Jam"
         entry = str(ctx.entry_mode or "Style Jam Mode").strip()

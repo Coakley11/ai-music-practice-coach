@@ -157,6 +157,26 @@ class TestBackingContextPhase2(unittest.TestCase):
         self.assertEqual(ctx.source, "regular_song")
         self.assertEqual(ctx.progression, [])
 
+    def test_entry_jam_survives_when_song_unchanged(self) -> None:
+        session = {
+            "active_catalog_pick_key": "say|artist",
+            BACKING_CONTEXT_KEY: {
+                "source": "entry_jam",
+                "source_label": "Entry & Jam",
+                "active_song_id": "say|artist",
+                "song_title": "Say",
+                "key": "G",
+                "display_key": "G",
+                "concert_key": "G",
+                "bpm": 82,
+                "style": "Jazz",
+                "groove": "Medium",
+                "bound_pick_key": "say|artist",
+            },
+        }
+        self.assertFalse(invalidate_if_song_changed(session))
+        self.assertIsNotNone(get_backing_context(session))
+
     def test_mission_context_survives_active_song_change(self) -> None:
         session = {
             "active_catalog_pick_key": "daughters|artist",
@@ -175,8 +195,11 @@ class TestBackingContextPhase2(unittest.TestCase):
                 "bound_pick_key": "say|artist",
             },
         }
-        self.assertFalse(invalidate_if_song_changed(session))
-        self.assertIsNotNone(get_backing_context(session))
+        self.assertTrue(invalidate_if_song_changed(session))
+        reset_ctx = get_backing_context(session)
+        self.assertIsNotNone(reset_ctx)
+        assert reset_ctx is not None
+        self.assertEqual(reset_ctx.source, "regular_song")
 
     def test_custom_progression_invalidates_on_song_change(self) -> None:
         session = {
@@ -197,7 +220,10 @@ class TestBackingContextPhase2(unittest.TestCase):
             },
         }
         self.assertTrue(invalidate_if_song_changed(session))
-        self.assertIsNone(get_backing_context(session))
+        reset_ctx = get_backing_context(session)
+        self.assertIsNotNone(reset_ctx)
+        assert reset_ctx is not None
+        self.assertEqual(reset_ctx.source, "regular_song")
 
     def test_banner_entry_jam(self) -> None:
         ctx = build_entry_jam_context(
@@ -458,6 +484,57 @@ class TestReturnToCreativeToolRestore(unittest.TestCase):
         page = prepare_return_to_backing_source(session)
         self.assertEqual(page, "creative")
         self.assertEqual(session.get("improv_entry_mode"), "Song-Based Improvisation")
+
+
+class TestSongImprovCustomProgression(unittest.TestCase):
+    def test_song_improv_custom_uses_trial_song_not_catalog(self) -> None:
+        from backing_context import build_song_improv_context
+        from studio_page_state import CREATIVE_BACKING_SONG_SOURCE_KEY
+
+        session = {
+            "active_catalog_pick_key": "Pop::Photograph",
+            "selected_song": {"title": "Photograph", "key": "E", "pick_key": "Pop::Photograph"},
+            "song": "Photograph",
+            CREATIVE_BACKING_SONG_SOURCE_KEY: "Custom progression",
+            "improv_song_source": "Custom progression",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "cpl_active_progression": {
+                "id": "custom-rev-trial",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "original_sections": {
+                    "Verse": [{"chord": "D", "bars": 1}, {"chord": "G", "bars": 1}, {"chord": "A", "bars": 1}],
+                    "Chorus": [],
+                    "Bridge": [],
+                    "Intro": [],
+                    "Outro": [],
+                },
+                "bpm": 90,
+            },
+        }
+        ctx = build_song_improv_context(session)
+        self.assertEqual(ctx.source, "song_improv")
+        self.assertEqual(ctx.song_title, "Trial Song")
+        self.assertNotEqual(ctx.song_title, "Photograph")
+        self.assertEqual(ctx.bound_pick_key, "custom-rev-trial")
+
+
+class TestDisplayKeyWidgetSafe(unittest.TestCase):
+    def test_apply_display_key_after_widget_exists_uses_pending(self) -> None:
+        from songs.key_state import apply_display_key_for_active_song, song_display_identity
+
+        class _FakeSt:
+            session_state: dict
+
+        st = _FakeSt()
+        st.session_state = {
+            "display_key": "Bm",
+            "_music_restore_phase_complete": True,
+        }
+        identity = song_display_identity("Say", "John Mayer", "G", pick_key="Pop::Say")
+        apply_display_key_for_active_song(st, "G", identity, pending_key="G")
+        self.assertEqual(st.session_state.get("display_key"), "Bm")
+        self.assertEqual(st.session_state.get("_pending_display_key"), "G")
 
 
 if __name__ == "__main__":

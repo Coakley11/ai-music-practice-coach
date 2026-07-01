@@ -157,9 +157,10 @@ class TestBackingContext(unittest.TestCase):
         )
         self.assertNotEqual(compute_source_signature(a), compute_source_signature(b))
 
-    def test_entry_jam_survives_active_song_change(self) -> None:
+    def test_entry_jam_invalidates_when_active_song_changes(self) -> None:
         session: dict = {
-            "active_catalog_pick_key": "daughters|artist",
+            "active_catalog_pick_key": "photo|artist",
+            "song": "Photograph",
             "backing_context": {
                 "source": "entry_jam",
                 "source_label": "Entry & Jam",
@@ -176,9 +177,12 @@ class TestBackingContext(unittest.TestCase):
         }
         ctx = get_backing_context(session)
         assert ctx is not None
-        self.assertTrue(is_backing_context_valid(session, ctx))
-        self.assertFalse(invalidate_if_song_changed(session))
-        self.assertIsNotNone(get_backing_context(session))
+        self.assertFalse(is_backing_context_valid(session, ctx))
+        self.assertTrue(invalidate_if_song_changed(session))
+        reset_ctx = get_backing_context(session)
+        self.assertIsNotNone(reset_ctx)
+        assert reset_ctx is not None
+        self.assertEqual(reset_ctx.source, "regular_song")
 
     def test_mission_invalid_when_mission_changes(self) -> None:
         session: dict = {

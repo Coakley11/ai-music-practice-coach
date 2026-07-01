@@ -281,6 +281,12 @@ def persist_improv_intelligence_tab(session_state: dict) -> str:
 
 def note_page_visit(session_state: dict, page_id: str) -> None:
     """Track visited pages (for debugging); does not reset other pages."""
+    prev = str(session_state.get("_last_studio_page_for_hydrate") or "").strip()
+    if prev and prev != page_id:
+        for key in list(session_state.keys()):
+            if str(key).startswith("_creative_session_hydrated_"):
+                session_state.pop(key, None)
+    session_state["_last_studio_page_for_hydrate"] = page_id
     log = session_state.setdefault("_studio_pages_visited", [])
     if page_id not in log:
         log.append(page_id)

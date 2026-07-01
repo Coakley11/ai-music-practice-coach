@@ -536,6 +536,10 @@ def merge_live_key_into_creative_session(session: dict[str, Any]) -> None:
 
 def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
     """Apply persisted Creative session to widgets at page entry (after cloud restore)."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    hydrate_flag = f"_creative_session_hydrated_{page}"
+    if session.get(hydrate_flag):
+        return
     merge_live_key_into_creative_session(session)
     sess = get_creative_session(session)
     page = str(session.get("studio_page") or "").strip().lower()
@@ -555,9 +559,11 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
             pass
     if should_apply and sess is not None:
         apply_creative_session_to_session(session, sess, widget_safe=True)
+        session[hydrate_flag] = True
         return
     if str(session.get("improv_entry_mode") or "").strip():
         sync_creative_session_from_session(session)
+    session[hydrate_flag] = True
 
 
 def hydrate_creative_session_after_restore(session: dict[str, Any]) -> bool:

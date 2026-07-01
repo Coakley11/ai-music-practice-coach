@@ -172,19 +172,26 @@ def mark_display_key_changed(st: Any) -> None:
 
 
 def _apply_display_key_before_widget(st: Any, key: str, *, source: str = "sync_display_key") -> None:
-    """Mutate display_key only before the sidebar selectbox is instantiated."""
+    """Mutate display_key via widget-safe path when sidebar may already exist."""
+    concert = str(key or "C").strip() or "C"
     try:
         from practice_setup_globals import record_global_control_change
 
         record_global_control_change(st.session_state, "display_key", source)
     except Exception:
         pass
-    st.session_state["display_key"] = key
-    record_display_key_write(st.session_state, key, source=source)
+    try:
+        from session_widget_safe import safe_assign_display_key
+
+        safe_assign_display_key(st.session_state, concert, widget_safe=True, st_like=st)
+    except ImportError:
+        st.session_state["display_key"] = concert
+        st.session_state[PENDING_DISPLAY_KEY] = concert
+    record_display_key_write(st.session_state, concert, source=source)
     trace_display_key_surface(
         st.session_state,
         "sidebar",
-        key,
+        concert,
         source=source,
     )
 
