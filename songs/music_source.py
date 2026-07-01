@@ -1633,3 +1633,123 @@ def build_active_chart_bundle(
         ),
         "time_signature": ext.get("time_signature", "4/4") or "4/4",
     }
+
+
+def _pick_key_is_catalog(pick_key: str) -> bool:
+    pk = str(pick_key or "").strip()
+    return bool(pk) and not pk.startswith("custom::")
+
+
+def resolve_last_catalog_pick_key(session_state: dict[str, Any]) -> str:
+    """Last catalog song pick for Use Catalog Song Backing — never custom."""
+    try:
+        from backing_source_navigation import PRACTICE_SOURCE_PICK_KEY
+    except ImportError:
+        PRACTICE_SOURCE_PICK_KEY = "_practice_source_pick_key"
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    candidates: list[str] = []
+    for raw in (
+        session_state.get(PRACTICE_SOURCE_PICK_KEY),
+        (session_state.get(LAST_CATALOG_STATE_KEY) or {}).get("pick_key")
+        if isinstance(session_state.get(LAST_CATALOG_STATE_KEY), dict)
+        else None,
+        (session_state.get(CATALOG_BEFORE_CUSTOM_KEY) or {}).get("pick_key")
+        if isinstance(session_state.get(CATALOG_BEFORE_CUSTOM_KEY), dict)
+        else None,
+    ):
+        pk = str(raw or "").strip()
+        if _pick_key_is_catalog(pk):
+            candidates.append(pk)
+    recent = session_state.get(CATALOG_RECENT_PICK_KEYS)
+    if isinstance(recent, list):
+        for pk in recent:
+            text = str(pk or "").strip()
+            if _pick_key_is_catalog(text):
+                candidates.append(text)
+    live = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if _pick_key_is_catalog(live):
+        candidates.append(live)
+    meta = session_state.get("active_song_state")
+    if isinstance(meta, dict):
+        mp = str(meta.get("pick_key") or "").strip()
+        if _pick_key_is_catalog(mp):
+            candidates.append(mp)
+    for pk in candidates:
+        return pk
+    return ""
+
+
+def activate_catalog_pick_for_backing(
+    session_state: dict[str, Any],
+    pick_key: str,
+    *,
+    st_like: Any | None = None,
+) -> str:
+    """Promote a catalog pick into session for catalog backing — returns original key."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+    pick_key = str(pick_key or "").strip()
+    if not _pick_key_is_catalog(pick_key):
+        pick_key = resolve_last_catalog_pick_key(session_state)
+    snap: dict[str, Any] | None = None
+    for key in (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY):
+        raw = session_state.get(key)
+        if isinstance(raw, dict) and str(raw.get("pick_key") or "").strip() == pick_key:
+            snap = raw
+            break
+    set_catalog_source(session_state)
+    if pick_key:
+        session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
+    selected: dict[str, Any] = {}
+    original_key = "C"
+    if snap:
+        raw_sel = snap.get("selected_song")
+        if isinstance(raw_sel, dict):
+            selected = dict(raw_sel)
+        original_key = str(
+            snap.get("original_key") or selected.get("key") or "C"
+        ).strip() or "C"
+    elif isinstance(session_state.get(SELECTED_SONG_STATE_KEY), dict):
+        selected = dict(session_state[SELECTED_SONG_STATE_KEY])
+        original_key = str(
+            selected.get("key") or session_state.get("original_key") or "C"
+        ).strip() or "C"
+    if selected:
+        selected["pick_key"] = pick_key or str(selected.get("pick_key") or "").strip()
+        session_state[SELECTED_SONG_STATE_KEY] = selected
+        title = str(selected.get("title") or "").strip()
+        if title:
+            session_state["song"] = title
+    try:
+        from active_song_state import canonical_active_song_context
+
+        canon = canonical_active_song_context(session_state)
+        if isinstance(canon, dict):
+            if pick_key and str(canon.get("pick_key") or "").strip() == pick_key:
+                original_key = str(canon.get("original_key") or original_key).strip() or original_key
+            elif not pick_key:
+                cp = str(canon.get("pick_key") or "").strip()
+                if _pick_key_is_catalog(cp):
+                    original_key = str(canon.get("original_key") or original_key).strip() or original_key
+    except ImportError:
+        pass
+    _ = st_like
+    return original_key
+
+
+def ensure_custom_progression_for_backing(session_state: dict[str, Any]) -> None:
+    """Ensure CPL active progression exists for Use Custom Progression Backing."""
+    try:
+        from custom_progression_lab import (
+            CPL_ACTIVE_KEY,
+            default_active_progression,
+            ensure_original_structure,
+        )
+    except ImportError:
+        return
+    active = session_state.get(CPL_ACTIVE_KEY)
+    if not isinstance(active, dict) or not active.get("original_sections"):
+        active = default_active_progression()
+    session_state[CPL_ACTIVE_KEY] = ensure_original_structure(active)
+    set_custom_source(session_state)

@@ -6988,6 +6988,9 @@ def _stop_backing_playback() -> None:
     st.session_state[BACKING_AUTOPLAY] = False
     st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
     st.session_state["_backing_transport_user_stopped"] = True
+    st.session_state["_backing_audio_player_rev"] = (
+        int(st.session_state.get("_backing_audio_player_rev") or 0) + 1
+    )
     st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback stopped"
     st.session_state["backing_lead_sheet_open"] = False
     st.session_state.pop("playback_start_time", None)
@@ -11968,13 +11971,17 @@ elif _studio_page == "backing":
         and st.session_state.get("_last_backing_signature") == _current_backing_signature
     )
     _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
-    if _backing_audio_ready and not _leadsheet_open:
+    if _backing_audio_ready and not _leadsheet_open and not st.session_state.get(
+        "_backing_transport_user_stopped"
+    ):
         st.markdown("#### Audio player")
         record_backing_timing_event(st.session_state, "audio_load_complete")
+        _player_rev = int(st.session_state.get("_backing_audio_player_rev") or 0)
         st.audio(
             st.session_state["_last_backing_wav"],
             format="audio/wav",
             autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+            key=f"backing_wav_player_{_player_rev}",
         )
         if st.session_state.get(BACKING_AUTOPLAY, False):
             st.caption("Playback started — use the player controls below.")

@@ -1356,12 +1356,31 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     except ImportError:
         session.pop("_creative_concert_key_source", None)
     try:
-        from songs.music_source import set_catalog_source
+        from songs.music_source import (
+            activate_catalog_pick_for_backing,
+            ensure_custom_progression_for_backing,
+            resolve_last_catalog_pick_key,
+            set_catalog_source,
+        )
 
         set_catalog_source(session)
     except ImportError:
-        pass
-    original = _original_key_for_active_song(session)
+        activate_catalog_pick_for_backing = None  # type: ignore[misc,assignment]
+        ensure_custom_progression_for_backing = None  # type: ignore[misc,assignment]
+        resolve_last_catalog_pick_key = None  # type: ignore[misc,assignment]
+        try:
+            from songs.music_source import set_catalog_source
+
+            set_catalog_source(session)
+        except ImportError:
+            pass
+    pick_key = ""
+    if resolve_last_catalog_pick_key is not None:
+        pick_key = resolve_last_catalog_pick_key(session)
+    if activate_catalog_pick_for_backing is not None:
+        original = activate_catalog_pick_for_backing(session, pick_key, st_like=st_like)
+    else:
+        original = _original_key_for_active_song(session)
     _apply_original_song_display_key(session, original, st_like=st_like)
     set_backing_source_preference(session, BACKING_PREF_CATALOG)
     ctx = build_regular_song_context(session)
@@ -1393,12 +1412,17 @@ def restore_custom_song_backing(session: dict[str, Any], *, st_like: Any | None 
     except ImportError:
         session.pop("_creative_concert_key_source", None)
     try:
-        from songs.music_source import cpl_session_is_active, set_custom_source
+        from songs.music_source import ensure_custom_progression_for_backing
 
-        if cpl_session_is_active(session):
-            set_custom_source(session)
+        ensure_custom_progression_for_backing(session)
     except ImportError:
-        pass
+        try:
+            from songs.music_source import cpl_session_is_active, set_custom_source
+
+            if cpl_session_is_active(session):
+                set_custom_source(session)
+        except ImportError:
+            pass
     ctx = build_custom_progression_context(session)
     concert = str(ctx.concert_key or ctx.display_key or ctx.key or "").strip()
     if concert:
@@ -1529,13 +1553,32 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
     """Re-sync valid Creative/custom context after backing page song-default logic."""
     ctx = get_backing_context(session)
     pref = get_backing_source_preference(session)
+
+    def _sync_sidebar_to_ctx(context: BackingContext | None) -> None:
+        if context is None:
+            return
+        concert = str(
+            context.concert_key or context.display_key or context.key or ""
+        ).strip()
+        if not concert:
+            return
+        try:
+            from session_widget_safe import safe_assign_display_key
+
+            safe_assign_display_key(session, concert, widget_safe=True, st_like=st_like)
+        except ImportError:
+            session["concert_key"] = concert
+            session["_pending_display_key"] = concert
+
     if ctx is not None and ctx.source == "regular_song":
+        _sync_sidebar_to_ctx(ctx)
         flush_pending_backing_handoff_keys(
             session,
             sync_id=str(session.get("_backing_trace_sync_id") or ""),
         )
         return
     if pref in {BACKING_PREF_CATALOG, BACKING_PREF_CUSTOM}:
+        _sync_sidebar_to_ctx(ctx)
         flush_pending_backing_handoff_keys(
             session,
             sync_id=str(session.get("_backing_trace_sync_id") or ""),

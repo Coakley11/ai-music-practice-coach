@@ -370,7 +370,7 @@ def _tab_entry_modes(
             except Exception:
                 _style_key_opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
             st.selectbox(
-                "Key",
+                "Concert Key",
                 _style_key_opts,
                 key="improv_style_key",
                 on_change=on_improv_style_key_change,
@@ -489,7 +489,7 @@ def _tab_entry_modes(
             except ImportError:
                 _jam_key_opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
             key_c = st.selectbox(
-                "Key",
+                "Concert Key",
                 _jam_key_opts,
                 key="improv_jam_key",
                 on_change=on_improv_jam_key_change,

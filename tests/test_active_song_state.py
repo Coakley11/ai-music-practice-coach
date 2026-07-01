@@ -225,6 +225,24 @@ class TestActiveSongState(unittest.TestCase):
         self.assertEqual(session["display_key"], "Widget Key")
         self.assertEqual(session["active_song_state"]["display_key"], "Widget Key")
 
+    def test_autosave_does_not_mutate_chart_widget_after_instantiated(self) -> None:
+        """Chart checkbox is widget-bound — late canonical apply must not overwrite live value."""
+        session = {
+            **dict(_SAMPLE),
+            ACTIVE_CATALOG_PICK_KEY: _PICK_KEY,
+            "display_key": "G",
+            CHART_IN_INSTRUMENT_KEY_KEY: True,
+            "_music_restore_phase_complete": True,
+        }
+        write_canonical_active_song_state(session, _SAMPLE, reason="setup")
+        write_canonical_active_song_state(
+            session,
+            {**_SAMPLE, CHART_IN_INSTRUMENT_KEY_KEY: False},
+            reason="autosave",
+        )
+        self.assertTrue(session[CHART_IN_INSTRUMENT_KEY_KEY])
+        self.assertFalse(session["active_song_state"][CHART_IN_INSTRUMENT_KEY_KEY])
+
     def test_written_key_checkbox_prepare_and_cloud_restore(self) -> None:
         session = {
             "active_song_state": {

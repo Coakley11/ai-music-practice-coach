@@ -284,15 +284,20 @@ def restore_session_widgets_from_backing_context(
     widget_safe: bool = True,
 ) -> None:
     """Push backing_context snapshot fields into Creative/custom session widgets."""
-    try:
-        from creative_session_state import apply_creative_session_to_session, get_creative_session
+    if ctx.source in {"custom_progression", "regular_song"}:
+        concert = str(
+            ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
+        ).strip()
+        if concert:
+            try:
+                from session_widget_safe import safe_assign_display_key
 
-        sess = get_creative_session(session)
-        if sess is not None:
-            apply_creative_session_to_session(session, sess, widget_safe=widget_safe)
-            return
-    except ImportError:
-        pass
+                safe_assign_display_key(session, concert, widget_safe=widget_safe)
+            except ImportError:
+                session["concert_key"] = concert
+                session["display_key"] = concert
+                session["_pending_display_key"] = concert
+        return
 
     concert = str(
         ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
@@ -306,9 +311,6 @@ def restore_session_widgets_from_backing_context(
             session["concert_key"] = concert
             session["display_key"] = concert
             session["_pending_display_key"] = concert
-
-    if ctx.source in {"custom_progression", "regular_song"}:
-        return
 
     session["creative_lab_analysis_mode"] = "Improvisation Intelligence"
     session["creative_lab_last_mode"] = "Improvisation Intelligence"
@@ -389,6 +391,48 @@ def restore_session_widgets_from_backing_context(
             }
         )
         session["improv_style_meta"] = meta
+
+    try:
+        from backing_context import BACKING_PREF_CREATIVE, set_backing_source_preference
+
+        set_backing_source_preference(session, BACKING_PREF_CREATIVE)
+    except ImportError:
+        pass
+
+    try:
+        from creative_session_state import (
+            apply_creative_session_to_session,
+            get_creative_session,
+            set_creative_session,
+            sync_creative_session_from_session,
+        )
+
+        sess = get_creative_session(session)
+        if sess is None:
+            sync_creative_session_from_session(session)
+            sess = get_creative_session(session)
+        if sess is not None:
+            if ctx.source == "entry_jam" and ctx.entry_mode:
+                sess.entry_mode = str(ctx.entry_mode).strip()
+            elif ctx.source == "song_improv":
+                sess.entry_mode = "Song-Based Improvisation"
+            elif ctx.source == "mission":
+                sess.entry_mode = str(ctx.entry_mode or "Song-Based Improvisation").strip()
+            if concert:
+                sess.concert_key = concert
+                if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+                    try:
+                        from creative_key_sync import to_major_key_preserve_spelling
+
+                        sess.display_key = to_major_key_preserve_spelling(concert)
+                    except ImportError:
+                        sess.display_key = concert
+                else:
+                    sess.display_key = concert
+            set_creative_session(session, sess)
+            apply_creative_session_to_session(session, sess, widget_safe=widget_safe)
+    except ImportError:
+        pass
 
 
 def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnPage:

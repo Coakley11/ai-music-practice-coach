@@ -368,5 +368,97 @@ class TestCatalogCreativeOwnershipP0(unittest.TestCase):
         self.assertFalse(creative_session_is_active(session))
 
 
+class TestCatalogCustomBackingResolution(unittest.TestCase):
+    def test_resolve_last_catalog_pick_skips_custom(self) -> None:
+        from songs.music_source import LAST_CATALOG_STATE_KEY, resolve_last_catalog_pick_key
+
+        session = {
+            "active_catalog_pick_key": "custom::trial",
+            LAST_CATALOG_STATE_KEY: {
+                "pick_key": "Pop::Photograph",
+                "selected_song": {"title": "Photograph", "key": "E"},
+                "original_key": "E",
+            },
+        }
+        self.assertEqual(resolve_last_catalog_pick_key(session), "Pop::Photograph")
+
+    def test_restore_catalog_uses_last_catalog_not_custom(self) -> None:
+        from songs.music_source import LAST_CATALOG_STATE_KEY
+
+        session = {
+            "active_catalog_pick_key": "custom::trial",
+            "selected_song": {"title": "trial song", "key": "C", "pick_key": "custom::trial"},
+            "song": "trial song",
+            "display_key": "F",
+            "concert_key": "F",
+            LAST_CATALOG_STATE_KEY: {
+                "pick_key": "Pop::Photograph",
+                "selected_song": {"title": "Photograph", "key": "E", "pick_key": "Pop::Photograph"},
+                "original_key": "E",
+                "display_key": "E",
+            },
+            "improv_generated_sections": {"12-bar blues": ["G7"]},
+        }
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            ctx = restore_regular_song_backing(session, st_like=st_like)
+        self.assertEqual(ctx.source, "regular_song")
+        self.assertEqual(session.get("active_catalog_pick_key"), "Pop::Photograph")
+        self.assertEqual(session.get("concert_key"), "E")
+
+
+class TestReturnToCreativeToolRestore(unittest.TestCase):
+    def test_return_from_entry_jam_restores_jam_session_generator(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, build_entry_jam_context
+        from backing_source_navigation import prepare_return_to_backing_source
+
+        session = {
+            "improv_entry_mode": "Style Jam Mode",
+            "creative_session": {
+                "tool_type": "entry_style_jam",
+                "entry_mode": "Style Jam Mode",
+                "concert_key": "G",
+                "style": "Blues",
+                "sections": {"12-bar blues": ["G7", "C7", "D7"]},
+            },
+        }
+        ctx = build_entry_jam_context(
+            {
+                **session,
+                "improv_entry_mode": "Jam Session Generator",
+                "improv_jam_style": "Blues",
+                "improv_jam_key": "F",
+                "improv_jam_bpm": 70,
+                "improv_jam_mood": "Mellow",
+                "improv_jam_session": {
+                    "title": "Jam",
+                    "sections": {"Blues (Jam)": ["F7", "Bb7", "C7"]},
+                },
+            }
+        )
+        ctx.entry_mode = "Jam Session Generator"
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
+        page = prepare_return_to_backing_source(session)
+        self.assertEqual(page, "creative")
+        self.assertEqual(session.get("improv_entry_mode"), "Jam Session Generator")
+        self.assertEqual(session.get("improv_jam_key"), ctx.concert_key)
+
+    def test_return_from_song_improv_restores_song_based_mode(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, build_song_improv_context
+        from backing_source_navigation import prepare_return_to_backing_source
+
+        session = {
+            "improv_entry_mode": "Style Jam Mode",
+            "active_catalog_pick_key": "say|artist",
+            "song": "Say",
+            "display_key": "G",
+        }
+        ctx = build_song_improv_context(session)
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
+        page = prepare_return_to_backing_source(session)
+        self.assertEqual(page, "creative")
+        self.assertEqual(session.get("improv_entry_mode"), "Song-Based Improvisation")
+
+
 if __name__ == "__main__":
     unittest.main()

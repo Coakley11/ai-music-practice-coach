@@ -998,13 +998,48 @@ def _apply_context_to_session_keys(
         except ImportError:
             pass
     if mutate_written_key and _written_key_is_set(ctx):
-        session[CHART_IN_INSTRUMENT_KEY_KEY] = bool(ctx[CHART_IN_INSTRUMENT_KEY_KEY])
+        try:
+            from session_widget_safe import safe_session_assign
+
+            safe_session_assign(
+                session,
+                CHART_IN_INSTRUMENT_KEY_KEY,
+                bool(ctx[CHART_IN_INSTRUMENT_KEY_KEY]),
+                widget_safe=True,
+            )
+        except ImportError:
+            try:
+                session[CHART_IN_INSTRUMENT_KEY_KEY] = bool(ctx[CHART_IN_INSTRUMENT_KEY_KEY])
+            except Exception as exc:
+                _log_widget_bound_session_mutation_blocked(
+                    CHART_IN_INSTRUMENT_KEY_KEY, global_control_source, exc
+                )
     anchor = str(ctx.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
     if mutate_written_key and anchor:
-        session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+        try:
+            from session_widget_safe import safe_session_assign
+
+            safe_session_assign(
+                session,
+                WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+                anchor,
+                widget_safe=True,
+            )
+        except ImportError:
+            session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
     subtype = str(ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
     if mutate_transposing_subtype and subtype:
-        session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+        try:
+            from session_widget_safe import safe_session_assign
+
+            safe_session_assign(
+                session,
+                SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+                subtype,
+                widget_safe=True,
+            )
+        except ImportError:
+            session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
     try:
         from guitar_capo import apply_capo_context_fields
 
