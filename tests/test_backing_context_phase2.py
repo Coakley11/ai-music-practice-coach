@@ -241,7 +241,12 @@ class TestBackingContextPhase2(unittest.TestCase):
         self.assertIn("82 BPM", banner)
 
     def test_reconcile_does_not_queue_rerun(self) -> None:
-        from backing_context import BACKING_CONTEXT_KEY, reconcile_backing_context_on_backing_page
+        from backing_context import (
+            BACKING_CONTEXT_KEY,
+            BACKING_PREF_CREATIVE,
+            reconcile_backing_context_on_backing_page,
+            set_backing_source_preference,
+        )
 
         session = {
             "active_catalog_pick_key": "say|artist",
@@ -267,6 +272,7 @@ class TestBackingContextPhase2(unittest.TestCase):
                 "bound_pick_key": "say|artist",
             },
         }
+        set_backing_source_preference(session, BACKING_PREF_CREATIVE)
         st_like = SimpleNamespace(session_state=session)
         with patch("backing_track_state.write_canonical_backing_state"):
             reconcile_backing_context_on_backing_page(session, st_like=st_like)

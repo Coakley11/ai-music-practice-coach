@@ -80,6 +80,12 @@ def restore_practice_source_display_key(session: dict[str, Any], *, st_like: Any
 def hydrate_practice_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Re-apply active practice song context when entering Practice (Case A)."""
     try:
+        from music_source_ownership import reconcile_source_ownership
+
+        reconcile_source_ownership(session, st_like=st_like)
+    except ImportError:
+        pass
+    try:
         from backing_context import active_creative_backing_context
 
         if active_creative_backing_context(session) is not None:
@@ -123,6 +129,26 @@ def hydrate_practice_source_for_page(session: dict[str, Any], *, st_like: Any | 
 def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext | None:
     """Open Backing Studio for the current Practice catalog/custom source (Case C)."""
     snapshot_practice_source_display_key(session)
+    try:
+        from music_source_ownership import (
+            activate_catalog_ownership,
+            activate_custom_ownership,
+            intended_practice_owner,
+        )
+
+        owner = intended_practice_owner(session)
+        if owner == "custom":
+            try:
+                from songs.music_source import ensure_custom_active_song_identity
+
+                ensure_custom_active_song_identity(session)
+            except ImportError:
+                pass
+            return activate_custom_ownership(session, st_like=st_like)
+        if owner == "catalog":
+            return activate_catalog_ownership(session, st_like=st_like)
+    except ImportError:
+        pass
     try:
         from backing_context import (
             BACKING_PREF_CATALOG,
@@ -172,6 +198,12 @@ def _open_live_practice_backing(session: dict[str, Any], *, st_like: Any | None 
 
 def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Apply backing navigation intent and preserve last Backing Studio source (Cases B + refresh)."""
+    try:
+        from music_source_ownership import reconcile_source_ownership
+
+        reconcile_source_ownership(session, st_like=st_like)
+    except ImportError:
+        pass
     intent = consume_backing_open_intent(session)
     if intent == BACKING_INTENT_FROM_PRACTICE:
         open_backing_for_practice_source(session, st_like=st_like)
@@ -455,9 +487,28 @@ def _render_source_ownership_dev_table_body(st: Any, session: dict[str, Any]) ->
     except Exception:
         pass
 
+    owners_aligned = "n/a"
+    intended_owner = "n/a"
+    backing_owner = "n/a"
+    try:
+        from music_source_ownership import (
+            current_backing_owner,
+            intended_practice_owner,
+            practice_backing_owners_align,
+        )
+
+        intended_owner = _diag_value(intended_practice_owner(session), default="none")
+        backing_owner = _diag_value(current_backing_owner(session), default="none")
+        owners_aligned = str(practice_backing_owners_align(session))
+    except Exception:
+        pass
+
     rows = {
         "page": _diag_value(session.get("studio_page")),
         "active_music_source": _diag_value(source_type),
+        "intended_practice_owner": intended_owner,
+        "current_backing_owner": backing_owner,
+        "practice_backing_aligned": owners_aligned,
         "active_song_title": _diag_value(
             session.get("song") or session.get("active_song_title")
         ),

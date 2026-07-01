@@ -525,7 +525,14 @@ def build_regular_song_context(session: dict[str, Any]) -> BackingContext:
     _, display_key, concert_key = _live_backing_concert_keys(session)
     if not concert_key:
         concert_key = display_key = original_key
-    if pref == BACKING_PREF_CATALOG:
+    catalog_practice = False
+    try:
+        from music_source_ownership import intended_practice_owner
+
+        catalog_practice = intended_practice_owner(session) == "catalog"
+    except ImportError:
+        pass
+    if catalog_practice or pref == BACKING_PREF_CATALOG:
         bpm = _canonical_active_song_bpm(session)
         groove = _canonical_active_song_groove(session)
     else:
@@ -1446,7 +1453,15 @@ def clear_backing_source_preference(session: dict[str, Any]) -> None:
 
 
 def catalog_or_custom_backing_is_authoritative(session: dict[str, Any]) -> bool:
-    """True when catalog or custom backing owns key/progression (Creative must not reclaim)."""
+    """True when catalog or custom practice owns key/progression (Creative must not reclaim)."""
+    try:
+        from music_source_ownership import intended_practice_owner
+
+        practice = intended_practice_owner(session)
+        if practice in {"catalog", "custom"}:
+            return True
+    except ImportError:
+        pass
     pref = get_backing_source_preference(session)
     if pref in {BACKING_PREF_CATALOG, BACKING_PREF_CUSTOM}:
         return True
@@ -1458,6 +1473,18 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
     """True when live catalog/custom practice should replace a Creative backing_context."""
     if ctx is not None and ctx.source in {"regular_song", "custom_progression"}:
         return False
+    try:
+        from music_source_ownership import intended_practice_owner
+
+        practice = intended_practice_owner(session)
+        if practice is None:
+            return False
+        if practice == "catalog":
+            return ctx is None or ctx.source != "regular_song"
+        if practice == "custom":
+            return ctx is None or ctx.source != "custom_progression"
+    except ImportError:
+        pass
     try:
         from songs.music_source import (
             cpl_session_is_active,
@@ -1473,8 +1500,6 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
             return True
     except ImportError:
         pass
-    if get_backing_source_preference(session) == BACKING_PREF_CREATIVE:
-        return False
     if get_backing_source_preference(session) in {BACKING_PREF_CATALOG, BACKING_PREF_CUSTOM}:
         return True
     return False
@@ -1512,6 +1537,11 @@ def _release_creative_backing_ownership(session: dict[str, Any]) -> None:
         "improv_groove",
         "improv_jam_mood",
         "improv_song_source",
+        "improv_style_bpm",
+        "improv_jam_bpm",
+        "improv_style_key",
+        "improv_jam_key",
+        "improv_style_meter",
     ):
         session.pop(key, None)
     try:
@@ -1814,6 +1844,12 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
 
 def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Re-sync valid Creative/custom context after backing page song-default logic."""
+    try:
+        from music_source_ownership import reconcile_source_ownership
+
+        reconcile_source_ownership(session, st_like=st_like)
+    except ImportError:
+        pass
     ctx = get_backing_context(session)
     pref = get_backing_source_preference(session)
 
