@@ -179,6 +179,73 @@ class TestDisplayKeyActiveSongSync(unittest.TestCase):
         self.assertEqual(st.session_state["display_key"], "C#m")
         self.assertNotIn(USER_CATALOG_SOURCE_CHOICE_KEY, st.session_state)
 
+    def test_restore_previous_catalog_song_widget_safe_after_display_key_widget(
+        self,
+    ) -> None:
+        """Load Last Song must not write locked display_key after sidebar widget exists."""
+        from music_restore_phase import complete_music_restore_phase
+        from songs.key_state import PENDING_DISPLAY_KEY
+        from songs.music_source import LAST_CATALOG_STATE_KEY, restore_previous_catalog_song
+
+        pk_day = format_pick_key("Rock", "Day Tripper — The Beatles")
+        pk_say = format_pick_key("Pop", "Say — John Mayer")
+        catalog = {
+            "Rock": {
+                "Day Tripper — The Beatles": {
+                    "title": "Day Tripper",
+                    "artist": "The Beatles",
+                    "key": "E",
+                    "genre": "Rock",
+                },
+            },
+            "Pop": {
+                "Say — John Mayer": {
+                    "title": "Say",
+                    "artist": "John Mayer",
+                    "key": "G",
+                    "genre": "Pop",
+                },
+            },
+        }
+        st = _fake_st(
+            {
+                ACTIVE_CATALOG_PICK_KEY: pk_say,
+                _LAST_PICK_KEY: pk_say,
+                "display_key": "G",
+                SELECTED_SONG_STATE_KEY: {
+                    "pick_key": pk_say,
+                    "title": "Say",
+                    "artist": "John Mayer",
+                    "key": "G",
+                },
+                LAST_CATALOG_STATE_KEY: {
+                    "pick_key": pk_day,
+                    "selected_song": {
+                        "pick_key": pk_day,
+                        "title": "Day Tripper",
+                        "artist": "The Beatles",
+                        "key": "E",
+                    },
+                    "original_key": "E",
+                    "display_key": "E",
+                },
+            }
+        )
+        complete_music_restore_phase(st.session_state)
+        with patch("songs.state.persist_music_local_state"):
+            ok = restore_previous_catalog_song(
+                st,
+                song_picker_catalog=catalog,
+                invalidate_backing=lambda _st: None,
+            )
+        self.assertTrue(ok)
+        ss = st.session_state
+        self.assertEqual(ss[ACTIVE_CATALOG_PICK_KEY], pk_day)
+        self.assertEqual(ss[SELECTED_SONG_STATE_KEY]["title"], "Day Tripper")
+        self.assertEqual(ss["display_key"], "G")
+        self.assertEqual(ss[PENDING_DISPLAY_KEY], "E")
+        self.assertEqual(ss.get("concert_key"), "E")
+
     def test_apply_saved_music_context_restore_uses_core_display_key(self) -> None:
         from songs.key_state import PENDING_DISPLAY_KEY
         from songs.state import apply_saved_music_context

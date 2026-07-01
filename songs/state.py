@@ -885,8 +885,14 @@ def apply_pick_key(
             force_reset=user_song_change,
         )
         if is_restore and restore_display_key:
-            st.session_state[PENDING_DISPLAY_KEY] = restore_display_key
-            st.session_state["display_key"] = restore_display_key
+            from session_widget_safe import safe_assign_display_key
+
+            safe_assign_display_key(
+                st.session_state,
+                restore_display_key,
+                widget_safe=True,
+                st_like=st,
+            )
         st.session_state[BACKING_NEEDS_REGEN] = False
         st.session_state.pop("multitrack_backing_wav", None)
         st.session_state.pop("multitrack_backing_music_wav", None)

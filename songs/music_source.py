@@ -408,7 +408,13 @@ def commit_catalog_active_song(
         "selected_song": dict(selected_song),
         "music_source": SOURCE_CATALOG,
     }
-    write_canonical_active_song_state(session, ctx, reason=reason, local_edit=True)
+    write_canonical_active_song_state(
+        session,
+        ctx,
+        reason=reason,
+        local_edit=True,
+        mutate_display_key=False,
+    )
     try:
         from songs.state import persist_music_local_state
 
