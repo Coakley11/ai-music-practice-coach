@@ -175,18 +175,7 @@ def clear_creative_session(session: dict[str, Any]) -> None:
     session.pop(CREATIVE_SESSION_KEY, None)
 
 
-def creative_session_is_active(session: dict[str, Any]) -> bool:
-    """True when a standalone Creative jam workflow should own key/BPM state."""
-    try:
-        from backing_context import catalog_or_custom_backing_is_authoritative
-
-        if catalog_or_custom_backing_is_authoritative(session):
-            return False
-    except ImportError:
-        pass
-    sess = get_creative_session(session)
-    if sess is None:
-        return False
+def _creative_session_blob_has_workflow(sess: CreativeSession) -> bool:
     if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
         return bool(sess.sections) or bool(sess.style)
     if sess.tool_type == "song_based_improvisation":
@@ -194,6 +183,26 @@ def creative_session_is_active(session: dict[str, Any]) -> bool:
     if sess.tool_type == "mission":
         return bool(sess.mission_id)
     return False
+
+
+def creative_session_is_active(session: dict[str, Any]) -> bool:
+    """True when a standalone Creative jam workflow should own key/BPM state."""
+    sess = get_creative_session(session)
+    if sess is None:
+        return False
+    if not _creative_session_blob_has_workflow(sess):
+        return False
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page == "creative" and sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+        return True
+    try:
+        from backing_context import catalog_or_custom_backing_is_authoritative
+
+        if catalog_or_custom_backing_is_authoritative(session):
+            return False
+    except ImportError:
+        pass
+    return True
 
 
 def _sections_from_session(session: dict[str, Any], entry_mode: str) -> dict[str, list[str]]:

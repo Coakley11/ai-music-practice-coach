@@ -153,6 +153,64 @@ def test_multitrack_restore_when_slot_map_empty_but_snapshot_has_audio() -> None
     assert ss.get("mt_tracks", {}).get("Guitar") == audio
 
 
+def test_entry_jam_refresh_prefers_creative_session_over_stale_snapshot() -> None:
+    from creative_session_state import CREATIVE_SESSION_KEY, CreativeSession, set_creative_session
+    from studio_page_persistence import capture_page_snapshot, reset_page_snapshot_tracker
+
+    jam_sections = {"Blues": ["F7", "Bb7", "F7"]}
+    session_blob = CreativeSession(
+        session_id="jam-1",
+        tool_type="jam_session_generator",
+        entry_mode="Jam Session Generator",
+        style="Blues",
+        concert_key="F",
+        display_key="F",
+        bpm=90,
+        mood="Mellow",
+        sections=jam_sections,
+    ).to_dict()
+    ss = {
+        "studio_page": "creative",
+        "active_catalog_pick_key": "Pop::In My Life",
+        "backing_context": {
+            "source": "regular_song",
+            "song_title": "In My Life",
+            "key": "A",
+            "concert_key": "A",
+            "bpm": 100,
+        },
+        CREATIVE_SESSION_KEY: session_blob,
+        "improv_jam_style": "Blues",
+        "improv_jam_key": "F",
+        "improv_jam_bpm": 90,
+        "improv_jam_mood": "Mellow",
+        "improv_jam_session": {"sections": jam_sections},
+        "improv_entry_mode": "Jam Session Generator",
+        "_studio_page_snapshots": {
+            "creative": capture_page_snapshot(
+                {
+                    "studio_page": "creative",
+                    "improv_entry_mode": "Song-Based Improvisation",
+                    "improv_jam_style": "Jazz Swing",
+                    "improv_jam_key": "Eb",
+                    "improv_jam_bpm": 120,
+                    "improv_jam_mood": "Dark",
+                    "improv_style": "Bossa Nova",
+                },
+                "creative",
+            ),
+        },
+    }
+    reset_page_snapshot_tracker(ss)
+    restore_current_page_snapshot_if_needed(ss)
+    assert ss.get("improv_entry_mode") == "Jam Session Generator"
+    assert ss.get("improv_jam_style") == "Blues"
+    assert ss.get("improv_jam_key") == "F"
+    assert int(ss.get("improv_jam_bpm") or 0) == 90
+    assert ss.get("improv_jam_mood") == "Mellow"
+    assert ss.get("improv_jam_session", {}).get("sections") == jam_sections
+
+
 def test_practice_history_file_survives_reload(tmp_path: Path, monkeypatch) -> None:
     import music_workspace_paths as mwp
 

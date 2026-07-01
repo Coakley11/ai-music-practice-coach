@@ -627,6 +627,19 @@ def on_global_display_key_change(session_state, display_key):
     last = session_state.get(CPL_LAST_DISPLAY_KEY)
     if last is None:
         session_state[CPL_LAST_DISPLAY_KEY] = display_key
+        try:
+            from backing_context import get_backing_context, refresh_backing_context_from_session, set_backing_context
+            from songs.key_state import BACKING_NEEDS_REGEN
+
+            ctx = get_backing_context(session_state)
+            if ctx is not None and ctx.source == "custom_progression":
+                session_state["concert_key"] = str(display_key or "").strip() or display_key
+                refreshed = refresh_backing_context_from_session(session_state)
+                if refreshed is not None:
+                    set_backing_context(session_state, refreshed)
+                session_state[BACKING_NEEDS_REGEN] = True
+        except ImportError:
+            pass
         return False
     if last != display_key:
         session_state[CPL_LAST_DISPLAY_KEY] = display_key

@@ -627,6 +627,22 @@ def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
     current = str(session_state.get("studio_page") or "practice").strip() or "practice"
     if page_snapshot_hydrated(session_state, current):
         return
+    if current == "creative":
+        try:
+            from creative_session_state import (
+                apply_creative_session_to_session,
+                creative_session_is_active,
+                get_creative_session,
+            )
+
+            sess = get_creative_session(session_state)
+            if sess is not None and creative_session_is_active(session_state):
+                apply_creative_session_to_session(session_state, sess, widget_safe=False)
+                if mark_page_snapshot_hydrated is not None:
+                    mark_page_snapshot_hydrated(session_state, current)
+                return
+        except ImportError:
+            pass
     store = session_state.get(_PAGE_SNAPSHOTS_KEY) or {}
     snap = store.get(current) if isinstance(store, dict) else None
     if not snap:

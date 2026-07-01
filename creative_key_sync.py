@@ -492,6 +492,17 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
     options = practice_keys_for_mode(key_mode(selected))
     if selected not in options:
         options = [selected] + options
+    if ctx_source == "custom_progression":
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if pending is not None:
+            _apply_display_key_before_widget(st, selected, source="backing_context_concert")
+            session["concert_key"] = selected
+        elif live:
+            session["concert_key"] = live
+        else:
+            _apply_display_key_before_widget(st, selected, source="backing_context_concert")
+            session["concert_key"] = selected
+        return options
     _apply_display_key_before_widget(st, selected, source="backing_context_concert")
     session["concert_key"] = selected
     return options

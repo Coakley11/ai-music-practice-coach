@@ -647,6 +647,71 @@ class TestCustomProgressionConcertKey(unittest.TestCase):
         self.assertEqual(session.get("display_key"), "E")
         self.assertEqual(session.get("catalog_restore_pick_source"), "catalog_before_custom")
 
+    def test_switch_to_catalog_backing_prefers_catalog_before_creative_over_stale_custom(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, build_custom_progression_context, restore_regular_song_backing
+        from song_catalog.catalog import format_pick_key
+        from songs.music_source import (
+            CATALOG_BEFORE_CREATIVE_KEY,
+            CATALOG_BEFORE_CUSTOM_KEY,
+            LAST_CATALOG_STATE_KEY,
+            resolve_catalog_pick_for_backing_restore_with_source,
+        )
+
+        in_my_life_pick = format_pick_key("Pop", "In My Life")
+        say_pick = format_pick_key("Pop", "Say")
+        session = self._trial_session(display_key="D")
+        session.update(
+            {
+                "active_catalog_pick_key": "custom::trial-1",
+                "active_music_source": "custom_progression",
+                CATALOG_BEFORE_CREATIVE_KEY: {
+                    "pick_key": in_my_life_pick,
+                    "selected_song": {"title": "In My Life", "key": "A", "pick_key": in_my_life_pick, "bpm": 100},
+                    "original_key": "A",
+                    "display_key": "A",
+                },
+                CATALOG_BEFORE_CUSTOM_KEY: {
+                    "pick_key": say_pick,
+                    "selected_song": {"title": "Say", "key": "G", "pick_key": say_pick, "bpm": 82},
+                    "original_key": "G",
+                    "display_key": "G",
+                },
+                LAST_CATALOG_STATE_KEY: {
+                    "pick_key": say_pick,
+                    "selected_song": {"title": "Say", "key": "G", "pick_key": say_pick, "bpm": 82},
+                    "original_key": "G",
+                    "display_key": "G",
+                },
+            }
+        )
+        pick, source = resolve_catalog_pick_for_backing_restore_with_source(
+            session,
+            reason="switch_to_catalog_backing",
+        )
+        self.assertEqual(pick, in_my_life_pick)
+        self.assertEqual(source, "catalog_before_creative")
+        ctx = build_custom_progression_context(session)
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            restored = restore_regular_song_backing(session, st_like=st_like)
+        self.assertEqual(restored.song_title, "In My Life")
+        self.assertEqual(session.get("catalog_restore_pick_source"), "catalog_before_creative")
+
+    def test_prepare_custom_sidebar_does_not_clobber_live_display_key(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, build_custom_progression_context, set_backing_context
+        from creative_key_sync import prepare_backing_context_sidebar_display_key
+
+        session = self._trial_session(display_key="E")
+        stale = build_custom_progression_context(self._trial_session(display_key="D"))
+        session[BACKING_CONTEXT_KEY] = stale.to_dict()
+        set_backing_context(session, stale)
+        st = SimpleNamespace(session_state=session)
+        options = prepare_backing_context_sidebar_display_key(st, session)
+        self.assertEqual(session.get("display_key"), "E")
+        self.assertEqual(session.get("concert_key"), "E")
+        self.assertIn("E", options)
+
     def test_picker_hydrate_resets_stale_leaked_key_for_trial_song(self) -> None:
         from backing_source_navigation import hydrate_picker_source_for_page
         from custom_progression_lab import CPL_ACTIVE_KEY, CPL_LAST_DISPLAY_KEY
