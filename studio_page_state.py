@@ -53,6 +53,7 @@ __all__ = (
     "migrate_legacy_session_keys",
     "note_page_visit",
     "persist_improv_intelligence_tab",
+    "resolve_improv_song_preview",
     "resolve_improv_song_source",
     "setdefault_if_missing",
     "sync_improv_song_source_for_handoff",
@@ -188,7 +189,15 @@ def init_analysis_page_state(session_state: dict) -> None:
 
 
 def resolve_improv_song_source(session_state: dict) -> str:
-    """Read Creative song source without writing widget keys."""
+    """Read Creative SBI song source without writing widget keys."""
+    for key in (
+        CREATIVE_BACKING_SONG_SOURCE_KEY,
+        PENDING_IMPROV_SONG_SOURCE,
+        "improv_song_source",
+    ):
+        val = str(session_state.get(key) or "").strip()
+        if val in IMPROV_SONG_SOURCES:
+            return val
     try:
         from songs.music_source import cpl_session_is_active
 
@@ -196,15 +205,102 @@ def resolve_improv_song_source(session_state: dict) -> str:
             return "Custom progression"
     except ImportError:
         pass
-    for key in (
-        CREATIVE_BACKING_SONG_SOURCE_KEY,
-        PENDING_IMPROV_SONG_SOURCE,
-        "improv_song_source",
-    ):
-        val = str(session_state.get(key) or "").strip()
-        if val:
-            return val
     return "Active song"
+
+
+def resolve_improv_song_preview(session_state: dict) -> dict[str, Any]:
+    """SBI song card preview — independent of temporary custom source toggles."""
+    source = resolve_improv_song_source(session_state)
+    if source == "Custom progression":
+        try:
+            from custom_progression_lab import (
+                CPL_ACTIVE_KEY,
+                default_active_progression,
+                ensure_original_structure,
+                written_home_key,
+            )
+
+            active = ensure_original_structure(
+                session_state.get(CPL_ACTIVE_KEY) or default_active_progression()
+            )
+            title = str(active.get("name") or "Custom progression").strip()
+            home = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
+            practice = (
+                str(
+                    session_state.get("display_key")
+                    or session_state.get("concert_key")
+                    or home
+                ).strip()
+                or home
+            )
+            sections_raw = (
+                active.get("original_sections")
+                if isinstance(active.get("original_sections"), dict)
+                else {}
+            )
+            sections = {
+                str(sec): [str(c) for c in chords if str(c).strip()]
+                for sec, chords in sections_raw.items()
+                if isinstance(chords, list)
+            }
+            return {
+                "source": source,
+                "title": title,
+                "artist": "Custom progression",
+                "display_key": practice,
+                "sections": sections,
+            }
+        except ImportError:
+            pass
+
+    try:
+        from songs.music_source import CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+    except ImportError:
+        return {
+            "source": source,
+            "title": "Active song",
+            "artist": "",
+            "display_key": "C",
+            "sections": {},
+        }
+
+    pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    sel = session_state.get(SELECTED_SONG_STATE_KEY)
+    snap: dict[str, Any] | None = None
+    if pick.startswith("custom::") or not isinstance(sel, dict) or not sel:
+        raw_snap = session_state.get(CATALOG_BEFORE_CUSTOM_KEY) or session_state.get(
+            LAST_CATALOG_STATE_KEY
+        )
+        snap = raw_snap if isinstance(raw_snap, dict) else None
+        if snap:
+            raw_sel = snap.get("selected_song")
+            if isinstance(raw_sel, dict):
+                sel = raw_sel
+            pick = str(snap.get("pick_key") or pick).strip()
+    if isinstance(sel, dict):
+        title = str(sel.get("title") or "Active song").strip()
+        artist = str(sel.get("artist") or "").strip()
+        display_key = str(
+            session_state.get("display_key")
+            or (snap.get("display_key") if snap else "")
+            or sel.get("key")
+            or "C"
+        ).strip() or "C"
+        return {
+            "source": source,
+            "title": title,
+            "artist": artist,
+            "display_key": display_key,
+            "sections": {},
+        }
+    return {
+        "source": source,
+        "title": "Active song",
+        "artist": "",
+        "display_key": "C",
+        "sections": {},
+    }
 
 
 def sync_improv_song_source_for_handoff(
@@ -214,7 +310,7 @@ def sync_improv_song_source_for_handoff(
     set_catalog_source: Callable[[dict], None],
     set_custom_source: Callable[[dict], None],
 ) -> None:
-    """Align music source for handoff — never writes widget-owned improv_song_source."""
+    """Align global music source when opening Practice/Backing from SBI."""
     src = str(source or "Active song").strip() or "Active song"
     session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = src
     session_state[PENDING_IMPROV_SONG_SOURCE] = src
@@ -222,6 +318,12 @@ def sync_improv_song_source_for_handoff(
         set_custom_source(session_state)
     else:
         set_catalog_source(session_state)
+        try:
+            from songs.music_source import restore_catalog_identity_from_snapshot
+
+            restore_catalog_identity_from_snapshot(session_state)
+        except ImportError:
+            pass
 
 
 def apply_improv_song_source(
@@ -235,12 +337,8 @@ def apply_improv_song_source(
     """Align global music source with Creative Lab song source choice."""
     src = str(source or "Active song").strip() or "Active song"
     if widget_safe:
-        sync_improv_song_source_for_handoff(
-            session_state,
-            src,
-            set_catalog_source=set_catalog_source,
-            set_custom_source=set_custom_source,
-        )
+        session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = src
+        session_state[PENDING_IMPROV_SONG_SOURCE] = src
         return
     session_state["improv_song_source"] = src
     session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = src

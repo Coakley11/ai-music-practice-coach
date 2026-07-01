@@ -78,6 +78,7 @@ from studio_page_state import (
     apply_improv_song_source,
     flush_pending_improv_song_source,
     init_improvisation_state,
+    resolve_improv_song_preview,
     resolve_improv_song_source,
     ensure_improv_entry_mode_restored,
     ensure_improv_intelligence_tab_restored,
@@ -290,7 +291,10 @@ def _tab_entry_modes(
     if entry == "Song-Based Improvisation":
         def _sync_song_source() -> None:
             if on_song_source_change:
-                on_song_source_change(resolve_improv_song_source(session_state))
+                on_song_source_change(
+                    str(session_state.get("improv_song_source") or "Active song").strip()
+                    or "Active song"
+                )
 
         st.markdown('<p class="ui-creative-section-label">Song source</p>', unsafe_allow_html=True)
         with st.container(key="creative_song_source_panel", border=False):
@@ -305,14 +309,20 @@ def _tab_entry_modes(
             )
             st.markdown("</div>", unsafe_allow_html=True)
 
+        song_preview = resolve_improv_song_preview(session_state)
         preview_sections = improv_ctx.sections
+        if source == "Custom progression":
+            preview_sections = song_preview.get("sections") or {}
+        elif not preview_sections:
+            preview_sections = improv_ctx.sections
+
         if source == "Active song":
             if render_creative_song_context_card:
                 render_creative_song_context_card(
                     st,
-                    title=improv_ctx.song_title,
-                    artist=improv_ctx.artist,
-                    display_key=improv_ctx.display_key,
+                    title=str(song_preview.get("title") or improv_ctx.song_title),
+                    artist=str(song_preview.get("artist") or improv_ctx.artist),
+                    display_key=str(song_preview.get("display_key") or improv_ctx.display_key),
                     chord_count=len(improv_ctx.progression_flat),
                     source_label="Active song · Song Selection",
                 )
@@ -329,20 +339,22 @@ def _tab_entry_modes(
                         on_go_song_selection()
                     st.markdown("</div>", unsafe_allow_html=True)
         else:
+            custom_sections = song_preview.get("sections") or {}
+            flat_custom = [c for chs in custom_sections.values() for c in chs if str(c).strip()]
             if render_creative_song_context_card:
                 render_creative_song_context_card(
                     st,
-                    title=improv_ctx.song_title or "Custom Progression",
-                    artist=improv_ctx.artist or "Custom",
-                    display_key=improv_ctx.display_key,
-                    chord_count=len(improv_ctx.progression_flat),
+                    title=str(song_preview.get("title") or improv_ctx.song_title or "Custom Progression"),
+                    artist=str(song_preview.get("artist") or improv_ctx.artist or "Custom"),
+                    display_key=str(song_preview.get("display_key") or improv_ctx.display_key),
+                    chord_count=len(flat_custom) or len(improv_ctx.progression_flat),
                     source_label="Custom progression",
                     variant="custom",
                 )
-            if not is_custom:
+            if not is_custom and source == "Custom progression":
                 st.markdown(
-                    '<p class="ui-creative-progression-preview">Selecting this switches the studio '
-                    "to your saved <strong>Custom progression</strong>.</p>",
+                    '<p class="ui-creative-progression-preview">Preview only — your catalog active song '
+                    "stays unchanged until you open Practice or Backing.</p>",
                     unsafe_allow_html=True,
                 )
             if on_go_custom_progression:

@@ -152,6 +152,47 @@ def set_catalog_source(session_state: dict[str, Any]) -> None:
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CATALOG
 
 
+def restore_catalog_identity_from_snapshot(
+    session_state: dict[str, Any],
+    *,
+    snap_key: str = CATALOG_BEFORE_CUSTOM_KEY,
+) -> bool:
+    """Restore catalog pick/title when global identity was polluted by a custom preview."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+    pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if pick and not pick.startswith("custom::"):
+        sel = session_state.get(SELECTED_SONG_STATE_KEY)
+        if isinstance(sel, dict) and str(sel.get("title") or "").strip():
+            return False
+    raw = session_state.get(snap_key)
+    if not isinstance(raw, dict):
+        raw = session_state.get(LAST_CATALOG_STATE_KEY)
+    if not isinstance(raw, dict):
+        return False
+    snap_pick = str(raw.get("pick_key") or "").strip()
+    if not snap_pick or snap_pick.startswith("custom::"):
+        return False
+    raw_sel = raw.get("selected_song")
+    selected = dict(raw_sel) if isinstance(raw_sel, dict) else {}
+    if not selected:
+        return False
+    _sync_catalog_session_surface_keys(
+        session_state,
+        pick_key=snap_pick,
+        selected_song=selected,
+    )
+    pin_catalog_pick_aliases(session_state)
+    session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+    try:
+        from active_song_state import clear_active_song_local_edit
+
+        clear_active_song_local_edit(session_state)
+    except ImportError:
+        session_state.pop("_active_song_locally_dirty", None)
+    return True
+
+
 def _catalog_snapshot_from_session(session_state: dict[str, Any]) -> dict[str, Any] | None:
     """Build a catalog song snapshot from the current session selection."""
     from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
@@ -361,6 +402,16 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
     snapshot_catalog_before_custom(session_state)
     session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
+    try:
+        from custom_progression_lab import CPL_LAST_DISPLAY_KEY
+
+        live = str(
+            session_state.get("display_key") or session_state.get("concert_key") or ""
+        ).strip()
+        if live:
+            session_state.setdefault(CPL_LAST_DISPLAY_KEY, live)
+    except ImportError:
+        pass
 
 
 def _expected_song_picker_source(session_state: dict[str, Any]) -> str:
@@ -2278,18 +2329,12 @@ def resolve_catalog_pick_for_backing_restore_with_source(
         return _normalize(pk), source
 
     if str(reason or "").strip() in _creative_return_reasons:
-        if str(reason or "").strip() == "switch_to_catalog_backing":
-            snap_order = (
-                ("catalog_before_custom", CATALOG_BEFORE_CUSTOM_KEY),
-                ("last_catalog_state", LAST_CATALOG_STATE_KEY),
-                ("catalog_before_creative", CATALOG_BEFORE_CREATIVE_KEY),
-            )
-        else:
-            snap_order = (
-                ("catalog_before_creative", CATALOG_BEFORE_CREATIVE_KEY),
-                ("catalog_before_custom", CATALOG_BEFORE_CUSTOM_KEY),
-                ("last_catalog_state", LAST_CATALOG_STATE_KEY),
-            )
+        # Pre-Creative catalog wins over stale catalog_before_custom / last_catalog (e.g. Say).
+        snap_order = (
+            ("catalog_before_creative", CATALOG_BEFORE_CREATIVE_KEY),
+            ("catalog_before_custom", CATALOG_BEFORE_CUSTOM_KEY),
+            ("last_catalog_state", LAST_CATALOG_STATE_KEY),
+        )
         for source, snap_key in snap_order:
             raw = session_state.get(snap_key)
             if not isinstance(raw, dict):
