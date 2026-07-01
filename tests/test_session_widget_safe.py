@@ -11,6 +11,7 @@ from creative_session_state import (
 )
 from session_widget_safe import (
     PENDING_DISPLAY_KEY,
+    reconcile_practice_key_fields,
     safe_assign_display_key,
     safe_session_assign,
     widgets_likely_instantiated,
@@ -55,6 +56,18 @@ class TestSessionWidgetSafe(unittest.TestCase):
         self.assertEqual(session.get("display_key"), "C")
         self.assertEqual(session.get(PENDING_DISPLAY_KEY), "D")
         self.assertEqual(session.get("concert_key"), "D")
+
+    def test_reconcile_practice_key_fields_clears_stale_pending(self) -> None:
+        session = {"display_key": "D", "concert_key": "D", PENDING_DISPLAY_KEY: "G"}
+        try:
+            from music_restore_phase import complete_music_restore_phase
+
+            complete_music_restore_phase(session)
+        except ImportError:
+            pass
+        reconcile_practice_key_fields(session, authoritative="E")
+        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "E")
+        self.assertEqual(session.get("concert_key"), "E")
 
     def test_safe_session_assign_queues_improv_entry_mode(self) -> None:
         session = {"display_key": "C", "improv_entry_mode": "Style Jam Mode"}

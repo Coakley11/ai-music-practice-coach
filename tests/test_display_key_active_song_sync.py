@@ -328,7 +328,7 @@ class TestDisplayKeyActiveSongSync(unittest.TestCase):
         with patch("songs.state.persist_music_local_state"):
             apply_pick_key(st, PK_A, CATALOG, skip_activity_log=True)
 
-        self.assertEqual(st.session_state["display_key"], "C#m")
+        self.assertEqual(st.session_state["display_key"], "G")
 
     def test_cpl_merge_preserves_sidebar_display_key_for_matching_identity(self) -> None:
         from active_song_state import ACTIVE_SONG_STATE_KEY, _merge_display_key_for_active_song

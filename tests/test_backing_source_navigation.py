@@ -202,7 +202,8 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
 
 
     def test_hydrate_stale_entry_jam_yields_custom_for_trial_song(self) -> None:
-        from backing_context import BACKING_CONTEXT_KEY, get_backing_context
+        from backing_context import BACKING_CONTEXT_KEY, BACKING_PREF_CREATIVE, get_backing_context
+        from backing_context import set_backing_source_preference
 
         session = {
             "active_music_source": "custom_progression",
@@ -235,6 +236,7 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
                 "bound_pick_key": "Pop::Say",
             },
         }
+        set_backing_source_preference(session, BACKING_PREF_CREATIVE)
         set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
         hydrate_backing_source_for_page(session, st_like=SimpleNamespace(session_state=session))
         ctx = get_backing_context(session)
@@ -242,6 +244,56 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         assert ctx is not None
         self.assertEqual(ctx.source, "custom_progression")
         self.assertEqual(ctx.song_title, "Trial Song")
+
+    def test_catalog_context_rebuild_uses_song_original_key_and_bpm(self) -> None:
+        from backing_context import (
+            BACKING_PREF_CATALOG,
+            get_backing_context,
+            reset_backing_on_active_song_change,
+            set_backing_source_preference,
+        )
+
+        session = {
+            "active_music_source": "catalog",
+            "active_catalog_pick_key": "Rock::Day Tripper",
+            "selected_song": {
+                "title": "Day Tripper",
+                "pick_key": "Rock::Day Tripper",
+                "key": "E",
+                "bpm": 138,
+                "genre": "Rock",
+            },
+            "display_key": "D",
+            "concert_key": "D",
+            "_pending_display_key": "D",
+            "backing_track_bpm": 100,
+            "song": "Day Tripper",
+        }
+        set_backing_source_preference(session, BACKING_PREF_CATALOG)
+        reset_backing_on_active_song_change(session, practice_concert_key="E")
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(ctx.key, "E")
+        self.assertEqual(ctx.concert_key, "E")
+        self.assertEqual(ctx.bpm, 138)
+
+    def test_return_to_creative_restores_entry_jam_tool_type(self) -> None:
+        from backing_context import open_backing_from_creative
+        from backing_source_navigation import prepare_return_to_backing_source
+        from creative_session_state import get_creative_session
+
+        session = _style_jam_like_session()
+        st_like = SimpleNamespace(session_state=session)
+        open_backing_from_creative(session, source="entry_jam", st_like=st_like)
+        session["improv_entry_mode"] = "Song-Based Improvisation"
+        prepare_return_to_backing_source(session)
+        sess = get_creative_session(session)
+        self.assertIsNotNone(sess)
+        assert sess is not None
+        self.assertEqual(sess.tool_type, "entry_style_jam")
+        self.assertEqual(sess.entry_mode, "Style Jam Mode")
+        self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
 
 
 def _style_jam_like_session() -> dict:

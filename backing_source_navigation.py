@@ -494,6 +494,20 @@ def render_source_context_debug(st: Any, session: dict[str, Any]) -> None:
     render_source_ownership_dev_table(st, session)
 
 
+def _tool_type_for_backing_context(ctx: BackingContext) -> str:
+    """Map backing_context source to canonical CreativeSession tool_type."""
+    if ctx.source == "mission":
+        return "mission"
+    if ctx.source == "song_improv":
+        return "song_based_improvisation"
+    if ctx.source == "entry_jam":
+        entry = str(ctx.entry_mode or "").strip()
+        if entry == "Jam Session Generator":
+            return "jam_session_generator"
+        return "entry_style_jam"
+    return "entry_style_jam"
+
+
 def target_page_for_backing_context(ctx: BackingContext | None) -> CreativeReturnPage:
     """Resolve studio page id for Edit-in-Creative / return-to-source."""
     if ctx is None:
@@ -659,12 +673,29 @@ def restore_session_widgets_from_backing_context(
             sync_creative_session_from_session(session)
             sess = get_creative_session(session)
         if sess is not None:
+            tool_type = _tool_type_for_backing_context(ctx)
+            sess.tool_type = tool_type  # type: ignore[assignment]
             if ctx.source == "entry_jam" and ctx.entry_mode:
                 sess.entry_mode = str(ctx.entry_mode).strip()
             elif ctx.source == "song_improv":
                 sess.entry_mode = "Song-Based Improvisation"
             elif ctx.source == "mission":
                 sess.entry_mode = str(ctx.entry_mode or "Song-Based Improvisation").strip()
+            if ctx.style:
+                sess.style = str(ctx.style).strip()
+            if ctx.bpm:
+                sess.bpm = int(ctx.bpm)
+            if ctx.mood:
+                sess.mood = str(ctx.mood).strip()
+            if ctx.groove_intensity:
+                sess.groove_intensity = str(ctx.groove_intensity).strip()
+            if ctx.difficulty:
+                sess.difficulty = str(ctx.difficulty).strip()
+            if ctx.meter:
+                sess.meter = str(ctx.meter).strip()
+            if ctx.progression:
+                label = str(ctx.progression_label or ctx.style or "Jam").strip() or "Jam"
+                sess.sections = {label: list(ctx.progression)}
             if concert:
                 sess.concert_key = concert
                 if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
@@ -695,12 +726,6 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
     if ctx is None:
         return page
     restore_session_widgets_from_backing_context(session, ctx)
-    try:
-        from creative_session_state import sync_creative_session_from_session
-
-        sync_creative_session_from_session(session)
-    except ImportError:
-        pass
     merge_live_practice_into_creative_session(session)
     return page
 
@@ -719,7 +744,16 @@ def merge_live_practice_into_creative_session(session: dict[str, Any]) -> None:
     sess = get_creative_session(session)
     if sess is None:
         return
-    live_key = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    try:
+        from songs.key_state import PENDING_DISPLAY_KEY
+    except ImportError:
+        PENDING_DISPLAY_KEY = "_pending_display_key"  # type: ignore[misc,assignment]
+    live_key = str(
+        session.get("display_key")
+        or session.get(PENDING_DISPLAY_KEY)
+        or session.get("concert_key")
+        or ""
+    ).strip()
     live_inst = str(session.get("instrument") or "").strip()
     if live_key:
         if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:

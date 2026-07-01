@@ -120,6 +120,7 @@ def safe_assign_display_key(
 ) -> None:
     """Set concert/display key via pending queue when widgets may exist."""
     concert = str(key or "C").strip() or "C"
+    session.pop(PENDING_DISPLAY_KEY, None)
     session["concert_key"] = concert
     if not widget_safe or not widgets_likely_instantiated(session):
         session["display_key"] = concert
@@ -135,11 +136,24 @@ def safe_assign_display_key(
             pass
 
 
+def reconcile_practice_key_fields(session: dict[str, Any], *, authoritative: str) -> str:
+    """Align concert_key and pending display_key with the authoritative practice key."""
+    concert = str(authoritative or "C").strip() or "C"
+    session.pop(PENDING_DISPLAY_KEY, None)
+    session["concert_key"] = concert
+    session[PENDING_DISPLAY_KEY] = concert
+    if not widgets_likely_instantiated(session):
+        session["display_key"] = concert
+    return concert
+
+
 def apply_pending_widget_hydrates(session: dict[str, Any]) -> None:
     """Apply queued pending values before widgets render (early in rerun)."""
     pending_display = session.pop(PENDING_DISPLAY_KEY, None)
-    if pending_display is not None and "display_key" not in session:
-        session["display_key"] = str(pending_display)
+    if pending_display is not None:
+        concert = str(pending_display).strip() or "C"
+        session["display_key"] = concert
+        session["concert_key"] = concert
     for widget_key, pending_key in _PENDING_FOR_WIDGET_KEY.items():
         if widget_key == "display_key":
             continue
@@ -160,6 +174,7 @@ __all__ = [
     "PENDING_INSTRUMENT_KEY",
     "WIDGET_BOUND_KEYS",
     "apply_pending_widget_hydrates",
+    "reconcile_practice_key_fields",
     "safe_assign_display_key",
     "safe_session_assign",
     "widgets_likely_instantiated",

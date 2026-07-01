@@ -291,6 +291,16 @@ def restore_previous_catalog_song(
         invalidate_backing=invalidate_backing,
         reason="previous_catalog_restore",
     )
+    try:
+        from backing_context import reset_backing_on_active_song_change
+
+        reset_backing_on_active_song_change(
+            st.session_state,
+            new_pick_key=pick_key,
+            practice_concert_key=display_key,
+        )
+    except ImportError:
+        pass
     return True
 
 
@@ -836,6 +846,12 @@ def on_active_song_identity_changed(
             song_identity,
             pending_key=target_display,
         )
+        try:
+            from session_widget_safe import reconcile_practice_key_fields
+
+            reconcile_practice_key_fields(session, authoritative=target_display)
+        except ImportError:
+            pass
         try:
             from backing_source_navigation import PRACTICE_SOURCE_DISPLAY_KEY, PRACTICE_SOURCE_PICK_KEY
 
