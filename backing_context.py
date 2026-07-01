@@ -1902,6 +1902,14 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         pass
 
     if ctx is not None and ctx.source == "regular_song":
+        try:
+            from music_source_ownership import catalog_identity_aligns, rebuild_catalog_backing_from_canonical_pick
+
+            if not catalog_identity_aligns(session):
+                rebuild_catalog_backing_from_canonical_pick(session, st_like=st_like)
+                ctx = get_backing_context(session)
+        except ImportError:
+            pass
         _sync_sidebar_to_ctx(ctx)
         flush_pending_backing_handoff_keys(
             session,

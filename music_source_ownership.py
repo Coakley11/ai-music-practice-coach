@@ -117,7 +117,7 @@ def active_catalog_pick_key(session: dict[str, Any]) -> str:
 
 
 def catalog_identity_aligns(session: dict[str, Any]) -> bool:
-    """True when catalog pick_key, title, and backing_context all describe one song."""
+    """True when catalog pick_key, title, keys, BPM, and backing_context describe one song."""
     if intended_practice_owner(session) != "catalog":
         return True
     pick = active_catalog_pick_key(session)
@@ -140,7 +140,7 @@ def catalog_identity_aligns(session: dict[str, Any]) -> bool:
     if title_sel and title_live and title_sel != title_live:
         return False
     try:
-        from backing_context import get_backing_context
+        from backing_context import _canonical_active_song_bpm, get_backing_context
 
         ctx = get_backing_context(session)
         if ctx is not None and ctx.source == "regular_song":
@@ -151,6 +151,10 @@ def catalog_identity_aligns(session: dict[str, Any]) -> bool:
             expected_title = title_sel or title_live
             if ctx_title and expected_title and ctx_title != expected_title:
                 return False
+            if bound and _pick_keys_match(bound, pick, session_state=session):
+                expected_bpm = _canonical_active_song_bpm(session)
+                if expected_bpm and int(ctx.bpm or 0) != int(expected_bpm):
+                    return False
     except ImportError:
         pass
     return True
@@ -194,8 +198,180 @@ def _clear_cross_owner_transport(session: dict[str, Any]) -> None:
         pass
 
 
+def _apply_catalog_transport_from_record(
+    session: dict[str, Any],
+    *,
+    st_like: Any,
+    pick_key: str,
+    selected: dict[str, Any],
+    original_key: str,
+) -> tuple[int, str, str]:
+    """Force display key and BPM/groove/meter from canonical catalog record."""
+    concert = str(original_key or selected.get("key") or "C").strip() or "C"
+    try:
+        from session_widget_safe import reconcile_practice_key_fields, safe_assign_display_key
+
+        safe_assign_display_key(session, concert, widget_safe=False, st_like=st_like)
+        reconcile_practice_key_fields(session, authoritative=concert)
+    except ImportError:
+        session["display_key"] = concert
+        session["concert_key"] = concert
+        session.pop("_pending_display_key", None)
+
+    lib_record = dict(selected)
+    bpm = 100
+    groove = "Pop groove"
+    meter = "4/4"
+    try:
+        bpm = int(selected.get("bpm") or 0)
+    except (TypeError, ValueError):
+        bpm = 0
+    try:
+        from backing_context import _canonical_active_song_bpm, _canonical_active_song_groove
+        from songs.playback_defaults import (
+            active_song_sync_id,
+            canonicalize_backing_defaults_for_song,
+            get_song_default_meter,
+            playback_song_id,
+            prime_active_song_bpm,
+        )
+
+        if bpm <= 0:
+            bpm = int(_canonical_active_song_bpm(session) or 100)
+        groove = str(_canonical_active_song_groove(session) or "Pop groove").strip() or "Pop groove"
+        meter = str(get_song_default_meter(lib_record) or "4/4").strip() or "4/4"
+        pid = playback_song_id(
+            is_custom=False,
+            song_title=str(selected.get("title") or ""),
+            song_artist=str(selected.get("artist") or ""),
+        )
+        sync_id = active_song_sync_id(pick_key=pick_key, playback_song_id=pid, is_custom=False)
+        prime_active_song_bpm(st_like, sync_id=sync_id, active_song_bpm=bpm)
+        canonicalize_backing_defaults_for_song(
+            st_like,
+            sync_id=sync_id,
+            active_song_bpm=bpm,
+            active_song_groove=groove,
+            active_song_meter=meter,
+        )
+    except ImportError:
+        pass
+    return bpm, groove, meter
+
+
+def _finalize_catalog_backing_context(
+    ctx: Any,
+    *,
+    pick_key: str,
+    selected: dict[str, Any],
+    original_key: str,
+    bpm: int,
+    groove: str,
+) -> Any:
+    """Bind backing_context identity fields to the canonical catalog record."""
+    title = str(selected.get("title") or "").strip()
+    concert = str(original_key or selected.get("key") or "C").strip() or "C"
+    ctx.bound_pick_key = pick_key
+    ctx.active_song_id = pick_key
+    if title:
+        ctx.song_title = title
+    ctx.key = concert
+    ctx.concert_key = concert
+    ctx.display_key = concert
+    ctx.bpm = int(bpm or ctx.bpm or 100)
+    if groove:
+        ctx.groove = groove
+    ctx.source = "regular_song"
+    return ctx
+
+
+def rebuild_catalog_backing_from_canonical_pick(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+) -> Any:
+    """Full backing_context rebuild from canonical_active_pick_key and catalog record."""
+    from types import SimpleNamespace
+
+    from songs.music_source import (
+        USER_CATALOG_SOURCE_CHOICE_KEY,
+        resolve_catalog_song_for_pick,
+        set_catalog_source,
+        _sync_catalog_session_surface_keys,
+    )
+
+    pick = active_catalog_pick_key(session)
+    if not pick or pick.startswith("custom::"):
+        return None
+
+    selected, original_key = resolve_catalog_song_for_pick(session, pick)
+    if not selected:
+        return None
+
+    _clear_cross_owner_transport(session)
+    try:
+        from backing_context import (
+            BACKING_PREF_CATALOG,
+            apply_backing_context_to_session,
+            build_regular_song_context,
+            clear_backing_context,
+            set_backing_context,
+            set_backing_source_preference,
+            _release_creative_backing_ownership,
+        )
+    except ImportError:
+        return None
+
+    clear_backing_context(session)
+    _release_creative_backing_ownership(session)
+    for key in ("_creative_concert_key_source",):
+        session.pop(key, None)
+    try:
+        from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
+
+        session.pop(CREATIVE_CONCERT_KEY_SOURCE, None)
+    except ImportError:
+        pass
+
+    session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+    set_catalog_source(session)
+    _sync_catalog_session_surface_keys(session, pick_key=pick, selected_song=selected)
+
+    st = st_like or SimpleNamespace(session_state=session)
+    bpm, groove, _meter = _apply_catalog_transport_from_record(
+        session,
+        st_like=st,
+        pick_key=pick,
+        selected=selected,
+        original_key=original_key,
+    )
+
+    set_backing_source_preference(session, BACKING_PREF_CATALOG)
+    ctx = build_regular_song_context(session)
+    ctx = _finalize_catalog_backing_context(
+        ctx,
+        pick_key=pick,
+        selected=selected,
+        original_key=original_key,
+        bpm=bpm,
+        groove=groove,
+    )
+    set_backing_context(session, ctx)
+    apply_backing_context_to_session(session, ctx, st_like=st, widget_safe=True)
+    try:
+        from songs.key_state import BACKING_NEEDS_REGEN
+
+        session[BACKING_NEEDS_REGEN] = True
+    except ImportError:
+        pass
+    return ctx
+
+
 def activate_catalog_ownership(session: dict[str, Any], *, st_like: Any | None = None) -> Any:
     """Catalog song owns everything — release prior owner, rebuild from active catalog pick."""
+    pick = active_catalog_pick_key(session)
+    if pick and not pick.startswith("custom::"):
+        return rebuild_catalog_backing_from_canonical_pick(session, st_like=st_like)
     _clear_cross_owner_transport(session)
     from backing_context import restore_regular_song_backing
 
@@ -235,6 +411,9 @@ def reconcile_source_ownership(session: dict[str, Any], *, st_like: Any | None =
     practice = intended_practice_owner(session)
     if practice is None:
         return False
+    if practice == "catalog" and not catalog_identity_aligns(session):
+        rebuild_catalog_backing_from_canonical_pick(session, st_like=st_like)
+        return True
     if practice_backing_owners_align(session):
         return False
     if practice == "catalog":
@@ -258,5 +437,6 @@ __all__ = [
     "current_backing_owner",
     "intended_practice_owner",
     "practice_backing_owners_align",
+    "rebuild_catalog_backing_from_canonical_pick",
     "reconcile_source_ownership",
 ]
