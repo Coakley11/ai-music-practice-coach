@@ -1235,6 +1235,40 @@ def clear_backing_source_preference(session: dict[str, Any]) -> None:
     session.pop(BACKING_SOURCE_PREFERENCE_KEY, None)
 
 
+def catalog_or_custom_backing_is_authoritative(session: dict[str, Any]) -> bool:
+    """True when catalog or custom backing owns key/progression (Creative must not reclaim)."""
+    pref = get_backing_source_preference(session)
+    if pref in {BACKING_PREF_CATALOG, BACKING_PREF_CUSTOM}:
+        return True
+    ctx = get_backing_context(session)
+    return ctx is not None and ctx.source in {"regular_song", "custom_progression"}
+
+
+def _release_creative_backing_ownership(session: dict[str, Any]) -> None:
+    """Suspend live Creative backing widgets; preserve creative_session blob for later return."""
+    try:
+        from creative_session_state import sync_creative_session_from_session
+
+        sync_creative_session_from_session(session)
+    except ImportError:
+        pass
+    _detach_creative_backing_from_session(session)
+    for key in (
+        "improv_entry_mode",
+        "improv_generated_sections",
+        "improv_jam_session",
+        "improv_song_concert_sections",
+        "improv_style_meta",
+        "improv_style",
+        "improv_jam_style",
+        "improv_mood",
+        "improv_difficulty",
+        "improv_groove",
+        "improv_jam_mood",
+    ):
+        session.pop(key, None)
+
+
 def _detach_creative_backing_from_session(session: dict[str, Any]) -> None:
     """Stop live Creative widgets from polluting catalog/custom backing (preserve creative_session)."""
     session.pop("_backing_creative_chart_sections", None)
@@ -1314,7 +1348,7 @@ def _apply_original_song_display_key(
 def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext:
     """Clear Creative/custom override and restore active catalog song backing."""
     clear_backing_context(session)
-    _detach_creative_backing_from_session(session)
+    _release_creative_backing_ownership(session)
     try:
         from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
 
@@ -1351,7 +1385,7 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
 def restore_custom_song_backing(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext:
     """Clear Creative/catalog override and restore active custom progression backing."""
     clear_backing_context(session)
-    _detach_creative_backing_from_session(session)
+    _release_creative_backing_ownership(session)
     try:
         from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
 
@@ -1409,7 +1443,11 @@ def _sync_creative_backing_transport_handoff(
 
 def ensure_backing_context_from_creative_session(session: dict[str, Any]) -> BackingContext | None:
     """Create or refresh backing_context from the canonical Creative session when missing."""
+    if catalog_or_custom_backing_is_authoritative(session):
+        return get_backing_context(session)
     existing = get_backing_context(session)
+    if existing is not None and existing.source in {"regular_song", "custom_progression"}:
+        return existing
     if existing is not None and existing.source != "regular_song" and is_backing_context_valid(session, existing):
         refreshed = refresh_backing_context_from_session(session)
         if refreshed is not None:
@@ -1569,6 +1607,7 @@ __all__ = [
     "BACKING_PREF_CUSTOM",
     "BACKING_SOURCE_PREFERENCE_KEY",
     "clear_backing_source_preference",
+    "catalog_or_custom_backing_is_authoritative",
     "get_backing_source_preference",
     "set_backing_source_preference",
     "restore_custom_song_backing",

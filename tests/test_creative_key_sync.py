@@ -281,6 +281,137 @@ class TestCreativeKeySync(unittest.TestCase):
         self.assertIn("F", joined)
 
 
+class TestCreativeWidgetOwnershipP0(unittest.TestCase):
+    def test_mood_difficulty_in_widget_bound_keys(self) -> None:
+        from session_widget_safe import WIDGET_BOUND_KEYS
+
+        self.assertIn("improv_mood", WIDGET_BOUND_KEYS)
+        self.assertIn("improv_difficulty", WIDGET_BOUND_KEYS)
+        self.assertIn("improv_jam_mood", WIDGET_BOUND_KEYS)
+
+    def test_hydrate_does_not_overwrite_live_mood_when_widget_safe(self) -> None:
+        from creative_session_state import (
+            CreativeSession,
+            apply_creative_session_to_session,
+            set_creative_session,
+        )
+
+        session = {
+            "improv_mood": "Bright",
+            "improv_difficulty": "Advanced",
+            "display_key": "G",
+            "_music_restore_phase_complete": True,
+        }
+        sess = CreativeSession(
+            session_id="",
+            tool_type="entry_style_jam",
+            entry_mode="Style Jam Mode",
+            concert_key="G",
+            display_key="G",
+            style="Blues",
+            mood="Mellow",
+            difficulty="Beginner",
+            sections={"12-bar blues": ["G7", "C7", "D7"]},
+        )
+        set_creative_session(session, sess)
+        apply_creative_session_to_session(session, sess, widget_safe=True)
+        self.assertEqual(session.get("improv_mood"), "Bright")
+        self.assertEqual(session.get("improv_difficulty"), "Advanced")
+
+    def test_creative_sidebar_options_sanitize_minor_key(self) -> None:
+        from creative_key_sync import creative_sidebar_key_options
+
+        session = {
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style_key": "G",
+            "concert_key": "Bm",
+            "display_key": "Bm",
+            "studio_page": "creative",
+        }
+        options = creative_sidebar_key_options(session)
+        self.assertEqual(options[0], "G")
+        self.assertNotIn("Bm", options)
+
+    def test_merge_live_key_preserves_major_for_style_jam(self) -> None:
+        from creative_session_state import (
+            CreativeSession,
+            get_creative_session,
+            merge_live_key_into_creative_session,
+            set_creative_session,
+        )
+
+        session = {
+            "display_key": "Bm",
+            "concert_key": "Bm",
+            "studio_page": "creative",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Blues",
+            "improv_style_key": "G",
+        }
+        sess = CreativeSession(
+            session_id="",
+            tool_type="entry_style_jam",
+            entry_mode="Style Jam Mode",
+            concert_key="G",
+            display_key="G",
+            style="Blues",
+            sections={"12-bar blues": ["G7", "C7", "D7"]},
+        )
+        set_creative_session(session, sess)
+        merge_live_key_into_creative_session(session)
+        restored = get_creative_session(session)
+        self.assertIsNotNone(restored)
+        assert restored is not None
+        self.assertEqual(restored.concert_key, "G")
+        self.assertEqual(restored.display_key, "G")
+
+    def test_return_to_creative_rejects_minor_catalog_key(self) -> None:
+        from backing_source_navigation import merge_live_practice_into_creative_session
+        from creative_session_state import CreativeSession, get_creative_session, set_creative_session
+
+        session = {
+            "display_key": "Bm",
+            "concert_key": "Bm",
+            "instrument": "Piano",
+        }
+        sess = CreativeSession(
+            session_id="",
+            tool_type="entry_style_jam",
+            entry_mode="Style Jam Mode",
+            concert_key="G",
+            display_key="G",
+            style="Blues",
+            sections={"12-bar blues": ["G7", "C7", "D7"]},
+        )
+        set_creative_session(session, sess)
+        merge_live_practice_into_creative_session(session)
+        restored = get_creative_session(session)
+        self.assertIsNotNone(restored)
+        assert restored is not None
+        self.assertEqual(restored.concert_key, "G")
+        self.assertEqual(restored.display_key, "G")
+
+    def test_rehydrate_then_anchor_sync_preserves_charts_on(self) -> None:
+        from active_song_state import ACTIVE_SONG_STATE_KEY, rehydrate_transposing_sidebar_from_canonical
+        from instrument_transposition import (
+            CHART_IN_INSTRUMENT_KEY_KEY,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+            sync_written_key_instrument_anchor,
+        )
+
+        session = {
+            ACTIVE_SONG_STATE_KEY: {
+                CHART_IN_INSTRUMENT_KEY_KEY: True,
+                WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Alto Saxophone",
+            },
+            "instrument": "Alto Saxophone",
+            CHART_IN_INSTRUMENT_KEY_KEY: False,
+        }
+        rehydrate_transposing_sidebar_from_canonical(session)
+        sync_written_key_instrument_anchor(session, "Alto Saxophone")
+        self.assertTrue(session[CHART_IN_INSTRUMENT_KEY_KEY])
+
+
 class TestWrittenKeyLabels(unittest.TestCase):
     def test_alto_sax_written_key_for_concert_eb(self) -> None:
         from instrument_transposition import (

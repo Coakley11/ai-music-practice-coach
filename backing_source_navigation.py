@@ -416,6 +416,7 @@ def merge_live_practice_into_creative_session(session: dict[str, Any]) -> None:
             get_creative_session,
             set_creative_session,
         )
+        from music_theory import key_is_minor
     except ImportError:
         return
     sess = get_creative_session(session)
@@ -424,6 +425,17 @@ def merge_live_practice_into_creative_session(session: dict[str, Any]) -> None:
     live_key = str(session.get("display_key") or session.get("concert_key") or "").strip()
     live_inst = str(session.get("instrument") or "").strip()
     if live_key:
+        if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+            try:
+                from creative_key_sync import to_major_key_preserve_spelling
+
+                saved_major = to_major_key_preserve_spelling(str(sess.concert_key or "C"))
+                if key_is_minor(live_key):
+                    live_key = saved_major
+                else:
+                    live_key = to_major_key_preserve_spelling(live_key)
+            except ImportError:
+                pass
         sess.concert_key = live_key
         if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
             try:

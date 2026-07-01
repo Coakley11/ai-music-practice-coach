@@ -22,6 +22,10 @@ WIDGET_BOUND_KEYS: frozenset[str] = frozenset(
         "improv_jam_key",
         "improv_style_bpm",
         "improv_jam_bpm",
+        "improv_mood",
+        "improv_difficulty",
+        "improv_groove",
+        "improv_jam_mood",
     }
 )
 
@@ -35,6 +39,10 @@ PENDING_IMPROV_STYLE_KEY = "_pending_improv_style_key"
 PENDING_IMPROV_JAM_KEY = "_pending_improv_jam_key"
 PENDING_IMPROV_STYLE_BPM_KEY = "_pending_improv_style_bpm"
 PENDING_IMPROV_JAM_BPM_KEY = "_pending_improv_jam_bpm"
+PENDING_IMPROV_MOOD_KEY = "_pending_improv_mood"
+PENDING_IMPROV_DIFFICULTY_KEY = "_pending_improv_difficulty"
+PENDING_IMPROV_GROOVE_KEY = "_pending_improv_groove"
+PENDING_IMPROV_JAM_MOOD_KEY = "_pending_improv_jam_mood"
 
 _PENDING_FOR_WIDGET_KEY: dict[str, str] = {
     "display_key": PENDING_DISPLAY_KEY,
@@ -48,6 +56,10 @@ _PENDING_FOR_WIDGET_KEY: dict[str, str] = {
     "improv_jam_key": PENDING_IMPROV_JAM_KEY,
     "improv_style_bpm": PENDING_IMPROV_STYLE_BPM_KEY,
     "improv_jam_bpm": PENDING_IMPROV_JAM_BPM_KEY,
+    "improv_mood": PENDING_IMPROV_MOOD_KEY,
+    "improv_difficulty": PENDING_IMPROV_DIFFICULTY_KEY,
+    "improv_groove": PENDING_IMPROV_GROOVE_KEY,
+    "improv_jam_mood": PENDING_IMPROV_JAM_MOOD_KEY,
 }
 
 

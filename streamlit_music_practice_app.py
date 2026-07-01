@@ -9617,8 +9617,8 @@ except ImportError:
 try:
     from active_song_state import rehydrate_capo_from_canonical, rehydrate_transposing_sidebar_from_canonical
 
+    rehydrate_transposing_sidebar_from_canonical(st.session_state)
     if not _skip_catalog_sidebar_rehydrate:
-        rehydrate_transposing_sidebar_from_canonical(st.session_state)
         rehydrate_capo_from_canonical(st.session_state)
 except ImportError:
     pass

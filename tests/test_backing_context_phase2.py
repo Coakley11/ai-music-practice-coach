@@ -247,5 +247,126 @@ class TestBackingContextPhase2(unittest.TestCase):
         self.assertNotIn(PENDING_BACKING_CONTEXT_APPLY, session)
 
 
+class TestCatalogCreativeOwnershipP0(unittest.TestCase):
+    def test_ensure_backing_context_does_not_overwrite_regular_song(self) -> None:
+        from backing_context import (
+            BACKING_PREF_CATALOG,
+            BACKING_SOURCE_PREFERENCE_KEY,
+            ensure_backing_context_from_creative_session,
+        )
+
+        session = {
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_generated_sections": {"12-bar blues": ["G7", "C7", "D7"]},
+            "creative_session": {
+                "tool_type": "entry_style_jam",
+                "entry_mode": "Style Jam Mode",
+                "concert_key": "F",
+                "style": "Blues",
+                "sections": {"12-bar blues": ["G7", "C7", "D7"]},
+            },
+            BACKING_CONTEXT_KEY: {
+                "source": "regular_song",
+                "source_label": "Catalog song",
+                "active_song_id": "photo|artist",
+                "song_title": "Photograph",
+                "key": "E",
+                "display_key": "E",
+                "concert_key": "E",
+                "bpm": 76,
+                "progression": ["E", "B", "C#m", "A"],
+            },
+            BACKING_SOURCE_PREFERENCE_KEY: BACKING_PREF_CATALOG,
+        }
+        ctx = ensure_backing_context_from_creative_session(session)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(ctx.source, "regular_song")
+        self.assertEqual(ctx.song_title, "Photograph")
+        self.assertEqual(ctx.concert_key, "E")
+
+    def test_hydrate_after_restore_skips_when_catalog_active(self) -> None:
+        from backing_context import (
+            BACKING_PREF_CATALOG,
+            BACKING_SOURCE_PREFERENCE_KEY,
+            hydrate_backing_context_after_restore,
+        )
+
+        session = {
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_generated_sections": {"12-bar blues": ["G7", "C7", "D7"]},
+            "creative_session": {
+                "tool_type": "entry_style_jam",
+                "entry_mode": "Style Jam Mode",
+                "concert_key": "F",
+                "style": "Blues",
+                "sections": {"12-bar blues": ["G7", "C7", "D7"]},
+            },
+            BACKING_CONTEXT_KEY: {
+                "source": "regular_song",
+                "source_label": "Catalog song",
+                "active_song_id": "Pop::Shape of You",
+                "song_title": "Shape of You",
+                "key": "Bm",
+                "display_key": "Bm",
+                "concert_key": "Bm",
+                "bpm": 96,
+                "progression": [],
+            },
+            BACKING_SOURCE_PREFERENCE_KEY: BACKING_PREF_CATALOG,
+        }
+        hydrate_backing_context_after_restore(session)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(ctx.source, "regular_song")
+        self.assertEqual(ctx.song_title, "Shape of You")
+        self.assertNotEqual(ctx.style, "Blues")
+
+    def test_restore_catalog_clears_live_creative_keys_preserves_blob(self) -> None:
+        from creative_session_state import creative_session_is_active, get_creative_session
+
+        session = {
+            "active_catalog_pick_key": "photo|artist",
+            "selected_song": {"title": "Photograph", "key": "E", "pick_key": "photo|artist"},
+            "song": "Photograph",
+            "display_key": "F",
+            "concert_key": "F",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Blues",
+            "improv_style_key": "F",
+            "improv_generated_sections": {"12-bar blues": ["G7", "C7", "D7"]},
+            "creative_session": {
+                "tool_type": "entry_style_jam",
+                "entry_mode": "Style Jam Mode",
+                "concert_key": "F",
+                "style": "Blues",
+                "sections": {"12-bar blues": ["G7", "C7", "D7"]},
+            },
+            BACKING_CONTEXT_KEY: {
+                "source": "entry_jam",
+                "source_label": "Entry & Jam",
+                "active_song_id": "photo|artist",
+                "song_title": "Photograph",
+                "key": "F",
+                "display_key": "F",
+                "concert_key": "F",
+                "bpm": 70,
+                "style": "Blues",
+                "groove": "Medium",
+            },
+        }
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            ctx = restore_regular_song_backing(session, st_like=st_like)
+        self.assertEqual(ctx.source, "regular_song")
+        self.assertEqual(session.get("concert_key"), "E")
+        self.assertEqual(session.get("display_key"), "E")
+        self.assertNotIn("improv_generated_sections", session)
+        self.assertNotIn("improv_entry_mode", session)
+        self.assertIsNotNone(get_creative_session(session))
+        self.assertFalse(creative_session_is_active(session))
+
+
 if __name__ == "__main__":
     unittest.main()

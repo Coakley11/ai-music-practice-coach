@@ -175,6 +175,13 @@ def clear_creative_session(session: dict[str, Any]) -> None:
 
 def creative_session_is_active(session: dict[str, Any]) -> bool:
     """True when a standalone Creative jam workflow should own key/BPM state."""
+    try:
+        from backing_context import catalog_or_custom_backing_is_authoritative
+
+        if catalog_or_custom_backing_is_authoritative(session):
+            return False
+    except ImportError:
+        pass
     sess = get_creative_session(session)
     if sess is None:
         return False
@@ -531,7 +538,22 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
     """Apply persisted Creative session to widgets at page entry (after cloud restore)."""
     merge_live_key_into_creative_session(session)
     sess = get_creative_session(session)
-    if sess is not None and creative_session_is_active(session):
+    page = str(session.get("studio_page") or "").strip().lower()
+    should_apply = sess is not None and creative_session_is_active(session)
+    if (
+        sess is not None
+        and page == "creative"
+        and not should_apply
+        and (sess.sections or sess.style)
+    ):
+        should_apply = True
+        try:
+            from backing_context import BACKING_PREF_CREATIVE, set_backing_source_preference
+
+            set_backing_source_preference(session, BACKING_PREF_CREATIVE)
+        except ImportError:
+            pass
+    if should_apply and sess is not None:
         apply_creative_session_to_session(session, sess, widget_safe=True)
         return
     if str(session.get("improv_entry_mode") or "").strip():
@@ -540,6 +562,13 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
 
 def hydrate_creative_session_after_restore(session: dict[str, Any]) -> bool:
     """Re-apply persisted Creative session after cloud/disk restore. Returns True if applied."""
+    try:
+        from backing_context import catalog_or_custom_backing_is_authoritative
+
+        if catalog_or_custom_backing_is_authoritative(session):
+            return False
+    except ImportError:
+        pass
     sess = get_creative_session(session)
     if sess is None or not creative_session_is_active(session):
         return False

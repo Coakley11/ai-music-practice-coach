@@ -331,7 +331,9 @@ def sanitize_creative_major_chart_keys(
 
 def creative_sidebar_key_options(session: dict[str, Any]) -> list[str]:
     """Major key options for Creative jam — preserves user enharmonic spelling."""
-    selected = str(creative_entry_concert_key(session) or session.get("concert_key") or "").strip()
+    selected = to_major_key_preserve_spelling(
+        str(creative_entry_concert_key(session) or session.get("concert_key") or "").strip()
+    )
     options = list(CREATIVE_MAJOR_KEY_OPTIONS)
     if selected and selected not in options:
         return [selected] + options
@@ -589,7 +591,15 @@ def on_improv_style_key_change() -> None:
 
 
 def on_improv_style_jam_setting_change() -> None:
-    """BPM / groove / style change — refresh meta and invalidate backing handoff."""
+    """BPM / groove / style / mood / difficulty change — refresh meta and invalidate backing handoff."""
+    import streamlit as st
+
+    sync_creative_style_jam_meta(st.session_state)
+    invalidate_creative_backing_context(st.session_state)
+
+
+def on_improv_jam_setting_change() -> None:
+    """Jam Session BPM / mood change — refresh meta and invalidate backing handoff."""
     import streamlit as st
 
     sync_creative_style_jam_meta(st.session_state)

@@ -35,7 +35,9 @@ from improvisation_intelligence import (
 )
 from creative_key_sync import (
     CREATIVE_MAJOR_KEY_OPTIONS,
+    creative_major_shape_key_options,
     on_improv_jam_key_change,
+    on_improv_jam_setting_change,
     on_improv_style_jam_setting_change,
     on_improv_style_key_change,
     render_creative_progression_block,
@@ -360,17 +362,32 @@ def _tab_entry_modes(
                 key="improv_style",
                 on_change=on_improv_style_jam_setting_change,
             )
+            try:
+                _style_key_opts = creative_major_shape_key_options(
+                    session_state,
+                    selected=str(session_state.get("improv_style_key") or "C"),
+                )
+            except Exception:
+                _style_key_opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
             st.selectbox(
                 "Key",
-                list(CREATIVE_MAJOR_KEY_OPTIONS),
+                _style_key_opts,
                 key="improv_style_key",
                 on_change=on_improv_style_key_change,
             )
         with c2:
             st.selectbox(
-                "Difficulty", list(DIFFICULTY_LEVELS), key="improv_difficulty"
+                "Difficulty",
+                list(DIFFICULTY_LEVELS),
+                key="improv_difficulty",
+                on_change=on_improv_style_jam_setting_change,
             )
-            st.selectbox("Mood", list(MOOD_OPTIONS), key="improv_mood")
+            st.selectbox(
+                "Mood",
+                list(MOOD_OPTIONS),
+                key="improv_mood",
+                on_change=on_improv_style_jam_setting_change,
+            )
         with c3:
             st.slider(
                 "Tempo (BPM)",
@@ -477,8 +494,20 @@ def _tab_entry_modes(
                 key="improv_jam_key",
                 on_change=on_improv_jam_key_change,
             )
-            tempo = st.slider("Tempo", 70, 180, key="improv_jam_bpm", step=5)
-            mood = st.selectbox("Atmosphere", list(MOOD_OPTIONS), key="improv_jam_mood")
+            tempo = st.slider(
+                "Tempo",
+                70,
+                180,
+                key="improv_jam_bpm",
+                step=5,
+                on_change=on_improv_jam_setting_change,
+            )
+            st.selectbox(
+                "Atmosphere",
+                list(MOOD_OPTIONS),
+                key="improv_jam_mood",
+                on_change=on_improv_jam_setting_change,
+            )
 
         if st.button("Generate jam session", type="primary", key="improv_gen_jam"):
             from creative_key_sync import IMPROV_JAM_KEY_TRACKER, apply_creative_concert_key
@@ -487,8 +516,8 @@ def _tab_entry_modes(
                 ensemble=ensemble,
                 style=style,
                 key_center=key_c,
-                tempo=int(session_state.get("improv_jam_bpm", tempo)),
-                mood=mood,
+                tempo=int(session_state.get("improv_jam_bpm") or 110),
+                mood=str(session_state.get("improv_jam_mood") or "Mellow"),
             )
             k = str(session_state.get("improv_jam_key") or key_c or "C")
             apply_creative_concert_key(session_state, k, st_like=st)
