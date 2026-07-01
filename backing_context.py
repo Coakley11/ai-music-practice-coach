@@ -526,7 +526,9 @@ def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, 
             user_dirty = bool(is_backing_user_dirty(session))
         except ImportError:
             pass
-        if user_dirty or ctx_bpm == canonical_bpm:
+        if str(getattr(ctx, "source", "") or "").strip() == "regular_song":
+            use_bpm = ctx_bpm
+        elif user_dirty or ctx_bpm == canonical_bpm:
             use_bpm = ctx_bpm
     return (
         use_bpm,

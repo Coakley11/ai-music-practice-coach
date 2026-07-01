@@ -268,6 +268,7 @@ def _tab_entry_modes(
     st.markdown('<div class="ui-creative-entry-segment">', unsafe_allow_html=True)
 
     def _on_entry_mode_change() -> None:
+        mark_improv_tab_user_touched(session_state)
         try:
             from creative_session_state import sync_creative_session_before_persist
 

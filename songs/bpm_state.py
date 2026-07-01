@@ -26,6 +26,20 @@ def sync_backing_bpm_before_widget(st: Any, song_title: str, default_bpm: int) -
     pending = st.session_state.pop(PENDING_BACKING_TRACK_BPM, None)
     song_changed = st.session_state.get(LAST_BPM_SONG) != song_title
 
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(st.session_state)
+        if ctx is not None and str(getattr(ctx, "source", "") or "").strip() == "regular_song":
+            ctx_bpm = int(getattr(ctx, "bpm", 0) or 0)
+            if ctx_bpm > 0:
+                default_bpm = ctx_bpm
+                if int(st.session_state.get(BPM_WIDGET_KEY) or 0) != ctx_bpm:
+                    pending = ctx_bpm
+                    song_changed = True
+    except ImportError:
+        pass
+
     if song_changed and st.session_state.get(LAST_BPM_SONG) is None:
         try:
             from backing_track_state import backing_canonical_playback_seed

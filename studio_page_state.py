@@ -396,6 +396,8 @@ def ensure_improv_entry_mode_restored(session_state: dict) -> str:
         session_state["improv_entry_mode"] = pending_entry
         return pending_entry
     current = str(session_state.get("improv_entry_mode") or "").strip()
+    if session_state.get("_improv_tab_user_touched") and current in IMPROV_ENTRY_MODES:
+        return current
     jam = session_state.get("improv_jam_session")
     has_jam_sections = isinstance(jam, dict) and bool(jam.get("sections"))
     if has_jam_sections and current == "Jam Session Generator":

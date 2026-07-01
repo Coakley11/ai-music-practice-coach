@@ -698,6 +698,29 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(session.get(ACTIVE_CATALOG_PICK_KEY), shape_pick)
         self.assertEqual(session.get("song"), "Shape of You")
 
+    def test_ensure_improv_entry_mode_respects_user_touch_over_stale_session(self) -> None:
+        from creative_session_state import CreativeSession, set_creative_session
+        from studio_page_state import ensure_improv_entry_mode_restored
+
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Style Jam Mode",
+            "_improv_tab_user_touched": True,
+        }
+        set_creative_session(
+            session,
+            CreativeSession(
+                session_id="",
+                tool_type="song_based_improvisation",
+                entry_mode="Song-Based Improvisation",
+                concert_key="A",
+                display_key="A",
+            ),
+        )
+        entry = ensure_improv_entry_mode_restored(session)
+        self.assertEqual(entry, "Style Jam Mode")
+        self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
+
     def test_return_to_creative_restores_entry_jam_tool_type(self) -> None:
         from backing_context import open_backing_from_creative
         from backing_source_navigation import prepare_return_to_backing_source

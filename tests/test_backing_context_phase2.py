@@ -565,6 +565,56 @@ class TestCustomProgressionConcertKey(unittest.TestCase):
         self.assertEqual(refreshed.concert_key, "E")
         self.assertEqual(refreshed.progression[:4], ["E", "E", "E", "E"])
 
+    def test_prepare_custom_sidebar_display_key_prefers_live_over_creative_session(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, build_custom_progression_context, set_backing_context
+        from creative_key_sync import prepare_backing_context_sidebar_display_key
+        from creative_session_state import CreativeSession, set_creative_session
+
+        session = self._trial_session(display_key="E")
+        session["concert_key"] = "E"
+        ctx = build_custom_progression_context(session)
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
+        set_backing_context(session, ctx)
+        set_creative_session(
+            session,
+            CreativeSession(
+                session_id="",
+                tool_type="song_based_improvisation",
+                entry_mode="Song-Based Improvisation",
+                concert_key="C",
+                display_key="C",
+                sections={"Verse": ["C"]},
+            ),
+        )
+        st = SimpleNamespace(session_state=session)
+        options = prepare_backing_context_sidebar_display_key(st, session)
+        self.assertEqual(session.get("display_key"), "E")
+        self.assertIn("E", options)
+
+    def test_backing_page_transport_defaults_uses_ctx_bpm_when_canonical_stale(self) -> None:
+        from backing_context import BackingContext, BACKING_CONTEXT_KEY, backing_page_transport_defaults
+
+        session = {
+            "active_catalog_pick_key": "Pop::In My Life",
+            "selected_song": {"title": "In My Life", "key": "A", "pick_key": "Pop::In My Life", "bpm": 100},
+            "backing_track_state": {"backing_track_bpm": 35},
+            BACKING_CONTEXT_KEY: BackingContext(
+                source="regular_song",
+                source_label="Catalog song",
+                active_song_id="Pop::In My Life",
+                bound_pick_key="Pop::In My Life",
+                song_title="In My Life",
+                key="A",
+                display_key="A",
+                concert_key="A",
+                bpm=100,
+                style="",
+                groove="Pop groove",
+            ).to_dict(),
+        }
+        bpm, _groove, _meter = backing_page_transport_defaults(session)
+        self.assertEqual(bpm, 100)
+
     def test_custom_to_catalog_restore_uses_catalog_before_custom(self) -> None:
         from backing_context import BACKING_CONTEXT_KEY, build_custom_progression_context, restore_regular_song_backing
         from songs.music_source import CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY

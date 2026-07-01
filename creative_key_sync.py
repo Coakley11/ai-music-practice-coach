@@ -466,6 +466,8 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                 or getattr(ctx, "key", None)
                 or ""
             ).strip()
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        selected = str(pending or live or resolver_key or "C").strip() or "C"
     elif creative and resolve_current_backing_musical_state is not None:
         resolver_key = str(
             resolve_current_backing_musical_state(session).practice_concert_key or ""
@@ -477,15 +479,16 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         and not (ctx is not None and str(getattr(ctx, "source", "") or "").strip() == "custom_progression")
     ):
         resolver_key = str(creative_sess.concert_key or creative_sess.display_key or "").strip()
-    selected = str(
-        pending
-        or resolver_key
-        or (creative_sess.concert_key if creative_sess and creative_session_is_active(session) else "")
-        or session.get("concert_key")
-        or session.get("display_key")
-        or (creative.concert_key if creative else "")
-        or "C"
-    ).strip() or "C"
+    if ctx_source != "custom_progression":
+        selected = str(
+            pending
+            or resolver_key
+            or (creative_sess.concert_key if creative_sess and creative_session_is_active(session) else "")
+            or session.get("concert_key")
+            or session.get("display_key")
+            or (creative.concert_key if creative else "")
+            or "C"
+        ).strip() or "C"
     options = practice_keys_for_mode(key_mode(selected))
     if selected not in options:
         options = [selected] + options

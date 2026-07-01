@@ -496,11 +496,16 @@ def apply_creative_session_to_session(
         else:
             session[key] = value
 
-    _set("improv_entry_mode", sess.entry_mode)
     try:
-        from studio_page_state import CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY
+        from studio_page_state import CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY, IMPROV_ENTRY_MODES
     except ImportError:
         CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY = "creative_improv_intelligence_tab"  # type: ignore[misc,assignment]
+        IMPROV_ENTRY_MODES = ("Song-Based Improvisation", "Style Jam Mode", "Jam Session Generator")
+    live_entry = str(session.get("improv_entry_mode") or "").strip()
+    if widget_safe and session.get("_improv_tab_user_touched") and live_entry in IMPROV_ENTRY_MODES:
+        pass  # keep user-selected entry mode on the radio widget
+    else:
+        _set("improv_entry_mode", sess.entry_mode)
     saved_tab = str(session.get(CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY) or sess.intelligence_tab or "").strip()
     tab = _normalize_improv_intelligence_tab(saved_tab or sess.intelligence_tab)
     if widget_safe:
@@ -720,6 +725,8 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
 
         if page == "creative" and active_creative_backing_context(session) is not None:
             should_apply = False
+        elif page == "creative" and session.get("_improv_tab_user_touched"):
+            should_apply = False
     except ImportError:
         pass
     if (
@@ -727,6 +734,7 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
         and page == "creative"
         and not should_apply
         and (sess.sections or sess.style)
+        and not session.get("_improv_tab_user_touched")
     ):
         should_apply = True
         try:
