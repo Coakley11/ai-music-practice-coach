@@ -30,6 +30,13 @@ class TestDeveloperWorkspaceGating(unittest.TestCase):
         self.assertTrue(music_developer_mode(st))  # type: ignore[arg-type]
         self.assertTrue(can_show_developer_tools(st=st))  # type: ignore[arg-type]
 
+    def test_source_ownership_diagnostics_any_workspace_with_dev_query(self) -> None:
+        from backing_source_navigation import source_ownership_diagnostics_enabled
+
+        st = _FakeSt("ariel", dev_query=True)
+        self.assertTrue(source_ownership_diagnostics_enabled(st=st))  # type: ignore[arg-type]
+        self.assertFalse(can_show_developer_tools(st=st))  # type: ignore[arg-type]
+
 
 if __name__ == "__main__":
     unittest.main()

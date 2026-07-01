@@ -10861,12 +10861,6 @@ elif _studio_page == "picker":
 
     ensure_page_initialized(st.session_state, "picker")
     note_page_visit(st.session_state, "picker")
-    try:
-        from backing_source_navigation import render_source_context_debug
-
-        render_source_context_debug(st, st.session_state)
-    except ImportError:
-        pass
     inject_song_picker_page_styles(st)
     try:
         from app_ui import inject_studio_page_marker_sync
@@ -10901,6 +10895,13 @@ elif _studio_page == "picker":
             "Creative Lab, Karaoke, and Upload/Multitrack. Use Edit Song Chart to customize "
             "chords, sections, and song structure.",
         )
+
+    try:
+        from backing_source_navigation import render_source_context_debug
+
+        render_source_context_debug(st, st.session_state)
+    except ImportError:
+        pass
 
     _render_catalog_song_picker_block(
         show_source_toggle=True,
@@ -11134,12 +11135,6 @@ elif _studio_page == "backing":
         render_creative_session_diagnostic(st, st.session_state)
     except Exception:
         pass
-    try:
-        from backing_source_navigation import render_source_context_debug
-
-        render_source_context_debug(st, st.session_state)
-    except ImportError:
-        pass
     st.session_state.pop("_active_bpm_sync_id", None)
     st.session_state.pop("_backing_trace_sync_id", None)
     _song_bpm_sync_id = resolve_active_bpm_sync_id(
@@ -11267,6 +11262,12 @@ elif _studio_page == "backing":
             render_backing_context_banner(st, st.session_state)
             render_backing_context_reset(st, st.session_state)
         except Exception:
+            pass
+        try:
+            from backing_source_navigation import render_source_context_debug
+
+            render_source_context_debug(st, st.session_state)
+        except ImportError:
             pass
     # The voice-mode `data-vocal-focus="true"` body attribute is set
     # globally at app init (search for `dataset.vocalFocus` upstream),
@@ -12781,6 +12782,13 @@ elif _studio_page == "creative":
             "Harmony, improvisation, and growth tools for your active song.",
         )
 
+    try:
+        from backing_source_navigation import render_source_context_debug
+
+        render_source_context_debug(st, st.session_state)
+    except ImportError:
+        pass
+
     ctx = current_song_context_lab()
 
     from creative_key_sync import ensure_creative_analysis_mode_restored, on_creative_analysis_mode_change
@@ -12917,12 +12925,9 @@ elif _studio_page == "creative":
             render_creative_session_diagnostic(st, st.session_state)
         except ImportError:
             pass
-        try:
-            from backing_source_navigation import render_source_context_debug
-
-            render_source_context_debug(st, st.session_state)
-        except ImportError:
-            pass
+        render_creative_session_diagnostic(st, st.session_state)
+    except Exception:
+        pass
     else:
         with st.expander(lab_mode, expanded=pp.feature_expander_default(st, default=True)):
             if lab_mode == "Deep Harmonic Analyzer":

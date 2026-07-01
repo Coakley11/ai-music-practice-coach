@@ -323,14 +323,19 @@ def _sections_source_label(session: dict[str, Any], ctx: BackingContext | None) 
     return f"backing_context.{ctx.source}"
 
 
+def source_ownership_diagnostics_enabled(*, st: Any | None = None) -> bool:
+    """True when ?dev=1 (or dev session flag) — any workspace, not Daniel-only."""
+    try:
+        from suite_workspace import is_developer_mode_enabled
+
+        return is_developer_mode_enabled(st=st)
+    except ImportError:
+        return False
+
+
 def render_source_ownership_dev_table(st: Any, session: dict[str, Any]) -> None:
     """Dev-only ownership matrix (?dev=1) — Song, Creative, and Backing pages."""
-    try:
-        from suite_workspace import can_show_developer_tools
-
-        if not can_show_developer_tools(st=st):
-            return
-    except ImportError:
+    if not source_ownership_diagnostics_enabled(st=st):
         return
 
     ctx = get_backing_context(session)
@@ -413,46 +418,36 @@ def render_source_ownership_dev_table(st: Any, session: dict[str, Any]) -> None:
         "top_backing_banner": banner,
     }
 
-    with st.expander("Source ownership (?dev=1)", expanded=False):
+    st.caption("**Debug:** Source ownership diagnostics active")
+    with st.expander("Source ownership diagnostics", expanded=True):
+        try:
+            from suite_deploy_probe import deploy_info
+
+            deploy = deploy_info()
+            commit = str(deploy.get("commit") or "unknown").strip()[:12]
+        except ImportError:
+            commit = "unknown"
+        try:
+            from suite_workspace import is_developer_workspace, resolve_workspace_id
+
+            workspace = str(resolve_workspace_id(st=st) or "").strip()
+            daniel_only_tools = is_developer_workspace(st=st)
+        except ImportError:
+            workspace = ""
+            daniel_only_tools = False
+        st.caption(
+            f"URL gate: `?dev=1` · workspace `{workspace or 'unknown'}` · "
+            f"commit `{commit}` · Daniel-only sidebar tools: "
+            f"{'yes' if daniel_only_tools else 'no (this panel works on any workspace)'}"
+        )
         st.table([{"field": k, "value": v} for k, v in rows.items()])
 
 
 def render_source_context_debug(st: Any, session: dict[str, Any]) -> None:
-    """Dev-only source context visibility (?dev=1)."""
-    render_source_ownership_dev_table(st, session)
-    try:
-        from suite_deploy_probe import deploy_info
-    except ImportError:
-        deploy_info = lambda: {"commit": "unknown"}  # type: ignore[misc, assignment]
-    try:
-        from suite_workspace import can_show_developer_tools
-
-        if not can_show_developer_tools(st=st):
-            return
-    except ImportError:
+    """Dev-only source context visibility (?dev=1) — caption, expander, and quick summary."""
+    if not source_ownership_diagnostics_enabled(st=st):
         return
-    deploy = deploy_info()
-    commit = str(deploy.get("commit") or "unknown").strip()[:12]
-    tool = ""
-    try:
-        from creative_session_state import get_creative_session
-
-        sess = get_creative_session(session)
-        if sess is not None:
-            tool = str(sess.tool_type or "")
-    except ImportError:
-        pass
-    ctx = get_backing_context(session)
-    page = str(session.get("studio_page") or "").strip()
-    st.caption(
-        f"Context · commit `{commit}` · page `{page}` · "
-        f"practice={_practice_source_type(session)}/{_practice_source_name(session)} · "
-        f"backing={_backing_source_type(session)}/{_backing_source_name(session)} · "
-        f"creative_tool={tool or 'none'} · "
-        f"concert_key={session.get('display_key') or session.get('concert_key')} · "
-        f"instrument={session.get('instrument')} · "
-        f"backing_context={'yes' if ctx else 'no'}"
-    )
+    render_source_ownership_dev_table(st, session)
 
 
 def target_page_for_backing_context(ctx: BackingContext | None) -> CreativeReturnPage:
@@ -742,6 +737,7 @@ __all__ = [
     "prepare_return_to_backing_source",
     "render_source_context_debug",
     "render_source_ownership_dev_table",
+    "source_ownership_diagnostics_enabled",
     "restore_practice_source_display_key",
     "restore_session_widgets_from_backing_context",
     "return_to_source_button_label",
