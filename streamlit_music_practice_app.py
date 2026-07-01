@@ -11348,7 +11348,16 @@ elif _studio_page == "backing":
 
     from songs.music_source import custom_selected_song_record as _custom_selected_song_record
 
-    if cpl_session_is_active(st.session_state) and _cpl_active:
+    try:
+        from backing_context import get_backing_context as _get_backing_ctx_for_card
+
+        _early_backing_ctx = _get_backing_ctx_for_card(st.session_state)
+    except ImportError:
+        _early_backing_ctx = None
+
+    if _early_backing_ctx is not None and _early_backing_ctx.source == "regular_song":
+        _backing_card_record = dict(song_data or _catalog_song_data or {})
+    elif cpl_session_is_active(st.session_state) and _cpl_active:
         _backing_card_record = dict(_custom_selected_song_record(_cpl_active))
         _backing_card_record.update(
             {
@@ -11417,7 +11426,7 @@ elif _studio_page == "backing":
     _backing_written_key = str(_backing_written_key or "").strip()
     _backing_source_label = (
         "Custom Progression"
-        if _cpl_session_is_active(st.session_state)
+        if _early_backing_ctx is not None and _early_backing_ctx.source == "custom_progression"
         else "Catalog song"
     )
     try:
@@ -11510,6 +11519,22 @@ elif _studio_page == "backing":
             _backing_ctx_for_card is not None
             and _backing_ctx_for_card.source == "custom_progression"
         ):
+            if _backing_musical is None:
+                try:
+                    from backing_musical_state import resolve_current_backing_musical_state
+
+                    _backing_musical = resolve_current_backing_musical_state(
+                        st.session_state,
+                        rec=_backing_card_record,
+                        applied_bpm=_synced_bpm,
+                        sync_id=_bpm_sync_id,
+                        song_sync_id=_song_bpm_sync_id,
+                    )
+                    _backing_practice_key = _backing_musical.practice_concert_key
+                except Exception:
+                    pass
+            if _backing_musical is not None and _backing_musical.concert_sections:
+                sections_for_backing = _backing_musical.concert_sections
             render_backing_custom_progression_context_card(
                 st,
                 _backing_ctx_for_card,
@@ -11687,7 +11712,14 @@ elif _studio_page == "backing":
 
     _audio_signature_key = (
         _backing_musical.practice_concert_key
-        if _backing_musical is not None and _creative_backing_ctx is not None
+        if _backing_musical is not None
+        and (
+            _creative_backing_ctx is not None
+            or (
+                _early_backing_ctx is not None
+                and _early_backing_ctx.source == "custom_progression"
+            )
+        )
         else chart_key
     )
 
@@ -11911,7 +11943,10 @@ elif _studio_page == "backing":
                 sync_id=_bpm_sync_id,
                 song_sync_id=_song_bpm_sync_id,
             )
-            if _gen_musical.creative_active and _gen_musical.concert_sections:
+            if _gen_musical.concert_sections and (
+                _gen_musical.creative_active
+                or _gen_musical.source_type == "custom_progression"
+            ):
                 performed_sections, _hri_annotations = _humanized_backing_sections(
                     _gen_musical.concert_sections,
                     song_data=_humanize_song_data,

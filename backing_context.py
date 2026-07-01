@@ -881,11 +881,41 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
     )
 
 
-def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
+def _custom_progression_sections_at_concert_key(
+    session: dict[str, Any],
+    *,
+    concert_key: str = "",
+    active: dict[str, Any] | None = None,
+) -> tuple[dict[str, list[str]], list[str]]:
+    """CPL section dict and flat progression in the current practice concert key."""
     try:
         from custom_progression_lab import (
             CPL_ACTIVE_KEY,
             all_chords_from_lab_sections,
+            display_sections_for_key,
+            ensure_original_structure,
+            sections_to_chord_lists,
+            written_home_key,
+        )
+    except ImportError:
+        return {}, []
+
+    active = ensure_original_structure(active or session.get(CPL_ACTIVE_KEY) or {})
+    practice = str(
+        concert_key or session.get("display_key") or session.get("concert_key") or ""
+    ).strip()
+    if not practice:
+        practice = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
+    transposed = display_sections_for_key(active, practice)
+    sections = sections_to_chord_lists(transposed)
+    progression = all_chords_from_lab_sections(transposed)
+    return sections, progression
+
+
+def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
+    try:
+        from custom_progression_lab import (
+            CPL_ACTIVE_KEY,
             ensure_original_structure,
             written_home_key,
         )
@@ -901,8 +931,11 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
     _, display_key, concert_key = _live_backing_concert_keys(session)
     if not concert_key:
         concert_key = display_key = home_key
-    sections = active.get("original_sections") if isinstance(active.get("original_sections"), dict) else {}
-    progression = all_chords_from_lab_sections(sections)
+    sections, progression = _custom_progression_sections_at_concert_key(
+        session,
+        concert_key=concert_key,
+        active=active,
+    )
 
     label = name
     if progression:
@@ -1390,32 +1423,10 @@ def sections_dict_from_backing_context(
             except ImportError:
                 pass
     elif ctx.source == "custom_progression":
-        try:
-            from custom_progression_lab import CPL_ACTIVE_KEY, all_chords_from_lab_sections, ensure_original_structure
-
-            active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
-            raw = active.get("original_sections")
-            if isinstance(raw, dict) and raw:
-                sections = {}
-                for name, chords in raw.items():
-                    if not isinstance(chords, list) or not chords:
-                        continue
-                    label = str(name).strip()
-                    if not label:
-                        continue
-                    flat = all_chords_from_lab_sections({label: chords})
-                    if flat:
-                        sections[label] = flat
-            elif ctx.progression:
-                label = str(ctx.song_title or ctx.progression_label or "Custom").strip() or "Custom"
-                sections = {label: list(ctx.progression)}
-            else:
-                sections = {}
-        except ImportError:
-            sections = {}
-            if ctx.progression:
-                label = str(ctx.song_title or ctx.progression_label or "Custom").strip() or "Custom"
-                sections = {label: list(ctx.progression)}
+        sections, _ = _custom_progression_sections_at_concert_key(session, concert_key=practice_key)
+        if not sections and ctx.progression:
+            label = str(ctx.song_title or ctx.progression_label or "Custom").strip() or "Custom"
+            sections = {label: list(ctx.progression)}
     else:
         entry_mode = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()
         sections = _entry_jam_sections_dict(session, entry_mode)
@@ -1810,10 +1821,29 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         pass
     if not pick_key and resolve_last_catalog_pick_key is not None:
         pick_key = resolve_last_catalog_pick_key(session)
-    if activate_catalog_pick_for_backing is not None:
-        original = activate_catalog_pick_for_backing(session, pick_key, st_like=st_like)
-    else:
-        original = _original_key_for_active_song(session)
+    if pick_key and activate_catalog_pick_for_backing is not None:
+        activate_catalog_pick_for_backing(session, pick_key, st_like=st_like)
+    try:
+        from music_source_ownership import rebuild_catalog_backing_from_canonical_pick
+
+        ctx = rebuild_catalog_backing_from_canonical_pick(session, st_like=st_like)
+        if ctx is not None:
+            try:
+                from songs.key_state import BACKING_NEEDS_REGEN
+
+                session[BACKING_NEEDS_REGEN] = True
+            except ImportError:
+                pass
+            try:
+                from studio_page_persistence import save_page_snapshot
+
+                save_page_snapshot(session, "backing")
+            except ImportError:
+                pass
+            return ctx
+    except ImportError:
+        pass
+    original = _original_key_for_active_song(session)
     _apply_original_song_display_key(session, original, st_like=st_like)
     set_backing_source_preference(session, BACKING_PREF_CATALOG)
     ctx = build_regular_song_context(session)
@@ -2038,14 +2068,17 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         return
     if ctx is not None and ctx.source == "custom_progression":
         set_backing_source_preference(session, BACKING_PREF_CUSTOM)
-        _sync_sidebar_to_ctx(ctx)
+        refreshed = refresh_backing_context_from_session(session)
+        if refreshed is not None:
+            set_backing_context(session, refreshed)
         flush_pending_backing_handoff_keys(
             session,
             sync_id=str(session.get("_backing_trace_sync_id") or ""),
         )
         return
     if pref in {BACKING_PREF_CATALOG, BACKING_PREF_CUSTOM}:
-        _sync_sidebar_to_ctx(ctx)
+        if ctx is not None and ctx.source == "regular_song":
+            _sync_sidebar_to_ctx(ctx)
         flush_pending_backing_handoff_keys(
             session,
             sync_id=str(session.get("_backing_trace_sync_id") or ""),

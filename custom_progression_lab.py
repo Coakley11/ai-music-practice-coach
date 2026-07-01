@@ -631,6 +631,22 @@ def on_global_display_key_change(session_state, display_key):
     if last != display_key:
         session_state[CPL_LAST_DISPLAY_KEY] = display_key
         invalidate_cpl_derived_outputs(session_state)
+        try:
+            from backing_context import (
+                get_backing_context,
+                refresh_backing_context_from_session,
+                set_backing_context,
+            )
+            from songs.key_state import BACKING_NEEDS_REGEN
+
+            ctx = get_backing_context(session_state)
+            if ctx is not None and ctx.source == "custom_progression":
+                refreshed = refresh_backing_context_from_session(session_state)
+                if refreshed is not None:
+                    set_backing_context(session_state, refreshed)
+            session_state[BACKING_NEEDS_REGEN] = True
+        except ImportError:
+            pass
         return True
     return False
 

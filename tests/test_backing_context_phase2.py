@@ -436,7 +436,74 @@ class TestCatalogCustomBackingResolution(unittest.TestCase):
         with patch("backing_track_state.write_canonical_backing_state"):
             ctx = restore_regular_song_backing(session, st_like=st_like)
         self.assertEqual(ctx.source, "regular_song")
-        self.assertEqual(session.get("active_catalog_pick_key"), "Pop::Photograph")
+        self.assertFalse(str(session.get("active_catalog_pick_key") or "").startswith("custom::"))
+        self.assertEqual(session.get("concert_key"), "E")
+        self.assertEqual(session.get("song"), "Photograph")
+        self.assertEqual(ctx.song_title, "Photograph")
+        self.assertNotEqual(ctx.groove, "Bossa")
+
+
+class TestCustomProgressionConcertKey(unittest.TestCase):
+    def _trial_session(self, *, display_key: str = "D") -> dict:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+
+        return {
+            CPL_ACTIVE_KEY: {
+                "id": "trial-1",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "user_locked_home_key": True,
+                "bpm": 120,
+                "progression_style": "Bossa",
+                "groove_style": "Bossa",
+                "original_sections": {
+                    "Verse": [
+                        {"chord": "D", "bars": 4},
+                        {"chord": "A", "bars": 2},
+                    ],
+                },
+            },
+            "display_key": display_key,
+            "concert_key": display_key,
+        }
+
+    def test_build_custom_context_transposes_progression_to_practice_key(self) -> None:
+        from backing_context import build_custom_progression_context
+
+        ctx = build_custom_progression_context(self._trial_session(display_key="E"))
+        self.assertEqual(ctx.concert_key, "E")
+        self.assertEqual(ctx.key, "D")
+        self.assertEqual(ctx.progression, ["E", "E", "E", "E", "B", "B"])
+
+    def test_resolve_musical_state_uses_transposed_custom_sections(self) -> None:
+        from backing_context import build_custom_progression_context, set_backing_context
+        from backing_musical_state import resolve_current_backing_musical_state
+
+        session = self._trial_session(display_key="E")
+        set_backing_context(session, build_custom_progression_context(session))
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.practice_concert_key, "E")
+        flat = list(state.concert_sections.get("Verse") or [])
+        self.assertEqual(flat, ["E", "E", "E", "E", "B", "B"])
+
+    def test_reconcile_custom_does_not_reset_sidebar_practice_key(self) -> None:
+        from backing_context import (
+            BACKING_CONTEXT_KEY,
+            BACKING_PREF_CUSTOM,
+            BACKING_SOURCE_PREFERENCE_KEY,
+            build_custom_progression_context,
+            reconcile_backing_context_on_backing_page,
+            set_backing_source_preference,
+        )
+
+        session = self._trial_session(display_key="E")
+        stale = build_custom_progression_context(self._trial_session(display_key="D"))
+        session[BACKING_CONTEXT_KEY] = stale.to_dict()
+        set_backing_source_preference(session, BACKING_PREF_CUSTOM)
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            reconcile_backing_context_on_backing_page(session, st_like=st_like)
+        self.assertEqual(session.get("display_key"), "E")
         self.assertEqual(session.get("concert_key"), "E")
 
 

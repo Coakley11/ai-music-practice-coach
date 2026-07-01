@@ -163,6 +163,7 @@ def resolve_current_backing_musical_state(
     from songs.playback_defaults import backing_bpm_slider_widget_key
 
     ctx = get_backing_context(session)
+    custom_ctx = ctx if ctx is not None and ctx.source == "custom_progression" else None
     if ctx is not None and ctx.source in {"regular_song", "custom_progression"}:
         creative = None
     else:
@@ -175,9 +176,23 @@ def resolve_current_backing_musical_state(
     creative_active = creative is not None
     major_jam = is_creative_major_jam_active(session) if creative_active else False
     source_type: SourceType = (
-        creative.source if creative else ("regular_song" if ctx and ctx.source == "regular_song" else "none")
+        creative.source
+        if creative
+        else (
+            "custom_progression"
+            if custom_ctx is not None
+            else ("regular_song" if ctx and ctx.source == "regular_song" else "none")
+        )
     )
-    source_signature = str(creative.source_signature if creative else (ctx.source_signature if ctx else "")).strip()
+    source_signature = str(
+        creative.source_signature
+        if creative
+        else (
+            custom_ctx.source_signature
+            if custom_ctx is not None
+            else (ctx.source_signature if ctx else "")
+        )
+    ).strip()
     sid = str(
         sync_id
         or backing_page_sync_id(session, song_sync_id=song_sync_id)
@@ -193,6 +208,15 @@ def resolve_current_backing_musical_state(
             creative=creative,
             major_jam=major_jam,
         )
+    elif custom_ctx is not None:
+        try:
+            from backing_context import _live_backing_concert_keys
+
+            _, _, practice = _live_backing_concert_keys(session)
+        except ImportError:
+            practice = str(
+                session.get("display_key") or session.get("concert_key") or custom_ctx.concert_key or ""
+            ).strip()
     else:
         practice = ""
     if not practice:
@@ -261,6 +285,13 @@ def resolve_current_backing_musical_state(
         groove = str(creative.groove or "").strip()
         context_bpm = source_bpm
         bpm_source = f"creative:{creative.source}"
+    elif custom_ctx is not None:
+        source_bpm = int(custom_ctx.bpm or 100)
+        style = str(custom_ctx.style or "").strip()
+        meter = str(custom_ctx.meter or session.get("backing_time_signature") or "4/4").strip()
+        groove = str(custom_ctx.groove or "").strip()
+        context_bpm = source_bpm
+        bpm_source = "custom_progression"
     else:
         source_bpm = 100
         for key in ("active_song_bpm", "backing_track_bpm", "bpm"):
@@ -288,6 +319,14 @@ def resolve_current_backing_musical_state(
     chart_sections: dict[str, list[str]] = {}
     if creative:
         concert_sections = sections_dict_from_backing_context(session, creative)
+        if concert_sections:
+            chart_sections = sections_dict_for_chart_display(
+                session,
+                concert_sections,
+                concert_key=practice,
+            )
+    elif custom_ctx is not None:
+        concert_sections = sections_dict_from_backing_context(session, custom_ctx)
         if concert_sections:
             chart_sections = sections_dict_for_chart_display(
                 session,
