@@ -41,6 +41,7 @@ __all__ = (
     "IMPROV_TAB_NAMES",
     "PENDING_IMPROV_SONG_SOURCE",
     "apply_improv_song_source",
+    "ensure_improv_entry_mode_restored",
     "ensure_improv_intelligence_tab_restored",
     "flush_pending_improv_song_source",
     "init_analysis_page_state",
@@ -259,6 +260,15 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
 
 def ensure_improv_intelligence_tab_restored(session_state: dict) -> str:
     """Restore Improvisation Intelligence sub-tab before the radio renders."""
+    try:
+        from session_widget_safe import PENDING_IMPROV_INTELLIGENCE_TAB_KEY
+    except ImportError:
+        PENDING_IMPROV_INTELLIGENCE_TAB_KEY = "_pending_improv_intelligence_tab"  # type: ignore[misc,assignment]
+    pending_tab = str(session_state.pop(PENDING_IMPROV_INTELLIGENCE_TAB_KEY, None) or "").strip()
+    if pending_tab and pending_tab in IMPROV_TAB_NAMES:
+        session_state["improv_intelligence_tab"] = pending_tab
+        session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = pending_tab
+        return pending_tab
     last = str(session_state.get(CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY) or "").strip()
     current = str(session_state.get("improv_intelligence_tab") or "").strip()
     if last and last in IMPROV_TAB_NAMES and last != current:
@@ -273,6 +283,37 @@ def ensure_improv_intelligence_tab_restored(session_state: dict) -> str:
     default = IMPROV_TAB_NAMES[0]
     session_state["improv_intelligence_tab"] = default
     session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = default
+    return default
+
+
+def ensure_improv_entry_mode_restored(session_state: dict) -> str:
+    """Restore Entry / Style Jam / SBI radio before the entry-mode widget renders."""
+    try:
+        from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
+    except ImportError:
+        PENDING_IMPROV_ENTRY_MODE_KEY = "_pending_improv_entry_mode"  # type: ignore[misc,assignment]
+    pending_entry = str(session_state.pop(PENDING_IMPROV_ENTRY_MODE_KEY, None) or "").strip()
+    if pending_entry and pending_entry in IMPROV_ENTRY_MODES:
+        session_state["improv_entry_mode"] = pending_entry
+        return pending_entry
+    try:
+        from creative_session_state import get_creative_session
+
+        sess = get_creative_session(session_state)
+        if sess is not None:
+            entry = str(sess.entry_mode or "").strip()
+            if entry in IMPROV_ENTRY_MODES:
+                current = str(session_state.get("improv_entry_mode") or "").strip()
+                if current != entry:
+                    session_state["improv_entry_mode"] = entry
+                return entry
+    except ImportError:
+        pass
+    current = str(session_state.get("improv_entry_mode") or "").strip()
+    if current in IMPROV_ENTRY_MODES:
+        return current
+    default = IMPROV_ENTRY_MODES[0]
+    session_state["improv_entry_mode"] = default
     return default
 
 

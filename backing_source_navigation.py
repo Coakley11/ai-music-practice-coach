@@ -816,9 +816,18 @@ def restore_session_widgets_from_backing_context(
         else:
             session["improv_song_source"] = "Active song"
     elif ctx.source == "entry_jam":
-        session["improv_intelligence_tab"] = "Entry & Jam"
         entry = str(ctx.entry_mode or "Style Jam Mode").strip()
-        session["improv_entry_mode"] = entry
+        tab = "Entry & Jam"
+        try:
+            from session_widget_safe import safe_session_assign
+            from studio_page_state import CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY
+
+            safe_session_assign(session, "improv_intelligence_tab", tab, widget_safe=widget_safe)
+            safe_session_assign(session, "improv_entry_mode", entry, widget_safe=widget_safe)
+            session[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = tab
+        except ImportError:
+            session["improv_intelligence_tab"] = tab
+            session["improv_entry_mode"] = entry
         if entry == "Jam Session Generator":
             if concert:
                 try:

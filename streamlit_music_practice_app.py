@@ -9297,6 +9297,12 @@ elif _studio_page_for_hydrate == "creative":
         if st.session_state.get(CREATIVE_RESTORE_FROM_BACKING_KEY):
             rehydrate_creative_from_backing_context(st.session_state, st_like=st)
             st.session_state.pop(CREATIVE_RESTORE_FROM_BACKING_KEY, None)
+        try:
+            from session_widget_safe import apply_pending_widget_hydrates
+
+            apply_pending_widget_hydrates(st.session_state)
+        except ImportError:
+            pass
     except ImportError:
         pass
 

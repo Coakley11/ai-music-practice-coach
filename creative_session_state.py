@@ -351,6 +351,7 @@ def apply_creative_session_to_session(
     if widget_safe:
         if not session.get("_improv_tab_user_touched"):
             session[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = tab
+            _set("improv_intelligence_tab", tab)
     else:
         _set("improv_intelligence_tab", tab)
         _set("creative_improv_intelligence_tab", tab)

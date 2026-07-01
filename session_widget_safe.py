@@ -173,7 +173,10 @@ def apply_pending_widget_hydrates(session: dict[str, Any]) -> None:
         if widget_key in {"display_key", "song_picker_active_source"}:
             continue
         pending = session.pop(pending_key, None)
-        if pending is not None and widget_key not in session:
+        if pending is None:
+            continue
+        current = session.get(widget_key)
+        if current is None or str(current) != str(pending):
             session[widget_key] = pending
 
 

@@ -79,6 +79,7 @@ from studio_page_state import (
     flush_pending_improv_song_source,
     init_improvisation_state,
     resolve_improv_song_source,
+    ensure_improv_entry_mode_restored,
     ensure_improv_intelligence_tab_restored,
 )
 from songs.picker_session import mark_improv_tab_user_touched
@@ -111,6 +112,12 @@ def render_improvisation_intelligence_lab(
     from creative_key_sync import flush_pending_creative_major_keys
 
     flush_pending_creative_major_keys(session_state)
+    try:
+        from session_widget_safe import apply_pending_widget_hydrates
+
+        apply_pending_widget_hydrates(session_state)
+    except ImportError:
+        pass
     ensure_improv_intelligence_tab_restored(session_state)
     try:
         from backing_musical_state import (
@@ -266,6 +273,7 @@ def _tab_entry_modes(
         except ImportError:
             pass
 
+    ensure_improv_entry_mode_restored(session_state)
     entry = st.radio(
         "Improvisation entry mode",
         list(IMPROV_ENTRY_MODES),

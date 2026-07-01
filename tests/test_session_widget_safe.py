@@ -11,7 +11,9 @@ from creative_session_state import (
 )
 from session_widget_safe import (
     PENDING_DISPLAY_KEY,
+    PENDING_IMPROV_ENTRY_MODE_KEY,
     PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY,
+    apply_pending_widget_hydrates,
     reconcile_practice_key_fields,
     safe_assign_display_key,
     safe_session_assign,
@@ -135,6 +137,15 @@ class TestSessionWidgetSafe(unittest.TestCase):
         assert sess is not None
         apply_creative_session_to_session(session, sess, widget_safe=False)
         self.assertEqual(session.get("display_key"), "D")
+
+    def test_apply_pending_widget_hydrates_overwrites_stale_entry_mode(self) -> None:
+        from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
+
+        session = {"improv_entry_mode": "Song-Based Improvisation"}
+        session[PENDING_IMPROV_ENTRY_MODE_KEY] = "Style Jam Mode"
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
+        self.assertNotIn(PENDING_IMPROV_ENTRY_MODE_KEY, session)
 
     def test_sync_live_keys_queues_improv_style_key_when_widget_locked(self) -> None:
         from backing_context import build_entry_jam_context, set_backing_context, sync_live_keys_from_backing_context

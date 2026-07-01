@@ -610,6 +610,28 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
 
 
+    def test_ensure_improv_entry_mode_restored_from_creative_session(self) -> None:
+        from creative_session_state import CREATIVE_SESSION_KEY, CreativeSession
+        from studio_page_state import ensure_improv_entry_mode_restored
+
+        session = {
+            "improv_entry_mode": "Song-Based Improvisation",
+            CREATIVE_SESSION_KEY: CreativeSession(
+                session_id="entry-jam",
+                tool_type="entry_style_jam",
+                entry_mode="Style Jam Mode",
+                concert_key="F",
+                display_key="F",
+                style="Bossa Nova",
+                bpm=80,
+                sections={"Style Jam": ["Fmaj7"]},
+            ).to_dict(),
+        }
+        entry = ensure_improv_entry_mode_restored(session)
+        self.assertEqual(entry, "Style Jam Mode")
+        self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
+
+
 def _style_jam_like_session() -> dict:
     return {
         "improv_entry_mode": "Style Jam Mode",
