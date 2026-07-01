@@ -358,6 +358,46 @@ class TestMusicSourceOwnership(unittest.TestCase):
         self.assertEqual(session.get(PENDING_DISPLAY_KEY), "E")
         self.assertEqual(session.get("concert_key"), "E")
 
+    def test_rebuild_catalog_uses_picker_default_bpm_when_selected_lacks_bpm(self) -> None:
+        from song_catalog.catalog import format_pick_key
+        from music_source_ownership import rebuild_catalog_backing_from_canonical_pick
+
+        day_pick = format_pick_key("Rock", "Day Tripper — The Beatles")
+        catalog = {
+            "Rock": {
+                "Day Tripper — The Beatles": {
+                    "title": "Day Tripper",
+                    "artist": "The Beatles",
+                    "key": "E",
+                    "genre": "Rock",
+                    "extensions": {"default_bpm": 138, "default_groove": "Rock groove"},
+                }
+            }
+        }
+        session = {
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": day_pick,
+            "selected_song": {
+                "title": "Day Tripper",
+                "pick_key": day_pick,
+                "key": "E",
+                "genre": "Rock",
+            },
+            "song": "Day Tripper",
+            "display_key": "E",
+            "concert_key": "E",
+            "backing_track_bpm": 100,
+            "_reconcile_song_picker_catalog": catalog,
+        }
+        rebuild_catalog_backing_from_canonical_pick(session)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(ctx.bpm, 138)
+        self.assertEqual(session.get("catalog_rebuild_result_bpm"), 138)
+        self.assertEqual(session.get("selected_song", {}).get("bpm"), 138)
+
 
 if __name__ == "__main__":
     unittest.main()

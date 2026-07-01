@@ -1787,11 +1787,55 @@ def _catalog_row_for_pick(
     return data
 
 
+def _catalog_bpm_from_row(row: dict[str, Any]) -> int:
+    ext = row.get("extensions") if isinstance(row.get("extensions"), dict) else {}
+    try:
+        bpm = int(row.get("bpm") or ext.get("default_bpm") or 0)
+    except (TypeError, ValueError):
+        return 0
+    return bpm if bpm > 0 else 0
+
+
+def _merge_catalog_transport_into_selected(
+    selected: dict[str, Any],
+    pick_key: str,
+    catalog: dict[str, dict[str, dict]] | None,
+    *,
+    authoritative: bool = False,
+) -> dict[str, Any]:
+    """Fill BPM/groove/extensions from picker catalog row when session blob is thin or stale."""
+    if not isinstance(catalog, dict):
+        return selected
+    row = _catalog_row_for_pick(pick_key, catalog)
+    if not row:
+        return selected
+    out = dict(selected)
+    ext = row.get("extensions") if isinstance(row.get("extensions"), dict) else {}
+    row_bpm = _catalog_bpm_from_row(row)
+    if row_bpm > 0 and (authoritative or not int(out.get("bpm") or 0)):
+        out["bpm"] = row_bpm
+    row_groove = str(ext.get("default_groove") or row.get("groove") or "").strip()
+    if row_groove and (authoritative or not str(out.get("groove") or "").strip()):
+        out["groove"] = row_groove
+    if ext and (authoritative or not isinstance(out.get("extensions"), dict) or not out.get("extensions")):
+        out["extensions"] = dict(ext)
+    if authoritative or not str(out.get("genre") or "").strip():
+        genre = str(row.get("genre") or out.get("genre") or "").strip()
+        if genre:
+            out["genre"] = genre
+    for field in ("title", "artist", "key"):
+        val = str(row.get(field) or "").strip()
+        if val and (authoritative or not str(out.get(field) or "").strip()):
+            out[field] = val
+    return out
+
+
 def resolve_catalog_song_for_pick(
     session_state: dict[str, Any],
     pick_key: str,
     *,
     song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+    authoritative_transport: bool = False,
 ) -> tuple[dict[str, Any], str]:
     """Return (selected_song, original_key) for a catalog pick — never a mismatched stale blob."""
     from songs.state import SELECTED_SONG_STATE_KEY
@@ -1805,6 +1849,15 @@ def resolve_catalog_song_for_pick(
         return {}, "C"
 
     catalog = song_picker_catalog or _catalog_picker_from_session(session_state)
+
+    def _finish(selected: dict[str, Any], original_key: str) -> tuple[dict[str, Any], str]:
+        merged = _merge_catalog_transport_into_selected(
+            selected,
+            pick_key,
+            catalog,
+            authoritative=authoritative_transport,
+        )
+        return merged, original_key
 
     for snap_key in (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY):
         raw = session_state.get(snap_key)
@@ -1824,7 +1877,7 @@ def resolve_catalog_song_for_pick(
             original = str(
                 raw.get("original_key") or selected.get("key") or "C"
             ).strip() or "C"
-            return selected, original
+            return _finish(selected, original)
 
     sel = session_state.get(SELECTED_SONG_STATE_KEY)
     if isinstance(sel, dict) and _pick_keys_match(
@@ -1833,7 +1886,7 @@ def resolve_catalog_song_for_pick(
         selected = dict(sel)
         selected["pick_key"] = pick_key
         original = str(selected.get("key") or "C").strip() or "C"
-        return selected, original
+        return _finish(selected, original)
 
     meta = session_state.get("active_song_state")
     if isinstance(meta, dict) and _pick_keys_match(
@@ -1846,7 +1899,7 @@ def resolve_catalog_song_for_pick(
             original = str(
                 meta.get("original_key") or selected.get("key") or "C"
             ).strip() or "C"
-            return selected, original
+            return _finish(selected, original)
 
     if isinstance(catalog, dict):
         row = _catalog_row_for_pick(pick_key, catalog)
@@ -1856,6 +1909,7 @@ def resolve_catalog_song_for_pick(
             except ImportError:
                 parse_pick_key = lambda _k: ("", "")  # type: ignore[assignment,misc]
             genre, label = parse_pick_key(pick_key)
+            ext = row.get("extensions") if isinstance(row.get("extensions"), dict) else {}
             selected = {
                 "pick_key": pick_key,
                 "title": str(row.get("title") or label or "").strip(),
@@ -1863,11 +1917,15 @@ def resolve_catalog_song_for_pick(
                 "genre": genre or str(row.get("genre") or "").strip(),
                 "label": label or str(row.get("label") or "").strip(),
                 "key": str(row.get("key") or "C").strip() or "C",
+                "extensions": dict(ext),
             }
-            for field in ("bpm", "genre"):
-                if row.get(field) is not None:
-                    selected[field] = row[field]
-            return selected, selected["key"]
+            row_bpm = _catalog_bpm_from_row(row)
+            if row_bpm > 0:
+                selected["bpm"] = row_bpm
+            row_groove = str(ext.get("default_groove") or "").strip()
+            if row_groove:
+                selected["groove"] = row_groove
+            return _finish(selected, selected["key"])
 
     try:
         from song_catalog.catalog import parse_pick_key

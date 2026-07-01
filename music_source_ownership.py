@@ -254,13 +254,20 @@ def _apply_catalog_transport_from_record(
         session.pop("_pending_display_key", None)
 
     lib_record = dict(selected)
-    bpm = 100
+    bpm = 0
     groove = "Pop groove"
     meter = "4/4"
     try:
         bpm = int(selected.get("bpm") or 0)
     except (TypeError, ValueError):
         bpm = 0
+    if bpm <= 0:
+        try:
+            from songs.playback_defaults import canonical_active_song_bpm
+
+            bpm = int(canonical_active_song_bpm(lib_record) or 0)
+        except (ImportError, TypeError, ValueError):
+            bpm = 0
     try:
         from backing_context import _canonical_active_song_bpm, _canonical_active_song_groove
         from songs.playback_defaults import (
@@ -347,7 +354,11 @@ def rebuild_catalog_backing_from_canonical_pick(
         )
         return None
 
-    selected, original_key = resolve_catalog_song_for_pick(session, pick)
+    selected, original_key = resolve_catalog_song_for_pick(
+        session,
+        pick,
+        authoritative_transport=True,
+    )
     if not selected:
         _write_catalog_rebuild_trace(
             session,
