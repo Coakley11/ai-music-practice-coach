@@ -246,7 +246,7 @@ def _apply_catalog_transport_from_record(
     try:
         from session_widget_safe import reconcile_practice_key_fields, safe_assign_display_key
 
-        safe_assign_display_key(session, concert, widget_safe=False, st_like=st_like)
+        safe_assign_display_key(session, concert, widget_safe=True, st_like=st_like)
         reconcile_practice_key_fields(session, authoritative=concert)
     except ImportError:
         session["display_key"] = concert

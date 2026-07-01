@@ -58,6 +58,19 @@ class TestSessionWidgetSafe(unittest.TestCase):
         self.assertEqual(session.get(PENDING_DISPLAY_KEY), "D")
         self.assertEqual(session.get("concert_key"), "D")
 
+    def test_safe_assign_display_key_refuses_unsafe_write_when_locked(self) -> None:
+        session = {"display_key": "D", "concert_key": "D"}
+        try:
+            from music_restore_phase import complete_music_restore_phase
+
+            complete_music_restore_phase(session)
+        except ImportError:
+            pass
+        safe_assign_display_key(session, "G", widget_safe=False)
+        self.assertEqual(session.get("display_key"), "D")
+        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "G")
+        self.assertEqual(session.get("concert_key"), "G")
+
     def test_reconcile_practice_key_fields_clears_stale_pending(self) -> None:
         session = {"display_key": "D", "concert_key": "D", PENDING_DISPLAY_KEY: "G"}
         try:

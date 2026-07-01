@@ -123,33 +123,38 @@ def safe_assign_display_key(
 ) -> None:
     """Set concert/display key via pending queue when widgets may exist."""
     concert = str(key or "C").strip() or "C"
-    session.pop(PENDING_DISPLAY_KEY, None)
+    locked = widgets_likely_instantiated(session)
     session["concert_key"] = concert
-    if not widget_safe or not widgets_likely_instantiated(session):
-        session["display_key"] = concert
-        return
-    if str(session.get("display_key") or "").strip() == concert:
-        return
-    session[PENDING_DISPLAY_KEY] = concert
-    if st_like is not None:
-        try:
-            from songs.key_state import request_display_key
+    if locked:
+        if str(session.get("display_key") or "").strip() == concert:
+            session.pop(PENDING_DISPLAY_KEY, None)
+            return
+        session[PENDING_DISPLAY_KEY] = concert
+        if st_like is not None:
+            try:
+                from songs.key_state import request_display_key
 
-            request_display_key(st_like, concert)
-        except ImportError:
-            pass
+                request_display_key(st_like, concert)
+            except ImportError:
+                pass
+        return
+    session.pop(PENDING_DISPLAY_KEY, None)
+    if widget_safe or not locked:
+        session["display_key"] = concert
 
 
 def reconcile_practice_key_fields(session: dict[str, Any], *, authoritative: str) -> str:
     """Align concert_key and pending display_key with the authoritative practice key."""
     concert = str(authoritative or "C").strip() or "C"
-    session.pop(PENDING_DISPLAY_KEY, None)
     session["concert_key"] = concert
-    if not widgets_likely_instantiated(session):
+    locked = widgets_likely_instantiated(session)
+    if not locked:
+        session.pop(PENDING_DISPLAY_KEY, None)
         session["display_key"] = concert
-        return
+        return concert
     if str(session.get("display_key") or "").strip() == concert:
-        return
+        session.pop(PENDING_DISPLAY_KEY, None)
+        return concert
     session[PENDING_DISPLAY_KEY] = concert
     return concert
 

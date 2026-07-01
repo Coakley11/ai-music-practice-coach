@@ -302,6 +302,62 @@ class TestMusicSourceOwnership(unittest.TestCase):
         self.assertEqual(session.get("display_key"), "E")
         self.assertEqual(session.get("concert_key"), "E")
 
+    def test_rebuild_catalog_queues_display_key_when_widget_locked(self) -> None:
+        from song_catalog.catalog import format_pick_key
+        from music_source_ownership import rebuild_catalog_backing_from_canonical_pick
+        from songs.key_state import PENDING_DISPLAY_KEY
+        from songs.music_source import SOURCE_CATALOG, USER_CATALOG_SOURCE_CHOICE_KEY
+
+        day_pick = format_pick_key("Rock", "Day Tripper")
+        say_pick = format_pick_key("Pop", "Say")
+        catalog = {
+            "Rock": {
+                "Day Tripper": {
+                    "title": "Day Tripper",
+                    "artist": "The Beatles",
+                    "key": "E",
+                    "bpm": 138,
+                    "genre": "Rock",
+                }
+            },
+            "Pop": {
+                "Say": {
+                    "title": "Say",
+                    "artist": "John Mayer",
+                    "key": "G",
+                    "bpm": 100,
+                    "genre": "Pop",
+                }
+            },
+        }
+        session = {
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": day_pick,
+            "selected_song": {
+                "title": "Day Tripper",
+                "pick_key": day_pick,
+                "key": "E",
+                "bpm": 138,
+                "genre": "Rock",
+            },
+            "song": "Day Tripper",
+            "display_key": "D",
+            "concert_key": "D",
+            PENDING_DISPLAY_KEY: "G",
+            "_reconcile_song_picker_catalog": catalog,
+        }
+        try:
+            from music_restore_phase import complete_music_restore_phase
+
+            complete_music_restore_phase(session)
+        except ImportError:
+            pass
+        rebuild_catalog_backing_from_canonical_pick(session)
+        self.assertEqual(session.get("display_key"), "D")
+        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "E")
+        self.assertEqual(session.get("concert_key"), "E")
+
 
 if __name__ == "__main__":
     unittest.main()
