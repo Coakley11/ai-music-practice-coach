@@ -405,21 +405,47 @@ def _canonical_active_song_bpm(session: dict[str, Any]) -> int:
 def _canonical_active_song_groove(session: dict[str, Any]) -> str:
     sel = session.get("selected_song")
     if isinstance(sel, dict) and sel:
+        genre = str(sel.get("genre") or "").strip()
+        if genre:
+            try:
+                from songs.playback_defaults import normalize_groove_label
+
+                label = genre if genre.lower().endswith("groove") else f"{genre} groove"
+                return normalize_groove_label(label)
+            except ImportError:
+                pass
         try:
-            from songs.playback_defaults import default_groove_for_song
+            from songs.playback_defaults import default_groove_for_song, normalize_groove_label
 
             groove = str(
                 default_groove_for_song(sel, infer_fn=lambda _rec, _fb: "Auto")
             ).strip()
             if groove and groove != "Auto":
-                return groove
+                return normalize_groove_label(groove)
         except ImportError:
             pass
-    return _default_groove(session)
+    try:
+        from songs.playback_defaults import normalize_groove_label
+
+        return normalize_groove_label("Pop groove")
+    except ImportError:
+        return "Pop groove"
 
 
 def _default_groove(session: dict[str, Any]) -> str:
     return str(session.get("backing_groove_style") or session.get("backing_groove") or "Pop groove").strip()
+
+
+def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, str]:
+    """BPM/groove/meter for Backing page widgets from backing_context when present."""
+    ctx = get_backing_context(session)
+    if ctx is not None:
+        return (
+            int(ctx.bpm or _default_bpm(session)),
+            _backing_groove_style_from_ctx(ctx),
+            str(ctx.meter or "4/4"),
+        )
+    return _default_bpm(session), _default_groove(session), "4/4"
 
 
 def _backing_groove_style_from_ctx(ctx: BackingContext) -> str:
@@ -919,6 +945,14 @@ def reset_backing_on_active_song_change(
     ).strip()
     if concert:
         _apply_original_song_display_key(session, concert)
+
+    try:
+        from songs.bpm_state import LAST_BPM_SONG
+
+        session.pop(LAST_BPM_SONG, None)
+    except ImportError:
+        session.pop("_last_bpm_song", None)
+    session.pop("last_backing_defaults_song_id", None)
 
     try:
         from songs.music_source import (
@@ -1425,9 +1459,17 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
     if ctx is not None and ctx.source in {"regular_song", "custom_progression"}:
         return False
     try:
-        from songs.music_source import cpl_session_is_active, is_custom_progression
+        from songs.music_source import (
+            cpl_session_is_active,
+            custom_progression_is_active,
+            is_custom_progression,
+        )
 
-        if cpl_session_is_active(session) or is_custom_progression(session):
+        if (
+            cpl_session_is_active(session)
+            or is_custom_progression(session)
+            or custom_progression_is_active(session)
+        ):
             return True
     except ImportError:
         pass
@@ -1877,6 +1919,7 @@ __all__ = [
     "_backing_groove_style_from_ctx",
     "format_backing_context_banner",
     "backing_page_sync_id",
+    "backing_page_transport_defaults",
     "sync_creative_handoff_keys",
     "open_backing_from_creative",
     "ensure_backing_context_from_creative_session",

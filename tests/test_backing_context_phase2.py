@@ -46,7 +46,8 @@ class TestBackingContextPhase2(unittest.TestCase):
         session = {
             "active_catalog_pick_key": "say|artist",
             "song": "Say",
-            "display_key": "G",
+            "display_key": "F",
+            "concert_key": "F",
             "improv_style": "Jazz Swing",
             "improv_style_meta": {"style": "Jazz Swing", "bpm": 90, "groove": "Medium"},
             "improv_style_key": "G",
@@ -55,7 +56,7 @@ class TestBackingContextPhase2(unittest.TestCase):
         st_like = SimpleNamespace(session_state=session)
         with patch("backing_track_state.write_canonical_backing_state"):
             apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
-        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "G")
+        self.assertNotIn(PENDING_DISPLAY_KEY, session)
         self.assertEqual(session.get(PENDING_BACKING_TRACK_BPM), 90)
         self.assertEqual(session.get(PENDING_BACKING_GROOVE), "Jazz swing")
         self.assertEqual(session.get(PENDING_BACKING_LOOPS), 2)

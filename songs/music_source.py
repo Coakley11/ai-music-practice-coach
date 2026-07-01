@@ -14,6 +14,7 @@ PENDING_CUSTOM_LIBRARY_ACTION_KEY = "_pending_custom_library_action"
 SONG_PICKER_SOURCE_CATALOG = "Song Selection (catalog song)"
 SONG_PICKER_SOURCE_CUSTOM = "Use Custom Progression / Create Your Own Song"
 SONG_PICKER_ACTIVE_SOURCE_KEY = "song_picker_active_source"
+PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY = "_pending_song_picker_active_source"
 LAST_CATALOG_STATE_KEY = "_last_catalog_song_state"
 CATALOG_BEFORE_CUSTOM_KEY = "_catalog_before_custom_state"
 PENDING_PREVIOUS_CATALOG_RESTORE_KEY = "_pending_previous_catalog_restore"
@@ -102,7 +103,7 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
             set_catalog_source(session_state)
             changed = True
         if current != expected:
-            session_state[SONG_PICKER_ACTIVE_SOURCE_KEY] = expected
+            _assign_song_picker_source_widget(session_state, expected)
             changed = True
         return changed
 
@@ -122,7 +123,7 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
             changed = True
 
     if current != expected:
-        session_state[SONG_PICKER_ACTIVE_SOURCE_KEY] = expected
+        _assign_song_picker_source_widget(session_state, expected)
         changed = True
     return changed
 
@@ -186,15 +187,50 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
 
 
-def sync_song_picker_source_widget(session_state: dict[str, Any], *, force: bool = False) -> None:
-    """Align Song Selection source radio with active_music_source (init or forced promotion only)."""
-    if not force and SONG_PICKER_ACTIVE_SOURCE_KEY in session_state:
-        return
-    session_state[SONG_PICKER_ACTIVE_SOURCE_KEY] = (
+def _expected_song_picker_source(session_state: dict[str, Any]) -> str:
+    return (
         SONG_PICKER_SOURCE_CUSTOM
         if is_custom_progression(session_state)
         else SONG_PICKER_SOURCE_CATALOG
     )
+
+
+def _assign_song_picker_source_widget(
+    session_state: dict[str, Any],
+    value: str,
+    *,
+    widget_safe: bool = True,
+) -> None:
+    try:
+        from session_widget_safe import safe_session_assign
+
+        safe_session_assign(
+            session_state,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            value,
+            widget_safe=widget_safe,
+        )
+    except ImportError:
+        session_state[SONG_PICKER_ACTIVE_SOURCE_KEY] = value
+
+
+def sync_song_picker_source_widget(
+    session_state: dict[str, Any],
+    *,
+    force: bool = False,
+    widget_safe: bool = True,
+) -> None:
+    """Align Song Selection source radio with active_music_source (init or forced promotion only)."""
+    expected = _expected_song_picker_source(session_state)
+    current = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    if not force:
+        if current:
+            return
+        if current == expected:
+            return
+    elif current == expected:
+        return
+    _assign_song_picker_source_widget(session_state, expected, widget_safe=widget_safe)
 
 
 def snapshot_current_catalog_state(session_state: dict[str, Any]) -> None:
@@ -577,7 +613,7 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
     if choice.startswith("Use Custom") and not is_custom_progression(session_state):
         session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
         set_custom_source(session_state)
-        session_state[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
+        _assign_song_picker_source_widget(session_state, SONG_PICKER_SOURCE_CUSTOM)
         return True
     return reconcile_music_picker_source_widget(session_state)
 
@@ -861,6 +897,13 @@ def on_active_song_identity_changed(
             pass
         reset_playback_song_tracking(st)
         invalidate_backing(st)
+        try:
+            from songs.bpm_state import LAST_BPM_SONG
+
+            session.pop(LAST_BPM_SONG, None)
+        except ImportError:
+            session.pop("_last_bpm_song", None)
+        session.pop("last_backing_defaults_song_id", None)
         try:
             from studio_cache import invalidate_session_cache
 

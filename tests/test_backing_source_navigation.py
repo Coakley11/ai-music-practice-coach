@@ -278,6 +278,61 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(ctx.concert_key, "E")
         self.assertEqual(ctx.bpm, 138)
 
+    def test_sync_song_picker_source_widget_safe_when_locked(self) -> None:
+        from songs.music_source import (
+            PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            SONG_PICKER_SOURCE_CUSTOM,
+            sync_song_picker_source_widget,
+        )
+
+        session = {
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CUSTOM,
+            "active_music_source": "catalog",
+            "display_key": "E",
+        }
+        try:
+            from music_restore_phase import complete_music_restore_phase
+
+            complete_music_restore_phase(session)
+        except ImportError:
+            pass
+        sync_song_picker_source_widget(session, force=True)
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CUSTOM)
+        self.assertEqual(session.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
+
+    def test_backing_page_transport_defaults_use_catalog_context(self) -> None:
+        from backing_context import (
+            BACKING_CONTEXT_KEY,
+            BACKING_PREF_CATALOG,
+            backing_page_transport_defaults,
+            set_backing_context,
+            set_backing_source_preference,
+        )
+        from backing_context import build_regular_song_context
+
+        session = {
+            "active_music_source": "catalog",
+            "active_catalog_pick_key": "Rock::Day Tripper",
+            "selected_song": {
+                "title": "Day Tripper",
+                "pick_key": "Rock::Day Tripper",
+                "key": "E",
+                "bpm": 138,
+                "genre": "Rock",
+            },
+            "display_key": "E",
+            "concert_key": "E",
+            "song": "Day Tripper",
+        }
+        set_backing_source_preference(session, BACKING_PREF_CATALOG)
+        ctx = build_regular_song_context(session)
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
+        bpm, groove, _meter = backing_page_transport_defaults(session)
+        self.assertEqual(bpm, 138)
+        self.assertIn("Rock", groove)
+
     def test_return_to_creative_restores_entry_jam_tool_type(self) -> None:
         from backing_context import open_backing_from_creative
         from backing_source_navigation import prepare_return_to_backing_source

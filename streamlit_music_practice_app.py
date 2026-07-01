@@ -11148,19 +11148,23 @@ elif _studio_page == "backing":
     )
     _creative_backing_ctx = None
     try:
-        from backing_context import active_creative_backing_context, backing_page_sync_id
+        from backing_context import (
+            active_creative_backing_context,
+            backing_page_sync_id,
+            backing_page_transport_defaults,
+        )
 
         _creative_backing_ctx = active_creative_backing_context(st.session_state)
         _bpm_sync_id = backing_page_sync_id(st.session_state, song_sync_id=_song_bpm_sync_id)
+        _td_bpm, _td_groove, _td_meter = backing_page_transport_defaults(st.session_state)
+        _backing_source_default_bpm = int(_td_bpm)
+        _backing_source_default_groove = str(_td_groove)
+        _backing_source_default_meter = str(_td_meter)
     except Exception:
         _bpm_sync_id = _song_bpm_sync_id
-    _backing_source_default_bpm = int(_creative_backing_ctx.bpm) if _creative_backing_ctx else int(_default_bpm)
-    _backing_source_default_groove = (
-        str(_creative_backing_ctx.groove or _default_groove) if _creative_backing_ctx else str(_default_groove)
-    )
-    _backing_source_default_meter = (
-        str(_creative_backing_ctx.meter or _default_meter) if _creative_backing_ctx else str(_default_meter)
-    )
+        _backing_source_default_bpm = int(_default_bpm)
+        _backing_source_default_groove = str(_default_groove)
+        _backing_source_default_meter = str(_default_meter)
     try:
         from backing_track_state import begin_backing_page_widget_phase
 

@@ -11,6 +11,7 @@ from creative_session_state import (
 )
 from session_widget_safe import (
     PENDING_DISPLAY_KEY,
+    PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY,
     reconcile_practice_key_fields,
     safe_assign_display_key,
     safe_session_assign,
@@ -68,6 +69,26 @@ class TestSessionWidgetSafe(unittest.TestCase):
         reconcile_practice_key_fields(session, authoritative="E")
         self.assertEqual(session.get(PENDING_DISPLAY_KEY), "E")
         self.assertEqual(session.get("concert_key"), "E")
+
+    def test_song_picker_source_queues_pending_when_widget_locked(self) -> None:
+        from session_widget_safe import PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, safe_session_assign
+
+        session = {
+            "song_picker_active_source": "Use Catalog Song Backing",
+            "display_key": "E",
+        }
+        try:
+            from music_restore_phase import complete_music_restore_phase
+
+            complete_music_restore_phase(session)
+        except ImportError:
+            pass
+        safe_session_assign(session, "song_picker_active_source", "Use Custom Progression Backing", widget_safe=True)
+        self.assertEqual(session.get("song_picker_active_source"), "Use Catalog Song Backing")
+        self.assertEqual(
+            session.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY),
+            "Use Custom Progression Backing",
+        )
 
     def test_safe_session_assign_queues_improv_entry_mode(self) -> None:
         session = {"display_key": "C", "improv_entry_mode": "Style Jam Mode"}

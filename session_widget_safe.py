@@ -27,6 +27,7 @@ WIDGET_BOUND_KEYS: frozenset[str] = frozenset(
         "improv_groove",
         "improv_jam_mood",
         "show_chart_in_instrument_key",
+        "song_picker_active_source",
     }
 )
 
@@ -45,6 +46,7 @@ PENDING_IMPROV_DIFFICULTY_KEY = "_pending_improv_difficulty"
 PENDING_IMPROV_GROOVE_KEY = "_pending_improv_groove"
 PENDING_IMPROV_JAM_MOOD_KEY = "_pending_improv_jam_mood"
 PENDING_CHART_IN_INSTRUMENT_KEY = "_pending_show_chart_in_instrument_key"
+PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY = "_pending_song_picker_active_source"
 
 _PENDING_FOR_WIDGET_KEY: dict[str, str] = {
     "display_key": PENDING_DISPLAY_KEY,
@@ -63,6 +65,7 @@ _PENDING_FOR_WIDGET_KEY: dict[str, str] = {
     "improv_groove": PENDING_IMPROV_GROOVE_KEY,
     "improv_jam_mood": PENDING_IMPROV_JAM_MOOD_KEY,
     "show_chart_in_instrument_key": PENDING_CHART_IN_INSTRUMENT_KEY,
+    "song_picker_active_source": PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY,
 }
 
 
@@ -124,7 +127,8 @@ def safe_assign_display_key(
     session["concert_key"] = concert
     if not widget_safe or not widgets_likely_instantiated(session):
         session["display_key"] = concert
-        session[PENDING_DISPLAY_KEY] = concert
+        return
+    if str(session.get("display_key") or "").strip() == concert:
         return
     session[PENDING_DISPLAY_KEY] = concert
     if st_like is not None:
@@ -141,9 +145,12 @@ def reconcile_practice_key_fields(session: dict[str, Any], *, authoritative: str
     concert = str(authoritative or "C").strip() or "C"
     session.pop(PENDING_DISPLAY_KEY, None)
     session["concert_key"] = concert
-    session[PENDING_DISPLAY_KEY] = concert
     if not widgets_likely_instantiated(session):
         session["display_key"] = concert
+        return
+    if str(session.get("display_key") or "").strip() == concert:
+        return
+    session[PENDING_DISPLAY_KEY] = concert
     return concert
 
 
@@ -154,8 +161,11 @@ def apply_pending_widget_hydrates(session: dict[str, Any]) -> None:
         concert = str(pending_display).strip() or "C"
         session["display_key"] = concert
         session["concert_key"] = concert
+    pending_picker = session.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
+    if pending_picker is not None:
+        session["song_picker_active_source"] = pending_picker
     for widget_key, pending_key in _PENDING_FOR_WIDGET_KEY.items():
-        if widget_key == "display_key":
+        if widget_key in {"display_key", "song_picker_active_source"}:
             continue
         pending = session.pop(pending_key, None)
         if pending is not None and widget_key not in session:
@@ -171,6 +181,7 @@ __all__ = [
     "PENDING_IMPROV_STYLE_BPM_KEY",
     "PENDING_IMPROV_STYLE_KEY",
     "PENDING_CHART_IN_INSTRUMENT_KEY",
+    "PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY",
     "PENDING_INSTRUMENT_KEY",
     "WIDGET_BOUND_KEYS",
     "apply_pending_widget_hydrates",

@@ -177,11 +177,32 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         open_backing_for_practice_source(session, st_like=st_like)
         return
     try:
+        from songs.music_source import (
+            cpl_session_is_active,
+            custom_progression_is_active,
+            is_custom_progression,
+        )
+
+        if (
+            cpl_session_is_active(session)
+            or is_custom_progression(session)
+            or custom_progression_is_active(session)
+        ):
+            ctx = get_backing_context(session)
+            if ctx is None or str(getattr(ctx, "source", "") or "") in {
+                "entry_jam",
+                "song_improv",
+                "mission",
+            }:
+                open_backing_for_practice_source(session, st_like=st_like)
+                return
+    except ImportError:
+        pass
+    try:
         from backing_context import (
             PENDING_BACKING_CONTEXT_APPLY,
             active_creative_backing_context,
             ensure_backing_context_from_creative_session,
-            get_backing_context,
             is_backing_context_valid,
             reset_backing_on_active_song_change,
         )
@@ -715,12 +736,6 @@ def restore_session_widgets_from_backing_context(
 
 def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnPage:
     """Restore Creative/custom/picker widgets from the active backing_context snapshot."""
-    try:
-        from creative_session_state import sync_creative_session_before_persist
-
-        sync_creative_session_before_persist(session)
-    except ImportError:
-        pass
     ctx = get_backing_context(session)
     page = target_page_for_backing_context(ctx)
     if ctx is None:
