@@ -958,6 +958,16 @@ def maybe_reset_practice_key_on_source_activation(
                 needs_reset = True
         except ImportError:
             pass
+    if not needs_reset and owner == "custom" and live and original and live != original:
+        try:
+            from custom_progression_lab import CPL_LAST_DISPLAY_KEY
+
+            cpl_last = str(session.get(CPL_LAST_DISPLAY_KEY) or "").strip()
+        except ImportError:
+            cpl_last = str(session.get("cpl_last_display_key") or "").strip()
+        intentional_transpose = cpl_last == live and live != original
+        if not intentional_transpose:
+            needs_reset = True
     if not needs_reset:
         return False
     _release_creative_transport_authority(session)

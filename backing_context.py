@@ -245,6 +245,19 @@ def _display_keys_from_session(session: dict[str, Any]) -> tuple[str, str, str]:
 def _live_backing_concert_keys(session: dict[str, Any]) -> tuple[str, str, str]:
     """Practice concert key from live sidebar/session — not stale widget/improv snapshots."""
     try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None and ctx.source == "custom_progression":
+            live = str(session.get("display_key") or "").strip()
+            concert = str(
+                session.get("concert_key") or live or ctx.concert_key or ctx.key or ""
+            ).strip()
+            practice = live or concert or str(ctx.concert_key or ctx.key or "C").strip() or "C"
+            return practice, practice, practice
+    except ImportError:
+        pass
+    try:
         from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE, creative_entry_concert_key
         from songs.key_state import PENDING_DISPLAY_KEY
 
@@ -260,12 +273,21 @@ def _live_backing_concert_keys(session: dict[str, Any]) -> tuple[str, str, str]:
         concert = str(session.get("concert_key") or "").strip()
         creative_sel = str(creative_entry_concert_key(session) or "").strip()
         key_source = str(session.get(CREATIVE_CONCERT_KEY_SOURCE) or "").strip()
-        if live and key_source:
-            practice = live
-        elif creative_sel and live and live != creative_sel and not key_source:
-            practice = creative_sel
+        try:
+            from backing_context import active_creative_backing_context
+
+            creative_ctx = active_creative_backing_context(session)
+        except ImportError:
+            creative_ctx = None
+        if creative_ctx is not None:
+            if live and key_source:
+                practice = live
+            elif creative_sel and live and live != creative_sel and not key_source:
+                practice = creative_sel
+            else:
+                practice = live or creative_sel or concert or "C"
         else:
-            practice = live or creative_sel or concert or "C"
+            practice = live or concert or "C"
         practice = practice or "C"
         return practice, practice, practice
     except ImportError:
@@ -1829,10 +1851,29 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     from songs.key_state import invalidate_backing_cache
     from songs.music_source import activate_catalog_song_for_backing, resolve_catalog_pick_for_backing_restore
 
+    reason = "creative_to_catalog"
+    try:
+        from backing_source_navigation import BACKING_INTENT_SWITCH_CATALOG, peek_key_transition_intent
+
+        intent = peek_key_transition_intent(session)
+        if intent == BACKING_INTENT_SWITCH_CATALOG:
+            reason = "switch_to_catalog_backing"
+    except ImportError:
+        pass
+    try:
+        from songs.music_source import cpl_session_is_active, is_custom_progression
+
+        if is_custom_progression(session) or cpl_session_is_active(session):
+            reason = "switch_to_catalog_backing"
+    except ImportError:
+        pass
     try:
         from backing_source_navigation import BACKING_INTENT_CREATIVE_TO_CATALOG, set_key_transition_intent
 
-        set_key_transition_intent(session, BACKING_INTENT_CREATIVE_TO_CATALOG)
+        if reason == "switch_to_catalog_backing":
+            set_key_transition_intent(session, BACKING_INTENT_SWITCH_CATALOG)
+        else:
+            set_key_transition_intent(session, BACKING_INTENT_CREATIVE_TO_CATALOG)
     except ImportError:
         pass
     clear_backing_context(session)
@@ -1849,11 +1890,11 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         except ImportError:
             session.pop("_creative_concert_key_source", None)
     st = st_like or SimpleNamespace(session_state=session)
-    pick_key = resolve_catalog_pick_for_backing_restore(session, reason="creative_to_catalog")
+    pick_key = resolve_catalog_pick_for_backing_restore(session, reason=reason)
     ctx = activate_catalog_song_for_backing(
         st,
         pick_key,
-        reason="creative_to_catalog",
+        reason=reason,
         invalidate_backing=invalidate_backing_cache,
     )
     if ctx is not None:

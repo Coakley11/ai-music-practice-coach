@@ -2189,9 +2189,19 @@ def resolve_catalog_pick_for_backing_restore_with_source(
         return _normalize(pk), source
 
     if str(reason or "").strip() in _creative_return_reasons:
-        for source, snap_key in (
-            ("catalog_before_creative", CATALOG_BEFORE_CREATIVE_KEY),
-        ):
+        if str(reason or "").strip() == "switch_to_catalog_backing":
+            snap_order = (
+                ("catalog_before_custom", CATALOG_BEFORE_CUSTOM_KEY),
+                ("last_catalog_state", LAST_CATALOG_STATE_KEY),
+                ("catalog_before_creative", CATALOG_BEFORE_CREATIVE_KEY),
+            )
+        else:
+            snap_order = (
+                ("catalog_before_creative", CATALOG_BEFORE_CREATIVE_KEY),
+                ("catalog_before_custom", CATALOG_BEFORE_CUSTOM_KEY),
+                ("last_catalog_state", LAST_CATALOG_STATE_KEY),
+            )
+        for source, snap_key in snap_order:
             raw = session_state.get(snap_key)
             if not isinstance(raw, dict):
                 continue

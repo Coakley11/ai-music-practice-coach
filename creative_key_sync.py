@@ -453,13 +453,26 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         resolve_current_backing_musical_state = None  # type: ignore[assignment]
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     resolver_key = ""
-    if ctx is not None and str(getattr(ctx, "source", "") or "").strip() == "regular_song":
+    ctx_source = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    if ctx_source == "regular_song":
         resolver_key = str(
             getattr(ctx, "concert_key", None)
             or getattr(ctx, "display_key", None)
             or getattr(ctx, "key", None)
             or ""
         ).strip()
+    elif ctx_source == "custom_progression":
+        try:
+            from backing_context import _live_backing_concert_keys
+
+            _, _, resolver_key = _live_backing_concert_keys(session)
+        except ImportError:
+            resolver_key = str(
+                getattr(ctx, "concert_key", None)
+                or getattr(ctx, "display_key", None)
+                or getattr(ctx, "key", None)
+                or ""
+            ).strip()
     elif creative and resolve_current_backing_musical_state is not None:
         resolver_key = str(
             resolve_current_backing_musical_state(session).practice_concert_key or ""
@@ -468,6 +481,7 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         creative_sess is not None
         and creative_session_is_active(session)
         and str(session.get("active_music_source") or "").strip() != "catalog"
+        and not (ctx is not None and str(getattr(ctx, "source", "") or "").strip() == "custom_progression")
     ):
         resolver_key = str(creative_sess.concert_key or creative_sess.display_key or "").strip()
     selected = str(
@@ -541,6 +555,13 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
 def should_use_live_practice_key_sidebar(session: dict[str, Any]) -> bool:
     """Use session practice concert key instead of catalog original-key defaults."""
     try:
+        from songs.music_source import cpl_session_is_active, custom_progression_is_active, is_custom_progression
+
+        if is_custom_progression(session) or custom_progression_is_active(session) or cpl_session_is_active(session):
+            return True
+    except ImportError:
+        pass
+    try:
         from backing_musical_state import should_skip_regular_song_defaults
 
         if should_skip_regular_song_defaults(session):
@@ -552,7 +573,7 @@ def should_use_live_practice_key_sidebar(session: dict[str, Any]) -> bool:
 
         if catalog_or_custom_backing_is_authoritative(session):
             ctx = get_backing_context(session)
-            if ctx is not None and ctx.source in {"regular_song", "custom_progression"}:
+            if ctx is not None and ctx.source == "regular_song":
                 return False
     except ImportError:
         pass
@@ -635,6 +656,23 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
     new = str(session.get("display_key") or "").strip()
     if not new:
         return
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None and ctx.source == "custom_progression":
+            session["concert_key"] = new
+            try:
+                from custom_progression_lab import on_global_display_key_change
+
+                on_global_display_key_change(session, new)
+            except ImportError:
+                pass
+            invalidate_creative_backing_context(session)
+            _apply_pending_backing_context_on_page(session, st_like=st_like)
+            return
+    except ImportError:
+        pass
     entry = _resolve_creative_entry_mode(session)
     if entry and not str(session.get("improv_entry_mode") or "").strip():
         session["improv_entry_mode"] = entry

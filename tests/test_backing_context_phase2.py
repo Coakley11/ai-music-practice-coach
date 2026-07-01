@@ -534,6 +534,90 @@ class TestCustomProgressionConcertKey(unittest.TestCase):
         self.assertEqual(session.get("display_key"), "E")
         self.assertEqual(session.get("concert_key"), "E")
 
+    def test_live_backing_concert_keys_custom_ignores_stale_creative_entry(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, _live_backing_concert_keys, build_custom_progression_context, set_backing_context
+
+        session = self._trial_session(display_key="D")
+        session["improv_jam_key"] = "C"
+        session["creative_session"] = {"concert_key": "C", "display_key": "C"}
+        ctx = build_custom_progression_context(session)
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
+        set_backing_context(session, ctx)
+        _, _, practice = _live_backing_concert_keys(session)
+        self.assertEqual(practice, "D")
+
+    def test_sync_sidebar_custom_key_change_updates_backing(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, build_custom_progression_context, get_backing_context, set_backing_context
+        from creative_key_sync import sync_sidebar_creative_concert_key
+        from custom_progression_lab import CPL_LAST_DISPLAY_KEY
+
+        session = self._trial_session(display_key="D")
+        session[CPL_LAST_DISPLAY_KEY] = "D"
+        ctx = build_custom_progression_context(session)
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
+        set_backing_context(session, ctx)
+        session["display_key"] = "E"
+        sync_sidebar_creative_concert_key(session)
+        self.assertEqual(session.get("concert_key"), "E")
+        refreshed = get_backing_context(session)
+        self.assertIsNotNone(refreshed)
+        assert refreshed is not None
+        self.assertEqual(refreshed.concert_key, "E")
+        self.assertEqual(refreshed.progression[:4], ["E", "E", "E", "E"])
+
+    def test_custom_to_catalog_restore_uses_catalog_before_custom(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, build_custom_progression_context, restore_regular_song_backing
+        from songs.music_source import CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY
+
+        photo_pick = "photo|artist"
+        say_pick = "say|artist"
+        session = self._trial_session(display_key="D")
+        session.update(
+            {
+                "active_catalog_pick_key": "custom::trial-1",
+                "active_music_source": "custom_progression",
+                "user_catalog_source_choice": True,
+                CATALOG_BEFORE_CUSTOM_KEY: {
+                    "pick_key": photo_pick,
+                    "selected_song": {"title": "Photograph", "key": "E", "pick_key": photo_pick, "bpm": 108},
+                },
+                LAST_CATALOG_STATE_KEY: {
+                    "pick_key": say_pick,
+                    "selected_song": {"title": "Say", "key": "G", "pick_key": say_pick, "bpm": 98},
+                },
+            }
+        )
+        ctx = build_custom_progression_context(session)
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            restored = restore_regular_song_backing(session, st_like=st_like)
+        self.assertEqual(restored.source, "regular_song")
+        self.assertEqual(restored.song_title, "Photograph")
+        self.assertEqual(session.get("display_key"), "E")
+        self.assertEqual(session.get("catalog_restore_pick_source"), "catalog_before_custom")
+
+    def test_picker_hydrate_resets_stale_leaked_key_for_trial_song(self) -> None:
+        from backing_source_navigation import hydrate_picker_source_for_page
+        from custom_progression_lab import CPL_ACTIVE_KEY, CPL_LAST_DISPLAY_KEY
+        from songs.music_source import active_song_key_pair
+
+        session = self._trial_session(display_key="C")
+        session.update(
+            {
+                "studio_page": "picker",
+                CPL_ACTIVE_KEY: session[CPL_ACTIVE_KEY],
+                CPL_LAST_DISPLAY_KEY: "D",
+                "active_catalog_pick_key": "custom::trial-1",
+                "active_music_source": "custom_progression",
+                "improv_jam_key": "C",
+            }
+        )
+        hydrate_picker_source_for_page(session)
+        original, practice = active_song_key_pair(session, {"key": "D"})
+        self.assertEqual(original, "D")
+        self.assertEqual(practice, "D")
+
 
 class TestResetBackingOnSongChange(unittest.TestCase):
     def test_catalog_pick_wins_over_custom_session_flags(self) -> None:
