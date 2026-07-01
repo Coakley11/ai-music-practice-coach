@@ -20,6 +20,19 @@ PRACTICE_SOURCE_DISPLAY_KEY = "_practice_source_display_key"
 PRACTICE_SOURCE_PICK_KEY = "_practice_source_pick_key"
 CREATIVE_RESTORE_FROM_BACKING_KEY = "_creative_restore_from_backing"
 
+# Page-snapshot keys that must not clobber an explicit Return-to-Creative handoff.
+# ``handle_studio_page_transition`` runs before early Creative hydrate; skipping these
+# prevents stale SBI widget values from winning over entry_jam backing context.
+CREATIVE_BACKING_RETURN_WIDGET_KEYS: frozenset[str] = frozenset(
+    {
+        "improv_entry_mode",
+        "improv_intelligence_tab",
+        "creative_improv_intelligence_tab",
+        "creative_session",
+        "_improv_tab_user_touched",
+    }
+)
+
 
 def set_backing_open_intent(session: dict[str, Any], intent: str) -> None:
     session[BACKING_OPEN_INTENT_KEY] = str(intent or BACKING_INTENT_RESTORE_LAST).strip()
@@ -680,6 +693,42 @@ def _tool_type_for_backing_context(ctx: BackingContext) -> str:
     return "entry_style_jam"
 
 
+def resolve_entry_jam_entry_mode(
+    session: dict[str, Any],
+    *,
+    ctx: BackingContext | None = None,
+) -> str:
+    """Authoritative entry mode for entry_jam — never inherit stale SBI widget state."""
+    try:
+        from creative_session_state import get_creative_session
+        from studio_page_state import IMPROV_ENTRY_MODES
+
+        sess = get_creative_session(session)
+        if sess is not None:
+            if sess.tool_type == "jam_session_generator":
+                return "Jam Session Generator"
+            if sess.tool_type == "entry_style_jam":
+                return "Style Jam Mode"
+            entry = str(sess.entry_mode or "").strip()
+            if entry in IMPROV_ENTRY_MODES and entry != "Song-Based Improvisation":
+                return entry
+    except ImportError:
+        pass
+    if ctx is not None:
+        ctx_entry = str(ctx.entry_mode or "").strip()
+        if ctx_entry in ("Style Jam Mode", "Jam Session Generator"):
+            return ctx_entry
+    if session.get("improv_generated_sections"):
+        return "Style Jam Mode"
+    jam = session.get("improv_jam_session")
+    if isinstance(jam, dict) and jam.get("sections"):
+        return "Jam Session Generator"
+    widget = str(session.get("improv_entry_mode") or "").strip()
+    if widget in ("Style Jam Mode", "Jam Session Generator"):
+        return widget
+    return "Style Jam Mode"
+
+
 def _backing_creative_concert_key(session: dict[str, Any]) -> str:
     """Concert key from active Creative backing_context — authoritative on return."""
     try:
@@ -816,7 +865,7 @@ def restore_session_widgets_from_backing_context(
         else:
             session["improv_song_source"] = "Active song"
     elif ctx.source == "entry_jam":
-        entry = str(ctx.entry_mode or "Style Jam Mode").strip()
+        entry = resolve_entry_jam_entry_mode(session, ctx=ctx)
         tab = "Entry & Jam"
         try:
             from session_widget_safe import safe_session_assign
@@ -920,8 +969,8 @@ def restore_session_widgets_from_backing_context(
         if sess is not None:
             tool_type = _tool_type_for_backing_context(ctx)
             sess.tool_type = tool_type  # type: ignore[assignment]
-            if ctx.source == "entry_jam" and ctx.entry_mode:
-                sess.entry_mode = str(ctx.entry_mode).strip()
+            if ctx.source == "entry_jam":
+                sess.entry_mode = resolve_entry_jam_entry_mode(session, ctx=ctx)
             elif ctx.source == "song_improv":
                 sess.entry_mode = "Song-Based Improvisation"
             elif ctx.source == "mission":
@@ -966,6 +1015,7 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
         return page
     _clear_creative_page_hydrate_flags(session)
     session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
+    session.pop("_improv_tab_user_touched", None)
     restore_session_widgets_from_backing_context(session, ctx)
     merge_live_practice_into_creative_session(session, prefer_backing_context_key=True)
     return page
@@ -1065,6 +1115,7 @@ __all__ = [
     "open_backing_for_practice_source",
     "prepare_return_to_backing_source",
     "rehydrate_creative_from_backing_context",
+    "resolve_entry_jam_entry_mode",
     "render_source_context_debug",
     "render_source_ownership_dev_table",
     "source_ownership_diagnostics_enabled",

@@ -473,8 +473,20 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
     except ImportError:
         pass
     restored_keys: list[str] = []
+    try:
+        from backing_source_navigation import (
+            CREATIVE_BACKING_RETURN_WIDGET_KEYS,
+            CREATIVE_RESTORE_FROM_BACKING_KEY,
+        )
+
+        skip_creative_widget_snapshot = bool(session_state.get(CREATIVE_RESTORE_FROM_BACKING_KEY))
+    except ImportError:
+        skip_creative_widget_snapshot = False
+        CREATIVE_BACKING_RETURN_WIDGET_KEYS = frozenset()  # type: ignore[misc,assignment]
     for key, val in local.items():
         if key in _VOLATILE_BACKING_SNAPSHOT_KEYS:
+            continue
+        if skip_creative_widget_snapshot and key in CREATIVE_BACKING_RETURN_WIDGET_KEYS:
             continue
         touch_guard = _PAGE_SNAPSHOT_USER_TOUCH_GUARDS.get(key)
         if touch_guard and session_state.get(touch_guard):
@@ -518,11 +530,18 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
 def save_page_snapshot(session_state: dict, page_id: str) -> None:
     if page_id in {"creative", "backing"}:
         try:
-            from creative_session_state import sync_creative_session_before_persist
+            from backing_source_navigation import CREATIVE_RESTORE_FROM_BACKING_KEY
 
-            sync_creative_session_before_persist(session_state)
+            skip_sync = bool(session_state.get(CREATIVE_RESTORE_FROM_BACKING_KEY))
         except ImportError:
-            pass
+            skip_sync = False
+        if not skip_sync:
+            try:
+                from creative_session_state import sync_creative_session_before_persist
+
+                sync_creative_session_before_persist(session_state)
+            except ImportError:
+                pass
     store = session_state.setdefault(_PAGE_SNAPSHOTS_KEY, {})
     store[page_id] = capture_page_snapshot(session_state, page_id)
 

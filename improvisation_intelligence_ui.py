@@ -81,6 +81,7 @@ from studio_page_state import (
     resolve_improv_song_source,
     ensure_improv_entry_mode_restored,
     ensure_improv_intelligence_tab_restored,
+    ensure_creative_widgets_from_backing_context,
 )
 from songs.picker_session import mark_improv_tab_user_touched
 
@@ -118,6 +119,7 @@ def render_improvisation_intelligence_lab(
         apply_pending_widget_hydrates(session_state)
     except ImportError:
         pass
+    ensure_creative_widgets_from_backing_context(session_state)
     ensure_improv_intelligence_tab_restored(session_state)
     try:
         from backing_musical_state import (

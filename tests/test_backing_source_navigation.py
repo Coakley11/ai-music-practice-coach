@@ -631,6 +631,204 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(entry, "Style Jam Mode")
         self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
 
+    def test_backing_context_overrides_stale_snapshot_entry_mode(self) -> None:
+        """entry_jam backing context must win over a stale SBI page-snapshot value."""
+        from backing_context import open_backing_from_creative
+        from music_restore_phase import complete_music_restore_phase
+        from studio_page_state import (
+            ensure_creative_widgets_from_backing_context,
+            ensure_improv_entry_mode_restored,
+            ensure_improv_intelligence_tab_restored,
+        )
+
+        session = {
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Bossa Nova",
+            "improv_style_key": "F",
+            "improv_style_bpm": 80,
+            "improv_generated_sections": {"Style Jam": ["Fmaj7", "Bbmaj7"]},
+            "display_key": "F",
+            "concert_key": "F",
+            "instrument": "Piano",
+            "studio_page": "creative",
+        }
+        complete_music_restore_phase(session)
+        open_backing_from_creative(session, source="entry_jam")
+        # Simulate page-snapshot restore clobbering the visible widgets with stale SBI state.
+        session["improv_entry_mode"] = "Song-Based Improvisation"
+        session["improv_intelligence_tab"] = "Live Coach"
+        session["_improv_tab_user_touched"] = True
+
+        changed = ensure_creative_widgets_from_backing_context(session)
+        self.assertTrue(changed)
+        tab = ensure_improv_intelligence_tab_restored(session)
+        entry = ensure_improv_entry_mode_restored(session)
+        self.assertEqual(tab, "Entry & Jam")
+        self.assertEqual(entry, "Style Jam Mode")
+        self.assertEqual(session.get("improv_intelligence_tab"), "Entry & Jam")
+        self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
+        self.assertFalse(session.get("_improv_tab_user_touched"))
+
+    def test_song_improv_backing_context_keeps_sbi_entry_mode(self) -> None:
+        """song_improv backing context maps to Song-Based Improvisation, not Style Jam."""
+        from backing_context import open_backing_from_creative
+        from music_restore_phase import complete_music_restore_phase
+        from studio_page_state import (
+            ensure_creative_widgets_from_backing_context,
+            ensure_improv_entry_mode_restored,
+        )
+
+        session = {
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_song_source": "Active song",
+            "improv_style": "Rock",
+            "improv_style_key": "C",
+            "display_key": "C",
+            "concert_key": "C",
+            "instrument": "Piano",
+            "studio_page": "creative",
+        }
+        complete_music_restore_phase(session)
+        open_backing_from_creative(session, source="song_improv")
+        session["improv_entry_mode"] = "Style Jam Mode"  # stale clobber
+
+        ensure_creative_widgets_from_backing_context(session)
+        entry = ensure_improv_entry_mode_restored(session)
+        self.assertEqual(entry, "Song-Based Improvisation")
+
+    def test_no_backing_context_leaves_entry_mode_untouched(self) -> None:
+        from music_restore_phase import complete_music_restore_phase
+        from studio_page_state import (
+            ensure_creative_widgets_from_backing_context,
+            ensure_improv_entry_mode_restored,
+        )
+
+        session = {
+            "improv_entry_mode": "Jam Session Generator",
+            "display_key": "C",
+            "concert_key": "C",
+            "instrument": "Piano",
+            "studio_page": "creative",
+        }
+        complete_music_restore_phase(session)
+        changed = ensure_creative_widgets_from_backing_context(session)
+        entry = ensure_improv_entry_mode_restored(session)
+        self.assertFalse(changed)
+        self.assertEqual(entry, "Jam Session Generator")
+
+    def test_build_entry_jam_context_ignores_stale_sbi_widget(self) -> None:
+        from backing_context import build_entry_jam_context, open_backing_from_creative
+
+        session = {
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_style": "Bossa Nova",
+            "improv_style_key": "F",
+            "improv_generated_sections": {"Style Jam": ["Fmaj7"]},
+            "display_key": "F",
+            "concert_key": "F",
+            "instrument": "Piano",
+        }
+        ctx = build_entry_jam_context(session)
+        self.assertEqual(ctx.source, "entry_jam")
+        self.assertEqual(ctx.entry_mode, "Style Jam Mode")
+        open_backing_from_creative(session, source="entry_jam")
+        ctx2 = build_entry_jam_context(session)
+        self.assertEqual(ctx2.entry_mode, "Style Jam Mode")
+
+    def test_return_to_creative_trace_widget_values_before_radios(self) -> None:
+        """Trace improv widget keys through the real script-run order on Return to Creative."""
+        from backing_context import open_backing_from_creative
+        from backing_source_navigation import (
+            CREATIVE_RESTORE_FROM_BACKING_KEY,
+            prepare_return_to_backing_source,
+            rehydrate_creative_from_backing_context,
+        )
+        from creative_session_state import CREATIVE_SESSION_KEY, get_creative_session
+        from music_restore_phase import complete_music_restore_phase
+        from studio_page_persistence import (
+            _ACTIVE_PAGE_TRACKER,
+            _PAGE_SNAPSHOTS_KEY,
+            handle_studio_page_transition,
+            save_page_snapshot,
+        )
+        from studio_page_state import (
+            CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY,
+            ensure_creative_widgets_from_backing_context,
+            ensure_improv_entry_mode_restored,
+            ensure_improv_intelligence_tab_restored,
+        )
+
+        def _widget_trace(session: dict, label: str) -> dict[str, object]:
+            return {
+                "label": label,
+                "improv_entry_mode": session.get("improv_entry_mode"),
+                "improv_intelligence_tab": session.get("improv_intelligence_tab"),
+                CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY: session.get(CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY),
+                "_pending_improv_entry_mode": session.get("_pending_improv_entry_mode"),
+                "_pending_improv_intelligence_tab": session.get("_pending_improv_intelligence_tab"),
+                "_improv_tab_user_touched": session.get("_improv_tab_user_touched"),
+                "creative_session.tool": (
+                    get_creative_session(session).tool_type if get_creative_session(session) else None
+                ),
+            }
+
+        # User was on Creative in SBI, then opened Entry Jam backing.
+        session = {
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_intelligence_tab": "Entry & Jam",
+            CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY: "Entry & Jam",
+            "_improv_tab_user_touched": True,
+            "improv_style": "Bossa Nova",
+            "improv_style_key": "F",
+            "improv_style_bpm": 80,
+            "improv_generated_sections": {"Style Jam": ["Fmaj7", "Bbmaj7"]},
+            "display_key": "F",
+            "concert_key": "F",
+            "instrument": "Piano",
+            "studio_page": "creative",
+        }
+        complete_music_restore_phase(session)
+        save_page_snapshot(session, "creative")
+        open_backing_from_creative(session, source="entry_jam")
+
+        # Run N: user clicks Return to Creative on backing page.
+        session["studio_page"] = "backing"
+        session[_ACTIVE_PAGE_TRACKER] = "backing"
+        page = prepare_return_to_backing_source(session)
+        self.assertEqual(page, "creative")
+        self.assertTrue(session.get(CREATIVE_RESTORE_FROM_BACKING_KEY))
+        self.assertFalse(session.get("_improv_tab_user_touched"))
+        after_prepare = _widget_trace(session, "after_prepare_return")
+
+        # Run N+1: script reruns on creative page.
+        session["studio_page"] = "creative"
+        handle_studio_page_transition(session)
+        after_transition = _widget_trace(session, "after_handle_studio_page_transition")
+        # Snapshot skip + sync guard: canonical blob must survive transition.
+        self.assertEqual(after_transition["creative_session.tool"], "entry_style_jam", after_transition)
+        self.assertEqual(after_transition["_pending_improv_entry_mode"], "Style Jam Mode", after_transition)
+
+        rehydrate_creative_from_backing_context(session)
+        session.pop(CREATIVE_RESTORE_FROM_BACKING_KEY, None)
+        ensure_creative_widgets_from_backing_context(session)
+        after_early_hydrate = _widget_trace(session, "after_early_creative_hydrate")
+
+        # Render path: immediately before radios.
+        tab = ensure_improv_intelligence_tab_restored(session)
+        entry = ensure_improv_entry_mode_restored(session)
+        before_radios = _widget_trace(session, "before_radios")
+
+        self.assertEqual(after_prepare["creative_session.tool"], "entry_style_jam")
+        self.assertEqual(before_radios["improv_entry_mode"], "Style Jam Mode", before_radios)
+        self.assertEqual(before_radios["improv_intelligence_tab"], "Entry & Jam", before_radios)
+        self.assertEqual(tab, "Entry & Jam")
+        self.assertEqual(entry, "Style Jam Mode")
+        self.assertIsNone(before_radios["_pending_improv_entry_mode"])
+        self.assertIsNone(before_radios["_pending_improv_intelligence_tab"])
+        self.assertFalse(before_radios["_improv_tab_user_touched"])
+        # Prove the bug path: without snapshot skip, transition would force SBI.
+        self.assertEqual(after_early_hydrate["improv_entry_mode"], "Style Jam Mode")
+
 
 def _style_jam_like_session() -> dict:
     return {

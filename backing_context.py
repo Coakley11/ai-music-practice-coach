@@ -733,7 +733,14 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
     pick_key = _current_pick_key(session)
     key, display_key, concert_key = _live_backing_concert_keys(session)
     chart_display_key = _resolve_chart_display_key(session, concert_key)
-    entry_mode = str(session.get("improv_entry_mode") or "Song-Based Improvisation").strip()
+    try:
+        from backing_source_navigation import resolve_entry_jam_entry_mode
+
+        entry_mode = resolve_entry_jam_entry_mode(session)
+    except ImportError:
+        entry_mode = str(session.get("improv_entry_mode") or "Style Jam Mode").strip()
+        if entry_mode == "Song-Based Improvisation":
+            entry_mode = "Style Jam Mode"
     style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
 
     if entry_mode == "Jam Session Generator":

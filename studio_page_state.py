@@ -42,6 +42,7 @@ __all__ = (
     "PENDING_IMPROV_SONG_SOURCE",
     "apply_improv_song_source",
     "ensure_improv_entry_mode_restored",
+    "ensure_creative_widgets_from_backing_context",
     "ensure_improv_intelligence_tab_restored",
     "flush_pending_improv_song_source",
     "init_analysis_page_state",
@@ -260,6 +261,26 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
 
 def ensure_improv_intelligence_tab_restored(session_state: dict) -> str:
     """Restore Improvisation Intelligence sub-tab before the radio renders."""
+    backing_entry = _active_creative_backing_entry_mode(session_state)
+    if backing_entry:
+        try:
+            from backing_context import active_creative_backing_context
+
+            ctx = active_creative_backing_context(session_state)
+            src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+        except ImportError:
+            src = ""
+        tab = "Missions" if src == "mission" else "Entry & Jam"
+        try:
+            from session_widget_safe import PENDING_IMPROV_INTELLIGENCE_TAB_KEY
+
+            session_state.pop(PENDING_IMPROV_INTELLIGENCE_TAB_KEY, None)
+        except ImportError:
+            session_state.pop("_pending_improv_intelligence_tab", None)
+        if str(session_state.get("improv_intelligence_tab") or "").strip() != tab:
+            session_state["improv_intelligence_tab"] = tab
+        session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = tab
+        return tab
     try:
         from session_widget_safe import PENDING_IMPROV_INTELLIGENCE_TAB_KEY
     except ImportError:
@@ -286,8 +307,86 @@ def ensure_improv_intelligence_tab_restored(session_state: dict) -> str:
     return default
 
 
+_BACKING_SOURCE_TO_ENTRY_MODE: dict[str, str] = {
+    "song_improv": "Song-Based Improvisation",
+    "mission": "Song-Based Improvisation",
+}
+
+
+def _active_creative_backing_entry_mode(session_state: dict) -> str:
+    """Entry mode dictated by an active entry_jam/song_improv/mission backing context."""
+    try:
+        from backing_context import active_creative_backing_context
+    except ImportError:
+        return ""
+    ctx = active_creative_backing_context(session_state)
+    if ctx is None:
+        return ""
+    src = str(getattr(ctx, "source", "") or "").strip()
+    if src == "entry_jam":
+        try:
+            from backing_source_navigation import resolve_entry_jam_entry_mode
+
+            return resolve_entry_jam_entry_mode(session_state, ctx=ctx)
+        except ImportError:
+            entry = str(getattr(ctx, "entry_mode", "") or "").strip()
+            if entry in IMPROV_ENTRY_MODES and entry != "Song-Based Improvisation":
+                return entry
+            return "Style Jam Mode"
+    return _BACKING_SOURCE_TO_ENTRY_MODE.get(src, "")
+
+
+def ensure_creative_widgets_from_backing_context(session_state: dict) -> bool:
+    """Force Entry & Jam tab + entry-mode radio to match active Creative backing context.
+
+    Backing context source is authoritative for the visible Creative controls on the
+    creative page, overriding stale page-snapshot / widget values. Must run before the
+    intelligence-tab and entry-mode radios render in the same rerun.
+    """
+    entry = _active_creative_backing_entry_mode(session_state)
+    if not entry:
+        return False
+    try:
+        from backing_context import active_creative_backing_context
+
+        ctx = active_creative_backing_context(session_state)
+        src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    except ImportError:
+        src = ""
+    tab = "Missions" if src == "mission" else "Entry & Jam"
+    if str(session_state.get("improv_intelligence_tab") or "").strip() != tab:
+        session_state["improv_intelligence_tab"] = tab
+    session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = tab
+    session_state["_improv_tab_user_touched"] = False
+    if str(session_state.get("improv_entry_mode") or "").strip() != entry:
+        session_state["improv_entry_mode"] = entry
+    try:
+        from session_widget_safe import (
+            PENDING_IMPROV_ENTRY_MODE_KEY,
+            PENDING_IMPROV_INTELLIGENCE_TAB_KEY,
+        )
+
+        session_state.pop(PENDING_IMPROV_ENTRY_MODE_KEY, None)
+        session_state.pop(PENDING_IMPROV_INTELLIGENCE_TAB_KEY, None)
+    except ImportError:
+        session_state.pop("_pending_improv_entry_mode", None)
+        session_state.pop("_pending_improv_intelligence_tab", None)
+    return True
+
+
 def ensure_improv_entry_mode_restored(session_state: dict) -> str:
     """Restore Entry / Style Jam / SBI radio before the entry-mode widget renders."""
+    backing_entry = _active_creative_backing_entry_mode(session_state)
+    if backing_entry:
+        try:
+            from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
+
+            session_state.pop(PENDING_IMPROV_ENTRY_MODE_KEY, None)
+        except ImportError:
+            session_state.pop("_pending_improv_entry_mode", None)
+        if str(session_state.get("improv_entry_mode") or "").strip() != backing_entry:
+            session_state["improv_entry_mode"] = backing_entry
+        return backing_entry
     try:
         from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
     except ImportError:
