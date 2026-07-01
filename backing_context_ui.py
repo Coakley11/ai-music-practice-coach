@@ -333,6 +333,12 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
     cols = st.columns(2) if show_custom else [st.container()]
     with cols[0]:
         if st.button("Use catalog song backing", key="backing_context_reset_btn", use_container_width=False):
+            try:
+                from backing_source_navigation import BACKING_INTENT_SWITCH_CATALOG, set_key_transition_intent
+
+                set_key_transition_intent(session, BACKING_INTENT_SWITCH_CATALOG)
+            except ImportError:
+                pass
             restore_regular_song_backing(session, st_like=st)
             st.rerun()
     if show_custom:
@@ -342,6 +348,12 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                 key="backing_context_reset_custom_btn",
                 use_container_width=False,
             ):
+                try:
+                    from backing_source_navigation import BACKING_INTENT_SWITCH_CUSTOM, set_key_transition_intent
+
+                    set_key_transition_intent(session, BACKING_INTENT_SWITCH_CUSTOM)
+                except ImportError:
+                    pass
                 restore_custom_song_backing(session, st_like=st)
                 st.rerun()
 

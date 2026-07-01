@@ -15,7 +15,12 @@ CreativeReturnPage = Literal["creative", "custom", "picker", "practice"]
 BACKING_OPEN_INTENT_KEY = "_backing_open_intent"
 BACKING_INTENT_RESTORE_LAST = "restore_last"
 BACKING_INTENT_FROM_PRACTICE = "from_practice"
+BACKING_INTENT_FROM_SONG_TO_BACKING = "from_song_or_practice_to_backing"
 BACKING_INTENT_FROM_CREATIVE = "from_creative"
+BACKING_INTENT_SWITCH_CATALOG = "switch_to_catalog_backing"
+BACKING_INTENT_SWITCH_CUSTOM = "switch_to_custom_backing"
+BACKING_INTENT_CREATIVE_TO_CATALOG = "creative_to_catalog"
+KEY_TRANSITION_INTENT_KEY = "_key_transition_intent"
 PRACTICE_SOURCE_DISPLAY_KEY = "_practice_source_display_key"
 PRACTICE_SOURCE_PICK_KEY = "_practice_source_pick_key"
 CREATIVE_RESTORE_FROM_BACKING_KEY = "_creative_restore_from_backing"
@@ -40,6 +45,33 @@ def set_backing_open_intent(session: dict[str, Any], intent: str) -> None:
 
 def consume_backing_open_intent(session: dict[str, Any]) -> str:
     return str(session.pop(BACKING_OPEN_INTENT_KEY, BACKING_INTENT_RESTORE_LAST) or BACKING_INTENT_RESTORE_LAST)
+
+
+def set_key_transition_intent(session: dict[str, Any], intent: str) -> None:
+    session[KEY_TRANSITION_INTENT_KEY] = str(intent or "").strip()
+
+
+def peek_key_transition_intent(session: dict[str, Any]) -> str:
+    return str(session.get(KEY_TRANSITION_INTENT_KEY) or "").strip()
+
+
+def consume_key_transition_intent(session: dict[str, Any]) -> str:
+    return str(session.pop(KEY_TRANSITION_INTENT_KEY, "") or "").strip()
+
+
+def _backing_intent_preserves_practice_key(intent: str) -> bool:
+    return intent in {
+        BACKING_INTENT_FROM_PRACTICE,
+        BACKING_INTENT_FROM_SONG_TO_BACKING,
+    }
+
+
+def _key_transition_resets_to_original(intent: str) -> bool:
+    return intent in {
+        BACKING_INTENT_SWITCH_CATALOG,
+        BACKING_INTENT_SWITCH_CUSTOM,
+        BACKING_INTENT_CREATIVE_TO_CATALOG,
+    }
 
 
 def snapshot_practice_source_display_key(session: dict[str, Any]) -> None:
@@ -167,6 +199,8 @@ def hydrate_picker_source_for_page(
 def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext | None:
     """Open Backing Studio for the current Practice catalog/custom source (Case C)."""
     snapshot_practice_source_display_key(session)
+    transition = peek_key_transition_intent(session)
+    preserve_key = _backing_intent_preserves_practice_key(transition) if transition else True
     try:
         from music_source_ownership import (
             activate_catalog_ownership,
@@ -182,9 +216,17 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
                 ensure_custom_active_song_identity(session)
             except ImportError:
                 pass
-            return activate_custom_ownership(session, st_like=st_like)
+            return activate_custom_ownership(
+                session,
+                st_like=st_like,
+                preserve_practice_key=preserve_key,
+            )
         if owner == "catalog":
-            return activate_catalog_ownership(session, st_like=st_like)
+            return activate_catalog_ownership(
+                session,
+                st_like=st_like,
+                preserve_practice_key=preserve_key,
+            )
     except ImportError:
         pass
     try:
@@ -312,8 +354,10 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         except ImportError:
             pass
         return
-    if intent == BACKING_INTENT_FROM_PRACTICE:
+    if intent == BACKING_INTENT_FROM_PRACTICE or intent == BACKING_INTENT_FROM_SONG_TO_BACKING:
+        set_key_transition_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
         open_backing_for_practice_source(session, st_like=st_like)
+        consume_key_transition_intent(session)
         return
     try:
         from music_source_ownership import intentional_creative_backing_active
@@ -1172,13 +1216,19 @@ def edit_in_creative_button_label(ctx: BackingContext | None) -> str:
 
 __all__ = [
     "BACKING_CONTEXT_KEY",
+    "BACKING_INTENT_CREATIVE_TO_CATALOG",
     "BACKING_INTENT_FROM_PRACTICE",
+    "BACKING_INTENT_FROM_SONG_TO_BACKING",
     "BACKING_INTENT_RESTORE_LAST",
+    "BACKING_INTENT_SWITCH_CATALOG",
+    "BACKING_INTENT_SWITCH_CUSTOM",
     "BACKING_OPEN_INTENT_KEY",
+    "KEY_TRANSITION_INTENT_KEY",
     "CreativeReturnPage",
     "PRACTICE_SOURCE_DISPLAY_KEY",
     "CREATIVE_RESTORE_FROM_BACKING_KEY",
     "consume_backing_open_intent",
+    "consume_key_transition_intent",
     "edit_in_creative_button_label",
     "hydrate_backing_source_for_page",
     "hydrate_picker_source_for_page",
@@ -1195,6 +1245,8 @@ __all__ = [
     "restore_session_widgets_from_backing_context",
     "return_to_source_button_label",
     "set_backing_open_intent",
+    "set_key_transition_intent",
+    "peek_key_transition_intent",
     "snapshot_practice_source_display_key",
     "target_page_for_backing_context",
 ]

@@ -468,8 +468,19 @@ def should_use_live_practice_key_sidebar(session: dict[str, Any]) -> bool:
             return True
     except ImportError:
         pass
+    try:
+        from backing_context import catalog_or_custom_backing_is_authoritative, get_backing_context
+
+        if catalog_or_custom_backing_is_authoritative(session):
+            ctx = get_backing_context(session)
+            if ctx is not None and ctx.source in {"regular_song", "custom_progression"}:
+                return False
+    except ImportError:
+        pass
     page = str(session.get("studio_page") or "").strip().lower()
-    if page in {"creative", "backing"}:
+    if page == "creative":
+        return True
+    if page == "backing":
         return True
     entry = str(session.get("improv_entry_mode") or "").strip()
     if entry in {"Style Jam Mode", "Jam Session Generator", "Song-Based Improvisation"}:

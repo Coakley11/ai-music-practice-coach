@@ -28,6 +28,29 @@ def write_catalog_backing_restore_diag(session: dict[str, Any], **fields: Any) -
     session[CATALOG_BACKING_RESTORE_DIAG_KEY] = blob
 
 
+def write_key_transition_diag(session: dict[str, Any], **fields: Any) -> None:
+    """Dev trace for catalog/custom key ownership transitions."""
+    try:
+        from songs.key_state import PENDING_DISPLAY_KEY
+    except ImportError:
+        PENDING_DISPLAY_KEY = "_pending_display_key"  # type: ignore[misc,assignment]
+    try:
+        from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
+    except ImportError:
+        CREATIVE_CONCERT_KEY_SOURCE = "_creative_concert_key_source"  # type: ignore[misc,assignment]
+    blob = dict(session.get("_key_transition_diag") or {})
+    blob.update(dict(session.get(CATALOG_BACKING_RESTORE_DIAG_KEY) or {}))
+    blob.update(fields)
+    blob["display_key"] = str(session.get("display_key") or blob.get("display_key") or "").strip()
+    blob["concert_key"] = str(session.get("concert_key") or blob.get("concert_key") or "").strip()
+    blob["pending_display_key"] = str(session.get(PENDING_DISPLAY_KEY) or blob.get("pending_display_key") or "").strip()
+    blob["creative_concert_key_source"] = str(
+        session.get(CREATIVE_CONCERT_KEY_SOURCE) or blob.get("creative_concert_key_source") or ""
+    ).strip()
+    session["_key_transition_diag"] = blob
+    write_catalog_backing_restore_diag(session, **blob)
+
+
 def _write_catalog_rebuild_trace(
     session: dict[str, Any],
     *,
@@ -314,6 +337,99 @@ def _clear_cross_owner_transport(session: dict[str, Any]) -> None:
         pass
 
 
+def _release_creative_transport_authority(session: dict[str, Any]) -> None:
+    """Clear Creative/Jam transport keys that can block catalog/custom key restore."""
+    try:
+        from backing_context import _detach_creative_backing_from_session, _release_creative_backing_ownership
+
+        _release_creative_backing_ownership(session)
+    except ImportError:
+        try:
+            from backing_context import _detach_creative_backing_from_session
+
+            _detach_creative_backing_from_session(session)
+        except ImportError:
+            pass
+    try:
+        from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
+
+        session.pop(CREATIVE_CONCERT_KEY_SOURCE, None)
+    except ImportError:
+        session.pop("_creative_concert_key_source", None)
+    try:
+        from creative_session_state import JAM_CAPTURE_STAGING_KEY, JAM_SESSION_GENERATE_GUARD_KEY
+
+        session.pop(JAM_CAPTURE_STAGING_KEY, None)
+        session.pop(JAM_SESSION_GENERATE_GUARD_KEY, None)
+    except ImportError:
+        session.pop("_jam_capture_staging", None)
+        session.pop("_jam_session_generate_guard", None)
+    try:
+        from session_widget_safe import (
+            PENDING_IMPROV_ENSEMBLE_KEY,
+            PENDING_IMPROV_ENTRY_MODE_KEY,
+            PENDING_IMPROV_JAM_BPM_KEY,
+            PENDING_IMPROV_JAM_KEY,
+            PENDING_IMPROV_JAM_MOOD_KEY,
+            PENDING_IMPROV_JAM_STYLE_KEY,
+        )
+
+        for pending_key in (
+            PENDING_IMPROV_JAM_KEY,
+            PENDING_IMPROV_JAM_BPM_KEY,
+            PENDING_IMPROV_JAM_MOOD_KEY,
+            PENDING_IMPROV_JAM_STYLE_KEY,
+            PENDING_IMPROV_ENSEMBLE_KEY,
+            PENDING_IMPROV_ENTRY_MODE_KEY,
+        ):
+            session.pop(pending_key, None)
+    except ImportError:
+        for pending_key in (
+            "_pending_improv_jam_key",
+            "_pending_improv_jam_bpm",
+            "_pending_improv_jam_mood",
+            "_pending_improv_jam_style",
+            "_pending_improv_ensemble",
+            "_pending_improv_entry_mode",
+        ):
+            session.pop(pending_key, None)
+
+
+def _force_practice_display_key(
+    session: dict[str, Any],
+    concert_key: str,
+    *,
+    st_like: Any | None = None,
+    writer: str = "catalog_ownership_reset",
+) -> str:
+    """Authoritatively set practice/display key — used on ownership switches."""
+    concert = str(concert_key or "C").strip() or "C"
+    try:
+        from songs.key_state import LAST_DISPLAY_KEY, PENDING_DISPLAY_KEY, request_display_key
+    except ImportError:
+        LAST_DISPLAY_KEY = "_last_app_display_key"  # type: ignore[misc,assignment]
+        PENDING_DISPLAY_KEY = "_pending_display_key"  # type: ignore[misc,assignment]
+        request_display_key = None  # type: ignore[assignment,misc]
+    session.pop(PENDING_DISPLAY_KEY, None)
+    session["concert_key"] = concert
+    session["display_key"] = concert
+    session[LAST_DISPLAY_KEY] = concert
+    if st_like is not None and request_display_key is not None:
+        try:
+            request_display_key(st_like, concert)
+        except Exception:
+            pass
+    write_key_transition_diag(
+        session,
+        catalog_target_key=concert,
+        display_key=concert,
+        concert_key=concert,
+        pending_display_key="",
+        last_key_writer=writer,
+    )
+    return concert
+
+
 def _apply_catalog_transport_from_record(
     session: dict[str, Any],
     *,
@@ -321,18 +437,28 @@ def _apply_catalog_transport_from_record(
     pick_key: str,
     selected: dict[str, Any],
     original_key: str,
+    concert_key: str = "",
+    force_display_key: bool = False,
 ) -> tuple[int, str, str]:
     """Force display key and BPM/groove/meter from canonical catalog record."""
-    concert = str(original_key or selected.get("key") or "C").strip() or "C"
-    try:
-        from session_widget_safe import reconcile_practice_key_fields, safe_assign_display_key
+    concert = str(concert_key or original_key or selected.get("key") or "C").strip() or "C"
+    if force_display_key:
+        _force_practice_display_key(
+            session,
+            concert,
+            st_like=st_like,
+            writer="catalog_transport_force",
+        )
+    else:
+        try:
+            from session_widget_safe import reconcile_practice_key_fields, safe_assign_display_key
 
-        safe_assign_display_key(session, concert, widget_safe=True, st_like=st_like)
-        reconcile_practice_key_fields(session, authoritative=concert)
-    except ImportError:
-        session["display_key"] = concert
-        session["concert_key"] = concert
-        session.pop("_pending_display_key", None)
+            safe_assign_display_key(session, concert, widget_safe=True, st_like=st_like)
+            reconcile_practice_key_fields(session, authoritative=concert)
+        except ImportError:
+            session["display_key"] = concert
+            session["concert_key"] = concert
+            session.pop("_pending_display_key", None)
 
     lib_record = dict(selected)
     bpm = 0
@@ -421,6 +547,8 @@ def rebuild_catalog_backing_from_canonical_pick(
     *,
     st_like: Any | None = None,
     pick_key: str = "",
+    practice_concert_key: str = "",
+    reset_to_original: bool = True,
 ) -> Any:
     """Full backing_context rebuild from canonical_active_pick_key and catalog record."""
     from types import SimpleNamespace
@@ -460,7 +588,28 @@ def rebuild_catalog_backing_from_canonical_pick(
         )
         return None
 
+    catalog_original = str(original_key or selected.get("key") or "C").strip() or "C"
+    if reset_to_original:
+        target_key = catalog_original
+    else:
+        target_key = str(practice_concert_key or "").strip() or catalog_original
+    try:
+        from backing_source_navigation import peek_key_transition_intent
+
+        transition = peek_key_transition_intent(session)
+    except ImportError:
+        transition = ""
+    write_key_transition_diag(
+        session,
+        catalog_original_key=catalog_original,
+        catalog_target_key=target_key,
+        key_transition_intent=transition,
+        active_transport_owner="catalog" if reset_to_original else "catalog_preserve_practice",
+        last_key_writer="rebuild_catalog_backing_from_canonical_pick",
+    )
+
     _clear_cross_owner_transport(session)
+    _release_creative_transport_authority(session)
     try:
         from backing_context import (
             BACKING_PREF_CATALOG,
@@ -469,13 +618,11 @@ def rebuild_catalog_backing_from_canonical_pick(
             clear_backing_context,
             set_backing_context,
             set_backing_source_preference,
-            _release_creative_backing_ownership,
         )
     except ImportError:
         return None
 
     clear_backing_context(session)
-    _release_creative_backing_ownership(session)
     for key in ("_creative_concert_key_source",):
         session.pop(key, None)
     try:
@@ -496,6 +643,8 @@ def rebuild_catalog_backing_from_canonical_pick(
         pick_key=pick,
         selected=selected,
         original_key=original_key,
+        concert_key=target_key,
+        force_display_key=reset_to_original,
     )
 
     set_backing_source_preference(session, BACKING_PREF_CATALOG)
@@ -504,7 +653,7 @@ def rebuild_catalog_backing_from_canonical_pick(
         ctx,
         pick_key=pick,
         selected=selected,
-        original_key=original_key,
+        original_key=target_key,
         bpm=bpm,
         groove=groove,
     )
@@ -527,20 +676,46 @@ def rebuild_catalog_backing_from_canonical_pick(
     return ctx
 
 
-def activate_catalog_ownership(session: dict[str, Any], *, st_like: Any | None = None) -> Any:
+def activate_catalog_ownership(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+    preserve_practice_key: bool = False,
+) -> Any:
     """Catalog song owns everything — release prior owner, rebuild from active catalog pick."""
     pick = active_catalog_pick_key(session)
+    practice_key = ""
+    if preserve_practice_key:
+        try:
+            from backing_source_navigation import _resolved_practice_display_key
+
+            practice_key = _resolved_practice_display_key(session)
+        except ImportError:
+            practice_key = str(session.get("display_key") or session.get("concert_key") or "").strip()
     if pick and not pick.startswith("custom::"):
-        return rebuild_catalog_backing_from_canonical_pick(session, st_like=st_like)
+        return rebuild_catalog_backing_from_canonical_pick(
+            session,
+            st_like=st_like,
+            pick_key=pick,
+            practice_concert_key=practice_key,
+            reset_to_original=not preserve_practice_key,
+        )
     _clear_cross_owner_transport(session)
     from backing_context import restore_regular_song_backing
 
     return restore_regular_song_backing(session, st_like=st_like)
 
 
-def activate_custom_ownership(session: dict[str, Any], *, st_like: Any | None = None) -> Any:
+def activate_custom_ownership(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+    preserve_practice_key: bool = False,
+) -> Any:
     """Custom progression owns everything — release prior owner, rebuild from CPL active song."""
     _clear_cross_owner_transport(session)
+    if not preserve_practice_key:
+        _release_creative_transport_authority(session)
     from backing_context import restore_custom_song_backing
 
     return restore_custom_song_backing(session, st_like=st_like)

@@ -413,7 +413,14 @@ def commit_catalog_active_song(
     _sync_catalog_session_surface_keys(session, pick_key=pick_key, selected_song=selected_song)
     original_key = str(original_key or selected_song.get("key") or "C").strip() or "C"
     display_key = str(display_key or original_key).strip() or original_key
-    if reason == "catalog_source_switch":
+    _reset_reasons = (
+        "catalog_source_switch",
+        "creative_to_catalog",
+        "switch_to_catalog_backing",
+        "last_catalog_restore",
+        "previous_catalog_restore",
+    )
+    if reason in _reset_reasons:
         display_key = original_key
     lib_record = dict(selected_song)
     default_bpm = canonical_active_song_bpm(lib_record)
@@ -439,7 +446,14 @@ def commit_catalog_active_song(
         display_key=display_key,
         song_data=lib_record,
         invalidate_backing=invalidate_backing,
-        force_reset=reason in ("catalog_source_switch", "last_catalog_restore", "previous_catalog_restore"),
+        force_reset=reason
+        in (
+            "catalog_source_switch",
+            "creative_to_catalog",
+            "switch_to_catalog_backing",
+            "last_catalog_restore",
+            "previous_catalog_restore",
+        ),
     )
     sync_song_picker_source_widget(session, force=True)
     note_active_source_change(st, invalidate_backing=invalidate_backing)
@@ -2062,7 +2076,11 @@ def activate_catalog_song_for_backing(
     song_picker_catalog: dict[str, dict[str, dict]] | None = None,
 ) -> Any:
     """Atomically commit a catalog song and rebuild regular_song backing context."""
-    from music_source_ownership import rebuild_catalog_backing_from_canonical_pick, write_catalog_backing_restore_diag
+    from music_source_ownership import (
+        rebuild_catalog_backing_from_canonical_pick,
+        write_catalog_backing_restore_diag,
+        write_key_transition_diag,
+    )
 
     session = st.session_state
     pick_before = str(session.get("active_catalog_pick_key") or "").strip()
@@ -2092,9 +2110,25 @@ def activate_catalog_song_for_backing(
     if not selected:
         write_catalog_backing_restore_diag(session, ok=False, error="catalog_row_missing")
         return None
-    display_key = str(original_key or selected.get("key") or "C").strip() or "C"
-    if reason in ("catalog_source_switch", "last_catalog_restore", "previous_catalog_restore"):
-        display_key = display_key
+    catalog_original = str(original_key or selected.get("key") or "C").strip() or "C"
+    _reset_reasons = (
+        "catalog_source_switch",
+        "creative_to_catalog",
+        "switch_to_catalog_backing",
+        "last_catalog_restore",
+        "previous_catalog_restore",
+    )
+    display_key = catalog_original
+    if reason not in _reset_reasons:
+        display_key = str(session.get("display_key") or session.get("concert_key") or catalog_original).strip() or catalog_original
+    write_key_transition_diag(
+        session,
+        catalog_original_key=catalog_original,
+        catalog_target_key=display_key,
+        key_transition_intent=reason,
+        active_transport_owner="catalog",
+        last_key_writer="activate_catalog_song_for_backing",
+    )
     commit_catalog_active_song(
         st,
         pick_key=pick_key,
@@ -2108,6 +2142,8 @@ def activate_catalog_song_for_backing(
         session,
         st_like=st,
         pick_key=pick_key,
+        practice_concert_key=display_key,
+        reset_to_original=reason in _reset_reasons,
     )
     try:
         from backing_context import get_backing_context

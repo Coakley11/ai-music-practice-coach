@@ -1794,20 +1794,31 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     from songs.key_state import invalidate_backing_cache
     from songs.music_source import activate_catalog_song_for_backing, resolve_catalog_pick_for_backing_restore
 
-    clear_backing_context(session)
-    _release_creative_backing_ownership(session)
     try:
-        from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
+        from backing_source_navigation import BACKING_INTENT_CREATIVE_TO_CATALOG, set_key_transition_intent
 
-        session.pop(CREATIVE_CONCERT_KEY_SOURCE, None)
+        set_key_transition_intent(session, BACKING_INTENT_CREATIVE_TO_CATALOG)
     except ImportError:
-        session.pop("_creative_concert_key_source", None)
+        pass
+    clear_backing_context(session)
+    try:
+        from music_source_ownership import _release_creative_transport_authority
+
+        _release_creative_transport_authority(session)
+    except ImportError:
+        _release_creative_backing_ownership(session)
+        try:
+            from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
+
+            session.pop(CREATIVE_CONCERT_KEY_SOURCE, None)
+        except ImportError:
+            session.pop("_creative_concert_key_source", None)
     st = st_like or SimpleNamespace(session_state=session)
     pick_key = resolve_catalog_pick_for_backing_restore(session)
     ctx = activate_catalog_song_for_backing(
         st,
         pick_key,
-        reason="catalog_source_switch",
+        reason="creative_to_catalog",
         invalidate_backing=invalidate_backing_cache,
     )
     if ctx is not None:
