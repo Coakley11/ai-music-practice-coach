@@ -63,8 +63,11 @@ def clear_stale_chart_session_keys(session: dict[str, Any]) -> None:
 def should_skip_regular_song_defaults(session: dict[str, Any]) -> bool:
     """True when a non-catalog Creative/custom backing source owns the session."""
     try:
-        from backing_context import active_creative_backing_context
+        from backing_context import active_creative_backing_context, get_backing_context
 
+        ctx = get_backing_context(session)
+        if ctx is not None and ctx.source == "custom_progression":
+            return True
         if active_creative_backing_context(session) is not None:
             return True
     except ImportError:

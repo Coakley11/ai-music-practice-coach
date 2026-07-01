@@ -1246,14 +1246,22 @@ def apply_backing_context_to_session(
         session[PENDING_BACKING_CONTEXT_APPLY] = True
 
 
+_CREATIVE_BACKING_SOURCES = frozenset({"entry_jam", "song_improv", "mission"})
+
+
 def active_creative_backing_context(session: dict[str, Any]) -> BackingContext | None:
-    """Return valid non-regular backing context, or None."""
+    """Return valid Creative (entry_jam/song_improv/mission) backing context, or None."""
     ctx = get_backing_context(session)
-    if ctx is None or ctx.source == "regular_song":
+    if ctx is None or ctx.source not in _CREATIVE_BACKING_SOURCES:
         return None
     if not is_backing_context_valid(session, ctx):
         return None
     return ctx
+
+
+def creative_backing_card_context(session: dict[str, Any]) -> BackingContext | None:
+    """Return backing_context when the visible card should use the Creative template."""
+    return active_creative_backing_context(session)
 
 
 def _retranspose_sections_to_practice_key(
@@ -1305,6 +1313,33 @@ def sections_dict_from_backing_context(
                 sections = retranspose_generated_sections(sections, from_key=origin, to_key=practice_key)
             except ImportError:
                 pass
+    elif ctx.source == "custom_progression":
+        try:
+            from custom_progression_lab import CPL_ACTIVE_KEY, all_chords_from_lab_sections, ensure_original_structure
+
+            active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+            raw = active.get("original_sections")
+            if isinstance(raw, dict) and raw:
+                sections = {}
+                for name, chords in raw.items():
+                    if not isinstance(chords, list) or not chords:
+                        continue
+                    label = str(name).strip()
+                    if not label:
+                        continue
+                    flat = all_chords_from_lab_sections({label: chords})
+                    if flat:
+                        sections[label] = flat
+            elif ctx.progression:
+                label = str(ctx.song_title or ctx.progression_label or "Custom").strip() or "Custom"
+                sections = {label: list(ctx.progression)}
+            else:
+                sections = {}
+        except ImportError:
+            sections = {}
+            if ctx.progression:
+                label = str(ctx.song_title or ctx.progression_label or "Custom").strip() or "Custom"
+                sections = {label: list(ctx.progression)}
     else:
         entry_mode = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()
         sections = _entry_jam_sections_dict(session, entry_mode)
@@ -1381,6 +1416,13 @@ def flush_pending_backing_context_handoff(session: dict[str, Any]) -> bool:
 
 def backing_page_sync_id(session: dict[str, Any], *, song_sync_id: str) -> str:
     """BPM/widget sync id — creative source signature when non-regular backing is active."""
+    ctx = get_backing_context(session)
+    if ctx is not None and ctx.source == "custom_progression":
+        sig = str(ctx.custom_revision_id or ctx.bound_pick_key or ctx.source_signature or "").strip()
+        if sig:
+            return f"custom:{sig}"
+        active_id = str(ctx.active_song_id or "").strip()
+        return f"custom:{active_id or 'progression'}"
     ctx = active_creative_backing_context(session)
     if ctx is None:
         return str(song_sync_id or "").strip()
@@ -1977,6 +2019,7 @@ __all__ = [
     "refresh_backing_context_timestamps",
     "apply_backing_context_to_session",
     "active_creative_backing_context",
+    "creative_backing_card_context",
     "sections_dict_from_backing_context",
     "sections_dict_for_chart_display",
     "humanize_level_for_groove_intensity",

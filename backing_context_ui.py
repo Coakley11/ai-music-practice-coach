@@ -133,7 +133,9 @@ def render_backing_creative_context_card(
     written_key: str = "",
     musical_state: Any | None = None,
 ) -> None:
-    """Replace the blue active-song card when Creative/custom backing is active."""
+    """Replace the blue active-song card when Creative backing is active."""
+    if ctx.source not in {"entry_jam", "song_improv", "mission"}:
+        return
     from backing_musical_state import resolve_current_backing_musical_state
 
     state = musical_state or resolve_current_backing_musical_state(
@@ -225,6 +227,65 @@ def render_backing_creative_context_card(
         f"{chart_line}"
         f'<p class="ui-backing-active-key-line">Progression: <strong>{progression_line}</strong></p>'
         f'<div class="ui-backing-active-badges">{badges_html}</div>'
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_backing_custom_progression_context_card(
+    st: Any,
+    ctx: BackingContext,
+    session: dict[str, Any],
+    *,
+    applied_bpm: int,
+    applied_groove: str,
+    applied_meter: str = "4/4",
+    practice_key: str = "",
+    written_key: str = "",
+) -> None:
+    """Blue card for CPL custom progression backing — not Creative."""
+    if ctx.source != "custom_progression":
+        return
+
+    title = html.escape(str(ctx.song_title or "Custom progression").strip() or "Custom progression")
+    concert = html.escape(str(practice_key or ctx.concert_key or ctx.display_key or "C").strip() or "C")
+    bpm = int(applied_bpm or ctx.bpm or 100)
+    groove = html.escape(str(applied_groove or ctx.groove or "Auto").strip() or "Auto")
+    meter = html.escape(str(applied_meter or ctx.meter or "4/4").strip() or "4/4")
+    source_badge = html.escape(str(ctx.source_label or "Custom progression").strip() or "Custom progression")
+
+    sections: dict[str, list[str]] = {}
+    try:
+        from backing_context import sections_dict_from_backing_context
+
+        sections = sections_dict_from_backing_context(session, ctx)
+    except ImportError:
+        pass
+    if not sections and ctx.progression:
+        label = str(ctx.song_title or ctx.progression_label or "Progression").strip() or "Progression"
+        sections = {label: list(ctx.progression)}
+
+    if sections:
+        progression_line = html.escape(" / ".join(list(sections.keys())[:4]))
+        sample = [c for chs in sections.values() for c in chs[:6]]
+        if sample:
+            progression_line += html.escape(" · " + " – ".join(sample[:6]))
+    else:
+        progression_line = html.escape(str(ctx.progression_label or "Full form").strip() or "Full form")
+
+    gradient = "linear-gradient(145deg,#0891b2,#0e7490)"
+    st.markdown(
+        f'<div class="ui-backing-active-song mode-custom-progression-backing">'
+        f'<div class="ui-backing-active-art" style="background:{gradient};">'
+        f"🎼<small>{source_badge}</small></div>"
+        f'<div class="ui-backing-active-body">'
+        f'<p class="ui-backing-active-kicker">Custom progression backing</p>'
+        f'<p class="ui-backing-active-title">{title}'
+        f'<span class="ui-backing-active-dash"> · </span>'
+        f'<span class="ui-backing-active-source">{source_badge}</span></p>'
+        f'<p class="ui-backing-active-key-line">Practice concert key: <strong>{concert}</strong>'
+        f" · BPM: <strong>{bpm}</strong> · Groove: <strong>{groove}</strong> · Meter: <strong>{meter}</strong></p>"
+        f'<p class="ui-backing-active-key-line">Progression: <strong>{progression_line}</strong></p>'
         f"</div></div>",
         unsafe_allow_html=True,
     )

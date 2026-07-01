@@ -11363,13 +11363,18 @@ elif _studio_page == "backing":
     try:
         from backing_context import (
             active_creative_backing_context,
+            get_backing_context,
             sections_dict_for_chart_display,
             sections_dict_from_backing_context,
         )
-        from backing_context_ui import render_backing_creative_context_card
+        from backing_context_ui import (
+            render_backing_creative_context_card,
+            render_backing_custom_progression_context_card,
+        )
 
         if _creative_backing_ctx is None:
             _creative_backing_ctx = active_creative_backing_context(st.session_state)
+        _backing_ctx_for_card = get_backing_context(st.session_state)
         if _creative_backing_ctx is not None:
             if _backing_musical is None:
                 try:
@@ -11441,6 +11446,20 @@ elif _studio_page == "backing":
                 )
             except Exception:
                 pass
+        elif (
+            _backing_ctx_for_card is not None
+            and _backing_ctx_for_card.source == "custom_progression"
+        ):
+            render_backing_custom_progression_context_card(
+                st,
+                _backing_ctx_for_card,
+                st.session_state,
+                applied_bpm=_synced_bpm,
+                applied_groove=default_groove_style,
+                applied_meter=_applied_meter_pre,
+                practice_key=_backing_practice_key,
+                written_key=_backing_written_key,
+            )
         else:
             render_backing_active_song_card(
                 st,

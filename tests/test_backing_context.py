@@ -7,6 +7,7 @@ import unittest
 from backing_context import (
     BACKING_CONTEXT_KEY,
     BackingContext,
+    active_creative_backing_context,
     build_custom_progression_context,
     build_entry_jam_context,
     build_mission_context,
@@ -14,9 +15,11 @@ from backing_context import (
     clear_backing_context,
     compute_source_signature,
     context_is_stale,
+    creative_backing_card_context,
     get_backing_context,
     invalidate_if_song_changed,
     is_backing_context_valid,
+    sections_dict_from_backing_context,
     set_backing_context,
 )
 
@@ -210,6 +213,46 @@ class TestBackingContext(unittest.TestCase):
         assert restored is not None
         self.assertEqual(restored.source, "regular_song")
         self.assertEqual(restored.song_title, "Say")
+
+    def test_active_creative_excludes_custom_progression(self) -> None:
+        session = {
+            "cpl_active_progression": {
+                "name": "Trial Song",
+                "id": "trial-1",
+                "original_key_center": "D",
+                "bpm": 120,
+                "original_sections": {"Main": [{"chord": "D", "bars": 4}]},
+            },
+        }
+        ctx = build_custom_progression_context(session)
+        set_backing_context(session, ctx)
+        self.assertIsNone(active_creative_backing_context(session))
+        self.assertIsNone(creative_backing_card_context(session))
+        self.assertEqual(get_backing_context(session).source, "custom_progression")
+
+    def test_sections_from_custom_progression_ignores_style_jam(self) -> None:
+        session = {
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Bossa Nova",
+            "improv_generated_sections": {"Style Jam": ["D", "D", "A", "A"]},
+            "cpl_active_progression": {
+                "name": "Trial Song",
+                "id": "trial-1",
+                "original_key_center": "D",
+                "original_sections": {
+                    "Verse": [{"chord": "Dm7", "bars": 2}, {"chord": "G7", "bars": 2}],
+                    "Chorus": [],
+                    "Bridge": [],
+                    "Intro": [],
+                    "Outro": [],
+                },
+            },
+        }
+        ctx = build_custom_progression_context(session)
+        sections = sections_dict_from_backing_context(session, ctx)
+        self.assertIn("Verse", sections)
+        self.assertNotIn("Style Jam", sections)
+        self.assertIn("Dm7", str(sections["Verse"][0]))
 
 
 if __name__ == "__main__":
