@@ -333,22 +333,57 @@ def source_ownership_diagnostics_enabled(*, st: Any | None = None) -> bool:
         return False
 
 
+def _diag_value(value: Any, *, default: str = "n/a") -> str:
+    """Format diagnostics table values; never raise."""
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text if text else default
+
+
+def _diag_attr(obj: Any, *names: str, default: str = "n/a") -> str:
+    """Read first present attribute from an object for diagnostics display."""
+    if obj is None:
+        return default
+    for name in names:
+        try:
+            val = getattr(obj, name, None)
+        except Exception:
+            continue
+        if val is not None and str(val).strip():
+            return str(val).strip()
+    return default
+
+
 def render_source_ownership_dev_table(st: Any, session: dict[str, Any]) -> None:
     """Dev-only ownership matrix (?dev=1) — Song, Creative, and Backing pages."""
     if not source_ownership_diagnostics_enabled(st=st):
         return
+    try:
+        _render_source_ownership_dev_table_body(st, session)
+    except Exception as exc:
+        st.caption("**Debug:** Source ownership diagnostics active")
+        with st.expander("Source ownership diagnostics", expanded=True):
+            st.warning(f"Diagnostics failed safely: {exc!r}")
 
+
+def _render_source_ownership_dev_table_body(st: Any, session: dict[str, Any]) -> None:
     ctx = get_backing_context(session)
-    tool = ""
-    creative_title = ""
+    tool = "n/a"
+    creative_title = "n/a"
     try:
         from creative_session_state import get_creative_session
 
         sess = get_creative_session(session)
         if sess is not None:
-            tool = str(sess.tool_type or "")
-            creative_title = str(sess.song_title or sess.style or "").strip()
-    except ImportError:
+            tool = _diag_attr(sess, "tool_type", default="none")
+            creative_title = str(
+                getattr(sess, "song_title", None)
+                or getattr(sess, "title", None)
+                or getattr(sess, "style", None)
+                or ""
+            ).strip() or "n/a"
+    except Exception:
         pass
 
     try:
@@ -372,6 +407,11 @@ def render_source_ownership_dev_table(st: Any, session: dict[str, Any]) -> None:
     except ImportError:
         PENDING_DISPLAY_KEY = "_pending_display_key"  # type: ignore[misc,assignment]
 
+    pref = "n/a"
+    ctx_valid = False
+    bound_pick = "n/a"
+    current_pick = active_pick
+    banner = "n/a"
     try:
         from backing_context import (
             format_backing_context_banner,
@@ -380,40 +420,44 @@ def render_source_ownership_dev_table(st: Any, session: dict[str, Any]) -> None:
         )
         from backing_context import _current_pick_key as backing_current_pick_key
 
-        pref = get_backing_source_preference(session)
-        ctx_valid = is_backing_context_valid(session, ctx) if ctx else False
-        bound_pick = str(ctx.bound_pick_key or "") if ctx else ""
-        current_pick = backing_current_pick_key(session)
-        banner = format_backing_context_banner(ctx)
-    except ImportError:
-        pref = ""
-        ctx_valid = False
-        bound_pick = ""
-        current_pick = active_pick
-        banner = ""
+        pref = _diag_value(get_backing_source_preference(session))
+        ctx_valid = bool(is_backing_context_valid(session, ctx)) if ctx else False
+        bound_pick = _diag_attr(ctx, "bound_pick_key") if ctx else "n/a"
+        current_pick = _diag_value(backing_current_pick_key(session))
+        banner = _diag_value(format_backing_context_banner(ctx) if ctx else None)
+    except Exception:
+        pass
+
+    backing_title = "n/a"
+    try:
+        backing_title = _diag_value(_backing_source_name(session) if ctx else None)
+    except Exception:
+        pass
 
     rows = {
-        "page": str(session.get("studio_page") or "").strip(),
-        "active_music_source": source_type,
-        "active_song_title": str(session.get("song") or session.get("active_song_title") or "").strip(),
-        "active_pick_key": active_pick,
-        "custom_progression": _custom_progression_label(session),
-        "last_catalog_song": _last_catalog_song_label(session),
-        "backing_open_intent": _backing_open_intent_label(session),
+        "page": _diag_value(session.get("studio_page")),
+        "active_music_source": _diag_value(source_type),
+        "active_song_title": _diag_value(
+            session.get("song") or session.get("active_song_title")
+        ),
+        "active_pick_key": _diag_value(active_pick),
+        "custom_progression": _diag_value(_custom_progression_label(session)),
+        "last_catalog_song": _diag_value(_last_catalog_song_label(session)),
+        "backing_open_intent": _diag_value(_backing_open_intent_label(session), default="none"),
         "backing_pref": pref,
-        "backing_context.source": str(ctx.source if ctx else ""),
-        "backing_context.title": _backing_source_name(session) if ctx else "",
+        "backing_context.source": _diag_attr(ctx, "source") if ctx else "n/a",
+        "backing_context.title": backing_title,
         "backing_context.valid": str(ctx_valid),
         "backing_context.bound_pick": bound_pick,
         "current_pick_key": current_pick,
-        "creative_session.tool": tool or "none",
+        "creative_session.tool": tool,
         "creative_session.title": creative_title,
-        "original_key": str(session.get("original_key") or "").strip(),
-        "display_key": str(session.get("display_key") or "").strip(),
-        "pending_display_key": str(session.get(PENDING_DISPLAY_KEY) or "").strip(),
-        "concert_key": str(session.get("concert_key") or "").strip(),
+        "original_key": _diag_value(session.get("original_key")),
+        "display_key": _diag_value(session.get("display_key")),
+        "pending_display_key": _diag_value(session.get(PENDING_DISPLAY_KEY)),
+        "concert_key": _diag_value(session.get("concert_key")),
         "chart_visibility": _chart_visibility_label(session),
-        "instrument": str(session.get("instrument") or "").strip(),
+        "instrument": _diag_value(session.get("instrument")),
         "sections_source": _sections_source_label(session, ctx),
         "top_backing_banner": banner,
     }
@@ -425,14 +469,14 @@ def render_source_ownership_dev_table(st: Any, session: dict[str, Any]) -> None:
 
             deploy = deploy_info()
             commit = str(deploy.get("commit") or "unknown").strip()[:12]
-        except ImportError:
+        except Exception:
             commit = "unknown"
         try:
             from suite_workspace import is_developer_workspace, resolve_workspace_id
 
             workspace = str(resolve_workspace_id(st=st) or "").strip()
             daniel_only_tools = is_developer_workspace(st=st)
-        except ImportError:
+        except Exception:
             workspace = ""
             daniel_only_tools = False
         st.caption(

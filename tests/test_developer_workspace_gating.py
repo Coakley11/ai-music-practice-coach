@@ -37,6 +37,44 @@ class TestDeveloperWorkspaceGating(unittest.TestCase):
         self.assertTrue(source_ownership_diagnostics_enabled(st=st))  # type: ignore[arg-type]
         self.assertFalse(can_show_developer_tools(st=st))  # type: ignore[arg-type]
 
+    def test_source_ownership_diagnostics_survives_missing_song_title(self) -> None:
+        from creative_session_state import CREATIVE_SESSION_KEY, CreativeSession
+        from backing_source_navigation import render_source_ownership_dev_table
+
+        sess = CreativeSession(
+            session_id="diag-test",
+            tool_type="entry_style_jam",
+            entry_mode="Style Jam Mode",
+            style="Bossa Nova",
+        )
+
+        class _DiagSt(_FakeSt):
+            def caption(self, *_a, **_k) -> None:
+                return None
+
+            def warning(self, *_a, **_k) -> None:
+                return None
+
+            def table(self, data) -> None:
+                self.last_table = data
+
+            def expander(self, *_a, **_k):
+                return self
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_a) -> None:
+                return None
+
+        st = _DiagSt("daniel", dev_query=True)
+        st.session_state[CREATIVE_SESSION_KEY] = sess.to_dict()
+        st.session_state["studio_page"] = "creative"
+        render_source_ownership_dev_table(st, st.session_state)  # type: ignore[arg-type]
+        rows = {row["field"]: row["value"] for row in st.last_table}
+        self.assertEqual(rows["creative_session.tool"], "entry_style_jam")
+        self.assertEqual(rows["creative_session.title"], "Bossa Nova")
+
 
 if __name__ == "__main__":
     unittest.main()
