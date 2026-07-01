@@ -527,43 +527,28 @@ def _tab_entry_modes(
             )
 
         if st.button("Generate jam session", type="primary", key="improv_gen_jam"):
-            from creative_key_sync import IMPROV_JAM_KEY_TRACKER, apply_creative_concert_key
-
-            session_state["improv_jam_session"] = generate_jam_session(
+            jam = generate_jam_session(
                 ensemble=ensemble,
                 style=style,
                 key_center=key_c,
                 tempo=int(session_state.get("improv_jam_bpm") or 110),
                 mood=str(session_state.get("improv_jam_mood") or "Mellow"),
             )
-            k = str(session_state.get("improv_jam_key") or key_c or "C")
-            apply_creative_concert_key(session_state, k, st_like=st)
-            session_state[IMPROV_JAM_KEY_TRACKER] = k
             try:
-                from session_widget_safe import safe_session_assign
+                from creative_session_state import capture_jam_session_generator_state
 
-                safe_session_assign(
+                capture_jam_session_generator_state(
                     session_state,
-                    "improv_entry_mode",
-                    "Jam Session Generator",
-                    widget_safe=True,
+                    ensemble=ensemble,
+                    style=style,
+                    concert_key=str(key_c or "C"),
+                    bpm=int(session_state.get("improv_jam_bpm") or 110),
+                    mood=str(session_state.get("improv_jam_mood") or "Mellow"),
+                    jam_session=jam,
+                    st_like=st,
                 )
             except ImportError:
-                pass
-            try:
-                from creative_session_state import sync_creative_session_from_session
-
-                sync_creative_session_from_session(session_state)
-            except ImportError:
-                pass
-            try:
-                from backing_source_navigation import _clear_creative_page_hydrate_flags
-
-                _clear_creative_page_hydrate_flags(session_state)
-            except ImportError:
-                for key in list(session_state.keys()):
-                    if str(key).startswith("_creative_session_hydrated_"):
-                        session_state.pop(key, None)
+                session_state["improv_jam_session"] = jam
             st.rerun()
 
         jam = session_state.get("improv_jam_session")

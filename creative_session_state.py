@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 CREATIVE_SESSION_KEY = "creative_session"
+JAM_SESSION_GENERATE_GUARD_KEY = "_jam_session_generate_guard"
 
 CreativeToolType = Literal[
     "entry_style_jam",
@@ -223,6 +224,102 @@ def _sections_from_session(session: dict[str, Any], entry_mode: str) -> dict[str
     return {}
 
 
+def _live_jam_session_fields(session: dict[str, Any]) -> tuple[str, str, int, str]:
+    """Read Jam Session Generator widget values, honoring pending hydrates when locked."""
+    try:
+        from session_widget_safe import (
+            PENDING_IMPROV_JAM_BPM_KEY,
+            PENDING_IMPROV_JAM_KEY,
+            PENDING_IMPROV_JAM_MOOD_KEY,
+        )
+    except ImportError:
+        PENDING_IMPROV_JAM_KEY = "_pending_improv_jam_key"  # type: ignore[misc,assignment]
+        PENDING_IMPROV_JAM_BPM_KEY = "_pending_improv_jam_bpm"  # type: ignore[misc,assignment]
+        PENDING_IMPROV_JAM_MOOD_KEY = "_pending_improv_jam_mood"  # type: ignore[misc,assignment]
+    style = str(session.get("improv_jam_style") or "").strip()
+    concert = str(session.get("improv_jam_key") or "").strip()
+    pending_key = session.get(PENDING_IMPROV_JAM_KEY)
+    if pending_key is not None:
+        concert = str(pending_key).strip() or concert
+    bpm_raw = session.get(PENDING_IMPROV_JAM_BPM_KEY)
+    if bpm_raw is None:
+        bpm_raw = session.get("improv_jam_bpm")
+    try:
+        bpm = int(bpm_raw or 110)
+    except (TypeError, ValueError):
+        bpm = 110
+    mood = str(session.get(PENDING_IMPROV_JAM_MOOD_KEY) or session.get("improv_jam_mood") or "Mellow").strip()
+    return style, concert or "C", bpm, mood or "Mellow"
+
+
+def capture_jam_session_generator_state(
+    session: dict[str, Any],
+    *,
+    ensemble: str,
+    style: str,
+    concert_key: str,
+    bpm: int,
+    mood: str,
+    jam_session: dict[str, Any],
+    st_like: Any | None = None,
+) -> CreativeSession | None:
+    """Persist live Jam Session Generator widget values before rerun/hydrate can clobber them."""
+    k = str(concert_key or "C").strip() or "C"
+    style_name = str(style or "").strip()
+    mood_name = str(mood or "Mellow").strip() or "Mellow"
+    tempo = int(bpm)
+
+    session["improv_jam_session"] = jam_session
+    session["improv_ensemble"] = str(ensemble or "").strip() or "Jazz trio"
+    session["improv_jam_style"] = style_name
+    session["improv_jam_bpm"] = tempo
+    session["improv_jam_mood"] = mood_name
+
+    try:
+        from session_widget_safe import safe_session_assign
+
+        safe_session_assign(
+            session, "improv_entry_mode", "Jam Session Generator", widget_safe=True
+        )
+        safe_session_assign(session, "improv_jam_key", k, widget_safe=True)
+        safe_session_assign(session, "improv_jam_bpm", tempo, widget_safe=True)
+        safe_session_assign(session, "improv_jam_mood", mood_name, widget_safe=True)
+    except ImportError:
+        session["improv_entry_mode"] = "Jam Session Generator"
+        session["improv_jam_key"] = k
+        session["improv_jam_bpm"] = tempo
+        session["improv_jam_mood"] = mood_name
+
+    session["improv_style_meta"] = {
+        "style": style_name,
+        "bpm": tempo,
+        "groove": str(session.get("improv_groove") or "Medium").strip(),
+        "groove_intensity": str(session.get("improv_groove") or "Medium").strip(),
+        "key": k,
+        "mood": mood_name,
+        "difficulty": str(session.get("improv_difficulty") or "Intermediate").strip(),
+        "meter": str(session.get("improv_style_meter") or session.get("backing_time_signature") or "4/4").strip(),
+        "entry_mode": "Jam Session Generator",
+    }
+
+    try:
+        from creative_key_sync import IMPROV_JAM_KEY_TRACKER, apply_creative_concert_key
+
+        apply_creative_concert_key(
+            session, k, st_like=st_like, source="creative_jam_session"
+        )
+        session[IMPROV_JAM_KEY_TRACKER] = k
+    except ImportError:
+        pass
+
+    session[JAM_SESSION_GENERATE_GUARD_KEY] = True
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page:
+        session[f"_creative_session_hydrated_{page}"] = True
+
+    return sync_creative_session_from_session(session)
+
+
 def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSession | None:
     """Capture live Creative widget state into the canonical session object."""
     try:
@@ -277,10 +374,7 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
 
     meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
     if entry == "Jam Session Generator":
-        style = str(session.get("improv_jam_style") or meta.get("style") or "").strip()
-        concert = str(session.get("improv_jam_key") or meta.get("key") or "C").strip()
-        bpm = int(session.get("improv_jam_bpm") or meta.get("bpm") or 110)
-        mood = str(session.get("improv_jam_mood") or meta.get("mood") or "Mellow").strip()
+        style, concert, bpm, mood = _live_jam_session_fields(session)
     elif entry == "Song-Based Improvisation":
         style = ""
         concert = str(session.get("display_key") or session.get("concert_key") or "C").strip()
@@ -555,6 +649,10 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
     hydrate_flag = f"_creative_session_hydrated_{page}"
     if session.get(hydrate_flag):
         return
+    if session.pop(JAM_SESSION_GENERATE_GUARD_KEY, False):
+        sync_creative_session_from_session(session)
+        session[hydrate_flag] = True
+        return
     try:
         from backing_source_navigation import (
             CREATIVE_RESTORE_FROM_BACKING_KEY,
@@ -696,9 +794,11 @@ def render_creative_session_diagnostic(st: Any, session: dict[str, Any]) -> None
 
 __all__ = [
     "CREATIVE_SESSION_KEY",
+    "JAM_SESSION_GENERATE_GUARD_KEY",
     "CreativeSession",
     "CreativeToolType",
     "apply_creative_session_to_session",
+    "capture_jam_session_generator_state",
     "clear_creative_session",
     "compute_creative_session_signature",
     "creative_session_is_active",

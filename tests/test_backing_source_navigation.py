@@ -730,7 +730,11 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(resolve_entry_jam_entry_mode(session), "Jam Session Generator")
 
     def test_jam_session_generate_syncs_creative_session(self) -> None:
-        from creative_session_state import CREATIVE_SESSION_KEY, get_creative_session, sync_creative_session_from_session
+        from creative_session_state import (
+            CREATIVE_SESSION_KEY,
+            capture_jam_session_generator_state,
+            get_creative_session,
+        )
         from improvisation_intelligence import generate_jam_session
         from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
 
@@ -747,18 +751,76 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
                 "tool_type": "entry_style_jam",
                 "entry_mode": "Style Jam Mode",
                 "concert_key": "G",
-                "style": "Rock",
+                "style": "Bossa Nova",
+                "mood": "Bright",
                 "sections": {"Rock jam": ["G", "C", "D"]},
             },
+            "improv_style_meta": {
+                "style": "Bossa Nova",
+                "key": "C",
+                "mood": "Bright",
+                "entry_mode": "Style Jam Mode",
+            },
+            "studio_page": "creative",
         }
-        sync_creative_session_from_session(session)
+        capture_jam_session_generator_state(
+            session,
+            ensemble="Jazz trio",
+            style="Blues",
+            concert_key="F",
+            bpm=90,
+            mood="Mellow",
+            jam_session=jam,
+        )
         sess = get_creative_session(session)
         self.assertIsNotNone(sess)
         assert sess is not None
         self.assertEqual(sess.tool_type, "jam_session_generator")
         self.assertEqual(sess.entry_mode, "Jam Session Generator")
+        self.assertEqual(sess.style, "Blues")
+        self.assertEqual(sess.concert_key, "F")
+        self.assertEqual(sess.mood, "Mellow")
         self.assertTrue(sess.sections)
         self.assertIn(CREATIVE_SESSION_KEY, session)
+
+    def test_jam_session_generate_hydrate_preserves_widget_values(self) -> None:
+        from creative_session_state import (
+            capture_jam_session_generator_state,
+            hydrate_creative_session_for_page,
+        )
+        from improvisation_intelligence import generate_jam_session
+
+        jam = generate_jam_session(style="Jazz Swing", key_center="Eb", tempo=120, mood="Dark")
+        session = {
+            "improv_entry_mode": "Jam Session Generator",
+            "improv_jam_style": "Jazz Swing",
+            "improv_jam_key": "Eb",
+            "improv_jam_bpm": 120,
+            "improv_jam_mood": "Dark",
+            "creative_session": {
+                "tool_type": "entry_style_jam",
+                "entry_mode": "Style Jam Mode",
+                "concert_key": "C",
+                "style": "Bossa Nova",
+                "mood": "Bright",
+                "sections": {"Bossa": ["Cmaj7"]},
+            },
+            "studio_page": "creative",
+        }
+        capture_jam_session_generator_state(
+            session,
+            ensemble="Latin quartet",
+            style="Jazz Swing",
+            concert_key="Eb",
+            bpm=120,
+            mood="Dark",
+            jam_session=jam,
+        )
+        hydrate_creative_session_for_page(session)
+        self.assertEqual(session.get("improv_jam_style"), "Jazz Swing")
+        self.assertEqual(session.get("improv_jam_key"), "Eb")
+        self.assertEqual(session.get("improv_jam_mood"), "Dark")
+        self.assertEqual(int(session.get("improv_jam_bpm") or 0), 120)
 
     def test_ensure_entry_mode_preserves_jam_after_stale_style_blob(self) -> None:
         from studio_page_state import ensure_improv_entry_mode_restored

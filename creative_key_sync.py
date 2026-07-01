@@ -187,21 +187,29 @@ def sync_creative_style_jam_meta(session: dict[str, Any]) -> None:
     from songs.playback_defaults import normalize_groove_label
 
     groove_intensity = str(session.get("improv_groove") or "Medium").strip()
-    style_name = str(session.get("improv_style") or session.get("improv_jam_style") or "").strip()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry == "Jam Session Generator":
+        style_name = str(session.get("improv_jam_style") or "").strip()
+        mood_name = str(session.get("improv_jam_mood") or "Mellow").strip()
+        key_name = str(session.get("improv_jam_key") or "").strip()
+        bpm_val = int(session.get("improv_jam_bpm") or 110)
+    else:
+        style_name = str(session.get("improv_style") or session.get("improv_jam_style") or "").strip()
+        mood_name = str(session.get("improv_mood") or session.get("improv_jam_mood") or "Mellow").strip()
+        key_name = str(session.get("improv_style_key") or session.get("improv_jam_key") or "").strip()
+        bpm_val = int(session.get("improv_style_bpm") or session.get("improv_jam_bpm") or 110)
     backing_style = normalize_groove_label(style_name or "Pop groove")
     session["improv_style_meta"] = {
         "style": style_name,
         "backing_style": backing_style,
-        "bpm": int(session.get("improv_style_bpm") or session.get("improv_jam_bpm") or 110),
+        "bpm": bpm_val,
         "groove": groove_intensity,
         "groove_intensity": groove_intensity,
-        "key": str(
-            session.get("improv_style_key") or session.get("improv_jam_key") or ""
-        ).strip(),
-        "mood": str(session.get("improv_mood") or session.get("improv_jam_mood") or "Mellow").strip(),
+        "key": key_name,
+        "mood": mood_name,
         "difficulty": str(session.get("improv_difficulty") or "Intermediate").strip(),
         "meter": str(session.get("improv_style_meter") or session.get("backing_time_signature") or "4/4").strip(),
-        "entry_mode": str(session.get("improv_entry_mode") or "").strip(),
+        "entry_mode": entry,
     }
     try:
         from creative_session_state import sync_creative_session_from_session
