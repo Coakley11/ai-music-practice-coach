@@ -225,7 +225,21 @@ def _sections_from_session(session: dict[str, Any], entry_mode: str) -> dict[str
 
 def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSession | None:
     """Capture live Creative widget state into the canonical session object."""
+    try:
+        from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
+        from studio_page_state import IMPROV_ENTRY_MODES
+
+        pending_entry = str(session.get(PENDING_IMPROV_ENTRY_MODE_KEY) or "").strip()
+    except ImportError:
+        pending_entry = str(session.get("_pending_improv_entry_mode") or "").strip()
+        IMPROV_ENTRY_MODES = ("Song-Based Improvisation", "Style Jam Mode", "Jam Session Generator")
     entry = str(session.get("improv_entry_mode") or "").strip()
+    if pending_entry in IMPROV_ENTRY_MODES:
+        entry = pending_entry
+    elif not entry:
+        jam = session.get("improv_jam_session")
+        if isinstance(jam, dict) and jam.get("sections"):
+            entry = "Jam Session Generator"
     tab = str(
         session.get("improv_intelligence_tab")
         or session.get("creative_improv_intelligence_tab")

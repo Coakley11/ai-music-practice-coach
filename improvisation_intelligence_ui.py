@@ -430,7 +430,14 @@ def _tab_entry_modes(
             style = str(session_state.get("improv_style") or STYLE_JAM_STYLES[0])
             if "d minor" in (prompt or "").lower():
                 k = "Dm"
-                session_state["improv_style_key"] = k
+                try:
+                    from session_widget_safe import safe_session_assign
+
+                    safe_session_assign(
+                        session_state, "improv_style_key", k, widget_safe=True
+                    )
+                except ImportError:
+                    session_state["improv_style_key"] = k
             session_state["improv_generated_sections"] = generate_style_progression(
                 style=style,
                 key_center=k,
@@ -532,7 +539,17 @@ def _tab_entry_modes(
             k = str(session_state.get("improv_jam_key") or key_c or "C")
             apply_creative_concert_key(session_state, k, st_like=st)
             session_state[IMPROV_JAM_KEY_TRACKER] = k
-            session_state["improv_entry_mode"] = "Jam Session Generator"
+            try:
+                from session_widget_safe import safe_session_assign
+
+                safe_session_assign(
+                    session_state,
+                    "improv_entry_mode",
+                    "Jam Session Generator",
+                    widget_safe=True,
+                )
+            except ImportError:
+                pass
             try:
                 from creative_session_state import sync_creative_session_from_session
 

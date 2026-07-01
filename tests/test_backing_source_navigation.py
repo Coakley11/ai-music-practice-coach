@@ -732,10 +732,12 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
     def test_jam_session_generate_syncs_creative_session(self) -> None:
         from creative_session_state import CREATIVE_SESSION_KEY, get_creative_session, sync_creative_session_from_session
         from improvisation_intelligence import generate_jam_session
+        from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
 
         jam = generate_jam_session(style="Blues", key_center="F", tempo=90, mood="Mellow")
         session = {
-            "improv_entry_mode": "Jam Session Generator",
+            "improv_entry_mode": "Style Jam Mode",
+            PENDING_IMPROV_ENTRY_MODE_KEY: "Jam Session Generator",
             "improv_jam_style": "Blues",
             "improv_jam_key": "F",
             "improv_jam_bpm": 90,
