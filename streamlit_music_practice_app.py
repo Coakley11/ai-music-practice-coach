@@ -9306,6 +9306,9 @@ elif _studio_page_for_hydrate == "creative":
             from songs.music_source import snapshot_catalog_before_creative
 
             snapshot_catalog_before_creative(st.session_state)
+            from songs.music_source import pin_catalog_pick_aliases
+
+            pin_catalog_pick_aliases(st.session_state)
         except ImportError:
             pass
     except ImportError:

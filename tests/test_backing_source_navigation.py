@@ -560,6 +560,58 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         assert isinstance(snap, dict)
         self.assertEqual(str(snap.get("pick_key") or ""), in_my_life_pick)
 
+    def test_creative_jam_edit_preserves_catalog_pick_over_stale_dropdown(self) -> None:
+        from active_song_state import mark_active_song_local_edit, prepare_active_song_context
+        from creative_key_sync import (
+            guard_creative_catalog_pick_before_edit,
+            is_creative_catalog_pick_frozen,
+            verify_creative_catalog_pick_after_edit,
+        )
+        from song_catalog.catalog import format_pick_key
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY, reconcile_active_song_identity
+
+        in_my_life_pick = format_pick_key("Pop", "In My Life — The Beatles")
+        stay_pick = format_pick_key("Pop", "Stay — The Kid LAROI & Justin Bieber")
+        catalog = {
+            "Pop": {
+                "In My Life — The Beatles": {"title": "In My Life", "artist": "The Beatles", "key": "A"},
+                "Stay — The Kid LAROI & Justin Bieber": {
+                    "title": "Stay",
+                    "artist": "The Kid LAROI & Justin Bieber",
+                    "key": "C",
+                },
+            },
+        }
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Jam Session Generator",
+            ACTIVE_CATALOG_PICK_KEY: in_my_life_pick,
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": in_my_life_pick,
+                "title": "In My Life",
+                "artist": "The Beatles",
+                "genre": "Pop",
+                "key": "A",
+            },
+            "matching_song_dropdown": stay_pick,
+            "song": "In My Life",
+            "active_song_title": "In My Life",
+            "user_catalog_source_choice": True,
+        }
+        self.assertTrue(is_creative_catalog_pick_frozen(session))
+        before = guard_creative_catalog_pick_before_edit(session, writer="test_jam_tempo")
+        mark_active_song_local_edit(session)
+        master = reconcile_active_song_identity(session, catalog)
+        self.assertEqual(master, in_my_life_pick)
+        session[ACTIVE_CATALOG_PICK_KEY] = stay_pick
+        session["song"] = "Stay"
+        verify_creative_catalog_pick_after_edit(session, before_pick=before, writer="test_jam_tempo")
+        self.assertEqual(session.get(ACTIVE_CATALOG_PICK_KEY), in_my_life_pick)
+        self.assertEqual(session.get("song"), "In My Life")
+        session["_reconcile_song_picker_catalog"] = catalog
+        prepare_active_song_context(session)
+        self.assertEqual(session.get(ACTIVE_CATALOG_PICK_KEY), in_my_life_pick)
+
     def test_return_to_creative_restores_entry_jam_tool_type(self) -> None:
         from backing_context import open_backing_from_creative
         from backing_source_navigation import prepare_return_to_backing_source

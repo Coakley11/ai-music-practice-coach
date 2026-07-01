@@ -61,6 +61,78 @@ def retranspose_generated_sections(
     return out
 
 
+def is_creative_catalog_pick_frozen(session: dict[str, Any]) -> bool:
+    """True when Creative jam/style edits must not mutate the active catalog song."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "creative":
+        return False
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry in CREATIVE_MAJOR_JAM_MODES:
+        return True
+    try:
+        from creative_session_state import get_creative_session
+
+        sess = get_creative_session(session)
+        if sess is not None and sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+            return True
+    except ImportError:
+        pass
+    return False
+
+
+def guard_creative_catalog_pick_before_edit(session: dict[str, Any], *, writer: str) -> str:
+    """Record active catalog pick before a Creative widget edit; pin dropdown aliases."""
+    pick = ""
+    try:
+        from songs.music_source import (
+            pin_catalog_pick_aliases,
+            snapshot_catalog_before_creative,
+            write_creative_catalog_guard_diag,
+        )
+
+        snapshot_catalog_before_creative(session)
+        pick = pin_catalog_pick_aliases(session)
+        before = str(session.get("song") or session.get("active_song_title") or pick or "").strip()
+        snap = session.get("_catalog_before_creative_state")
+        snap_pick = str(snap.get("pick_key") or "").strip() if isinstance(snap, dict) else ""
+        write_creative_catalog_guard_diag(
+            session,
+            catalog_song_before_jam_edit=before or pick,
+            catalog_snapshot_before_creative=snap_pick or pick,
+            last_catalog_song_writer=writer,
+        )
+    except ImportError:
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+    return pick
+
+
+def verify_creative_catalog_pick_after_edit(
+    session: dict[str, Any],
+    *,
+    before_pick: str,
+    writer: str,
+) -> None:
+    """Restore catalog pick if a Creative edit incorrectly mutated it."""
+    try:
+        from songs.music_source import (
+            restore_frozen_catalog_pick_if_mutated,
+            write_creative_catalog_guard_diag,
+        )
+
+        restore_frozen_catalog_pick_if_mutated(session, before_pick, writer=writer)
+        after = str(session.get("song") or session.get("active_song_title") or "").strip()
+        snap = session.get("_catalog_before_creative_state")
+        snap_pick = str(snap.get("pick_key") or "").strip() if isinstance(snap, dict) else ""
+        write_creative_catalog_guard_diag(
+            session,
+            catalog_song_after_jam_edit=after or str(session.get("active_catalog_pick_key") or "").strip(),
+            catalog_snapshot_after_creative=snap_pick,
+            last_catalog_song_writer=str(session.get("last_catalog_song_writer") or writer),
+        )
+    except ImportError:
+        pass
+
+
 def apply_creative_concert_key(
     session: dict[str, Any],
     concert_key: str,
@@ -83,12 +155,13 @@ def apply_creative_concert_key(
         request_display_key(st_like, key)
     except ImportError:
         session["_pending_display_key"] = key
-    try:
-        from active_song_state import mark_active_song_local_edit
+    if not is_creative_catalog_pick_frozen(session):
+        try:
+            from active_song_state import mark_active_song_local_edit
 
-        mark_active_song_local_edit(session)
-    except ImportError:
-        pass
+            mark_active_song_local_edit(session)
+        except ImportError:
+            pass
     try:
         from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
 
@@ -222,6 +295,9 @@ def sync_creative_style_jam_meta(session: dict[str, Any]) -> None:
 def on_improv_jam_key_change() -> None:
     import streamlit as st
 
+    before_pick = guard_creative_catalog_pick_before_edit(
+        st.session_state, writer="on_improv_jam_key_change"
+    )
     prev = str(st.session_state.get(IMPROV_JAM_KEY_TRACKER) or "").strip()
     new = str(st.session_state.get("improv_jam_key") or "").strip()
     if not new:
@@ -239,6 +315,9 @@ def on_improv_jam_key_change() -> None:
     apply_creative_concert_key(st.session_state, new, st_like=st, source="creative_jam_session")
     st.session_state[IMPROV_JAM_KEY_TRACKER] = new
     invalidate_creative_backing_context(st.session_state)
+    verify_creative_catalog_pick_after_edit(
+        st.session_state, before_pick=before_pick, writer="on_improv_jam_key_change"
+    )
 
 
 def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
@@ -633,25 +712,43 @@ def on_sidebar_practice_concert_key_change() -> None:
 def on_improv_style_key_change() -> None:
     import streamlit as st
 
+    before_pick = guard_creative_catalog_pick_before_edit(
+        st.session_state, writer="on_improv_style_key_change"
+    )
     prev = str(st.session_state.get(IMPROV_STYLE_KEY_TRACKER) or "").strip()
     new = str(st.session_state.get("improv_style_key") or "").strip()
     sync_creative_key_change(st.session_state, new, previous_key=prev, st_like=st)
+    verify_creative_catalog_pick_after_edit(
+        st.session_state, before_pick=before_pick, writer="on_improv_style_key_change"
+    )
 
 
 def on_improv_style_jam_setting_change() -> None:
     """BPM / groove / style / mood / difficulty change — refresh meta and invalidate backing handoff."""
     import streamlit as st
 
+    before_pick = guard_creative_catalog_pick_before_edit(
+        st.session_state, writer="on_improv_style_jam_setting_change"
+    )
     sync_creative_style_jam_meta(st.session_state)
     invalidate_creative_backing_context(st.session_state)
+    verify_creative_catalog_pick_after_edit(
+        st.session_state, before_pick=before_pick, writer="on_improv_style_jam_setting_change"
+    )
 
 
 def on_improv_jam_setting_change() -> None:
     """Jam Session BPM / mood change — refresh meta and invalidate backing handoff."""
     import streamlit as st
 
+    before_pick = guard_creative_catalog_pick_before_edit(
+        st.session_state, writer="on_improv_jam_setting_change"
+    )
     sync_creative_style_jam_meta(st.session_state)
     invalidate_creative_backing_context(st.session_state)
+    verify_creative_catalog_pick_after_edit(
+        st.session_state, before_pick=before_pick, writer="on_improv_jam_setting_change"
+    )
 
 
 def ensure_creative_analysis_mode_restored(session_state: dict[str, Any]) -> str:

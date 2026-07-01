@@ -2447,16 +2447,18 @@ def prepare_canonical_music_page_state(
         prepare_practice_page(session)
         prepare_backing_page(session)
         try:
+            from creative_key_sync import is_creative_catalog_pick_frozen
             from music_source_ownership import reconcile_source_ownership
 
             class _ReconcileProxy:
                 session_state = session
 
-            reconcile_source_ownership(
-                session,
-                st_like=_ReconcileProxy(),
-                reason="prepare_canonical",
-            )
+            if not is_creative_catalog_pick_frozen(session):
+                reconcile_source_ownership(
+                    session,
+                    st_like=_ReconcileProxy(),
+                    reason="prepare_canonical",
+                )
         except ImportError:
             pass
         session.pop("_reconcile_song_picker_catalog", None)

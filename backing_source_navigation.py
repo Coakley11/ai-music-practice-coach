@@ -768,6 +768,7 @@ def _render_source_ownership_dev_table_body(st: Any, session: dict[str, Any]) ->
     }
     restore_diag = dict(session.get("_catalog_restore_diag") or {})
     restore_diag.update(dict(session.get("_catalog_backing_restore_diag") or {}))
+    guard_diag = dict(session.get("_creative_catalog_guard_diag") or {})
     for key in (
         "catalog_before_creative_pick",
         "catalog_restore_pick_chosen",
@@ -779,9 +780,17 @@ def _render_source_ownership_dev_table_body(st: Any, session: dict[str, Any]) ->
         "display_key_after_restore",
         "concert_key_after_restore",
         "backing_context_title_after_restore",
+        "catalog_song_before_jam_edit",
+        "catalog_song_after_jam_edit",
+        "catalog_snapshot_before_creative",
+        "catalog_snapshot_after_creative",
+        "last_catalog_song_writer",
     ):
-        if key in restore_diag:
-            rows[key] = _diag_value(restore_diag.get(key))
+        val = restore_diag.get(key)
+        if val in (None, "") and key in guard_diag:
+            val = guard_diag.get(key)
+        if val not in (None, ""):
+            rows[key] = _diag_value(val)
     try:
         from songs.bpm_state import BPM_WIDGET_KEY, LAST_BPM_SONG
         from songs.playback_defaults import LAST_BACKING_DEFAULTS_SONG_ID

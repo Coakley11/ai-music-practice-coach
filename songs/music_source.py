@@ -192,6 +192,86 @@ def snapshot_catalog_before_creative(session_state: dict[str, Any]) -> None:
     snap = _catalog_snapshot_from_session(session_state)
     if snap:
         session_state[CATALOG_BEFORE_CREATIVE_KEY] = snap
+        write_creative_catalog_guard_diag(
+            session_state,
+            catalog_snapshot_before_creative=str(snap.get("pick_key") or "").strip(),
+            last_catalog_song_writer="snapshot_catalog_before_creative",
+        )
+
+
+def write_creative_catalog_guard_diag(session_state: dict[str, Any], **fields: Any) -> None:
+    """Dev trace for Creative edits that must not mutate catalog ownership."""
+    blob = dict(session_state.get("_creative_catalog_guard_diag") or {})
+    blob.update(fields)
+    session_state["_creative_catalog_guard_diag"] = blob
+    if "last_catalog_song_writer" in fields:
+        session_state["last_catalog_song_writer"] = str(fields.get("last_catalog_song_writer") or "").strip()
+
+
+def pin_catalog_pick_aliases(session_state: dict[str, Any]) -> str:
+    """Align stale picker dropdown aliases with the live catalog pick on Creative."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, PENDING_MATCHING_SONG_DROPDOWN, SELECTED_SONG_STATE_KEY
+
+    pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if not pick:
+        sel = session_state.get(SELECTED_SONG_STATE_KEY)
+        if isinstance(sel, dict):
+            pick = str(sel.get("pick_key") or "").strip()
+    if pick and not pick.startswith("custom::"):
+        session_state[PENDING_MATCHING_SONG_DROPDOWN] = pick
+        session_state["matching_song_dropdown"] = pick
+        session_state["_master_song_pick_key"] = pick
+    return pick
+
+
+def restore_frozen_catalog_pick_if_mutated(
+    session_state: dict[str, Any],
+    before_pick: str,
+    *,
+    writer: str,
+) -> bool:
+    """Restore catalog pick when Creative widget edits incorrectly changed it."""
+    try:
+        from creative_key_sync import is_creative_catalog_pick_frozen
+    except ImportError:
+        is_creative_catalog_pick_frozen = lambda _s: False  # type: ignore[assignment,misc]
+    if not is_creative_catalog_pick_frozen(session_state):
+        return False
+    snap = session_state.get(CATALOG_BEFORE_CREATIVE_KEY)
+    snap_pick = ""
+    if isinstance(snap, dict):
+        snap_pick = str(snap.get("pick_key") or "").strip()
+    target_pick = str(before_pick or snap_pick or "").strip()
+    if not target_pick:
+        return False
+    current = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if current == target_pick:
+        return False
+    catalog = session_state.get("_reconcile_song_picker_catalog")
+    if isinstance(catalog, dict):
+        from songs.state import sync_catalog_pick_identity
+
+        sync_catalog_pick_identity(session_state, target_pick, catalog)
+    elif isinstance(snap, dict) and snap_pick == target_pick:
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+        session_state[ACTIVE_CATALOG_PICK_KEY] = target_pick
+        raw_sel = snap.get("selected_song")
+        if isinstance(raw_sel, dict) and raw_sel:
+            session_state[SELECTED_SONG_STATE_KEY] = dict(raw_sel)
+            title = str(raw_sel.get("title") or "").strip()
+            if title:
+                session_state["song"] = title
+                session_state["active_song_title"] = title
+        pin_catalog_pick_aliases(session_state)
+    else:
+        session_state["active_catalog_pick_key"] = target_pick
+        pin_catalog_pick_aliases(session_state)
+    write_creative_catalog_guard_diag(
+        session_state,
+        last_catalog_song_writer=f"restored_after_{writer}",
+    )
+    return True
 
 
 def set_custom_source(session_state: dict[str, Any]) -> None:
@@ -250,9 +330,24 @@ def snapshot_current_catalog_state(session_state: dict[str, Any]) -> None:
     """Remember the active catalog song before switching to another catalog song."""
     if is_custom_progression(session_state):
         return
+    try:
+        from creative_key_sync import is_creative_catalog_pick_frozen
+
+        if is_creative_catalog_pick_frozen(session_state):
+            write_creative_catalog_guard_diag(
+                session_state,
+                last_catalog_song_writer="snapshot_current_catalog_state_blocked",
+            )
+            return
+    except ImportError:
+        pass
     snap = _catalog_snapshot_from_session(session_state)
     if snap:
         session_state[LAST_CATALOG_STATE_KEY] = snap
+        write_creative_catalog_guard_diag(
+            session_state,
+            last_catalog_song_writer="snapshot_current_catalog_state",
+        )
 
 
 def push_catalog_recent_pick_key(session_state: dict[str, Any], pick_key: str) -> None:

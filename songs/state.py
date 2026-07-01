@@ -64,6 +64,7 @@ def sync_catalog_pick_identity(
     }
     session["active_genre"] = genre
     session["active_song_title"] = data["title"]
+    session["song"] = data["title"]
     session[PENDING_MATCHING_SONG_DROPDOWN] = resolved
     session[_LAST_PICK_KEY] = resolved
     try:
@@ -90,6 +91,11 @@ def reconcile_active_song_identity(
         return str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
 
     try:
+        from creative_key_sync import is_creative_catalog_pick_frozen
+    except ImportError:
+        is_creative_catalog_pick_frozen = lambda _s: False  # type: ignore[assignment,misc]
+
+    try:
         from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY, is_custom_progression
 
         if is_custom_progression(session) and not session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
@@ -102,6 +108,17 @@ def reconcile_active_song_identity(
     sel_pk = str(sel.get("pick_key") or "").strip() if isinstance(sel, dict) else ""
     dropdown = str(session.get("matching_song_dropdown") or "").strip()
     pending = str(session.get(PENDING_CATALOG_PICK_KEY) or "").strip()
+
+    if is_creative_catalog_pick_frozen(session):
+        master = active or sel_pk
+        if master and resolve_pick_key(master, song_picker_catalog=song_picker_catalog):
+            if master != active or master != sel_pk:
+                sync_catalog_pick_identity(session, master, song_picker_catalog)
+            elif dropdown and dropdown != master:
+                session[PENDING_MATCHING_SONG_DROPDOWN] = master
+                session["matching_song_dropdown"] = master
+            return master
+        return active or sel_pk
 
     master = active or sel_pk
     if pending and resolve_pick_key(pending, song_picker_catalog=song_picker_catalog):
@@ -561,6 +578,20 @@ def sync_matching_song_dropdown_before_widget(
 
     live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     dropdown = str(st.session_state.get("matching_song_dropdown") or "").strip()
+    try:
+        from creative_key_sync import is_creative_catalog_pick_frozen
+
+        if is_creative_catalog_pick_frozen(st.session_state) and live_pk:
+            if (
+                live_pk not in pick_options
+                and song_picker_catalog
+                and resolve_pick_key(live_pk, song_picker_catalog=song_picker_catalog)
+            ):
+                pick_options.insert(0, live_pk)
+            st.session_state["matching_song_dropdown"] = live_pk
+            return live_pk if live_pk in pick_options else live_pk
+    except ImportError:
+        pass
     if (
         song_picker_catalog
         and dropdown
