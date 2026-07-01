@@ -716,6 +716,68 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertFalse(changed)
         self.assertEqual(entry, "Jam Session Generator")
 
+    def test_resolve_entry_jam_prefers_jam_session_over_style_sections(self) -> None:
+        from backing_source_navigation import resolve_entry_jam_entry_mode
+
+        session = {
+            "improv_entry_mode": "Jam Session Generator",
+            "improv_generated_sections": {"12-bar blues": ["G7", "C7", "D7"]},
+            "improv_jam_session": {
+                "title": "Jam",
+                "sections": {"Blues (Jam)": ["F7", "Bb7", "C7"]},
+            },
+        }
+        self.assertEqual(resolve_entry_jam_entry_mode(session), "Jam Session Generator")
+
+    def test_jam_session_generate_syncs_creative_session(self) -> None:
+        from creative_session_state import CREATIVE_SESSION_KEY, get_creative_session, sync_creative_session_from_session
+        from improvisation_intelligence import generate_jam_session
+
+        jam = generate_jam_session(style="Blues", key_center="F", tempo=90, mood="Mellow")
+        session = {
+            "improv_entry_mode": "Jam Session Generator",
+            "improv_jam_style": "Blues",
+            "improv_jam_key": "F",
+            "improv_jam_bpm": 90,
+            "improv_jam_mood": "Mellow",
+            "improv_jam_session": jam,
+            "creative_session": {
+                "tool_type": "entry_style_jam",
+                "entry_mode": "Style Jam Mode",
+                "concert_key": "G",
+                "style": "Rock",
+                "sections": {"Rock jam": ["G", "C", "D"]},
+            },
+        }
+        sync_creative_session_from_session(session)
+        sess = get_creative_session(session)
+        self.assertIsNotNone(sess)
+        assert sess is not None
+        self.assertEqual(sess.tool_type, "jam_session_generator")
+        self.assertEqual(sess.entry_mode, "Jam Session Generator")
+        self.assertTrue(sess.sections)
+        self.assertIn(CREATIVE_SESSION_KEY, session)
+
+    def test_ensure_entry_mode_preserves_jam_after_stale_style_blob(self) -> None:
+        from studio_page_state import ensure_improv_entry_mode_restored
+
+        session = {
+            "improv_entry_mode": "Jam Session Generator",
+            "improv_jam_session": {
+                "title": "Jam",
+                "sections": {"Blues (Jam)": ["F7", "Bb7", "C7"]},
+            },
+            "creative_session": {
+                "tool_type": "entry_style_jam",
+                "entry_mode": "Style Jam Mode",
+                "concert_key": "G",
+                "style": "Blues",
+                "sections": {"12-bar blues": ["G7", "C7", "D7"]},
+            },
+        }
+        entry = ensure_improv_entry_mode_restored(session)
+        self.assertEqual(entry, "Jam Session Generator")
+
     def test_build_entry_jam_context_ignores_stale_sbi_widget(self) -> None:
         from backing_context import build_entry_jam_context, open_backing_from_creative
 

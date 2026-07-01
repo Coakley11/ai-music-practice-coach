@@ -699,6 +699,16 @@ def resolve_entry_jam_entry_mode(
     ctx: BackingContext | None = None,
 ) -> str:
     """Authoritative entry mode for entry_jam — never inherit stale SBI widget state."""
+    if ctx is not None:
+        ctx_entry = str(ctx.entry_mode or "").strip()
+        if ctx_entry in ("Style Jam Mode", "Jam Session Generator"):
+            return ctx_entry
+    widget = str(session.get("improv_entry_mode") or "").strip()
+    jam = session.get("improv_jam_session")
+    if isinstance(jam, dict) and jam.get("sections"):
+        return "Jam Session Generator"
+    if widget == "Jam Session Generator":
+        return widget
     try:
         from creative_session_state import get_creative_session
         from studio_page_state import IMPROV_ENTRY_MODES
@@ -714,17 +724,9 @@ def resolve_entry_jam_entry_mode(
                 return entry
     except ImportError:
         pass
-    if ctx is not None:
-        ctx_entry = str(ctx.entry_mode or "").strip()
-        if ctx_entry in ("Style Jam Mode", "Jam Session Generator"):
-            return ctx_entry
     if session.get("improv_generated_sections"):
         return "Style Jam Mode"
-    jam = session.get("improv_jam_session")
-    if isinstance(jam, dict) and jam.get("sections"):
-        return "Jam Session Generator"
-    widget = str(session.get("improv_entry_mode") or "").strip()
-    if widget in ("Style Jam Mode", "Jam Session Generator"):
+    if widget == "Style Jam Mode":
         return widget
     return "Style Jam Mode"
 
@@ -1017,6 +1019,12 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
     session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
     session.pop("_improv_tab_user_touched", None)
     restore_session_widgets_from_backing_context(session, ctx)
+    try:
+        from creative_session_state import sync_creative_session_from_session
+
+        sync_creative_session_from_session(session)
+    except ImportError:
+        pass
     merge_live_practice_into_creative_session(session, prefer_backing_context_key=True)
     return page
 

@@ -395,6 +395,14 @@ def ensure_improv_entry_mode_restored(session_state: dict) -> str:
     if pending_entry and pending_entry in IMPROV_ENTRY_MODES:
         session_state["improv_entry_mode"] = pending_entry
         return pending_entry
+    current = str(session_state.get("improv_entry_mode") or "").strip()
+    jam = session_state.get("improv_jam_session")
+    has_jam_sections = isinstance(jam, dict) and bool(jam.get("sections"))
+    if has_jam_sections and current == "Jam Session Generator":
+        return current
+    if has_jam_sections and current not in IMPROV_ENTRY_MODES:
+        session_state["improv_entry_mode"] = "Jam Session Generator"
+        return "Jam Session Generator"
     try:
         from creative_session_state import get_creative_session
 
@@ -402,7 +410,9 @@ def ensure_improv_entry_mode_restored(session_state: dict) -> str:
         if sess is not None:
             entry = str(sess.entry_mode or "").strip()
             if entry in IMPROV_ENTRY_MODES:
-                current = str(session_state.get("improv_entry_mode") or "").strip()
+                if has_jam_sections and entry == "Style Jam Mode":
+                    session_state["improv_entry_mode"] = "Jam Session Generator"
+                    return "Jam Session Generator"
                 if current != entry:
                     session_state["improv_entry_mode"] = entry
                 return entry
