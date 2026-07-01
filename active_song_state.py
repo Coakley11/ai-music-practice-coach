@@ -929,7 +929,6 @@ def _apply_context_to_session_keys(
             session[ACTIVE_CATALOG_PICK_KEY] = pick_key
     display_key = str(ctx.get("display_key") or "").strip()
     if display_key and apply_global_controls and not stale_ctx:
-        session[PENDING_DISPLAY_KEY] = display_key
         if mutate_display_key:
             if record_global_control_change is not None:
                 record_global_control_change(
@@ -938,23 +937,17 @@ def _apply_context_to_session_keys(
                     global_control_source or "canonical_apply",
                     overwrite=True,
                 )
-            session["display_key"] = display_key
+            try:
+                from session_widget_safe import safe_assign_display_key
+
+                safe_assign_display_key(session, display_key, widget_safe=True)
+            except ImportError:
+                session[PENDING_DISPLAY_KEY] = display_key
+                if not session.get("_streamlit_widgets_locked_this_run"):
+                    session["display_key"] = display_key
     for key in ("instrument", "level", "focus"):
         val = str(ctx.get(key) or "").strip()
         if val and apply_global_controls:
-            try:
-                from music_state_writes import WriteOrigin, guarded_session_set
-
-                if not guarded_session_set(
-                    session,
-                    key,
-                    val,
-                    origin=WriteOrigin.CANONICAL,
-                    writer=global_control_source or "canonical_apply",
-                ):
-                    continue
-            except ImportError:
-                pass
             if record_global_control_change is not None:
                 record_global_control_change(
                     session,
@@ -963,10 +956,28 @@ def _apply_context_to_session_keys(
                     overwrite=True,
                 )
             try:
-                session[key] = val
-            except Exception as exc:
-                _log_widget_bound_session_mutation_blocked(key, global_control_source, exc)
-                raise
+                from session_widget_safe import safe_session_assign
+
+                safe_session_assign(session, key, val, widget_safe=True)
+            except ImportError:
+                try:
+                    from music_state_writes import WriteOrigin, guarded_session_set
+
+                    if not guarded_session_set(
+                        session,
+                        key,
+                        val,
+                        origin=WriteOrigin.CANONICAL,
+                        writer=global_control_source or "canonical_apply",
+                    ):
+                        continue
+                except ImportError:
+                    pass
+                try:
+                    session[key] = val
+                except Exception as exc:
+                    _log_widget_bound_session_mutation_blocked(key, global_control_source, exc)
+                    raise
     selected = _normalize_selected_song(ctx.get("selected_song"))
     if selected and not stale_ctx:
         if pick_key:

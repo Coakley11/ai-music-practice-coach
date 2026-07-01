@@ -7632,14 +7632,10 @@ def _render_last_catalog_song_shortcut(
         help="Restore the previous catalog song you had selected.",
     ):
         from songs.key_state import invalidate_backing_cache
-        from songs.music_source import restore_previous_catalog_song
+        from songs.music_source import queue_previous_catalog_restore
 
-        restore_previous_catalog_song(
-            st,
-            song_picker_catalog=SONG_PICKER_CATALOG,
-            song_library=SONG_LIBRARY,
-            invalidate_backing=invalidate_backing_cache,
-        )
+        queue_previous_catalog_restore(st)
+        invalidate_backing_cache(st)
         st.rerun()
 
 

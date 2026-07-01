@@ -11,6 +11,7 @@ from backing_source_navigation import (
     BACKING_INTENT_FROM_PRACTICE,
     BACKING_INTENT_FROM_SONG_TO_BACKING,
     hydrate_backing_source_for_page,
+    hydrate_picker_source_for_page,
     open_backing_for_practice_source,
     set_backing_open_intent,
     set_key_transition_intent,
@@ -128,6 +129,51 @@ class TestKeyTransitionOwnership(unittest.TestCase):
         self.assertIsNotNone(ctx)
         assert ctx is not None
         self.assertEqual(session.get("display_key"), "Bm")
+
+    def test_creative_to_picker_resets_catalog_original_key(self) -> None:
+        from backing_context import BACKING_PREF_CREATIVE, get_backing_source_preference
+        from backing_source_navigation import hydrate_picker_source_for_page
+
+        shape_pick = "Pop::Shape of You"
+        session = {
+            "studio_page": "picker",
+            "active_catalog_pick_key": shape_pick,
+            "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": shape_pick, "bpm": 96},
+            "song": "Shape of You",
+            "display_key": "F#",
+            "concert_key": "F#",
+            "user_catalog_source_choice": True,
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style_key": "F#",
+            "improv_generated_sections": {"Style Jam": ["F#maj7", "Bmaj7"]},
+            BACKING_CONTEXT_KEY: {
+                "source": "entry_jam",
+                "source_label": "Entry & Jam",
+                "active_song_id": "jam",
+                "song_title": "Style Jam",
+                "key": "F#",
+                "display_key": "F#",
+                "concert_key": "F#",
+                "bpm": 120,
+                "style": "Bossa Nova",
+                "groove": "Medium",
+            },
+        }
+        try:
+            from backing_context import set_backing_source_preference
+
+            set_backing_source_preference(session, BACKING_PREF_CREATIVE)
+        except ImportError:
+            pass
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            hydrate_picker_source_for_page(session, st_like=st_like)
+        self.assertEqual(session.get("display_key"), "Bm")
+        self.assertEqual(session.get("concert_key"), "Bm")
+        try:
+            self.assertNotEqual(get_backing_source_preference(session), BACKING_PREF_CREATIVE)
+        except ImportError:
+            pass
 
 
 if __name__ == "__main__":

@@ -127,6 +127,12 @@ def restore_practice_source_display_key(session: dict[str, Any], *, st_like: Any
 def hydrate_practice_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Re-apply active practice song context when entering Practice (Case A)."""
     try:
+        from music_source_ownership import maybe_reset_practice_key_on_source_activation
+
+        maybe_reset_practice_key_on_source_activation(session, st_like=st_like, surface="practice")
+    except ImportError:
+        pass
+    try:
         from music_source_ownership import reconcile_source_ownership
 
         reconcile_source_ownership(session, st_like=st_like, reason="practice_hydrate")
@@ -185,6 +191,12 @@ def hydrate_picker_source_for_page(
         if not isinstance(session.get("_reconcile_song_picker_catalog"), dict):
             session["_reconcile_song_picker_catalog"] = song_picker_catalog
             injected_catalog = True
+    try:
+        from music_source_ownership import maybe_reset_practice_key_on_source_activation
+
+        maybe_reset_practice_key_on_source_activation(session, st_like=st_like, surface="picker")
+    except ImportError:
+        pass
     try:
         from music_source_ownership import reconcile_source_ownership
 

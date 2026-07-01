@@ -114,6 +114,29 @@ class TestSessionWidgetSafe(unittest.TestCase):
         self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
         self.assertEqual(session.get("_pending_improv_entry_mode"), "Jam Session Generator")
 
+    def test_safe_session_assign_queues_transposing_instrument_when_locked(self) -> None:
+        from instrument_transposition import SELECTED_TRANSPOSING_INSTRUMENT_KEY
+        from session_widget_safe import PENDING_TRANSPOSING_INSTRUMENT_KEY, PENDING_WIDGET_ASSIGN_DIAG_KEY
+
+        session = {SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)"}
+        _lock_widgets(session)
+        safe_session_assign(session, SELECTED_TRANSPOSING_INSTRUMENT_KEY, "Tenor saxophone (Bb)", widget_safe=True)
+        self.assertEqual(session.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY), "Alto saxophone (Eb)")
+        self.assertEqual(session.get(PENDING_TRANSPOSING_INSTRUMENT_KEY), "Tenor saxophone (Bb)")
+        diag = session.get(PENDING_WIDGET_ASSIGN_DIAG_KEY) or {}
+        self.assertEqual(diag.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY, {}).get("pending_key"), PENDING_TRANSPOSING_INSTRUMENT_KEY)
+
+    def test_safe_session_assign_queues_unknown_widget_key_when_locked(self) -> None:
+        from session_widget_safe import PENDING_WIDGET_ASSIGN_DIAG_KEY
+
+        session = {"custom_widget_key": "old"}
+        _lock_widgets(session)
+        safe_session_assign(session, "custom_widget_key", "new", widget_safe=True)
+        self.assertEqual(session.get("custom_widget_key"), "old")
+        self.assertEqual(session.get("_pending_widget_custom_widget_key"), "new")
+        diag = session.get(PENDING_WIDGET_ASSIGN_DIAG_KEY) or {}
+        self.assertIn("custom_widget_key", diag)
+
     def test_hydrate_creative_session_for_page_does_not_mutate_display_key(self) -> None:
         session = _style_jam_session(display_key="Bm", concert_key="Bm")
         sync_creative_session_from_session(session)

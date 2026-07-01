@@ -405,26 +405,34 @@ def _force_practice_display_key(
     """Authoritatively set practice/display key — used on ownership switches."""
     concert = str(concert_key or "C").strip() or "C"
     try:
-        from songs.key_state import LAST_DISPLAY_KEY, PENDING_DISPLAY_KEY, request_display_key
+        from session_widget_safe import safe_assign_display_key
+
+        safe_assign_display_key(session, concert, widget_safe=True, st_like=st_like)
     except ImportError:
-        LAST_DISPLAY_KEY = "_last_app_display_key"  # type: ignore[misc,assignment]
-        PENDING_DISPLAY_KEY = "_pending_display_key"  # type: ignore[misc,assignment]
-        request_display_key = None  # type: ignore[assignment,misc]
-    session.pop(PENDING_DISPLAY_KEY, None)
-    session["concert_key"] = concert
-    session["display_key"] = concert
-    session[LAST_DISPLAY_KEY] = concert
-    if st_like is not None and request_display_key is not None:
         try:
-            request_display_key(st_like, concert)
-        except Exception:
-            pass
+            from songs.key_state import LAST_DISPLAY_KEY, PENDING_DISPLAY_KEY
+
+            session["concert_key"] = concert
+            session["display_key"] = concert
+            session[LAST_DISPLAY_KEY] = concert
+            session.pop(PENDING_DISPLAY_KEY, None)
+        except ImportError:
+            session["concert_key"] = concert
+            session["display_key"] = concert
+    try:
+        from songs.key_state import LAST_DISPLAY_KEY
+
+        if not session.get("_streamlit_widgets_locked_this_run"):
+            session[LAST_DISPLAY_KEY] = concert
+    except ImportError:
+        pass
+    pending = str(session.get("_pending_display_key") or "").strip()
     write_key_transition_diag(
         session,
         catalog_target_key=concert,
-        display_key=concert,
+        display_key=str(session.get("display_key") or "").strip(),
         concert_key=concert,
-        pending_display_key="",
+        pending_display_key=pending,
         last_key_writer=writer,
     )
     return concert
@@ -771,6 +779,150 @@ def reconcile_source_ownership(
     return True
 
 
+def _raw_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
+    """Catalog/custom practice owner without creative-backing suppression."""
+    try:
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            cpl_session_is_active,
+            custom_progression_is_active,
+            is_custom_progression,
+        )
+
+        if (
+            cpl_session_is_active(session)
+            or is_custom_progression(session)
+            or custom_progression_is_active(session)
+        ):
+            return "custom"
+        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+            return "catalog"
+        if str(session.get("active_music_source") or "").strip() == SOURCE_CATALOG:
+            return "catalog"
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if pick and not pick.startswith("custom::"):
+            return "catalog"
+    except ImportError:
+        pass
+    return None
+
+
+def _creative_transport_authoritative(session: dict[str, Any]) -> bool:
+    """True when Creative/Jam transport still owns the live practice key."""
+    try:
+        from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
+
+        if str(session.get(CREATIVE_CONCERT_KEY_SOURCE) or "").strip():
+            return True
+    except ImportError:
+        if str(session.get("_creative_concert_key_source") or "").strip():
+            return True
+    try:
+        from backing_context import active_creative_backing_context
+
+        if active_creative_backing_context(session) is not None:
+            return True
+    except ImportError:
+        pass
+    try:
+        from creative_session_state import creative_session_is_active
+
+        if creative_session_is_active(session):
+            return True
+    except ImportError:
+        pass
+    if str(session.get("improv_jam_key") or session.get("improv_style_key") or "").strip():
+        return True
+    return False
+
+
+def _resolve_source_original_key(session: dict[str, Any], owner: PracticeOwner) -> str:
+    """Original/home key for the active catalog or custom practice source."""
+    if owner == "custom":
+        try:
+            from custom_progression_lab import CPL_ACTIVE_KEY, default_active_progression, ensure_original_structure
+            from songs.music_source import custom_original_key
+
+            active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or default_active_progression())
+            return str(custom_original_key(active) or "C").strip() or "C"
+        except ImportError:
+            pass
+        sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+        return str(sel.get("key") or "C").strip() or "C"
+    pick = active_catalog_pick_key(session)
+    sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+    original = str(sel.get("key") or "").strip()
+    if original:
+        return original
+    try:
+        from songs.music_source import resolve_catalog_song_for_pick
+
+        selected, original_key = resolve_catalog_song_for_pick(session, pick)
+        if selected:
+            return str(original_key or selected.get("key") or "C").strip() or "C"
+    except ImportError:
+        pass
+    return "C"
+
+
+def maybe_reset_practice_key_on_source_activation(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+    surface: str = "",
+) -> bool:
+    """Reset practice key to source original when leaving Creative/custom transport."""
+    try:
+        from backing_source_navigation import _backing_intent_preserves_practice_key, peek_key_transition_intent
+
+        if _backing_intent_preserves_practice_key(peek_key_transition_intent(session)):
+            return False
+    except ImportError:
+        pass
+    owner = _raw_practice_owner(session)
+    if owner is None:
+        return False
+    original = _resolve_source_original_key(session, owner)
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    needs_reset = _creative_transport_authoritative(session)
+    if not needs_reset and live and original and live != original:
+        try:
+            from backing_context import get_backing_source_preference, BACKING_PREF_CREATIVE
+
+            if get_backing_source_preference(session) == BACKING_PREF_CREATIVE:
+                needs_reset = True
+        except ImportError:
+            pass
+    if not needs_reset:
+        return False
+    _release_creative_transport_authority(session)
+    try:
+        from backing_context import BACKING_PREF_CATALOG, BACKING_PREF_CUSTOM, set_backing_source_preference
+
+        if owner == "catalog":
+            set_backing_source_preference(session, BACKING_PREF_CATALOG)
+        else:
+            set_backing_source_preference(session, BACKING_PREF_CUSTOM)
+    except ImportError:
+        pass
+    _force_practice_display_key(
+        session,
+        original,
+        st_like=st_like,
+        writer=f"source_activation_{surface or 'unknown'}",
+    )
+    write_key_transition_diag(
+        session,
+        catalog_original_key=original,
+        catalog_target_key=original,
+        key_transition_intent=f"source_activation_{surface}",
+        active_transport_owner=owner,
+        last_key_writer=f"maybe_reset_practice_key_on_source_activation:{surface}",
+    )
+    return True
+
+
 __all__ = [
     "PracticeOwner",
     "BackingOwner",
@@ -793,6 +945,7 @@ __all__ = [
     "current_backing_owner",
     "intentional_creative_backing_active",
     "intended_practice_owner",
+    "maybe_reset_practice_key_on_source_activation",
     "practice_backing_owners_align",
     "rebuild_catalog_backing_from_canonical_pick",
     "reconcile_source_ownership",
