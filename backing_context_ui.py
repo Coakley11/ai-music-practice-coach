@@ -232,6 +232,16 @@ def render_backing_creative_context_card(
     )
 
 
+def _format_progression_preview(sections: dict[str, list[str]], *, max_chords: int = 6) -> str:
+    if not sections:
+        return ""
+    line = " / ".join(list(sections.keys())[:4])
+    sample = [c for chs in sections.values() for c in chs[:max_chords]]
+    if sample:
+        line += " · " + " – ".join(sample[:max_chords])
+    return line
+
+
 def render_backing_custom_progression_context_card(
     st: Any,
     ctx: BackingContext,
@@ -242,36 +252,43 @@ def render_backing_custom_progression_context_card(
     applied_meter: str = "4/4",
     practice_key: str = "",
     written_key: str = "",
+    musical_state: Any | None = None,
 ) -> None:
     """Blue card for CPL custom progression backing — not Creative."""
     if ctx.source != "custom_progression":
         return
+    from backing_musical_state import resolve_current_backing_musical_state
 
+    state = musical_state or resolve_current_backing_musical_state(session, applied_bpm=applied_bpm)
     title = html.escape(str(ctx.song_title or "Custom progression").strip() or "Custom progression")
-    concert = html.escape(str(practice_key or ctx.concert_key or ctx.display_key or "C").strip() or "C")
-    bpm = int(applied_bpm or ctx.bpm or 100)
-    groove = html.escape(str(applied_groove or ctx.groove or "Auto").strip() or "Auto")
-    meter = html.escape(str(applied_meter or ctx.meter or "4/4").strip() or "4/4")
+    concert = html.escape(str(state.practice_concert_key or practice_key or ctx.concert_key or "C").strip() or "C")
+    bpm = int(state.applied_bpm or applied_bpm or ctx.bpm or 100)
+    groove = html.escape(str(applied_groove or state.groove or ctx.groove or "Auto").strip() or "Auto")
+    meter = html.escape(str(applied_meter or state.meter or ctx.meter or "4/4").strip() or "4/4")
     source_badge = html.escape(str(ctx.source_label or "Custom progression").strip() or "Custom progression")
 
-    sections: dict[str, list[str]] = {}
-    try:
-        from backing_context import sections_dict_from_backing_context
+    concert_sections = state.concert_sections or {}
+    if not concert_sections:
+        try:
+            from backing_context import sections_dict_from_backing_context
 
-        sections = sections_dict_from_backing_context(session, ctx)
-    except ImportError:
-        pass
-    if not sections and ctx.progression:
+            concert_sections = sections_dict_from_backing_context(session, ctx)
+        except ImportError:
+            pass
+    if not concert_sections and ctx.progression:
         label = str(ctx.song_title or ctx.progression_label or "Progression").strip() or "Progression"
-        sections = {label: list(ctx.progression)}
+        concert_sections = {label: list(ctx.progression)}
 
-    if sections:
-        progression_line = html.escape(" / ".join(list(sections.keys())[:4]))
-        sample = [c for chs in sections.values() for c in chs[:6]]
-        if sample:
-            progression_line += html.escape(" · " + " – ".join(sample[:6]))
-    else:
-        progression_line = html.escape(str(ctx.progression_label or "Full form").strip() or "Full form")
+    concert_line = html.escape(_format_progression_preview(concert_sections) or "Full form")
+    chart_sections = state.chart_sections or {}
+    chart_key_raw = str(state.chart_badge_value or written_key or "").strip() if state.show_chart_badge else ""
+    chart_line = ""
+    if chart_sections and chart_key_raw and state.chart_mode != "concert":
+        chart_label = "Shape key" if state.chart_mode == "shape" else "Written key"
+        chart_line = (
+            f'<p class="ui-backing-active-key-line">{html.escape(chart_label)} progression: '
+            f"<strong>{html.escape(_format_progression_preview(chart_sections))}</strong></p>"
+        )
 
     gradient = "linear-gradient(145deg,#0891b2,#0e7490)"
     st.markdown(
@@ -285,7 +302,8 @@ def render_backing_custom_progression_context_card(
         f'<span class="ui-backing-active-source">{source_badge}</span></p>'
         f'<p class="ui-backing-active-key-line">Practice concert key: <strong>{concert}</strong>'
         f" · BPM: <strong>{bpm}</strong> · Groove: <strong>{groove}</strong> · Meter: <strong>{meter}</strong></p>"
-        f'<p class="ui-backing-active-key-line">Progression: <strong>{progression_line}</strong></p>'
+        f'<p class="ui-backing-active-key-line">Concert practice key progression: <strong>{concert_line}</strong></p>'
+        f"{chart_line}"
         f"</div></div>",
         unsafe_allow_html=True,
     )
@@ -364,3 +382,16 @@ def render_backing_context_dev_diagnostics(st: Any, session: dict[str, Any], *, 
                 ]
             )
         )
+        try:
+            from music_source_ownership import CATALOG_BACKING_RESTORE_DIAG_KEY
+
+            restore_diag = session.get(CATALOG_BACKING_RESTORE_DIAG_KEY)
+            if isinstance(restore_diag, dict) and restore_diag:
+                st.markdown("**Catalog restore trace**")
+                st.json(restore_diag)
+        except ImportError:
+            pass
+        play_diag = session.get("_backing_play_diag")
+        if isinstance(play_diag, dict) and play_diag:
+            st.markdown("**Play handler trace**")
+            st.json(play_diag)

@@ -415,6 +415,34 @@ class TestCatalogCustomBackingResolution(unittest.TestCase):
         }
         self.assertEqual(resolve_last_catalog_pick_key(session), "Pop::Photograph")
 
+    def test_restore_catalog_uses_before_custom_snapshot(self) -> None:
+        from song_catalog.catalog import format_pick_key
+        from songs.music_source import CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY, resolve_catalog_pick_for_backing_restore
+
+        shape_pick = format_pick_key("Pop", "Shape of You")
+        session = {
+            "active_catalog_pick_key": "custom::trial",
+            "selected_song": {"title": "trial song", "key": "C", "pick_key": "custom::trial"},
+            "song": "trial song",
+            CATALOG_BEFORE_CUSTOM_KEY: {
+                "pick_key": shape_pick,
+                "selected_song": {
+                    "title": "Shape of You",
+                    "artist": "Ed Sheeran",
+                    "key": "Bm",
+                    "pick_key": shape_pick,
+                    "bpm": 96,
+                },
+                "original_key": "Bm",
+            },
+            LAST_CATALOG_STATE_KEY: {
+                "pick_key": "Pop::Photograph",
+                "selected_song": {"title": "Photograph", "key": "E"},
+                "original_key": "E",
+            },
+        }
+        self.assertEqual(resolve_catalog_pick_for_backing_restore(session), shape_pick)
+
     def test_restore_catalog_uses_last_catalog_not_custom(self) -> None:
         from songs.music_source import LAST_CATALOG_STATE_KEY
 
@@ -505,6 +533,26 @@ class TestCustomProgressionConcertKey(unittest.TestCase):
             reconcile_backing_context_on_backing_page(session, st_like=st_like)
         self.assertEqual(session.get("display_key"), "E")
         self.assertEqual(session.get("concert_key"), "E")
+
+
+class TestResetBackingOnSongChange(unittest.TestCase):
+    def test_catalog_pick_wins_over_custom_session_flags(self) -> None:
+        from backing_context import reset_backing_on_active_song_change
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+        session = {
+            CPL_ACTIVE_KEY: {"id": "trial-1", "name": "Trial Song", "original_key_center": "D"},
+            "active_catalog_pick_key": "custom::trial",
+            "active_music_source": "custom_progression",
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+        }
+        ctx = reset_backing_on_active_song_change(
+            session,
+            new_pick_key="Pop::Shape of You",
+            practice_concert_key="Bm",
+        )
+        self.assertEqual(ctx.source, "regular_song")
 
 
 class TestReturnToCreativeToolRestore(unittest.TestCase):

@@ -1039,20 +1039,26 @@ def reset_backing_on_active_song_change(
 
     try:
         from songs.music_source import (
+            USER_CATALOG_SOURCE_CHOICE_KEY,
             cpl_session_is_active,
             is_custom_progression,
             set_catalog_source,
             set_custom_source,
         )
 
-        if cpl_session_is_active(session) or is_custom_progression(session):
-            set_custom_source(session)
-            set_backing_source_preference(session, BACKING_PREF_CUSTOM)
-            ctx = build_custom_progression_context(session)
-        else:
+        pick = str(new_pick_key or _current_pick_key(session) or "").strip()
+        catalog_pick = bool(pick and not pick.startswith("custom::"))
+        user_chose_catalog = bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        if catalog_pick or user_chose_catalog or (
+            not cpl_session_is_active(session) and not is_custom_progression(session)
+        ):
             set_catalog_source(session)
             set_backing_source_preference(session, BACKING_PREF_CATALOG)
             ctx = build_regular_song_context(session)
+        else:
+            set_custom_source(session)
+            set_backing_source_preference(session, BACKING_PREF_CUSTOM)
+            ctx = build_custom_progression_context(session)
     except ImportError:
         set_backing_source_preference(session, BACKING_PREF_CATALOG)
         ctx = build_regular_song_context(session)
@@ -1783,6 +1789,11 @@ def _apply_original_song_display_key(
 
 def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext:
     """Clear Creative/custom override and restore active catalog song backing."""
+    from types import SimpleNamespace
+
+    from songs.key_state import invalidate_backing_cache
+    from songs.music_source import activate_catalog_song_for_backing, resolve_catalog_pick_for_backing_restore
+
     clear_backing_context(session)
     _release_creative_backing_ownership(session)
     try:
@@ -1791,70 +1802,32 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         session.pop(CREATIVE_CONCERT_KEY_SOURCE, None)
     except ImportError:
         session.pop("_creative_concert_key_source", None)
-    try:
-        from songs.music_source import (
-            activate_catalog_pick_for_backing,
-            ensure_custom_progression_for_backing,
-            resolve_last_catalog_pick_key,
-            set_catalog_source,
-        )
-
-        set_catalog_source(session)
-    except ImportError:
-        activate_catalog_pick_for_backing = None  # type: ignore[misc,assignment]
-        ensure_custom_progression_for_backing = None  # type: ignore[misc,assignment]
-        resolve_last_catalog_pick_key = None  # type: ignore[misc,assignment]
+    st = st_like or SimpleNamespace(session_state=session)
+    pick_key = resolve_catalog_pick_for_backing_restore(session)
+    ctx = activate_catalog_song_for_backing(
+        st,
+        pick_key,
+        reason="catalog_source_switch",
+        invalidate_backing=invalidate_backing_cache,
+    )
+    if ctx is not None:
         try:
-            from songs.music_source import set_catalog_source
+            from songs.key_state import BACKING_NEEDS_REGEN
 
-            set_catalog_source(session)
+            session[BACKING_NEEDS_REGEN] = True
         except ImportError:
             pass
-    pick_key = ""
-    try:
-        from songs.state import ACTIVE_CATALOG_PICK_KEY
+        try:
+            from studio_page_persistence import save_page_snapshot
 
-        live_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-        if live_pick and not live_pick.startswith("custom::"):
-            pick_key = live_pick
-    except ImportError:
-        pass
-    if not pick_key and resolve_last_catalog_pick_key is not None:
-        pick_key = resolve_last_catalog_pick_key(session)
-    if pick_key and activate_catalog_pick_for_backing is not None:
-        activate_catalog_pick_for_backing(session, pick_key, st_like=st_like)
-    try:
-        from music_source_ownership import rebuild_catalog_backing_from_canonical_pick
-
-        ctx = rebuild_catalog_backing_from_canonical_pick(session, st_like=st_like)
-        if ctx is not None:
-            try:
-                from songs.key_state import BACKING_NEEDS_REGEN
-
-                session[BACKING_NEEDS_REGEN] = True
-            except ImportError:
-                pass
-            try:
-                from studio_page_persistence import save_page_snapshot
-
-                save_page_snapshot(session, "backing")
-            except ImportError:
-                pass
-            return ctx
-    except ImportError:
-        pass
-    original = _original_key_for_active_song(session)
-    _apply_original_song_display_key(session, original, st_like=st_like)
+            save_page_snapshot(session, "backing")
+        except ImportError:
+            pass
+        return ctx
     set_backing_source_preference(session, BACKING_PREF_CATALOG)
     ctx = build_regular_song_context(session)
     set_backing_context(session, ctx)
-    apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
-    try:
-        from songs.key_state import BACKING_NEEDS_REGEN
-
-        session[BACKING_NEEDS_REGEN] = True
-    except ImportError:
-        pass
+    apply_backing_context_to_session(session, ctx, st_like=st, widget_safe=True)
     try:
         from studio_page_persistence import save_page_snapshot
 

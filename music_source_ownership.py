@@ -18,6 +18,14 @@ CATALOG_REBUILD_RESULT_BOUND_PICK_KEY = "catalog_rebuild_result_bound_pick"
 CATALOG_REBUILD_RESULT_KEY_KEY = "catalog_rebuild_result_key"
 CATALOG_REBUILD_RESULT_BPM_KEY = "catalog_rebuild_result_bpm"
 LAST_RECONCILE_REASON_KEY = "last_reconcile_reason"
+CATALOG_BACKING_RESTORE_DIAG_KEY = "_catalog_backing_restore_diag"
+
+
+def write_catalog_backing_restore_diag(session: dict[str, Any], **fields: Any) -> None:
+    """Trace for Use Catalog Song Backing / catalog restore actions."""
+    blob = dict(session.get(CATALOG_BACKING_RESTORE_DIAG_KEY) or {})
+    blob.update(fields)
+    session[CATALOG_BACKING_RESTORE_DIAG_KEY] = blob
 
 
 def _write_catalog_rebuild_trace(
@@ -412,6 +420,7 @@ def rebuild_catalog_backing_from_canonical_pick(
     session: dict[str, Any],
     *,
     st_like: Any | None = None,
+    pick_key: str = "",
 ) -> Any:
     """Full backing_context rebuild from canonical_active_pick_key and catalog record."""
     from types import SimpleNamespace
@@ -423,7 +432,7 @@ def rebuild_catalog_backing_from_canonical_pick(
         _sync_catalog_session_surface_keys,
     )
 
-    pick = active_catalog_pick_key(session)
+    pick = str(pick_key or "").strip() or active_catalog_pick_key(session)
     _write_catalog_rebuild_trace(session, pick_key=pick)
     if not pick or pick.startswith("custom::"):
         _write_catalog_rebuild_trace(
@@ -596,6 +605,7 @@ __all__ = [
     "CATALOG_REBUILD_RESULT_BPM_KEY",
     "CATALOG_REBUILD_RESULT_BOUND_PICK_KEY",
     "CATALOG_REBUILD_RESULT_KEY_KEY",
+    "CATALOG_BACKING_RESTORE_DIAG_KEY",
     "LAST_RECONCILE_REASON_KEY",
     "activate_catalog_ownership",
     "activate_custom_ownership",
@@ -611,4 +621,5 @@ __all__ = [
     "practice_backing_owners_align",
     "rebuild_catalog_backing_from_canonical_pick",
     "reconcile_source_ownership",
+    "write_catalog_backing_restore_diag",
 ]

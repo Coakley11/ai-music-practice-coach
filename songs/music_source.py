@@ -347,46 +347,16 @@ def restore_previous_catalog_song(
     if not snap:
         return False
     pick_key = str(snap.get("pick_key") or "").strip()
-    selected = dict(snap.get("selected_song") or {})
-    original_key = str(snap.get("original_key") or selected.get("key") or "C").strip() or "C"
-    display_key = str(snap.get("display_key") or original_key).strip() or original_key
-    from songs.state import apply_pick_key
-
-    data = apply_pick_key(
+    if not pick_key or pick_key.startswith("custom::"):
+        return False
+    ctx = activate_catalog_song_for_backing(
         st,
         pick_key,
-        song_picker_catalog,
-        song_library=song_library,
-        skip_activity_log=True,
-        origin="restore",
-        display_key_override=display_key,
-    )
-    if not data:
-        return False
-    selected.setdefault("title", str(data.get("title") or ""))
-    selected.setdefault("artist", str(data.get("artist") or ""))
-    selected.setdefault("key", str(data.get("key") or original_key))
-    selected["pick_key"] = pick_key
-    commit_catalog_active_song(
-        st,
-        pick_key=pick_key,
-        selected_song=selected,
-        original_key=original_key,
-        display_key=display_key,
-        invalidate_backing=invalidate_backing,
         reason="previous_catalog_restore",
+        invalidate_backing=invalidate_backing,
+        song_picker_catalog=song_picker_catalog,
     )
-    try:
-        from backing_context import reset_backing_on_active_song_change
-
-        reset_backing_on_active_song_change(
-            st.session_state,
-            new_pick_key=pick_key,
-            practice_concert_key=display_key,
-        )
-    except ImportError:
-        pass
-    return True
+    return ctx is not None
 
 
 def restore_last_catalog_active_song(
@@ -397,8 +367,6 @@ def restore_last_catalog_active_song(
     invalidate_backing,
 ) -> bool:
     """Restore the catalog song active before Custom Progression mode."""
-    from songs.state import apply_pick_key
-
     session = st.session_state
     snap = session.get(CATALOG_BEFORE_CUSTOM_KEY) or session.get(LAST_CATALOG_STATE_KEY)
     if not isinstance(snap, dict) or not snap.get("pick_key"):
@@ -406,34 +374,14 @@ def restore_last_catalog_active_song(
     pick_key = str(snap.get("pick_key") or "").strip()
     if not pick_key or pick_key.startswith("custom::"):
         return False
-    selected = dict(snap.get("selected_song") or {})
-    original_key = str(snap.get("original_key") or selected.get("key") or "C").strip() or "C"
-    display_key = str(snap.get("display_key") or original_key).strip() or original_key
-    data = apply_pick_key(
+    ctx = activate_catalog_song_for_backing(
         st,
         pick_key,
-        song_picker_catalog,
-        song_library=song_library,
-        skip_activity_log=True,
-        origin="restore",
-        display_key_override=display_key,
-    )
-    if not data:
-        return False
-    selected.setdefault("title", str(data.get("title") or ""))
-    selected.setdefault("artist", str(data.get("artist") or ""))
-    selected.setdefault("key", str(data.get("key") or original_key))
-    selected["pick_key"] = pick_key
-    commit_catalog_active_song(
-        st,
-        pick_key=pick_key,
-        selected_song=selected,
-        original_key=original_key,
-        display_key=display_key,
-        invalidate_backing=invalidate_backing,
         reason="last_catalog_restore",
+        invalidate_backing=invalidate_backing,
+        song_picker_catalog=song_picker_catalog,
     )
-    return True
+    return ctx is not None
 
 
 def commit_catalog_active_song(
@@ -2065,6 +2013,118 @@ def _sync_catalog_session_surface_keys(
     genre = str(selected.get("genre") or "").strip()
     if genre:
         session["active_genre"] = genre
+
+
+def resolve_catalog_pick_for_backing_restore(
+    session_state: dict[str, Any],
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+) -> str:
+    """Catalog pick when leaving custom backing — prefer snapshot from before custom mode."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    for snap_key in (CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY):
+        raw = session_state.get(snap_key)
+        if not isinstance(raw, dict):
+            continue
+        pk = str(raw.get("pick_key") or "").strip()
+        if _pick_key_is_catalog(pk):
+            return normalize_catalog_pick_key(
+                pk,
+                session_state=session_state,
+                song_picker_catalog=song_picker_catalog,
+            )
+    meta = session_state.get("active_song_state")
+    if isinstance(meta, dict):
+        pk = str(meta.get("pick_key") or "").strip()
+        if _pick_key_is_catalog(pk):
+            return normalize_catalog_pick_key(
+                pk,
+                session_state=session_state,
+                song_picker_catalog=song_picker_catalog,
+            )
+    live = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if _pick_key_is_catalog(live):
+        return normalize_catalog_pick_key(
+            live,
+            session_state=session_state,
+            song_picker_catalog=song_picker_catalog,
+        )
+    return resolve_last_catalog_pick_key(session_state)
+
+
+def activate_catalog_song_for_backing(
+    st: Any,
+    pick_key: str = "",
+    *,
+    reason: str = "catalog_source_switch",
+    invalidate_backing: Callable[[Any], None] | None = None,
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+) -> Any:
+    """Atomically commit a catalog song and rebuild regular_song backing context."""
+    from music_source_ownership import rebuild_catalog_backing_from_canonical_pick, write_catalog_backing_restore_diag
+
+    session = st.session_state
+    pick_before = str(session.get("active_catalog_pick_key") or "").strip()
+    pick_key = str(pick_key or "").strip()
+    if not _pick_key_is_catalog(pick_key):
+        pick_key = resolve_catalog_pick_for_backing_restore(
+            session,
+            song_picker_catalog=song_picker_catalog,
+        )
+    write_catalog_backing_restore_diag(
+        session,
+        pick_before=pick_before,
+        pick_chosen=pick_key,
+        action=reason,
+    )
+    if not pick_key:
+        write_catalog_backing_restore_diag(session, ok=False, error="no_catalog_pick")
+        return None
+    if invalidate_backing is None:
+        invalidate_backing = lambda _st: None
+    selected, original_key = resolve_catalog_song_for_pick(
+        session,
+        pick_key,
+        song_picker_catalog=song_picker_catalog,
+        authoritative_transport=True,
+    )
+    if not selected:
+        write_catalog_backing_restore_diag(session, ok=False, error="catalog_row_missing")
+        return None
+    display_key = str(original_key or selected.get("key") or "C").strip() or "C"
+    if reason in ("catalog_source_switch", "last_catalog_restore", "previous_catalog_restore"):
+        display_key = display_key
+    commit_catalog_active_song(
+        st,
+        pick_key=pick_key,
+        selected_song=selected,
+        original_key=original_key,
+        display_key=display_key,
+        invalidate_backing=invalidate_backing,
+        reason=reason,
+    )
+    ctx = rebuild_catalog_backing_from_canonical_pick(
+        session,
+        st_like=st,
+        pick_key=pick_key,
+    )
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session) or ctx
+    except ImportError:
+        pass
+    write_catalog_backing_restore_diag(
+        session,
+        ok=ctx is not None,
+        pick_after=str(session.get("active_catalog_pick_key") or "").strip(),
+        active_song_title=str(session.get("song") or session.get("active_song_title") or "").strip(),
+        backing_source=str(getattr(ctx, "source", "") or "") if ctx else "",
+        backing_title=str(getattr(ctx, "song_title", "") or "") if ctx else "",
+        bound_pick=str(getattr(ctx, "bound_pick_key", "") or "") if ctx else "",
+    )
+    return ctx
 
 
 def resolve_last_catalog_pick_key(session_state: dict[str, Any]) -> str:
