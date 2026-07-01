@@ -13,10 +13,12 @@ from typing import Any
 MUSIC_RESTORE_PHASE_COMPLETE_KEY = "_music_restore_phase_complete"
 MUSIC_PAGE_SNAPSHOT_HYDRATED_PREFIX = "_music_page_snapshot_hydrated::"
 MUSIC_SCRIPT_SESSION_KEY = "_music_script_browser_session_id"
+STREAMLIT_WIDGETS_LOCKED_KEY = "_streamlit_widgets_locked_this_run"
 
 
 def begin_music_script_run(session_state: dict[str, Any]) -> None:
     """Start-of-script hook — reset page tracker only on true new browser session."""
+    session_state.pop(STREAMLIT_WIDGETS_LOCKED_KEY, None)
     try:
         from multitrack_session_persistence import reset_mt_workspace_run_diag
 

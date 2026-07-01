@@ -9309,6 +9309,19 @@ elif _studio_page_for_hydrate == "creative":
     except ImportError:
         pass
 
+try:
+    from app_ui import inject_studio_ui_release_marker
+
+    inject_studio_ui_release_marker(st, page=str(_studio_page))
+except Exception:
+    pass
+try:
+    from session_widget_safe import apply_pending_widget_hydrates
+
+    apply_pending_widget_hydrates(st.session_state, st_like=st)
+except ImportError:
+    pass
+
 original_key, _song_identity = display_key_context(
     st.session_state,
     catalog_song_data=_catalog_song_data,
@@ -9325,9 +9338,22 @@ try:
         prepare_creative_sidebar_display_key,
         should_use_live_practice_key_sidebar,
     )
+    from backing_context import active_creative_backing_context, get_backing_context
 
+    _backing_ctx_for_sidebar = get_backing_context(st.session_state)
+    _catalog_regular_backing = (
+        _backing_ctx_for_sidebar is not None
+        and str(getattr(_backing_ctx_for_sidebar, "source", "") or "").strip() == "regular_song"
+        and active_creative_backing_context(st.session_state) is None
+    )
     if is_creative_major_jam_active(st.session_state):
         _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
+    elif _catalog_regular_backing:
+        _display_key_options = sync_display_key_before_widget(
+            st,
+            original_key,
+            _song_identity,
+        )
     elif should_skip_regular_song_defaults(st.session_state) or should_use_live_practice_key_sidebar(
         st.session_state
     ):
@@ -9361,6 +9387,12 @@ st.sidebar.selectbox(
     help="Concert pitch for charts and backing audio.",
     on_change=on_sidebar_practice_concert_key_change,
 )
+try:
+    from music_restore_phase import STREAMLIT_WIDGETS_LOCKED_KEY
+
+    st.session_state[STREAMLIT_WIDGETS_LOCKED_KEY] = True
+except ImportError:
+    st.session_state["_streamlit_widgets_locked_this_run"] = True
 
 _instrument_options = DEFAULT_INSTRUMENT_OPTIONS
 

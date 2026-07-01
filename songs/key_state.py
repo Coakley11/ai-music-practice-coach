@@ -238,7 +238,7 @@ def apply_display_key_for_active_song(
         except ImportError:
             pass
         _apply_display_key_before_widget(st, target, source="active_song_change")
-        st.session_state[LAST_DISPLAY_KEY] = st.session_state["display_key"]
+        st.session_state[LAST_DISPLAY_KEY] = target
         invalidate_backing_cache(st)
         st.session_state[BACKING_NEEDS_REGEN] = False
         return options

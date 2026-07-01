@@ -349,7 +349,7 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
 
     flush_pending_creative_major_keys(session)
     try:
-        from backing_context import active_creative_backing_context
+        from backing_context import active_creative_backing_context, get_backing_context
         from backing_musical_state import resolve_current_backing_musical_state
         from creative_session_state import (
             creative_session_is_active,
@@ -357,26 +357,39 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         )
 
         creative = active_creative_backing_context(session)
+        ctx = get_backing_context(session)
         creative_sess = get_creative_session(session) if creative is None else None
     except ImportError:
         creative = None
+        ctx = None
         creative_sess = None
         resolve_current_backing_musical_state = None  # type: ignore[assignment]
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     resolver_key = ""
-    if creative and resolve_current_backing_musical_state is not None:
+    if ctx is not None and str(getattr(ctx, "source", "") or "").strip() == "regular_song":
+        resolver_key = str(
+            getattr(ctx, "concert_key", None)
+            or getattr(ctx, "display_key", None)
+            or getattr(ctx, "key", None)
+            or ""
+        ).strip()
+    elif creative and resolve_current_backing_musical_state is not None:
         resolver_key = str(
             resolve_current_backing_musical_state(session).practice_concert_key or ""
         ).strip()
-    elif creative_sess is not None and creative_session_is_active(session):
+    elif (
+        creative_sess is not None
+        and creative_session_is_active(session)
+        and str(session.get("active_music_source") or "").strip() != "catalog"
+    ):
         resolver_key = str(creative_sess.concert_key or creative_sess.display_key or "").strip()
     selected = str(
         pending
         or resolver_key
-        or (creative_sess.concert_key if creative_sess else "")
+        or (creative_sess.concert_key if creative_sess and creative_session_is_active(session) else "")
+        or session.get("concert_key")
         or session.get("display_key")
         or (creative.concert_key if creative else "")
-        or session.get("concert_key")
         or "C"
     ).strip() or "C"
     options = practice_keys_for_mode(key_mode(selected))

@@ -70,15 +70,17 @@ _PENDING_FOR_WIDGET_KEY: dict[str, str] = {
 
 
 def widgets_likely_instantiated(session: dict[str, Any]) -> bool:
-    """True when sidebar/global widgets have probably rendered this rerun."""
+    """True after sidebar/global widgets have rendered this script run."""
+    if session.get("_streamlit_widgets_locked_this_run"):
+        return True
     try:
-        from music_restore_phase import music_restore_phase_complete
+        from music_restore_phase import STREAMLIT_WIDGETS_LOCKED_KEY
 
-        if not music_restore_phase_complete(session):
-            return False
+        if session.get(STREAMLIT_WIDGETS_LOCKED_KEY):
+            return True
     except ImportError:
         pass
-    return "display_key" in session
+    return False
 
 
 def safe_session_assign(
