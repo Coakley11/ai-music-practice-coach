@@ -175,6 +175,85 @@ class TestKeyTransitionOwnership(unittest.TestCase):
         except ImportError:
             pass
 
+    def test_use_catalog_backing_restores_pre_creative_song_not_last_catalog_snapshot(self) -> None:
+        from backing_context import restore_regular_song_backing
+        from songs.music_source import LAST_CATALOG_STATE_KEY
+
+        in_my_life_pick = "Pop::In My Life"
+        say_pick = "Pop::Say"
+        session = {
+            "active_catalog_pick_key": in_my_life_pick,
+            "selected_song": {"title": "In My Life", "key": "A", "pick_key": in_my_life_pick, "bpm": 100},
+            "song": "In My Life",
+            "display_key": "Eb",
+            "concert_key": "Eb",
+            "user_catalog_source_choice": True,
+            "backing_track_bpm": 82,
+            LAST_CATALOG_STATE_KEY: {
+                "pick_key": say_pick,
+                "selected_song": {"title": "Say", "key": "G", "pick_key": say_pick, "bpm": 82},
+                "original_key": "G",
+                "display_key": "G",
+            },
+            "improv_entry_mode": "Jam Session Generator",
+            "improv_jam_key": "Eb",
+            "improv_jam_bpm": 82,
+            BACKING_CONTEXT_KEY: {
+                "source": "entry_jam",
+                "source_label": "Entry & Jam",
+                "entry_mode": "Jam Session Generator",
+                "active_song_id": "jam",
+                "song_title": "Jam Session",
+                "key": "Eb",
+                "display_key": "Eb",
+                "concert_key": "Eb",
+                "bpm": 82,
+                "style": "Blues",
+                "groove": "Medium",
+            },
+        }
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            ctx = restore_regular_song_backing(session, st_like=st_like)
+        self.assertEqual(ctx.song_title, "In My Life")
+        self.assertEqual(session.get("display_key"), "A")
+        self.assertEqual(session.get("concert_key"), "A")
+        self.assertEqual(getattr(ctx, "concert_key", None), "A")
+        self.assertNotEqual(str(session.get("song") or ""), "Say")
+
+    def test_catalog_rebuild_forces_bpm_when_sync_id_unchanged(self) -> None:
+        from music_source_ownership import rebuild_catalog_backing_from_canonical_pick
+        from songs.playback_defaults import _CANONICAL_BACKING_ID_KEY, active_song_sync_id, playback_song_id
+
+        in_my_life_pick = "Pop::In My Life"
+        pid = playback_song_id(is_custom=False, song_title="In My Life", song_artist="The Beatles")
+        sync_id = active_song_sync_id(pick_key=in_my_life_pick, playback_song_id=pid, is_custom=False)
+        session = {
+            "active_catalog_pick_key": in_my_life_pick,
+            "selected_song": {"title": "In My Life", "key": "A", "pick_key": in_my_life_pick, "bpm": 100},
+            "song": "In My Life",
+            "display_key": "A",
+            "concert_key": "A",
+            "user_catalog_source_choice": True,
+            "backing_track_bpm": 82,
+            "bpm": 82,
+            _CANONICAL_BACKING_ID_KEY: sync_id,
+            "last_backing_defaults_song_id": sync_id,
+        }
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            ctx = rebuild_catalog_backing_from_canonical_pick(
+                session,
+                st_like=st_like,
+                pick_key=in_my_life_pick,
+                reset_to_original=True,
+            )
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(int(ctx.bpm or 0), 100)
+        self.assertEqual(int(session.get("backing_track_bpm") or session.get("bpm") or 0), 100)
+        self.assertEqual(int(session.get("catalog_rebuild_result_bpm") or 0), 100)
+
 
 if __name__ == "__main__":
     unittest.main()

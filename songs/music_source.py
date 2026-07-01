@@ -17,6 +17,7 @@ SONG_PICKER_ACTIVE_SOURCE_KEY = "song_picker_active_source"
 PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY = "_pending_song_picker_active_source"
 LAST_CATALOG_STATE_KEY = "_last_catalog_song_state"
 CATALOG_BEFORE_CUSTOM_KEY = "_catalog_before_custom_state"
+CATALOG_BEFORE_CREATIVE_KEY = "_catalog_before_creative_state"
 PENDING_PREVIOUS_CATALOG_RESTORE_KEY = "_pending_previous_catalog_restore"
 USER_CATALOG_SOURCE_CHOICE_KEY = "_user_chose_catalog_music_source"
 CATALOG_RECENT_PICK_KEYS = "catalog_recent_pick_keys"
@@ -179,6 +180,15 @@ def snapshot_catalog_before_custom(session_state: dict[str, Any]) -> None:
     snap = _catalog_snapshot_from_session(session_state)
     if snap:
         session_state[CATALOG_BEFORE_CUSTOM_KEY] = snap
+
+
+def snapshot_catalog_before_creative(session_state: dict[str, Any]) -> None:
+    """Remember the active catalog song before entering Creative/Jam backing."""
+    if is_custom_progression(session_state):
+        return
+    snap = _catalog_snapshot_from_session(session_state)
+    if snap:
+        session_state[CATALOG_BEFORE_CREATIVE_KEY] = snap
 
 
 def set_custom_source(session_state: dict[str, Any]) -> None:
@@ -2033,9 +2043,41 @@ def resolve_catalog_pick_for_backing_restore(
     session_state: dict[str, Any],
     *,
     song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+    reason: str = "",
 ) -> str:
-    """Catalog pick when leaving custom backing — prefer snapshot from before custom mode."""
+    """Catalog pick when leaving custom/creative backing."""
     from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    _creative_return_reasons = {
+        "creative_to_catalog",
+        "switch_to_catalog_backing",
+        "catalog_source_switch",
+    }
+
+    def _normalize(pk: str) -> str:
+        return normalize_catalog_pick_key(
+            pk,
+            session_state=session_state,
+            song_picker_catalog=song_picker_catalog,
+        )
+
+    if str(reason or "").strip() in _creative_return_reasons:
+        for snap_key in (CATALOG_BEFORE_CREATIVE_KEY,):
+            raw = session_state.get(snap_key)
+            if not isinstance(raw, dict):
+                continue
+            pk = str(raw.get("pick_key") or "").strip()
+            if _pick_key_is_catalog(pk):
+                return _normalize(pk)
+        live = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if _pick_key_is_catalog(live):
+            return _normalize(live)
+        meta = session_state.get("active_song_state")
+        if isinstance(meta, dict):
+            pk = str(meta.get("pick_key") or "").strip()
+            if _pick_key_is_catalog(pk):
+                return _normalize(pk)
+        return resolve_last_catalog_pick_key(session_state)
 
     for snap_key in (CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY):
         raw = session_state.get(snap_key)
@@ -2043,27 +2085,15 @@ def resolve_catalog_pick_for_backing_restore(
             continue
         pk = str(raw.get("pick_key") or "").strip()
         if _pick_key_is_catalog(pk):
-            return normalize_catalog_pick_key(
-                pk,
-                session_state=session_state,
-                song_picker_catalog=song_picker_catalog,
-            )
+            return _normalize(pk)
     meta = session_state.get("active_song_state")
     if isinstance(meta, dict):
         pk = str(meta.get("pick_key") or "").strip()
         if _pick_key_is_catalog(pk):
-            return normalize_catalog_pick_key(
-                pk,
-                session_state=session_state,
-                song_picker_catalog=song_picker_catalog,
-            )
+            return _normalize(pk)
     live = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if _pick_key_is_catalog(live):
-        return normalize_catalog_pick_key(
-            live,
-            session_state=session_state,
-            song_picker_catalog=song_picker_catalog,
-        )
+        return _normalize(live)
     return resolve_last_catalog_pick_key(session_state)
 
 
@@ -2089,6 +2119,7 @@ def activate_catalog_song_for_backing(
         pick_key = resolve_catalog_pick_for_backing_restore(
             session,
             song_picker_catalog=song_picker_catalog,
+            reason=reason,
         )
     write_catalog_backing_restore_diag(
         session,

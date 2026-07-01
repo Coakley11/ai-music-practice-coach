@@ -295,6 +295,7 @@ def canonicalize_backing_defaults_for_song(
     active_song_bpm: int,
     active_song_groove: str,
     active_song_meter: str,
+    force_reset: bool = False,
 ) -> dict[str, Any]:
     """Force-sync all backing widgets to the active song's defaults on song change.
 
@@ -385,7 +386,7 @@ def canonicalize_backing_defaults_for_song(
         pass
 
     previous_id = st.session_state.get(_CANONICAL_BACKING_ID_KEY)
-    did_reset = previous_id != sync_id
+    did_reset = force_reset or previous_id != sync_id
     if did_reset and previous_id is None and _cloud_refresh_has_canonical_backing(st):
         did_reset = False
         st.session_state[_CANONICAL_BACKING_ID_KEY] = sync_id

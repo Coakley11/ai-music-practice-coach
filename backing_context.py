@@ -1557,6 +1557,12 @@ def open_backing_from_creative(
         snapshot_practice_source_display_key(session)
     except ImportError:
         pass
+    try:
+        from songs.music_source import snapshot_catalog_before_creative
+
+        snapshot_catalog_before_creative(session)
+    except ImportError:
+        pass
     sync_creative_handoff_keys(session, st_like=st_like)
     try:
         from creative_session_state import sync_creative_session_from_session
@@ -1814,7 +1820,7 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         except ImportError:
             session.pop("_creative_concert_key_source", None)
     st = st_like or SimpleNamespace(session_state=session)
-    pick_key = resolve_catalog_pick_for_backing_restore(session)
+    pick_key = resolve_catalog_pick_for_backing_restore(session, reason="creative_to_catalog")
     ctx = activate_catalog_song_for_backing(
         st,
         pick_key,

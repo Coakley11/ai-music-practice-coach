@@ -105,6 +105,19 @@ def _write_catalog_bpm_diagnostics(
         int(selected.get("bpm") or 0) if isinstance(selected, dict) else 0
     )
     session["catalog_rebuild_canonical_bpm"] = int(_canonical_active_song_bpm(session) or 0)
+    try:
+        from songs.bpm_state import LAST_BPM_SONG
+        from songs.playback_defaults import LAST_BACKING_DEFAULTS_SONG_ID
+
+        session["catalog_rebuild_last_bpm_song"] = str(session.get(LAST_BPM_SONG) or "")
+        session["catalog_rebuild_last_backing_defaults_song_id"] = str(
+            session.get(LAST_BACKING_DEFAULTS_SONG_ID) or session.get("last_backing_defaults_song_id") or ""
+        )
+    except ImportError:
+        session["catalog_rebuild_last_bpm_song"] = str(session.get("_last_bpm_song") or "")
+        session["catalog_rebuild_last_backing_defaults_song_id"] = str(
+            session.get("last_backing_defaults_song_id") or ""
+        )
     if ctx_bpm is not None:
         session["catalog_rebuild_ctx_bpm"] = int(ctx_bpm or 0)
     else:
@@ -319,22 +332,37 @@ def _clear_cross_owner_transport(session: dict[str, Any]) -> None:
     """Drop transport keys that leak BPM/style/meter across owners."""
     for key in (
         "last_backing_defaults_song_id",
+        "last_backing_bpm_song_id",
         "_canonical_backing_id",
+        "_canonical_active_backing_song_id",
         "_backing_trace_sync_id",
     ):
         session.pop(key, None)
     try:
-        from songs.bpm_state import LAST_BPM_SONG
+        from songs.bpm_state import LAST_BPM_SONG, PENDING_BACKING_TRACK_BPM
+        from songs.playback_defaults import LAST_BACKING_DEFAULTS_SONG_ID, LAST_PLAYBACK_GROOVE_SONG
 
         session.pop(LAST_BPM_SONG, None)
+        session.pop(PENDING_BACKING_TRACK_BPM, None)
+        session.pop(LAST_BACKING_DEFAULTS_SONG_ID, None)
+        session.pop(LAST_PLAYBACK_GROOVE_SONG, None)
     except ImportError:
         session.pop("_last_bpm_song", None)
+        session.pop("_pending_backing_track_bpm", None)
     try:
         from songs.playback_defaults import _CANONICAL_BACKING_ID_KEY
 
         session.pop(_CANONICAL_BACKING_ID_KEY, None)
     except ImportError:
         pass
+    try:
+        from songs.meter_state import LAST_BACKING_METER_SONG
+
+        session.pop(LAST_BACKING_METER_SONG, None)
+    except ImportError:
+        session.pop("_last_backing_meter_song", None)
+    session.pop("backing_groove_style", None)
+    session.pop("backing_track_bpm", None)
 
 
 def _release_creative_transport_authority(session: dict[str, Any]) -> None:
@@ -383,6 +411,12 @@ def _release_creative_transport_authority(session: dict[str, Any]) -> None:
             PENDING_IMPROV_ENTRY_MODE_KEY,
         ):
             session.pop(pending_key, None)
+        try:
+            from session_widget_safe import PENDING_IMPROV_STYLE_BPM_KEY
+
+            session.pop(PENDING_IMPROV_STYLE_BPM_KEY, None)
+        except ImportError:
+            session.pop("_pending_improv_style_bpm", None)
     except ImportError:
         for pending_key in (
             "_pending_improv_jam_key",
@@ -391,8 +425,16 @@ def _release_creative_transport_authority(session: dict[str, Any]) -> None:
             "_pending_improv_jam_style",
             "_pending_improv_ensemble",
             "_pending_improv_entry_mode",
+            "_pending_improv_style_bpm",
         ):
             session.pop(pending_key, None)
+    for key in (
+        "improv_jam_bpm",
+        "improv_style_bpm",
+        "improv_jam_key",
+        "improv_style_key",
+    ):
+        session.pop(key, None)
 
 
 def _force_practice_display_key(
@@ -447,6 +489,7 @@ def _apply_catalog_transport_from_record(
     original_key: str,
     concert_key: str = "",
     force_display_key: bool = False,
+    force_bpm_reset: bool = False,
 ) -> tuple[int, str, str]:
     """Force display key and BPM/groove/meter from canonical catalog record."""
     concert = str(concert_key or original_key or selected.get("key") or "C").strip() or "C"
@@ -511,14 +554,24 @@ def _apply_catalog_transport_from_record(
             song_artist=str(selected.get("artist") or ""),
         )
         sync_id = active_song_sync_id(pick_key=pick_key, playback_song_id=pid, is_custom=False)
+        if force_bpm_reset or force_display_key:
+            try:
+                from songs.playback_defaults import _CANONICAL_BACKING_ID_KEY
+
+                session.pop(_CANONICAL_BACKING_ID_KEY, None)
+            except ImportError:
+                session.pop("_canonical_active_backing_song_id", None)
         prime_active_song_bpm(st_like, sync_id=sync_id, active_song_bpm=bpm)
-        canonicalize_backing_defaults_for_song(
+        canon_result = canonicalize_backing_defaults_for_song(
             st_like,
             sync_id=sync_id,
             active_song_bpm=bpm,
             active_song_groove=groove,
             active_song_meter=meter,
+            force_reset=bool(force_bpm_reset or force_display_key),
         )
+        if isinstance(canon_result, dict) and canon_result.get("did_reset"):
+            bpm = int(canon_result.get("applied_bpm") or bpm)
     except ImportError:
         pass
     return bpm, groove, meter
@@ -653,6 +706,7 @@ def rebuild_catalog_backing_from_canonical_pick(
         original_key=original_key,
         concert_key=target_key,
         force_display_key=reset_to_original,
+        force_bpm_reset=reset_to_original,
     )
 
     set_backing_source_preference(session, BACKING_PREF_CATALOG)
