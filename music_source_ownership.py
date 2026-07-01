@@ -100,16 +100,76 @@ def backing_preference_owner(session: dict[str, Any]) -> PracticeOwner | None:
     return None
 
 
+def active_catalog_pick_key(session: dict[str, Any]) -> str:
+    """Authoritative catalog pick_key from session identity keys."""
+    try:
+        from songs.music_source import normalize_catalog_pick_key
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+    except ImportError:
+        return str(session.get("active_catalog_pick_key") or "").strip()
+    pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    sel = session.get(SELECTED_SONG_STATE_KEY)
+    if isinstance(sel, dict):
+        sel_pick = str(sel.get("pick_key") or "").strip()
+        if sel_pick and not pick:
+            pick = sel_pick
+    return normalize_catalog_pick_key(pick, session_state=session)
+
+
+def catalog_identity_aligns(session: dict[str, Any]) -> bool:
+    """True when catalog pick_key, title, and backing_context all describe one song."""
+    if intended_practice_owner(session) != "catalog":
+        return True
+    pick = active_catalog_pick_key(session)
+    if not pick or pick.startswith("custom::"):
+        return False
+    try:
+        from songs.music_source import _pick_keys_match
+        from songs.state import SELECTED_SONG_STATE_KEY
+    except ImportError:
+        return True
+    sel = session.get(SELECTED_SONG_STATE_KEY)
+    if isinstance(sel, dict):
+        sel_pick = str(sel.get("pick_key") or "").strip()
+        if sel_pick and not _pick_keys_match(sel_pick, pick, session_state=session):
+            return False
+        title_sel = str(sel.get("title") or "").strip()
+    else:
+        title_sel = ""
+    title_live = str(session.get("song") or session.get("active_song_title") or "").strip()
+    if title_sel and title_live and title_sel != title_live:
+        return False
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None and ctx.source == "regular_song":
+            bound = str(ctx.bound_pick_key or ctx.active_song_id or "").strip()
+            if bound and not _pick_keys_match(bound, pick, session_state=session):
+                return False
+            ctx_title = str(ctx.song_title or "").strip()
+            expected_title = title_sel or title_live
+            if ctx_title and expected_title and ctx_title != expected_title:
+                return False
+    except ImportError:
+        pass
+    return True
+
+
 def practice_backing_owners_align(session: dict[str, Any]) -> bool:
-    """True when live practice source, backing_context, and pref all agree."""
+    """True when practice source, backing owner, pref, and song identity all agree."""
     practice = intended_practice_owner(session)
     if practice is None:
         return True
     backing = current_backing_owner(session)
     pref = backing_preference_owner(session)
     if practice == "catalog":
-        return backing == "catalog" and pref == "catalog"
-    return backing == "custom" and pref == "custom"
+        if backing != "catalog" or pref != "catalog":
+            return False
+        return catalog_identity_aligns(session)
+    if backing != "custom" or pref != "custom":
+        return False
+    return True
 
 
 def _clear_cross_owner_transport(session: dict[str, Any]) -> None:
@@ -177,17 +237,6 @@ def reconcile_source_ownership(session: dict[str, Any], *, st_like: Any | None =
         return False
     if practice_backing_owners_align(session):
         return False
-    try:
-        from backing_context import ctx_is_stale_creative_for_practice, get_backing_context
-
-        ctx = get_backing_context(session)
-        if not ctx_is_stale_creative_for_practice(session, ctx):
-            backing = current_backing_owner(session)
-            pref = backing_preference_owner(session)
-            if backing == practice and pref == practice:
-                return False
-    except ImportError:
-        pass
     if practice == "catalog":
         activate_catalog_ownership(session, st_like=st_like)
         return True
@@ -203,7 +252,9 @@ __all__ = [
     "activate_entry_jam_ownership",
     "activate_mission_ownership",
     "activate_sbi_ownership",
+    "active_catalog_pick_key",
     "backing_preference_owner",
+    "catalog_identity_aligns",
     "current_backing_owner",
     "intended_practice_owner",
     "practice_backing_owners_align",

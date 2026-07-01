@@ -133,6 +133,100 @@ class TestMusicSourceOwnership(unittest.TestCase):
         self.assertEqual(ctx.source, "regular_song")
         self.assertTrue(practice_backing_owners_align(session))
 
+    def test_catalog_identity_false_when_pick_and_title_diverge(self) -> None:
+        from music_source_ownership import catalog_identity_aligns
+
+        session = {
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": "Rock::Day Tripper",
+            "selected_song": {
+                "title": "Trial Song",
+                "pick_key": "custom::trial",
+                "key": "D",
+            },
+            "song": "Trial Song",
+            "active_song_title": "Trial Song",
+        }
+        set_backing_source_preference(session, BACKING_PREF_CATALOG)
+        session[BACKING_CONTEXT_KEY] = _stale_entry_jam_ctx(
+            source="regular_song",
+            song_title="Trial Song",
+            active_song_id="Rock::Day Tripper",
+            bound_pick_key="Rock::Day Tripper",
+            bpm=100,
+            style="",
+            groove="Pop groove",
+        )
+        self.assertFalse(catalog_identity_aligns(session))
+        self.assertFalse(practice_backing_owners_align(session))
+
+    def test_resolve_catalog_song_rejects_stale_selected_for_new_pick(self) -> None:
+        from song_catalog.catalog import format_pick_key
+        from songs.music_source import resolve_catalog_song_for_pick
+
+        pick = format_pick_key("Rock", "Day Tripper")
+        catalog = {
+            "Rock": {
+                "Day Tripper": {
+                    "title": "Day Tripper",
+                    "artist": "The Beatles",
+                    "key": "E",
+                    "bpm": 138,
+                    "genre": "Rock",
+                }
+            }
+        }
+        session = {
+            "selected_song": {
+                "title": "Trial Song",
+                "pick_key": "custom::trial",
+                "key": "D",
+            },
+            "_reconcile_song_picker_catalog": catalog,
+        }
+        selected, original = resolve_catalog_song_for_pick(session, pick)
+        self.assertEqual(selected.get("title"), "Day Tripper")
+        self.assertEqual(original, "E")
+        self.assertEqual(selected.get("pick_key"), pick)
+
+    def test_activate_catalog_pick_promotes_day_tripper_over_trial_song(self) -> None:
+        from song_catalog.catalog import format_pick_key
+        from songs.music_source import activate_catalog_pick_for_backing
+
+        pick = format_pick_key("Rock", "Day Tripper")
+        catalog = {
+            "Rock": {
+                "Day Tripper": {
+                    "title": "Day Tripper",
+                    "artist": "The Beatles",
+                    "key": "E",
+                    "bpm": 138,
+                    "genre": "Rock",
+                }
+            }
+        }
+        session = {
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": pick,
+            "selected_song": {
+                "title": "Trial Song",
+                "pick_key": "custom::trial",
+                "key": "D",
+            },
+            "song": "Trial Song",
+            "active_song_title": "Trial Song",
+            "display_key": "D",
+            "concert_key": "D",
+            "_reconcile_song_picker_catalog": catalog,
+        }
+        activate_catalog_pick_for_backing(session, pick)
+        self.assertEqual(session.get("song"), "Day Tripper")
+        self.assertEqual(session.get("active_song_title"), "Day Tripper")
+        self.assertEqual(session["selected_song"]["title"], "Day Tripper")
+        self.assertTrue(practice_backing_owners_align(session))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -204,10 +204,32 @@ def _current_pick_key(session: dict[str, Any]) -> str:
 
 
 def _song_title_from_session(session: dict[str, Any]) -> str:
+    pick = _current_pick_key(session)
+    sel = session.get("selected_song")
+    if not isinstance(sel, dict):
+        try:
+            from songs.state import SELECTED_SONG_STATE_KEY
+
+            sel = session.get(SELECTED_SONG_STATE_KEY)
+        except ImportError:
+            sel = None
+    if isinstance(sel, dict) and pick:
+        try:
+            from songs.music_source import _pick_keys_match
+
+            if _pick_keys_match(str(sel.get("pick_key") or "").strip(), pick, session_state=session):
+                title = str(sel.get("title") or sel.get("name") or "").strip()
+                if title:
+                    return title
+        except ImportError:
+            spk = str(sel.get("pick_key") or "").strip()
+            if spk == pick:
+                title = str(sel.get("title") or sel.get("name") or "").strip()
+                if title:
+                    return title
     title = str(session.get("song") or session.get("active_song_title") or "").strip()
     if title:
         return title
-    sel = session.get("selected_song")
     if isinstance(sel, dict):
         return str(sel.get("title") or sel.get("name") or "").strip()
     return ""

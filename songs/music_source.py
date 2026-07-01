@@ -411,8 +411,9 @@ def commit_catalog_active_song(
     session = st.session_state
     session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
     set_catalog_source(session)
-    session[SELECTED_SONG_STATE_KEY] = dict(selected_song)
-    session[ACTIVE_CATALOG_PICK_KEY] = str(pick_key or "").strip()
+    pick_key = str(pick_key or "").strip()
+    selected_song = dict(selected_song)
+    _sync_catalog_session_surface_keys(session, pick_key=pick_key, selected_song=selected_song)
     original_key = str(original_key or selected_song.get("key") or "C").strip() or "C"
     display_key = str(display_key or original_key).strip() or original_key
     if reason == "catalog_source_switch":
@@ -1726,6 +1727,189 @@ def _pick_key_is_catalog(pick_key: str) -> bool:
     return bool(pk) and not pk.startswith("custom::")
 
 
+def _catalog_picker_from_session(session_state: dict[str, Any]) -> dict[str, dict[str, dict]] | None:
+    raw = session_state.get("_reconcile_song_picker_catalog")
+    return raw if isinstance(raw, dict) else None
+
+
+def normalize_catalog_pick_key(
+    pick_key: str,
+    *,
+    session_state: dict[str, Any] | None = None,
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+) -> str:
+    """Resolve legacy/plain pick keys to canonical catalog pick_key when possible."""
+    pk = str(pick_key or "").strip()
+    if not pk:
+        return ""
+    try:
+        from song_catalog.catalog import PICK_KEY_SEP, format_pick_key, resolve_pick_key
+    except ImportError:
+        return pk
+    if "::" in pk and PICK_KEY_SEP not in pk:
+        genre, _, label = pk.partition("::")
+        if genre.strip() and label.strip():
+            pk = format_pick_key(genre.strip(), label.strip())
+    catalog = song_picker_catalog
+    if catalog is None and session_state is not None:
+        catalog = _catalog_picker_from_session(session_state)
+    if isinstance(catalog, dict):
+        resolved = resolve_pick_key(pk, song_picker_catalog=catalog)
+        if resolved:
+            return resolved
+    return pk
+
+
+def _pick_keys_match(left: str, right: str, *, session_state: dict[str, Any] | None = None) -> bool:
+    a = normalize_catalog_pick_key(left, session_state=session_state)
+    b = normalize_catalog_pick_key(right, session_state=session_state)
+    return bool(a) and a == b
+
+
+def _catalog_row_for_pick(
+    pick_key: str,
+    song_picker_catalog: dict[str, dict[str, dict]],
+) -> dict[str, Any] | None:
+    try:
+        from song_catalog.catalog import parse_pick_key
+    except ImportError:
+        return None
+    genre, label = parse_pick_key(pick_key)
+    if not genre or not label:
+        return None
+    labels = song_picker_catalog.get(genre)
+    if not isinstance(labels, dict) or label not in labels:
+        return None
+    data = dict(labels[label])
+    data.setdefault("genre", genre)
+    data.setdefault("label", label)
+    data["pick_key"] = pick_key
+    return data
+
+
+def resolve_catalog_song_for_pick(
+    session_state: dict[str, Any],
+    pick_key: str,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+) -> tuple[dict[str, Any], str]:
+    """Return (selected_song, original_key) for a catalog pick — never a mismatched stale blob."""
+    from songs.state import SELECTED_SONG_STATE_KEY
+
+    pick_key = normalize_catalog_pick_key(
+        pick_key,
+        session_state=session_state,
+        song_picker_catalog=song_picker_catalog,
+    )
+    if not _pick_key_is_catalog(pick_key):
+        return {}, "C"
+
+    catalog = song_picker_catalog or _catalog_picker_from_session(session_state)
+
+    for snap_key in (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY):
+        raw = session_state.get(snap_key)
+        if not isinstance(raw, dict):
+            continue
+        snap_pick = normalize_catalog_pick_key(
+            str(raw.get("pick_key") or "").strip(),
+            session_state=session_state,
+            song_picker_catalog=catalog,
+        )
+        if snap_pick != pick_key:
+            continue
+        raw_sel = raw.get("selected_song")
+        if isinstance(raw_sel, dict) and raw_sel:
+            selected = dict(raw_sel)
+            selected["pick_key"] = pick_key
+            original = str(
+                raw.get("original_key") or selected.get("key") or "C"
+            ).strip() or "C"
+            return selected, original
+
+    sel = session_state.get(SELECTED_SONG_STATE_KEY)
+    if isinstance(sel, dict) and _pick_keys_match(
+        str(sel.get("pick_key") or "").strip(), pick_key, session_state=session_state
+    ):
+        selected = dict(sel)
+        selected["pick_key"] = pick_key
+        original = str(selected.get("key") or "C").strip() or "C"
+        return selected, original
+
+    meta = session_state.get("active_song_state")
+    if isinstance(meta, dict) and _pick_keys_match(
+        str(meta.get("pick_key") or "").strip(), pick_key, session_state=session_state
+    ):
+        raw_sel = meta.get("selected_song")
+        if isinstance(raw_sel, dict) and raw_sel:
+            selected = dict(raw_sel)
+            selected["pick_key"] = pick_key
+            original = str(
+                meta.get("original_key") or selected.get("key") or "C"
+            ).strip() or "C"
+            return selected, original
+
+    if isinstance(catalog, dict):
+        row = _catalog_row_for_pick(pick_key, catalog)
+        if row:
+            try:
+                from song_catalog.catalog import parse_pick_key
+            except ImportError:
+                parse_pick_key = lambda _k: ("", "")  # type: ignore[assignment,misc]
+            genre, label = parse_pick_key(pick_key)
+            selected = {
+                "pick_key": pick_key,
+                "title": str(row.get("title") or label or "").strip(),
+                "artist": str(row.get("artist") or "").strip(),
+                "genre": genre or str(row.get("genre") or "").strip(),
+                "label": label or str(row.get("label") or "").strip(),
+                "key": str(row.get("key") or "C").strip() or "C",
+            }
+            for field in ("bpm", "genre"):
+                if row.get(field) is not None:
+                    selected[field] = row[field]
+            return selected, selected["key"]
+
+    try:
+        from song_catalog.catalog import parse_pick_key
+    except ImportError:
+        parse_pick_key = lambda _k: ("", "")  # type: ignore[assignment,misc]
+    genre, label = parse_pick_key(pick_key)
+    title = str(label or pick_key).strip() or pick_key
+    return {
+        "pick_key": pick_key,
+        "title": title,
+        "artist": "",
+        "genre": genre,
+        "label": label or title,
+        "key": "C",
+    }, "C"
+
+
+def _sync_catalog_session_surface_keys(
+    session: dict[str, Any],
+    *,
+    pick_key: str,
+    selected_song: dict[str, Any],
+) -> None:
+    """Mirror promoted catalog song into live session title keys."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+    pick_key = str(pick_key or "").strip()
+    selected = dict(selected_song)
+    if pick_key:
+        selected["pick_key"] = pick_key
+    session[SELECTED_SONG_STATE_KEY] = selected
+    if pick_key:
+        session[ACTIVE_CATALOG_PICK_KEY] = pick_key
+    title = str(selected.get("title") or "").strip()
+    if title:
+        session["song"] = title
+        session["active_song_title"] = title
+    genre = str(selected.get("genre") or "").strip()
+    if genre:
+        session["active_genre"] = genre
+
+
 def resolve_last_catalog_pick_key(session_state: dict[str, Any]) -> str:
     """Last catalog song pick for Use Catalog Song Backing — never custom."""
     try:
@@ -1774,33 +1958,12 @@ def activate_catalog_pick_for_backing(
     invalidate_backing=None,
 ) -> str:
     """Promote a catalog pick into session for catalog backing — returns original key."""
-    from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
-
     pick_key = str(pick_key or "").strip()
     if not _pick_key_is_catalog(pick_key):
         pick_key = resolve_last_catalog_pick_key(session_state)
-    snap: dict[str, Any] | None = None
-    for key in (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY):
-        raw = session_state.get(key)
-        if isinstance(raw, dict) and str(raw.get("pick_key") or "").strip() == pick_key:
-            snap = raw
-            break
-    selected: dict[str, Any] = {}
-    original_key = "C"
-    if snap:
-        raw_sel = snap.get("selected_song")
-        if isinstance(raw_sel, dict):
-            selected = dict(raw_sel)
-        original_key = str(
-            snap.get("original_key") or selected.get("key") or "C"
-        ).strip() or "C"
-    elif isinstance(session_state.get(SELECTED_SONG_STATE_KEY), dict):
-        selected = dict(session_state[SELECTED_SONG_STATE_KEY])
-        original_key = str(
-            selected.get("key") or session_state.get("original_key") or "C"
-        ).strip() or "C"
-    if pick_key:
-        selected.setdefault("pick_key", pick_key)
+    selected, original_key = resolve_catalog_song_for_pick(session_state, pick_key)
+    if not selected:
+        selected = {"pick_key": pick_key, "key": original_key}
     if invalidate_backing is None:
         invalidate_backing = lambda _st: None
     if st_like is None:
@@ -1810,7 +1973,7 @@ def activate_catalog_pick_for_backing(
     commit_catalog_active_song(
         st_like,
         pick_key=pick_key,
-        selected_song=selected or {"pick_key": pick_key, "key": original_key},
+        selected_song=selected,
         original_key=original_key,
         display_key=original_key,
         invalidate_backing=invalidate_backing,

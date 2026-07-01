@@ -490,8 +490,12 @@ def _render_source_ownership_dev_table_body(st: Any, session: dict[str, Any]) ->
     owners_aligned = "n/a"
     intended_owner = "n/a"
     backing_owner = "n/a"
+    identity_aligned = "n/a"
+    canonical_pick = "n/a"
     try:
         from music_source_ownership import (
+            active_catalog_pick_key,
+            catalog_identity_aligns,
             current_backing_owner,
             intended_practice_owner,
             practice_backing_owners_align,
@@ -500,6 +504,8 @@ def _render_source_ownership_dev_table_body(st: Any, session: dict[str, Any]) ->
         intended_owner = _diag_value(intended_practice_owner(session), default="none")
         backing_owner = _diag_value(current_backing_owner(session), default="none")
         owners_aligned = str(practice_backing_owners_align(session))
+        identity_aligned = str(catalog_identity_aligns(session))
+        canonical_pick = _diag_value(active_catalog_pick_key(session))
     except Exception:
         pass
 
@@ -508,6 +514,8 @@ def _render_source_ownership_dev_table_body(st: Any, session: dict[str, Any]) ->
         "active_music_source": _diag_value(source_type),
         "intended_practice_owner": intended_owner,
         "current_backing_owner": backing_owner,
+        "canonical_active_pick_key": canonical_pick,
+        "catalog_identity_aligned": identity_aligned,
         "practice_backing_aligned": owners_aligned,
         "active_song_title": _diag_value(
             session.get("song") or session.get("active_song_title")
