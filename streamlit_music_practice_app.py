@@ -12925,9 +12925,6 @@ elif _studio_page == "creative":
             render_creative_session_diagnostic(st, st.session_state)
         except ImportError:
             pass
-        render_creative_session_diagnostic(st, st.session_state)
-    except Exception:
-        pass
     else:
         with st.expander(lab_mode, expanded=pp.feature_expander_default(st, default=True)):
             if lab_mode == "Deep Harmonic Analyzer":
