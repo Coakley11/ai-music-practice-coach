@@ -150,6 +150,8 @@ def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
     (Entry Jam / SBI / Mission opened from Creative) so practice catalog pick
     does not clobber active creative backing.
     """
+    if intentional_creative_backing_active(session):
+        return None
     try:
         from songs.music_source import (
             SOURCE_CATALOG,
@@ -165,8 +167,6 @@ def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
             or custom_progression_is_active(session)
         ):
             return "custom"
-        if intentional_creative_backing_active(session):
-            return None
         if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
             return "catalog"
         if str(session.get("active_music_source") or "").strip() == SOURCE_CATALOG:

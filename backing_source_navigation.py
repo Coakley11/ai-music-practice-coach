@@ -234,6 +234,38 @@ def _open_live_practice_backing(session: dict[str, Any], *, st_like: Any | None 
         open_backing_for_practice_source(session, st_like=st_like)
 
 
+def _creative_handoff_entry_mode(session: dict[str, Any]) -> str:
+    """Authoritative Creative entry mode for Open Backing / return handoff."""
+    try:
+        from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
+        from studio_page_state import IMPROV_ENTRY_MODES
+
+        pending = str(session.get(PENDING_IMPROV_ENTRY_MODE_KEY) or "").strip()
+        if pending in IMPROV_ENTRY_MODES:
+            return pending
+    except ImportError:
+        IMPROV_ENTRY_MODES = ("Song-Based Improvisation", "Style Jam Mode", "Jam Session Generator")  # type: ignore[misc,assignment]
+    try:
+        from creative_session_state import get_creative_session
+
+        sess = get_creative_session(session)
+        if sess is not None:
+            if sess.tool_type == "jam_session_generator":
+                return "Jam Session Generator"
+            if sess.tool_type == "entry_style_jam":
+                return "Style Jam Mode"
+            if sess.tool_type == "song_based_improvisation":
+                return "Song-Based Improvisation"
+            if sess.tool_type == "mission":
+                return "Song-Based Improvisation"
+            entry = str(sess.entry_mode or "").strip()
+            if entry in IMPROV_ENTRY_MODES:
+                return entry
+    except ImportError:
+        pass
+    return str(session.get("improv_entry_mode") or "").strip()
+
+
 def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext | None:
     """Re-apply Creative backing when explicitly opening Backing Studio from Creative Lab."""
     try:
@@ -244,9 +276,9 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
             activate_sbi_ownership,
         )
 
-        entry = str(session.get("improv_entry_mode") or "").strip()
         if str(session.get("improv_intelligence_tab") or "") == "Missions":
             return activate_mission_ownership(session, st_like=st_like)
+        entry = _creative_handoff_entry_mode(session)
         if entry == "Song-Based Improvisation":
             try:
                 from studio_page_state import resolve_improv_song_source
@@ -284,6 +316,25 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         open_backing_for_practice_source(session, st_like=st_like)
         return
     try:
+        from music_source_ownership import intentional_creative_backing_active
+
+        if intentional_creative_backing_active(session):
+            ctx = get_backing_context(session)
+            if ctx is not None and str(getattr(ctx, "source", "") or "") in {
+                "entry_jam",
+                "song_improv",
+                "mission",
+            }:
+                try:
+                    from backing_context import sync_live_keys_from_backing_context
+
+                    sync_live_keys_from_backing_context(session, st_like=st_like)
+                except ImportError:
+                    pass
+                return
+    except ImportError:
+        pass
+    try:
         from music_source_ownership import intentional_creative_backing_active, reconcile_source_ownership
 
         if not intentional_creative_backing_active(session):
@@ -302,6 +353,19 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             or is_custom_progression(session)
             or custom_progression_is_active(session)
         ):
+            try:
+                from music_source_ownership import intentional_creative_backing_active
+
+                if intentional_creative_backing_active(session):
+                    ctx = get_backing_context(session)
+                    if ctx is not None and str(getattr(ctx, "source", "") or "") in {
+                        "entry_jam",
+                        "song_improv",
+                        "mission",
+                    }:
+                        return
+            except ImportError:
+                pass
             ctx = get_backing_context(session)
             if ctx is None or str(getattr(ctx, "source", "") or "") in {
                 "entry_jam",

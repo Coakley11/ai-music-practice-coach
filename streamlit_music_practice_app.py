@@ -12969,17 +12969,23 @@ elif _studio_page == "creative":
 
         sync_creative_style_jam_meta(st.session_state)
         sync_creative_session_from_session(st.session_state)
-        source = resolve_improv_song_source(st.session_state)
-        sync_improv_song_source_for_handoff(
-            st.session_state,
-            source,
-            set_catalog_source=set_catalog_source,
-            set_custom_source=set_custom_source,
-        )
         entry = str(st.session_state.get("improv_entry_mode") or "").strip()
+        try:
+            from backing_source_navigation import _creative_handoff_entry_mode
+
+            entry = _creative_handoff_entry_mode(st.session_state)
+        except ImportError:
+            pass
         if str(st.session_state.get("improv_intelligence_tab") or "") == "Missions":
             creative_source = "mission"
         elif entry == "Song-Based Improvisation":
+            source = resolve_improv_song_source(st.session_state)
+            sync_improv_song_source_for_handoff(
+                st.session_state,
+                source,
+                set_catalog_source=set_catalog_source,
+                set_custom_source=set_custom_source,
+            )
             if source == "Custom progression":
                 creative_source = "custom_progression"
             else:

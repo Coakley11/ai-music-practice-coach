@@ -838,6 +838,69 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(session.get("improv_ensemble"), "Latin quartet")
         self.assertEqual(int(session.get("improv_jam_bpm") or 0), 120)
 
+    def test_jam_session_open_backing_survives_custom_practice_and_double_hydrate(self) -> None:
+        from backing_context import BACKING_PREF_CREATIVE, get_backing_context, get_backing_source_preference, open_backing_from_creative
+        from creative_session_state import CREATIVE_SESSION_KEY
+        from improvisation_intelligence import generate_jam_session
+        from music_source_ownership import current_backing_owner, intended_practice_owner
+        from songs.music_source import SOURCE_CUSTOM
+
+        jam = generate_jam_session(style="Blues", key_center="F", tempo=90, mood="Mellow")
+        session = {
+            "active_music_source": SOURCE_CUSTOM,
+            "cpl_active_progression": {
+                "id": "custom-rev-trial",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "original_sections": {
+                    "Verse": [{"chord": "D", "bars": 1}],
+                    "Chorus": [],
+                    "Bridge": [],
+                    "Intro": [],
+                    "Outro": [],
+                },
+                "bpm": 90,
+            },
+            "improv_entry_mode": "Jam Session Generator",
+            "improv_jam_style": "Blues",
+            "improv_jam_key": "F",
+            "improv_jam_bpm": 90,
+            "improv_jam_mood": "Mellow",
+            "improv_jam_session": jam,
+            CREATIVE_SESSION_KEY: {
+                "tool_type": "jam_session_generator",
+                "entry_mode": "Jam Session Generator",
+                "concert_key": "F",
+                "display_key": "F",
+                "style": "Blues",
+                "mood": "Mellow",
+                "bpm": 90,
+                "sections": dict(jam.get("sections") or {}),
+            },
+            "display_key": "F",
+            "concert_key": "F",
+            "instrument": "Piano",
+            "studio_page": "backing",
+        }
+        st_like = SimpleNamespace(session_state=session)
+        open_backing_from_creative(session, source="entry_jam", st_like=st_like)
+        set_backing_open_intent(session, BACKING_INTENT_FROM_CREATIVE)
+        hydrate_backing_source_for_page(session, st_like=st_like)
+        self.assertEqual(get_backing_source_preference(session), BACKING_PREF_CREATIVE)
+        self.assertEqual(current_backing_owner(session), "entry_jam")
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(ctx.source, "entry_jam")
+        self.assertEqual(ctx.style, "Blues")
+        self.assertIsNone(intended_practice_owner(session))
+        hydrate_backing_source_for_page(session, st_like=st_like)
+        ctx2 = get_backing_context(session)
+        self.assertIsNotNone(ctx2)
+        assert ctx2 is not None
+        self.assertEqual(ctx2.source, "entry_jam")
+        self.assertEqual(current_backing_owner(session), "entry_jam")
+
     def test_ensure_entry_mode_preserves_jam_after_stale_style_blob(self) -> None:
         from studio_page_state import ensure_improv_entry_mode_restored
 
