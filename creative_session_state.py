@@ -282,7 +282,7 @@ def capture_jam_session_generator_state(
     try:
         from songs.music_source import snapshot_catalog_before_creative
 
-        snapshot_catalog_before_creative(session)
+        snapshot_catalog_before_creative(session, refresh_if_pick_changed=True)
     except ImportError:
         pass
     k = str(concert_key or "C").strip() or "C"

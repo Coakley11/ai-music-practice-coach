@@ -785,6 +785,8 @@ def _render_source_ownership_dev_table_body(st: Any, session: dict[str, Any]) ->
         "catalog_snapshot_before_creative",
         "catalog_snapshot_after_creative",
         "last_catalog_song_writer",
+        "catalog_restore_pin_pick",
+        "catalog_restore_pin_writer",
     ):
         val = restore_diag.get(key)
         if val in (None, "") and key in guard_diag:

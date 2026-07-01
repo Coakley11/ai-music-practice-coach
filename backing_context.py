@@ -1611,7 +1611,7 @@ def open_backing_from_creative(
     try:
         from songs.music_source import snapshot_catalog_before_creative
 
-        snapshot_catalog_before_creative(session)
+        snapshot_catalog_before_creative(session, refresh_if_pick_changed=True)
     except ImportError:
         pass
     sync_creative_handoff_keys(session, st_like=st_like)

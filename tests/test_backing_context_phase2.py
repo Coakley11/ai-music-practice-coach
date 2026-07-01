@@ -618,6 +618,56 @@ class TestCustomProgressionConcertKey(unittest.TestCase):
         self.assertEqual(original, "D")
         self.assertEqual(practice, "D")
 
+    def test_catalog_restore_survives_stale_dropdown_reconcile(self) -> None:
+        from active_song_state import mark_active_song_local_edit, prepare_active_song_context
+        from backing_context import BACKING_CONTEXT_KEY, build_custom_progression_context, restore_regular_song_backing
+        from song_catalog.catalog import format_pick_key
+        from songs.music_source import CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        shape_pick = format_pick_key("Pop", "Shape of You — Ed Sheeran")
+        say_pick = format_pick_key("Pop", "Say — John Mayer")
+        catalog = {
+            "Pop": {
+                "Shape of You — Ed Sheeran": {"title": "Shape of You", "artist": "Ed Sheeran", "key": "Bm", "bpm": 96},
+                "Say — John Mayer": {"title": "Say", "artist": "John Mayer", "key": "G", "bpm": 82},
+            },
+        }
+        session = self._trial_session(display_key="D")
+        session.update(
+            {
+                "active_catalog_pick_key": "custom::trial-1",
+                "active_music_source": "custom_progression",
+                "user_catalog_source_choice": True,
+                "matching_song_dropdown": say_pick,
+                CATALOG_BEFORE_CUSTOM_KEY: {
+                    "pick_key": shape_pick,
+                    "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": shape_pick, "bpm": 96},
+                },
+                LAST_CATALOG_STATE_KEY: {
+                    "pick_key": say_pick,
+                    "selected_song": {"title": "Say", "key": "G", "pick_key": say_pick, "bpm": 82},
+                },
+                "_reconcile_song_picker_catalog": catalog,
+            }
+        )
+        ctx = build_custom_progression_context(session)
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
+        mark_active_song_local_edit(session)
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            restored = restore_regular_song_backing(session, st_like=st_like)
+        self.assertEqual(restored.song_title, "Shape of You")
+        self.assertEqual(session.get(ACTIVE_CATALOG_PICK_KEY), shape_pick)
+        prepare_active_song_context(session)
+        self.assertEqual(session.get(ACTIVE_CATALOG_PICK_KEY), shape_pick)
+        self.assertEqual(session.get("song"), "Shape of You")
+        refreshed = get_backing_context(session)
+        self.assertIsNotNone(refreshed)
+        assert refreshed is not None
+        self.assertEqual(refreshed.song_title, "Shape of You")
+        self.assertEqual(str(refreshed.bound_pick_key or ""), shape_pick)
+
 
 class TestResetBackingOnSongChange(unittest.TestCase):
     def test_catalog_pick_wins_over_custom_session_flags(self) -> None:

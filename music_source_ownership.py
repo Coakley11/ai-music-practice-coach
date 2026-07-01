@@ -822,6 +822,25 @@ def reconcile_source_ownership(
     """Transition backing to match practice owner when practice owns and backing is stale."""
     if reason:
         _write_catalog_rebuild_trace(session, reason=reason)
+    try:
+        from songs.music_source import peek_catalog_restore_pin
+
+        restore_pin = peek_catalog_restore_pin(session)
+        if restore_pin:
+            try:
+                from backing_context import get_backing_context
+                from songs.music_source import _pick_keys_match
+
+                ctx = get_backing_context(session)
+                if ctx is not None and ctx.source == "regular_song":
+                    bound = str(ctx.bound_pick_key or ctx.active_song_id or "").strip()
+                    if bound and _pick_keys_match(bound, restore_pin, session_state=session):
+                        _write_catalog_rebuild_trace(session, ran=False, reason="catalog_restore_pin")
+                        return False
+            except ImportError:
+                pass
+    except ImportError:
+        pass
     practice = intended_practice_owner(session)
     identity_stale = practice == "catalog" and not catalog_identity_aligns(session)
     _write_catalog_rebuild_trace(session, needed=identity_stale)

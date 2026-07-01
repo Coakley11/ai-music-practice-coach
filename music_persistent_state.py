@@ -2459,6 +2459,12 @@ def prepare_canonical_music_page_state(
                     st_like=_ReconcileProxy(),
                     reason="prepare_canonical",
                 )
+            try:
+                from songs.music_source import CATALOG_RESTORE_PIN_KEY
+
+                session.pop(CATALOG_RESTORE_PIN_KEY, None)
+            except ImportError:
+                session.pop("_catalog_restore_pin_pick", None)
         except ImportError:
             pass
         session.pop("_reconcile_song_picker_catalog", None)

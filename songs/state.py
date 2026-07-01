@@ -109,6 +109,20 @@ def reconcile_active_song_identity(
     dropdown = str(session.get("matching_song_dropdown") or "").strip()
     pending = str(session.get(PENDING_CATALOG_PICK_KEY) or "").strip()
 
+    try:
+        from songs.music_source import peek_catalog_restore_pin
+
+        restore_pin = peek_catalog_restore_pin(session)
+        if restore_pin and resolve_pick_key(restore_pin, song_picker_catalog=song_picker_catalog):
+            if restore_pin != active or restore_pin != sel_pk:
+                sync_catalog_pick_identity(session, restore_pin, song_picker_catalog)
+            elif dropdown and dropdown != restore_pin:
+                session[PENDING_MATCHING_SONG_DROPDOWN] = restore_pin
+                session["matching_song_dropdown"] = restore_pin
+            return restore_pin
+    except ImportError:
+        pass
+
     if is_creative_catalog_pick_frozen(session):
         master = active or sel_pk
         if master and resolve_pick_key(master, song_picker_catalog=song_picker_catalog):

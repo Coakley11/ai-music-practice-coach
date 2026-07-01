@@ -18,6 +18,7 @@ PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY = "_pending_song_picker_active_source"
 LAST_CATALOG_STATE_KEY = "_last_catalog_song_state"
 CATALOG_BEFORE_CUSTOM_KEY = "_catalog_before_custom_state"
 CATALOG_BEFORE_CREATIVE_KEY = "_catalog_before_creative_state"
+CATALOG_RESTORE_PIN_KEY = "_catalog_restore_pin_pick"
 PENDING_PREVIOUS_CATALOG_RESTORE_KEY = "_pending_previous_catalog_restore"
 USER_CATALOG_SOURCE_CHOICE_KEY = "_user_chose_catalog_music_source"
 CATALOG_RECENT_PICK_KEYS = "catalog_recent_pick_keys"
@@ -182,21 +183,91 @@ def snapshot_catalog_before_custom(session_state: dict[str, Any]) -> None:
         session_state[CATALOG_BEFORE_CUSTOM_KEY] = snap
 
 
-def snapshot_catalog_before_creative(session_state: dict[str, Any]) -> None:
+def snapshot_catalog_before_creative(
+    session_state: dict[str, Any],
+    *,
+    refresh_if_pick_changed: bool = False,
+) -> None:
     """Remember the active catalog song before entering Creative/Jam backing."""
     if is_custom_progression(session_state):
         return
+    snap = _catalog_snapshot_from_session(session_state)
+    if not snap:
+        return
     existing = session_state.get(CATALOG_BEFORE_CREATIVE_KEY)
     if isinstance(existing, dict) and str(existing.get("pick_key") or "").strip():
+        if not refresh_if_pick_changed:
+            return
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        live_pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        existing_pick = str(existing.get("pick_key") or "").strip()
+        if live_pick and existing_pick and _pick_keys_match(
+            existing_pick, live_pick, session_state=session_state
+        ):
+            return
+    session_state[CATALOG_BEFORE_CREATIVE_KEY] = snap
+    write_creative_catalog_guard_diag(
+        session_state,
+        catalog_snapshot_before_creative=str(snap.get("pick_key") or "").strip(),
+        last_catalog_song_writer="snapshot_catalog_before_creative",
+    )
+
+
+def peek_catalog_restore_pin(session_state: dict[str, Any]) -> str:
+    """Pinned catalog pick from a recent Use Catalog Song Backing restore."""
+    return str(session_state.get(CATALOG_RESTORE_PIN_KEY) or "").strip()
+
+
+def pin_catalog_restore_identity(
+    session_state: dict[str, Any],
+    pick_key: str,
+    selected_song: dict[str, Any] | None = None,
+    *,
+    writer: str = "catalog_restore",
+) -> None:
+    """Atomically pin restored catalog identity so reconcile cannot fall back to stale picks."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+    pick_key = str(pick_key or "").strip()
+    if not pick_key or pick_key.startswith("custom::"):
         return
+    session_state[CATALOG_RESTORE_PIN_KEY] = pick_key
+    session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
+    if isinstance(selected_song, dict) and selected_song:
+        session_state[SELECTED_SONG_STATE_KEY] = dict(selected_song)
+        title = str(selected_song.get("title") or "").strip()
+        if title:
+            session_state["song"] = title
+            session_state["active_song_title"] = title
+    pin_catalog_pick_aliases(session_state)
+    catalog = session_state.get("_reconcile_song_picker_catalog")
+    if isinstance(catalog, dict):
+        try:
+            from songs.state import sync_catalog_pick_identity
+
+            sync_catalog_pick_identity(session_state, pick_key, catalog)
+        except Exception:
+            pass
+    try:
+        from active_song_state import clear_active_song_local_edit
+
+        clear_active_song_local_edit(session_state)
+    except ImportError:
+        session_state.pop("_active_song_locally_dirty", None)
     snap = _catalog_snapshot_from_session(session_state)
     if snap:
-        session_state[CATALOG_BEFORE_CREATIVE_KEY] = snap
-        write_creative_catalog_guard_diag(
+        session_state[LAST_CATALOG_STATE_KEY] = snap
+    try:
+        from music_source_ownership import write_catalog_restore_diag
+
+        write_catalog_restore_diag(
             session_state,
-            catalog_snapshot_before_creative=str(snap.get("pick_key") or "").strip(),
-            last_catalog_song_writer="snapshot_catalog_before_creative",
+            catalog_restore_pin_pick=pick_key,
+            catalog_restore_pin_writer=writer,
         )
+    except ImportError:
+        pass
 
 
 def write_creative_catalog_guard_diag(session_state: dict[str, Any], **fields: Any) -> None:
@@ -265,7 +336,19 @@ def restore_frozen_catalog_pick_if_mutated(
                 session_state["active_song_title"] = title
         pin_catalog_pick_aliases(session_state)
     else:
+        from songs.state import SELECTED_SONG_STATE_KEY
+
         session_state["active_catalog_pick_key"] = target_pick
+        sel = session_state.get(SELECTED_SONG_STATE_KEY)
+        if isinstance(sel, dict) and _pick_keys_match(
+            str(sel.get("pick_key") or "").strip(),
+            target_pick,
+            session_state=session_state,
+        ):
+            title = str(sel.get("title") or "").strip()
+            if title:
+                session_state["song"] = title
+                session_state["active_song_title"] = title
         pin_catalog_pick_aliases(session_state)
     write_creative_catalog_guard_diag(
         session_state,
@@ -588,6 +671,12 @@ def commit_catalog_active_song(
     except ImportError:
         pass
     push_catalog_recent_pick_key(session, pick_key)
+    pin_catalog_restore_identity(
+        session,
+        pick_key,
+        selected_song,
+        writer=reason,
+    )
 
 
 def switch_to_catalog_from_custom(
@@ -2365,6 +2454,7 @@ def activate_catalog_song_for_backing(
         backing_source=str(getattr(ctx, "source", "") or "") if ctx else "",
         backing_title=str(getattr(ctx, "song_title", "") or "") if ctx else "",
         bound_pick=str(getattr(ctx, "bound_pick_key", "") or "") if ctx else "",
+        catalog_restore_pin_pick=str(session.get(CATALOG_RESTORE_PIN_KEY) or pick_key).strip(),
     )
     return ctx
 

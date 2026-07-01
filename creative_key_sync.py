@@ -84,13 +84,8 @@ def guard_creative_catalog_pick_before_edit(session: dict[str, Any], *, writer: 
     """Record active catalog pick before a Creative widget edit; pin dropdown aliases."""
     pick = ""
     try:
-        from songs.music_source import (
-            pin_catalog_pick_aliases,
-            snapshot_catalog_before_creative,
-            write_creative_catalog_guard_diag,
-        )
+        from songs.music_source import pin_catalog_pick_aliases, write_creative_catalog_guard_diag
 
-        snapshot_catalog_before_creative(session)
         pick = pin_catalog_pick_aliases(session)
         before = str(session.get("song") or session.get("active_song_title") or pick or "").strip()
         snap = session.get("_catalog_before_creative_state")
@@ -99,7 +94,6 @@ def guard_creative_catalog_pick_before_edit(session: dict[str, Any], *, writer: 
             session,
             catalog_song_before_jam_edit=before or pick,
             catalog_snapshot_before_creative=snap_pick or pick,
-            last_catalog_song_writer=writer,
         )
     except ImportError:
         pick = str(session.get("active_catalog_pick_key") or "").strip()
@@ -127,7 +121,6 @@ def verify_creative_catalog_pick_after_edit(
             session,
             catalog_song_after_jam_edit=after or str(session.get("active_catalog_pick_key") or "").strip(),
             catalog_snapshot_after_creative=snap_pick,
-            last_catalog_song_writer=str(session.get("last_catalog_song_writer") or writer),
         )
     except ImportError:
         pass

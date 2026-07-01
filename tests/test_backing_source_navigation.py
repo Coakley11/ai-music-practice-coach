@@ -612,6 +612,92 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         prepare_active_song_context(session)
         self.assertEqual(session.get(ACTIVE_CATALOG_PICK_KEY), in_my_life_pick)
 
+    def test_jam_setting_change_does_not_write_catalog_snapshot(self) -> None:
+        from creative_key_sync import guard_creative_catalog_pick_before_edit
+        from song_catalog.catalog import format_pick_key
+        from songs.music_source import CATALOG_BEFORE_CREATIVE_KEY
+
+        in_my_life_pick = format_pick_key("Pop", "In My Life — The Beatles")
+        say_pick = format_pick_key("Pop", "Stay — The Kid LAROI & Justin Bieber")
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Jam Session Generator",
+            "active_catalog_pick_key": in_my_life_pick,
+            "selected_song": {"title": "In My Life", "key": "A", "pick_key": in_my_life_pick},
+            "song": "In My Life",
+            "user_catalog_source_choice": True,
+            CATALOG_BEFORE_CREATIVE_KEY: {
+                "pick_key": say_pick,
+                "selected_song": {"title": "Say", "key": "G", "pick_key": say_pick},
+                "original_key": "G",
+                "display_key": "G",
+            },
+            "last_catalog_song_writer": "snapshot_catalog_before_creative",
+        }
+        guard_creative_catalog_pick_before_edit(session, writer="on_improv_jam_setting_change")
+        snap = session.get(CATALOG_BEFORE_CREATIVE_KEY)
+        assert isinstance(snap, dict)
+        self.assertEqual(str(snap.get("pick_key") or ""), say_pick)
+        self.assertEqual(session.get("last_catalog_song_writer"), "snapshot_catalog_before_creative")
+
+    def test_snapshot_refreshes_when_catalog_pick_changes_before_creative(self) -> None:
+        from songs.music_source import CATALOG_BEFORE_CREATIVE_KEY, snapshot_catalog_before_creative
+
+        say_pick = "Pop::Say"
+        in_my_life_pick = "Pop::In My Life"
+        session = {
+            "active_catalog_pick_key": in_my_life_pick,
+            "selected_song": {"title": "In My Life", "key": "A", "pick_key": in_my_life_pick},
+            "song": "In My Life",
+            "display_key": "A",
+            "user_catalog_source_choice": True,
+            CATALOG_BEFORE_CREATIVE_KEY: {
+                "pick_key": say_pick,
+                "selected_song": {"title": "Say", "key": "G", "pick_key": say_pick},
+                "original_key": "G",
+                "display_key": "G",
+            },
+        }
+        snapshot_catalog_before_creative(session, refresh_if_pick_changed=True)
+        snap = session.get(CATALOG_BEFORE_CREATIVE_KEY)
+        assert isinstance(snap, dict)
+        self.assertEqual(str(snap.get("pick_key") or ""), in_my_life_pick)
+
+    def test_catalog_restore_pin_blocks_stale_dropdown_reconcile(self) -> None:
+        from active_song_state import mark_active_song_local_edit
+        from song_catalog.catalog import format_pick_key
+        from songs.music_source import CATALOG_RESTORE_PIN_KEY, pin_catalog_restore_identity
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY, reconcile_active_song_identity
+
+        shape_pick = format_pick_key("Pop", "Shape of You — Ed Sheeran")
+        say_pick = format_pick_key("Pop", "Say — John Mayer")
+        catalog = {
+            "Pop": {
+                "Shape of You — Ed Sheeran": {"title": "Shape of You", "artist": "Ed Sheeran", "key": "Bm", "bpm": 96},
+                "Say — John Mayer": {"title": "Say", "artist": "John Mayer", "key": "G", "bpm": 82},
+            },
+        }
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: shape_pick,
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": shape_pick,
+                "title": "Shape of You",
+                "artist": "Ed Sheeran",
+                "key": "Bm",
+                "bpm": 96,
+            },
+            "song": "Shape of You",
+            "matching_song_dropdown": say_pick,
+            "user_catalog_source_choice": True,
+        }
+        pin_catalog_restore_identity(session, shape_pick, session[SELECTED_SONG_STATE_KEY])
+        mark_active_song_local_edit(session)
+        session[CATALOG_RESTORE_PIN_KEY] = shape_pick
+        master = reconcile_active_song_identity(session, catalog)
+        self.assertEqual(master, shape_pick)
+        self.assertEqual(session.get(ACTIVE_CATALOG_PICK_KEY), shape_pick)
+        self.assertEqual(session.get("song"), "Shape of You")
+
     def test_return_to_creative_restores_entry_jam_tool_type(self) -> None:
         from backing_context import open_backing_from_creative
         from backing_source_navigation import prepare_return_to_backing_source
