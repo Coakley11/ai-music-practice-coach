@@ -501,6 +501,27 @@ class TestCplSetActiveSong(unittest.TestCase):
         }
         self.assertIsNone(previous_catalog_snapshot(session))
 
+    def test_previous_catalog_snapshot_falls_back_to_recent_list(self) -> None:
+        from song_catalog import format_pick_key
+        from songs.music_source import CATALOG_RECENT_PICK_KEYS, previous_catalog_snapshot
+
+        pk_prev = format_pick_key("Rock", "Day Tripper — The Beatles")
+        pk_current = format_pick_key("Pop", "Shallow — Lady Gaga")
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: pk_current,
+            CATALOG_RECENT_PICK_KEYS: [pk_current, pk_prev],
+            "selected_song": {
+                "pick_key": pk_current,
+                "title": "Shallow",
+                "artist": "Lady Gaga",
+                "key": "G",
+            },
+        }
+        snap = previous_catalog_snapshot(session)
+        self.assertIsNotNone(snap)
+        assert snap is not None
+        self.assertEqual(snap.get("pick_key"), pk_prev)
+
     def test_save_progression_assigns_id_without_activation(self) -> None:
         from custom_progression_lab import save_progression
 

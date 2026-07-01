@@ -242,25 +242,74 @@ def snapshot_current_catalog_state(session_state: dict[str, Any]) -> None:
         session_state[LAST_CATALOG_STATE_KEY] = snap
 
 
-def save_last_catalog_snapshot(session_state: dict[str, Any]) -> None:
-    """Backward-compatible alias for snapshot_current_catalog_state."""
-    snapshot_current_catalog_state(session_state)
+def push_catalog_recent_pick_key(session_state: dict[str, Any], pick_key: str) -> None:
+    """Track recent catalog picks for Load last song / quick switch."""
+    pk = str(pick_key or "").strip()
+    if not pk or pk.startswith("custom::"):
+        return
+    recent = [k for k in (session_state.get(CATALOG_RECENT_PICK_KEYS) or []) if str(k).strip() != pk]
+    recent.insert(0, pk)
+    session_state[CATALOG_RECENT_PICK_KEYS] = recent[:5]
+
+
+def _catalog_snapshot_for_pick_key(
+    session_state: dict[str, Any],
+    pick_key: str,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+) -> dict[str, Any] | None:
+    """Build a catalog snapshot for a pick key (for recent-list fallback)."""
+    pk = str(pick_key or "").strip()
+    if not pk or pk.startswith("custom::"):
+        return None
+    for snap_key in (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY):
+        raw = session_state.get(snap_key)
+        if not isinstance(raw, dict):
+            continue
+        if str(raw.get("pick_key") or "").strip() == pk:
+            return dict(raw)
+    try:
+        selected, original_key = resolve_catalog_song_for_pick(
+            session_state,
+            pk,
+            song_picker_catalog=song_picker_catalog,
+        )
+    except Exception:
+        return None
+    if not selected:
+        return None
+    display_key = str(session_state.get("display_key") or original_key).strip() or original_key
+    return {
+        "pick_key": pk,
+        "selected_song": dict(selected),
+        "original_key": original_key,
+        "display_key": display_key,
+    }
 
 
 def previous_catalog_snapshot(session_state: dict[str, Any]) -> dict[str, Any] | None:
     """Previous catalog song snapshot when it differs from the active catalog pick."""
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
-    snap = session_state.get(LAST_CATALOG_STATE_KEY)
-    if not isinstance(snap, dict):
-        return None
-    prev_pick = str(snap.get("pick_key") or "").strip()
-    if not prev_pick or prev_pick.startswith("custom::"):
-        return None
     current_pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-    if prev_pick == current_pick:
-        return None
-    return snap
+    snap = session_state.get(LAST_CATALOG_STATE_KEY)
+    if isinstance(snap, dict):
+        prev_pick = str(snap.get("pick_key") or "").strip()
+        if prev_pick and not prev_pick.startswith("custom::") and prev_pick != current_pick:
+            return snap
+    for pick_key in session_state.get(CATALOG_RECENT_PICK_KEYS) or []:
+        pk = str(pick_key or "").strip()
+        if not pk or pk.startswith("custom::") or pk == current_pick:
+            continue
+        built = _catalog_snapshot_for_pick_key(session_state, pk)
+        if built is not None:
+            return built
+    return None
+
+
+def save_last_catalog_snapshot(session_state: dict[str, Any]) -> None:
+    """Backward-compatible alias for snapshot_current_catalog_state."""
+    snapshot_current_catalog_state(session_state)
 
 
 def queue_previous_catalog_restore(st: Any) -> None:
@@ -468,6 +517,7 @@ def commit_catalog_active_song(
         persist_music_local_state(st)
     except ImportError:
         pass
+    push_catalog_recent_pick_key(session, pick_key)
 
 
 def switch_to_catalog_from_custom(

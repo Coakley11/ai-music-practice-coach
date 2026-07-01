@@ -448,12 +448,15 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "improv_jam_mood",
     "improv_song_concert_sections",
     "improv_song_chart_sections",
+    "_last_catalog_song_state",
+    "_catalog_before_custom_state",
 )
 
 _LIST_KEYS = (
     "backing_track_multi_sections",
     "karaoke_queue",
     "catalog_favorite_pick_keys",
+    "catalog_recent_pick_keys",
 )
 
 _INSIGHT_KEYS = (

@@ -7601,7 +7601,6 @@ def _render_custom_song_library_selector() -> None:
 
 
 def _render_last_catalog_song_shortcut(
-    active_pick_key: str,
     *,
     key_prefix: str = "catalog",
 ) -> None:
@@ -7621,15 +7620,16 @@ def _render_last_catalog_song_shortcut(
     artist = str(sel.get("artist") or "").strip()
     song_line = f"{title} \u2014 {artist}" if artist else title
     st.markdown(
-        f'<div class="ui-last-catalog-shortcut">'
-        f'<p class="ui-last-catalog-kicker">Recently Selected</p>'
-        f"</div>",
+        '<div class="ui-last-catalog-shortcut">'
+        '<p class="ui-last-catalog-kicker">Load last song</p>'
+        "</div>",
         unsafe_allow_html=True,
     )
     if st.button(
         song_line,
         key=f"{key_prefix}_restore_last_catalog",
         use_container_width=True,
+        help="Restore the previous catalog song you had selected.",
     ):
         from songs.key_state import invalidate_backing_cache
         from songs.music_source import restore_previous_catalog_song
@@ -7982,6 +7982,11 @@ def _render_catalog_active_song_hub(
             )
         else:
             st.info(empty_message)
+        _catalog_pick_keys = {
+            format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
+            for r in visible_song_records
+        }
+        st.markdown('<div class="ui-active-song-recent">', unsafe_allow_html=True)
         if active_rec:
             _render_active_song_card(active_rec)
             yt_title = str(active_rec.get("title", ""))
@@ -7996,21 +8001,13 @@ def _render_catalog_active_song_hub(
                     instrument=st.session_state.get("instrument", ""),
                     expanded=False,
                 )
-            _catalog_pick_keys = {
-                format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
-                for r in visible_song_records
-            }
-            st.markdown('<div class="ui-active-song-recent">', unsafe_allow_html=True)
             _render_active_song_favorites_switch(
                 visible_song_records,
                 _catalog_pick_keys,
                 active_pick_key,
             )
-            _render_last_catalog_song_shortcut(
-                active_pick_key,
-                key_prefix="catalog_hub",
-            )
-            st.markdown("</div>", unsafe_allow_html=True)
+        _render_last_catalog_song_shortcut(key_prefix="catalog_hub")
+        st.markdown("</div>", unsafe_allow_html=True)
         render_active_song_hub_close(st)
 
 
