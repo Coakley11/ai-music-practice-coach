@@ -10847,6 +10847,12 @@ elif _studio_page == "picker":
 
     ensure_page_initialized(st.session_state, "picker")
     note_page_visit(st.session_state, "picker")
+    try:
+        from backing_source_navigation import render_source_context_debug
+
+        render_source_context_debug(st, st.session_state)
+    except ImportError:
+        pass
     inject_song_picker_page_styles(st)
     try:
         from app_ui import inject_studio_page_marker_sync
@@ -12895,6 +12901,12 @@ elif _studio_page == "creative":
             from creative_session_state import render_creative_session_diagnostic
 
             render_creative_session_diagnostic(st, st.session_state)
+        except ImportError:
+            pass
+        try:
+            from backing_source_navigation import render_source_context_debug
+
+            render_source_context_debug(st, st.session_state)
         except ImportError:
             pass
     else:

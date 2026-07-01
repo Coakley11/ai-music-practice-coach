@@ -187,6 +187,13 @@ def init_analysis_page_state(session_state: dict) -> None:
 
 def resolve_improv_song_source(session_state: dict) -> str:
     """Read Creative song source without writing widget keys."""
+    try:
+        from songs.music_source import cpl_session_is_active
+
+        if cpl_session_is_active(session_state):
+            return "Custom progression"
+    except ImportError:
+        pass
     for key in (
         CREATIVE_BACKING_SONG_SOURCE_KEY,
         PENDING_IMPROV_SONG_SOURCE,

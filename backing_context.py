@@ -449,14 +449,17 @@ def _default_scope(session: dict[str, Any]) -> tuple[str, str | None, list[str]]
 
 def build_regular_song_context(session: dict[str, Any]) -> BackingContext:
     pick_key = _current_pick_key(session)
-    key, display_key, concert_key = _display_keys_from_session(session)
+    original_key = _original_key_for_active_song(session)
+    _, display_key, concert_key = _live_backing_concert_keys(session)
+    if not concert_key:
+        concert_key = display_key = original_key
     scope, section, sections = _default_scope(session)
     return BackingContext(
         source="regular_song",
         source_label=_SOURCE_LABELS["regular_song"],
         active_song_id=pick_key,
         song_title=_song_title_from_session(session),
-        key=key,
+        key=original_key,
         display_key=display_key,
         concert_key=concert_key,
         bpm=_default_bpm(session),
@@ -507,11 +510,16 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
             active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
             name = str(active.get("name") or "My Progression").strip()
             revision = str(active.get("id") or active.get("revision") or "").strip()
-            pick_key = revision or f"custom::{name.lower().replace(' ', '-')}"
+            try:
+                from songs.music_source import custom_pick_key_for
+
+                pick_key = custom_pick_key_for(active)
+            except ImportError:
+                pick_key = revision or f"custom::{name.lower().replace(' ', '-')}"
             home_key = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
-            key, display_key, concert_key = _live_backing_concert_keys(session)
-            if not concert_key or concert_key == str(session.get("original_key") or "").strip():
-                key = display_key = concert_key = home_key
+            _, display_key, concert_key = _live_backing_concert_keys(session)
+            if not concert_key:
+                concert_key = display_key = home_key
             sections_raw = active.get("original_sections") if isinstance(active.get("original_sections"), dict) else {}
             sections_dict = {
                 str(sec): [str(c) for c in chords if str(c).strip()]
@@ -528,7 +536,7 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
                 source_label=_SOURCE_LABELS["song_improv"],
                 active_song_id=pick_key,
                 song_title=name,
-                key=key,
+                key=home_key,
                 display_key=display_key,
                 concert_key=concert_key,
                 chart_display_key=_resolve_chart_display_key(session, concert_key),
@@ -634,8 +642,6 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
     mode_label = entry_mode.replace(" Mode", "").replace(" Generator", "")
 
     sections_dict = _entry_jam_sections_dict(session, entry_mode)
-    if not sections_dict and resolve_improv_song_source(session) == "Custom progression":
-        return build_custom_progression_context(session)
 
     progression: list[str] = []
     progression_label = ""
@@ -666,11 +672,14 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
             except ImportError:
                 progression = [c for chs in sections_dict.values() for c in chs]
 
+    jam_title = style or mode_label or "Style jam"
+    if not style and str(resolve_improv_song_source(session) or "").strip() == "Active song":
+        jam_title = _song_title_from_session(session) or jam_title
     return BackingContext(
         source="entry_jam",
         source_label=_SOURCE_LABELS["entry_jam"],
         active_song_id=pick_key,
-        song_title=style or _song_title_from_session(session) or mode_label or "Style jam",
+        song_title=jam_title,
         key=key,
         display_key=display_key,
         concert_key=concert_key,
@@ -752,15 +761,18 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
             ensure_original_structure,
             written_home_key,
         )
+        from songs.music_source import custom_pick_key_for
     except ImportError:
         return build_regular_song_context(session)
 
     active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
     name = str(active.get("name") or "Custom progression").strip()
     revision = str(active.get("id") or active.get("revision") or "").strip()
-    pick_key = revision or _current_pick_key(session)
+    pick_key = custom_pick_key_for(active)
     home_key = str(written_home_key(active) or active.get("original_key_center") or "C").strip()
-    display_key = str(session.get("display_key") or home_key).strip()
+    _, display_key, concert_key = _live_backing_concert_keys(session)
+    if not concert_key:
+        concert_key = display_key = home_key
     sections = active.get("original_sections") if isinstance(active.get("original_sections"), dict) else {}
     progression = all_chords_from_lab_sections(sections)
 
@@ -775,7 +787,7 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
         song_title=name,
         key=home_key,
         display_key=display_key,
-        concert_key=home_key,
+        concert_key=concert_key,
         bpm=int(active.get("bpm") or _default_bpm(session)),
         style=str(active.get("progression_style") or "").strip(),
         groove=str(active.get("groove_style") or _default_groove(session)).strip(),
@@ -785,7 +797,7 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
         progression_label=label,
         loop=True,
         custom_revision_id=revision or None,
-        bound_pick_key=_current_pick_key(session),
+        bound_pick_key=pick_key,
     )
 
 
@@ -794,6 +806,18 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
     if ctx is None:
         return False
     if ctx.source == "regular_song":
+        return True
+    if ctx.source == "custom_progression":
+        if ctx.custom_revision_id:
+            try:
+                from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+
+                active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+                revision = str(active.get("id") or active.get("revision") or "").strip()
+                if revision and revision != ctx.custom_revision_id:
+                    return False
+            except ImportError:
+                pass
         return True
     if ctx.source in {"entry_jam", "mission", "song_improv"}:
         if ctx.source == "mission":
@@ -804,24 +828,7 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
         if ctx.bound_pick_key and current_pick and ctx.bound_pick_key != current_pick:
             return False
         return True
-    current_pick = _current_pick_key(session)
-    if ctx.bound_pick_key and current_pick and ctx.bound_pick_key != current_pick:
-        return False
-    if ctx.source == "mission":
-        current_mission = str(session.get("improv_active_mission") or "").strip()
-        if ctx.mission_id and current_mission and ctx.mission_id != current_mission:
-            return False
-    if ctx.source == "custom_progression" and ctx.custom_revision_id:
-        try:
-            from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
-
-            active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
-            revision = str(active.get("id") or active.get("revision") or "").strip()
-            if revision and revision != ctx.custom_revision_id:
-                return False
-        except ImportError:
-            pass
-    return True
+    return False
 
 
 def invalidate_if_song_changed(session: dict[str, Any], new_pick_key: str | None = None) -> bool:
@@ -842,13 +849,19 @@ def reset_backing_on_active_song_change(
     session: dict[str, Any],
     *,
     new_pick_key: str = "",
+    practice_concert_key: str = "",
 ) -> BackingContext:
     """Active song changed: catalog/custom regular backing owns studio; preserve creative_session."""
     _release_creative_backing_ownership(session)
     try:
-        from songs.music_source import is_custom_progression, set_catalog_source, set_custom_source
+        from songs.music_source import (
+            cpl_session_is_active,
+            is_custom_progression,
+            set_catalog_source,
+            set_custom_source,
+        )
 
-        if is_custom_progression(session):
+        if cpl_session_is_active(session) or is_custom_progression(session):
             set_custom_source(session)
             set_backing_source_preference(session, BACKING_PREF_CUSTOM)
             ctx = build_custom_progression_context(session)
@@ -859,7 +872,19 @@ def reset_backing_on_active_song_change(
     except ImportError:
         set_backing_source_preference(session, BACKING_PREF_CATALOG)
         ctx = build_regular_song_context(session)
-    concert = str(ctx.concert_key or ctx.display_key or ctx.key or "").strip()
+    try:
+        from songs.key_state import PENDING_DISPLAY_KEY
+
+        pending = str(session.get(PENDING_DISPLAY_KEY) or "").strip()
+    except ImportError:
+        pending = str(session.get("_pending_display_key") or "").strip()
+    concert = str(
+        practice_concert_key
+        or pending
+        or ctx.concert_key
+        or _original_key_for_active_song(session)
+        or ""
+    ).strip()
     if concert:
         _apply_original_song_display_key(session, concert)
     set_backing_context(session, ctx)
@@ -1354,8 +1379,16 @@ def _release_creative_backing_ownership(session: dict[str, Any]) -> None:
         "improv_difficulty",
         "improv_groove",
         "improv_jam_mood",
+        "improv_song_source",
     ):
         session.pop(key, None)
+    try:
+        from studio_page_state import CREATIVE_BACKING_SONG_SOURCE_KEY, PENDING_IMPROV_SONG_SOURCE
+
+        session.pop(CREATIVE_BACKING_SONG_SOURCE_KEY, None)
+        session.pop(PENDING_IMPROV_SONG_SOURCE, None)
+    except ImportError:
+        pass
 
 
 def _detach_creative_backing_from_session(session: dict[str, Any]) -> None:

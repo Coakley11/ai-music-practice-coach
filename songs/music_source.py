@@ -273,6 +273,8 @@ def restore_previous_catalog_song(
         song_picker_catalog,
         song_library=song_library,
         skip_activity_log=True,
+        origin="restore",
+        display_key_override=display_key,
     )
     if not data:
         return False
@@ -300,7 +302,6 @@ def restore_last_catalog_active_song(
     invalidate_backing,
 ) -> bool:
     """Restore the catalog song active before Custom Progression mode."""
-    from songs.key_state import apply_display_key_for_active_song, song_display_identity
     from songs.state import apply_pick_key
 
     session = st.session_state
@@ -310,30 +311,33 @@ def restore_last_catalog_active_song(
     pick_key = str(snap.get("pick_key") or "").strip()
     if not pick_key or pick_key.startswith("custom::"):
         return False
+    selected = dict(snap.get("selected_song") or {})
+    original_key = str(snap.get("original_key") or selected.get("key") or "C").strip() or "C"
+    display_key = str(snap.get("display_key") or original_key).strip() or original_key
     data = apply_pick_key(
         st,
         pick_key,
         song_picker_catalog,
         song_library=song_library,
         skip_activity_log=True,
+        origin="restore",
+        display_key_override=display_key,
     )
     if not data:
         return False
-    original_key = str(snap.get("original_key") or data.get("key") or "C").strip() or "C"
-    display_key = str(snap.get("display_key") or original_key).strip() or original_key
-    identity = song_display_identity(
-        str(data.get("title") or ""),
-        str(data.get("artist") or ""),
-        original_key,
+    selected.setdefault("title", str(data.get("title") or ""))
+    selected.setdefault("artist", str(data.get("artist") or ""))
+    selected.setdefault("key", str(data.get("key") or original_key))
+    selected["pick_key"] = pick_key
+    commit_catalog_active_song(
+        st,
         pick_key=pick_key,
+        selected_song=selected,
+        original_key=original_key,
+        display_key=display_key,
+        invalidate_backing=invalidate_backing,
+        reason="last_catalog_restore",
     )
-    try:
-        from songs.music_source import set_catalog_source
-
-        set_catalog_source(session)
-    except ImportError:
-        pass
-    note_active_source_change(st, invalidate_backing=invalidate_backing)
     return True
 
 
@@ -888,7 +892,11 @@ def on_active_song_identity_changed(
         try:
             from backing_context import reset_backing_on_active_song_change
 
-            reset_backing_on_active_song_change(session, new_pick_key=pick_key)
+            reset_backing_on_active_song_change(
+                session,
+                new_pick_key=pick_key,
+                practice_concert_key=target_display,
+            )
         except ImportError:
             pass
     return identity_changed
@@ -1771,7 +1779,7 @@ def ensure_custom_progression_for_backing(session_state: dict[str, Any]) -> str:
     name = str(active.get("name") or "My Progression").strip()
     session_state["song"] = name
     session_state["active_song_title"] = name
-    pick = str(active.get("id") or active.get("revision") or "").strip()
+    pick = custom_pick_key_for(active)
     if pick:
         from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 

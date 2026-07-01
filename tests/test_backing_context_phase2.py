@@ -516,7 +516,7 @@ class TestSongImprovCustomProgression(unittest.TestCase):
         self.assertEqual(ctx.source, "song_improv")
         self.assertEqual(ctx.song_title, "Trial Song")
         self.assertNotEqual(ctx.song_title, "Photograph")
-        self.assertEqual(ctx.bound_pick_key, "custom-rev-trial")
+        self.assertEqual(ctx.bound_pick_key, "custom::custom-rev-trial")
 
 
 class TestDisplayKeyWidgetSafe(unittest.TestCase):

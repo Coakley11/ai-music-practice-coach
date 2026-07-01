@@ -125,18 +125,28 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
     snapshot_practice_source_display_key(session)
     try:
         from backing_context import (
+            BACKING_PREF_CATALOG,
+            BACKING_PREF_CUSTOM,
             apply_backing_context_to_session,
             build_custom_progression_context,
             restore_regular_song_backing,
             set_backing_context,
+            set_backing_source_preference,
         )
-        from songs.music_source import cpl_session_is_active, is_custom_progression
+        from songs.music_source import (
+            cpl_session_is_active,
+            ensure_custom_active_song_identity,
+            is_custom_progression,
+        )
 
         if cpl_session_is_active(session) or is_custom_progression(session):
+            ensure_custom_active_song_identity(session)
+            set_backing_source_preference(session, BACKING_PREF_CUSTOM)
             ctx = build_custom_progression_context(session)
             set_backing_context(session, ctx)
             apply_backing_context_to_session(session, ctx, st_like=st_like)
             return ctx
+        set_backing_source_preference(session, BACKING_PREF_CATALOG)
         return restore_regular_song_backing(session, st_like=st_like)
     except ImportError:
         return None
@@ -155,21 +165,25 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             ensure_backing_context_from_creative_session,
             get_backing_context,
             is_backing_context_valid,
+            reset_backing_on_active_song_change,
+            restore_regular_song_backing,
         )
-        from creative_session_state import hydrate_creative_session_for_page
+        from creative_session_state import creative_session_is_active, hydrate_creative_session_for_page
+        from songs.music_source import cpl_session_is_active, is_custom_progression
 
         hydrate_creative_session_for_page(session)
         ctx = get_backing_context(session)
         if ctx is not None and ctx.source != "regular_song":
             if not is_backing_context_valid(session, ctx):
-                try:
-                    from backing_context import reset_backing_on_active_song_change
-
-                    reset_backing_on_active_song_change(session)
-                    ctx = get_backing_context(session)
-                except ImportError:
-                    ctx = None
+                reset_backing_on_active_song_change(session)
+                ctx = get_backing_context(session)
         if ctx is None:
+            if cpl_session_is_active(session) or is_custom_progression(session):
+                open_backing_for_practice_source(session, st_like=st_like)
+                return
+            if not creative_session_is_active(session):
+                restore_regular_song_backing(session, st_like=st_like)
+                return
             ensure_backing_context_from_creative_session(session)
         ctx = active_creative_backing_context(session) or get_backing_context(session)
         if ctx is not None and ctx.source != "regular_song":
@@ -239,8 +253,153 @@ def _backing_source_name(session: dict[str, Any]) -> str:
     return str(ctx.song_title or ctx.style or ctx.source_label or "Backing").strip()
 
 
+def _backing_open_intent_label(session: dict[str, Any]) -> str:
+    return str(session.get(BACKING_OPEN_INTENT_KEY) or "none").strip() or "none"
+
+
+def _last_catalog_song_label(session: dict[str, Any]) -> str:
+    try:
+        from songs.music_source import previous_catalog_snapshot
+
+        snap = previous_catalog_snapshot(session)
+        if not snap:
+            return ""
+        sel = snap.get("selected_song") or {}
+        title = str(sel.get("title") or "").strip()
+        return title
+    except ImportError:
+        return ""
+
+
+def _custom_progression_label(session: dict[str, Any]) -> str:
+    active = session.get("cpl_active_progression")
+    if isinstance(active, dict):
+        return str(active.get("name") or "").strip()
+    return ""
+
+
+def _chart_visibility_label(session: dict[str, Any]) -> str:
+    val = session.get("chart_in_instrument_key")
+    if val is None:
+        return "unknown"
+    return "ON" if bool(val) else "OFF"
+
+
+def _sections_source_label(session: dict[str, Any], ctx: BackingContext | None) -> str:
+    if ctx is None:
+        return "none"
+    if ctx.source == "custom_progression":
+        return "cpl_active_progression"
+    if ctx.source == "regular_song":
+        return "catalog_song_data"
+    if ctx.source == "song_improv":
+        if session.get("improv_song_concert_sections"):
+            return "improv_song_concert_sections"
+        return "backing_context.progression"
+    if ctx.source == "entry_jam":
+        if session.get("improv_generated_sections"):
+            return "improv_generated_sections"
+        return "backing_context.progression"
+    return f"backing_context.{ctx.source}"
+
+
+def render_source_ownership_dev_table(st: Any, session: dict[str, Any]) -> None:
+    """Dev-only ownership matrix (?dev=1) — Song, Creative, and Backing pages."""
+    try:
+        from suite_workspace import can_show_developer_tools
+
+        if not can_show_developer_tools(st=st):
+            return
+    except ImportError:
+        return
+
+    ctx = get_backing_context(session)
+    tool = ""
+    creative_title = ""
+    try:
+        from creative_session_state import get_creative_session
+
+        sess = get_creative_session(session)
+        if sess is not None:
+            tool = str(sess.tool_type or "")
+            creative_title = str(sess.song_title or sess.style or "").strip()
+    except ImportError:
+        pass
+
+    try:
+        from songs.music_source import ACTIVE_MUSIC_SOURCE_KEY, SOURCE_CATALOG, SOURCE_CUSTOM
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        music_source = str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip()
+        if music_source == SOURCE_CUSTOM:
+            source_type = "custom"
+        elif music_source == SOURCE_CATALOG:
+            source_type = "catalog"
+        else:
+            source_type = music_source or "unknown"
+        active_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    except ImportError:
+        source_type = _practice_source_type(session)
+        active_pick = ""
+
+    try:
+        from songs.key_state import PENDING_DISPLAY_KEY
+    except ImportError:
+        PENDING_DISPLAY_KEY = "_pending_display_key"  # type: ignore[misc,assignment]
+
+    try:
+        from backing_context import (
+            format_backing_context_banner,
+            get_backing_source_preference,
+            is_backing_context_valid,
+        )
+        from backing_context import _current_pick_key as backing_current_pick_key
+
+        pref = get_backing_source_preference(session)
+        ctx_valid = is_backing_context_valid(session, ctx) if ctx else False
+        bound_pick = str(ctx.bound_pick_key or "") if ctx else ""
+        current_pick = backing_current_pick_key(session)
+        banner = format_backing_context_banner(ctx)
+    except ImportError:
+        pref = ""
+        ctx_valid = False
+        bound_pick = ""
+        current_pick = active_pick
+        banner = ""
+
+    rows = {
+        "page": str(session.get("studio_page") or "").strip(),
+        "active_music_source": source_type,
+        "active_song_title": str(session.get("song") or session.get("active_song_title") or "").strip(),
+        "active_pick_key": active_pick,
+        "custom_progression": _custom_progression_label(session),
+        "last_catalog_song": _last_catalog_song_label(session),
+        "backing_open_intent": _backing_open_intent_label(session),
+        "backing_pref": pref,
+        "backing_context.source": str(ctx.source if ctx else ""),
+        "backing_context.title": _backing_source_name(session) if ctx else "",
+        "backing_context.valid": str(ctx_valid),
+        "backing_context.bound_pick": bound_pick,
+        "current_pick_key": current_pick,
+        "creative_session.tool": tool or "none",
+        "creative_session.title": creative_title,
+        "original_key": str(session.get("original_key") or "").strip(),
+        "display_key": str(session.get("display_key") or "").strip(),
+        "pending_display_key": str(session.get(PENDING_DISPLAY_KEY) or "").strip(),
+        "concert_key": str(session.get("concert_key") or "").strip(),
+        "chart_visibility": _chart_visibility_label(session),
+        "instrument": str(session.get("instrument") or "").strip(),
+        "sections_source": _sections_source_label(session, ctx),
+        "top_backing_banner": banner,
+    }
+
+    with st.expander("Source ownership (?dev=1)", expanded=False):
+        st.table([{"field": k, "value": v} for k, v in rows.items()])
+
+
 def render_source_context_debug(st: Any, session: dict[str, Any]) -> None:
     """Dev-only source context visibility (?dev=1)."""
+    render_source_ownership_dev_table(st, session)
     try:
         from suite_deploy_probe import deploy_info
     except ImportError:
@@ -556,6 +715,7 @@ __all__ = [
     "open_backing_for_practice_source",
     "prepare_return_to_backing_source",
     "render_source_context_debug",
+    "render_source_ownership_dev_table",
     "restore_practice_source_display_key",
     "restore_session_widgets_from_backing_context",
     "return_to_source_button_label",

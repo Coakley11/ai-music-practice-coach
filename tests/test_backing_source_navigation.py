@@ -125,6 +125,82 @@ class TestBackingSourceNavigation(unittest.TestCase):
         self.assertEqual(sess.get("instrument"), "Trumpet")
 
 
+class TestCustomPracticeBackingOwnership(unittest.TestCase):
+    def test_from_practice_opens_custom_not_creative(self) -> None:
+        session = {
+            "active_music_source": "custom_progression",
+            "active_catalog_pick_key": "Pop::Say",
+            "selected_song": {"title": "Say", "pick_key": "Pop::Say", "key": "G"},
+            "display_key": "D",
+            "concert_key": "D",
+            "cpl_active_progression": {
+                "id": "trial-rev",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "original_sections": {
+                    "Verse": [{"chord": "D", "bars": 1}],
+                    "Chorus": [],
+                    "Bridge": [],
+                    "Intro": [],
+                    "Outro": [],
+                },
+                "bpm": 90,
+            },
+        }
+        set_backing_open_intent(session, BACKING_INTENT_FROM_PRACTICE)
+        ctx = open_backing_for_practice_source(session, st_like=SimpleNamespace(session_state=session))
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(ctx.source, "custom_progression")
+        self.assertEqual(ctx.song_title, "Trial Song")
+        self.assertNotEqual(ctx.source, "song_improv")
+
+    def test_custom_context_valid_despite_stale_catalog_pick(self) -> None:
+        from backing_context import (
+            BACKING_CONTEXT_KEY,
+            build_custom_progression_context,
+            is_backing_context_valid,
+        )
+
+        session = {
+            "active_catalog_pick_key": "Pop::Say",
+            "cpl_active_progression": {
+                "id": "trial-rev",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "original_sections": {
+                    "Verse": [{"chord": "D", "bars": 1}],
+                    "Chorus": [],
+                    "Bridge": [],
+                    "Intro": [],
+                    "Outro": [],
+                },
+            },
+        }
+        ctx = build_custom_progression_context(session)
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
+        self.assertTrue(is_backing_context_valid(session, ctx))
+
+    def test_song_change_reset_uses_practice_concert_key_not_stale_display(self) -> None:
+        from backing_context import get_backing_context, reset_backing_on_active_song_change
+
+        session = {
+            "active_music_source": "catalog",
+            "active_catalog_pick_key": "Rock::Day Tripper",
+            "selected_song": {"title": "Day Tripper", "pick_key": "Rock::Day Tripper", "key": "E"},
+            "display_key": "D",
+            "_pending_display_key": "E",
+            "song": "Day Tripper",
+        }
+        reset_backing_on_active_song_change(session, practice_concert_key="E")
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(ctx.source, "regular_song")
+        self.assertEqual(ctx.concert_key, "E")
+        self.assertEqual(ctx.song_title, "Day Tripper")
+
+
 def _style_jam_like_session() -> dict:
     return {
         "improv_entry_mode": "Style Jam Mode",
