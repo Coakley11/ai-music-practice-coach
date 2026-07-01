@@ -159,25 +159,48 @@ def reconcile_practice_key_fields(session: dict[str, Any], *, authoritative: str
     return concert
 
 
-def apply_pending_widget_hydrates(session: dict[str, Any]) -> None:
-    """Apply queued pending values before widgets render (early in rerun)."""
-    pending_display = session.pop(PENDING_DISPLAY_KEY, None)
+def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | None = None) -> None:
+    """Apply queued pending values before widgets render (early in rerun).
+
+    When sidebar/global widgets are already instantiated, widget-bound keys are
+    left pending; only canonical fields such as ``concert_key`` are updated.
+    """
+    locked = widgets_likely_instantiated(session)
+
+    pending_display = session.get(PENDING_DISPLAY_KEY)
     if pending_display is not None:
         concert = str(pending_display).strip() or "C"
-        session["display_key"] = concert
         session["concert_key"] = concert
-    pending_picker = session.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
+        if not locked:
+            session.pop(PENDING_DISPLAY_KEY, None)
+            session["display_key"] = concert
+        elif str(session.get("display_key") or "").strip() == concert:
+            session.pop(PENDING_DISPLAY_KEY, None)
+
+    pending_picker = session.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY)
     if pending_picker is not None:
-        session["song_picker_active_source"] = pending_picker
+        current_picker = session.get("song_picker_active_source")
+        if current_picker is not None and str(current_picker) == str(pending_picker):
+            session.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
+        elif not locked:
+            session.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
+            session["song_picker_active_source"] = pending_picker
+
     for widget_key, pending_key in _PENDING_FOR_WIDGET_KEY.items():
         if widget_key in {"display_key", "song_picker_active_source"}:
             continue
-        pending = session.pop(pending_key, None)
+        pending = session.get(pending_key)
         if pending is None:
             continue
         current = session.get(widget_key)
-        if current is None or str(current) != str(pending):
-            session[widget_key] = pending
+        if current is not None and str(current) == str(pending):
+            session.pop(pending_key, None)
+            continue
+        if locked and widget_key in WIDGET_BOUND_KEYS:
+            session[pending_key] = pending
+            continue
+        session.pop(pending_key, None)
+        session[widget_key] = pending
 
 
 __all__ = [

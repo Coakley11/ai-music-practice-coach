@@ -139,13 +139,40 @@ class TestSessionWidgetSafe(unittest.TestCase):
         self.assertEqual(session.get("display_key"), "D")
 
     def test_apply_pending_widget_hydrates_overwrites_stale_entry_mode(self) -> None:
-        from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
-
         session = {"improv_entry_mode": "Song-Based Improvisation"}
         session[PENDING_IMPROV_ENTRY_MODE_KEY] = "Style Jam Mode"
         apply_pending_widget_hydrates(session)
         self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
         self.assertNotIn(PENDING_IMPROV_ENTRY_MODE_KEY, session)
+
+    def test_apply_pending_when_locked_keeps_display_key_pending(self) -> None:
+        session = {"display_key": "G", "concert_key": "G", PENDING_DISPLAY_KEY: "F"}
+        try:
+            from music_restore_phase import complete_music_restore_phase
+
+            complete_music_restore_phase(session)
+        except ImportError:
+            pass
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session.get("display_key"), "G")
+        self.assertEqual(session.get("concert_key"), "F")
+        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "F")
+
+    def test_apply_pending_when_locked_keeps_entry_mode_pending(self) -> None:
+        session = {
+            "display_key": "G",
+            "improv_entry_mode": "Song-Based Improvisation",
+            PENDING_IMPROV_ENTRY_MODE_KEY: "Style Jam Mode",
+        }
+        try:
+            from music_restore_phase import complete_music_restore_phase
+
+            complete_music_restore_phase(session)
+        except ImportError:
+            pass
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session.get("improv_entry_mode"), "Song-Based Improvisation")
+        self.assertEqual(session.get(PENDING_IMPROV_ENTRY_MODE_KEY), "Style Jam Mode")
 
     def test_sync_live_keys_queues_improv_style_key_when_widget_locked(self) -> None:
         from backing_context import build_entry_jam_context, set_backing_context, sync_live_keys_from_backing_context
