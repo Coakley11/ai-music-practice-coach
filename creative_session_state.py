@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 CREATIVE_SESSION_KEY = "creative_session"
 JAM_SESSION_GENERATE_GUARD_KEY = "_jam_session_generate_guard"
+JAM_CAPTURE_STAGING_KEY = "_jam_capture_staging"
 
 CreativeToolType = Literal[
     "entry_style_jam",
@@ -226,17 +227,31 @@ def _sections_from_session(session: dict[str, Any], entry_mode: str) -> dict[str
 
 def _live_jam_session_fields(session: dict[str, Any]) -> tuple[str, str, int, str]:
     """Read Jam Session Generator widget values, honoring pending hydrates when locked."""
+    staging = session.get(JAM_CAPTURE_STAGING_KEY)
+    if isinstance(staging, dict):
+        try:
+            bpm = int(staging.get("bpm") or 110)
+        except (TypeError, ValueError):
+            bpm = 110
+        return (
+            str(staging.get("style") or "").strip(),
+            str(staging.get("concert_key") or "C").strip() or "C",
+            bpm,
+            str(staging.get("mood") or "Mellow").strip() or "Mellow",
+        )
     try:
         from session_widget_safe import (
             PENDING_IMPROV_JAM_BPM_KEY,
             PENDING_IMPROV_JAM_KEY,
             PENDING_IMPROV_JAM_MOOD_KEY,
+            PENDING_IMPROV_JAM_STYLE_KEY,
         )
     except ImportError:
         PENDING_IMPROV_JAM_KEY = "_pending_improv_jam_key"  # type: ignore[misc,assignment]
         PENDING_IMPROV_JAM_BPM_KEY = "_pending_improv_jam_bpm"  # type: ignore[misc,assignment]
         PENDING_IMPROV_JAM_MOOD_KEY = "_pending_improv_jam_mood"  # type: ignore[misc,assignment]
-    style = str(session.get("improv_jam_style") or "").strip()
+        PENDING_IMPROV_JAM_STYLE_KEY = "_pending_improv_jam_style"  # type: ignore[misc,assignment]
+    style = str(session.get(PENDING_IMPROV_JAM_STYLE_KEY) or session.get("improv_jam_style") or "").strip()
     concert = str(session.get("improv_jam_key") or "").strip()
     pending_key = session.get(PENDING_IMPROV_JAM_KEY)
     if pending_key is not None:
@@ -269,11 +284,16 @@ def capture_jam_session_generator_state(
     mood_name = str(mood or "Mellow").strip() or "Mellow"
     tempo = int(bpm)
 
+    ensemble_name = str(ensemble or "").strip() or "Jazz trio"
+    session[JAM_CAPTURE_STAGING_KEY] = {
+        "ensemble": ensemble_name,
+        "style": style_name,
+        "concert_key": k,
+        "bpm": tempo,
+        "mood": mood_name,
+        "entry_mode": "Jam Session Generator",
+    }
     session["improv_jam_session"] = jam_session
-    session["improv_ensemble"] = str(ensemble or "").strip() or "Jazz trio"
-    session["improv_jam_style"] = style_name
-    session["improv_jam_bpm"] = tempo
-    session["improv_jam_mood"] = mood_name
 
     try:
         from session_widget_safe import safe_session_assign
@@ -281,14 +301,19 @@ def capture_jam_session_generator_state(
         safe_session_assign(
             session, "improv_entry_mode", "Jam Session Generator", widget_safe=True
         )
+        safe_session_assign(session, "improv_ensemble", ensemble_name, widget_safe=True)
+        safe_session_assign(session, "improv_jam_style", style_name, widget_safe=True)
         safe_session_assign(session, "improv_jam_key", k, widget_safe=True)
         safe_session_assign(session, "improv_jam_bpm", tempo, widget_safe=True)
         safe_session_assign(session, "improv_jam_mood", mood_name, widget_safe=True)
     except ImportError:
-        session["improv_entry_mode"] = "Jam Session Generator"
-        session["improv_jam_key"] = k
-        session["improv_jam_bpm"] = tempo
-        session["improv_jam_mood"] = mood_name
+        if not session.get("_streamlit_widgets_locked_this_run"):
+            session["improv_entry_mode"] = "Jam Session Generator"
+            session["improv_ensemble"] = ensemble_name
+            session["improv_jam_style"] = style_name
+            session["improv_jam_key"] = k
+            session["improv_jam_bpm"] = tempo
+            session["improv_jam_mood"] = mood_name
 
     session["improv_style_meta"] = {
         "style": style_name,
@@ -312,12 +337,28 @@ def capture_jam_session_generator_state(
     except ImportError:
         pass
 
+    try:
+        from session_widget_safe import safe_session_assign
+
+        safe_session_assign(
+            session, "improv_entry_mode", "Jam Session Generator", widget_safe=True
+        )
+        safe_session_assign(session, "improv_ensemble", ensemble_name, widget_safe=True)
+        safe_session_assign(session, "improv_jam_style", style_name, widget_safe=True)
+        safe_session_assign(session, "improv_jam_key", k, widget_safe=True)
+        safe_session_assign(session, "improv_jam_bpm", tempo, widget_safe=True)
+        safe_session_assign(session, "improv_jam_mood", mood_name, widget_safe=True)
+    except ImportError:
+        pass
+
     session[JAM_SESSION_GENERATE_GUARD_KEY] = True
     page = str(session.get("studio_page") or "").strip().lower()
     if page:
         session[f"_creative_session_hydrated_{page}"] = True
 
-    return sync_creative_session_from_session(session)
+    sess = sync_creative_session_from_session(session)
+    session.pop(JAM_CAPTURE_STAGING_KEY, None)
+    return sess
 
 
 def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSession | None:
@@ -795,6 +836,7 @@ def render_creative_session_diagnostic(st: Any, session: dict[str, Any]) -> None
 __all__ = [
     "CREATIVE_SESSION_KEY",
     "JAM_SESSION_GENERATE_GUARD_KEY",
+    "JAM_CAPTURE_STAGING_KEY",
     "CreativeSession",
     "CreativeToolType",
     "apply_creative_session_to_session",

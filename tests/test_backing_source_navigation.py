@@ -789,14 +789,23 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
             hydrate_creative_session_for_page,
         )
         from improvisation_intelligence import generate_jam_session
+        from session_widget_safe import (
+            PENDING_IMPROV_ENSEMBLE_KEY,
+            PENDING_IMPROV_JAM_KEY,
+            PENDING_IMPROV_JAM_MOOD_KEY,
+            PENDING_IMPROV_JAM_STYLE_KEY,
+            apply_pending_widget_hydrates,
+        )
 
         jam = generate_jam_session(style="Jazz Swing", key_center="Eb", tempo=120, mood="Dark")
         session = {
             "improv_entry_mode": "Jam Session Generator",
-            "improv_jam_style": "Jazz Swing",
-            "improv_jam_key": "Eb",
-            "improv_jam_bpm": 120,
-            "improv_jam_mood": "Dark",
+            "improv_jam_style": "Bossa Nova",
+            "improv_jam_key": "C",
+            "improv_jam_bpm": 110,
+            "improv_jam_mood": "Bright",
+            "improv_ensemble": "Jazz trio",
+            "_streamlit_widgets_locked_this_run": True,
             "creative_session": {
                 "tool_type": "entry_style_jam",
                 "entry_mode": "Style Jam Mode",
@@ -816,10 +825,17 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
             mood="Dark",
             jam_session=jam,
         )
+        self.assertEqual(session.get(PENDING_IMPROV_JAM_STYLE_KEY), "Jazz Swing")
+        self.assertEqual(session.get(PENDING_IMPROV_JAM_KEY), "Eb")
+        self.assertEqual(session.get(PENDING_IMPROV_JAM_MOOD_KEY), "Dark")
+        self.assertEqual(session.get(PENDING_IMPROV_ENSEMBLE_KEY), "Latin quartet")
         hydrate_creative_session_for_page(session)
+        session.pop("_streamlit_widgets_locked_this_run", None)
+        apply_pending_widget_hydrates(session)
         self.assertEqual(session.get("improv_jam_style"), "Jazz Swing")
         self.assertEqual(session.get("improv_jam_key"), "Eb")
         self.assertEqual(session.get("improv_jam_mood"), "Dark")
+        self.assertEqual(session.get("improv_ensemble"), "Latin quartet")
         self.assertEqual(int(session.get("improv_jam_bpm") or 0), 120)
 
     def test_ensure_entry_mode_preserves_jam_after_stale_style_blob(self) -> None:
