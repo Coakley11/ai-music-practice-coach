@@ -1276,7 +1276,11 @@ def sync_live_keys_from_backing_context(
     if not concert:
         return ""
     try:
-        from session_widget_safe import safe_assign_display_key, widgets_likely_instantiated
+        from session_widget_safe import (
+            safe_assign_display_key,
+            safe_session_assign,
+            widgets_likely_instantiated,
+        )
 
         locked = widget_safe and widgets_likely_instantiated(session)
         if not locked:
@@ -1296,10 +1300,18 @@ def sync_live_keys_from_backing_context(
             session["display_key"] = concert
     if ctx.source == "entry_jam":
         entry = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()
-        if entry == "Style Jam Mode":
-            session["improv_style_key"] = concert
-        elif entry == "Jam Session Generator":
-            session["improv_jam_key"] = concert
+        try:
+            from session_widget_safe import safe_session_assign
+
+            if entry == "Style Jam Mode":
+                safe_session_assign(session, "improv_style_key", concert, widget_safe=widget_safe)
+            elif entry == "Jam Session Generator":
+                safe_session_assign(session, "improv_jam_key", concert, widget_safe=widget_safe)
+        except ImportError:
+            if entry == "Style Jam Mode":
+                session["improv_style_key"] = concert
+            elif entry == "Jam Session Generator":
+                session["improv_jam_key"] = concert
     return concert
 
 

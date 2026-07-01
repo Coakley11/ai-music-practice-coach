@@ -136,6 +136,24 @@ class TestSessionWidgetSafe(unittest.TestCase):
         apply_creative_session_to_session(session, sess, widget_safe=False)
         self.assertEqual(session.get("display_key"), "D")
 
+    def test_sync_live_keys_queues_improv_style_key_when_widget_locked(self) -> None:
+        from backing_context import build_entry_jam_context, set_backing_context, sync_live_keys_from_backing_context
+        from session_widget_safe import PENDING_IMPROV_STYLE_KEY
+
+        session = _style_jam_session(display_key="G", concert_key="G", improv_style_key="G")
+        try:
+            from music_restore_phase import complete_music_restore_phase
+
+            complete_music_restore_phase(session)
+        except ImportError:
+            pass
+        ctx = build_entry_jam_context({**session, "improv_style_key": "F"})
+        set_backing_context(session, ctx)
+        sync_live_keys_from_backing_context(session)
+        self.assertEqual(session.get("concert_key"), "F")
+        self.assertEqual(session.get("improv_style_key"), "G")
+        self.assertEqual(session.get(PENDING_IMPROV_STYLE_KEY), "F")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -119,6 +119,7 @@ class TestBackingSourceNavigation(unittest.TestCase):
 
     def test_from_creative_hydrate_syncs_sidebar_keys_from_backing_context(self) -> None:
         from songs.key_state import PENDING_DISPLAY_KEY
+        from session_widget_safe import PENDING_IMPROV_STYLE_KEY
 
         session = {
             "studio_page": "backing",
@@ -137,13 +138,21 @@ class TestBackingSourceNavigation(unittest.TestCase):
             "improv_style_key": "F",
             "improv_generated_sections": {"Style Jam": ["Fmaj7", "Bbmaj7", "C7", "Fmaj7"]},
         }
+        try:
+            from music_restore_phase import complete_music_restore_phase
+
+            complete_music_restore_phase(session)
+        except ImportError:
+            pass
         st_like = SimpleNamespace(session_state=session)
         open_backing_from_creative(session, source="entry_jam", st_like=st_like)
         set_backing_open_intent(session, BACKING_INTENT_FROM_CREATIVE)
         hydrate_backing_source_for_page(session, st_like=st_like)
-        self.assertEqual(session.get("display_key"), "F")
         self.assertEqual(session.get("concert_key"), "F")
-        self.assertNotIn(PENDING_DISPLAY_KEY, session)
+        self.assertEqual(session.get("display_key"), "G")
+        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "F")
+        self.assertEqual(session.get("improv_style_key"), "F")
+        self.assertEqual(session.get(PENDING_IMPROV_STYLE_KEY), "F")
 
     def test_practice_page_restores_saved_practice_key(self) -> None:
         session = {
