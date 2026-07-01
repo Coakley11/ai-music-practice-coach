@@ -9302,6 +9302,12 @@ elif _studio_page_for_hydrate == "creative":
             apply_pending_widget_hydrates(st.session_state)
         except ImportError:
             pass
+        try:
+            from songs.music_source import snapshot_catalog_before_creative
+
+            snapshot_catalog_before_creative(st.session_state)
+        except ImportError:
+            pass
     except ImportError:
         pass
 
@@ -11266,12 +11272,20 @@ elif _studio_page == "backing":
     # this force-resets BPM, groove, meter, and override flags so the active
     # song card numbers match what the playback engine consumes everywhere
     # (Playback setup, Quick BPM, chord-follow timing, lead sheet, etc.).
+    _force_backing_reset = False
+    try:
+        from music_source_ownership import catalog_identity_aligns
+
+        _force_backing_reset = not catalog_identity_aligns(st.session_state)
+    except Exception:
+        pass
     _backing_canon = canonicalize_backing_defaults_for_song(
         st,
         sync_id=_bpm_sync_id,
         active_song_bpm=_backing_source_default_bpm,
         active_song_groove=_backing_source_default_groove,
         active_song_meter=_backing_source_default_meter,
+        force_reset=_force_backing_reset,
     )
     _synced_bpm = int(_backing_canon["applied_bpm"])
     default_groove_style = str(_backing_canon["applied_groove"])

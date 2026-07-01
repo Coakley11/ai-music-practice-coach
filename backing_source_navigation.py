@@ -766,6 +766,32 @@ def _render_source_ownership_dev_table_body(st: Any, session: dict[str, Any]) ->
         "catalog_rebuild_ctx_bpm": _diag_value(session.get("catalog_rebuild_ctx_bpm")),
         "last_reconcile_reason": _diag_value(session.get("last_reconcile_reason")),
     }
+    restore_diag = dict(session.get("_catalog_restore_diag") or {})
+    restore_diag.update(dict(session.get("_catalog_backing_restore_diag") or {}))
+    for key in (
+        "catalog_before_creative_pick",
+        "catalog_restore_pick_chosen",
+        "catalog_restore_pick_source",
+        "catalog_restore_original_key",
+        "catalog_restore_target_key",
+        "catalog_restore_bpm",
+        "creative_key_before_restore",
+        "display_key_after_restore",
+        "concert_key_after_restore",
+        "backing_context_title_after_restore",
+    ):
+        if key in restore_diag:
+            rows[key] = _diag_value(restore_diag.get(key))
+    try:
+        from songs.bpm_state import BPM_WIDGET_KEY, LAST_BPM_SONG
+        from songs.playback_defaults import LAST_BACKING_DEFAULTS_SONG_ID
+
+        rows["backing_track_bpm"] = _diag_value(session.get("backing_track_bpm"))
+        rows["last_bpm_song"] = _diag_value(session.get(LAST_BPM_SONG))
+        rows["last_backing_defaults_song_id"] = _diag_value(session.get(LAST_BACKING_DEFAULTS_SONG_ID))
+        rows["bpm_widget_key"] = _diag_value(session.get(BPM_WIDGET_KEY))
+    except ImportError:
+        pass
 
     st.caption("**Debug:** Source ownership diagnostics active")
     with st.expander("Source ownership diagnostics", expanded=True):

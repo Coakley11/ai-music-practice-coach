@@ -28,6 +28,14 @@ def write_catalog_backing_restore_diag(session: dict[str, Any], **fields: Any) -
     session[CATALOG_BACKING_RESTORE_DIAG_KEY] = blob
 
 
+def write_catalog_restore_diag(session: dict[str, Any], **fields: Any) -> None:
+    """Dev trace for catalog restore / Use Catalog Song Backing."""
+    blob = dict(session.get("_catalog_restore_diag") or {})
+    blob.update(fields)
+    session["_catalog_restore_diag"] = blob
+    write_catalog_backing_restore_diag(session, **blob)
+
+
 def write_key_transition_diag(session: dict[str, Any], **fields: Any) -> None:
     """Dev trace for catalog/custom key ownership transitions."""
     try:
@@ -610,6 +618,7 @@ def rebuild_catalog_backing_from_canonical_pick(
     pick_key: str = "",
     practice_concert_key: str = "",
     reset_to_original: bool = True,
+    force_bpm_reset: bool = True,
 ) -> Any:
     """Full backing_context rebuild from canonical_active_pick_key and catalog record."""
     from types import SimpleNamespace
@@ -706,7 +715,7 @@ def rebuild_catalog_backing_from_canonical_pick(
         original_key=original_key,
         concert_key=target_key,
         force_display_key=reset_to_original,
-        force_bpm_reset=reset_to_original,
+        force_bpm_reset=force_bpm_reset,
     )
 
     set_backing_source_preference(session, BACKING_PREF_CATALOG)
@@ -761,6 +770,7 @@ def activate_catalog_ownership(
             pick_key=pick,
             practice_concert_key=practice_key,
             reset_to_original=not preserve_practice_key,
+            force_bpm_reset=True,
         )
     _clear_cross_owner_transport(session)
     from backing_context import restore_regular_song_backing

@@ -279,6 +279,12 @@ def capture_jam_session_generator_state(
     st_like: Any | None = None,
 ) -> CreativeSession | None:
     """Persist live Jam Session Generator widget values before rerun/hydrate can clobber them."""
+    try:
+        from songs.music_source import snapshot_catalog_before_creative
+
+        snapshot_catalog_before_creative(session)
+    except ImportError:
+        pass
     k = str(concert_key or "C").strip() or "C"
     style_name = str(style or "").strip()
     mood_name = str(mood or "Mellow").strip() or "Mellow"

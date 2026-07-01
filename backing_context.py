@@ -474,14 +474,43 @@ def _default_groove(session: dict[str, Any]) -> str:
 
 def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, str]:
     """BPM/groove/meter for Backing page widgets from backing_context when present."""
+    canonical_bpm = _canonical_active_song_bpm(session)
     ctx = get_backing_context(session)
-    if ctx is not None:
+    if ctx is None:
+        return canonical_bpm, _default_groove(session), "4/4"
+    if str(getattr(ctx, "source", "") or "") in {"entry_jam", "song_improv", "mission"}:
         return (
-            int(ctx.bpm or _default_bpm(session)),
+            int(ctx.bpm or canonical_bpm),
             _backing_groove_style_from_ctx(ctx),
             str(ctx.meter or "4/4"),
         )
-    return _default_bpm(session), _default_groove(session), "4/4"
+    active_pick = _current_pick_key(session)
+    bound = str(getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or "").strip()
+    ctx_bpm = int(ctx.bpm or 0)
+    use_bpm = canonical_bpm
+    pick_aligned = False
+    if bound and active_pick:
+        try:
+            from songs.music_source import _pick_keys_match
+
+            pick_aligned = _pick_keys_match(bound, active_pick, session_state=session)
+        except ImportError:
+            pick_aligned = bound == active_pick
+    if pick_aligned and ctx_bpm > 0:
+        user_dirty = False
+        try:
+            from backing_track_state import is_backing_user_dirty
+
+            user_dirty = bool(is_backing_user_dirty(session))
+        except ImportError:
+            pass
+        if user_dirty or ctx_bpm == canonical_bpm:
+            use_bpm = ctx_bpm
+    return (
+        use_bpm,
+        _backing_groove_style_from_ctx(ctx),
+        str(ctx.meter or "4/4"),
+    )
 
 
 def _backing_groove_style_from_ctx(ctx: BackingContext) -> str:

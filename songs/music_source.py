@@ -186,6 +186,9 @@ def snapshot_catalog_before_creative(session_state: dict[str, Any]) -> None:
     """Remember the active catalog song before entering Creative/Jam backing."""
     if is_custom_progression(session_state):
         return
+    existing = session_state.get(CATALOG_BEFORE_CREATIVE_KEY)
+    if isinstance(existing, dict) and str(existing.get("pick_key") or "").strip():
+        return
     snap = _catalog_snapshot_from_session(session_state)
     if snap:
         session_state[CATALOG_BEFORE_CREATIVE_KEY] = snap
@@ -1930,7 +1933,12 @@ def resolve_catalog_song_for_pick(
         )
         return merged, original_key
 
-    for snap_key in (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY):
+    snap_keys = (
+        (CATALOG_BEFORE_CREATIVE_KEY, CATALOG_BEFORE_CUSTOM_KEY)
+        if authoritative_transport
+        else (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY, CATALOG_BEFORE_CREATIVE_KEY)
+    )
+    for snap_key in snap_keys:
         raw = session_state.get(snap_key)
         if not isinstance(raw, dict):
             continue
@@ -2046,7 +2054,27 @@ def resolve_catalog_pick_for_backing_restore(
     reason: str = "",
 ) -> str:
     """Catalog pick when leaving custom/creative backing."""
+    pick, _source = resolve_catalog_pick_for_backing_restore_with_source(
+        session_state,
+        song_picker_catalog=song_picker_catalog,
+        reason=reason,
+    )
+    return pick
+
+
+def resolve_catalog_pick_for_backing_restore_with_source(
+    session_state: dict[str, Any],
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+    reason: str = "",
+) -> tuple[str, str]:
+    """Catalog pick + source label for restore diagnostics."""
     from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    try:
+        from backing_source_navigation import PRACTICE_SOURCE_PICK_KEY
+    except ImportError:
+        PRACTICE_SOURCE_PICK_KEY = "_practice_source_pick_key"  # type: ignore[misc,assignment]
 
     _creative_return_reasons = {
         "creative_to_catalog",
@@ -2061,40 +2089,57 @@ def resolve_catalog_pick_for_backing_restore(
             song_picker_catalog=song_picker_catalog,
         )
 
+    def _record(source: str, pk: str) -> tuple[str, str]:
+        session_state["catalog_restore_pick_source"] = source
+        return _normalize(pk), source
+
     if str(reason or "").strip() in _creative_return_reasons:
-        for snap_key in (CATALOG_BEFORE_CREATIVE_KEY,):
+        for source, snap_key in (
+            ("catalog_before_creative", CATALOG_BEFORE_CREATIVE_KEY),
+        ):
             raw = session_state.get(snap_key)
             if not isinstance(raw, dict):
                 continue
             pk = str(raw.get("pick_key") or "").strip()
             if _pick_key_is_catalog(pk):
-                return _normalize(pk)
+                return _record(source, pk)
+        practice_pk = str(session_state.get(PRACTICE_SOURCE_PICK_KEY) or "").strip()
+        if _pick_key_is_catalog(practice_pk):
+            return _record("practice_source_pick", practice_pk)
         live = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
         if _pick_key_is_catalog(live):
-            return _normalize(live)
+            return _record("active_catalog_pick_key", live)
         meta = session_state.get("active_song_state")
         if isinstance(meta, dict):
             pk = str(meta.get("pick_key") or "").strip()
             if _pick_key_is_catalog(pk):
-                return _normalize(pk)
-        return resolve_last_catalog_pick_key(session_state)
+                return _record("active_song_state", pk)
+        session_state["catalog_restore_pick_source"] = "none"
+        return "", "none"
 
-    for snap_key in (CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY):
+    for source, snap_key in (
+        ("catalog_before_custom", CATALOG_BEFORE_CUSTOM_KEY),
+        ("last_catalog_state", LAST_CATALOG_STATE_KEY),
+    ):
         raw = session_state.get(snap_key)
         if not isinstance(raw, dict):
             continue
         pk = str(raw.get("pick_key") or "").strip()
         if _pick_key_is_catalog(pk):
-            return _normalize(pk)
+            return _record(source, pk)
     meta = session_state.get("active_song_state")
     if isinstance(meta, dict):
         pk = str(meta.get("pick_key") or "").strip()
         if _pick_key_is_catalog(pk):
-            return _normalize(pk)
+            return _record("active_song_state", pk)
     live = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if _pick_key_is_catalog(live):
-        return _normalize(live)
-    return resolve_last_catalog_pick_key(session_state)
+        return _record("active_catalog_pick_key", live)
+    last = resolve_last_catalog_pick_key(session_state)
+    if last:
+        return _record("recent_catalog_fallback", last)
+    session_state["catalog_restore_pick_source"] = "none"
+    return "", "none"
 
 
 def activate_catalog_song_for_backing(
@@ -2109,6 +2154,7 @@ def activate_catalog_song_for_backing(
     from music_source_ownership import (
         rebuild_catalog_backing_from_canonical_pick,
         write_catalog_backing_restore_diag,
+        write_catalog_restore_diag,
         write_key_transition_diag,
     )
 
@@ -2116,11 +2162,25 @@ def activate_catalog_song_for_backing(
     pick_before = str(session.get("active_catalog_pick_key") or "").strip()
     pick_key = str(pick_key or "").strip()
     if not _pick_key_is_catalog(pick_key):
-        pick_key = resolve_catalog_pick_for_backing_restore(
+        pick_key, pick_source = resolve_catalog_pick_for_backing_restore_with_source(
             session,
             song_picker_catalog=song_picker_catalog,
             reason=reason,
         )
+    else:
+        pick_source = "explicit_argument"
+    before_creative = session.get(CATALOG_BEFORE_CREATIVE_KEY) if isinstance(session.get(CATALOG_BEFORE_CREATIVE_KEY), dict) else {}
+    creative_key_before = str(
+        session.get("display_key") or session.get("concert_key") or session.get("improv_jam_key") or ""
+    ).strip()
+    write_catalog_restore_diag(
+        session,
+        catalog_before_creative_pick=str(before_creative.get("pick_key") or "").strip(),
+        catalog_restore_pick_chosen=pick_key,
+        catalog_restore_pick_source=pick_source,
+        creative_key_before_restore=creative_key_before,
+        catalog_restore_reason=reason,
+    )
     write_catalog_backing_restore_diag(
         session,
         pick_before=pick_before,
@@ -2175,6 +2235,7 @@ def activate_catalog_song_for_backing(
         pick_key=pick_key,
         practice_concert_key=display_key,
         reset_to_original=reason in _reset_reasons,
+        force_bpm_reset=True,
     )
     try:
         from backing_context import get_backing_context
@@ -2182,6 +2243,15 @@ def activate_catalog_song_for_backing(
         ctx = get_backing_context(session) or ctx
     except ImportError:
         pass
+    write_catalog_restore_diag(
+        session,
+        catalog_restore_original_key=catalog_original,
+        catalog_restore_target_key=str(session.get("display_key") or session.get("concert_key") or "").strip(),
+        catalog_restore_bpm=int(getattr(ctx, "bpm", 0) or session.get("backing_track_bpm") or 0) if ctx else 0,
+        display_key_after_restore=str(session.get("display_key") or "").strip(),
+        concert_key_after_restore=str(session.get("concert_key") or "").strip(),
+        backing_context_title_after_restore=str(getattr(ctx, "song_title", "") or "") if ctx else "",
+    )
     write_catalog_backing_restore_diag(
         session,
         ok=ctx is not None,

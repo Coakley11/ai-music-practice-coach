@@ -254,6 +254,49 @@ class TestKeyTransitionOwnership(unittest.TestCase):
         self.assertEqual(int(session.get("backing_track_bpm") or session.get("bpm") or 0), 100)
         self.assertEqual(int(session.get("catalog_rebuild_result_bpm") or 0), 100)
 
+    def test_use_catalog_backing_prefers_catalog_before_creative_snapshot(self) -> None:
+        from backing_context import restore_regular_song_backing
+        from songs.music_source import CATALOG_BEFORE_CREATIVE_KEY, LAST_CATALOG_STATE_KEY
+
+        in_my_life_pick = "Pop::In My Life"
+        say_pick = "Pop::Say"
+        session = {
+            "active_catalog_pick_key": say_pick,
+            "selected_song": {"title": "Say", "key": "G", "pick_key": say_pick, "bpm": 82},
+            "song": "Say",
+            "display_key": "Eb",
+            "concert_key": "Eb",
+            "user_catalog_source_choice": True,
+            CATALOG_BEFORE_CREATIVE_KEY: {
+                "pick_key": in_my_life_pick,
+                "selected_song": {"title": "In My Life", "key": "A", "pick_key": in_my_life_pick, "bpm": 100},
+                "original_key": "A",
+                "display_key": "A",
+            },
+            LAST_CATALOG_STATE_KEY: {
+                "pick_key": say_pick,
+                "selected_song": {"title": "Say", "key": "G", "pick_key": say_pick, "bpm": 82},
+                "original_key": "G",
+                "display_key": "G",
+            },
+            "improv_entry_mode": "Jam Session Generator",
+            BACKING_CONTEXT_KEY: {
+                "source": "entry_jam",
+                "entry_mode": "Jam Session Generator",
+                "song_title": "Jam Session",
+                "key": "Eb",
+                "bpm": 90,
+                "bound_pick_key": "jam",
+            },
+        }
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            ctx = restore_regular_song_backing(session, st_like=st_like)
+        self.assertEqual(ctx.song_title, "In My Life")
+        self.assertEqual(session.get("display_key"), "A")
+        self.assertEqual(int(ctx.bpm or 0), 100)
+        self.assertEqual(session.get("catalog_restore_pick_source"), "catalog_before_creative")
+
 
 if __name__ == "__main__":
     unittest.main()

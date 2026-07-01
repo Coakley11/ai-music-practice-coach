@@ -493,6 +493,73 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(bpm, 138)
         self.assertIn("Rock", groove)
 
+    def test_backing_page_transport_defaults_ignore_stale_ctx_bpm(self) -> None:
+        from backing_context import (
+            BACKING_CONTEXT_KEY,
+            BACKING_PREF_CATALOG,
+            BackingContext,
+            backing_page_transport_defaults,
+            set_backing_source_preference,
+        )
+
+        in_my_life_pick = "Pop::In My Life"
+        session = {
+            "active_music_source": "catalog",
+            "active_catalog_pick_key": in_my_life_pick,
+            "selected_song": {
+                "title": "In My Life",
+                "pick_key": in_my_life_pick,
+                "key": "A",
+                "bpm": 100,
+            },
+            "display_key": "A",
+            "concert_key": "A",
+            "song": "In My Life",
+            "backing_track_bpm": 82,
+        }
+        set_backing_source_preference(session, BACKING_PREF_CATALOG)
+        session[BACKING_CONTEXT_KEY] = BackingContext(
+            source="regular_song",
+            source_label="Catalog song",
+            active_song_id=in_my_life_pick,
+            bound_pick_key=in_my_life_pick,
+            song_title="In My Life",
+            key="A",
+            display_key="A",
+            concert_key="A",
+            bpm=82,
+            style="",
+            groove="Pop groove",
+        ).to_dict()
+        bpm, _groove, _meter = backing_page_transport_defaults(session)
+        self.assertEqual(bpm, 100)
+
+    def test_jam_capture_snapshots_catalog_before_creative(self) -> None:
+        from creative_session_state import capture_jam_session_generator_state
+        from songs.music_source import CATALOG_BEFORE_CREATIVE_KEY
+
+        in_my_life_pick = "Pop::In My Life"
+        session = {
+            "active_catalog_pick_key": in_my_life_pick,
+            "selected_song": {"title": "In My Life", "key": "A", "pick_key": in_my_life_pick, "bpm": 100},
+            "song": "In My Life",
+            "display_key": "A",
+            "user_catalog_source_choice": True,
+        }
+        capture_jam_session_generator_state(
+            session,
+            ensemble="Jazz trio",
+            style="Blues",
+            concert_key="Eb",
+            bpm=90,
+            mood="Mellow",
+            jam_session={"title": "Jam", "sections": {"A": ["Eb7"]}},
+        )
+        snap = session.get(CATALOG_BEFORE_CREATIVE_KEY)
+        self.assertIsInstance(snap, dict)
+        assert isinstance(snap, dict)
+        self.assertEqual(str(snap.get("pick_key") or ""), in_my_life_pick)
+
     def test_return_to_creative_restores_entry_jam_tool_type(self) -> None:
         from backing_context import open_backing_from_creative
         from backing_source_navigation import prepare_return_to_backing_source
