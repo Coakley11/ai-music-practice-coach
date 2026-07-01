@@ -160,8 +160,11 @@ def resolve_current_backing_musical_state(
     from songs.playback_defaults import backing_bpm_slider_widget_key
 
     ctx = get_backing_context(session)
-    creative = active_creative_backing_context(session)
-    if ctx is not None and ctx.source != "regular_song":
+    if ctx is not None and ctx.source in {"regular_song", "custom_progression"}:
+        creative = None
+    else:
+        creative = active_creative_backing_context(session)
+    if ctx is not None and ctx.source != "regular_song" and creative is not None:
         refreshed = refresh_backing_context_from_session(session)
         if refreshed is not None:
             creative = refreshed

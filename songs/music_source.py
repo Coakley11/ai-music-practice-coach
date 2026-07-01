@@ -1706,6 +1706,7 @@ def activate_catalog_pick_for_backing(
     pick_key: str,
     *,
     st_like: Any | None = None,
+    invalidate_backing=None,
 ) -> str:
     """Promote a catalog pick into session for catalog backing — returns original key."""
     from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
@@ -1719,9 +1720,6 @@ def activate_catalog_pick_for_backing(
         if isinstance(raw, dict) and str(raw.get("pick_key") or "").strip() == pick_key:
             snap = raw
             break
-    set_catalog_source(session_state)
-    if pick_key:
-        session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
     selected: dict[str, Any] = {}
     original_key = "C"
     if snap:
@@ -1736,26 +1734,23 @@ def activate_catalog_pick_for_backing(
         original_key = str(
             selected.get("key") or session_state.get("original_key") or "C"
         ).strip() or "C"
-    if selected:
-        selected["pick_key"] = pick_key or str(selected.get("pick_key") or "").strip()
-        session_state[SELECTED_SONG_STATE_KEY] = selected
-        title = str(selected.get("title") or "").strip()
-        if title:
-            session_state["song"] = title
-    try:
-        from active_song_state import canonical_active_song_context
+    if pick_key:
+        selected.setdefault("pick_key", pick_key)
+    if invalidate_backing is None:
+        invalidate_backing = lambda _st: None
+    if st_like is None:
+        from types import SimpleNamespace
 
-        canon = canonical_active_song_context(session_state)
-        if isinstance(canon, dict):
-            if pick_key and str(canon.get("pick_key") or "").strip() == pick_key:
-                original_key = str(canon.get("original_key") or original_key).strip() or original_key
-            elif not pick_key:
-                cp = str(canon.get("pick_key") or "").strip()
-                if _pick_key_is_catalog(cp):
-                    original_key = str(canon.get("original_key") or original_key).strip() or original_key
-    except ImportError:
-        pass
-    _ = st_like
+        st_like = SimpleNamespace(session_state=session_state)
+    commit_catalog_active_song(
+        st_like,
+        pick_key=pick_key,
+        selected_song=selected or {"pick_key": pick_key, "key": original_key},
+        original_key=original_key,
+        display_key=original_key,
+        invalidate_backing=invalidate_backing,
+        reason="catalog_source_switch",
+    )
     return original_key
 
 

@@ -152,6 +152,24 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
         return None
 
 
+def _ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingContext | None) -> bool:
+    try:
+        from backing_context import ctx_is_stale_creative_for_practice
+
+        return ctx_is_stale_creative_for_practice(session, ctx)
+    except ImportError:
+        return False
+
+
+def _open_live_practice_backing(session: dict[str, Any], *, st_like: Any | None = None) -> None:
+    try:
+        from backing_context import open_live_practice_backing
+
+        open_live_practice_backing(session, st_like=st_like)
+    except ImportError:
+        open_backing_for_practice_source(session, st_like=st_like)
+
+
 def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Apply backing navigation intent and preserve last Backing Studio source (Cases B + refresh)."""
     intent = consume_backing_open_intent(session)
@@ -166,23 +184,25 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             get_backing_context,
             is_backing_context_valid,
             reset_backing_on_active_song_change,
-            restore_regular_song_backing,
         )
         from creative_session_state import creative_session_is_active, hydrate_creative_session_for_page
         from songs.music_source import cpl_session_is_active, is_custom_progression
 
         hydrate_creative_session_for_page(session)
         ctx = get_backing_context(session)
+        if _ctx_is_stale_creative_for_practice(session, ctx):
+            _open_live_practice_backing(session, st_like=st_like)
+            return
         if ctx is not None and ctx.source != "regular_song":
             if not is_backing_context_valid(session, ctx):
                 reset_backing_on_active_song_change(session)
                 ctx = get_backing_context(session)
         if ctx is None:
             if cpl_session_is_active(session) or is_custom_progression(session):
-                open_backing_for_practice_source(session, st_like=st_like)
+                _open_live_practice_backing(session, st_like=st_like)
                 return
             if not creative_session_is_active(session):
-                restore_regular_song_backing(session, st_like=st_like)
+                _open_live_practice_backing(session, st_like=st_like)
                 return
             ensure_backing_context_from_creative_session(session)
         ctx = active_creative_backing_context(session) or get_backing_context(session)
@@ -636,6 +656,12 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
     if ctx is None:
         return page
     restore_session_widgets_from_backing_context(session, ctx)
+    try:
+        from creative_session_state import sync_creative_session_from_session
+
+        sync_creative_session_from_session(session)
+    except ImportError:
+        pass
     merge_live_practice_into_creative_session(session)
     return page
 

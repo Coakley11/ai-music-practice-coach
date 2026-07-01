@@ -7094,6 +7094,13 @@ def _picker_navigate(
         set_pending_anchor(st.session_state, anchor)
     else:
         set_pending_anchor(st.session_state, _PICKER_NAV_ANCHORS.get(page))
+    if page == "backing":
+        try:
+            from backing_source_navigation import BACKING_INTENT_FROM_PRACTICE, set_backing_open_intent
+
+            set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_PRACTICE)
+        except ImportError:
+            pass
     navigate_studio_page(st.session_state, page)
     if open_chord_coach:
         st.session_state["picker_open_chord_coach"] = True
@@ -7602,7 +7609,6 @@ def _render_last_catalog_song_shortcut(
     from songs.music_source import (
         custom_progression_is_active,
         previous_catalog_snapshot,
-        queue_previous_catalog_restore,
     )
 
     if custom_progression_is_active(st.session_state):
@@ -7625,7 +7631,15 @@ def _render_last_catalog_song_shortcut(
         key=f"{key_prefix}_restore_last_catalog",
         use_container_width=True,
     ):
-        queue_previous_catalog_restore(st)
+        from songs.key_state import invalidate_backing_cache
+        from songs.music_source import restore_previous_catalog_song
+
+        restore_previous_catalog_song(
+            st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+            invalidate_backing=invalidate_backing_cache,
+        )
         st.rerun()
 
 

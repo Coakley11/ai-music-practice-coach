@@ -1358,6 +1358,43 @@ def catalog_or_custom_backing_is_authoritative(session: dict[str, Any]) -> bool:
     return ctx is not None and ctx.source in {"regular_song", "custom_progression"}
 
 
+def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingContext | None) -> bool:
+    """True when live catalog/custom practice should replace a Creative backing_context."""
+    if ctx is not None and ctx.source in {"regular_song", "custom_progression"}:
+        return False
+    if get_backing_source_preference(session) == BACKING_PREF_CREATIVE:
+        return False
+    if get_backing_source_preference(session) in {BACKING_PREF_CATALOG, BACKING_PREF_CUSTOM}:
+        return True
+    try:
+        from songs.music_source import SOURCE_CATALOG, cpl_session_is_active, is_custom_progression
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        if cpl_session_is_active(session) or is_custom_progression(session):
+            return True
+        if ctx is None:
+            return False
+        if ctx.source not in {"entry_jam", "song_improv", "mission"}:
+            return False
+        pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if pick and not pick.startswith("custom::"):
+            if str(session.get("active_music_source") or "") == SOURCE_CATALOG:
+                return True
+    except ImportError:
+        pass
+    return False
+
+
+def open_live_practice_backing(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext | None:
+    """Rebuild backing_context from the live catalog/custom practice source."""
+    try:
+        from backing_source_navigation import open_backing_for_practice_source
+
+        return open_backing_for_practice_source(session, st_like=st_like)
+    except ImportError:
+        return None
+
+
 def _release_creative_backing_ownership(session: dict[str, Any]) -> None:
     """Suspend live Creative backing widgets; preserve creative_session blob for later return."""
     try:
@@ -1497,7 +1534,15 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         except ImportError:
             pass
     pick_key = ""
-    if resolve_last_catalog_pick_key is not None:
+    try:
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        live_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if live_pick and not live_pick.startswith("custom::"):
+            pick_key = live_pick
+    except ImportError:
+        pass
+    if not pick_key and resolve_last_catalog_pick_key is not None:
         pick_key = resolve_last_catalog_pick_key(session)
     if activate_catalog_pick_for_backing is not None:
         original = activate_catalog_pick_for_backing(session, pick_key, st_like=st_like)
@@ -1693,7 +1738,25 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
             session["concert_key"] = concert
             session["_pending_display_key"] = concert
 
+    try:
+        from backing_context import ctx_is_stale_creative_for_practice, open_live_practice_backing
+
+        if ctx_is_stale_creative_for_practice(session, ctx):
+            open_live_practice_backing(session, st_like=st_like)
+            ctx = get_backing_context(session)
+            pref = get_backing_source_preference(session)
+    except ImportError:
+        pass
+
     if ctx is not None and ctx.source == "regular_song":
+        _sync_sidebar_to_ctx(ctx)
+        flush_pending_backing_handoff_keys(
+            session,
+            sync_id=str(session.get("_backing_trace_sync_id") or ""),
+        )
+        return
+    if ctx is not None and ctx.source == "custom_progression":
+        set_backing_source_preference(session, BACKING_PREF_CUSTOM)
         _sync_sidebar_to_ctx(ctx)
         flush_pending_backing_handoff_keys(
             session,
@@ -1775,6 +1838,8 @@ __all__ = [
     "BACKING_SOURCE_PREFERENCE_KEY",
     "clear_backing_source_preference",
     "catalog_or_custom_backing_is_authoritative",
+    "ctx_is_stale_creative_for_practice",
+    "open_live_practice_backing",
     "get_backing_source_preference",
     "set_backing_source_preference",
     "restore_custom_song_backing",

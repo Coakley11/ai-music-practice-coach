@@ -201,6 +201,49 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(ctx.song_title, "Day Tripper")
 
 
+    def test_hydrate_stale_entry_jam_yields_custom_for_trial_song(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, get_backing_context
+
+        session = {
+            "active_music_source": "custom_progression",
+            "display_key": "D",
+            "cpl_active_progression": {
+                "id": "trial-rev",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "original_sections": {
+                    "Verse": [{"chord": "D", "bars": 1}],
+                    "Chorus": [],
+                    "Bridge": [],
+                    "Intro": [],
+                    "Outro": [],
+                },
+                "bpm": 90,
+            },
+            BACKING_CONTEXT_KEY: {
+                "source": "entry_jam",
+                "source_label": "Entry & Jam",
+                "active_song_id": "say",
+                "song_title": "Say",
+                "key": "G",
+                "display_key": "G",
+                "concert_key": "G",
+                "bpm": 100,
+                "style": "Bossa Nova",
+                "groove": "Medium",
+                "entry_mode": "Style Jam Mode",
+                "bound_pick_key": "Pop::Say",
+            },
+        }
+        set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+        hydrate_backing_source_for_page(session, st_like=SimpleNamespace(session_state=session))
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(ctx.source, "custom_progression")
+        self.assertEqual(ctx.song_title, "Trial Song")
+
+
 def _style_jam_like_session() -> dict:
     return {
         "improv_entry_mode": "Style Jam Mode",
