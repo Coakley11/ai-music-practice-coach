@@ -887,7 +887,7 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         session["improv_intelligence_tab"] = "Live Coach"
         session["_improv_tab_user_touched"] = True
 
-        changed = ensure_creative_widgets_from_backing_context(session)
+        changed = ensure_creative_widgets_from_backing_context(session, restoring_from_backing=True)
         self.assertTrue(changed)
         tab = ensure_improv_intelligence_tab_restored(session)
         entry = ensure_improv_entry_mode_restored(session)
@@ -920,7 +920,7 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         open_backing_from_creative(session, source="song_improv")
         session["improv_entry_mode"] = "Style Jam Mode"  # stale clobber
 
-        ensure_creative_widgets_from_backing_context(session)
+        ensure_creative_widgets_from_backing_context(session, restoring_from_backing=True)
         entry = ensure_improv_entry_mode_restored(session)
         self.assertEqual(entry, "Song-Based Improvisation")
 
@@ -939,7 +939,7 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
             "studio_page": "creative",
         }
         complete_music_restore_phase(session)
-        changed = ensure_creative_widgets_from_backing_context(session)
+        changed = ensure_creative_widgets_from_backing_context(session, restoring_from_backing=True)
         entry = ensure_improv_entry_mode_restored(session)
         self.assertFalse(changed)
         self.assertEqual(entry, "Jam Session Generator")
@@ -1243,7 +1243,7 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
 
         rehydrate_creative_from_backing_context(session)
         session.pop(CREATIVE_RESTORE_FROM_BACKING_KEY, None)
-        ensure_creative_widgets_from_backing_context(session)
+        ensure_creative_widgets_from_backing_context(session, restoring_from_backing=True)
         after_early_hydrate = _widget_trace(session, "after_early_creative_hydrate")
 
         # Render path: immediately before radios.

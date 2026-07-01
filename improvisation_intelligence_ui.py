@@ -310,20 +310,25 @@ def _tab_entry_modes(
             st.markdown("</div>", unsafe_allow_html=True)
 
         song_preview = resolve_improv_song_preview(session_state)
-        preview_sections = improv_ctx.sections
+        preview_sections = dict(song_preview.get("sections") or {})
         if source == "Custom progression":
-            preview_sections = song_preview.get("sections") or {}
+            pass  # preview_sections already from custom_session bucket
+        elif source == "Active song":
+            if not preview_sections and not is_custom:
+                preview_sections = improv_ctx.sections
         elif not preview_sections:
             preview_sections = improv_ctx.sections
 
         if source == "Active song":
+            flat_preview = [c for chs in preview_sections.values() for c in chs if str(c).strip()]
+            chord_count = len(flat_preview) if flat_preview else len(improv_ctx.progression_flat)
             if render_creative_song_context_card:
                 render_creative_song_context_card(
                     st,
                     title=str(song_preview.get("title") or improv_ctx.song_title),
                     artist=str(song_preview.get("artist") or improv_ctx.artist),
                     display_key=str(song_preview.get("display_key") or improv_ctx.display_key),
-                    chord_count=len(improv_ctx.progression_flat),
+                    chord_count=chord_count,
                     source_label="Active song · Song Selection",
                 )
             st.markdown(
@@ -344,10 +349,10 @@ def _tab_entry_modes(
             if render_creative_song_context_card:
                 render_creative_song_context_card(
                     st,
-                    title=str(song_preview.get("title") or improv_ctx.song_title or "Custom Progression"),
-                    artist=str(song_preview.get("artist") or improv_ctx.artist or "Custom"),
-                    display_key=str(song_preview.get("display_key") or improv_ctx.display_key),
-                    chord_count=len(flat_custom) or len(improv_ctx.progression_flat),
+                    title=str(song_preview.get("title") or "Custom Progression"),
+                    artist=str(song_preview.get("artist") or "Custom"),
+                    display_key=str(song_preview.get("display_key") or "C"),
+                    chord_count=len(flat_custom),
                     source_label="Custom progression",
                     variant="custom",
                 )

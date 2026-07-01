@@ -92,6 +92,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "improv_intelligence_tab",
             "creative_improv_intelligence_tab",
             "improv_entry_mode",
+            "sbi_preview_source",
             "creative_session",
             "improv_generated_sections",
             "improv_style_meta",

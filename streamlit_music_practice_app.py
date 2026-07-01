@@ -9290,10 +9290,14 @@ elif _studio_page_for_hydrate == "creative":
         if st.session_state.get(CREATIVE_RESTORE_FROM_BACKING_KEY):
             rehydrate_creative_from_backing_context(st.session_state, st_like=st)
             st.session_state.pop(CREATIVE_RESTORE_FROM_BACKING_KEY, None)
+            st.session_state["_creative_restore_from_backing"] = True
         try:
             from studio_page_state import ensure_creative_widgets_from_backing_context
 
-            ensure_creative_widgets_from_backing_context(st.session_state)
+            ensure_creative_widgets_from_backing_context(
+                st.session_state,
+                restoring_from_backing=bool(st.session_state.pop("_creative_restore_from_backing", False)),
+            )
         except ImportError:
             pass
         try:

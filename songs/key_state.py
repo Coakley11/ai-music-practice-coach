@@ -132,6 +132,12 @@ def mark_display_key_changed(st: Any) -> None:
                 dk,
                 pick_key=resolve_practice_source_pick(st.session_state),
             )
+            try:
+                from source_session_state import sync_catalog_session
+
+                sync_catalog_session(st.session_state)
+            except ImportError:
+                pass
         except ImportError:
             pass
     try:

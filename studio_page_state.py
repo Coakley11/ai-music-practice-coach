@@ -122,6 +122,16 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
         session_state["improv_song_source"] = (
             "Custom progression" if is_custom_active else "Active song"
         )
+    try:
+        from source_session_state import SBI_PREVIEW_SOURCE_KEY, set_sbi_preview_source
+
+        if SBI_PREVIEW_SOURCE_KEY not in session_state:
+            set_sbi_preview_source(
+                session_state,
+                str(session_state.get("improv_song_source") or "Active song"),
+            )
+    except ImportError:
+        pass
     session_state.setdefault("ii_selected_chord_index", 0)
     session_state.setdefault("ii_selected_chord", "")
     session_state.setdefault("ii_selected_section", "")
@@ -189,118 +199,32 @@ def init_analysis_page_state(session_state: dict) -> None:
 
 
 def resolve_improv_song_source(session_state: dict) -> str:
-    """Read Creative SBI song source without writing widget keys."""
-    for key in (
-        CREATIVE_BACKING_SONG_SOURCE_KEY,
-        PENDING_IMPROV_SONG_SOURCE,
-        "improv_song_source",
-    ):
-        val = str(session_state.get(key) or "").strip()
+    """Read SBI preview song source (preview bucket — not handoff keys)."""
+    try:
+        from source_session_state import get_sbi_preview_source
+
+        return get_sbi_preview_source(session_state)
+    except ImportError:
+        val = str(session_state.get("improv_song_source") or "").strip()
         if val in IMPROV_SONG_SOURCES:
             return val
-    try:
-        from songs.music_source import cpl_session_is_active
-
-        if cpl_session_is_active(session_state):
-            return "Custom progression"
-    except ImportError:
-        pass
-    return "Active song"
+        return "Active song"
 
 
 def resolve_improv_song_preview(session_state: dict) -> dict[str, Any]:
-    """SBI song card preview — independent of temporary custom source toggles."""
-    source = resolve_improv_song_source(session_state)
-    if source == "Custom progression":
-        try:
-            from custom_progression_lab import (
-                CPL_ACTIVE_KEY,
-                default_active_progression,
-                ensure_original_structure,
-                written_home_key,
-            )
-
-            active = ensure_original_structure(
-                session_state.get(CPL_ACTIVE_KEY) or default_active_progression()
-            )
-            title = str(active.get("name") or "Custom progression").strip()
-            home = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
-            practice = (
-                str(
-                    session_state.get("display_key")
-                    or session_state.get("concert_key")
-                    or home
-                ).strip()
-                or home
-            )
-            sections_raw = (
-                active.get("original_sections")
-                if isinstance(active.get("original_sections"), dict)
-                else {}
-            )
-            sections = {
-                str(sec): [str(c) for c in chords if str(c).strip()]
-                for sec, chords in sections_raw.items()
-                if isinstance(chords, list)
-            }
-            return {
-                "source": source,
-                "title": title,
-                "artist": "Custom progression",
-                "display_key": practice,
-                "sections": sections,
-            }
-        except ImportError:
-            pass
-
+    """SBI song card preview — isolated catalog/custom session buckets."""
     try:
-        from songs.music_source import CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY
-        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+        from source_session_state import resolve_sbi_preview
+
+        return resolve_sbi_preview(session_state)
     except ImportError:
         return {
-            "source": source,
+            "source": resolve_improv_song_source(session_state),
             "title": "Active song",
             "artist": "",
             "display_key": "C",
             "sections": {},
         }
-
-    pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-    sel = session_state.get(SELECTED_SONG_STATE_KEY)
-    snap: dict[str, Any] | None = None
-    if pick.startswith("custom::") or not isinstance(sel, dict) or not sel:
-        raw_snap = session_state.get(CATALOG_BEFORE_CUSTOM_KEY) or session_state.get(
-            LAST_CATALOG_STATE_KEY
-        )
-        snap = raw_snap if isinstance(raw_snap, dict) else None
-        if snap:
-            raw_sel = snap.get("selected_song")
-            if isinstance(raw_sel, dict):
-                sel = raw_sel
-            pick = str(snap.get("pick_key") or pick).strip()
-    if isinstance(sel, dict):
-        title = str(sel.get("title") or "Active song").strip()
-        artist = str(sel.get("artist") or "").strip()
-        display_key = str(
-            session_state.get("display_key")
-            or (snap.get("display_key") if snap else "")
-            or sel.get("key")
-            or "C"
-        ).strip() or "C"
-        return {
-            "source": source,
-            "title": title,
-            "artist": artist,
-            "display_key": display_key,
-            "sections": {},
-        }
-    return {
-        "source": source,
-        "title": "Active song",
-        "artist": "",
-        "display_key": "C",
-        "sections": {},
-    }
 
 
 def sync_improv_song_source_for_handoff(
@@ -312,8 +236,15 @@ def sync_improv_song_source_for_handoff(
 ) -> None:
     """Align global music source when opening Practice/Backing from SBI."""
     src = str(source or "Active song").strip() or "Active song"
+    try:
+        from source_session_state import set_sbi_preview_source
+
+        set_sbi_preview_source(session_state, src)
+    except ImportError:
+        pass
     session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = src
     session_state[PENDING_IMPROV_SONG_SOURCE] = src
+    session_state["improv_song_source"] = src
     if src == "Custom progression":
         set_custom_source(session_state)
     else:
@@ -337,7 +268,12 @@ def apply_improv_song_source(
     """Align global music source with Creative Lab song source choice."""
     src = str(source or "Active song").strip() or "Active song"
     if widget_safe:
-        session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = src
+        try:
+            from source_session_state import set_sbi_preview_source
+
+            set_sbi_preview_source(session_state, src)
+        except ImportError:
+            pass
         session_state[PENDING_IMPROV_SONG_SOURCE] = src
         return
     session_state["improv_song_source"] = src
@@ -354,7 +290,12 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
     if not pending:
         return
     session_state.setdefault("improv_song_source", pending)
-    session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = pending
+    try:
+        from source_session_state import set_sbi_preview_source
+
+        set_sbi_preview_source(session_state, pending)
+    except ImportError:
+        pass
 
 
 def ensure_improv_intelligence_tab_restored(session_state: dict) -> str:
@@ -434,13 +375,18 @@ def _active_creative_backing_entry_mode(session_state: dict) -> str:
     return _BACKING_SOURCE_TO_ENTRY_MODE.get(src, "")
 
 
-def ensure_creative_widgets_from_backing_context(session_state: dict) -> bool:
+def ensure_creative_widgets_from_backing_context(
+    session_state: dict,
+    *,
+    restoring_from_backing: bool = False,
+) -> bool:
     """Force Entry & Jam tab + entry-mode radio to match active Creative backing context.
 
-    Backing context source is authoritative for the visible Creative controls on the
-    creative page, overriding stale page-snapshot / widget values. Must run before the
-    intelligence-tab and entry-mode radios render in the same rerun.
+    Only overrides widgets when returning from Backing Studio — not on a plain refresh,
+    so creative_session / user entry-mode choices stay durable.
     """
+    if not restoring_from_backing:
+        return False
     entry = _active_creative_backing_entry_mode(session_state)
     if not entry:
         return False
@@ -474,8 +420,12 @@ def ensure_creative_widgets_from_backing_context(session_state: dict) -> bool:
 
 def ensure_improv_entry_mode_restored(session_state: dict) -> str:
     """Restore Entry / Style Jam / SBI radio before the entry-mode widget renders."""
+    if session_state.get("_improv_tab_user_touched"):
+        current = str(session_state.get("improv_entry_mode") or "").strip()
+        if current in IMPROV_ENTRY_MODES:
+            return current
     backing_entry = _active_creative_backing_entry_mode(session_state)
-    if backing_entry:
+    if backing_entry and session_state.get("_creative_restore_from_backing"):
         try:
             from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
 

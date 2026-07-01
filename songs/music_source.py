@@ -150,6 +150,12 @@ def ensure_active_music_source_from_canonical(session_state: dict[str, Any]) -> 
 
 def set_catalog_source(session_state: dict[str, Any]) -> None:
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CATALOG
+    try:
+        from source_session_state import sync_catalog_session
+
+        sync_catalog_session(session_state)
+    except ImportError:
+        pass
 
 
 def restore_catalog_identity_from_snapshot(
@@ -248,6 +254,12 @@ def snapshot_catalog_before_creative(
         ):
             return
     session_state[CATALOG_BEFORE_CREATIVE_KEY] = snap
+    try:
+        from source_session_state import sync_catalog_session
+
+        sync_catalog_session(session_state)
+    except ImportError:
+        pass
     write_creative_catalog_guard_diag(
         session_state,
         catalog_snapshot_before_creative=str(snap.get("pick_key") or "").strip(),
@@ -402,6 +414,13 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
     snapshot_catalog_before_custom(session_state)
     session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
+    try:
+        from source_session_state import sync_catalog_session, sync_custom_session
+
+        sync_catalog_session(session_state)
+        sync_custom_session(session_state)
+    except ImportError:
+        pass
     try:
         from custom_progression_lab import CPL_LAST_DISPLAY_KEY
 

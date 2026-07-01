@@ -451,12 +451,18 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
     else:
         display = str(session.get("display_key") or concert).strip() or concert
 
+    try:
+        from source_session_state import get_sbi_preview_source
+
+        song_src = get_sbi_preview_source(session)
+    except ImportError:
+        song_src = str(session.get("improv_song_source") or "Active song")
     existing = CreativeSession.from_dict(session.get(CREATIVE_SESSION_KEY)) if session.get(CREATIVE_SESSION_KEY) else None
     sess = CreativeSession(
         session_id=existing.session_id if existing else "",
         tool_type=tool,
         entry_mode=entry,
-        song_source=str(session.get("improv_song_source") or "Active song"),
+        song_source=song_src,
         concert_key=concert,
         display_key=display,
         instrument=str(session.get("instrument") or ""),
@@ -527,6 +533,12 @@ def apply_creative_session_to_session(
     _set("creative_lab_analysis_mode", "Improvisation Intelligence")
     _set("creative_lab_last_mode", "Improvisation Intelligence")
     _set("improv_song_source", sess.song_source)
+    try:
+        from source_session_state import set_sbi_preview_source
+
+        set_sbi_preview_source(session, sess.song_source)
+    except ImportError:
+        pass
 
     concert = str(sess.concert_key or sess.display_key or "C").strip() or "C"
     if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:

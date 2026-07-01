@@ -43,6 +43,7 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
 
     def test_widget_safe_apply_skips_widget_key_and_global_source(self) -> None:
         from song_catalog.catalog import format_pick_key
+        from source_session_state import SBI_PREVIEW_SOURCE_KEY
 
         shape_pick = format_pick_key("Pop", "Shape of You")
         session = {
@@ -74,7 +75,8 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
             widget_safe=True,
         )
         self.assertEqual(session["improv_song_source"], "Active song")
-        self.assertEqual(session[CREATIVE_BACKING_SONG_SOURCE_KEY], "Custom progression")
+        self.assertEqual(session[SBI_PREVIEW_SOURCE_KEY], "Custom progression")
+        self.assertNotIn(CREATIVE_BACKING_SONG_SOURCE_KEY, session)
         self.assertEqual(session["active_catalog_pick_key"], shape_pick)
         self.assertEqual(session["song"], "Shape of You")
         self.assertEqual(len(custom_calls), 0)
@@ -87,7 +89,7 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
             set_custom_source=_set_custom,
             widget_safe=True,
         )
-        self.assertEqual(session[CREATIVE_BACKING_SONG_SOURCE_KEY], "Active song")
+        self.assertEqual(session[SBI_PREVIEW_SOURCE_KEY], "Active song")
         self.assertEqual(session["active_catalog_pick_key"], shape_pick)
         self.assertEqual(session["song"], "Shape of You")
 
@@ -97,19 +99,24 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
         self.assertEqual(session["improv_song_source"], "Custom progression")
         self.assertNotIn(PENDING_IMPROV_SONG_SOURCE, session)
 
-    def test_resolve_prefers_saved_handoff_key(self) -> None:
+    def test_resolve_prefers_preview_bucket_over_stale_handoff(self) -> None:
+        from source_session_state import SBI_PREVIEW_SOURCE_KEY
+
         session = {
             "improv_song_source": "Active song",
-            CREATIVE_BACKING_SONG_SOURCE_KEY: "Custom progression",
+            SBI_PREVIEW_SOURCE_KEY: "Custom progression",
+            CREATIVE_BACKING_SONG_SOURCE_KEY: "Active song",
         }
         self.assertEqual(resolve_improv_song_source(session), "Custom progression")
 
     def test_resolve_active_song_prefers_widget_over_custom_global_pick(self) -> None:
         from song_catalog.catalog import format_pick_key
+        from source_session_state import SBI_PREVIEW_SOURCE_KEY
 
         shape_pick = format_pick_key("Pop", "Shape of You")
         session = {
             "improv_song_source": "Active song",
+            SBI_PREVIEW_SOURCE_KEY: "Active song",
             CREATIVE_BACKING_SONG_SOURCE_KEY: "Active song",
             "active_catalog_pick_key": "custom::trial-1",
             "selected_song": {"title": "Trial Song", "key": "D", "pick_key": "custom::trial-1"},
@@ -120,14 +127,27 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
     def test_preview_active_song_uses_catalog_snapshot_not_custom_pick(self) -> None:
         from song_catalog.catalog import format_pick_key
         from songs.music_source import CATALOG_BEFORE_CUSTOM_KEY
+        from source_session_state import SBI_PREVIEW_SOURCE_KEY
 
         shape_pick = format_pick_key("Pop", "Shape of You")
         session = {
             "improv_song_source": "Active song",
-            CREATIVE_BACKING_SONG_SOURCE_KEY: "Active song",
+            SBI_PREVIEW_SOURCE_KEY: "Active song",
             "active_catalog_pick_key": "custom::trial-1",
             "selected_song": {"title": "Trial Song", "key": "D", "pick_key": "custom::trial-1"},
+            "display_key": "E",
             CATALOG_BEFORE_CUSTOM_KEY: {
+                "pick_key": shape_pick,
+                "selected_song": {
+                    "title": "Shape of You",
+                    "artist": "Ed Sheeran",
+                    "key": "Bm",
+                    "pick_key": shape_pick,
+                },
+                "original_key": "Bm",
+                "display_key": "Bm",
+            },
+            "catalog_session": {
                 "pick_key": shape_pick,
                 "selected_song": {
                     "title": "Shape of You",
@@ -144,6 +164,7 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
         preview = resolve_improv_song_preview(session)
         self.assertEqual(preview["title"], "Shape of You")
         self.assertEqual(preview["source"], "Active song")
+        self.assertEqual(preview["display_key"], "Bm")
 
     def test_handoff_back_to_active_song_restores_catalog_identity(self) -> None:
         from song_catalog.catalog import format_pick_key

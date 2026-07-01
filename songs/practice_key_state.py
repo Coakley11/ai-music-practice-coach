@@ -103,11 +103,16 @@ def consume_force_bpm_sync(session: dict[str, Any], sync_id: str) -> bool:
 def sbi_uses_custom_progression_preview(session: dict[str, Any]) -> bool:
     """True when Song-Based Improvisation is previewing custom without global custom ownership."""
     try:
-        from studio_page_state import resolve_improv_song_source
+        from source_session_state import get_sbi_preview_source
 
-        return str(resolve_improv_song_source(session) or "").strip() == "Custom progression"
+        return get_sbi_preview_source(session) == "Custom progression"
     except ImportError:
-        return False
+        try:
+            from studio_page_state import resolve_improv_song_source
+
+            return str(resolve_improv_song_source(session) or "").strip() == "Custom progression"
+        except ImportError:
+            return False
 
 
 __all__ = [

@@ -1015,6 +1015,10 @@ def maybe_reset_practice_key_on_source_activation(
         try:
             from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
 
+            pick = resolve_practice_source_pick(session)
+            saved = get_practice_concert_key(session, pick)
+            if saved:
+                return False
             saved = get_practice_concert_key(
                 session,
                 resolve_practice_source_pick(session),
