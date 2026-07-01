@@ -2441,9 +2441,22 @@ def prepare_canonical_music_page_state(
         if song_picker_catalog:
             session["_reconcile_song_picker_catalog"] = song_picker_catalog
         prepare_active_song_context(session)
-        session.pop("_reconcile_song_picker_catalog", None)
         prepare_practice_page(session)
         prepare_backing_page(session)
+        try:
+            from music_source_ownership import reconcile_source_ownership
+
+            class _ReconcileProxy:
+                session_state = session
+
+            reconcile_source_ownership(
+                session,
+                st_like=_ReconcileProxy(),
+                reason="prepare_canonical",
+            )
+        except ImportError:
+            pass
+        session.pop("_reconcile_song_picker_catalog", None)
     except ImportError:
         pass
 

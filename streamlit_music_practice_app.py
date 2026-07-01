@@ -10897,8 +10897,16 @@ elif _studio_page == "picker":
         )
 
     try:
-        from backing_source_navigation import render_source_context_debug
+        from backing_source_navigation import (
+            hydrate_picker_source_for_page,
+            render_source_context_debug,
+        )
 
+        hydrate_picker_source_for_page(
+            st.session_state,
+            st_like=st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+        )
         render_source_context_debug(st, st.session_state)
     except ImportError:
         pass

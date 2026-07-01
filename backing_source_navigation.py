@@ -82,7 +82,7 @@ def hydrate_practice_source_for_page(session: dict[str, Any], *, st_like: Any | 
     try:
         from music_source_ownership import reconcile_source_ownership
 
-        reconcile_source_ownership(session, st_like=st_like)
+        reconcile_source_ownership(session, st_like=st_like, reason="practice_hydrate")
     except ImportError:
         pass
     try:
@@ -124,6 +124,29 @@ def hydrate_practice_source_for_page(session: dict[str, Any], *, st_like: Any | 
     except ImportError:
         pass
     restore_practice_source_display_key(session, st_like=st_like)
+
+
+def hydrate_picker_source_for_page(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+    song_picker_catalog: dict | None = None,
+) -> None:
+    """Rebuild stale catalog backing_context when Song Selection shows identity drift."""
+    injected_catalog = False
+    if isinstance(song_picker_catalog, dict) and song_picker_catalog:
+        if not isinstance(session.get("_reconcile_song_picker_catalog"), dict):
+            session["_reconcile_song_picker_catalog"] = song_picker_catalog
+            injected_catalog = True
+    try:
+        from music_source_ownership import reconcile_source_ownership
+
+        reconcile_source_ownership(session, st_like=st_like, reason="picker_hydrate")
+    except ImportError:
+        pass
+    finally:
+        if injected_catalog:
+            session.pop("_reconcile_song_picker_catalog", None)
 
 
 def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext | None:
@@ -201,7 +224,7 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
     try:
         from music_source_ownership import reconcile_source_ownership
 
-        reconcile_source_ownership(session, st_like=st_like)
+        reconcile_source_ownership(session, st_like=st_like, reason="backing_hydrate")
     except ImportError:
         pass
     intent = consume_backing_open_intent(session)
@@ -540,6 +563,15 @@ def _render_source_ownership_dev_table_body(st: Any, session: dict[str, Any]) ->
         "instrument": _diag_value(session.get("instrument")),
         "sections_source": _sections_source_label(session, ctx),
         "top_backing_banner": banner,
+        "catalog_rebuild_needed": _diag_value(session.get("catalog_rebuild_needed")),
+        "catalog_rebuild_ran": _diag_value(session.get("catalog_rebuild_ran")),
+        "catalog_rebuild_pick_key": _diag_value(session.get("catalog_rebuild_pick_key")),
+        "catalog_rebuild_result_bound_pick": _diag_value(
+            session.get("catalog_rebuild_result_bound_pick")
+        ),
+        "catalog_rebuild_result_key": _diag_value(session.get("catalog_rebuild_result_key")),
+        "catalog_rebuild_result_bpm": _diag_value(session.get("catalog_rebuild_result_bpm")),
+        "last_reconcile_reason": _diag_value(session.get("last_reconcile_reason")),
     }
 
     st.caption("**Debug:** Source ownership diagnostics active")
@@ -883,6 +915,7 @@ __all__ = [
     "consume_backing_open_intent",
     "edit_in_creative_button_label",
     "hydrate_backing_source_for_page",
+    "hydrate_picker_source_for_page",
     "hydrate_practice_source_for_page",
     "merge_live_practice_into_creative_session",
     "open_backing_for_practice_source",

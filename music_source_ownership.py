@@ -11,6 +11,41 @@ from typing import Any, Literal
 PracticeOwner = Literal["catalog", "custom"]
 BackingOwner = Literal["catalog", "custom", "entry_jam", "song_improv", "mission"]
 
+CATALOG_REBUILD_NEEDED_KEY = "catalog_rebuild_needed"
+CATALOG_REBUILD_RAN_KEY = "catalog_rebuild_ran"
+CATALOG_REBUILD_PICK_KEY = "catalog_rebuild_pick_key"
+CATALOG_REBUILD_RESULT_BOUND_PICK_KEY = "catalog_rebuild_result_bound_pick"
+CATALOG_REBUILD_RESULT_KEY_KEY = "catalog_rebuild_result_key"
+CATALOG_REBUILD_RESULT_BPM_KEY = "catalog_rebuild_result_bpm"
+LAST_RECONCILE_REASON_KEY = "last_reconcile_reason"
+
+
+def _write_catalog_rebuild_trace(
+    session: dict[str, Any],
+    *,
+    needed: bool | None = None,
+    ran: bool | None = None,
+    pick_key: str | None = None,
+    result_bound_pick: str | None = None,
+    result_key: str | None = None,
+    result_bpm: int | None = None,
+    reason: str | None = None,
+) -> None:
+    if needed is not None:
+        session[CATALOG_REBUILD_NEEDED_KEY] = bool(needed)
+    if ran is not None:
+        session[CATALOG_REBUILD_RAN_KEY] = bool(ran)
+    if pick_key is not None:
+        session[CATALOG_REBUILD_PICK_KEY] = str(pick_key or "").strip()
+    if result_bound_pick is not None:
+        session[CATALOG_REBUILD_RESULT_BOUND_PICK_KEY] = str(result_bound_pick or "").strip()
+    if result_key is not None:
+        session[CATALOG_REBUILD_RESULT_KEY_KEY] = str(result_key or "").strip()
+    if result_bpm is not None:
+        session[CATALOG_REBUILD_RESULT_BPM_KEY] = int(result_bpm or 0)
+    if reason is not None:
+        session[LAST_RECONCILE_REASON_KEY] = str(reason or "").strip()
+
 
 def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
     """Live practice owner from active_music_source (not backing_pref or backing_context).
@@ -301,11 +336,26 @@ def rebuild_catalog_backing_from_canonical_pick(
     )
 
     pick = active_catalog_pick_key(session)
+    _write_catalog_rebuild_trace(session, pick_key=pick)
     if not pick or pick.startswith("custom::"):
+        _write_catalog_rebuild_trace(
+            session,
+            ran=False,
+            result_bound_pick="",
+            result_key="",
+            result_bpm=0,
+        )
         return None
 
     selected, original_key = resolve_catalog_song_for_pick(session, pick)
     if not selected:
+        _write_catalog_rebuild_trace(
+            session,
+            ran=False,
+            result_bound_pick="",
+            result_key="",
+            result_bpm=0,
+        )
         return None
 
     _clear_cross_owner_transport(session)
@@ -358,6 +408,13 @@ def rebuild_catalog_backing_from_canonical_pick(
     )
     set_backing_context(session, ctx)
     apply_backing_context_to_session(session, ctx, st_like=st, widget_safe=True)
+    _write_catalog_rebuild_trace(
+        session,
+        ran=True,
+        result_bound_pick=str(ctx.bound_pick_key or ctx.active_song_id or ""),
+        result_key=str(ctx.concert_key or ctx.display_key or ctx.key or ""),
+        result_bpm=int(ctx.bpm or 0),
+    )
     try:
         from songs.key_state import BACKING_NEEDS_REGEN
 
@@ -406,26 +463,46 @@ def activate_mission_ownership(session: dict[str, Any], *, st_like: Any | None =
     return open_backing_from_creative(session, source="mission", st_like=st_like)
 
 
-def reconcile_source_ownership(session: dict[str, Any], *, st_like: Any | None = None) -> bool:
+def reconcile_source_ownership(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+    reason: str = "",
+) -> bool:
     """Transition backing to match practice owner when practice owns and backing is stale."""
+    if reason:
+        _write_catalog_rebuild_trace(session, reason=reason)
     practice = intended_practice_owner(session)
+    identity_stale = practice == "catalog" and not catalog_identity_aligns(session)
+    _write_catalog_rebuild_trace(session, needed=identity_stale)
     if practice is None:
+        _write_catalog_rebuild_trace(session, ran=False)
         return False
-    if practice == "catalog" and not catalog_identity_aligns(session):
+    if identity_stale:
         rebuild_catalog_backing_from_canonical_pick(session, st_like=st_like)
         return True
     if practice_backing_owners_align(session):
+        _write_catalog_rebuild_trace(session, ran=False)
         return False
     if practice == "catalog":
         activate_catalog_ownership(session, st_like=st_like)
+        _write_catalog_rebuild_trace(session, ran=True)
         return True
     activate_custom_ownership(session, st_like=st_like)
+    _write_catalog_rebuild_trace(session, ran=False)
     return True
 
 
 __all__ = [
     "PracticeOwner",
     "BackingOwner",
+    "CATALOG_REBUILD_NEEDED_KEY",
+    "CATALOG_REBUILD_PICK_KEY",
+    "CATALOG_REBUILD_RAN_KEY",
+    "CATALOG_REBUILD_RESULT_BPM_KEY",
+    "CATALOG_REBUILD_RESULT_BOUND_PICK_KEY",
+    "CATALOG_REBUILD_RESULT_KEY_KEY",
+    "LAST_RECONCILE_REASON_KEY",
     "activate_catalog_ownership",
     "activate_custom_ownership",
     "activate_entry_jam_ownership",

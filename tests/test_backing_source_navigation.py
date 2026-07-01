@@ -12,6 +12,7 @@ from backing_source_navigation import (
     PRACTICE_SOURCE_DISPLAY_KEY,
     consume_backing_open_intent,
     hydrate_backing_source_for_page,
+    hydrate_picker_source_for_page,
     hydrate_practice_source_for_page,
     open_backing_for_practice_source,
     set_backing_open_intent,
@@ -82,6 +83,86 @@ class TestBackingSourceNavigation(unittest.TestCase):
         }
         hydrate_practice_source_for_page(session, st_like=SimpleNamespace(session_state=session))
         self.assertEqual(str(session.get("display_key")), "Bm")
+
+    def test_picker_hydrate_rebuilds_stale_catalog_backing(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, BackingContext
+        from music_source_ownership import (
+            catalog_identity_aligns,
+            practice_backing_owners_align,
+        )
+        from song_catalog.catalog import format_pick_key
+        from songs.music_source import SOURCE_CATALOG, USER_CATALOG_SOURCE_CHOICE_KEY
+
+        day_pick = format_pick_key("Rock", "Day Tripper")
+        say_pick = format_pick_key("Pop", "Say")
+        catalog = {
+            "Rock": {
+                "Day Tripper": {
+                    "title": "Day Tripper",
+                    "artist": "The Beatles",
+                    "key": "E",
+                    "bpm": 138,
+                    "genre": "Rock",
+                }
+            },
+            "Pop": {
+                "Say": {
+                    "title": "Say",
+                    "artist": "John Mayer",
+                    "key": "G",
+                    "bpm": 100,
+                    "genre": "Pop",
+                }
+            },
+        }
+        session = {
+            "studio_page": "picker",
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": day_pick,
+            "selected_song": {
+                "title": "Day Tripper",
+                "pick_key": day_pick,
+                "key": "E",
+                "bpm": 138,
+                "genre": "Rock",
+            },
+            "song": "Day Tripper",
+            "active_song_title": "Day Tripper",
+            "display_key": "G",
+            "concert_key": "G",
+            "backing_track_bpm": 100,
+        }
+        session[BACKING_CONTEXT_KEY] = BackingContext(
+            source="regular_song",
+            source_label="Catalog song",
+            active_song_id=say_pick,
+            song_title="Day Tripper",
+            key="G",
+            display_key="G",
+            concert_key="G",
+            bpm=100,
+            style="",
+            groove="Pop groove",
+            bound_pick_key=say_pick,
+        ).to_dict()
+        self.assertFalse(catalog_identity_aligns(session))
+        hydrate_picker_source_for_page(
+            session,
+            st_like=SimpleNamespace(session_state=session),
+            song_picker_catalog=catalog,
+        )
+        self.assertTrue(catalog_identity_aligns(session))
+        self.assertTrue(practice_backing_owners_align(session))
+        self.assertTrue(session.get("catalog_rebuild_needed"))
+        self.assertTrue(session.get("catalog_rebuild_ran"))
+        self.assertEqual(session.get("last_reconcile_reason"), "picker_hydrate")
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(ctx.bpm, 138)
+        self.assertEqual(ctx.concert_key, "E")
+        self.assertEqual(session.get("display_key"), "E")
 
     def test_song_identity_change_updates_practice_source_key(self) -> None:
         from songs.music_source import on_active_song_identity_changed
