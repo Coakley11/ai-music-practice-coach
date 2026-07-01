@@ -398,6 +398,37 @@ class TestMusicSourceOwnership(unittest.TestCase):
         self.assertEqual(session.get("catalog_rebuild_result_bpm"), 138)
         self.assertEqual(session.get("selected_song", {}).get("bpm"), 138)
 
+    def test_rebuild_uses_backup_picker_for_plain_day_tripper_title(self) -> None:
+        from song_catalog.catalog import load_song_catalog
+        from music_source_ownership import rebuild_catalog_backing_from_canonical_pick
+
+        _, picker, _, _records = load_song_catalog()
+        session = {
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": "Day Tripper",
+            "selected_song": {
+                "title": "Day Tripper",
+                "pick_key": "Day Tripper",
+                "key": "E",
+                "bpm": 100,
+                "genre": "Rock",
+            },
+            "song": "Day Tripper",
+            "display_key": "E",
+            "concert_key": "E",
+            "backing_track_bpm": 100,
+            "_catalog_backup_picker": picker,
+        }
+        rebuild_catalog_backing_from_canonical_pick(session)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(ctx.bpm, 138)
+        self.assertEqual(session.get("catalog_rebuild_result_bpm"), 138)
+        self.assertEqual(session.get("catalog_rebuild_row_default_bpm"), 138)
+        self.assertTrue(session.get("catalog_rebuild_catalog_present"))
+
 
 if __name__ == "__main__":
     unittest.main()

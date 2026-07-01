@@ -1728,8 +1728,11 @@ def _pick_key_is_catalog(pick_key: str) -> bool:
 
 
 def _catalog_picker_from_session(session_state: dict[str, Any]) -> dict[str, dict[str, dict]] | None:
-    raw = session_state.get("_reconcile_song_picker_catalog")
-    return raw if isinstance(raw, dict) else None
+    for key in ("_reconcile_song_picker_catalog", "_catalog_backup_picker"):
+        raw = session_state.get(key)
+        if isinstance(raw, dict) and raw:
+            return raw
+    return None
 
 
 def normalize_catalog_pick_key(
@@ -1769,22 +1772,68 @@ def _pick_keys_match(left: str, right: str, *, session_state: dict[str, Any] | N
 def _catalog_row_for_pick(
     pick_key: str,
     song_picker_catalog: dict[str, dict[str, dict]],
+    *,
+    records: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
+    if not isinstance(song_picker_catalog, dict) or not song_picker_catalog:
+        return None
     try:
-        from song_catalog.catalog import parse_pick_key
+        from song_catalog.catalog import (
+            format_pick_key,
+            parse_pick_key,
+            resolve_pick_key,
+            resolve_picker_catalog_selection,
+        )
     except ImportError:
         return None
-    genre, label = parse_pick_key(pick_key)
-    if not genre or not label:
+    resolved = resolve_pick_key(
+        pick_key,
+        song_picker_catalog=song_picker_catalog,
+        records=records,
+    )
+    candidate = str(resolved or pick_key or "").strip()
+    genre, label = parse_pick_key(candidate)
+    if genre and label:
+        labels = song_picker_catalog.get(genre)
+        if isinstance(labels, dict) and label in labels:
+            data = dict(labels[label])
+            data.setdefault("genre", genre)
+            data.setdefault("label", label)
+            data["pick_key"] = format_pick_key(genre, label)
+            return data
+    _genre, _label, row = resolve_picker_catalog_selection(
+        pick_key,
+        song_picker_catalog,
+        records=records,
+    )
+    if not row:
         return None
-    labels = song_picker_catalog.get(genre)
-    if not isinstance(labels, dict) or label not in labels:
-        return None
-    data = dict(labels[label])
-    data.setdefault("genre", genre)
-    data.setdefault("label", label)
-    data["pick_key"] = pick_key
+    data = dict(row)
+    if _genre:
+        data.setdefault("genre", _genre)
+    if _label:
+        data.setdefault("label", _label)
+        data["pick_key"] = format_pick_key(_genre, _label) if _genre else pick_key
     return data
+
+
+def catalog_transport_bpm_for_pick(
+    session_state: dict[str, Any],
+    pick_key: str,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+) -> int:
+    """Authoritative catalog BPM from picker row extensions.default_bpm."""
+    catalog = song_picker_catalog or _catalog_picker_from_session(session_state)
+    if not isinstance(catalog, dict):
+        return 0
+    pick = normalize_catalog_pick_key(
+        pick_key,
+        session_state=session_state,
+        song_picker_catalog=catalog,
+    )
+    row = _catalog_row_for_pick(pick, catalog)
+    return _catalog_bpm_from_row(row) if row else 0
 
 
 def _catalog_bpm_from_row(row: dict[str, Any]) -> int:

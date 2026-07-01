@@ -47,6 +47,40 @@ def _write_catalog_rebuild_trace(
         session[LAST_RECONCILE_REASON_KEY] = str(reason or "").strip()
 
 
+def _write_catalog_bpm_diagnostics(
+    session: dict[str, Any],
+    *,
+    pick_key: str,
+    selected: dict[str, Any] | None,
+    ctx_bpm: int | None = None,
+) -> None:
+    """Dev trace for catalog BPM resolution during rebuild."""
+    try:
+        from backing_context import _canonical_active_song_bpm, get_backing_context
+        from songs.music_source import (
+            _catalog_bpm_from_row,
+            _catalog_picker_from_session,
+            _catalog_row_for_pick,
+        )
+    except ImportError:
+        return
+    catalog = _catalog_picker_from_session(session)
+    row = _catalog_row_for_pick(pick_key, catalog) if isinstance(catalog, dict) else None
+    ext = row.get("extensions") if isinstance(row, dict) and isinstance(row.get("extensions"), dict) else {}
+    session["catalog_rebuild_catalog_present"] = bool(catalog)
+    session["catalog_rebuild_row_bpm"] = int(row.get("bpm") or 0) if isinstance(row, dict) else 0
+    session["catalog_rebuild_row_default_bpm"] = int(ext.get("default_bpm") or 0) if ext else 0
+    session["catalog_rebuild_selected_bpm_after_merge"] = (
+        int(selected.get("bpm") or 0) if isinstance(selected, dict) else 0
+    )
+    session["catalog_rebuild_canonical_bpm"] = int(_canonical_active_song_bpm(session) or 0)
+    if ctx_bpm is not None:
+        session["catalog_rebuild_ctx_bpm"] = int(ctx_bpm or 0)
+    else:
+        ctx = get_backing_context(session)
+        session["catalog_rebuild_ctx_bpm"] = int(ctx.bpm or 0) if ctx else 0
+
+
 def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
     """Live practice owner from active_music_source (not backing_pref or backing_context).
 
@@ -269,6 +303,14 @@ def _apply_catalog_transport_from_record(
         except (ImportError, TypeError, ValueError):
             bpm = 0
     try:
+        from songs.music_source import catalog_transport_bpm_for_pick
+
+        row_bpm = catalog_transport_bpm_for_pick(session, pick_key)
+        if row_bpm > 0:
+            bpm = row_bpm
+    except ImportError:
+        pass
+    try:
         from backing_context import _canonical_active_song_bpm, _canonical_active_song_groove
         from songs.playback_defaults import (
             active_song_sync_id,
@@ -359,6 +401,7 @@ def rebuild_catalog_backing_from_canonical_pick(
         pick,
         authoritative_transport=True,
     )
+    _write_catalog_bpm_diagnostics(session, pick_key=pick, selected=selected)
     if not selected:
         _write_catalog_rebuild_trace(
             session,
@@ -419,6 +462,7 @@ def rebuild_catalog_backing_from_canonical_pick(
     )
     set_backing_context(session, ctx)
     apply_backing_context_to_session(session, ctx, st_like=st, widget_safe=True)
+    _write_catalog_bpm_diagnostics(session, pick_key=pick, selected=selected, ctx_bpm=int(ctx.bpm or 0))
     _write_catalog_rebuild_trace(
         session,
         ran=True,

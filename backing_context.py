@@ -421,7 +421,21 @@ def _canonical_active_song_bpm(session: dict[str, Any]) -> int:
                 return bpm
         except (TypeError, ValueError):
             pass
-    return _default_bpm(session)
+    try:
+        from songs.music_source import catalog_transport_bpm_for_pick
+
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if not pick:
+            sel = session.get("selected_song")
+            if isinstance(sel, dict):
+                pick = str(sel.get("pick_key") or "").strip()
+        if pick and not pick.startswith("custom::"):
+            row_bpm = catalog_transport_bpm_for_pick(session, pick)
+            if row_bpm > 0:
+                return row_bpm
+    except ImportError:
+        pass
+    return 100
 
 
 def _canonical_active_song_groove(session: dict[str, Any]) -> str:

@@ -571,6 +571,14 @@ def _render_source_ownership_dev_table_body(st: Any, session: dict[str, Any]) ->
         ),
         "catalog_rebuild_result_key": _diag_value(session.get("catalog_rebuild_result_key")),
         "catalog_rebuild_result_bpm": _diag_value(session.get("catalog_rebuild_result_bpm")),
+        "catalog_rebuild_catalog_present": _diag_value(session.get("catalog_rebuild_catalog_present")),
+        "catalog_rebuild_row_bpm": _diag_value(session.get("catalog_rebuild_row_bpm")),
+        "catalog_rebuild_row_default_bpm": _diag_value(session.get("catalog_rebuild_row_default_bpm")),
+        "catalog_rebuild_selected_bpm_after_merge": _diag_value(
+            session.get("catalog_rebuild_selected_bpm_after_merge")
+        ),
+        "catalog_rebuild_canonical_bpm": _diag_value(session.get("catalog_rebuild_canonical_bpm")),
+        "catalog_rebuild_ctx_bpm": _diag_value(session.get("catalog_rebuild_ctx_bpm")),
         "last_reconcile_reason": _diag_value(session.get("last_reconcile_reason")),
     }
 

@@ -39,7 +39,8 @@ class TestBackingContext(unittest.TestCase):
         ctx = build_regular_song_context(session)
         self.assertEqual(ctx.source, "regular_song")
         self.assertEqual(ctx.song_title, "Say")
-        self.assertEqual(ctx.bpm, 82)
+        # Catalog practice uses song-default BPM, not stale backing_track_bpm transport.
+        self.assertEqual(ctx.bpm, 100)
         self.assertEqual(ctx.bound_pick_key, "say|artist")
         self.assertTrue(ctx.source_signature)
 
