@@ -117,6 +117,34 @@ class TestBackingSourceNavigation(unittest.TestCase):
         self.assertEqual(current_backing_owner(session), "entry_jam")
         self.assertEqual(consume_backing_open_intent(session), BACKING_INTENT_RESTORE_LAST)
 
+    def test_from_creative_hydrate_syncs_sidebar_keys_from_backing_context(self) -> None:
+        from songs.key_state import PENDING_DISPLAY_KEY
+
+        session = {
+            "studio_page": "backing",
+            "active_catalog_pick_key": "Rock::Day Tripper",
+            "selected_song": {
+                "title": "Day Tripper",
+                "pick_key": "Rock::Day Tripper",
+                "key": "E",
+                "bpm": 138,
+            },
+            "display_key": "G",
+            "concert_key": "G",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Bright Bossa Nova",
+            "improv_style_bpm": 75,
+            "improv_style_key": "F",
+            "improv_generated_sections": {"Style Jam": ["Fmaj7", "Bbmaj7", "C7", "Fmaj7"]},
+        }
+        st_like = SimpleNamespace(session_state=session)
+        open_backing_from_creative(session, source="entry_jam", st_like=st_like)
+        set_backing_open_intent(session, BACKING_INTENT_FROM_CREATIVE)
+        hydrate_backing_source_for_page(session, st_like=st_like)
+        self.assertEqual(session.get("display_key"), "F")
+        self.assertEqual(session.get("concert_key"), "F")
+        self.assertNotIn(PENDING_DISPLAY_KEY, session)
+
     def test_practice_page_restores_saved_practice_key(self) -> None:
         session = {
             "display_key": "D",

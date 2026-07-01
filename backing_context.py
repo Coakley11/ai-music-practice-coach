@@ -1260,6 +1260,49 @@ def apply_backing_context_to_session(
         session[PENDING_BACKING_CONTEXT_APPLY] = True
 
 
+def sync_live_keys_from_backing_context(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+    widget_safe: bool = True,
+) -> str:
+    """Align display_key, concert_key, and pending with active Creative/custom backing."""
+    ctx = get_backing_context(session)
+    if ctx is None:
+        return ""
+    if ctx.source not in {"entry_jam", "song_improv", "mission", "custom_progression"}:
+        return ""
+    concert = str(ctx.concert_key or ctx.display_key or ctx.key or "").strip()
+    if not concert:
+        return ""
+    try:
+        from session_widget_safe import safe_assign_display_key, widgets_likely_instantiated
+
+        locked = widget_safe and widgets_likely_instantiated(session)
+        if not locked:
+            from songs.key_state import PENDING_DISPLAY_KEY
+
+            session.pop(PENDING_DISPLAY_KEY, None)
+            session["display_key"] = concert
+            session["concert_key"] = concert
+        else:
+            safe_assign_display_key(session, concert, widget_safe=True, st_like=st_like)
+    except ImportError:
+        from songs.key_state import PENDING_DISPLAY_KEY
+
+        session["concert_key"] = concert
+        session[PENDING_DISPLAY_KEY] = concert
+        if not widget_safe:
+            session["display_key"] = concert
+    if ctx.source == "entry_jam":
+        entry = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()
+        if entry == "Style Jam Mode":
+            session["improv_style_key"] = concert
+        elif entry == "Jam Session Generator":
+            session["improv_jam_key"] = concert
+    return concert
+
+
 _CREATIVE_BACKING_SOURCES = frozenset({"entry_jam", "song_improv", "mission"})
 
 
@@ -1502,6 +1545,7 @@ def open_backing_from_creative(
     set_backing_context(session, ctx)
     apply_backing_context_to_session(session, ctx, st_like=st_like)
     set_backing_source_preference(session, BACKING_PREF_CREATIVE)
+    sync_live_keys_from_backing_context(session, st_like=st_like)
     try:
         from studio_page_persistence import save_page_snapshot
 
@@ -2045,6 +2089,7 @@ __all__ = [
     "backing_page_sync_id",
     "backing_page_transport_defaults",
     "sync_creative_handoff_keys",
+    "sync_live_keys_from_backing_context",
     "open_backing_from_creative",
     "ensure_backing_context_from_creative_session",
     "PENDING_BACKING_CONTEXT_APPLY",

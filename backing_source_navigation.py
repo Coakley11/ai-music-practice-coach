@@ -259,6 +259,12 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
     intent = consume_backing_open_intent(session)
     if intent == BACKING_INTENT_FROM_CREATIVE:
         open_backing_for_creative_source(session, st_like=st_like)
+        try:
+            from backing_context import sync_live_keys_from_backing_context
+
+            sync_live_keys_from_backing_context(session, st_like=st_like)
+        except ImportError:
+            pass
         return
     if intent == BACKING_INTENT_FROM_PRACTICE:
         open_backing_for_practice_source(session, st_like=st_like)
@@ -322,6 +328,12 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             ensure_backing_context_from_creative_session(session)
         ctx = active_creative_backing_context(session) or get_backing_context(session)
         if ctx is not None and ctx.source != "regular_song":
+            try:
+                from backing_context import sync_live_keys_from_backing_context
+
+                sync_live_keys_from_backing_context(session, st_like=st_like)
+            except ImportError:
+                pass
             concert = str(ctx.concert_key or ctx.display_key or ctx.key or "").strip()
             if concert:
                 try:

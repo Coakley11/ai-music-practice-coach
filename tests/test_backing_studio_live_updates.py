@@ -550,6 +550,26 @@ class TestKeyConsistencyCardSidebar(unittest.TestCase):
         self.assertEqual(session.get("display_key"), "F")
         self.assertEqual(state.practice_concert_key, "F")
 
+    def test_style_jam_sidebar_prefers_backing_context_over_catalog_display_key(self) -> None:
+        from creative_key_sync import prepare_creative_sidebar_display_key
+
+        session = _entry_jam_session(bpm=75, key="F")
+        session.update(
+            {
+                "studio_page": "backing",
+                "active_catalog_pick_key": "Rock::Day Tripper",
+                "song": "Day Tripper",
+                "display_key": "G",
+                "concert_key": "G",
+            }
+        )
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        st = SimpleNamespace(session_state=session)
+        prepare_creative_sidebar_display_key(st, session)
+        self.assertEqual(session.get("display_key"), "F")
+        self.assertEqual(session.get("concert_key"), "F")
+
     def test_sidebar_key_change_updates_resolver(self) -> None:
         from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE, invalidate_creative_backing_context
 

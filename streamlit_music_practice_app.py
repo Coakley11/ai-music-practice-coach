@@ -9280,6 +9280,13 @@ if _studio_page_for_hydrate == "practice":
         hydrate_practice_source_for_page(st.session_state, st_like=st)
     except ImportError:
         pass
+elif _studio_page_for_hydrate == "backing":
+    try:
+        from backing_source_navigation import hydrate_backing_source_for_page
+
+        hydrate_backing_source_for_page(st.session_state, st_like=st)
+    except ImportError:
+        pass
 
 original_key, _song_identity = display_key_context(
     st.session_state,

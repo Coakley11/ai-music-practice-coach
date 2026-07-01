@@ -393,12 +393,28 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
 
     flush_pending_creative_major_keys(session)
     options = creative_sidebar_key_options(session)
+    backing_key = ""
+    try:
+        from backing_context import active_creative_backing_context
+        from backing_musical_state import resolve_current_backing_musical_state
+
+        creative_ctx = active_creative_backing_context(session)
+        if creative_ctx is not None:
+            backing_key = str(
+                resolve_current_backing_musical_state(session).practice_concert_key
+                or creative_ctx.concert_key
+                or creative_ctx.display_key
+                or ""
+            ).strip()
+    except ImportError:
+        pass
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     selected = str(
         pending
-        or session.get("display_key")
-        or session.get("concert_key")
+        or backing_key
         or creative_entry_concert_key(session)
+        or session.get("concert_key")
+        or session.get("display_key")
         or ""
     ).strip()
     selected = to_major_key_preserve_spelling(selected)
