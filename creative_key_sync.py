@@ -316,6 +316,9 @@ def on_improv_jam_key_change() -> None:
 def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     """True when Style Jam or Jam Session Generator owns major-key context."""
     page = str(session.get("studio_page") or "").strip().lower()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if page == "creative" and entry in CREATIVE_MAJOR_JAM_MODES:
+        return True
     if page not in {"creative", "backing"}:
         return False
     try:
@@ -334,7 +337,6 @@ def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
                 return True
     except ImportError:
         pass
-    entry = str(session.get("improv_entry_mode") or "").strip()
     if entry not in CREATIVE_MAJOR_JAM_MODES:
         return False
     return True
@@ -482,7 +484,7 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         except ImportError:
             saved = ""
         live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-        selected = str(pending or live or saved or resolver_key or "C").strip() or "C"
+        selected = str(pending or saved or live or resolver_key or "C").strip() or "C"
     elif creative and resolve_current_backing_musical_state is not None:
         resolver_key = str(
             resolve_current_backing_musical_state(session).practice_concert_key or ""
@@ -509,11 +511,8 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         options = [selected] + options
     if ctx_source == "custom_progression":
         live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-        session["concert_key"] = live or selected
-        if pending is not None:
-            _apply_display_key_before_widget(st, selected, source="backing_context_concert")
-            session["concert_key"] = selected
-        elif not live:
+        session["concert_key"] = selected
+        if pending is not None or not live or live != selected:
             _apply_display_key_before_widget(st, selected, source="backing_context_concert")
             session["concert_key"] = selected
         return options

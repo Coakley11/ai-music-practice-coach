@@ -680,11 +680,17 @@ def sync_creative_session_before_persist(session: dict[str, Any]) -> CreativeSes
 
 def merge_live_key_into_creative_session(session: dict[str, Any]) -> None:
     """Adopt live practice concert key into canonical Creative session before page hydrate."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    sess = get_creative_session(session)
+    if sess is not None and page == "creative" and sess.tool_type in {
+        "entry_style_jam",
+        "jam_session_generator",
+    }:
+        return
     try:
         from music_theory import key_is_minor
     except ImportError:
         key_is_minor = lambda _k: False  # type: ignore[assignment,misc]
-    sess = get_creative_session(session)
     if sess is None or not creative_session_is_active(session):
         return
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
@@ -737,19 +743,24 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
             return
     except ImportError:
         pass
-    merge_live_key_into_creative_session(session)
     sess = get_creative_session(session)
     page = str(session.get("studio_page") or "").strip().lower()
     should_apply = sess is not None and creative_session_is_active(session)
-    try:
-        from backing_context import active_creative_backing_context
-
-        if page == "creative" and active_creative_backing_context(session) is not None:
-            should_apply = False
-        elif page == "creative" and session.get("_improv_tab_user_touched"):
-            should_apply = False
-    except ImportError:
-        pass
+    if (
+        page == "creative"
+        and sess is not None
+        and sess.tool_type in {"entry_style_jam", "jam_session_generator", "song_based_improvisation"}
+    ):
+        should_apply = True
+    if page == "creative" and session.get("_improv_tab_user_touched"):
+        should_apply = False
+    if should_apply and sess is not None:
+        apply_creative_session_to_session(session, sess, widget_safe=True)
+        session[hydrate_flag] = True
+        return
+    merge_live_key_into_creative_session(session)
+    sess = get_creative_session(session)
+    should_apply = sess is not None and creative_session_is_active(session)
     if (
         sess is not None
         and page == "creative"
@@ -775,6 +786,15 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
 
 def hydrate_creative_session_after_restore(session: dict[str, Any]) -> bool:
     """Re-apply persisted Creative session after cloud/disk restore. Returns True if applied."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    sess = get_creative_session(session)
+    if sess is None:
+        return False
+    if page == "creative" and sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+        apply_creative_session_to_session(session, sess, widget_safe=False)
+        return True
+    if not creative_session_is_active(session):
+        return False
     try:
         from backing_context import catalog_or_custom_backing_is_authoritative
 
@@ -782,9 +802,6 @@ def hydrate_creative_session_after_restore(session: dict[str, Any]) -> bool:
             return False
     except ImportError:
         pass
-    sess = get_creative_session(session)
-    if sess is None or not creative_session_is_active(session):
-        return False
     apply_creative_session_to_session(session, sess, widget_safe=False)
     try:
         from backing_context import (

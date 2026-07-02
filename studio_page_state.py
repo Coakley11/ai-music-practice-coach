@@ -424,6 +424,23 @@ def ensure_improv_entry_mode_restored(session_state: dict) -> str:
         current = str(session_state.get("improv_entry_mode") or "").strip()
         if current in IMPROV_ENTRY_MODES:
             return current
+    page = str(session_state.get("studio_page") or "").strip().lower()
+    if page == "creative" and not session_state.get("_creative_restore_from_backing"):
+        try:
+            from creative_session_state import get_creative_session
+
+            sess = get_creative_session(session_state)
+            if sess is not None:
+                entry = str(sess.entry_mode or "").strip()
+                if entry in IMPROV_ENTRY_MODES and sess.tool_type in {
+                    "entry_style_jam",
+                    "jam_session_generator",
+                }:
+                    if str(session_state.get("improv_entry_mode") or "").strip() != entry:
+                        session_state["improv_entry_mode"] = entry
+                    return entry
+        except ImportError:
+            pass
     backing_entry = _active_creative_backing_entry_mode(session_state)
     if backing_entry and session_state.get("_creative_restore_from_backing"):
         try:

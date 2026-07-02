@@ -527,7 +527,16 @@ def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, 
         except ImportError:
             pass
         if str(getattr(ctx, "source", "") or "").strip() == "regular_song":
-            use_bpm = ctx_bpm
+            try:
+                from songs.practice_key_state import resolve_source_bpm_for_pick
+
+                use_bpm = resolve_source_bpm_for_pick(
+                    session,
+                    active_pick or bound,
+                    default_bpm=canonical_bpm,
+                )
+            except ImportError:
+                use_bpm = ctx_bpm if ctx_bpm > 0 else canonical_bpm
         elif user_dirty or ctx_bpm == canonical_bpm:
             use_bpm = ctx_bpm
     return (
@@ -793,6 +802,15 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
 
     pick_key = _current_pick_key(session)
     key, display_key, concert_key = _live_backing_concert_keys(session)
+    try:
+        from creative_key_sync import creative_entry_concert_key
+
+        creative_sel = str(creative_entry_concert_key(session) or "").strip()
+        entry_for_key = str(session.get("improv_entry_mode") or "").strip()
+        if entry_for_key in {"Style Jam Mode", "Jam Session Generator"} and creative_sel:
+            key = display_key = concert_key = creative_sel
+    except ImportError:
+        pass
     chart_display_key = _resolve_chart_display_key(session, concert_key)
     try:
         from backing_source_navigation import resolve_entry_jam_entry_mode

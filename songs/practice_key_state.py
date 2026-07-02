@@ -7,6 +7,9 @@ from typing import Any
 PRACTICE_KEY_BY_SOURCE_KEY = "practice_key_by_source"
 BPM_BY_SOURCE_KEY = "bpm_by_source"
 FORCE_BPM_SYNC_ONCE_KEY = "_force_bpm_sync_once"
+CREATIVE_STYLE_JAM_PICK = "creative::entry_style_jam"
+CREATIVE_JAM_SESSION_PICK = "creative::jam_session_generator"
+CREATIVE_SBI_PICK = "creative::song_improv"
 
 
 def _practice_key_store(session: dict[str, Any]) -> dict[str, str]:
@@ -42,6 +45,99 @@ def pick_key_from_bpm_sync_id(sync_id: str) -> str:
     if sid.startswith("custom::"):
         return sid
     return ""
+
+
+def is_song_source_pick(pick_key: str) -> bool:
+    """True for catalog/custom picks — not creative-only namespace keys."""
+    pk = str(pick_key or "").strip()
+    if not pk:
+        return False
+    return not pk.startswith("creative::")
+
+
+def resolve_creative_settings_pick(session: dict[str, Any]) -> str:
+    """Stable pick_key for Style Jam / Jam Session / SBI creative settings."""
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry == "Style Jam Mode":
+        return CREATIVE_STYLE_JAM_PICK
+    if entry == "Jam Session Generator":
+        return CREATIVE_JAM_SESSION_PICK
+    if entry == "Song-Based Improvisation":
+        return CREATIVE_SBI_PICK
+    try:
+        from creative_session_state import get_creative_session
+
+        sess = get_creative_session(session)
+        if sess is not None:
+            if sess.tool_type == "entry_style_jam":
+                return CREATIVE_STYLE_JAM_PICK
+            if sess.tool_type == "jam_session_generator":
+                return CREATIVE_JAM_SESSION_PICK
+            if sess.tool_type == "song_based_improvisation":
+                return CREATIVE_SBI_PICK
+    except ImportError:
+        pass
+    return ""
+
+
+def creative_jam_owns_practice_settings(session: dict[str, Any]) -> bool:
+    """Style Jam / Jam Session must not write catalog/custom per-source maps."""
+    try:
+        from creative_key_sync import is_creative_major_jam_active
+
+        if is_creative_major_jam_active(session):
+            return True
+    except ImportError:
+        pass
+    page = str(session.get("studio_page") or "").strip().lower()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if page == "creative" and entry in {"Style Jam Mode", "Jam Session Generator"}:
+        return True
+    try:
+        from creative_session_state import creative_session_is_active, get_creative_session
+
+        if creative_session_is_active(session):
+            sess = get_creative_session(session)
+            if sess is not None and sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+                return True
+    except ImportError:
+        pass
+    return False
+
+
+def should_write_song_source_settings(session: dict[str, Any], pick_key: str = "") -> bool:
+    """True when practice_key_by_source / bpm_by_source may receive this pick_key."""
+    pk = str(pick_key or resolve_practice_source_pick(session) or "").strip()
+    if not pk:
+        return False
+    if pk.startswith("custom::"):
+        return True
+    if not is_song_source_pick(pk):
+        return True
+    return not creative_jam_owns_practice_settings(session)
+
+
+def resolve_settings_pick_for_write(
+    session: dict[str, Any],
+    pick_key: str = "",
+) -> str:
+    """Target pick_key for set_practice_concert_key / set_source_bpm."""
+    explicit = str(pick_key or "").strip()
+    if explicit.startswith("custom::"):
+        return explicit
+    if creative_jam_owns_practice_settings(session):
+        if explicit.startswith("creative::"):
+            return explicit
+        if explicit and is_song_source_pick(explicit):
+            cp = resolve_creative_settings_pick(session)
+            return cp or ""
+        cp = resolve_creative_settings_pick(session)
+        if cp:
+            return cp
+        return ""
+    if explicit:
+        return explicit
+    return resolve_practice_source_pick(session)
 
 
 def resolve_practice_source_pick(session: dict[str, Any]) -> str:
@@ -95,7 +191,7 @@ def set_practice_concert_key(
     *,
     pick_key: str = "",
 ) -> None:
-    pk = str(pick_key or resolve_practice_source_pick(session) or "").strip()
+    pk = resolve_settings_pick_for_write(session, pick_key)
     key = str(concert_key or "").strip()
     if not pk or not key:
         return
@@ -178,7 +274,7 @@ def set_source_bpm(
     *,
     pick_key: str = "",
 ) -> None:
-    pk = str(pick_key or resolve_practice_source_pick(session) or "").strip()
+    pk = resolve_settings_pick_for_write(session, pick_key)
     try:
         val = int(bpm)
     except (TypeError, ValueError):
@@ -216,18 +312,26 @@ def resolve_source_bpm_for_pick(
 
 __all__ = [
     "BPM_BY_SOURCE_KEY",
+    "CREATIVE_JAM_SESSION_PICK",
+    "CREATIVE_SBI_PICK",
+    "CREATIVE_STYLE_JAM_PICK",
     "FORCE_BPM_SYNC_ONCE_KEY",
     "PRACTICE_KEY_BY_SOURCE_KEY",
     "clear_practice_concert_key",
     "clear_source_bpm",
     "consume_force_bpm_sync",
+    "creative_jam_owns_practice_settings",
     "get_practice_concert_key",
     "get_source_bpm",
+    "is_song_source_pick",
     "mark_force_bpm_sync",
     "pick_key_from_bpm_sync_id",
+    "resolve_creative_settings_pick",
     "resolve_practice_concert_key_for_pick",
     "resolve_practice_source_pick",
+    "resolve_settings_pick_for_write",
     "resolve_source_bpm_for_pick",
+    "should_write_song_source_settings",
     "sbi_uses_custom_progression_preview",
     "set_practice_concert_key",
     "set_source_bpm",

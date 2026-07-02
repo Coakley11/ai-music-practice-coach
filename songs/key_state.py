@@ -125,19 +125,33 @@ def mark_display_key_changed(st: Any) -> None:
     dk = str(st.session_state.get("display_key") or "").strip()
     if dk:
         try:
-            from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+            from songs.practice_key_state import (
+                creative_jam_owns_practice_settings,
+                resolve_practice_source_pick,
+                set_practice_concert_key,
+                should_write_song_source_settings,
+            )
 
+            pick = resolve_practice_source_pick(st.session_state)
             set_practice_concert_key(
                 st.session_state,
                 dk,
-                pick_key=resolve_practice_source_pick(st.session_state),
+                pick_key=pick,
             )
-            try:
-                from source_session_state import sync_catalog_session
+            if should_write_song_source_settings(st.session_state, pick):
+                try:
+                    from source_session_state import sync_catalog_session
 
-                sync_catalog_session(st.session_state)
-            except ImportError:
-                pass
+                    sync_catalog_session(st.session_state)
+                except ImportError:
+                    pass
+            if creative_jam_owns_practice_settings(st.session_state):
+                try:
+                    from creative_session_state import sync_creative_session_from_session
+
+                    sync_creative_session_from_session(st.session_state)
+                except ImportError:
+                    pass
         except ImportError:
             pass
     try:
