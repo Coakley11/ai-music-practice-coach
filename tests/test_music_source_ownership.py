@@ -388,6 +388,7 @@ class TestMusicSourceOwnership(unittest.TestCase):
             complete_music_restore_phase(session)
         except ImportError:
             pass
+        session["_streamlit_widgets_locked_this_run"] = True
         rebuild_catalog_backing_from_canonical_pick(session)
         self.assertEqual(session.get("display_key"), "D")
         self.assertEqual(session.get(PENDING_DISPLAY_KEY), "E")

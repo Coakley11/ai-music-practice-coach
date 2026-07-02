@@ -171,7 +171,21 @@ def resolve_backing_bpm_for_slider(
         pass
 
     if tracked_sync and tracked_sync != sync_id:
-        canonical = normalize_backing_bpm(default_bpm)
+        try:
+            from songs.practice_key_state import (
+                pick_key_from_bpm_sync_id,
+                resolve_practice_source_pick,
+                resolve_source_bpm_for_pick,
+            )
+
+            pick = pick_key_from_bpm_sync_id(sync_id) or pick_key_from_bpm_sync_id(tracked_sync)
+            if not pick:
+                pick = resolve_practice_source_pick(st.session_state)
+            canonical = normalize_backing_bpm(
+                resolve_source_bpm_for_pick(st.session_state, pick, default_bpm=default_bpm)
+            )
+        except ImportError:
+            canonical = normalize_backing_bpm(default_bpm)
         st.session_state[slider_key] = canonical
         st.session_state[BPM_WIDGET_KEY] = canonical
         st.session_state["bpm"] = canonical
@@ -209,6 +223,15 @@ def sync_backing_bpm_from_slider(st: Any, *, slider_bpm: int) -> int:
     bpm = int(slider_bpm)
     st.session_state[BPM_WIDGET_KEY] = bpm
     st.session_state["bpm"] = bpm
+    st.session_state["backing_track_bpm"] = bpm
+    try:
+        from songs.practice_key_state import resolve_practice_source_pick, set_source_bpm
+
+        pick = resolve_practice_source_pick(st.session_state)
+        if pick:
+            set_source_bpm(st.session_state, bpm, pick_key=pick)
+    except ImportError:
+        pass
     return bpm
 
 
@@ -554,6 +577,18 @@ def apply_backing_defaults_for_song(
 
         invalidate_backing_cache(st)
         invalidate_backing_page_snapshots(st)
+        try:
+            from songs.practice_key_state import resolve_practice_source_pick, resolve_source_bpm_for_pick
+
+            pick = resolve_practice_source_pick(st.session_state)
+            if pick:
+                active_bpm = resolve_source_bpm_for_pick(
+                    st.session_state,
+                    pick,
+                    default_bpm=active_bpm,
+                )
+        except ImportError:
+            pass
         _set_bpm_tracking_ids(st, song_id, active_bpm)
         st.session_state[LAST_PLAYBACK_GROOVE_SONG] = song_id
         st.session_state[BACKING_GROOVE_KEY] = norm_groove

@@ -2468,8 +2468,20 @@ def activate_catalog_song_for_backing(
         "previous_catalog_restore",
     )
     display_key = catalog_original
-    if reason not in _reset_reasons:
-        display_key = str(session.get("display_key") or session.get("concert_key") or catalog_original).strip() or catalog_original
+    try:
+        from songs.practice_key_state import resolve_practice_concert_key_for_pick
+
+        display_key = resolve_practice_concert_key_for_pick(
+            session,
+            pick_key,
+            original_key=catalog_original,
+        )
+    except ImportError:
+        if reason not in _reset_reasons:
+            display_key = (
+                str(session.get("display_key") or session.get("concert_key") or catalog_original).strip()
+                or catalog_original
+            )
     write_key_transition_diag(
         session,
         catalog_original_key=catalog_original,

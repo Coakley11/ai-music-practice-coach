@@ -74,7 +74,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
     {
         "id": "creative",
         "page_id": "creative",
-        "icon": "🧠",
+        "icon": "🎨",
         "title": "Creative Lab",
         "bullets": [
             "Use your **active song** or **custom progression** as the harmony source.",

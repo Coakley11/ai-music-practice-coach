@@ -624,6 +624,14 @@ def build_regular_song_context(session: dict[str, Any]) -> BackingContext:
     if catalog_practice or pref == BACKING_PREF_CATALOG:
         bpm = _canonical_active_song_bpm(session)
         groove = _canonical_active_song_groove(session)
+        try:
+            from songs.practice_key_state import resolve_practice_source_pick, resolve_source_bpm_for_pick
+
+            pick = resolve_practice_source_pick(session)
+            if pick:
+                bpm = resolve_source_bpm_for_pick(session, pick, default_bpm=bpm)
+        except ImportError:
+            pass
     else:
         bpm = _default_bpm(session)
         groove = _default_groove(session)
@@ -994,6 +1002,14 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
     if progression:
         label = f"{name} · {'–'.join(progression[:4])}"
 
+    default_bpm = int(active.get("bpm") or _default_bpm(session))
+    try:
+        from songs.practice_key_state import resolve_source_bpm_for_pick
+
+        bpm = resolve_source_bpm_for_pick(session, pick_key, default_bpm=default_bpm)
+    except ImportError:
+        bpm = default_bpm
+
     return BackingContext(
         source="custom_progression",
         source_label=_SOURCE_LABELS["custom_progression"],
@@ -1002,7 +1018,7 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
         key=home_key,
         display_key=display_key,
         concert_key=concert_key,
-        bpm=int(active.get("bpm") or _default_bpm(session)),
+        bpm=bpm,
         style=str(active.get("progression_style") or "").strip(),
         groove=str(active.get("groove_style") or _default_groove(session)).strip(),
         scope=str(session.get("backing_track_scope") or "Full song"),
@@ -1822,6 +1838,31 @@ def _original_key_for_active_song(session: dict[str, Any]) -> str:
     return str(session.get("original_key") or "C").strip() or "C"
 
 
+def _apply_practice_display_key(
+    session: dict[str, Any],
+    practice_key: str,
+    *,
+    st_like: Any | None = None,
+) -> None:
+    """Apply saved practice concert key without resetting to catalog/custom original."""
+    key = str(practice_key or "C").strip() or "C"
+    try:
+        from session_widget_safe import safe_assign_display_key
+
+        safe_assign_display_key(session, key, widget_safe=True, st_like=st_like)
+    except ImportError:
+        session["concert_key"] = key
+        session["display_key"] = key
+        session["_pending_display_key"] = key
+    try:
+        from backing_source_navigation import PRACTICE_SOURCE_DISPLAY_KEY, PRACTICE_SOURCE_PICK_KEY
+
+        session[PRACTICE_SOURCE_DISPLAY_KEY] = key
+        session[PRACTICE_SOURCE_PICK_KEY] = str(session.get("active_catalog_pick_key") or "").strip()
+    except ImportError:
+        pass
+
+
 def _apply_original_song_display_key(
     session: dict[str, Any],
     original_key: str,
@@ -1950,9 +1991,19 @@ def restore_custom_song_backing(session: dict[str, Any], *, st_like: Any | None 
         except ImportError:
             pass
     ctx = build_custom_progression_context(session)
-    concert = str(original or ctx.concert_key or ctx.display_key or ctx.key or "").strip()
+    try:
+        from songs.practice_key_state import resolve_practice_concert_key_for_pick, resolve_practice_source_pick
+
+        pick = resolve_practice_source_pick(session)
+        concert = resolve_practice_concert_key_for_pick(
+            session,
+            pick,
+            original_key=str(original or ctx.concert_key or ctx.key or ""),
+        )
+    except ImportError:
+        concert = str(original or ctx.concert_key or ctx.display_key or ctx.key or "").strip()
     if concert:
-        _apply_original_song_display_key(session, concert, st_like=st_like)
+        _apply_practice_display_key(session, concert, st_like=st_like)
     set_backing_source_preference(session, BACKING_PREF_CUSTOM)
     set_backing_context(session, ctx)
     apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)

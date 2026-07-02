@@ -313,6 +313,24 @@ def catalog_identity_aligns(session: dict[str, Any]) -> bool:
                 return False
             if bound and _pick_keys_match(bound, pick, session_state=session):
                 expected_bpm = _canonical_active_song_bpm(session)
+                try:
+                    from songs.music_source import catalog_transport_bpm_for_pick
+
+                    row_bpm = catalog_transport_bpm_for_pick(session, pick)
+                    if row_bpm > 0:
+                        expected_bpm = row_bpm
+                except ImportError:
+                    pass
+                try:
+                    from songs.practice_key_state import resolve_source_bpm_for_pick
+
+                    expected_bpm = resolve_source_bpm_for_pick(
+                        session,
+                        pick,
+                        default_bpm=expected_bpm or int(ctx.bpm or 0) or 100,
+                    )
+                except ImportError:
+                    pass
                 if expected_bpm and int(ctx.bpm or 0) != int(expected_bpm):
                     return False
     except ImportError:
@@ -508,12 +526,28 @@ def _apply_catalog_transport_from_record(
     """Force display key and BPM/groove/meter from canonical catalog record."""
     concert = str(concert_key or original_key or selected.get("key") or "C").strip() or "C"
     if force_display_key:
-        _force_practice_display_key(
-            session,
-            concert,
-            st_like=st_like,
-            writer="catalog_transport_force",
-        )
+        live_display = str(session.get("display_key") or "").strip()
+        try:
+            from session_widget_safe import safe_assign_display_key, widgets_likely_instantiated
+
+            locked = widgets_likely_instantiated(session)
+            if locked or (live_display and live_display != concert):
+                safe_assign_display_key(session, concert, widget_safe=True, st_like=st_like)
+                session["concert_key"] = concert
+            else:
+                _force_practice_display_key(
+                    session,
+                    concert,
+                    st_like=st_like,
+                    writer="catalog_transport_force",
+                )
+        except ImportError:
+            _force_practice_display_key(
+                session,
+                concert,
+                st_like=st_like,
+                writer="catalog_transport_force",
+            )
     else:
         try:
             from session_widget_safe import reconcile_practice_key_fields, safe_assign_display_key
@@ -541,10 +575,16 @@ def _apply_catalog_transport_from_record(
         except (ImportError, TypeError, ValueError):
             bpm = 0
     try:
+        from songs.practice_key_state import resolve_source_bpm_for_pick
+
+        bpm = resolve_source_bpm_for_pick(session, pick_key, default_bpm=bpm or 100)
+    except ImportError:
+        pass
+    try:
         from songs.music_source import catalog_transport_bpm_for_pick
 
         row_bpm = catalog_transport_bpm_for_pick(session, pick_key)
-        if row_bpm > 0:
+        if row_bpm > 0 and bpm <= 0:
             bpm = row_bpm
     except ImportError:
         pass
@@ -575,6 +615,14 @@ def _apply_catalog_transport_from_record(
                 session.pop(_CANONICAL_BACKING_ID_KEY, None)
             except ImportError:
                 session.pop("_canonical_active_backing_song_id", None)
+        effective_force = bool(force_bpm_reset or force_display_key)
+        try:
+            from songs.practice_key_state import get_source_bpm
+
+            if get_source_bpm(session, pick_key, default=0) > 0:
+                effective_force = False
+        except ImportError:
+            pass
         prime_active_song_bpm(st_like, sync_id=sync_id, active_song_bpm=bpm)
         try:
             from songs.practice_key_state import mark_force_bpm_sync
@@ -588,7 +636,7 @@ def _apply_catalog_transport_from_record(
             active_song_bpm=bpm,
             active_song_groove=groove,
             active_song_meter=meter,
-            force_reset=bool(force_bpm_reset or force_display_key),
+            force_reset=effective_force,
         )
         if isinstance(canon_result, dict) and canon_result.get("did_reset"):
             bpm = int(canon_result.get("applied_bpm") or bpm)
@@ -671,10 +719,28 @@ def rebuild_catalog_backing_from_canonical_pick(
         return None
 
     catalog_original = str(original_key or selected.get("key") or "C").strip() or "C"
-    if reset_to_original:
-        target_key = catalog_original
-    else:
-        target_key = str(practice_concert_key or "").strip() or catalog_original
+    try:
+        from songs.practice_key_state import (
+            get_practice_concert_key,
+            resolve_practice_concert_key_for_pick,
+        )
+
+        saved_key = get_practice_concert_key(session, pick)
+        if saved_key:
+            target_key = saved_key
+        elif reset_to_original:
+            target_key = catalog_original
+        else:
+            target_key = (
+                str(practice_concert_key or "").strip()
+                or resolve_practice_concert_key_for_pick(session, pick, original_key=catalog_original)
+            )
+    except ImportError:
+        saved_key = ""
+        if reset_to_original:
+            target_key = catalog_original
+        else:
+            target_key = str(practice_concert_key or "").strip() or catalog_original
     try:
         from backing_source_navigation import peek_key_transition_intent
 
@@ -726,7 +792,7 @@ def rebuild_catalog_backing_from_canonical_pick(
         selected=selected,
         original_key=original_key,
         concert_key=target_key,
-        force_display_key=reset_to_original,
+        force_display_key=bool(reset_to_original and not saved_key),
         force_bpm_reset=force_bpm_reset,
     )
 

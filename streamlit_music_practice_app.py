@@ -889,7 +889,7 @@ if not _APP_UI_LOADED:
             ("picker", "🎼 Song Selection"),
             ("backing", "🎧 Backing Track"),
             ("custom", "✏️ Custom Progression"),
-            ("creative", "🧠 Creative Lab"),
+            ("creative", "🎨 Creative Lab"),
             ("multitrack", "🎚️ Multitrack"),
             ("analysis", "🎙️ Upload Analysis"),
             ("log", "📓 Practice Log"),
@@ -12917,7 +12917,7 @@ elif _studio_page == "creative":
 
     if pp.is_capture_mode(st):
         _studio_page_header(
-            "✏️",
+            "🎨",
             "Creative Lab",
             "Deep harmonic analysis, improvisation intelligence, and adaptive musical development tools.",
         )
@@ -12929,7 +12929,7 @@ elif _studio_page == "creative":
         )
     else:
         _studio_page_header(
-            "✏️",
+            "🎨",
             "Creative Lab",
             "Harmony, improvisation, and growth tools for your active song.",
         )

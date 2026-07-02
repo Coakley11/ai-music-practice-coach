@@ -449,6 +449,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "improv_song_concert_sections",
     "improv_song_chart_sections",
     "practice_key_by_source",
+    "bpm_by_source",
     "sbi_preview_source",
     "catalog_session",
     "custom_session",

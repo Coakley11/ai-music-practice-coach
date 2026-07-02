@@ -1,10 +1,11 @@
-"""Per-source practice concert key — survives refresh until the user changes song/source."""
+"""Per-source practice settings — concert key and BPM survive refresh per pick_key."""
 
 from __future__ import annotations
 
 from typing import Any
 
 PRACTICE_KEY_BY_SOURCE_KEY = "practice_key_by_source"
+BPM_BY_SOURCE_KEY = "bpm_by_source"
 FORCE_BPM_SYNC_ONCE_KEY = "_force_bpm_sync_once"
 
 
@@ -13,6 +14,34 @@ def _practice_key_store(session: dict[str, Any]) -> dict[str, str]:
     if not isinstance(raw, dict):
         return {}
     return {str(k): str(v) for k, v in raw.items() if str(k).strip() and str(v).strip()}
+
+
+def _bpm_store(session: dict[str, Any]) -> dict[str, int]:
+    raw = session.get(BPM_BY_SOURCE_KEY)
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, int] = {}
+    for k, v in raw.items():
+        pk = str(k).strip()
+        if not pk:
+            continue
+        try:
+            bpm = int(v)
+        except (TypeError, ValueError):
+            continue
+        if bpm > 0:
+            out[pk] = bpm
+    return out
+
+
+def pick_key_from_bpm_sync_id(sync_id: str) -> str:
+    """Extract catalog/custom pick_key from a playback sync id."""
+    sid = str(sync_id or "").strip()
+    if sid.startswith("pk::"):
+        return sid[4:].strip()
+    if sid.startswith("custom::"):
+        return sid
+    return ""
 
 
 def resolve_practice_source_pick(session: dict[str, Any]) -> str:
@@ -115,14 +144,91 @@ def sbi_uses_custom_progression_preview(session: dict[str, Any]) -> bool:
             return False
 
 
+def resolve_practice_concert_key_for_pick(
+    session: dict[str, Any],
+    pick_key: str,
+    *,
+    original_key: str = "",
+) -> str:
+    """Saved practice key for one source, else catalog/custom original."""
+    saved = get_practice_concert_key(session, pick_key)
+    if saved:
+        return saved
+    return str(original_key or "").strip() or "C"
+
+
+def get_source_bpm(
+    session: dict[str, Any],
+    pick_key: str = "",
+    *,
+    default: int = 0,
+) -> int:
+    pk = str(pick_key or resolve_practice_source_pick(session) or "").strip()
+    if not pk:
+        return int(default or 0)
+    saved = _bpm_store(session).get(pk)
+    if saved and saved > 0:
+        return int(saved)
+    return int(default or 0)
+
+
+def set_source_bpm(
+    session: dict[str, Any],
+    bpm: int,
+    *,
+    pick_key: str = "",
+) -> None:
+    pk = str(pick_key or resolve_practice_source_pick(session) or "").strip()
+    try:
+        val = int(bpm)
+    except (TypeError, ValueError):
+        return
+    if not pk or val <= 0:
+        return
+    store = _bpm_store(session)
+    store[pk] = val
+    session[BPM_BY_SOURCE_KEY] = store
+
+
+def clear_source_bpm(session: dict[str, Any], pick_key: str) -> None:
+    pk = str(pick_key or "").strip()
+    if not pk:
+        return
+    store = _bpm_store(session)
+    if pk not in store:
+        return
+    store.pop(pk, None)
+    session[BPM_BY_SOURCE_KEY] = store
+
+
+def resolve_source_bpm_for_pick(
+    session: dict[str, Any],
+    pick_key: str,
+    *,
+    default_bpm: int,
+) -> int:
+    """Saved BPM for one source, else song default."""
+    saved = get_source_bpm(session, pick_key, default=0)
+    if saved > 0:
+        return saved
+    return int(default_bpm or 100)
+
+
 __all__ = [
+    "BPM_BY_SOURCE_KEY",
     "FORCE_BPM_SYNC_ONCE_KEY",
     "PRACTICE_KEY_BY_SOURCE_KEY",
     "clear_practice_concert_key",
+    "clear_source_bpm",
     "consume_force_bpm_sync",
     "get_practice_concert_key",
+    "get_source_bpm",
     "mark_force_bpm_sync",
+    "pick_key_from_bpm_sync_id",
+    "resolve_practice_concert_key_for_pick",
     "resolve_practice_source_pick",
+    "resolve_source_bpm_for_pick",
     "sbi_uses_custom_progression_preview",
     "set_practice_concert_key",
+    "set_source_bpm",
 ]
