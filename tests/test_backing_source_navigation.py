@@ -163,6 +163,68 @@ class TestBackingSourceNavigation(unittest.TestCase):
         hydrate_practice_source_for_page(session, st_like=SimpleNamespace(session_state=session))
         self.assertEqual(str(session.get("display_key")), "Bm")
 
+    def test_practice_hydrate_reconcile_primes_bpm_with_streamlit_session_proxy(self) -> None:
+        from backing_context import BACKING_CONTEXT_KEY, BackingContext
+        from song_catalog.catalog import format_pick_key
+        from songs.music_source import SOURCE_CATALOG, USER_CATALOG_SOURCE_CHOICE_KEY
+        from songs.playback_defaults import ACTIVE_SONG_BPM_KEY, BPM_WIDGET_KEY
+
+        class _Proxy:
+            def __init__(self, backing: dict) -> None:
+                self._data = backing
+
+            def __getitem__(self, key):  # type: ignore[no-untyped-def]
+                return self._data[key]
+
+            def __setitem__(self, key, value) -> None:  # type: ignore[no-untyped-def]
+                self._data[key] = value
+
+            def get(self, key, default=None):  # type: ignore[no-untyped-def]
+                return self._data.get(key, default)
+
+            def pop(self, key, default=None):  # type: ignore[no-untyped-def]
+                if key in self._data:
+                    return self._data.pop(key)
+                return default
+
+        day_pick = format_pick_key("Rock", "Day Tripper")
+        say_pick = format_pick_key("Pop", "Say")
+        session = {
+            "studio_page": "practice",
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": day_pick,
+            "selected_song": {
+                "title": "Day Tripper",
+                "pick_key": day_pick,
+                "key": "E",
+                "bpm": 138,
+                "genre": "Rock",
+            },
+            "song": "Day Tripper",
+            "active_song_title": "Day Tripper",
+            "display_key": "G",
+            "concert_key": "G",
+            "backing_track_bpm": 100,
+        }
+        session[BACKING_CONTEXT_KEY] = BackingContext(
+            source="regular_song",
+            source_label="Catalog song",
+            active_song_id=say_pick,
+            song_title="Day Tripper",
+            key="G",
+            display_key="G",
+            concert_key="G",
+            bpm=100,
+            style="",
+            groove="Pop groove",
+            bound_pick_key=say_pick,
+        ).to_dict()
+        proxy = _Proxy(session)
+        hydrate_practice_source_for_page(session, st_like=SimpleNamespace(session_state=proxy))
+        self.assertEqual(session.get(BPM_WIDGET_KEY), 138)
+        self.assertEqual(session.get(ACTIVE_SONG_BPM_KEY), 138)
+
     def test_picker_hydrate_rebuilds_stale_catalog_backing(self) -> None:
         from backing_context import BACKING_CONTEXT_KEY, BackingContext
         from music_source_ownership import (

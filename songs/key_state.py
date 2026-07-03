@@ -89,12 +89,18 @@ _BACKING_CACHE_KEYS = (
 )
 
 
-def _session_from_st_like(session_or_st: Any) -> dict[str, Any]:
-    """Accept a session dict or Streamlit module/context with ``.session_state``."""
+def _is_session_mapping(obj: Any) -> bool:
+    return obj is not None and hasattr(obj, "__getitem__") and hasattr(obj, "__setitem__")
+
+
+def _session_from_st_like(session_or_st: Any) -> Any:
+    """Accept a session dict, mapping-like session_state, or Streamlit module/context."""
     if isinstance(session_or_st, dict):
         return session_or_st
+    if _is_session_mapping(session_or_st) and not hasattr(session_or_st, "session_state"):
+        return session_or_st
     ss = getattr(session_or_st, "session_state", None)
-    if isinstance(ss, dict):
+    if _is_session_mapping(ss):
         return ss
     raise TypeError(
         f"Expected session dict or st-like object, got {type(session_or_st)!r}"

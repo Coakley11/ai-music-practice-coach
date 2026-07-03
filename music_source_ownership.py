@@ -623,7 +623,8 @@ def _apply_catalog_transport_from_record(
                 effective_force = False
         except ImportError:
             pass
-        prime_active_song_bpm(st_like, sync_id=sync_id, active_song_bpm=bpm)
+        playback_target = session if st_like is None else st_like
+        prime_active_song_bpm(playback_target, sync_id=sync_id, active_song_bpm=bpm)
         try:
             from songs.practice_key_state import mark_force_bpm_sync
 
@@ -631,7 +632,7 @@ def _apply_catalog_transport_from_record(
         except ImportError:
             pass
         canon_result = canonicalize_backing_defaults_for_song(
-            st_like,
+            playback_target,
             sync_id=sync_id,
             active_song_bpm=bpm,
             active_song_groove=groove,

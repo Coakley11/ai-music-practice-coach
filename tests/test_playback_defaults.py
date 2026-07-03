@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from songs.playback_defaults import (
     ACTIVE_PLAYBACK_SONG_ID_KEY,
     ACTIVE_SONG_BPM_KEY,
@@ -18,7 +20,29 @@ from songs.playback_defaults import (
     resolve_backing_bpm_for_slider,
     sync_backing_bpm_from_slider,
 )
+from songs.key_state import invalidate_backing_cache
 from songs.meter_state import BACKING_METER_KEY, BACKING_METER_OVERRIDE_KEY
+
+
+class _StreamlitSessionProxy:
+    """Minimal stand-in for Streamlit SessionStateProxy (mapping, not a dict)."""
+
+    def __init__(self, backing: dict) -> None:
+        self._data = backing
+
+    def __getitem__(self, key):  # type: ignore[no-untyped-def]
+        return self._data[key]
+
+    def __setitem__(self, key, value) -> None:  # type: ignore[no-untyped-def]
+        self._data[key] = value
+
+    def get(self, key, default=None):  # type: ignore[no-untyped-def]
+        return self._data.get(key, default)
+
+    def pop(self, key, default=None):  # type: ignore[no-untyped-def]
+        if key in self._data:
+            return self._data.pop(key)
+        return default
 
 
 class _FakeSession:
@@ -95,6 +119,25 @@ def test_prime_active_song_bpm_sets_widget_keys():
     assert st.session_state[BPM_WIDGET_KEY] == 107
     assert st.session_state[backing_bpm_slider_widget_key(sync_id)] == 107
     assert st.session_state[LAST_BACKING_DEFAULTS_SONG_ID] == sync_id
+
+
+def test_prime_active_song_bpm_accepts_streamlit_session_proxy():
+    session: dict = {BPM_WIDGET_KEY: 95, "bpm": 95, "_last_backing_wav": b"stale"}
+    proxy = _StreamlitSessionProxy(session)
+    st_like = SimpleNamespace(session_state=proxy)
+    sync_id = "pk::Rock::We Are the Champions — Queen"
+    prime_active_song_bpm(st_like, sync_id=sync_id, active_song_bpm=107)
+    assert session[BPM_WIDGET_KEY] == 107
+    assert session[backing_bpm_slider_widget_key(sync_id)] == 107
+    assert "_last_backing_wav" not in session
+
+
+def test_invalidate_backing_cache_accepts_streamlit_session_proxy():
+    session = {"_last_backing_wav": b"stale", "current_chord_timeline": [1]}
+    proxy = _StreamlitSessionProxy(session)
+    invalidate_backing_cache(SimpleNamespace(session_state=proxy))
+    assert "_last_backing_wav" not in session
+    assert "current_chord_timeline" not in session
 
 
 def test_canonical_bpm_reads_extensions():

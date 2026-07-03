@@ -235,40 +235,50 @@ def sync_backing_bpm_from_slider(st: Any, *, slider_bpm: int) -> int:
     return bpm
 
 
-def invalidate_backing_page_snapshots(st: Any) -> None:
+def invalidate_backing_page_snapshots(session_or_st: Any) -> None:
     """Drop stored Backing Track page state so navigation cannot restore stale tempo."""
-    store = st.session_state.get(_STUDIO_PAGE_SNAPSHOTS_KEY)
+    session = _session_state(session_or_st)
+    store = session.get(_STUDIO_PAGE_SNAPSHOTS_KEY)
     if isinstance(store, dict):
         store.pop("backing", None)
 
 
-def reset_playback_song_tracking(st: Any) -> None:
+def _session_state(session_or_st: Any) -> Any:
+    """Resolve a mapping-like session state from a dict or st-like object."""
+    from .key_state import _session_from_st_like
+
+    return _session_from_st_like(session_or_st)
+
+
+def reset_playback_song_tracking(session_or_st: Any) -> None:
     """Force BPM/groove widgets to pick up the next active song's defaults."""
     from .meter_state import reset_backing_meter_tracking
 
-    st.session_state.pop(LAST_BPM_SONG, None)
-    st.session_state.pop(LAST_PLAYBACK_GROOVE_SONG, None)
-    st.session_state.pop(LAST_BACKING_DEFAULTS_SONG_ID, None)
-    st.session_state.pop("last_backing_bpm_song_id", None)
-    st.session_state.pop(PENDING_BACKING_TRACK_BPM, None)
-    st.session_state.pop(PENDING_BACKING_GROOVE, None)
-    invalidate_backing_page_snapshots(st)
-    reset_backing_meter_tracking(st)
+    session = _session_state(session_or_st)
+    session.pop(LAST_BPM_SONG, None)
+    session.pop(LAST_PLAYBACK_GROOVE_SONG, None)
+    session.pop(LAST_BACKING_DEFAULTS_SONG_ID, None)
+    session.pop("last_backing_bpm_song_id", None)
+    session.pop(PENDING_BACKING_TRACK_BPM, None)
+    session.pop(PENDING_BACKING_GROOVE, None)
+    invalidate_backing_page_snapshots(session)
+    reset_backing_meter_tracking(session_or_st)
 
 
-def _set_bpm_tracking_ids(st: Any, sync_id: str, active_bpm: int) -> None:
-    st.session_state[LAST_BACKING_DEFAULTS_SONG_ID] = sync_id
-    st.session_state["last_backing_bpm_song_id"] = sync_id
-    st.session_state[LAST_BPM_SONG] = sync_id
-    st.session_state[ACTIVE_PLAYBACK_SONG_ID_KEY] = sync_id
-    st.session_state[ACTIVE_SONG_BPM_KEY] = int(active_bpm)
-    st.session_state[BPM_WIDGET_KEY] = int(active_bpm)
-    st.session_state["bpm"] = int(active_bpm)
-    st.session_state[backing_bpm_slider_widget_key(sync_id)] = int(active_bpm)
+def _set_bpm_tracking_ids(session_or_st: Any, sync_id: str, active_bpm: int) -> None:
+    session = _session_state(session_or_st)
+    session[LAST_BACKING_DEFAULTS_SONG_ID] = sync_id
+    session["last_backing_bpm_song_id"] = sync_id
+    session[LAST_BPM_SONG] = sync_id
+    session[ACTIVE_PLAYBACK_SONG_ID_KEY] = sync_id
+    session[ACTIVE_SONG_BPM_KEY] = int(active_bpm)
+    session[BPM_WIDGET_KEY] = int(active_bpm)
+    session["bpm"] = int(active_bpm)
+    session[backing_bpm_slider_widget_key(sync_id)] = int(active_bpm)
 
 
 def prime_active_song_bpm(
-    st: Any,
+    st_like: Any,
     *,
     sync_id: str,
     active_song_bpm: int,
@@ -276,9 +286,9 @@ def prime_active_song_bpm(
     """Apply song BPM immediately on selection (before any BPM widgets render)."""
     from .key_state import invalidate_backing_cache
 
-    invalidate_backing_cache(st)
-    invalidate_backing_page_snapshots(st)
-    _set_bpm_tracking_ids(st, sync_id, active_song_bpm)
+    invalidate_backing_cache(st_like)
+    invalidate_backing_page_snapshots(st_like)
+    _set_bpm_tracking_ids(st_like, sync_id, active_song_bpm)
 
 
 _CANONICAL_BACKING_ID_KEY = "_canonical_active_backing_song_id"
