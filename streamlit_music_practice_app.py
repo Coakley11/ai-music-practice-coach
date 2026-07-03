@@ -8516,13 +8516,22 @@ def _render_practice_setup_panel(
                     st_like=st,
                 )
 
+            def _on_practice_key_family_change() -> None:
+                from practice_key_mode import on_practice_key_family_change
+
+                on_practice_key_family_change(
+                    st.session_state,
+                    original_key=original_key,
+                    st_like=st,
+                )
+
             render_practice_key_behavior_panel(
                 st,
                 st.session_state,
                 original_key=original_key,
                 display_key_options=display_key_options or ["C"],
                 on_mode_change=_on_practice_key_behavior_change,
-                on_concert_key_change=_on_practice_key_behavior_change,
+                on_family_change=_on_practice_key_family_change,
             )
         except ImportError:
             pass

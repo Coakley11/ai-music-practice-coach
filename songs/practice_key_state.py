@@ -247,10 +247,22 @@ def resolve_practice_concert_key_for_pick(
     original_key: str = "",
 ) -> str:
     """Saved practice key for one source, else catalog/custom original."""
+    original = str(original_key or "").strip() or "C"
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            return resolve_practice_concert_key_for_song(
+                session,
+                original,
+                pick_key=pick_key,
+            )
+    except ImportError:
+        pass
     saved = get_practice_concert_key(session, pick_key)
     if saved:
         return saved
-    return str(original_key or "").strip() or "C"
+    return original
 
 
 def get_source_bpm(

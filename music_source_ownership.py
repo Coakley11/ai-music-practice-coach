@@ -726,11 +726,19 @@ def rebuild_catalog_backing_from_canonical_pick(
             resolve_practice_concert_key_for_pick,
         )
 
+        try:
+            from practice_key_mode import is_fixed_practice_key_mode
+        except ImportError:
+            is_fixed_practice_key_mode = lambda _session: False  # type: ignore[misc,assignment]
         saved_key = get_practice_concert_key(session, pick)
-        if saved_key:
+        if saved_key and not is_fixed_practice_key_mode(session):
             target_key = saved_key
         elif reset_to_original:
-            target_key = catalog_original
+            target_key = resolve_practice_concert_key_for_pick(
+                session,
+                pick,
+                original_key=catalog_original,
+            )
         else:
             target_key = (
                 str(practice_concert_key or "").strip()

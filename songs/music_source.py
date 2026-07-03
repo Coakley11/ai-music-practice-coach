@@ -682,7 +682,17 @@ def commit_catalog_active_song(
         "previous_catalog_restore",
     )
     if reason in _reset_reasons:
-        display_key = original_key
+        try:
+            from practice_key_mode import resolve_practice_concert_key_for_song
+
+            display_key = resolve_practice_concert_key_for_song(
+                session,
+                original_key,
+                pick_key=pick_key,
+                fallback=original_key,
+            )
+        except ImportError:
+            display_key = original_key
     lib_record = dict(selected_song)
     default_bpm = canonical_active_song_bpm(lib_record)
     default_groove = default_groove_for_song(lib_record, infer_fn=lambda _rec, _fb: "Auto")

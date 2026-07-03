@@ -61,6 +61,13 @@ def canonical_display_key_for_pick(session: dict[str, Any], pick_key: str) -> st
     if not pk:
         return ""
     try:
+        from practice_key_mode import is_fixed_practice_key_mode
+
+        if is_fixed_practice_key_mode(session):
+            return ""
+    except ImportError:
+        pass
+    try:
         from songs.practice_key_state import get_practice_concert_key
 
         saved = get_practice_concert_key(session, pk)

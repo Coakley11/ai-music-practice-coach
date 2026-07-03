@@ -17,9 +17,38 @@ from music_theory import (
 
 PRACTICE_KEY_MODE_KEY = "practice_key_mode"
 FIXED_PRACTICE_KEY = "fixed_practice_key"
+FIXED_PRACTICE_KEY_FAMILY_ID = "fixed_practice_key_family_id"
+PRACTICE_KEY_MODE_WIDGET_KEY = "practice_panel_practice_key_mode"
+FIXED_PRACTICE_KEY_WIDGET_KEY = "practice_panel_fixed_practice_key"
 
 MODE_STANDARD = "standard"
 MODE_FIXED = "fixed"
+
+FAMILY_OPTION_SEP = "|"
+
+# (major spelling, relative-minor root spelling) — user-facing dropdown pairs.
+KEY_FAMILY_CHOICES: list[tuple[str, str]] = [
+    ("C", "A"),
+    ("Db", "Bb"),
+    ("C#", "A#"),
+    ("D", "B"),
+    ("Eb", "C"),
+    ("D#", "C"),
+    ("E", "C#"),
+    ("E", "Db"),
+    ("F", "D"),
+    ("Gb", "Eb"),
+    ("F#", "D#"),
+    ("G", "E"),
+    ("Ab", "F"),
+    ("G#", "F"),
+    ("A", "F#"),
+    ("A", "Gb"),
+    ("Bb", "G"),
+    ("A#", "G"),
+    ("B", "G#"),
+    ("B", "Ab"),
+]
 
 PRACTICE_KEY_BEHAVIOR_LABEL = "Key behavior for this practice session"
 
@@ -35,6 +64,63 @@ _MODE_LABELS_LEGACY = {
 }
 
 
+def family_option_id(major: str, minor_root: str) -> str:
+    return f"{major}{FAMILY_OPTION_SEP}{minor_root}"
+
+
+def parse_family_option_id(option_id: str) -> tuple[str, str]:
+    raw = str(option_id or "").strip()
+    if FAMILY_OPTION_SEP in raw:
+        major, minor_root = raw.split(FAMILY_OPTION_SEP, 1)
+        return major.strip(), minor_root.strip()
+    major = _major_family_anchor(raw)
+    minor = relative_minor_of_major(major)
+    minor_root, _ = split_chord(minor)
+    return major, minor_root
+
+
+def fixed_key_family_options() -> list[str]:
+    return [family_option_id(major, minor_root) for major, minor_root in KEY_FAMILY_CHOICES]
+
+
+def _default_family_option_id() -> str:
+    return family_option_id("C", "A")
+
+
+def _family_option_ids_for_major(major: str) -> list[str]:
+    norm = normalize_root(_major_family_anchor(major))
+    return [
+        option_id
+        for option_id in fixed_key_family_options()
+        if normalize_root(parse_family_option_id(option_id)[0]) == norm
+    ]
+
+
+def _family_option_id_for_major(major: str, *, prefer: str = "") -> str:
+    prefer = str(prefer or major or "").strip()
+    matches = _family_option_ids_for_major(major)
+    if prefer:
+        for option_id in matches:
+            if parse_family_option_id(option_id)[0] == prefer:
+                return option_id
+    if matches:
+        return matches[0]
+    return _default_family_option_id()
+
+
+def resolve_family_option_id(session: dict[str, Any]) -> str:
+    widget = str(session.get(FIXED_PRACTICE_KEY_WIDGET_KEY) or "").strip()
+    if widget in fixed_key_family_options():
+        return widget
+    stored = str(session.get(FIXED_PRACTICE_KEY_FAMILY_ID) or "").strip()
+    if stored in fixed_key_family_options():
+        return stored
+    canonical = get_fixed_practice_key(session)
+    if canonical:
+        return _family_option_id_for_major(canonical, prefer=canonical)
+    return _default_family_option_id()
+
+
 def practice_key_mode_label(mode: str) -> str:
     return _MODE_LABELS.get(str(mode or "").strip(), _MODE_LABELS[MODE_STANDARD])
 
@@ -44,6 +130,9 @@ def practice_key_mode_label_legacy(mode: str) -> str:
 
 
 def ensure_practice_key_mode_defaults(session: dict[str, Any]) -> None:
+    if PRACTICE_KEY_MODE_KEY not in session:
+        session[PRACTICE_KEY_MODE_KEY] = MODE_STANDARD
+        return
     if str(session.get(PRACTICE_KEY_MODE_KEY) or "").strip() not in {
         MODE_STANDARD,
         MODE_FIXED,
@@ -77,10 +166,25 @@ def _major_family_anchor(key: str) -> str:
     return "C"
 
 
+def set_fixed_practice_key_family(session: dict[str, Any], option_id: str) -> None:
+    """Persist canonical anchor + user-facing family spelling."""
+    option = str(option_id or "").strip()
+    if option not in fixed_key_family_options():
+        option = _family_option_id_for_major(option, prefer=option)
+    major, _minor_root = parse_family_option_id(option)
+    anchor = _major_family_anchor(major)
+    session[FIXED_PRACTICE_KEY_FAMILY_ID] = option
+    session[FIXED_PRACTICE_KEY] = anchor
+    session[FIXED_PRACTICE_KEY_WIDGET_KEY] = option
+
+
 def set_fixed_practice_key(session: dict[str, Any], key: str) -> None:
-    anchor = _major_family_anchor(key)
-    if anchor:
-        session[FIXED_PRACTICE_KEY] = anchor
+    """Accept a family option id or a raw major anchor."""
+    raw = str(key or "").strip()
+    if FAMILY_OPTION_SEP in raw or raw in fixed_key_family_options():
+        set_fixed_practice_key_family(session, raw)
+        return
+    set_fixed_practice_key_family(session, _family_option_id_for_major(raw, prefer=raw))
 
 
 def set_practice_key_mode(session: dict[str, Any], mode: str) -> None:
@@ -88,6 +192,55 @@ def set_practice_key_mode(session: dict[str, Any], mode: str) -> None:
     if m not in {MODE_STANDARD, MODE_FIXED}:
         m = MODE_STANDARD
     session[PRACTICE_KEY_MODE_KEY] = m
+    session[PRACTICE_KEY_MODE_WIDGET_KEY] = m
+
+
+def prepare_practice_key_mode_widgets(
+    session: dict[str, Any],
+    *,
+    original_key: str = "",
+) -> None:
+    """Sync canonical practice-key mode into page widget keys before render."""
+    _ = original_key
+    ensure_practice_key_mode_defaults(session)
+    session[PRACTICE_KEY_MODE_WIDGET_KEY] = get_practice_key_mode(session)
+    if is_fixed_practice_key_mode(session):
+        set_fixed_practice_key_family(session, resolve_family_option_id(session))
+
+
+def commit_practice_key_mode_widgets(session: dict[str, Any]) -> None:
+    """Copy page widget values into canonical session keys after user edits."""
+    widget_mode = str(session.get(PRACTICE_KEY_MODE_WIDGET_KEY) or "").strip()
+    if widget_mode in {MODE_STANDARD, MODE_FIXED}:
+        session[PRACTICE_KEY_MODE_KEY] = widget_mode
+    if is_fixed_practice_key_mode(session):
+        widget_family = str(session.get(FIXED_PRACTICE_KEY_WIDGET_KEY) or "").strip()
+        if widget_family:
+            set_fixed_practice_key_family(session, widget_family)
+
+
+def persist_practice_key_mode(st_like: Any | None) -> None:
+    """Force cloud/disk save so fixed mode survives refresh and reboot."""
+    if st_like is None:
+        return
+    try:
+        from music_persistent_state import APP_ID, build_music_disk_state, force_autosave
+
+        force_autosave(
+            st_like,
+            APP_ID,
+            build_state=build_music_disk_state,
+            reason="practice_key_mode_change",
+        )
+        return
+    except Exception:
+        pass
+    try:
+        from songs.state import persist_music_local_state
+
+        persist_music_local_state(st_like)
+    except Exception:
+        pass
 
 
 def resolve_fixed_practice_concert_key(fixed_key: str, song_original_key: str) -> str:
@@ -99,25 +252,32 @@ def resolve_fixed_practice_concert_key(fixed_key: str, song_original_key: str) -
     return relative_minor_of_major(fixed)
 
 
-def fixed_key_family_options() -> list[str]:
-    """Major-family anchors, shown as major / relative-minor families."""
-    return list(COMMON_KEYS)
+def fixed_key_family_label(option_id: str) -> str:
+    """User-facing family label, e.g. G major / E minor."""
+    major, minor_root = parse_family_option_id(option_id)
+    return f"{major} major / {minor_root} minor"
 
 
-def fixed_key_family_label(key: str) -> str:
-    """User-facing family label, e.g. C / A minor."""
-    major = _major_family_anchor(key)
-    minor = relative_minor_of_major(major)
-    minor_root, _ = split_chord(minor)
-    return f"{major} / {minor_root} minor"
+def fixed_key_family_label_for_session(session: dict[str, Any]) -> str:
+    if not is_fixed_practice_key_mode(session):
+        return ""
+    return fixed_key_family_label(resolve_family_option_id(session))
 
 
 def fixed_key_family_anchor_from_label(label_or_key: str) -> str:
     """Accept either a family label or a raw key and return the major anchor."""
     raw = str(label_or_key or "").strip()
-    if "/" in raw:
+    if "major" in raw.lower() and "/" in raw:
+        raw = raw.split("/", 1)[0].strip().replace("major", "").strip()
+    elif "/" in raw:
         raw = raw.split("/", 1)[0].strip()
     return _major_family_anchor(raw)
+
+
+def _fixed_family_major_anchor(session: dict[str, Any]) -> str:
+    option_id = resolve_family_option_id(session)
+    major, _ = parse_family_option_id(option_id)
+    return _major_family_anchor(major)
 
 
 def resolve_practice_concert_key_for_song(
@@ -130,8 +290,8 @@ def resolve_practice_concert_key_for_song(
     """Effective practice concert key for one song — honors fixed mode when enabled."""
     original = str(song_original_key or fallback or "C").strip() or "C"
     if is_fixed_practice_key_mode(session):
-        fixed = _major_family_anchor(get_fixed_practice_key(session) or session.get("display_key") or "C")
-        set_fixed_practice_key(session, fixed)
+        fixed = _fixed_family_major_anchor(session)
+        set_fixed_practice_key_family(session, resolve_family_option_id(session))
         if fixed:
             return resolve_fixed_practice_concert_key(fixed, original)
     try:
@@ -155,12 +315,30 @@ def apply_fixed_mode_target(
     """When fixed mode is on, replace a standard-mode target with the family key."""
     if not is_fixed_practice_key_mode(session):
         return str(target or "").strip() or str(song_original_key or "C").strip() or "C"
-    fixed = _major_family_anchor(get_fixed_practice_key(session) or target or "C")
-    set_fixed_practice_key(session, fixed)
-    anchor = fixed or str(target or session.get("display_key") or "").strip()
-    if not anchor:
-        anchor = str(song_original_key or "C").strip() or "C"
+    fixed = _fixed_family_major_anchor(session)
+    set_fixed_practice_key_family(session, resolve_family_option_id(session))
+    anchor = fixed or str(song_original_key or "C").strip() or "C"
     return resolve_fixed_practice_concert_key(anchor, song_original_key)
+
+
+def _apply_fixed_display_key_for_song(
+    session: dict[str, Any],
+    *,
+    original_key: str,
+) -> None:
+    if not is_fixed_practice_key_mode(session):
+        return
+    set_fixed_practice_key_family(session, resolve_family_option_id(session))
+    anchor = _fixed_family_major_anchor(session)
+    try:
+        from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache, request_display_key
+
+        resolved = resolve_fixed_practice_concert_key(anchor, original_key or anchor)
+        request_display_key(session, resolved)
+        session[BACKING_NEEDS_REGEN] = True
+        invalidate_backing_cache(session)
+    except ImportError:
+        pass
 
 
 def on_practice_key_mode_change(
@@ -170,46 +348,38 @@ def on_practice_key_mode_change(
     st_like: Any | None = None,
 ) -> None:
     """Callback when the user toggles practice key behavior."""
-    mode = get_practice_key_mode(session)
-    if mode == MODE_FIXED:
-        anchor = _major_family_anchor(get_fixed_practice_key(session) or session.get("display_key") or original_key or "C")
-        set_fixed_practice_key(session, anchor)
-        try:
-            from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache, request_display_key
+    commit_practice_key_mode_widgets(session)
+    if is_fixed_practice_key_mode(session) and not str(session.get(FIXED_PRACTICE_KEY_FAMILY_ID) or "").strip():
+        set_fixed_practice_key_family(session, _default_family_option_id())
+    if is_fixed_practice_key_mode(session):
+        _apply_fixed_display_key_for_song(session, original_key=original_key)
+    persist_practice_key_mode(st_like)
 
-            resolved = resolve_fixed_practice_concert_key(anchor, original_key or anchor)
-            request_display_key(session, resolved)
-            session[BACKING_NEEDS_REGEN] = True
-            invalidate_backing_cache(session)
-        except ImportError:
-            pass
-    if st_like is not None:
-        try:
-            from songs.state import persist_music_local_state
 
-            persist_music_local_state(st_like)
-        except Exception:
-            pass
+def on_practice_key_family_change(
+    session: dict[str, Any],
+    *,
+    original_key: str = "",
+    st_like: Any | None = None,
+) -> None:
+    """Callback when the user picks a fixed key family."""
+    commit_practice_key_mode_widgets(session)
+    _apply_fixed_display_key_for_song(session, original_key=original_key)
+    persist_practice_key_mode(st_like)
 
 
 def fixed_practice_key_status_line(session: dict[str, Any]) -> str:
     """Compact sidebar status when fixed mode is active."""
     if not is_fixed_practice_key_mode(session):
         return ""
-    key = _major_family_anchor(
-        get_fixed_practice_key(session)
-        or str(session.get("display_key") or "").strip()
-        or "C"
-    )
-    return f"Practice key family: {fixed_key_family_label(key)} (fixed)"
+    return f"Practice Key Family: {fixed_key_family_label_for_session(session)} (fixed)"
 
 
 def fixed_key_family_summary_entry(session: dict[str, Any]) -> str:
     """Practice setup summary suffix when fixed mode is active."""
     if not is_fixed_practice_key_mode(session):
         return ""
-    key = get_fixed_practice_key(session) or str(session.get("display_key") or "").strip() or "C"
-    return f"Fixed Practice Key: {fixed_key_family_label(key)}"
+    return f"Fixed Practice Key: {fixed_key_family_label_for_session(session)}"
 
 
 def render_practice_key_behavior_panel(
@@ -219,10 +389,11 @@ def render_practice_key_behavior_panel(
     original_key: str,
     display_key_options: list[str],
     on_mode_change: Any | None = None,
-    on_concert_key_change: Any | None = None,
+    on_family_change: Any | None = None,
 ) -> None:
     """Practice-page session setup — key behavior and optional fixed concert key."""
-    ensure_practice_key_mode_defaults(session)
+    _ = display_key_options
+    prepare_practice_key_mode_widgets(session, original_key=original_key)
     st_module.markdown(
         f'<p class="ui-practice-key-behavior-label"><strong>{PRACTICE_KEY_BEHAVIOR_LABEL}</strong></p>',
         unsafe_allow_html=True,
@@ -231,20 +402,18 @@ def render_practice_key_behavior_panel(
         PRACTICE_KEY_BEHAVIOR_LABEL,
         options=[MODE_STANDARD, MODE_FIXED],
         format_func=practice_key_mode_label,
-        key=PRACTICE_KEY_MODE_KEY,
+        key=PRACTICE_KEY_MODE_WIDGET_KEY,
         label_visibility="collapsed",
         on_change=on_mode_change,
     )
     if is_fixed_practice_key_mode(session):
-        current = _major_family_anchor(get_fixed_practice_key(session) or session.get("display_key") or original_key or "C")
-        set_fixed_practice_key(session, current)
         st_module.selectbox(
             "Practice Key Family",
             fixed_key_family_options(),
-            key=FIXED_PRACTICE_KEY,
+            key=FIXED_PRACTICE_KEY_WIDGET_KEY,
             format_func=fixed_key_family_label,
             help="Major songs use the major side; minor songs use the relative minor side.",
-            on_change=on_concert_key_change,
+            on_change=on_family_change,
         )
 
 
@@ -252,34 +421,47 @@ def on_fixed_practice_concert_key_change(session: dict[str, Any], concert_key: s
     """Persist the fixed-family anchor when the user edits Practice / Concert Key."""
     if not is_fixed_practice_key_mode(session):
         return
-    key = _major_family_anchor(concert_key or session.get(FIXED_PRACTICE_KEY) or session.get("display_key") or "C")
+    key = str(concert_key or "").strip()
     if key:
         set_fixed_practice_key(session, key)
 
 
 __all__ = [
     "FIXED_PRACTICE_KEY",
-    "fixed_key_family_anchor_from_label",
-    "fixed_key_family_label",
-    "fixed_key_family_options",
-    "fixed_key_family_summary_entry",
+    "FIXED_PRACTICE_KEY_FAMILY_ID",
+    "FIXED_PRACTICE_KEY_WIDGET_KEY",
+    "KEY_FAMILY_CHOICES",
+    "PRACTICE_KEY_BEHAVIOR_LABEL",
+    "PRACTICE_KEY_MODE_KEY",
+    "PRACTICE_KEY_MODE_WIDGET_KEY",
     "MODE_FIXED",
     "MODE_STANDARD",
-    "PRACTICE_KEY_MODE_KEY",
     "apply_fixed_mode_target",
+    "commit_practice_key_mode_widgets",
     "ensure_practice_key_mode_defaults",
+    "family_option_id",
+    "fixed_key_family_anchor_from_label",
+    "fixed_key_family_label",
+    "fixed_key_family_label_for_session",
+    "fixed_key_family_options",
+    "fixed_key_family_summary_entry",
+    "fixed_practice_key_status_line",
     "get_fixed_practice_key",
     "get_practice_key_mode",
     "is_fixed_practice_key_mode",
     "on_fixed_practice_concert_key_change",
-    "PRACTICE_KEY_BEHAVIOR_LABEL",
-    "fixed_practice_key_status_line",
+    "on_practice_key_family_change",
     "on_practice_key_mode_change",
+    "parse_family_option_id",
+    "persist_practice_key_mode",
     "practice_key_mode_label",
     "practice_key_mode_label_legacy",
+    "prepare_practice_key_mode_widgets",
     "render_practice_key_behavior_panel",
+    "resolve_family_option_id",
     "resolve_fixed_practice_concert_key",
     "resolve_practice_concert_key_for_song",
     "set_fixed_practice_key",
+    "set_fixed_practice_key_family",
     "set_practice_key_mode",
 ]

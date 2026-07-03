@@ -452,6 +452,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "bpm_by_source",
     "practice_key_mode",
     "fixed_practice_key",
+    "fixed_practice_key_family_id",
     "sbi_preview_source",
     "catalog_session",
     "custom_session",
@@ -1979,6 +1980,36 @@ def apply_music_disk_state(
                         continue
                 except ImportError:
                     pass
+            if key == "practice_key_mode" and not authoritative_restore:
+                try:
+                    from practice_key_mode import MODE_FIXED as _MODE_FIXED
+
+                    local_mode = str(ss.get("practice_key_mode") or "").strip()
+                    incoming_mode = str(val or "").strip()
+                    if local_mode == _MODE_FIXED and incoming_mode != _MODE_FIXED:
+                        continue
+                except ImportError:
+                    pass
+            if key == "fixed_practice_key" and not authoritative_restore:
+                try:
+                    from practice_key_mode import MODE_FIXED as _MODE_FIXED
+
+                    if str(ss.get("practice_key_mode") or "").strip() == _MODE_FIXED:
+                        local_family = str(ss.get("fixed_practice_key") or "").strip()
+                        if local_family:
+                            continue
+                except ImportError:
+                    pass
+            if key == "fixed_practice_key_family_id" and not authoritative_restore:
+                try:
+                    from practice_key_mode import MODE_FIXED as _MODE_FIXED
+
+                    if str(ss.get("practice_key_mode") or "").strip() == _MODE_FIXED:
+                        local_family_id = str(ss.get("fixed_practice_key_family_id") or "").strip()
+                        if local_family_id:
+                            continue
+                except ImportError:
+                    pass
             ss[key] = copy.deepcopy(val)
             if key == "last_analysis_audio":
                 try:
@@ -2053,6 +2084,13 @@ def apply_music_disk_state(
                 pass
             if not str(key).startswith("_ami_"):
                 ss[key] = copy.deepcopy(val)
+
+    try:
+        from practice_key_mode import prepare_practice_key_mode_widgets
+
+        prepare_practice_key_mode_widgets(ss)
+    except ImportError:
+        pass
 
     if authoritative_restore:
         try:
@@ -2645,18 +2683,26 @@ def music_active_song_cloud_drift(
         return False, ""
 
     ss = st.session_state
-    cloud_dk = _resolve_display_key_from_music_blob(cloud_state)
-    live_dk = str(ss.get("display_key") or "").strip()
-    canonical_dk = ""
-    cloud_meta = cloud_state.get(ACTIVE_SONG_STATE_KEY)
-    if isinstance(cloud_meta, dict):
-        canonical_dk = str(cloud_meta.get("display_key") or "").strip()
-    if cloud_dk and cloud_dk != live_dk:
-        return True, f"display_key:{cloud_dk}!={live_dk or 'empty'}"
-    if cloud_dk and canonical_dk and cloud_dk != canonical_dk:
-        return True, f"display_key:canonical:{canonical_dk}!={cloud_dk}"
-    if cloud_dk and not live_dk:
-        return True, f"display_key:cloud_has:{cloud_dk}"
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode
+
+        fixed_mode_active = is_fixed_practice_key_mode(ss)
+    except ImportError:
+        fixed_mode_active = False
+
+    if not fixed_mode_active:
+        cloud_dk = _resolve_display_key_from_music_blob(cloud_state)
+        live_dk = str(ss.get("display_key") or "").strip()
+        canonical_dk = ""
+        cloud_meta = cloud_state.get(ACTIVE_SONG_STATE_KEY)
+        if isinstance(cloud_meta, dict):
+            canonical_dk = str(cloud_meta.get("display_key") or "").strip()
+        if cloud_dk and cloud_dk != live_dk:
+            return True, f"display_key:{cloud_dk}!={live_dk or 'empty'}"
+        if cloud_dk and canonical_dk and cloud_dk != canonical_dk:
+            return True, f"display_key:canonical:{canonical_dk}!={cloud_dk}"
+        if cloud_dk and not live_dk:
+            return True, f"display_key:cloud_has:{cloud_dk}"
 
     cloud_meta = cloud_state.get(ACTIVE_SONG_STATE_KEY)
     if isinstance(cloud_meta, dict):
