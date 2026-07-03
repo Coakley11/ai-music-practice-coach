@@ -3417,6 +3417,8 @@ def _cached_backing_wav(
     song_title,
     song_artist,
     time_signature,
+    mood: str = "",
+    intensity: str = "",
 ) -> tuple[bytes, bool]:
     cached = _BACKING_WAV_CACHE.get(signature)
     if cached is not None:
@@ -3430,6 +3432,8 @@ def _cached_backing_wav(
         song_title=song_title,
         song_artist=song_artist,
         time_signature=time_signature,
+        mood=mood,
+        intensity=intensity,
     )
     _BACKING_WAV_CACHE[signature] = wav
     _evict_oldest(_BACKING_WAV_CACHE)
@@ -11799,6 +11803,27 @@ elif _studio_page == "backing":
     selected_section_names = selected_section_names or []
     groove_style = st.session_state.get("backing_groove_style", "Auto")
     resolved_groove = infer_groove_style(song_data, groove_style)
+    try:
+        from backing_musical_profile import (
+            profile_cache_tuple,
+            resolve_backing_musical_profile_from_session,
+        )
+
+        _backing_gen_profile = resolve_backing_musical_profile_from_session(
+            st.session_state,
+            style=resolved_groove,
+            tempo=int(st.session_state.get("backing_track_bpm") or st.session_state.get("bpm") or 100),
+            key=str(chart_key or "C"),
+            level=level,
+            time_signature=backing_time_signature,
+        )
+        _backing_gen_mood = _backing_gen_profile.mood
+        _backing_gen_intensity = _backing_gen_profile.intensity
+        _backing_profile_sig = profile_cache_tuple(_backing_gen_profile)
+    except Exception:
+        _backing_gen_mood = ""
+        _backing_gen_intensity = ""
+        _backing_profile_sig = ()
     _humanize_level = "Strong"
     _preserve_exact_timing = bool(st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False))
     _humanize_song_data = song_data
@@ -11881,6 +11906,7 @@ elif _studio_page == "backing":
             _humanize_level,
             _preserve_exact_timing,
             tuple(backing_chords),
+            _backing_profile_sig,
         )
 
     render_scroll_anchor_marker(st, ANCHOR_BACKING_MAIN_CONTROLS)
@@ -12187,6 +12213,8 @@ elif _studio_page == "backing":
                         song_title=str(song_data.get("title", song)),
                         song_artist=str(song_data.get("artist", "")),
                         time_signature=backing_time_signature,
+                        mood=_backing_gen_mood,
+                        intensity=_backing_gen_intensity,
                     )
                     _gen_profile.synthesis_ms = profile_elapsed_ms(_syn_t0)
                     _gen_profile.cache_hit_wav = _wav_hit

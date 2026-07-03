@@ -186,8 +186,12 @@ def infer_groove_style(song_data, selected_style="Auto"):
         return "Ballad"
     if "jobim" in titleish or "bossa" in titleish or "samba" in titleish:
         return "Bossa nova"
+    if "blues" in titleish:
+        return "Blues groove"
     if genre_name == "Jazz":
         return "Jazz swing"
+    if genre_name == "Blues":
+        return "Blues groove"
     if genre_name in ["Funk", "Soul"]:
         return "Funk groove"
     if genre_name == "Rock":
@@ -328,7 +332,9 @@ def _section_intensity(section_name, style):
     }.get(role, 0.92)
     if style == "Ballad":
         base *= 0.78
-    elif style in ["Rock groove", "Funk groove"] and role == "chorus":
+    elif style == "Blues groove":
+        base *= 0.94
+    elif style in ("Rock groove", "Funk groove") and role == "chorus":
         base *= 1.08
     return base
 
@@ -942,6 +948,12 @@ def _song_backing_profile(
         profile["humanize_ms"] = 0.008
         # Ballads breathe back of the beat — sets up the romantic feel.
         profile["pocket_offset"] = 0.020
+    elif style == "Blues groove":
+        profile["swing"] = max(float(profile.get("swing", 0.0)), 0.08)
+        profile["ghost_snare"] = True
+        profile["humanize_ms"] = max(float(profile.get("humanize_ms", 0.012)), 0.016)
+        profile["pocket_offset"] = max(float(profile.get("pocket_offset", 0.0)), 0.010)
+        profile["hat_soft"] = min(float(profile.get("hat_soft", 1.0)), 0.82)
     elif style in ("Jewish groove", "Klezmer groove"):
         profile["swing"] = 0.06
         profile["comp_stab"] = True
@@ -1349,6 +1361,10 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "kick_beats": [0],
             "comp_dur": 0.95,
         })
+    if style == "Blues groove":
+        from backing_style_recipes import blues_groove_pattern
+
+        return blues_groove_pattern(pulses=pulses)
     if style == "Jewish ballad":
         return _fit({
             "bass_beats": [0, 2],
@@ -1485,6 +1501,7 @@ def synthesize_chords_to_numpy(
     song_title: str = "",
     song_artist: str = "",
     time_signature: str = "4/4",
+    musical_profile=None,
 ):
 
     timing = meter_timing(bpm, time_signature)
@@ -1497,6 +1514,18 @@ def synthesize_chords_to_numpy(
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
     song_profile = _song_backing_profile(song_title, song_artist, style, bpm=bpm)
     patterns = _style_patterns(style, song_profile, time_signature=timing.time_signature)
+    if musical_profile is not None:
+        try:
+            from backing_style_recipes import apply_profile_to_synthesis
+
+            song_profile, patterns = apply_profile_to_synthesis(
+                style=style,
+                song_profile=song_profile,
+                patterns=patterns,
+                profile=musical_profile,
+            )
+        except ImportError:
+            pass
     groove_seed = song_groove_seed(song_title, song_artist) if song_title else 0
     swing_amt = float(song_profile.get("swing", 0.0))
     humanize = float(song_profile.get("humanize_ms", 0.012))
@@ -2177,7 +2206,26 @@ def generate_backing_track(
     song_title: str = "",
     song_artist: str = "",
     time_signature: str = "4/4",
+    *,
+    mood: str = "",
+    intensity: str = "",
+    musical_profile=None,
 ):
+
+    if musical_profile is None and (mood or intensity):
+        try:
+            from backing_musical_profile import resolve_backing_musical_profile
+
+            musical_profile = resolve_backing_musical_profile(
+                style=style,
+                mood=mood,
+                intensity=intensity,
+                tempo=int(bpm),
+                level=level,
+                time_signature=time_signature,
+            )
+        except ImportError:
+            musical_profile = None
 
     audio, sr = synthesize_chords_to_numpy(
         chords,
@@ -2188,6 +2236,7 @@ def generate_backing_track(
         song_title=song_title,
         song_artist=song_artist,
         time_signature=time_signature,
+        musical_profile=musical_profile,
     )
     return pcm16_wav_bytes_from_float(audio, sr)
 
