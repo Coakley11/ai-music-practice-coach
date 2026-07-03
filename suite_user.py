@@ -13,9 +13,48 @@ from typing import Any
 
 from suite_storage_config import get_cloud_config, reset_cloud_config_cache
 
+AUTH_USER_EMAIL_KEY = "_suite_auth_user_email"
+AUTH_USER_ID_KEY = "_suite_auth_user_id"
+
+
+def _authenticated_session_state() -> dict[str, Any] | None:
+    """Return Streamlit session when Real Accounts auth is active and signed in."""
+    try:
+        import streamlit as st  # noqa: WPS433
+
+        from suite_auth import is_auth_enabled, is_authenticated
+
+        ss = st.session_state
+        if isinstance(ss, dict) and is_auth_enabled() and is_authenticated(ss):
+            return ss
+    except Exception:
+        pass
+    return None
+
+
+def _auth_cloud_external_id(session_state: dict[str, Any]) -> str:
+    """Match ``suite_auth._persist_auth_session`` — email-first cloud row key."""
+    email = str(session_state.get(AUTH_USER_EMAIL_KEY) or "").strip()
+    if email:
+        return email
+    uid = str(session_state.get(AUTH_USER_ID_KEY) or "").strip()
+    if uid:
+        return uid
+    try:
+        from suite_auth import resolve_auth_external_id
+
+        return str(resolve_auth_external_id(session_state) or "").strip()
+    except ImportError:
+        return ""
+
 
 def get_external_user_id() -> str:
-    """Stable account key from env or [suite_activity] secrets."""
+    """Stable account key — auth session when signed in, else env/secrets."""
+    ss = _authenticated_session_state()
+    if ss:
+        ext = _auth_cloud_external_id(ss)
+        if ext:
+            return ext
     env_id = os.environ.get("SUITE_USER_ID", "").strip()
     if env_id:
         return env_id
@@ -41,6 +80,16 @@ def get_external_user_id() -> str:
 
 
 def get_user_email() -> str:
+    ss = _authenticated_session_state()
+    if ss:
+        try:
+            from suite_auth import current_auth_email
+
+            email = str(current_auth_email(ss) or "").strip()
+            if email:
+                return email
+        except ImportError:
+            pass
     env = os.environ.get("SUITE_USER_EMAIL", "").strip()
     if env:
         return env
@@ -64,6 +113,11 @@ def get_user_email() -> str:
 
 
 def get_display_name() -> str:
+    ss = _authenticated_session_state()
+    if ss:
+        email = str(ss.get(AUTH_USER_EMAIL_KEY) or "").strip()
+        if email and "@" in email:
+            return email.split("@", 1)[0].replace(".", " ").replace("_", " ").title()
     env = os.environ.get("SUITE_USER_DISPLAY_NAME", "").strip()
     if env:
         return env

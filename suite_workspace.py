@@ -141,7 +141,20 @@ def resolve_workspace_id(*, st: Any | None = None, explicit: str | None = None) 
             return normalize_workspace_id(str(raw))
     except Exception:
         pass
-    return load_persisted_workspace_id()
+    ss: dict[str, Any] | None = None
+    if st is not None:
+        try:
+            ss = st.session_state
+        except Exception:
+            ss = None
+    if ss is None:
+        try:
+            import streamlit as st_module  # noqa: WPS433
+
+            ss = st_module.session_state
+        except Exception:
+            ss = None
+    return load_persisted_workspace_id(session_state=ss if isinstance(ss, dict) else None)
 
 
 def get_active_workspace_id(st: Any | None = None) -> str:
@@ -352,6 +365,13 @@ def init_suite_workspace(st: Any) -> str:
                 pass
 
     if st.session_state.get(_INITIALIZED_KEY):
+        try:
+            from suite_auth import enforce_workspace_ownership, is_auth_enabled, is_authenticated
+
+            if is_auth_enabled() and is_authenticated(st.session_state):
+                enforce_workspace_ownership(st.session_state)
+        except ImportError:
+            pass
         return get_active_workspace_id(st)
 
     if SESSION_KEY not in st.session_state:

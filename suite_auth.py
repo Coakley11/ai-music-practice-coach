@@ -306,6 +306,22 @@ def _clear_auth_session(session_state: dict[str, Any], *, st: Any | None = None)
         AUTH_CLIENT_KEY,
     ):
         session_state.pop(key, None)
+    try:
+        from suite_workspace import SESSION_KEY, _INITIALIZED_KEY
+        from suite_workspace_registry import SESSION_OWNED_WORKSPACE_KEY, SESSION_OWNED_WORKSPACE_LABEL_KEY
+
+        session_state.pop(SESSION_KEY, None)
+        session_state.pop(_INITIALIZED_KEY, None)
+        session_state.pop(SESSION_OWNED_WORKSPACE_KEY, None)
+        session_state.pop(SESSION_OWNED_WORKSPACE_LABEL_KEY, None)
+    except ImportError:
+        pass
+    try:
+        from suite_user import reset_account_cache
+
+        reset_account_cache()
+    except ImportError:
+        pass
     if st is not None:
         try:
             from suite_auth_browser import clear_browser_auth_tokens

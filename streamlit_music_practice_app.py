@@ -9768,6 +9768,13 @@ try:
 except Exception:
     pass
 
+try:
+    from workspace_isolation_diagnostics import render_workspace_isolation_diagnostics
+
+    render_workspace_isolation_diagnostics(st)
+except Exception:
+    pass
+
 note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
 _master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
