@@ -9264,6 +9264,30 @@ from practice_setup_globals import ensure_global_setup_defaults as _ensure_globa
 # page widget reads them, so any page that changes one of these values
 # (sidebar, quick controls, YouTube panel, etc.) sees it everywhere.
 _ensure_global_setup_defaults(st.session_state)
+try:
+    from practice_key_mode import (
+        MODE_FIXED,
+        MODE_STANDARD,
+        PRACTICE_KEY_MODE_KEY,
+        ensure_practice_key_mode_defaults,
+        on_practice_key_mode_change,
+        practice_key_mode_label,
+    )
+
+    ensure_practice_key_mode_defaults(st.session_state)
+except ImportError:
+    MODE_STANDARD = "standard"  # type: ignore[misc,assignment]
+    MODE_FIXED = "fixed"  # type: ignore[misc,assignment]
+    PRACTICE_KEY_MODE_KEY = "practice_key_mode"  # type: ignore[misc,assignment]
+
+    def ensure_practice_key_mode_defaults(_session) -> None:  # type: ignore[misc]
+        pass
+
+    def on_practice_key_mode_change(_session, *, original_key: str = "") -> None:  # type: ignore[misc]
+        pass
+
+    def practice_key_mode_label(mode: str) -> str:  # type: ignore[misc]
+        return str(mode or "")
 
 _studio_page_for_hydrate = str(st.session_state.get("studio_page") or "practice").strip() or "practice"
 if _studio_page_for_hydrate == "practice":
@@ -9388,6 +9412,20 @@ except Exception:
 st.sidebar.markdown(
     f'<p class="ui-sidebar-key-caption">Song Original Key: <strong>{original_key}</strong></p>',
     unsafe_allow_html=True,
+)
+
+
+def _on_practice_key_mode_sidebar_change() -> None:
+    on_practice_key_mode_change(st.session_state, original_key=original_key)
+
+
+st.sidebar.radio(
+    "Practice Key Mode",
+    options=[MODE_STANDARD, MODE_FIXED],
+    format_func=practice_key_mode_label,
+    key=PRACTICE_KEY_MODE_KEY,
+    horizontal=True,
+    on_change=_on_practice_key_mode_sidebar_change,
 )
 st.sidebar.selectbox(
     "Practice / Concert Key",

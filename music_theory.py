@@ -218,6 +218,20 @@ def display_key_options(original_key: str) -> list[str]:
     return [canonical] + options
 
 
+def relative_minor_of_major(major_key: str) -> str:
+    """Relative minor for a major key center (e.g. D → Bm)."""
+    root, _ = split_chord(str(major_key or "C").strip() or "C")
+    new_root = _transpose_root(root, -3, reference_key=major_key)
+    return new_root + "m"
+
+
+def relative_major_of_minor(minor_key: str) -> str:
+    """Relative major for a minor key center (e.g. Gm → Bb)."""
+    root, _ = split_chord(str(minor_key or "Am").strip() or "Am")
+    new_root = _transpose_root(root, 3, reference_key=minor_key)
+    return new_root
+
+
 def semitone_distance(from_key, to_key):
     a = normalize_root(split_chord(from_key)[0])
     b = normalize_root(split_chord(to_key)[0])

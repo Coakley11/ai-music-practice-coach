@@ -913,6 +913,18 @@ def apply_pick_key(
             restore_display_key if (is_restore and restore_display_key) else original_key
         )
         user_song_change = pick_changed and not is_restore
+        if user_song_change:
+            try:
+                from practice_key_mode import resolve_practice_concert_key_for_song
+
+                effective_display_key = resolve_practice_concert_key_for_song(
+                    st.session_state,
+                    original_key,
+                    pick_key=pick_key,
+                    fallback=effective_display_key,
+                )
+            except ImportError:
+                pass
         on_active_song_identity_changed(
             st,
             pick_key=pick_key,

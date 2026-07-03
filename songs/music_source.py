@@ -1155,6 +1155,18 @@ def on_active_song_identity_changed(
         except ImportError:
             pass
         target_display = str(display_key if display_key is not None else original_key).strip() or original_key
+        if display_key is None:
+            try:
+                from practice_key_mode import resolve_practice_concert_key_for_song
+
+                target_display = resolve_practice_concert_key_for_song(
+                    session,
+                    original_key,
+                    pick_key=pick_key,
+                    fallback=target_display,
+                )
+            except ImportError:
+                pass
         song_identity = song_display_identity(title, artist, original_key, pick_key=pick_key)
         apply_display_key_for_active_song(
             st,

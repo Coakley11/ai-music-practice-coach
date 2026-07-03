@@ -125,6 +125,13 @@ def mark_display_key_changed(st: Any) -> None:
     dk = str(st.session_state.get("display_key") or "").strip()
     if dk:
         try:
+            from practice_key_mode import on_fixed_practice_concert_key_change
+
+            on_fixed_practice_concert_key_change(st.session_state, dk)
+        except ImportError:
+            pass
+        try:
+            from practice_key_mode import is_fixed_practice_key_mode
             from songs.practice_key_state import (
                 creative_jam_owns_practice_settings,
                 resolve_practice_source_pick,
@@ -132,19 +139,20 @@ def mark_display_key_changed(st: Any) -> None:
                 should_write_song_source_settings,
             )
 
-            pick = resolve_practice_source_pick(st.session_state)
-            set_practice_concert_key(
-                st.session_state,
-                dk,
-                pick_key=pick,
-            )
-            if should_write_song_source_settings(st.session_state, pick):
-                try:
-                    from source_session_state import sync_catalog_session
+            if not is_fixed_practice_key_mode(st.session_state):
+                pick = resolve_practice_source_pick(st.session_state)
+                set_practice_concert_key(
+                    st.session_state,
+                    dk,
+                    pick_key=pick,
+                )
+                if should_write_song_source_settings(st.session_state, pick):
+                    try:
+                        from source_session_state import sync_catalog_session
 
-                    sync_catalog_session(st.session_state)
-                except ImportError:
-                    pass
+                        sync_catalog_session(st.session_state)
+                    except ImportError:
+                        pass
             if creative_jam_owns_practice_settings(st.session_state):
                 try:
                     from creative_session_state import sync_creative_session_from_session
@@ -271,6 +279,12 @@ def apply_display_key_for_active_song(
             canonical = canonical_display_key_for_pick(st.session_state, identity_pk)
             target = canonical or original_key
         try:
+            from practice_key_mode import apply_fixed_mode_target
+
+            target = apply_fixed_mode_target(st.session_state, target, original_key)
+        except ImportError:
+            pass
+        try:
             from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
 
             st.session_state.pop(DISPLAY_KEY_CHANGE_SOURCE_KEY, None)
@@ -290,8 +304,15 @@ def apply_display_key_for_active_song(
     else:
         saved = canonical_display_key_for_pick(st.session_state, identity_pk)
         if saved and saved != str(st.session_state.get("display_key") or "").strip():
-            _apply_display_key_before_widget(st, saved, source="practice_key_restore")
-            st.session_state[LAST_DISPLAY_KEY] = saved
+            target_saved = saved
+            try:
+                from practice_key_mode import apply_fixed_mode_target
+
+                target_saved = apply_fixed_mode_target(st.session_state, saved, original_key)
+            except ImportError:
+                pass
+            _apply_display_key_before_widget(st, target_saved, source="practice_key_restore")
+            st.session_state[LAST_DISPLAY_KEY] = target_saved
         elif "display_key" not in st.session_state:
             _apply_display_key_before_widget(st, original_key, source="initial_display_key")
 
