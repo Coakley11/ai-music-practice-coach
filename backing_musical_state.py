@@ -133,12 +133,18 @@ def _resolve_creative_practice_concert_key(
     live = str(session.get("display_key") or "").strip()
     creative_sel = str(creative_entry_concert_key(session) or creative.concert_key or "").strip()
     key_source = str(session.get(CREATIVE_CONCERT_KEY_SOURCE) or "").strip()
-    if live and key_source:
-        practice = live
-    elif creative_sel and live and live != creative_sel and not key_source:
+    ctx_concert = str(getattr(creative, "concert_key", "") or "").strip()
+    if key_source == "backing_sidebar" and live:
+        if not creative_sel or live == creative_sel or live == ctx_concert:
+            practice = live
+        else:
+            practice = creative_sel
+    elif creative_sel:
         practice = creative_sel
+    elif live:
+        practice = live
     else:
-        practice = live or creative_sel or str(creative.concert_key or "C").strip() or "C"
+        practice = ctx_concert or "C"
     if major_jam and practice:
         practice = to_major_key_preserve_spelling(practice)
     return practice

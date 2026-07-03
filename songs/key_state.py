@@ -206,6 +206,12 @@ def mark_display_key_changed(st: Any) -> None:
         pass
     invalidate_backing_cache(st)
     st.session_state[BACKING_NEEDS_REGEN] = True
+    try:
+        from backing_context import sync_regular_song_backing_context_keys
+
+        sync_regular_song_backing_context_keys(st.session_state)
+    except ImportError:
+        pass
     from custom_progression_lab import on_global_display_key_change
 
     dk = st.session_state.get("display_key")

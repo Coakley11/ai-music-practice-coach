@@ -297,12 +297,18 @@ def _live_backing_concert_keys(session: dict[str, Any]) -> tuple[str, str, str]:
         except ImportError:
             creative_ctx = None
         if creative_ctx is not None:
-            if live and key_source:
-                practice = live
-            elif creative_sel and live and live != creative_sel and not key_source:
+            ctx_concert = str(getattr(creative_ctx, "concert_key", "") or "").strip()
+            if key_source == "backing_sidebar" and live:
+                if not creative_sel or live == creative_sel or live == ctx_concert:
+                    practice = live
+                else:
+                    practice = creative_sel
+            elif creative_sel:
                 practice = creative_sel
+            elif live:
+                practice = live
             else:
-                practice = live or creative_sel or concert or "C"
+                practice = ctx_concert or concert or "C"
         else:
             practice = live or concert or "C"
         practice = practice or "C"
@@ -1234,15 +1240,21 @@ def context_is_stale(session: dict[str, Any]) -> bool:
     return not is_backing_context_valid(session, ctx)
 
 
-def format_backing_context_banner(ctx: BackingContext | None) -> str:
+def format_backing_context_banner(
+    ctx: BackingContext | None,
+    *,
+    practice_concert_key: str = "",
+) -> str:
     if ctx is None:
         return ""
+    resolved_concert = str(practice_concert_key or "").strip()
     if ctx.source == "regular_song":
         parts = ["Backing source: Catalog song"]
         if ctx.song_title:
             parts.append(ctx.song_title)
-        if ctx.display_key:
-            parts.append(ctx.display_key)
+        concert = resolved_concert or str(ctx.display_key or "").strip()
+        if concert:
+            parts.append(concert)
         if ctx.bpm:
             parts.append(f"{ctx.bpm} BPM")
         return " · ".join(parts)
@@ -1252,7 +1264,7 @@ def format_backing_context_banner(ctx: BackingContext | None) -> str:
             parts.append(f"{ctx.mood} {ctx.style}")
         elif ctx.style:
             parts.append(ctx.style)
-        concert = str(ctx.concert_key or ctx.key or ctx.display_key or "").strip()
+        concert = resolved_concert or str(ctx.concert_key or ctx.key or ctx.display_key or "").strip()
         if concert:
             parts.append(f"Concert {concert}")
         if ctx.bpm:
@@ -1587,6 +1599,30 @@ def sections_dict_from_backing_context(
     return _filter_sections_dict(sections, section=section, selected=selected)
 
 
+def sync_regular_song_backing_context_keys(session: dict[str, Any]) -> None:
+    """Keep catalog backing_context concert keys aligned with live practice state."""
+    ctx = get_backing_context(session)
+    if ctx is None or ctx.source != "regular_song":
+        return
+    practice = ""
+    try:
+        from backing_musical_state import resolve_current_backing_musical_state
+
+        practice = str(resolve_current_backing_musical_state(session).practice_concert_key or "").strip()
+    except ImportError:
+        pass
+    if not practice:
+        _, _, practice = _live_backing_concert_keys(session)
+    practice = str(practice or "").strip()
+    if not practice:
+        return
+    if str(ctx.display_key or "").strip() == practice and str(ctx.concert_key or "").strip() == practice:
+        return
+    ctx.display_key = practice
+    ctx.concert_key = practice
+    set_backing_context(session, ctx)
+
+
 def refresh_backing_context_from_session(session: dict[str, Any]) -> BackingContext | None:
     """Rebuild backing context snapshot from live session state."""
     ctx = get_backing_context(session)
@@ -1698,6 +1734,12 @@ def open_backing_from_creative(
         from songs.music_source import snapshot_catalog_before_creative
 
         snapshot_catalog_before_creative(session, refresh_if_pick_changed=True)
+    except ImportError:
+        pass
+    try:
+        from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
+
+        session.pop(CREATIVE_CONCERT_KEY_SOURCE, None)
     except ImportError:
         pass
     sync_creative_handoff_keys(session, st_like=st_like)

@@ -480,12 +480,19 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
     if ctx_source == "custom_progression" or sbi_custom_preview:
         ctx_source = "custom_progression"
     if ctx_source == "regular_song":
-        resolver_key = str(
-            getattr(ctx, "concert_key", None)
-            or getattr(ctx, "display_key", None)
-            or getattr(ctx, "key", None)
-            or ""
-        ).strip()
+        try:
+            from backing_musical_state import resolve_current_backing_musical_state
+
+            resolver_key = str(
+                resolve_current_backing_musical_state(session).practice_concert_key or ""
+            ).strip()
+        except ImportError:
+            resolver_key = str(
+                getattr(ctx, "concert_key", None)
+                or getattr(ctx, "display_key", None)
+                or getattr(ctx, "key", None)
+                or ""
+            ).strip()
     elif ctx_source == "custom_progression":
         home_key = ""
         if ctx is not None:

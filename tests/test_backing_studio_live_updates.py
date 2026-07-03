@@ -11,12 +11,14 @@ from backing_context import (
     build_entry_jam_context,
     build_regular_song_context,
     build_song_improv_context,
+    format_backing_context_banner,
     open_backing_from_creative,
     refresh_backing_context_from_session,
     reconcile_backing_context_on_backing_page,
     sections_dict_for_chart_display,
     sections_dict_from_backing_context,
     set_backing_context,
+    sync_regular_song_backing_context_keys,
 )
 from backing_musical_state import (
     clear_stale_chart_session_keys,
@@ -595,6 +597,83 @@ class TestKeyConsistencyCardSidebar(unittest.TestCase):
         state = resolve_current_backing_musical_state(session)
         self.assertEqual(state.written_key, "D")
         self.assertEqual(state.chart_badge_value, "D")
+
+    def test_catalog_banner_uses_resolver_not_stale_ctx_display_key(self) -> None:
+        session = {
+            "active_catalog_pick_key": "Rock::Twist and Shout",
+            "selected_song": {
+                "title": "Twist and Shout",
+                "artist": "The Beatles",
+                "pick_key": "Rock::Twist and Shout",
+                "key": "C",
+                "bpm": 120,
+            },
+            "display_key": "C",
+            "concert_key": "C",
+            "instrument": "Guitar",
+            "guitar_capo_enabled": True,
+            "guitar_capo_shape_key": "F",
+            "bpm": 120,
+            "studio_page": "backing",
+        }
+        ctx = build_regular_song_context(session)
+        ctx.display_key = "D"
+        ctx.concert_key = "D"
+        set_backing_context(session, ctx)
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.practice_concert_key, "C")
+        self.assertEqual(state.chart_badge_label, "Guitar shape")
+        self.assertEqual(state.chart_badge_value, "F")
+        banner = format_backing_context_banner(ctx, practice_concert_key=state.practice_concert_key)
+        self.assertIn("Twist and Shout", banner)
+        self.assertIn(" · C · ", banner)
+        self.assertNotIn(" · D", banner)
+        full_label = f"{banner} · {state.chart_badge_label} {state.chart_badge_value}"
+        self.assertIn("Guitar shape F", full_label)
+
+    def test_sync_regular_song_backing_context_keys_updates_stale_snapshot(self) -> None:
+        session = {
+            "active_catalog_pick_key": "Rock::Twist and Shout",
+            "selected_song": {
+                "title": "Twist and Shout",
+                "pick_key": "Rock::Twist and Shout",
+                "key": "C",
+            },
+            "display_key": "C",
+            "concert_key": "C",
+        }
+        ctx = build_regular_song_context(session)
+        ctx.display_key = "D"
+        ctx.concert_key = "D"
+        set_backing_context(session, ctx)
+        sync_regular_song_backing_context_keys(session)
+        live = session[BACKING_CONTEXT_KEY]
+        self.assertEqual(live["display_key"], "C")
+        self.assertEqual(live["concert_key"], "C")
+
+    def test_creative_jam_banner_shows_eb_when_stale_display_d(self) -> None:
+        from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
+
+        session = {
+            "active_catalog_pick_key": "say|artist",
+            "song": "Say",
+            "display_key": "D",
+            "concert_key": "D",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Bright Bossa Nova",
+            "improv_style_key": "Eb",
+            "improv_style_bpm": 75,
+            "improv_style_meta": {"style": "Bright Bossa Nova", "bpm": 75, "groove": "Medium", "key": "Eb"},
+            "improv_generated_sections": {"Head (Bright Bossa Nova)": ["Fm7", "Bb7", "Ebmaj7"]},
+            CREATIVE_CONCERT_KEY_SOURCE: "backing_sidebar",
+        }
+        ctx = build_entry_jam_context(session)
+        set_backing_context(session, ctx)
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.practice_concert_key, "Eb")
+        banner = format_backing_context_banner(ctx, practice_concert_key=state.practice_concert_key)
+        self.assertIn("Concert Eb", banner)
+        self.assertNotIn("Concert D", banner)
 
 
 class TestReturnButtonLabels(unittest.TestCase):

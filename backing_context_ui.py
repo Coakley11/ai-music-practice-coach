@@ -99,10 +99,13 @@ def render_backing_context_banner(st: Any, session: dict[str, Any]) -> bool:
     from backing_musical_state import resolve_current_backing_musical_state
 
     ctx = get_backing_context(session)
-    label = format_backing_context_banner(ctx)
+    state = resolve_current_backing_musical_state(session)
+    label = format_backing_context_banner(
+        ctx,
+        practice_concert_key=state.practice_concert_key,
+    )
     if not label:
         return False
-    state = resolve_current_backing_musical_state(session)
     if state.show_chart_badge:
         label = f"{label} · {state.chart_badge_label} {state.chart_badge_value}"
     accent = "#2563eb" if ctx and ctx.source == "entry_jam" else "#7c3aed"
