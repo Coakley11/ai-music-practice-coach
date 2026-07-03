@@ -121,6 +121,14 @@ def _resolve_creative_practice_concert_key(
         creative_entry_concert_key,
         to_major_key_preserve_spelling,
     )
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            original = str(getattr(creative, "key", "") or "C").strip() or "C"
+            return resolve_practice_concert_key_for_song(session, original, fallback=str(creative.concert_key or "C"))
+    except ImportError:
+        pass
 
     live = str(session.get("display_key") or "").strip()
     creative_sel = str(creative_entry_concert_key(session) or creative.concert_key or "").strip()
@@ -227,8 +235,29 @@ def resolve_current_backing_musical_state(
 
     if major_jam:
         practice = to_major_key_preserve_spelling(practice)
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            fixed_original = "C"
+            if creative:
+                fixed_original = str(getattr(creative, "key", "") or "C").strip() or "C"
+            elif custom_ctx is not None:
+                fixed_original = str(custom_ctx.key or "C").strip() or "C"
+            elif rec:
+                fixed_original = str(rec.get("key") or practice or "C").strip() or "C"
+            practice = resolve_practice_concert_key_for_song(session, fixed_original, fallback=practice)
+    except ImportError:
+        pass
 
     sidebar = str(session.get("display_key") or practice).strip() or practice
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode
+
+        if is_fixed_practice_key_mode(session):
+            sidebar = practice
+    except ImportError:
+        pass
     if major_jam and sidebar:
         sidebar = to_major_key_preserve_spelling(sidebar)
 

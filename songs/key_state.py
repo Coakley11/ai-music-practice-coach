@@ -321,6 +321,15 @@ def apply_display_key_for_active_song(
         st.session_state[LAST_DISPLAY_KEY] = target
         invalidate_backing_cache(st)
         st.session_state[BACKING_NEEDS_REGEN] = False
+        try:
+            from practice_key_mode import is_fixed_practice_key_mode
+
+            if is_fixed_practice_key_mode(st.session_state):
+                return [str(target)]
+        except ImportError:
+            pass
+        if target not in options:
+            options = [str(target)] + [opt for opt in options if opt != str(target)]
         return options
 
     identity_pk = str(song_identity[0] or "").strip() if song_identity else ""
@@ -340,9 +349,27 @@ def apply_display_key_for_active_song(
             _apply_display_key_before_widget(st, target_saved, source="practice_key_restore")
             st.session_state[LAST_DISPLAY_KEY] = target_saved
         elif "display_key" not in st.session_state:
-            _apply_display_key_before_widget(st, original_key, source="initial_display_key")
+            target_initial = original_key
+            try:
+                from practice_key_mode import apply_fixed_mode_target
+
+                target_initial = apply_fixed_mode_target(
+                    st.session_state,
+                    original_key,
+                    original_key,
+                )
+            except ImportError:
+                pass
+            _apply_display_key_before_widget(st, target_initial, source="initial_display_key")
 
     current = st.session_state.get("display_key", original_key)
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode
+
+        if is_fixed_practice_key_mode(st.session_state):
+            return [str(current)]
+    except ImportError:
+        pass
     if current not in options:
         mode = key_mode(original_key)
         fallback = (

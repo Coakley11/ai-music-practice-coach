@@ -242,6 +242,22 @@ def _display_keys_from_session(session: dict[str, Any]) -> tuple[str, str, str]:
     return key, display or key, concert or key
 
 
+def _fixed_practice_key_for_context(
+    session: dict[str, Any],
+    ctx: BackingContext,
+    fallback: str = "",
+) -> str:
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            original = str(ctx.key or fallback or ctx.concert_key or ctx.display_key or "C").strip() or "C"
+            return resolve_practice_concert_key_for_song(session, original, fallback=fallback or original)
+    except ImportError:
+        pass
+    return str(fallback or ctx.concert_key or ctx.display_key or ctx.key or "C").strip() or "C"
+
+
 def _live_backing_concert_keys(session: dict[str, Any]) -> tuple[str, str, str]:
     """Practice concert key from live sidebar/session — not stale widget/improv snapshots."""
     try:
@@ -254,6 +270,7 @@ def _live_backing_concert_keys(session: dict[str, Any]) -> tuple[str, str, str]:
                 session.get("concert_key") or live or ctx.concert_key or ctx.key or ""
             ).strip()
             practice = live or concert or str(ctx.concert_key or ctx.key or "C").strip() or "C"
+            practice = _fixed_practice_key_for_context(session, ctx, practice)
             return practice, practice, practice
     except ImportError:
         pass
@@ -985,6 +1002,14 @@ def _custom_progression_sections_at_concert_key(
     ).strip()
     if not practice:
         practice = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            original = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
+            practice = resolve_practice_concert_key_for_song(session, original, fallback=practice)
+    except ImportError:
+        pass
     transposed = display_sections_for_key(active, practice)
     sections = sections_to_chord_lists(transposed)
     progression = all_chords_from_lab_sections(transposed)
@@ -1007,9 +1032,31 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
     revision = str(active.get("id") or active.get("revision") or "").strip()
     pick_key = custom_pick_key_for(active)
     home_key = str(written_home_key(active) or active.get("original_key_center") or "C").strip()
+    has_live_concert_key = bool(
+        str(
+            session.get("display_key")
+            or session.get("concert_key")
+            or session.get("_pending_display_key")
+            or ""
+        ).strip()
+    )
     _, display_key, concert_key = _live_backing_concert_keys(session)
-    if not concert_key:
+    if not has_live_concert_key:
         concert_key = display_key = home_key
+    elif not concert_key:
+        concert_key = display_key = home_key
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            concert_key = display_key = resolve_practice_concert_key_for_song(
+                session,
+                home_key,
+                pick_key=pick_key,
+                fallback=concert_key or display_key or home_key,
+            )
+    except ImportError:
+        pass
     sections, progression = _custom_progression_sections_at_concert_key(
         session,
         concert_key=concert_key,
@@ -1297,6 +1344,7 @@ def apply_backing_context_to_session(
 
     if ctx.display_key or ctx.concert_key:
         concert = str(ctx.concert_key or ctx.display_key or "").strip()
+        concert = _fixed_practice_key_for_context(session, ctx, concert)
         if concert:
             try:
                 from session_widget_safe import safe_assign_display_key
@@ -1406,6 +1454,7 @@ def sync_live_keys_from_backing_context(
     if ctx.source not in {"entry_jam", "song_improv", "mission", "custom_progression"}:
         return ""
     concert = str(ctx.concert_key or ctx.display_key or ctx.key or "").strip()
+    concert = _fixed_practice_key_for_context(session, ctx, concert)
     if not concert:
         return ""
     try:
@@ -1502,6 +1551,7 @@ def sections_dict_from_backing_context(
     if ctx is None:
         return {}
     practice_key = str(session.get("display_key") or ctx.concert_key or "C").strip() or "C"
+    practice_key = _fixed_practice_key_for_context(session, ctx, practice_key)
     if ctx.source == "song_improv":
         sections = _song_improv_sections_dict(session)
         if not sections and ctx.progression:

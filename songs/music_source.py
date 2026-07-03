@@ -1846,13 +1846,23 @@ def commit_custom_active_song(
     pick_key = str(selected.get("pick_key") or "").strip()
     practice_key = home_key
     try:
-        from songs.key_state import canonical_display_key_for_pick
+        from practice_key_mode import resolve_practice_concert_key_for_song
 
-        saved = canonical_display_key_for_pick(session, pick_key)
-        if saved:
-            practice_key = saved
+        practice_key = resolve_practice_concert_key_for_song(
+            session,
+            home_key,
+            pick_key=pick_key,
+            fallback=home_key,
+        )
     except ImportError:
-        pass
+        try:
+            from songs.key_state import canonical_display_key_for_pick
+
+            saved = canonical_display_key_for_pick(session, pick_key)
+            if saved:
+                practice_key = saved
+        except ImportError:
+            pass
 
     set_custom_source(session)
     sync_song_picker_source_widget(session, force=True)

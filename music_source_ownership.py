@@ -1105,6 +1105,19 @@ def maybe_reset_practice_key_on_source_activation(
             pass
     if not needs_reset:
         return False
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+        from songs.practice_key_state import resolve_practice_source_pick
+
+        if is_fixed_practice_key_mode(session):
+            original = resolve_practice_concert_key_for_song(
+                session,
+                original,
+                pick_key=resolve_practice_source_pick(session),
+                fallback=original,
+            )
+    except ImportError:
+        pass
     _release_creative_transport_authority(session)
     try:
         from backing_context import BACKING_PREF_CATALOG, BACKING_PREF_CUSTOM, set_backing_source_preference

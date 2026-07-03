@@ -157,6 +157,17 @@ class TestFixedPracticeKeyResolution(unittest.TestCase):
         self.assertEqual(resolve_fixed_practice_concert_key("Gm", "Bm"), "Gm")
         self.assertEqual(resolve_fixed_practice_concert_key("Gm", "G"), "Bb")
 
+    def test_selected_minor_spelling_is_preserved(self) -> None:
+        session = _fixed_session("E", "Db")
+        self.assertEqual(
+            resolve_practice_concert_key_for_song(session, "Bm", pick_key=PK_SHAPE),
+            "Dbm",
+        )
+        self.assertEqual(
+            apply_fixed_mode_target(session, "Bm", "Bm"),
+            "Dbm",
+        )
+
 
 class TestSessionDictHelpers(unittest.TestCase):
     def test_request_display_key_writes_session_dict(self) -> None:
@@ -231,6 +242,88 @@ class TestFixedModeCatalogLoad(unittest.TestCase):
             original_key="D",
         )
         self.assertEqual(resolved, "G")
+
+    def test_custom_song_load_uses_fixed_family_instead_of_saved_key(self) -> None:
+        from custom_progression_lab import CPL_ACTIVE_KEY, default_active_progression
+        from songs.state import apply_saved_custom_pick_key_context
+
+        active = default_active_progression()
+        active["id"] = "twinkle"
+        active["name"] = "Twinkle"
+        active["original_key_center"] = "D"
+        pick_key = "custom::twinkle"
+        st = _fake_st(_fixed_session("E", "Db", extra={CPL_ACTIVE_KEY: active}))
+
+        ok = apply_saved_custom_pick_key_context(
+            st,
+            pick_key,
+            {"display_key": "D"},
+            song_picker_catalog=CATALOG,
+            song_library=None,
+            saved_display_key="D",
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(st.session_state["display_key"], "E")
+        self.assertEqual(st.session_state["concert_key"], "E")
+
+    def test_custom_minor_backing_preserves_selected_minor_spelling(self) -> None:
+        from backing_context import build_custom_progression_context
+        from custom_progression_lab import CPL_ACTIVE_KEY, default_active_progression
+
+        active = default_active_progression()
+        active["id"] = "minor-custom"
+        active["name"] = "Minor Custom"
+        active["original_key_center"] = "Bm"
+        session = _fixed_session("E", "Db", extra={CPL_ACTIVE_KEY: active})
+
+        ctx = build_custom_progression_context(session)
+
+        self.assertEqual(ctx.concert_key, "Dbm")
+        self.assertEqual(ctx.display_key, "Dbm")
+
+    def test_creative_key_preparation_snaps_to_fixed_family(self) -> None:
+        from creative_key_sync import (
+            apply_creative_concert_key,
+            creative_entry_concert_key,
+            creative_sidebar_key_options,
+        )
+
+        session = _fixed_session(
+            "E",
+            "Db",
+            extra={
+                "improv_entry_mode": "Jam Session Generator",
+                "improv_jam_key": "D",
+                "concert_key": "D",
+                "display_key": "D",
+            },
+        )
+
+        apply_creative_concert_key(session, "D")
+
+        self.assertEqual(session["concert_key"], "E")
+        self.assertEqual(session[PENDING_DISPLAY_KEY], "E")
+        self.assertEqual(creative_entry_concert_key(session), "E")
+        self.assertEqual(creative_sidebar_key_options(session), ["E"])
+
+    def test_transposing_instruments_derive_from_fixed_concert_key(self) -> None:
+        from instrument_transposition import written_key_for_type
+
+        session = _fixed_session("E", "Db")
+        concert = resolve_practice_concert_key_for_song(session, "D")
+
+        self.assertEqual(concert, "E")
+        self.assertEqual(written_key_for_type(concert, "Alto Sax (Eb)"), "C#")
+        self.assertEqual(written_key_for_type(concert, "Tenor Sax (Bb)"), "F#")
+
+    def test_display_key_options_keep_fixed_enharmonic_minor(self) -> None:
+        st = _fake_st(_fixed_session("E", "Db", extra={"display_key": "Dbm"}))
+        identity = song_display_identity("Shape of You", "Ed Sheeran", "Bm", pick_key=PK_SHAPE)
+        options = apply_display_key_for_active_song(st, "Bm", identity)
+
+        self.assertEqual(st.session_state["display_key"], "Dbm")
+        self.assertEqual(options[0], "Dbm")
 
 
 class TestFixedModePersistence(unittest.TestCase):

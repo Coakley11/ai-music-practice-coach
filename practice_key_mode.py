@@ -146,7 +146,7 @@ def get_practice_key_mode(session: dict[str, Any]) -> str:
 
 
 def is_fixed_practice_key_mode(session: dict[str, Any]) -> bool:
-    return get_practice_key_mode(session) == MODE_FIXED
+    return str(session.get(PRACTICE_KEY_MODE_KEY) or MODE_STANDARD).strip() == MODE_FIXED
 
 
 def get_fixed_practice_key(session: dict[str, Any]) -> str:
@@ -245,11 +245,25 @@ def persist_practice_key_mode(st_like: Any | None) -> None:
 
 def resolve_fixed_practice_concert_key(fixed_key: str, song_original_key: str) -> str:
     """Map a fixed key-family anchor onto the active song's major/minor mode."""
+    if FAMILY_OPTION_SEP in str(fixed_key or ""):
+        return resolve_fixed_practice_concert_key_for_family(fixed_key, song_original_key)
     fixed = _major_family_anchor(fixed_key)
     original = str(song_original_key or "C").strip() or "C"
     if key_mode(original) == "major":
         return fixed
     return relative_minor_of_major(fixed)
+
+
+def resolve_fixed_practice_concert_key_for_family(
+    option_id: str,
+    song_original_key: str,
+) -> str:
+    """Resolve a song into the selected family, preserving the user's spelling."""
+    major, minor_root = parse_family_option_id(option_id)
+    original = str(song_original_key or "C").strip() or "C"
+    if key_mode(original) == "major":
+        return major
+    return f"{minor_root}m"
 
 
 def fixed_key_family_label(option_id: str) -> str:
@@ -280,6 +294,16 @@ def _fixed_family_major_anchor(session: dict[str, Any]) -> str:
     return _major_family_anchor(major)
 
 
+def resolve_fixed_practice_concert_key_for_session(
+    session: dict[str, Any],
+    song_original_key: str,
+) -> str:
+    """Resolve a source key through the active fixed family, preserving spelling."""
+    option_id = resolve_family_option_id(session)
+    set_fixed_practice_key_family(session, option_id)
+    return resolve_fixed_practice_concert_key_for_family(option_id, song_original_key)
+
+
 def resolve_practice_concert_key_for_song(
     session: dict[str, Any],
     song_original_key: str,
@@ -290,10 +314,7 @@ def resolve_practice_concert_key_for_song(
     """Effective practice concert key for one song — honors fixed mode when enabled."""
     original = str(song_original_key or fallback or "C").strip() or "C"
     if is_fixed_practice_key_mode(session):
-        fixed = _fixed_family_major_anchor(session)
-        set_fixed_practice_key_family(session, resolve_family_option_id(session))
-        if fixed:
-            return resolve_fixed_practice_concert_key(fixed, original)
+        return resolve_fixed_practice_concert_key_for_session(session, original)
     try:
         from songs.practice_key_state import get_practice_concert_key
 
@@ -315,10 +336,7 @@ def apply_fixed_mode_target(
     """When fixed mode is on, replace a standard-mode target with the family key."""
     if not is_fixed_practice_key_mode(session):
         return str(target or "").strip() or str(song_original_key or "C").strip() or "C"
-    fixed = _fixed_family_major_anchor(session)
-    set_fixed_practice_key_family(session, resolve_family_option_id(session))
-    anchor = fixed or str(song_original_key or "C").strip() or "C"
-    return resolve_fixed_practice_concert_key(anchor, song_original_key)
+    return resolve_fixed_practice_concert_key_for_session(session, song_original_key)
 
 
 def _apply_fixed_display_key_for_song(
@@ -329,11 +347,10 @@ def _apply_fixed_display_key_for_song(
     if not is_fixed_practice_key_mode(session):
         return
     set_fixed_practice_key_family(session, resolve_family_option_id(session))
-    anchor = _fixed_family_major_anchor(session)
     try:
         from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache, request_display_key
 
-        resolved = resolve_fixed_practice_concert_key(anchor, original_key or anchor)
+        resolved = resolve_fixed_practice_concert_key_for_session(session, original_key or "C")
         request_display_key(session, resolved)
         session[BACKING_NEEDS_REGEN] = True
         invalidate_backing_cache(session)
@@ -460,6 +477,8 @@ __all__ = [
     "render_practice_key_behavior_panel",
     "resolve_family_option_id",
     "resolve_fixed_practice_concert_key",
+    "resolve_fixed_practice_concert_key_for_family",
+    "resolve_fixed_practice_concert_key_for_session",
     "resolve_practice_concert_key_for_song",
     "set_fixed_practice_key",
     "set_fixed_practice_key_family",

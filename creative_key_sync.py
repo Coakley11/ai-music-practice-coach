@@ -30,6 +30,13 @@ def _key_steps_to_center(key_center: str) -> int:
 
 def creative_entry_concert_key(session: dict[str, Any]) -> str:
     """Selected concert key from Creative entry widgets, if any."""
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            return resolve_practice_concert_key_for_song(session, "C", fallback="C")
+    except ImportError:
+        pass
     entry = str(session.get("improv_entry_mode") or "").strip()
     if entry == "Style Jam Mode":
         return str(session.get("improv_style_key") or "").strip()
@@ -137,6 +144,13 @@ def apply_creative_concert_key(
     key = str(concert_key or "").strip()
     if not key:
         return
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            key = resolve_practice_concert_key_for_song(session, key, fallback=key)
+    except ImportError:
+        pass
     session[CREATIVE_CONCERT_KEY_SOURCE] = source
     session["concert_key"] = to_major_key_preserve_spelling(key)
     key = session["concert_key"]
@@ -413,6 +427,13 @@ def sanitize_creative_major_chart_keys(
 
 def creative_sidebar_key_options(session: dict[str, Any]) -> list[str]:
     """Major key options for Creative jam — preserves user enharmonic spelling."""
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            return [to_major_key_preserve_spelling(resolve_practice_concert_key_for_song(session, "C"))]
+    except ImportError:
+        pass
     selected = to_major_key_preserve_spelling(
         str(creative_entry_concert_key(session) or session.get("concert_key") or "").strip()
     )
@@ -466,25 +487,50 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
             or ""
         ).strip()
     elif ctx_source == "custom_progression":
+        home_key = ""
+        if ctx is not None:
+            home_key = str(getattr(ctx, "key", "") or "").strip()
         try:
-            from backing_context import _live_backing_concert_keys
+            from custom_progression_lab import CPL_ACTIVE_KEY, cpl_draft_written_key, ensure_original_structure
 
-            _, _, resolver_key = _live_backing_concert_keys(session)
+            active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+            home_key = cpl_draft_written_key(active) or home_key
         except ImportError:
-            resolver_key = str(
-                getattr(ctx, "concert_key", None)
-                or getattr(ctx, "display_key", None)
-                or getattr(ctx, "key", None)
-                or ""
-            ).strip()
+            pass
         try:
-            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+            from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+            from songs.practice_key_state import resolve_practice_source_pick
 
-            saved = get_practice_concert_key(session, resolve_practice_source_pick(session))
+            if is_fixed_practice_key_mode(session):
+                pick = resolve_practice_source_pick(session)
+                selected = resolve_practice_concert_key_for_song(
+                    session,
+                    home_key or "C",
+                    pick_key=pick,
+                    fallback=home_key or "C",
+                )
+            else:
+                raise ImportError
         except ImportError:
-            saved = ""
-        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-        selected = str(pending or saved or live or resolver_key or "C").strip() or "C"
+            try:
+                from backing_context import _live_backing_concert_keys
+
+                _, _, resolver_key = _live_backing_concert_keys(session)
+            except ImportError:
+                resolver_key = str(
+                    getattr(ctx, "concert_key", None)
+                    or getattr(ctx, "display_key", None)
+                    or getattr(ctx, "key", None)
+                    or ""
+                ).strip()
+            try:
+                from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+                saved = get_practice_concert_key(session, resolve_practice_source_pick(session))
+            except ImportError:
+                saved = ""
+            live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+            selected = str(pending or saved or live or resolver_key or home_key or "C").strip() or "C"
     elif creative and resolve_current_backing_musical_state is not None:
         resolver_key = str(
             resolve_current_backing_musical_state(session).practice_concert_key or ""
@@ -506,6 +552,13 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
             or (creative.concert_key if creative else "")
             or "C"
         ).strip() or "C"
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session) and ctx_source != "custom_progression":
+            selected = resolve_practice_concert_key_for_song(session, selected, fallback=selected)
+    except ImportError:
+        pass
     options = practice_keys_for_mode(key_mode(selected))
     if selected not in options:
         options = [selected] + options
@@ -551,6 +604,13 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
         or session.get("display_key")
         or ""
     ).strip()
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            selected = resolve_practice_concert_key_for_song(session, "C", fallback=selected or "C")
+    except ImportError:
+        pass
     selected = to_major_key_preserve_spelling(selected)
     if selected:
         if selected not in options:

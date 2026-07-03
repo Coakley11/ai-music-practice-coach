@@ -472,6 +472,13 @@ def _resolve_custom_display_key_for_session(
 ) -> str:
     """Resolve custom display key: identity-scoped override, then per-pick canonical, then home."""
     home = str(home_key or "C").strip() or "C"
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            return resolve_practice_concert_key_for_song(session, home, fallback=home)
+    except ImportError:
+        pass
     live = str(session.get("display_key") or "").strip()
     try:
         from songs.key_state import canonical_display_key_for_pick

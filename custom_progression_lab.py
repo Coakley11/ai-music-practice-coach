@@ -628,13 +628,15 @@ def on_global_display_key_change(session_state, display_key):
     if last is None:
         session_state[CPL_LAST_DISPLAY_KEY] = display_key
         try:
+            from practice_key_mode import is_fixed_practice_key_mode
             from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
 
-            set_practice_concert_key(
-                session_state,
-                str(display_key or "").strip(),
-                pick_key=resolve_practice_source_pick(session_state),
-            )
+            if not is_fixed_practice_key_mode(session_state):
+                set_practice_concert_key(
+                    session_state,
+                    str(display_key or "").strip(),
+                    pick_key=resolve_practice_source_pick(session_state),
+                )
         except ImportError:
             pass
         try:
@@ -654,13 +656,15 @@ def on_global_display_key_change(session_state, display_key):
     if last != display_key:
         session_state[CPL_LAST_DISPLAY_KEY] = display_key
         try:
+            from practice_key_mode import is_fixed_practice_key_mode
             from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
 
-            set_practice_concert_key(
-                session_state,
-                str(display_key or "").strip(),
-                pick_key=resolve_practice_source_pick(session_state),
-            )
+            if not is_fixed_practice_key_mode(session_state):
+                set_practice_concert_key(
+                    session_state,
+                    str(display_key or "").strip(),
+                    pick_key=resolve_practice_source_pick(session_state),
+                )
         except ImportError:
             pass
         invalidate_cpl_derived_outputs(session_state)
@@ -1153,7 +1157,22 @@ def apply_cpl_session_progression(
             session_state.pop(DISPLAY_KEY_CHANGE_SOURCE_KEY, None)
         except ImportError:
             pass
-        session_state["display_key"] = home_key
+        resolved_key = home_key
+        try:
+            from practice_key_mode import resolve_practice_concert_key_for_song
+            from songs.music_source import custom_pick_key_for
+
+            pick_key = custom_pick_key_for(session_state[CPL_ACTIVE_KEY])
+            resolved_key = resolve_practice_concert_key_for_song(
+                session_state,
+                home_key,
+                pick_key=pick_key,
+                fallback=home_key,
+            )
+        except ImportError:
+            pass
+        session_state["display_key"] = resolved_key
+        session_state["concert_key"] = resolved_key
     session_state["_cpl_editing_display_key"] = session_state.get("display_key", home_key)
     clear_cpl_widget_state(session_state)
     reset_cpl_widget_initialization(session_state)

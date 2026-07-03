@@ -295,6 +295,13 @@ def capture_jam_session_generator_state(
     except ImportError:
         pass
     k = str(concert_key or "C").strip() or "C"
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            k = resolve_practice_concert_key_for_song(session, "C", fallback=k)
+    except ImportError:
+        pass
     style_name = str(style or "").strip()
     mood_name = str(mood or "Mellow").strip() or "Mellow"
     tempo = int(bpm)
@@ -441,6 +448,14 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
         concert = str(session.get("improv_style_key") or meta.get("key") or "C").strip()
         bpm = int(session.get("improv_style_bpm") or meta.get("bpm") or 110)
         mood = str(session.get("improv_mood") or meta.get("mood") or "Mellow").strip()
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            fixed_original = "C" if tool in {"entry_style_jam", "jam_session_generator"} else concert
+            concert = resolve_practice_concert_key_for_song(session, fixed_original, fallback=concert)
+    except ImportError:
+        pass
 
     sections = _sections_from_session(session, entry)
     if not sections and not style and entry not in {"Song-Based Improvisation"}:
@@ -541,6 +556,15 @@ def apply_creative_session_to_session(
         pass
 
     concert = str(sess.concert_key or sess.display_key or "C").strip() or "C"
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            fixed_original = "C" if sess.tool_type in {"entry_style_jam", "jam_session_generator"} else concert
+            concert = resolve_practice_concert_key_for_song(session, fixed_original, fallback=concert)
+            sess.concert_key = concert
+    except ImportError:
+        pass
     if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
         display = concert
     else:
@@ -831,6 +855,14 @@ def resolve_creative_backing_sections(session: dict[str, Any]) -> dict[str, list
     sess = get_creative_session(session)
     if sess and sess.sections:
         practice = str(session.get("display_key") or sess.concert_key or "C").strip() or "C"
+        try:
+            from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+            if is_fixed_practice_key_mode(session):
+                original = "C" if sess.tool_type in {"entry_style_jam", "jam_session_generator"} else str(sess.concert_key or practice)
+                practice = resolve_practice_concert_key_for_song(session, original, fallback=practice)
+        except ImportError:
+            pass
         origin = str(sess.concert_key or "C").strip()
         if origin and practice != origin:
             try:

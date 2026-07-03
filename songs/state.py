@@ -342,6 +342,21 @@ def apply_saved_custom_pick_key_context(
     display_key = saved_display_key or str(saved.get("display_key") or "").strip()
     from songs.key_state import PENDING_DISPLAY_KEY
 
+    try:
+        from custom_progression_lab import cpl_draft_written_key
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        home_key_for_fixed = cpl_draft_written_key(active)
+        if is_fixed_practice_key_mode(st.session_state):
+            display_key = resolve_practice_concert_key_for_song(
+                st.session_state,
+                home_key_for_fixed,
+                pick_key=pick_key,
+                fallback=display_key or home_key_for_fixed,
+            )
+    except ImportError:
+        pass
+
     if display_key:
         st.session_state[PENDING_DISPLAY_KEY] = display_key
     else:

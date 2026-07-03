@@ -956,10 +956,22 @@ def restore_session_widgets_from_backing_context(
     widget_safe: bool = True,
 ) -> None:
     """Push backing_context snapshot fields into Creative/custom session widgets."""
+    def _fixed_concert(candidate: str) -> str:
+        try:
+            from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+            if is_fixed_practice_key_mode(session):
+                original = str(ctx.key or candidate or "C").strip() or "C"
+                return resolve_practice_concert_key_for_song(session, original, fallback=candidate or original)
+        except ImportError:
+            pass
+        return str(candidate or "").strip()
+
     if ctx.source in {"custom_progression", "regular_song"}:
         concert = str(
             ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
         ).strip()
+        concert = _fixed_concert(concert)
         if concert:
             try:
                 from session_widget_safe import safe_assign_display_key
@@ -974,6 +986,7 @@ def restore_session_widgets_from_backing_context(
     concert = str(
         ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
     ).strip()
+    concert = _fixed_concert(concert)
     if concert:
         try:
             from session_widget_safe import safe_assign_display_key
@@ -1224,6 +1237,16 @@ def merge_live_practice_into_creative_session(
         ).strip()
     live_inst = str(session.get("instrument") or "").strip()
     if live_key:
+        try:
+            from backing_context import get_backing_context
+            from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+            if is_fixed_practice_key_mode(session):
+                ctx = get_backing_context(session)
+                original = str(getattr(ctx, "key", "") or live_key or "C").strip() or "C"
+                live_key = resolve_practice_concert_key_for_song(session, original, fallback=live_key)
+        except ImportError:
+            pass
         if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
             try:
                 from creative_key_sync import to_major_key_preserve_spelling
