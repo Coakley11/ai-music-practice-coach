@@ -202,3 +202,20 @@ def test_backing_track_still_generates_after_inference():
     )
     assert isinstance(wav, (bytes, bytearray))
     assert len(wav) > 1000
+
+
+def test_say_chart_push_timing_is_preserved_under_hri():
+    from song_catalog.curated_songs import _say_chart_pack
+
+    pack = _say_chart_pack()
+    sections = pack["sections"]
+    result = apply_harmonic_rhythm_intelligence(
+        sections,
+        groove_style="Ballad",
+        humanize_level="Strong",
+        song_data={"title": "Say", "artist": "John Mayer"},
+    )
+    assert result.sections["Verse 1"][0] == "G:3.5|C:0.5p"
+    assert result.sections["Verse 1"][2] == "Em:3.5|D:0.5p"
+    assert "0.5p" in result.sections["Bridge"][2]
+    assert result.sections["Final Chorus"][0] == "Em:3.5|G:0.5p"

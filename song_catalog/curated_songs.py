@@ -1501,48 +1501,59 @@ def _photograph_chart_pack() -> dict[str, Any]:
 def _say_chart_pack() -> dict[str, Any]:
     """Say — John Mayer (G major, pop ballad, 4/4).
 
-    One list item = one bar. Main loop **G–C–Em–D**; bridge **Am–C–D**
-    then **C–D**; final chorus **Em–G / C7** hold. No pushes, split
-    bars, N.C., or stop-time hits — straight pop-ballad backing.
+    One list item = one bar. Intro **G / Gsus4 / G / Gsus4/A** (2 bars each,
+    twice). Main loop **G–C–Em–D** with **C** and **D** pushed early;
+    bridge **Am–Am–C–D** with pushed **D**; final chorus **Em–G / C7** (×8)
+    with pushed **G**.
     """
-    from song_catalog.lyric_chord_charts import SAY_CHART
+    from song_catalog.lyric_chord_charts import (
+        SAY_BRIDGE_BARS,
+        SAY_CHART,
+        SAY_FINAL_CHORUS_LOOP,
+        SAY_INTRO_BARS,
+        SAY_INTRO_PATTERN_BARS,
+        SAY_MAIN_LOOP,
+    )
 
-    main4 = ["G", "C", "Em", "D"]
-    turnaround = list(main4)
-    verse16 = main4 * 4
-    chorus16 = main4 * 4
-    bridge = ["Am", "C", "D", "Am", "C", "D", "C", "D"]
-    final_chorus = ["Em", "G", "C7", "C7", "Em", "G", "C7", "C7"]
+    main4_simple = ["G", "C", "Em", "D"]
+    intro = list(SAY_INTRO_BARS)
+    verse16 = list(SAY_MAIN_LOOP) * 4
+    chorus16 = list(SAY_MAIN_LOOP) * 4
+    turnaround = list(SAY_MAIN_LOOP)
+    bridge = list(SAY_BRIDGE_BARS)
+    final_chorus = list(SAY_FINAL_CHORUS_LOOP) * 8
 
     intermediate = {
-        "Intro": list(main4),
+        "Intro": intro,
         "Verse 1": list(verse16),
         "Chorus 1": list(chorus16),
         "Turnaround 1": list(turnaround),
         "Verse 2": list(verse16),
         "Chorus 2": list(chorus16),
         "Turnaround 2": list(turnaround),
-        "Bridge": list(bridge),
+        "Bridge": bridge,
         "Turnaround 3": list(turnaround),
         "Verse 3": list(verse16),
         "Final Chorus": list(final_chorus),
     }
     beginner = {
-        "Intro": list(main4),
-        "Verse 1": list(main4),
-        "Chorus 1": list(main4),
-        "Turnaround 1": list(main4),
-        "Verse 2": list(main4),
-        "Chorus 2": list(main4),
-        "Turnaround 2": list(main4),
-        "Bridge": ["Am", "C", "D", "C"],
-        "Turnaround 3": list(main4),
-        "Verse 3": list(main4),
-        "Final Chorus": ["Em", "G", "C7", "C7"],
+        "Intro": list(SAY_INTRO_PATTERN_BARS),
+        "Verse 1": list(main4_simple),
+        "Chorus 1": list(main4_simple),
+        "Turnaround 1": list(main4_simple),
+        "Verse 2": list(main4_simple),
+        "Chorus 2": list(main4_simple),
+        "Turnaround 2": list(main4_simple),
+        "Bridge": ["Am", "Am", "C", "D", "C", "C", "C", "D"],
+        "Turnaround 3": list(main4_simple),
+        "Verse 3": list(main4_simple),
+        "Final Chorus": ["Em", "G", "C7", "C7"] * 2,
     }
     section_order = list(intermediate.keys())
     guitar_tabs = {
         "G": "320003",
+        "Gsus4": "320013",
+        "Gsus4/A": "x00013",
         "C": "x32010",
         "Em": "022000",
         "D": "xx0232",
@@ -1588,13 +1599,14 @@ def _say_chart_pack() -> dict[str, Any]:
         "extensions": _ext(
             arrangement_notes=(
                 "**G major** pop ballad (**4/4**, mid-tempo, straight 8ths). "
-                "Main loop **G–C–Em–D** (one chord per bar). Form: **Intro** → "
-                "**Verse 1** → **Chorus 1** → **Turnaround** → **Verse 2** → "
-                "**Chorus 2** → **Turnaround** → **Bridge** (**Am–C–D**, then "
-                "**C–D**) → **Turnaround** → **Verse 3** → **Final Chorus** "
-                "(**Em–G / C7**). No pushes, anticipations, split bars, or "
-                "N.C. hits. Backing intensity builds on successive choruses; "
-                "final chorus is the peak."
+                "Intro **G / Gsus4 / G / Gsus4/A** (two bars each, twice). "
+                "Main loop **G–C–Em–D** with **C** and **D** pushed slightly "
+                "early (`:0.5p`). Form: **Intro** → **Verse 1** → **Chorus 1** "
+                "→ **Turnaround** → **Verse 2** → **Chorus 2** → **Turnaround** "
+                "→ **Bridge** (**Am–Am–C–D** ×3 with pushed **D**, then "
+                "**C–C–C–D**) → **Turnaround** → **Verse 3** → **Final Chorus** "
+                "(**Em–G / C7**, eight times, **G** pushed early). Backing "
+                "intensity builds on successive choruses; final chorus is the peak."
             ),
             default_bpm=82,
             default_groove="Ballad",
