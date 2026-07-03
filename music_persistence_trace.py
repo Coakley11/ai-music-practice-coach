@@ -194,13 +194,7 @@ def init_developer_mode_from_query(st: Any) -> None:
             raw = raw[0] if raw else ""
 
         if str(raw or "").strip().lower() in {"1", "true", "yes", "on"}:
-            try:
-                from suite_workspace import is_developer_workspace
-
-                if is_developer_workspace(st=st):
-                    st.session_state["developer_mode"] = True
-            except ImportError:
-                pass
+            st.session_state["developer_mode"] = True
 
     except Exception:
 
@@ -212,11 +206,16 @@ def init_developer_mode_from_query(st: Any) -> None:
 
 def music_developer_mode(st: Any) -> bool:
     try:
-        from suite_workspace import can_show_developer_tools
+        from music_dev_ui import music_dev_mode_enabled
 
-        return can_show_developer_tools(st=st)
+        return music_dev_mode_enabled(st=st)
     except ImportError:
-        return bool(st.session_state.get("developer_mode"))
+        try:
+            from suite_workspace import is_developer_mode_enabled
+
+            return is_developer_mode_enabled(st=st)
+        except ImportError:
+            return bool(st.session_state.get("developer_mode"))
 
 
 

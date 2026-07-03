@@ -7664,7 +7664,13 @@ def init_simple_music_nav_from_query(st: Any) -> None:
         if isinstance(raw, list):
             raw = raw[0] if raw else ""
         if str(raw or "").strip().lower() in {"1", "true", "yes", "on"}:
-            st.session_state[USE_SIMPLE_MUSIC_NAV_KEY] = True
+            try:
+                from music_dev_ui import music_dev_mode_enabled
+
+                if music_dev_mode_enabled(st=st):
+                    st.session_state[USE_SIMPLE_MUSIC_NAV_KEY] = True
+            except ImportError:
+                st.session_state[USE_SIMPLE_MUSIC_NAV_KEY] = True
         elif str(raw or "").strip().lower() in {"0", "false", "no", "off"}:
             st.session_state[USE_SIMPLE_MUSIC_NAV_KEY] = False
     except Exception:
@@ -8065,6 +8071,14 @@ def _record_quick_nav_render(
 
 def render_quick_nav_dev_diagnostics(st: Any) -> None:
     """?dev=1 — show quick nav render count, callers, and container keys."""
+    try:
+        from music_dev_ui import music_dev_mode_enabled
+
+        if not music_dev_mode_enabled(st=st):
+            return
+    except ImportError:
+        if not st.session_state.get("developer_mode"):
+            return
     ss = st.session_state
     count = int(ss.get("quick_nav_render_count") or 0)
     locations = ss.get("quick_nav_render_locations") or []

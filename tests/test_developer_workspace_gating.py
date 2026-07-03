@@ -15,11 +15,18 @@ class _FakeSt:
 
 
 class TestDeveloperWorkspaceGating(unittest.TestCase):
-    def test_music_developer_mode_ariel_blocked(self) -> None:
+    def test_music_developer_mode_ariel_with_dev_query(self) -> None:
         from music_persistence_trace import init_developer_mode_from_query, music_developer_mode
 
         st = _FakeSt("ariel", dev_query=True)
         init_developer_mode_from_query(st)  # type: ignore[arg-type]
+        self.assertTrue(music_developer_mode(st))  # type: ignore[arg-type]
+        self.assertFalse(can_show_developer_tools(st=st))  # type: ignore[arg-type]
+
+    def test_music_developer_mode_ariel_normal_blocked(self) -> None:
+        from music_persistence_trace import music_developer_mode
+
+        st = _FakeSt("ariel", dev_query=False)
         self.assertFalse(music_developer_mode(st))  # type: ignore[arg-type]
 
     def test_music_developer_mode_daniel_dev(self) -> None:

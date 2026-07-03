@@ -2429,8 +2429,12 @@ def prepare_canonical_music_page_state(
     *,
     song_picker_catalog: dict | None = None,
     song_library: dict | None = None,
+    force: bool = False,
 ) -> None:
     """Phase C: reconcile studio nav + active song + practice + backing canonical blobs."""
+    run_seq = int(session.get("_script_run_seq") or 0)
+    if not force and session.get("_music_canonical_prepared_for_run") == run_seq:
+        return
     try:
         from active_song_state import prepare_active_song_context
         from backing_track_state import prepare_backing_page
@@ -2515,6 +2519,7 @@ def prepare_canonical_music_page_state(
         session.pop("_reconcile_song_picker_catalog", None)
     except ImportError:
         pass
+    session["_music_canonical_prepared_for_run"] = run_seq
 
 
 def mark_active_song_edit_pending(session: dict[str, Any]) -> None:
@@ -2778,6 +2783,9 @@ def prepare_music_workspace(
             song_library=song_library,
         )
 
+    import time
+
+    t0 = time.perf_counter()
     result = sync_workspace_protocol(
         st,
         APP_ID,
@@ -2785,6 +2793,12 @@ def prepare_music_workspace(
         cloud_first=True,
         content_resync_needed=music_active_song_cloud_drift,
     )
+    try:
+        from music_perf_diagnostics import record_span
+
+        record_span(st, "workspace_sync", (time.perf_counter() - t0) * 1000.0)
+    except Exception:
+        pass
     ss["_music_workspace_prepared_for_run"] = run_seq
     ss["_music_workspace_last_result"] = bool(result)
     if result:

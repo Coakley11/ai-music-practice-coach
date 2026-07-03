@@ -334,21 +334,35 @@ def render_chart_editor_panel(
                 st.markdown(f"- {line}")
         debug = save_notice.get("override_debug") or {}
         if debug:
-            st.markdown("**Override debug (temporary):**")
-            if debug.get("saved_line"):
-                st.markdown(f"- Saved override: {debug['saved_line']}")
-            if debug.get("loaded_line"):
-                st.markdown(f"- Loaded override: {debug['loaded_line']}")
-            if debug.get("disk_path"):
-                st.caption(f"Override file: `{debug['disk_path']}`")
+            try:
+                from music_dev_ui import music_dev_mode_enabled
+
+                _dev = music_dev_mode_enabled(st=st)
+            except ImportError:
+                _dev = bool(st.session_state.get("developer_mode"))
+            if _dev:
+                st.markdown("**Override debug (temporary):**")
+                if debug.get("saved_line"):
+                    st.markdown(f"- Saved override: {debug['saved_line']}")
+                if debug.get("loaded_line"):
+                    st.markdown(f"- Loaded override: {debug['loaded_line']}")
+                if debug.get("disk_path"):
+                    st.caption(f"Override file: `{debug['disk_path']}`")
 
     _debug_live = st.session_state.get(CHART_OVERRIDE_DEBUG_KEY)
     if _debug_live and _debug_live.get("title") == title and _debug_live.get("artist") == artist:
-        st.markdown("**Override debug (last save):**")
-        if _debug_live.get("saved_line"):
-            st.markdown(f"- Saved override: {_debug_live['saved_line']}")
-        if _debug_live.get("loaded_line"):
-            st.markdown(f"- Loaded override: {_debug_live['loaded_line']}")
+        try:
+            from music_dev_ui import music_dev_mode_enabled
+
+            _dev = music_dev_mode_enabled(st=st)
+        except ImportError:
+            _dev = bool(st.session_state.get("developer_mode"))
+        if _dev:
+            st.markdown("**Override debug (last save):**")
+            if _debug_live.get("saved_line"):
+                st.markdown(f"- Saved override: {_debug_live['saved_line']}")
+            if _debug_live.get("loaded_line"):
+                st.markdown(f"- Loaded override: {_debug_live['loaded_line']}")
 
     _render_chart_source_banner(st, song_data)
 

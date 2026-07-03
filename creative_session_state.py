@@ -886,7 +886,21 @@ def resolve_creative_backing_sections(session: dict[str, Any]) -> dict[str, list
 
 
 def render_creative_session_diagnostic(st: Any, session: dict[str, Any]) -> None:
-    """Temporary deploy/state path visibility for Creative session debugging."""
+    """Deploy/state path visibility — developer mode only."""
+    try:
+        from music_dev_ui import music_dev_mode_enabled
+    except ImportError:
+        try:
+            from suite_workspace import is_developer_mode_enabled
+
+            if not is_developer_mode_enabled(st=st):
+                return
+        except ImportError:
+            if not st.session_state.get("developer_mode"):
+                return
+    else:
+        if not music_dev_mode_enabled(st=st):
+            return
     try:
         from suite_deploy_probe import deploy_info
     except ImportError:

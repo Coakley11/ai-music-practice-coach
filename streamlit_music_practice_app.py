@@ -88,6 +88,22 @@ try:
     render_suite_sidebar_account_shell(st, command_center_divider=False)
 except Exception:
     pass
+
+
+def _developer_mode_enabled() -> bool:
+    try:
+        from music_dev_ui import music_dev_mode_enabled
+
+        return music_dev_mode_enabled(st=st)
+    except ImportError:
+        try:
+            from suite_workspace import is_developer_mode_enabled
+
+            return is_developer_mode_enabled(st=st)
+        except ImportError:
+            return bool(st.session_state.get("developer_mode", False))
+
+
 # -------------------------------------------------
 # GLOBAL CONSTANTS + SONG CATALOG
 # -------------------------------------------------
@@ -1136,23 +1152,26 @@ if hasattr(st, "session_state"):
 
     try:
         from music_persistent_state import prepare_music_workspace
+        from music_perf_diagnostics import perf_span
 
-        prepare_music_workspace(
-            st,
-            song_picker_catalog=SONG_PICKER_CATALOG,
-            song_library=SONG_LIBRARY,
-        )
+        with perf_span(st, "workspace_sync_early"):
+            prepare_music_workspace(
+                st,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+            )
         try:
             from music_persistent_state import (
                 maybe_flush_deferred_page_change_save,
                 prepare_canonical_music_page_state,
             )
 
-            prepare_canonical_music_page_state(
-                st.session_state,
-                song_picker_catalog=SONG_PICKER_CATALOG,
-                song_library=SONG_LIBRARY,
-            )
+            with perf_span(st, "canonical_reconcile_early"):
+                prepare_canonical_music_page_state(
+                    st.session_state,
+                    song_picker_catalog=SONG_PICKER_CATALOG,
+                    song_library=SONG_LIBRARY,
+                )
             maybe_flush_deferred_page_change_save(st)
             try:
                 from music_restore_phase import complete_music_restore_phase
@@ -1195,7 +1214,7 @@ def _music_has_saved_song_context(session_state) -> bool:
 # Defer trusted-core default + startup diag until after AMI hydrate and second workspace sync.
 _skip_master_song_init = True
 
-if st.session_state.get("_music_restore_error") and st.session_state.get("developer_mode"):
+if st.session_state.get("_music_restore_error") and _developer_mode_enabled():
     st.sidebar.warning(
         f"Music session restore error (developer): {st.session_state['_music_restore_error']}"
     )
@@ -6756,15 +6775,6 @@ def musical_development_tracker_text():
     return lab_musical_dev(load_logs)
 
 
-def _developer_mode_enabled() -> bool:
-    try:
-        from suite_workspace import can_show_developer_tools
-
-        return can_show_developer_tools(st=st)
-    except ImportError:
-        return bool(st.session_state.get("developer_mode", False))
-
-
 def _apply_catalog_filter_defaults() -> None:
     """One-time migration: show full library, not trusted-only / single-genre traps."""
     if st.session_state.get("_catalog_defaults_version") == CATALOG_DEFAULTS_VERSION:
@@ -6819,14 +6829,9 @@ def _render_catalog_health_debug(*, in_sidebar: bool = True) -> None:
 
 
 def _render_sidebar_developer_library_panel() -> None:
-    """Collapsed footer — catalog stats and developer mode (normal users can ignore)."""
-    try:
-        from suite_workspace import is_developer_workspace
-
-        if not is_developer_workspace(st=st):
-            return
-    except ImportError:
-        pass
+    """Catalog stats and developer mode toggle — only when Developer Mode is on."""
+    if not _developer_mode_enabled():
+        return
     with st.sidebar.expander("Developer / Library Info", expanded=False):
         _render_catalog_health_debug(in_sidebar=False)
         st.checkbox(
@@ -9095,7 +9100,7 @@ init_nav_history(st.session_state)
 try:
     render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
 except Exception as _early_nav_hist_exc:
-    if st.session_state.get("developer_mode"):
+    if _developer_mode_enabled():
         st.warning(f"Back/Forward nav render failed: {_early_nav_hist_exc}")
 
 from openai_secrets_config import resolve_openai_api_key
@@ -9133,12 +9138,24 @@ try:
     from suite_user_persistence import record_page_navigation_startup_diagnostics, show_persistence_messages
 
     record_page_navigation_startup_diagnostics(st, "music")
-    st.session_state.pop("_music_workspace_prepared_for_run", None)
-    prepare_music_workspace(
-        st,
-        song_picker_catalog=SONG_PICKER_CATALOG,
-        song_library=SONG_LIBRARY,
-    )
+    _ami_applied = bool(st.session_state.get("_ami_return_source_applied"))
+    if _ami_applied:
+        st.session_state.pop("_music_workspace_prepared_for_run", None)
+    try:
+        from music_perf_diagnostics import perf_span
+
+        with perf_span(st, "workspace_sync_post_ami"):
+            prepare_music_workspace(
+                st,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+            )
+    except ImportError:
+        prepare_music_workspace(
+            st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+        )
     try:
         from music_persistent_state import (
             maybe_flush_deferred_page_change_save,
@@ -9158,6 +9175,7 @@ try:
             st.session_state,
             song_picker_catalog=SONG_PICKER_CATALOG,
             song_library=SONG_LIBRARY,
+            force=_ami_applied,
         )
         _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
             st,
@@ -9775,6 +9793,14 @@ try:
 except Exception:
     pass
 
+try:
+    from music_perf_diagnostics import begin_run, render_perf_sidebar
+
+    begin_run(st, page_id=str(st.session_state.get("studio_page") or "practice"))
+    render_perf_sidebar(st)
+except Exception:
+    pass
+
 note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
 
 _master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
@@ -10053,7 +10079,7 @@ song_lyrics_slug = _song_slug(
 song_lyrics_key = f"song_lyrics::{song_lyrics_slug}"
 section_lyrics_state_key = f"section_lyrics::{song_lyrics_slug}"
 
-if pp.show_developer_sidebar(st):
+if pp.show_developer_sidebar(st) and _developer_mode_enabled():
     _render_sidebar_developer_library_panel()
 
 from songs.user_lyrics_runtime import hydrate_user_lyrics_session, resolve_user_lyrics_and_cues

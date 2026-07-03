@@ -139,12 +139,12 @@ def _persist_ops(st: Any, app_id: str) -> dict[str, Any]:
 
 def render_music_deploy_probe(st: Any) -> None:
     try:
-        from suite_workspace import is_developer_mode_enabled
+        from music_dev_ui import music_dev_mode_enabled
     except ImportError:
         if not developer_mode(st):
             return
     else:
-        if not is_developer_mode_enabled(st=st):
+        if not music_dev_mode_enabled(st=st):
             return
     info = deploy_info()
     cloud = cloud_config_probe()

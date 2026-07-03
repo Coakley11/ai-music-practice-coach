@@ -91,6 +91,14 @@ def _last_write_for_key(session: dict[str, Any], key: str) -> str:
 def render_widget_control_debug(st: Any, session: dict[str, Any]) -> None:
     """Sidebar table: widget value vs cloud vs restore/dirty flags."""
     try:
+        from music_dev_ui import music_dev_mode_enabled
+
+        if not music_dev_mode_enabled(st=st):
+            return
+    except ImportError:
+        if not session.get("developer_mode"):
+            return
+    try:
         from active_song_state import ACTIVE_SONG_DIRTY_KEY, is_active_song_locally_dirty
         from music_restore_phase import (
             authoritative_restore_in_progress,

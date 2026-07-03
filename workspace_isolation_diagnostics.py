@@ -277,14 +277,14 @@ def _infer_root_cause(
 def render_workspace_isolation_diagnostics(st: Any) -> None:
     """Sidebar expander for ``?dev=1`` (any signed-in user)."""
     try:
-        from suite_workspace import is_developer_mode_enabled
+        from music_dev_ui import music_dev_mode_enabled
     except ImportError:
         return
-    if not is_developer_mode_enabled(st=st):
+    if not music_dev_mode_enabled(st=st):
         return
 
     snap = build_workspace_isolation_snapshot(st=st)
-    with st.sidebar.expander("Workspace isolation (dev)", expanded=True):
+    with st.sidebar.expander("Workspace isolation (dev)", expanded=False):
         st.markdown("**Deploy**")
         st.text(f"marker: {snap['deploy_marker']}")
         st.text(f"git_commit: {snap['git_commit']}")

@@ -26,13 +26,11 @@ MT_MIXED_EXPORT_SIG_KEY = "_mt_mixed_export_sig"
 
 def _dev_mode(st: Any, session_state: dict[str, Any]) -> bool:
     try:
-        from suite_workspace import can_show_developer_tools
+        from music_dev_ui import music_dev_mode_enabled
 
-        if can_show_developer_tools(st=st):
-            return True
+        return music_dev_mode_enabled(st=st)
     except ImportError:
-        pass
-    return bool(session_state.get("developer_mode"))
+        return bool(session_state.get("developer_mode"))
 
 
 def _mixed_export_signature(mixed: bytes, song_title: str) -> tuple[Any, ...]:
