@@ -9311,8 +9311,9 @@ try:
         MODE_FIXED,
         MODE_STANDARD,
         PRACTICE_KEY_MODE_KEY,
+        disable_fixed_practice_key_mode,
         ensure_practice_key_mode_defaults,
-        fixed_practice_key_status_line,
+        fixed_key_family_label_for_session,
         is_fixed_practice_key_mode,
         on_practice_key_mode_change,
     )
@@ -9329,8 +9330,11 @@ except ImportError:
     def is_fixed_practice_key_mode(_session) -> bool:  # type: ignore[misc]
         return False
 
-    def fixed_practice_key_status_line(_session) -> str:  # type: ignore[misc]
+    def fixed_key_family_label_for_session(_session) -> str:  # type: ignore[misc]
         return ""
+
+    def disable_fixed_practice_key_mode(_session, *, original_key: str = "", st_like=None) -> None:  # type: ignore[misc]
+        pass
 
     def on_practice_key_mode_change(_session, *, original_key: str = "", st_like=None) -> None:  # type: ignore[misc]
         pass
@@ -9460,9 +9464,22 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 if is_fixed_practice_key_mode(st.session_state):
-    _fixed_key_status = fixed_practice_key_status_line(st.session_state)
-    if _fixed_key_status:
-        st.sidebar.caption(_fixed_key_status)
+    _fixed_family_label = fixed_key_family_label_for_session(st.session_state)
+
+    def _on_sidebar_fixed_key_quick_toggle() -> None:
+        if not st.session_state.get("sidebar_fixed_key_quick_toggle", True):
+            disable_fixed_practice_key_mode(
+                st.session_state,
+                original_key=original_key,
+                st_like=st,
+            )
+
+    st.session_state["sidebar_fixed_key_quick_toggle"] = True
+    st.sidebar.checkbox(
+        f"{_fixed_family_label} fixed",
+        key="sidebar_fixed_key_quick_toggle",
+        on_change=_on_sidebar_fixed_key_quick_toggle,
+    )
 else:
     st.sidebar.selectbox(
         "Practice / Concert Key",

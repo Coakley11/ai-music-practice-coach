@@ -443,6 +443,29 @@ def on_fixed_practice_concert_key_change(session: dict[str, Any], concert_key: s
         set_fixed_practice_key(session, key)
 
 
+def disable_fixed_practice_key_mode(
+    session: dict[str, Any],
+    *,
+    original_key: str = "",
+    st_like: Any | None = None,
+) -> None:
+    """Quick-off from the sidebar: return to standard per-song key behavior."""
+    if not is_fixed_practice_key_mode(session):
+        return
+    set_practice_key_mode(session, MODE_STANDARD)
+    original = str(original_key or "").strip()
+    try:
+        from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache, request_display_key
+
+        if original:
+            request_display_key(session, original)
+        session[BACKING_NEEDS_REGEN] = True
+        invalidate_backing_cache(session)
+    except ImportError:
+        pass
+    persist_practice_key_mode(st_like)
+
+
 __all__ = [
     "FIXED_PRACTICE_KEY",
     "FIXED_PRACTICE_KEY_FAMILY_ID",
@@ -455,6 +478,7 @@ __all__ = [
     "MODE_STANDARD",
     "apply_fixed_mode_target",
     "commit_practice_key_mode_widgets",
+    "disable_fixed_practice_key_mode",
     "ensure_practice_key_mode_defaults",
     "family_option_id",
     "fixed_key_family_anchor_from_label",

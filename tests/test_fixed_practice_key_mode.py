@@ -15,6 +15,7 @@ from practice_key_mode import (
     PRACTICE_KEY_MODE_WIDGET_KEY,
     apply_fixed_mode_target,
     commit_practice_key_mode_widgets,
+    disable_fixed_practice_key_mode,
     family_option_id,
     fixed_key_family_label,
     fixed_key_family_label_for_session,
@@ -190,6 +191,22 @@ class TestSessionDictHelpers(unittest.TestCase):
         self.assertEqual(session[FIXED_PRACTICE_KEY], "C")
         self.assertEqual(session[FIXED_PRACTICE_KEY_FAMILY_ID], family_option_id("C", "A"))
         self.assertEqual(session[PENDING_DISPLAY_KEY], "C")
+
+    def test_disable_fixed_practice_key_mode_returns_to_song_key(self) -> None:
+        session = {
+            PRACTICE_KEY_MODE_KEY: MODE_FIXED,
+            FIXED_PRACTICE_KEY_FAMILY_ID: family_option_id("C", "A"),
+            "display_key": "C",
+        }
+        disable_fixed_practice_key_mode(session, original_key="G")
+        self.assertEqual(session[PRACTICE_KEY_MODE_KEY], MODE_STANDARD)
+        self.assertEqual(session[PENDING_DISPLAY_KEY], "G")
+
+    def test_disable_fixed_practice_key_mode_noop_when_standard(self) -> None:
+        session = {PRACTICE_KEY_MODE_KEY: MODE_STANDARD}
+        disable_fixed_practice_key_mode(session, original_key="G")
+        self.assertEqual(session[PRACTICE_KEY_MODE_KEY], MODE_STANDARD)
+        self.assertNotIn(PENDING_DISPLAY_KEY, session)
 
 
 class _FakeSession(dict):
