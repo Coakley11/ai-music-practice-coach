@@ -12,6 +12,9 @@ from practice_key_mode import (
     MODE_STANDARD,
     PRACTICE_KEY_MODE_KEY,
     apply_fixed_mode_target,
+    fixed_key_family_label,
+    fixed_key_family_options,
+    fixed_key_family_summary_entry,
     on_practice_key_mode_change,
     practice_key_mode_label,
     resolve_fixed_practice_concert_key,
@@ -54,7 +57,36 @@ def _fake_st(session: dict | None = None):
 class TestRelativeKeyFamily(unittest.TestCase):
     def test_practice_key_mode_labels(self) -> None:
         self.assertIn("original", practice_key_mode_label(MODE_STANDARD).lower())
-        self.assertIn("practice key", practice_key_mode_label(MODE_FIXED).lower())
+        self.assertIn("key family", practice_key_mode_label(MODE_FIXED).lower())
+
+    def test_fixed_key_family_labels(self) -> None:
+        labels = [fixed_key_family_label(k) for k in fixed_key_family_options()]
+        self.assertEqual(
+            labels,
+            [
+                "C / A minor",
+                "Db / Bb minor",
+                "D / B minor",
+                "Eb / C minor",
+                "E / C# minor",
+                "F / D minor",
+                "Gb / Eb minor",
+                "G / E minor",
+                "Ab / F minor",
+                "A / F# minor",
+                "Bb / G minor",
+                "B / G# minor",
+            ],
+        )
+
+    def test_fixed_key_family_summary_only_when_enabled(self) -> None:
+        self.assertEqual(fixed_key_family_summary_entry({PRACTICE_KEY_MODE_KEY: MODE_STANDARD}), "")
+        self.assertEqual(
+            fixed_key_family_summary_entry(
+                {PRACTICE_KEY_MODE_KEY: MODE_FIXED, FIXED_PRACTICE_KEY: "C"}
+            ),
+            "Fixed Practice Key: C / A minor",
+        )
 
     def test_relative_minor_of_d_major(self) -> None:
         self.assertEqual(relative_minor_of_major("D"), "Bm")
@@ -130,10 +162,46 @@ class TestFixedModeSongSwitch(unittest.TestCase):
         with patch("songs.state.persist_music_local_state"):
             apply_pick_key(st, PK_SHAPE, CATALOG, skip_activity_log=True)
         self.assertEqual(st.session_state["display_key"], "Bm")
+        self.assertEqual(st.session_state[PRACTICE_KEY_MODE_KEY], MODE_FIXED)
+        self.assertEqual(st.session_state[FIXED_PRACTICE_KEY], "D")
 
         with patch("songs.state.persist_music_local_state"):
             apply_pick_key(st, PK_SAY, CATALOG, skip_activity_log=True)
         self.assertEqual(st.session_state["display_key"], "D")
+        self.assertEqual(st.session_state[PRACTICE_KEY_MODE_KEY], MODE_FIXED)
+        self.assertEqual(st.session_state[FIXED_PRACTICE_KEY], "D")
+
+    def test_c_family_stays_enabled_and_resolves_major_and_minor_song_switches(self) -> None:
+        st = _fake_st(
+            {
+                PRACTICE_KEY_MODE_KEY: MODE_FIXED,
+                FIXED_PRACTICE_KEY: "C",
+                SELECTED_SONG_STATE_KEY: {
+                    "pick_key": PK_PERFECT,
+                    "title": "Perfect",
+                    "artist": "Ed Sheeran",
+                    "key": "G",
+                },
+                ACTIVE_CATALOG_PICK_KEY: PK_PERFECT,
+                _LAST_PICK_KEY: PK_PERFECT,
+                "display_key": "C",
+                IDENTITY_KEY: song_display_identity(
+                    "Perfect", "Ed Sheeran", "G", pick_key=PK_PERFECT
+                ),
+            }
+        )
+
+        with patch("songs.state.persist_music_local_state"):
+            apply_pick_key(st, PK_SHAPE, CATALOG, skip_activity_log=True)
+        self.assertEqual(st.session_state[PRACTICE_KEY_MODE_KEY], MODE_FIXED)
+        self.assertEqual(st.session_state[FIXED_PRACTICE_KEY], "C")
+        self.assertEqual(st.session_state["display_key"], "Am")
+
+        with patch("songs.state.persist_music_local_state"):
+            apply_pick_key(st, PK_SAY, CATALOG, skip_activity_log=True)
+        self.assertEqual(st.session_state[PRACTICE_KEY_MODE_KEY], MODE_FIXED)
+        self.assertEqual(st.session_state[FIXED_PRACTICE_KEY], "C")
+        self.assertEqual(st.session_state["display_key"], "C")
 
     def test_standard_mode_follows_song_key(self) -> None:
         st = _fake_st(

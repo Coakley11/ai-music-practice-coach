@@ -8522,7 +8522,7 @@ def _render_practice_setup_panel(
                 original_key=original_key,
                 display_key_options=display_key_options or ["C"],
                 on_mode_change=_on_practice_key_behavior_change,
-                on_concert_key_change=on_sidebar_practice_concert_key_change,
+                on_concert_key_change=_on_practice_key_behavior_change,
             )
         except ImportError:
             pass
@@ -8534,6 +8534,16 @@ def _render_practice_setup_panel(
             groove=str(st.session_state.get("practice_groove_style", _groove)),
             minutes=int(st.session_state.get("practice_minutes", _minutes)),
         )
+        try:
+            from practice_key_mode import (
+                fixed_key_family_summary_entry,
+            )
+
+            _fixed_summary = fixed_key_family_summary_entry(st.session_state)
+            if _fixed_summary:
+                _summary = f"{_summary} · {html.escape(_fixed_summary)}"
+        except ImportError:
+            pass
         st.markdown(practice_setup_summary_badge_html(_summary), unsafe_allow_html=True)
 
         st.markdown(

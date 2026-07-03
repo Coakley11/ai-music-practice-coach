@@ -5,11 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 from music_theory import (
+    COMMON_KEYS,
     coerce_key_to_mode,
     key_is_minor,
     key_mode,
+    normalize_root,
     relative_major_of_minor,
     relative_minor_of_major,
+    split_chord,
 )
 
 PRACTICE_KEY_MODE_KEY = "practice_key_mode"
@@ -22,7 +25,7 @@ PRACTICE_KEY_BEHAVIOR_LABEL = "Key behavior for this practice session"
 
 _MODE_LABELS = {
     MODE_STANDARD: "Use each song's original/default key",
-    MODE_FIXED: "Keep all songs in this practice key",
+    MODE_FIXED: "Use one key family for this practice session",
 }
 
 # Legacy sidebar labels (tests / compatibility).
@@ -61,8 +64,21 @@ def get_fixed_practice_key(session: dict[str, Any]) -> str:
     return str(session.get(FIXED_PRACTICE_KEY) or "").strip()
 
 
+def _major_family_anchor(key: str) -> str:
+    raw = str(key or "C").strip() or "C"
+    if key_is_minor(raw):
+        raw = relative_major_of_minor(raw)
+    major = coerce_key_to_mode(raw, "major")
+    root, _ = split_chord(major)
+    norm = normalize_root(root)
+    for candidate in COMMON_KEYS:
+        if normalize_root(candidate) == norm:
+            return candidate
+    return "C"
+
+
 def set_fixed_practice_key(session: dict[str, Any], key: str) -> None:
-    anchor = str(key or "").strip()
+    anchor = _major_family_anchor(key)
     if anchor:
         session[FIXED_PRACTICE_KEY] = anchor
 
@@ -76,15 +92,32 @@ def set_practice_key_mode(session: dict[str, Any], mode: str) -> None:
 
 def resolve_fixed_practice_concert_key(fixed_key: str, song_original_key: str) -> str:
     """Map a fixed key-family anchor onto the active song's major/minor mode."""
-    fixed = str(fixed_key or "C").strip() or "C"
+    fixed = _major_family_anchor(fixed_key)
     original = str(song_original_key or "C").strip() or "C"
-    if key_mode(fixed) == "major":
-        if key_mode(original) == "major":
-            return coerce_key_to_mode(fixed, "major")
-        return relative_minor_of_major(fixed)
-    if key_mode(original) == "minor":
-        return coerce_key_to_mode(fixed, "minor")
-    return relative_major_of_minor(fixed)
+    if key_mode(original) == "major":
+        return fixed
+    return relative_minor_of_major(fixed)
+
+
+def fixed_key_family_options() -> list[str]:
+    """Major-family anchors, shown as major / relative-minor families."""
+    return list(COMMON_KEYS)
+
+
+def fixed_key_family_label(key: str) -> str:
+    """User-facing family label, e.g. C / A minor."""
+    major = _major_family_anchor(key)
+    minor = relative_minor_of_major(major)
+    minor_root, _ = split_chord(minor)
+    return f"{major} / {minor_root} minor"
+
+
+def fixed_key_family_anchor_from_label(label_or_key: str) -> str:
+    """Accept either a family label or a raw key and return the major anchor."""
+    raw = str(label_or_key or "").strip()
+    if "/" in raw:
+        raw = raw.split("/", 1)[0].strip()
+    return _major_family_anchor(raw)
 
 
 def resolve_practice_concert_key_for_song(
@@ -97,13 +130,10 @@ def resolve_practice_concert_key_for_song(
     """Effective practice concert key for one song — honors fixed mode when enabled."""
     original = str(song_original_key or fallback or "C").strip() or "C"
     if is_fixed_practice_key_mode(session):
-        fixed = get_fixed_practice_key(session)
+        fixed = _major_family_anchor(get_fixed_practice_key(session) or session.get("display_key") or "C")
+        set_fixed_practice_key(session, fixed)
         if fixed:
             return resolve_fixed_practice_concert_key(fixed, original)
-        live = str(session.get("display_key") or "").strip()
-        if live:
-            return resolve_fixed_practice_concert_key(live, original)
-        return original
     try:
         from songs.practice_key_state import get_practice_concert_key
 
@@ -125,7 +155,8 @@ def apply_fixed_mode_target(
     """When fixed mode is on, replace a standard-mode target with the family key."""
     if not is_fixed_practice_key_mode(session):
         return str(target or "").strip() or str(song_original_key or "C").strip() or "C"
-    fixed = get_fixed_practice_key(session)
+    fixed = _major_family_anchor(get_fixed_practice_key(session) or target or "C")
+    set_fixed_practice_key(session, fixed)
     anchor = fixed or str(target or session.get("display_key") or "").strip()
     if not anchor:
         anchor = str(song_original_key or "C").strip() or "C"
@@ -141,7 +172,7 @@ def on_practice_key_mode_change(
     """Callback when the user toggles practice key behavior."""
     mode = get_practice_key_mode(session)
     if mode == MODE_FIXED:
-        anchor = str(session.get("display_key") or original_key or "C").strip() or "C"
+        anchor = _major_family_anchor(get_fixed_practice_key(session) or session.get("display_key") or original_key or "C")
         set_fixed_practice_key(session, anchor)
         try:
             from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache, request_display_key
@@ -165,12 +196,20 @@ def fixed_practice_key_status_line(session: dict[str, Any]) -> str:
     """Compact sidebar status when fixed mode is active."""
     if not is_fixed_practice_key_mode(session):
         return ""
-    key = (
+    key = _major_family_anchor(
         get_fixed_practice_key(session)
         or str(session.get("display_key") or "").strip()
         or "C"
     )
-    return f"Practice key: {key} (fixed for session)"
+    return f"Practice key family: {fixed_key_family_label(key)} (fixed)"
+
+
+def fixed_key_family_summary_entry(session: dict[str, Any]) -> str:
+    """Practice setup summary suffix when fixed mode is active."""
+    if not is_fixed_practice_key_mode(session):
+        return ""
+    key = get_fixed_practice_key(session) or str(session.get("display_key") or "").strip() or "C"
+    return f"Fixed Practice Key: {fixed_key_family_label(key)}"
 
 
 def render_practice_key_behavior_panel(
@@ -197,12 +236,14 @@ def render_practice_key_behavior_panel(
         on_change=on_mode_change,
     )
     if is_fixed_practice_key_mode(session):
-        opts = list(display_key_options or ["C"])
+        current = _major_family_anchor(get_fixed_practice_key(session) or session.get("display_key") or original_key or "C")
+        set_fixed_practice_key(session, current)
         st_module.selectbox(
-            "Practice Concert Key",
-            opts,
-            key="display_key",
-            help="Concert pitch for all songs in this practice session.",
+            "Practice Key Family",
+            fixed_key_family_options(),
+            key=FIXED_PRACTICE_KEY,
+            format_func=fixed_key_family_label,
+            help="Major songs use the major side; minor songs use the relative minor side.",
             on_change=on_concert_key_change,
         )
 
@@ -211,13 +252,17 @@ def on_fixed_practice_concert_key_change(session: dict[str, Any], concert_key: s
     """Persist the fixed-family anchor when the user edits Practice / Concert Key."""
     if not is_fixed_practice_key_mode(session):
         return
-    key = str(concert_key or "").strip()
+    key = _major_family_anchor(concert_key or session.get(FIXED_PRACTICE_KEY) or session.get("display_key") or "C")
     if key:
         set_fixed_practice_key(session, key)
 
 
 __all__ = [
     "FIXED_PRACTICE_KEY",
+    "fixed_key_family_anchor_from_label",
+    "fixed_key_family_label",
+    "fixed_key_family_options",
+    "fixed_key_family_summary_entry",
     "MODE_FIXED",
     "MODE_STANDARD",
     "PRACTICE_KEY_MODE_KEY",
