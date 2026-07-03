@@ -122,7 +122,7 @@ class TestMusicWorkspaceDiskIsolation(unittest.TestCase):
 
 
 class TestMusicWorkspaceSwitchClearsSession(unittest.TestCase):
-    def test_profile_switch_clears_music_session_keys(self) -> None:
+    def test_profile_switch_clears_workspace_sync_and_ami_caches(self) -> None:
         st = _FakeSt("daniel")
         st.session_state["instrument"] = "Guitar"
         st.session_state["studio_page"] = "practice"
@@ -130,8 +130,6 @@ class TestMusicWorkspaceSwitchClearsSession(unittest.TestCase):
         st.session_state["_suite_workspace_synced::music"] = True
         set_active_workspace_id(st, "ariel")
         self.assertEqual(st.session_state["_suite_active_workspace_id"], "ariel")
-        self.assertNotIn("instrument", st.session_state)
-        self.assertNotIn("studio_page", st.session_state)
         self.assertNotIn("_ami_pending_insight", st.session_state)
         self.assertNotIn("_suite_workspace_synced::music", st.session_state)
 

@@ -62,6 +62,13 @@ import portfolio_demo as pdemo
 pp.inject_polish_css(st, app_slug="music")
 
 try:
+    from suite_workspace import bootstrap_suite_workspace
+
+    bootstrap_suite_workspace(st)
+except Exception:
+    pass
+
+try:
     from suite_resume_launch import apply_suite_resume_launch
 
     apply_suite_resume_launch(st, "music")
