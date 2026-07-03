@@ -89,21 +89,34 @@ _BACKING_CACHE_KEYS = (
 )
 
 
-def invalidate_backing_cache(st: Any) -> None:
+def _session_from_st_like(session_or_st: Any) -> dict[str, Any]:
+    """Accept a session dict or Streamlit module/context with ``.session_state``."""
+    if isinstance(session_or_st, dict):
+        return session_or_st
+    ss = getattr(session_or_st, "session_state", None)
+    if isinstance(ss, dict):
+        return ss
+    raise TypeError(
+        f"Expected session dict or st-like object, got {type(session_or_st)!r}"
+    )
+
+
+def invalidate_backing_cache(session_or_st: Any) -> None:
+    session = _session_from_st_like(session_or_st)
     for key in _BACKING_CACHE_KEYS:
-        st.session_state.pop(key, None)
+        session.pop(key, None)
     try:
         from studio_cache import invalidate_session_cache
 
-        invalidate_session_cache(st.session_state, "backing_wav_b64")
-        invalidate_session_cache(st.session_state, "chart_bundle")
-        invalidate_session_cache(st.session_state, "backing_chart_html")
+        invalidate_session_cache(session, "backing_wav_b64")
+        invalidate_session_cache(session, "chart_bundle")
+        invalidate_session_cache(session, "backing_chart_html")
     except Exception:
         pass
 
 
-def clear_backing_needs_regen(st: Any) -> None:
-    st.session_state[BACKING_NEEDS_REGEN] = False
+def clear_backing_needs_regen(session_or_st: Any) -> None:
+    _session_from_st_like(session_or_st)[BACKING_NEEDS_REGEN] = False
 
 
 def sync_display_key_owner_identity(session: dict[str, Any]) -> None:
@@ -338,14 +351,14 @@ def sync_display_key_before_widget(
     return apply_display_key_for_active_song(st, original_key, song_identity)
 
 
-def request_display_key(st: Any, key: str) -> None:
+def request_display_key(session_or_st: Any, key: str) -> None:
     """Set display key on the next run without touching the widget after creation."""
-    st.session_state[PENDING_DISPLAY_KEY] = key
+    _session_from_st_like(session_or_st)[PENDING_DISPLAY_KEY] = key
 
 
-def prepare_cpl_jump_home(st: Any, home_key: str) -> None:
+def prepare_cpl_jump_home(session_or_st: Any, home_key: str) -> None:
     """Store CPL home-key target for the sidebar jump button callback."""
-    st.session_state[CPL_JUMP_HOME_TARGET] = home_key
+    _session_from_st_like(session_or_st)[CPL_JUMP_HOME_TARGET] = home_key
 
 
 def on_cpl_jump_home_key() -> None:

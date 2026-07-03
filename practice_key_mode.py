@@ -18,7 +18,15 @@ FIXED_PRACTICE_KEY = "fixed_practice_key"
 MODE_STANDARD = "standard"
 MODE_FIXED = "fixed"
 
+PRACTICE_KEY_BEHAVIOR_LABEL = "Key behavior for this practice session"
+
 _MODE_LABELS = {
+    MODE_STANDARD: "Use each song's original/default key",
+    MODE_FIXED: "Keep all songs in this practice key",
+}
+
+# Legacy sidebar labels (tests / compatibility).
+_MODE_LABELS_LEGACY = {
     MODE_STANDARD: "Standard (Follow Song Key)",
     MODE_FIXED: "Fixed Practice Key",
 }
@@ -26,6 +34,10 @@ _MODE_LABELS = {
 
 def practice_key_mode_label(mode: str) -> str:
     return _MODE_LABELS.get(str(mode or "").strip(), _MODE_LABELS[MODE_STANDARD])
+
+
+def practice_key_mode_label_legacy(mode: str) -> str:
+    return _MODE_LABELS_LEGACY.get(str(mode or "").strip(), _MODE_LABELS_LEGACY[MODE_STANDARD])
 
 
 def ensure_practice_key_mode_defaults(session: dict[str, Any]) -> None:
@@ -120,33 +132,79 @@ def apply_fixed_mode_target(
     return resolve_fixed_practice_concert_key(anchor, song_original_key)
 
 
-def on_practice_key_mode_change(session: dict[str, Any], *, original_key: str = "") -> None:
-    """Sidebar callback when the user toggles practice key mode."""
+def on_practice_key_mode_change(
+    session: dict[str, Any],
+    *,
+    original_key: str = "",
+    st_like: Any | None = None,
+) -> None:
+    """Callback when the user toggles practice key behavior."""
     mode = get_practice_key_mode(session)
     if mode == MODE_FIXED:
         anchor = str(session.get("display_key") or original_key or "C").strip() or "C"
         set_fixed_practice_key(session, anchor)
         try:
-            from songs.key_state import (
-                BACKING_NEEDS_REGEN,
-                PENDING_DISPLAY_KEY,
-                invalidate_backing_cache,
-                request_display_key,
-            )
+            from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache, request_display_key
 
             resolved = resolve_fixed_practice_concert_key(anchor, original_key or anchor)
             request_display_key(session, resolved)
-            session.pop(PENDING_DISPLAY_KEY, None)
             session[BACKING_NEEDS_REGEN] = True
             invalidate_backing_cache(session)
         except ImportError:
             pass
-    try:
-        from songs.state import persist_music_local_state
+    if st_like is not None:
+        try:
+            from songs.state import persist_music_local_state
 
-        persist_music_local_state(session)
-    except Exception:
-        pass
+            persist_music_local_state(st_like)
+        except Exception:
+            pass
+
+
+def fixed_practice_key_status_line(session: dict[str, Any]) -> str:
+    """Compact sidebar status when fixed mode is active."""
+    if not is_fixed_practice_key_mode(session):
+        return ""
+    key = (
+        get_fixed_practice_key(session)
+        or str(session.get("display_key") or "").strip()
+        or "C"
+    )
+    return f"Practice key: {key} (fixed for session)"
+
+
+def render_practice_key_behavior_panel(
+    st_module: Any,
+    session: dict[str, Any],
+    *,
+    original_key: str,
+    display_key_options: list[str],
+    on_mode_change: Any | None = None,
+    on_concert_key_change: Any | None = None,
+) -> None:
+    """Practice-page session setup — key behavior and optional fixed concert key."""
+    ensure_practice_key_mode_defaults(session)
+    st_module.markdown(
+        f'<p class="ui-practice-key-behavior-label"><strong>{PRACTICE_KEY_BEHAVIOR_LABEL}</strong></p>',
+        unsafe_allow_html=True,
+    )
+    st_module.radio(
+        PRACTICE_KEY_BEHAVIOR_LABEL,
+        options=[MODE_STANDARD, MODE_FIXED],
+        format_func=practice_key_mode_label,
+        key=PRACTICE_KEY_MODE_KEY,
+        label_visibility="collapsed",
+        on_change=on_mode_change,
+    )
+    if is_fixed_practice_key_mode(session):
+        opts = list(display_key_options or ["C"])
+        st_module.selectbox(
+            "Practice Concert Key",
+            opts,
+            key="display_key",
+            help="Concert pitch for all songs in this practice session.",
+            on_change=on_concert_key_change,
+        )
 
 
 def on_fixed_practice_concert_key_change(session: dict[str, Any], concert_key: str) -> None:
@@ -169,8 +227,12 @@ __all__ = [
     "get_practice_key_mode",
     "is_fixed_practice_key_mode",
     "on_fixed_practice_concert_key_change",
+    "PRACTICE_KEY_BEHAVIOR_LABEL",
+    "fixed_practice_key_status_line",
     "on_practice_key_mode_change",
     "practice_key_mode_label",
+    "practice_key_mode_label_legacy",
+    "render_practice_key_behavior_panel",
     "resolve_fixed_practice_concert_key",
     "resolve_practice_concert_key_for_song",
     "set_fixed_practice_key",

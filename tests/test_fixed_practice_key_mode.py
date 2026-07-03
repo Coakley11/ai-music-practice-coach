@@ -12,11 +12,20 @@ from practice_key_mode import (
     MODE_STANDARD,
     PRACTICE_KEY_MODE_KEY,
     apply_fixed_mode_target,
+    on_practice_key_mode_change,
+    practice_key_mode_label,
     resolve_fixed_practice_concert_key,
     resolve_practice_concert_key_for_song,
 )
 from song_catalog.catalog import format_pick_key
-from songs.key_state import IDENTITY_KEY, apply_display_key_for_active_song, song_display_identity
+from songs.key_state import (
+    IDENTITY_KEY,
+    PENDING_DISPLAY_KEY,
+    apply_display_key_for_active_song,
+    invalidate_backing_cache,
+    request_display_key,
+    song_display_identity,
+)
 from songs.state import (
     ACTIVE_CATALOG_PICK_KEY,
     SELECTED_SONG_STATE_KEY,
@@ -43,6 +52,10 @@ def _fake_st(session: dict | None = None):
 
 
 class TestRelativeKeyFamily(unittest.TestCase):
+    def test_practice_key_mode_labels(self) -> None:
+        self.assertIn("original", practice_key_mode_label(MODE_STANDARD).lower())
+        self.assertIn("practice key", practice_key_mode_label(MODE_FIXED).lower())
+
     def test_relative_minor_of_d_major(self) -> None:
         self.assertEqual(relative_minor_of_major("D"), "Bm")
 
@@ -70,6 +83,28 @@ class TestFixedPracticeKeyResolution(unittest.TestCase):
     def test_g_minor_family(self) -> None:
         self.assertEqual(resolve_fixed_practice_concert_key("Gm", "Bm"), "Gm")
         self.assertEqual(resolve_fixed_practice_concert_key("Gm", "G"), "Bb")
+
+
+class TestSessionDictHelpers(unittest.TestCase):
+    def test_request_display_key_writes_session_dict(self) -> None:
+        session: dict = {}
+        request_display_key(session, "D")
+        self.assertEqual(session[PENDING_DISPLAY_KEY], "D")
+
+    def test_invalidate_backing_cache_accepts_session_dict(self) -> None:
+        session = {"_last_backing_wav": b"x", "current_chord_timeline": [1]}
+        invalidate_backing_cache(session)
+        self.assertNotIn("_last_backing_wav", session)
+        self.assertNotIn("current_chord_timeline", session)
+
+    def test_on_practice_key_mode_change_with_session_dict(self) -> None:
+        session = {
+            PRACTICE_KEY_MODE_KEY: MODE_FIXED,
+            "display_key": "D",
+        }
+        on_practice_key_mode_change(session, original_key="G")
+        self.assertEqual(session[FIXED_PRACTICE_KEY], "D")
+        self.assertEqual(session[PENDING_DISPLAY_KEY], "D")
 
 
 class TestFixedModeSongSwitch(unittest.TestCase):

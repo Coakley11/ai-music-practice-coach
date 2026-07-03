@@ -8443,6 +8443,8 @@ def _render_practice_setup_panel(
     default_groove: str,
     section_choices: list[str] | None = None,
     section_focus_after_jump: Callable[[], None] | None = None,
+    original_key: str = "C",
+    display_key_options: list[str] | None = None,
 ) -> None:
     """Practice Control Center — instrument, level, focus, groove, session length."""
     from practice_state import (
@@ -8503,6 +8505,27 @@ def _render_practice_setup_panel(
                 on_change=_on_practice_filter_change,
             )
             st.markdown("</div>", unsafe_allow_html=True)
+
+        try:
+            from practice_key_mode import render_practice_key_behavior_panel
+
+            def _on_practice_key_behavior_change() -> None:
+                on_practice_key_mode_change(
+                    st.session_state,
+                    original_key=original_key,
+                    st_like=st,
+                )
+
+            render_practice_key_behavior_panel(
+                st,
+                st.session_state,
+                original_key=original_key,
+                display_key_options=display_key_options or ["C"],
+                on_mode_change=_on_practice_key_behavior_change,
+                on_concert_key_change=on_sidebar_practice_concert_key_change,
+            )
+        except ImportError:
+            pass
 
         _summary = practice_setup_summary_text(
             instrument=str(st.session_state.get("instrument", _instrument)),
@@ -9270,8 +9293,9 @@ try:
         MODE_STANDARD,
         PRACTICE_KEY_MODE_KEY,
         ensure_practice_key_mode_defaults,
+        fixed_practice_key_status_line,
+        is_fixed_practice_key_mode,
         on_practice_key_mode_change,
-        practice_key_mode_label,
     )
 
     ensure_practice_key_mode_defaults(st.session_state)
@@ -9283,11 +9307,14 @@ except ImportError:
     def ensure_practice_key_mode_defaults(_session) -> None:  # type: ignore[misc]
         pass
 
-    def on_practice_key_mode_change(_session, *, original_key: str = "") -> None:  # type: ignore[misc]
-        pass
+    def is_fixed_practice_key_mode(_session) -> bool:  # type: ignore[misc]
+        return False
 
-    def practice_key_mode_label(mode: str) -> str:  # type: ignore[misc]
-        return str(mode or "")
+    def fixed_practice_key_status_line(_session) -> str:  # type: ignore[misc]
+        return ""
+
+    def on_practice_key_mode_change(_session, *, original_key: str = "", st_like=None) -> None:  # type: ignore[misc]
+        pass
 
 _studio_page_for_hydrate = str(st.session_state.get("studio_page") or "practice").strip() or "practice"
 if _studio_page_for_hydrate == "practice":
@@ -9413,27 +9440,18 @@ st.sidebar.markdown(
     f'<p class="ui-sidebar-key-caption">Song Original Key: <strong>{original_key}</strong></p>',
     unsafe_allow_html=True,
 )
-
-
-def _on_practice_key_mode_sidebar_change() -> None:
-    on_practice_key_mode_change(st.session_state, original_key=original_key)
-
-
-st.sidebar.radio(
-    "Practice Key Mode",
-    options=[MODE_STANDARD, MODE_FIXED],
-    format_func=practice_key_mode_label,
-    key=PRACTICE_KEY_MODE_KEY,
-    horizontal=True,
-    on_change=_on_practice_key_mode_sidebar_change,
-)
-st.sidebar.selectbox(
-    "Practice / Concert Key",
-    _display_key_options,
-    key="display_key",
-    help="Concert pitch for charts and backing audio.",
-    on_change=on_sidebar_practice_concert_key_change,
-)
+if is_fixed_practice_key_mode(st.session_state):
+    _fixed_key_status = fixed_practice_key_status_line(st.session_state)
+    if _fixed_key_status:
+        st.sidebar.caption(_fixed_key_status)
+else:
+    st.sidebar.selectbox(
+        "Practice / Concert Key",
+        _display_key_options,
+        key="display_key",
+        help="Concert pitch for charts and backing audio.",
+        on_change=on_sidebar_practice_concert_key_change,
+    )
 try:
     from music_restore_phase import STREAMLIT_WIDGETS_LOCKED_KEY
 
@@ -10198,6 +10216,8 @@ if _studio_page == "practice":
         default_groove=default_groove_style,
         section_choices=_section_choices or None,
         section_focus_after_jump=_section_focus_after_jump if _section_choices else None,
+        original_key=original_key,
+        display_key_options=_display_key_options,
     )
 
     _focus_pick = st.session_state.get("practice_focus_section", _section_choices[0] if _section_choices else "")
