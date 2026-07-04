@@ -80,8 +80,54 @@ class TestBackingStyleRecipes(unittest.TestCase):
             profile=prof,
         )
         self.assertEqual(style_recipe_id("Blues groove"), "blues_groove")
-        self.assertGreater(float(sp.get("swing", 0.0)), 0.05)
-        self.assertIn(1.5, pat.get("comp_beats", []))
+        # Clear shuffle: strong swing and triplet-offset comp beats.
+        self.assertGreaterEqual(float(sp.get("swing", 0.0)), 0.2)
+        self.assertTrue(
+            any(abs(float(b) - 0.67) < 0.02 for b in pat.get("comp_beats", [])),
+            f"expected triplet shuffle comp beat near 0.67, got {pat.get('comp_beats')}",
+        )
+        self.assertTrue(
+            any(abs(float(b) - 0.67) < 0.02 for b in pat.get("hat_beats", [])),
+            "expected shuffled hi-hat on triplet subdivision",
+        )
+
+
+class TestStyleContrastAmplified(unittest.TestCase):
+    def _apply(self, style, mood, intensity):
+        prof = resolve_backing_musical_profile(style=style, mood=mood, intensity=intensity)
+        base = _style_patterns(style, {}, time_signature="4/4")
+        return apply_profile_to_synthesis(
+            style=style,
+            song_profile={"kick_push": 1.0, "hat_soft": 1.0, "swing": 0.0},
+            patterns=base,
+            profile=prof,
+        )
+
+    def test_heavy_adds_kick_hits_and_louder_kick(self) -> None:
+        base = _style_patterns("Pop groove", {}, time_signature="4/4")
+        sp_heavy, pat_heavy = self._apply("Pop groove", "Energetic", "Heavy")
+        self.assertGreater(len(pat_heavy["kick_beats"]), len(base["kick_beats"]))
+        self.assertGreater(float(sp_heavy["kick_push"]), 1.1)
+
+    def test_light_sparser_comp_and_quieter_kit(self) -> None:
+        sp_medium, pat_medium = self._apply("Pop groove", "Mellow", "Medium")
+        sp_light, pat_light = self._apply("Pop groove", "Mellow", "Light")
+        self.assertLess(len(pat_light["comp_beats"]), len(pat_medium["comp_beats"]))
+        self.assertLess(float(sp_light["kick_push"]), float(sp_medium["kick_push"]))
+
+    def test_funk_more_syncopation_than_pop(self) -> None:
+        _, pop = self._apply("Pop groove", "Mellow", "Medium")
+        _, funk = self._apply("Funk groove", "Mellow", "Medium")
+        off_pop = [b for b in pop["comp_beats"] if float(b) != int(float(b))]
+        off_funk = [b for b in funk["comp_beats"] if float(b) != int(float(b))]
+        self.assertGreaterEqual(len(off_funk), len(off_pop))
+
+    def test_dreamy_lengthens_sustain_and_thins_comp(self) -> None:
+        _, medium = self._apply("Pop groove", "Mellow", "Medium")
+        sp_dreamy, dreamy = self._apply("Pop groove", "Dreamy", "Medium")
+        self.assertGreater(float(sp_dreamy.get("sustain_mul", 1.0)), 1.2)
+        self.assertGreater(float(dreamy["comp_dur"]), float(medium["comp_dur"]))
+        self.assertLessEqual(len(dreamy["comp_beats"]), len(medium["comp_beats"]))
 
 
 class TestSynthesisProfileWiring(unittest.TestCase):
