@@ -1567,50 +1567,106 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border: 1px solid #86efac !important;
   pointer-events: none !important;
 }
-/* Studio history toolbar — stable 3-column row (Back | center | Forward) */
-.st-key-studio_nav_toolbar {
-  margin: 0.2rem 0 0.55rem !important;
-  padding: 0 !important;
-  border: none !important;
-  background: transparent !important;
-}
-.ui-studio-nav-toolbar {
-  width: 100%;
-}
-.ui-studio-nav-toolbar-spacer {
-  min-height: 2.65rem;
-}
-.st-key-studio_nav_toolbar [class*="st-key-studio_nav_back_btn"] .stButton,
-.st-key-studio_nav_toolbar [class*="st-key-studio_nav_forward_btn"] .stButton,
-.st-key-studio_nav_toolbar [class*="st-key-backing_nav_return_source_btn"] .stButton {
-  position: static !important;
-  top: auto !important;
-  left: auto !important;
-  right: auto !important;
-  transform: none !important;
-  z-index: auto !important;
-  margin: 0 !important;
-  width: 100% !important;
-  pointer-events: auto !important;
-}
-.st-key-studio_nav_toolbar [class*="st-key-studio_nav_back_btn"] .stButton > button,
-.st-key-studio_nav_toolbar [class*="st-key-studio_nav_forward_btn"] .stButton > button,
-.st-key-studio_nav_toolbar [class*="st-key-backing_nav_return_source_btn"] .stButton > button {
-  width: 100% !important;
-  min-height: 2.5rem !important;
-  margin: 0 !important;
-  font-size: 0.82rem !important;
-  font-weight: 700 !important;
-  border-radius: 10px !important;
-}
-/* Legacy floating pins — hide if any orphan buttons render outside the toolbar */
-section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"]:not(.st-key-studio_nav_toolbar *),
-section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"]:not(.st-key-studio_nav_toolbar *) {
-  display: none !important;
-}
+/* Floating back / forward — mid-viewport, gutter-safe (JS sets --studio-history-*) */
 [data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"],
 [data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] {
   display: none !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"],
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] {
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  pointer-events: none !important;
+  border: none !important;
+  background: transparent !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton,
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton {
+  position: fixed !important;
+  top: 50vh !important;
+  transform: translateY(-50%) !important;
+  z-index: 99990 !important;
+  margin: 0 !important;
+  width: auto !important;
+  pointer-events: auto !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton {
+  left: var(--studio-history-back-left, 12rem) !important;
+  right: auto !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton {
+  right: var(--studio-history-fwd-right, 1rem) !important;
+  left: auto !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button,
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] button[kind="secondary"],
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] button[kind="secondary"],
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] [data-testid="stBaseButton-secondary"],
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] [data-testid="stBaseButton-secondary"] {
+  pointer-events: auto !important;
+  z-index: 99991 !important;
+  min-height: 2.65rem !important;
+  height: auto !important;
+  min-width: 2.65rem !important;
+  padding: 0.4rem 0.65rem !important;
+  margin: 0 !important;
+  font-size: 0.82rem !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0.01em !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(148, 163, 184, 0.42) !important;
+  background: rgba(15, 23, 42, 0.52) !important;
+  color: #e2e8f0 !important;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.22) !important;
+  opacity: 0.58 !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: opacity 0.16s ease, background 0.16s ease, border-color 0.16s ease,
+    box-shadow 0.16s ease, transform 0.12s ease !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:hover:not(:disabled),
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:hover:not(:disabled) {
+  opacity: 1 !important;
+  background: rgba(30, 41, 59, 0.92) !important;
+  border-color: rgba(148, 163, 184, 0.62) !important;
+  color: #f8fafc !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.32) !important;
+  transform: translateY(-50%) scale(1.03) !important;
+}
+section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:disabled,
+section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:disabled {
+  opacity: 0.28 !important;
+  cursor: default !important;
+  box-shadow: none !important;
+  transform: translateY(-50%) !important;
+}
+@media (max-width: 640px) {
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+    min-height: 2.85rem !important;
+    min-width: 2.85rem !important;
+    padding: 0.45rem 0.55rem !important;
+    font-size: 1.05rem !important;
+  }
+}
+@media (max-width: 420px) {
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+    font-size: 0 !important;
+  }
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button::after {
+    content: "←" !important;
+    font-size: 1.15rem !important;
+  }
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button::after {
+    content: "→" !important;
+    font-size: 1.15rem !important;
+  }
 }
 .live-player-toolbar {
   display: flex;
@@ -2406,11 +2462,68 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"]:not(.st-k
         unsafe_allow_html=True,
     )
     _inject_app_theme_polish()
+    _inject_studio_history_nav_pin_script()
 
 
 def _inject_studio_history_nav_pin_script() -> None:
-    """Deprecated — toolbar uses static layout; no viewport pin script."""
-    return
+    """Pin back/forward in the sidebar/main gutter (stable — no full-DOM mutation loop)."""
+    import streamlit as st
+
+    st.markdown(
+        """
+<script>
+(function () {
+  if (window.__studioHistoryNavPinInit) return;
+  window.__studioHistoryNavPinInit = true;
+  var scheduled = false;
+  function gutterBackLeft(sidebar, mainRect) {
+    if (!sidebar) return Math.max(12, mainRect.left + 8);
+    var sR = sidebar.getBoundingClientRect().right;
+    var gap = mainRect.left - sR;
+    if (gap < 20) return Math.max(8, sR + 6);
+    return Math.round(sR + Math.min(56, Math.max(10, gap * 0.42)));
+  }
+  function pinStudioHistoryNav() {
+    scheduled = false;
+    var main = document.querySelector('section[data-testid="stMain"]');
+    if (!main) return;
+    var sidebar = document.querySelector('[data-testid="stSidebar"]');
+    var mainRect = main.getBoundingClientRect();
+    var backLeft = gutterBackLeft(sidebar, mainRect);
+    var fwdRight = Math.max(12, Math.round(window.innerWidth - mainRect.right + 14));
+    document.documentElement.style.setProperty('--studio-history-back-left', backLeft + 'px');
+    document.documentElement.style.setProperty('--studio-history-fwd-right', fwdRight + 'px');
+    var btnBase =
+      'position:fixed!important;top:50vh!important;' +
+      'transform:translateY(-50%)!important;z-index:99990!important;' +
+      'margin:0!important;width:auto!important;pointer-events:auto!important;';
+    main.querySelectorAll('[class*="st-key-studio_nav_back_btn"] .stButton').forEach(function (btn) {
+      btn.style.cssText = btnBase + 'left:' + backLeft + 'px!important;right:auto!important;';
+    });
+    main.querySelectorAll('[class*="st-key-studio_nav_forward_btn"] .stButton').forEach(function (btn) {
+      btn.style.cssText = btnBase + 'right:' + fwdRight + 'px!important;left:auto!important;';
+    });
+  }
+  function schedulePin() {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(pinStudioHistoryNav);
+  }
+  pinStudioHistoryNav();
+  window.addEventListener('resize', schedulePin, { passive: true });
+  window.addEventListener('scroll', schedulePin, { passive: true });
+  if (typeof ResizeObserver !== 'undefined') {
+    var ro = new ResizeObserver(schedulePin);
+    var sidebar = document.querySelector('[data-testid="stSidebar"]');
+    var main = document.querySelector('section[data-testid="stMain"]');
+    if (sidebar) ro.observe(sidebar);
+    if (main) ro.observe(main);
+  }
+})();
+</script>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 _UI_POLISH_VERSION = "v10-2026-06-09-history-nav-live-fix"

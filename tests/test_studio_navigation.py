@@ -245,13 +245,25 @@ def test_quick_nav_rows_cover_all_top_nav_pages():
     assert set(QUICK_NAV_ROW_PRIMARY + QUICK_NAV_ROW_SECONDARY) == set(TOP_NAV_PAGE_IDS)
 
 
-def test_studio_nav_toolbar_three_column_layout():
+def test_floating_nav_history_renders_side_buttons():
     import inspect
 
     import studio_nav_history as mod
 
-    src = inspect.getsource(mod.render_studio_history_toolbar)
-    assert "studio_nav_toolbar" in src
+    src = inspect.getsource(mod.render_floating_nav_history)
     assert "studio_nav_back_btn" in src
     assert "studio_nav_forward_btn" in src
-    assert "columns" in src
+    assert "studio_nav_toolbar" not in src
+    assert "columns" not in src
+
+
+def test_studio_history_nav_gutter_pin_script():
+    import inspect
+
+    from app_ui import _inject_studio_history_nav_pin_script
+
+    src = inspect.getsource(_inject_studio_history_nav_pin_script)
+    assert "gutterBackLeft" in src
+    assert "ResizeObserver" in src
+    assert "MutationObserver" not in src
+    assert "--studio-history-back-left" in src

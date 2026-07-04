@@ -8646,18 +8646,8 @@ def _studio_page_header(
     subtitle: str = "",
     *,
     page_id: str | None = None,
-    nav_center: Callable[[Any], None] | None = None,
 ) -> None:
-    """Page title plus stable history toolbar and instrument context strip."""
-    try:
-        from studio_nav_history import render_studio_history_toolbar
-
-        render_studio_history_toolbar(st, st.session_state, center_slot=nav_center)
-    except Exception:
-        try:
-            render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
-        except Exception:
-            pass
+    """Page title plus instrument context strip (Back/Forward render globally as floating controls)."""
     compact_page_title(
         icon,
         title,
@@ -8673,27 +8663,25 @@ def _studio_page_header(
         pass
 
 
-def _backing_nav_return_center(st_mod: Any) -> None:
-    """Center toolbar slot on Backing Studio — return to catalog/creative/custom source."""
+def _render_backing_return_source_action() -> None:
+    """Backing-only return action — separate from floating Back/Forward history."""
     try:
         from backing_context import get_backing_context
-        from backing_source_navigation import prepare_return_to_backing_source, return_to_source_button_label
+        from backing_context_ui import render_backing_edit_source_action
+        from backing_source_navigation import prepare_return_to_backing_source
         from studio_page_persistence import save_page_snapshot
 
         ctx = get_backing_context(st.session_state)
         if ctx is None or str(getattr(ctx, "source", "") or "") == "regular_song":
-            label = "🎵 Return to Catalog Song"
-
-            def _go_catalog() -> None:
+            if st.button(
+                "🎵 Return to Catalog Song",
+                key="backing_go_catalog_song_btn",
+                use_container_width=False,
+            ):
                 set_pending_anchor(st.session_state, ANCHOR_CHOOSE_ACTIVE_SONG)
                 navigate_studio_page(st.session_state, "picker")
-
-            if st_mod.button(label, key="backing_nav_return_source_btn", use_container_width=True):
-                _go_catalog()
                 st.rerun()
             return
-
-        label = return_to_source_button_label(ctx)
 
         def _go_source() -> None:
             save_page_snapshot(st.session_state, "backing")
@@ -8701,10 +8689,9 @@ def _backing_nav_return_center(st_mod: Any) -> None:
                 save_page_snapshot(st.session_state, "creative")
             target = prepare_return_to_backing_source(st.session_state)
             navigate_studio_page(st.session_state, target)
-
-        if st_mod.button(label, key="backing_nav_return_source_btn", use_container_width=True):
-            _go_source()
             st.rerun()
+
+        render_backing_edit_source_action(st, st.session_state, ctx, on_navigate=_go_source)
     except Exception:
         pass
 
@@ -9121,6 +9108,12 @@ from app_tutorial import (
 
 init_tutorial_state(st.session_state)
 init_nav_history(st.session_state)
+
+try:
+    render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
+except Exception as _early_nav_hist_exc:
+    if _developer_mode_enabled():
+        st.warning(f"Back/Forward nav render failed: {_early_nav_hist_exc}")
 
 from openai_secrets_config import resolve_openai_api_key
 
@@ -11486,7 +11479,6 @@ elif _studio_page == "backing":
                 km.voice_wording("backing_page_title", voice=True),
                 km.voice_wording("backing_page_subtitle", voice=True),
                 page_id="backing",
-                nav_center=_backing_nav_return_center,
             )
         else:
             _studio_page_header(
@@ -11494,7 +11486,6 @@ elif _studio_page == "backing":
                 "Backing Track Studio",
                 "Play accompaniment matched to your active song — then play along.",
                 page_id="backing",
-                nav_center=_backing_nav_return_center,
             )
         try:
             from backing_context_ui import (
@@ -11727,6 +11718,7 @@ elif _studio_page == "backing":
             source_label=_backing_source_label,
             written_key=_backing_written_key,
         )
+    _render_backing_return_source_action()
     if _developer_mode_enabled() and _creative_backing_ctx is not None:
         try:
             from backing_context_ui import render_backing_context_dev_diagnostics
