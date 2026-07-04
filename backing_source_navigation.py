@@ -95,10 +95,42 @@ def _backing_sections_for_practice_handoff(session: dict[str, Any]) -> dict[str,
     return {}
 
 
+def _practice_focus_section_names(
+    session: dict[str, Any],
+    sections: dict[str, list[str]],
+) -> list[str]:
+    """Resolve Practice section focus to concrete chart section keys."""
+    multi_raw = session.get("practice_focus_sections")
+    if isinstance(multi_raw, list) and multi_raw:
+        resolved: list[str] = []
+        try:
+            from practice_studio import practice_active_section_name, practice_is_full_song
+        except ImportError:
+            return []
+        for item in multi_raw:
+            if practice_is_full_song(item):
+                continue
+            name = practice_active_section_name(item, sections) if sections else str(item).strip()
+            if name and name not in resolved:
+                resolved.append(name)
+        if resolved:
+            return resolved
+    focus = str(session.get("practice_focus_section") or "").strip()
+    try:
+        from practice_studio import practice_active_section_name, practice_is_full_song
+    except ImportError:
+        return [focus] if focus else []
+    if practice_is_full_song(focus):
+        return []
+    name = practice_active_section_name(focus, sections) if sections else focus
+    return [name] if name else []
+
+
 def queue_backing_scope_from_practice_focus(
     session: dict[str, Any],
     *,
     section_key: str | None = None,
+    section_keys: list[str] | None = None,
     loops: int | None = None,
     force: bool = False,
 ) -> None:
@@ -106,6 +138,7 @@ def queue_backing_scope_from_practice_focus(
     try:
         from custom_progression_lab import (
             PENDING_BACKING_LOOPS,
+            PENDING_BACKING_MULTI_SECTIONS,
             PENDING_BACKING_SCOPE,
             PENDING_BACKING_SINGLE_SECTION,
         )
@@ -113,31 +146,40 @@ def queue_backing_scope_from_practice_focus(
         return
     if session.get(PENDING_BACKING_SCOPE) and not force:
         return
-    if section_key:
-        sec = str(section_key).strip()
-        if sec:
-            session[PENDING_BACKING_SCOPE] = "Single section"
-            session[PENDING_BACKING_SINGLE_SECTION] = sec
-            if loops is not None:
-                session[PENDING_BACKING_LOOPS] = int(loops)
+
+    def _queue_selected(names: list[str]) -> None:
+        ordered = [str(n).strip() for n in names if str(n).strip()]
+        if not ordered:
             return
+        session[PENDING_BACKING_SCOPE] = "Selected sections"
+        session[PENDING_BACKING_MULTI_SECTIONS] = ordered
+        if len(ordered) == 1:
+            session[PENDING_BACKING_SINGLE_SECTION] = ordered[0]
+        else:
+            session.pop(PENDING_BACKING_SINGLE_SECTION, None)
+        if loops is not None:
+            session[PENDING_BACKING_LOOPS] = int(loops)
+
+    if section_keys:
+        _queue_selected(list(section_keys))
+        return
+    if section_key:
+        _queue_selected([str(section_key).strip()])
+        return
+    sections = _backing_sections_for_practice_handoff(session)
+    resolved = _practice_focus_section_names(session, sections)
+    if resolved:
+        _queue_selected(resolved)
+        return
     focus = str(session.get("practice_focus_section") or "").strip()
     try:
-        from practice_studio import practice_active_section_name, practice_is_full_song
+        from practice_studio import practice_is_full_song
     except ImportError:
         return
     if practice_is_full_song(focus):
         session[PENDING_BACKING_SCOPE] = "Full song"
         session.pop(PENDING_BACKING_SINGLE_SECTION, None)
-        return
-    sections = _backing_sections_for_practice_handoff(session)
-    resolved = practice_active_section_name(focus, sections) if sections else focus
-    if not resolved:
-        return
-    session[PENDING_BACKING_SCOPE] = "Single section"
-    session[PENDING_BACKING_SINGLE_SECTION] = resolved
-    if loops is not None:
-        session[PENDING_BACKING_LOOPS] = int(loops)
+        session.pop(PENDING_BACKING_MULTI_SECTIONS, None)
 
 
 def snapshot_practice_source_display_key(session: dict[str, Any]) -> None:
@@ -440,20 +482,25 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         try:
             from custom_progression_lab import (
                 PENDING_BACKING_LOOPS,
+                PENDING_BACKING_MULTI_SECTIONS,
                 PENDING_BACKING_SCOPE,
                 PENDING_BACKING_SINGLE_SECTION,
             )
         except ImportError:
             PENDING_BACKING_LOOPS = "_pending_backing_loops"  # type: ignore[misc,assignment]
+            PENDING_BACKING_MULTI_SECTIONS = "_pending_backing_multi_sections"  # type: ignore[misc,assignment]
             PENDING_BACKING_SCOPE = "_pending_backing_scope"  # type: ignore[misc,assignment]
             PENDING_BACKING_SINGLE_SECTION = "_pending_backing_single_section"  # type: ignore[misc,assignment]
         _saved_scope = session.get(PENDING_BACKING_SCOPE)
         _saved_section = session.get(PENDING_BACKING_SINGLE_SECTION)
+        _saved_multi = session.get(PENDING_BACKING_MULTI_SECTIONS)
         _saved_loops = session.get(PENDING_BACKING_LOOPS)
         set_key_transition_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
         open_backing_for_practice_source(session, st_like=st_like)
         if _saved_scope:
             session[PENDING_BACKING_SCOPE] = _saved_scope
+            if _saved_multi:
+                session[PENDING_BACKING_MULTI_SECTIONS] = list(_saved_multi)
             if _saved_section:
                 session[PENDING_BACKING_SINGLE_SECTION] = _saved_section
             if _saved_loops is not None:

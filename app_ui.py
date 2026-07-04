@@ -7328,6 +7328,25 @@ def backing_scope_loop_summary_text(
     """Human-readable loop summary for the scope control badge."""
     loops = max(1, int(loops or 1))
     scope = (scope or "Full song").strip()
+    norm = scope
+    try:
+        from backing_track_state import normalize_backing_scope
+
+        norm = normalize_backing_scope(scope)
+    except ImportError:
+        if "single" in scope.lower() or "multiple" in scope.lower() or "selected" in scope.lower():
+            norm = "Selected sections"
+    if norm == "Selected sections":
+        parts = [s for s in (multi_sections or []) if s]
+        if not parts and single_section:
+            parts = [single_section.strip()]
+        if not parts:
+            return f"Selected sections ×{loops}"
+        if len(parts) <= 2:
+            joined = " + ".join(parts)
+        else:
+            joined = f"{parts[0]} + {parts[1]} +{len(parts) - 2}"
+        return f"Looping: {joined} ×{loops}"
     if scope == "Single section":
         sec = (single_section or "Section").strip() or "Section"
         return f"Looping: {sec} ×{loops}"

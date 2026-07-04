@@ -16,6 +16,7 @@ BACKING_RESTORED_KEY = "_backing_track_state_cloud_restored"
 
 BACKING_SCOPE_CHOICES = (
     "Full song",
+    "Selected sections",
     "Single section",
     "Multiple selected sections",
 )
@@ -154,6 +155,8 @@ __all__ = (
     "mark_backing_pending_sync",
     "normalize_backing_groove",
     "normalize_backing_scope",
+    "resolve_selected_section_names",
+    "seed_backing_multi_sections_for_widget",
     "backing_canonical_playback_seed",
     "backing_canonical_meter_seed",
     "backing_filters_for_workspace_envelope",
@@ -274,13 +277,66 @@ def seed_backing_widgets_from_canonical(
 def normalize_backing_scope(scope: Any) -> str:
     raw = str(scope or "").strip()
     if raw in BACKING_SCOPE_CHOICES:
+        if raw in ("Single section", "Multiple selected sections"):
+            return "Selected sections"
         return raw
     low = raw.lower()
-    if "multiple" in low:
-        return "Multiple selected sections"
-    if "single" in low:
-        return "Single section"
+    if "selected" in low and "section" in low:
+        return "Selected sections"
+    if "multiple" in low or "single" in low:
+        return "Selected sections"
     return "Full song"
+
+
+def resolve_selected_section_names(
+    session: dict[str, Any],
+    section_names_in_order: list[str],
+) -> list[str]:
+    """Return chosen sections in original song order (empty = full song)."""
+    scope = normalize_backing_scope(session.get(BACKING_SCOPE_WIDGET_KEY) or session.get("backing_track_scope"))
+    if scope != "Selected sections":
+        return []
+    multi = _normalize_multi_sections(session.get(BACKING_MULTI_SECTIONS_WIDGET_KEY))
+    if not multi:
+        single = str(session.get(BACKING_SINGLE_SECTION_WIDGET_KEY) or "").strip()
+        if single:
+            multi = [single]
+    if not multi:
+        return []
+    chosen = set(multi)
+    return [name for name in section_names_in_order if name in chosen]
+
+
+def seed_backing_multi_sections_for_widget(
+    session: dict[str, Any],
+    section_names: list[str],
+) -> list[str]:
+    """Ensure multiselect has a default when scope is Selected sections."""
+    names = list(section_names or [])
+    if not names:
+        return []
+    existing = _normalize_multi_sections(session.get(BACKING_MULTI_SECTIONS_WIDGET_KEY))
+    if existing:
+        ordered = [n for n in names if n in set(existing)]
+        if ordered:
+            session[BACKING_MULTI_SECTIONS_WIDGET_KEY] = ordered
+            if len(ordered) == 1:
+                session[BACKING_SINGLE_SECTION_WIDGET_KEY] = ordered[0]
+            return ordered
+    single = str(session.get(BACKING_SINGLE_SECTION_WIDGET_KEY) or "").strip()
+    if single in names:
+        session[BACKING_MULTI_SECTIONS_WIDGET_KEY] = [single]
+        return [single]
+    preferred = [
+        n
+        for n in names
+        if any(token in n.lower() for token in ("verse", "chorus"))
+    ]
+    seed = preferred[:2] if preferred else names[:1]
+    session[BACKING_MULTI_SECTIONS_WIDGET_KEY] = seed
+    if len(seed) == 1:
+        session[BACKING_SINGLE_SECTION_WIDGET_KEY] = seed[0]
+    return seed
 
 
 def normalize_backing_groove(groove: Any) -> str:
@@ -402,21 +458,28 @@ def strip_durable_backing_snapshot_keys(snapshot: dict[str, Any] | None) -> dict
 
 
 def _sync_scope_keys_from_session(session: dict[str, Any]) -> dict[str, Any]:
-    """Align scope, single section, and Step-2 quick section from live widget keys."""
+    """Align scope, selected sections, and legacy quick-section from live widget keys."""
     quick = str(session.get(BACKING_QUICK_SECTION_WIDGET_KEY) or "").strip()
     scope = normalize_backing_scope(session.get(BACKING_SCOPE_WIDGET_KEY))
     single = str(session.get(BACKING_SINGLE_SECTION_WIDGET_KEY) or "").strip()
-    if quick and quick != "Full song":
-        if scope == "Full song":
-            scope = "Single section"
-            single = quick
-    elif scope == "Single section" and single:
-        quick = single
+    multi = _normalize_multi_sections(session.get(BACKING_MULTI_SECTIONS_WIDGET_KEY))
+    if scope == "Selected sections":
+        if multi:
+            single = multi[0] if len(multi) == 1 else ""
+            quick = multi[0] if len(multi) == 1 else "Full song"
+        elif single:
+            multi = [single]
+            quick = single
+    elif quick and quick != "Full song":
+        scope = "Selected sections"
+        single = quick
+        multi = [quick]
     elif scope == "Full song" and not quick:
         quick = "Full song"
     return {
         "backing_track_scope": scope,
         "backing_track_single_section": single,
+        "backing_track_multi_sections": multi,
         "backing_quick_section": quick,
     }
 
@@ -499,7 +562,7 @@ def collect_rendered_backing_widget_trace(
     return {
         "backing_rendered_bpm_key": slider_key,
         "backing_rendered_bpm": rendered_bpm if rendered_bpm is not None else "",
-        "backing_rendered_scope": session.get(BACKING_SCOPE_WIDGET_KEY, ""),
+        "backing_rendered_scope": normalize_backing_scope(session.get(BACKING_SCOPE_WIDGET_KEY, "")),
         "backing_rendered_loops": session.get(BACKING_LOOPS_WIDGET_KEY, ""),
         "backing_rendered_groove": session.get("backing_groove_style", ""),
         "backing_rendered_quick_section": session.get(BACKING_QUICK_SECTION_WIDGET_KEY, ""),
@@ -920,6 +983,8 @@ def prepare_backing_scope_for_widget(session: dict[str, Any]) -> None:
     multi = _normalize_multi_sections(canonical.get("backing_track_multi_sections"))
     if multi:
         session["backing_track_multi_sections"] = multi
+    elif section and normalize_backing_scope(session.get("backing_track_scope")) == "Selected sections":
+        session["backing_track_multi_sections"] = [section]
     session["backing_track_loops"] = normalize_backing_loops(canonical.get("backing_track_loops"))
     quick = str(canonical.get("backing_quick_section") or "").strip()
     if quick:

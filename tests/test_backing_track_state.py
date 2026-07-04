@@ -36,6 +36,8 @@ from backing_track_state import (
     prepare_backing_page,
     record_backing_disk_payload_trace,
     resolve_backing_trace_payloads,
+    normalize_backing_scope,
+    resolve_selected_section_names,
     write_canonical_backing_state,
 )
 from music_persistent_state import apply_music_disk_state, build_music_disk_state
@@ -76,7 +78,7 @@ class TestBackingTrackState(unittest.TestCase):
         prepare_backing_page(session)
         self.assertEqual(session["backing_track_bpm"], 108)
         self.assertEqual(session["backing_groove_style"], "Jazz swing")
-        self.assertEqual(session["backing_track_scope"], "Single section")
+        self.assertEqual(session["backing_track_scope"], "Selected sections")
 
     def test_b_cross_device_cloud_restore(self) -> None:
         session: dict = {"backing_track_bpm": 100, "backing_groove_style": "Auto"}
@@ -231,7 +233,7 @@ class TestBackingTrackState(unittest.TestCase):
         )
         self.assertEqual(bpm, 108)
         self.assertEqual(groove, "Jazz swing")
-        self.assertEqual(st.session_state["backing_track_scope"], "Single section")
+        self.assertEqual(st.session_state["backing_track_scope"], "Selected sections")
         self.assertEqual(st.session_state["backing_track_loops"], 4)
 
         canon = canonicalize_backing_defaults_for_song(
@@ -258,9 +260,9 @@ class TestBackingTrackState(unittest.TestCase):
         }
         commit_backing_state_from_session(session, reason="autosave")
         self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 108)
-        self.assertEqual(session["backing_track_state"]["backing_track_scope"], "Single section")
+        self.assertEqual(session["backing_track_state"]["backing_track_scope"], "Selected sections")
         self.assertEqual(session["backing_track_state"]["backing_track_loops"], 4)
-        self.assertEqual(session["backing_track_scope"], "Single section")
+        self.assertEqual(session["backing_track_scope"], "Selected sections")
         self.assertEqual(session["backing_track_loops"], 4)
 
     def test_prepare_canonical_over_song_default_clobber(self) -> None:
@@ -274,7 +276,7 @@ class TestBackingTrackState(unittest.TestCase):
             BACKING_WIDGETS_SEEDED_KEY: True,
         }
         prepare_backing_page(session)
-        self.assertEqual(session["backing_track_scope"], "Single section")
+        self.assertEqual(session["backing_track_scope"], "Selected sections")
         self.assertEqual(session["backing_track_loops"], 4)
         self.assertEqual(session["backing_quick_section"], "Chorus")
 
@@ -295,9 +297,9 @@ class TestBackingTrackState(unittest.TestCase):
             BACKING_WIDGETS_SEEDED_KEY: True,
         }
         prepare_backing_page(session)
-        self.assertEqual(session["backing_track_scope"], "Single section")
+        self.assertEqual(session["backing_track_scope"], "Selected sections")
         self.assertEqual(session["backing_track_loops"], 1)
-        self.assertEqual(session["backing_track_state"]["backing_track_scope"], "Single section")
+        self.assertEqual(session["backing_track_state"]["backing_track_scope"], "Selected sections")
         self.assertEqual(session["backing_track_state"]["backing_track_loops"], 1)
         self.assertEqual(session["backing_track_state"]["last_write_reason"], "session_backing_wins")
 
@@ -343,7 +345,7 @@ class TestBackingTrackState(unittest.TestCase):
             "backing_track_scope": "Full song",
         }
         filters = gather_backing_filters(session)
-        self.assertEqual(filters["backing_track_scope"], "Single section")
+        self.assertEqual(filters["backing_track_scope"], "Selected sections")
         self.assertEqual(filters["backing_track_single_section"], "Chorus")
         self.assertEqual(filters["backing_quick_section"], "Chorus")
 
@@ -386,7 +388,7 @@ class TestBackingTrackState(unittest.TestCase):
         step2_body = src.split("def _render_backing_step2_playback_action", 1)[1].split("\ndef ", 1)[0]
         scope_body = src.split("def _render_backing_scope_controls", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("_render_backing_scope_controls", step2_body)
-        self.assertIn("Playback scope", scope_body)
+        self.assertIn("Selected sections", scope_body)
         self.assertNotIn("Quick section", step2_body)
         self.assertNotIn("Step 1", step2_body)
         self.assertNotIn("Step 2", step2_body)
@@ -397,6 +399,23 @@ class TestBackingTrackState(unittest.TestCase):
         )
         self.assertNotIn("prepare_backing_scope_for_widget", step2_body)
 
+    def test_normalize_legacy_scope_to_selected_sections(self) -> None:
+        self.assertEqual(normalize_backing_scope("Single section"), "Selected sections")
+        self.assertEqual(normalize_backing_scope("Multiple selected sections"), "Selected sections")
+        self.assertEqual(normalize_backing_scope("Selected sections"), "Selected sections")
+        self.assertEqual(normalize_backing_scope("Full song"), "Full song")
+
+    def test_resolve_selected_sections_preserves_song_order(self) -> None:
+        session = {
+            "backing_track_scope": "Selected sections",
+            "backing_track_multi_sections": ["Chorus", "Bridge", "Verse 1"],
+        }
+        ordered = ["Intro", "Verse 1", "Chorus", "Bridge", "Outro"]
+        self.assertEqual(
+            resolve_selected_section_names(session, ordered),
+            ["Verse 1", "Chorus", "Bridge"],
+        )
+
     @unittest.skip(_PHASE_C_PAUSED)
     def test_workspace_envelope_populates_all_backing_filters(self) -> None:
         st = MagicMock()
@@ -404,7 +423,7 @@ class TestBackingTrackState(unittest.TestCase):
         write_canonical_backing_state(st.session_state, _SAMPLE, reason="backing_edit")
         blob = build_music_disk_state(st)
         bf = (blob.get("music_workspace_state") or {}).get("backing_filters") or {}
-        self.assertEqual(bf.get("backing_track_scope"), "Single section")
+        self.assertEqual(bf.get("backing_track_scope"), "Selected sections")
         self.assertEqual(bf.get("backing_track_single_section"), "Chorus")
         self.assertEqual(bf.get("backing_track_loops"), 4)
         self.assertEqual(bf.get("backing_track_bpm"), 108)
@@ -469,7 +488,7 @@ class TestBackingTrackState(unittest.TestCase):
         }
         envelope_payload, _cloud = resolve_backing_trace_payloads(MagicMock(), session)
         bf = (envelope_payload.get("music_workspace_state") or {}).get("backing_filters") or {}
-        self.assertEqual(bf.get("backing_track_scope"), "Single section")
+        self.assertEqual(bf.get("backing_track_scope"), "Selected sections")
         self.assertEqual(bf.get("backing_track_loops"), 1)
         self.assertEqual(bf.get("backing_time_signature"), "2/4")
         self.assertEqual(session.get("_backing_filters_source"), "canonical")
@@ -504,7 +523,7 @@ class TestBackingTrackState(unittest.TestCase):
         }
         blob = build_music_disk_state(st)
         bf = (blob.get("music_workspace_state") or {}).get("backing_filters") or {}
-        self.assertEqual(bf.get("backing_track_scope"), "Single section")
+        self.assertEqual(bf.get("backing_track_scope"), "Selected sections")
         self.assertEqual(bf.get("backing_track_single_section"), "Intro")
         self.assertEqual(bf.get("backing_track_loops"), 1)
         self.assertEqual(bf.get("backing_time_signature"), "2/4")
@@ -682,7 +701,7 @@ class TestBackingTrackState(unittest.TestCase):
             "backing_time_signature_override": True,
         }
         trace = collect_rendered_backing_widget_trace(session, sync_id=sync_id)
-        self.assertEqual(trace["backing_rendered_scope"], "Single section")
+        self.assertEqual(trace["backing_rendered_scope"], "Selected sections")
         self.assertEqual(trace["backing_rendered_loops"], 3)
         self.assertEqual(trace["backing_rendered_groove"], "Rock groove")
         self.assertEqual(trace["backing_rendered_quick_section"], "Verse")
@@ -716,7 +735,7 @@ class TestBackingTrackState(unittest.TestCase):
         mark_backing_pending_sync(session)
         flush_backing_edits(session, reason="backing_edit")
         meta = session["backing_track_state"]
-        self.assertEqual(meta["backing_track_scope"], "Single section")
+        self.assertEqual(meta["backing_track_scope"], "Selected sections")
         self.assertEqual(meta["backing_track_loops"], 1)
         self.assertEqual(meta["backing_time_signature"], "2/4")
         self.assertTrue(meta["backing_time_signature_override"])
@@ -834,7 +853,7 @@ class TestBackingTrackState(unittest.TestCase):
         )
         self.assertIn("device_id", trace)
         self.assertEqual(trace["cloud_updated_at"], "2026-06-09T10:00:00+00:00")
-        self.assertEqual(trace["backing_cloud_scope"], "Single section")
+        self.assertEqual(trace["backing_cloud_scope"], "Selected sections")
         self.assertEqual(trace["backing_cloud_loops"], 4)
 
     def test_resolve_trace_cloud_prefers_last_write_payload(self) -> None:
@@ -864,7 +883,7 @@ class TestBackingTrackState(unittest.TestCase):
         }
         _envelope, cloud = resolve_backing_trace_payloads(MagicMock(), session)
         trace = collect_backing_persistence_trace(session, cloud_payload=cloud)
-        self.assertEqual(trace["cloud_payload_backing_scope"], "Single section")
+        self.assertEqual(trace["cloud_payload_backing_scope"], "Selected sections")
         self.assertEqual(trace["cloud_payload_backing_loops"], 1)
         self.assertEqual(trace["cloud_payload_backing_meter"], "2/4")
         self.assertEqual(session.get("_backing_cloud_payload_source"), "last_write")

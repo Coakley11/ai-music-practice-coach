@@ -48,7 +48,7 @@ class TestBackingSourceNavigation(unittest.TestCase):
         self.assertEqual(consume_backing_open_intent(session), BACKING_INTENT_FROM_PRACTICE)
 
     def test_queue_backing_scope_from_practice_verse_focus(self) -> None:
-        from custom_progression_lab import PENDING_BACKING_SCOPE, PENDING_BACKING_SINGLE_SECTION
+        from custom_progression_lab import PENDING_BACKING_MULTI_SECTIONS, PENDING_BACKING_SCOPE, PENDING_BACKING_SINGLE_SECTION
 
         session = {
             "practice_focus_section": "Verse",
@@ -60,19 +60,45 @@ class TestBackingSourceNavigation(unittest.TestCase):
             },
         }
         queue_backing_scope_from_practice_focus(session)
-        self.assertEqual(session.get(PENDING_BACKING_SCOPE), "Single section")
+        self.assertEqual(session.get(PENDING_BACKING_SCOPE), "Selected sections")
         self.assertEqual(session.get(PENDING_BACKING_SINGLE_SECTION), "Verse 1")
+        self.assertEqual(session.get(PENDING_BACKING_MULTI_SECTIONS), ["Verse 1"])
 
     def test_queue_backing_scope_from_practice_full_song(self) -> None:
-        from custom_progression_lab import PENDING_BACKING_SCOPE, PENDING_BACKING_SINGLE_SECTION
+        from custom_progression_lab import PENDING_BACKING_MULTI_SECTIONS, PENDING_BACKING_SCOPE, PENDING_BACKING_SINGLE_SECTION
 
         session = {"practice_focus_section": "Full Song"}
         queue_backing_scope_from_practice_focus(session)
         self.assertEqual(session.get(PENDING_BACKING_SCOPE), "Full song")
         self.assertNotIn(PENDING_BACKING_SINGLE_SECTION, session)
 
-    def test_hydrate_from_practice_queues_section_scope(self) -> None:
-        from custom_progression_lab import PENDING_BACKING_SCOPE, PENDING_BACKING_SINGLE_SECTION
+    def test_queue_backing_scope_from_practice_multi_focus(self) -> None:
+        from custom_progression_lab import PENDING_BACKING_MULTI_SECTIONS, PENDING_BACKING_SCOPE
+
+        session = {
+            "practice_focus_sections": ["Verse", "Chorus"],
+            "selected_song": {
+                "sections": {
+                    "Verse 1": ["Em"],
+                    "Chorus": ["G", "D"],
+                    "Bridge": ["Am"],
+                }
+            },
+        }
+        queue_backing_scope_from_practice_focus(session)
+        self.assertEqual(session.get(PENDING_BACKING_SCOPE), "Selected sections")
+        self.assertEqual(session.get(PENDING_BACKING_MULTI_SECTIONS), ["Verse 1", "Chorus"])
+
+    def test_resolve_selected_section_names_preserves_song_order(self) -> None:
+        from backing_track_state import resolve_selected_section_names
+
+        session = {
+            "backing_track_scope": "Selected sections",
+            "backing_track_multi_sections": ["Chorus", "Verse 1", "Bridge"],
+        }
+        ordered = ["Intro", "Verse 1", "Chorus", "Bridge", "Outro"]
+        self.assertEqual(resolve_selected_section_names(session, ordered), ["Verse 1", "Chorus", "Bridge"])
+        from custom_progression_lab import PENDING_BACKING_MULTI_SECTIONS, PENDING_BACKING_SCOPE, PENDING_BACKING_SINGLE_SECTION
 
         session = {
             "practice_focus_section": "Chorus",
@@ -89,8 +115,9 @@ class TestBackingSourceNavigation(unittest.TestCase):
         }
         set_backing_open_intent(session, BACKING_INTENT_FROM_PRACTICE)
         hydrate_backing_source_for_page(session, st_like=SimpleNamespace(session_state=session))
-        self.assertEqual(session.get(PENDING_BACKING_SCOPE), "Single section")
+        self.assertEqual(session.get(PENDING_BACKING_SCOPE), "Selected sections")
         self.assertEqual(session.get(PENDING_BACKING_SINGLE_SECTION), "Chorus")
+        self.assertEqual(session.get(PENDING_BACKING_MULTI_SECTIONS), ["Chorus"])
 
     def test_restore_last_reapplies_creative_backing(self) -> None:
         session = {

@@ -6907,6 +6907,7 @@ def _on_global_song_change() -> None:
 
 
 PENDING_BACKING_SINGLE_SECTION = "_pending_backing_single_section"
+PENDING_BACKING_MULTI_SECTIONS = "_pending_backing_multi_sections"
 PENDING_BACKING_SCOPE = "_pending_backing_scope"
 PENDING_BACKING_LOOPS = "_pending_backing_loops"
 BACKING_QUICK_SECTION_KEY = "backing_quick_section"
@@ -6935,8 +6936,9 @@ def _prepare_backing_from_practice(focus: str | None) -> None:
             st.session_state[PENDING_BACKING_SCOPE] = "Full song"
             st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
         else:
-            st.session_state[PENDING_BACKING_SCOPE] = "Single section"
+            st.session_state[PENDING_BACKING_SCOPE] = "Selected sections"
             st.session_state[PENDING_BACKING_SINGLE_SECTION] = focus
+            st.session_state[PENDING_BACKING_MULTI_SECTIONS] = [focus]
             st.session_state[PENDING_BACKING_LOOPS] = 4
     st.session_state[BACKING_AUTOPLAY] = True
 
@@ -6945,12 +6947,31 @@ def _apply_pending_backing_scope(session_state, section_names: list[str]) -> boo
     """Apply pending scope/section/loops before backing widgets are built."""
     opened_section = False
     pending_scope = session_state.pop(PENDING_BACKING_SCOPE, None)
-    if pending_scope in ("Full song", "Single section", "Multiple selected sections"):
-        session_state["backing_track_scope"] = pending_scope
-        opened_section = pending_scope == "Single section"
+    if pending_scope:
+        try:
+            from backing_track_state import normalize_backing_scope
+
+            pending_scope = normalize_backing_scope(pending_scope)
+        except ImportError:
+            if pending_scope in ("Single section", "Multiple selected sections"):
+                pending_scope = "Selected sections"
+        if pending_scope in ("Full song", "Selected sections"):
+            session_state["backing_track_scope"] = pending_scope
+            opened_section = pending_scope == "Selected sections"
+    pending_multi = session_state.pop(PENDING_BACKING_MULTI_SECTIONS, None)
+    if isinstance(pending_multi, list) and pending_multi:
+        ordered = [n for n in section_names if n in set(str(x).strip() for x in pending_multi)]
+        if ordered:
+            session_state["backing_track_multi_sections"] = ordered
+            session_state["backing_track_scope"] = "Selected sections"
+            if len(ordered) == 1:
+                session_state["backing_track_single_section"] = ordered[0]
+            opened_section = True
     pending_sec = session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
     if pending_sec and pending_sec in section_names:
         session_state["backing_track_single_section"] = pending_sec
+        session_state["backing_track_multi_sections"] = [pending_sec]
+        session_state["backing_track_scope"] = "Selected sections"
         opened_section = True
     pending_loops = session_state.pop(PENDING_BACKING_LOOPS, None)
     if pending_loops is not None:
@@ -6966,13 +6987,23 @@ def _prime_backing_quick_section_from_scope(
     session_state: dict,
     section_names: list[str],
 ) -> None:
-    """Sync quick-section picker from scope — only call before that widget exists."""
-    scope = session_state.get("backing_track_scope", "Full song")
-    if scope == "Single section":
-        sec = session_state.get("backing_track_single_section")
-        if sec in section_names:
-            session_state[BACKING_QUICK_SECTION_KEY] = sec
-            return
+    """Sync legacy quick-section picker from scope — only call before that widget exists."""
+    try:
+        from backing_track_state import normalize_backing_scope, resolve_selected_section_names
+
+        scope = normalize_backing_scope(session_state.get("backing_track_scope", "Full song"))
+        if scope == "Selected sections":
+            selected = resolve_selected_section_names(session_state, section_names)
+            if len(selected) == 1:
+                session_state[BACKING_QUICK_SECTION_KEY] = selected[0]
+                return
+    except ImportError:
+        scope = session_state.get("backing_track_scope", "Full song")
+        if scope == "Single section":
+            sec = session_state.get("backing_track_single_section")
+            if sec in section_names:
+                session_state[BACKING_QUICK_SECTION_KEY] = sec
+                return
     session_state[BACKING_QUICK_SECTION_KEY] = "Full song"
 
 
@@ -6986,10 +7017,12 @@ def request_backing_quick_section_change(
         st.session_state["backing_track_scope"] = "Full song"
         st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
     elif choice in section_names:
-        st.session_state[PENDING_BACKING_SCOPE] = "Single section"
+        st.session_state[PENDING_BACKING_SCOPE] = "Selected sections"
         st.session_state[PENDING_BACKING_SINGLE_SECTION] = choice
-        st.session_state["backing_track_scope"] = "Single section"
+        st.session_state[PENDING_BACKING_MULTI_SECTIONS] = [choice]
+        st.session_state["backing_track_scope"] = "Selected sections"
         st.session_state["backing_track_single_section"] = choice
+        st.session_state["backing_track_multi_sections"] = [choice]
     _on_backing_filter_change()
 
 
@@ -8638,7 +8671,13 @@ def _render_backing_scope_controls(
     include_loops: bool = True,
     scope_options: list[str] | None = None,
 ) -> None:
-    """Scope, section, and loop controls for the unified playback panel."""
+    """Scope, section multiselect, and loop controls for the unified playback panel."""
+    try:
+        from backing_track_state import normalize_backing_scope, seed_backing_multi_sections_for_widget
+    except ImportError:
+        normalize_backing_scope = lambda s: str(s or "Full song")  # type: ignore[assignment,misc]
+        seed_backing_multi_sections_for_widget = lambda _s, _n: []  # type: ignore[assignment,misc]
+
     with st.container(key="backing_scope_panel", border=False):
         if show_panel_header:
             _loop_summary = backing_scope_loop_summary_text(
@@ -8652,14 +8691,20 @@ def _render_backing_scope_controls(
                 summary_html=backing_scope_loop_summary_badge_html(_loop_summary),
             )
 
-        _scope_choices = list(scope_options or ["Full song", "Single section"])
-        _cur_scope = str(st.session_state.get("backing_track_scope", "Full song") or "Full song")
+        _scope_choices = list(scope_options or ["Full song", "Selected sections"])
+        _cur_scope = normalize_backing_scope(st.session_state.get("backing_track_scope", "Full song"))
         if _cur_scope not in _scope_choices:
-            _cur_scope = "Single section" if _cur_scope == "Multiple selected sections" else "Full song"
-            st.session_state["backing_track_scope"] = _cur_scope
+            _cur_scope = "Selected sections" if _cur_scope == "Selected sections" else "Full song"
+        st.session_state["backing_track_scope"] = _cur_scope
+        if _cur_scope == "Selected sections":
+            seed_backing_multi_sections_for_widget(st.session_state, section_names)
 
         st.markdown('<div class="ui-backing-scope-segment">', unsafe_allow_html=True)
-        render_backing_field_label(st, "Playback scope", "Full song or one section at a time.")
+        render_backing_field_label(
+            st,
+            "Playback scope",
+            "Full song or a custom group of sections in song order.",
+        )
         playback_scope = st.radio(
             "Playback scope",
             _scope_choices,
@@ -8670,36 +8715,16 @@ def _render_backing_scope_controls(
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
-        if playback_scope == "Single section" and section_names:
+        if normalize_backing_scope(playback_scope) == "Selected sections" and section_names:
+            seed_backing_multi_sections_for_widget(st.session_state, section_names)
             st.markdown('<div class="ui-backing-scope-field">', unsafe_allow_html=True)
-            render_backing_field_label(st, "Section", "Loops this section when generating.")
-            st.selectbox(
-                "Section to loop",
-                section_names,
-                key="backing_track_single_section",
-                label_visibility="collapsed",
-                on_change=_on_backing_filter_change,
+            render_backing_field_label(
+                st,
+                "Selected sections",
+                "Playback follows song order (e.g. Verse → Chorus → Verse).",
             )
-            st.markdown("</div>", unsafe_allow_html=True)
-        elif playback_scope == "Multiple selected sections" and section_names:
-            if "backing_track_multi_sections" not in st.session_state:
-                _multi_seed: list[str] = []
-                try:
-                    from backing_track_state import canonical_backing_filters
-
-                    _canon = canonical_backing_filters(st.session_state) or {}
-                    _multi_seed = list(_canon.get("backing_track_multi_sections") or [])
-                except ImportError:
-                    pass
-                st.session_state["backing_track_multi_sections"] = _multi_seed or [
-                    name
-                    for name in section_names
-                    if any(token in name.lower() for token in ["verse", "chorus"])
-                ] or section_names[:2]
-            st.markdown('<div class="ui-backing-scope-field">', unsafe_allow_html=True)
-            render_backing_field_label(st, "Sections", "Keeps original song order.")
             st.multiselect(
-                "Sections to play (keeps original song order)",
+                "Selected sections",
                 section_names,
                 key="backing_track_multi_sections",
                 label_visibility="collapsed",
@@ -8731,10 +8756,20 @@ def _render_backing_scope_controls(
             st.markdown("</div>", unsafe_allow_html=True)
 
         if from_practice_handoff:
-            _handoff_sec = st.session_state.get("backing_track_single_section", "")
+            _handoff_multi = list(st.session_state.get("backing_track_multi_sections") or [])
+            if not _handoff_multi:
+                _one = st.session_state.get("backing_track_single_section", "")
+                _handoff_multi = [_one] if _one else []
+            if len(_handoff_multi) <= 2:
+                _handoff_label = " + ".join(html.escape(s) for s in _handoff_multi if s)
+            else:
+                _handoff_label = (
+                    f"{html.escape(_handoff_multi[0])} + {html.escape(_handoff_multi[1])} "
+                    f"+{len(_handoff_multi) - 2}"
+                )
             st.markdown(
                 f'<div class="ui-backing-scope-handoff">Opened from <strong>Practice</strong> — '
-                f"defaults to <strong>{html.escape(_handoff_sec or 'the selected section')}</strong>.</div>",
+                f"defaults to <strong>{_handoff_label or 'the selected sections'}</strong>.</div>",
                 unsafe_allow_html=True,
             )
 
@@ -8880,7 +8915,7 @@ def _render_backing_step2_playback_action(
             from_practice_handoff=from_practice_handoff,
             show_panel_header=False,
             include_loops=True,
-            scope_options=["Full song", "Single section"],
+            scope_options=["Full song", "Selected sections"],
         )
 
         with st.expander("Advanced playback settings", expanded=False):
@@ -8924,29 +8959,6 @@ def _render_backing_step2_playback_action(
                 )
             st.markdown("</div>", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
-            if section_names:
-                _use_multi = st.checkbox(
-                    "Custom section sequence",
-                    value=st.session_state.get("backing_track_scope") == "Multiple selected sections",
-                    key="backing_use_multi_sections",
-                    help="Play several sections in song order (advanced).",
-                )
-                if _use_multi:
-                    st.session_state["backing_track_scope"] = "Multiple selected sections"
-                    if "backing_track_multi_sections" not in st.session_state:
-                        st.session_state["backing_track_multi_sections"] = [
-                            name
-                            for name in section_names
-                            if any(token in name.lower() for token in ["verse", "chorus"])
-                        ] or section_names[:2]
-                    st.multiselect(
-                        "Sections to play (keeps original song order)",
-                        section_names,
-                        key="backing_track_multi_sections",
-                        on_change=_on_backing_filter_change,
-                    )
-                elif st.session_state.get("backing_track_scope") == "Multiple selected sections":
-                    st.session_state["backing_track_scope"] = "Full song"
             st.checkbox(
                 "Preserve exact chart timing (disable harmonic rhythm intelligence)",
                 key=BACKING_PRESERVE_EXACT_KEY,
@@ -11750,18 +11762,24 @@ elif _studio_page == "backing":
     selected_section_names: list[str] = []
     form_loops = int(st.session_state.get("backing_track_loops", 2))
 
-    playback_scope = st.session_state.get("backing_track_scope", "Full song")
-    if playback_scope == "Single section":
-        selected_section_names = [
-            st.session_state.get("backing_track_single_section", "")
-        ]
-        selected_section_names = [n for n in selected_section_names if n in _sec_names]
-    elif playback_scope == "Multiple selected sections":
-        selected_section_names = list(
-            st.session_state.get("backing_track_multi_sections") or []
-        )
-    else:
-        selected_section_names = []
+    try:
+        from backing_track_state import normalize_backing_scope, resolve_selected_section_names
+
+        playback_scope = normalize_backing_scope(st.session_state.get("backing_track_scope", "Full song"))
+        if playback_scope == "Selected sections":
+            selected_section_names = resolve_selected_section_names(st.session_state, _sec_names)
+    except ImportError:
+        playback_scope = st.session_state.get("backing_track_scope", "Full song")
+        if playback_scope in ("Single section", "Multiple selected sections", "Selected sections"):
+            if playback_scope == "Single section":
+                selected_section_names = [
+                    st.session_state.get("backing_track_single_section", "")
+                ]
+                selected_section_names = [n for n in selected_section_names if n in _sec_names]
+            else:
+                selected_section_names = [
+                    n for n in _sec_names if n in set(st.session_state.get("backing_track_multi_sections") or [])
+                ]
 
     selected_section_names = selected_section_names or []
     groove_style = st.session_state.get("backing_groove_style", "Auto")

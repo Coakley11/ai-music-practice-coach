@@ -799,6 +799,7 @@ CPL_UI_SECTION_ORDER: list[str] = [
 
 PENDING_BACKING_SCOPE = "_pending_backing_scope"
 PENDING_BACKING_SINGLE_SECTION = "_pending_backing_single_section"
+PENDING_BACKING_MULTI_SECTIONS = "_pending_backing_multi_sections"
 PENDING_BACKING_LOOPS = "_pending_backing_loops"
 BACKING_AUTOPLAY = "_backing_autoplay"
 
