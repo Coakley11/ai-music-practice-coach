@@ -237,6 +237,25 @@ class TestPhase2StyleIdentity(unittest.TestCase):
         }
         self.assertGreaterEqual(len(set(sigs.values())), 5)
 
+    def test_style_bass_density_differs(self) -> None:
+        """Arrangement: Rock eighth bass vs Pop sparse root-fifth."""
+        pop = style_pattern_for_recipe("pop_groove")
+        rock = style_pattern_for_recipe("rock_groove")
+        funk = style_pattern_for_recipe("funk_groove")
+        self.assertLess(len(pop["bass_beats"]), len(rock["bass_beats"]))
+        self.assertLess(len(pop["bass_beats"]), len(funk["bass_beats"]))
+        self.assertGreater(len(funk["comp_beats"]), len(pop["comp_beats"]))
+
+    def test_jazz_has_ride_not_snare(self) -> None:
+        jazz = style_pattern_for_recipe("jazz_swing")
+        self.assertEqual(jazz["snare_beats"], [])
+        self.assertGreater(len(jazz["hat_beats"]), 2)
+
+    def test_bossa_cross_stick_carries_pulse(self) -> None:
+        bossa = style_pattern_for_recipe("bossa_nova")
+        self.assertEqual(bossa["snare_beats"], [])
+        self.assertGreaterEqual(len(bossa["cross_stick"]), 2)
+
     def test_style_recipe_patterns_are_distinct(self) -> None:
         signatures = []
         for style in self._STYLES:
@@ -309,8 +328,8 @@ class TestPhase2StyleIdentity(unittest.TestCase):
             {"groove_based": True, "style_locked": False},
             time_signature="4/4",
         )
-        self.assertEqual(funk_pat["comp_dur"], 0.20)
-        self.assertEqual(pop_explicit["comp_dur"], 0.36)
+        self.assertEqual(funk_pat["comp_dur"], 0.12)
+        self.assertEqual(pop_explicit["comp_dur"], 0.26)
         self.assertNotEqual(tuple(funk_pat["comp_beats"]), tuple(pop_explicit["comp_beats"]))
 
     def test_session_mood_merges_when_ctx_lacks_mood(self) -> None:

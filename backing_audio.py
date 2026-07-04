@@ -340,7 +340,7 @@ def _add_ride(audio, sr, start_sec, volume, seed=0):
     start = int(start_sec * sr)
     if start >= len(audio) or volume <= 0:
         return
-    dur = 0.22
+    dur = 0.32
     n = max(1, int(dur * sr))
     end = min(len(audio), start + n)
     n = end - start
@@ -421,35 +421,89 @@ def _section_intensity(section_name, style):
 
 
 def _style_drum_character(style: str) -> dict[str, Any]:
-    """Per-style kit voicing: kick punch, snare crack, hat colour, ride use.
-
-    These knobs feed the dedicated drum-voice synths so each style reads
-    as a distinct kit by ear (not just different hit timing).
-    """
-    base = {
+    """Per-style kit voicing — exaggerated for obvious identity (Phase 2C)."""
+    base: dict[str, Any] = {
         "kick_punch": 1.0,
         "snare_crack": 1.0,
-        "hat_tone": 0.0,       # 0 = pure noise, >0 = pitched shimmer
+        "hat_tone": 0.0,
         "hat_vol_mul": 1.0,
         "snare_vol_mul": 1.0,
         "kick_vol_mul": 1.0,
-        "use_ride": False,     # ride cymbal instead of hats
+        "use_ride": False,
+        "ride_vol_mul": 1.0,
         "cross_stick_vol_mul": 1.0,
+        "suppress_snare": False,
+        "suppress_hats": False,
+        "ghost_vol_mul": 1.0,
     }
     if style == "Rock groove":
-        base.update(kick_punch=1.5, snare_crack=1.4, snare_vol_mul=1.35, kick_vol_mul=1.3, hat_vol_mul=1.1)
+        base.update(
+            kick_punch=1.85,
+            snare_crack=1.55,
+            snare_vol_mul=1.65,
+            kick_vol_mul=1.55,
+            hat_vol_mul=1.2,
+            ghost_vol_mul=1.4,
+        )
     elif style == "Funk groove":
-        base.update(kick_punch=1.35, snare_crack=1.25, hat_tone=0.15, hat_vol_mul=1.15, snare_vol_mul=1.1)
+        base.update(
+            kick_punch=1.45,
+            snare_crack=1.35,
+            hat_tone=0.2,
+            hat_vol_mul=1.2,
+            snare_vol_mul=1.15,
+            ghost_vol_mul=1.6,
+        )
     elif style == "Jazz swing":
-        base.update(kick_punch=0.55, snare_crack=0.6, snare_vol_mul=0.6, kick_vol_mul=0.55, use_ride=True)
+        base.update(
+            kick_punch=0.45,
+            snare_crack=0.45,
+            snare_vol_mul=0.35,
+            kick_vol_mul=0.45,
+            use_ride=True,
+            ride_vol_mul=5.5,
+            suppress_snare=True,
+        )
     elif style == "Bossa nova":
-        base.update(kick_punch=0.7, snare_crack=0.5, hat_tone=0.05, hat_vol_mul=0.8, cross_stick_vol_mul=1.3, kick_vol_mul=0.7)
+        base.update(
+            kick_punch=0.55,
+            snare_crack=0.4,
+            hat_vol_mul=0.0,
+            cross_stick_vol_mul=2.8,
+            kick_vol_mul=0.55,
+            suppress_snare=True,
+            suppress_hats=True,
+        )
     elif style == "Blues groove":
-        base.update(kick_punch=0.9, snare_crack=0.85, hat_tone=0.1, use_ride=True, hat_vol_mul=0.9)
-    elif style == "Ballad":
-        base.update(kick_punch=0.6, snare_crack=0.55, snare_vol_mul=0.7, kick_vol_mul=0.65, hat_vol_mul=0.7)
+        base.update(
+            kick_punch=0.95,
+            snare_crack=0.9,
+            hat_tone=0.12,
+            use_ride=True,
+            ride_vol_mul=3.2,
+            hat_vol_mul=0.85,
+            ghost_vol_mul=1.3,
+        )
     elif style in ("Pop groove", "Pop"):
-        base.update(kick_punch=1.0, snare_crack=1.0, hat_tone=0.0)
+        base.update(kick_punch=0.95, snare_crack=0.92, hat_vol_mul=0.9, snare_vol_mul=0.88)
+    return base
+
+
+def _style_arrangement_character(style: str) -> dict[str, float]:
+    """Per-style bass/comp level and duration — arrangement feel, not timbre only."""
+    base = {"bass_vol_mul": 1.0, "comp_vol_mul": 1.0, "bass_dur_mul": 1.0}
+    if style in ("Pop groove", "Pop"):
+        base.update(bass_vol_mul=0.82, comp_vol_mul=0.72, bass_dur_mul=0.55)
+    elif style == "Rock groove":
+        base.update(bass_vol_mul=1.35, comp_vol_mul=1.45, bass_dur_mul=0.38)
+    elif style == "Jazz swing":
+        base.update(bass_vol_mul=1.25, comp_vol_mul=0.50, bass_dur_mul=0.82)
+    elif style == "Bossa nova":
+        base.update(bass_vol_mul=1.1, comp_vol_mul=0.78, bass_dur_mul=0.62)
+    elif style == "Funk groove":
+        base.update(bass_vol_mul=1.2, comp_vol_mul=1.55, bass_dur_mul=0.22)
+    elif style == "Blues groove":
+        base.update(bass_vol_mul=1.15, comp_vol_mul=1.12, bass_dur_mul=0.68)
     return base
 
 
@@ -649,16 +703,22 @@ def _bass_motion_pitch(chord, next_chord, style, slot_index, slot_count):
         return target - 1 if target >= root else target + 1
 
     if style == "Jazz swing":
-        line = [root, third, fifth, root + 12]
+        # Walking quarters with chromatic approach tones.
+        chrom = fifth - 1 if slot_index % 2 else third + 1
+        line = [root, third, fifth, chrom, root + 12, third]
     elif style == "Bossa nova":
-        line = [root, fifth, root, fifth]
+        line = [root, fifth, root + 7, fifth, root, root + 7]
     elif style == "Funk groove":
-        line = [root, root + 12, fifth, root, third, fifth]
+        chrom_up = root + 1
+        line = [root, chrom_up, root, fifth, root + 12, third, fifth, chrom_up]
     elif style == "Rock groove":
-        line = [root, root, fifth, root + 12]
+        line = [root, root, fifth, fifth, root + 12, root, fifth, root + 12]
     elif style == "Blues groove":
-        line = [root, fifth, root, root + 12, fifth]
+        flat7 = fifth - 2
+        line = [root, fifth, flat7, root, root + 12, fifth, flat7]
     elif style == "Ballad":
+        line = [root, fifth]
+    elif style in ("Pop groove", "Pop"):
         line = [root, fifth]
     else:
         line = [root, fifth, root + 12, fifth]
@@ -747,11 +807,13 @@ def _voicing_for_comp(chord, level, style, beat_index=0):
             voicing.append(notes[3])
 
     elif "blues" in style_key and len(notes) >= 3:
-        # Dominant blues shells: root, 3rd, 7th for a classic blues comp.
         seventh = notes[3] if len(notes) >= 4 else notes[2]
-        voicing = [notes[0], notes[1], seventh]
+        if beat_index % 2 == 0:
+            voicing = [notes[0], notes[1], seventh]
+        else:
+            voicing = [notes[1], seventh, notes[1] + 12]
         if level == "Advanced":
-            voicing.append(notes[1] + 12)
+            voicing.append(notes[0] + 12)
 
     elif "ballad" in style_key and len(notes) >= 3:
         # Wider open voicing so sustained chords have air.
@@ -802,11 +864,13 @@ def _groove_time(
     t = bar_start + beat * beat_len
     is_offbeat = bool(beat % 1)
     if swing and is_offbeat:
-        t = bar_start + (beat + swing) * beat_len
+        # Blues gets extra shuffle push on off-beats.
+        swing_amt = swing * (1.35 if style == "Blues groove" else 1.0)
+        t = bar_start + (beat + swing_amt) * beat_len
     elif style == "Jazz swing" and is_offbeat:
-        t = bar_start + (beat + 0.08) * beat_len
+        t = bar_start + (beat + 0.12) * beat_len
     elif style == "Funk groove" and is_offbeat:
-        t = bar_start + (beat - 0.02) * beat_len
+        t = bar_start + (beat - 0.03) * beat_len
     if pocket and is_offbeat:
         t = t + pocket * beat_len
     return t
@@ -1392,47 +1456,21 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "comp_dur": 0.34,
         }
 
-    if style == "Jazz swing":
-        hat = [0, 1.5, 2, 3.5] if profile.get("ride_jazz") else [0, 1.65, 2, 3.65]
-        return _fit({
-            "bass_beats": [0, 1, 2, 3],
-            "comp_beats": [1.0, 2.5, 3.5],
-            "hat_beats": hat,
-            "snare_beats": [1.0, 2.0, 3.0],
-            "kick_beats": [0, 2],
-            "ghost_snare": [1.5, 2.5],
-            "comp_dur": 0.42,
-        })
-    if style == "Bossa nova":
-        return _fit({
-            "bass_beats": [0, 1.5, 2, 3.5],
-            "comp_beats": [0.0, 1.25, 2.5, 3.25],
-            "hat_beats": [0, 0.5, 1.5, 2, 2.5, 3.5],
-            "snare_beats": [1.5, 3.5],
-            "kick_beats": [0, 2],
-            "cross_stick": [1.0, 3.0],
-            "comp_dur": 0.30,
-        })
-    if style == "Funk groove":
-        return _fit({
-            "bass_beats": [0, 0.75, 1.5, 2, 2.75, 3.5],
-            "comp_beats": [0.5, 1.75, 2.5, 3.25],
-            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
-            "snare_beats": [1.0, 3.0],
-            "ghost_snare": [0.5, 1.5, 2.5, 3.5],
-            "kick_beats": [0, 1.5, 2.75],
-            "comp_dur": 0.20,
-        })
-    if style == "Rock groove":
-        return _fit({
-            "bass_beats": [0, 1, 2, 3],
-            "comp_beats": [0, 1, 2, 3],
-            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
-            "snare_beats": [1.0, 3.0],
-            "kick_beats": [0, 1.5, 2, 3.5],
-            "ghost_snare": [2.5],
-            "comp_dur": 0.48,
-        })
+    try:
+        from backing_style_recipes import style_pattern_for_recipe, style_recipe_id
+
+        _recipe_styles = {
+            "Pop groove", "Pop", "Rock groove", "Jazz swing",
+            "Bossa nova", "Funk groove", "Blues groove",
+        }
+        if style in _recipe_styles:
+            pat = style_pattern_for_recipe(style_recipe_id(style), pulses=pulses if pulses in (4, 12) else 4)
+            if pulses == base_pulses:
+                return pat
+            return _fit(pat)
+    except ImportError:
+        pass
+
     if style == "Ballad":
         return _fit({
             "bass_beats": [0, 2],
@@ -1441,19 +1479,6 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "snare_beats": [3.0],
             "kick_beats": [0],
             "comp_dur": 0.95,
-        })
-    if style == "Blues groove":
-        from backing_style_recipes import blues_groove_pattern
-
-        return blues_groove_pattern(pulses=pulses)
-    if style in ("Pop groove", "Pop"):
-        return _fit({
-            "bass_beats": [0, 2],
-            "comp_beats": [0.5, 1.5, 2.5, 3.5],
-            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
-            "snare_beats": [1.0, 3.0],
-            "kick_beats": [0, 2.5],
-            "comp_dur": 0.36,
         })
     if style == "Jewish ballad":
         return _fit({
@@ -1631,6 +1656,7 @@ def synthesize_chords_to_numpy(
     hat_open_ands = list(song_profile.get("hat_open_ands", []))
     outro_fade_bars = int(song_profile.get("outro_fade_bars", 0) or 0)
     drum_char = _style_drum_character(style)
+    arr_char = _style_arrangement_character(style)
 
     # Pre-compute arrangement memory (chorus passes, phrase positions,
     # bridge-recovery bars) so per-bar decisions know "where am I in
@@ -1817,12 +1843,17 @@ def synthesize_chords_to_numpy(
                     continue  # bar contains an N.C. sub-segment
                 bass_pitch = _bass_motion_pitch(pulse_chord, pulse_next, style, n, len(bass_hits))
                 bass_dur = pulse * (0.72 if style in ["Ballad", "Jazz swing"] else 0.50)
+                bass_dur *= arr_char["bass_dur_mul"]
                 if style == "Funk groove":
-                    bass_dur = pulse * 0.32
+                    bass_dur = pulse * 0.18
                 elif style == "Blues groove":
-                    bass_dur = pulse * 0.55
+                    bass_dur = pulse * 0.62
                 elif style == "Rock groove":
-                    bass_dur = pulse * 0.44
+                    bass_dur = pulse * 0.36
+                elif style in ("Pop groove", "Pop"):
+                    bass_dur = pulse * 0.48
+                elif style == "Bossa nova":
+                    bass_dur = pulse * 0.58
                 elif song_profile.get("pop_soul"):
                     bass_dur = pulse * 0.55
                 elif song_profile.get("riff_driven"):
@@ -1849,7 +1880,8 @@ def synthesize_chords_to_numpy(
                             if song_profile.get("groove_based")
                             else 0.11
                         )
-                        * intensity,
+                        * intensity
+                        * arr_char["bass_vol_mul"],
                         idx * 41 + n + loop_seed,
                     ),
                     "bass",
@@ -1964,29 +1996,24 @@ def synthesize_chords_to_numpy(
                 # Shape the comp attack/sustain so each style's chords
                 # read characteristically by ear, not just by timing.
                 if style == "Funk groove":
-                    # Very short, percussive 16th stabs.
-                    dur = min(dur, pulse * 0.16)
-                    comp_vol *= 1.28
+                    dur = min(dur, pulse * 0.10)
+                    comp_vol *= 1.55
                 elif style == "Rock groove":
-                    # Palm-muted power-chord push: medium-short, punchy.
-                    dur = min(dur, pulse * 0.55)
-                    comp_vol *= 1.22
+                    dur = min(dur, pulse * 0.42)
+                    comp_vol *= 1.50
                 elif style == "Jazz swing":
-                    # Light, comped, laid-back — softer and shorter.
-                    comp_vol *= 0.82
-                    if b % 1 == 0:
-                        comp_vol *= 0.9
+                    comp_vol *= 0.48
+                    dur = min(dur, pulse * 0.30)
                 elif style == "Bossa nova":
-                    # Soft fingerstyle chords, held gently.
-                    comp_vol *= 0.85
-                    dur *= 1.1
+                    comp_vol *= 0.72
+                    dur *= 1.28
                 elif style == "Blues groove":
-                    # Warm, sustained shuffle comp.
-                    dur *= 1.15
-                    comp_vol *= 1.05
+                    dur *= 1.38
+                    comp_vol *= 1.18
                 elif style in ("Pop groove", "Pop"):
-                    # Clean, even, slightly detached.
-                    comp_vol *= 1.0
+                    comp_vol *= 0.68
+                    dur = min(dur, pulse * 0.30)
+                comp_vol *= arr_char["comp_vol_mul"]
                 if song_profile.get("comp_stab"):
                     dur *= 0.55
                     comp_vol *= 1.2
@@ -2027,16 +2054,11 @@ def synthesize_chords_to_numpy(
         # The flag controls hat/snare/ghost suppression below.
         bar_bridge_breakdown = bar_is_bridge_dropout
 
-        if not bar_drums_silent and not bar_bridge_breakdown:
+        if not bar_drums_silent and not bar_bridge_breakdown and not drum_char.get("suppress_hats"):
             for b in patterns["hat_beats"]:
                 hat_vol = (0.006 if style == "Ballad" else 0.010) * hat_mul * drum_char["hat_vol_mul"]
                 if role == "chorus":
                     hat_vol *= 1.28
-                # Open hi-hat: longer noise tail on style-defined
-                # off-beats (e.g. the "and of 4" in funk/disco/pop).
-                # We detect the open-hat by approximate match because
-                # the pattern beats may have been rescaled to an odd
-                # meter via ``_scale_pattern_beats``.
                 is_open_hat = any(abs(b - oa) < 0.06 for oa in hat_open_ands)
                 hat_t = _humanize_time(
                     _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
@@ -2045,9 +2067,9 @@ def synthesize_chords_to_numpy(
                     beat_len=pulse,
                 )
                 if drum_char["use_ride"]:
-                    # Jazz/Blues: ride cymbal with accented beats keeps the
-                    # signature "spang-a-lang" pulse instead of a hat wash.
-                    ride_vol = hat_vol * (1.5 if (b % 1 == 0) else 1.0) * 2.6
+                    # Spang-a-lang: loud downbeats, softer skip beats.
+                    is_accent = float(b) == int(float(b))
+                    ride_vol = hat_vol * (2.8 if is_accent else 1.0) * drum_char["ride_vol_mul"]
                     _add_ride(
                         audio,
                         sr,
@@ -2070,10 +2092,10 @@ def synthesize_chords_to_numpy(
                     tone=drum_char["hat_tone"],
                 )
 
-        if not bar_drums_silent and not bar_bridge_breakdown:
+        if not bar_drums_silent and not bar_bridge_breakdown and not drum_char.get("suppress_snare"):
             for b in patterns["snare_beats"]:
-                snare_vol = 0.036 * intensity * drum_char["snare_vol_mul"]
-                if song_profile.get("cross_stick"):
+                snare_vol = 0.040 * intensity * drum_char["snare_vol_mul"]
+                if song_profile.get("cross_stick") and style != "Bossa nova":
                     snare_vol *= 0.65
                 _add_snare(
                     audio,
@@ -2090,7 +2112,7 @@ def synthesize_chords_to_numpy(
                     audio,
                     sr,
                     _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
-                    0.011 * intensity * drum_char["snare_vol_mul"],
+                    0.014 * intensity * drum_char["snare_vol_mul"] * drum_char["ghost_vol_mul"],
                     crack=drum_char["snare_crack"] * 0.7,
                     seed=idx * 71 + int(b * 50) + loop_seed,
                 )
@@ -2109,10 +2131,10 @@ def synthesize_chords_to_numpy(
                     audio,
                     sr,
                     _groove_time(bar_start, b, pulse, style),
-                    0.040,
-                    0.016 * intensity * drum_char["cross_stick_vol_mul"] * (0.85 if bar_bridge_breakdown else 1.0),
+                    0.050,
+                    0.028 * intensity * drum_char["cross_stick_vol_mul"] * (0.85 if bar_bridge_breakdown else 1.0),
                     seed=idx * 73 + int(b * 40) + loop_seed,
-                    tone=0.35,
+                    tone=0.45,
                 )
 
         if not bar_drums_silent:
@@ -2134,7 +2156,7 @@ def synthesize_chords_to_numpy(
                         beat_len=pulse,
                     ),
                     _humanize_volume(
-                        0.085 * intensity * kick_mul * kick_vol_mul * drum_char["kick_vol_mul"],
+                        0.095 * intensity * kick_mul * kick_vol_mul * drum_char["kick_vol_mul"],
                         idx * 83 + loop_seed,
                     ),
                     punch=drum_char["kick_punch"],

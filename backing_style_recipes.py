@@ -73,16 +73,16 @@ def resolve_feel_for_style(style: str, feel: str = "") -> str:
 
 
 def blues_groove_pattern(*, pulses: int = 4) -> dict[str, Any]:
-    """12/8 shuffle blues grid — swung triplet feel with walking quarters."""
+    """Exaggerated 12/8 shuffle — every triplet partial audible."""
     if pulses == 4:
         return {
             "bass_beats": [0, 1, 2, 3],
-            "comp_beats": [0, 0.67, 1.67, 2.67, 3.67],
-            "hat_beats": [0, 0.67, 1, 1.67, 2, 2.67, 3, 3.67],
+            "comp_beats": [0, 0.67, 1.33, 2, 2.67, 3.33],
+            "hat_beats": [0, 0.67, 1, 1.33, 1.67, 2, 2.67, 3, 3.33, 3.67],
             "snare_beats": [1.0, 3.0],
             "kick_beats": [0, 2],
-            "ghost_snare": [1.67, 2.67],
-            "comp_dur": 0.58,
+            "ghost_snare": [1.33, 2.33, 2.67],
+            "comp_dur": 0.68,
         }
     return {
         "bass_beats": [0, 3, 6, 9],
@@ -91,60 +91,65 @@ def blues_groove_pattern(*, pulses: int = 4) -> dict[str, Any]:
         "snare_beats": [3, 9],
         "kick_beats": [0, 6],
         "ghost_snare": [5, 11],
-        "comp_dur": 0.52,
+        "comp_dur": 0.58,
     }
 
 
 def style_pattern_for_recipe(recipe_id: str, *, pulses: int = 4) -> dict[str, Any]:
     """Canonical rhythm grid for a style recipe — single source of truth."""
     if recipe_id == "pop_groove":
+        # Clean modern pop: sparse bass, light offbeat comp, straight 8ths.
         return {
             "bass_beats": [0, 2],
-            "comp_beats": [0.5, 1.5, 2.5, 3.5],
+            "comp_beats": [1.5, 3.5],
             "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
             "snare_beats": [1.0, 3.0],
             "kick_beats": [0, 2.5],
-            "comp_dur": 0.36,
+            "comp_dur": 0.26,
         }
     if recipe_id == "rock_groove":
+        # Driving rock: eighth bass pump, power comp every beat, big backbeat.
         return {
-            "bass_beats": [0, 1, 2, 3],
+            "bass_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
             "comp_beats": [0, 1, 2, 3],
             "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
             "snare_beats": [1.0, 3.0],
-            "kick_beats": [0, 1.5, 2, 3.5],
-            "ghost_snare": [2.5],
-            "comp_dur": 0.48,
+            "kick_beats": [0, 1, 2, 3],
+            "ghost_snare": [0.5, 1.5, 2.5, 3.5],
+            "comp_dur": 0.40,
         }
     if recipe_id == "jazz_swing":
+        # Jazz: walking bass quarters, ride spang-a-lang, very sparse comp.
         return {
             "bass_beats": [0, 1, 2, 3],
-            "comp_beats": [1.0, 2.5, 3.5],
+            "comp_beats": [2.5, 3.5],
             "hat_beats": [0, 1.5, 2, 3.5],
-            "snare_beats": [1.0, 2.0, 3.0],
+            "snare_beats": [],
             "kick_beats": [0, 2],
-            "ghost_snare": [1.5, 2.5],
-            "comp_dur": 0.42,
+            "ghost_snare": [1.5],
+            "comp_dur": 0.34,
         }
     if recipe_id == "bossa_nova":
+        # Bossa: syncopated bass, cross-stick pulse, soft syncopated comp.
         return {
-            "bass_beats": [0, 1.5, 2, 3.5],
-            "comp_beats": [0.0, 1.25, 2.5, 3.25],
-            "hat_beats": [0, 0.5, 1.5, 2, 2.5, 3.5],
-            "snare_beats": [1.5, 3.5],
-            "kick_beats": [0, 2],
-            "cross_stick": [1.0, 3.0],
-            "comp_dur": 0.30,
+            "bass_beats": [0, 1.5, 2.75, 3.5],
+            "comp_beats": [0.0, 1.25, 2.5, 3.25, 3.75],
+            "hat_beats": [],
+            "snare_beats": [],
+            "kick_beats": [0],
+            "cross_stick": [1.0, 2.5, 3.0],
+            "comp_dur": 0.38,
         }
     if recipe_id == "funk_groove":
+        # Funk: dense 16th bass + syncopated stabs + ghost backbeat.
         return {
-            "bass_beats": [0, 0.75, 1.5, 2, 2.75, 3.5],
-            "comp_beats": [0.5, 1.75, 2.5, 3.25],
+            "bass_beats": [0, 0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2.25, 2.5, 2.75, 3.25, 3.5, 3.75],
+            "comp_beats": [0.5, 0.75, 1.25, 1.75, 2.5, 3.25],
             "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
             "snare_beats": [1.0, 3.0],
-            "ghost_snare": [0.5, 1.5, 2.5, 3.5],
+            "ghost_snare": [0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.25, 3.75],
             "kick_beats": [0, 1.5, 2.75],
-            "comp_dur": 0.20,
+            "comp_dur": 0.12,
         }
     if recipe_id == "blues_groove":
         return blues_groove_pattern(pulses=pulses if pulses in (4, 12) else 4)
@@ -219,24 +224,26 @@ def _base_style_flags(recipe_id: str) -> dict[str, Any]:
             bass_mode="pop_support",
             comp_mode="block",
             comp_wave="organ",
+            humanize_ms=0.006,
         )
     elif recipe_id == "rock_groove":
         flags.update(
-            kick_push=1.2,
-            hat_soft=0.9,
-            pocket_offset=-0.008,
-            drum_energy=1.15,
+            kick_push=1.35,
+            hat_soft=0.95,
+            pocket_offset=-0.012,
+            drum_energy=1.35,
             bass_mode="rock_root",
             comp_mode="power",
             comp_wave="sine",
             comp_stab=True,
+            ghost_snare=True,
         )
     elif recipe_id == "jazz_swing":
         flags.update(
-            swing=0.11,
+            swing=0.20,
             ride_jazz=True,
-            humanize_ms=0.018,
-            pocket_offset=0.012,
+            humanize_ms=0.022,
+            pocket_offset=0.016,
             bass_mode="walk",
             comp_mode="shell",
             comp_wave="organ",
@@ -244,10 +251,10 @@ def _base_style_flags(recipe_id: str) -> dict[str, Any]:
     elif recipe_id == "bossa_nova":
         flags.update(
             cross_stick=True,
-            swing=0.04,
-            hat_soft=0.72,
-            humanize_ms=0.015,
-            pocket_offset=0.018,
+            swing=0.05,
+            hat_soft=0.55,
+            humanize_ms=0.018,
+            pocket_offset=0.022,
             bass_mode="bossa_two_feel",
             comp_mode="bossa",
             comp_wave="organ",
@@ -256,23 +263,23 @@ def _base_style_flags(recipe_id: str) -> dict[str, Any]:
         flags.update(
             ghost_snare=True,
             comp_stab=True,
-            kick_push=1.2,
-            pocket_offset=-0.02,
+            kick_push=1.28,
+            pocket_offset=-0.025,
             hat_open_ands=[2.5, 3.5],
-            comp_density=1.15,
-            drum_energy=1.1,
-            syncopation=1.35,
+            comp_density=1.25,
+            drum_energy=1.2,
+            syncopation=1.55,
             bass_mode="funk_sync",
             comp_mode="stab",
             comp_wave="organ",
         )
     elif recipe_id == "blues_groove":
         flags.update(
-            swing=0.22,
+            swing=0.32,
             ghost_snare=True,
-            humanize_ms=0.02,
-            pocket_offset=0.016,
-            hat_soft=0.82,
+            humanize_ms=0.024,
+            pocket_offset=0.020,
+            hat_soft=0.78,
             bass_mode="blues_shuffle",
             comp_mode="blues",
             comp_wave="organ",
