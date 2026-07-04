@@ -28,6 +28,7 @@ def test_nav_history_public_exports():
         "init_nav_history",
         "navigate_studio_page",
         "render_floating_nav_history",
+        "render_studio_history_toolbar",
         "render_sidebar_nav_history",
         "render_nav_deploy_marker",
     ):
@@ -242,3 +243,15 @@ def test_quick_nav_rows_cover_all_top_nav_pages():
     from app_ui import QUICK_NAV_ROW_PRIMARY, QUICK_NAV_ROW_SECONDARY, TOP_NAV_PAGE_IDS
 
     assert set(QUICK_NAV_ROW_PRIMARY + QUICK_NAV_ROW_SECONDARY) == set(TOP_NAV_PAGE_IDS)
+
+
+def test_studio_nav_toolbar_three_column_layout():
+    import inspect
+
+    import studio_nav_history as mod
+
+    src = inspect.getsource(mod.render_studio_history_toolbar)
+    assert "studio_nav_toolbar" in src
+    assert "studio_nav_back_btn" in src
+    assert "studio_nav_forward_btn" in src
+    assert "columns" in src

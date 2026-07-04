@@ -35,7 +35,7 @@ _NAV_FROM_HISTORY = "_studio_nav_from_history"
 _HISTORY_NAV_PENDING_SAVE = "_studio_history_nav_pending_save"
 
 # Bump when verifying Streamlit Cloud picked up navigation UI changes.
-NAVIGATION_UI_DEPLOY_MARKER = "studio-nav-history-live-fix-v2"
+NAVIGATION_UI_DEPLOY_MARKER = "studio-nav-toolbar-v1"
 
 __all__ = (
     "STUDIO_PAGE_IDS",
@@ -49,6 +49,7 @@ __all__ = (
     "go_back",
     "go_forward",
     "render_floating_nav_history",
+    "render_studio_history_toolbar",
     "render_sidebar_nav_history",
     "render_nav_deploy_marker",
     "record_nav_history_trace",
@@ -350,17 +351,19 @@ def render_nav_deploy_marker(st_module: Any, *, developer_mode: bool = False) ->
     )
 
 
-def render_floating_nav_history(
+def render_studio_history_toolbar(
     st_module: Any,
     session_state: dict,
     *,
+    center_slot: Callable[[Any], None] | None = None,
     rerun_fn: Callable[[], None] | None = None,
 ) -> None:
-    """Fixed back / forward controls at the left and right edges of the main viewport.
+    """Stable 3-column nav bar: Back | center action | Forward.
 
-    Uses ``on_click`` callbacks so page changes commit before ``prepare_music_workspace``
-    runs on the subsequent script pass (avoids stale cloud restore overwriting the target).
+    Uses normal document flow (not viewport-fixed positioning) so controls
+    stay aligned across reruns, resizes, and page content changes.
     """
+    _ = rerun_fn
     init_nav_history(session_state)
     back_ok = can_go_back(session_state)
     fwd_ok = can_go_forward(session_state)
@@ -377,24 +380,48 @@ def render_floating_nav_history(
         forward_button_disabled=not fwd_ok,
     )
 
-    st_module.button(
-        "← Back",
-        key="studio_nav_back_btn",
-        disabled=not back_ok,
-        use_container_width=False,
-        type="secondary",
-        help="Previous page in history",
-        on_click=_on_history_back,
-    )
-    st_module.button(
-        "Forward →",
-        key="studio_nav_forward_btn",
-        disabled=not fwd_ok,
-        use_container_width=False,
-        type="secondary",
-        help="Next page in history",
-        on_click=_on_history_forward,
-    )
+    with st_module.container(key="studio_nav_toolbar"):
+        st_module.markdown('<div class="ui-studio-nav-toolbar">', unsafe_allow_html=True)
+        col_back, col_center, col_fwd = st_module.columns([1, 5, 1], gap="small")
+        with col_back:
+            st_module.button(
+                "← Back",
+                key="studio_nav_back_btn",
+                disabled=not back_ok,
+                use_container_width=True,
+                type="secondary",
+                help="Previous page in history",
+                on_click=_on_history_back,
+            )
+        with col_center:
+            if center_slot is not None:
+                center_slot(st_module)
+            else:
+                st_module.markdown(
+                    '<div class="ui-studio-nav-toolbar-spacer" aria-hidden="true"></div>',
+                    unsafe_allow_html=True,
+                )
+        with col_fwd:
+            st_module.button(
+                "Forward →",
+                key="studio_nav_forward_btn",
+                disabled=not fwd_ok,
+                use_container_width=True,
+                type="secondary",
+                help="Next page in history",
+                on_click=_on_history_forward,
+            )
+        st_module.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_floating_nav_history(
+    st_module: Any,
+    session_state: dict,
+    *,
+    rerun_fn: Callable[[], None] | None = None,
+) -> None:
+    """Backward-compatible alias — renders the stable toolbar without a center action."""
+    render_studio_history_toolbar(st_module, session_state, rerun_fn=rerun_fn)
 
 
 def render_sidebar_nav_history(
