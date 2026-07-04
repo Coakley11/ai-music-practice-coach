@@ -196,6 +196,47 @@ class TestPhase2StyleIdentity(unittest.TestCase):
                     f"{style_a} should differ from {style_b}",
                 )
 
+    @staticmethod
+    def _spectral_features(audio: Any, sr: int = 44100) -> dict[str, float]:
+        import numpy as np
+
+        mag = np.abs(np.fft.rfft(audio))
+        freqs = np.fft.rfftfreq(len(audio), 1.0 / sr)
+        centroid = float((freqs * mag).sum() / (mag.sum() + 1e-9))
+        low = float(mag[freqs < 200].sum())
+        high = float(mag[freqs >= 2000].sum())
+        tot = float(mag.sum()) + 1e-9
+        rms = float(np.sqrt(np.mean(audio ** 2)))
+        crest = float(np.max(np.abs(audio)) / (rms + 1e-9))
+        return {
+            "centroid": centroid,
+            "low_ratio": low / tot,
+            "high_ratio": high / tot,
+            "crest": crest,
+        }
+
+    def test_style_timbre_fingerprints_differ(self) -> None:
+        """Styles must differ in spectral character, not just waveform."""
+        feats: dict[str, dict[str, float]] = {}
+        for style in self._STYLES:
+            prof = resolve_backing_musical_profile(style=style, mood="Mellow", intensity="Medium")
+            audio, sr = synthesize_chords_to_numpy(
+                self._PROGRESSION, bpm=100, loops=2, style=style, musical_profile=prof
+            )
+            feats[style] = self._spectral_features(audio, sr)
+
+        # Rock/Funk are brighter + punchier than Jazz/Bossa.
+        self.assertGreater(feats["Rock groove"]["centroid"], feats["Jazz swing"]["centroid"])
+        self.assertGreater(feats["Funk groove"]["crest"], feats["Jazz swing"]["crest"])
+        # Jazz carries more low-end weight (walking bass + soft kit) than Rock.
+        self.assertGreater(feats["Jazz swing"]["low_ratio"], feats["Rock groove"]["low_ratio"])
+        # Each style has a distinct spectral signature.
+        sigs = {
+            style: (round(f["centroid"], -2), round(f["crest"], 1))
+            for style, f in feats.items()
+        }
+        self.assertGreaterEqual(len(set(sigs.values())), 5)
+
     def test_style_recipe_patterns_are_distinct(self) -> None:
         signatures = []
         for style in self._STYLES:

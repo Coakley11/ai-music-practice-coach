@@ -68,3 +68,34 @@ BackingMusicalProfile (canonical)
 - `backing_audio.py` — style_locked, Pop branch, blues/rock voicing+bass, song override cap
 - `streamlit_music_practice_app.py` — pass full musical_profile to cache/generation
 - `tests/test_backing_musical_profile.py` — Phase 2 acceptance tests
+
+## Phase 2B — obvious-by-ear timbre pass (2026-07-03)
+
+Phase 2 differences were spectrally real but too subtle. 2B adds dedicated
+drum voices and comp articulation so each style reads as a distinct kit.
+
+### Drum voices (backing_audio.py)
+- `_add_kick()` — pitch-swept sine body + click transient, `punch` per style
+- `_add_snare()` — noise burst + tonal shell, `crack` per style
+- `_add_ride()` — inharmonic metallic ping + sizzle (Jazz/Blues ride cymbal)
+- `_add_noise_hit(tone=)` — pitched shimmer mix for hats/cross-stick
+- `_style_drum_character()` — per-style kick punch, snare crack, hat tone,
+  ride usage, volume balance
+
+### Style character (measured spectral fingerprint)
+| Style | Kit character |
+|-------|---------------|
+| Rock | brightest, hardest kick/snare, highest crest |
+| Funk | short punchy stabs (highest crest), tight hats |
+| Jazz | ride cymbal, soft kit, walking-bass low-end |
+| Bossa | soft cross-stick, gentle kit |
+| Blues | ride + shuffle, warm |
+| Pop | clean, even, straight |
+
+### Comp articulation
+- Funk: very short 16th stabs; Rock: palm-mute power push; Jazz: light/soft;
+  Bossa: soft held; Blues: warm sustained; Pop: clean even
+
+### Tests
+- `test_style_timbre_fingerprints_differ` — spectral centroid / crest / low-end
+  prove Rock/Funk brighter+punchier, Jazz warmer; ≥5 distinct signatures

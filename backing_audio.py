@@ -264,7 +264,7 @@ def _add_tone(audio, sr, start_sec, dur_sec, midi_num, volume, wave_type="sine")
     audio[start:end] += out * volume
 
 
-def _add_noise_hit(audio, sr, start_sec, dur_sec, volume, seed=0):
+def _add_noise_hit(audio, sr, start_sec, dur_sec, volume, seed=0, *, tone: float = 0.0):
     start = int(start_sec * sr)
     if start >= len(audio):
         return
@@ -273,8 +273,89 @@ def _add_noise_hit(audio, sr, start_sec, dur_sec, volume, seed=0):
     n = end - start
     rng = np.random.default_rng(seed)
     sig = rng.normal(0, 1, n)
+    # ``tone`` mixes a bright ping into the noise (for ride/hat colour):
+    # 0.0 = pure noise (snare/closed hat), 1.0 = strong pitched shimmer.
+    if tone > 0.0:
+        two_pi = 2.0 * np.pi
+        t = np.arange(n, dtype=np.float64) / sr
+        ping = np.sin(two_pi * 3200.0 * t) + 0.5 * np.sin(two_pi * 5400.0 * t)
+        sig = (1.0 - tone) * sig + tone * ping
     env = np.linspace(1, 0.01, n)
     audio[start:end] += sig * env * volume
+
+
+def _add_kick(audio, sr, start_sec, volume, *, punch: float = 1.0, seed: int = 0):
+    """Style-aware kick: pitch-swept sine body + short click transient.
+
+    ``punch`` scales the click transient and pitch drop so rock/funk kicks
+    read harder than a pop/ballad thump.
+    """
+    start = int(start_sec * sr)
+    if start >= len(audio) or volume <= 0:
+        return
+    dur = 0.11 + 0.03 * punch
+    n = max(1, int(dur * sr))
+    end = min(len(audio), start + n)
+    n = end - start
+    t = np.arange(n, dtype=np.float64) / sr
+    # Pitch sweep from ~110Hz down to ~45Hz — harder punch drops faster.
+    f_start = 90.0 + 40.0 * punch
+    f_end = 45.0
+    k = 22.0 + 14.0 * punch
+    freq = f_end + (f_start - f_end) * np.exp(-k * t)
+    phase = 2.0 * np.pi * np.cumsum(freq) / sr
+    body = np.sin(phase)
+    env = np.exp(-t * (26.0 + 8.0 * punch))
+    sig = body * env
+    # Click transient for attack definition.
+    click_n = max(1, int(0.006 * sr))
+    click_n = min(click_n, n)
+    rng = np.random.default_rng(seed)
+    click = rng.normal(0, 1, click_n) * np.linspace(1.0, 0.0, click_n)
+    sig[:click_n] += click * 0.5 * punch
+    audio[start:end] += sig * volume
+
+
+def _add_snare(audio, sr, start_sec, volume, *, crack: float = 1.0, seed: int = 0):
+    """Style-aware snare: noise burst + tonal shell. ``crack`` = brightness."""
+    start = int(start_sec * sr)
+    if start >= len(audio) or volume <= 0:
+        return
+    dur = 0.06 + 0.02 * crack
+    n = max(1, int(dur * sr))
+    end = min(len(audio), start + n)
+    n = end - start
+    t = np.arange(n, dtype=np.float64) / sr
+    rng = np.random.default_rng(seed)
+    noise = rng.normal(0, 1, n)
+    # Tonal shell around 180-220Hz gives the snare a body/pitch.
+    shell = np.sin(2.0 * np.pi * (190.0 + 30.0 * crack) * t)
+    mix = (0.72 + 0.15 * crack) * noise + (0.28 - 0.1 * crack) * shell
+    env = np.exp(-t * (34.0 - 8.0 * crack))
+    audio[start:end] += mix * env * volume
+
+
+def _add_ride(audio, sr, start_sec, volume, seed=0):
+    """Jazz ride cymbal: pitched shimmer with a long, sizzling tail."""
+    start = int(start_sec * sr)
+    if start >= len(audio) or volume <= 0:
+        return
+    dur = 0.22
+    n = max(1, int(dur * sr))
+    end = min(len(audio), start + n)
+    n = end - start
+    t = np.arange(n, dtype=np.float64) / sr
+    two_pi = 2.0 * np.pi
+    # Inharmonic partials = metallic cymbal ping.
+    ping = (
+        np.sin(two_pi * 2600.0 * t)
+        + 0.7 * np.sin(two_pi * 4100.0 * t)
+        + 0.5 * np.sin(two_pi * 6300.0 * t)
+    )
+    rng = np.random.default_rng(seed)
+    sizzle = rng.normal(0, 1, n) * 0.4
+    env = np.exp(-t * 11.0)
+    audio[start:end] += (ping * 0.6 + sizzle) * env * volume
 
 
 def _coerce_chord_events(chords_or_events):
@@ -336,6 +417,39 @@ def _section_intensity(section_name, style):
         base *= 0.94
     elif style in ("Rock groove", "Funk groove") and role == "chorus":
         base *= 1.08
+    return base
+
+
+def _style_drum_character(style: str) -> dict[str, Any]:
+    """Per-style kit voicing: kick punch, snare crack, hat colour, ride use.
+
+    These knobs feed the dedicated drum-voice synths so each style reads
+    as a distinct kit by ear (not just different hit timing).
+    """
+    base = {
+        "kick_punch": 1.0,
+        "snare_crack": 1.0,
+        "hat_tone": 0.0,       # 0 = pure noise, >0 = pitched shimmer
+        "hat_vol_mul": 1.0,
+        "snare_vol_mul": 1.0,
+        "kick_vol_mul": 1.0,
+        "use_ride": False,     # ride cymbal instead of hats
+        "cross_stick_vol_mul": 1.0,
+    }
+    if style == "Rock groove":
+        base.update(kick_punch=1.5, snare_crack=1.4, snare_vol_mul=1.35, kick_vol_mul=1.3, hat_vol_mul=1.1)
+    elif style == "Funk groove":
+        base.update(kick_punch=1.35, snare_crack=1.25, hat_tone=0.15, hat_vol_mul=1.15, snare_vol_mul=1.1)
+    elif style == "Jazz swing":
+        base.update(kick_punch=0.55, snare_crack=0.6, snare_vol_mul=0.6, kick_vol_mul=0.55, use_ride=True)
+    elif style == "Bossa nova":
+        base.update(kick_punch=0.7, snare_crack=0.5, hat_tone=0.05, hat_vol_mul=0.8, cross_stick_vol_mul=1.3, kick_vol_mul=0.7)
+    elif style == "Blues groove":
+        base.update(kick_punch=0.9, snare_crack=0.85, hat_tone=0.1, use_ride=True, hat_vol_mul=0.9)
+    elif style == "Ballad":
+        base.update(kick_punch=0.6, snare_crack=0.55, snare_vol_mul=0.7, kick_vol_mul=0.65, hat_vol_mul=0.7)
+    elif style in ("Pop groove", "Pop"):
+        base.update(kick_punch=1.0, snare_crack=1.0, hat_tone=0.0)
     return base
 
 
@@ -1516,6 +1630,7 @@ def synthesize_chords_to_numpy(
     pocket_offset = float(song_profile.get("pocket_offset", 0.0))
     hat_open_ands = list(song_profile.get("hat_open_ands", []))
     outro_fade_bars = int(song_profile.get("outro_fade_bars", 0) or 0)
+    drum_char = _style_drum_character(style)
 
     # Pre-compute arrangement memory (chorus passes, phrase positions,
     # bridge-recovery bars) so per-bar decisions know "where am I in
@@ -1845,6 +1960,33 @@ def synthesize_chords_to_numpy(
                     if "outro" in str(section_name).lower():
                         comp_vol *= 0.92
                     dur *= 1.10
+                # ----- Style articulation ----------------------------
+                # Shape the comp attack/sustain so each style's chords
+                # read characteristically by ear, not just by timing.
+                if style == "Funk groove":
+                    # Very short, percussive 16th stabs.
+                    dur = min(dur, pulse * 0.16)
+                    comp_vol *= 1.28
+                elif style == "Rock groove":
+                    # Palm-muted power-chord push: medium-short, punchy.
+                    dur = min(dur, pulse * 0.55)
+                    comp_vol *= 1.22
+                elif style == "Jazz swing":
+                    # Light, comped, laid-back — softer and shorter.
+                    comp_vol *= 0.82
+                    if b % 1 == 0:
+                        comp_vol *= 0.9
+                elif style == "Bossa nova":
+                    # Soft fingerstyle chords, held gently.
+                    comp_vol *= 0.85
+                    dur *= 1.1
+                elif style == "Blues groove":
+                    # Warm, sustained shuffle comp.
+                    dur *= 1.15
+                    comp_vol *= 1.05
+                elif style in ("Pop groove", "Pop"):
+                    # Clean, even, slightly detached.
+                    comp_vol *= 1.0
                 if song_profile.get("comp_stab"):
                     dur *= 0.55
                     comp_vol *= 1.2
@@ -1887,7 +2029,7 @@ def synthesize_chords_to_numpy(
 
         if not bar_drums_silent and not bar_bridge_breakdown:
             for b in patterns["hat_beats"]:
-                hat_vol = (0.006 if style == "Ballad" else 0.010) * hat_mul
+                hat_vol = (0.006 if style == "Ballad" else 0.010) * hat_mul * drum_char["hat_vol_mul"]
                 if role == "chorus":
                     hat_vol *= 1.28
                 # Open hi-hat: longer noise tail on style-defined
@@ -1896,6 +2038,24 @@ def synthesize_chords_to_numpy(
                 # the pattern beats may have been rescaled to an odd
                 # meter via ``_scale_pattern_beats``.
                 is_open_hat = any(abs(b - oa) < 0.06 for oa in hat_open_ands)
+                hat_t = _humanize_time(
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
+                    seed=idx * 31 + int(b * 100) + loop_seed,
+                    amount=humanize * 0.5,
+                    beat_len=pulse,
+                )
+                if drum_char["use_ride"]:
+                    # Jazz/Blues: ride cymbal with accented beats keeps the
+                    # signature "spang-a-lang" pulse instead of a hat wash.
+                    ride_vol = hat_vol * (1.5 if (b % 1 == 0) else 1.0) * 2.6
+                    _add_ride(
+                        audio,
+                        sr,
+                        hat_t,
+                        ride_vol * intensity,
+                        seed=idx * 31 + int(b * 100) + loop_seed,
+                    )
+                    continue
                 hat_dur = 0.090 if is_open_hat else 0.028
                 hat_vol_local = hat_vol
                 if is_open_hat:
@@ -1903,39 +2063,35 @@ def synthesize_chords_to_numpy(
                 _add_noise_hit(
                     audio,
                     sr,
-                    _humanize_time(
-                        _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
-                        seed=idx * 31 + int(b * 100) + loop_seed,
-                        amount=humanize * 0.5,
-                        beat_len=pulse,
-                    ),
+                    hat_t,
                     hat_dur,
                     hat_vol_local * intensity,
                     seed=idx * 31 + int(b * 100) + (groove_seed % 997) + loop_seed,
+                    tone=drum_char["hat_tone"],
                 )
 
         if not bar_drums_silent and not bar_bridge_breakdown:
             for b in patterns["snare_beats"]:
-                snare_vol = 0.032 * intensity
+                snare_vol = 0.036 * intensity * drum_char["snare_vol_mul"]
                 if song_profile.get("cross_stick"):
                     snare_vol *= 0.65
-                _add_noise_hit(
+                _add_snare(
                     audio,
                     sr,
                     _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
-                    0.055,
                     _humanize_volume(snare_vol, idx * 67 + int(b * 100) + loop_seed),
+                    crack=drum_char["snare_crack"],
                     seed=idx * 67 + int(b * 100) + loop_seed,
                 )
 
         if not bar_drums_silent and not bar_bridge_breakdown:
             for b in patterns.get("ghost_snare", []):
-                _add_noise_hit(
+                _add_snare(
                     audio,
                     sr,
                     _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
-                    0.025,
-                    0.010 * intensity,
+                    0.011 * intensity * drum_char["snare_vol_mul"],
+                    crack=drum_char["snare_crack"] * 0.7,
                     seed=idx * 71 + int(b * 50) + loop_seed,
                 )
 
@@ -1954,8 +2110,9 @@ def synthesize_chords_to_numpy(
                     sr,
                     _groove_time(bar_start, b, pulse, style),
                     0.040,
-                    0.014 * intensity * (0.85 if bar_bridge_breakdown else 1.0),
+                    0.016 * intensity * drum_char["cross_stick_vol_mul"] * (0.85 if bar_bridge_breakdown else 1.0),
                     seed=idx * 73 + int(b * 40) + loop_seed,
+                    tone=0.35,
                 )
 
         if not bar_drums_silent:
@@ -1967,7 +2124,7 @@ def synthesize_chords_to_numpy(
                 kick_beats = [b for b in kick_beats if b in (0.0, 2.0)]
             kick_vol_mul = 0.78 if bar_bridge_breakdown else 1.0
             for b in kick_beats:
-                _add_tone(
+                _add_kick(
                     audio,
                     sr,
                     _humanize_time(
@@ -1976,12 +2133,12 @@ def synthesize_chords_to_numpy(
                         amount=humanize * 0.35,
                         beat_len=pulse,
                     ),
-                    0.07,
-                    36,
                     _humanize_volume(
-                        0.070 * intensity * kick_mul * kick_vol_mul, idx * 83 + loop_seed
+                        0.085 * intensity * kick_mul * kick_vol_mul * drum_char["kick_vol_mul"],
+                        idx * 83 + loop_seed,
                     ),
-                    "bass",
+                    punch=drum_char["kick_punch"],
+                    seed=idx * 83 + int(b * 10) + loop_seed,
                 )
 
         # ----- Mid-bar bass anticipation pickup -------------------
