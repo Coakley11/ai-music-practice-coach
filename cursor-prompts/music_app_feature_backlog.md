@@ -1,6 +1,6 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-06-09 (Tests A–E frozen)
+**Last updated:** 2026-07-03 (Tests A–E frozen)
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
@@ -10,12 +10,13 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 *Tests **A–E** are **passed** and **frozen** on `dev`. See [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).*
 
-*Active: **P0 UI polish first** — Back/Forward audit **P1 later**. See [music_app_tasks.md](./music_app_tasks.md).*
+*Active: **P0 media persistence sprint** — see [music_app_tasks.md](./music_app_tasks.md) and [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md).*
 
 | Priority | Phase | Plan |
 |----------|-------|------|
-| **P0** (immediate) | UI polish — headers, icons, Practice layout, badges, song cards; **visual/layout only** | [2026-06-09-ui-polish-phase.md](./plans/2026-06-09-ui-polish-phase.md) |
-| **P1** (later) | Back/Forward nav audit — manual first; fix only if broken; not blocking unless app use impaired | [2026-06-09-back-forward-nav-audit.md](./plans/2026-06-09-back-forward-nav-audit.md) |
+| **P0** (immediate) | Uploads + Multitrack persistence, cross-device sync, AMI media summaries | [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) |
+| **P1** | UI polish — headers, icons, Practice layout, badges, song cards; **visual/layout only** | [2026-06-09-ui-polish-phase.md](./plans/2026-06-09-ui-polish-phase.md) |
+| **P2** (later) | Back/Forward nav audit | [2026-06-09-back-forward-nav-audit.md](./plans/2026-06-09-back-forward-nav-audit.md) |
 
 ---
 
@@ -29,6 +30,13 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 - **Written charts ON** / **Concert charts** status badge
 - Song cards + active song display; gray readability cleanup
 
+### Command Center integration
+
+- [x] Music-side resume payloads + Continue card builders (`music_resume_payload.py`, `music_command_center.py`)
+- [x] App Directory workstream soft-entry URLs
+- [ ] Command Center homepage UI (external repo)
+- See [plans/2026-07-03-command-center-music-integration.md](./plans/2026-07-03-command-center-music-integration.md)
+
 ### Navigation & shell
 
 - **Back/Forward audit** — manual first; trace `nav_history_stack`, `back_button_clicked`, etc. if gaps found
@@ -39,6 +47,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### Cross-device persistence (post A–E)
 
+- **Uploads + Multitrack media channel** — in sprint; see [plan](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md)
 - Conflict resolution UI when cloud vs local diverge (suite-wide)
 
 ### Practice page

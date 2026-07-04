@@ -58,6 +58,7 @@
 - [x] Per-page local UI snapshots on navigate; globals (instrument, key, song) preserved (`studio_page_persistence.py`)
 - [x] Back/forward page history stacks
 - [x] Floating ← Back / Forward → in main content area (`studio_nav_history.py`, `app_ui.py`)
+- [x] Command Center Music resume payloads + Continue / workstream deep links (`music_resume_payload.py`, `music_command_center.py`, `suite_deep_links.py`)
 - [x] Collapsible sidebar **☰ Pages** menu (`render_sidebar_studio_nav`)
 - [x] Top quick-nav art row (Caveat script labels)
 - [x] Cross-page shortcut links on Practice, Backing, etc.

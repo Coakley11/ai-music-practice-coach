@@ -65,7 +65,7 @@ This is the master planning document. Related files:
 
 **Policy (accepted 2026-06-09):** Tests **A–E are frozen**. Do not modify persistence unless a new `?dev=1` trace proves regression. Baseline: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).
 
-**Next focus:** **P0** [Uploads + Multitrack persistence sprint](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) — dedicated media channel, cross-device sync, AMI summaries. **P1** [UI polish](./plans/2026-06-09-ui-polish-phase.md) (visual/layout only). **P2** [Back/Forward nav audit](./plans/2026-06-09-back-forward-nav-audit.md) later.
+**Next focus:** **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md). **P1** Command Center homepage UI (external repo; Music-side resume payloads shipped). **P1** [UI polish](./plans/2026-06-09-ui-polish-phase.md) (visual/layout only).
 
 **Trace:** Music persistence sidebar (`?dev=1`) — Test D compare, Test E compare, **Transposing save (last cloud write)**, workspace restore, Local nav checkpoints.
 
@@ -74,6 +74,7 @@ This is the master planning document. Related files:
 ## High-priority future enhancements
 
 - **P0 Uploads + Multitrack persistence** (immediate) — canonical `uploaded_recordings` / `multitrack_sessions`, Supabase Storage refs, tombstone sync, AMI media summaries ([plan](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md)).
+- **P1 Command Center ↔ Music** — Music-side Continue payloads + workstream URLs shipped; Command Center homepage card UI pending ([plan](./plans/2026-07-03-command-center-music-integration.md)).
 - **P1 UI polish** — decorative headers, logos/icons, Upload/Multitrack nav visibility, Practice layout, written-key badge, song cards — **rendering/CSS/layout only** ([plan](./plans/2026-06-09-ui-polish-phase.md)).
 - Fix Practice **Section Focus** when type labels (e.g. “Verse”) do not resolve to chart section keys (“Verse 1”).
 - Expand **OpenAI Coaching hub** beyond “coming soon” cards (active-song coach, session plans).

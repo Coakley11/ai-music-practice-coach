@@ -77,6 +77,30 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 
 **Sync audit (2026-06-11):** See Command Center [plans/2026-06-11-ami-enhancement-roadmap.md](../../daniel-ai-command-center/cursor-prompts/plans/2026-06-11-ami-enhancement-roadmap.md). Upload/multitrack metadata → dedicated media channel (not main envelope) — see media sprint plan above.
 
+### P1 — Command Center ↔ Music integration
+
+**Plan:** [plans/2026-07-03-command-center-music-integration.md](./plans/2026-07-03-command-center-music-integration.md)
+
+**Design rule:** Continue cards (top) = specific resumable task restore; App Directory (bottom) = general workstream entry. Workspace isolation required.
+
+- [x] `music_resume_payload.py` — canonical resume envelope per task type
+- [x] `music_command_center.py` — Continue card builder + App Directory workstream cards
+- [x] Practice + Backing continue restore (song, instrument, key, BPM, page, scope/sections)
+- [x] Creative + Multitrack + tone/upload continue restore (payload fields + apply)
+- [x] App Directory soft-entry URLs (`suite_entry_mode=workstream`, no stale pick_key)
+- [x] Workspace isolation tests (coakley11 ≠ daniel) — `tests/test_music_command_center.py`
+- [ ] Command Center homepage card UI + storage (external `daniel-ai-command-center` repo)
+- [ ] Live Continue / App Directory acceptance on Streamlit Cloud
+
+**Acceptance:** Continue Shape of You / Tenor Sax / Bm / 90 BPM opens Music with exact state; App Directory opens current workspace without blank generic state.
+
+### P1 — Backing Studio floating nav (restored)
+
+- [x] Floating Back/Forward at mid-viewport (not in-page toolbar)
+- [x] Back in sidebar/main gutter; Forward on right edge
+- [x] Return to Catalog Song separate on Backing page only
+- [ ] Manual acceptance: scroll, song/key/BPM changes, refresh — stable placement
+
 ### P1 — Creative → Backing Track routing
 
 **Plan:** [plans/2026-06-29-creative-backing-track-routing.md](./plans/2026-06-29-creative-backing-track-routing.md)

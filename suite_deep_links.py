@@ -6,6 +6,9 @@ Query params (read by suite_resume_launch in each app):
   suite_page    — target page/tab label
   suite_workspace — active workspace profile (daniel, ariel, guest, test_user)
   suite_pick_key, suite_song, suite_display_key, suite_instrument, suite_section_focus — music shortcuts
+  suite_resume_kind, suite_resume_payload — typed Music Continue restore envelope (base64url JSON)
+  suite_bpm, suite_backing_scope, suite_backing_sections, suite_groove, suite_mood, suite_intensity — music scalars
+  suite_multitrack_id, suite_creative_mode, suite_entry_mode — music task shortcuts
   suite_holdings_fp — investment portfolio fingerprint
   suite_player_a, suite_player_b — baseball comparison players
   suite_team — NBA favorite team
@@ -16,6 +19,13 @@ from __future__ import annotations
 
 from typing import Any
 from urllib.parse import quote, urlencode
+
+from music_resume_payload import (
+    decode_payload_b64,
+    encode_payload_b64,
+    legacy_resume_key_for_payload,
+    normalize_resume_kind,
+)
 
 from suite_workspace import append_suite_workspace_param, normalize_workspace_id, resolve_workspace_id
 
@@ -208,6 +218,9 @@ def build_resume_action_url(
         params["suite_page"] = page_resolved
 
     if app_key == "music":
+        payload = m.get("resume_payload")
+        if isinstance(payload, dict) and payload.get("resume_kind"):
+            return build_music_continue_url(payload, base_url=base)
         pick = str(m.get("pick_key") or "").strip()
         if not pick and rk.startswith("song:"):
             pick = rk.split(":", 1)[-1].strip()
@@ -485,3 +498,105 @@ def resume_metrics_from_item_key(app: str, item_key: str, *, subtitle: str = "")
                         pass
 
     return page, metrics
+
+
+def _music_scalar_params_from_payload(payload: dict[str, Any]) -> dict[str, str]:
+    """Flatten common Music resume scalars into query params."""
+    params: dict[str, str] = {}
+    pick = str(payload.get("pick_key") or "").strip()
+    if pick:
+        params["suite_pick_key"] = pick
+    song = str(payload.get("song") or "").strip()
+    if song:
+        params["suite_song"] = song[:120]
+    display_key = str(payload.get("display_key") or "").strip()
+    if display_key:
+        params["suite_display_key"] = display_key[:40]
+    instrument = str(payload.get("instrument") or "").strip()
+    if instrument:
+        params["suite_instrument"] = instrument[:40]
+    section = str(payload.get("practice_focus_section") or "").strip()
+    if section:
+        params["suite_section_focus"] = section[:80]
+    bpm = payload.get("bpm") or payload.get("backing_track_bpm")
+    if bpm is not None:
+        try:
+            params["suite_bpm"] = str(int(bpm))
+        except (TypeError, ValueError):
+            pass
+    kind = normalize_resume_kind(str(payload.get("resume_kind") or ""))
+    params["suite_resume_kind"] = kind
+    params["suite_entry_mode"] = "continue"
+    if kind == "backing":
+        scope = str(payload.get("backing_track_scope") or "").strip()
+        if scope:
+            params["suite_backing_scope"] = scope[:40]
+        multi = payload.get("backing_track_multi_sections")
+        if isinstance(multi, list) and multi:
+            params["suite_backing_sections"] = "|".join(str(s) for s in multi[:8])[:240]
+        groove = str(payload.get("backing_groove_style") or payload.get("style") or "").strip()
+        if groove:
+            params["suite_groove"] = groove[:40]
+        mood = str(payload.get("mood") or "").strip()
+        if mood:
+            params["suite_mood"] = mood[:40]
+        intensity = str(payload.get("intensity") or "").strip()
+        if intensity:
+            params["suite_intensity"] = intensity[:40]
+    elif kind == "creative":
+        mode = str(payload.get("improv_entry_mode") or "").strip()
+        if mode:
+            params["suite_creative_mode"] = mode[:80]
+    elif kind == "multitrack":
+        mt = str(payload.get("multitrack_id") or "").strip()
+        if mt:
+            params["suite_multitrack_id"] = mt[:80]
+    elif kind == "tone":
+        params["suite_open_tone"] = "1"
+    return params
+
+
+def build_music_continue_url(
+    payload: dict[str, Any],
+    *,
+    base_url: str = "",
+) -> str:
+    """Deep link that restores a specific Music task (Continue card)."""
+    base = (base_url or app_base_url("music")).strip().rstrip("/")
+    if not base or not payload:
+        return ""
+    rk = legacy_resume_key_for_payload(payload)
+    page = str(payload.get("studio_page") or "practice").strip()
+    page = _normalize_music_page(page, rk)
+    params: dict[str, str] = {"suite_entry_mode": "continue"}
+    if rk:
+        params["suite_resume"] = rk
+    if page:
+        params["suite_page"] = page
+    params.update(_music_scalar_params_from_payload(payload))
+    encoded = encode_payload_b64(payload)
+    if encoded:
+        params["suite_resume_payload"] = encoded
+    ws = normalize_workspace_id(str(payload.get("workspace_id") or resolve_workspace_id()))
+    params["suite_workspace"] = ws
+    return append_suite_workspace_param(f"{base}/?{urlencode(params, quote_via=quote)}", workspace_id=ws)
+
+
+def build_music_workstream_url(
+    page: str,
+    *,
+    workspace_id: str = "",
+    base_url: str = "",
+) -> str:
+    """Soft Music entry for App Directory — current workspace, no stale song restore."""
+    base = (base_url or app_base_url("music")).strip().rstrip("/")
+    if not base:
+        return ""
+    page_norm = _normalize_music_page(str(page or "practice"), "")
+    ws = normalize_workspace_id(workspace_id or resolve_workspace_id())
+    params = {
+        "suite_entry_mode": "workstream",
+        "suite_page": page_norm,
+        "suite_workspace": ws,
+    }
+    return append_suite_workspace_param(f"{base}/?{urlencode(params, quote_via=quote)}", workspace_id=ws)

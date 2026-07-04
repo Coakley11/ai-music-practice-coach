@@ -70,7 +70,9 @@ def apply_suite_resume_launch(st: Any, app_key: str) -> bool:
     resume = _qp_get(st, "suite_resume")
     page = _qp_get(st, "suite_page")
     ami_insight = _qp_get(st, "suite_ami_insight")
-    if not resume and not page and not ami_insight:
+    entry_mode = _qp_get(st, "suite_entry_mode")
+    payload_raw = _qp_get(st, "suite_resume_payload")
+    if not resume and not page and not ami_insight and not payload_raw and entry_mode != "workstream":
         return False
 
     key = str(app_key or "").strip()
@@ -103,10 +105,41 @@ def _finalize_music_resume(
     song_picker_catalog: dict,
     song_library: dict | None,
 ) -> None:
+    entry_mode = _qp_get(st, "suite_entry_mode")
+    payload_raw = _qp_get(st, "suite_resume_payload")
+    if payload_raw:
+        try:
+            from music_resume_payload import apply_music_resume_payload, decode_payload_b64
+
+            payload = decode_payload_b64(payload_raw)
+            if payload:
+                apply_music_resume_payload(
+                    st.session_state,
+                    payload,
+                    song_picker_catalog=song_picker_catalog,
+                    song_library=song_library,
+                    st=st,
+                )
+                return
+        except Exception:
+            pass
+
+    if entry_mode == "workstream":
+        target = _qp_get(st, "suite_page") or "practice"
+        try:
+            from studio_nav_history import navigate_studio_page
+
+            navigate_studio_page(st.session_state, target)
+        except Exception:
+            st.session_state["studio_page"] = target
+        return
+
     pick = str(st.session_state.get("active_catalog_pick_key") or _qp_get(st, "suite_pick_key")).strip()
     resume = _qp_get(st, "suite_resume")
-    if not pick and resume.startswith(("song:", "backing:")):
+    if not pick and resume.startswith(("song:", "backing:", "music:")):
         pick = resume.split(":", 1)[-1].strip()
+        if resume.startswith("music:") and ":" in pick:
+            pick = pick.split(":", 1)[-1].strip()
     if pick:
         try:
             from songs.state import apply_pick_key
@@ -139,8 +172,71 @@ def _finalize_music_resume(
         except Exception:
             st.session_state["instrument"] = instrument
 
+    _apply_music_scalar_resume_params(st)
+
+
+def _apply_music_scalar_resume_params(st: Any) -> None:
+    bpm = _qp_get(st, "suite_bpm")
+    if bpm:
+        try:
+            val = int(bpm)
+            st.session_state["bpm"] = val
+            st.session_state["backing_track_bpm"] = val
+        except ValueError:
+            pass
+    scope = _qp_get(st, "suite_backing_scope")
+    if scope:
+        try:
+            from backing_track_state import normalize_backing_scope
+
+            st.session_state["backing_track_scope"] = normalize_backing_scope(scope)
+        except ImportError:
+            st.session_state["backing_track_scope"] = scope
+    sections_raw = _qp_get(st, "suite_backing_sections")
+    if sections_raw:
+        st.session_state["backing_track_multi_sections"] = [
+            s.strip() for s in sections_raw.split("|") if s.strip()
+        ]
+    groove = _qp_get(st, "suite_groove")
+    if groove:
+        st.session_state["backing_groove_style"] = groove
+    creative_mode = _qp_get(st, "suite_creative_mode")
+    if creative_mode:
+        st.session_state["improv_entry_mode"] = creative_mode
+    mt_id = _qp_get(st, "suite_multitrack_id")
+    if mt_id:
+        st.session_state["multitrack_id"] = mt_id
+        st.session_state["_last_catalog_multitrack_id"] = mt_id
+        st.session_state["_pending_catalog_multitrack_id"] = mt_id
+    if _qp_get(st, "suite_open_tone") in {"1", "true", "yes"}:
+        st.session_state["_suite_open_tone_panel"] = True
+
 
 def _apply_music(st: Any, resume: str, page: str) -> None:
+    entry_mode = _qp_get(st, "suite_entry_mode")
+    payload_raw = _qp_get(st, "suite_resume_payload")
+    if payload_raw:
+        try:
+            from music_resume_payload import apply_music_resume_payload, decode_payload_b64
+
+            payload = decode_payload_b64(payload_raw)
+            if payload:
+                apply_music_resume_payload(st.session_state, payload, st=st)
+                return
+        except Exception:
+            pass
+
+    if entry_mode == "workstream":
+        target = page.strip() or _qp_get(st, "suite_page") or "practice"
+        try:
+            from studio_nav_history import navigate_studio_page
+
+            navigate_studio_page(st.session_state, target)
+        except Exception:
+            pass
+        st.session_state["studio_page"] = target
+        return
+
     pick = _qp_get(st, "suite_pick_key")
     song = _qp_get(st, "suite_song")
     display_key = _qp_get(st, "suite_display_key")
@@ -153,6 +249,10 @@ def _apply_music(st: Any, resume: str, page: str) -> None:
         st.session_state["active_catalog_pick_key"] = resume.split(":", 1)[-1].strip()
     if resume.startswith("backing:") and not pick:
         st.session_state["active_catalog_pick_key"] = resume.split(":", 1)[-1].strip()
+    if resume.startswith("music:") and not pick:
+        parts = resume.split(":", 2)
+        if len(parts) >= 3:
+            st.session_state["active_catalog_pick_key"] = parts[2].strip()
     if display_key:
         try:
             from songs.key_state import PENDING_DISPLAY_KEY
@@ -170,9 +270,20 @@ def _apply_music(st: Any, resume: str, page: str) -> None:
     section = _qp_get(st, "suite_section_focus")
     if section:
         st.session_state["practice_focus_section"] = section
+    _apply_music_scalar_resume_params(st)
     target = page.strip()
     if not target:
-        target = "backing" if resume.startswith("backing:") else "practice"
+        resume_kind = _qp_get(st, "suite_resume_kind")
+        if resume_kind == "backing" or resume.startswith("backing:"):
+            target = "backing"
+        elif resume_kind in {"creative", "multitrack", "upload", "analysis"}:
+            target = {"creative": "creative", "multitrack": "multitrack", "upload": "analysis", "analysis": "analysis"}[
+                resume_kind
+            ]
+        elif resume_kind == "tone":
+            target = "practice"
+        else:
+            target = "backing" if resume.startswith("backing:") else "practice"
     if target.lower() in {"practice log", "practice studio"}:
         target = "practice"
     elif target.lower() == "backing track studio":
@@ -182,7 +293,8 @@ def _apply_music(st: Any, resume: str, page: str) -> None:
 
         navigate_studio_page(st.session_state, target)
     except Exception:
-        st.session_state["studio_page"] = target
+        pass
+    st.session_state["studio_page"] = target
 
 
 def _apply_baseball(st: Any, resume: str, page: str) -> None:

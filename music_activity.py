@@ -65,7 +65,31 @@ def _record(
     resume_key: str = "",
     resume_title: str = "",
     resume_subtitle: str = "",
+    resume_kind: str = "",
+    sync_continue_card: bool = False,
 ) -> None:
+    try:
+        from music_resume_payload import (
+            build_music_resume_payload,
+            continue_card_subtitle,
+            continue_card_title,
+            legacy_resume_key_for_payload,
+        )
+
+        payload = build_music_resume_payload(
+            st.session_state,
+            kind=resume_kind or None,
+            st=st,
+        )
+        card_title = resume_title or continue_card_title(payload)
+        card_subtitle = resume_subtitle or continue_card_subtitle(payload)
+        card_key = resume_key or legacy_resume_key_for_payload(payload)
+    except Exception:
+        payload = {}
+        card_title = resume_title
+        card_subtitle = resume_subtitle
+        card_key = resume_key
+
     try:
         from suite_activity_client import record_activity
 
@@ -76,18 +100,21 @@ def _record(
             "practice_focus_section",
             str(st.session_state.get("practice_focus_section") or ""),
         )
+        if payload:
+            merged.setdefault("resume_kind", payload.get("resume_kind"))
+            merged["resume_payload"] = payload
         page_resolved = page or _workflow_page_label(st)
-        if not resume_key:
-            resume_key = _workflow_resume_key(st, ctx)
-        if not resume_title and ctx.get("song"):
-            resume_title = f"Continue: {ctx['song']}"
-        if not resume_subtitle:
+        if not card_key:
+            card_key = _workflow_resume_key(st, ctx)
+        if not card_title and ctx.get("song"):
+            card_title = f"Continue: {ctx['song']}"
+        if not card_subtitle:
             parts = [
                 str(ctx.get("display_key") or "").strip(),
                 str(ctx.get("instrument") or "").strip(),
                 page_resolved,
             ]
-            resume_subtitle = " · ".join(p for p in parts if p) or str(ctx.get("artist") or "")
+            card_subtitle = " · ".join(p for p in parts if p) or str(ctx.get("artist") or "")
         local_state = None
         try:
             from songs.state import build_music_local_state
@@ -101,11 +128,18 @@ def _record(
             page=page or str(st.session_state.get("studio_page") or ""),
             metrics=merged,
             summary=summary,
-            resume_key=resume_key,
-            resume_title=resume_title,
-            resume_subtitle=resume_subtitle,
+            resume_key=card_key,
+            resume_title=card_title,
+            resume_subtitle=card_subtitle,
             local_state=local_state,
         )
+        if sync_continue_card and payload:
+            try:
+                from music_command_center import upsert_music_continue_card
+
+                upsert_music_continue_card(payload)
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -192,6 +226,7 @@ def log_studio_page_entered(st: Any, page_id: str) -> None:
         page=label,
         metrics={"studio_page": page},
         summary=f"Working on {song} — {label}",
+        sync_continue_card=True,
     )
 
 
@@ -242,9 +277,8 @@ def log_backing_track_started(st: Any, *, bpm: int, loops: int, scope: str = "")
         page="Backing Track Studio",
         metrics={"bpm": bpm, "loops": loops, "scope": scope},
         summary=f"Started backing track for {song}",
-        resume_key=f"backing:{ctx.get('pick_key') or song}",
-        resume_title=f"Continue: {song}",
-        resume_subtitle="Backing Track Studio",
+        resume_kind="backing",
+        sync_continue_card=True,
     )
 
 
@@ -257,7 +291,6 @@ def log_backing_track_completed(st: Any, *, bpm: int, loops: int, scope: str = "
         page="Backing Track Studio",
         metrics={"bpm": bpm, "loops": loops, "scope": scope},
         summary=f"Completed backing track session for {song}",
-        resume_key=f"backing:{ctx.get('pick_key') or song}",
-        resume_title=f"Continue: {song}",
-        resume_subtitle="Backing Track Studio",
+        resume_kind="backing",
+        sync_continue_card=True,
     )
