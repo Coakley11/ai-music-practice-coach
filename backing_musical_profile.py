@@ -92,20 +92,27 @@ def resolve_backing_musical_profile_from_context(
     level: str = "Intermediate",
     time_signature: str = "4/4",
     progression: list[str] | tuple[str, ...] | None = None,
+    session_mood: str = "",
+    session_intensity: str = "",
+    session_feel: str = "",
 ) -> BackingMusicalProfile:
     """Resolve from a BackingContext (creative/custom handoffs)."""
-    mood = ""
-    intensity = ""
-    feel = ""
+    mood = str(session_mood or "").strip()
+    intensity = str(session_intensity or "").strip()
+    feel = str(session_feel or "").strip()
     ctx_style = style
     if ctx is not None:
-        mood = str(getattr(ctx, "mood", "") or "").strip()
-        intensity = str(getattr(ctx, "groove_intensity", "") or "").strip()
+        ctx_mood = str(getattr(ctx, "mood", "") or "").strip()
+        ctx_intensity = str(getattr(ctx, "groove_intensity", "") or "").strip()
+        mood = ctx_mood or mood
+        intensity = ctx_intensity or intensity
         ctx_style = str(getattr(ctx, "style", "") or getattr(ctx, "groove", "") or style).strip()
         if not tempo:
             tempo = int(getattr(ctx, "bpm", 0) or tempo)
         if not time_signature:
             time_signature = str(getattr(ctx, "meter", "") or time_signature)
+        if not feel:
+            feel = str(getattr(ctx, "feel", "") or "").strip()
     return resolve_backing_musical_profile(
         style=ctx_style,
         mood=mood,
@@ -132,10 +139,12 @@ def resolve_backing_musical_profile_from_session(
     """Best-effort profile from session state + explicit style/tempo."""
     mood = str(session.get("improv_mood") or session.get("improv_jam_mood") or "").strip()
     intensity = str(session.get("improv_groove") or "").strip()
+    feel = str(session.get("improv_feel") or "").strip()
     meta = session.get("improv_style_meta")
     if isinstance(meta, dict):
         mood = str(meta.get("mood") or mood).strip()
         intensity = str(meta.get("groove_intensity") or meta.get("groove") or intensity).strip()
+        feel = str(meta.get("feel") or feel).strip()
     try:
         from backing_context import get_backing_context
 
@@ -149,9 +158,19 @@ def resolve_backing_musical_profile_from_session(
                 level=level,
                 time_signature=time_signature,
                 progression=progression,
+                session_mood=mood,
+                session_intensity=intensity,
+                session_feel=feel,
             )
     except ImportError:
         pass
+    if not feel:
+        try:
+            from backing_style_recipes import resolve_feel_for_style
+
+            feel = resolve_feel_for_style(style, "")
+        except ImportError:
+            pass
     return resolve_backing_musical_profile(
         style=style,
         mood=mood,
@@ -160,6 +179,7 @@ def resolve_backing_musical_profile_from_session(
         key=key,
         level=level,
         time_signature=time_signature,
+        feel=feel,
         progression=progression,
     )
 

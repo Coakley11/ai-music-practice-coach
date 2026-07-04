@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-06-29
+**Last updated:** 2026-07-03
 
 Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
@@ -8,6 +8,24 @@ Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadma
 ---
 
 ## Current Priorities
+
+### P0 — Style Identity & Creative Engine Phase 2
+
+**Plan:** [plans/2026-07-03-style-identity-phase-2.md](./plans/2026-07-03-style-identity-phase-2.md)
+
+**Goal:** Style, mood, feel, intensity, and groove produce unmistakably different musical results for catalog, custom, and Creative Lab backing.
+
+- [x] `style_pattern_for_recipe()` — canonical grids for Pop/Rock/Jazz/Bossa/Funk/Blues
+- [x] Style-first merge in `apply_profile_to_synthesis()` (recipe owns rhythm grid)
+- [x] `_feel_modifiers()` wired from `groove_feel` time_feel
+- [x] Session mood/intensity merge when BackingContext lacks them
+- [x] `style_locked` suppresses song-title pattern overrides
+- [x] Blues/rock voicing + bass identity
+- [x] Full `BackingMusicalProfile` passed to generation cache
+- [x] Phase 2 acceptance tests (`tests/test_backing_musical_profile.py`)
+- [ ] Live listening validation after deploy
+
+**Acceptance:** Same progression sounds clearly different across 6 styles blind; Funk Heavy/Energetic vs Light/Dreamy obvious; Jazz Relaxed vs Energetic distinct.
 
 ### P0 — Tone & Tuner History (Practice page)
 

@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any
 
 from backing_musical_profile import (
     resolve_backing_musical_profile,
     resolve_backing_musical_profile_from_context,
 )
-from backing_style_recipes import apply_profile_to_synthesis, style_recipe_id
-from backing_audio import _style_patterns, synthesize_chords_to_numpy
+from backing_style_recipes import (
+    apply_profile_to_synthesis,
+    style_pattern_for_recipe,
+    style_recipe_id,
+)
+from backing_audio import _song_backing_profile, _style_patterns, synthesize_chords_to_numpy
 
 
 class _FakeCtx:
@@ -154,6 +159,129 @@ class TestSynthesisProfileWiring(unittest.TestCase):
             musical_profile=light_prof,
         )
         self.assertFalse((heavy == light).all())
+
+
+class TestPhase2StyleIdentity(unittest.TestCase):
+    _PROGRESSION = [
+        {"chord": "Em7", "section": "Loop"},
+        {"chord": "Am7", "section": "Loop"},
+        {"chord": "D7", "section": "Loop"},
+        {"chord": "Gmaj7", "section": "Loop"},
+    ]
+    _STYLES = (
+        "Pop groove",
+        "Rock groove",
+        "Jazz swing",
+        "Bossa nova",
+        "Funk groove",
+        "Blues groove",
+    )
+
+    def test_same_progression_differs_across_styles(self) -> None:
+        outputs: dict[str, Any] = {}
+        for style in self._STYLES:
+            prof = resolve_backing_musical_profile(style=style, mood="Mellow", intensity="Medium")
+            audio, _ = synthesize_chords_to_numpy(
+                self._PROGRESSION,
+                bpm=100,
+                loops=1,
+                style=style,
+                musical_profile=prof,
+            )
+            outputs[style] = audio
+        for i, style_a in enumerate(self._STYLES):
+            for style_b in self._STYLES[i + 1 :]:
+                self.assertFalse(
+                    (outputs[style_a] == outputs[style_b]).all(),
+                    f"{style_a} should differ from {style_b}",
+                )
+
+    def test_style_recipe_patterns_are_distinct(self) -> None:
+        signatures = []
+        for style in self._STYLES:
+            recipe = style_recipe_id(style)
+            grid = style_pattern_for_recipe(recipe)
+            signatures.append(
+                (
+                    tuple(grid["bass_beats"]),
+                    tuple(grid["comp_beats"]),
+                    tuple(grid.get("hat_beats", [])),
+                    float(grid["comp_dur"]),
+                )
+            )
+        self.assertEqual(len(signatures), len(set(signatures)))
+
+    def test_funk_combo_profiles_differ(self) -> None:
+        heavy = resolve_backing_musical_profile(
+            style="Funk groove", mood="Energetic", intensity="Heavy"
+        )
+        light = resolve_backing_musical_profile(
+            style="Funk groove", mood="Dreamy", intensity="Light"
+        )
+        sp_heavy, pat_heavy = apply_profile_to_synthesis(
+            style="Funk groove",
+            song_profile={},
+            patterns=style_pattern_for_recipe("funk_groove"),
+            profile=heavy,
+        )
+        sp_light, pat_light = apply_profile_to_synthesis(
+            style="Funk groove",
+            song_profile={},
+            patterns=style_pattern_for_recipe("funk_groove"),
+            profile=light,
+        )
+        self.assertGreater(len(pat_heavy["kick_beats"]), len(pat_light["kick_beats"]))
+        self.assertLess(len(pat_light["comp_beats"]), len(pat_heavy["comp_beats"]))
+        self.assertGreater(float(sp_heavy["kick_push"]), float(sp_light["kick_push"]))
+
+    def test_jazz_relaxed_vs_energetic_differ(self) -> None:
+        relaxed = resolve_backing_musical_profile(
+            style="Jazz swing", mood="Relaxed", intensity="Light"
+        )
+        energetic = resolve_backing_musical_profile(
+            style="Jazz swing", mood="Energetic", intensity="Heavy"
+        )
+        sp_rel, pat_rel = apply_profile_to_synthesis(
+            style="Jazz swing",
+            song_profile={},
+            patterns=style_pattern_for_recipe("jazz_swing"),
+            profile=relaxed,
+        )
+        sp_en, pat_en = apply_profile_to_synthesis(
+            style="Jazz swing",
+            song_profile={},
+            patterns=style_pattern_for_recipe("jazz_swing"),
+            profile=energetic,
+        )
+        self.assertLess(len(pat_rel["comp_beats"]), len(pat_en["comp_beats"]))
+        self.assertLess(float(sp_rel["kick_push"]), float(sp_en["kick_push"]))
+
+    def test_song_override_blocked_when_style_locked(self) -> None:
+        """Explicit style branches win; song groove_based cannot replace Funk grid."""
+        song_profile = _song_backing_profile("Shape of You", "Ed Sheeran", "Funk groove")
+        self.assertTrue(song_profile.get("groove_based"))
+        song_profile["style_locked"] = True
+        funk_pat = _style_patterns("Funk groove", song_profile, time_signature="4/4")
+        # Pop groove now has its own explicit grid (not song override).
+        pop_explicit = _style_patterns(
+            "Pop groove",
+            {"groove_based": True, "style_locked": False},
+            time_signature="4/4",
+        )
+        self.assertEqual(funk_pat["comp_dur"], 0.20)
+        self.assertEqual(pop_explicit["comp_dur"], 0.36)
+        self.assertNotEqual(tuple(funk_pat["comp_beats"]), tuple(pop_explicit["comp_beats"]))
+
+    def test_session_mood_merges_when_ctx_lacks_mood(self) -> None:
+        ctx = _FakeCtx(style="Pop groove", groove_intensity="", mood="", bpm=100, meter="4/4")
+        prof = resolve_backing_musical_profile_from_context(
+            ctx,
+            style="Pop groove",
+            session_mood="Dreamy",
+            session_intensity="Light",
+        )
+        self.assertEqual(prof.mood, "Dreamy")
+        self.assertEqual(prof.intensity, "Light")
 
 
 if __name__ == "__main__":

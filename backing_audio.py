@@ -542,6 +542,8 @@ def _bass_motion_pitch(chord, next_chord, style, slot_index, slot_count):
         line = [root, root + 12, fifth, root, third, fifth]
     elif style == "Rock groove":
         line = [root, root, fifth, root + 12]
+    elif style == "Blues groove":
+        line = [root, fifth, root, root + 12, fifth]
     elif style == "Ballad":
         line = [root, fifth]
     else:
@@ -621,6 +623,21 @@ def _voicing_for_comp(chord, level, style, beat_index=0):
             voicing = [n + 12 for n in upper] + [ninth + 12, thirteenth + 12]
         else:
             voicing = [n + 12 for n in upper] + [ninth + 12]
+
+    elif "rock" in style_key and len(notes) >= 3:
+        # Power-chord style comping: root + fifth (+ octave on chorus beats).
+        voicing = [notes[0], notes[2]]
+        if level != "Beginner":
+            voicing.append(notes[0] + 12)
+        if beat_index % 2 and len(notes) >= 4:
+            voicing.append(notes[3])
+
+    elif "blues" in style_key and len(notes) >= 3:
+        # Dominant blues shells: root, 3rd, 7th for a classic blues comp.
+        seventh = notes[3] if len(notes) >= 4 else notes[2]
+        voicing = [notes[0], notes[1], seventh]
+        if level == "Advanced":
+            voicing.append(notes[1] + 12)
 
     elif "ballad" in style_key and len(notes) >= 3:
         # Wider open voicing so sustained chords have air.
@@ -861,10 +878,16 @@ def _add_breakdown_recovery_crash(
     _add_tone(audio, sr, bar_start, 0.15, 36, 0.085 * intensity, "bass")
 
 
-def _comp_wave_for_style(style: str, role: str) -> str:
+def _comp_wave_for_style(style: str, role: str, song_profile: dict | None = None) -> str:
+    profile = song_profile or {}
+    hinted = str(profile.get("comp_wave") or "").strip()
+    if hinted in ("organ", "sine"):
+        return hinted
     if style == "Ballad":
         return "organ"
     if style == "Rock groove" and role == "chorus":
+        return "sine"
+    if style == "Rock groove":
         return "sine"
     return "organ"
 
@@ -914,66 +937,10 @@ def _song_backing_profile(
         # 0 (default) the synth ends cold on the last downbeat,
         # which is the previous behaviour.
         "outro_fade_bars": 0,
+        # When True, song-title pattern overrides are suppressed so the
+        # user-selected style remains the primary musical identity.
+        "style_locked": False,
     }
-    if style == "Jazz swing":
-        profile["swing"] = 0.11
-        profile["ride_jazz"] = True
-        profile["humanize_ms"] = 0.018
-        # Jazz sits squarely in the pocket — drummers ride a hair
-        # behind to swing the eighth-notes, but kick + bass stay
-        # right on the beat. Net: tiny laid-back nudge.
-        profile["pocket_offset"] = 0.012
-    elif style == "Bossa nova":
-        profile["cross_stick"] = True
-        profile["latin_relaxed"] = True
-        profile["swing"] = 0.04
-        profile["hat_soft"] = 0.72
-        profile["humanize_ms"] = 0.015
-        profile["pocket_offset"] = 0.018
-    elif style == "Funk groove":
-        profile["ghost_snare"] = True
-        profile["comp_stab"] = True
-        profile["kick_push"] = 1.12
-        # Funk pushes the off-beats slightly ahead — that's the
-        # "in the pocket but on top" feel. Open hat on "and of 4"
-        # is the genre signature.
-        profile["pocket_offset"] = -0.015
-        profile["hat_open_ands"] = [3.5]
-    elif style == "Rock groove":
-        profile["kick_push"] = 1.2
-        profile["hat_soft"] = 0.9
-        profile["pocket_offset"] = -0.008
-    elif style == "Ballad":
-        profile["hat_soft"] = 0.55
-        profile["humanize_ms"] = 0.008
-        # Ballads breathe back of the beat — sets up the romantic feel.
-        profile["pocket_offset"] = 0.020
-    elif style == "Blues groove":
-        profile["swing"] = max(float(profile.get("swing", 0.0)), 0.08)
-        profile["ghost_snare"] = True
-        profile["humanize_ms"] = max(float(profile.get("humanize_ms", 0.012)), 0.016)
-        profile["pocket_offset"] = max(float(profile.get("pocket_offset", 0.0)), 0.010)
-        profile["hat_soft"] = min(float(profile.get("hat_soft", 1.0)), 0.82)
-    elif style in ("Jewish groove", "Klezmer groove"):
-        profile["swing"] = 0.06
-        profile["comp_stab"] = True
-        profile["humanize_ms"] = 0.014
-        profile["hat_soft"] = 0.85
-        profile["pocket_offset"] = 0.010
-    elif style == "Jewish hora":
-        profile["swing"] = 0.04
-        profile["comp_stab"] = True
-        profile["humanize_ms"] = 0.012
-        profile["hat_soft"] = 0.9
-        profile["pocket_offset"] = 0.006
-    elif style == "Jewish ballad":
-        profile["hat_soft"] = 0.5
-        profile["humanize_ms"] = 0.010
-        profile["pocket_offset"] = 0.018
-    elif style in ("Pop groove", "Pop"):
-        # Modern pop = tight, quantized, on the grid.
-        profile["pocket_offset"] = 0.0
-        profile["hat_open_ands"] = [3.5]
 
     if any(k in title for k in ("waiting on the world", "say", "john mayer")):
         profile["pop_soul"] = True
@@ -1365,6 +1332,15 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
         from backing_style_recipes import blues_groove_pattern
 
         return blues_groove_pattern(pulses=pulses)
+    if style in ("Pop groove", "Pop"):
+        return _fit({
+            "bass_beats": [0, 2],
+            "comp_beats": [0.5, 1.5, 2.5, 3.5],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 3.0],
+            "kick_beats": [0, 2.5],
+            "comp_dur": 0.36,
+        })
     if style == "Jewish ballad":
         return _fit({
             "bass_beats": [0, 2],
@@ -1383,7 +1359,7 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "kick_beats": [0, 2],
             "comp_dur": 0.32,
         })
-    if profile.get("pop_soul"):
+    if not profile.get("style_locked") and profile.get("pop_soul"):
         return _fit({
             "bass_beats": [0, 1.5, 2.5, 3.5],
             "comp_beats": [0, 1.5, 2.5, 3.5],
@@ -1392,7 +1368,7 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "kick_beats": [0, 2.5],
             "comp_dur": 0.40,
         })
-    if profile.get("riff_driven"):
+    if not profile.get("style_locked") and profile.get("riff_driven"):
         return _fit({
             "bass_beats": [0, 1, 2, 3],
             "comp_beats": [0, 2],
@@ -1402,7 +1378,7 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "ghost_snare": [1.5, 3.5],
             "comp_dur": 0.26,
         })
-    if profile.get("groove_based"):
+    if not profile.get("style_locked") and profile.get("groove_based"):
         return _fit({
             "bass_beats": [0, 0.75, 1.5, 2, 2.75, 3.5],
             "comp_beats": [0.5, 1.25, 2.5, 3.25],
@@ -1412,7 +1388,7 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "kick_beats": [0, 1.5, 2.75],
             "comp_dur": 0.18,
         })
-    if profile.get("acoustic_unplugged"):
+    if not profile.get("style_locked") and profile.get("acoustic_unplugged"):
         return _fit({
             "bass_beats": [0, 2],
             "comp_beats": [0, 2.5, 3.5],
@@ -1422,7 +1398,7 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "cross_stick": [1.0],
             "comp_dur": 0.78,
         })
-    if profile.get("vocal_ballad"):
+    if not profile.get("style_locked") and profile.get("vocal_ballad"):
         return _fit({
             "bass_beats": [0, 2],
             "comp_beats": [0, 3.5],
@@ -1431,7 +1407,7 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "kick_beats": [0, 2.5],
             "comp_dur": 0.62,
         })
-    if profile.get("broadway_gospel"):
+    if not profile.get("style_locked") and profile.get("broadway_gospel"):
         return _fit({
             "bass_beats": [0, 2],
             "comp_beats": [0, 1.5, 2.5, 3.5],
@@ -1441,7 +1417,7 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "cross_stick": [1.0],
             "comp_dur": 0.52,
         })
-    if profile.get("disney_cinematic"):
+    if not profile.get("style_locked") and profile.get("disney_cinematic"):
         return _fit({
             "bass_beats": [0, 2],
             "comp_beats": [0, 2.5],
@@ -1451,7 +1427,7 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "cross_stick": [2.0],
             "comp_dur": 0.88,
         })
-    if profile.get("piano_centric"):
+    if not profile.get("style_locked") and profile.get("piano_centric"):
         return _fit({
             "bass_beats": [0, 2],
             "comp_beats": [0, 1.5, 2.5, 3.5],
@@ -1461,7 +1437,7 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "cross_stick": [1.0],
             "comp_dur": 0.82,
         })
-    if profile.get("alt_rock_ballad"):
+    if not profile.get("style_locked") and profile.get("alt_rock_ballad"):
         return _fit({
             "bass_beats": [0, 2],
             "comp_beats": [0, 2, 2.5, 3.5],
@@ -1470,7 +1446,7 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
             "kick_beats": [0, 2.5],
             "comp_dur": 0.52,
         })
-    if profile.get("jewish_traditional"):
+    if not profile.get("style_locked") and profile.get("jewish_traditional"):
         return _fit({
             "bass_beats": [0, 2],
             "comp_beats": [0, 2.5, 3.5],
@@ -1512,20 +1488,26 @@ def synthesize_chords_to_numpy(
     cycle_len = max(1, len(event_cycle))
     chord_list = event_cycle * max(1, int(loops))
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
-    song_profile = _song_backing_profile(song_title, song_artist, style, bpm=bpm)
-    patterns = _style_patterns(style, song_profile, time_signature=timing.time_signature)
+    synth_style = style
+    if musical_profile is not None:
+        synth_style = musical_profile.canonical_style() or style
+    song_profile = _song_backing_profile(song_title, song_artist, synth_style, bpm=bpm)
+    if str(style or "").strip().lower() not in ("", "auto"):
+        song_profile["style_locked"] = True
+    patterns = _style_patterns(synth_style, song_profile, time_signature=timing.time_signature)
     if musical_profile is not None:
         try:
             from backing_style_recipes import apply_profile_to_synthesis
 
             song_profile, patterns = apply_profile_to_synthesis(
-                style=style,
+                style=synth_style,
                 song_profile=song_profile,
                 patterns=patterns,
                 profile=musical_profile,
             )
         except ImportError:
             pass
+    style = synth_style
     groove_seed = song_groove_seed(song_title, song_artist) if song_title else 0
     swing_amt = float(song_profile.get("swing", 0.0))
     humanize = float(song_profile.get("humanize_ms", 0.012))
@@ -1668,7 +1650,7 @@ def synthesize_chords_to_numpy(
         bass_hits = patterns["bass_beats"]
         if groove_seed % 3 == 0 and role == "verse":
             bass_hits = bass_hits[: max(2, len(bass_hits) - 1)]
-        comp_wave = _comp_wave_for_style(style, role)
+        comp_wave = _comp_wave_for_style(style, role, song_profile)
 
         def _pulse_chord(b_pos: float) -> str:
             if bar_is_hit:
@@ -1722,6 +1704,10 @@ def synthesize_chords_to_numpy(
                 bass_dur = pulse * (0.72 if style in ["Ballad", "Jazz swing"] else 0.50)
                 if style == "Funk groove":
                     bass_dur = pulse * 0.32
+                elif style == "Blues groove":
+                    bass_dur = pulse * 0.55
+                elif style == "Rock groove":
+                    bass_dur = pulse * 0.44
                 elif song_profile.get("pop_soul"):
                     bass_dur = pulse * 0.55
                 elif song_profile.get("riff_driven"):

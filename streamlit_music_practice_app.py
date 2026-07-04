@@ -3419,6 +3419,7 @@ def _cached_backing_wav(
     time_signature,
     mood: str = "",
     intensity: str = "",
+    musical_profile=None,
 ) -> tuple[bytes, bool]:
     cached = _BACKING_WAV_CACHE.get(signature)
     if cached is not None:
@@ -3434,6 +3435,7 @@ def _cached_backing_wav(
         time_signature=time_signature,
         mood=mood,
         intensity=intensity,
+        musical_profile=musical_profile,
     )
     _BACKING_WAV_CACHE[signature] = wav
     _evict_oldest(_BACKING_WAV_CACHE)
@@ -11821,6 +11823,7 @@ elif _studio_page == "backing":
         _backing_gen_intensity = _backing_gen_profile.intensity
         _backing_profile_sig = profile_cache_tuple(_backing_gen_profile)
     except Exception:
+        _backing_gen_profile = None
         _backing_gen_mood = ""
         _backing_gen_intensity = ""
         _backing_profile_sig = ()
@@ -12215,6 +12218,7 @@ elif _studio_page == "backing":
                         time_signature=backing_time_signature,
                         mood=_backing_gen_mood,
                         intensity=_backing_gen_intensity,
+                        musical_profile=_backing_gen_profile,
                     )
                     _gen_profile.synthesis_ms = profile_elapsed_ms(_syn_t0)
                     _gen_profile.cache_hit_wav = _wav_hit

@@ -11,6 +11,8 @@ __all__ = (
     "STYLE_RECIPE_IDS",
     "apply_profile_to_synthesis",
     "blues_groove_pattern",
+    "resolve_feel_for_style",
+    "style_pattern_for_recipe",
     "style_recipe_id",
 )
 
@@ -56,18 +58,26 @@ def style_recipe_id(style: str) -> str:
     return "pop_groove"
 
 
-def blues_groove_pattern(*, pulses: int = 4) -> dict[str, Any]:
-    """12/8 shuffle blues grid — swung triplet feel with walking quarters.
+def resolve_feel_for_style(style: str, feel: str = "") -> str:
+    """Best-effort feel string from explicit input or groove_feel profile."""
+    text = str(feel or "").strip()
+    if text:
+        return text
+    try:
+        from groove_feel import GROOVE_PROFILE
 
-    The hi-hat rides the long-short triplet subdivision (beat and the "trip-let"
-    third partial at ~0.67) so the shuffle is clearly audible, not a straight 4.
-    """
+        row = GROOVE_PROFILE.get(style, {})
+        return str(row.get("time_feel") or row.get("feel") or "").strip()
+    except ImportError:
+        return ""
+
+
+def blues_groove_pattern(*, pulses: int = 4) -> dict[str, Any]:
+    """12/8 shuffle blues grid — swung triplet feel with walking quarters."""
     if pulses == 4:
         return {
             "bass_beats": [0, 1, 2, 3],
-            # Comp on the backbeat off-triplet gives the lazy blues push.
             "comp_beats": [0, 0.67, 1.67, 2.67, 3.67],
-            # Shuffled hats: downbeat + last triplet partial of each beat.
             "hat_beats": [0, 0.67, 1, 1.67, 2, 2.67, 3, 3.67],
             "snare_beats": [1.0, 3.0],
             "kick_beats": [0, 2],
@@ -85,9 +95,103 @@ def blues_groove_pattern(*, pulses: int = 4) -> dict[str, Any]:
     }
 
 
+def style_pattern_for_recipe(recipe_id: str, *, pulses: int = 4) -> dict[str, Any]:
+    """Canonical rhythm grid for a style recipe — single source of truth."""
+    if recipe_id == "pop_groove":
+        return {
+            "bass_beats": [0, 2],
+            "comp_beats": [0.5, 1.5, 2.5, 3.5],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 3.0],
+            "kick_beats": [0, 2.5],
+            "comp_dur": 0.36,
+        }
+    if recipe_id == "rock_groove":
+        return {
+            "bass_beats": [0, 1, 2, 3],
+            "comp_beats": [0, 1, 2, 3],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 3.0],
+            "kick_beats": [0, 1.5, 2, 3.5],
+            "ghost_snare": [2.5],
+            "comp_dur": 0.48,
+        }
+    if recipe_id == "jazz_swing":
+        return {
+            "bass_beats": [0, 1, 2, 3],
+            "comp_beats": [1.0, 2.5, 3.5],
+            "hat_beats": [0, 1.5, 2, 3.5],
+            "snare_beats": [1.0, 2.0, 3.0],
+            "kick_beats": [0, 2],
+            "ghost_snare": [1.5, 2.5],
+            "comp_dur": 0.42,
+        }
+    if recipe_id == "bossa_nova":
+        return {
+            "bass_beats": [0, 1.5, 2, 3.5],
+            "comp_beats": [0.0, 1.25, 2.5, 3.25],
+            "hat_beats": [0, 0.5, 1.5, 2, 2.5, 3.5],
+            "snare_beats": [1.5, 3.5],
+            "kick_beats": [0, 2],
+            "cross_stick": [1.0, 3.0],
+            "comp_dur": 0.30,
+        }
+    if recipe_id == "funk_groove":
+        return {
+            "bass_beats": [0, 0.75, 1.5, 2, 2.75, 3.5],
+            "comp_beats": [0.5, 1.75, 2.5, 3.25],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 3.0],
+            "ghost_snare": [0.5, 1.5, 2.5, 3.5],
+            "kick_beats": [0, 1.5, 2.75],
+            "comp_dur": 0.20,
+        }
+    if recipe_id == "blues_groove":
+        return blues_groove_pattern(pulses=pulses if pulses in (4, 12) else 4)
+    if recipe_id == "ballad":
+        return {
+            "bass_beats": [0, 2],
+            "comp_beats": [0, 2.5, 3.5],
+            "hat_beats": [0, 1, 2, 3],
+            "snare_beats": [3.0],
+            "kick_beats": [0],
+            "comp_dur": 0.95,
+        }
+    if recipe_id in ("jewish_groove", "klezmer_groove"):
+        return {
+            "bass_beats": [0, 1.5, 2, 3],
+            "comp_beats": [0, 0.75, 1.5, 2.25, 3],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 2.5, 3.0],
+            "kick_beats": [0, 2],
+            "comp_dur": 0.32,
+        }
+    if recipe_id == "jewish_hora":
+        return {
+            "bass_beats": [0, 1.5, 2, 3],
+            "comp_beats": [0, 0.75, 1.5, 2.25, 3],
+            "hat_beats": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
+            "snare_beats": [1.0, 2.5, 3.0],
+            "kick_beats": [0, 2],
+            "comp_dur": 0.32,
+        }
+    if recipe_id == "jewish_ballad":
+        return {
+            "bass_beats": [0, 2],
+            "comp_beats": [0, 3.5],
+            "hat_beats": [0, 2],
+            "snare_beats": [3.0],
+            "kick_beats": [0],
+            "comp_dur": 1.05,
+        }
+    return style_pattern_for_recipe("pop_groove", pulses=pulses)
+
+
 def _base_style_flags(recipe_id: str) -> dict[str, Any]:
-    """Groove-character flags layered on top of song-specific overrides."""
+    """Groove-character flags for each style recipe."""
     flags: dict[str, Any] = {
+        "recipe_id": recipe_id,
+        "style_locked": True,
         "swing": 0.0,
         "humanize_ms": 0.012,
         "ghost_snare": False,
@@ -102,11 +206,52 @@ def _base_style_flags(recipe_id: str) -> dict[str, Any]:
         "bass_density": 1.0,
         "comp_density": 1.0,
         "drum_energy": 1.0,
+        "sustain_mul": 1.0,
+        "syncopation": 1.0,
+        "bass_mode": "generic",
+        "comp_mode": "block",
+        "comp_wave": "organ",
     }
-    if recipe_id == "jazz_swing":
-        flags.update(swing=0.11, ride_jazz=True, humanize_ms=0.018, pocket_offset=0.012)
+    if recipe_id == "pop_groove":
+        flags.update(
+            pocket_offset=0.0,
+            hat_open_ands=[3.5],
+            bass_mode="pop_support",
+            comp_mode="block",
+            comp_wave="organ",
+        )
+    elif recipe_id == "rock_groove":
+        flags.update(
+            kick_push=1.2,
+            hat_soft=0.9,
+            pocket_offset=-0.008,
+            drum_energy=1.15,
+            bass_mode="rock_root",
+            comp_mode="power",
+            comp_wave="sine",
+            comp_stab=True,
+        )
+    elif recipe_id == "jazz_swing":
+        flags.update(
+            swing=0.11,
+            ride_jazz=True,
+            humanize_ms=0.018,
+            pocket_offset=0.012,
+            bass_mode="walk",
+            comp_mode="shell",
+            comp_wave="organ",
+        )
     elif recipe_id == "bossa_nova":
-        flags.update(cross_stick=True, swing=0.04, hat_soft=0.72, humanize_ms=0.015, pocket_offset=0.018)
+        flags.update(
+            cross_stick=True,
+            swing=0.04,
+            hat_soft=0.72,
+            humanize_ms=0.015,
+            pocket_offset=0.018,
+            bass_mode="bossa_two_feel",
+            comp_mode="bossa",
+            comp_wave="organ",
+        )
     elif recipe_id == "funk_groove":
         flags.update(
             ghost_snare=True,
@@ -116,11 +261,11 @@ def _base_style_flags(recipe_id: str) -> dict[str, Any]:
             hat_open_ands=[2.5, 3.5],
             comp_density=1.15,
             drum_energy=1.1,
+            syncopation=1.35,
+            bass_mode="funk_sync",
+            comp_mode="stab",
+            comp_wave="organ",
         )
-    elif recipe_id == "rock_groove":
-        flags.update(kick_push=1.2, hat_soft=0.9, pocket_offset=-0.008, drum_energy=1.15)
-    elif recipe_id == "ballad":
-        flags.update(hat_soft=0.55, humanize_ms=0.008, pocket_offset=0.020, density_mul=0.72, bass_density=0.65)
     elif recipe_id == "blues_groove":
         flags.update(
             swing=0.22,
@@ -128,10 +273,45 @@ def _base_style_flags(recipe_id: str) -> dict[str, Any]:
             humanize_ms=0.02,
             pocket_offset=0.016,
             hat_soft=0.82,
+            bass_mode="blues_shuffle",
+            comp_mode="blues",
+            comp_wave="organ",
+        )
+    elif recipe_id == "ballad":
+        flags.update(
+            hat_soft=0.55,
+            humanize_ms=0.008,
+            pocket_offset=0.020,
+            density_mul=0.72,
+            bass_density=0.65,
+            sustain_mul=1.35,
+            bass_mode="whole_note",
+            comp_mode="open",
+            comp_wave="organ",
         )
     elif recipe_id == "jewish_groove":
         flags.update(swing=0.06, comp_stab=True, hat_soft=0.85, pocket_offset=0.010)
     return flags
+
+
+def _feel_modifiers(feel: str) -> dict[str, float]:
+    """Map time-feel / groove feel text to synthesis scalars."""
+    key = str(feel or "").strip().lower()
+    if not key:
+        return {}
+    if "swing" in key or "shuffle" in key or "triplet" in key or "12/8" in key:
+        return {"swing": 1.2, "humanize_ms": 1.12, "pocket_offset": 0.012}
+    if "16th" in key or "funk" in key or "syncop" in key:
+        return {"syncopation": 1.25, "pocket_offset": -0.012, "comp_density": 1.08}
+    if "half-time" in key or "half time" in key or "relaxed" in key or "laid" in key:
+        return {"density_mul": 0.85, "pocket_offset": 0.014, "sustain_mul": 1.2}
+    if "behind" in key or "late pocket" in key:
+        return {"pocket_offset": 0.018, "humanize_ms": 1.08}
+    if "straight" in key or "locked" in key or "grid" in key:
+        return {"swing": 0.75, "pocket_offset": -0.004, "humanize_ms": 0.92}
+    if "driving" in key or "hard backbeat" in key:
+        return {"kick_push": 1.1, "drum_energy": 1.12, "comp_density": 1.06}
+    return {}
 
 
 def _mood_modifiers(mood: str) -> dict[str, float]:
@@ -142,8 +322,6 @@ def _mood_modifiers(mood: str) -> dict[str, float]:
         "mellow": {"hat_soft": 0.92, "density_mul": 0.9, "drum_energy": 0.9},
         "dark": {"hat_soft": 0.78, "comp_density": 0.88, "bass_density": 1.08},
         "energetic": {"kick_push": 1.18, "drum_energy": 1.28, "comp_density": 1.2, "hat_soft": 1.08},
-        # Dreamy = more space and sustain: far fewer comp hits, long chords,
-        # soft hats, laid-back pocket.
         "dreamy": {
             "hat_soft": 0.55,
             "density_mul": 0.6,
@@ -154,7 +332,14 @@ def _mood_modifiers(mood: str) -> dict[str, float]:
             "sustain_mul": 1.6,
         },
         "gritty": {"kick_push": 1.12, "ghost_snare": 1.0, "drum_energy": 1.15, "hat_soft": 0.88},
-        "relaxed": {"hat_soft": 0.7, "density_mul": 0.72, "comp_density": 0.72, "drum_energy": 0.74, "pocket_offset": 0.018},
+        "relaxed": {
+            "hat_soft": 0.7,
+            "density_mul": 0.72,
+            "comp_density": 0.72,
+            "drum_energy": 0.74,
+            "pocket_offset": 0.018,
+            "sustain_mul": 1.15,
+        },
     }
     return table.get(key, table["mellow"])
 
@@ -163,7 +348,6 @@ def _intensity_modifiers(intensity: str) -> dict[str, float]:
     """Light / Medium / Heavy arrangement density."""
     key = str(intensity or "Medium").strip().lower()
     table: dict[str, dict[str, float]] = {
-        # Light = sparse comping, thin bass, soft quiet kit.
         "light": {
             "density_mul": 0.58,
             "bass_density": 0.6,
@@ -172,7 +356,6 @@ def _intensity_modifiers(intensity: str) -> dict[str, float]:
             "hat_soft": 0.8,
         },
         "medium": {"density_mul": 1.0, "bass_density": 1.0, "comp_density": 1.0, "drum_energy": 1.0},
-        # Heavy = louder driving kit, denser comp, harder kick.
         "heavy": {
             "density_mul": 1.3,
             "bass_density": 1.2,
@@ -211,7 +394,6 @@ def _thin_pattern(pattern: dict[str, Any], *, bass_mul: float, comp_mul: float) 
     if bass_mul < 0.75:
         out["ghost_snare"] = []
     if comp_mul < 0.72:
-        # Sparse comping: keep chords only on strong beats.
         strong = [b for b in out.get("comp_beats", []) if float(b) == int(float(b))]
         out["comp_beats"] = strong or out.get("comp_beats", [])[:1]
     if comp_mul < 0.7:
@@ -219,11 +401,16 @@ def _thin_pattern(pattern: dict[str, Any], *, bass_mul: float, comp_mul: float) 
     return out
 
 
-def _thicken_pattern(pattern: dict[str, Any], *, drum_energy: float, comp_mul: float) -> dict[str, Any]:
+def _thicken_pattern(
+    pattern: dict[str, Any],
+    *,
+    drum_energy: float,
+    comp_mul: float,
+    syncopation: float = 1.0,
+) -> dict[str, Any]:
     """Add drum + comp density for Heavy / Energetic / Funk profiles."""
     out = deepcopy(pattern)
     if drum_energy > 1.15:
-        # Heavier kit: driving eighth-note kick + backbeat ghost snares.
         kicks = list(out.get("kick_beats", []))
         for extra in (2.5, 1.5):
             if extra not in kicks:
@@ -231,14 +418,49 @@ def _thicken_pattern(pattern: dict[str, Any], *, drum_energy: float, comp_mul: f
         out["kick_beats"] = sorted(kicks)
         if not out.get("ghost_snare"):
             out["ghost_snare"] = [0.5, 1.5, 2.5, 3.5]
-    if comp_mul > 1.12:
-        # Denser comp: add syncopated off-beats between existing hits.
+    if comp_mul > 1.12 or syncopation > 1.15:
         comps = list(out.get("comp_beats", []))
         for off in (0.5, 1.5, 2.5, 3.5):
             if all(abs(off - c) > 0.2 for c in comps):
                 comps.append(off)
         out["comp_beats"] = sorted(comps)
     return out
+
+
+def _apply_recipe_flags(sp: dict[str, Any], recipe_flags: dict[str, Any]) -> None:
+    """Style-first merge: recipe asserts groove identity over song defaults."""
+    _assert_max = {"swing", "pocket_offset", "syncopation"}
+    _recipe_owned = {
+        "recipe_id",
+        "style_locked",
+        "bass_mode",
+        "comp_mode",
+        "comp_wave",
+        "hat_open_ands",
+    }
+    for key, val in recipe_flags.items():
+        if key in ("ghost_snare", "cross_stick", "ride_jazz", "comp_stab"):
+            if val:
+                sp[key] = True
+        elif key in _recipe_owned:
+            sp[key] = val
+        elif key in _assert_max and isinstance(val, (int, float)):
+            try:
+                cur = float(sp.get(key, 0.0))
+                sp[key] = val if abs(val) > abs(cur) else cur
+            except (TypeError, ValueError):
+                sp[key] = val
+        elif key not in sp or key in (
+            "kick_push",
+            "hat_soft",
+            "humanize_ms",
+            "density_mul",
+            "bass_density",
+            "comp_density",
+            "drum_energy",
+            "sustain_mul",
+        ):
+            sp[key] = val
 
 
 def apply_profile_to_synthesis(
@@ -251,57 +473,52 @@ def apply_profile_to_synthesis(
     """
     Merge canonical profile into synthesis flags and rhythm patterns.
 
-    Returns ``(song_profile, patterns)`` copies — safe to mutate.
+    Style recipe always owns the rhythm grid when a profile is present.
+    Song-specific flags may tint arrangement but cannot replace the grid.
     """
     if profile is None:
         return song_profile, patterns
 
     sp = deepcopy(song_profile)
-    pat = deepcopy(patterns)
-    recipe = style_recipe_id(profile.canonical_style() or style)
+    canonical = profile.canonical_style() or style
+    recipe = style_recipe_id(canonical)
     recipe_flags = _base_style_flags(recipe)
+    pulses = len(patterns.get("hat_beats", [])) or 4
+    pat = style_pattern_for_recipe(recipe, pulses=pulses)
 
-    # Groove-defining scalars the recipe should assert (take the stronger of
-    # the two) so e.g. a Blues shuffle isn't flattened by a mild song default.
-    _assert_max = {"swing", "pocket_offset"}
-    for key, val in recipe_flags.items():
-        if key in ("ghost_snare", "cross_stick", "ride_jazz", "comp_stab"):
-            if val:
-                sp[key] = True
-        elif key in _assert_max and isinstance(val, (int, float)):
-            try:
-                cur = float(sp.get(key, 0.0))
-                sp[key] = val if abs(val) > abs(cur) else cur
-            except (TypeError, ValueError):
-                sp[key] = val
-        elif key not in sp:
-            sp[key] = val
+    _apply_recipe_flags(sp, recipe_flags)
+    sp["style_locked"] = True
+    sp["recipe_id"] = recipe
 
-    if recipe == "blues_groove":
-        pulses = len(pat.get("hat_beats", [])) or 4
-        pat = blues_groove_pattern(pulses=pulses if pulses in (4, 12) else 4)
-
+    feel_text = resolve_feel_for_style(canonical, profile.feel)
     sp.setdefault("sustain_mul", 1.0)
+    sp.setdefault("syncopation", 1.0)
+    _apply_scalar_flags(sp, _feel_modifiers(feel_text))
     _apply_scalar_flags(sp, _mood_modifiers(profile.mood))
     _apply_scalar_flags(sp, _intensity_modifiers(profile.intensity))
 
-    # Fold drum_energy into knobs the synth loop actually reads so Heavy
-    # is audibly louder/harder and Light is quieter/softer.
     drum_energy = float(sp.get("drum_energy", 1.0))
+    syncopation = float(sp.get("syncopation", 1.0))
     sp["kick_push"] = float(sp.get("kick_push", 1.0)) * (0.55 + 0.45 * drum_energy)
     sp["hat_soft"] = float(sp.get("hat_soft", 1.0)) * (0.7 + 0.3 * drum_energy)
 
-    # Dreamy/Ballad sustain: lengthen comp chord duration for more space.
     sustain_mul = float(sp.get("sustain_mul", 1.0))
     if sustain_mul != 1.0:
         pat["comp_dur"] = float(pat.get("comp_dur", 0.45)) * sustain_mul
+    if recipe == "funk_groove" or syncopation > 1.2:
+        pat["comp_dur"] = min(float(pat.get("comp_dur", 0.45)), 0.24)
 
     density = float(sp.get("density_mul", 1.0))
     bass_mul = float(sp.get("bass_density", 1.0)) * density
     comp_mul = float(sp.get("comp_density", 1.0)) * density
     if bass_mul < 0.98 or comp_mul < 0.98:
         pat = _thin_pattern(pat, bass_mul=bass_mul, comp_mul=comp_mul)
-    if drum_energy > 1.15 or comp_mul > 1.12:
-        pat = _thicken_pattern(pat, drum_energy=drum_energy, comp_mul=comp_mul)
+    if drum_energy > 1.15 or comp_mul > 1.12 or syncopation > 1.15:
+        pat = _thicken_pattern(
+            pat,
+            drum_energy=drum_energy,
+            comp_mul=comp_mul,
+            syncopation=syncopation,
+        )
 
     return sp, pat
