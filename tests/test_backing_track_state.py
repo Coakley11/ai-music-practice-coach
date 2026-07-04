@@ -370,23 +370,30 @@ class TestBackingTrackState(unittest.TestCase):
         self.assertEqual(session["backing_track_state"]["backing_track_loops"], 2)
         self.assertEqual(session["backing_track_state"]["backing_track_bpm"], 100)
 
-    def test_backing_prepare_durable_before_step1_widgets(self) -> None:
+    def test_backing_prepare_durable_before_playback_widgets(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         src = (repo_root / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
         backing_block = src.split('elif _studio_page == "backing":', 1)[1]
         prepare_idx = backing_block.find("prepare_backing_durable_widgets")
-        step1_idx = backing_block.find("_render_backing_playback_setup_panel")
+        playback_idx = backing_block.find("_render_backing_step2_playback_action")
         self.assertGreater(prepare_idx, -1, "prepare_backing_durable_widgets missing on backing page")
-        self.assertGreater(step1_idx, prepare_idx, "prepare must run before Step 1 widgets")
+        self.assertGreater(playback_idx, prepare_idx, "prepare must run before playback widgets")
+        self.assertNotIn("_render_backing_playback_setup_panel", backing_block)
 
-    def test_backing_step2_does_not_prepare_durable_widgets(self) -> None:
+    def test_backing_playback_panel_unified(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         src = (repo_root / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
         step2_body = src.split("def _render_backing_step2_playback_action", 1)[1].split("\ndef ", 1)[0]
+        scope_body = src.split("def _render_backing_scope_controls", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("_render_backing_scope_controls", step2_body)
+        self.assertIn("Playback scope", scope_body)
+        self.assertNotIn("Quick section", step2_body)
+        self.assertNotIn("Step 1", step2_body)
+        self.assertNotIn("Step 2", step2_body)
         self.assertNotIn(
             "prepare_backing_durable_widgets",
             step2_body,
-            "Step 2 must not write widget keys after Step 1 widgets render",
+            "playback panel must not write widget keys after prepare",
         )
         self.assertNotIn("prepare_backing_scope_for_widget", step2_body)
 

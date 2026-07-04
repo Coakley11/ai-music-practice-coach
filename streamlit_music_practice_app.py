@@ -6920,19 +6920,24 @@ def _prepare_backing_from_practice(focus: str | None) -> None:
     try:
         from backing_source_navigation import (
             BACKING_INTENT_FROM_PRACTICE,
+            queue_backing_scope_from_practice_focus,
             set_backing_open_intent,
         )
 
         set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_PRACTICE)
+        queue_backing_scope_from_practice_focus(
+            st.session_state,
+            section_key=str(focus or "").strip() or None,
+            loops=4,
+        )
     except ImportError:
-        pass
-    if practice_is_full_song(focus):
-        st.session_state[PENDING_BACKING_SCOPE] = "Full song"
-        st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
-    else:
-        st.session_state[PENDING_BACKING_SCOPE] = "Single section"
-        st.session_state[PENDING_BACKING_SINGLE_SECTION] = focus
-        st.session_state[PENDING_BACKING_LOOPS] = 4
+        if practice_is_full_song(focus):
+            st.session_state[PENDING_BACKING_SCOPE] = "Full song"
+            st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
+        else:
+            st.session_state[PENDING_BACKING_SCOPE] = "Single section"
+            st.session_state[PENDING_BACKING_SINGLE_SECTION] = focus
+            st.session_state[PENDING_BACKING_LOOPS] = 4
     st.session_state[BACKING_AUTOPLAY] = True
 
 
@@ -8630,8 +8635,10 @@ def _render_backing_scope_controls(
     *,
     from_practice_handoff: bool,
     show_panel_header: bool = True,
+    include_loops: bool = True,
+    scope_options: list[str] | None = None,
 ) -> None:
-    """Scope and loop controls inside the Playback Setup card (keyed container)."""
+    """Scope, section, and loop controls for the unified playback panel."""
     with st.container(key="backing_scope_panel", border=False):
         if show_panel_header:
             _loop_summary = backing_scope_loop_summary_text(
@@ -8645,10 +8652,17 @@ def _render_backing_scope_controls(
                 summary_html=backing_scope_loop_summary_badge_html(_loop_summary),
             )
 
+        _scope_choices = list(scope_options or ["Full song", "Single section"])
+        _cur_scope = str(st.session_state.get("backing_track_scope", "Full song") or "Full song")
+        if _cur_scope not in _scope_choices:
+            _cur_scope = "Single section" if _cur_scope == "Multiple selected sections" else "Full song"
+            st.session_state["backing_track_scope"] = _cur_scope
+
         st.markdown('<div class="ui-backing-scope-segment">', unsafe_allow_html=True)
+        render_backing_field_label(st, "Playback scope", "Full song or one section at a time.")
         playback_scope = st.radio(
-            "Playback range",
-            ["Full song", "Single section", "Multiple selected sections"],
+            "Playback scope",
+            _scope_choices,
             horizontal=True,
             key="backing_track_scope",
             label_visibility="collapsed",
@@ -8693,27 +8707,28 @@ def _render_backing_scope_controls(
             )
             st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown('<div class="ui-backing-scope-loops-row">', unsafe_allow_html=True)
-        render_backing_field_label(st, "Repeats", "How many times to loop the chosen range.")
-        try:
-            from backing_track_state import BACKING_LOOPS_DEFAULT, normalize_backing_loops
+        if include_loops:
+            st.markdown('<div class="ui-backing-scope-loops-row">', unsafe_allow_html=True)
+            render_backing_field_label(st, "Loop count / repeats", "How many times to loop the chosen range.")
+            try:
+                from backing_track_state import BACKING_LOOPS_DEFAULT, normalize_backing_loops
 
-            _loops_slider_val = normalize_backing_loops(
-                st.session_state.get("backing_track_loops", BACKING_LOOPS_DEFAULT)
+                _loops_slider_val = normalize_backing_loops(
+                    st.session_state.get("backing_track_loops", BACKING_LOOPS_DEFAULT)
+                )
+            except ImportError:
+                _loops_slider_val = int(st.session_state.get("backing_track_loops", 2))
+            st.slider(
+                "Number of repeats",
+                1,
+                10,
+                _loops_slider_val,
+                1,
+                key="backing_track_loops",
+                label_visibility="collapsed",
+                on_change=_on_backing_filter_change,
             )
-        except ImportError:
-            _loops_slider_val = int(st.session_state.get("backing_track_loops", 2))
-        st.slider(
-            "Number of repeats",
-            1,
-            10,
-            _loops_slider_val,
-            1,
-            key="backing_track_loops",
-            label_visibility="collapsed",
-            on_change=_on_backing_filter_change,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
         if from_practice_handoff:
             _handoff_sec = st.session_state.get("backing_track_single_section", "")
@@ -8722,46 +8737,6 @@ def _render_backing_scope_controls(
                 f"defaults to <strong>{html.escape(_handoff_sec or 'the selected section')}</strong>.</div>",
                 unsafe_allow_html=True,
             )
-
-
-def _render_backing_playback_setup_panel(
-    *,
-    section_names: list[str],
-    from_practice_handoff: bool,
-    backing_ready: bool,
-) -> None:
-    """Step 1 — playback range and loops only."""
-    _loop_summary = backing_scope_loop_summary_text(
-        st.session_state.get("backing_track_scope", "Full song"),
-        single_section=str(st.session_state.get("backing_track_single_section", "")),
-        multi_sections=list(st.session_state.get("backing_track_multi_sections") or []),
-        loops=int(st.session_state.get("backing_track_loops", 2)),
-    )
-    _badge = (
-        '<span class="ui-backing-panel-badge ready">● Ready</span>'
-        if backing_ready
-        else '<span class="ui-backing-panel-badge">○ Not generated</span>'
-    )
-
-    with st.container(key="backing_step1_range", border=False):
-        render_backing_panel_shell_open(st, "scope")
-        render_backing_panel_header(
-            st,
-            kicker="Step 1",
-            title="Playback range & loops",
-            subtitle="Choose what to practice and how many times to loop.",
-            badge_html=_badge
-            + backing_scope_loop_summary_badge_html(_loop_summary),
-        )
-        _render_backing_scope_controls(
-            section_names,
-            from_practice_handoff=from_practice_handoff,
-            show_panel_header=False,
-        )
-        render_backing_panel_shell_close(st)
-
-    st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = "Strong"
-    st.session_state.setdefault(BACKING_PRESERVE_EXACT_KEY, False)
 
 
 def _backing_transport_status_message(
@@ -8813,11 +8788,12 @@ def _render_backing_step2_playback_action(
     song_title: str,
     signature_for_bpm,
     song_just_reset: bool,
+    from_practice_handoff: bool = False,
     lock_style_meter: bool = False,
     locked_style: str = "",
     locked_meter: str = "",
 ) -> tuple[int, bool]:
-    """Step 2 — tempo, quick controls, play backing (generate-on-demand)."""
+    """Unified tempo, playback scope, loops, and play controls."""
     song_id = str(song_id or st.session_state.get("_active_bpm_sync_id") or "").strip()
     if not song_id:
         song_id = resolve_active_bpm_sync_id(
@@ -8844,7 +8820,6 @@ def _render_backing_step2_playback_action(
             default_time_signature=default_meter,
         )
     _prime_backing_quick_section_from_scope(st.session_state, section_names)
-    quick_opts = ["Full song"] + list(section_names)
     slider_key = backing_bpm_slider_widget_key(song_id)
     try:
         from backing_track_state import coerce_backing_groove_for_widget, prepare_backing_bpm_for_widget
@@ -8860,93 +8835,53 @@ def _render_backing_step2_playback_action(
         song_just_reset=song_just_reset,
     )
 
-    with st.container(key="backing_step2_action", border=False):
+    with st.container(key="backing_playback_panel", border=False):
         render_backing_panel_shell_open(st, "transport")
+        _loop_summary = backing_scope_loop_summary_text(
+            st.session_state.get("backing_track_scope", "Full song"),
+            single_section=str(st.session_state.get("backing_track_single_section", "")),
+            multi_sections=list(st.session_state.get("backing_track_multi_sections") or []),
+            loops=int(st.session_state.get("backing_track_loops", 2)),
+        )
         render_backing_panel_header(
             st,
-            kicker="Step 2",
+            kicker="",
             title="Tempo & playback",
-            subtitle="Set tempo, then play — audio generates automatically when needed.",
-            badge_html="",
+            subtitle="Set tempo, choose what to play, then press Play.",
+            badge_html=backing_scope_loop_summary_badge_html(_loop_summary),
             compact=True,
         )
-        st.markdown(
-            '<div class="ui-backing-quick-controls ui-backing-action-controls">',
-            unsafe_allow_html=True,
+        st.markdown('<div class="ui-backing-quick-controls ui-backing-action-controls">', unsafe_allow_html=True)
+        st.markdown('<span class="ui-backing-inline-label">Tempo (BPM)</span>', unsafe_allow_html=True)
+
+        def _on_bpm_slider_change() -> None:
+            sync_backing_bpm_from_slider(
+                st,
+                slider_bpm=int(st.session_state.get(slider_key, widget_bpm)),
+            )
+            _on_backing_filter_change()
+
+        bpm = st.slider(
+            "Quick BPM",
+            BACKING_BPM_MIN,
+            BACKING_BPM_MAX,
+            widget_bpm,
+            5,
+            key=slider_key,
+            label_visibility="collapsed",
+            help="Your tempo is kept until you change songs (20–180 BPM).",
+            on_change=_on_bpm_slider_change,
         )
-        _tc1, _tc2, _tc3 = st.columns(3)
-        with _tc1:
-            st.markdown('<span class="ui-backing-inline-label">Tempo (BPM)</span>', unsafe_allow_html=True)
-
-            def _on_bpm_slider_change() -> None:
-                sync_backing_bpm_from_slider(
-                    st,
-                    slider_bpm=int(st.session_state.get(slider_key, widget_bpm)),
-                )
-                _on_backing_filter_change()
-
-            bpm = st.slider(
-                "Quick BPM",
-                BACKING_BPM_MIN,
-                BACKING_BPM_MAX,
-                widget_bpm,
-                5,
-                key=slider_key,
-                label_visibility="collapsed",
-                help="Your tempo is kept until you change songs (20–180 BPM).",
-                on_change=_on_bpm_slider_change,
-            )
-            bpm = sync_backing_bpm_from_slider(st, slider_bpm=int(bpm))
-        with _tc2:
-            st.markdown('<span class="ui-backing-inline-label">Section focus</span>', unsafe_allow_html=True)
-            cur_quick = st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song")
-            if cur_quick not in quick_opts:
-                cur_quick = "Full song"
-            idx = quick_opts.index(cur_quick)
-
-            def _on_quick_section() -> None:
-                request_backing_quick_section_change(
-                    st.session_state.get(BACKING_QUICK_SECTION_KEY, "Full song"),
-                    section_names,
-                )
-                st.rerun()
-
-            st.selectbox(
-                "Quick section",
-                quick_opts,
-                index=idx,
-                key=BACKING_QUICK_SECTION_KEY,
-                on_change=_on_quick_section,
-                label_visibility="collapsed",
-                help="Synced with Step 1 playback range.",
-            )
-        with _tc3:
-            st.markdown('<span class="ui-backing-inline-label">Repeats</span>', unsafe_allow_html=True)
-            _loops_val = int(st.session_state.get("backing_track_loops", 2))
-            _lq1, _lq2, _lq3 = st.columns([1, 1.4, 1])
-            with _lq1:
-                st.button(
-                    "−",
-                    key="backing_loops_dec",
-                    use_container_width=True,
-                    on_click=request_backing_loops_adjust,
-                    args=(-1,),
-                )
-            with _lq2:
-                st.markdown(
-                    f'<p style="margin:0.35rem 0 0;text-align:center;font-weight:800;color:#0f172a;">'
-                    f"{_loops_val}×</p>",
-                    unsafe_allow_html=True,
-                )
-            with _lq3:
-                st.button(
-                    "+",
-                    key="backing_loops_inc",
-                    use_container_width=True,
-                    on_click=request_backing_loops_adjust,
-                    args=(1,),
-                )
+        bpm = sync_backing_bpm_from_slider(st, slider_bpm=int(bpm))
         st.markdown("</div>", unsafe_allow_html=True)
+
+        _render_backing_scope_controls(
+            section_names,
+            from_practice_handoff=from_practice_handoff,
+            show_panel_header=False,
+            include_loops=True,
+            scope_options=["Full song", "Single section"],
+        )
 
         with st.expander("Advanced playback settings", expanded=False):
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
@@ -8989,6 +8924,29 @@ def _render_backing_step2_playback_action(
                 )
             st.markdown("</div>", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
+            if section_names:
+                _use_multi = st.checkbox(
+                    "Custom section sequence",
+                    value=st.session_state.get("backing_track_scope") == "Multiple selected sections",
+                    key="backing_use_multi_sections",
+                    help="Play several sections in song order (advanced).",
+                )
+                if _use_multi:
+                    st.session_state["backing_track_scope"] = "Multiple selected sections"
+                    if "backing_track_multi_sections" not in st.session_state:
+                        st.session_state["backing_track_multi_sections"] = [
+                            name
+                            for name in section_names
+                            if any(token in name.lower() for token in ["verse", "chorus"])
+                        ] or section_names[:2]
+                    st.multiselect(
+                        "Sections to play (keeps original song order)",
+                        section_names,
+                        key="backing_track_multi_sections",
+                        on_change=_on_backing_filter_change,
+                    )
+                elif st.session_state.get("backing_track_scope") == "Multiple selected sections":
+                    st.session_state["backing_track_scope"] = "Full song"
             st.checkbox(
                 "Preserve exact chart timing (disable harmonic rhythm intelligence)",
                 key=BACKING_PRESERVE_EXACT_KEY,
@@ -9041,6 +8999,9 @@ def _render_backing_step2_playback_action(
                 use_container_width=True,
             )
         render_backing_panel_shell_close(st)
+
+    st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = "Strong"
+    st.session_state.setdefault(BACKING_PRESERVE_EXACT_KEY, False)
 
     return int(bpm), _play_clicked
 
@@ -11438,7 +11399,7 @@ elif _studio_page == "backing":
     default_groove_style = str(_backing_canon["applied_groove"])
     _backing_song_just_reset = bool(_backing_canon["did_reset"])
 
-    # Seed durable widget keys from canonical before Step 1 widgets render.
+    # Seed durable widget keys from canonical before playback widgets render.
     # Practice handoff (_apply_pending_backing_scope) runs later and may override scope/loops.
     try:
         from backing_track_state import prepare_backing_durable_widgets
@@ -11937,6 +11898,7 @@ elif _studio_page == "backing":
         song_title=str(song),
         signature_for_bpm=_backing_signature_for_bpm,
         song_just_reset=_backing_song_just_reset,
+        from_practice_handoff=_from_practice_section,
         lock_style_meter=_lock_creative_style_meter,
         locked_style=_locked_creative_style,
         locked_meter=_locked_creative_meter,
@@ -11974,13 +11936,6 @@ elif _studio_page == "backing":
             st,
             record_for_pick_key=_record_for_pick_key,
             all_records=ALL_SONG_RECORDS,
-        )
-
-    with st.expander("Playback range & loops", expanded=False):
-        _render_backing_playback_setup_panel(
-            section_names=_sec_names,
-            from_practice_handoff=_from_practice_section,
-            backing_ready=_backing_audio_ready_pre,
         )
 
     # Voice mode: when the active karaoke song has no lyric cues yet,

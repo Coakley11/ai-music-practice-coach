@@ -16,6 +16,7 @@ from backing_source_navigation import (
     hydrate_picker_source_for_page,
     hydrate_practice_source_for_page,
     open_backing_for_practice_source,
+    queue_backing_scope_from_practice_focus,
     set_backing_open_intent,
     snapshot_practice_source_display_key,
 )
@@ -45,6 +46,51 @@ class TestBackingSourceNavigation(unittest.TestCase):
         assert ctx is not None
         self.assertEqual(ctx.source, "regular_song")
         self.assertEqual(consume_backing_open_intent(session), BACKING_INTENT_FROM_PRACTICE)
+
+    def test_queue_backing_scope_from_practice_verse_focus(self) -> None:
+        from custom_progression_lab import PENDING_BACKING_SCOPE, PENDING_BACKING_SINGLE_SECTION
+
+        session = {
+            "practice_focus_section": "Verse",
+            "selected_song": {
+                "sections": {
+                    "Verse 1": ["Em", "Am"],
+                    "Chorus": ["G", "D"],
+                }
+            },
+        }
+        queue_backing_scope_from_practice_focus(session)
+        self.assertEqual(session.get(PENDING_BACKING_SCOPE), "Single section")
+        self.assertEqual(session.get(PENDING_BACKING_SINGLE_SECTION), "Verse 1")
+
+    def test_queue_backing_scope_from_practice_full_song(self) -> None:
+        from custom_progression_lab import PENDING_BACKING_SCOPE, PENDING_BACKING_SINGLE_SECTION
+
+        session = {"practice_focus_section": "Full Song"}
+        queue_backing_scope_from_practice_focus(session)
+        self.assertEqual(session.get(PENDING_BACKING_SCOPE), "Full song")
+        self.assertNotIn(PENDING_BACKING_SINGLE_SECTION, session)
+
+    def test_hydrate_from_practice_queues_section_scope(self) -> None:
+        from custom_progression_lab import PENDING_BACKING_SCOPE, PENDING_BACKING_SINGLE_SECTION
+
+        session = {
+            "practice_focus_section": "Chorus",
+            "selected_song": {
+                "title": "Test",
+                "sections": {
+                    "Verse 1": ["Em"],
+                    "Chorus": ["G", "D"],
+                },
+            },
+            "active_catalog_pick_key": "Pop::Test",
+            "display_key": "G",
+            "concert_key": "G",
+        }
+        set_backing_open_intent(session, BACKING_INTENT_FROM_PRACTICE)
+        hydrate_backing_source_for_page(session, st_like=SimpleNamespace(session_state=session))
+        self.assertEqual(session.get(PENDING_BACKING_SCOPE), "Single section")
+        self.assertEqual(session.get(PENDING_BACKING_SINGLE_SECTION), "Chorus")
 
     def test_restore_last_reapplies_creative_backing(self) -> None:
         session = {

@@ -74,6 +74,72 @@ def _key_transition_resets_to_original(intent: str) -> bool:
     }
 
 
+def _backing_sections_for_practice_handoff(session: dict[str, Any]) -> dict[str, list[str]]:
+    """Best-effort section map for Practice → Backing scope handoff."""
+    try:
+        from backing_context import get_backing_context, sections_dict_from_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None:
+            sections = sections_dict_from_backing_context(session, ctx)
+            if sections:
+                return sections
+    except ImportError:
+        pass
+    for key in ("active_song_data", "selected_song"):
+        raw = session.get(key)
+        if isinstance(raw, dict):
+            sections = raw.get("sections")
+            if isinstance(sections, dict) and sections:
+                return sections
+    return {}
+
+
+def queue_backing_scope_from_practice_focus(
+    session: dict[str, Any],
+    *,
+    section_key: str | None = None,
+    loops: int | None = None,
+    force: bool = False,
+) -> None:
+    """Queue backing playback scope from Practice section focus (widget-safe)."""
+    try:
+        from custom_progression_lab import (
+            PENDING_BACKING_LOOPS,
+            PENDING_BACKING_SCOPE,
+            PENDING_BACKING_SINGLE_SECTION,
+        )
+    except ImportError:
+        return
+    if session.get(PENDING_BACKING_SCOPE) and not force:
+        return
+    if section_key:
+        sec = str(section_key).strip()
+        if sec:
+            session[PENDING_BACKING_SCOPE] = "Single section"
+            session[PENDING_BACKING_SINGLE_SECTION] = sec
+            if loops is not None:
+                session[PENDING_BACKING_LOOPS] = int(loops)
+            return
+    focus = str(session.get("practice_focus_section") or "").strip()
+    try:
+        from practice_studio import practice_active_section_name, practice_is_full_song
+    except ImportError:
+        return
+    if practice_is_full_song(focus):
+        session[PENDING_BACKING_SCOPE] = "Full song"
+        session.pop(PENDING_BACKING_SINGLE_SECTION, None)
+        return
+    sections = _backing_sections_for_practice_handoff(session)
+    resolved = practice_active_section_name(focus, sections) if sections else focus
+    if not resolved:
+        return
+    session[PENDING_BACKING_SCOPE] = "Single section"
+    session[PENDING_BACKING_SINGLE_SECTION] = resolved
+    if loops is not None:
+        session[PENDING_BACKING_LOOPS] = int(loops)
+
+
 def snapshot_practice_source_display_key(session: dict[str, Any]) -> None:
     """Remember the active practice-song concert key before Creative backing overrides it."""
     key = str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
@@ -371,8 +437,29 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             pass
         return
     if intent == BACKING_INTENT_FROM_PRACTICE or intent == BACKING_INTENT_FROM_SONG_TO_BACKING:
+        try:
+            from custom_progression_lab import (
+                PENDING_BACKING_LOOPS,
+                PENDING_BACKING_SCOPE,
+                PENDING_BACKING_SINGLE_SECTION,
+            )
+        except ImportError:
+            PENDING_BACKING_LOOPS = "_pending_backing_loops"  # type: ignore[misc,assignment]
+            PENDING_BACKING_SCOPE = "_pending_backing_scope"  # type: ignore[misc,assignment]
+            PENDING_BACKING_SINGLE_SECTION = "_pending_backing_single_section"  # type: ignore[misc,assignment]
+        _saved_scope = session.get(PENDING_BACKING_SCOPE)
+        _saved_section = session.get(PENDING_BACKING_SINGLE_SECTION)
+        _saved_loops = session.get(PENDING_BACKING_LOOPS)
         set_key_transition_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
         open_backing_for_practice_source(session, st_like=st_like)
+        if _saved_scope:
+            session[PENDING_BACKING_SCOPE] = _saved_scope
+            if _saved_section:
+                session[PENDING_BACKING_SINGLE_SECTION] = _saved_section
+            if _saved_loops is not None:
+                session[PENDING_BACKING_LOOPS] = int(_saved_loops)
+        else:
+            queue_backing_scope_from_practice_focus(session, force=True)
         consume_key_transition_intent(session)
         return
     try:
@@ -1311,6 +1398,7 @@ __all__ = [
     "hydrate_practice_source_for_page",
     "merge_live_practice_into_creative_session",
     "open_backing_for_practice_source",
+    "queue_backing_scope_from_practice_focus",
     "prepare_return_to_backing_source",
     "rehydrate_creative_from_backing_context",
     "resolve_entry_jam_entry_mode",
