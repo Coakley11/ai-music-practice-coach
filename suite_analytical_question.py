@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import copy
+import uuid
 from datetime import datetime, timezone
 from collections.abc import Callable
 from typing import Any
@@ -24,10 +25,10 @@ AMI_SIDEBAR_DEPLOY_LABEL = "Applied Math question sender live"
 AMI_SIDEBAR_DEPLOY_VERSION = "2026-06-08-return-insight-restore-v12"
 _CTX_JSON_SUBTITLE_LIMIT = 8000
 _CONTEXT_ITEM_TYPE = "analytical_question_context"
+PRACTICE_LOG_ANALYSIS_TITLE = "Practice Analysis"
+PRACTICE_LOG_ANALYSIS_CONTINUE_PRIORITY = 65
 ANALYTICAL_QUESTION_CONTINUE_PRIORITY = 64
 ANALYTICAL_QUESTION_BUTTON_LABEL = "Continue in Applied Mathematics →"
-PRACTICE_LOG_ANALYSIS_TITLE = "Music Practice Log Analysis"
-PRACTICE_LOG_ANALYSIS_CONTINUE_PRIORITY = 65
 _SEND_COOLDOWN_SECONDS = 120
 
 _SOURCE_AREA: dict[str, str] = {
@@ -227,6 +228,15 @@ def is_practice_log_analysis_context(context: dict[str, Any] | None) -> bool:
     )
 
 
+def is_practice_log_analysis_payload(payload: dict[str, Any] | None) -> bool:
+    """True for Practice Analysis resume/handoff payloads (context or top-level flags)."""
+    data = dict(payload or {})
+    if str(data.get("handoff_kind") or "") == "practice_log_analysis":
+        return True
+    ctx = data.get("context") if isinstance(data.get("context"), dict) else {}
+    return is_practice_log_analysis_context(ctx)
+
+
 def source_question_card_title(
     source_app: str,
     context: dict[str, Any] | None = None,
@@ -357,11 +367,257 @@ def _parse_context_from_resume_subtitle(subtitle: str) -> dict[str, Any]:
         return {}
 
 
-def _store_question_context_blob(payload: dict[str, Any]) -> None:
+def generate_practice_analysis_run_id() -> str:
+    """Unique id for each Analyze My Practice run — Continue must load this report."""
+    return uuid.uuid4().hex[:16]
+
+
+def clean_analytical_question_display(text: str) -> str:
+    """Strip embedded storage JSON from user-facing question text."""
+    cleaned = str(text or "").strip()
+    if "__ctx_json__:" in cleaned:
+        cleaned = cleaned.split("\n__ctx_json__:", 1)[0].strip()
+    return cleaned
+
+
+def format_practice_analysis_updated_label(generated_at: str) -> str:
+    """Human-readable updated timestamp for Command Center cards (America/New_York, ET)."""
+    raw = str(generated_at or "").strip()
+    if not raw:
+        return ""
+    dt = parse_activity_timestamp(raw)
+    if dt is None:
+        return raw[:19].replace("T", " ")
+    return format_eastern_time_label(dt)
+
+
+def _practice_log_top_song(payload: dict[str, Any]) -> str:
+    ctx = dict(payload.get("context") or {})
+    pl = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
+    by_song = pl.get("practice_time_by_song") if isinstance(pl.get("practice_time_by_song"), dict) else {}
+    if by_song:
+        top_key = max(by_song, key=lambda k: int(by_song.get(k) or 0))
+        return str(top_key or "").strip()
+    songs = pl.get("most_practiced_songs")
+    if isinstance(songs, list) and songs:
+        return str(songs[0] or "").strip()
+    if isinstance(songs, str) and songs.strip():
+        return songs.strip()
+    return ""
+
+
+def _practice_log_instrument_label(payload: dict[str, Any]) -> str:
+    ctx = dict(payload.get("context") or {})
+    pl = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
+    by_inst = pl.get("practice_time_by_instrument") if isinstance(pl.get("practice_time_by_instrument"), dict) else {}
+    if not by_inst:
+        return ""
+    items = [(str(k), int(v or 0)) for k, v in by_inst.items() if str(k).strip()]
+    if not items:
+        return ""
+    items.sort(key=lambda row: -row[1])
+    total = sum(mins for _, mins in items) or 1
+    try:
+        from practice_history_synthesis import format_instrument_display_name
+
+        fmt = lambda key: format_instrument_display_name(key, payload={"practice_log_summary": pl})
+    except Exception:
+        fmt = lambda key: str(key).replace("_", " ").title()
+    if len(items) == 1:
+        return fmt(items[0][0])
+    top_key, top_mins = items[0]
+    if top_mins / total >= 0.6:
+        return fmt(top_key)
+    return "Multiple instruments"
+
+
+def practice_log_analysis_instrument_song_line(payload: dict[str, Any]) -> str:
+    """Legacy detail line — prefer practice_log_analysis_card_subtitle."""
+    parts: list[str] = []
+    top_song = _practice_log_top_song(payload)
+    if top_song:
+        parts.append(top_song)
+    inst = _practice_log_instrument_label(payload)
+    if inst:
+        parts.append(inst)
+    return " · ".join(parts)
+
+
+def practice_log_analysis_card_subtitle(payload: dict[str, Any]) -> str:
+    """Command Center card subtitle — top song, instrument summary, ET updated time."""
+    generated = str(
+        payload.get("report_generated_at")
+        or (payload.get("context") or {}).get("report_generated_at")
+        or ""
+    ).strip()
+    parts: list[str] = []
+    top_song = _practice_log_top_song(payload)
+    if top_song:
+        parts.append(top_song)
+    inst = _practice_log_instrument_label(payload)
+    if inst:
+        parts.append(inst)
+    updated = format_practice_analysis_updated_label(generated)
+    if updated:
+        parts.append(f"Updated {updated}")
+    if parts:
+        return " · ".join(parts)
+    ctx = dict(payload.get("context") or {})
+    pl = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
+    count = int(pl.get("session_count") or 0)
+    mins = int(pl.get("total_minutes") or 0)
+    if count > 0:
+        return f"{count} session(s), {mins} min logged — review patterns and next focus"
+    return "Practice history analysis from Music Practice Coach"
+
+
+def practice_log_analysis_resume_subtitle(payload: dict[str, Any]) -> str:
+    """Clean CC resume subtitle — no raw __ctx_json__ blob."""
+    return practice_log_analysis_card_subtitle(payload)
+
+
+def _build_practice_log_activity_metrics(
+    payload: dict[str, Any],
+    *,
+    extra_metrics: dict[str, Any],
+    action_url: str,
+) -> dict[str, Any]:
+    """Metrics bundle for practice_log_analysis activity rows and current state."""
+    analysis_run_id = str(payload.get("analysis_run_id") or "").strip()
+    report_generated_at = str(payload.get("report_generated_at") or "").strip()
+    ctx = dict(payload.get("context") or {})
+    metrics = metrics_for_applied_math_resume(payload)
+    metrics.update(extra_metrics)
+    metrics["source_app"] = "music"
+    metrics["display_category"] = "analysis_handoff"
+    metrics["handoff_kind"] = "practice_log_analysis"
+    metrics["handoff_title"] = PRACTICE_LOG_ANALYSIS_TITLE
+    metrics["activity_event"] = "practice_log_analysis"
+    metrics["analysis_type"] = "practice_history_analysis"
+    metrics["resume_key"] = str(payload.get("resume_key") or "").strip()
+    metrics["activity_sort_at"] = report_generated_at or utc_now_iso()
+    metrics["report_date"] = (report_generated_at or utc_now_iso())[:10]
+    metrics["continue_action_url"] = action_url
+    metrics["saved_item_title"] = PRACTICE_LOG_ANALYSIS_TITLE
+    metrics["saved_item_payload"] = {
+        "analysis_type": "practice_history_analysis",
+        "title": PRACTICE_LOG_ANALYSIS_TITLE,
+        "analysis_run_id": analysis_run_id,
+        "report_generated_at": report_generated_at,
+        "progress_report": ctx.get("progress_report"),
+        "practice_history_payload": ctx.get("practice_history_payload"),
+        "log_page_summary": ctx.get("log_page_summary"),
+        "recent_sessions": ctx.get("recent_sessions"),
+        "tone_history": ctx.get("tone_history"),
+        "upload_analysis_summary": ctx.get("upload_analysis_summary"),
+        "multitrack_export_summary": ctx.get("multitrack_export_summary"),
+        "raw_audio_excluded": ctx.get("raw_audio_excluded", True),
+        "base64_excluded": ctx.get("base64_excluded", True),
+        "blob_fields_excluded": ctx.get("blob_fields_excluded", True),
+    }
+    return metrics
+
+
+def _store_practice_analysis_context_blob(payload: dict[str, Any]) -> bool:
+    """Persist latest practice analysis context by run id and stable question id."""
+    analysis_run_id = str(payload.get("analysis_run_id") or "").strip()
+    qid = str(payload.get("question_id") or "").strip()
+    if not analysis_run_id and not qid:
+        return False
+    blob = {
+        "question": payload.get("question"),
+        "question_id": qid,
+        "analysis_run_id": analysis_run_id,
+        "report_generated_at": payload.get("report_generated_at"),
+        "source_app": payload.get("source_app"),
+        "source_page": payload.get("source_page"),
+        "quant_area": payload.get("quant_area"),
+        "context": dict(payload.get("context") or {}),
+        "source_state": dict(payload.get("source_state") or {}),
+        "handoff_kind": "practice_log_analysis",
+    }
+    title = str(payload.get("display_title") or PRACTICE_LOG_ANALYSIS_TITLE)[:200]
+    try:
+        from suite_account import remember_saved_item
+
+        store_apps: list[str] = ["applied_intelligence"]
+        src_app = str(payload.get("source_app") or "").strip().lower()
+        if src_app and src_app not in store_apps:
+            store_apps.append(src_app)
+        ok = False
+        for app_name in store_apps:
+            if analysis_run_id:
+                remember_saved_item(
+                    app_name,
+                    _CONTEXT_ITEM_TYPE,
+                    analysis_run_id,
+                    title=title,
+                    payload=blob,
+                )
+                ok = True
+            if qid:
+                remember_saved_item(
+                    app_name,
+                    _CONTEXT_ITEM_TYPE,
+                    qid,
+                    title=title,
+                    payload=blob,
+                )
+                ok = True
+        return ok
+    except Exception as exc:
+        log.warning("remember_saved_item failed for practice analysis context: %s", exc)
+        return False
+
+
+def _stage_practice_analysis_instant_insight(payload: dict[str, Any]) -> str:
+    """Store a fresh instant insight keyed by analysis_run_id for AMI Continue."""
+    ctx = dict(payload.get("context") or {})
+    question = str(payload.get("question") or "").strip()
+    analysis_run_id = str(payload.get("analysis_run_id") or ctx.get("analysis_run_id") or "").strip()
+    if not question or not analysis_run_id:
+        return ""
+    try:
+        from applied_math_return_insight import store_applied_math_insight
+        from music_ami_instant_solver import solve_instant_music_insight
+
+        solved = solve_instant_music_insight(question, ctx)
+        if not solved:
+            return ""
+        route, result = solved
+        insight_id = f"pa:{analysis_run_id}"
+        store_applied_math_insight(
+            {
+                "insight_id": insight_id,
+                "question_id": payload.get("question_id"),
+                "analysis_run_id": analysis_run_id,
+                "report_generated_at": payload.get("report_generated_at"),
+                "question": PRACTICE_LOG_ANALYSIS_TITLE,
+                "conclusion": result.short_answer,
+                "source_app": payload.get("source_app") or "music",
+                "source_page": payload.get("source_page") or "log",
+                "problem_type": route.problem_type,
+                "canonical_instant": True,
+                "context_snapshot": {
+                    "analysis_run_id": analysis_run_id,
+                    "report_generated_at": payload.get("report_generated_at"),
+                    "progress_report": ctx.get("progress_report"),
+                    "practice_history_payload": ctx.get("practice_history_payload"),
+                },
+            },
+            source_state=dict(payload.get("source_state") or {}),
+        )
+        return insight_id
+    except Exception as exc:
+        log.warning("_stage_practice_analysis_instant_insight failed: %s", exc)
+        return ""
+
+
+def _store_question_context_blob(payload: dict[str, Any]) -> bool:
     """Persist full context server-side keyed by question_id (survives URL truncation)."""
     qid = str(payload.get("question_id") or "").strip()
     if not qid:
-        return
+        return False
     blob = {
         "question": payload.get("question"),
         "question_id": qid,
@@ -371,6 +627,12 @@ def _store_question_context_blob(payload: dict[str, Any]) -> None:
         "context": dict(payload.get("context") or {}),
         "source_state": dict(payload.get("source_state") or {}),
     }
+    title = str(
+        payload.get("display_title")
+        or payload.get("handoff_title")
+        or payload.get("question")
+        or "Applied Math question"
+    )[:200]
     try:
         from suite_account import remember_saved_item
 
@@ -383,12 +645,13 @@ def _store_question_context_blob(payload: dict[str, Any]) -> None:
                 app_name,
                 _CONTEXT_ITEM_TYPE,
                 qid,
-                title=str(payload.get("question") or "Applied Math question")[:200],
+                title=title,
                 payload=blob,
             )
-        return
+        return True
     except Exception as exc:
         log.warning("remember_saved_item failed for analytical context: %s", exc)
+        return False
 
 
 def persist_question_context_blob(payload: dict[str, Any]) -> None:
@@ -401,34 +664,24 @@ def load_analytical_question_context(question_id: str) -> dict[str, Any]:
     return load_analytical_question_payload(question_id).get("context") or {}
 
 
-def load_analytical_question_payload(question_id: str) -> dict[str, Any]:
-    """Load full question blob (context + source_state) by question_id."""
+def load_analytical_question_payload(
+    question_id: str,
+    *,
+    analysis_run_id: str = "",
+) -> dict[str, Any]:
+    """Load full question blob (context + source_state) by run id or question_id."""
+    run_id = str(analysis_run_id or "").strip()
+    if run_id:
+        payload = _load_context_blob_by_key(run_id)
+        if payload:
+            return payload
     qid = str(question_id or "").strip()
     if not qid:
         return {}
+    payload = _load_context_blob_by_key(qid)
+    if payload:
+        return payload
     resume_key = f"ai:question:{qid}"
-    search_apps = ["applied_intelligence"]
-    try:
-        from suite_account import load_saved_items
-
-        for app_name in search_apps:
-            rows = load_saved_items(app=app_name, item_type=_CONTEXT_ITEM_TYPE, limit=80)
-            for row in rows:
-                if str(row.get("item_key") or "") == qid:
-                    payload = row.get("payload")
-                    if isinstance(payload, dict):
-                        return copy.deepcopy(payload)
-        for app_name in ("investment", "baseball", "nba", "music"):
-            if app_name in search_apps:
-                continue
-            rows = load_saved_items(app=app_name, item_type=_CONTEXT_ITEM_TYPE, limit=80)
-            for row in rows:
-                if str(row.get("item_key") or "") == qid:
-                    payload = row.get("payload")
-                    if isinstance(payload, dict):
-                        return copy.deepcopy(payload)
-    except Exception as exc:
-        log.warning("load_saved_items failed for question context: %s", exc)
     try:
         from suite_storage_supabase import load_active_resume_items
 
@@ -445,9 +698,43 @@ def load_analytical_question_payload(question_id: str) -> dict[str, Any]:
     return {}
 
 
-def load_analytical_question_source_state(question_id: str) -> dict[str, Any]:
+def _load_context_blob_by_key(item_key: str) -> dict[str, Any]:
+    """Load analytical question context blob from saved items by item_key."""
+    key = str(item_key or "").strip()
+    if not key:
+        return {}
+    search_apps = ["applied_intelligence"]
+    try:
+        from suite_account import load_saved_items
+
+        for app_name in search_apps:
+            rows = load_saved_items(app=app_name, item_type=_CONTEXT_ITEM_TYPE, limit=80)
+            for row in rows:
+                if str(row.get("item_key") or "") == key:
+                    payload = row.get("payload")
+                    if isinstance(payload, dict):
+                        return copy.deepcopy(payload)
+        for app_name in ("investment", "baseball", "nba", "music"):
+            if app_name in search_apps:
+                continue
+            rows = load_saved_items(app=app_name, item_type=_CONTEXT_ITEM_TYPE, limit=80)
+            for row in rows:
+                if str(row.get("item_key") or "") == key:
+                    payload = row.get("payload")
+                    if isinstance(payload, dict):
+                        return copy.deepcopy(payload)
+    except Exception as exc:
+        log.warning("load_saved_items failed for question context: %s", exc)
+    return {}
+
+
+def load_analytical_question_source_state(
+    question_id: str,
+    *,
+    analysis_run_id: str = "",
+) -> dict[str, Any]:
     """Load page-restore snapshot saved at question send time."""
-    payload = load_analytical_question_payload(question_id)
+    payload = load_analytical_question_payload(question_id, analysis_run_id=analysis_run_id)
     ss = payload.get("source_state")
     return dict(ss) if isinstance(ss, dict) else {}
 
@@ -468,7 +755,15 @@ def hydrate_applied_intelligence_session(st: Any, *, metrics: dict[str, Any] | N
         return str(raw).strip()
 
     m = dict(metrics or {})
-    question = str(m.get("question") or _qp("suite_ai_question") or "").strip()
+    analysis_run_id = str(
+        m.get("analysis_run_id")
+        or _qp("suite_practice_analysis_run_id")
+        or ""
+    ).strip()
+    ami_insight = str(m.get("ami_insight") or _qp("suite_ami_insight") or "").strip()
+    question = clean_analytical_question_display(
+        str(m.get("question") or _qp("suite_ai_question") or "").strip()
+    )
     qid = str(m.get("question_id") or m.get("dedupe_fingerprint") or _qp("suite_ai_question_id") or "").strip()
     source_app = str(m.get("source_app") or _qp("suite_ai_source_app") or "").strip()
     source_page = str(m.get("source_page") or _qp("suite_ai_source_page") or "").strip()
@@ -479,8 +774,19 @@ def hydrate_applied_intelligence_session(st: Any, *, metrics: dict[str, Any] | N
     source_state: dict[str, Any] = {}
     hydrate_source = "none"
 
+    # Run-id first: latest Practice Analysis report for this Continue click.
+    if analysis_run_id:
+        blob_payload = load_analytical_question_payload("", analysis_run_id=analysis_run_id)
+        blob_ctx = blob_payload.get("context") if isinstance(blob_payload.get("context"), dict) else {}
+        if blob_ctx:
+            ctx = copy.deepcopy(blob_ctx)
+            hydrate_source = "analysis_run_id_blob"
+        blob_ss = blob_payload.get("source_state") if isinstance(blob_payload.get("source_state"), dict) else {}
+        if blob_ss:
+            source_state = copy.deepcopy(blob_ss)
+
     # Blob-first: full context by question_id before metrics/URL (avoids truncated deep links).
-    if qid:
+    if not ctx and qid:
         blob_payload = load_analytical_question_payload(qid)
         blob_ctx = blob_payload.get("context") if isinstance(blob_payload.get("context"), dict) else {}
         if blob_ctx:
@@ -525,6 +831,10 @@ def hydrate_applied_intelligence_session(st: Any, *, metrics: dict[str, Any] | N
         ss["ps_library_problem"] = question
     if qid:
         ss["_suite_ai_question_id"] = qid
+    if analysis_run_id:
+        ss["_suite_practice_analysis_run_id"] = analysis_run_id
+    if ami_insight:
+        ss["_suite_ami_insight"] = ami_insight
     if source_app:
         ss["_suite_ai_source_app"] = source_app
     if source_page:
@@ -538,6 +848,8 @@ def hydrate_applied_intelligence_session(st: Any, *, metrics: dict[str, Any] | N
     if source_state:
         ss["_suite_ai_source_state"] = copy.deepcopy(source_state)
     ss["_suite_ai_hydrate_source"] = hydrate_source
+    ss["_suite_ai_hydrate_analysis_run_id"] = analysis_run_id
+    ss["_suite_ai_hydrate_ami_insight"] = ami_insight
 
 
 def _format_context_value(key: str, val: Any) -> str:
@@ -581,98 +893,12 @@ def format_context_lines(context: dict[str, Any] | None) -> list[str]:
     return lines[:16]
 
 
-def format_practice_analysis_updated_label(generated_at: str) -> str:
-    """Human-readable updated timestamp for Command Center cards (America/New_York, ET)."""
-    raw = str(generated_at or "").strip()
-    if not raw:
-        return ""
-    dt = parse_activity_timestamp(raw)
-    if dt is None:
-        return raw[:19].replace("T", " ")
-    return format_eastern_time_label(dt)
-
-
-def _practice_log_top_song(payload: dict[str, Any]) -> str:
-    ctx = dict(payload.get("context") or {})
-    pl = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
-    by_song = pl.get("practice_time_by_song") if isinstance(pl.get("practice_time_by_song"), dict) else {}
-    if by_song:
-        top_key = max(by_song, key=lambda k: int(by_song.get(k) or 0))
-        return str(top_key or "").strip()
-    songs = pl.get("most_practiced_songs")
-    if isinstance(songs, list) and songs:
-        return str(songs[0] or "").strip()
-    return ""
-
-
-def _practice_log_instrument_label(payload: dict[str, Any]) -> str:
-    ctx = dict(payload.get("context") or {})
-    pl = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
-    by_inst = pl.get("practice_time_by_instrument") if isinstance(pl.get("practice_time_by_instrument"), dict) else {}
-    if not by_inst:
-        return ""
-    items = [(str(k), int(v or 0)) for k, v in by_inst.items() if str(k).strip()]
-    if not items:
-        return ""
-    items.sort(key=lambda row: -row[1])
-    total = sum(mins for _, mins in items) or 1
-    fmt = lambda key: str(key).replace("_", " ").title()
-    if len(items) == 1:
-        return f"Main instrument: {fmt(items[0][0])}"
-    top_key, top_mins = items[0]
-    if top_mins / total >= 0.6:
-        return f"Main instrument: {fmt(top_key)}"
-    return "Multiple instruments"
-
-
-def practice_log_analysis_instrument_song_line(payload: dict[str, Any]) -> str:
-    parts: list[str] = []
-    top_song = _practice_log_top_song(payload)
-    if top_song:
-        parts.append(f"Top song: {top_song}")
-    inst = _practice_log_instrument_label(payload)
-    if inst:
-        parts.append(inst)
-    return " · ".join(parts)
-
-
-def practice_log_analysis_card_subtitle(payload: dict[str, Any]) -> str:
-    generated = str(
-        payload.get("report_generated_at")
-        or (payload.get("context") or {}).get("report_generated_at")
-        or ""
-    ).strip()
-    parts: list[str] = []
-    top_song = _practice_log_top_song(payload)
-    if top_song:
-        parts.append(f"Top song: {top_song}")
-    inst = _practice_log_instrument_label(payload)
-    if inst:
-        parts.append(inst)
-    updated = format_practice_analysis_updated_label(generated)
-    if updated:
-        parts.append(f"Updated {updated}")
-    if parts:
-        return " · ".join(parts)
-    ctx = dict(payload.get("context") or {})
-    pl = ctx.get("practice_log_summary") if isinstance(ctx.get("practice_log_summary"), dict) else {}
-    count = int(pl.get("session_count") or 0)
-    mins = int(pl.get("total_minutes") or 0)
-    if count > 0:
-        return f"{count} session(s), {mins} min logged — review patterns and next focus"
-    return "Practice history analysis from Music Practice Coach"
-
-
-def practice_log_analysis_resume_subtitle(payload: dict[str, Any]) -> str:
-    return practice_log_analysis_card_subtitle(payload)
-
-
 def analytical_question_continue_copy(payload: dict[str, Any]) -> tuple[str, str, str]:
     """Return (title, subtitle, button_label) for Command Center Continue cards."""
     ctx = payload.get("context") if isinstance(payload.get("context"), dict) else {}
     app = normalize_source_app_id(str(payload.get("source_app") or ""), ctx)
     question = str(payload.get("question") or "").strip()
-    if is_practice_log_analysis_context(ctx):
+    if is_practice_log_analysis_payload(payload):
         card_payload = {
             "source_app": payload.get("source_app") or app,
             "context": ctx,
@@ -689,7 +915,7 @@ def analytical_question_continue_copy(payload: dict[str, Any]) -> tuple[str, str
 def analytical_question_storage_subtitle(payload: dict[str, Any]) -> str:
     """Resume-item subtitle for storage/rebuild — question only on CC cards; context stays in metrics/URL."""
     ctx = dict(payload.get("context") or {})
-    if is_practice_log_analysis_context(ctx):
+    if is_practice_log_analysis_payload(payload):
         return practice_log_analysis_resume_subtitle(payload)
     question = str(payload.get("question") or "").strip()
     ctx_json = json.dumps(ctx, ensure_ascii=False) if ctx else ""
@@ -702,8 +928,10 @@ def metrics_for_applied_math_resume(payload: dict[str, Any]) -> dict[str, Any]:
     """Metrics bundle for deep links into Applied Intelligence."""
     ctx = dict(payload.get("context") or {})
     ctx_lines = format_context_lines(ctx)
+    analysis_run_id = str(payload.get("analysis_run_id") or ctx.get("analysis_run_id") or "").strip()
+    saved_item_key = analysis_run_id or payload.get("question_id")
     metrics = {
-        "question": payload.get("question"),
+        "question": clean_analytical_question_display(str(payload.get("question") or "")) or payload.get("question"),
         "question_id": payload.get("question_id"),
         "source_app": payload.get("source_app"),
         "source_page": payload.get("source_page"),
@@ -714,8 +942,13 @@ def metrics_for_applied_math_resume(payload: dict[str, Any]) -> dict[str, Any]:
         "context_json": json.dumps(ctx, ensure_ascii=False),
         "dedupe_fingerprint": payload.get("question_id"),
         "saved_item_type": _CONTEXT_ITEM_TYPE,
-        "saved_item_key": payload.get("question_id"),
+        "saved_item_key": saved_item_key,
     }
+    if analysis_run_id:
+        metrics["analysis_run_id"] = analysis_run_id
+        metrics["report_generated_at"] = payload.get("report_generated_at") or ctx.get("report_generated_at")
+    if str(payload.get("ami_insight") or "").strip():
+        metrics["ami_insight"] = str(payload.get("ami_insight") or "").strip()
     try:
         from suite_workspace import get_active_workspace_id
 
@@ -725,41 +958,88 @@ def metrics_for_applied_math_resume(payload: dict[str, Any]) -> dict[str, Any]:
     return metrics
 
 
+def _resume_upsert_succeeded(result: Any) -> bool:
+    if isinstance(result, dict):
+        return str(result.get("write_mode") or "") not in {"", "skipped"}
+    return bool(result)
+
+
 def _upsert_applied_intelligence_resume(
     payload: dict[str, Any],
     *,
     action_url: str,
-) -> None:
+) -> bool:
     title, _, _ = analytical_question_continue_copy(payload)
     subtitle = analytical_question_storage_subtitle(payload)
     resume_key = str(payload.get("resume_key") or "").strip()
     if not resume_key:
-        return
+        return False
     try:
         from suite_storage_supabase import upsert_resume_item
 
-        upsert_resume_item(
+        result = upsert_resume_item(
             "applied_intelligence",
             resume_key,
             title=title,
             subtitle=subtitle,
             action_url=action_url,
         )
-        return
+        return _resume_upsert_succeeded(result)
     except Exception as exc:
         log.warning("suite_storage_supabase upsert_resume_item failed: %s", exc)
     try:
         from suite_storage import upsert_resume_item
 
-        upsert_resume_item(
+        result = upsert_resume_item(
             "applied_intelligence",
             resume_key,
             title=title,
             subtitle=subtitle,
             action_url=action_url,
         )
+        return _resume_upsert_succeeded(result)
     except Exception as exc:
         log.warning("suite_storage upsert_resume_item failed: %s", exc)
+    return False
+
+
+def _upsert_music_practice_log_resume(
+    payload: dict[str, Any],
+    *,
+    action_url: str,
+) -> bool:
+    """Keep one current Music Practice Log Analysis resume card on the music app."""
+    resume_key = str(payload.get("resume_key") or "").strip()
+    if not resume_key:
+        return False
+    subtitle = analytical_question_storage_subtitle(payload)
+    try:
+        from suite_storage_supabase import upsert_resume_item
+
+        result = upsert_resume_item(
+            "music",
+            resume_key,
+            title=PRACTICE_LOG_ANALYSIS_TITLE,
+            subtitle=subtitle,
+            action_url=action_url,
+        )
+        return _resume_upsert_succeeded(result)
+    except Exception as exc:
+        log.warning("suite_storage_supabase music resume upsert failed: %s", exc)
+    try:
+        from suite_storage import upsert_resume_item
+
+        result = upsert_resume_item(
+            "music",
+            resume_key,
+            title=PRACTICE_LOG_ANALYSIS_TITLE,
+            subtitle=subtitle,
+            action_url=action_url,
+        )
+        return _resume_upsert_succeeded(result)
+    except Exception as exc:
+        log.warning("suite_storage music resume upsert failed: %s", exc)
+    return False
 
 
 def build_question_payload(
@@ -821,10 +1101,17 @@ def _short_context_summary(ctx: dict[str, Any]) -> str:
     return str(ctx.get("page") or "Current page")
 
 
-def build_applied_math_resume_url(payload: dict[str, Any], *, base_url: str = "") -> str:
+def build_applied_math_resume_url(
+    payload: dict[str, Any],
+    *,
+    base_url: str = "",
+    extra_metrics: dict[str, Any] | None = None,
+) -> str:
     from suite_deep_links import build_resume_action_url
 
     metrics = metrics_for_applied_math_resume(payload)
+    if extra_metrics:
+        metrics.update(extra_metrics)
     metrics["source_app"] = normalize_source_app_id(
         str(payload.get("source_app") or ""),
         dict(payload.get("context") or {}),
@@ -925,6 +1212,127 @@ def submit_analytical_question(
         "continue_subtitle": card_subtitle,
         "duplicate": duplicate,
         "submitted_at": utc_now_iso(),
+    }
+
+
+def submit_practice_log_analysis_handoff(
+    *,
+    source_page: str,
+    question: str,
+    context: dict[str, Any] | None = None,
+    context_summary: str = "",
+    source_state: dict[str, Any] | None = None,
+    session_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Structured Practice Log analysis handoff — Continue card, not Recent AMI Questions."""
+    ctx = dict(context or {})
+    analysis_run_id = str(ctx.get("analysis_run_id") or generate_practice_analysis_run_id())
+    report_generated_at = str(ctx.get("report_generated_at") or utc_now_iso())
+    ctx["analysis_run_id"] = analysis_run_id
+    ctx["report_generated_at"] = report_generated_at
+    ctx.setdefault("display_category", "analysis_handoff")
+    ctx.setdefault("analysis_handoff", True)
+    ctx.setdefault("user_request", "analyze_practice")
+    ctx.setdefault("analysis_type", "practice_history_analysis")
+    ctx.setdefault("intent", "practice_history_analysis")
+    ctx.setdefault("handoff_kind", "practice_log_analysis")
+    ctx.setdefault("handoff_title", PRACTICE_LOG_ANALYSIS_TITLE)
+    payload = build_question_payload(
+        source_app="music",
+        source_page=source_page,
+        question=question,
+        context=ctx,
+        context_summary=context_summary or "Music Practice Log Analysis",
+        source_state=source_state,
+    )
+    payload["resume_key"] = f"ai:practice_log_analysis:{payload['question_id']}"
+    payload["display_title"] = PRACTICE_LOG_ANALYSIS_TITLE
+    payload["handoff_kind"] = "practice_log_analysis"
+    payload["analysis_run_id"] = analysis_run_id
+    payload["report_generated_at"] = report_generated_at
+
+    context_blob_stored = _store_practice_analysis_context_blob(payload)
+    insight_id = _stage_practice_analysis_instant_insight(payload)
+    if insight_id:
+        payload["ami_insight"] = insight_id
+
+    extra_metrics: dict[str, Any] = {
+        "analysis_run_id": analysis_run_id,
+        "report_generated_at": report_generated_at,
+    }
+    if insight_id:
+        extra_metrics["ami_insight"] = insight_id
+    action_url = build_applied_math_resume_url(payload, extra_metrics=extra_metrics)
+    clean_subtitle = practice_log_analysis_resume_subtitle(payload)
+
+    duplicate = _recent_duplicate_send(session_state, payload["question_id"])
+    record_trace: dict[str, Any] = {}
+    activity_recorded = False
+    handoff_error = ""
+    metrics = _build_practice_log_activity_metrics(
+        payload,
+        extra_metrics=extra_metrics,
+        action_url=action_url,
+    )
+    try:
+        from suite_activity_client import last_record_trace, record_activity
+
+        record_activity(
+            "music",
+            "practice_log_analysis",
+            page=source_page,
+            metrics=metrics,
+            summary=PRACTICE_LOG_ANALYSIS_TITLE,
+            resume_key=payload["resume_key"],
+            resume_title=PRACTICE_LOG_ANALYSIS_TITLE,
+            resume_subtitle=clean_subtitle,
+            action_url=action_url,
+        )
+        record_trace = last_record_trace()
+        activity_recorded = bool(record_trace.get("recorded"))
+        if not activity_recorded:
+            handoff_error = str(record_trace.get("error") or "record_activity did not persist")
+    except Exception as exc:
+        handoff_error = str(exc)
+        log.warning("record_activity failed for practice_log_analysis: %s", exc)
+    resume_upsert_ok = _upsert_applied_intelligence_resume(payload, action_url=action_url)
+    music_resume_ok = _upsert_music_practice_log_resume(payload, action_url=action_url)
+    if not resume_upsert_ok and not handoff_error:
+        handoff_error = "Command Center resume item was not written"
+    if not music_resume_ok and not handoff_error:
+        handoff_error = "Music resume item was not updated"
+    if not context_blob_stored and not handoff_error:
+        handoff_error = "Practice analysis context blob was not stored"
+    if not insight_id and not handoff_error:
+        handoff_error = "Instant insight was not stored for Continue"
+    handoff_success = resume_upsert_ok and music_resume_ok and context_blob_stored and bool(insight_id)
+    if session_state is not None:
+        session_state["_ami_last_send"] = {
+            "question_id": payload["question_id"],
+            "question": payload["question"],
+            "source_app": "music",
+            "handoff_kind": "practice_log_analysis",
+            "analysis_run_id": analysis_run_id,
+            "submitted_at": utc_now_iso(),
+        }
+        session_state["_practice_log_ami_handoff"] = payload
+    card_title, card_subtitle, _ = analytical_question_continue_copy(payload)
+    return {
+        **payload,
+        "action_url": action_url,
+        "continue_title": card_title,
+        "continue_subtitle": card_subtitle,
+        "duplicate": duplicate,
+        "submitted_at": utc_now_iso(),
+        "handoff_success": handoff_success,
+        "activity_recorded": activity_recorded,
+        "resume_upsert_ok": resume_upsert_ok,
+        "music_resume_ok": music_resume_ok,
+        "context_blob_stored": context_blob_stored,
+        "insight_id": insight_id,
+        "analysis_run_id": analysis_run_id,
+        "record_trace": record_trace,
+        "handoff_error": handoff_error,
     }
 
 
