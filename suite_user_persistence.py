@@ -261,13 +261,7 @@ _FORCE_SAVE_CLOUD_REASONS = frozenset({
     "applied_math_send",
     "music_coach_send",
     "song_edit",
-    "cpl_draft_edit",
-    "display_key_change",
-    "capo_widget",
     "practice_edit",
-    "multitrack_layer_save",
-    "multitrack_upload",
-    "multitrack_workspace_flush",
     "team_change",
     "nba_settings_change",
 })
@@ -584,8 +578,6 @@ def sync_workspace_protocol(
     *,
     apply_state: Callable[[Any, dict[str, Any]], None],
     cloud_first: bool = True,
-    content_resync_needed: Callable[[Any, dict[str, Any], str | None], tuple[bool, str]]
-    | None = None,
 ) -> bool:
     """
     Authoritative workspace sync before sidebar widgets.
@@ -753,19 +745,6 @@ def sync_workspace_protocol(
     st.session_state["_suite_workspace_comparison_mismatch"] = comparison_mismatch
     st.session_state["_suite_already_synced_before_restore"] = already_synced
 
-    content_resync = False
-    content_resync_detail = ""
-    if content_resync_needed and cloud_state:
-        try:
-            content_resync, content_resync_detail = content_resync_needed(
-                st, cloud_state, cloud_ts
-            )
-        except Exception:
-            content_resync = False
-            content_resync_detail = ""
-    st.session_state["_suite_persist_content_resync_needed"] = content_resync
-    st.session_state["_suite_persist_content_resync_detail"] = content_resync_detail or None
-
     apply_reasons: list[str] = []
     if first_sync:
         apply_reasons.append("first_sync")
@@ -790,32 +769,6 @@ def sync_workspace_protocol(
         apply_reasons.append("comparison_mismatch")
     if comparison_mismatch_apply:
         apply_reasons.append("comparison_mismatch_apply")
-    if content_resync:
-        apply_reasons.append(f"content_resync:{content_resync_detail or 'drift'}")
-
-    session_needs_rehydrate = False
-    try:
-        from music_persistent_state import _session_has_restored_song_context
-
-        if picked.state and not _session_has_restored_song_context(st.session_state):
-            core = picked.state.get("core") if isinstance(picked.state.get("core"), dict) else {}
-            extra = picked.state.get("session") if isinstance(picked.state.get("session"), dict) else {}
-            ws = picked.state.get("music_workspace_state")
-            ws_page = (
-                str(ws.get("studio_page") or "").strip()
-                if isinstance(ws, dict)
-                else ""
-            )
-            if (
-                str(core.get("pick_key") or "").strip()
-                or str(core.get("studio_page") or extra.get("studio_page") or ws_page).strip()
-                or extra.get("cpl_active_progression")
-                or extra.get("cpl_saved_progressions")
-            ):
-                session_needs_rehydrate = True
-                apply_reasons.append("session_empty_rehydrate")
-    except ImportError:
-        session_needs_rehydrate = False
 
     should_apply = bool(
         picked.state
@@ -825,8 +778,6 @@ def sync_workspace_protocol(
             or cloud_newer_than_disk
             or page_mismatch_apply
             or comparison_mismatch_apply
-            or content_resync
-            or session_needs_rehydrate
         )
     )
     apply_reason = ", ".join(apply_reasons) if apply_reasons else "none"
@@ -842,7 +793,6 @@ def sync_workspace_protocol(
             disk_state=disk_state, disk_ts=disk_ts, winner=picked.source,
             reason="already synced", applied=False,
         )
-        _mark_workspace_sync_skipped(st, app_id, skip_reason)
         _record_startup_restore_diagnostics(
             st, app_id,
             cloud_state=cloud_state, cloud_ts=cloud_ts,
@@ -1390,16 +1340,24 @@ def force_autosave(
         from suite_cloud_state import load_cloud_full_session, save_cloud_full_session, session_page_summary
 
         block_key = _autosave_block_key(app_id)
-        bypass_block = reason in _FORCE_SAVE_CLOUD_REASONS
-        if st.session_state.get("_music_default_song_ephemeral") and reason in (
-            "song_edit",
-            "autosave",
-            "force_autosave",
-            "",
-        ):
-            st.session_state["_suite_autosave_blocked_after_restore"] = True
-            st.session_state["_suite_autosave_block_reason"] = "ephemeral_default_song"
-            return False
+        bypass_block = reason in (
+            "comparison_edit",
+            "trend_edit",
+            "career_edit",
+            "draft_edit",
+            "historical_edit",
+            "valuation_edit",
+            "projections_edit",
+            "leaderboards_edit",
+            "fantasy_edit",
+            "page_change",
+            "insight_persist",
+            "insight_hydrate",
+            "applied_math_send",
+            "music_coach_send",
+            "team_change",
+            "nba_settings_change",
+        )
         if st.session_state.get(block_key) and not bypass_block:
             st.session_state["_suite_autosave_blocked_after_restore"] = True
             st.session_state["_suite_autosave_block_reason"] = st.session_state.get(

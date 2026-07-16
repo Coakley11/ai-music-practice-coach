@@ -57,9 +57,9 @@ def apply_suite_resume_launch(st: Any, app_key: str) -> bool:
     Returns True when resume query params were applied.
     """
     try:
-        from suite_workspace import bootstrap_suite_workspace
+        from suite_workspace import init_suite_workspace
 
-        bootstrap_suite_workspace(st)
+        init_suite_workspace(st)
     except ImportError:
         pass
 
@@ -70,9 +70,7 @@ def apply_suite_resume_launch(st: Any, app_key: str) -> bool:
     resume = _qp_get(st, "suite_resume")
     page = _qp_get(st, "suite_page")
     ami_insight = _qp_get(st, "suite_ami_insight")
-    entry_mode = _qp_get(st, "suite_entry_mode")
-    payload_raw = _qp_get(st, "suite_resume_payload")
-    if not resume and not page and not ami_insight and not payload_raw and entry_mode != "workstream":
+    if not resume and not page and not ami_insight:
         return False
 
     key = str(app_key or "").strip()
@@ -105,41 +103,10 @@ def _finalize_music_resume(
     song_picker_catalog: dict,
     song_library: dict | None,
 ) -> None:
-    entry_mode = _qp_get(st, "suite_entry_mode")
-    payload_raw = _qp_get(st, "suite_resume_payload")
-    if payload_raw:
-        try:
-            from music_resume_payload import apply_music_resume_payload, decode_payload_b64
-
-            payload = decode_payload_b64(payload_raw)
-            if payload:
-                apply_music_resume_payload(
-                    st.session_state,
-                    payload,
-                    song_picker_catalog=song_picker_catalog,
-                    song_library=song_library,
-                    st=st,
-                )
-                return
-        except Exception:
-            pass
-
-    if entry_mode == "workstream":
-        target = _qp_get(st, "suite_page") or "practice"
-        try:
-            from studio_nav_history import navigate_studio_page
-
-            navigate_studio_page(st.session_state, target)
-        except Exception:
-            st.session_state["studio_page"] = target
-        return
-
     pick = str(st.session_state.get("active_catalog_pick_key") or _qp_get(st, "suite_pick_key")).strip()
     resume = _qp_get(st, "suite_resume")
-    if not pick and resume.startswith(("song:", "backing:", "music:")):
+    if not pick and resume.startswith(("song:", "backing:")):
         pick = resume.split(":", 1)[-1].strip()
-        if resume.startswith("music:") and ":" in pick:
-            pick = pick.split(":", 1)[-1].strip()
     if pick:
         try:
             from songs.state import apply_pick_key
@@ -172,71 +139,8 @@ def _finalize_music_resume(
         except Exception:
             st.session_state["instrument"] = instrument
 
-    _apply_music_scalar_resume_params(st)
-
-
-def _apply_music_scalar_resume_params(st: Any) -> None:
-    bpm = _qp_get(st, "suite_bpm")
-    if bpm:
-        try:
-            val = int(bpm)
-            st.session_state["bpm"] = val
-            st.session_state["backing_track_bpm"] = val
-        except ValueError:
-            pass
-    scope = _qp_get(st, "suite_backing_scope")
-    if scope:
-        try:
-            from backing_track_state import normalize_backing_scope
-
-            st.session_state["backing_track_scope"] = normalize_backing_scope(scope)
-        except ImportError:
-            st.session_state["backing_track_scope"] = scope
-    sections_raw = _qp_get(st, "suite_backing_sections")
-    if sections_raw:
-        st.session_state["backing_track_multi_sections"] = [
-            s.strip() for s in sections_raw.split("|") if s.strip()
-        ]
-    groove = _qp_get(st, "suite_groove")
-    if groove:
-        st.session_state["backing_groove_style"] = groove
-    creative_mode = _qp_get(st, "suite_creative_mode")
-    if creative_mode:
-        st.session_state["improv_entry_mode"] = creative_mode
-    mt_id = _qp_get(st, "suite_multitrack_id")
-    if mt_id:
-        st.session_state["multitrack_id"] = mt_id
-        st.session_state["_last_catalog_multitrack_id"] = mt_id
-        st.session_state["_pending_catalog_multitrack_id"] = mt_id
-    if _qp_get(st, "suite_open_tone") in {"1", "true", "yes"}:
-        st.session_state["_suite_open_tone_panel"] = True
-
 
 def _apply_music(st: Any, resume: str, page: str) -> None:
-    entry_mode = _qp_get(st, "suite_entry_mode")
-    payload_raw = _qp_get(st, "suite_resume_payload")
-    if payload_raw:
-        try:
-            from music_resume_payload import apply_music_resume_payload, decode_payload_b64
-
-            payload = decode_payload_b64(payload_raw)
-            if payload:
-                apply_music_resume_payload(st.session_state, payload, st=st)
-                return
-        except Exception:
-            pass
-
-    if entry_mode == "workstream":
-        target = page.strip() or _qp_get(st, "suite_page") or "practice"
-        try:
-            from studio_nav_history import navigate_studio_page
-
-            navigate_studio_page(st.session_state, target)
-        except Exception:
-            pass
-        st.session_state["studio_page"] = target
-        return
-
     pick = _qp_get(st, "suite_pick_key")
     song = _qp_get(st, "suite_song")
     display_key = _qp_get(st, "suite_display_key")
@@ -249,10 +153,6 @@ def _apply_music(st: Any, resume: str, page: str) -> None:
         st.session_state["active_catalog_pick_key"] = resume.split(":", 1)[-1].strip()
     if resume.startswith("backing:") and not pick:
         st.session_state["active_catalog_pick_key"] = resume.split(":", 1)[-1].strip()
-    if resume.startswith("music:") and not pick:
-        parts = resume.split(":", 2)
-        if len(parts) >= 3:
-            st.session_state["active_catalog_pick_key"] = parts[2].strip()
     if display_key:
         try:
             from songs.key_state import PENDING_DISPLAY_KEY
@@ -270,20 +170,9 @@ def _apply_music(st: Any, resume: str, page: str) -> None:
     section = _qp_get(st, "suite_section_focus")
     if section:
         st.session_state["practice_focus_section"] = section
-    _apply_music_scalar_resume_params(st)
     target = page.strip()
     if not target:
-        resume_kind = _qp_get(st, "suite_resume_kind")
-        if resume_kind == "backing" or resume.startswith("backing:"):
-            target = "backing"
-        elif resume_kind in {"creative", "multitrack", "upload", "analysis"}:
-            target = {"creative": "creative", "multitrack": "multitrack", "upload": "analysis", "analysis": "analysis"}[
-                resume_kind
-            ]
-        elif resume_kind == "tone":
-            target = "practice"
-        else:
-            target = "backing" if resume.startswith("backing:") else "practice"
+        target = "backing" if resume.startswith("backing:") else "practice"
     if target.lower() in {"practice log", "practice studio"}:
         target = "practice"
     elif target.lower() == "backing track studio":
@@ -293,8 +182,7 @@ def _apply_music(st: Any, resume: str, page: str) -> None:
 
         navigate_studio_page(st.session_state, target)
     except Exception:
-        pass
-    st.session_state["studio_page"] = target
+        st.session_state["studio_page"] = target
 
 
 def _apply_baseball(st: Any, resume: str, page: str) -> None:
@@ -316,6 +204,64 @@ def _apply_baseball(st: Any, resume: str, page: str) -> None:
         target_page = "Comparison Tool"
     if not target_page and resume.startswith("trend:"):
         target_page = "Trend Value"
+    if not target_page and resume.startswith("bb:live_draft:"):
+        target_page = "Live Draft Room"
+    if not target_page and resume.startswith("bb:draft_lab:"):
+        target_page = "Draft Simulation Test Mode"
+    draft_room = _qp_get(st, "suite_draft_room")
+    if not draft_room and resume.startswith("bb:live_draft:"):
+        draft_room = resume.split(":", 2)[-1].strip()
+    if not draft_room and resume.startswith("bb:draft_lab:"):
+        tail = resume.split(":", 2)[-1].strip()
+        if tail.startswith("team:"):
+            draft_room = tail.split(":", 1)[-1].strip()
+        elif tail not in {"team", "team_analysis"}:
+            draft_room = tail
+    if draft_room:
+        st.session_state["_suite_resume_draft_room"] = draft_room
+    draft_section = _qp_get(st, "suite_draft_section")
+    if not draft_section and resume.startswith("bb:draft_lab:team:"):
+        draft_section = "team_analysis"
+    if draft_section:
+        st.session_state["_suite_resume_draft_section"] = draft_section
+    proposal_id = _qp_get(st, "suite_trade_proposal")
+    if not proposal_id and resume.startswith("bb:trade_center:"):
+        proposal_id = resume.split(":", 2)[-1].strip()
+    if proposal_id:
+        st.session_state["_suite_resume_trade_proposal"] = proposal_id
+    league_id = _qp_get(st, "suite_league")
+    if not league_id and resume.startswith("bb:library:"):
+        league_id = resume.split(":", 2)[-1].strip()
+    if league_id:
+        st.session_state["_suite_resume_league_id"] = league_id
+    invite_id = _qp_get(st, "suite_invite")
+    if not invite_id and resume.startswith("bb:invite:"):
+        invite_id = resume.split(":", 2)[-1].strip()
+    if invite_id:
+        st.session_state["_suite_resume_invite_id"] = invite_id
+    lineup_week = _qp_get(st, "suite_lineup_week")
+    if not lineup_week and resume.startswith("bb:lineup:"):
+        if ":w" in resume:
+            lineup_week = resume.rsplit(":w", 1)[-1].strip()
+    if lineup_week:
+        st.session_state["_suite_resume_lineup_week"] = lineup_week
+    waiver_tx = _qp_get(st, "suite_waiver_tx")
+    if not waiver_tx and resume.startswith("bb:waiver:"):
+        waiver_tx = resume.split(":", 2)[-1].strip()
+    if waiver_tx:
+        st.session_state["_suite_resume_waiver_tx"] = waiver_tx
+    if not target_page and resume.startswith("bb:trade_center"):
+        target_page = "Trade Center"
+    if not target_page and resume.startswith("bb:waiver"):
+        target_page = "Waiver Wire / Add-Drop Center"
+    if not target_page and resume.startswith("bb:lineup"):
+        target_page = "Fantasy Lineup Assistant"
+    if not target_page and (
+        resume.startswith("bb:library")
+        or resume.startswith("bb:invite:")
+        or resume.startswith("bb:saved_draft:")
+    ):
+        target_page = "Saved Draft Library"
     trend_player = _qp_get(st, "suite_trend_player")
     if not trend_player and resume.startswith("trend:"):
         trend_player = resume.split(":", 1)[-1].strip()
@@ -458,15 +404,7 @@ def _apply_applied_intelligence(st: Any, page: str) -> None:
             ("suite_ai_source_page", "_suite_ai_source_page"),
             ("suite_ai_area", "_suite_ai_area"),
             ("suite_ai_question_id", "_suite_ai_question_id"),
-            ("suite_practice_analysis_run_id", "_suite_practice_analysis_run_id"),
-            ("suite_ami_insight", "_suite_ami_insight"),
         ):
             val = _qp_get(st, qp)
             if val:
                 st.session_state[key] = val
-    try:
-        from applied_math_return_insight import apply_ami_insight_from_query
-
-        apply_ami_insight_from_query(st, "applied_intelligence")
-    except Exception:
-        pass

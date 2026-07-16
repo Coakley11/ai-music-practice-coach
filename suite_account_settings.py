@@ -71,12 +71,23 @@ def build_scoped_cloud_key_preview(workspace_id: str | None = None) -> dict[str,
 
 def build_account_settings_context(*, st: Any | None = None) -> dict[str, Any]:
     """Structured account + workspace summary for UI and tests."""
+    ss = st.session_state if st is not None else None
     if st is not None:
-        init_suite_workspace(st)
+        try:
+            from suite_workspace import bootstrap_suite_workspace
+
+            bootstrap_suite_workspace(st)
+        except ImportError:
+            try:
+                from suite_workspace import init_suite_workspace
+
+                init_suite_workspace(st)
+            except ImportError:
+                pass
     ws = get_active_workspace_id(st)
     acct = account_summary()
     email = get_user_email()
-    persisted = load_persisted_workspace_id(session_state=st.session_state if st is not None else None)
+    persisted = load_persisted_workspace_id(session_state=ss)
     query_ws = normalize_workspace_id(_qp_get(st, _QUERY_PARAM)) if st is not None else persisted
     query_raw = _qp_get(st, _QUERY_PARAM) if st is not None else ""
     namespace_keys = sorted(workspace_storage_app_keys(ws))
@@ -130,7 +141,10 @@ def detect_workspace_namespace_issues(*, st: Any | None = None) -> list[dict[str
         if query_raw and not st.session_state.get(_INITIALIZED_KEY):
             query_ws = normalize_workspace_id(query_raw)
             session_ws = normalize_workspace_id(
-                str(st.session_state.get(SESSION_KEY) or load_persisted_workspace_id(session_state=st.session_state))
+                str(
+                    st.session_state.get(SESSION_KEY)
+                    or load_persisted_workspace_id(session_state=st.session_state)
+                )
             )
             if query_ws != session_ws:
                 issues.append(
@@ -145,7 +159,12 @@ def detect_workspace_namespace_issues(*, st: Any | None = None) -> list[dict[str
                         ),
                     }
                 )
-        init_suite_workspace(st)
+        try:
+            from suite_workspace import bootstrap_suite_workspace
+
+            bootstrap_suite_workspace(st)
+        except ImportError:
+            init_suite_workspace(st)
 
     ws = get_active_workspace_id(st)
     persisted = load_persisted_workspace_id(session_state=st.session_state if st is not None else None)
@@ -264,34 +283,26 @@ def _signed_in_email(ctx: dict[str, Any], session_state: dict[str, Any]) -> str:
 
 
 def _render_minimal_account_workspace_body(
-    container: Any,
+    st: Any,
     session_state: dict[str, Any],
     ctx: dict[str, Any],
-    *,
-    st_module: Any | None = None,
 ) -> None:
-    """Normal mode — email + logout only (render via expander container, never st.sidebar.*)."""
+    """Normal mode — email + logout only (must run inside expander context using st, not st.sidebar)."""
     email = _signed_in_email(ctx, session_state)
     if email:
-        container.markdown(f"Signed in as **{email}**")
+        st.markdown(f"Signed in as **{email}**")
     try:
         from suite_auth import is_auth_enabled, is_authenticated, logout
 
         if is_auth_enabled() and is_authenticated(session_state):
-            if container.button(
-                "Log out",
-                key="suite_account_workspace_logout_btn",
-                use_container_width=True,
-            ):
-                logout(session_state, st=st_module or container)
-                rerun = getattr(st_module, "rerun", None)
-                if callable(rerun):
-                    rerun()
+            if st.button("Log out", key="suite_account_workspace_logout_btn", use_container_width=True):
+                logout(session_state, st=st)
+                st.rerun()
             return
     except ImportError:
         pass
     if not email:
-        container.caption("Shared suite profile (no individual sign-in on this deploy).")
+        st.caption("Shared suite profile (no individual sign-in on this deploy).")
 
 
 def render_user_account_access(st: Any, *, for_homepage: bool = False, sidebar: bool = False) -> None:
@@ -342,14 +353,8 @@ def render_account_workspace_access(
         return
 
     header = account_workspace_expander_label(ctx)
-    expander = st.sidebar.expander if sidebar else st.expander
-    with expander(header, expanded=False, key="suite_account_workspace_expander"):
-        _render_minimal_account_workspace_body(
-            st,
-            st.session_state,
-            ctx,
-            st_module=st,
-        )
+    with ui.expander(header, expanded=False, key="suite_account_workspace_expander"):
+        _render_minimal_account_workspace_body(st, st.session_state, ctx)
 
 
 def render_account_settings_panel(
@@ -421,6 +426,14 @@ def _render_account_settings_body(st: Any, ctx: dict[str, Any], issues: list[dic
     st.markdown("#### Deep links")
     st.caption("Apps opened from Command Center include your active workspace in the URL.")
     st.code(ctx["sample_app_url"] or "(no sample URL)", language="text")
+
+    try:
+        from suite_workspace import can_show_developer_tools, render_workspace_ownership_diagnostics
+
+        if st is not None and can_show_developer_tools(st=st):
+            render_workspace_ownership_diagnostics(st, sidebar=False)
+    except ImportError:
+        pass
     if ctx["active_workspace_id"] != DEFAULT_WORKSPACE_ID:
         st.caption(
             f"Direct app URL pattern: append `?suite_workspace={ctx['active_workspace_id']}` "

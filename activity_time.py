@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-# User-facing suite timestamps display in US Eastern (ET / EDT automatically).
 DISPLAY_TIMEZONE = ZoneInfo("America/New_York")
 # Naive ISO strings from legacy writers are treated as UTC.
 _LEGACY_NAIVE_IS_UTC = True

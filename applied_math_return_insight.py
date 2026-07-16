@@ -1497,18 +1497,8 @@ def load_applied_math_insight(insight_id: str, *, source_app: str = "") -> dict[
     return best
 
 
-def load_applied_math_insight_for_question(
-    question_id: str,
-    *,
-    source_app: str = "",
-    analysis_run_id: str = "",
-) -> dict[str, Any]:
-    """Load the stored insight tied to a question_id or practice analysis run."""
-    run_id = str(analysis_run_id or "").strip()
-    if run_id:
-        loaded = load_applied_math_insight(f"pa:{run_id}", source_app=source_app)
-        if loaded:
-            return loaded
+def load_applied_math_insight_for_question(question_id: str, *, source_app: str = "") -> dict[str, Any]:
+    """Load the stored insight tied to a question_id (instant / canonical answer)."""
     qid = str(question_id or "").strip()
     if not qid:
         return {}
@@ -1829,10 +1819,6 @@ def apply_ami_insight_from_query(st: Any, app_key: str) -> bool:
 
     iid = _qp("suite_ami_insight")
     if not iid:
-        run_id = _qp("suite_practice_analysis_run_id")
-        if run_id:
-            iid = f"pa:{run_id}"
-    if not iid:
         return False
 
     _clear_stale_return_insight_cache(st, iid)
@@ -1842,8 +1828,6 @@ def apply_ami_insight_from_query(st: Any, app_key: str) -> bool:
         return False
 
     insight = load_applied_math_insight(iid, source_app=app_key)
-    if not insight and iid.startswith("pa:"):
-        insight = load_applied_math_insight(iid, source_app="music")
     if not insight:
         placeholder = (
             "Applied Investment Insight loaded."
