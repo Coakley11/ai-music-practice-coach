@@ -1,0 +1,366 @@
+"""Composition Studio — canonical song document schema and helpers."""
+
+from __future__ import annotations
+
+import copy
+import re
+import uuid
+from datetime import datetime, timezone
+from typing import Any
+
+from custom_progression_lab import (
+    CPL_PROGRESSION_STYLES,
+    CPL_TIME_SIGNATURES,
+    expand_entries_to_chords,
+    normalize_chord_symbol,
+)
+
+COMPOSITION_SCHEMA_VERSION = 1
+
+COMPOSER_SECTION_LABELS: tuple[str, ...] = (
+    "Intro",
+    "Verse",
+    "Pre-Chorus",
+    "Chorus",
+    "Bridge",
+    "Solo",
+    "Interlude",
+    "Outro",
+)
+
+DEFAULT_PROGRESSION_STYLE = "Pop"
+DEFAULT_GROOVE = "Auto"
+DEFAULT_BPM = 96
+DEFAULT_KEY = "C"
+DEFAULT_METER = "4/4"
+
+SEED_TYPES: frozenset[str] = frozenset(
+    {
+        "style_intent",
+        "chords",
+        "rhythm",
+        "lyrics",
+        "title",
+        "mood",
+        "melody",
+        "exploring",
+        "mixed",
+    }
+)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _new_section_id() -> str:
+    return str(uuid.uuid4())
+
+
+def empty_section(label: str, *, label_variant: str = "") -> dict[str, Any]:
+    return {
+        "id": _new_section_id(),
+        "label": label,
+        "label_variant": label_variant or label,
+        "bars": 8,
+        "chords": [],
+        "melody": {"phrases": []},
+        "lyrics": {"lines": [], "raw_text": ""},
+        "rhythm_override": None,
+    }
+
+
+def default_integration_stub() -> dict[str, Any]:
+    return {
+        "practice_ready": False,
+        "backing_preset_id": None,
+        "notes_for_coach": "",
+    }
+
+
+def default_global() -> dict[str, Any]:
+    return {
+        "original_key_center": DEFAULT_KEY,
+        "time_signature": DEFAULT_METER,
+        "bpm": DEFAULT_BPM,
+        "groove_style": DEFAULT_GROOVE,
+        "progression_style": DEFAULT_PROGRESSION_STYLE,
+    }
+
+
+def default_metadata(*, style: str = "", mood: str = "", description: str = "") -> dict[str, Any]:
+    return {
+        "style": style or DEFAULT_PROGRESSION_STYLE,
+        "mood": mood or "",
+        "language": "en",
+        "description": description or "",
+    }
+
+
+def new_composition_document(
+    *,
+    title: str = "Untitled Song",
+    origin: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    verse = empty_section("Verse", label_variant="Verse 1")
+    chorus = empty_section("Chorus")
+    sections = {verse["id"]: verse, chorus["id"]: chorus}
+    return {
+        "schema_version": COMPOSITION_SCHEMA_VERSION,
+        "id": str(uuid.uuid4()),
+        "title": str(title or "Untitled Song").strip() or "Untitled Song",
+        "created_at": _now_iso(),
+        "updated_at": _now_iso(),
+        "status": "draft",
+        "origin": origin or {"seed_type": "exploring", "seed_summary": "", "seed_payload": {}},
+        "metadata": default_metadata(),
+        "global": default_global(),
+        "form": {
+            "section_order": [verse["id"], chorus["id"]],
+            "sections": sections,
+        },
+        "integration": default_integration_stub(),
+        "ai_settings": {"creativity": "balanced", "explicit_user_is_composer": True},
+    }
+
+
+def touch_composition(doc: dict[str, Any]) -> dict[str, Any]:
+    doc["updated_at"] = _now_iso()
+    return doc
+
+
+def deep_copy_document(doc: dict[str, Any]) -> dict[str, Any]:
+    return copy.deepcopy(doc)
+
+
+def section_by_id(doc: dict[str, Any], section_id: str) -> dict[str, Any] | None:
+    sections = (doc.get("form") or {}).get("sections") or {}
+    sec = sections.get(section_id)
+    return sec if isinstance(sec, dict) else None
+
+
+def ordered_sections(doc: dict[str, Any]) -> list[dict[str, Any]]:
+    order = list((doc.get("form") or {}).get("section_order") or [])
+    sections = (doc.get("form") or {}).get("sections") or {}
+    out: list[dict[str, Any]] = []
+    for sid in order:
+        sec = sections.get(sid)
+        if isinstance(sec, dict):
+            out.append(sec)
+    return out
+
+
+def add_section(doc: dict[str, Any], label: str) -> dict[str, Any]:
+    label = str(label or "Section").strip() or "Section"
+    sec = empty_section(label)
+    form = doc.setdefault("form", {})
+    form.setdefault("sections", {})[sec["id"]] = sec
+    form.setdefault("section_order", []).append(sec["id"])
+    return sec
+
+
+def duplicate_section(doc: dict[str, Any], section_id: str) -> dict[str, Any] | None:
+    src = section_by_id(doc, section_id)
+    if not src:
+        return None
+    clone = deep_copy_document({"form": {"sections": {section_id: src}}})["form"]["sections"][section_id]
+    clone["id"] = _new_section_id()
+    variant = str(src.get("label_variant") or src.get("label") or "Section")
+    clone["label_variant"] = f"{variant} (copy)"
+    form = doc.setdefault("form", {})
+    sections = form.setdefault("sections", {})
+    sections[clone["id"]] = clone
+    order = list(form.get("section_order") or [])
+    try:
+        idx = order.index(section_id)
+        order.insert(idx + 1, clone["id"])
+    except ValueError:
+        order.append(clone["id"])
+    form["section_order"] = order
+    return clone
+
+
+def move_section(doc: dict[str, Any], section_id: str, direction: int) -> bool:
+    form = doc.get("form") or {}
+    order = list(form.get("section_order") or [])
+    if section_id not in order:
+        return False
+    idx = order.index(section_id)
+    new_idx = idx + int(direction)
+    if new_idx < 0 or new_idx >= len(order):
+        return False
+    order[idx], order[new_idx] = order[new_idx], order[idx]
+    form["section_order"] = order
+    return True
+
+
+def remove_section(doc: dict[str, Any], section_id: str) -> bool:
+    form = doc.get("form") or {}
+    order = list(form.get("section_order") or [])
+    if section_id not in order or len(order) <= 1:
+        return False
+    order = [s for s in order if s != section_id]
+    form["section_order"] = order
+    sections = form.get("sections") or {}
+    sections.pop(section_id, None)
+    return True
+
+
+def parse_chord_paste(text: str) -> list[dict[str, Any]]:
+    """Parse '| G | Am | C |', comma-separated, or space-separated symbols."""
+    raw = str(text or "").strip()
+    if not raw:
+        return []
+    if "|" in raw or "\n" in raw or "," in raw or ";" in raw:
+        parts = re.split(r"[|\n,;/]+", raw)
+    else:
+        parts = raw.split()
+    entries: list[dict[str, Any]] = []
+    for part in parts:
+        sym = normalize_chord_symbol(part.strip())
+        if sym:
+            entries.append({"chord": sym, "bars": 1})
+    return entries
+
+
+def _style_from_text(text: str) -> str:
+    lower = text.lower()
+    for style in CPL_PROGRESSION_STYLES:
+        if style.lower() in lower:
+            return style
+    keywords = {
+        "jazz": "Jazz",
+        "blues": "Blues",
+        "rock": "Rock",
+        "folk": "Folk",
+        "bossa": "Bossa",
+        "funk": "Funk",
+        "ballad": "Pop",
+        "worship": "Pop",
+        "classical": "Pop",
+        "film": "Pop",
+    }
+    for key, style in keywords.items():
+        if key in lower:
+            return style
+    return DEFAULT_PROGRESSION_STYLE
+
+
+def bootstrap_from_seed(
+    *,
+    seed_type: str,
+    seed_text: str = "",
+    seed_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a new document from the user's starting idea."""
+    payload = dict(seed_payload or {})
+    text = str(seed_text or "").strip()
+    stype = str(seed_type or "exploring").strip().lower()
+    if stype not in SEED_TYPES:
+        stype = "mixed" if text else "exploring"
+
+    title = str(payload.get("title") or "").strip()
+    if not title and stype == "title" and text:
+        title = text[:120]
+    if not title:
+        title = "Untitled Song"
+
+    mood = str(payload.get("mood") or "").strip()
+    style = str(payload.get("style") or "").strip()
+    if stype == "mood" and text:
+        mood = text[:200]
+    if stype in {"style_intent", "exploring", "mixed"} and text:
+        if not style:
+            style = _style_from_text(text)
+        if not mood and any(w in text.lower() for w in ("sad", "hope", "joy", "dark", "love", "bitter")):
+            mood = text[:120]
+
+    origin = {
+        "seed_type": stype,
+        "seed_summary": text[:500] if text else str(payload.get("summary") or ""),
+        "seed_payload": payload,
+    }
+    doc = new_composition_document(title=title, origin=origin)
+    meta = doc.setdefault("metadata", default_metadata())
+    if style:
+        meta["style"] = style
+        doc.setdefault("global", default_global())["progression_style"] = style
+    if mood:
+        meta["mood"] = mood
+    if text and stype in {"style_intent", "exploring", "mixed"}:
+        meta["description"] = text[:2000]
+
+    sections = ordered_sections(doc)
+    first = sections[0] if sections else add_section(doc, "Verse")
+
+    if stype == "chords" and text:
+        first["chords"] = parse_chord_paste(text)
+    elif stype == "lyrics" and text:
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        first["lyrics"] = {"lines": lines, "raw_text": text}
+    elif stype == "rhythm":
+        bpm = payload.get("bpm")
+        meter = payload.get("time_signature")
+        g = doc.setdefault("global", default_global())
+        if bpm:
+            g["bpm"] = int(bpm)
+        if meter in CPL_TIME_SIGNATURES:
+            g["time_signature"] = meter
+        if style:
+            g["progression_style"] = style
+
+    if stype == "style_intent" and "ballad" in text.lower():
+        g = doc.setdefault("global", default_global())
+        g["bpm"] = min(g.get("bpm", DEFAULT_BPM), 72)
+        g["groove_style"] = "Ballad"
+
+    return touch_composition(doc)
+
+
+def chords_for_playback(
+    doc: dict[str, Any],
+    *,
+    scope: str = "section",
+    section_id: str | None = None,
+) -> list[str]:
+    """Flatten chord entries for backing preview."""
+    sections_map = (doc.get("form") or {}).get("sections") or {}
+    order = list((doc.get("form") or {}).get("section_order") or [])
+    if scope == "section" and section_id:
+        sec = sections_map.get(section_id) or {}
+        return expand_entries_to_chords(sec.get("chords") or [])
+    chords: list[str] = []
+    for sid in order:
+        sec = sections_map.get(sid) or {}
+        chords.extend(expand_entries_to_chords(sec.get("chords") or []))
+    return chords
+
+
+def playback_globals(doc: dict[str, Any]) -> dict[str, Any]:
+    g = doc.get("global") or {}
+    meta = doc.get("metadata") or {}
+    style = str(g.get("progression_style") or meta.get("style") or DEFAULT_PROGRESSION_STYLE)
+    groove = str(g.get("groove_style") or DEFAULT_GROOVE)
+    if groove == "Auto":
+        groove = f"{style} groove" if "groove" not in style.lower() else style
+    return {
+        "bpm": int(g.get("bpm") or DEFAULT_BPM),
+        "time_signature": str(g.get("time_signature") or DEFAULT_METER),
+        "style": style,
+        "groove": groove,
+        "key_center": str(g.get("original_key_center") or DEFAULT_KEY),
+        "mood": str(meta.get("mood") or ""),
+    }
+
+
+def document_summary_line(doc: dict[str, Any]) -> str:
+    pg = playback_globals(doc)
+    parts = [
+        pg["key_center"],
+        pg["style"],
+        f"{pg['bpm']} BPM",
+        pg["time_signature"],
+    ]
+    if pg["mood"]:
+        parts.append(pg["mood"])
+    return " · ".join(parts)

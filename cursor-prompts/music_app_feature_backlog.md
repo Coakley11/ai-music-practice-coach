@@ -1,6 +1,6 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-07-03 (Tests A–E frozen)
+**Last updated:** 2026-07-29 (Tests A–E frozen)
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
@@ -91,6 +91,13 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 - “Similar songs” recommendations from catalog metadata
 - Last practiced timestamp on hero card
 - Quick transpose presets (+1/-1 semitone buttons on hub)
+
+### Song Composer / Composition Studio
+
+- **AI-assisted creative workspace** — composer beside you; start from any seed (melody, chords, groove, lyric, title, mood, style)
+- Coupled musical snapshot; explained proposals; **What if…?** experimentation (not a lane-by-lane form)
+- Architecture: [plans/2026-07-29-composition-studio-v1-architecture.md](./plans/2026-07-29-composition-studio-v1-architecture.md)
+- V1: best-in-class composition experience + save library; `integration` stub for future Practice/Backing/Coach hub
 
 ### Creative Progressions
 

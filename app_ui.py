@@ -7529,6 +7529,7 @@ STUDIO_PAGE_META: dict[str, dict[str, str]] = {
     "picker": {"label": "Song Selection", "icon": "🎼", "nav_class": "picker"},
     "backing": {"label": "Backing Track", "icon": "🎧", "nav_class": "backing"},
     "custom": {"label": "Custom Progression", "icon": "✏️", "nav_class": "custom"},
+    "composer": {"label": "Composition Studio", "icon": "🎹", "nav_class": "composer"},
     "creative": {"label": "Creative Lab", "icon": "🎨", "nav_class": "creative"},
     "multitrack": {"label": "Multitrack", "icon": "🎚️", "nav_class": "multitrack"},
     "analysis": {"label": "Upload Analysis", "icon": "🎙️", "nav_class": "analysis"},
@@ -7565,6 +7566,7 @@ SIMPLE_NAV_PAGE_IDS: list[str] = [
     "picker",
     "backing",
     "custom",
+    "composer",
     "creative",
     "analysis",
     "multitrack",
@@ -7572,7 +7574,7 @@ SIMPLE_NAV_PAGE_IDS: list[str] = [
 ]
 
 QUICK_NAV_ROW_PRIMARY: list[str] = ["practice", "picker", "backing", "custom"]
-QUICK_NAV_ROW_SECONDARY: list[str] = ["creative", "analysis", "multitrack", "log"]
+QUICK_NAV_ROW_SECONDARY: list[str] = ["composer", "creative", "analysis", "multitrack", "log"]
 
 
 def sidebar_studio_page_items(*, ai_enabled: bool) -> list[tuple[str, str]]:
@@ -7635,6 +7637,7 @@ _NAV_COMPACT_TITLE: dict[str, str] = {
     "picker": "Songs",
     "backing": "Backing",
     "custom": "Custom",
+    "composer": "Compose",
     "creative": "Creative",
     "multitrack": "Multitrack",
     "analysis": "Upload",
@@ -7647,6 +7650,7 @@ _NAV_COMPACT_ICON: dict[str, str] = {
     "picker": "🎼",
     "backing": "🎧",
     "custom": "✏️",
+    "composer": "🎹",
     "creative": "🎨",
     "multitrack": "🎚️",
     "analysis": "🎙️",
@@ -8575,6 +8579,7 @@ _DECORATIVE_HEADER_SCRIPT: dict[str, str] = {
     "picker": "Songs",
     "backing": "Backing",
     "custom": "Custom",
+    "composer": "Compose",
     "creative": "Creative",
     "analysis": "Upload",
     "multitrack": "Multitrack",
@@ -8587,6 +8592,7 @@ _DECORATIVE_HEADER_KICKER: dict[str, str] = {
     "picker": "Song catalog",
     "backing": "Audio studio",
     "custom": "Progression lab",
+    "composer": "Songwriting workspace",
     "creative": "Improvisation lab",
     "analysis": "Recording coach",
     "multitrack": "Layer studio",

@@ -21,6 +21,7 @@ STUDIO_PAGE_IDS: frozenset[str] = frozenset(
         "picker",
         "backing",
         "custom",
+        "composer",
         "creative",
         "multitrack",
         "analysis",

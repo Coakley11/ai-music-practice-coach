@@ -912,6 +912,7 @@ if not _APP_UI_LOADED:
             ("picker", "🎼 Song Selection"),
             ("backing", "🎧 Backing Track"),
             ("custom", "✏️ Custom Progression"),
+            ("composer", "🎹 Composition Studio"),
             ("creative", "🎨 Creative Lab"),
             ("multitrack", "🎚️ Multitrack"),
             ("analysis", "🎙️ Upload Analysis"),
@@ -13030,6 +13031,30 @@ elif _studio_page == "custom":
     from cpl_page_ui import render_custom_progression_lab_page
 
     render_custom_progression_lab_page()
+
+
+# -------------------------------------------------
+# COMPOSITION STUDIO
+# -------------------------------------------------
+
+elif _studio_page == "composer":
+
+    ensure_page_initialized(st.session_state, "composer")
+    note_page_visit(st.session_state, "composer")
+    try:
+        from app_ui import inject_studio_page_marker_sync
+
+        inject_studio_page_marker_sync(st, page="composer")
+    except Exception:
+        pass
+    _studio_page_header(
+        "🎹",
+        "Composition Studio",
+        "Start with any musical idea — develop the song with play, form, and harmony.",
+    )
+    from composition_studio_page import render_composition_studio_page
+
+    render_composition_studio_page()
 
 
 # -------------------------------------------------

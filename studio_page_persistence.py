@@ -83,6 +83,19 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "cpl_finished",
         }
     ),
+    "composer": frozenset(
+        {
+            "composer_active_document",
+            "composer_saved_compositions",
+            "composer_needs_seed",
+            "composer_active_section_id",
+            "composer_focus_lane",
+            "composer_snapshot_stamp",
+            "composer_seed_type",
+            "composer_play_scope",
+            "composer_play_loops",
+        }
+    ),
     "creative": frozenset(
         {
             "creative_lab_analysis_mode",
@@ -753,6 +766,13 @@ def ensure_page_initialized(
         init_creative_lab_state(session_state)
     elif page_id == "custom":
         session_state.setdefault("cpl_edit_section", "Verse")
+    elif page_id == "composer":
+        try:
+            from composition_session_state import init_composer_page_state
+
+            init_composer_page_state(session_state)
+        except ImportError:
+            pass
 
 
 def ensure_creative_improv_initialized(session_state: dict, *, is_custom_active: bool) -> None:
