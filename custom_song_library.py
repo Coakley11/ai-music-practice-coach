@@ -60,9 +60,15 @@ def list_cloud_custom_songs(*, st: Any | None = None, limit: int = 200) -> tuple
     if not cloud_enabled():
         return [], cloud_block_reason()
     try:
+        from music_egress_config import saved_items_list_limit
+
+        row_limit = saved_items_list_limit(default=int(limit), st=st)
+    except ImportError:
+        row_limit = int(limit)
+    try:
         from suite_account import load_saved_items
 
-        rows = load_saved_items(app=APP_ID, item_type=ITEM_TYPE, limit=limit)
+        rows = load_saved_items(app=APP_ID, item_type=ITEM_TYPE, limit=row_limit)
         ws = active_workspace_id(st=st).lower()
         out: list[dict[str, Any]] = []
         for row in rows or []:
@@ -179,8 +185,20 @@ def _merge_progression_store(local: dict[str, Any], cloud_rows: list[dict[str, A
     return merged
 
 
-def merge_custom_songs_from_cloud(session_state: dict[str, Any], *, st: Any | None = None) -> bool:
+def merge_custom_songs_from_cloud(
+    session_state: dict[str, Any],
+    *,
+    st: Any | None = None,
+    force: bool = False,
+) -> bool:
     """Hydrate ``cpl_saved_progressions`` from the cloud custom-song library."""
+    try:
+        from music_egress_config import note_custom_song_cloud_merged, should_merge_custom_songs_from_cloud
+
+        if not should_merge_custom_songs_from_cloud(session_state, force=force):
+            return False
+    except ImportError:
+        pass
     if not cloud_enabled():
         return False
     rows, _err = list_cloud_custom_songs(st=st)
@@ -192,7 +210,19 @@ def merge_custom_songs_from_cloud(session_state: dict[str, Any], *, st: Any | No
     merged = _merge_progression_store(local, rows)
     if merged != local:
         session_state[CPL_SAVED_KEY] = merged
+        try:
+            from music_egress_config import note_custom_song_cloud_merged
+
+            note_custom_song_cloud_merged(session_state)
+        except ImportError:
+            pass
         return True
+    try:
+        from music_egress_config import note_custom_song_cloud_merged
+
+        note_custom_song_cloud_merged(session_state)
+    except ImportError:
+        pass
     return False
 
 

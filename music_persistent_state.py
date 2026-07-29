@@ -1136,11 +1136,18 @@ def save_music_cloud_session(
     if saved_cloud:
         readback: dict[str, Any] = {}
         try:
-            from suite_cloud_state import load_cloud_full_session
+            from music_egress_config import skip_cloud_readback_after_write
 
-            readback, _ = load_cloud_full_session(APP_ID)
-        except Exception:
-            readback = {}
+            do_readback = not skip_cloud_readback_after_write(APP_ID, st=st)
+        except ImportError:
+            do_readback = True
+        if do_readback:
+            try:
+                from suite_cloud_state import load_cloud_full_session
+
+                readback, _ = load_cloud_full_session(APP_ID)
+            except Exception:
+                readback = {}
         if isinstance(readback, dict) and readback:
             record_transposing_save_diagnostics(
                 st,
@@ -1727,7 +1734,14 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
                 extra[key] = copy.deepcopy(val)
     snapshots = ss.get("_studio_page_snapshots")
     if isinstance(snapshots, dict) and snapshots:
-        extra["_studio_page_snapshots"] = copy.deepcopy(snapshots)
+        snap_copy = copy.deepcopy(snapshots)
+        try:
+            from music_egress_config import sanitize_studio_page_snapshots_for_persist
+
+            snap_copy = sanitize_studio_page_snapshots_for_persist(snap_copy)
+        except ImportError:
+            pass
+        extra["_studio_page_snapshots"] = snap_copy
     try:
         from multitrack_session_persistence import count_mt_layers
         from studio_page_persistence import save_page_snapshot

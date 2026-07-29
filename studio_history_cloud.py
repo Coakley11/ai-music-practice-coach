@@ -95,9 +95,15 @@ def list_history_items(*, item_type: str, st: Any | None = None, limit: int = 50
     if not cloud_enabled():
         return [], cloud_block_reason()
     try:
+        from music_egress_config import saved_items_list_limit
+
+        row_limit = saved_items_list_limit(default=int(limit), st=st)
+    except ImportError:
+        row_limit = int(limit)
+    try:
         from suite_account import load_saved_items
 
-        rows = load_saved_items(app=APP_ID, item_type=item_type, limit=limit)
+        rows = load_saved_items(app=APP_ID, item_type=item_type, limit=row_limit)
     except Exception as exc:
         return [], str(exc)
     ws = active_workspace_id(st=st)

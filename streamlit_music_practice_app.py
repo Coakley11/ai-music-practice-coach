@@ -7593,13 +7593,23 @@ def _render_active_song_favorites_switch(
 
 def _render_custom_song_library_selector() -> None:
     """Pick a saved custom song to activate (Custom Progression source)."""
-    from custom_progression_lab import list_saved_progression_names
-    from custom_song_library import _format_saved_at, progression_row_summary, row_widget_suffix
+    from custom_progression_lab import CPL_SAVED_KEY, list_saved_progression_names
+    from custom_song_library import (
+        _format_saved_at,
+        merge_custom_songs_from_cloud,
+        progression_row_summary,
+        row_widget_suffix,
+    )
     from songs.music_source import (
         CUSTOM_RECENT_ACTIVE_NAMES_KEY,
         custom_progression_is_active,
         queue_custom_library_action,
     )
+
+    try:
+        merge_custom_songs_from_cloud(st.session_state, st=st, force=True)
+    except Exception:
+        pass
 
     saved = st.session_state.get(CPL_SAVED_KEY) or {}
     if not isinstance(saved, dict):

@@ -224,6 +224,12 @@ def render_egress_sidebar_panel(st: Any) -> None:
     except Exception:
         return
     with st.sidebar.expander("Supabase egress (dev)", expanded=False):
+        try:
+            from music_egress_config import format_music_egress_status_line
+
+            st.caption(format_music_egress_status_line(st=st))
+        except ImportError:
+            pass
         st.markdown(format_egress_summary_markdown())
         summary = _session_bucket()
         if summary and summary.events:

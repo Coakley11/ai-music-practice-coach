@@ -1379,7 +1379,16 @@ def force_autosave(
         if cloud_block:
             st.session_state["_suite_autosave_cloud_blocked_reason"] = cloud_block
         else:
-            saved_cloud = bool(save_cloud_full_session(app_id, state, page=page, summary=summary))
+            try:
+                from music_egress_config import music_cloud_write_allowed
+
+                allow_cloud = music_cloud_write_allowed(save_reason=reason or "force_autosave", st=st)
+            except ImportError:
+                allow_cloud = True
+            if allow_cloud:
+                saved_cloud = bool(save_cloud_full_session(app_id, state, page=page, summary=summary))
+            else:
+                st.session_state["_suite_autosave_cloud_blocked_reason"] = "music_egress_strict"
         if saved_disk or saved_cloud:
             st.session_state[f"_suite_autosave_fp::{app_id}"] = fp
             st.session_state[_restored_fp_key(app_id)] = fp
@@ -1387,8 +1396,17 @@ def force_autosave(
             if reason == "page_change":
                 _release_user_page_ownership_after_save(st, str(state.get("active_page") or ""))
             if saved_cloud:
-                _, cloud_ts = load_cloud_full_session(app_id)
-                st.session_state[_applied_cloud_ts_key(app_id)] = cloud_ts or _utc_now_iso()
+                try:
+                    from music_egress_config import skip_cloud_readback_after_write
+
+                    do_readback = not skip_cloud_readback_after_write(app_id, st=st)
+                except ImportError:
+                    do_readback = True
+                if do_readback:
+                    _, cloud_ts = load_cloud_full_session(app_id)
+                    st.session_state[_applied_cloud_ts_key(app_id)] = cloud_ts or _utc_now_iso()
+                else:
+                    st.session_state[_applied_cloud_ts_key(app_id)] = _utc_now_iso()
             st.session_state["_suite_persist_last_save_at"] = _utc_now_iso()
             st.session_state["_suite_persist_last_save_disk"] = saved_disk
             st.session_state["_suite_persist_last_save_cloud"] = saved_cloud
@@ -1465,15 +1483,31 @@ def autosave_if_changed(
             if cloud_block:
                 st.session_state["_suite_autosave_cloud_blocked_reason"] = cloud_block
             else:
-                saved_cloud = bool(
-                    save_cloud_full_session(app_id, state, page=page, summary=summary)
-                )
-                if saved_cloud:
-                    from suite_cloud_state import load_cloud_full_session
+                try:
+                    from music_egress_config import music_cloud_write_allowed
 
-                    _, cloud_ts_after = load_cloud_full_session(app_id)
-                    if cloud_ts_after:
-                        st.session_state[_applied_cloud_ts_key(app_id)] = cloud_ts_after
+                    allow_cloud = music_cloud_write_allowed(save_reason="autosave", st=st)
+                except ImportError:
+                    allow_cloud = True
+                if allow_cloud:
+                    saved_cloud = bool(
+                        save_cloud_full_session(app_id, state, page=page, summary=summary)
+                    )
+                else:
+                    st.session_state["_suite_autosave_cloud_blocked_reason"] = "music_egress_strict"
+                if saved_cloud:
+                    try:
+                        from music_egress_config import skip_cloud_readback_after_write
+
+                        do_readback = not skip_cloud_readback_after_write(app_id, st=st)
+                    except ImportError:
+                        do_readback = True
+                    if do_readback:
+                        from suite_cloud_state import load_cloud_full_session
+
+                        _, cloud_ts_after = load_cloud_full_session(app_id)
+                        if cloud_ts_after:
+                            st.session_state[_applied_cloud_ts_key(app_id)] = cloud_ts_after
         except Exception as exc:
             cloud_err = str(exc)
         if saved_disk or saved_cloud:
