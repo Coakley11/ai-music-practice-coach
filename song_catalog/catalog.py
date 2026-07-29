@@ -56,6 +56,7 @@ TRUSTED_CORE_KEYS = {
     ("Dance Monkey", "Tones and I"),
     ("I'm Yours", "Jason Mraz"),
     ("Hotel California", "Eagles"),
+    ("California Dreamin'", "The Mamas & the Papas"),
     ("Californication", "Red Hot Chili Peppers"),
     ("Iris", "Goo Goo Dolls"),
     ("Take Me Home, Country Roads", "John Denver"),

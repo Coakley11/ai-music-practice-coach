@@ -1122,6 +1122,215 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
     }
 
 
+def _california_dreamin_chart_pack() -> dict[str, Any]:
+    """California Dreamin' — The Mamas & the Papas (C# minor, 4/4 pop, ~112 BPM).
+
+    Transposed from the Am reference chart:
+
+        Am -> C#m     E  -> G#
+        G  -> B       Esus4 -> G#sus4
+        F  -> A       E7sus4 -> G#7sus4
+        C  -> E       Fmaj7 -> Amaj7
+        E7 -> G#7
+
+    One list item = one bar. Half-bar changes use ``|`` splits (two beats each
+    in 4/4); longer sustains repeat the cell; odd lengths use beat weights
+    (e.g. ``C#m:2|A:2`` for half-bar splits inside one bar).
+    """
+
+    def _hold(chord: str, bars: int) -> list[str]:
+        return [chord] * bars
+
+    def _hb(a: str, b: str) -> str:
+        return f"{a}|{b}"
+
+    def _verse_open() -> list[str]:
+        return [
+            _hb("C#m", "B"),
+            _hb("A", "B"),
+            "G#sus4",
+            "G#sus4",
+            _hb("G#", "A"),
+            _hb("E", "G#"),
+            _hb("C#m", "A"),
+            "G#sus4",
+            "G#sus4",
+            "G#",
+            "G#",
+        ]
+
+    def _verse_mid() -> list[str]:
+        return [
+            _hb("C#m", "B"),
+            _hb("A", "B"),
+            "G#sus4",
+            "G#sus4",
+            "G#",
+            "G#",
+        ]
+
+    def _verse_close_v12() -> list[str]:
+        return [
+            _hb("C#m", "B"),
+            _hb("A", "B"),
+            *_hold("G#sus4", 4),
+        ]
+
+    def _verse_close_v3() -> list[str]:
+        return [
+            _hb("C#m", "B"),
+            _hb("A", "B"),
+            "C#m:2",
+        ]
+
+    verse_12 = _verse_open() + _verse_mid() + _verse_close_v12()
+    verse_3 = _verse_open() + _verse_mid() + _verse_close_v3()
+
+    intro = _hold("C#m", 3) + ["G#sus4"]
+
+    instrumental = [
+        *_hold("C#m", 11),
+        _hb("C#m", "A"),
+        _hb("E", "G#7"),
+        _hb("C#m", "A"),
+        "G#7sus4",
+        "G#7sus4",
+        "G#7",
+        "G#7",
+        _hb("C#m", "B"),
+        _hb("A", "B"),
+        "G#sus4",
+        "G#sus4",
+        "G#7",
+        "G#7",
+        _hb("C#m", "B"),
+        _hb("A", "B"),
+        "G#sus4",
+        "G#sus4",
+        "G#",
+        "G#",
+    ]
+
+    outro = [
+        _hb("B", "A"),
+        _hb("B", "C#m"),
+        _hb("B", "A"),
+        "B:2",
+        *_hold("G#sus4", 4),
+        *_hold("C#m", 2),
+    ]
+
+    base_sections: dict[str, list[str]] = {
+        "Intro": intro,
+        "Verse 1": list(verse_12),
+        "Verse 2": list(verse_12),
+        "Instrumental": instrumental,
+        "Verse 3": list(verse_3),
+        "Outro": outro,
+    }
+
+    section_order = [
+        "Intro",
+        "Verse 1",
+        "Verse 2",
+        "Instrumental",
+        "Verse 3",
+        "Outro",
+    ]
+
+    def _map_token(token: str, mapper: dict[str, str]) -> str:
+        if "|" in token:
+            return "|".join(_map_token(part, mapper) for part in token.split("|"))
+        if ":" in token:
+            chord, weight = token.split(":", 1)
+            return f"{mapper.get(chord, chord)}:{weight}"
+        return mapper.get(token, token)
+
+    def _retune(source: dict[str, list[str]], mapper: dict[str, str]) -> dict[str, list[str]]:
+        return {
+            name: [_map_token(c, mapper) for c in chords]
+            for name, chords in source.items()
+        }
+
+    beginner = {name: list(chords) for name, chords in base_sections.items()}
+
+    inter_map = {
+        "C#m": "C#m7",
+        "B": "B",
+        "A": "A",
+        "E": "E",
+        "G#": "G#",
+        "G#sus4": "G#sus4",
+        "G#7": "G#7",
+        "G#7sus4": "G#7sus4",
+        "Amaj7": "Amaj7",
+    }
+    intermediate = _retune(base_sections, inter_map)
+
+    adv_map = {
+        "C#m": "C#m9",
+        "B": "Badd9",
+        "A": "A6",
+        "E": "E/G#",
+        "G#": "G#7sus4",
+        "G#sus4": "G#sus4",
+        "G#7": "G#7",
+        "G#7sus4": "G#7sus4",
+        "Amaj7": "Amaj7",
+    }
+    advanced = _retune(base_sections, adv_map)
+
+    lyric_cues = {
+        "Intro": ["windy minor arpeggio — C#m sus lift into Verse 1"],
+        "Verse 1": ["All the leaves are brown… — half-bar bass walk C#m–B–A–B"],
+        "Verse 2": ["Second verse — same harmonic rhythm as Verse 1"],
+        "Instrumental": ["flute / break — G#7sus4–G#7 turn before final verse"],
+        "Verse 3": ["Final verse — short tag on C#m into Outro"],
+        "Outro": ["B–A–B cadence — long G#sus4 fade on C#m"],
+    }
+
+    arrangement_notes = (
+        "**C# minor (concert), 4/4, ~112 BPM.** Transposed from the Am "
+        "reference: **Am→C#m, G→B, F→A, C→E, E→G#, E7→G#7, Esus4→G#sus4, "
+        "E7sus4→G#7sus4, Fmaj7→Amaj7**. Verses use quick **half-bar** root motion "
+        "(``C#m|B``, ``A|B``) with **2-bar G#sus4** pads and **G#** sustains. "
+        "Verse 3 ends on a **half-bar C#m** tag (``C#m:2``) then moves straight "
+        "into the Outro (**B|A**, **B|C#m**, **B|A**, half-bar **B**, **4 bars "
+        "G#sus4**, **2 bars C#m**). Full form: Intro → Verse 1 → Verse 2 → "
+        "Instrumental → Verse 3 → Outro. **One chart bar = one playback bar**; "
+        "pipe tokens are in-bar half-bar splits."
+    )
+
+    return {
+        "key": "C#m",
+        "sections": intermediate,
+        "chart_versions": _levels(
+            beginner=beginner,
+            intermediate=intermediate,
+            advanced=advanced,
+        ),
+        "chart_status": "practice_level_verified",
+        "section_order": section_order,
+        "lyric_cues": lyric_cues,
+        "extensions": _ext(
+            arrangement_notes=arrangement_notes,
+            default_bpm=112,
+            default_groove="Pop groove",
+            time_signature="4/4",
+            harmonic_analysis={
+                "progression_summary": (
+                    "C#m folk-pop minor; B–A bass walk; G#sus4 / G#7 color "
+                    "in instrumental and outro"
+                ),
+                "scale_suggestions": {
+                    "C#m": ["C# natural minor", "C# harmonic minor over G#7"],
+                },
+                "concert_key": "C#m",
+            },
+        ),
+    }
+
+
 def _journey_believin_chart_pack() -> dict[str, Any]:
     """Don't Stop Believin' - Journey (E major, 4/4 arena rock).
 
@@ -7164,6 +7373,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ),
         ("Don't Stop Believin'", "Journey"): _journey_believin_chart_pack(),
         ("Hotel California", "Eagles"): _hotel_california_chart_pack(),
+        ("California Dreamin'", "The Mamas & the Papas"): _california_dreamin_chart_pack(),
         ("Shallow", "Lady Gaga / Bradley Cooper"): _shallow_chart_pack(),
         ("The Girl from Ipanema", "Antonio Carlos Jobim"): pack("F",
             {
@@ -7561,6 +7771,37 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             lyric_cues={"Intro / Verse": ["narrative desert arrival"], "Chorus": ["title-hotel refrain"], "Guitar Solo": ["dual-guitar lead form"]},
             guitar_tabs={"Bm": "x24432", "F#7": "242322", "A": "x02220", "E/G#": "4x245x", "G": "320003", "D/F#": "2x0232", "Em": "022000"},
             notes="Classic 8-bar descending verse cycle; solo uses the same harmonic form for accurate practice looping.",
+        ),
+        v(
+            "California Dreamin'",
+            "The Mamas & the Papas",
+            "Pop",
+            "C#m",
+            {
+                "Intro": ["C#m", "C#m", "C#m", "G#sus4"],
+                "Verse 1": ["C#m|B", "A|B", "G#sus4", "G#sus4"],
+                "Verse 2": ["C#m|B", "A|B", "G#sus4", "G#sus4"],
+                "Instrumental": ["C#m", "C#m", "C#m|A", "E|G#7"],
+                "Verse 3": ["C#m|B", "A|B", "C#m:2"],
+                "Outro": ["B|A", "B|C#m", "B|A", "B:2"],
+            },
+            {
+                "Intro": ["C#m7", "C#m7", "C#m7", "G#sus4"],
+                "Verse 1": ["C#m7|B", "A|B", "G#sus4", "G#sus4"],
+                "Verse 2": ["C#m7|B", "A|B", "G#sus4", "G#sus4"],
+                "Instrumental": ["C#m7", "C#m7", "C#m7|A", "E|G#7"],
+                "Verse 3": ["C#m7|B", "A|B", "C#m7:2"],
+                "Outro": ["B|A", "B|C#m7", "B|A", "B:2"],
+            },
+            composer="John Phillips & Michelle Phillips",
+            lyric_cues={
+                "Verse 1": ["winter longing — half-bar bass walk"],
+                "Instrumental": ["break before final verse"],
+                "Outro": ["G#sus4 fade on C#m"],
+            },
+            notes="C# minor concert; full per-bar form in chart override.",
+            default_bpm=112,
+            default_groove="Pop groove",
         ),
         v(
             "Californication",
