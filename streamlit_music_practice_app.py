@@ -7951,7 +7951,9 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
         on_change=_picker_source_on_change,
     )
     choice = str(st.session_state.get("song_picker_active_source") or "").strip()
-    return is_custom_progression(st.session_state) or choice.startswith("Use Custom")
+    from songs.music_source import music_picker_shows_custom_hub
+
+    return music_picker_shows_custom_hub(st.session_state) or choice.startswith("Use Custom")
 
 
 def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
@@ -8159,6 +8161,7 @@ def _render_catalog_song_picker_block(
             "Use Custom Progression / Create Your Own Song",
         ]
         from songs.music_source import (
+            music_picker_shows_custom_hub,
             on_song_picker_source_change,
             reconcile_music_picker_source_widget,
             restore_last_catalog_active_song,
@@ -8184,7 +8187,7 @@ def _render_catalog_song_picker_block(
             key="song_picker_active_source",
             on_change=_library_source_on_change,
         )
-        if is_custom_progression(st.session_state):
+        if music_picker_shows_custom_hub(st.session_state):
             _render_custom_active_song_hub(wrap_section=wrap_section)
             return
 

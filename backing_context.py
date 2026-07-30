@@ -942,24 +942,42 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
     mission_id = str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip()
     style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
 
-    progression: list[str] = []
-    section = str(session.get("II_SELECTED_SECTION") or session.get("improv_selected_section") or "").strip() or None
-    stored = session.get("improv_mission_progression")
-    if isinstance(stored, list):
-        progression = [str(c) for c in stored if str(c).strip()]
-    else:
-        home = session.get("home_sections") if isinstance(session.get("home_sections"), dict) else {}
-        if home:
-            try:
-                from improvisation_intelligence import flatten_sections
+    target_chord = str(session.get("ii_selected_chord") or session.get("II_SELECTED_CHORD") or "").strip()
+    if not target_chord:
+        chords = session.get("improv_mission_chord_options")
+        if isinstance(chords, list) and chords:
+            idx = int(session.get("ii_selected_chord_index") or session.get("II_SELECTED_CHORD_INDEX") or 0)
+            idx = max(0, min(idx, len(chords) - 1))
+            target_chord = str(chords[idx] or "").strip()
 
-                progression = flatten_sections(home, section_names=[section] if section else None)
-            except ImportError:
-                pass
+    section = str(session.get("II_SELECTED_SECTION") or session.get("improv_selected_section") or "").strip() or None
+    progression: list[str] = []
+    if target_chord:
+        progression = [target_chord]
+        session["improv_mission_progression"] = progression
+    else:
+        stored = session.get("improv_mission_progression")
+        if isinstance(stored, list):
+            progression = [str(c) for c in stored if str(c).strip()]
+        else:
+            home = session.get("home_sections") if isinstance(session.get("home_sections"), dict) else {}
+            if home:
+                try:
+                    from improvisation_intelligence import flatten_sections
+
+                    progression = flatten_sections(home, section_names=[section] if section else None)
+                except ImportError:
+                    pass
 
     bpm = int(style_meta.get("bpm") or session.get("improv_style_bpm") or _default_bpm(session))
     groove = str(style_meta.get("groove") or session.get("improv_groove") or _default_groove(session)).strip()
-    scope = "Single section" if section else "Full song"
+    style = str(style_meta.get("style") or session.get("improv_style") or "").strip()
+    meter = str(
+        style_meta.get("meter") or session.get("improv_style_meter") or session.get("backing_time_signature") or "4/4"
+    ).strip()
+    scope = "Single section"
+    section_label = section or (f"Chord · {target_chord}" if target_chord else "Mission")
+    loops = int(session.get("backing_track_loops") or session.get("improv_mission_loops") or 4)
 
     return BackingContext(
         source="mission",
@@ -970,11 +988,12 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
         display_key=display_key,
         concert_key=concert_key,
         bpm=bpm,
-        style=str(style_meta.get("style") or "").strip(),
+        style=style,
         groove=groove,
-        section=section,
+        meter=meter,
+        section=section_label,
         scope=scope,
-        loops=int(session.get("backing_track_loops") or 2),
+        loops=loops,
         progression=progression,
         progression_label=mission_id or "Mission",
         loop=True,
@@ -1581,6 +1600,13 @@ def sections_dict_from_backing_context(
         sections, _ = _custom_progression_sections_at_concert_key(session, concert_key=practice_key)
         if not sections and ctx.progression:
             label = str(ctx.song_title or ctx.progression_label or "Custom").strip() or "Custom"
+            sections = {label: list(ctx.progression)}
+    elif ctx.source == "mission":
+        label = str(ctx.section or ctx.progression_label or "Mission").strip() or "Mission"
+        chords = list(ctx.progression or [])
+        if chords:
+            sections = {label: chords}
+        elif ctx.progression:
             sections = {label: list(ctx.progression)}
     else:
         entry_mode = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()

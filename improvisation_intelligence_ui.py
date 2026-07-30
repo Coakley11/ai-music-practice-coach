@@ -886,6 +886,7 @@ def _ensure_chord_selection(session_state: dict, chords: list[str]) -> None:
         session_state[II_SELECTED_CHORD_LABEL] = chords[idx]
     else:
         session_state[II_SELECTED_CHORD_INDEX] = chords.index(sel)
+    session_state["improv_mission_chord_options"] = list(chords)
 
 
 def _selected_chord(session_state: dict, chords: list[str]) -> tuple[str, int]:
@@ -1478,7 +1479,35 @@ def _tab_deep_harmony(
         time_signature=str(ext.get("time_signature") or ""),
         arrangement_notes=str(ext.get("arrangement_notes") or ""),
     )
-    st.markdown(report)
+    st.markdown(
+        """
+<style>
+.deep-harmony-coach blockquote {
+  border-left: 4px solid #6366f1;
+  background: #f8fafc;
+  padding: 0.65rem 0.85rem;
+  margin: 0.65rem 0 0.85rem;
+  border-radius: 0 10px 10px 0;
+  color: #334155;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+.deep-harmony-coach h3 { margin-top: 0.2rem; }
+.deep-harmony-coach h4 { margin: 0.85rem 0 0.35rem; color: #0f172a; }
+.deep-harmony-coach p, .deep-harmony-coach li { line-height: 1.55; color: #334155; }
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(f'<div class="deep-harmony-coach">', unsafe_allow_html=True)
+    parts = report.split("\n## ")
+    if parts:
+        st.markdown(parts[0], unsafe_allow_html=False)
+        for block in parts[1:]:
+            title, _, body = block.partition("\n")
+            with st.expander(title.strip(), expanded=title.strip().lower().startswith("what makes")):
+                st.markdown("## " + body.strip())
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _tab_metrics_ai(

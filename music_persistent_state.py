@@ -2460,6 +2460,7 @@ def prepare_canonical_music_page_state(
         try:
             from songs.key_state import invalidate_backing_cache
             from songs.music_source import (
+                apply_pending_catalog_from_picker_before_widgets,
                 apply_pending_custom_active_song_activation_before_widgets,
                 apply_pending_custom_library_action_before_widgets,
                 apply_pending_previous_catalog_restore_before_widgets,
@@ -2471,6 +2472,13 @@ def prepare_canonical_music_page_state(
                 session_state = session
 
             reconcile_picker_music_source(session)
+            if song_picker_catalog:
+                apply_pending_catalog_from_picker_before_widgets(
+                    _SessionProxy(),
+                    song_picker_catalog=song_picker_catalog,
+                    song_library=song_library,
+                    invalidate_backing=invalidate_backing_cache,
+                )
             apply_pending_custom_active_song_activation_before_widgets(
                 _SessionProxy(),
                 invalidate_backing=invalidate_backing_cache,

@@ -560,6 +560,76 @@ def _scales_section(
     return lines
 
 
+def _normalize_level(level: str) -> str:
+    low = str(level or "").strip().lower()
+    if "begin" in low:
+        return "Beginner"
+    if "adv" in low:
+        return "Advanced"
+    return "Intermediate"
+
+
+def _coach_opening(inp: HarmonicAnalysisInput, character: dict[str, str]) -> list[str]:
+    """First-person coach intro — adapts to instrument, level, focus, and song."""
+    level = _normalize_level(inp.level)
+    inst = inp.instrument or "your instrument"
+    focus = (inp.focus or "improvisation").strip()
+    song = inp.song_title or "this song"
+    feel = character.get("feel") or "the mood of the chart"
+    key = inp.display_key or inp.key_center or "C"
+
+    if level == "Beginner":
+        return [
+            f"Let's walk through **{song}** together in **{key}** — I'll keep the theory light and give you "
+            f"clear steps on **{inst}** so you can *feel* the harmony, not memorize labels.",
+            f"> **Practice tip:** Set a slow tempo (~{inp.bpm or 80} BPM). Play one chord at a time and name "
+            f"the root out loud before you add anything else.",
+        ]
+    if level == "Advanced":
+        return [
+            f"**{song}** in **{key}** — {feel}. On **{inst}**, we'll treat this as a living progression: "
+            f"function, color, substitutions, and how you'd *improvise* through it with intention.",
+            f"> **Try this:** Loop one section and solo using only guide tones — then add one substitution "
+            f"color per chorus while keeping your **{focus}** front and center.",
+        ]
+    return [
+        f"Here's how I'd teach **{song}** to a **{inst}** student at your level — key **{key}**, "
+        f"focus on **{focus}**. We'll connect *why* the chords work to *what* you should practice.",
+        f"> **Key takeaway:** {character.get('signature') or 'The recognizable sound lives in how the bass and top voice move between chords.'}",
+    ]
+
+
+def _practice_steps_for_level(inp: HarmonicAnalysisInput, cycle: list[str]) -> list[str]:
+    level = _normalize_level(inp.level)
+    home = cycle[0] if cycle else "the home chord"
+    lines = ["\n## Your practice plan"]
+    if level == "Beginner":
+        lines.extend(
+            [
+                "> **Try this:** Play the root of each chord on beat 1 for one full pass — no fills yet.",
+                "> **Try this:** Add the 3rd on beat 3; keep the same rhythm for every bar.",
+                f"> **Practice tip:** When you return to **{home}**, let it breathe — that's your musical “home base.”",
+            ]
+        )
+    elif level == "Advanced":
+        lines.extend(
+            [
+                "> **Try this:** Improvise one chorus using only chord tones, one using approach tones into 3rds/7ths.",
+                "> **Try this:** On the repeat, substitute one dominant color (b9, #11, or sus) before resolving.",
+                "> **Practice tip:** Record yourself — compare whether tension chords *release* where you expect.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                f"> **Try this:** Map the 3rd and 7th of **{home}** on your **{inp.instrument}**, then find the nearest "
+                "shape for the next chord without jumping registers.",
+                "> **Practice tip:** Sing the roots while you play — if you can sing the harmony, you can improvise on it.",
+            ]
+        )
+    return lines
+
+
 def build_deep_harmonic_analysis(
   inp: HarmonicAnalysisInput,
 ) -> str:
@@ -582,37 +652,47 @@ def build_deep_harmonic_analysis(
         inp.song_title,
         inp.time_signature,
     )
+    level_norm = _normalize_level(inp.level)
 
     out: list[str] = [
-        f"# Deep Harmonic Analyzer — {inp.song_title}",
-        f"**Artist:** {inp.artist or '—'} · **Key:** {inp.key_center} → **Display:** {key}",
-        f"**Instrument:** {inp.instrument} · **Level:** {inp.level} · **Focus:** {inp.focus}",
+        f"### {inp.song_title}",
+        f"*{inp.artist}* · practicing in **{key}** · **{inp.instrument}** · **{level_norm}** · **{inp.focus}**",
     ]
+    out.extend(_coach_opening(inp, character))
     if inp.bpm:
-        out.append(f"**Tempo reference:** ~{inp.bpm} BPM")
-    if inp.time_signature:
-        out.append(f"**Meter:** {inp.time_signature}")
+        out.append(f"\n*Tempo reference: ~{inp.bpm} BPM* · Meter: {inp.time_signature or '4/4'}")
     if inp.arrangement_notes:
-        out.append(f"\n> {inp.arrangement_notes[:400]}{'…' if len(inp.arrangement_notes) > 400 else ''}")
+        out.append(
+            f"\n> **Arrangement note:** {inp.arrangement_notes[:320]}{'…' if len(inp.arrangement_notes) > 320 else ''}"
+        )
 
-    out.append("\n## Harmonic Character")
-    out.append(f"- **Style:** {character.get('style', '')}")
-    out.append(f"- **Emotional feel:** {character.get('feel', '')}")
-    out.append(f"- **How it moves:** {character.get('movement', '')}")
-    out.append(f"- **What makes it recognizable:** {character.get('signature', '')}")
+    out.append("\n## What makes this song tick")
+    out.append(f"- **Feel:** {character.get('feel', '')}")
+    out.append(f"- **Motion:** {character.get('movement', '')}")
+    out.append(f"- **Signature:** {character.get('signature', '')}")
     if character.get("similar"):
-        out.append(f"- **Comparison:** {character['similar']}")
+        out.append(f"- **If you know:** {character['similar']}")
     if character.get("meter"):
         out.append(character["meter"])
 
-    out.append("\n## Section Function & Movement")
+    out.append("\n## Section by section")
     if not section_map:
-        out.append("- No sections in the active chart — select a song or build a custom progression.")
+        out.append("> **Practice tip:** Select a song with a chart, or build a custom progression — I'll walk you through it section by section.")
     for name, chords in section_map:
-        out.extend(_section_block(name, chords, key, inp.level))
+        out.extend(_section_block(name, chords, key, level_norm))
 
-    out.extend(_tension_release_section(cycle, key))
+    if level_norm != "Beginner":
+        out.extend(_tension_release_section(cycle, key))
+    else:
+        out.append("\n## Tension & release (simple view)")
+        if cycle:
+            out.append(
+                f"> **Key takeaway:** Chords that feel “unfinished” (often with **7** in the symbol) want to move forward; "
+                f"**{cycle[0]}** is where the loop feels like home."
+            )
+
     out.extend(_harmonic_idea_section(character, cycle, inp.song_title))
+    out.extend(_practice_steps_for_level(inp, cycle))
 
     family = instrument_family(inp.instrument)
     if family == "wind":
@@ -626,16 +706,28 @@ def build_deep_harmonic_analysis(
     else:
         out.extend(_generic_playbook(inp, section_map))
 
-    out.extend(_scales_section(section_map, key, inp.level, instrument=inp.instrument))
+    if level_norm != "Beginner":
+        out.extend(_scales_section(section_map, key, level_norm, instrument=inp.instrument))
+    else:
+        out.append("\n## Scales (when you're ready)")
+        out.append(
+            "> **Practice tip:** Stay on chord roots and 3rds first — add scale runs only after the form feels comfortable."
+        )
 
     focus = (inp.focus or "").lower()
     if "rhythm" in focus:
         out.append(
-            f"\n> **Focus = Rhythm:** practice the chord rhythm of **{inp.song_title}** before adding melodic density."
+            f"\n> **Focus — Rhythm:** Lock the groove of **{inp.song_title}** before adding notes. "
+            "Clap the chord rhythm, then play roots only."
         )
-    elif "harmony" in focus or "chord" in focus:
+    elif "harmony" in focus or "chord" in focus or "voicing" in focus:
         out.append(
-            f"\n> **Focus = Harmony:** prioritize 3rds/7ths and chord-tone resolutions on this chart."
+            "\n> **Focus — Harmony:** Prioritize 3rds and 7ths — they tell the listener the chord quality. "
+            "Resolve phrases on chord tones at cadences."
+        )
+    elif "improv" in focus:
+        out.append(
+            "\n> **Focus — Improvisation:** Aim for one clear idea per chorus — repeat it, then vary it on the next pass."
         )
 
     return "\n".join(out)

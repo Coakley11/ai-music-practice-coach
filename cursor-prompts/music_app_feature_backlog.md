@@ -106,6 +106,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### Creative Progressions
 
+- **Creative AI music coach (long-term)** — personal, conversational coach for improv, accompaniment, composition, hearing harmonic movement, and effective practice; adapts to instrument, level, goals, and repertoire (extends Deep Harmonic Analyzer + Missions)
 - Import progression from Nashville number chart paste
 - MIDI export of custom progression
 - CPL → share link / QR for students

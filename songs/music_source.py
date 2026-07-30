@@ -16,7 +16,9 @@ SONG_PICKER_SOURCE_CUSTOM = "Use Custom Progression / Create Your Own Song"
 SONG_PICKER_ACTIVE_SOURCE_KEY = "song_picker_active_source"
 PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY = "_pending_song_picker_active_source"
 LAST_CATALOG_STATE_KEY = "_last_catalog_song_state"
+LAST_CUSTOM_STATE_KEY = "_last_custom_song_state"
 CATALOG_BEFORE_CUSTOM_KEY = "_catalog_before_custom_state"
+PENDING_CATALOG_FROM_PICKER_KEY = "_pending_catalog_from_picker_switch"
 CATALOG_BEFORE_CREATIVE_KEY = "_catalog_before_creative_state"
 CATALOG_RESTORE_PIN_KEY = "_catalog_restore_pin_pick"
 PENDING_PREVIOUS_CATALOG_RESTORE_KEY = "_pending_previous_catalog_restore"
@@ -114,6 +116,10 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
     expected = SONG_PICKER_SOURCE_CUSTOM if custom_active else SONG_PICKER_SOURCE_CATALOG
     current = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     changed = False
+
+    if custom_active and current == SONG_PICKER_SOURCE_CATALOG:
+        session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
+        return False
 
     if custom_active:
         if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CUSTOM:
@@ -228,6 +234,31 @@ def snapshot_catalog_before_custom(session_state: dict[str, Any]) -> None:
     snap = _catalog_snapshot_from_session(session_state)
     if snap:
         session_state[CATALOG_BEFORE_CUSTOM_KEY] = snap
+        session_state[LAST_CATALOG_STATE_KEY] = dict(snap)
+
+
+def _custom_snapshot_from_session(session_state: dict[str, Any]) -> dict[str, Any] | None:
+    """Snapshot the active custom progression for catalog ↔ custom switching."""
+    import copy
+
+    try:
+        from custom_progression_lab import cpl_active_from_session, ensure_original_structure
+    except ImportError:
+        return None
+    active = ensure_original_structure(cpl_active_from_session(session_state))
+    name = str(active.get("name") or "").strip()
+    if not name:
+        return None
+    return {"name": name, "active": copy.deepcopy(active)}
+
+
+def snapshot_last_custom_state(session_state: dict[str, Any]) -> None:
+    """Remember the active custom song before leaving Custom Progression."""
+    if not is_custom_progression(session_state) and not custom_progression_is_active(session_state):
+        return
+    snap = _custom_snapshot_from_session(session_state)
+    if snap:
+        session_state[LAST_CUSTOM_STATE_KEY] = snap
 
 
 def snapshot_catalog_before_creative(
@@ -431,6 +462,16 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
             session_state.setdefault(CPL_LAST_DISPLAY_KEY, live)
     except ImportError:
         pass
+
+
+def music_picker_shows_custom_hub(session_state: dict[str, Any]) -> bool:
+    """True when the Song Selection UI should show the custom library, not catalog."""
+    choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    if choice == SONG_PICKER_SOURCE_CATALOG:
+        return False
+    if choice.startswith("Use Custom"):
+        return True
+    return custom_progression_is_active(session_state)
 
 
 def _expected_song_picker_source(session_state: dict[str, Any]) -> str:
@@ -770,8 +811,9 @@ def switch_to_catalog_from_custom(
     from songs.state import ACTIVE_CATALOG_PICK_KEY, apply_pick_key, first_valid_pick_key
 
     session = st.session_state
-    if not is_custom_progression(session):
+    if not is_custom_progression(session) and not custom_progression_is_active(session):
         return False
+    snapshot_last_custom_state(session)
     session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
 
     def _try_restore_from_snap(snap: dict[str, Any]) -> bool:
@@ -805,12 +847,10 @@ def switch_to_catalog_from_custom(
         )
         return True
 
-    snap = session.get(CATALOG_BEFORE_CUSTOM_KEY)
-    if isinstance(snap, dict) and _try_restore_from_snap(snap):
-        return True
-    snap = session.get(LAST_CATALOG_STATE_KEY)
-    if isinstance(snap, dict) and _try_restore_from_snap(snap):
-        return True
+    for snap_key in (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY):
+        snap = session.get(snap_key)
+        if isinstance(snap, dict) and _try_restore_from_snap(snap):
+            return True
 
     for pick_key in session.get(CATALOG_RECENT_PICK_KEYS) or []:
         pk = str(pick_key or "").strip()
@@ -859,6 +899,51 @@ def switch_to_catalog_from_custom(
     return True
 
 
+def restore_last_custom_active_song(
+    st: Any,
+    *,
+    invalidate_backing,
+) -> bool:
+    """Restore the last custom progression when returning from catalog."""
+    session = st.session_state
+    snap = session.get(LAST_CUSTOM_STATE_KEY)
+    if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
+        commit_custom_active_song(
+            st,
+            dict(snap["active"]),
+            invalidate_backing=invalidate_backing,
+        )
+        return True
+    try:
+        from custom_progression_lab import cpl_active_from_session
+
+        active = cpl_active_from_session(session)
+        if str(active.get("name") or "").strip():
+            commit_custom_active_song(st, active, invalidate_backing=invalidate_backing)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def apply_pending_catalog_from_picker_before_widgets(
+    st: Any,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]] | None = None,
+    invalidate_backing,
+) -> bool:
+    """Apply catalog restore when the picker radio shows catalog while custom is still active."""
+    if not st.session_state.pop(PENDING_CATALOG_FROM_PICKER_KEY, None):
+        return False
+    return switch_to_catalog_from_custom(
+        st,
+        song_picker_catalog=song_picker_catalog,
+        song_library=song_library,
+        invalidate_backing=invalidate_backing,
+    )
+
+
 def on_song_picker_source_change(
     st: Any,
     *,
@@ -870,19 +955,21 @@ def on_song_picker_source_change(
     choice = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     if choice.startswith("Use Custom"):
         st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
-        if not is_custom_progression(st.session_state):
+        if not is_custom_progression(st.session_state) and not custom_progression_is_active(st.session_state):
             set_custom_source(st.session_state)
-            note_active_source_change(st, invalidate_backing=invalidate_backing)
-        try:
-            from custom_progression_lab import cpl_active_from_session
+        if not restore_last_custom_active_song(st, invalidate_backing=invalidate_backing):
+            try:
+                from custom_progression_lab import cpl_active_from_session
 
-            queue_custom_active_song_activation(st, cpl_active_from_session(st.session_state))
-        except Exception:
-            pass
+                queue_custom_active_song_activation(st, cpl_active_from_session(st.session_state))
+            except Exception:
+                pass
+        else:
+            note_active_source_change(st, invalidate_backing=invalidate_backing)
         st.rerun()
         return
     st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
-    if is_custom_progression(st.session_state):
+    if is_custom_progression(st.session_state) or custom_progression_is_active(st.session_state):
         switch_to_catalog_from_custom(
             st,
             song_picker_catalog=song_picker_catalog,
@@ -1840,6 +1927,7 @@ def commit_custom_active_song(
     active["user_locked_home_key"] = True
     session[cpl_active_key] = active
     _push_recent_custom_name(session, str(active.get("name") or "My Progression"))
+    snapshot_last_custom_state(session)
 
     home_key = cpl_draft_written_key(active)
     selected = custom_selected_song_record(active)
