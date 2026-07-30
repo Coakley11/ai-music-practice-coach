@@ -280,11 +280,38 @@ def generate_motif_for_chord(
     *,
     key_center: str = "C",
     rhythm_key: str = "quarter-quarter-quarter",
+    level: str = "Intermediate",
 ) -> dict[str, Any]:
-    """Build a 3-note motif from chord tones."""
+    """Build a motif from chord tones; complexity scales with skill level."""
+    level_norm = "Beginner" if "begin" in str(level or "").lower() else (
+        "Advanced" if "adv" in str(level or "").lower() else "Intermediate"
+    )
     tones = chord_tone_names(chord, reference_key=key_center)
-    notes = tones[:3] if len(tones) >= 3 else (tones + ["C", "E", "G"])[:3]
+    if level_norm == "Beginner":
+        rhythm_key = rhythm_key or "quarter-quarter-half"
+        notes = tones[:2] if len(tones) >= 2 else tones[:3]
+        if len(notes) < 2:
+            notes = (tones + ["C", "E"])[:2]
+    elif level_norm == "Advanced":
+        rhythm_key = rhythm_key or "eighth-eighth-half"
+        notes = list(tones[:4])
+        if len(notes) >= 2:
+            mode, scale_pcs = _parse_key_scale(key_center)
+            root_pc = NOTE_TO_MIDI.get(normalize_root(split_chord(chord)[0]), 60) % 12
+            if root_pc in scale_pcs:
+                ri = scale_pcs.index(root_pc)
+                passing_pc = scale_pcs[(ri + 1) % len(scale_pcs)]
+                passing = _note_from_midi(passing_pc + 60)
+                notes = [notes[0], passing, notes[1]] + notes[2:4]
+        notes = notes[:5]
+    else:
+        rhythm_key = rhythm_key or "quarter-eighth-eighth"
+        notes = tones[:3] if len(tones) >= 3 else (tones + ["C", "E", "G"])[:3]
+
     rhythm_syms = _RHYTHM_PATTERNS.get(rhythm_key, _RHYTHM_PATTERNS["quarter-quarter-quarter"])
+    while len(rhythm_syms) < len(notes):
+        rhythm_syms = rhythm_syms + rhythm_syms
+    rhythm_syms = rhythm_syms[: len(notes)]
     rhythm = " ".join(rhythm_syms)
     return {
         "chord": chord,
@@ -293,7 +320,7 @@ def generate_motif_for_chord(
         "rhythm": rhythm,
         "rhythm_key": rhythm_key,
         "midi": [_midi_from_note(n, 4) for n in notes],
-        "variation_prompt": f"Motif on **{chord}**: {' – '.join(notes)}",
+        "variation_prompt": f"Motif on **{chord}** ({level_norm}): {' – '.join(notes)}",
     }
 
 

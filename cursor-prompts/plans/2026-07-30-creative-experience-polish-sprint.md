@@ -28,6 +28,16 @@
 - Deep Harmonic: optional AI rewrite layer (CS-C) on top of rule-based coach
 - Long-term: unified Creative coach dialogue (see backlog)
 
+## Shipped (2026-07-30 follow-up) — instructor-style Deep Harmonic + Missions
+
+- `build_deep_harmonic_lesson()` — Start here priorities, step navigation, callouts, deduped repeating sections, deep-dive expanders
+- Missions: full piano keyboard (black keys + accidentals), Backing Jam only, level-scaled `generate_motif_for_chord`
+- Tests: `test_piano_keyboard_missions.py`, updated `test_deep_harmonic_analyzer.py`
+
+## Future — level-aware generated examples (app-wide)
+
+See [music_app_feature_backlog.md](../music_app_feature_backlog.md) — **Level-aware musical example generation**.
+
 ## Notes
 
 Does not modify persistence Tests A–E restore paths except picker reconcile ordering.

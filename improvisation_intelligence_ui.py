@@ -1125,22 +1125,13 @@ def _tab_missions(
         example = None
 
     if not example:
-        nav1, nav2 = st.columns(2)
-        with nav1:
-            if on_open_practice and st.button(
-                nav_icon_button_label("practice"),
-                key="improv_mission_practice",
-                use_container_width=True,
-            ):
-                on_open_practice()
-        with nav2:
-            if on_open_backing and st.button(
-                nav_icon_button_label("backing") + " Jam",
-                key="improv_mission_over_backing",
-                type="primary",
-                use_container_width=True,
-            ):
-                on_open_backing()
+        if on_open_backing and st.button(
+            nav_icon_button_label("backing") + " Jam",
+            key="improv_mission_over_backing",
+            type="primary",
+            use_container_width=True,
+        ):
+            on_open_backing()
 
     if on_open_analysis:
         st.markdown("---")
@@ -1247,22 +1238,13 @@ def _tab_missions(
             st.markdown(f"- {line}")
 
     st.markdown("---")
-    nav1, nav2 = st.columns(2)
-    with nav1:
-        if on_open_practice and st.button(
-            nav_icon_button_label("practice"),
-            key="improv_mission_practice_bottom",
-            use_container_width=True,
-        ):
-            on_open_practice()
-    with nav2:
-        if on_open_backing and st.button(
-            nav_icon_button_label("backing") + " Jam",
-            key="improv_mission_over_backing_bottom",
-            type="primary",
-            use_container_width=True,
-        ):
-            on_open_backing()
+    if on_open_backing and st.button(
+        nav_icon_button_label("backing") + " Jam",
+        key="improv_mission_over_backing_bottom",
+        type="primary",
+        use_container_width=True,
+    ):
+        on_open_backing()
 
     st.caption(
         f"Example variant: **{example.variant}** · "
@@ -1429,6 +1411,100 @@ def _tab_harmony_map(
         st.caption(f"Next chord in this section: **{html.escape(next_chord)}**")
 
 
+def _render_deep_harmonic_callout(st: Any, kind: str, body: str) -> None:
+    labels = {
+        "goal": "🎯 Today's Goal",
+        "try": "🎹 Try This",
+        "listen": "👂 Listen For",
+        "mistake": "⭐ Common Beginner Mistake",
+        "tip": "💡 Pro Tip",
+    }
+    title = labels.get(kind, "💡 Note")
+    st.markdown(
+        f'<div class="dh-callout dh-{kind}">'
+        f"<strong>{html.escape(title)}</strong>"
+        f"<p>{body}</p></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_deep_harmonic_lesson(st: Any, session_state: dict, lesson: dict) -> None:
+    st.markdown(
+        """
+<style>
+.dh-callout{border-radius:12px;padding:0.75rem 0.95rem;margin:0.55rem 0 0.85rem;
+  border:1px solid rgba(99,102,241,0.25);background:#f8fafc;}
+.dh-callout p{margin:0.35rem 0 0;font-size:0.9rem;line-height:1.5;color:#334155;}
+.dh-callout.dh-goal{background:#eff6ff;border-color:#93c5fd;}
+.dh-callout.dh-try{background:#f0fdf4;border-color:#86efac;}
+.dh-callout.dh-mistake{background:#fffbeb;border-color:#fcd34d;}
+.dh-priority-list{margin:0.25rem 0 0.85rem;padding-left:1.15rem;}
+.dh-priority-list li{margin:0.35rem 0;line-height:1.45;}
+.dh-step-meta{font-size:0.82rem;color:#64748b;margin-bottom:0.35rem;}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(f"*{lesson.get('greeting', '')}*")
+    st.caption(str(lesson.get("meta") or ""))
+
+    st.markdown("##### Start here — the ideas that matter most")
+    st.markdown("<ul class='dh-priority-list'>", unsafe_allow_html=True)
+    for line in lesson.get("priorities") or []:
+        st.markdown(f"<li>{line}</li>", unsafe_allow_html=True)
+    st.markdown("</ul>", unsafe_allow_html=True)
+
+    steps = list(lesson.get("steps") or [])
+    total = len(steps)
+    step_key = "deep_harmony_lesson_step"
+    step_idx = int(session_state.get(step_key) or 0)
+    step_idx = max(0, min(step_idx, max(0, total - 1)))
+    session_state[step_key] = step_idx
+
+    if total:
+        st.markdown("##### Learn step by step")
+        c_prev, c_mid, c_next = st.columns([1, 2, 1])
+        with c_prev:
+            if st.button("← Previous", key="dh_step_prev", disabled=step_idx <= 0, use_container_width=True):
+                session_state[step_key] = step_idx - 1
+                st.rerun()
+        with c_mid:
+            st.markdown(
+                f"<p class='dh-step-meta'>Step {step_idx + 1} of {total}</p>",
+                unsafe_allow_html=True,
+            )
+        with c_next:
+            if st.button(
+                "Next →",
+                key="dh_step_next",
+                disabled=step_idx >= total - 1,
+                use_container_width=True,
+            ):
+                session_state[step_key] = step_idx + 1
+                st.rerun()
+
+        cur = steps[step_idx]
+        st.markdown(f"**{cur.get('title', 'Step')}**")
+        st.markdown(str(cur.get("body") or ""))
+        for co in cur.get("callouts") or []:
+            _render_deep_harmonic_callout(st, str(co.get("kind") or "tip"), str(co.get("body") or ""))
+
+    loop = lesson.get("loop") or {}
+    if loop.get("chords"):
+        chips = " · ".join(html.escape(c) for c in loop["chords"])
+        rep = " (repeats across the form)" if loop.get("repeating") else ""
+        st.caption(f"Main loop: **{chips}**{rep}")
+
+    st.markdown("---")
+    st.markdown("##### Go deeper (when you're ready)")
+    for block in lesson.get("deep_dive") or []:
+        title = str(block.get("title") or "Detail")
+        md = str(block.get("markdown") or "")
+        with st.expander(title, expanded=False):
+            st.markdown(md)
+
+
 def _tab_deep_harmony(
     st: Any,
     *,
@@ -1437,17 +1513,14 @@ def _tab_deep_harmony(
     song_data: dict,
     genre: str,
 ) -> None:
-    from deep_harmonic_analyzer import build_from_improv_context
+    from deep_harmonic_analyzer import build_deep_harmonic_lesson, HarmonicAnalysisInput
     from practice_setup_controls import (
         DEFAULT_INSTRUMENT_OPTIONS,
         render_setup_quick_controls,
     )
 
     st.markdown("#### Deep Harmonic Analyzer")
-    st.caption(
-        f"Advanced harmonic analysis of **{html.escape(improv_ctx.song_title)}** — "
-        f"sections, voice leading, tension, and scales in **{html.escape(improv_ctx.display_key)}**."
-    )
+    st.caption("A guided lesson — one step at a time, like a private teacher.")
 
     live_inst, live_level, live_focus = render_setup_quick_controls(
         st,
@@ -1459,55 +1532,25 @@ def _tab_deep_harmony(
     )
 
     ext = song_data.get("extensions") or {}
-    live_ctx = ImprovSessionContext(
-        song_title=improv_ctx.song_title,
-        artist=improv_ctx.artist,
-        key_center=improv_ctx.key_center,
-        display_key=improv_ctx.display_key,
-        instrument=live_inst,
-        level=live_level,
-        focus=live_focus,
-        sections=improv_ctx.sections,
-        bpm=improv_ctx.bpm,
-        style_label=genre or improv_ctx.style_label,
-        progression_flat=improv_ctx.progression_flat,
+    lesson = build_deep_harmonic_lesson(
+        HarmonicAnalysisInput(
+            song_title=improv_ctx.song_title,
+            artist=improv_ctx.artist,
+            key_center=improv_ctx.key_center,
+            display_key=improv_ctx.display_key,
+            sections=improv_ctx.sections,
+            section_order=list(improv_ctx.section_order or []),
+            instrument=live_inst,
+            level=live_level,
+            focus=live_focus,
+            genre=genre or improv_ctx.style_label,
+            bpm=improv_ctx.bpm,
+            time_signature=str(ext.get("time_signature") or ""),
+            arrangement_notes=str(ext.get("arrangement_notes") or ""),
+            progression_flat=list(improv_ctx.progression_flat or []),
+        )
     )
-
-    report = build_from_improv_context(
-        live_ctx,
-        genre=genre,
-        time_signature=str(ext.get("time_signature") or ""),
-        arrangement_notes=str(ext.get("arrangement_notes") or ""),
-    )
-    st.markdown(
-        """
-<style>
-.deep-harmony-coach blockquote {
-  border-left: 4px solid #6366f1;
-  background: #f8fafc;
-  padding: 0.65rem 0.85rem;
-  margin: 0.65rem 0 0.85rem;
-  border-radius: 0 10px 10px 0;
-  color: #334155;
-  font-size: 0.92rem;
-  line-height: 1.55;
-}
-.deep-harmony-coach h3 { margin-top: 0.2rem; }
-.deep-harmony-coach h4 { margin: 0.85rem 0 0.35rem; color: #0f172a; }
-.deep-harmony-coach p, .deep-harmony-coach li { line-height: 1.55; color: #334155; }
-</style>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(f'<div class="deep-harmony-coach">', unsafe_allow_html=True)
-    parts = report.split("\n## ")
-    if parts:
-        st.markdown(parts[0], unsafe_allow_html=False)
-        for block in parts[1:]:
-            title, _, body = block.partition("\n")
-            with st.expander(title.strip(), expanded=title.strip().lower().startswith("what makes")):
-                st.markdown("## " + body.strip())
-    st.markdown("</div>", unsafe_allow_html=True)
+    _render_deep_harmonic_lesson(st, session_state, lesson)
 
 
 def _tab_metrics_ai(

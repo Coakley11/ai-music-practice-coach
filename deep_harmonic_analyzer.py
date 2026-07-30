@@ -630,10 +630,343 @@ def _practice_steps_for_level(inp: HarmonicAnalysisInput, cycle: list[str]) -> l
     return lines
 
 
+def _cycle_tuple(chords: list[str]) -> tuple[str, ...]:
+    return tuple(single_progression_cycle(chords or []))
+
+
+def _detect_shared_loop(
+    section_map: list[tuple[str, list[str]]],
+) -> tuple[list[str], bool, int]:
+    cycles = [_cycle_tuple(ch) for _n, ch in section_map if ch]
+    if not cycles:
+        return [], False, 0
+    from collections import Counter
+
+    counts = Counter(cycles)
+    main, n = counts.most_common(1)[0]
+    repeating = n >= 2 or len(counts) == 1
+    return list(main), repeating, n
+
+
+def _priority_concepts(
+    inp: HarmonicAnalysisInput,
+    cycle: list[str],
+    *,
+    repeating: bool,
+    character: dict[str, str],
+) -> list[str]:
+    concepts: list[str] = []
+    song = inp.song_title or "this song"
+    inst = inp.instrument or "your instrument"
+    level = _normalize_level(inp.level)
+    loop_str = " · ".join(cycle[:6])
+
+    if repeating and cycle and len(cycle) <= 6:
+        concepts.append(
+            f"This is a **repeating {len(cycle)}-chord loop** ({loop_str}) — it drives most of **{song}**."
+        )
+    elif cycle:
+        concepts.append(f"Core progression: **{loop_str}** — learn this path before adding extras.")
+
+    if cycle:
+        concepts.append(f"**{cycle[0]}** feels like *home* — your ear expects phrases to settle there.")
+
+    genre_low = (inp.genre or character.get("style") or "").lower()
+    if any(w in genre_low for w in ("pop", "edm", "dance", "groove", "funk")) or "groove" in (
+        character.get("feel") or ""
+    ).lower():
+        concepts.append("The **groove** matters more than fancy harmony — time feel comes first.")
+    elif level == "Beginner":
+        concepts.append("Keep the **rhythm steady** — simple chords in time beat clever notes.")
+
+    if level != "Beginner" and len(cycle) >= 2:
+        concepts.append(
+            "**Smooth voice leading** between chord tones will make the loop sound professional on "
+            f"{inst}."
+        )
+
+    if level == "Beginner":
+        concepts.append("**Master this loop before worrying about scales** — chord tones carry the melody.")
+    elif level == "Advanced":
+        concepts.append("When the loop is automatic, add **color tones and approach notes** one pass at a time.")
+    else:
+        concepts.append("Spend most of your practice time on this loop — it pays off across the whole form.")
+
+    return concepts[:5]
+
+
+def _section_diff_notes(
+    section_map: list[tuple[str, list[str]]],
+    main_cycle: list[str],
+) -> list[dict[str, str]]:
+    main_t = _cycle_tuple(main_cycle)
+    diffs: list[dict[str, str]] = []
+    same = 0
+    for name, chords in section_map:
+        cyc = _cycle_tuple(chords)
+        if not cyc:
+            continue
+        if cyc == main_t:
+            same += 1
+            continue
+        role = section_role(name)
+        diffs.append(
+            {
+                "name": name,
+                "note": f"**{role.title()}** uses a different path: {' · '.join(cyc)} — compare to the main loop.",
+            }
+        )
+    if same >= 2 and not diffs:
+        return [
+            {
+                "name": "Form",
+                "note": "Sections share the **same harmonic loop** — you do not need to relearn the progression "
+                "for each pass. Focus on *expression* and dynamics instead.",
+            }
+        ]
+    return diffs
+
+
+def _lesson_steps(
+    inp: HarmonicAnalysisInput,
+    cycle: list[str],
+    *,
+    repeating: bool,
+    priorities: list[str],
+    section_diffs: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    level = _normalize_level(inp.level)
+    inst = inp.instrument or "your instrument"
+    home = cycle[0] if cycle else "the home chord"
+    loop_line = " · ".join(cycle) if cycle else "(add chords to begin)"
+
+    steps: list[dict[str, Any]] = [
+        {
+            "title": "Let's learn this song together",
+            "body": (
+                f"I'll keep us focused on what matters most for **{inp.song_title}** on **{inst}**. "
+                "We will take it one step at a time — play each step before moving on."
+            ),
+            "callouts": [
+                {"kind": "goal", "body": priorities[0] if priorities else "Hear the form before analyzing it."},
+            ],
+        },
+        {
+            "title": "Meet the loop",
+            "body": (
+                f"{'This progression repeats across the song' if repeating else 'Start with the core progression'}. "
+                f"Loop: **{loop_line}**."
+            ),
+            "callouts": [
+                {
+                    "kind": "try",
+                    "body": f"Play only the roots of each chord in order. Don't worry about scales yet — "
+                    f"feel how **{home}** feels like home.",
+                },
+                {
+                    "kind": "listen",
+                    "body": "Listen for when the harmony feels settled (home) vs. when it wants to move forward.",
+                },
+            ],
+        },
+        {
+            "title": "Make it feel good",
+            "body": (
+                "Once roots are easy, connect **3rds** (and 7ths if you hear them). "
+                "Let your top note move by step when the chord changes."
+            ),
+            "callouts": [
+                {
+                    "kind": "try",
+                    "body": "Loop the progression slowly and hold one chord tone per bar — no extra fills.",
+                },
+                {
+                    "kind": "mistake",
+                    "body": "Rushing to solo before the groove is steady — the pocket carries this song.",
+                },
+            ],
+        },
+    ]
+
+    if section_diffs and not (len(section_diffs) == 1 and section_diffs[0]["name"] == "Form"):
+        steps.append(
+            {
+                "title": "What actually changes between sections",
+                "body": "The harmony mostly repeats — here is what is different section to section.",
+                "callouts": [{"kind": "tip", "body": d["note"]} for d in section_diffs[:3]],
+            }
+        )
+    elif repeating:
+        steps.append(
+            {
+                "title": "Same chords, new energy",
+                "body": "Because the loop repeats, your job is **performance** — dynamics, articulation, and space.",
+                "callouts": [
+                    {
+                        "kind": "tip",
+                        "body": "This progression repeats almost the entire song — time here gives the biggest payoff.",
+                    },
+                    {
+                        "kind": "try",
+                        "body": "Play the loop whisper-quiet, then once at full chorus energy. Same notes, different story.",
+                    },
+                ],
+            }
+        )
+
+    if level != "Beginner":
+        steps.append(
+            {
+                "title": "When you're ready for more color",
+                "body": "Open **Go deeper** below for tension maps, instrument playbook, and scale pools.",
+                "callouts": [
+                    {
+                        "kind": "tip",
+                        "body": "Once this feels easy, we'll add color tones — one new idea per practice session.",
+                    },
+                ],
+            }
+        )
+    else:
+        steps.append(
+            {
+                "title": "Next session",
+                "body": "When the loop feels easy in time, come back for the deeper theory sections below.",
+                "callouts": [
+                    {"kind": "goal", "body": "Comfortable looping the progression at performance tempo with steady rhythm."},
+                ],
+            }
+        )
+
+    return steps
+
+
+def _build_deep_dive_markdown(
+    inp: HarmonicAnalysisInput,
+    section_map: list[tuple[str, list[str]]],
+    cycle: list[str],
+    character: dict[str, str],
+    level_norm: str,
+) -> list[dict[str, str]]:
+    """Appendix sections for expanders — full detail on demand."""
+    key = inp.display_key or inp.key_center or "C"
+    parts: list[dict[str, str]] = []
+
+    char_lines = [
+        f"- **Feel:** {character.get('feel', '')}",
+        f"- **Motion:** {character.get('movement', '')}",
+        f"- **Signature:** {character.get('signature', '')}",
+    ]
+    parts.append({"title": "Harmonic character (detail)", "markdown": "\n".join(char_lines)})
+
+    if level_norm != "Beginner":
+        tension = "\n".join(_tension_release_section(cycle, key)[1:])
+        parts.append({"title": "Tension & release map", "markdown": tension})
+
+    for name, chords in section_map:
+        cyc = single_progression_cycle(chords)
+        if not cyc:
+            continue
+        block = "\n".join(_section_block(name, chords, key, level_norm))
+        parts.append({"title": f"Section: {name}", "markdown": block})
+
+    family = instrument_family(inp.instrument)
+    playbook: list[str] = []
+    if family == "wind":
+        playbook = _wind_playbook(inp, section_map, cycle)
+    elif family == "guitar":
+        playbook = _guitar_playbook(inp, section_map, cycle)
+    elif family == "piano":
+        playbook = _piano_playbook(inp, section_map, cycle)
+    elif family == "bass":
+        playbook = _bass_playbook(inp, section_map, cycle)
+    else:
+        playbook = _generic_playbook(inp, section_map)
+    if playbook:
+        parts.append({"title": f"{inp.instrument} playbook", "markdown": "\n".join(playbook[1:])})
+
+    if level_norm != "Beginner":
+        scale_md = "\n".join(_scales_section(section_map, key, level_norm, instrument=inp.instrument)[1:])
+        parts.append({"title": "Scale pools (reference)", "markdown": scale_md})
+
+    return parts
+
+
+def build_deep_harmonic_lesson(inp: HarmonicAnalysisInput) -> dict[str, Any]:
+    """Interactive lesson payload for Deep Harmonic Analyzer UI."""
+    section_names = list(inp.section_order) if inp.section_order else None
+    section_map = dedupe_sections_for_display(
+        inp.sections,
+        section_names=section_names,
+    )
+    flat = inp.progression_flat or []
+    cycle = single_progression_cycle(flat) if flat else []
+    if not cycle and section_map:
+        cycle = single_progression_cycle(section_map[0][1])
+
+    key = inp.display_key or inp.key_center or "C"
+    character = _detect_character(
+        cycle,
+        key,
+        inp.genre,
+        inp.song_title,
+        inp.time_signature,
+    )
+    level_norm = _normalize_level(inp.level)
+    main_cycle, repeating, _repeat_count = _detect_shared_loop(section_map)
+    if main_cycle:
+        cycle = main_cycle
+
+    priorities = _priority_concepts(inp, cycle, repeating=repeating, character=character)
+    section_diffs = _section_diff_notes(section_map, cycle)
+    steps = _lesson_steps(
+        inp,
+        cycle,
+        repeating=repeating,
+        priorities=priorities,
+        section_diffs=section_diffs,
+    )
+
+    return {
+        "song_title": inp.song_title,
+        "artist": inp.artist,
+        "meta": f"{key} · {inp.instrument} · {level_norm} · {inp.focus}",
+        "greeting": (
+            f"Let's learn **{inp.song_title}** together — I'll highlight a few ideas that will help you "
+            f"play it better on **{inp.instrument}**, not dump every theory fact at once."
+        ),
+        "priorities": priorities,
+        "steps": steps,
+        "loop": {"chords": cycle, "repeating": repeating},
+        "section_diffs": section_diffs,
+        "deep_dive": _build_deep_dive_markdown(inp, section_map, cycle, character, level_norm),
+    }
+
+
 def build_deep_harmonic_analysis(
   inp: HarmonicAnalysisInput,
 ) -> str:
-    """Full markdown report for the active song."""
+    """Compact markdown export (Creative Lab). Full UI uses ``build_deep_harmonic_lesson``."""
+    lesson = build_deep_harmonic_lesson(inp)
+    lines = [
+        f"### {lesson['song_title']}",
+        lesson["greeting"],
+        "",
+        "#### Start here",
+    ]
+    for p in lesson["priorities"]:
+        lines.append(f"- {p}")
+    lines.append("")
+    lines.append("#### Steps")
+    for i, step in enumerate(lesson["steps"], 1):
+        lines.append(f"{i}. **{step['title']}** — {step['body']}")
+    return "\n".join(lines)
+
+
+def _legacy_build_deep_harmonic_analysis_full(
+  inp: HarmonicAnalysisInput,
+) -> str:
+    """Legacy full report builder (tests / reference)."""
     section_names = list(inp.section_order) if inp.section_order else None
     section_map = dedupe_sections_for_display(
         inp.sections,

@@ -106,6 +106,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### Creative Progressions
 
+- **Level-aware musical example generation (app-wide)** — every auto-generated example adapts to Beginner / Intermediate / Advanced: simpler rhythms and chord-tone lines for beginners; passing tones and variety for intermediate; syncopation, approach notes, and performance-like phrasing for advanced. Surfaces: Practice, Missions (started), TAB, ABC/sheet, Creative exercises, improvisation/harmony examples, Composition Studio suggestions, future AI ideas. Goal: examples feel teacher-written, not generic drills.
 - **Creative AI music coach (long-term)** — personal, conversational coach for improv, accompaniment, composition, hearing harmonic movement, and effective practice; adapts to instrument, level, goals, and repertoire (extends Deep Harmonic Analyzer + Missions)
 - Import progression from Nashville number chart paste
 - MIDI export of custom progression
