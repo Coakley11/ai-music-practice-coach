@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-07-29
+**Last updated:** 2026-07-30
 
 ---
 
@@ -23,6 +23,29 @@
 ---
 
 ## Completed Features
+
+### Composition Studio CS-B4 — coach-first Lyrics (2026-07-30)
+
+- [x] `composition_lyric_suggestions.py` — role/emotion prompts, brainstorm seeds, cross-section theme memory
+- [x] Lyrics intent block on sections (`communicate`, `emotion`, `role`, `remember`)
+- [x] Coach-first Lyrics phase: section strip, creative questions, brainstorm/explore/compare/write paths
+- [x] Lyric editor in expander (secondary); instrumental skip → Review
+- [x] Tests: `tests/test_composition_lyric_suggestions.py`
+
+### Composition Studio CS-B3 — coach-first Melody (2026-07-29)
+
+- [x] `composition_melody_suggestions.py` — melodic concepts by feel/style
+- [x] Coach-first Melody phase: remember/feel/style, hum-first, explore/compare/write
+- [x] Phrase editor in expander (secondary)
+- [x] Tests: `tests/test_composition_melody_suggestions.py`
+
+### CPL Custom Chord builder fixes (2026-07-30)
+
+- [x] Root/Bass selectors retain values (exclude builder inputs from ephemeral widget purge)
+- [x] Manual chord entry "Use chord" reads from session state
+- [x] Removed duplicate manual entry outside + Custom Chord expander
+- [x] Quarter-bar (¼) and half-bar (½) duration buttons alongside 1/2/4 bars
+- [x] Tests: `tests/test_cpl_timing_panel.py`, `tests/test_cpl_fractional_bars.py`
 
 ### Composition Studio Sprint A — document foundation (2026-07-29)
 

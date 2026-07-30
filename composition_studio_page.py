@@ -12,6 +12,14 @@ from composition_chord_suggestions import (
     default_feeling_for_section,
     suggest_progressions,
 )
+from composition_lyric_suggestions import (
+    LYRIC_EMOTIONS,
+    LYRIC_SECTION_ROLES,
+    coach_line_for_lyrics,
+    default_role_for_section,
+    suggest_lyric_brainstorm_ideas,
+    suggest_lyric_prompts,
+)
 from composition_melody_suggestions import (
     MELODY_FEELINGS,
     MELODY_STYLES,
@@ -30,6 +38,7 @@ from composition_document import (
     add_melody_phrase,
     advance_workflow,
     apply_melody_concept,
+    apply_lyric_prompt_to_section,
     apply_section_chords,
     apply_structure_template,
     bootstrap_from_vision,
@@ -41,6 +50,7 @@ from composition_document import (
     get_workflow_phase,
     harmonized_section_count,
     harmony_edit_target,
+    lyrics_section_count,
     melodized_section_count,
     move_section,
     ordered_sections,
@@ -51,6 +61,7 @@ from composition_document import (
     section_by_id,
     section_css_type,
     section_has_chords,
+    section_has_lyrics,
     section_has_melody,
     set_workflow_phase,
     suggest_musical_defaults,
@@ -1421,6 +1432,295 @@ def _render_melody_section_strip(session_state: dict, doc: dict[str, Any]) -> No
     )
 
 
+def _render_lyrics_section_strip(session_state: dict, doc: dict[str, Any]) -> None:
+    _render_workflow_section_strip(
+        session_state,
+        doc,
+        done_fn=section_has_lyrics,
+        button_prefix="composer_lyrics_sec",
+        jump_key="composer_lyrics_jump_section",
+    )
+
+
+def _render_lyric_prompt_card(
+    session_state: dict,
+    doc: dict[str, Any],
+    section_id: str,
+    prompt: dict[str, Any],
+    *,
+    prefix: str,
+) -> None:
+    pid = str(prompt.get("id") or prefix)
+    name = str(prompt.get("name") or "Writing prompt")
+    body = str(prompt.get("prompt") or "")
+    why = str(prompt.get("why") or "")
+
+    st.markdown(
+        f"""
+<div class="composer-suggestion-card">
+  <h4>{name}</h4>
+  <div class="composer-suggestion-chords">{body}</div>
+  <p class="composer-suggestion-why">{why}</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+    p1, p2 = st.columns(2)
+    with p1:
+        if st.button("Use as starter", key=f"{prefix}_use_{pid}", type="primary", use_container_width=True):
+            apply_lyric_prompt_to_section(doc, section_id, prompt)
+            _save_doc(session_state, doc)
+            st.rerun()
+    with p2:
+        if st.button("+ Compare", key=f"{prefix}_compare_{pid}", use_container_width=True):
+            queue_key = f"composer_lyrics_compare_{section_id}"
+            queue = list(session_state.get(queue_key) or [])
+            if pid not in queue:
+                queue.append(pid)
+            session_state[queue_key] = queue[-3:]
+            st.rerun()
+
+
+def _render_lyrics_editor(session_state: dict, doc: dict[str, Any], section_id: str) -> None:
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return
+    lyrics = sec.setdefault(
+        "lyrics",
+        {"intent": {}, "lines": [], "raw_text": ""},
+    )
+    raw = st.text_area(
+        "Lyrics for this section",
+        value=str(lyrics.get("raw_text") or ""),
+        key=f"composer_lyrics_raw_{section_id}",
+        height=220,
+        placeholder="Write lines here when you're ready — one section at a time.",
+    )
+    if raw != lyrics.get("raw_text"):
+        lyrics["raw_text"] = raw
+        lyrics["lines"] = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        _save_doc(session_state, doc)
+
+
+def _render_phase_lyrics(session_state: dict, doc: dict[str, Any]) -> None:
+    wf = ensure_workflow(doc)
+    if wf.get("skip_lyrics"):
+        st.info("This song is marked **instrumental** — lyrics are skipped.")
+        if st.button("Continue to Review →", type="primary", key="composer_lyrics_skip_to_review"):
+            set_workflow_phase(doc, "review")
+            _save_doc(session_state, doc)
+            st.rerun()
+        return
+
+    _ensure_active_section(session_state, doc)
+    sections = ordered_sections(doc)
+    if not sections:
+        st.warning("Your song has no sections yet. Head back to **Song Structure** first.")
+        return
+
+    active_id = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
+    section = section_by_id(doc, active_id) or sections[0]
+    active_id = str(section.get("id") or "")
+    session_state[COMPOSER_ACTIVE_SECTION_KEY] = active_id
+
+    lyrics = section.setdefault("lyrics", {"intent": {}, "lines": [], "raw_text": ""})
+    intent = lyrics.setdefault("intent", {})
+    variant = str(section.get("label_variant") or section.get("label") or "Section")
+
+    center, side = st.columns([2.3, 1])
+    with center:
+        done, total = lyrics_section_count(doc)
+        st.markdown(
+            """
+<div class="composer-phase-card">
+  <h3>Lyrics</h3>
+  <p>What story or message are you telling? Discover what you want to say before you worry about rhymes.</p>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<p class="composer-harmony-progress">Lyrics progress: <strong>{done}/{total}</strong> sections</p>',
+            unsafe_allow_html=True,
+        )
+        _render_lyrics_section_strip(session_state, doc)
+        st.markdown(f"### {variant}")
+
+        if section_has_chords(section):
+            g = doc.setdefault("global", {})
+            meter = str(g.get("time_signature") or "4/4")
+            chart = cpl_progression_bar_chart_html(section.get("chords") or [], time_signature=meter)
+            if chart:
+                st.caption("Harmony for this section")
+                st.markdown(chart, unsafe_allow_html=True)
+
+        st.markdown("**What is this section trying to communicate?**")
+        communicate = st.text_input(
+            "Communicate",
+            value=str(intent.get("communicate") or ""),
+            key=f"composer_lyrics_communicate_{active_id}",
+            placeholder="e.g. The loneliness of leaving home for the first time",
+            label_visibility="collapsed",
+        )
+
+        emotion_ids = [e[0] for e in LYRIC_EMOTIONS]
+        current_emotion = str(intent.get("emotion") or "")
+        if current_emotion not in emotion_ids:
+            current_emotion = emotion_ids[0]
+
+        st.markdown("**What emotion should listeners feel here?**")
+        picked_emotion = st.radio(
+            "Lyric emotion",
+            options=emotion_ids,
+            index=emotion_ids.index(current_emotion),
+            format_func=lambda eid: next(l for i, l in LYRIC_EMOTIONS if i == eid),
+            key=f"composer_lyrics_emotion_{active_id}",
+            label_visibility="collapsed",
+        )
+
+        role_ids = [r[0] for r in LYRIC_SECTION_ROLES]
+        current_role = str(intent.get("role") or default_role_for_section(section))
+        if current_role not in role_ids:
+            current_role = default_role_for_section(section)
+
+        st.markdown("**What role does this section play?**")
+        picked_role = st.radio(
+            "Lyric role",
+            options=role_ids,
+            index=role_ids.index(current_role),
+            format_func=lambda rid: next(l for i, l in LYRIC_SECTION_ROLES if i == rid),
+            key=f"composer_lyrics_role_{active_id}",
+            label_visibility="collapsed",
+        )
+
+        st.markdown("**What should someone remember after hearing this section?**")
+        remember = st.text_input(
+            "Remember",
+            value=str(intent.get("remember") or ""),
+            key=f"composer_lyrics_remember_{active_id}",
+            placeholder="e.g. That home is still there, even when you're far away",
+            label_visibility="collapsed",
+        )
+
+        if (
+            communicate != intent.get("communicate")
+            or picked_emotion != intent.get("emotion")
+            or picked_role != intent.get("role")
+            or remember != intent.get("remember")
+        ):
+            intent["communicate"] = communicate
+            intent["emotion"] = picked_emotion
+            intent["role"] = picked_role
+            intent["remember"] = remember
+            _save_doc(session_state, doc)
+
+        raw_preview = str(lyrics.get("raw_text") or "").strip()
+        if raw_preview:
+            st.markdown("**Current lyrics**")
+            preview_lines = raw_preview.splitlines()[:4]
+            for line in preview_lines:
+                st.markdown(f"- {line}")
+            if len(raw_preview.splitlines()) > 4:
+                st.caption("…more in the lyric editor below")
+
+        st.markdown("**How would you like to explore?**")
+        path = st.radio(
+            "Lyrics workflow",
+            ["brainstorm", "explore", "compare", "write"],
+            horizontal=True,
+            key=f"composer_lyrics_path_{active_id}",
+            format_func=lambda x: {
+                "brainstorm": "Brainstorm ideas",
+                "explore": "Explore writing prompts",
+                "compare": "Compare directions",
+                "write": "Write my own lyrics",
+            }[x],
+        )
+
+        prompts = suggest_lyric_prompts(doc, section, picked_role, limit=3)
+        brainstorm = suggest_lyric_brainstorm_ideas(
+            doc,
+            section,
+            picked_role,
+            emotion=picked_emotion,
+            communicate=communicate,
+            remember=remember,
+            limit=3,
+        )
+
+        if path == "brainstorm":
+            st.caption("Quick angles to spark a line — adopt a starter or let it point you somewhere new.")
+            for i, idea in enumerate(brainstorm):
+                _render_lyric_prompt_card(
+                    session_state,
+                    doc,
+                    active_id,
+                    idea,
+                    prefix=f"composer_lyrics_brain_{active_id}_{i}",
+                )
+        elif path == "explore":
+            st.caption("Structured prompts for this section's role — use one as a jumping-off point.")
+            for i, prompt in enumerate(prompts):
+                _render_lyric_prompt_card(
+                    session_state,
+                    doc,
+                    active_id,
+                    prompt,
+                    prefix=f"composer_lyrics_explore_{active_id}_{i}",
+                )
+        elif path == "compare":
+            queue_key = f"composer_lyrics_compare_{active_id}"
+            all_items = brainstorm + prompts
+            pids = [str(p.get("id") or "") for p in all_items]
+            labels_map = {pid: str(p.get("name") or pid) for pid, p in zip(pids, all_items)}
+            queue = st.multiselect(
+                "Select up to 3 directions to compare",
+                options=pids,
+                default=[q for q in list(session_state.get(queue_key) or []) if q in pids][:3],
+                format_func=lambda x: labels_map.get(x, x),
+                key=f"composer_lyrics_compare_select_{active_id}",
+            )
+            session_state[queue_key] = queue[:3]
+            if queue:
+                by_id = {str(p.get("id")): p for p in all_items}
+                for i, qid in enumerate(queue[:3]):
+                    item = by_id.get(qid)
+                    if item:
+                        _render_lyric_prompt_card(
+                            session_state,
+                            doc,
+                            active_id,
+                            item,
+                            prefix=f"composer_lyrics_cmp_{active_id}_{i}",
+                        )
+            else:
+                st.info("Pick directions above to compare different lyrical approaches.")
+        else:
+            st.caption("Direct writing when you already know what you want to say.")
+            with st.expander("Lyric editor", expanded=not bool(raw_preview)):
+                _render_lyrics_editor(session_state, doc, active_id)
+
+        if done > 0 and st.button("Continue to Review →", type="primary", key="composer_lyrics_continue"):
+            advance_workflow(doc, from_phase="lyrics")
+            _save_doc(session_state, doc)
+            st.rerun()
+        elif done == 0:
+            st.caption("Write at least one section's lyrics (or use a starter prompt) before continuing.")
+
+    with side:
+        _render_coach_panel(
+            doc,
+            lead=coach_line_for_lyrics(
+                doc,
+                section,
+                role=picked_role,
+                emotion=picked_emotion,
+                remember=remember,
+            ),
+        )
+        _render_library_sidebar(session_state)
+
+
 def _render_suggestion_card(
     session_state: dict,
     doc: dict[str, Any],
@@ -1713,7 +2013,9 @@ def render_composition_studio_page() -> None:
         _render_phase_chords(session_state, doc)
     elif phase == "melody":
         _render_phase_melody(session_state, doc)
-    elif phase in {"lyrics", "review"}:
+    elif phase == "lyrics":
+        _render_phase_lyrics(session_state, doc)
+    elif phase == "review":
         _render_phase_placeholder(session_state, doc, phase)
     else:
         _render_phase_vision(session_state, doc)

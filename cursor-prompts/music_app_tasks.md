@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-07-29
+**Last updated:** 2026-07-30
 
 Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
@@ -94,15 +94,14 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 
 **Acceptance:** Continue Shape of You / Tenor Sax / Bm / 90 BPM opens Music with exact state; App Directory opens current workspace without blank generic state.
 
-### P1 — Composition Studio — CS-B4 Lyrics (active — highest priority)
+### P1 — Composition Studio — CS-B5 Review (active — highest priority)
 
 **Plan:** [plans/2026-07-29-composition-studio-six-phase-songwriting.md](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)  
-**Shipped:** CS-B0 (`b9993a1`), CS-B1 (`22877a8`), CS-B2 (`0fdaaa3`), CS-B3 (coach-first Melody).
+**Shipped:** CS-B0 (`b9993a1`), CS-B1 (`22877a8`), CS-B2 (`0fdaaa3`), CS-B3 (`f905b19`), CS-B4 (coach-first Lyrics).
 
 - [x] **CS-B2** — Coach-first Chords: section feeling, suggestions, compare, preview, grid secondary
 - [x] **CS-B3** — Coach-first Melody: remember/feel/style questions, hum-first, concepts, compare, phrase editor secondary
-- [ ] **CS-B4** — Phase 5 Lyrics by section
-- [ ] **CS-B4** — Phase 5 Lyrics by section
+- [x] **CS-B4** — Coach-first Lyrics: communicate/emotion/role/remember prompts, brainstorm/explore/compare/write paths, cross-section theme memory, lyric editor secondary
 - [ ] **CS-B5** — Phase 6 Review + full-song playthrough
 - [ ] **CS-C** — OpenAI proposals per phase (after B2+ stable)
 

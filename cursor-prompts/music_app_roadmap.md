@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-07-29 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
+**Last updated:** 2026-07-30 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 This is the master planning document. Related files:
 
@@ -67,7 +67,7 @@ This is the master planning document. Related files:
 
 **Policy (accepted 2026-06-09):** Tests **A–E are frozen**. Do not modify persistence unless a new `?dev=1` trace proves regression. Baseline: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).
 
-**Next focus:** **P1** Composition Studio **CS-B4 Lyrics** ([plan](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)). **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md). **P1** Flagship coaching **content** (not framework). **P1** Command Center homepage UI (external repo; Music-side resume payloads shipped). **P1** [UI polish](./plans/2026-06-09-ui-polish-phase.md) (visual/layout only).
+**Next focus:** **P1** Composition Studio **CS-B5 Review** ([plan](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)). **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md). **P1** Flagship coaching **content** (not framework). **P1** Command Center homepage UI (external repo; Music-side resume payloads shipped). **P1** [UI polish](./plans/2026-06-09-ui-polish-phase.md) (visual/layout only).
 
 **Trace:** Music persistence sidebar (`?dev=1`) — Test D compare, Test E compare, **Transposing save (last cloud write)**, workspace restore, Local nav checkpoints.
 
@@ -93,7 +93,7 @@ This is the master planning document. Related files:
 
 | Issue | Area | Notes |
 |-------|------|-------|
-| Composition Studio Sprint A UI feels like CPL | Composer | Replace with six-phase guided UX ([plan](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)) |
+| Composition Studio Sprint A UI feels like CPL | Composer | CS-B0–B4 shipped; CS-B5 Review next ([plan](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)) |
 | Upload/multitrack not cross-device | Upload / Multitrack | Audio embedded in JSON with 512 KB cap; no blob store; history cloud-only |
 | Back/Forward nav unverified post-architecture | Navigation | Defer audit unless broken |
 | Section focus empty panels | Practice | Type label vs section key mismatch; dev warning exists |

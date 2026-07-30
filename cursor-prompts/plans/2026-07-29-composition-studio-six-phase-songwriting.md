@@ -1,7 +1,7 @@
 # Composition Studio — Six-Phase Songwriting UX
 
 **Last updated:** 2026-07-29  
-**Status:** CS-B3 shipped — coach-first Melody phase on `dev`; CS-B4 Lyrics next  
+**Status:** CS-B4 shipped — coach-first Lyrics phase on `dev`; CS-B5 Review next  
 **Branch:** `dev`  
 **Supersedes step order in:** [2026-07-29-composition-studio-guided-ux.md](./2026-07-29-composition-studio-guided-ux.md) (structure moved before chords; Review added)  
 **Technical foundation:** [2026-07-29-composition-studio-v1-architecture.md](./2026-07-29-composition-studio-v1-architecture.md) · Sprint A (`5c49432`)

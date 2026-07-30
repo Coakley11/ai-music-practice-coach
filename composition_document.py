@@ -171,7 +171,16 @@ def empty_section(label: str, *, label_variant: str = "") -> dict[str, Any]:
             },
             "phrases": [],
         },
-        "lyrics": {"lines": [], "raw_text": ""},
+        "lyrics": {
+            "intent": {
+                "communicate": "",
+                "emotion": "",
+                "role": "",
+                "remember": "",
+            },
+            "lines": [],
+            "raw_text": "",
+        },
         "rhythm_override": None,
     }
 
@@ -721,6 +730,55 @@ def remove_melody_phrase(doc: dict[str, Any], section_id: str, phrase_id: str) -
     melody["phrases"] = phrases
     touch_composition(doc)
     return True
+
+
+def _ensure_lyrics_block(sec: dict[str, Any]) -> dict[str, Any]:
+    lyrics = sec.get("lyrics")
+    if not isinstance(lyrics, dict):
+        lyrics = {"intent": {}, "lines": [], "raw_text": ""}
+        sec["lyrics"] = lyrics
+    intent = lyrics.get("intent")
+    if not isinstance(intent, dict):
+        lyrics["intent"] = intent = {}
+    intent.setdefault("communicate", "")
+    intent.setdefault("emotion", "")
+    intent.setdefault("role", "")
+    intent.setdefault("remember", "")
+    if not isinstance(lyrics.get("lines"), list):
+        lyrics["lines"] = []
+    lyrics.setdefault("raw_text", "")
+    return lyrics
+
+
+def section_has_lyrics(sec: dict[str, Any]) -> bool:
+    lyrics = _ensure_lyrics_block(sec)
+    if str(lyrics.get("raw_text") or "").strip():
+        return True
+    return any(str(line or "").strip() for line in (lyrics.get("lines") or []))
+
+
+def lyrics_section_count(doc: dict[str, Any]) -> tuple[int, int]:
+    sections = ordered_sections(doc)
+    if not sections:
+        return 0, 0
+    done = sum(1 for s in sections if section_has_lyrics(s))
+    return done, len(sections)
+
+
+def apply_lyric_prompt_to_section(
+    doc: dict[str, Any],
+    section_id: str,
+    prompt: dict[str, Any],
+) -> None:
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return
+    lyrics = _ensure_lyrics_block(sec)
+    starter = str(prompt.get("prompt") or "").strip()
+    if starter:
+        existing = str(lyrics.get("raw_text") or "").strip()
+        lyrics["raw_text"] = f"{existing}\n\n{starter}".strip() if existing else starter
+    touch_composition(doc)
 
 
 def add_section(
