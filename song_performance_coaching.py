@@ -43,6 +43,24 @@ def _pick_instrument_text(tips: LevelTips, instrument: str) -> str:
     return str(tips.get(key) or tips.get("general") or "").strip()
 
 
+def _adapt_key_text(
+    text: str,
+    *,
+    catalog_key: str | None = None,
+    practice_key: str | None = None,
+) -> str:
+    if not text or not catalog_key or not practice_key:
+        return text
+    try:
+        from musician_coaching import adapt_text_to_practice_key
+
+        return adapt_text_to_practice_key(
+            text, catalog_key=catalog_key, practice_key=practice_key
+        )
+    except Exception:
+        return text
+
+
 def _section_role_key(section_name: str) -> str:
     low = str(section_name or "").lower()
     if "chorus" in low and "pre" not in low:
@@ -110,16 +128,24 @@ def teacher_intro_for_song(
     instrument: str,
     level: str,
     artist: str | None = None,
+    catalog_key: str | None = None,
+    practice_key: str | None = None,
 ) -> str:
     lesson = _lesson_block(title, instrument=instrument, level=level, artist=artist)
     opening = str(lesson.get("opening") or "").strip()
     if opening:
-        return opening
+        return _adapt_key_text(
+            opening, catalog_key=catalog_key, practice_key=practice_key
+        )
     profile = lookup_performance_profile(title, artist)
     if not profile:
         return ""
     legacy = _pick_level_block(profile.get("teacher_intro"), level)
-    return _pick_instrument_text(legacy, instrument)
+    return _adapt_key_text(
+        _pick_instrument_text(legacy, instrument),
+        catalog_key=catalog_key,
+        practice_key=practice_key,
+    )
 
 
 def practice_focus_for_song(
@@ -128,6 +154,8 @@ def practice_focus_for_song(
     instrument: str,
     level: str,
     artist: str | None = None,
+    catalog_key: str | None = None,
+    practice_key: str | None = None,
 ) -> str:
     profile = lookup_performance_profile(title, artist)
     if not profile:
@@ -135,16 +163,21 @@ def practice_focus_for_song(
     block = _pick_level_block(profile.get("practice_focus"), level)
     text = _pick_instrument_text(block, instrument)
     if text:
-        return text
+        return _adapt_key_text(text, catalog_key=catalog_key, practice_key=practice_key)
     if block.get("general"):
-        return str(block["general"]).strip()
+        return _adapt_key_text(
+            str(block["general"]).strip(),
+            catalog_key=catalog_key,
+            practice_key=practice_key,
+        )
     interp = _interpretation(title, artist)
     parts = [
         interp.get("emotional_character", "")[:60],
         interp.get("master_challenge", "")[:60],
     ]
     parts = [p for p in parts if p]
-    return " · ".join(parts)[:120] if parts else ""
+    joined = " · ".join(parts)[:120] if parts else ""
+    return _adapt_key_text(joined, catalog_key=catalog_key, practice_key=practice_key)
 
 
 def _journey_entry_for_section(
@@ -184,6 +217,8 @@ def section_coaching_for_song(
     instrument: str,
     level: str,
     artist: str | None = None,
+    catalog_key: str | None = None,
+    practice_key: str | None = None,
 ) -> str:
     lesson = _lesson_block_with_fallback(title, instrument=instrument, level=level, artist=artist)
     if lesson:
@@ -191,7 +226,9 @@ def section_coaching_for_song(
         if step:
             body = str(step.get("body") or "").strip()
             if body:
-                return body
+                return _adapt_key_text(
+                    body, catalog_key=catalog_key, practice_key=practice_key
+                )
     profile = lookup_performance_profile(title, artist)
     if not profile:
         return ""
@@ -206,7 +243,11 @@ def section_coaching_for_song(
     if not block and sec_key:
         block = sections.get(role_key)
     tips = _pick_level_block(block, level)
-    return _pick_instrument_text(tips, instrument)
+    return _adapt_key_text(
+        _pick_instrument_text(tips, instrument),
+        catalog_key=catalog_key,
+        practice_key=practice_key,
+    )
 
 
 def section_lesson_heading(
@@ -231,15 +272,25 @@ def harmony_tip_for_song(
     section_name: str,
     *,
     artist: str | None = None,
+    catalog_key: str | None = None,
+    practice_key: str | None = None,
 ) -> str:
     profile = lookup_performance_profile(title, artist)
     if not profile:
         return ""
     tips: dict[str, str] = profile.get("harmony_tips") or {}
     if section_name in tips:
-        return str(tips[section_name]).strip()
+        return _adapt_key_text(
+            str(tips[section_name]).strip(),
+            catalog_key=catalog_key,
+            practice_key=practice_key,
+        )
     role = _section_role_key(section_name)
-    return str(tips.get(role) or "").strip()
+    return _adapt_key_text(
+        str(tips.get(role) or "").strip(),
+        catalog_key=catalog_key,
+        practice_key=practice_key,
+    )
 
 
 def song_mood_summary(title: str, *, artist: str | None = None) -> str:
@@ -264,19 +315,21 @@ def challenge_blurb_for_song(
     instrument: str = "",
     level: str = "Intermediate",
     artist: str | None = None,
+    catalog_key: str | None = None,
+    practice_key: str | None = None,
 ) -> str:
     """Short performance challenge for cards — one teacher sentence."""
     lesson = _lesson_block(title, instrument=instrument, level=level, artist=artist)
     card = str(lesson.get("challenge_summary") or "").strip()
     if card:
-        return card
+        return _adapt_key_text(card, catalog_key=catalog_key, practice_key=practice_key)
     raw = song_challenge(title, artist=artist)
     if not raw:
         return ""
     first = raw.split(".")[0].strip()
     if first and not first.endswith("."):
         first += "."
-    return first
+    return _adapt_key_text(first, catalog_key=catalog_key, practice_key=practice_key)
 
 
 def harmony_blurb_for_song(
@@ -285,26 +338,29 @@ def harmony_blurb_for_song(
     instrument: str = "",
     level: str = "Intermediate",
     artist: str | None = None,
+    catalog_key: str | None = None,
+    practice_key: str | None = None,
 ) -> str:
     """Short harmony/listening line for cards."""
     lesson = _lesson_block(title, instrument=instrument, level=level, artist=artist)
     card = str(lesson.get("harmony_summary") or "").strip()
     if card:
-        return card
+        return _adapt_key_text(card, catalog_key=catalog_key, practice_key=practice_key)
     interp = _interpretation(title, artist)
     listen = str(interp.get("listen_for") or "").strip()
     if listen:
         first = listen.split(".")[0].strip()
         if first and not first.endswith("."):
             first += "."
-        return first
+        return _adapt_key_text(first, catalog_key=catalog_key, practice_key=practice_key)
     profile = lookup_performance_profile(title, artist)
     if not profile:
         return ""
     tips: dict[str, str] = profile.get("harmony_tips") or {}
     for key in (ROLE_VERSE, ROLE_INTRO, ROLE_OUTRO):
         if tips.get(key):
-            return str(tips[key]).split(".")[0].strip() + "."
+            line = str(tips[key]).split(".")[0].strip() + "."
+            return _adapt_key_text(line, catalog_key=catalog_key, practice_key=practice_key)
     return ""
 
 
@@ -380,13 +436,19 @@ def instructor_card_summary(
     instrument: str,
     level: str,
     artist: str | None = None,
+    catalog_key: str | None = None,
+    practice_key: str | None = None,
 ) -> str:
     """Short pre-practice objective for Active Song card and chart subtitle (~20–40 sec)."""
     lesson = _lesson_block(title, instrument=instrument, level=level, artist=artist)
     card = str(lesson.get("card_summary") or "").strip()
     if card:
-        return card
-    return str(lesson.get("opening") or "").strip()
+        return _adapt_key_text(card, catalog_key=catalog_key, practice_key=practice_key)
+    return _adapt_key_text(
+        str(lesson.get("opening") or "").strip(),
+        catalog_key=catalog_key,
+        practice_key=practice_key,
+    )
 
 
 def instructor_lesson_opener(
@@ -395,10 +457,17 @@ def instructor_lesson_opener(
     instrument: str,
     level: str,
     artist: str | None = None,
+    catalog_key: str | None = None,
+    practice_key: str | None = None,
 ) -> str:
     """Unified teacher voice for cards and summaries — brief, not a lesson transcript."""
     return instructor_card_summary(
-        title, instrument=instrument, level=level, artist=artist
+        title,
+        instrument=instrument,
+        level=level,
+        artist=artist,
+        catalog_key=catalog_key,
+        practice_key=practice_key,
     )
 
 
@@ -409,6 +478,8 @@ def masterclass_lesson_markdown(
     level: str,
     artist: str | None = None,
     sections: dict[str, list[str]] | None = None,
+    catalog_key: str | None = None,
+    practice_key: str | None = None,
 ) -> str:
     """Full masterclass narrative for the Coach tab."""
     lesson = _lesson_block_with_fallback(title, instrument=instrument, level=level, artist=artist)
@@ -459,7 +530,11 @@ def masterclass_lesson_markdown(
         lines.append("")
         lines.append(f"**Before you leave the practice room** — {closing}")
 
-    return "\n".join(lines).strip()
+    return _adapt_key_text(
+        "\n".join(lines).strip(),
+        catalog_key=catalog_key,
+        practice_key=practice_key,
+    )
 
 
 def enrich_coaching_block(
@@ -468,20 +543,32 @@ def enrich_coaching_block(
     *,
     instrument: str,
     level: str,
+    practice_key: str | None = None,
 ) -> dict[str, str]:
     title = str(record.get("title") or "")
     artist = str(record.get("artist") or "")
+    catalog_key = str(record.get("key") or "")
     profile = lookup_performance_profile(title, artist)
     if not profile:
         return block
     out = dict(block)
     opener = instructor_card_summary(
-        title, instrument=instrument, level=level, artist=artist
+        title,
+        instrument=instrument,
+        level=level,
+        artist=artist,
+        catalog_key=catalog_key,
+        practice_key=practice_key,
     )
     if opener:
         out["what_matters"] = opener
     intro = teacher_intro_for_song(
-        title, instrument=instrument, level=level, artist=artist
+        title,
+        instrument=instrument,
+        level=level,
+        artist=artist,
+        catalog_key=catalog_key,
+        practice_key=practice_key,
     )
     if intro:
         out["instrument_tip"] = intro
@@ -490,7 +577,14 @@ def enrich_coaching_block(
     challenge = song_challenge(title, artist=artist)
     if challenge:
         blurb = challenge_blurb_for_song(
-            title, instrument=instrument, level=level, artist=artist
+            title,
+            instrument=instrument,
+            level=level,
+            artist=artist,
+            catalog_key=catalog_key,
+            practice_key=practice_key,
         )
-        out["biggest_challenge"] = blurb or challenge
+        out["biggest_challenge"] = blurb or _adapt_key_text(
+            challenge, catalog_key=catalog_key, practice_key=practice_key
+        )
     return out

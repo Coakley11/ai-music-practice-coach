@@ -156,3 +156,29 @@ def test_summary_meta():
     )
     assert meta["key"] == "C# minor"
     assert meta["tempo"] == "112 BPM"
+
+
+def test_transpose_lyric_cues_to_practice_key():
+    from musician_coaching import transpose_lyric_cues
+
+    cues = {
+        "Verse 1": ["half-bar bass walk C#m–B–A–B"],
+    }
+    out = transpose_lyric_cues(cues, catalog_key="C#m", practice_key="Am")
+    line = out["Verse 1"][0]
+    assert "C#m" not in line
+    assert "Am" in line
+    assert "G" in line
+
+
+def test_adapt_text_to_practice_key():
+    from musician_coaching import adapt_text_to_practice_key
+
+    text = adapt_text_to_practice_key(
+        "Three bars of C# minor then G#sus4.",
+        catalog_key="C#m",
+        practice_key="Am",
+    )
+    assert "A minor" in text
+    assert "Esus4" in text
+    assert "C# minor" not in text

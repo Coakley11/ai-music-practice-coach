@@ -24,6 +24,21 @@ class TestTransposeSpelling(unittest.TestCase):
         self.assertEqual(written_key_for_type("E", "Tenor saxophone (Bb)"), "F#")
         self.assertEqual(written_key_for_type("Am", "Alto saxophone (Eb)"), "F#m")
 
+    def test_transpose_pipe_subdivisions(self) -> None:
+        steps = 8  # C#m -> Am
+        self.assertEqual(
+            transpose_chord("C#m7|B", steps, reference_key="Am"),
+            "Am7|G",
+        )
+        self.assertEqual(
+            transpose_chord("A|B", steps, reference_key="Am"),
+            "F|G",
+        )
+        self.assertEqual(
+            transpose_chord("G#sus4", steps, reference_key="Am"),
+            "Esus4",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

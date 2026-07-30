@@ -522,10 +522,15 @@ def active_song_card_details(
         from musician_coaching import musician_challenge_blurb, musician_harmony_blurb
 
         harmony_hint = musician_harmony_blurb(
-            record, sections, instrument=instrument, level=level
+            record, sections, instrument=instrument, level=level, practice_key=key
         )
         challenge_hint = musician_challenge_blurb(
-            record, sections, instrument=instrument, level=level, coaching=coaching
+            record,
+            sections,
+            instrument=instrument,
+            level=level,
+            coaching=coaching,
+            practice_key=coaching_key,
         )
     except Exception:
         challenge_hint = str((coaching or {}).get("biggest_challenge") or "")
@@ -977,6 +982,8 @@ def section_deep_practice_markdown(
             focus=focus,
             title=str((song_data or {}).get("title") or ""),
             artist=str((song_data or {}).get("artist") or ""),
+            catalog_key=str((song_data or {}).get("key") or ""),
+            practice_key=str(display_key or ""),
         )
         lesson_heading = ""
         try:

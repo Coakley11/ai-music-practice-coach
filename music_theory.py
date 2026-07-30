@@ -252,7 +252,8 @@ def _transpose_root(root: str, steps: int, *, reference_key: str | None) -> str:
     return spell_pitch_class(new_idx, mode=mode)
 
 
-def transpose_chord(chord, steps, *, reference_key: str | None = None):
+def _transpose_chord_atom(chord: str, steps: int, *, reference_key: str | None = None) -> str:
+    """Transpose a single chord symbol (no bar-level ``|`` subdivisions)."""
     chord = str(chord).strip()
     ref = reference_key
     if "/" in chord:
@@ -272,6 +273,52 @@ def transpose_chord(chord, steps, *, reference_key: str | None = None):
 
     new_root = _transpose_root(root, steps, reference_key=ref)
     return new_root + suffix
+
+
+def transpose_chord(chord, steps, *, reference_key: str | None = None):
+    chord = str(chord).strip()
+    ref = reference_key
+    try:
+        from chord_subdivisions import (
+            SUBDIVISION_SEPARATOR,
+            WEIGHT_SEPARATOR,
+            Subdivision,
+            hit_underlying_chord,
+            is_hit_token,
+            join_subdivisions,
+            join_weighted_subdivisions,
+            make_hit_token,
+            parse_subdivisions,
+        )
+    except Exception:
+        return _transpose_chord_atom(chord, steps, reference_key=ref)
+
+    if is_hit_token(chord):
+        inner = hit_underlying_chord(chord)
+        return make_hit_token(
+            transpose_chord(inner, steps, reference_key=ref)
+        )
+
+    has_pipe = SUBDIVISION_SEPARATOR in chord
+    has_weight = WEIGHT_SEPARATOR in chord
+    if has_pipe or has_weight:
+        subs = parse_subdivisions(chord)
+        if subs:
+            transposed = [
+                Subdivision(
+                    chord=_transpose_chord_atom(s.chord, steps, reference_key=ref),
+                    weight=s.weight,
+                    push=s.push,
+                )
+                for s in subs
+            ]
+            if has_weight:
+                return join_weighted_subdivisions(transposed)
+            if len(transposed) > 1:
+                return join_subdivisions([s.chord for s in transposed])
+            return transposed[0].chord
+
+    return _transpose_chord_atom(chord, steps, reference_key=ref)
 
 
 def transpose_guitar_tabs(g_tabs: dict, from_key: str, to_key: str) -> dict:

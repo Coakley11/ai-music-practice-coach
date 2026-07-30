@@ -356,6 +356,7 @@ def build_song_coaching(
             record,
             instrument=instrument,
             level=level,
+            practice_key=practice_key,
         )
     except Exception:
         pass

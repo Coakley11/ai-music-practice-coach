@@ -68,6 +68,103 @@ def format_key_for_musicians(practice_key: str) -> str:
     return f"{k} major"
 
 
+_CHORD_IN_PROSE = re.compile(
+    r"(?<![A-Za-z0-9#])"
+    r"([A-G](?:#|b)?"
+    r"(?:maj7|maj9|m7b5|m7|m9|sus4|sus2|7sus4|7|dim|aug|add9|11|13|m)?"
+    r"(?:/[A-G](?:#|b)?)?)"
+    r"(?![A-Za-z0-9])"
+)
+
+
+def adapt_text_to_practice_key(
+    text: str,
+    *,
+    catalog_key: str,
+    practice_key: str,
+) -> str:
+    """Rewrite catalog-key chord spellings and key names for the active practice key."""
+    raw = str(text or "").strip()
+    if not raw:
+        return raw
+    cat = str(catalog_key or "").strip()
+    practice = str(practice_key or "").strip()
+    if not cat or not practice:
+        return raw
+    try:
+        from music_theory import semitone_distance, transpose_chord
+
+        steps = semitone_distance(cat, practice)
+    except Exception:
+        return raw
+    if steps == 0:
+        return raw
+
+    def _repl(match: re.Match[str]) -> str:
+        token = match.group(1)
+        try:
+            return transpose_chord(token, steps, reference_key=practice)
+        except Exception:
+            return token
+
+    out = _CHORD_IN_PROSE.sub(_repl, raw)
+
+    cat_fmt = format_key_for_musicians(cat)
+    practice_fmt = format_key_for_musicians(practice)
+    for old, new in (
+        (cat_fmt, practice_fmt),
+        (f"{cat} major", practice_fmt),
+        (f"{cat} minor", practice_fmt),
+        (cat, practice),
+    ):
+        if old and old != new and old in out:
+            out = out.replace(old, new)
+
+    return out
+
+
+def transpose_lyric_cue(
+    text: str,
+    *,
+    catalog_key: str,
+    practice_key: str,
+) -> str:
+    """Transpose chord symbols embedded in a lyric/coaching cue line."""
+    return adapt_text_to_practice_key(
+        text, catalog_key=catalog_key, practice_key=practice_key
+    )
+
+
+def transpose_lyric_cues(
+    cues: dict[str, list[str]],
+    *,
+    catalog_key: str,
+    practice_key: str,
+) -> dict[str, list[str]]:
+    """Return a copy of lyric cues with chord spellings moved to the practice key."""
+    if not cues:
+        return {}
+    try:
+        from music_theory import semitone_distance
+
+        if semitone_distance(catalog_key, practice_key) == 0:
+            return dict(cues)
+    except Exception:
+        return dict(cues)
+    out: dict[str, list[str]] = {}
+    for section, lines in cues.items():
+        out[section] = [
+            transpose_lyric_cue(
+                str(line),
+                catalog_key=catalog_key,
+                practice_key=practice_key,
+            )
+            for line in (lines or [])
+            if str(line).strip()
+        ]
+    return out
+
+
 def is_internal_arrangement_note(text: str) -> bool:
     """True when catalog arrangement_notes are chart/dev documentation."""
     low = str(text or "").lower()
@@ -108,15 +205,23 @@ def musician_harmony_blurb(
     *,
     instrument: str = "",
     level: str = "Intermediate",
+    practice_key: str | None = None,
 ) -> str:
     """One musician-facing harmony/listening line — never theory catalog tags."""
     title = str(record.get("title") or "")
     artist = str(record.get("artist") or "")
+    catalog_key = str(record.get("key") or "")
+    pk = str(practice_key or catalog_key or "C")
     try:
         from song_performance_coaching import harmony_blurb_for_song
 
         tip = harmony_blurb_for_song(
-            title, instrument=instrument, level=level, artist=artist or None
+            title,
+            instrument=instrument,
+            level=level,
+            artist=artist or None,
+            catalog_key=catalog_key,
+            practice_key=pk,
         )
         if tip:
             return tip
@@ -150,15 +255,23 @@ def musician_challenge_blurb(
     instrument: str = "",
     level: str = "Intermediate",
     coaching: dict[str, str] | None = None,
+    practice_key: str | None = None,
 ) -> str:
     """One clear performance challenge in plain language."""
     title = str(record.get("title") or "")
     artist = str(record.get("artist") or "")
+    catalog_key = str(record.get("key") or "")
+    pk = str(practice_key or catalog_key or "C")
     try:
         from song_performance_coaching import challenge_blurb_for_song
 
         tip = challenge_blurb_for_song(
-            title, instrument=instrument, level=level, artist=artist or None
+            title,
+            instrument=instrument,
+            level=level,
+            artist=artist or None,
+            catalog_key=catalog_key,
+            practice_key=pk,
         )
         if tip:
             return tip
@@ -214,7 +327,9 @@ def musician_summary_paragraph(
         from song_performance_coaching import instructor_lesson_opener, practice_focus_for_song
 
         opener = instructor_lesson_opener(
-            title, instrument=instrument, level=level, artist=artist
+            title, instrument=instrument, level=level, artist=artist,
+            catalog_key=str(record.get("key") or ""),
+            practice_key=practice_key,
         )
         if opener:
             meta_line = (
@@ -278,7 +393,12 @@ def practice_focus_plain(
         from song_performance_coaching import practice_focus_for_song
 
         curated = practice_focus_for_song(
-            title, instrument=instrument, level=level, artist=artist
+            title,
+            instrument=instrument,
+            level=level,
+            artist=artist,
+            catalog_key=str(record.get("key") or ""),
+            practice_key=str(practice_key or record.get("key") or "C"),
         )
         if curated:
             return curated
@@ -314,11 +434,23 @@ def practice_focus_plain(
     return " · ".join(out) if out else "steady rhythm · smooth chord changes"
 
 
-def humanize_lyric_cue(text: str, *, title: str = "", section_name: str = "", artist: str = "") -> str:
+def humanize_lyric_cue(
+    text: str,
+    *,
+    title: str = "",
+    section_name: str = "",
+    artist: str = "",
+    catalog_key: str = "",
+    practice_key: str = "",
+) -> str:
     """Rewrite theory-heavy catalog cues into plain coaching language."""
     raw = str(text or "").strip()
     if not raw:
         return raw
+    if catalog_key and practice_key:
+        raw = transpose_lyric_cue(
+            raw, catalog_key=catalog_key, practice_key=practice_key
+        )
     low = raw.lower()
     replacements = (
         (r"left hand roots?/fifths?", "Play the root of each chord in your left hand"),
@@ -345,13 +477,21 @@ def plain_section_harmony_tip(
     *,
     title: str = "",
     artist: str = "",
+    catalog_key: str = "",
+    practice_key: str = "",
 ) -> str:
     """Section harmony hint without Roman numerals or theory codes."""
     if title:
         try:
             from song_performance_coaching import harmony_tip_for_song
 
-            tip = harmony_tip_for_song(title, section_name, artist=artist or None)
+            tip = harmony_tip_for_song(
+                title,
+                section_name,
+                artist=artist or None,
+                catalog_key=catalog_key or None,
+                practice_key=practice_key or None,
+            )
             if tip:
                 return tip
         except Exception:
@@ -417,6 +557,8 @@ def section_coaching_html(
     focus: str = "",
     title: str = "",
     artist: str = "",
+    catalog_key: str = "",
+    practice_key: str = "",
 ) -> str:
     """Per-section coach overlay in plain English."""
     if title:
@@ -429,6 +571,8 @@ def section_coaching_html(
                 instrument=instrument,
                 level=level,
                 artist=artist or None,
+                catalog_key=catalog_key or None,
+                practice_key=practice_key or None,
             )
             if curated:
                 return curated
@@ -539,6 +683,8 @@ def coaching_markdown_teacher(
             level=level,
             artist=artist,
             sections=sections,
+            catalog_key=str(record.get("key") or ""),
+            practice_key=practice_key,
         )
         if masterclass:
             meta = build_musician_summary_meta(record, practice_key=practice_key)
@@ -556,7 +702,12 @@ def coaching_markdown_teacher(
         from song_performance_coaching import teacher_intro_for_song
 
         teacher_open = teacher_intro_for_song(
-            title, instrument=instrument, level=level, artist=artist
+            title,
+            instrument=instrument,
+            level=level,
+            artist=artist,
+            catalog_key=str(record.get("key") or ""),
+            practice_key=practice_key,
         )
     except Exception:
         teacher_open = ""

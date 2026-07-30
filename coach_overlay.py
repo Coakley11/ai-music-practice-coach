@@ -72,6 +72,8 @@ def section_overlay_html(
     level="Intermediate",
     song_title="",
     song_artist="",
+    catalog_key="",
+    practice_key="",
 ):
     try:
         from musician_coaching import section_coaching_html
@@ -86,6 +88,8 @@ def section_overlay_html(
             focus=focus or "",
             title=song_title or "",
             artist=song_artist or "",
+            catalog_key=catalog_key or "",
+            practice_key=practice_key or "",
         )
         color_tip = _backing_chord_color_tip(chords, instrument)
         if color_tip:

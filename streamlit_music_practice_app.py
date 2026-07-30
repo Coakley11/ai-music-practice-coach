@@ -2344,7 +2344,15 @@ def _roman_for_chord(chord, key_name):
         return "?"
 
 
-def _inline_harmonic_analysis(section_name, chords, key_name, song_title="", song_artist=""):
+def _inline_harmonic_analysis(
+    section_name,
+    chords,
+    key_name,
+    song_title="",
+    song_artist="",
+    catalog_key="",
+    practice_key="",
+):
     try:
         from musician_coaching import plain_section_harmony_tip
 
@@ -2353,6 +2361,8 @@ def _inline_harmonic_analysis(section_name, chords, key_name, song_title="", son
             list(chords or []),
             title=song_title or "",
             artist=song_artist or "",
+            catalog_key=catalog_key or "",
+            practice_key=practice_key or key_name,
         )
     except Exception:
         pass
@@ -2844,8 +2854,8 @@ def full_chord_markdown(
   </div>
   {_chart_grid_html(chords, current_bar=current_bar_for_section, section_name=section_name)}
   {_section_lyric_html(section_name, chords, instrument, lyric_cues=merged_lyric_cues, section_lyrics=section_lyrics or {})}
-  <div class="overlay-box"><strong>{html.escape(str(instrument))}:</strong> {_section_overlay(instrument, focus, chords, section_name=section_name, groove_style=groove_style, time_signature=time_signature, bpm=bpm, level=level, song_title=song_name, song_artist=str(song_data.get("artist") or ""))}</div>
-  <div class="analysis-box">{_inline_harmonic_analysis(section_name, chords, dk, song_title=song_name, song_artist=str(song_data.get("artist") or ""))}</div>
+  <div class="overlay-box"><strong>{html.escape(str(instrument))}:</strong> {_section_overlay(instrument, focus, chords, section_name=section_name, groove_style=groove_style, time_signature=time_signature, bpm=bpm, level=level, song_title=song_name, song_artist=str(song_data.get("artist") or ""), catalog_key=str(song_data.get("key") or ""), practice_key=str(dk))}</div>
+  <div class="analysis-box">{_inline_harmonic_analysis(section_name, chords, dk, song_title=song_name, song_artist=str(song_data.get("artist") or ""), catalog_key=str(song_data.get("key") or ""), practice_key=str(dk))}</div>
 </section>
 """
             )
@@ -10176,6 +10186,18 @@ lyric_cues = dict(_user_cue_lists)
 for _sec, _lines in lyric_cues_from_section_lyrics(section_lyrics).items():
     if _sec not in lyric_cues and _lines:
         lyric_cues[_sec] = _lines
+_catalog_key = str(song_data.get("key") or "C")
+if display_key and _catalog_key and display_key != _catalog_key:
+    try:
+        from musician_coaching import transpose_lyric_cues
+
+        lyric_cues = transpose_lyric_cues(
+            lyric_cues,
+            catalog_key=_catalog_key,
+            practice_key=display_key,
+        )
+    except Exception:
+        pass
 
 _practice_bpm = int(st.session_state.get("backing_track_bpm", _default_song_bpm))
 _practice_groove = str(
@@ -11074,6 +11096,8 @@ if _studio_page == "practice":
                             instrument=str(instrument or ""),
                             level=str(level or "Intermediate"),
                             artist=str(song_data.get("artist") or "") or None,
+                            catalog_key=str(song_data.get("key") or ""),
+                            practice_key=_practice_chart_key,
                         )
                     except Exception:
                         _ug_header = ""
@@ -12144,6 +12168,8 @@ elif _studio_page == "backing":
                     level=level,
                     song_title=song,
                     song_artist=str(song_data.get("artist") or ""),
+                    catalog_key=str(song_data.get("key") or ""),
+                    practice_key=display_key,
                 ),
                 unsafe_allow_html=True,
             )

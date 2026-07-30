@@ -6,6 +6,8 @@ from song_performance_coaching import (
     CURATED_PERFORMANCE,
     harmony_tip_for_song,
     has_curated_performance,
+    instructor_card_summary,
+    masterclass_lesson_markdown,
     section_coaching_for_song,
     teacher_intro_for_song,
 )
@@ -160,3 +162,16 @@ def test_instructor_lesson_opener_woven():
 
 def test_curated_library_not_empty():
     assert len(CURATED_PERFORMANCE) >= 5
+
+
+def test_masterclass_adapts_catalog_key_to_practice_key():
+    md = masterclass_lesson_markdown(
+        "California Dreamin'",
+        instrument="Piano",
+        level="Intermediate",
+        catalog_key="C#m",
+        practice_key="Am",
+    )
+    assert "C# minor" not in md
+    assert "A minor" in md or "Am" in md
+    assert "C#m" not in md
