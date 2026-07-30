@@ -50,7 +50,7 @@ class TestGenerateMissionExample(unittest.TestCase):
             improv_ctx=ctx,
             chord="Em",
             section="Chorus",
-            level="Intermediate",
+            level="Beginner",
             instrument="Piano",
             focus="Improvisation",
             variant="normal",
@@ -60,12 +60,16 @@ class TestGenerateMissionExample(unittest.TestCase):
             improv_ctx=ctx,
             chord="Em",
             section="Chorus",
-            level="Intermediate",
+            level="Beginner",
             instrument="Piano",
             focus="Improvisation",
             variant="harder",
         )
         self.assertNotEqual(normal.motif.get("display"), harder.motif.get("display"))
+        self.assertGreaterEqual(
+            len(harder.motif.get("notes") or []),
+            len(normal.motif.get("notes") or []),
+        )
 
     def test_new_idea_changes_each_nonce(self) -> None:
         ctx = ImprovSessionContext(

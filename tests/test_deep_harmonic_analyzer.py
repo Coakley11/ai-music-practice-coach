@@ -26,6 +26,25 @@ class TestDeepHarmonicAnalyzer(unittest.TestCase):
         self.assertIn("loop", joined)
         self.assertTrue(len(lesson["steps"]) >= 3)
         self.assertTrue(lesson["loop"]["repeating"])
+        self.assertGreaterEqual(len(lesson["deep_dive"]), 2)
+
+    def test_beginner_lesson_includes_go_deeper_blocks(self) -> None:
+        lesson = build_deep_harmonic_lesson(
+            HarmonicAnalysisInput(
+                song_title="Shape of You",
+                artist="Ed Sheeran",
+                key_center="C#m",
+                display_key="Bm",
+                sections={"Verse": ["Bm", "G", "A"], "Chorus": ["Bm", "G", "A"]},
+                instrument="Piano",
+                level="Beginner",
+                focus="Improvisation",
+                progression_flat=["Bm", "G", "A"],
+            )
+        )
+        titles = " ".join(d["title"].lower() for d in lesson["deep_dive"])
+        self.assertIn("playbook", titles)
+        self.assertTrue(all(str(d.get("markdown") or "").strip() for d in lesson["deep_dive"]))
 
     def test_wind_playbook_triad_does_not_index_seventh(self) -> None:
         """Triad chords (no 7th) must not crash Creative / Harmonic Analysis."""

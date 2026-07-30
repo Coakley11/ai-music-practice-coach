@@ -137,59 +137,59 @@ def _build_motif_for_mission(
     level: str,
     variant: str,
     rng: random.Random,
+    idea_variant: int = 0,
 ) -> dict[str, Any]:
-    rhythm = _pick_rhythm(level, variant, rng)
     low = mission.lower()
     work_level = _effective_level(level, variant)
+    idea = idea_variant
+    if variant == "easier":
+        work_level = _effective_level(level, "easier")
+        idea = 0
+    elif variant == "harder":
+        idea = max(2, idea_variant % 5)
 
-    if ("chord tone" in low or "guide tone" in low) and variant in {"harder", "new"}:
-        motif = generate_motif_for_chord(
-            chord, key_center=key_center, rhythm_key=rhythm, level=work_level
-        )
-        if "guide" in low:
-            motif["notes"] = _guide_tones(chord)[:3]
-            motif["display"] = " – ".join(motif["notes"])
-        return motif
+    motif = generate_motif_for_chord(
+        chord,
+        key_center=key_center,
+        level=work_level,
+        rng=rng,
+        idea_variant=idea,
+    )
 
-    if "chord tone" in low or "guide tone" in low:
+    if ("chord tone" in low or "guide tone" in low) and work_level == "Beginner" and variant in {"normal", "easier"}:
         if "guide" in low:
-            notes = _guide_tones(chord)
+            notes = _guide_tones(chord)[:3]
         else:
-            notes = chord_tone_names(chord)[:4]
-        motif = _motif_chord_tones_only(chord, count=min(4, len(notes)))
-        motif["notes"] = notes[:3]
-        motif["display"] = " – ".join(motif["notes"])
+            notes = chord_tone_names(chord)[:3]
+        motif = _motif_chord_tones_only(chord, count=min(3, len(notes)))
+        motif["notes"] = notes
+        motif["display"] = " – ".join(notes)
+        motif["rhythm"] = "♩ ♩ ♩" if variant != "easier" else "♩ 𝅗"
+        motif["rhythm_key"] = "quarter-quarter-quarter" if variant != "easier" else "quarter-quarter-half"
         return motif
 
     if "5 notes" in low:
-        insight = chord_coach_insight(chord, key_center=key_center, level=level)
+        insight = chord_coach_insight(chord, key_center=key_center, level=work_level)
         scale_notes = (
             insight.scale_suggestions[0].notes
             if insight.scale_suggestions
             else chord_tone_names(chord)
         )
-        pick = scale_notes[:5]
-        return {
-            "chord": chord,
-            "notes": pick,
-            "display": " – ".join(pick),
-            "rhythm": "♩ ♩ ♩ ♩ ♩",
-            "rhythm_key": rhythm,
-            "variation_prompt": "Five-note cell in one register",
-        }
-
-    if "silence" in low or "rest" in low:
+        count = 3 if work_level == "Beginner" else (5 if work_level == "Intermediate" else 7)
+        pick = scale_notes[:count]
         motif = generate_motif_for_chord(
-            chord, key_center=key_center, rhythm_key=rhythm, level=work_level
+            chord, key_center=key_center, level=work_level, rng=rng, idea_variant=idea
         )
-        motif["rhythm"] = "♩ z ♩"
-        motif["rhythm_key"] = rhythm
-        motif["variation_prompt"] = f"Leave space — play **{motif['notes'][0]}**, rest, continue."
+        motif["notes"] = pick[: len(motif["notes"])]
+        motif["display"] = " – ".join(motif["notes"])
+        motif["variation_prompt"] = "Five-note cell in one register"
         return motif
 
-    motif = generate_motif_for_chord(
-        chord, key_center=key_center, rhythm_key=rhythm, level=work_level
-    )
+    if "silence" in low or "rest" in low:
+        motif["rhythm"] = "♩ z ♩"
+        motif["rhythm_key"] = "quarter-quarter-quarter"
+        motif["variation_prompt"] = f"Leave space — play **{motif['notes'][0]}**, rest, continue."
+        return motif
 
     if "rhythm" in low and "note" in low:
         motif["variation_prompt"] = (
@@ -207,26 +207,12 @@ def _build_motif_for_mission(
         motif["notes"] = [chord_tone_names(chord)[0]] + motif["notes"][1:3]
         motif["display"] = " – ".join(motif["notes"])
         motif["variation_prompt"] = "Land the first note of each phrase on beat 1."
-    elif "scalar" in low:
+    elif "scalar" in low and work_level == "Beginner":
         motif["notes"] = chord_tone_names(chord)[:3]
         motif["display"] = " – ".join(motif["notes"])
         motif["variation_prompt"] = "Step between chord tones only — no long scalar runs."
     elif "pattern" in low:
         motif = transform_motif(motif, "rhythmic", key_center=key_center)
-
-    if variant == "easier":
-        motif["notes"] = motif["notes"][: max(2, len(motif["notes"]) - 1)]
-        motif["display"] = " – ".join(motif["notes"])
-    elif variant == "harder":
-        motif = transform_motif(motif, "sequence_up", key_center=key_center)
-        if work_level == "Advanced" and len(motif.get("notes") or []) >= 3:
-            motif = transform_motif(motif, "rhythmic", key_center=key_center)
-
-    if variant == "new":
-        ops = ["invert", "rhythmic", "sequence_up", "sequence_down"]
-        motif = transform_motif(motif, rng.choice(ops), key_center=key_center)
-        if rng.random() < 0.5:
-            motif = transform_motif(motif, rng.choice(ops), key_center=key_center)
 
     return motif
 
@@ -519,6 +505,7 @@ def generate_mission_example(
         level=level,
         variant=variant,
         rng=rng,
+        idea_variant=(nonce if variant == "new" else (seed % 1000)),
     )
     motif = sync_motif_midi(motif)
     out = rebuild_mission_outputs(

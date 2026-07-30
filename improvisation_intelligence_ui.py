@@ -1529,12 +1529,24 @@ def _render_deep_harmonic_lesson(st: Any, session_state: dict, lesson: dict) -> 
         st.caption(f"Main loop: **{chips}**{rep}")
 
     st.markdown("---")
-    st.markdown("##### Go deeper (when you're ready)")
-    for block in lesson.get("deep_dive") or []:
-        title = str(block.get("title") or "Detail")
-        md = str(block.get("markdown") or "")
-        with st.expander(title, expanded=False):
-            st.markdown(md)
+    deep = list(lesson.get("deep_dive") or [])
+    with st.expander("Go deeper", expanded=False, key="dh_go_deeper_root"):
+        st.caption(
+            "Tension maps, instrument playbook, scale pools, harmonic character, "
+            "and section-by-section reference."
+        )
+        if not deep:
+            st.info(
+                "Load a song with chord changes to unlock the reference sections here."
+            )
+        for i, block in enumerate(deep):
+            title = str(block.get("title") or "Detail")
+            md = str(block.get("markdown") or "").strip()
+            if not md:
+                continue
+            slug = re.sub(r"[^a-z0-9]+", "-", title.lower())[:40] or f"block-{i}"
+            with st.expander(title, expanded=False, key=f"dh_deep_{i}_{slug}"):
+                st.markdown(md)
 
 
 def _tab_deep_harmony(

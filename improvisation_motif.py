@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import re
 from typing import Any
 
@@ -16,16 +17,20 @@ _STRING_LABELS = ("e", "B", "G", "D", "A", "E")
 
 _RHYTHM_PATTERNS: dict[str, list[str]] = {
     "quarter-quarter-quarter": ["♩", "♩", "♩"],
+    "quarter-quarter-half": ["♩", "♩", "𝅗"],
     "eighth-eighth-quarter": ["♪", "♪", "♩"],
     "quarter-eighth-eighth": ["♩", "♪", "♪"],
     "quarter-dotted-eighth": ["♩", "♩.", "♪"],
-    "quarter-quarter-half": ["♩", "♩", "𝅗"],
     "eighth-eighth-half": ["♪", "♪", "𝅗"],
+    "eighth-quart-eighth-eighth": ["♪", "♩", "♪", "♪"],
+    "syncopated-four": ["♪", "♩", "♪", "♪"],
+    "sixteenth-run-four": ["♬", "♬", "♬", "♬"],
 }
 
 _RHYTHM_TO_ABC_LEN: dict[str, str] = {
     "♩": "2",
     "♪": "/2",
+    "♬": "/4",
     "♩.": "3",
     "𝅗": "4",
 }
@@ -296,38 +301,160 @@ def _nearest_scale_degree(note: str, scale_pcs: list[int]) -> int:
     return min(dists)[1]
 
 
+def _normalize_motif_level(level: str) -> str:
+    low = str(level or "").lower()
+    if "begin" in low:
+        return "Beginner"
+    if "adv" in low:
+        return "Advanced"
+    return "Intermediate"
+
+
+def _scale_step_note(scale_pcs: list[int], from_note: str, steps: int) -> str:
+    pc = NOTE_TO_MIDI.get(normalize_root(split_chord(from_note)[0]), 60) % 12
+    if pc not in scale_pcs:
+        pc = scale_pcs[0]
+    idx = scale_pcs.index(pc)
+    target = scale_pcs[(idx + steps) % len(scale_pcs)]
+    return _note_from_midi(target + 60)
+
+
+def _chromatic_below(note: str) -> str:
+    return _note_from_midi(_midi_from_note(note) - 1)
+
+
+def _guide_tone_pair(chord_tones: list[str]) -> list[str]:
+    if len(chord_tones) >= 4:
+        return [chord_tones[0], chord_tones[1], chord_tones[3]]
+    if len(chord_tones) >= 2:
+        return chord_tones[:2]
+    return chord_tones
+
+
+def _beginner_notes(chord_tones: list[str], rng: random.Random, idea_variant: int) -> list[str]:
+    if len(chord_tones) >= 3:
+        patterns = [
+            chord_tones[:2],
+            [chord_tones[0], chord_tones[2]],
+            [chord_tones[0], chord_tones[1], chord_tones[0]],
+        ]
+        return list(patterns[idea_variant % len(patterns)])
+    return chord_tones[:2] or ["C", "E"]
+
+
+def _intermediate_notes(
+    chord: str,
+    chord_tones: list[str],
+    scale_pcs: list[int],
+    rng: random.Random,
+    idea_variant: int,
+) -> list[str]:
+    if len(chord_tones) < 2:
+        chord_tones = chord_tone_names(chord)[:3]
+    root, third = chord_tones[0], chord_tones[1] if len(chord_tones) > 1 else chord_tones[0]
+    fifth = chord_tones[2] if len(chord_tones) > 2 else _scale_step_note(scale_pcs, root, 2)
+    neighbor = _scale_step_note(scale_pcs, third, 1)
+    passing = _scale_step_note(scale_pcs, third, -1)
+    templates = [
+        [root, passing, third, fifth],
+        [third, neighbor, third, fifth, root],
+        [root, third, _scale_step_note(scale_pcs, fifth, 1), fifth],
+        [fifth, third, root, passing, third],
+        [root, third, fifth, neighbor, third],
+    ]
+    return list(templates[idea_variant % len(templates)])
+
+
+def _advanced_notes(
+    chord: str,
+    chord_tones: list[str],
+    scale_pcs: list[int],
+    rng: random.Random,
+    idea_variant: int,
+) -> list[str]:
+    if len(chord_tones) < 2:
+        chord_tones = chord_tone_names(chord)[:4]
+    guides = _guide_tone_pair(chord_tones)
+    third = guides[1] if len(guides) > 1 else chord_tones[0]
+    seventh = guides[2] if len(guides) > 2 else _scale_step_note(scale_pcs, third, 2)
+    root = guides[0]
+    fifth = chord_tones[2] if len(chord_tones) > 2 else _scale_step_note(scale_pcs, root, 2)
+    approach = _chromatic_below(third)
+    upper = _scale_step_note(scale_pcs, seventh, 1)
+    lower = _scale_step_note(scale_pcs, root, -1)
+    arpeggio = chord_tones[:4] if len(chord_tones) >= 4 else guides
+    scale_down = [
+        arpeggio[-1],
+        _scale_step_note(scale_pcs, arpeggio[-1], -1),
+        _scale_step_note(scale_pcs, arpeggio[-1], -2),
+        third,
+    ]
+    pass_from_seventh = _scale_step_note(scale_pcs, seventh, -1)
+    templates = [
+        [approach, third, seventh, _scale_step_note(scale_pcs, seventh, -1), seventh],
+        (arpeggio + [_scale_step_note(scale_pcs, arpeggio[-1], 1)])[:6],
+        [lower, root, approach, third, seventh, upper],
+        [root, third, _chromatic_below(fifth), fifth, seventh] if len(chord_tones) > 2 else guides + [upper],
+        scale_down + [root],
+        [third, upper, seventh, pass_from_seventh, root, third],
+    ]
+    notes = list(templates[idea_variant % len(templates)])
+    # Dedupe consecutive duplicates while keeping length
+    compact: list[str] = []
+    for n in notes:
+        if not compact or compact[-1] != n:
+            compact.append(n)
+    return compact[:8] if compact else guides
+
+
+def _rhythm_for_level(level_norm: str, rng: random.Random, idea_variant: int, override: str) -> str:
+    if override and override in _RHYTHM_PATTERNS:
+        return override
+    if level_norm == "Beginner":
+        opts = ["quarter-quarter-half", "quarter-quarter-quarter"]
+        return opts[idea_variant % len(opts)]
+    if level_norm == "Advanced":
+        opts = [
+            "syncopated-four",
+            "eighth-quart-eighth-eighth",
+            "quarter-dotted-eighth",
+            "sixteenth-run-four",
+            "eighth-eighth-quarter",
+        ]
+        return opts[idea_variant % len(opts)]
+    opts = [
+        "eighth-eighth-quarter",
+        "quarter-eighth-eighth",
+        "eighth-quart-eighth-eighth",
+        "eighth-eighth-half",
+    ]
+    return opts[idea_variant % len(opts)]
+
+
 def generate_motif_for_chord(
     chord: str,
     *,
     key_center: str = "C",
     rhythm_key: str = "quarter-quarter-quarter",
     level: str = "Intermediate",
+    rng: random.Random | None = None,
+    idea_variant: int = 0,
 ) -> dict[str, Any]:
-    """Build a motif from chord tones; complexity scales with skill level."""
-    level_norm = "Beginner" if "begin" in str(level or "").lower() else (
-        "Advanced" if "adv" in str(level or "").lower() else "Intermediate"
-    )
+    """Build a motif; melodic and rhythmic complexity scale strongly with level."""
+    rng = rng or random.Random(idea_variant)
+    level_norm = _normalize_motif_level(level)
     tones = chord_tone_names(chord, reference_key=key_center)
+    _mode, scale_pcs = _parse_key_scale(key_center)
+
     if level_norm == "Beginner":
-        rhythm_key = rhythm_key or "quarter-quarter-half"
-        notes = tones[:2] if len(tones) >= 2 else tones[:3]
-        if len(notes) < 2:
-            notes = (tones + ["C", "E"])[:2]
+        notes = _beginner_notes(tones, rng, idea_variant)
+        rhythm_key = _rhythm_for_level(level_norm, rng, idea_variant, rhythm_key)
     elif level_norm == "Advanced":
-        rhythm_key = rhythm_key or "eighth-eighth-half"
-        notes = list(tones[:4])
-        if len(notes) >= 2:
-            mode, scale_pcs = _parse_key_scale(key_center)
-            root_pc = NOTE_TO_MIDI.get(normalize_root(split_chord(chord)[0]), 60) % 12
-            if root_pc in scale_pcs:
-                ri = scale_pcs.index(root_pc)
-                passing_pc = scale_pcs[(ri + 1) % len(scale_pcs)]
-                passing = _note_from_midi(passing_pc + 60)
-                notes = [notes[0], passing, notes[1]] + notes[2:4]
-        notes = notes[:5]
+        notes = _advanced_notes(chord, tones, scale_pcs, rng, idea_variant)
+        rhythm_key = _rhythm_for_level(level_norm, rng, idea_variant, rhythm_key)
     else:
-        rhythm_key = rhythm_key or "quarter-eighth-eighth"
-        notes = tones[:3] if len(tones) >= 3 else (tones + ["C", "E", "G"])[:3]
+        notes = _intermediate_notes(chord, tones, scale_pcs, rng, idea_variant)
+        rhythm_key = _rhythm_for_level(level_norm, rng, idea_variant, rhythm_key)
 
     rhythm_syms = _RHYTHM_PATTERNS.get(rhythm_key, _RHYTHM_PATTERNS["quarter-quarter-quarter"])
     while len(rhythm_syms) < len(notes):
@@ -341,7 +468,7 @@ def generate_motif_for_chord(
         "rhythm": rhythm,
         "rhythm_key": rhythm_key,
         "midi": [_midi_from_note(n, 4) for n in notes],
-        "variation_prompt": f"Motif on **{chord}** ({level_norm}): {' – '.join(notes)}",
+        "variation_prompt": f"{level_norm} line on **{chord}** — {' – '.join(notes)}",
     }
 
 
