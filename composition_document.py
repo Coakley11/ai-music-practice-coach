@@ -633,11 +633,17 @@ def section_has_chords(sec: dict[str, Any]) -> bool:
     return bool(sec.get("chords"))
 
 
+def section_has_resolved_chords(doc: dict[str, Any], section_id: str) -> bool:
+    """True when this section (or its linked harmony source) has chords."""
+    _, sec = harmony_edit_target(doc, section_id)
+    return bool(sec and sec.get("chords"))
+
+
 def harmonized_section_count(doc: dict[str, Any]) -> tuple[int, int]:
     sections = ordered_sections(doc)
     if not sections:
         return 0, 0
-    done = sum(1 for s in sections if section_has_chords(s))
+    done = sum(1 for s in sections if section_has_resolved_chords(doc, str(s.get("id") or "")))
     return done, len(sections)
 
 
@@ -1011,11 +1017,16 @@ def chords_for_playback(
     sections_map = (doc.get("form") or {}).get("sections") or {}
     order = list((doc.get("form") or {}).get("section_order") or [])
     if scope == "section" and section_id:
+        _, sec = harmony_edit_target(doc, section_id)
+        if sec:
+            return expand_entries_to_chords(sec.get("chords") or [])
         sec = sections_map.get(section_id) or {}
         return expand_entries_to_chords(sec.get("chords") or [])
     chords: list[str] = []
     for sid in order:
-        sec = sections_map.get(sid) or {}
+        _, sec = harmony_edit_target(doc, str(sid))
+        if not sec:
+            sec = sections_map.get(sid) or {}
         chords.extend(expand_entries_to_chords(sec.get("chords") or []))
     return chords
 

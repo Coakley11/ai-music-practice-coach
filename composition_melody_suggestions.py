@@ -224,3 +224,50 @@ def coach_line_for_melody(
         f"Hum it first, explore a few concepts, compare approaches — then refine. "
         f"Direct note entry is there when you need it, not before."
     )
+
+
+MELODY_REFINEMENTS: tuple[tuple[str, str, str], ...] = (
+    ("smoother", "Make it smoother", "Connect notes with smaller steps; fewer leaps."),
+    ("energetic", "Make it more energetic", "Add forward motion — shorter notes, more lift on peaks."),
+    ("rhythm", "Add more rhythm", "Syncopate or repeat a rhythmic cell twice."),
+    ("simplify", "Simplify it", "Fewer notes; one clear shape per phrase."),
+    ("emotional", "Make it more emotional", "Widen the dynamic arc — longer notes at the peak."),
+    ("range_up", "Increase the range", "Reach one step higher on the climax note."),
+    ("singable", "Make it easier to sing", "Stay in a narrow range with mostly steps."),
+)
+
+
+def melody_notation_line(concept: dict[str, Any]) -> str:
+    """Readable pseudo-notation for UI (full notation in a later sprint)."""
+    motif = str(concept.get("motif_hint") or concept.get("motif") or "").strip()
+    if not motif:
+        return "♩ ♪ ♪ ♩  (melodic contour — hear it on your harmony)"
+    return f"♪ {motif[:72]}{'…' if len(motif) > 72 else ''}"
+
+
+def apply_melody_refinement_to_section(
+    doc: dict[str, Any],
+    section_id: str,
+    refinement_id: str,
+) -> str:
+    from composition_document import section_by_id, touch_composition, _ensure_melody_block
+
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return ""
+    hint = next((h for rid, _, h in MELODY_REFINEMENTS if rid == refinement_id), "")
+    if not hint:
+        return ""
+    melody = _ensure_melody_block(sec)
+    phrases = list(melody.get("phrases") or [])
+    if phrases and isinstance(phrases[-1], dict):
+        p = phrases[-1]
+        base = str(p.get("motif") or p.get("notes") or "").strip()
+        p["motif"] = f"{base} — {hint}".strip(" —") if base else hint
+        p["refinement"] = refinement_id
+    else:
+        intent = melody.setdefault("intent", {})
+        existing = str(intent.get("hum_notes") or "").strip()
+        intent["hum_notes"] = f"{existing}\n{hint}".strip() if existing else hint
+    touch_composition(doc)
+    return hint

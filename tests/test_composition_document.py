@@ -34,10 +34,19 @@ class TestCompositionDocument(unittest.TestCase):
         doc = bootstrap_from_seed(seed_type="style_intent", seed_text="I want a jazz ballad")
         self.assertIn("Jazz", str(doc.get("metadata", {}).get("style", "")))
 
-    def test_parse_chord_paste(self) -> None:
-        entries = parse_chord_paste("G Am C D")
-        self.assertEqual(len(entries), 4)
-        self.assertEqual(entries[0]["chord"], "G")
+    def test_chords_for_playback_resolves_linked_harmony(self) -> None:
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Test.")
+        apply_structure_template(doc, "simple")
+        sections = ordered_sections(doc)
+        verse1 = sections[0]
+        verse1["chords"] = parse_chord_paste("C G Am F")
+        verse2 = next(s for s in sections if str(s.get("label_variant") or "").startswith("Verse 2"))
+        link = verse2.setdefault("chord_link", {"source_section_id": None, "linked": False})
+        link["source_section_id"] = str(verse1["id"])
+        link["linked"] = True
+        verse2["chords"] = []
+        v2_chords = chords_for_playback(doc, scope="section", section_id=str(verse2["id"]))
+        self.assertEqual(v2_chords[:2], ["C", "G"])
 
     def test_snapshot_updates_after_edit(self) -> None:
         doc = bootstrap_from_seed(seed_type="exploring", seed_text="")

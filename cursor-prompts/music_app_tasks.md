@@ -94,7 +94,7 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 
 **Acceptance:** Continue Shape of You / Tenor Sax / Bm / 90 BPM opens Music with exact state; App Directory opens current workspace without blank generic state.
 
-### P1 — Composition Studio — CS-B5 Review (active — highest priority)
+### P1 — Composition Studio polish (active — highest priority)
 
 **Plan:** [plans/2026-07-29-composition-studio-six-phase-songwriting.md](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)  
 **Shipped:** CS-B0 (`b9993a1`), CS-B1 (`22877a8`), CS-B2 (`0fdaaa3`), CS-B3 (`f905b19`), CS-B4 (coach-first Lyrics).
@@ -102,10 +102,12 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 - [x] **CS-B2** — Coach-first Chords: section feeling, suggestions, compare, preview, grid secondary
 - [x] **CS-B3** — Coach-first Melody: remember/feel/style questions, hum-first, concepts, compare, phrase editor secondary
 - [x] **CS-B4** — Coach-first Lyrics: communicate/emotion/role/remember prompts, brainstorm/explore/compare/write paths, cross-section theme memory, lyric editor secondary
-- [ ] **CS-B5** — Phase 6 Review + full-song playthrough
-- [ ] **CS-C** — OpenAI proposals per phase (after B2+ stable)
+- [ ] **CS-B5** — Phase 6 Review + full-song playthrough (next commit)
+- [x] **Structure + Melody polish** — visual timeline, tap-to-select, grouped section actions, linked-harmony playback, hear-section, melody refinements, chords-first guidance, hum-record scaffold
+- [ ] **Melody Capture sprint** — hum-over-looping-chords → pitch/rhythm → editable melody (flagship; plan after B5)
+- [ ] **CS-C** — OpenAI proposals per phase (after polish + B5)
 
-**Acceptance:** New user describes Composition Studio without “chord grid”; structure appears before chords; Review shows full song overview.
+**Acceptance:** New user describes Composition Studio without “chord grid”; structure appears before chords; linked sections preview with correct harmony; Review shows full song overview (CS-B5).
 
 ### P1 — Flagship coaching content (Phase 1 framework **complete**)
 

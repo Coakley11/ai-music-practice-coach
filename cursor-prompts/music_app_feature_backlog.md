@@ -1,6 +1,6 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-07-29 (Tests A–E frozen)
+**Last updated:** 2026-07-30 (Tests A–E frozen)
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
@@ -101,6 +101,8 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 - **Active UX plan:** [plans/2026-07-29-composition-studio-six-phase-songwriting.md](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)
 - Prior proposal (superseded step order): [plans/2026-07-29-composition-studio-guided-ux.md](./plans/2026-07-29-composition-studio-guided-ux.md)
 - V1: polished workflow + save library; `integration` stub for future Practice/Backing/Coach hub
+- **Melody hum capture (flagship)** — natural workflow: build chord progression → Record → section chords loop continuously → hum/sing → pitch + rhythm analysis → editable melody (no manual note entry). Potential flagship for Composition Studio.
+- **Melody refinement loop** — after capture or rule-based seed: smoother, more energetic, more rhythmic, simpler, more emotional, larger range, easier to sing (AI + rules hybrid in CS-C; rule-based buttons shipped as scaffold)
 
 ### Creative Progressions
 
