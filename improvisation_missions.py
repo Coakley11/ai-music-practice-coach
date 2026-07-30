@@ -56,8 +56,9 @@ def _mission_seed(
     song: str,
     variant: str,
     level: str,
+    section: str = "",
 ) -> int:
-    raw = f"{mission}|{chord}|{song}|{variant}|{level}"
+    raw = f"{mission}|{chord}|{song}|{variant}|{level}|{section}"
     return int(hashlib.md5(raw.encode()).hexdigest()[:8], 16)
 
 
@@ -468,7 +469,7 @@ def generate_mission_example(
     bpm: int = 100,
 ) -> MissionExample:
     variant = variant if variant in ("normal", "easier", "harder", "new") else "normal"
-    seed = _mission_seed(mission, chord, improv_ctx.song_title, variant, level)
+    seed = _mission_seed(mission, chord, improv_ctx.song_title, variant, level, section)
     rng = random.Random(seed)
 
     motif = _build_motif_for_mission(

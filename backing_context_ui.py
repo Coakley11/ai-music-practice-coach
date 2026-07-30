@@ -146,24 +146,44 @@ def render_backing_creative_context_card(
         applied_bpm=applied_bpm,
     )
     theme = _resolve_theme(ctx)
-    source_title = (
-        "Entry Style Jam"
-        if ctx.source == "entry_jam" and str(ctx.entry_mode or "").strip() == "Style Jam Mode"
-        else (
-            "Entry & Jam"
-            if ctx.source == "entry_jam"
-            else ("Song-Based Improvisation" if ctx.source == "song_improv" else ctx.source_label)
+    if ctx.source == "mission":
+        source_title = "Mission Backing Jam"
+        mission_chord = str(ctx.progression[0] if ctx.progression else ctx.progression_label or "").strip()
+        sec_name = str(ctx.section or "").strip()
+        title = html.escape(str(ctx.song_title or "Mission"))
+        if ctx.mission_id:
+            subtitle = html.escape(
+                f"{ctx.mission_id} · {sec_name} · {mission_chord}".strip(" ·")
+            )
+        else:
+            subtitle = html.escape(f"{sec_name} · {mission_chord}".strip(" ·"))
+    elif ctx.source == "entry_jam":
+        source_title = (
+            "Entry Style Jam"
+            if str(ctx.entry_mode or "").strip() == "Style Jam Mode"
+            else "Entry & Jam"
         )
-    )
-    mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").replace(" Generator", "").strip()
-    if ctx.source == "song_improv":
+        mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").replace(" Generator", "").strip()
+        style_label = str(state.style or ctx.style or applied_groove or "Auto").strip()
+        title = html.escape(style_label or ctx.song_title or "Creative backing")
+        subtitle = html.escape(f"{source_title} · {mode_label or 'Jam'}")
+    elif ctx.source == "song_improv":
+        source_title = "Song-Based Improvisation"
+        mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").replace(" Generator", "").strip()
         style_label = str(ctx.song_title or state.style or applied_groove or "Active song").strip()
         title = html.escape(style_label)
         subtitle = html.escape(f"{source_title} · {mode_label or style_label}")
     else:
+        source_title = ctx.source_label
+        mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").replace(" Generator", "").strip()
         style_label = str(state.style or ctx.style or applied_groove or "Auto").strip()
         title = html.escape(style_label or ctx.song_title or "Creative backing")
         subtitle = html.escape(f"{source_title} · {mode_label or 'Jam'}")
+
+    if ctx.source != "mission":
+        style_label = str(state.style or ctx.style or applied_groove or "Auto").strip()
+    elif ctx.source == "mission":
+        style_label = str(state.style or ctx.style or applied_groove or ctx.style or "Auto").strip()
 
     backing_style = html.escape(str(applied_groove or state.groove or style_label or "Auto"))
     concert = html.escape(str(state.practice_concert_key or practice_key or "C"))
@@ -177,7 +197,12 @@ def render_backing_creative_context_card(
     difficulty = str(ctx.difficulty or "").strip()
 
     display_sections = state.chart_sections or state.concert_sections
-    if display_sections:
+    if ctx.source == "mission":
+        if ctx.progression:
+            progression_line = html.escape(" – ".join(ctx.progression))
+        else:
+            progression_line = html.escape(str(ctx.progression_label or mission_chord or "Mission chord"))
+    elif display_sections:
         progression_line = html.escape(" / ".join(list(display_sections.keys())[:4]))
         sample = [c for chs in display_sections.values() for c in chs[:4]]
         if sample:
@@ -202,7 +227,9 @@ def render_backing_creative_context_card(
     if chart_key_raw and state.show_chart_badge:
         chart_label = state.chart_badge_label or "Charts"
         badges.append(_themed_badge("📄", chart_label, chart_key_raw, "badge-key"))
-    if display_sections:
+    if ctx.source == "mission" and str(ctx.section or "").strip():
+        badges.append(_themed_badge("🎵", "Section", str(ctx.section).strip(), "badge-meta"))
+    elif display_sections:
         sec_label = " + ".join(list(display_sections.keys())[:4])
         badges.append(_themed_badge("🎵", "Sections", sec_label, "badge-meta"))
     badges_html = "".join(b for b in badges if b)
@@ -221,7 +248,8 @@ def render_backing_creative_context_card(
         f'<div class="ui-backing-active-art ui-creative-jam-art" style="background:{theme["gradient"]};">'
         f"🎷<small>{html.escape(source_title)}</small></div>"
         f'<div class="ui-backing-active-body ui-creative-jam-body">'
-        f'<p class="ui-backing-active-kicker ui-creative-jam-kicker">Creative backing session</p>'
+        f'<p class="ui-backing-active-kicker ui-creative-jam-kicker">'
+        f'{"Mission backing jam" if ctx.source == "mission" else "Creative backing session"}</p>'
         f'<p class="ui-backing-active-title ui-creative-jam-title">{title}'
         f'<span class="ui-backing-active-dash"> · </span>'
         f'<span class="ui-backing-active-source">{subtitle}</span></p>'

@@ -48,6 +48,7 @@ from improvisation_harmony import (
     deduped_section_chords,
 )
 from improvisation_missions import (
+    MISSION_EXAMPLE_KEY,
     PRACTICE_MISSIONS,
     apply_mission_motif_transform,
     generate_mission_example,
@@ -65,6 +66,7 @@ from improvisation_motif import (
     global_chord_index,
     resolve_improv_chords,
     resolve_improv_sections,
+    section_and_chord_at_global_index,
     transform_motif,
 )
 
@@ -660,7 +662,7 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
         )
         return
 
-    _ensure_chord_selection(session_state, chords)
+    _ensure_chord_selection(session_state, chords, section_map)
     cur, idx = _selected_chord(session_state, chords)
     _render_section_chord_map(
         st,
@@ -736,7 +738,7 @@ def _tab_motif(
         st.warning("No chords available — select a song or custom progression first.")
         return
 
-    _ensure_chord_selection(session_state, chords)
+    _ensure_chord_selection(session_state, chords, section_map)
     _render_section_chord_map(
         st,
         section_map,
@@ -872,7 +874,12 @@ def _migrate_ii_chord_selection(session_state: dict) -> None:
             session_state.pop(key, None)
 
 
-def _ensure_chord_selection(session_state: dict, chords: list[str]) -> None:
+def _ensure_chord_selection(
+    session_state: dict,
+    chords: list[str],
+    section_map: list[tuple[str, list[str]]] | None = None,
+) -> None:
+    """Keep selection keyed by global chord index (section + position), not chord name."""
     _migrate_ii_chord_selection(session_state)
     if not chords:
         return
@@ -880,12 +887,20 @@ def _ensure_chord_selection(session_state: dict, chords: list[str]) -> None:
     if idx < 0 or idx >= len(chords):
         idx = 0
         session_state[II_SELECTED_CHORD_INDEX] = 0
-    sel = session_state.get(II_SELECTED_CHORD)
-    if sel not in chords:
-        session_state[II_SELECTED_CHORD] = chords[idx]
-        session_state[II_SELECTED_CHORD_LABEL] = chords[idx]
+    chord = chords[idx]
+    session_state[II_SELECTED_CHORD] = chord
+    if section_map:
+        sec, _ = section_and_chord_at_global_index(section_map, idx)
+        if sec:
+            session_state[II_SELECTED_SECTION] = sec
+            session_state[II_SELECTED_CHORD_LABEL] = f"{sec} · {chord}"
+        else:
+            session_state.setdefault(II_SELECTED_SECTION, "")
+            session_state[II_SELECTED_CHORD_LABEL] = chord
     else:
-        session_state[II_SELECTED_CHORD_INDEX] = chords.index(sel)
+        session_state.setdefault(II_SELECTED_SECTION, "")
+        if not str(session_state.get(II_SELECTED_CHORD_LABEL) or "").strip():
+            session_state[II_SELECTED_CHORD_LABEL] = chord
     session_state["improv_mission_chord_options"] = list(chords)
 
 
@@ -958,6 +973,7 @@ def _render_section_chord_map(
                         session_state[II_SELECTED_SECTION] = label
                         session_state[II_SELECTED_CHORD_INDEX] = gidx
                         session_state[II_SELECTED_CHORD_LABEL] = f"{label} · {ch}"
+                        session_state.pop(MISSION_EXAMPLE_KEY, None)
                         if generate_motif_on_select:
                             session_state["improv_motif"] = generate_motif_for_chord(
                                 ch, key_center=key_center
@@ -1058,7 +1074,7 @@ def _tab_missions(
         st.warning("Select a song with chords first (Song Selection or Custom Progression).")
         return
 
-    _ensure_chord_selection(session_state, chords)
+    _ensure_chord_selection(session_state, chords, section_map)
     _render_section_chord_map(
         st,
         section_map,
@@ -1122,6 +1138,11 @@ def _tab_missions(
 
     example = load_mission_example(session_state, improv_ctx)
     if example and example.mission != mission:
+        example = None
+    if example and (
+        example.chord != cur_chord
+        or str(example.section or "").strip() != str(section_label or "").strip()
+    ):
         example = None
 
     if not example:

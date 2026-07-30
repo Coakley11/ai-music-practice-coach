@@ -939,18 +939,26 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
 def build_mission_context(session: dict[str, Any]) -> BackingContext:
     pick_key = _current_pick_key(session)
     key, display_key, concert_key = _display_keys_from_session(session)
+    chart_display_key = _resolve_chart_display_key(session, concert_key)
     mission_id = str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip()
     style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
 
-    target_chord = str(session.get("ii_selected_chord") or session.get("II_SELECTED_CHORD") or "").strip()
+    chords_flat = session.get("improv_mission_chord_options")
+    idx = int(session.get("ii_selected_chord_index") or session.get("II_SELECTED_CHORD_INDEX") or 0)
+    target_chord = ""
+    if isinstance(chords_flat, list) and chords_flat:
+        idx = max(0, min(idx, len(chords_flat) - 1))
+        target_chord = str(chords_flat[idx] or "").strip()
     if not target_chord:
-        chords = session.get("improv_mission_chord_options")
-        if isinstance(chords, list) and chords:
-            idx = int(session.get("ii_selected_chord_index") or session.get("II_SELECTED_CHORD_INDEX") or 0)
-            idx = max(0, min(idx, len(chords) - 1))
-            target_chord = str(chords[idx] or "").strip()
+        target_chord = str(session.get("ii_selected_chord") or session.get("II_SELECTED_CHORD") or "").strip()
 
-    section = str(session.get("II_SELECTED_SECTION") or session.get("improv_selected_section") or "").strip() or None
+    section = str(
+        session.get("ii_selected_section")
+        or session.get("II_SELECTED_SECTION")
+        or session.get("improv_selected_section")
+        or ""
+    ).strip() or None
+
     progression: list[str] = []
     if target_chord:
         progression = [target_chord]
@@ -975,18 +983,26 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
     meter = str(
         style_meta.get("meter") or session.get("improv_style_meter") or session.get("backing_time_signature") or "4/4"
     ).strip()
-    scope = "Single section"
+    scope = "Mission chord"
     section_label = section or (f"Chord · {target_chord}" if target_chord else "Mission")
     loops = int(session.get("backing_track_loops") or session.get("improv_mission_loops") or 4)
+    song_title = _song_title_from_session(session)
+    if target_chord and section:
+        progression_label = f"{section} · {target_chord}"
+    elif target_chord:
+        progression_label = target_chord
+    else:
+        progression_label = mission_id or "Mission"
 
     return BackingContext(
         source="mission",
-        source_label=_SOURCE_LABELS["mission"],
+        source_label="Mission Backing Jam",
         active_song_id=pick_key,
-        song_title=_song_title_from_session(session),
+        song_title=song_title,
         key=key,
         display_key=display_key,
         concert_key=concert_key,
+        chart_display_key=chart_display_key,
         bpm=bpm,
         style=style,
         groove=groove,
@@ -995,7 +1011,7 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
         scope=scope,
         loops=loops,
         progression=progression,
-        progression_label=mission_id or "Mission",
+        progression_label=progression_label,
         loop=True,
         mission_id=mission_id or None,
         bound_pick_key=pick_key,
@@ -1290,8 +1306,18 @@ def format_backing_context_banner(
             parts.append(f"{ctx.bpm} BPM")
         return " · ".join(parts)
     if ctx.source == "mission":
-        label = ctx.mission_id or ctx.progression_label or "Mission"
-        parts = ["Backing source: Mission", label]
+        parts = ["Creative Backing Jam · Mission"]
+        if ctx.song_title:
+            parts.append(ctx.song_title)
+        if ctx.section:
+            parts.append(ctx.section)
+        if ctx.progression:
+            parts.append(ctx.progression[0])
+        elif ctx.progression_label:
+            parts.append(ctx.progression_label)
+        concert = resolved_concert or str(ctx.concert_key or ctx.display_key or "").strip()
+        if concert:
+            parts.append(f"Concert {concert}")
         if ctx.bpm:
             parts.append(f"{ctx.bpm} BPM")
         return " · ".join(parts)

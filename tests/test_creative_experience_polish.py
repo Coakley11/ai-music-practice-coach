@@ -106,6 +106,25 @@ class TestMissionSingleChordBacking(unittest.TestCase):
         ctx = build_mission_context(session)
         self.assertEqual(ctx.progression, ["Am7"])
         self.assertEqual(session.get("improv_mission_progression"), ["Am7"])
+        self.assertEqual(ctx.section, "Verse")
+        self.assertEqual(ctx.scope, "Mission chord")
+
+    def test_mission_context_uses_chord_index_when_names_repeat(self) -> None:
+        session = {
+            "active_catalog_pick_key": "pop::Shape — Artist",
+            "song": "Shape of You",
+            "display_key": "F#m",
+            "improv_active_mission": "Target tone drill",
+            "ii_selected_chord": "A",
+            "ii_selected_section": "Chorus",
+            "ii_selected_chord_index": 7,
+            "improv_mission_chord_options": ["Bm", "Em", "G", "A"] * 2,
+            "improv_style_meta": {"bpm": 96, "groove": "Pop groove", "style": "Pop"},
+        }
+        ctx = build_mission_context(session)
+        self.assertEqual(ctx.progression, ["A"])
+        self.assertEqual(ctx.section, "Chorus")
+        self.assertEqual(ctx.progression_label, "Chorus · A")
 
     def test_open_backing_from_mission_loops_one_chord(self) -> None:
         session = {
@@ -121,4 +140,4 @@ class TestMissionSingleChordBacking(unittest.TestCase):
         with patch("backing_track_state.write_canonical_backing_state"):
             ctx = open_backing_from_creative(session, source="mission", st_like=st_like)
         self.assertEqual(ctx.progression, ["G7"])
-        self.assertEqual(ctx.scope, "Single section")
+        self.assertEqual(ctx.scope, "Mission chord")

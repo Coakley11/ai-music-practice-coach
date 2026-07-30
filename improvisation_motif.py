@@ -196,6 +196,27 @@ def global_chord_index(
     return 0
 
 
+def section_and_chord_at_global_index(
+    section_map: list[tuple[str, list[str]]],
+    global_idx: int,
+) -> tuple[str, str]:
+    """Map flattened chord index back to (section label, chord symbol)."""
+    if global_idx < 0:
+        global_idx = 0
+    offset = 0
+    for label, chords in section_map:
+        if not chords:
+            continue
+        if global_idx < offset + len(chords):
+            return label, chords[global_idx - offset]
+        offset += len(chords)
+    if section_map:
+        label, chords = section_map[-1]
+        if chords:
+            return label, chords[-1]
+    return "", ""
+
+
 def resolve_improv_chords(session_state: dict, improv_ctx: Any) -> list[str]:
     """Flat chord list (deduped sections) for next-chord / legacy helpers."""
     return flatten_section_map(resolve_improv_sections(session_state, improv_ctx))

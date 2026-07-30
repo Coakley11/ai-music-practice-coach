@@ -75,7 +75,7 @@ class TestBackingContext(unittest.TestCase):
         self.assertEqual(ctx.source, "mission")
         self.assertEqual(ctx.mission_id, "ii–V–I drill")
         self.assertEqual(ctx.section, "Verse")
-        self.assertEqual(ctx.scope, "Single section")
+        self.assertEqual(ctx.scope, "Mission chord")
 
     def test_custom_progression_context(self) -> None:
         session = {
