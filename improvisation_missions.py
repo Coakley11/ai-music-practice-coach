@@ -26,6 +26,22 @@ from improvisation_motif import (
 
 MISSION_EXAMPLE_KEY = "improv_mission_example"
 MISSION_VARIANT_KEY = "improv_mission_variant"
+MISSION_NEW_NONCE_KEY = "improv_mission_new_nonce"
+IMPROV_MISSION_BACKING_HANDOFF = "improv_mission_backing_handoff"
+
+_LEVEL_ORDER = ("Beginner", "Intermediate", "Advanced")
+
+
+def _effective_level(level: str, variant: str) -> str:
+    try:
+        idx = _LEVEL_ORDER.index(level)
+    except ValueError:
+        idx = 1
+    if variant == "easier":
+        idx = max(0, idx - 1)
+    elif variant == "harder":
+        idx = min(len(_LEVEL_ORDER) - 1, idx + 1)
+    return _LEVEL_ORDER[idx]
 
 
 @dataclass
@@ -56,9 +72,12 @@ def _mission_seed(
     song: str,
     variant: str,
     level: str,
-    section: str = "",
+    section: str,
+    *,
+    nonce: int = 0,
 ) -> int:
-    raw = f"{mission}|{chord}|{song}|{variant}|{level}|{section}"
+    extra = f"|n{nonce}" if nonce else ""
+    raw = f"{mission}|{chord}|{song}|{variant}|{level}|{section}{extra}"
     return int(hashlib.md5(raw.encode()).hexdigest()[:8], 16)
 
 
@@ -121,6 +140,16 @@ def _build_motif_for_mission(
 ) -> dict[str, Any]:
     rhythm = _pick_rhythm(level, variant, rng)
     low = mission.lower()
+    work_level = _effective_level(level, variant)
+
+    if ("chord tone" in low or "guide tone" in low) and variant in {"harder", "new"}:
+        motif = generate_motif_for_chord(
+            chord, key_center=key_center, rhythm_key=rhythm, level=work_level
+        )
+        if "guide" in low:
+            motif["notes"] = _guide_tones(chord)[:3]
+            motif["display"] = " – ".join(motif["notes"])
+        return motif
 
     if "chord tone" in low or "guide tone" in low:
         if "guide" in low:
@@ -151,7 +180,7 @@ def _build_motif_for_mission(
 
     if "silence" in low or "rest" in low:
         motif = generate_motif_for_chord(
-            chord, key_center=key_center, rhythm_key=rhythm, level=level
+            chord, key_center=key_center, rhythm_key=rhythm, level=work_level
         )
         motif["rhythm"] = "♩ z ♩"
         motif["rhythm_key"] = rhythm
@@ -159,7 +188,7 @@ def _build_motif_for_mission(
         return motif
 
     motif = generate_motif_for_chord(
-        chord, key_center=key_center, rhythm_key=rhythm, level=level
+        chord, key_center=key_center, rhythm_key=rhythm, level=work_level
     )
 
     if "rhythm" in low and "note" in low:
@@ -186,14 +215,18 @@ def _build_motif_for_mission(
         motif = transform_motif(motif, "rhythmic", key_center=key_center)
 
     if variant == "easier":
-        motif["notes"] = motif["notes"][:2]
+        motif["notes"] = motif["notes"][: max(2, len(motif["notes"]) - 1)]
         motif["display"] = " – ".join(motif["notes"])
     elif variant == "harder":
         motif = transform_motif(motif, "sequence_up", key_center=key_center)
+        if work_level == "Advanced" and len(motif.get("notes") or []) >= 3:
+            motif = transform_motif(motif, "rhythmic", key_center=key_center)
 
-    if variant == "new" and "last_transform" not in motif:
-        ops = ["invert", "rhythmic", "sequence_up"]
+    if variant == "new":
+        ops = ["invert", "rhythmic", "sequence_up", "sequence_down"]
         motif = transform_motif(motif, rng.choice(ops), key_center=key_center)
+        if rng.random() < 0.5:
+            motif = transform_motif(motif, rng.choice(ops), key_center=key_center)
 
     return motif
 
@@ -467,9 +500,16 @@ def generate_mission_example(
     focus: str,
     variant: str = "normal",
     bpm: int = 100,
+    session_state: dict | None = None,
 ) -> MissionExample:
     variant = variant if variant in ("normal", "easier", "harder", "new") else "normal"
-    seed = _mission_seed(mission, chord, improv_ctx.song_title, variant, level, section)
+    nonce = 0
+    if variant == "new" and session_state is not None:
+        nonce = int(session_state.get(MISSION_NEW_NONCE_KEY) or 0) + 1
+        session_state[MISSION_NEW_NONCE_KEY] = nonce
+    seed = _mission_seed(
+        mission, chord, improv_ctx.song_title, variant, level, section, nonce=nonce
+    )
     rng = random.Random(seed)
 
     motif = _build_motif_for_mission(

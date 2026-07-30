@@ -13290,8 +13290,12 @@ elif _studio_page == "creative":
             entry = _creative_handoff_entry_mode(st.session_state)
         except ImportError:
             pass
-        if str(st.session_state.get("improv_intelligence_tab") or "") == "Missions":
+        if str(st.session_state.get("improv_intelligence_tab") or "").strip() == "Missions":
             creative_source = "mission"
+        elif st.session_state.pop("improv_mission_backing_handoff", False):
+            creative_source = "mission"
+            st.session_state["improv_intelligence_tab"] = "Missions"
+            st.session_state["creative_improv_intelligence_tab"] = "Missions"
         elif entry == "Song-Based Improvisation":
             source = resolve_improv_song_source(st.session_state)
             sync_improv_song_source_for_handoff(

@@ -34,6 +34,75 @@ class TestGenerateMissionExample(unittest.TestCase):
         self.assertFalse(example.show_piano)
         self.assertIsInstance(example.motif, dict)
 
+    def test_harder_differs_from_normal(self) -> None:
+        ctx = ImprovSessionContext(
+            song_title="Shape",
+            artist="Artist",
+            key_center="F#m",
+            display_key="F#m",
+            instrument="Piano",
+            level="Intermediate",
+            focus="Improvisation",
+            sections={"Chorus": ["Bm", "Em"]},
+        )
+        normal = generate_mission_example(
+            "Rhythm-first, note-second",
+            improv_ctx=ctx,
+            chord="Em",
+            section="Chorus",
+            level="Intermediate",
+            instrument="Piano",
+            focus="Improvisation",
+            variant="normal",
+        )
+        harder = generate_mission_example(
+            "Rhythm-first, note-second",
+            improv_ctx=ctx,
+            chord="Em",
+            section="Chorus",
+            level="Intermediate",
+            instrument="Piano",
+            focus="Improvisation",
+            variant="harder",
+        )
+        self.assertNotEqual(normal.motif.get("display"), harder.motif.get("display"))
+
+    def test_new_idea_changes_each_nonce(self) -> None:
+        ctx = ImprovSessionContext(
+            song_title="Shape",
+            artist="Artist",
+            key_center="F#m",
+            display_key="F#m",
+            instrument="Piano",
+            level="Intermediate",
+            focus="Improvisation",
+            sections={"Chorus": ["Em"]},
+        )
+        session: dict = {}
+        first = generate_mission_example(
+            "Rhythm-first, note-second",
+            improv_ctx=ctx,
+            chord="Em",
+            section="Chorus",
+            level="Intermediate",
+            instrument="Piano",
+            focus="Improvisation",
+            variant="new",
+            session_state=session,
+        )
+        second = generate_mission_example(
+            "Rhythm-first, note-second",
+            improv_ctx=ctx,
+            chord="Em",
+            section="Chorus",
+            level="Intermediate",
+            instrument="Piano",
+            focus="Improvisation",
+            variant="new",
+            session_state=session,
+        )
+        self.assertNotEqual(first.motif.get("display"), second.motif.get("display"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -442,7 +442,10 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
             activate_sbi_ownership,
         )
 
-        if str(session.get("improv_intelligence_tab") or "") == "Missions":
+        if str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip() == "Missions":
+            return activate_mission_ownership(session, st_like=st_like)
+        if session.get("improv_mission_backing_handoff"):
+            session.pop("improv_mission_backing_handoff", None)
             return activate_mission_ownership(session, st_like=st_like)
         entry = _creative_handoff_entry_mode(session)
         if entry == "Song-Based Improvisation":

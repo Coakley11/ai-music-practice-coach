@@ -48,7 +48,9 @@ from improvisation_harmony import (
     deduped_section_chords,
 )
 from improvisation_missions import (
+    IMPROV_MISSION_BACKING_HANDOFF,
     MISSION_EXAMPLE_KEY,
+    MISSION_NEW_NONCE_KEY,
     PRACTICE_MISSIONS,
     apply_mission_motif_transform,
     generate_mission_example,
@@ -974,6 +976,7 @@ def _render_section_chord_map(
                         session_state[II_SELECTED_CHORD_INDEX] = gidx
                         session_state[II_SELECTED_CHORD_LABEL] = f"{label} · {ch}"
                         session_state.pop(MISSION_EXAMPLE_KEY, None)
+                        session_state.pop(MISSION_NEW_NONCE_KEY, None)
                         if generate_motif_on_select:
                             session_state["improv_motif"] = generate_motif_for_chord(
                                 ch, key_center=key_center
@@ -1132,6 +1135,7 @@ def _tab_missions(
             focus=live_focus,
             variant=variant,
             bpm=bpm,
+            session_state=session_state,
         )
         store_mission_example(session_state, example)
         st.rerun()
@@ -1145,6 +1149,13 @@ def _tab_missions(
     ):
         example = None
 
+    def _open_mission_backing() -> None:
+        if on_open_backing:
+            session_state[IMPROV_MISSION_BACKING_HANDOFF] = True
+            session_state["improv_intelligence_tab"] = "Missions"
+            session_state["creative_improv_intelligence_tab"] = "Missions"
+            on_open_backing()
+
     if not example:
         if on_open_backing and st.button(
             nav_icon_button_label("backing") + " Jam",
@@ -1152,7 +1163,7 @@ def _tab_missions(
             type="primary",
             use_container_width=True,
         ):
-            on_open_backing()
+            _open_mission_backing()
 
     if on_open_analysis:
         st.markdown("---")
@@ -1265,7 +1276,7 @@ def _tab_missions(
         type="primary",
         use_container_width=True,
     ):
-        on_open_backing()
+        _open_mission_backing()
 
     st.caption(
         f"Example variant: **{example.variant}** · "

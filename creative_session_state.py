@@ -205,6 +205,24 @@ def creative_session_is_active(session: dict[str, Any]) -> bool:
     return True
 
 
+def _mission_sections_from_session(session: dict[str, Any]) -> dict[str, list[str]]:
+    """Single-chord loop for the active mission tile (not the full song form)."""
+    try:
+        from backing_context import build_mission_context
+
+        ctx = build_mission_context(session)
+        if ctx.progression:
+            label = str(ctx.section or ctx.progression_label or "Mission").strip() or "Mission"
+            return {label: list(ctx.progression)}
+    except ImportError:
+        pass
+    chord = str(session.get("ii_selected_chord") or "").strip()
+    section = str(session.get("ii_selected_section") or "Mission").strip() or "Mission"
+    if chord:
+        return {section: [chord]}
+    return {}
+
+
 def _sections_from_session(session: dict[str, Any], entry_mode: str) -> dict[str, list[str]]:
     if entry_mode == "Jam Session Generator":
         jam = session.get("improv_jam_session")
@@ -426,7 +444,7 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
             meter=str(meta.get("meter") or "4/4"),
             mission_id=mission_id,
             intelligence_tab="Missions",
-            sections=_sections_from_session(session, entry),
+            sections=_mission_sections_from_session(session),
         )
         set_creative_session(session, sess)
         return sess
@@ -843,11 +861,16 @@ def hydrate_creative_session_after_restore(session: dict[str, Any]) -> bool:
 def resolve_creative_backing_sections(session: dict[str, Any]) -> dict[str, list[str]]:
     """Sections for backing playback — only when Creative/custom backing is active."""
     try:
-        from backing_context import active_creative_backing_context, get_backing_context
+        from backing_context import active_creative_backing_context, get_backing_context, sections_dict_from_backing_context
 
         ctx = get_backing_context(session)
         if ctx is not None and ctx.source == "regular_song":
             return {}
+        mission_ctx = active_creative_backing_context(session)
+        if mission_ctx is not None and mission_ctx.source == "mission":
+            sections = sections_dict_from_backing_context(session, mission_ctx)
+            if sections:
+                return sections
         if active_creative_backing_context(session) is None:
             return {}
     except ImportError:

@@ -141,3 +141,26 @@ class TestMissionSingleChordBacking(unittest.TestCase):
             ctx = open_backing_from_creative(session, source="mission", st_like=st_like)
         self.assertEqual(ctx.progression, ["G7"])
         self.assertEqual(ctx.scope, "Mission chord")
+
+
+class TestMissionCreativeBackingSections(unittest.TestCase):
+    def test_resolve_creative_sections_single_chord_for_mission(self) -> None:
+        from creative_session_state import resolve_creative_backing_sections, sync_creative_session_from_session
+
+        session = {
+            "active_catalog_pick_key": "pop::Song — Artist",
+            "song": "Shape of You",
+            "display_key": "F#m",
+            "improv_active_mission": "Target tone drill",
+            "ii_selected_chord": "A",
+            "ii_selected_section": "Chorus",
+            "ii_selected_chord_index": 3,
+            "improv_mission_chord_options": ["Bm", "Em", "G", "A"],
+            "improv_intelligence_tab": "Missions",
+            "improv_style_meta": {"bpm": 96, "groove": "Pop groove", "style": "Pop"},
+        }
+        with patch("backing_track_state.write_canonical_backing_state"):
+            open_backing_from_creative(session, source="mission")
+        sync_creative_session_from_session(session)
+        sections = resolve_creative_backing_sections(session)
+        self.assertEqual(list(sections.values()), [["A"]])
