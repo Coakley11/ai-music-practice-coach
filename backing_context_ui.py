@@ -187,7 +187,19 @@ def render_backing_creative_context_card(
 
     backing_style = html.escape(str(applied_groove or state.groove or style_label or "Auto"))
     concert = html.escape(str(state.practice_concert_key or practice_key or "C"))
-    instrument = html.escape(str(state.instrument or session.get("instrument") or "Piano"))
+    inst_raw = str(state.instrument or session.get("instrument") or "Piano")
+    try:
+        from instrument_aware import instrument_theme
+
+        inst_icon = instrument_theme(inst_raw).get("icon") or "🎵"
+    except ImportError:
+        try:
+            from practice_ui_labels import INSTRUMENT_ICONS
+
+            inst_icon = INSTRUMENT_ICONS.get(inst_raw, "🎵")
+        except ImportError:
+            inst_icon = "🎵"
+    instrument = html.escape(inst_raw)
     chart_key_raw = str(state.chart_badge_value or "").strip() if state.show_chart_badge else ""
     chart_key = html.escape(chart_key_raw)
     meter = html.escape(str(applied_meter or state.meter or ctx.meter or "4/4"))
@@ -222,7 +234,7 @@ def render_backing_creative_context_card(
         _themed_badge("🎼", "Concert key", concert, "badge-key"),
         _themed_badge("⏱", "BPM", str(bpm), "badge-key"),
         _themed_badge("𝄞", "Meter", meter, "badge-key"),
-        _themed_badge("🎺", "Instrument", instrument, "badge-meta"),
+        _themed_badge(inst_icon, "Instrument", instrument, "badge-meta"),
     ]
     if chart_key_raw and state.show_chart_badge:
         chart_label = state.chart_badge_label or "Charts"

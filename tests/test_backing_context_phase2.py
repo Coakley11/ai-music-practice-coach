@@ -619,6 +619,44 @@ class TestCustomProgressionConcertKey(unittest.TestCase):
         bpm, _groove, _meter = backing_page_transport_defaults(session)
         self.assertEqual(bpm, 100)
 
+    def test_mission_backing_preserves_user_bpm_on_refresh(self) -> None:
+        from backing_context import (
+            BACKING_CONTEXT_KEY,
+            BACKING_CTX_TRANSPORT_APPLIED_SIG,
+            BackingContext,
+            backing_page_transport_defaults,
+            build_mission_context,
+        )
+
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            active_song_id="Pop::Say",
+            bound_pick_key="Pop::Say",
+            song_title="Say",
+            key="C",
+            display_key="C",
+            concert_key="C",
+            bpm=82,
+            style="Pop",
+            groove="Pop groove",
+            mission_id="chord_tones",
+            progression=["C"],
+            section="Verse",
+        )
+        session = {
+            "improv_active_mission": "chord_tones",
+            "ii_selected_chord_index": 0,
+            "improv_mission_chord_options": ["C"],
+            "backing_track_bpm": 95,
+            BACKING_CONTEXT_KEY: ctx.to_dict(),
+            BACKING_CTX_TRANSPORT_APPLIED_SIG: ctx.source_signature,
+        }
+        bpm, _g, _m = backing_page_transport_defaults(session)
+        self.assertEqual(bpm, 95)
+        rebuilt = build_mission_context(session)
+        self.assertEqual(rebuilt.bpm, 95)
+
     def test_custom_to_catalog_restore_uses_catalog_before_custom(self) -> None:
         from backing_context import BACKING_CONTEXT_KEY, build_custom_progression_context, restore_regular_song_backing
         from songs.music_source import CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY

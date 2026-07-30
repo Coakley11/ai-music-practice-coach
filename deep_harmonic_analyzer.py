@@ -841,6 +841,69 @@ def _lesson_steps(
     return steps
 
 
+def _build_reference_cards(
+    inp: HarmonicAnalysisInput,
+    section_map: list[tuple[str, list[str]]],
+    cycle: list[str],
+    character: dict[str, str],
+    level_norm: str,
+) -> list[dict[str, Any]]:
+    """Structured reference cards for collapsible UI (not one long markdown wall)."""
+    from deep_harmonic_personalization import conversational_character_md, conversational_section_md
+
+    key = inp.display_key or inp.key_center or "C"
+    cards: list[dict[str, Any]] = []
+
+    char_md = conversational_character_md(character, inp)
+    cards.append({"kind": "character", "title": "Harmonic Character", "markdown": char_md})
+
+    family = instrument_family(inp.instrument)
+    playbook: list[str] = []
+    if family == "wind":
+        playbook = _wind_playbook(inp, section_map, cycle)
+    elif family == "guitar":
+        playbook = _guitar_playbook(inp, section_map, cycle)
+    elif family == "piano":
+        playbook = _piano_playbook(inp, section_map, cycle)
+    elif family == "bass":
+        playbook = _bass_playbook(inp, section_map, cycle)
+    else:
+        playbook = _generic_playbook(inp, section_map)
+    if playbook:
+        cards.append(
+            {
+                "kind": "playbook",
+                "title": f"{inp.instrument} Playbook",
+                "markdown": "\n".join(playbook[1:]),
+            }
+        )
+
+    section_items: list[dict[str, str]] = []
+    for name, chords in section_map:
+        cyc = single_progression_cycle(chords)
+        if not cyc:
+            continue
+        section_items.append(
+            {
+                "name": name,
+                "markdown": conversational_section_md(name, chords, key, level_norm, inp),
+                "chords": " · ".join(cyc),
+            }
+        )
+    if section_items:
+        cards.append({"kind": "sections", "title": "Song Sections", "sections": section_items})
+
+    if level_norm != "Beginner":
+        tension = "\n".join(_tension_release_section(cycle, key)[1:])
+        cards.append({"kind": "tension", "title": "Tension Map", "markdown": tension})
+
+    if level_norm != "Beginner":
+        scale_md = "\n".join(_scales_section(section_map, key, level_norm, instrument=inp.instrument)[1:])
+        cards.append({"kind": "scales", "title": "Scale Suggestions", "markdown": scale_md})
+
+    return cards
+
+
 def _build_deep_dive_markdown(
     inp: HarmonicAnalysisInput,
     section_map: list[tuple[str, list[str]]],
@@ -917,7 +980,15 @@ def build_deep_harmonic_lesson(inp: HarmonicAnalysisInput) -> dict[str, Any]:
     if main_cycle:
         cycle = main_cycle
 
+    from deep_harmonic_personalization import (
+        adapt_lesson_steps,
+        build_homework,
+        personalized_greeting,
+        personalized_priorities,
+    )
+
     priorities = _priority_concepts(inp, cycle, repeating=repeating, character=character)
+    priorities = personalized_priorities(inp, priorities, cycle=cycle)
     section_diffs = _section_diff_notes(section_map, cycle)
     steps = _lesson_steps(
         inp,
@@ -926,20 +997,26 @@ def build_deep_harmonic_lesson(inp: HarmonicAnalysisInput) -> dict[str, Any]:
         priorities=priorities,
         section_diffs=section_diffs,
     )
+    steps = adapt_lesson_steps(inp, steps, cycle=cycle)
+    reference_cards = _build_reference_cards(inp, section_map, cycle, character, level_norm)
+    homework = build_homework(inp, cycle=cycle)
 
     return {
         "song_title": inp.song_title,
         "artist": inp.artist,
         "meta": f"{key} · {inp.instrument} · {level_norm} · {inp.focus}",
-        "greeting": (
-            f"Let's learn **{inp.song_title}** together — I'll highlight a few ideas that will help you "
-            f"play it better on **{inp.instrument}**, not dump every theory fact at once."
-        ),
+        "greeting": personalized_greeting(inp, character),
         "priorities": priorities,
         "steps": steps,
         "loop": {"chords": cycle, "repeating": repeating},
         "section_diffs": section_diffs,
-        "deep_dive": _build_deep_dive_markdown(inp, section_map, cycle, character, level_norm),
+        "reference_cards": reference_cards,
+        "homework": homework,
+        "deep_dive": [
+            {"title": c["title"], "markdown": c.get("markdown") or ""}
+            for c in reference_cards
+            if c.get("markdown")
+        ],
     }
 
 

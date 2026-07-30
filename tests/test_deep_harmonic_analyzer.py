@@ -42,7 +42,9 @@ class TestDeepHarmonicAnalyzer(unittest.TestCase):
                 progression_flat=["Bm", "G", "A"],
             )
         )
-        titles = " ".join(d["title"].lower() for d in lesson["deep_dive"])
+        titles = " ".join(
+            c.get("title", "").lower() for c in lesson.get("reference_cards") or lesson["deep_dive"]
+        )
         self.assertIn("playbook", titles)
         self.assertTrue(all(str(d.get("markdown") or "").strip() for d in lesson["deep_dive"]))
 
@@ -62,12 +64,17 @@ class TestDeepHarmonicAnalyzer(unittest.TestCase):
             )
         )
         playbook = next(
-            (d for d in lesson["deep_dive"] if "playbook" in d["title"].lower()),
+            (
+                d
+                for d in (lesson.get("reference_cards") or lesson["deep_dive"])
+                if "playbook" in str(d.get("title", "")).lower()
+            ),
             None,
         )
         self.assertIsNotNone(playbook)
-        self.assertIn("Home sonority **C**", playbook["markdown"])
-        self.assertIn("root, 3rd, 5th", playbook["markdown"])
+        md = str(playbook.get("markdown") or "")
+        self.assertIn("Home sonority **C**", md)
+        self.assertIn("root, 3rd, 5th", md)
 
     def test_compact_markdown_export(self) -> None:
         text = build_deep_harmonic_analysis(

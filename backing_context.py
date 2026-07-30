@@ -14,6 +14,7 @@ from typing import Any, Literal
 
 BACKING_CONTEXT_KEY = "backing_context"
 PENDING_BACKING_CONTEXT_APPLY = "_pending_backing_context_apply"
+BACKING_CTX_TRANSPORT_APPLIED_SIG = "_backing_ctx_transport_applied_sig"
 
 BackingSource = Literal[
     "regular_song", "entry_jam", "mission", "custom_progression", "song_improv"
@@ -183,6 +184,7 @@ def set_backing_context(session: dict[str, Any], ctx: BackingContext) -> None:
 
 def clear_backing_context(session: dict[str, Any]) -> None:
     session.pop(BACKING_CONTEXT_KEY, None)
+    session.pop(BACKING_CTX_TRANSPORT_APPLIED_SIG, None)
 
 
 def _current_pick_key(session: dict[str, Any]) -> str:
@@ -524,6 +526,13 @@ def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, 
     if ctx is None:
         return canonical_bpm, _default_groove(session), "4/4"
     if str(getattr(ctx, "source", "") or "") in {"entry_jam", "song_improv", "mission"}:
+        live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
+        if live_bpm > 0:
+            return (
+                live_bpm,
+                _backing_groove_style_from_ctx(ctx),
+                str(ctx.meter or "4/4"),
+            )
         return (
             int(ctx.bpm or canonical_bpm),
             _backing_groove_style_from_ctx(ctx),
@@ -978,6 +987,16 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
                     pass
 
     bpm = int(style_meta.get("bpm") or session.get("improv_style_bpm") or _default_bpm(session))
+    existing = get_backing_context(session)
+    live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
+    if (
+        existing
+        and existing.source == "mission"
+        and existing.mission_id == (mission_id or None)
+        and str(session.get(BACKING_CTX_TRANSPORT_APPLIED_SIG) or "") == str(existing.source_signature or "")
+        and live_bpm > 0
+    ):
+        bpm = live_bpm
     groove = str(style_meta.get("groove") or session.get("improv_groove") or _default_groove(session)).strip()
     style = str(style_meta.get("style") or session.get("improv_style") or "").strip()
     meter = str(
@@ -1335,6 +1354,7 @@ def apply_backing_context_to_session(
     *,
     st_like: Any | None = None,
     widget_safe: bool = True,
+    apply_transport_bpm: bool | None = None,
 ) -> None:
     """Mirror BackingContext into backing session keys.
 
@@ -1362,6 +1382,17 @@ def apply_backing_context_to_session(
     st_like = st_like or SimpleNamespace(session_state=session)
     backing_style = _backing_groove_style_from_ctx(ctx)
     sync_id = backing_page_sync_id(session, song_sync_id=str(ctx.active_song_id or ""))
+
+    sig = str(ctx.source_signature or "").strip()
+    transport_already = str(session.get(BACKING_CTX_TRANSPORT_APPLIED_SIG) or "").strip() == sig
+    if apply_transport_bpm is None:
+        apply_transport_bpm = not transport_already
+    if apply_transport_bpm and ctx.source in {"entry_jam", "mission", "song_improv"}:
+        session[BACKING_CTX_TRANSPORT_APPLIED_SIG] = sig
+    elif not apply_transport_bpm and ctx.source in {"entry_jam", "mission", "song_improv"}:
+        live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
+        if live_bpm > 0:
+            ctx.bpm = live_bpm
 
     if ctx.source == "custom_progression":
         try:
@@ -1426,23 +1457,26 @@ def apply_backing_context_to_session(
         )
 
     session.pop("last_backing_defaults_song_id", None)
-    if widget_safe:
-        request_backing_bpm(st_like, int(ctx.bpm))
+    if apply_transport_bpm:
+        if widget_safe:
+            request_backing_bpm(st_like, int(ctx.bpm))
+            request_backing_groove(st_like, backing_style)
+        else:
+            prime_active_song_bpm(st_like, sync_id=sync_id, active_song_bpm=int(ctx.bpm))
+            request_backing_bpm(st_like, int(ctx.bpm))
+            request_backing_groove(st_like, backing_style)
+            apply_backing_defaults_for_song(
+                st_like,
+                song_id=sync_id,
+                default_bpm=int(ctx.bpm),
+                default_groove=backing_style,
+                song_data={"name": ctx.song_title, "bpm": ctx.bpm} if is_custom else None,
+            )
+            session["backing_track_bpm"] = int(ctx.bpm)
+            session["backing_groove_style"] = backing_style
+            flush_pending_backing_handoff_keys(session, sync_id=sync_id)
+    elif widget_safe:
         request_backing_groove(st_like, backing_style)
-    else:
-        prime_active_song_bpm(st_like, sync_id=sync_id, active_song_bpm=int(ctx.bpm))
-        request_backing_bpm(st_like, int(ctx.bpm))
-        request_backing_groove(st_like, backing_style)
-        apply_backing_defaults_for_song(
-            st_like,
-            song_id=sync_id,
-            default_bpm=int(ctx.bpm),
-            default_groove=backing_style,
-            song_data={"name": ctx.song_title, "bpm": ctx.bpm} if is_custom else None,
-        )
-        session["backing_track_bpm"] = int(ctx.bpm)
-        session["backing_groove_style"] = backing_style
-        flush_pending_backing_handoff_keys(session, sync_id=sync_id)
 
     if ctx.section:
         session[PENDING_BACKING_SCOPE] = "Single section"
@@ -1463,7 +1497,7 @@ def apply_backing_context_to_session(
         session["backing_track_loops"] = int(ctx.loops or 2)
 
     canonical = {
-        "backing_track_bpm": int(ctx.bpm),
+        "backing_track_bpm": int(session.get("backing_track_bpm") or ctx.bpm),
         "backing_groove_style": backing_style,
         "backing_time_signature": str(ctx.meter or "4/4"),
         "backing_track_scope": str(ctx.scope or "Full song"),
@@ -1812,11 +1846,20 @@ def open_backing_from_creative(
     existing = get_backing_context(session)
     if not existing or existing.source_signature != ctx.source_signature or existing.source != ctx.source:
         session.pop(_CANONICAL_BACKING_ID_KEY, None)
+        session.pop(BACKING_CTX_TRANSPORT_APPLIED_SIG, None)
     if existing and existing.source_signature == ctx.source_signature and existing.source == ctx.source:
         ctx.created_at = existing.created_at
     clear_stale_chart_session_keys(session)
     set_backing_context(session, ctx)
-    apply_backing_context_to_session(session, ctx, st_like=st_like)
+    if existing and existing.source_signature == ctx.source_signature and existing.source == ctx.source:
+        apply_backing_context_to_session(
+            session,
+            ctx,
+            st_like=st_like,
+            apply_transport_bpm=False,
+        )
+    else:
+        apply_backing_context_to_session(session, ctx, st_like=st_like)
     set_backing_source_preference(session, BACKING_PREF_CREATIVE)
     sync_live_keys_from_backing_context(session, st_like=st_like)
     try:
@@ -2198,7 +2241,15 @@ def _sync_creative_backing_transport_handoff(
 
     st_like = st_like or SimpleNamespace(session_state=session)
     backing_style = _backing_groove_style_from_ctx(ctx)
-    request_backing_bpm(st_like, int(ctx.bpm))
+    sig = str(ctx.source_signature or "").strip()
+    seeded = str(session.get(BACKING_CTX_TRANSPORT_APPLIED_SIG) or "").strip() == sig
+    live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
+    if not seeded:
+        request_backing_bpm(st_like, int(ctx.bpm))
+        session[BACKING_CTX_TRANSPORT_APPLIED_SIG] = sig
+    elif live_bpm > 0 and ctx.bpm != live_bpm:
+        ctx.bpm = live_bpm
+        set_backing_context(session, ctx)
     request_backing_groove(st_like, backing_style)
     if ctx.meter:
         session["_pending_backing_meter"] = str(ctx.meter)
@@ -2369,7 +2420,17 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
             set_backing_context(session, refreshed)
             ctx = refreshed
         if pending_apply:
-            apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
+            seeded = (
+                str(session.get(BACKING_CTX_TRANSPORT_APPLIED_SIG) or "").strip()
+                == str(ctx.source_signature or "").strip()
+            )
+            apply_backing_context_to_session(
+                session,
+                ctx,
+                st_like=st_like,
+                widget_safe=True,
+                apply_transport_bpm=not seeded,
+            )
             session.pop(PENDING_BACKING_CONTEXT_APPLY, None)
         else:
             _sync_creative_backing_transport_handoff(session, ctx, st_like=st_like)
