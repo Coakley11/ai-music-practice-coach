@@ -194,7 +194,9 @@
 - [x] Custom source as global active song (`CPL_ACTIVE_KEY`)
 - [x] **Creative Lab:** mode selector
 - [x] **Improvisation Intelligence:** Entry & Jam, Live Coach, Phrase/Motif, Missions, Harmony Map, Deep Harmony, Metrics & AI (`improvisation_intelligence_ui.py`)
-- [x] Deep Harmonic Analyzer, Arrangement Assistant, Weakness Detection, Development Tracking (text labs)
+- [x] **Deep Harmonic Analyzer (2026-07-30):** one guided-lesson UI for Creative Lab + II; instrument/level/focus personalization; collapsible reference cards; section navigator; homework (`deep_harmonic_analyzer_ui.py`, `deep_harmonic_personalization.py`)
+- [x] Mission Backing Jam — single-chord loop, BPM handoff preserves user tempo, instrument icons on backing card
+- [x] Arrangement Assistant, Weakness Detection, Development Tracking (text labs)
 - [x] Cross-links to Practice, Backing, Analysis, Picker, Custom
 
 ### Instrument modes

@@ -106,17 +106,18 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 
 **Acceptance:** New user describes Composition Studio without “chord grid”; structure appears before chords; Review shows full song overview.
 
-### P1 — Creative Experience polish (2026-07-30)
+### P1 — Creative Experience polish (2026-07-30) — **complete**
 
 **Plan:** [plans/2026-07-30-creative-experience-polish-sprint.md](./plans/2026-07-30-creative-experience-polish-sprint.md)
 
 - [x] Song Catalog ↔ Custom Songs — last selection restore on toggle (`LAST_CUSTOM_STATE_KEY`, pending picker switch)
-- [x] Deep Harmonic Analyzer — coach voice + readability (expanders, callouts, level/instrument/focus)
-- [x] Creative Missions → Backing — selected chord only loop + style/BPM handoff
-- [ ] Manual acceptance on Streamlit Cloud (picker + mission backing smoke)
+- [x] Deep Harmonic Analyzer — single UI (`deep_harmonic_analyzer_ui.py`); guided lesson; instrument/level/focus personalization; collapsible Go deeper cards; homework
+- [x] Creative Missions → Backing — chord-by-location selection; Mission Backing Jam; user BPM preserved after handoff; instrument icons on backing card
+- [x] Mission examples — level-scaled motifs; harder/new-idea variety
+- [x] Manual acceptance on Streamlit Cloud (DHA combos, mission BPM, icons) — **signed off 2026-07-30**
 - [ ] **Creative AI coach** — long-term vision ([backlog](./music_app_feature_backlog.md))
 
-**Acceptance:** Toggle catalog/custom restores correct song; mission “Jam” opens Backing on one chord; Deep Harmonic reads like a lesson.
+**Acceptance:** Toggle catalog/custom restores correct song; mission “Jam” opens Backing on one chord; Deep Harmonic reads like a private lesson; mission tempo editable after launch.
 
 ### P1 — Flagship coaching content (Phase 1 framework **complete**)
 

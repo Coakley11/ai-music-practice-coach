@@ -18,7 +18,7 @@ This is the master planning document. Related files:
 
 **Stack:** Python 3, Streamlit, librosa, custom WAV backing engine, optional Supabase suite storage, optional OpenAI.
 
-**Deployment:** Daily work on `origin/dev` (Streamlit Cloud dev app). Production `main` may lag behind `dev` for navigation UI and recent fixes — see [docs/DEV_WORKFLOW.md](../docs/DEV_WORKFLOW.md).
+**Deployment:** Daily work on `origin/dev` (Streamlit Cloud dev app). Production `main` receives periodic merges from `dev` after sprint sign-off — see [docs/DEV_WORKFLOW.md](../docs/DEV_WORKFLOW.md).
 
 **Studio pages (all implemented):**
 
