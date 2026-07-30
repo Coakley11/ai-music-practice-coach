@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from composition_document import deep_copy_document, touch_composition
+from composition_document import deep_copy_document, ensure_workflow, touch_composition
 
 COMPOSER_ACTIVE_KEY = "composer_active_document"
 COMPOSER_LIBRARY_KEY = "composer_saved_compositions"
@@ -45,7 +45,9 @@ def get_active_document(session_state: dict) -> dict[str, Any] | None:
 
 
 def set_active_document(session_state: dict, doc: dict[str, Any]) -> None:
-    session_state[COMPOSER_ACTIVE_KEY] = touch_composition(deep_copy_document(doc))
+    prepared = touch_composition(deep_copy_document(doc))
+    ensure_workflow(prepared)
+    session_state[COMPOSER_ACTIVE_KEY] = prepared
     session_state[COMPOSER_NEEDS_SEED_KEY] = False
     from composition_preview import invalidate_composer_preview
 

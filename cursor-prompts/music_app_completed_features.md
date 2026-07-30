@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-06-29
+**Last updated:** 2026-07-29
 
 ---
 
@@ -23,6 +23,27 @@
 ---
 
 ## Completed Features
+
+### Composition Studio Sprint A — document foundation (2026-07-29)
+
+- [x] `CompositionDocument` model + section CRUD (`composition_document.py`)
+- [x] Composer page bucket + library save/load (`composition_session_state.py`)
+- [x] Preview audio + musical snapshot (`composition_preview.py`, `composition_snapshot.py`)
+- [x] Initial page shell (`composition_studio_page.py`) — **UI to be replaced** by six-phase guided UX
+- [x] Tests: `tests/test_composition_document.py`
+- [x] Architecture plan: [plans/2026-07-29-composition-studio-v1-architecture.md](./plans/2026-07-29-composition-studio-v1-architecture.md)
+- [x] Next UX plan: [plans/2026-07-29-composition-studio-six-phase-songwriting.md](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)
+
+### Flagship masterclass coaching foundation (2026-07-29)
+
+- [x] Curated performance profiles in `song_performance_profiles.py` (6 flagships)
+- [x] Unified instructor API: `song_performance_coaching.py` (opener, masterclass markdown, section lessons)
+- [x] Musician-facing layer: `musician_coaching.py` — same voice on Active Song card, chart subtitle, Coach tab, Practice page, section overlays
+- [x] Woven interpretation prose (musical context + technique + listening — not template bullets)
+- [x] Quality standard doc: [plans/2026-07-29-flagship-coaching-quality-standard.md](./plans/2026-07-29-flagship-coaching-quality-standard.md) (**framework frozen**)
+- [x] Future vision doc: [plans/2026-07-29-progress-aware-coaching-vision.md](./plans/2026-07-29-progress-aware-coaching-vision.md)
+- [x] Tests: `tests/test_musician_coaching.py`, `tests/test_song_performance_coaching.py`, `tests/test_song_coaching.py`
+- [x] **Phase 1 complete** — framework stable; handcrafted content standard + final review checklist
 
 ### AMI Analyze My Practice synthesis (2026-06-29)
 

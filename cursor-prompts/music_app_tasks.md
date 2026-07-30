@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-07-03
+**Last updated:** 2026-07-29
 
 Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
@@ -94,6 +94,49 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 
 **Acceptance:** Continue Shape of You / Tenor Sax / Bm / 90 BPM opens Music with exact state; App Directory opens current workspace without blank generic state.
 
+### P1 — Composition Studio — six-phase songwriting UX (active)
+
+**Plan:** [plans/2026-07-29-composition-studio-six-phase-songwriting.md](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)  
+**Foundation shipped:** Sprint A document model + library (`5c49432`) — UI must be replaced, not extended.
+
+**Goal:** Feel like songwriting with an experienced co-writer—not another Custom Progression Lab. Every screen answers *“What should I create next?”*
+
+**Phases:** 1 Vision → 2 Structure → 3 Chords → 4 Melody → 5 Lyrics → 6 Review
+
+- [x] **CS-B0** — Journey rail, phase routing, Phase 1 Vision UI, remove CPL-like default layout
+- [ ] **CS-B1** — Phase 2 Structure builder (add/remove/reorder/duplicate sections)
+- [ ] **CS-B2** — Phase 3 Chords (coach-first, manual secondary, preview)
+- [ ] **CS-B3** — Phase 4 Melody framework (no AI)
+- [ ] **CS-B4** — Phase 5 Lyrics by section
+- [ ] **CS-B5** — Phase 6 Review + full-song playthrough
+- [ ] **CS-C** — OpenAI proposals per phase (after B2+ stable)
+
+**Acceptance:** New user describes Composition Studio without “chord grid”; structure appears before chords; Review shows full song overview.
+
+### P1 — Flagship coaching content (Phase 1 framework **complete**)
+
+**Quality standard:** [plans/2026-07-29-flagship-coaching-quality-standard.md](./plans/2026-07-29-flagship-coaching-quality-standard.md)  
+**Future vision (do not build yet):** [plans/2026-07-29-progress-aware-coaching-vision.md](./plans/2026-07-29-progress-aware-coaching-vision.md)
+
+**Goal:** Handcrafted masterclass profiles — **content quality only**. Each flagship passes final quality review before it is considered complete. One song at a time; clarity and inspiration over volume.
+
+**Architecture (frozen — do not redesign):**
+
+- `song_performance_profiles.py` — authored content
+- `song_performance_coaching.py` — lookup + woven prose API
+- `musician_coaching.py` — UI surfaces + non-flagship fallbacks
+
+**Current flagships (6):** California Dreamin', Perfect, Shallow, Hotel California, All of Me, Say
+
+- [x] Masterclass profile schema + unified instructor voice across Active Song, Coach, Practice, overlays
+- [x] Phase 1 coaching framework complete and stable (2026-07-29)
+- [x] Handcrafted quality standard + final review checklist documented
+- [ ] Deepen existing flagships (more instruments/levels where thin)
+- [ ] Add next flagship only when it meets full quality checklist
+- [ ] Each new flagship: tests in `tests/test_song_performance_coaching.py`
+
+**Acceptance:** Coach tab reads like one private teacher; swap song title in random sentences and the copy breaks; no generic filler shared across songs.
+
 ### P1 — Backing Studio floating nav (restored)
 
 - [x] Floating Back/Forward at mid-viewport (not in-page toolbar)
@@ -177,6 +220,7 @@ Back/Forward may need rebuild or re-validation after architecture changes. **Def
 ## Long-Term Vision
 
 - Unified musician profile across suite apps (Supabase user scoping already started)
+- **Progress-aware coaching** — session memory, struggle/improvement adaptation, performance-prep mode ([vision](./plans/2026-07-29-progress-aware-coaching-vision.md))
 - Full AI session planner: logs + recordings + active song → daily plan
 - Live ensemble mode: multitrack + backing + follow-along in one session view
 - Mobile-first practice mode (larger touch targets, simplified nav)
@@ -196,6 +240,7 @@ Recent task completions (see [music_app_completed_features.md](./music_app_compl
 - [x] Floating page history navigation (`5ed9d93`)
 - [x] Back arrow main-panel positioning (`9e0728a`)
 - [x] Roadmap documentation system (`cursor-prompts/`)
+- [x] Flagship masterclass coaching foundation frozen (2026-07-29) — see [plan](./plans/2026-07-29-flagship-coaching-quality-standard.md)
 
 ---
 

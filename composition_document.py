@@ -34,6 +34,60 @@ DEFAULT_BPM = 96
 DEFAULT_KEY = "C"
 DEFAULT_METER = "4/4"
 
+COMPOSITION_PHASES: tuple[str, ...] = (
+    "vision",
+    "structure",
+    "chords",
+    "melody",
+    "lyrics",
+    "review",
+)
+
+COMPOSITION_PHASE_LABELS: dict[str, str] = {
+    "vision": "Song Vision",
+    "structure": "Song Structure",
+    "chords": "Chords",
+    "melody": "Melody",
+    "lyrics": "Lyrics",
+    "review": "Review",
+}
+
+COMPOSITION_GENRES: tuple[str, ...] = (
+    "Pop",
+    "Rock",
+    "Jazz",
+    "Blues",
+    "Folk",
+    "Soul/R&B",
+    "Country",
+    "Hip-Hop",
+    "Electronic",
+    "Classical",
+    "Other",
+)
+
+COMPOSITION_PRACTICE_KEYS: tuple[str, ...] = (
+    "C",
+    "G",
+    "D",
+    "A",
+    "E",
+    "F",
+    "Bb",
+    "Eb",
+    "Ab",
+    "Db",
+    "Am",
+    "Em",
+    "Dm",
+)
+
+COMPOSITION_ENERGY_LEVELS: tuple[str, ...] = (
+    "Ballad — slow and intimate",
+    "Mid-tempo — steady groove",
+    "Driving — high energy",
+)
+
 SEED_TYPES: frozenset[str] = frozenset(
     {
         "style_intent",
@@ -76,6 +130,234 @@ def default_integration_stub() -> dict[str, Any]:
         "backing_preset_id": None,
         "notes_for_coach": "",
     }
+
+
+def default_workflow(*, skip_lyrics: bool = False) -> dict[str, Any]:
+    return {
+        "current_phase": "vision",
+        "completed_phases": [],
+        "skip_lyrics": bool(skip_lyrics),
+    }
+
+
+def ensure_workflow(doc: dict[str, Any]) -> dict[str, Any]:
+    wf = doc.get("workflow")
+    if isinstance(wf, dict) and str(wf.get("current_phase") or "") in COMPOSITION_PHASES:
+        wf.setdefault("completed_phases", [])
+        wf.setdefault("skip_lyrics", False)
+        return wf
+    wf = default_workflow()
+    if _document_has_chord_content(doc):
+        wf["current_phase"] = "chords"
+        wf["completed_phases"] = ["vision", "structure"]
+    elif _document_has_structure(doc):
+        wf["current_phase"] = "structure"
+        wf["completed_phases"] = ["vision"]
+    doc["workflow"] = wf
+    return wf
+
+
+def _document_has_structure(doc: dict[str, Any]) -> bool:
+    order = list((doc.get("form") or {}).get("section_order") or [])
+    return len(order) > 0
+
+
+def _document_has_chord_content(doc: dict[str, Any]) -> bool:
+    sections = (doc.get("form") or {}).get("sections") or {}
+    for sec in sections.values():
+        if not isinstance(sec, dict):
+            continue
+        if sec.get("chords"):
+            return True
+    return False
+
+
+def get_workflow_phase(doc: dict[str, Any]) -> str:
+    wf = ensure_workflow(doc)
+    phase = str(wf.get("current_phase") or "vision")
+    return phase if phase in COMPOSITION_PHASES else "vision"
+
+
+def set_workflow_phase(doc: dict[str, Any], phase: str) -> None:
+    if phase not in COMPOSITION_PHASES:
+        return
+    wf = ensure_workflow(doc)
+    wf["current_phase"] = phase
+
+
+def complete_workflow_phase(doc: dict[str, Any], phase: str) -> None:
+    if phase not in COMPOSITION_PHASES:
+        return
+    wf = ensure_workflow(doc)
+    completed = list(wf.get("completed_phases") or [])
+    if phase not in completed:
+        completed.append(phase)
+    wf["completed_phases"] = completed
+
+
+def next_workflow_phase(doc: dict[str, Any], after: str) -> str | None:
+    wf = ensure_workflow(doc)
+    try:
+        idx = COMPOSITION_PHASES.index(after)
+    except ValueError:
+        return None
+    for phase in COMPOSITION_PHASES[idx + 1 :]:
+        if phase == "lyrics" and wf.get("skip_lyrics"):
+            continue
+        return phase
+    return None
+
+
+def advance_workflow(doc: dict[str, Any], *, from_phase: str | None = None) -> str | None:
+    current = from_phase or get_workflow_phase(doc)
+    complete_workflow_phase(doc, current)
+    nxt = next_workflow_phase(doc, current)
+    if nxt:
+        set_workflow_phase(doc, nxt)
+    return nxt
+
+
+def phase_is_reachable(doc: dict[str, Any], phase: str) -> bool:
+    """Backward navigation and revisiting completed phases — not forward jumps."""
+    if phase not in COMPOSITION_PHASES:
+        return False
+    wf = ensure_workflow(doc)
+    current = get_workflow_phase(doc)
+    completed = set(wf.get("completed_phases") or [])
+    if phase == current or phase in completed:
+        return True
+    try:
+        return COMPOSITION_PHASES.index(phase) < COMPOSITION_PHASES.index(current)
+    except ValueError:
+        return False
+
+
+def suggest_musical_defaults(*, genre: str, song_idea: str) -> dict[str, Any]:
+    """Lightweight heuristics for mood, energy, tempo, key, and meter."""
+    text = f"{genre} {song_idea}".lower()
+    mood = ""
+    energy = COMPOSITION_ENERGY_LEVELS[1]
+    bpm = DEFAULT_BPM
+    key = DEFAULT_KEY
+    meter = DEFAULT_METER
+    groove = DEFAULT_GROOVE
+    style = genre if genre in CPL_PROGRESSION_STYLES else _style_from_text(genre)
+
+    if any(w in text for w in ("ballad", "slow", "gentle", "soft", "tender", "melancholy", "sad")):
+        mood = "Melancholy / tender"
+        energy = COMPOSITION_ENERGY_LEVELS[0]
+        bpm = 68
+        groove = "Ballad"
+    elif any(w in text for w in ("upbeat", "party", "dance", "energetic", "anthem", "driving", "rock")):
+        mood = "Uplifting / energetic"
+        energy = COMPOSITION_ENERGY_LEVELS[2]
+        bpm = 118
+        groove = "Rock groove"
+    elif any(w in text for w in ("hope", "warm", "love", "joy", "bright")):
+        mood = "Warm / hopeful"
+        bpm = 92
+
+    if genre == "Jazz":
+        style = "Jazz"
+        bpm = max(72, min(bpm, 120))
+        key = "Bb"
+    elif genre == "Blues":
+        style = "Blues"
+        bpm = 88
+        key = "E"
+    elif genre == "Soul/R&B":
+        style = "Soul/R&B"
+        bpm = 86
+    elif genre == "Folk":
+        style = "Folk"
+        bpm = 84
+        key = "G"
+    elif genre == "Rock":
+        style = "Rock"
+        bpm = max(bpm, 108)
+    elif genre == "Classical":
+        style = "Pop"
+        bpm = 76
+        meter = "3/4"
+
+    if "minor" in text or any(w in text for w in ("dark", "brooding", "haunting")):
+        key = "Am" if key == "C" else key
+        if not mood:
+            mood = "Dark / introspective"
+
+    if not mood:
+        mood = "Open — still taking shape"
+
+    return {
+        "mood": mood,
+        "energy": energy,
+        "bpm": bpm,
+        "key": key,
+        "meter": meter,
+        "groove": groove,
+        "style": style,
+    }
+
+
+def bootstrap_from_vision(
+    *,
+    genre: str,
+    song_idea: str,
+    title: str = "",
+    mood: str = "",
+    energy: str = "",
+    references: str = "",
+    instrumental: bool = False,
+) -> dict[str, Any]:
+    """Create a new document from Phase 1 Song Vision (minimal required fields)."""
+    genre = str(genre or "").strip() or "Pop"
+    song_idea = str(song_idea or "").strip()
+    suggestions = suggest_musical_defaults(genre=genre, song_idea=song_idea)
+
+    working_title = str(title or "").strip()
+    if not working_title and song_idea:
+        working_title = song_idea.split(".")[0][:80].strip() or "Untitled Song"
+    if not working_title:
+        working_title = "Untitled Song"
+
+    origin = {
+        "seed_type": "vision",
+        "seed_summary": song_idea[:500],
+        "seed_payload": {
+            "genre": genre,
+            "references": str(references or "").strip(),
+            "energy": str(energy or suggestions["energy"]).strip(),
+        },
+    }
+    doc = {
+        "schema_version": COMPOSITION_SCHEMA_VERSION,
+        "id": str(uuid.uuid4()),
+        "title": working_title,
+        "created_at": _now_iso(),
+        "updated_at": _now_iso(),
+        "status": "draft",
+        "origin": origin,
+        "metadata": {
+            "style": genre,
+            "mood": str(mood or suggestions["mood"]).strip(),
+            "energy": str(energy or suggestions["energy"]).strip(),
+            "references": str(references or "").strip(),
+            "language": "en",
+            "description": song_idea[:2000],
+        },
+        "global": {
+            "original_key_center": suggestions["key"],
+            "time_signature": suggestions["meter"],
+            "bpm": suggestions["bpm"],
+            "groove_style": suggestions["groove"],
+            "progression_style": suggestions["style"],
+        },
+        "form": {"section_order": [], "sections": {}},
+        "integration": default_integration_stub(),
+        "ai_settings": {"creativity": "balanced", "explicit_user_is_composer": True},
+        "workflow": default_workflow(skip_lyrics=instrumental),
+    }
+    return touch_composition(doc)
 
 
 def default_global() -> dict[str, Any]:

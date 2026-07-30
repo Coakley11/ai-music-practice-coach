@@ -1,4 +1,4 @@
-"""Composition Studio — Sprint A workspace (seed entry, form, chords, preview)."""
+"""Composition Studio — guided six-phase songwriting workspace (CS-B0+)."""
 
 from __future__ import annotations
 
@@ -7,15 +7,26 @@ from typing import Any
 import streamlit as st
 
 from composition_document import (
+    COMPOSITION_ENERGY_LEVELS,
+    COMPOSITION_GENRES,
+    COMPOSITION_PHASE_LABELS,
+    COMPOSITION_PHASES,
+    COMPOSITION_PRACTICE_KEYS,
     COMPOSER_SECTION_LABELS,
     add_section,
-    bootstrap_from_seed,
+    advance_workflow,
+    bootstrap_from_vision,
     document_summary_line,
     duplicate_section,
+    ensure_workflow,
+    get_workflow_phase,
     move_section,
     ordered_sections,
     parse_chord_paste,
+    phase_is_reachable,
     remove_section,
+    set_workflow_phase,
+    suggest_musical_defaults,
     touch_composition,
 )
 from composition_preview import generate_preview_wav, invalidate_composer_preview, preview_signature
@@ -65,16 +76,6 @@ _COMPOSER_QUICK_CHORDS: tuple[str, ...] = (
     "Fmaj7",
 )
 
-_SEED_CHIPS: tuple[tuple[str, str], ...] = (
-    ("style_intent", "Style / intent"),
-    ("chords", "Chords"),
-    ("lyrics", "Lyrics"),
-    ("title", "Title"),
-    ("mood", "Emotion"),
-    ("rhythm", "Groove"),
-    ("exploring", "Just exploring"),
-)
-
 
 def inject_composition_studio_styles() -> None:
     st.markdown(
@@ -87,20 +88,53 @@ body[data-studio-page="composer"] .block-container {
   background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 45%, #312e81 100%);
   color: #f8fafc;
   border-radius: 16px;
-  padding: 1.25rem 1.4rem 1.1rem;
+  padding: 1.35rem 1.5rem 1.15rem;
   margin-bottom: 0.85rem;
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
 }
 .composer-hero h2 {
-  margin: 0 0 0.35rem 0;
-  font-size: 1.45rem;
+  margin: 0 0 0.4rem 0;
+  font-size: 1.55rem;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 .composer-hero p {
   margin: 0;
   color: #cbd5e1;
-  font-size: 0.92rem;
+  font-size: 0.94rem;
+  line-height: 1.5;
+}
+.composer-journey-wrap {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  padding: 0.65rem 0.75rem 0.55rem;
+  margin-bottom: 0.85rem;
+}
+.composer-journey-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  font-weight: 700;
+  margin: 0 0 0.45rem 0.15rem;
+}
+.composer-phase-card {
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 0.5rem;
+}
+.composer-phase-card h3 {
+  margin: 0 0 0.35rem 0;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+.composer-phase-card p {
+  margin: 0;
+  color: #475569;
+  font-size: 0.9rem;
   line-height: 1.45;
 }
 .composer-snapshot-strip {
@@ -117,7 +151,7 @@ body[data-studio-page="composer"] .block-container {
   background: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 14px;
-  padding: 0.75rem 0.85rem;
+  padding: 0.85rem 0.95rem;
   min-height: 120px;
 }
 .composer-beside-kicker {
@@ -131,8 +165,17 @@ body[data-studio-page="composer"] .block-container {
 .composer-beside-body {
   font-size: 0.88rem;
   color: #334155;
-  line-height: 1.5;
+  line-height: 1.55;
   margin: 0;
+}
+.composer-suggest-strip {
+  background: #eef2ff;
+  border: 1px solid rgba(79, 70, 229, 0.15);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.82rem;
+  color: #3730a3;
+  margin: 0.5rem 0 0.75rem 0;
 }
 </style>
         """,
@@ -144,53 +187,360 @@ def _pending_chord_key(section_id: str) -> str:
     return f"composer_pending_chord_{section_id}"
 
 
-def _render_seed_entry(session_state: dict) -> None:
+def _save_doc(session_state: dict, doc: dict[str, Any]) -> None:
+    touch_composition(doc)
+    set_active_document(session_state, doc)
+    save_document_to_library(session_state, doc)
+
+
+def _vision_coach_html(doc: dict[str, Any]) -> str:
+    meta = doc.get("metadata") or {}
+    g = doc.get("global") or {}
+    genre = str(meta.get("style") or "your genre")
+    mood = str(meta.get("mood") or "the feeling you're chasing")
+    idea = str(meta.get("description") or "").strip()
+    refs = str(meta.get("references") or "").strip()
+    ref_bit = f" I hear shades of <em>{refs}</em> in this." if refs else ""
+    idea_bit = f' "{idea[:160]}"' if idea else ""
+    return (
+        f"So we're writing a <strong>{genre}</strong> song with a <strong>{mood.lower()}</strong> feel"
+        f"{ref_bit}.{idea_bit}<br><br>"
+        f"I've suggested <strong>{g.get('original_key_center', 'C')}</strong> at "
+        f"<strong>{g.get('bpm', 96)} BPM</strong> in <strong>{g.get('time_signature', '4/4')}</strong> — "
+        f"tweak anytime. Next we'll shape the song's structure before touching chords."
+    )
+
+
+def _render_coach_panel(doc: dict[str, Any], *, lead: str, body_html: str = "") -> None:
     st.markdown(
-        """
-<div class="composer-hero">
-  <h2>What do you have so far?</h2>
-  <p>Start with any idea — a style, chords, a lyric, a mood, or simply curiosity.
-  The studio grows around <em>your</em> seed; nothing is filled in for you without your say.</p>
+        f"""
+<div class="composer-beside-panel">
+  <p class="composer-beside-kicker">Your songwriting partner</p>
+  <p class="composer-beside-body">{lead}</p>
+  {f'<p class="composer-beside-body" style="margin-top:0.55rem;">{body_html}</p>' if body_html else ""}
+  <p class="composer-beside-body" style="margin-top:0.55rem;font-size:0.8rem;color:#64748b;">
+    AI suggestions arrive in a later sprint — for now, take your time and follow the journey.
+  </p>
 </div>
         """,
         unsafe_allow_html=True,
     )
-    if "composer_seed_type" not in session_state:
-        session_state["composer_seed_type"] = "style_intent"
-    cols = st.columns(4)
-    for i, (seed_id, label) in enumerate(_SEED_CHIPS):
-        with cols[i % 4]:
-            if st.button(label, key=f"composer_seed_chip_{seed_id}", use_container_width=True):
-                session_state["composer_seed_type"] = seed_id
+
+
+def _render_library_sidebar(session_state: dict) -> None:
+    if st.button("Save song", key="composer_save_btn", use_container_width=True):
+        doc = get_active_document(session_state)
+        if doc:
+            save_document_to_library(session_state, doc)
+            st.success("Saved to My Compositions.")
+    with st.expander("My compositions"):
+        for row in list_library_documents(session_state):
+            rid = str(row.get("id") or "")
+            label = str(row.get("title") or "Untitled")
+            c1, c2 = st.columns([3, 1])
+            with c1:
+                if st.button(label, key=f"composer_lib_open_{rid}", use_container_width=True):
+                    load_library_document(session_state, rid)
+                    st.rerun()
+            with c2:
+                if st.button("🗑", key=f"composer_lib_del_{rid}"):
+                    delete_library_document(session_state, rid)
+                    st.rerun()
+    if st.button("Start new song", key="composer_new_song", use_container_width=True):
+        session_state.pop("composer_active_document", None)
+        session_state[COMPOSER_NEEDS_SEED_KEY] = True
+        invalidate_composer_preview(session_state)
+        st.rerun()
+
+
+def _render_journey_rail(session_state: dict, doc: dict[str, Any]) -> None:
+    wf = ensure_workflow(doc)
+    current = get_workflow_phase(doc)
+    st.markdown('<p class="composer-journey-title">Your songwriting journey</p>', unsafe_allow_html=True)
+    cols = st.columns(len(COMPOSITION_PHASES))
+    for col, phase in zip(cols, COMPOSITION_PHASES):
+        label = COMPOSITION_PHASE_LABELS[phase]
+        if phase == "lyrics" and wf.get("skip_lyrics"):
+            label = "Lyrics · skipped"
+        with col:
+            is_current = phase == current
+            reachable = phase_is_reachable(doc, phase)
+            if phase == "lyrics" and wf.get("skip_lyrics"):
+                reachable = False
+            btn_type = "primary" if is_current else "secondary"
+            if st.button(
+                label,
+                key=f"composer_journey_{phase}",
+                type=btn_type,
+                use_container_width=True,
+                disabled=not reachable,
+            ):
+                set_workflow_phase(doc, phase)
+                _save_doc(session_state, doc)
                 st.rerun()
 
-    seed_type = str(session_state.get("composer_seed_type") or "exploring")
-    seed_text = st.text_area(
-        "Describe your idea (optional)",
-        key="composer_seed_text",
-        height=100,
-        placeholder='e.g. "A jazz ballad about distance" or paste | Am7 | D7 | Gmaj7 |',
+
+def _render_welcome_entry(session_state: dict) -> None:
+    st.markdown(
+        """
+<div class="composer-hero">
+  <h2>What kind of song do you want to write?</h2>
+  <p>Start with the spark — genre and a sentence or two about your idea.
+  We'll suggest tempo, key, and feel; you can adjust everything as you go.</p>
+</div>
+        """,
+        unsafe_allow_html=True,
     )
-    title = st.text_input("Working title (optional)", key="composer_seed_title")
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("Begin composing →", type="primary", use_container_width=True):
-            doc = bootstrap_from_seed(
-                seed_type=seed_type,
-                seed_text=seed_text or "",
-                seed_payload={"title": title} if title else {},
-            )
-            set_active_document(session_state, doc)
-            order = list((doc.get("form") or {}).get("section_order") or [])
-            if order:
-                session_state[COMPOSER_ACTIVE_SECTION_KEY] = order[0]
-            save_document_to_library(session_state, doc)
-            st.rerun()
-    with c2:
-        lib = list_library_documents(session_state)
-        if lib and st.button("Resume last composition", use_container_width=True):
+
+    center, side = st.columns([2.3, 1])
+    with center:
+        genre = st.selectbox("Genre", COMPOSITION_GENRES, key="composer_welcome_genre")
+        song_idea = st.text_area(
+            "Describe your song idea",
+            key="composer_welcome_idea",
+            height=110,
+            placeholder='e.g. "A hopeful pop song about finding your way home after a long trip."',
+        )
+        preview = suggest_musical_defaults(genre=genre, song_idea=song_idea or "")
+        st.markdown(
+            f'<div class="composer-suggest-strip">Suggested starting point: '
+            f"{preview['key']} · {preview['bpm']} BPM · {preview['meter']} · "
+            f"{preview['mood']}</div>",
+            unsafe_allow_html=True,
+        )
+        with st.expander("Optional details"):
+            st.text_input("Working title", key="composer_welcome_title")
+            st.text_input("Mood / emotion", key="composer_welcome_mood", placeholder=preview["mood"])
+            st.selectbox("Energy", COMPOSITION_ENERGY_LEVELS, key="composer_welcome_energy")
+            st.text_input("Artists or songs that inspire this", key="composer_welcome_refs")
+            st.checkbox("This is an instrumental piece (skip lyrics later)", key="composer_welcome_instrumental")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            begin = st.button("Begin your song →", type="primary", use_container_width=True)
+        with c2:
+            lib = list_library_documents(session_state)
+            resume = bool(lib) and st.button("Resume last composition", use_container_width=True)
+
+        if begin:
+            idea = str(session_state.get("composer_welcome_idea") or "").strip()
+            if not idea:
+                st.error("Tell us your song idea in a sentence or two — that's all we need to begin.")
+            else:
+                doc = bootstrap_from_vision(
+                    genre=str(session_state.get("composer_welcome_genre") or "Pop"),
+                    song_idea=idea,
+                    title=str(session_state.get("composer_welcome_title") or ""),
+                    mood=str(session_state.get("composer_welcome_mood") or ""),
+                    energy=str(session_state.get("composer_welcome_energy") or ""),
+                    references=str(session_state.get("composer_welcome_refs") or ""),
+                    instrumental=bool(session_state.get("composer_welcome_instrumental")),
+                )
+                set_active_document(session_state, doc)
+                save_document_to_library(session_state, doc)
+                st.rerun()
+
+        if resume:
             load_library_document(session_state, str(lib[0].get("id") or ""))
             st.rerun()
+
+    with side:
+        _render_coach_panel(
+            {},
+            lead=(
+                "Think of this as the first five minutes with a songwriter in the room. "
+                "No chord grids yet — just the story and the feeling."
+            ),
+        )
+
+
+def _sync_vision_fields_from_doc(doc: dict[str, Any]) -> None:
+    meta = doc.setdefault("metadata", {})
+    g = doc.setdefault("global", {})
+    wf = ensure_workflow(doc)
+    origin_payload = (doc.get("origin") or {}).get("seed_payload") or {}
+
+    if "composer_vision_genre" not in st.session_state:
+        genre = str(meta.get("style") or "Pop")
+        st.session_state["composer_vision_genre"] = genre if genre in COMPOSITION_GENRES else "Other"
+    if "composer_vision_idea" not in st.session_state:
+        st.session_state["composer_vision_idea"] = str(meta.get("description") or "")
+    if "composer_vision_title" not in st.session_state:
+        st.session_state["composer_vision_title"] = str(doc.get("title") or "")
+    if "composer_vision_mood" not in st.session_state:
+        st.session_state["composer_vision_mood"] = str(meta.get("mood") or "")
+    if "composer_vision_energy" not in st.session_state:
+        energy = str(meta.get("energy") or origin_payload.get("energy") or COMPOSITION_ENERGY_LEVELS[1])
+        st.session_state["composer_vision_energy"] = energy if energy in COMPOSITION_ENERGY_LEVELS else COMPOSITION_ENERGY_LEVELS[1]
+    if "composer_vision_refs" not in st.session_state:
+        st.session_state["composer_vision_refs"] = str(meta.get("references") or "")
+    if "composer_vision_instrumental" not in st.session_state:
+        st.session_state["composer_vision_instrumental"] = bool(wf.get("skip_lyrics"))
+    if "composer_vision_key" not in st.session_state:
+        key = str(g.get("original_key_center") or "C")
+        st.session_state["composer_vision_key"] = key if key in COMPOSITION_PRACTICE_KEYS else "C"
+    if "composer_vision_bpm" not in st.session_state:
+        st.session_state["composer_vision_bpm"] = int(g.get("bpm") or 96)
+    if "composer_vision_meter" not in st.session_state:
+        meter = str(g.get("time_signature") or "4/4")
+        st.session_state["composer_vision_meter"] = meter if meter in CPL_TIME_SIGNATURES else "4/4"
+
+
+def _apply_vision_widgets_to_doc(doc: dict[str, Any]) -> None:
+    meta = doc.setdefault("metadata", {})
+    g = doc.setdefault("global", {})
+    wf = ensure_workflow(doc)
+    origin = doc.setdefault("origin", {"seed_type": "vision", "seed_summary": "", "seed_payload": {}})
+
+    genre = str(st.session_state.get("composer_vision_genre") or "Pop")
+    idea = str(st.session_state.get("composer_vision_idea") or "").strip()
+    meta["style"] = genre
+    meta["description"] = idea
+    meta["mood"] = str(st.session_state.get("composer_vision_mood") or "").strip()
+    meta["energy"] = str(st.session_state.get("composer_vision_energy") or "").strip()
+    meta["references"] = str(st.session_state.get("composer_vision_refs") or "").strip()
+    doc["title"] = str(st.session_state.get("composer_vision_title") or "").strip() or "Untitled Song"
+    g["original_key_center"] = str(st.session_state.get("composer_vision_key") or "C")
+    g["bpm"] = int(st.session_state.get("composer_vision_bpm") or 96)
+    g["time_signature"] = str(st.session_state.get("composer_vision_meter") or "4/4")
+    g["progression_style"] = genre if genre in CPL_PROGRESSION_STYLES else g.get("progression_style") or "Pop"
+    wf["skip_lyrics"] = bool(st.session_state.get("composer_vision_instrumental"))
+    origin["seed_summary"] = idea[:500]
+    origin.setdefault("seed_payload", {})["genre"] = genre
+    origin["seed_payload"]["energy"] = meta["energy"]
+    origin["seed_payload"]["references"] = meta["references"]
+
+
+def _render_phase_vision(session_state: dict, doc: dict[str, Any]) -> None:
+    _sync_vision_fields_from_doc(doc)
+    center, side = st.columns([2.3, 1])
+    with center:
+        st.markdown(
+            """
+<div class="composer-phase-card">
+  <h3>Song Vision</h3>
+  <p>Capture the heart of your song before structure or chords. Only genre and your idea are required.</p>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.selectbox("Genre", COMPOSITION_GENRES, key="composer_vision_genre")
+        st.text_area(
+            "What kind of song do you want to write?",
+            key="composer_vision_idea",
+            height=100,
+            placeholder="One or two sentences about theme, story, or feeling.",
+        )
+        st.text_input("Working title", key="composer_vision_title")
+        with st.expander("Mood, energy & inspiration"):
+            st.text_input("Mood / emotion", key="composer_vision_mood")
+            st.selectbox("Energy level", COMPOSITION_ENERGY_LEVELS, key="composer_vision_energy")
+            st.text_input("Artists or songs that inspire this", key="composer_vision_refs")
+            st.checkbox("Instrumental piece (skip lyrics phase)", key="composer_vision_instrumental")
+        with st.expander("Practice key, tempo & time signature"):
+            k1, k2, k3 = st.columns(3)
+            with k1:
+                st.selectbox("Practice key", COMPOSITION_PRACTICE_KEYS, key="composer_vision_key")
+            with k2:
+                st.number_input("Tempo (BPM)", min_value=40, max_value=220, step=1, key="composer_vision_bpm")
+            with k3:
+                st.selectbox("Time signature", CPL_TIME_SIGNATURES, key="composer_vision_meter")
+
+        if st.button("Refresh suggestions from idea", key="composer_vision_resuggest"):
+            genre = str(st.session_state.get("composer_vision_genre") or "Pop")
+            idea = str(st.session_state.get("composer_vision_idea") or "")
+            hints = suggest_musical_defaults(genre=genre, song_idea=idea)
+            st.session_state["composer_vision_mood"] = hints["mood"]
+            st.session_state["composer_vision_energy"] = hints["energy"]
+            st.session_state["composer_vision_key"] = hints["key"]
+            st.session_state["composer_vision_bpm"] = hints["bpm"]
+            st.session_state["composer_vision_meter"] = hints["meter"]
+            st.rerun()
+
+        idea = str(st.session_state.get("composer_vision_idea") or "").strip()
+        if not idea:
+            st.warning("Add a sentence or two about your song idea before continuing.")
+        elif st.button("Continue to Song Structure →", type="primary", key="composer_vision_continue"):
+            _apply_vision_widgets_to_doc(doc)
+            advance_workflow(doc, from_phase="vision")
+            _save_doc(session_state, doc)
+            st.rerun()
+
+    with side:
+        _apply_vision_widgets_to_doc(doc)
+        _render_coach_panel(doc, lead=_vision_coach_html(doc))
+        _render_library_sidebar(session_state)
+
+
+def _render_phase_placeholder(session_state: dict, doc: dict[str, Any], phase: str) -> None:
+    labels = {
+        "structure": (
+            "Song Structure",
+            "Design your form — Intro, Verse, Chorus, Bridge — before writing chords.",
+            "CS-B1",
+        ),
+        "melody": (
+            "Melody",
+            "Sketch phrases that ride your harmony — framework only for now.",
+            "CS-B3",
+        ),
+        "lyrics": (
+            "Lyrics",
+            "Write words section by section, tied to your song form.",
+            "CS-B4",
+        ),
+        "review": (
+            "Review",
+            "See the whole song, jump to edit, and play through from top to bottom.",
+            "CS-B5",
+        ),
+    }
+    title, blurb, sprint = labels.get(phase, ("Phase", "Coming soon.", "CS-B?"))
+    center, side = st.columns([2.3, 1])
+    with center:
+        st.markdown(
+            f"""
+<div class="composer-phase-card">
+  <h3>{title}</h3>
+  <p>{blurb}</p>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.info(f"This workspace ships in **{sprint}**. Use the journey rail to revisit Song Vision or Chords.")
+        wf = ensure_workflow(doc)
+        back_phase = COMPOSITION_PHASES[max(0, COMPOSITION_PHASES.index(phase) - 1)]
+        if phase != "review":
+            nxt = COMPOSITION_PHASES[COMPOSITION_PHASES.index(phase) + 1] if phase in COMPOSITION_PHASES else None
+            if nxt == "lyrics" and wf.get("skip_lyrics"):
+                nxt = "review"
+            if nxt and st.button(f"Mark done & continue →", key=f"composer_stub_advance_{phase}"):
+                advance_workflow(doc, from_phase=phase)
+                _save_doc(session_state, doc)
+                st.rerun()
+        if st.button(f"← Back to {COMPOSITION_PHASE_LABELS.get(back_phase, back_phase)}", key=f"composer_stub_back_{phase}"):
+            set_workflow_phase(doc, back_phase)
+            _save_doc(session_state, doc)
+            st.rerun()
+    with side:
+        _render_coach_panel(
+            doc,
+            lead=f"You're making progress — {title.lower()} is the next layer of your original song.",
+        )
+        _render_library_sidebar(session_state)
+
+
+def _ensure_active_section(session_state: dict, doc: dict[str, Any]) -> None:
+    order = list((doc.get("form") or {}).get("section_order") or [])
+    active = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
+    if order and active not in order:
+        session_state[COMPOSER_ACTIVE_SECTION_KEY] = order[0]
+    elif order and not active:
+        session_state[COMPOSER_ACTIVE_SECTION_KEY] = order[0]
+    elif not order:
+        sec = add_section(doc, "Verse")
+        session_state[COMPOSER_ACTIVE_SECTION_KEY] = sec["id"]
+        _save_doc(session_state, doc)
 
 
 def _render_snapshot_strip(session_state: dict, doc: dict[str, Any]) -> None:
@@ -222,40 +572,6 @@ def _render_snapshot_strip(session_state: dict, doc: dict[str, Any]) -> None:
         f'<div class="composer-snapshot-strip">{" · ".join(bits)}{flag_txt}</div>',
         unsafe_allow_html=True,
     )
-
-
-def _render_beside_panel(doc: dict[str, Any], snap: dict[str, Any]) -> None:
-    origin = doc.get("origin") or {}
-    seed = str(origin.get("seed_summary") or "").strip()
-    lead = (
-        "When you're ready, ask <em>What if…?</em> — reharm, change the feel, or explore a modulation. "
-        "Suggestions will explain the musical effect, and you choose what to keep."
-    )
-    if not snap.get("commitment", {}).get("has_chords"):
-        lead = (
-            "Add a chord or two, then hit <strong>Play section</strong> to hear the groove. "
-            "Harmony and rhythm stay linked to your song settings."
-        )
-    seed_bit = f'<p class="composer-beside-body">Started from: {seed}</p>' if seed else ""
-    st.markdown(
-        f"""
-<div class="composer-beside-panel">
-  <p class="composer-beside-kicker">Composer beside you</p>
-  <p class="composer-beside-body">{lead}</p>
-  {seed_bit}
-  <p class="composer-beside-body" style="margin-top:0.5rem;font-size:0.8rem;color:#64748b;">
-    AI assist arrives in the next sprint — your snapshot is already wired for connected suggestions.
-  </p>
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _save_doc(session_state: dict, doc: dict[str, Any]) -> None:
-    touch_composition(doc)
-    set_active_document(session_state, doc)
-    save_document_to_library(session_state, doc)
 
 
 def _render_structure_column(session_state: dict, doc: dict[str, Any]) -> None:
@@ -376,7 +692,13 @@ def _render_rhythm_lane(session_state: dict, doc: dict[str, Any]) -> None:
     with c1:
         g["bpm"] = st.number_input("BPM", min_value=40, max_value=220, value=int(g.get("bpm") or 96), step=1)
     with c2:
-        g["time_signature"] = st.selectbox("Meter", CPL_TIME_SIGNATURES, index=CPL_TIME_SIGNATURES.index(g.get("time_signature") or "4/4") if g.get("time_signature") in CPL_TIME_SIGNATURES else 0)
+        g["time_signature"] = st.selectbox(
+            "Meter",
+            CPL_TIME_SIGNATURES,
+            index=CPL_TIME_SIGNATURES.index(g.get("time_signature") or "4/4")
+            if g.get("time_signature") in CPL_TIME_SIGNATURES
+            else 0,
+        )
     with c3:
         g["progression_style"] = st.selectbox(
             "Style",
@@ -392,8 +714,10 @@ def _render_rhythm_lane(session_state: dict, doc: dict[str, Any]) -> None:
     )
     g["original_key_center"] = st.selectbox(
         "Written key",
-        ["C", "G", "D", "A", "E", "F", "Bb", "Eb", "Ab", "Db", "Am", "Em", "Dm"],
-        index=0,
+        list(COMPOSITION_PRACTICE_KEYS),
+        index=list(COMPOSITION_PRACTICE_KEYS).index(g.get("original_key_center") or "C")
+        if g.get("original_key_center") in COMPOSITION_PRACTICE_KEYS
+        else 0,
     )
     meta["mood"] = st.text_input("Mood / emotion (optional)", value=str(meta.get("mood") or ""))
     if st.button("Apply rhythm settings", key="composer_apply_rhythm", type="primary"):
@@ -438,37 +762,24 @@ def _render_transport(session_state: dict, doc: dict[str, Any]) -> None:
         st.audio(wav, format="audio/wav")
 
 
-def render_composition_studio_page() -> None:
-    session_state = st.session_state
-    init_composer_page_state(session_state)
-    inject_composition_studio_styles()
-
-    needs_seed = bool(session_state.get(COMPOSER_NEEDS_SEED_KEY)) and not get_active_document(session_state)
-    if needs_seed:
-        _render_seed_entry(session_state)
-        return
-
-    doc = get_active_document(session_state)
-    if not doc:
-        session_state[COMPOSER_NEEDS_SEED_KEY] = True
-        st.rerun()
-        return
-
-    title = st.text_input("Song title", value=str(doc.get("title") or ""), key="composer_title_input")
-    if title != doc.get("title"):
-        doc["title"] = title.strip() or "Untitled Song"
-        _save_doc(session_state, doc)
-
+def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
+    _ensure_active_section(session_state, doc)
+    st.markdown(
+        """
+<div class="composer-phase-card">
+  <h3>Chord Progressions</h3>
+  <p>Harmonize each section of your song. A guided coach-first workflow arrives in CS-B2 — for now, build progressions here.</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.caption(document_summary_line(doc))
     _render_snapshot_strip(session_state, doc)
-
     _render_transport(session_state, doc)
 
     left, center, right = st.columns([1.05, 2.2, 1.1])
-
     with left:
         _render_structure_column(session_state, doc)
-
     with center:
         lane = st.radio(
             "Focus",
@@ -487,30 +798,58 @@ def render_composition_studio_page() -> None:
         else:
             st.markdown("**Song form**")
             for sec in sections:
-                st.markdown(f"**{sec.get('label_variant') or sec.get('label')}** — {format_entries_bar_line(sec.get('chords') or [])}")
-
+                st.markdown(
+                    f"**{sec.get('label_variant') or sec.get('label')}** — "
+                    f"{format_entries_bar_line(sec.get('chords') or [])}"
+                )
     with right:
         section_id = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
-        snap = build_composition_snapshot(doc, active_section_id=section_id, focus_lane=str(session_state.get(COMPOSER_FOCUS_LANE_KEY) or "chords"))
-        _render_beside_panel(doc, snap)
-        if st.button("Save", key="composer_save_btn", use_container_width=True):
-            save_document_to_library(session_state, doc)
-            st.success("Saved to My Compositions.")
-        with st.expander("My compositions"):
-            for row in list_library_documents(session_state):
-                rid = str(row.get("id") or "")
-                label = str(row.get("title") or "Untitled")
-                c1, c2 = st.columns([3, 1])
-                with c1:
-                    if st.button(label, key=f"composer_lib_open_{rid}", use_container_width=True):
-                        load_library_document(session_state, rid)
-                        st.rerun()
-                with c2:
-                    if st.button("🗑", key=f"composer_lib_del_{rid}"):
-                        delete_library_document(session_state, rid)
-                        st.rerun()
-        if st.button("Start new song", key="composer_new_song"):
-            session_state.pop("composer_active_document", None)
-            session_state[COMPOSER_NEEDS_SEED_KEY] = True
-            invalidate_composer_preview(session_state)
+        snap = build_composition_snapshot(
+            doc,
+            active_section_id=section_id,
+            focus_lane=str(session_state.get(COMPOSER_FOCUS_LANE_KEY) or "chords"),
+        )
+        has_chords = snap.get("commitment", {}).get("has_chords")
+        _render_coach_panel(
+            doc,
+            lead=(
+                "Add a chord or two, then hit <strong>Play</strong> to hear how this section feels."
+                if not has_chords
+                else "Nice — keep building section by section. Repeated sections can share progressions (CS-B2)."
+            ),
+        )
+        _render_library_sidebar(session_state)
+        if st.button("Continue to Melody →", type="primary", key="composer_chords_continue"):
+            advance_workflow(doc, from_phase="chords")
+            _save_doc(session_state, doc)
             st.rerun()
+
+
+def render_composition_studio_page() -> None:
+    session_state = st.session_state
+    init_composer_page_state(session_state)
+    inject_composition_studio_styles()
+
+    needs_welcome = bool(session_state.get(COMPOSER_NEEDS_SEED_KEY)) and not get_active_document(session_state)
+    if needs_welcome:
+        _render_welcome_entry(session_state)
+        return
+
+    doc = get_active_document(session_state)
+    if not doc:
+        session_state[COMPOSER_NEEDS_SEED_KEY] = True
+        st.rerun()
+        return
+
+    ensure_workflow(doc)
+    _render_journey_rail(session_state, doc)
+
+    phase = get_workflow_phase(doc)
+    if phase == "vision":
+        _render_phase_vision(session_state, doc)
+    elif phase == "chords":
+        _render_phase_chords(session_state, doc)
+    elif phase in {"structure", "melody", "lyrics", "review"}:
+        _render_phase_placeholder(session_state, doc, phase)
+    else:
+        _render_phase_vision(session_state, doc)

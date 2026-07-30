@@ -3,9 +3,16 @@
 import unittest
 
 from composition_document import (
+    advance_workflow,
     bootstrap_from_seed,
+    bootstrap_from_vision,
     chords_for_playback,
+    ensure_workflow,
+    get_workflow_phase,
+    next_workflow_phase,
     parse_chord_paste,
+    phase_is_reachable,
+    suggest_musical_defaults,
     touch_composition,
 )
 from composition_snapshot import build_composition_snapshot, snapshot_invalidate_token
@@ -40,6 +47,41 @@ class TestCompositionDocument(unittest.TestCase):
         snap = build_composition_snapshot(doc, active_section_id=sec_id)
         self.assertTrue(snap.get("commitment", {}).get("has_chords"))
         self.assertEqual(snap["active_section"]["chord_symbols"][:2], ["Em", "C"])
+
+    def test_bootstrap_from_vision_minimal(self) -> None:
+        doc = bootstrap_from_vision(
+            genre="Jazz",
+            song_idea="A melancholy ballad about distance.",
+        )
+        self.assertEqual(doc["origin"]["seed_type"], "vision")
+        self.assertEqual(doc["metadata"]["style"], "Jazz")
+        self.assertEqual(doc["metadata"]["description"], "A melancholy ballad about distance.")
+        self.assertEqual(get_workflow_phase(doc), "vision")
+        self.assertEqual(list((doc.get("form") or {}).get("section_order") or []), [])
+
+    def test_bootstrap_from_vision_instrumental_skips_lyrics(self) -> None:
+        doc = bootstrap_from_vision(genre="Pop", song_idea="An upbeat instrumental.", instrumental=True)
+        self.assertTrue(ensure_workflow(doc).get("skip_lyrics"))
+        self.assertEqual(next_workflow_phase(doc, "melody"), "review")
+
+    def test_advance_workflow_marks_complete(self) -> None:
+        doc = bootstrap_from_vision(genre="Pop", song_idea="A hopeful pop song.")
+        nxt = advance_workflow(doc, from_phase="vision")
+        self.assertEqual(nxt, "structure")
+        self.assertEqual(get_workflow_phase(doc), "structure")
+        self.assertIn("vision", ensure_workflow(doc).get("completed_phases") or [])
+
+    def test_phase_is_reachable_backward_only(self) -> None:
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Test song.")
+        advance_workflow(doc, from_phase="vision")
+        self.assertTrue(phase_is_reachable(doc, "vision"))
+        self.assertTrue(phase_is_reachable(doc, "structure"))
+        self.assertFalse(phase_is_reachable(doc, "chords"))
+
+    def test_suggest_musical_defaults_ballad(self) -> None:
+        hints = suggest_musical_defaults(genre="Pop", song_idea="A gentle ballad about loss.")
+        self.assertLessEqual(hints["bpm"], 72)
+        self.assertIn("Ballad", hints["energy"])
 
 
 if __name__ == "__main__":

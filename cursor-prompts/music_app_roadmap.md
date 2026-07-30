@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-07-03 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
+**Last updated:** 2026-07-29 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 This is the master planning document. Related files:
 
@@ -33,6 +33,7 @@ This is the master planning document. Related files:
 | `analysis` | Upload Analysis | Live |
 | `log` | Practice Log | Live |
 | `openai` | OpenAI | Live (API key required) |
+| `composer` | Composition Studio | Live (Sprint A foundation — **guided UX pending**) |
 
 ---
 
@@ -50,6 +51,7 @@ This is the master planning document. Related files:
 10. **Persistence** — Local JSON state, optional Supabase full-session sync, suite activity logging.
 11. **UI theme bundle** — `app_ui.py` studio panels, genre/instrument card modifiers, per-page style injectors.
 12. **Phase C cross-device sync (A–E)** — Canonical modules + `?dev=1` trace; manual Tests A–E **passed** on `dev` (2026-06-09, Test E v26 `1b00d58`).
+13. **Flagship masterclass coaching (frozen foundation)** — Song/instrument/level-aware curated profiles; unified instructor voice across Active Song card, Coach tab, Practice page, section overlays ([quality standard](./plans/2026-07-29-flagship-coaching-quality-standard.md)).
 
 ---
 
@@ -65,7 +67,7 @@ This is the master planning document. Related files:
 
 **Policy (accepted 2026-06-09):** Tests **A–E are frozen**. Do not modify persistence unless a new `?dev=1` trace proves regression. Baseline: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).
 
-**Next focus:** **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md). **P1** Command Center homepage UI (external repo; Music-side resume payloads shipped). **P1** [UI polish](./plans/2026-06-09-ui-polish-phase.md) (visual/layout only).
+**Next focus:** **P1** [Composition Studio six-phase songwriting UX](./plans/2026-07-29-composition-studio-six-phase-songwriting.md). **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md). **P1** Flagship coaching **content** (not framework). **P1** Command Center homepage UI (external repo; Music-side resume payloads shipped). **P1** [UI polish](./plans/2026-06-09-ui-polish-phase.md) (visual/layout only).
 
 **Trace:** Music persistence sidebar (`?dev=1`) — Test D compare, Test E compare, **Transposing save (last cloud write)**, workspace restore, Local nav checkpoints.
 
@@ -73,6 +75,9 @@ This is the master planning document. Related files:
 
 ## High-priority future enhancements
 
+- **P1 Composition Studio — six-phase songwriting UX** — Replace CPL-like Sprint A UI with guided creative flow: Vision → Structure → Chords → Melody → Lyrics → Review ([plan](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)). Polish workflow before AI composition features.
+- **P1 Flagship coaching content** — Expand masterclass profiles in `song_performance_profiles.py`; quality bar: [plan](./plans/2026-07-29-flagship-coaching-quality-standard.md). Prefer fewer, exceptional songs over volume.
+- **P2 Progress-aware coaching** — Session memory, struggle/improvement adaptation, performance-prep mode ([vision](./plans/2026-07-29-progress-aware-coaching-vision.md)); build only after flagship library is mature.
 - **P0 Uploads + Multitrack persistence** (immediate) — canonical `uploaded_recordings` / `multitrack_sessions`, Supabase Storage refs, tombstone sync, AMI media summaries ([plan](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md)).
 - **P1 Command Center ↔ Music** — Music-side Continue payloads + workstream URLs shipped; Command Center homepage card UI pending ([plan](./plans/2026-07-03-command-center-music-integration.md)).
 - **P1 UI polish** — decorative headers, logos/icons, Upload/Multitrack nav visibility, Practice layout, written-key badge, song cards — **rendering/CSS/layout only** ([plan](./plans/2026-06-09-ui-polish-phase.md)).
@@ -88,6 +93,7 @@ This is the master planning document. Related files:
 
 | Issue | Area | Notes |
 |-------|------|-------|
+| Composition Studio Sprint A UI feels like CPL | Composer | Replace with six-phase guided UX ([plan](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)) |
 | Upload/multitrack not cross-device | Upload / Multitrack | Audio embedded in JSON with 512 KB cap; no blob store; history cloud-only |
 | Back/Forward nav unverified post-architecture | Navigation | Defer audit unless broken |
 | Section focus empty panels | Practice | Type label vs section key mismatch; dev warning exists |
@@ -113,6 +119,7 @@ This is the master planning document. Related files:
 
 ## AI feature ideas
 
+- **Progress-aware coaching** — adapt flagship masterclass copy from Practice Log, upload analysis, and AMI synthesis; same teacher voice, personalized emphasis ([vision](./plans/2026-07-29-progress-aware-coaching-vision.md)).
 - Active-song OpenAI coach (context: chart, logs, last recording).
 - Automated practice session plan from logs + weaknesses.
 - Recording comparison narratives across sessions.
@@ -125,7 +132,7 @@ This is the master planning document. Related files:
 ## Area summaries (implemented today)
 
 ### Practice page
-Six-tab studio: Coach (plans, chord coach, exercises), Timing (metronome), Chart/TAB (notation), Lyrics (YouTube, sheets), Transpose/Instrument, Tuner. Section focus jump bar; cross-links to picker/backing/creative/custom. Adaptive sheet from catalog, upload, or fallback.
+Six-tab studio: Coach (masterclass notes + plans, chord coach, exercises), Timing (metronome), Chart/TAB (notation), Lyrics (YouTube, sheets), Transpose/Instrument, Tuner. Section focus jump bar; cross-links to picker/backing/creative/custom. Adaptive sheet from catalog, upload, or fallback. Flagship songs use curated performance profiles ([coaching standard](./plans/2026-07-29-flagship-coaching-quality-standard.md)).
 
 ### Backing Track Studio
 Playback setup (scope, loops, BPM, groove, meter), HRI, WAV generation + cache, follow-along timeline, form timeline, coaching overlay, voice-aware copy.
@@ -141,6 +148,9 @@ Catalog browse/search/filters, active song dropdown, favorites, recent chips, ly
 
 ### Active Song Hub
 Hero card (keys, BPM, meter, sections), Practice/Backing/Karaoke/Chord Coach actions, edit chart CTA; custom progression variant on CPL.
+
+### Composition Studio
+Sprint A foundation: `CompositionDocument`, library save/load, preview audio, musical snapshot. Current UI still CPL-like — **six-phase guided UX next** ([plan](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)): Vision → Structure → Chords → Melody → Lyrics → Review.
 
 ### Creative Progressions
 **Custom:** click-build sections, subdivisions, save/list, harmonic hints. **Creative:** Improvisation Intelligence tabs + text labs (deep harmony, arrangement, weakness, development).

@@ -53,6 +53,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 ### Practice page
 
 - Section Focus: auto-map type labels to first matching section key
+- **Progress-aware coaching** — adapt flagship copy from logs/analysis; same teacher voice ([vision](./plans/2026-07-29-progress-aware-coaching-vision.md))
 - Loop practice mode: repeat section N times with count-in
 - Split-hand piano suggestions for intermediate+
 - Print-friendly practice sheet PDF export
@@ -94,10 +95,12 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### Song Composer / Composition Studio
 
-- **AI-assisted creative workspace** — composer beside you; start from any seed (melody, chords, groove, lyric, title, mood, style)
-- Coupled musical snapshot; explained proposals; **What if…?** experimentation (not a lane-by-lane form)
+- **Six-phase guided songwriting UX** — vision → structure → chords → melody → lyrics → review; coach panel; not CPL
+- **AI-assisted creative workspace** (later) — explained proposals; **What if…?** experimentation
 - Architecture: [plans/2026-07-29-composition-studio-v1-architecture.md](./plans/2026-07-29-composition-studio-v1-architecture.md)
-- V1: best-in-class composition experience + save library; `integration` stub for future Practice/Backing/Coach hub
+- **Active UX plan:** [plans/2026-07-29-composition-studio-six-phase-songwriting.md](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)
+- Prior proposal (superseded step order): [plans/2026-07-29-composition-studio-guided-ux.md](./plans/2026-07-29-composition-studio-guided-ux.md)
+- V1: polished workflow + save library; `integration` stub for future Practice/Backing/Coach hub
 
 ### Creative Progressions
 
@@ -121,6 +124,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### AI
 
+- **Progress-aware coaching layer** — `coaching_adaptation.py` overlay on frozen masterclass profiles; Practice Log + upload analysis + AMI inputs ([vision](./plans/2026-07-29-progress-aware-coaching-vision.md))
 - OpenAI: active-song Q&A with chart + log context
 - OpenAI: weekly practice email summary
 - OpenAI: generate custom mission criteria from user goal text
@@ -145,6 +149,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ## Long-Term Vision
 
+- **Progress-aware coaching:** teacher remembers last session; emphasizes struggle sections; graduates advice as player improves; performance-prep mode ([plan](./plans/2026-07-29-progress-aware-coaching-vision.md)).
 - **Adaptive curriculum:** system learns weak sections from logs/recordings and schedules practice.
 - **Ensemble rehearsal room:** remote multitrack + shared backing + chat.
 - **Notation editor:** WYSIWYG chart edit rivaling dedicated apps.
