@@ -106,6 +106,23 @@ class TestGenerateMissionExample(unittest.TestCase):
             session_state=session,
         )
         self.assertNotEqual(first.motif.get("display"), second.motif.get("display"))
+        third = generate_mission_example(
+            "Rhythm-first, note-second",
+            improv_ctx=ctx,
+            chord="Em",
+            section="Chorus",
+            level="Intermediate",
+            instrument="Piano",
+            focus="Improvisation",
+            variant="new",
+            session_state=session,
+        )
+        displays = {
+            first.motif.get("display"),
+            second.motif.get("display"),
+            third.motif.get("display"),
+        }
+        self.assertEqual(len(displays), 3)
 
 
 if __name__ == "__main__":

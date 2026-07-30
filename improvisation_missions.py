@@ -22,6 +22,7 @@ from improvisation_motif import (
     generate_motif_for_chord,
     sync_motif_midi,
     transform_motif,
+    _normalize_motif_level,
 )
 
 MISSION_EXAMPLE_KEY = "improv_mission_example"
@@ -141,12 +142,15 @@ def _build_motif_for_mission(
 ) -> dict[str, Any]:
     low = mission.lower()
     work_level = _effective_level(level, variant)
-    idea = idea_variant
+    idea = idea_variant % 12
     if variant == "easier":
         work_level = _effective_level(level, "easier")
         idea = 0
     elif variant == "harder":
-        idea = max(2, idea_variant % 5)
+        work_level = "Advanced"
+        idea = (idea_variant * 5 + 7) % 12
+    elif variant == "new":
+        idea = idea_variant % 12
 
     motif = generate_motif_for_chord(
         chord,
@@ -156,7 +160,12 @@ def _build_motif_for_mission(
         idea_variant=idea,
     )
 
-    if ("chord tone" in low or "guide tone" in low) and work_level == "Beginner" and variant in {"normal", "easier"}:
+    if (
+        ("chord tone" in low or "guide tone" in low)
+        and variant in {"normal", "easier"}
+        and _normalize_motif_level(level) == "Beginner"
+        and work_level == "Beginner"
+    ):
         if "guide" in low:
             notes = _guide_tones(chord)[:3]
         else:

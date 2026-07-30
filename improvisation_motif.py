@@ -361,6 +361,13 @@ def _intermediate_notes(
         [root, third, _scale_step_note(scale_pcs, fifth, 1), fifth],
         [fifth, third, root, passing, third],
         [root, third, fifth, neighbor, third],
+        [root, passing, third, passing, fifth, third],
+        [third, fifth, _scale_step_note(scale_pcs, fifth, 1), fifth, root],
+        [root, neighbor, root, third, fifth],
+        [fifth, root, third, neighbor, third],
+        [root, third, fifth, third, root, fifth],
+        [third, root, passing, third, fifth, root],
+        [root, _scale_step_note(scale_pcs, root, 1), third, fifth, third],
     ]
     return list(templates[idea_variant % len(templates)])
 
@@ -390,13 +397,21 @@ def _advanced_notes(
         third,
     ]
     pass_from_seventh = _scale_step_note(scale_pcs, seventh, -1)
+    enc_above = _scale_step_note(scale_pcs, third, 1)
+    enc_below = _scale_step_note(scale_pcs, third, -1)
     templates = [
-        [approach, third, seventh, _scale_step_note(scale_pcs, seventh, -1), seventh],
+        [approach, third, seventh, pass_from_seventh, seventh],
         (arpeggio + [_scale_step_note(scale_pcs, arpeggio[-1], 1)])[:6],
         [lower, root, approach, third, seventh, upper],
-        [root, third, _chromatic_below(fifth), fifth, seventh] if len(chord_tones) > 2 else guides + [upper],
+        [root, third, _chromatic_below(fifth), fifth, seventh],
         scale_down + [root],
         [third, upper, seventh, pass_from_seventh, root, third],
+        [enc_below, enc_above, third, seventh, third],
+        [root, fifth, third, approach, third, seventh, root],
+        [seventh, pass_from_seventh, fifth, third, _chromatic_below(third), third],
+        [root, third, fifth, upper, seventh, pass_from_seventh, fifth],
+        [approach, third, fifth, seventh, upper, seventh, third],
+        [third, seventh, third, root, fifth, _scale_step_note(scale_pcs, fifth, 1), fifth],
     ]
     notes = list(templates[idea_variant % len(templates)])
     # Dedupe consecutive duplicates while keeping length

@@ -946,7 +946,7 @@ def build_deep_harmonic_lesson(inp: HarmonicAnalysisInput) -> dict[str, Any]:
 def build_deep_harmonic_analysis(
   inp: HarmonicAnalysisInput,
 ) -> str:
-    """Compact markdown export (Creative Lab). Full UI uses ``build_deep_harmonic_lesson``."""
+    """Compact markdown export (legacy / diagnostics). UI: ``deep_harmonic_analyzer_ui.render_deep_harmonic_analyzer_tab``."""
     lesson = build_deep_harmonic_lesson(inp)
     lines = [
         f"### {lesson['song_title']}",
