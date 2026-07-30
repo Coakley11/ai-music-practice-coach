@@ -67,7 +67,7 @@ This is the master planning document. Related files:
 
 **Policy (accepted 2026-06-09):** Tests **A–E are frozen**. Do not modify persistence unless a new `?dev=1` trace proves regression. Baseline: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).
 
-**Next focus:** **P1** Composition Studio **CS-B2 Chords** ([plan](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)). **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md). **P1** Flagship coaching **content** (not framework). **P1** Command Center homepage UI (external repo; Music-side resume payloads shipped). **P1** [UI polish](./plans/2026-06-09-ui-polish-phase.md) (visual/layout only).
+**Next focus:** **P1** Composition Studio **CS-B3 Melody** ([plan](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)). **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md). **P1** Flagship coaching **content** (not framework). **P1** Command Center homepage UI (external repo; Music-side resume payloads shipped). **P1** [UI polish](./plans/2026-06-09-ui-polish-phase.md) (visual/layout only).
 
 **Trace:** Music persistence sidebar (`?dev=1`) — Test D compare, Test E compare, **Transposing save (last cloud write)**, workspace restore, Local nav checkpoints.
 

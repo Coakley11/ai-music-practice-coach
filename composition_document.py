@@ -161,6 +161,7 @@ def empty_section(label: str, *, label_variant: str = "") -> dict[str, Any]:
         "bars": 8,
         "chords": [],
         "chord_link": {"source_section_id": None, "linked": False},
+        "harmony": {"feeling": ""},
         "melody": {"phrases": []},
         "lyrics": {"lines": [], "raw_text": ""},
         "rhythm_override": None,
@@ -564,6 +565,63 @@ def break_chord_link(doc: dict[str, Any], section_id: str) -> bool:
     link["linked"] = False
     link["source_section_id"] = None
     return True
+
+
+def harmony_edit_target(doc: dict[str, Any], section_id: str) -> tuple[str, dict[str, Any] | None]:
+    """Return the section that owns editable harmony (follows chord links to source)."""
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return section_id, None
+    link = _ensure_chord_link(sec)
+    source_id = str(link.get("source_section_id") or "")
+    if link.get("linked") and source_id:
+        source = section_by_id(doc, source_id)
+        if source:
+            return source_id, source
+    return section_id, sec
+
+
+def sync_linked_chord_sections(doc: dict[str, Any], source_section_id: str) -> None:
+    source = section_by_id(doc, source_section_id)
+    if not source:
+        return
+    chords = copy.deepcopy(source.get("chords") or [])
+    sections = (doc.get("form") or {}).get("sections") or {}
+    for sec in sections.values():
+        if not isinstance(sec, dict):
+            continue
+        link = _ensure_chord_link(sec)
+        if link.get("linked") and str(link.get("source_section_id") or "") == source_section_id:
+            sec["chords"] = copy.deepcopy(chords)
+
+
+def apply_section_chords(
+    doc: dict[str, Any],
+    section_id: str,
+    entries: list[dict[str, Any]],
+    *,
+    propagate_links: bool = True,
+) -> bool:
+    edit_id, sec = harmony_edit_target(doc, section_id)
+    if not sec:
+        return False
+    sec["chords"] = copy.deepcopy(entries)
+    if propagate_links and edit_id:
+        sync_linked_chord_sections(doc, edit_id)
+    touch_composition(doc)
+    return True
+
+
+def section_has_chords(sec: dict[str, Any]) -> bool:
+    return bool(sec.get("chords"))
+
+
+def harmonized_section_count(doc: dict[str, Any]) -> tuple[int, int]:
+    sections = ordered_sections(doc)
+    if not sections:
+        return 0, 0
+    done = sum(1 for s in sections if section_has_chords(s))
+    return done, len(sections)
 
 
 def add_section(

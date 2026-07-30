@@ -6,6 +6,12 @@ from typing import Any
 
 import streamlit as st
 
+from composition_chord_suggestions import (
+    SECTION_HARMONY_FEELINGS,
+    coach_line_for_section,
+    default_feeling_for_section,
+    suggest_progressions,
+)
 from composition_document import (
     COMPOSITION_ENERGY_LEVELS,
     COMPOSITION_GENRES,
@@ -15,6 +21,7 @@ from composition_document import (
     COMPOSER_SECTION_LABELS,
     add_section,
     advance_workflow,
+    apply_section_chords,
     apply_structure_template,
     bootstrap_from_vision,
     break_chord_link,
@@ -23,6 +30,8 @@ from composition_document import (
     duplicate_section,
     ensure_workflow,
     get_workflow_phase,
+    harmonized_section_count,
+    harmony_edit_target,
     move_section,
     ordered_sections,
     parse_chord_paste,
@@ -30,8 +39,10 @@ from composition_document import (
     remove_section,
     section_by_id,
     section_css_type,
+    section_has_chords,
     set_workflow_phase,
     suggest_musical_defaults,
+    sync_linked_chord_sections,
     touch_composition,
 )
 from composition_preview import generate_preview_wav, invalidate_composer_preview, preview_signature
@@ -54,6 +65,7 @@ from custom_progression_lab import (
     CPL_PROGRESSION_STYLES,
     CPL_TIME_SIGNATURES,
     cpl_progression_bar_chart_html,
+    expand_entries_to_chords,
     format_entries_bar_line,
     normalize_chord_symbol,
 )
@@ -252,6 +264,52 @@ body[data-studio-page="composer"] .block-container {
   background: #f8fafc;
 }
 .composer-structure-empty strong { color: #312e81; }
+.composer-chords-section-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.65rem 0 0.85rem;
+}
+.composer-suggestion-card {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  margin-bottom: 0.55rem;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+.composer-suggestion-card h4 {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+.composer-suggestion-chords {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88rem;
+  color: #312e81;
+  font-weight: 600;
+  margin: 0.25rem 0 0.35rem;
+}
+.composer-suggestion-why {
+  font-size: 0.82rem;
+  color: #475569;
+  line-height: 1.45;
+  margin: 0;
+}
+.composer-linked-banner {
+  background: #fffbeb;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.84rem;
+  color: #92400e;
+  margin-bottom: 0.65rem;
+}
+.composer-harmony-progress {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+}
 </style>
         """,
         unsafe_allow_html=True,
@@ -877,8 +935,15 @@ def _render_structure_column(session_state: dict, doc: dict[str, Any]) -> None:
                 st.rerun()
 
 
-def _render_chords_lane(session_state: dict, doc: dict[str, Any], section: dict[str, Any]) -> None:
+def _render_chords_lane(
+    session_state: dict,
+    doc: dict[str, Any],
+    section: dict[str, Any],
+    *,
+    owner_id: str | None = None,
+) -> None:
     sid = str(section.get("id") or "")
+    owner_id = owner_id or sid
     entries = section.setdefault("chords", [])
     g = doc.setdefault("global", {})
     meter = str(g.get("time_signature") or "4/4")
@@ -887,7 +952,7 @@ def _render_chords_lane(session_state: dict, doc: dict[str, Any], section: dict[
     if chart:
         st.markdown(chart, unsafe_allow_html=True)
     else:
-        st.caption("Tap chords below — each click adds to this section. Use Play to hear it.")
+        st.caption("Build your progression below — one chord at a time, or paste a full line.")
 
     pending_key = _pending_chord_key(sid)
     pending = st.session_state.get(pending_key)
@@ -902,6 +967,7 @@ def _render_chords_lane(session_state: dict, doc: dict[str, Any], section: dict[
                     if sym:
                         entries.append({"chord": sym, "bars": 1})
                         st.session_state.pop(pending_key, None)
+                        sync_linked_chord_sections(doc, owner_id)
                         _save_doc(session_state, doc)
                         st.rerun()
 
@@ -910,23 +976,27 @@ def _render_chords_lane(session_state: dict, doc: dict[str, Any], section: dict[
     with c1:
         if st.button("Same as previous (%)", key=f"composer_repeat_{sid}", use_container_width=True):
             entries.append({"repeat": True, "bars": 1})
+            sync_linked_chord_sections(doc, owner_id)
             _save_doc(session_state, doc)
             st.rerun()
     with c2:
         if st.button("Undo last chord", key=f"composer_undo_chord_{sid}", use_container_width=True):
             if entries:
                 entries.pop()
+                sync_linked_chord_sections(doc, owner_id)
                 _save_doc(session_state, doc)
                 st.rerun()
     with c3:
         if st.button("Clear section", key=f"composer_clear_{sid}", use_container_width=True):
             section["chords"] = []
+            sync_linked_chord_sections(doc, owner_id)
             _save_doc(session_state, doc)
             st.rerun()
 
     paste = st.text_input("Paste progression", key=f"composer_paste_{sid}", placeholder="| G | Am | C | D |")
     if st.button("Apply paste", key=f"composer_paste_apply_{sid}") and paste:
         section["chords"] = parse_chord_paste(paste)
+        sync_linked_chord_sections(doc, owner_id)
         _save_doc(session_state, doc)
         st.rerun()
 
@@ -975,6 +1045,121 @@ def _render_rhythm_lane(session_state: dict, doc: dict[str, Any]) -> None:
         st.rerun()
 
 
+def _render_section_transport(
+    session_state: dict,
+    doc: dict[str, Any],
+    section_id: str,
+    *,
+    chord_override: list[str] | None = None,
+    preview_key: str = "composer_play_btn",
+) -> None:
+    loops = int(session_state.get("composer_play_loops") or 2)
+    t1, t2 = st.columns([2, 3])
+    with t1:
+        loops = st.slider("Loops", 1, 4, loops, key="composer_play_loops")
+    with t2:
+        play = st.button("▶ Preview section", type="primary", key=preview_key, use_container_width=True)
+
+    if play:
+        wav = generate_preview_wav(
+            doc,
+            scope="section",
+            section_id=section_id,
+            loops=loops,
+            chord_override=chord_override,
+        )
+        if wav:
+            session_state[COMPOSER_PREVIEW_WAV_KEY] = wav
+        else:
+            st.warning("No chords to preview yet.")
+
+    wav = session_state.get(COMPOSER_PREVIEW_WAV_KEY)
+    if wav:
+        st.audio(wav, format="audio/wav")
+
+
+def _render_chords_section_strip(session_state: dict, doc: dict[str, Any]) -> None:
+    sections = ordered_sections(doc)
+    if not sections:
+        st.info("Add sections in Song Structure first.")
+        return
+    active_id = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
+    cols = st.columns(min(len(sections), 6))
+    for i, sec in enumerate(sections):
+        sid = str(sec.get("id") or "")
+        label = str(sec.get("label_variant") or sec.get("label") or "Section")
+        done = " ✓" if section_has_chords(sec) else ""
+        with cols[i % len(cols)]:
+            btn_type = "primary" if sid == active_id else "secondary"
+            if st.button(f"{label}{done}", key=f"composer_chord_sec_{sid}", type=btn_type, use_container_width=True):
+                session_state[COMPOSER_ACTIVE_SECTION_KEY] = sid
+                invalidate_composer_preview(session_state)
+                st.rerun()
+    if len(sections) > 6:
+        st.caption("Use the selector below for additional sections.")
+        labels = [str(s.get("label_variant") or s.get("label") or "Section") for s in sections]
+        ids = [str(s.get("id") or "") for s in sections]
+        pick = st.selectbox(
+            "Jump to section",
+            options=range(len(ids)),
+            index=ids.index(active_id) if active_id in ids else 0,
+            format_func=lambda i: labels[i],
+            key="composer_chords_jump_section",
+        )
+        if ids[pick] != active_id:
+            session_state[COMPOSER_ACTIVE_SECTION_KEY] = ids[pick]
+            invalidate_composer_preview(session_state)
+            st.rerun()
+
+
+def _render_suggestion_card(
+    session_state: dict,
+    doc: dict[str, Any],
+    section_id: str,
+    suggestion: dict[str, Any],
+    *,
+    prefix: str,
+) -> None:
+    sid = str(suggestion.get("id") or prefix)
+    line = str(suggestion.get("line") or "")
+    why = str(suggestion.get("why") or "")
+    name = str(suggestion.get("name") or "Suggestion")
+    entries = list(suggestion.get("chords") or [])
+    chord_syms = expand_entries_to_chords(entries)
+
+    st.markdown(
+        f"""
+<div class="composer-suggestion-card">
+  <h4>{name}</h4>
+  <div class="composer-suggestion-chords">{line}</div>
+  <p class="composer-suggestion-why">{why}</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+    p1, p2, p3 = st.columns(3)
+    with p1:
+        if st.button("▶ Preview", key=f"{prefix}_preview_{sid}", use_container_width=True):
+            wav = generate_preview_wav(doc, section_id=section_id, chord_override=chord_syms)
+            if wav:
+                session_state[COMPOSER_PREVIEW_WAV_KEY] = wav
+            else:
+                st.warning("Could not preview this progression.")
+    with p2:
+        if st.button("Use this", key=f"{prefix}_use_{sid}", type="primary", use_container_width=True):
+            apply_section_chords(doc, section_id, entries)
+            _save_doc(session_state, doc)
+            st.rerun()
+    with p3:
+        if st.button("+ Compare", key=f"{prefix}_compare_{sid}", use_container_width=True):
+            queue_key = f"composer_compare_{section_id}"
+            queue = list(session_state.get(queue_key) or [])
+            if sid not in queue:
+                queue.append(sid)
+            session_state[queue_key] = queue[-3:]
+            st.rerun()
+
+
 def _render_transport(session_state: dict, doc: dict[str, Any]) -> None:
     section_id = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
     scope = str(session_state.get("composer_play_scope") or "section")
@@ -1013,65 +1198,182 @@ def _render_transport(session_state: dict, doc: dict[str, Any]) -> None:
 
 def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
     _ensure_active_section(session_state, doc)
-    st.markdown(
-        """
-<div class="composer-phase-card">
-  <h3>Chord Progressions</h3>
-  <p>Harmonize each section of your song. A guided coach-first workflow arrives in CS-B2 — for now, build progressions here.</p>
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.caption(document_summary_line(doc))
-    _render_snapshot_strip(session_state, doc)
-    _render_transport(session_state, doc)
+    sections = ordered_sections(doc)
+    if not sections:
+        st.warning("Your song has no sections yet. Head back to **Song Structure** to design the form.")
+        return
 
-    left, center, right = st.columns([1.05, 2.2, 1.1])
-    with left:
-        _render_structure_column(session_state, doc)
+    active_id = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
+    section = section_by_id(doc, active_id) or sections[0]
+    active_id = str(section.get("id") or "")
+    session_state[COMPOSER_ACTIVE_SECTION_KEY] = active_id
+
+    edit_id, edit_section = harmony_edit_target(doc, active_id)
+    is_linked = edit_id != active_id
+    link = section.get("chord_link") or {}
+
+    center, side = st.columns([2.3, 1])
     with center:
-        lane = st.radio(
-            "Focus",
-            ["chords", "rhythm", "structure"],
-            horizontal=True,
-            key=COMPOSER_FOCUS_LANE_KEY,
-            format_func=lambda x: {"chords": "Chords", "rhythm": "Rhythm / feel", "structure": "Overview"}[x],
+        done, total = harmonized_section_count(doc)
+        st.markdown(
+            """
+<div class="composer-phase-card">
+  <h3>Chords</h3>
+  <p>What harmony best supports each section? Start with the feeling — then explore, compare, or write your own.</p>
+</div>
+            """,
+            unsafe_allow_html=True,
         )
-        sections = ordered_sections(doc)
-        active_id = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
-        section = next((s for s in sections if str(s.get("id")) == active_id), sections[0] if sections else None)
-        if section and lane == "chords":
-            _render_chords_lane(session_state, doc, section)
-        elif lane == "rhythm":
-            _render_rhythm_lane(session_state, doc)
+        st.markdown(
+            f'<p class="composer-harmony-progress">Harmony progress: <strong>{done}/{total}</strong> sections</p>',
+            unsafe_allow_html=True,
+        )
+        _render_chords_section_strip(session_state, doc)
+
+        variant = str(section.get("label_variant") or section.get("label") or "Section")
+        st.markdown(f"### {variant}")
+
+        if is_linked and link.get("linked"):
+            source = section_by_id(doc, edit_id)
+            src_label = str((source or {}).get("label_variant") or (source or {}).get("label") or "source section")
+            st.markdown(
+                f'<div class="composer-linked-banner">🔗 Harmony is linked to <strong>{src_label}</strong>. '
+                f"Edit there, or break the link to write independent chords.</div>",
+                unsafe_allow_html=True,
+            )
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button(f"Edit harmony on {src_label}", key="composer_chords_goto_source", use_container_width=True):
+                    session_state[COMPOSER_ACTIVE_SECTION_KEY] = edit_id
+                    invalidate_composer_preview(session_state)
+                    st.rerun()
+            with c2:
+                if st.button("Break link & edit here", key="composer_chords_break_link", use_container_width=True):
+                    break_chord_link(doc, active_id)
+                    _save_doc(session_state, doc)
+                    st.rerun()
+            if edit_section and section_has_chords(edit_section):
+                g = doc.setdefault("global", {})
+                meter = str(g.get("time_signature") or "4/4")
+                chart = cpl_progression_bar_chart_html(edit_section.get("chords") or [], time_signature=meter)
+                if chart:
+                    st.markdown(chart, unsafe_allow_html=True)
+                _render_section_transport(session_state, doc, edit_id)
         else:
-            st.markdown("**Song form**")
-            for sec in sections:
-                st.markdown(
-                    f"**{sec.get('label_variant') or sec.get('label')}** — "
-                    f"{format_entries_bar_line(sec.get('chords') or [])}"
+            harmony = edit_section.setdefault("harmony", {"feeling": ""}) if edit_section else {"feeling": ""}
+            feeling_ids = [f[0] for f in SECTION_HARMONY_FEELINGS]
+            current_feeling = str(harmony.get("feeling") or default_feeling_for_section(section))
+            if current_feeling not in feeling_ids:
+                current_feeling = default_feeling_for_section(section)
+            st.markdown(f"**What feeling should {variant} create?**")
+            picked = st.radio(
+                "Section feeling",
+                options=feeling_ids,
+                index=feeling_ids.index(current_feeling),
+                format_func=lambda fid: next(l for i, l in SECTION_HARMONY_FEELINGS if i == fid),
+                key=f"composer_feeling_{active_id}",
+                label_visibility="collapsed",
+            )
+            if picked != harmony.get("feeling"):
+                harmony["feeling"] = picked
+                _save_doc(session_state, doc)
+
+            entries = edit_section.get("chords") or [] if edit_section else []
+            if entries:
+                g = doc.setdefault("global", {})
+                meter = str(g.get("time_signature") or "4/4")
+                chart = cpl_progression_bar_chart_html(entries, time_signature=meter)
+                if chart:
+                    st.markdown(chart, unsafe_allow_html=True)
+                _render_section_transport(session_state, doc, edit_id or active_id)
+
+            st.markdown("**How would you like to work?**")
+            path = st.radio(
+                "Chord workflow",
+                ["explore", "compare", "write"],
+                horizontal=True,
+                key=f"composer_chords_path_{active_id}",
+                format_func=lambda x: {
+                    "explore": "Explore suggestions",
+                    "compare": "Compare ideas",
+                    "write": "Write my own",
+                }[x],
+            )
+
+            suggestions = suggest_progressions(doc, section, picked, limit=3)
+
+            if path == "explore":
+                st.caption("Suggestions are transposed to your practice key — preview before you commit.")
+                for i, sug in enumerate(suggestions):
+                    _render_suggestion_card(session_state, doc, edit_id or active_id, sug, prefix=f"composer_explore_{active_id}_{i}")
+
+            elif path == "compare":
+                queue_key = f"composer_compare_{active_id}"
+                ids = [str(s.get("id") or "") for s in suggestions]
+                labels_map = {sid: f"{s.get('name')} — {s.get('line')}" for sid, s in zip(ids, suggestions)}
+                queue = st.multiselect(
+                    "Select up to 3 progressions to compare",
+                    options=ids,
+                    default=[q for q in list(session_state.get(queue_key) or []) if q in ids][:3],
+                    format_func=lambda x: labels_map.get(x, x),
+                    key=f"composer_compare_select_{active_id}",
                 )
-    with right:
-        section_id = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
-        snap = build_composition_snapshot(
-            doc,
-            active_section_id=section_id,
-            focus_lane=str(session_state.get(COMPOSER_FOCUS_LANE_KEY) or "chords"),
-        )
-        has_chords = snap.get("commitment", {}).get("has_chords")
-        _render_coach_panel(
-            doc,
-            lead=(
-                "Add a chord or two, then hit <strong>Play</strong> to hear how this section feels."
-                if not has_chords
-                else "Nice — keep building section by section. Repeated sections can share progressions (CS-B2)."
-            ),
-        )
-        _render_library_sidebar(session_state)
-        if st.button("Continue to Melody →", type="primary", key="composer_chords_continue"):
+                session_state[queue_key] = queue[:3]
+
+                if queue:
+                    st.markdown("**Compare queue**")
+                    by_id = {str(s.get("id")): s for s in suggestions}
+                    for i, qid in enumerate(queue[:3]):
+                        sug = by_id.get(qid)
+                        if sug:
+                            _render_suggestion_card(
+                                session_state,
+                                doc,
+                                edit_id or active_id,
+                                sug,
+                                prefix=f"composer_cmp_{active_id}_{i}",
+                            )
+                else:
+                    st.info("Pick ideas above to compare them side by side.")
+
+            else:
+                st.caption("Direct control when you know exactly what you want.")
+                with st.expander("Advanced chord grid", expanded=not bool(entries)):
+                    if edit_section:
+                        _render_chords_lane(session_state, doc, edit_section, owner_id=edit_id or active_id)
+
+        if done > 0 and st.button("Continue to Melody →", type="primary", key="composer_chords_continue"):
             advance_workflow(doc, from_phase="chords")
             _save_doc(session_state, doc)
             st.rerun()
+        elif done == 0:
+            st.caption("Harmonize at least one section before continuing.")
+
+    with side:
+        feeling = str((edit_section or section).get("harmony", {}).get("feeling") or default_feeling_for_section(section))
+        _render_coach_panel(doc, lead=coach_line_for_section(doc, section, feeling=feeling))
+        with st.expander("Song tempo & key"):
+            g = doc.setdefault("global", {})
+            g["original_key_center"] = st.selectbox(
+                "Practice key",
+                list(COMPOSITION_PRACTICE_KEYS),
+                index=list(COMPOSITION_PRACTICE_KEYS).index(g.get("original_key_center") or "C")
+                if g.get("original_key_center") in COMPOSITION_PRACTICE_KEYS
+                else 0,
+                key=f"composer_chords_key_{doc.get('id')}",
+            )
+            g["bpm"] = st.number_input(
+                "Tempo (BPM)",
+                min_value=40,
+                max_value=220,
+                value=int(g.get("bpm") or 96),
+                step=1,
+                key=f"composer_chords_bpm_{doc.get('id')}",
+            )
+            if st.button("Apply", key="composer_chords_apply_globals"):
+                _save_doc(session_state, doc)
+                st.rerun()
+        _render_library_sidebar(session_state)
 
 
 def render_composition_studio_page() -> None:

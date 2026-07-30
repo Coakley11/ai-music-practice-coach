@@ -36,8 +36,12 @@ def generate_preview_wav(
     section_id: str | None = None,
     loops: int = 2,
     level: str = "Intermediate",
+    chord_override: list[str] | None = None,
 ) -> bytes | None:
-    chords = chords_for_playback(doc, scope=scope, section_id=section_id)
+    if chord_override:
+        chords = [str(c) for c in chord_override if str(c).strip()]
+    else:
+        chords = chords_for_playback(doc, scope=scope, section_id=section_id)
     if not chords:
         return None
     pg = playback_globals(doc)
