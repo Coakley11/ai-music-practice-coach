@@ -182,3 +182,24 @@ def test_adapt_text_to_practice_key():
     assert "A minor" in text
     assert "Esus4" in text
     assert "C# minor" not in text
+
+
+def test_lyric_cues_use_written_chart_key_not_concert():
+    from musician_coaching import musician_facing_chart_key, transpose_lyric_cues
+    from instrument_transposition import written_key_for_type
+
+    written = written_key_for_type("Am", "Alto saxophone (Eb)")
+    assert written == "F#m"
+    chart_key = musician_facing_chart_key(
+        chart_key=written,
+        instrument="Saxophone",
+    )
+    assert chart_key == "F#m"
+    cues = {
+        "Verse 3": ["Final verse — short tag on C#m into Outro"],
+    }
+    out = transpose_lyric_cues(cues, catalog_key="C#m", practice_key=chart_key)
+    line = out["Verse 3"][0]
+    assert "F#m" in line
+    assert "C#m" not in line
+    assert "Am" not in line

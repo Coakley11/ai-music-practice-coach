@@ -141,7 +141,11 @@ def transpose_lyric_cues(
     catalog_key: str,
     practice_key: str,
 ) -> dict[str, list[str]]:
-    """Return a copy of lyric cues with chord spellings moved to the practice key."""
+    """Return a copy of lyric cues with chord spellings moved to the chart key.
+
+    ``practice_key`` must match the key shown on the active chart (written key
+    for transposing instruments, capo shape key for guitar, otherwise concert).
+    """
     if not cues:
         return {}
     try:
@@ -163,6 +167,19 @@ def transpose_lyric_cues(
             if str(line).strip()
         ]
     return out
+
+
+def musician_facing_chart_key(
+    *,
+    chart_key: str,
+    instrument: str = "",
+    capo_enabled: bool = False,
+    shape_key: str = "",
+) -> str:
+    """Key spellings on the chart — single source of truth for musician-facing text."""
+    if str(instrument or "").strip() == "Guitar" and capo_enabled:
+        return str(shape_key or chart_key or "C").strip() or "C"
+    return str(chart_key or "C").strip() or "C"
 
 
 def is_internal_arrangement_note(text: str) -> bool:

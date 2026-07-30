@@ -10186,18 +10186,24 @@ lyric_cues = dict(_user_cue_lists)
 for _sec, _lines in lyric_cues_from_section_lyrics(section_lyrics).items():
     if _sec not in lyric_cues and _lines:
         lyric_cues[_sec] = _lines
-_catalog_key = str(song_data.get("key") or "C")
-if display_key and _catalog_key and display_key != _catalog_key:
-    try:
-        from musician_coaching import transpose_lyric_cues
+_catalog_key = str(original_key or song_data.get("key") or "C")
+try:
+    from musician_coaching import musician_facing_chart_key, transpose_lyric_cues
 
+    _musician_chart_key = musician_facing_chart_key(
+        chart_key=chart_key,
+        instrument=instrument,
+        capo_enabled=bool(_capo_ctx.enabled),
+        shape_key=guitar_shape_chart_key,
+    )
+    if _musician_chart_key and _catalog_key and _musician_chart_key != _catalog_key:
         lyric_cues = transpose_lyric_cues(
             lyric_cues,
             catalog_key=_catalog_key,
-            practice_key=display_key,
+            practice_key=_musician_chart_key,
         )
-    except Exception:
-        pass
+except Exception:
+    _musician_chart_key = chart_key
 
 _practice_bpm = int(st.session_state.get("backing_track_bpm", _default_song_bpm))
 _practice_groove = str(
@@ -10461,7 +10467,17 @@ if _studio_page == "practice":
         st.session_state.pop(_old_key, None)
 
     _capo_shape = guitar_shape_chart_key if (_capo_ctx.enabled and instrument == "Guitar") else None
-    _practice_chart_key = chart_key
+    try:
+        from musician_coaching import musician_facing_chart_key
+
+        _practice_chart_key = musician_facing_chart_key(
+            chart_key=chart_key,
+            instrument=instrument,
+            capo_enabled=bool(_capo_ctx.enabled),
+            shape_key=guitar_shape_chart_key,
+        )
+    except Exception:
+        _practice_chart_key = chart_key
     _chart_key_mode = chart_key_mode
 
     if _capo_ctx.enabled and instrument == "Guitar":
@@ -10761,11 +10777,11 @@ if _studio_page == "practice":
                 show_sync_caption=False,
             )
             st.caption(
-                f"Session length: **{minutes} min** · chart key: **{global_display_key}**"
+                f"Session length: **{minutes} min** · chart key: **{_practice_chart_key}**"
                 + (
                     f" (concert **{concert_key}**)"
                     if _chart_key_mode == "written"
-                    else " (concert key from sidebar)."
+                    else ""
                 )
             )
             _coach_exercise_key = (
@@ -11096,7 +11112,7 @@ if _studio_page == "practice":
                             instrument=str(instrument or ""),
                             level=str(level or "Intermediate"),
                             artist=str(song_data.get("artist") or "") or None,
-                            catalog_key=str(song_data.get("key") or ""),
+                            catalog_key=str(original_key or song_data.get("key") or ""),
                             practice_key=_practice_chart_key,
                         )
                     except Exception:
@@ -12168,8 +12184,8 @@ elif _studio_page == "backing":
                     level=level,
                     song_title=song,
                     song_artist=str(song_data.get("artist") or ""),
-                    catalog_key=str(song_data.get("key") or ""),
-                    practice_key=display_key,
+                    catalog_key=str(original_key or song_data.get("key") or ""),
+                    practice_key=chart_key,
                 ),
                 unsafe_allow_html=True,
             )
