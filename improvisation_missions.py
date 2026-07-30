@@ -29,6 +29,8 @@ MISSION_EXAMPLE_KEY = "improv_mission_example"
 MISSION_VARIANT_KEY = "improv_mission_variant"
 MISSION_NEW_NONCE_KEY = "improv_mission_new_nonce"
 IMPROV_MISSION_BACKING_HANDOFF = "improv_mission_backing_handoff"
+MISSION_PRACTICE_LICK_KEY = "improv_mission_practice_lick"
+IMPROV_MISSION_PRACTICE_LICK_HANDOFF = "improv_mission_practice_lick_handoff"
 
 _LEVEL_ORDER = ("Beginner", "Intermediate", "Advanced")
 
@@ -141,48 +143,31 @@ def _build_motif_for_mission(
     idea_variant: int = 0,
 ) -> dict[str, Any]:
     low = mission.lower()
-    work_level = _effective_level(level, variant)
+    student_level = _normalize_motif_level(level)
+    tier = variant if variant in ("easier", "normal", "harder") else "normal"
     idea = idea_variant % 12
-    harder = variant == "harder"
     if variant == "easier":
-        work_level = _effective_level(level, "easier")
         idea = 0
-    elif harder:
-        work_level = "Advanced"
+    elif variant == "harder":
         idea = (idea_variant * 5 + 7) % 12
     elif variant == "new":
+        tier = "normal"
         idea = idea_variant % 12
 
     motif = generate_motif_for_chord(
         chord,
         key_center=key_center,
-        level=work_level,
+        level=student_level,
         rng=rng,
         idea_variant=idea,
-        harder_example=harder,
+        difficulty_tier=tier,
     )
-
-    if harder:
-        motif["variation_prompt"] = (
-            f"Advanced vocabulary on **{chord}** — chromatic approaches, enclosures, guide tones, "
-            f"and color tones. Learn the rhythm first, then the pitches."
-        )
-        if "guide tone" in low or "chord tone" in low:
-            motif["variation_prompt"] = (
-                f"Guide-tone language on **{chord}** — land 3rds and 7ths on strong beats; "
-                f"use the chromatic approaches as pickup notes only."
-            )
-        elif "rhythm" in low and "note" in low:
-            motif["variation_prompt"] = (
-                f"Rhythm-first advanced line on **{chord}** — clap the syncopation, then add the notes."
-            )
-        return motif
 
     if (
         ("chord tone" in low or "guide tone" in low)
         and variant in {"normal", "easier"}
-        and _normalize_motif_level(level) == "Beginner"
-        and work_level == "Beginner"
+        and student_level == "Beginner"
+        and tier != "harder"
     ):
         if "guide" in low:
             notes = _guide_tones(chord)[:3]
@@ -196,16 +181,21 @@ def _build_motif_for_mission(
         return motif
 
     if "5 notes" in low:
-        insight = chord_coach_insight(chord, key_center=key_center, level=work_level)
+        insight = chord_coach_insight(chord, key_center=key_center, level=student_level)
         scale_notes = (
             insight.scale_suggestions[0].notes
             if insight.scale_suggestions
             else chord_tone_names(chord)
         )
-        count = 3 if work_level == "Beginner" else (5 if work_level == "Intermediate" else 7)
+        count = 3 if student_level == "Beginner" else (5 if student_level == "Intermediate" else 7)
         pick = scale_notes[:count]
         motif = generate_motif_for_chord(
-            chord, key_center=key_center, level=work_level, rng=rng, idea_variant=idea
+            chord,
+            key_center=key_center,
+            level=student_level,
+            rng=rng,
+            idea_variant=idea,
+            difficulty_tier=tier,
         )
         motif["notes"] = pick[: len(motif["notes"])]
         motif["display"] = " – ".join(motif["notes"])
@@ -234,7 +224,7 @@ def _build_motif_for_mission(
         motif["notes"] = [chord_tone_names(chord)[0]] + motif["notes"][1:3]
         motif["display"] = " – ".join(motif["notes"])
         motif["variation_prompt"] = "Land the first note of each phrase on beat 1."
-    elif "scalar" in low and work_level == "Beginner":
+    elif "scalar" in low and student_level == "Beginner" and tier != "harder":
         motif["notes"] = chord_tone_names(chord)[:3]
         motif["display"] = " – ".join(motif["notes"])
         motif["variation_prompt"] = "Step between chord tones only — no long scalar runs."
@@ -638,3 +628,49 @@ def mission_example_for_display(
 ) -> MissionExample:
     """Always rebuild outputs so sheet music / TAB / piano match the current motif."""
     return refresh_mission_example(example, instrument=instrument, bpm=bpm)
+
+
+def store_mission_practice_lick_for_backing(
+    session_state: dict,
+    *,
+    example: MissionExample,
+    mission_title: str,
+    instrument: str,
+    bpm: int,
+    groove: str,
+    meter: str,
+    song_title: str,
+    section_label: str,
+) -> None:
+    """Persist the current mission lick for Mission Backing Jam (single motif source of truth)."""
+    ex = mission_example_for_display(example, instrument=instrument, bpm=bpm)
+    payload = {
+        "motif": dict(ex.motif),
+        "abc": ex.abc,
+        "tab": ex.tab,
+        "instrument": instrument,
+        "bpm": int(bpm),
+        "groove": groove,
+        "meter": meter,
+        "song_title": song_title,
+        "section_label": section_label,
+        "chord": ex.chord,
+        "mission_title": mission_title,
+        "level": ex.level,
+        "key_center": ex.display_key,
+        "example_variant": ex.variant,
+    }
+    session_state[MISSION_PRACTICE_LICK_KEY] = payload
+
+
+def mission_practice_lick_payload(session_state: dict) -> dict[str, Any] | None:
+    raw = session_state.get(MISSION_PRACTICE_LICK_KEY)
+    return raw if isinstance(raw, dict) and raw.get("motif") else None
+
+
+def clear_mission_practice_lick_handoff(session_state: dict) -> None:
+    session_state.pop(IMPROV_MISSION_PRACTICE_LICK_HANDOFF, None)
+
+
+def queue_mission_practice_lick_handoff(session_state: dict) -> None:
+    session_state[IMPROV_MISSION_PRACTICE_LICK_HANDOFF] = True

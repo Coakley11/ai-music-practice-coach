@@ -51,12 +51,17 @@ from improvisation_missions import (
     IMPROV_MISSION_BACKING_HANDOFF,
     MISSION_EXAMPLE_KEY,
     MISSION_NEW_NONCE_KEY,
+    MISSION_PRACTICE_LICK_KEY,
     PRACTICE_MISSIONS,
     apply_mission_motif_transform,
     generate_mission_example,
     load_mission_example,
     mission_example_for_display,
+    mission_practice_lick_payload,
+    queue_mission_practice_lick_handoff,
+    rebuild_mission_outputs,
     store_mission_example,
+    store_mission_practice_lick_for_backing,
     instrument_family,
     wind_phrasing_lines,
 )
@@ -1026,6 +1031,89 @@ def _render_abc(st: Any, abc_text: str, *, height: int = 360) -> None:
     components.html(doc, height=height, scrolling=True)
 
 
+def _mission_example_type_label(variant: str) -> str:
+    labels = {
+        "normal": "Normal",
+        "harder": "Harder",
+        "easier": "Easier",
+        "new": "New idea",
+    }
+    key = str(variant or "normal").strip().lower()
+    return labels.get(key, key.title() or "Normal")
+
+
+def render_mission_practice_lick_on_backing(
+    st: Any,
+    session_state: dict,
+    *,
+    applied_bpm: int,
+    on_return_to_mission: Callable[[], None] | None = None,
+) -> None:
+    """Mission lick panel on Backing Jam — notation/TAB rebuilt from stored motif at current BPM."""
+    payload = mission_practice_lick_payload(session_state)
+    if not payload:
+        return
+    inst = str(payload.get("instrument") or "Piano")
+    chord = str(payload.get("chord") or "")
+    key_center = str(payload.get("key_center") or "C")
+    song = str(payload.get("song_title") or "")
+    section = str(payload.get("section_label") or "")
+    level = str(payload.get("level") or "")
+    example_type = _mission_example_type_label(str(payload.get("example_variant") or "normal"))
+    motif = dict(payload.get("motif") or {})
+    out = rebuild_mission_outputs(
+        motif,
+        chord=chord,
+        instrument=inst,
+        key_center=key_center,
+        bpm=int(applied_bpm),
+    )
+    family = instrument_family(inst)
+    st.markdown("---")
+    head_l, head_r = st.columns([3, 1])
+    with head_l:
+        st.markdown("#### Mission Practice")
+        st.caption("You are still in your mission — loop the backing and work this lick at any tempo.")
+    with head_r:
+        if on_return_to_mission and st.button(
+            "← Return to Mission",
+            key="mission_practice_return_to_mission",
+            type="primary",
+            use_container_width=True,
+        ):
+            on_return_to_mission()
+    st.markdown(
+        f'<div class="ui-card soft" style="border-left:4px solid #8b5cf6;">'
+        f'<p class="ui-card-sub">'
+        f"<strong>Song</strong> {html.escape(song)} · "
+        f"<strong>Section</strong> {html.escape(section)} · "
+        f"<strong>Chord</strong> {html.escape(chord)} · "
+        f"<strong>Instrument</strong> {html.escape(inst)} · "
+        f"<strong>Difficulty</strong> {html.escape(level)} · "
+        f"<strong>Example</strong> {html.escape(example_type)} · "
+        f"Groove {html.escape(str(payload.get('groove') or 'Auto'))} · "
+        f"Meter {html.escape(str(payload.get('meter') or '4/4'))}"
+        f"</p></div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"**Notes:** `{out['motif'].get('display', '')}` · "
+        f"**Rhythm:** `{out['motif'].get('rhythm', '')}`"
+    )
+    if out.get("abc"):
+        st.markdown("**Sheet music** (updates when you change tempo)")
+        n_notes = len(out["motif"].get("notes") or [])
+        staff_h = min(720, max(360, 280 + n_notes * 14))
+        _render_motif_sheet_music(st, out["abc"], height=staff_h)
+    if family == "guitar" and out.get("tab"):
+        st.markdown("**Guitar TAB**")
+        st.code(out["tab"], language=None)
+    if family == "wind":
+        st.markdown("**Phrasing**")
+        for line in wind_phrasing_lines(inst, out["motif"]):
+            st.markdown(f"- {line}")
+
+
 def _tab_missions(
     st: Any,
     *,
@@ -1149,10 +1237,39 @@ def _tab_missions(
     ):
         example = None
 
-    def _open_mission_backing() -> None:
-        if on_open_backing:
-            session_state[IMPROV_MISSION_BACKING_HANDOFF] = True
-            on_open_backing()
+    def _open_mission_backing(*, with_practice_lick: bool = False) -> None:
+        if not on_open_backing:
+            return
+        if with_practice_lick and example:
+            style_meta = session_state.get("improv_style_meta") or {}
+            groove = str(
+                session_state.get("improv_groove")
+                or session_state.get("backing_groove_style")
+                or style_meta.get("backing_style")
+                or style_meta.get("style")
+                or "Auto"
+            )
+            meter = str(
+                session_state.get("backing_time_signature")
+                or style_meta.get("meter")
+                or "4/4"
+            )
+            store_mission_practice_lick_for_backing(
+                session_state,
+                example=example,
+                mission_title=mission,
+                instrument=live_inst,
+                bpm=bpm,
+                groove=groove,
+                meter=meter,
+                song_title=improv_ctx.song_title,
+                section_label=section_label,
+            )
+            queue_mission_practice_lick_handoff(session_state)
+        elif not with_practice_lick:
+            session_state.pop(MISSION_PRACTICE_LICK_KEY, None)
+        session_state[IMPROV_MISSION_BACKING_HANDOFF] = True
+        on_open_backing()
 
     if not example:
         if on_open_backing and st.button(
@@ -1161,7 +1278,7 @@ def _tab_missions(
             type="primary",
             use_container_width=True,
         ):
-            _open_mission_backing()
+            _open_mission_backing(with_practice_lick=False)
 
     if on_open_analysis:
         st.markdown("---")
@@ -1270,13 +1387,19 @@ def _tab_missions(
             st.markdown(f"- {line}")
 
     st.markdown("---")
+    practice_in_jam = st.checkbox(
+        "Practice this lick in Backing Jam",
+        value=True,
+        key="improv_mission_practice_lick_toggle",
+        help="When on, Backing Jam shows this motif (sheet music, TAB, playback) synced to tempo.",
+    )
     if on_open_backing and st.button(
-        nav_icon_button_label("backing") + " Jam",
+        "▶ Practice in Backing Jam" if practice_in_jam else nav_icon_button_label("backing") + " Jam",
         key="improv_mission_over_backing_bottom",
         type="primary",
         use_container_width=True,
     ):
-        _open_mission_backing()
+        _open_mission_backing(with_practice_lick=practice_in_jam)
 
     st.caption(
         f"Example variant: **{example.variant}** · "

@@ -117,6 +117,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "improv_active_mission",
             "improv_mission_example",
             "improv_mission_variant",
+            "improv_mission_practice_lick",
             "improv_style",
             "improv_style_key",
             "improv_difficulty",

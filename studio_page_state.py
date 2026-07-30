@@ -300,8 +300,14 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
 
 def ensure_improv_intelligence_tab_restored(session_state: dict) -> str:
     """Restore Improvisation Intelligence sub-tab before the radio renders."""
+    if session_state.get("_improv_tab_user_touched"):
+        current = str(session_state.get("improv_intelligence_tab") or "").strip()
+        if current in IMPROV_TAB_NAMES:
+            session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = current
+            return current
+    restoring_from_backing = bool(session_state.get("_creative_restore_from_backing"))
     backing_entry = _active_creative_backing_entry_mode(session_state)
-    if backing_entry:
+    if backing_entry and restoring_from_backing:
         try:
             from backing_context import active_creative_backing_context
 

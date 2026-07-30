@@ -454,6 +454,122 @@ def _harder_example_notes(
     return notes[: min(20, max(12, len(notes)))]
 
 
+def _beginner_minimal_notes(chord_tones: list[str], *, idea_variant: int) -> list[str]:
+    if len(chord_tones) >= 3:
+        patterns = [
+            chord_tones[:2],
+            [chord_tones[0], chord_tones[2]],
+            [chord_tones[0], chord_tones[1], chord_tones[0]],
+        ]
+        return list(patterns[idea_variant % len(patterns)])[:4]
+    return chord_tones[:2] or ["C", "E"]
+
+
+def _beginner_plus_notes(
+    chord: str,
+    chord_tones: list[str],
+    scale_pcs: list[int],
+    *,
+    idea_variant: int,
+) -> list[str]:
+    """Beginner «harder»: a few more notes, one passing tone, still simple."""
+    if len(chord_tones) < 2:
+        chord_tones = chord_tone_names(chord)[:3]
+    root = chord_tones[0]
+    third = chord_tones[1] if len(chord_tones) > 1 else root
+    fifth = chord_tones[2] if len(chord_tones) > 2 else _scale_step_note(scale_pcs, root, 2)
+    passing = _scale_step_note(scale_pcs, third, -1)
+    patterns = [
+        [root, third, fifth, third],
+        [root, passing, third, fifth],
+        [root, third, passing, third, fifth],
+        [third, root, passing, third],
+        [root, third, fifth, third, root],
+        [root, passing, third, third, fifth],
+    ]
+    return _dedupe_consecutive(list(patterns[idea_variant % len(patterns)]))[:8]
+
+
+def _intermediate_plus_notes(
+    chord: str,
+    chord_tones: list[str],
+    scale_pcs: list[int],
+    rng: random.Random,
+    idea_variant: int,
+) -> list[str]:
+    """Intermediate «harder»: richer than default intermediate, not full advanced lick."""
+    advanced = _advanced_notes(chord, chord_tones, scale_pcs, rng, idea_variant)
+    if len(advanced) > 11:
+        return advanced[:11]
+    extra = _intermediate_notes(chord, chord_tones, scale_pcs, rng, (idea_variant + 3) % 12)
+    merged = _dedupe_consecutive(advanced + extra[2:4])
+    return merged[:12]
+
+
+def _rhythm_for_tier(
+    level_norm: str,
+    tier: str,
+    rng: random.Random,
+    idea_variant: int,
+    override: str,
+) -> str:
+    if override and override in _RHYTHM_PATTERNS:
+        return override
+    tier = tier if tier in ("easier", "normal", "harder") else "normal"
+    if level_norm == "Beginner":
+        if tier == "easier":
+            return "quarter-quarter-half"
+        if tier == "harder":
+            return "quarter-eighth-eighth" if idea_variant % 2 else "eighth-eighth-quarter"
+        return _rhythm_for_level(level_norm, rng, idea_variant, "")
+    if level_norm == "Intermediate":
+        if tier == "easier":
+            return "quarter-quarter-quarter"
+        if tier == "harder":
+            opts = ["eighth-quart-eighth-eighth", "eighth-eighth-quarter", "quarter-eighth-eighth"]
+            return opts[idea_variant % len(opts)]
+        return _rhythm_for_level(level_norm, rng, idea_variant, "")
+    # Advanced
+    if tier == "easier":
+        opts = ["eighth-eighth-quarter", "quarter-eighth-eighth", "quarter-dotted-eighth"]
+        return opts[idea_variant % len(opts)]
+    if tier == "harder":
+        return _rhythm_for_level(level_norm, rng, idea_variant, "")
+    return _rhythm_for_level(level_norm, rng, idea_variant, "")
+
+
+def _motif_notes_for_tier(
+    chord: str,
+    chord_tones: list[str],
+    scale_pcs: list[int],
+    level_norm: str,
+    tier: str,
+    rng: random.Random,
+    idea_variant: int,
+) -> list[str]:
+    tier = tier if tier in ("easier", "normal", "harder") else "normal"
+    tones = chord_tones
+    if level_norm == "Beginner":
+        if tier == "easier":
+            return _beginner_minimal_notes(tones, idea_variant=idea_variant)
+        if tier == "harder":
+            return _beginner_plus_notes(chord, tones, scale_pcs, idea_variant=idea_variant)
+        return _beginner_notes(tones, rng, idea_variant)
+    if level_norm == "Intermediate":
+        if tier == "easier":
+            return _beginner_plus_notes(chord, tones, scale_pcs, idea_variant=idea_variant)
+        if tier == "harder":
+            return _intermediate_plus_notes(chord, tones, scale_pcs, rng, idea_variant)
+        return _intermediate_notes(chord, tones, scale_pcs, rng, idea_variant)
+    # Advanced
+    if tier == "easier":
+        notes = _advanced_notes(chord, tones, scale_pcs, rng, idea_variant)
+        return notes[:10] if len(notes) > 10 else notes
+    if tier == "harder":
+        return _harder_example_notes(chord, tones, scale_pcs, rng, idea_variant)
+    return _advanced_notes(chord, tones, scale_pcs, rng, idea_variant)
+
+
 def _beginner_notes(chord_tones: list[str], rng: random.Random, idea_variant: int) -> list[str]:
     if len(chord_tones) >= 3:
         patterns = [
@@ -581,36 +697,31 @@ def generate_motif_for_chord(
     level: str = "Intermediate",
     rng: random.Random | None = None,
     idea_variant: int = 0,
+    difficulty_tier: str = "normal",
     harder_example: bool = False,
 ) -> dict[str, Any]:
-    """Build a motif; melodic and rhythmic complexity scale strongly with level."""
+    """Build a motif; complexity scales with student level and easier/normal/harder tier."""
     rng = rng or random.Random(idea_variant)
     level_norm = _normalize_motif_level(level)
+    tier = difficulty_tier if difficulty_tier in ("easier", "normal", "harder") else "normal"
+    if harder_example and tier == "normal":
+        tier = "harder"
     tones = chord_tone_names(chord, reference_key=key_center)
     _mode, scale_pcs = _parse_key_scale(key_center)
 
-    if harder_example:
-        notes = _harder_example_notes(chord, tones, scale_pcs, rng, idea_variant)
+    notes = _motif_notes_for_tier(chord, tones, scale_pcs, level_norm, tier, rng, idea_variant)
+    use_hard_rhythm = level_norm == "Advanced" and tier == "harder"
+    if use_hard_rhythm:
         rhythm_key, rhythm_syms = _rhythm_for_harder(len(notes), idea_variant)
-    elif level_norm == "Beginner":
-        notes = _beginner_notes(tones, rng, idea_variant)
-        rhythm_key = _rhythm_for_level(level_norm, rng, idea_variant, rhythm_key)
-        rhythm_syms = _RHYTHM_PATTERNS.get(rhythm_key, _RHYTHM_PATTERNS["quarter-quarter-quarter"])
-    elif level_norm == "Advanced":
-        notes = _advanced_notes(chord, tones, scale_pcs, rng, idea_variant)
-        rhythm_key = _rhythm_for_level(level_norm, rng, idea_variant, rhythm_key)
-        rhythm_syms = _RHYTHM_PATTERNS.get(rhythm_key, _RHYTHM_PATTERNS["quarter-quarter-quarter"])
     else:
-        notes = _intermediate_notes(chord, tones, scale_pcs, rng, idea_variant)
-        rhythm_key = _rhythm_for_level(level_norm, rng, idea_variant, rhythm_key)
-        rhythm_syms = _RHYTHM_PATTERNS.get(rhythm_key, _RHYTHM_PATTERNS["quarter-quarter-quarter"])
-
-    if not harder_example:
+        rhythm_key = _rhythm_for_tier(level_norm, tier, rng, idea_variant, rhythm_key)
+        rhythm_syms = list(_RHYTHM_PATTERNS.get(rhythm_key, _RHYTHM_PATTERNS["quarter-quarter-quarter"]))
         while len(rhythm_syms) < len(notes):
             rhythm_syms = rhythm_syms + rhythm_syms
         rhythm_syms = rhythm_syms[: len(notes)]
+
     rhythm = " ".join(rhythm_syms)
-    tier = "Harder example" if harder_example else level_norm
+    tier_label = {"easier": "Easier", "harder": "Harder", "normal": level_norm}.get(tier, level_norm)
     return {
         "chord": chord,
         "notes": notes,
@@ -619,8 +730,10 @@ def generate_motif_for_chord(
         "rhythm_key": rhythm_key,
         "rhythm_symbols": list(rhythm_syms),
         "midi": [_midi_from_note(n, 4) for n in notes],
-        "variation_prompt": f"{tier} line on **{chord}** — vocabulary lick to internalize.",
-        "harder_example": harder_example,
+        "variation_prompt": f"{tier_label} example on **{chord}** — practice in time with the backing.",
+        "difficulty_tier": tier,
+        "student_level": level_norm,
+        "harder_example": use_hard_rhythm,
     }
 
 

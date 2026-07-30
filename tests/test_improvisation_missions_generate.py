@@ -68,12 +68,35 @@ class TestGenerateMissionExample(unittest.TestCase):
         self.assertNotEqual(normal.motif.get("display"), harder.motif.get("display"))
         normal_len = len(normal.motif.get("notes") or [])
         harder_len = len(harder.motif.get("notes") or [])
-        self.assertGreaterEqual(harder_len, 12)
-        self.assertGreaterEqual(harder_len, normal_len + 6)
+        self.assertGreater(harder_len, normal_len)
+        self.assertLessEqual(harder_len, 10)
+        self.assertEqual(harder.motif.get("student_level"), "Beginner")
+        self.assertEqual(harder.motif.get("difficulty_tier"), "harder")
+        self.assertFalse(harder.motif.get("harder_example"))
+
+    def test_advanced_harder_uses_long_phrase(self) -> None:
+        ctx = ImprovSessionContext(
+            song_title="Shape",
+            artist="Artist",
+            key_center="F#m",
+            display_key="F#m",
+            instrument="Piano",
+            level="Advanced",
+            focus="Improvisation",
+            sections={"Chorus": ["Bm", "Em"]},
+        )
+        harder = generate_mission_example(
+            "Rhythm-first, note-second",
+            improv_ctx=ctx,
+            chord="Em",
+            section="Chorus",
+            level="Advanced",
+            instrument="Piano",
+            focus="Improvisation",
+            variant="harder",
+        )
+        self.assertGreaterEqual(len(harder.motif.get("notes") or []), 12)
         self.assertTrue(harder.motif.get("harder_example"))
-        rhythm = str(harder.motif.get("rhythm") or "")
-        self.assertIn("♪", rhythm)
-        self.assertTrue("♬" in rhythm or rhythm.count("♪") >= 4)
 
     def test_new_idea_changes_each_nonce(self) -> None:
         ctx = ImprovSessionContext(

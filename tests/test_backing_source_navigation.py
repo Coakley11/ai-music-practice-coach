@@ -1032,6 +1032,31 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
         self.assertFalse(session.get("_improv_tab_user_touched"))
 
+    def test_mission_backing_context_respects_user_improv_tab(self) -> None:
+        """Active mission backing must not force Missions on every Creative rerun."""
+        from backing_context import open_backing_from_creative
+        from music_restore_phase import complete_music_restore_phase
+        from studio_page_state import CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY, ensure_improv_intelligence_tab_restored
+
+        session = {
+            "improv_active_mission": "Rhythm-first, note-second",
+            "improv_intelligence_tab": "Live Coach",
+            CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY: "Live Coach",
+            "_improv_tab_user_touched": True,
+            "improv_mission_progression": ["Em"],
+            "display_key": "G",
+            "concert_key": "G",
+            "instrument": "Piano",
+            "studio_page": "creative",
+            "active_catalog_pick_key": "say|artist",
+            "song": "Say",
+        }
+        complete_music_restore_phase(session)
+        open_backing_from_creative(session, source="mission")
+        tab = ensure_improv_intelligence_tab_restored(session)
+        self.assertEqual(tab, "Live Coach")
+        self.assertEqual(session.get("improv_intelligence_tab"), "Live Coach")
+
     def test_song_improv_backing_context_keeps_sbi_entry_mode(self) -> None:
         """song_improv backing context maps to Song-Based Improvisation, not Style Jam."""
         from backing_context import open_backing_from_creative

@@ -11841,7 +11841,33 @@ elif _studio_page == "backing":
             practice_key=_backing_practice_key,
             source_label=_backing_source_label,
             written_key=_backing_written_key,
+            )
+    try:
+        from improvisation_intelligence_ui import render_mission_practice_lick_on_backing
+        from improvisation_missions import mission_practice_lick_payload
+        from studio_page_persistence import save_page_snapshot
+
+        def _return_to_mission_from_backing() -> None:
+            from backing_source_navigation import prepare_return_to_backing_source
+
+            save_page_snapshot(st.session_state, "backing")
+            save_page_snapshot(st.session_state, "creative")
+            st.session_state["improv_intelligence_tab"] = "Missions"
+            st.session_state["creative_improv_intelligence_tab"] = "Missions"
+            target = prepare_return_to_backing_source(st.session_state)
+            navigate_studio_page(st.session_state, target)
+            st.rerun()
+
+        _lick_payload = mission_practice_lick_payload(st.session_state)
+        render_mission_practice_lick_on_backing(
+            st,
+            st.session_state,
+            applied_bpm=int(_synced_bpm),
+            on_return_to_mission=_return_to_mission_from_backing if _lick_payload else None,
         )
+    except Exception as _mission_lick_err:
+        if _developer_mode_enabled():
+            st.caption(f"Developer · mission lick panel: {_mission_lick_err}")
     _render_backing_return_source_action()
     if _developer_mode_enabled() and _creative_backing_ctx is not None:
         try:
