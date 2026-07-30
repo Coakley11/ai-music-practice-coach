@@ -1,7 +1,7 @@
 # Composition Studio — Six-Phase Songwriting UX
 
 **Last updated:** 2026-07-29  
-**Status:** CS-B0 in progress — journey rail, phase routing, Song Vision shipped  
+**Status:** CS-B1 in progress — visual Song Structure editor shipped on `dev`  
 **Branch:** `dev`  
 **Supersedes step order in:** [2026-07-29-composition-studio-guided-ux.md](./2026-07-29-composition-studio-guided-ux.md) (structure moved before chords; Review added)  
 **Technical foundation:** [2026-07-29-composition-studio-v1-architecture.md](./2026-07-29-composition-studio-v1-architecture.md) · Sprint A (`5c49432`)

@@ -4,16 +4,21 @@ import unittest
 
 from composition_document import (
     advance_workflow,
+    apply_structure_template,
     bootstrap_from_seed,
     bootstrap_from_vision,
+    break_chord_link,
     chords_for_playback,
+    duplicate_section,
     ensure_workflow,
     get_workflow_phase,
     next_workflow_phase,
+    ordered_sections,
     parse_chord_paste,
     phase_is_reachable,
     suggest_musical_defaults,
     touch_composition,
+    STRUCTURE_TEMPLATES,
 )
 from composition_snapshot import build_composition_snapshot, snapshot_invalidate_token
 
@@ -82,6 +87,34 @@ class TestCompositionDocument(unittest.TestCase):
         hints = suggest_musical_defaults(genre="Pop", song_idea="A gentle ballad about loss.")
         self.assertLessEqual(hints["bpm"], 72)
         self.assertIn("Ballad", hints["energy"])
+
+    def test_apply_structure_template_pop(self) -> None:
+        doc = bootstrap_from_vision(genre="Pop", song_idea="An upbeat pop song.")
+        created = apply_structure_template(doc, "pop")
+        self.assertEqual(len(created), len(STRUCTURE_TEMPLATES["pop"]))
+        sections = ordered_sections(doc)
+        self.assertEqual(sections[1].get("label_variant"), "Verse 1")
+        verse2 = next(s for s in sections if s.get("label_variant") == "Verse 2")
+        link = verse2.get("chord_link") or {}
+        self.assertTrue(link.get("linked"))
+
+    def test_duplicate_section_links_verse(self) -> None:
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Test.")
+        apply_structure_template(doc, "simple")
+        verse1 = ordered_sections(doc)[0]
+        verse1["chords"] = parse_chord_paste("G Am C D")
+        clone = duplicate_section(doc, str(verse1["id"]))
+        self.assertIsNotNone(clone)
+        assert clone is not None
+        self.assertTrue((clone.get("chord_link") or {}).get("linked"))
+        self.assertEqual(parse_chord_paste("G Am C D")[0]["chord"], clone["chords"][0]["chord"])
+
+    def test_break_chord_link(self) -> None:
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Test.")
+        apply_structure_template(doc, "simple")
+        verse2 = next(s for s in ordered_sections(doc) if s.get("label_variant") == "Verse 2")
+        self.assertTrue(break_chord_link(doc, str(verse2["id"])))
+        self.assertFalse((verse2.get("chord_link") or {}).get("linked"))
 
 
 if __name__ == "__main__":

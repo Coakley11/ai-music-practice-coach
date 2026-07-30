@@ -28,6 +28,48 @@ COMPOSER_SECTION_LABELS: tuple[str, ...] = (
     "Outro",
 )
 
+REPEAT_LINK_LABELS: frozenset[str] = frozenset({"Verse", "Chorus", "Pre-Chorus", "Bridge"})
+
+STRUCTURE_TEMPLATES: dict[str, list[tuple[str, str]]] = {
+    "pop": [
+        ("Intro", "Intro"),
+        ("Verse", "Verse 1"),
+        ("Pre-Chorus", "Pre-Chorus"),
+        ("Chorus", "Chorus"),
+        ("Verse", "Verse 2"),
+        ("Chorus", "Chorus"),
+        ("Bridge", "Bridge"),
+        ("Chorus", "Chorus"),
+        ("Outro", "Outro"),
+    ],
+    "simple": [
+        ("Verse", "Verse 1"),
+        ("Chorus", "Chorus"),
+        ("Verse", "Verse 2"),
+        ("Chorus", "Chorus"),
+    ],
+    "ballad": [
+        ("Intro", "Intro"),
+        ("Verse", "Verse 1"),
+        ("Chorus", "Chorus"),
+        ("Verse", "Verse 2"),
+        ("Chorus", "Chorus"),
+        ("Bridge", "Bridge"),
+        ("Outro", "Outro"),
+    ],
+}
+
+SECTION_TYPE_CSS: dict[str, str] = {
+    "Intro": "intro",
+    "Verse": "verse",
+    "Pre-Chorus": "prechorus",
+    "Chorus": "chorus",
+    "Bridge": "bridge",
+    "Solo": "solo",
+    "Interlude": "interlude",
+    "Outro": "outro",
+}
+
 DEFAULT_PROGRESSION_STYLE = "Pop"
 DEFAULT_GROOVE = "Auto"
 DEFAULT_BPM = 96
@@ -118,6 +160,7 @@ def empty_section(label: str, *, label_variant: str = "") -> dict[str, Any]:
         "label_variant": label_variant or label,
         "bars": 8,
         "chords": [],
+        "chord_link": {"source_section_id": None, "linked": False},
         "melody": {"phrases": []},
         "lyrics": {"lines": [], "raw_text": ""},
         "rhythm_override": None,
@@ -432,23 +475,160 @@ def ordered_sections(doc: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def add_section(doc: dict[str, Any], label: str) -> dict[str, Any]:
-    label = str(label or "Section").strip() or "Section"
-    sec = empty_section(label)
+def _ensure_chord_link(sec: dict[str, Any]) -> dict[str, Any]:
+    link = sec.get("chord_link")
+    if not isinstance(link, dict):
+        link = {"source_section_id": None, "linked": False}
+        sec["chord_link"] = link
+    link.setdefault("source_section_id", None)
+    link.setdefault("linked", False)
+    return link
+
+
+def next_label_variant(doc: dict[str, Any], base_label: str, *, exclude_id: str | None = None) -> str:
+    """Return Verse 1, Verse 2, … for repeated section types."""
+    base_label = str(base_label or "Section").strip() or "Section"
+    numbers: list[int] = []
+    for sec in ordered_sections(doc):
+        sid = str(sec.get("id") or "")
+        if exclude_id and sid == exclude_id:
+            continue
+        if str(sec.get("label") or "") != base_label:
+            continue
+        variant = str(sec.get("label_variant") or base_label)
+        match = re.match(rf"^{re.escape(base_label)}\s*(\d+)?$", variant.strip())
+        if match:
+            num = match.group(1)
+            numbers.append(int(num) if num else 1)
+    if not numbers:
+        return f"{base_label} 1" if base_label in REPEAT_LINK_LABELS else base_label
+    return f"{base_label} {max(numbers) + 1}"
+
+
+def section_css_type(sec: dict[str, Any]) -> str:
+    label = str(sec.get("label") or "Section")
+    return SECTION_TYPE_CSS.get(label, "verse")
+
+
+def chord_link_display(sec: dict[str, Any], doc: dict[str, Any]) -> str:
+    link = _ensure_chord_link(sec)
+    if not link.get("linked"):
+        return ""
+    source_id = str(link.get("source_section_id") or "")
+    source = section_by_id(doc, source_id) if source_id else None
+    if not source:
+        return "Linked"
+    src_label = str(source.get("label_variant") or source.get("label") or "section")
+    return f"Linked to {src_label}"
+
+
+def apply_structure_template(doc: dict[str, Any], template_key: str = "pop") -> list[dict[str, Any]]:
+    """Replace form with a visual starter template; repeats link to first instance."""
+    rows = STRUCTURE_TEMPLATES.get(template_key) or STRUCTURE_TEMPLATES["simple"]
     form = doc.setdefault("form", {})
-    form.setdefault("sections", {})[sec["id"]] = sec
-    form.setdefault("section_order", []).append(sec["id"])
+    form["sections"] = {}
+    form["section_order"] = []
+    first_of_label: dict[str, str] = {}
+    created: list[dict[str, Any]] = []
+
+    for label, variant in rows:
+        sec = empty_section(label, label_variant=variant)
+        form.setdefault("sections", {})[sec["id"]] = sec
+        form.setdefault("section_order", []).append(sec["id"])
+        created.append(sec)
+
+        if label not in first_of_label:
+            first_of_label[label] = sec["id"]
+            continue
+        if label not in REPEAT_LINK_LABELS:
+            continue
+        source_id = first_of_label[label]
+        source = section_by_id(doc, source_id)
+        link = _ensure_chord_link(sec)
+        link["source_section_id"] = source_id
+        link["linked"] = True
+        if source:
+            sec["chords"] = copy.deepcopy(source.get("chords") or [])
+
+    touch_composition(doc)
+    return created
+
+
+def break_chord_link(doc: dict[str, Any], section_id: str) -> bool:
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return False
+    link = _ensure_chord_link(sec)
+    if not link.get("linked"):
+        return False
+    link["linked"] = False
+    link["source_section_id"] = None
+    return True
+
+
+def add_section(
+    doc: dict[str, Any],
+    label: str,
+    *,
+    after_id: str | None = None,
+    link_to_id: str | None = None,
+) -> dict[str, Any]:
+    label = str(label or "Section").strip() or "Section"
+    variant = next_label_variant(doc, label)
+    sec = empty_section(label, label_variant=variant)
+    form = doc.setdefault("form", {})
+    sections = form.setdefault("sections", {})
+    sections[sec["id"]] = sec
+    order = list(form.get("section_order") or [])
+
+    if after_id and after_id in order:
+        idx = order.index(after_id) + 1
+        order.insert(idx, sec["id"])
+    else:
+        order.append(sec["id"])
+    form["section_order"] = order
+
+    source_id = link_to_id
+    if not source_id and label in REPEAT_LINK_LABELS:
+        for existing in ordered_sections(doc):
+            if str(existing.get("id")) == sec["id"]:
+                continue
+            if str(existing.get("label") or "") == label:
+                source_id = str(existing.get("id") or "")
+                break
+    if source_id:
+        source = section_by_id(doc, source_id)
+        if source:
+            link = _ensure_chord_link(sec)
+            link["source_section_id"] = source_id
+            link["linked"] = True
+            sec["chords"] = copy.deepcopy(source.get("chords") or [])
+
     return sec
 
 
-def duplicate_section(doc: dict[str, Any], section_id: str) -> dict[str, Any] | None:
+def duplicate_section(
+    doc: dict[str, Any],
+    section_id: str,
+    *,
+    link_chords: bool = True,
+) -> dict[str, Any] | None:
     src = section_by_id(doc, section_id)
     if not src:
         return None
     clone = deep_copy_document({"form": {"sections": {section_id: src}}})["form"]["sections"][section_id]
     clone["id"] = _new_section_id()
-    variant = str(src.get("label_variant") or src.get("label") or "Section")
-    clone["label_variant"] = f"{variant} (copy)"
+    base = str(src.get("label") or "Section")
+    clone["label"] = base
+    clone["label_variant"] = next_label_variant(doc, base, exclude_id=clone["id"])
+    link = _ensure_chord_link(clone)
+    if link_chords and base in REPEAT_LINK_LABELS:
+        link["source_section_id"] = section_id
+        link["linked"] = True
+    else:
+        link["source_section_id"] = None
+        link["linked"] = False
+
     form = doc.setdefault("form", {})
     sections = form.setdefault("sections", {})
     sections[clone["id"]] = clone
@@ -484,6 +664,13 @@ def remove_section(doc: dict[str, Any], section_id: str) -> bool:
     order = [s for s in order if s != section_id]
     form["section_order"] = order
     sections = form.get("sections") or {}
+    for sec in sections.values():
+        if not isinstance(sec, dict):
+            continue
+        link = _ensure_chord_link(sec)
+        if str(link.get("source_section_id") or "") == section_id:
+            link["linked"] = False
+            link["source_section_id"] = None
     sections.pop(section_id, None)
     return True
 

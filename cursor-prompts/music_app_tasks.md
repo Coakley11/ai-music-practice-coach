@@ -94,17 +94,15 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 
 **Acceptance:** Continue Shape of You / Tenor Sax / Bm / 90 BPM opens Music with exact state; App Directory opens current workspace without blank generic state.
 
-### P1 — Composition Studio — six-phase songwriting UX (active)
+### P1 — Composition Studio — CS-B1 Song Structure (active — highest priority)
 
 **Plan:** [plans/2026-07-29-composition-studio-six-phase-songwriting.md](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)  
-**Foundation shipped:** Sprint A document model + library (`5c49432`) — UI must be replaced, not extended.
+**Shipped:** CS-B0 (`b9993a1`) — journey rail, Song Vision, phase routing.
 
-**Goal:** Feel like songwriting with an experienced co-writer—not another Custom Progression Lab. Every screen answers *“What should I create next?”*
-
-**Phases:** 1 Vision → 2 Structure → 3 Chords → 4 Melody → 5 Lyrics → 6 Review
+**Goal:** Visual song form editor — the blueprint for chords, melody, lyrics, and review.
 
 - [x] **CS-B0** — Journey rail, phase routing, Phase 1 Vision UI, remove CPL-like default layout
-- [ ] **CS-B1** — Phase 2 Structure builder (add/remove/reorder/duplicate sections)
+- [x] **CS-B1** — Visual structure timeline, templates, add/remove/reorder/duplicate, chord-link inheritance
 - [ ] **CS-B2** — Phase 3 Chords (coach-first, manual secondary, preview)
 - [ ] **CS-B3** — Phase 4 Melody framework (no AI)
 - [ ] **CS-B4** — Phase 5 Lyrics by section

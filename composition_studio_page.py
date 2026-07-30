@@ -15,7 +15,10 @@ from composition_document import (
     COMPOSER_SECTION_LABELS,
     add_section,
     advance_workflow,
+    apply_structure_template,
     bootstrap_from_vision,
+    break_chord_link,
+    chord_link_display,
     document_summary_line,
     duplicate_section,
     ensure_workflow,
@@ -25,6 +28,8 @@ from composition_document import (
     parse_chord_paste,
     phase_is_reachable,
     remove_section,
+    section_by_id,
+    section_css_type,
     set_workflow_phase,
     suggest_musical_defaults,
     touch_composition,
@@ -177,6 +182,76 @@ body[data-studio-page="composer"] .block-container {
   color: #3730a3;
   margin: 0.5rem 0 0.75rem 0;
 }
+.composer-structure-scroll {
+  overflow-x: auto;
+  padding: 0.35rem 0.15rem 0.75rem;
+  margin-bottom: 0.35rem;
+}
+.composer-structure-track {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  min-width: min-content;
+}
+.composer-structure-arrow {
+  display: flex;
+  align-items: center;
+  color: #94a3b8;
+  font-size: 1.1rem;
+  padding: 0 0.15rem;
+  user-select: none;
+}
+.composer-section-block {
+  min-width: 108px;
+  max-width: 132px;
+  border-radius: 12px;
+  padding: 0.65rem 0.7rem 0.55rem;
+  border: 2px solid transparent;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  text-align: center;
+}
+.composer-section-block.is-selected {
+  border-color: #312e81;
+  box-shadow: 0 6px 18px rgba(49, 46, 129, 0.22);
+  transform: translateY(-2px);
+}
+.composer-section-type {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+  font-weight: 700;
+}
+.composer-section-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  margin-top: 0.15rem;
+  line-height: 1.25;
+}
+.composer-section-link {
+  display: block;
+  font-size: 0.68rem;
+  margin-top: 0.3rem;
+  opacity: 0.9;
+}
+.composer-section-intro { background: linear-gradient(160deg, #e2e8f0, #cbd5e1); color: #0f172a; }
+.composer-section-verse { background: linear-gradient(160deg, #dbeafe, #93c5fd); color: #1e3a8a; }
+.composer-section-prechorus { background: linear-gradient(160deg, #ede9fe, #c4b5fd); color: #4c1d95; }
+.composer-section-chorus { background: linear-gradient(160deg, #fef3c7, #fcd34d); color: #92400e; }
+.composer-section-bridge { background: linear-gradient(160deg, #d1fae5, #6ee7b7); color: #065f46; }
+.composer-section-solo { background: linear-gradient(160deg, #fee2e2, #fca5a5); color: #991b1b; }
+.composer-section-interlude { background: linear-gradient(160deg, #f3e8ff, #d8b4fe); color: #6b21a8; }
+.composer-section-outro { background: linear-gradient(160deg, #e2e8f0, #94a3b8); color: #0f172a; }
+.composer-structure-empty {
+  border: 2px dashed rgba(99, 102, 241, 0.35);
+  border-radius: 14px;
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: #475569;
+  background: #f8fafc;
+}
+.composer-structure-empty strong { color: #312e81; }
 </style>
         """,
         unsafe_allow_html=True,
@@ -472,13 +547,187 @@ def _render_phase_vision(session_state: dict, doc: dict[str, Any]) -> None:
         _render_library_sidebar(session_state)
 
 
+def _structure_timeline_html(doc: dict[str, Any], selected_id: str) -> str:
+    sections = ordered_sections(doc)
+    if not sections:
+        return (
+            '<div class="composer-structure-empty">'
+            "<strong>Your song form starts here.</strong><br>"
+            "Pick a starter template or add your first section below."
+            "</div>"
+        )
+    chunks: list[str] = ['<div class="composer-structure-track">']
+    for idx, sec in enumerate(sections):
+        sid = str(sec.get("id") or "")
+        css = section_css_type(sec)
+        selected = " is-selected" if sid == selected_id else ""
+        variant = str(sec.get("label_variant") or sec.get("label") or "Section")
+        label = str(sec.get("label") or "Section")
+        link = chord_link_display(sec, doc)
+        link_html = f'<span class="composer-section-link">{link}</span>' if link else ""
+        if idx > 0:
+            chunks.append('<div class="composer-structure-arrow">→</div>')
+        chunks.append(
+            f'<div class="composer-section-block composer-section-{css}{selected}">'
+            f'<div class="composer-section-type">{label}</div>'
+            f'<div class="composer-section-name">{variant}</div>'
+            f"{link_html}"
+            f"</div>"
+        )
+    chunks.append("</div>")
+    return "".join(chunks)
+
+
+def _ensure_structure_selection(session_state: dict, doc: dict[str, Any]) -> str:
+    sections = ordered_sections(doc)
+    if not sections:
+        session_state.pop(COMPOSER_ACTIVE_SECTION_KEY, None)
+        return ""
+    order = [str(s.get("id") or "") for s in sections]
+    active = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
+    if active not in order:
+        active = order[0]
+        session_state[COMPOSER_ACTIVE_SECTION_KEY] = active
+    return active
+
+
+def _structure_coach_html(doc: dict[str, Any]) -> str:
+    sections = ordered_sections(doc)
+    if not sections:
+        return (
+            "Before chords or melody, sketch the <strong>shape</strong> of your song — "
+            "where the energy rises, where it breathes, and where the hook lands."
+        )
+    names = " → ".join(str(s.get("label_variant") or s.get("label") or "Section") for s in sections[:8])
+    extra = " …" if len(sections) > 8 else ""
+    return (
+        f"Your form so far: <strong>{names}{extra}</strong><br><br>"
+        "Repeated sections can share chord progressions — Verse 2 will follow Verse 1 until you break the link."
+    )
+
+
+def _render_phase_structure(session_state: dict, doc: dict[str, Any]) -> None:
+    selected_id = _ensure_structure_selection(session_state, doc)
+    sections = ordered_sections(doc)
+    center, side = st.columns([2.3, 1])
+
+    with center:
+        st.markdown(
+            """
+<div class="composer-phase-card">
+  <h3>Song Structure</h3>
+  <p>Design your song form before writing chords. Drag the story forward — intro, verses, chorus, bridge, outro.</p>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f'<div class="composer-structure-scroll">{_structure_timeline_html(doc, selected_id)}</div>',
+            unsafe_allow_html=True,
+        )
+
+        if sections:
+            labels = [str(s.get("label_variant") or s.get("label") or "Section") for s in sections]
+            ids = [str(s.get("id") or "") for s in sections]
+            pick_idx = ids.index(selected_id) if selected_id in ids else 0
+            picked = st.selectbox(
+                "Selected section",
+                options=range(len(ids)),
+                index=pick_idx,
+                format_func=lambda i: labels[i],
+                key="composer_structure_pick",
+            )
+            if ids[picked] != selected_id:
+                session_state[COMPOSER_ACTIVE_SECTION_KEY] = ids[picked]
+                st.rerun()
+
+            active = section_by_id(doc, selected_id) if selected_id else None
+            if active:
+                st.markdown(f"**Editing:** {active.get('label_variant') or active.get('label')}")
+                link = active.get("chord_link") or {}
+                if link.get("linked"):
+                    st.caption(f"🔗 {chord_link_display(active, doc)} — changes to the source section apply here too.")
+                c1, c2, c3, c4, c5 = st.columns(5)
+                with c1:
+                    if st.button("← Earlier", key="composer_struct_left", use_container_width=True):
+                        if move_section(doc, selected_id, -1):
+                            _save_doc(session_state, doc)
+                            st.rerun()
+                with c2:
+                    if st.button("Later →", key="composer_struct_right", use_container_width=True):
+                        if move_section(doc, selected_id, 1):
+                            _save_doc(session_state, doc)
+                            st.rerun()
+                with c3:
+                    if st.button("Duplicate", key="composer_struct_dup", use_container_width=True):
+                        clone = duplicate_section(doc, selected_id)
+                        if clone:
+                            session_state[COMPOSER_ACTIVE_SECTION_KEY] = clone["id"]
+                            _save_doc(session_state, doc)
+                            st.rerun()
+                with c4:
+                    if link.get("linked") and st.button("Break link", key="composer_struct_unlink", use_container_width=True):
+                        break_chord_link(doc, selected_id)
+                        _save_doc(session_state, doc)
+                        st.rerun()
+                with c5:
+                    if st.button("Remove", key="composer_struct_remove", use_container_width=True, disabled=len(sections) <= 1):
+                        if remove_section(doc, selected_id):
+                            order = list((doc.get("form") or {}).get("section_order") or [])
+                            session_state[COMPOSER_ACTIVE_SECTION_KEY] = order[0] if order else ""
+                            _save_doc(session_state, doc)
+                            st.rerun()
+        else:
+            st.markdown("**Start with a template**")
+            t1, t2, t3 = st.columns(3)
+            with t1:
+                if st.button("Pop song form", key="composer_tpl_pop", use_container_width=True):
+                    created = apply_structure_template(doc, "pop")
+                    session_state[COMPOSER_ACTIVE_SECTION_KEY] = created[0]["id"] if created else ""
+                    _save_doc(session_state, doc)
+                    st.rerun()
+            with t2:
+                if st.button("Simple Verse–Chorus", key="composer_tpl_simple", use_container_width=True):
+                    created = apply_structure_template(doc, "simple")
+                    session_state[COMPOSER_ACTIVE_SECTION_KEY] = created[0]["id"] if created else ""
+                    _save_doc(session_state, doc)
+                    st.rerun()
+            with t3:
+                if st.button("Ballad form", key="composer_tpl_ballad", use_container_width=True):
+                    created = apply_structure_template(doc, "ballad")
+                    session_state[COMPOSER_ACTIVE_SECTION_KEY] = created[0]["id"] if created else ""
+                    _save_doc(session_state, doc)
+                    st.rerun()
+
+        st.markdown("---")
+        st.markdown("**Add a section**")
+        a1, a2 = st.columns([2, 1])
+        with a1:
+            new_label = st.selectbox("Section type", COMPOSER_SECTION_LABELS, key="composer_structure_add_label")
+        with a2:
+            insert_after = st.checkbox("Insert after selected", value=bool(selected_id and sections), key="composer_structure_insert_after")
+        if st.button("+ Add section", key="composer_structure_add_btn", use_container_width=True):
+            after = selected_id if insert_after and selected_id else None
+            sec = add_section(doc, new_label, after_id=after)
+            session_state[COMPOSER_ACTIVE_SECTION_KEY] = sec["id"]
+            _save_doc(session_state, doc)
+            st.rerun()
+
+        if sections and st.button("Continue to Chords →", type="primary", key="composer_structure_continue"):
+            advance_workflow(doc, from_phase="structure")
+            _save_doc(session_state, doc)
+            st.rerun()
+        elif not sections:
+            st.caption("Add at least one section before continuing to chords.")
+
+    with side:
+        _render_coach_panel(doc, lead=_structure_coach_html(doc))
+        _render_library_sidebar(session_state)
+
+
 def _render_phase_placeholder(session_state: dict, doc: dict[str, Any], phase: str) -> None:
     labels = {
-        "structure": (
-            "Song Structure",
-            "Design your form — Intro, Verse, Chorus, Bridge — before writing chords.",
-            "CS-B1",
-        ),
         "melody": (
             "Melody",
             "Sketch phrases that ride your harmony — framework only for now.",
@@ -847,9 +1096,11 @@ def render_composition_studio_page() -> None:
     phase = get_workflow_phase(doc)
     if phase == "vision":
         _render_phase_vision(session_state, doc)
+    elif phase == "structure":
+        _render_phase_structure(session_state, doc)
     elif phase == "chords":
         _render_phase_chords(session_state, doc)
-    elif phase in {"structure", "melody", "lyrics", "review"}:
+    elif phase in {"melody", "lyrics", "review"}:
         _render_phase_placeholder(session_state, doc, phase)
     else:
         _render_phase_vision(session_state, doc)
