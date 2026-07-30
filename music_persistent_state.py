@@ -1858,6 +1858,8 @@ def apply_music_disk_state(
 ) -> None:
     """Apply disk/cloud payload with studio_page ownership protection."""
     ss = st.session_state
+    if not authoritative_restore and ss.pop("_music_authoritative_cloud_apply", False):
+        authoritative_restore = True
     if authoritative_restore:
         try:
             from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
@@ -2684,10 +2686,39 @@ def music_active_song_cloud_drift(
     cloud_state: dict[str, Any],
     cloud_ts: str | None,
 ) -> tuple[bool, str]:
-    """Detect cross-device drift in display key, capo, and written-key mode."""
+    """Detect cross-device drift in CPL draft, display key, capo, and written-key mode."""
     _ = cloud_ts
     if not isinstance(cloud_state, dict) or not cloud_state:
         return False, ""
+
+    ss = st.session_state
+    session_blob = cloud_state.get("session")
+    cloud_meta = cloud_state.get("active_song_state")
+    if not isinstance(cloud_meta, dict):
+        try:
+            from active_song_state import ACTIVE_SONG_STATE_KEY
+
+            cloud_meta = cloud_state.get(ACTIVE_SONG_STATE_KEY)
+        except ImportError:
+            cloud_meta = cloud_state.get("active_song_state")
+
+    try:
+        from custom_progression_lab import cpl_draft_chord_count
+
+        cloud_cpl = session_blob.get("cpl_active_progression") if isinstance(session_blob, dict) else None
+        live_cpl = ss.get("cpl_active_progression")
+        if isinstance(cloud_cpl, dict):
+            cloud_count = cpl_draft_chord_count(cloud_cpl)
+            live_count = cpl_draft_chord_count(live_cpl) if isinstance(live_cpl, dict) else 0
+            if cloud_count != live_count:
+                return True, f"cpl_chords:{cloud_count}!={live_count}"
+            cloud_sections = cloud_cpl.get("original_sections") or {}
+            live_sections = (live_cpl or {}).get("original_sections") if isinstance(live_cpl, dict) else {}
+            if cloud_sections != live_sections:
+                return True, "cpl_sections_drift"
+    except ImportError:
+        pass
+
     try:
         from active_song_state import (
             ACTIVE_SONG_STATE_KEY,
@@ -2701,7 +2732,6 @@ def music_active_song_cloud_drift(
     except ImportError:
         return False, ""
 
-    ss = st.session_state
     try:
         from practice_key_mode import is_fixed_practice_key_mode
 
@@ -2713,7 +2743,6 @@ def music_active_song_cloud_drift(
         cloud_dk = _resolve_display_key_from_music_blob(cloud_state)
         live_dk = str(ss.get("display_key") or "").strip()
         canonical_dk = ""
-        cloud_meta = cloud_state.get(ACTIVE_SONG_STATE_KEY)
         if isinstance(cloud_meta, dict):
             canonical_dk = str(cloud_meta.get("display_key") or "").strip()
         if cloud_dk and cloud_dk != live_dk:
@@ -2723,7 +2752,6 @@ def music_active_song_cloud_drift(
         if cloud_dk and not live_dk:
             return True, f"display_key:cloud_has:{cloud_dk}"
 
-    cloud_meta = cloud_state.get(ACTIVE_SONG_STATE_KEY)
     if isinstance(cloud_meta, dict):
         for key in CAPO_PERSIST_KEYS:
             if key not in cloud_meta:
@@ -2738,7 +2766,6 @@ def music_active_song_cloud_drift(
         if cloud_subtype and live_subtype and cloud_subtype != live_subtype:
             return True, "transposing_subtype"
 
-    session_blob = cloud_state.get("session")
     if isinstance(session_blob, dict):
         for key in CAPO_PERSIST_KEYS:
             if key not in session_blob:

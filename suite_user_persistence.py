@@ -578,6 +578,7 @@ def sync_workspace_protocol(
     *,
     apply_state: Callable[[Any, dict[str, Any]], None],
     cloud_first: bool = True,
+    content_resync_needed: Callable[[Any, dict[str, Any], str | None], tuple[bool, str]] | None = None,
 ) -> bool:
     """
     Authoritative workspace sync before sidebar widgets.
@@ -745,6 +746,13 @@ def sync_workspace_protocol(
     st.session_state["_suite_workspace_comparison_mismatch"] = comparison_mismatch
     st.session_state["_suite_already_synced_before_restore"] = already_synced
 
+    content_resync = False
+    content_resync_detail = ""
+    if content_resync_needed and cloud_state:
+        content_resync, content_resync_detail = content_resync_needed(st, cloud_state, cloud_ts)
+    st.session_state["_suite_persist_content_resync_needed"] = content_resync
+    st.session_state["_suite_persist_content_resync_detail"] = content_resync_detail or None
+
     apply_reasons: list[str] = []
     if first_sync:
         apply_reasons.append("first_sync")
@@ -769,6 +777,8 @@ def sync_workspace_protocol(
         apply_reasons.append("comparison_mismatch")
     if comparison_mismatch_apply:
         apply_reasons.append("comparison_mismatch_apply")
+    if content_resync:
+        apply_reasons.append(f"content_resync:{content_resync_detail or 'drift'}")
 
     should_apply = bool(
         picked.state
@@ -778,6 +788,7 @@ def sync_workspace_protocol(
             or cloud_newer_than_disk
             or page_mismatch_apply
             or comparison_mismatch_apply
+            or content_resync
         )
     )
     apply_reason = ", ".join(apply_reasons) if apply_reasons else "none"
@@ -803,6 +814,8 @@ def sync_workspace_protocol(
         return False
 
     try:
+        if cloud_newer_than_applied or first_sync or content_resync:
+            st.session_state["_music_authoritative_cloud_apply"] = True
         apply_state(st, picked.state)
     except Exception as exc:
         reason = f"apply_state failed: {exc}"
@@ -1357,6 +1370,10 @@ def force_autosave(
             "music_coach_send",
             "team_change",
             "nba_settings_change",
+            "cpl_draft_edit",
+            "song_edit",
+            "practice_edit",
+            "backing_edit",
         )
         if st.session_state.get(block_key) and not bypass_block:
             st.session_state["_suite_autosave_blocked_after_restore"] = True
