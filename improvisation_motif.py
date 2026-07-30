@@ -31,11 +31,19 @@ _RHYTHM_PATTERNS: dict[str, list[str]] = {
 }
 
 _RHYTHM_TO_ABC_LEN: dict[str, str] = {
-    "♩": "2",
+    "♩": "",
     "♪": "/2",
     "♬": "/4",
-    "♩.": "3",
-    "𝅗": "4",
+    "♩.": "3/2",
+    "𝅗": "2",
+}
+
+_RHYTHM_BEATS: dict[str, float] = {
+    "♩": 1.0,
+    "♪": 0.5,
+    "♬": 0.25,
+    "♩.": 1.5,
+    "𝅗": 2.0,
 }
 
 RHYTHM_PATTERN_KEYS: tuple[str, ...] = tuple(_RHYTHM_PATTERNS.keys())
@@ -277,6 +285,49 @@ def _abc_pitch(midi: int) -> str:
         if octave < 4:
             pitch = "," + pitch
     return pitch
+
+
+def _note_name_to_abc_pitch(note: str, *, octave: int = 4) -> str:
+    """Spell a note name (with b or #) for ABC; respects flats like Bb."""
+    text = str(note or "C").strip()
+    if not text:
+        return "C"
+    head = text[0].upper()
+    rest = text[1:]
+    acc = ""
+    if rest.startswith("b") or rest.startswith("♭"):
+        acc = "_"
+    elif rest.startswith("#") or rest.startswith("♯"):
+        acc = "^"
+    letter = head.lower() if octave <= 3 else head
+    if octave < 4:
+        letter = "," + letter
+    elif octave >= 5:
+        letter = letter + "'" * (octave - 4)
+    return f"{acc}{letter}"
+
+
+def motif_rhythm_symbols(motif: dict[str, Any]) -> list[str]:
+    """Per-note rhythm symbols — single source aligned with motif['rhythm'] text."""
+    stored = motif.get("rhythm_symbols")
+    if isinstance(stored, list) and stored:
+        syms = [str(s) for s in stored]
+    else:
+        syms = str(motif.get("rhythm") or "").split()
+    notes = list(motif.get("notes") or [])
+    if not syms:
+        syms = ["♩"] * len(notes)
+    while len(syms) < len(notes):
+        syms = syms + syms
+    return syms[: len(notes)]
+
+
+def _abc_key_header(key_center: str) -> str:
+    key_root = normalize_root(split_chord(key_center)[0])
+    k = key_root if len(key_root) == 1 or key_root in ("Ab", "Bb", "Eb", "Gb") else key_root[:1]
+    if "m" in str(key_center).lower() and "maj" not in str(key_center).lower():
+        k = k.lower() if k.isupper() else k
+    return k
 
 
 def _parse_key_scale(key_center: str) -> tuple[str, list[int]]:
@@ -566,6 +617,7 @@ def generate_motif_for_chord(
         "display": " – ".join(notes),
         "rhythm": rhythm,
         "rhythm_key": rhythm_key,
+        "rhythm_symbols": list(rhythm_syms),
         "midi": [_midi_from_note(n, 4) for n in notes],
         "variation_prompt": f"{tier} line on **{chord}** — vocabulary lick to internalize.",
         "harder_example": harder_example,
@@ -630,11 +682,15 @@ def cycle_motif_rhythm(motif: dict[str, Any]) -> dict[str, Any]:
         idx = 0
     new_rk = order[(idx + 1) % len(order)]
     syms = _RHYTHM_PATTERNS[new_rk]
+    while len(syms) < len(notes):
+        syms = syms + syms
+    syms = syms[: len(notes)]
     updated = dict(motif)
     updated["notes"] = notes
     updated["display"] = " – ".join(notes)
     updated["rhythm_key"] = new_rk
     updated["rhythm"] = " ".join(syms)
+    updated["rhythm_symbols"] = syms[: len(notes)]
     updated["midi"] = [_midi_from_note(n, 4) for n in notes]
     updated["variation_prompt"] = (
         f"Rhythm on **{motif.get('chord', '')}**: {' – '.join(notes)} · {updated['rhythm']}"
@@ -644,11 +700,14 @@ def cycle_motif_rhythm(motif: dict[str, Any]) -> dict[str, Any]:
 
 
 def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:
-    """Ensure midi[] matches notes[] after any edit."""
+    """Ensure midi[], display, and rhythm_symbols match notes[] after any edit."""
     notes = list(motif.get("notes") or [])
     motif["notes"] = notes
     motif["display"] = " – ".join(notes)
     motif["midi"] = [_midi_from_note(n, 4) for n in notes]
+    syms = motif_rhythm_symbols(motif)
+    motif["rhythm_symbols"] = syms
+    motif["rhythm"] = " ".join(syms)
     return motif
 
 
@@ -659,24 +718,30 @@ def build_motif_abc(
     bpm: int = 100,
     title: str = "Motif",
 ) -> str:
-    """1–2 measure ABC for motif notes."""
-    midis = motif.get("midi") or [_midi_from_note(n, 4) for n in motif.get("notes", [])]
-    rhythm_key = motif.get("rhythm_key", "quarter-quarter-quarter")
-    syms = _RHYTHM_PATTERNS.get(rhythm_key, ["♩", "♩", "♩"])
-    abc_notes: list[str] = []
-    for i, midi in enumerate(midis[:3]):
-        sym = syms[i] if i < len(syms) else "♩"
-        length = _RHYTHM_TO_ABC_LEN.get(sym, "2")
-        pitch = _abc_pitch(int(midi))
-        abc_notes.append(f"{pitch}{length}")
-    if len(abc_notes) < 4:
-        abc_notes.append("z2")
-    music = " ".join(abc_notes) + " | z4 z4 |"
+    """ABC for the full motif — every note and rhythm symbol from the motif dict."""
+    notes = list(motif.get("notes") or [])
+    midis = motif.get("midi") or [_midi_from_note(n, 4) for n in notes]
+    if len(midis) < len(notes):
+        midis = [_midi_from_note(n, 4) for n in notes]
+    syms = motif_rhythm_symbols(motif)
 
-    key_root = normalize_root(split_chord(key_center)[0])
-    k = key_root if len(key_root) == 1 or key_root in ("Ab", "Bb", "Eb", "Gb") else key_root[:1]
-    if "m" in str(key_center).lower() and "maj" not in str(key_center).lower():
-        k = k.lower() if k.isupper() else k
+    abc_tokens: list[str] = []
+    beats_in_bar = 0.0
+    for i, note in enumerate(notes):
+        sym = syms[i] if i < len(syms) else "♩"
+        length = _RHYTHM_TO_ABC_LEN.get(sym, "")
+        pitch = _note_name_to_abc_pitch(str(note), octave=4)
+        abc_tokens.append(f"{pitch}{length}")
+        beats_in_bar += _RHYTHM_BEATS.get(sym, 1.0)
+        if beats_in_bar >= 4.0 - 1e-6:
+            abc_tokens.append("|")
+            beats_in_bar = 0.0
+
+    if beats_in_bar > 0 and abc_tokens and abc_tokens[-1] != "|":
+        abc_tokens.append("|")
+
+    music = " ".join(abc_tokens)
+    k = _abc_key_header(key_center)
 
     return f"""X:1
 T:{title}
@@ -702,11 +767,11 @@ def _fret_for_note(midi: int, used: set[tuple[int, int]]) -> tuple[int, int]:
 
 
 def build_motif_guitar_tab(motif: dict[str, Any]) -> str:
-    """ASCII guitar TAB for up to 3 motif notes."""
+    """ASCII guitar TAB for all motif notes (same order as notation)."""
     midis = motif.get("midi") or [_midi_from_note(n, 4) for n in motif.get("notes", [])]
     placements: list[tuple[int, int]] = []
     used: set[tuple[int, int]] = set()
-    for m in midis[:3]:
+    for m in midis:
         si, fr = _fret_for_note(int(m), used)
         used.add((si, fr))
         placements.append((si, fr))

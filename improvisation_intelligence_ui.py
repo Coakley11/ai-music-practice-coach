@@ -992,10 +992,10 @@ def _render_section_chord_map(
     st.caption(cap)
 
 
-def _render_motif_sheet_music(st: Any, abc_text: str) -> None:
+def _render_motif_sheet_music(st: Any, abc_text: str, *, height: int = 360) -> None:
     """Staff notation first; ABC source in a collapsed expander below (no overlap)."""
     with st.container():
-        _render_abc(st, abc_text, height=360)
+        _render_abc(st, abc_text, height=height)
     with st.expander("ABC source (optional)", expanded=False):
         st.code(abc_text, language=None)
 
@@ -1252,7 +1252,9 @@ def _tab_missions(
 
     if example.abc:
         st.markdown("**Sheet music**")
-        _render_motif_sheet_music(st, example.abc)
+        n_notes = len(example.motif.get("notes") or [])
+        staff_h = min(720, max(360, 280 + n_notes * 14))
+        _render_motif_sheet_music(st, example.abc, height=staff_h)
 
     if family == "guitar" and example.tab:
         st.markdown("**Guitar TAB**")
