@@ -7,6 +7,15 @@ from typing import Any
 
 import streamlit as st
 
+from composition_review import (
+    build_readiness_checklist,
+    coach_line_for_review,
+    harmony_overview_rows,
+    lyrics_overview_rows,
+    melody_overview_rows,
+    readiness_glyph,
+    song_is_ready,
+)
 from composition_chord_suggestions import (
     SECTION_HARMONY_FEELINGS,
     coach_line_for_section,
@@ -49,6 +58,7 @@ from composition_document import (
     break_chord_link,
     chord_link_display,
     chords_for_playback,
+    complete_workflow_phase,
     document_summary_line,
     duplicate_section,
     ensure_workflow,
@@ -61,6 +71,7 @@ from composition_document import (
     ordered_sections,
     parse_chord_paste,
     phase_is_reachable,
+    playback_globals,
     remove_section,
     remove_melody_phrase,
     section_by_id,
@@ -356,6 +367,75 @@ body[data-studio-page="composer"] .block-container {
   line-height: 1.45;
   margin: 0;
 }
+.composer-review-cover {
+  background: linear-gradient(145deg, #0f172a 0%, #1e3a5f 55%, #4338ca 100%);
+  color: #f8fafc;
+  border-radius: 16px;
+  padding: 1.35rem 1.45rem 1.2rem;
+  margin-bottom: 0.85rem;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2);
+}
+.composer-review-cover h2 {
+  margin: 0 0 0.35rem 0;
+  font-size: 1.65rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.composer-review-cover .composer-review-meta {
+  font-size: 0.88rem;
+  color: #cbd5e1;
+  line-height: 1.55;
+  margin: 0.35rem 0 0;
+}
+.composer-review-cover .composer-review-idea {
+  margin-top: 0.75rem;
+  font-size: 0.92rem;
+  color: #e2e8f0;
+  line-height: 1.5;
+  font-style: italic;
+}
+.composer-review-block {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.65rem;
+}
+.composer-review-block h4 {
+  margin: 0 0 0.45rem 0;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+.composer-readiness-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.composer-readiness-list li {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.35rem 0;
+  font-size: 0.88rem;
+  color: #334155;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.composer-readiness-list li:last-child { border-bottom: none; }
+.composer-readiness-glyph {
+  font-weight: 800;
+  min-width: 1.1rem;
+  color: #4f46e5;
+}
+.composer-readiness-glyph.is-missing { color: #94a3b8; }
+.composer-readiness-glyph.is-partial { color: #d97706; }
+.composer-readiness-glyph.is-skipped { color: #64748b; }
+.composer-review-section-row {
+  font-size: 0.85rem;
+  color: #475569;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.05);
+}
+.composer-review-section-row strong { color: #0f172a; }
 .composer-linked-banner {
   background: #fffbeb;
   border: 1px solid rgba(245, 158, 11, 0.35);
@@ -384,6 +464,239 @@ def _save_doc(session_state: dict, doc: dict[str, Any]) -> None:
     touch_composition(doc)
     set_active_document(session_state, doc)
     save_document_to_library(session_state, doc)
+
+
+def _composer_navigate(
+    session_state: dict,
+    doc: dict[str, Any],
+    phase: str,
+    *,
+    section_id: str | None = None,
+) -> None:
+    set_workflow_phase(doc, phase)
+    if section_id:
+        session_state[COMPOSER_ACTIVE_SECTION_KEY] = section_id
+    invalidate_composer_preview(session_state)
+    _save_doc(session_state, doc)
+    st.rerun()
+
+
+def _readiness_glyph_class(status: str) -> str:
+    if status in ("missing", "current"):
+        return "composer-readiness-glyph is-missing"
+    if status == "partial":
+        return "composer-readiness-glyph is-partial"
+    if status == "skipped":
+        return "composer-readiness-glyph is-skipped"
+    return "composer-readiness-glyph"
+
+
+def _render_phase_review(session_state: dict, doc: dict[str, Any]) -> None:
+    _ensure_active_section(session_state, doc)
+    wf = ensure_workflow(doc)
+    skip_lyrics = bool(wf.get("skip_lyrics"))
+    meta = doc.get("metadata") or {}
+    origin = doc.get("origin") or {}
+    pg = playback_globals(doc)
+    idea = str(meta.get("description") or origin.get("seed_summary") or "").strip()
+    genre = str(meta.get("style") or "—")
+    mood = str(meta.get("mood") or "—")
+    title = str(doc.get("title") or "Untitled Song")
+    vocal_label = "Instrumental" if skip_lyrics else "Vocal"
+
+    sections = ordered_sections(doc)
+    selected_id = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
+    if sections and selected_id not in [str(s.get("id")) for s in sections]:
+        selected_id = str(sections[0].get("id") or "")
+        session_state[COMPOSER_ACTIVE_SECTION_KEY] = selected_id
+
+    center, side = st.columns([2.3, 1])
+    with center:
+        st.markdown(
+            """
+<div class="composer-phase-card">
+  <h3>Review</h3>
+  <p>Step back and experience your song as one complete piece. Is it ready?</p>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        idea_html = (
+            f'<p class="composer-review-idea">"{html.escape(idea[:280])}{"…" if len(idea) > 280 else ""}"</p>'
+            if idea
+            else ""
+        )
+        st.markdown(
+            f"""
+<div class="composer-review-cover">
+  <h2>{html.escape(title)}</h2>
+  <p class="composer-review-meta">
+    <strong>{html.escape(genre)}</strong> · {html.escape(mood)} · Key {html.escape(str(pg["key_center"]))} · {pg["bpm"]} BPM · {html.escape(str(pg["time_signature"]))} · {vocal_label}
+  </p>
+  {idea_html}
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("**Return to editing**")
+        edit_cols = st.columns(6)
+        jump_phases = [p for p in COMPOSITION_PHASES if p != "review"]
+        for col, phase in zip(edit_cols, jump_phases):
+            label = COMPOSITION_PHASE_LABELS.get(phase, phase)
+            if phase == "lyrics" and skip_lyrics:
+                label = "Lyrics · skip"
+            with col:
+                disabled = phase == "lyrics" and skip_lyrics
+                if st.button(
+                    label,
+                    key=f"composer_review_edit_{phase}",
+                    use_container_width=True,
+                    disabled=disabled,
+                ):
+                    _composer_navigate(session_state, doc, phase)
+
+        st.markdown("---")
+        st.markdown('<div class="composer-review-block"><h4>Structure</h4></div>', unsafe_allow_html=True)
+        if sections:
+            st.markdown(
+                f'<div class="composer-structure-scroll">{_structure_timeline_html(doc, selected_id)}</div>',
+                unsafe_allow_html=True,
+            )
+            sec_labels = [str(s.get("label_variant") or s.get("label") or "Section") for s in sections]
+            sec_ids = [str(s.get("id") or "") for s in sections]
+            j1, j2, j3 = st.columns([2, 2, 1])
+            with j1:
+                sec_idx = st.selectbox(
+                    "Section",
+                    range(len(sec_ids)),
+                    format_func=lambda i: sec_labels[i],
+                    key="composer_review_jump_section",
+                )
+            with j2:
+                target_phase = st.selectbox(
+                    "Open in phase",
+                    ["structure", "chords", "melody"] + ([] if skip_lyrics else ["lyrics"]),
+                    format_func=lambda p: COMPOSITION_PHASE_LABELS.get(p, p),
+                    key="composer_review_jump_phase",
+                )
+            with j3:
+                st.markdown("<div style='height:1.65rem'></div>", unsafe_allow_html=True)
+                if st.button("Go", key="composer_review_jump_go", use_container_width=True):
+                    _composer_navigate(session_state, doc, target_phase, section_id=sec_ids[sec_idx])
+        else:
+            st.info("No sections yet — start in **Song Structure**.")
+
+        st.markdown('<div class="composer-review-block"><h4>Harmony</h4></div>', unsafe_allow_html=True)
+        for row in harmony_overview_rows(doc):
+            link_bit = f' <em>({html.escape(str(row["note"]))})</em>' if row.get("note") else ""
+            st.markdown(
+                f'<div class="composer-review-section-row"><strong>{html.escape(row["variant"])}</strong> — '
+                f'{html.escape(str(row["line"]))}{link_bit}</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown('<div class="composer-review-block"><h4>Melody</h4></div>', unsafe_allow_html=True)
+        for row in melody_overview_rows(doc):
+            status = "✓" if row["complete"] else "○ needs work"
+            extra = f' — <em>{html.escape(str(row["summary"]))}</em>' if row.get("summary") else ""
+            st.markdown(
+                f'<div class="composer-review-section-row">{status} <strong>{html.escape(row["variant"])}</strong>{extra}</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown('<div class="composer-review-block"><h4>Lyrics</h4></div>', unsafe_allow_html=True)
+        if skip_lyrics:
+            st.markdown(
+                '<p class="composer-review-section-row">This is an <strong>instrumental</strong> '
+                "composition — lyrics are not part of this song.</p>",
+                unsafe_allow_html=True,
+            )
+        else:
+            lyric_rows = lyrics_overview_rows(doc)
+            if not any(r["has_lyrics"] for r in lyric_rows):
+                st.caption("No lyrics yet — jump to the Lyrics phase to write section by section.")
+            for row in lyric_rows:
+                with st.expander(row["variant"], expanded=False):
+                    if row["has_lyrics"]:
+                        st.text(row["raw_text"] or "")
+                    else:
+                        st.caption("No lyrics for this section yet.")
+
+        st.markdown("---")
+        st.markdown("**Full song playthrough**")
+        st.caption("Hear the entire composition in order — your first listen as a finished piece.")
+        p1, p2, p3 = st.columns([2, 2, 3])
+        with p1:
+            loops = st.slider("Loops", 1, 3, int(session_state.get("composer_review_loops") or 1), key="composer_review_loops")
+        with p2:
+            st.markdown("<div style='height:1.65rem'></div>", unsafe_allow_html=True)
+        with p3:
+            play_full = st.button(
+                "▶ Play full song",
+                type="primary",
+                key="composer_review_play_full",
+                use_container_width=True,
+            )
+        if play_full:
+            if not chords_for_playback(doc, scope="song"):
+                st.warning("Add chords to at least one section before playing.")
+            else:
+                sig = preview_signature(doc, scope="song", loops=loops)
+                wav = generate_preview_wav(doc, scope="song", loops=loops)
+                if wav:
+                    session_state[COMPOSER_PREVIEW_WAV_KEY] = wav
+                    session_state[COMPOSER_PREVIEW_SIG_KEY] = sig
+                else:
+                    st.warning("Could not generate playback.")
+        wav = session_state.get(COMPOSER_PREVIEW_WAV_KEY)
+        if wav:
+            st.audio(wav, format="audio/wav")
+
+        st.markdown("---")
+        st.markdown('<div class="composer-review-block"><h4>Readiness</h4></div>', unsafe_allow_html=True)
+        checklist = build_readiness_checklist(doc, current_phase="review")
+        items_html: list[str] = ['<ul class="composer-readiness-list">']
+        for row in checklist:
+            glyph = readiness_glyph(str(row["status"]))
+            gclass = _readiness_glyph_class(str(row["status"]))
+            items_html.append(
+                f'<li><span class="{gclass}">{glyph}</span>'
+                f"<span><strong>{html.escape(str(row['label']))}</strong> — {html.escape(str(row['note']))}</span></li>"
+            )
+        items_html.append("</ul>")
+        st.markdown("".join(items_html), unsafe_allow_html=True)
+
+        ready = song_is_ready(doc)
+        if ready:
+            st.success("Core phases look complete — refine anything that doesn't feel true, then mark the song ready.")
+        else:
+            st.info("Some areas still need attention — use the checklist and jump back to any phase.")
+
+        m1, m2 = st.columns(2)
+        with m1:
+            if st.button("Mark song ready", type="primary", key="composer_review_mark_ready", disabled=not ready):
+                doc["status"] = "ready"
+                complete_workflow_phase(doc, "review")
+                _save_doc(session_state, doc)
+                st.rerun()
+        with m2:
+            if st.button("Keep refining", key="composer_review_keep_refining", use_container_width=True):
+                set_workflow_phase(doc, "chords")
+                _save_doc(session_state, doc)
+                st.rerun()
+
+        if str(doc.get("status") or "") == "ready":
+            st.caption("You've marked this song **ready** — it's saved in your library whenever you need it.")
+
+    with side:
+        _render_coach_panel(doc, lead=coach_line_for_review(doc))
+        st.markdown(
+            f'<p style="font-size:0.82rem;color:#64748b;margin-top:0.5rem;">{document_summary_line(doc)}</p>',
+            unsafe_allow_html=True,
+        )
+        _render_library_sidebar(session_state)
 
 
 def _vision_coach_html(doc: dict[str, Any]) -> str:
@@ -2139,6 +2452,6 @@ def render_composition_studio_page() -> None:
     elif phase == "lyrics":
         _render_phase_lyrics(session_state, doc)
     elif phase == "review":
-        _render_phase_placeholder(session_state, doc, "review")
+        _render_phase_review(session_state, doc)
     else:
         _render_phase_vision(session_state, doc)

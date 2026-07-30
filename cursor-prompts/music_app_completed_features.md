@@ -24,6 +24,13 @@
 
 ## Completed Features
 
+### Composition Studio CS-B5 — Review (2026-07-30)
+
+- [x] `composition_review.py` — readiness checklist, harmony/melody/lyrics overviews, whole-song coach
+- [x] Review phase UI: cover summary, structure timeline, full-song play, jump to any phase/section
+- [x] Mark song ready + readiness gates
+- [x] Tests: `tests/test_composition_review.py`
+
 ### Composition Studio CS-B4 — coach-first Lyrics (2026-07-30)
 
 - [x] `composition_lyric_suggestions.py` — role/emotion prompts, brainstorm seeds, cross-section theme memory

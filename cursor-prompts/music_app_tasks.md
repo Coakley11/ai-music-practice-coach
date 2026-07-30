@@ -97,17 +97,14 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 ### P1 — Composition Studio polish (active — highest priority)
 
 **Plan:** [plans/2026-07-29-composition-studio-six-phase-songwriting.md](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)  
-**Shipped:** CS-B0 (`b9993a1`), CS-B1 (`22877a8`), CS-B2 (`0fdaaa3`), CS-B3 (`f905b19`), CS-B4 (coach-first Lyrics).
+**Shipped:** CS-B0–B5 — full six-phase guided songwriting on `dev` (Vision → Review).
 
-- [x] **CS-B2** — Coach-first Chords: section feeling, suggestions, compare, preview, grid secondary
-- [x] **CS-B3** — Coach-first Melody: remember/feel/style questions, hum-first, concepts, compare, phrase editor secondary
-- [x] **CS-B4** — Coach-first Lyrics: communicate/emotion/role/remember prompts, brainstorm/explore/compare/write paths, cross-section theme memory, lyric editor secondary
-- [ ] **CS-B5** — Phase 6 Review + full-song playthrough (next commit)
+- [x] **CS-B5** — Review: cover summary, structure/harmony/melody/lyrics overviews, full-song play, readiness checklist, whole-song coach
 - [x] **Structure + Melody polish** — visual timeline, tap-to-select, grouped section actions, linked-harmony playback, hear-section, melody refinements, chords-first guidance, hum-record scaffold
-- [ ] **Melody Capture sprint** — hum-over-looping-chords → pitch/rhythm → editable melody (flagship; plan after B5)
-- [ ] **CS-C** — OpenAI proposals per phase (after polish + B5)
+- [ ] **Melody Capture sprint** — hum-over-looping-chords → pitch/rhythm → editable melody ([backlog](./music_app_feature_backlog.md#song-composer--composition-studio))
+- [ ] **CS-C** — OpenAI proposals per phase (after Melody Capture planning)
 
-**Acceptance:** New user describes Composition Studio without “chord grid”; structure appears before chords; linked sections preview with correct harmony; Review shows full song overview (CS-B5).
+**Acceptance:** New user describes Composition Studio without “chord grid”; structure appears before chords; Review shows full song overview.
 
 ### P1 — Flagship coaching content (Phase 1 framework **complete**)
 
