@@ -2783,6 +2783,8 @@ def full_chord_markdown(
 </style>
 """
 
+    from musician_coaching import format_key_for_musicians, header_subtitle_for_chart
+
     key_text = f"Key: {html.escape(format_key_for_musicians(str(dk)))}"
     if _developer_mode_enabled() and dk != song_data["key"]:
         key_text += f" (catalog {html.escape(str(song_data['key']))})"
@@ -2798,8 +2800,6 @@ def full_chord_markdown(
         meta_bits.append("Drums/Bass/Comping: active")
     meta = "".join(f"<span class='meta-pill'>{bit}</span>" for bit in meta_bits)
     try:
-        from musician_coaching import format_key_for_musicians, header_subtitle_for_chart
-
         subtitle = header_subtitle_for_chart(
             song_data,
             practice_key=str(dk),
