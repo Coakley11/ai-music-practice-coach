@@ -21,7 +21,13 @@ def test_build_song_coaching_curated_instrument_tip():
     record = {"title": "Perfect", "genre": "Pop", "key": "G"}
     block = build_song_coaching(record, {}, instrument="Piano")
     assert block["instrument_tip"]
-    assert "left hand" in block["instrument_tip"].lower() or "hand" in block["instrument_tip"].lower()
+    assert (
+        "left hand" in block["instrument_tip"].lower()
+        or "hand" in block["instrument_tip"].lower()
+        or "simplicity" in block["instrument_tip"].lower()
+        or "slow-dance" in block["instrument_tip"].lower()
+        or "wedding" in block["instrument_tip"].lower()
+    )
 
 
 def test_fallback_unknown_song():
@@ -32,13 +38,22 @@ def test_fallback_unknown_song():
 
 
 def test_coaching_markdown_has_five_sections():
-    block = build_song_coaching({"title": "Shallow", "key": "G", "genre": "Pop"}, {})
-    md = coaching_markdown(block)
-    assert "What matters most" in md
-    assert "Biggest challenge" in md
-    assert "Instrument tip" in md
-    assert "Practice next" in md
-    assert "Performance next" in md
+    record = {"title": "Shallow", "key": "G", "genre": "Pop", "extensions": {}}
+    block = build_song_coaching(record, {})
+    md = coaching_markdown(
+        block,
+        record,
+        instrument="Guitar",
+        level="Intermediate",
+        practice_key="G",
+        sections={},
+    )
+    assert "Your practice plan" in md
+    assert (
+        "Masterclass" in md
+        or "Through the song" in md
+        or "practice room" in md.lower()
+    )
 
 
 def test_scale_summary_capped():

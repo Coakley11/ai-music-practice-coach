@@ -1866,6 +1866,12 @@ def _lyric_lines_for_section(
         if isinstance(raw, str):
             raw = [raw]
         lines = [str(c).strip() for c in raw if str(c).strip()]
+        try:
+            from musician_coaching import humanize_lyric_cue
+
+            lines = [humanize_lyric_cue(ln, title="", section_name=section_name) for ln in lines]
+        except Exception:
+            pass
     return lines[:limit]
 
 
@@ -2338,7 +2344,18 @@ def _roman_for_chord(chord, key_name):
         return "?"
 
 
-def _inline_harmonic_analysis(section_name, chords, key_name):
+def _inline_harmonic_analysis(section_name, chords, key_name, song_title="", song_artist=""):
+    try:
+        from musician_coaching import plain_section_harmony_tip
+
+        return plain_section_harmony_tip(
+            section_name,
+            list(chords or []),
+            title=song_title or "",
+            artist=song_artist or "",
+        )
+    except Exception:
+        pass
     if not chords:
         return "No harmonic movement entered yet."
     condensed = []
@@ -2766,9 +2783,9 @@ def full_chord_markdown(
 </style>
 """
 
-    key_text = f"Key: {html.escape(str(dk))}"
-    if dk != song_data["key"]:
-        key_text += f" (orig. {html.escape(str(song_data['key']))})"
+    key_text = f"Key: {html.escape(format_key_for_musicians(str(dk)))}"
+    if _developer_mode_enabled() and dk != song_data["key"]:
+        key_text += f" (catalog {html.escape(str(song_data['key']))})"
     meta_bits = [
         key_text,
         f"Level: {html.escape(str(level))}",
@@ -2776,14 +2793,30 @@ def full_chord_markdown(
         f"Tempo: {int(bpm)} BPM",
         f"Time: {html.escape(str(time_signature))}",
         f"Feel: {html.escape(_chart_feel_label(groove_style))}",
-        "Drums/Bass/Comping: active",
     ]
+    if _developer_mode_enabled():
+        meta_bits.append("Drums/Bass/Comping: active")
     meta = "".join(f"<span class='meta-pill'>{bit}</span>" for bit in meta_bits)
-    header_note = (
-        f"<div class='lead-subtitle'>{html.escape(str(ext['arrangement_notes']))}</div>"
-        if ext.get("arrangement_notes")
-        else ""
-    )
+    try:
+        from musician_coaching import format_key_for_musicians, header_subtitle_for_chart
+
+        subtitle = header_subtitle_for_chart(
+            song_data,
+            practice_key=str(dk),
+            instrument=str(instrument or ""),
+            level=str(level or "Intermediate"),
+            sections=sections,
+            show_internal_notes=_developer_mode_enabled(),
+        )
+        header_note = (
+            f"<div class='lead-subtitle'>{html.escape(subtitle)}</div>" if subtitle else ""
+        )
+    except Exception:
+        header_note = (
+            f"<div class='lead-subtitle'>{html.escape(str(ext['arrangement_notes']))}</div>"
+            if ext.get("arrangement_notes") and _developer_mode_enabled()
+            else ""
+        )
 
     section_cards = []
     current_parts = set()
@@ -2811,8 +2844,8 @@ def full_chord_markdown(
   </div>
   {_chart_grid_html(chords, current_bar=current_bar_for_section, section_name=section_name)}
   {_section_lyric_html(section_name, chords, instrument, lyric_cues=merged_lyric_cues, section_lyrics=section_lyrics or {})}
-  <div class="overlay-box"><strong>{html.escape(str(instrument))}:</strong> {_section_overlay(instrument, focus, chords, section_name=section_name, groove_style=groove_style, time_signature=time_signature, bpm=bpm)}</div>
-  <div class="analysis-box">{_inline_harmonic_analysis(section_name, chords, dk)}</div>
+  <div class="overlay-box"><strong>{html.escape(str(instrument))}:</strong> {_section_overlay(instrument, focus, chords, section_name=section_name, groove_style=groove_style, time_signature=time_signature, bpm=bpm, level=level, song_title=song_name, song_artist=str(song_data.get("artist") or ""))}</div>
+  <div class="analysis-box">{_inline_harmonic_analysis(section_name, chords, dk, song_title=song_name, song_artist=str(song_data.get("artist") or ""))}</div>
 </section>
 """
             )
@@ -7316,6 +7349,8 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             ),
             "practice_focus": "core chord changes · rhythm feel · clean transitions",
             "chord_concepts": [],
+            "harmony_hint": "",
+            "challenge_hint": "",
             "practice_goals": [],
             "why_practice": "",
             "visual_emoji": "🎵",
@@ -7342,7 +7377,28 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         if not str(details.get(key) or "").strip():
             details[key] = blank_fallback
     trusted_cls = " trusted" if details.get("trusted") else ""
+    _raw_harmony = str(details.get("harmony_hint") or "").strip()
+    _raw_challenge = str(details.get("challenge_hint") or "").strip()
+    if not _raw_challenge:
+        _raw_challenge = str((details.get("coaching") or {}).get("biggest_challenge") or "").strip()
+    try:
+        from musician_coaching import is_internal_arrangement_note, is_theory_jargon
+
+        if _raw_harmony and (
+            is_theory_jargon(_raw_harmony) or is_internal_arrangement_note(_raw_harmony)
+        ):
+            _raw_harmony = ""
+        if _raw_challenge and (
+            is_theory_jargon(_raw_challenge) or is_internal_arrangement_note(_raw_challenge)
+        ):
+            _raw_challenge = ""
+    except Exception:
+        pass
+    harmony_hint = html.escape(_raw_harmony)
+    challenge_hint = html.escape(_raw_challenge)
     concepts = ", ".join(html.escape(c) for c in details.get("chord_concepts") or [])
+    if not harmony_hint and concepts:
+        harmony_hint = concepts
     goals_html = "".join(
         f"<li>{html.escape(g)}</li>" for g in (details.get("practice_goals") or [])
     )
@@ -7444,18 +7500,14 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         f"</dl>"
         + (
             f'<p class="ui-active-song-blurb"><strong>Challenge:</strong> '
-            f'{html.escape(str((details.get("coaching") or {}).get("biggest_challenge") or ""))}</p>'
-            if str((details.get("coaching") or {}).get("biggest_challenge") or "").strip()
+            f'{challenge_hint}</p>'
+            if challenge_hint
             else ""
         )
         + (
-            f'<p class="ui-active-song-blurb"><strong>Harmony:</strong> {concepts}</p>'
-            if concepts and not (details.get("coaching") or {})
-            else (
-                f'<p class="ui-active-song-blurb ui-active-song-blurb-muted"><strong>Harmony:</strong> {concepts}</p>'
-                if concepts
-                else ""
-            )
+            f'<p class="ui-active-song-blurb"><strong>Harmony:</strong> {harmony_hint}</p>'
+            if harmony_hint
+            else ""
         )
         + f'<p class="ui-active-song-blurb">{html.escape(str(details.get("why_practice", "")))}</p>'
         + (f'<ul class="ui-active-song-goals">{goals_html}</ul>' if goals_html else "")
@@ -10544,7 +10596,16 @@ if _studio_page == "practice":
                 practice_key=_practice_chart_key,
             )
             with st.expander("Song coach", expanded=pp.feature_expander_default(st, default=False)):
-                st.markdown(coaching_markdown(_song_coaching))
+                st.markdown(
+                    coaching_markdown(
+                        _song_coaching,
+                        song_data,
+                        instrument=instrument,
+                        level=level,
+                        practice_key=_practice_chart_key,
+                        sections=sections_for_practice,
+                    )
+                )
             _coaching_scale_line = coaching_scale_summary(_song_coaching)
         except Exception:
             _song_coaching = {}
@@ -11005,6 +11066,17 @@ if _studio_page == "practice":
             _ug_sections = lyric_chord_chart_sections(song_data)
             if _ug_sections:
                 with st.expander("Lyric & chord sheet", expanded=False):
+                    try:
+                        from musician_coaching import instructor_card_summary
+
+                        _ug_header = instructor_card_summary(
+                            str(song_data.get("title") or song or ""),
+                            instrument=str(instrument or ""),
+                            level=str(level or "Intermediate"),
+                            artist=str(song_data.get("artist") or "") or None,
+                        )
+                    except Exception:
+                        _ug_header = ""
                     st.markdown(
                         render_lyric_chord_sheet(
                             _ug_sections,
@@ -11017,9 +11089,7 @@ if _studio_page == "practice":
                                 f"Level: {level}",
                                 f"Time: {_time_sig}",
                             ],
-                            header_note=str(
-                                (song_data.get("extensions") or {}).get("arrangement_notes") or ""
-                            ),
+                            header_note=_ug_header,
                             now_playing=_active_section_display if not _is_full_song else "Full song",
                             show_full=_is_full_song,
                         ),
@@ -12071,6 +12141,9 @@ elif _studio_page == "backing":
                     groove_style=resolved_groove,
                     time_signature=default_time_signature(song, chart_sections),
                     bpm=bpm,
+                    level=level,
+                    song_title=song,
+                    song_artist=str(song_data.get("artist") or ""),
                 ),
                 unsafe_allow_html=True,
             )

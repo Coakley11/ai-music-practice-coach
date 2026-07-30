@@ -378,9 +378,14 @@ def practice_goals_for_record(record: dict[str, Any], sections: dict[str, list[s
         f"Lock the form: {' → '.join(section_names[:5])}" if section_names else "Map the full form once slowly",
         "Play each section 4× with metronome before adding backing",
     ]
-    concepts = chord_concepts_from_sections(sections, genre=record.get("genre", ""))
-    if concepts:
-        goals.append(f"Study harmonic color: {', '.join(concepts[:3])}")
+    try:
+        from musician_coaching import musician_harmony_blurb
+
+        hint = musician_harmony_blurb(record, sections)
+        if hint:
+            goals.append(hint)
+    except Exception:
+        pass
     if any("chorus" in n.lower() for n in section_names):
         goals.append("Save strongest dynamics for the chorus arrival")
     if record.get("trusted_core"):
@@ -428,7 +433,6 @@ def active_song_card_details(
         # Defensive: never break the song card if the helper module is
         # unavailable - fall back to the full section list.
         pass
-    concepts = chord_concepts_from_sections(sections, genre=genre)
     bpm = base.get("bpm") or _default_bpm_for_record(record)
     key = str(practice_key or base.get("key") or "C").strip() or "C"
     coaching_key = str(chart_key or practice_key or base.get("key") or "C").strip() or key
@@ -463,22 +467,79 @@ def active_song_card_details(
         practice_focus_text = coaching_practice_focus(coaching)
     except Exception:
         coaching = {}
+        practice_focus_text = ""
+
+    try:
+        from musician_coaching import practice_focus_plain, musician_summary_paragraph
+
+        practice_focus_text = practice_focus_plain(
+            record,
+            sections,
+            level=level,
+            instrument=instrument,
+            practice_key=key,
+        )
+        why_practice_text = musician_summary_paragraph(
+            record,
+            sections,
+            practice_key=key,
+            instrument=instrument,
+            level=level,
+        )
+    except Exception:
+        why_practice_text = ""
+
+    if not str(practice_focus_text or "").strip():
         practice_focus_text = practice_focus_hints(
             record,
             sections,
             level=level,
             instrument=instrument,
         )
-    if not str(practice_focus_text or "").strip():
-        practice_focus_text = (
-            "core chord changes · rhythm feel · clean transitions"
+    if not str(why_practice_text or "").strip():
+        ext_notes = str(ext.get("arrangement_notes") or "").strip()
+        try:
+            from musician_coaching import is_internal_arrangement_note
+
+            if ext_notes and not is_internal_arrangement_note(ext_notes):
+                why_practice_text = ext_notes
+            else:
+                from musician_coaching import format_key_for_musicians
+
+                why_practice_text = (
+                    f"Practice {base['title']} in {format_key_for_musicians(key)} "
+                    "— section by section with backing and the metronome."
+                )
+        except Exception:
+            why_practice_text = (
+                f"Trusted practice chart for {base['title']} — "
+                "work section-by-section with backing and coach tools."
+            )
+
+    harmony_hint = ""
+    challenge_hint = ""
+    try:
+        from musician_coaching import musician_challenge_blurb, musician_harmony_blurb
+
+        harmony_hint = musician_harmony_blurb(
+            record, sections, instrument=instrument, level=level
         )
+        challenge_hint = musician_challenge_blurb(
+            record, sections, instrument=instrument, level=level, coaching=coaching
+        )
+    except Exception:
+        challenge_hint = str((coaching or {}).get("biggest_challenge") or "")
+
+    try:
+        from musician_coaching import format_key_for_musicians as _fmt_key
+    except Exception:
+        _fmt_key = lambda pk: f"{pk} major" if "m" not in str(pk).lower() else f"{pk} minor"
 
     return {
         **base,
         "bpm": bpm,
         "time_signature": _default_time_signature_for_record(record, sections),
-        "key_display": f"{key} major" if "m" not in str(key).lower() else f"{key} minor",
+        "key_display": _fmt_key(key),
         "style_label": style_label,
         "sections": section_labels,
         # Visual section flow: arrow-separated, numbers stripped, adjacent
@@ -487,15 +548,11 @@ def active_song_card_details(
         "section_summary": section_summary,
         "practice_focus": practice_focus_text,
         "coaching": coaching,
-        "chord_concepts": concepts[:2] if coaching else concepts,
+        "harmony_hint": harmony_hint,
+        "challenge_hint": challenge_hint,
+        "chord_concepts": [],
         "practice_goals": practice_goals_for_record(record, sections),
-        "why_practice": (
-            ext.get("arrangement_notes")
-            or (
-                f"Trusted practice chart for {base['title']} — "
-                "work section-by-section with backing and coach tools."
-            )
-        ),
+        "why_practice": why_practice_text,
         "visual_emoji": visual["emoji"],
         "visual_gradient": visual["gradient"],
         "visual_genre": visual["label"],
@@ -904,6 +961,39 @@ def section_deep_practice_markdown(
         section_name, section_chords, instrument, level, focus, resolved_groove
     )
 
+    coach_intro = ""
+    _display_key = str(display_key or "C")
+    try:
+        from musician_coaching import format_key_for_musicians, section_coaching_html
+
+        _display_key = format_key_for_musicians(display_key)
+        coach_intro = section_coaching_html(
+            section_name=section_name,
+            instrument=instrument,
+            level=level,
+            groove_style=resolved_groove,
+            bpm=bpm,
+            chords=section_chords,
+            focus=focus,
+            title=str((song_data or {}).get("title") or ""),
+            artist=str((song_data or {}).get("artist") or ""),
+        )
+        lesson_heading = ""
+        try:
+            from song_performance_coaching import section_lesson_heading
+
+            lesson_heading = section_lesson_heading(
+                str((song_data or {}).get("title") or ""),
+                section_name=section_name,
+                instrument=instrument,
+                level=level,
+                artist=str((song_data or {}).get("artist") or "") or None,
+            )
+        except Exception:
+            lesson_heading = ""
+    except Exception:
+        coach_intro = ""
+
     groove_block = (
         f"**Groove feel ({html.escape(resolved_groove)}):** "
         f"{html.escape(profile['feel'])}. "
@@ -918,11 +1008,13 @@ def section_deep_practice_markdown(
 
     return f"""
 ### Section focus: {html.escape(section_name)}
-**{len(section_chords)} bars** in **{html.escape(display_key)}** - **{bpm} BPM** - {html.escape(resolved_groove)} ({html.escape(profile['feel'])})
+**{len(section_chords)} bars** · **{html.escape(_display_key)}** · **{bpm} BPM** · {html.escape(resolved_groove)}
+
+**How to play this section**{f" — *{html.escape(lesson_heading)}*" if lesson_heading else ""}: {html.escape(coach_intro) if coach_intro else "Loop slowly with the metronome until the changes feel natural."}
 
 **Chord path:** {html.escape(chord_summary)}
 
-**Key changes:** {html.escape(', '.join(hard) if hard else 'Loop one bar until steady, then link pairs.')}
+**Changes to polish:** {html.escape(', '.join(hard) if hard else 'Loop one bar until steady, then link pairs.')}
 
 {groove_block}
 

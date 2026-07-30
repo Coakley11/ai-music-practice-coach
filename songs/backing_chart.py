@@ -622,11 +622,21 @@ def render_backing_chord_chart(
         "Drums/Bass/Comping: active",
     ])
     meta = "".join(f"<span class='meta-pill'>{bit}</span>" for bit in meta_bits)
-    header_note = (
-        f"<div class='lead-subtitle'>{html.escape(str(ext['arrangement_notes']))}</div>"
-        if ext.get("arrangement_notes")
-        else ""
-    )
+    try:
+        from musician_coaching import header_subtitle_for_chart
+
+        _subtitle = header_subtitle_for_chart(
+            song_data,
+            practice_key=str(dk),
+            instrument="",
+            level=str(level),
+            sections=sections,
+        )
+        header_note = (
+            f"<div class='lead-subtitle'>{html.escape(_subtitle)}</div>" if _subtitle else ""
+        )
+    except Exception:
+        header_note = ""
 
     current_parts = set() if show_full else {str(current_section).strip()}
     # Optional Beginner display-label map ({"Verse 1": "Verse", ...}) -

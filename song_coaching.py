@@ -287,9 +287,9 @@ def _fallback_coaching(
     if has_chorus:
         challenge = "Rushing into the chorus before the verse has settled."
     elif has_slash:
-        challenge = "Losing the bass line on slash-chord changes."
+        challenge = "Losing the bass line when chords change."
     else:
-        challenge = "Clean section transitions without tempo creep."
+        challenge = "Keep the chord changes smooth without rushing."
 
     tips = {
         "piano": "LH steady on roots; RH stays out of the vocal's way.",
@@ -348,6 +348,17 @@ def build_song_coaching(
     else:
         block = dict(block)
         block["instrument_tip"] = str(tips or "")
+    try:
+        from song_performance_coaching import enrich_coaching_block
+
+        block = enrich_coaching_block(
+            block,
+            record,
+            instrument=instrument,
+            level=level,
+        )
+    except Exception:
+        pass
     return block
 
 
@@ -359,22 +370,42 @@ def coaching_practice_focus(block: CoachingBlock) -> str:
     return what or "Song-specific feel and clean section transitions"
 
 
-def coaching_markdown(block: CoachingBlock) -> str:
-    """Five-part coaching section for Practice page."""
+def coaching_markdown(
+    block: CoachingBlock,
+    record: dict[str, Any] | None = None,
+    *,
+    instrument: str = "",
+    level: str = "Intermediate",
+    practice_key: str | None = None,
+    sections: dict[str, list[str]] | None = None,
+) -> str:
+    """Practice page coaching — teacher voice when ``record`` is provided."""
+    if record is not None:
+        from musician_coaching import coaching_markdown_teacher
+
+        pk = str(practice_key or record.get("key") or "C")
+        return coaching_markdown_teacher(
+            block,
+            record,
+            instrument=instrument,
+            level=level,
+            practice_key=pk,
+            sections=sections,
+        )
     tip = str(block.get("instrument_tip") or "").strip()
+    lines = [
+        "#### Your practice plan",
+        f"**What matters most** — {block.get('what_matters', '—')}",
+        f"**Watch out for** — {block.get('biggest_challenge', '—')}",
+        f"**On your instrument** — {tip or '—'}",
+        f"**Try next** — {block.get('practice_next', '—')}",
+        f"**When you're ready to perform** — {block.get('performance_next', '—')}",
+    ]
     scale = str(block.get("primary_scale") or "").strip()
     improv = str(block.get("improv_approach") or "").strip()
-    lines = [
-        "#### Song coach",
-        f"**What matters most** — {block.get('what_matters', '—')}",
-        f"**Biggest challenge** — {block.get('biggest_challenge', '—')}",
-        f"**Instrument tip** — {tip or '—'}",
-        f"**Practice next** — {block.get('practice_next', '—')}",
-        f"**Performance next** — {block.get('performance_next', '—')}",
-    ]
     if scale or improv:
         parts = [p for p in (scale, improv) if p]
-        lines.append(f"**Improv (1–2 ideas)** — {' '.join(parts[:2])}")
+        lines.append(f"**Optional improv** — {' '.join(parts[:2])}")
     return "\n\n".join(lines)
 
 

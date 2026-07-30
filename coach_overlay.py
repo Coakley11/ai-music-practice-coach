@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import re
 
 __all__ = ["section_overlay_html"]
 
@@ -60,7 +61,38 @@ def _backing_chord_color_tip(chords, instrument):
     return ""
 
 
-def section_overlay_html(instrument, focus, chords, section_name="", groove_style="", time_signature="4/4", bpm=100):
+def section_overlay_html(
+    instrument,
+    focus,
+    chords,
+    section_name="",
+    groove_style="",
+    time_signature="4/4",
+    bpm=100,
+    level="Intermediate",
+    song_title="",
+    song_artist="",
+):
+    try:
+        from musician_coaching import section_coaching_html
+
+        plain = section_coaching_html(
+            section_name=section_name or "",
+            instrument=instrument or "",
+            level=level or "Intermediate",
+            groove_style=groove_style or "Pop groove",
+            bpm=int(bpm or 100),
+            chords=list(chords or []),
+            focus=focus or "",
+            title=song_title or "",
+            artist=song_artist or "",
+        )
+        color_tip = _backing_chord_color_tip(chords, instrument)
+        if color_tip:
+            color_tip = _plain_color_tip(color_tip)
+        return f"{plain} {color_tip}" if color_tip else plain
+    except Exception:
+        pass
     first = chords[0] if chords else "the first chord"
     second = chords[1] if len(chords) > 1 else first
     family = _instrument_family(instrument) if "_instrument_family" in globals() else "general"
@@ -104,6 +136,26 @@ def section_overlay_html(instrument, focus, chords, section_name="", groove_styl
     elif family != "guitar":
         base = f"Lock the first change <strong>{html.escape(str(first))} to {html.escape(str(second))}</strong> to the {feel} before adding fills."
     return f"{base} {color_tip}" if color_tip else base
+
+
+def _plain_color_tip(color_tip: str) -> str:
+    """Soften chord-jargon color tips for the default chart overlay."""
+    t = str(color_tip or "")
+    t = re.sub(r"<[^>]+>", "", t)
+    low = t.lower()
+    if "sus" in low and "delays" in low:
+        return (
+            "Hold the suspended chord for a moment to build tension, "
+            "then let it resolve smoothly into the next chord."
+        )
+    if "maj7" in low:
+        return "Use a lighter touch on the richer chords so they ring clearly."
+    if "bass motion" in low or "slash" in low:
+        return "Follow the lowest note of the chord when you change — it guides the progression."
+    if "add9" in low:
+        return "Let the top notes of the chord sing — avoid a heavy attack."
+    return t[:200] if len(t) > 200 else t
+
 
 def _instrument_family(instrument):
     if instrument in ["Saxophone", "Flute", "Trumpet", "Clarinet"]:
