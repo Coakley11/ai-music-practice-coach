@@ -574,9 +574,6 @@ def render_custom_progression_lab_page() -> None:
             _sc_root_key = f"cpl_slash_root_{home_ns}_{edit_section}"
             _sc_bass_key = f"cpl_slash_bass_{home_ns}_{edit_section}"
             _sc_text_key = f"cpl_custom_text_{home_ns}_{edit_section}"
-            st.session_state.setdefault(_sc_root_key, _root_options[0])
-            st.session_state.setdefault(_sc_bass_key, _bass_options[0])
-            st.session_state.setdefault(_sc_text_key, "")
 
             sc1, sc2, sc3 = st.columns([1, 1, 1])
             with sc1:
@@ -615,28 +612,26 @@ def render_custom_progression_lab_page() -> None:
                 st.rerun()
 
             st.markdown("**Or type any chord** (e.g. `Cmaj7`, `F#m7b5`, `Bbmaj9/D`):")
-            tc_col, tc_btn = st.columns([3, 1])
-            with tc_col:
-                _typed = st.text_input(
-                    "Custom chord",
-                    key=_sc_text_key,
-                    label_visibility="collapsed",
-                    placeholder="e.g. D/F#",
-                )
-            with tc_btn:
-                if st.button(
-                    "Use chord",
-                    key=f"cpl_use_typed_{home_ns}_{edit_section}",
-                    use_container_width=True,
-                    disabled=not _typed.strip(),
-                ):
-                    cleaned = normalize_chord_symbol(_typed) or _typed.strip()
-                    if cleaned:
-                        cpl_set_pending_chord(st.session_state, section=edit_section, chord=cleaned)
-                        st.session_state.pop(_sc_text_key, None)
-                        st.rerun()
+            _typed = st.text_input(
+                "Custom chord",
+                key=_sc_text_key,
+                placeholder="e.g. Cmaj7, D/F#, F#m7b5",
+            )
+            typed_clean = str(st.session_state.get(_sc_text_key) or _typed or "").strip()
+            if st.button(
+                "Use chord",
+                key=f"cpl_use_typed_{home_ns}_{edit_section}",
+                type="primary",
+                use_container_width=True,
+                disabled=not typed_clean,
+            ):
+                cleaned = normalize_chord_symbol(typed_clean) or typed_clean
+                if cleaned:
+                    cpl_set_pending_chord(st.session_state, section=edit_section, chord=cleaned)
+                    st.session_state.pop(_sc_text_key, None)
+                    st.rerun()
 
-        st.markdown("**2. Choose bars** (adds selected chord, or changes the last chord)")
+        st.markdown("**2. Choose duration** (adds selected chord, or changes the last chord)")
 
         def _render_section_progression(*, pending: str | None = None) -> dict:
             active_now = cpl_active_from_session(st.session_state)
@@ -662,8 +657,26 @@ def render_custom_progression_lab_page() -> None:
         section_has_chords = progression_view["has_chords"]
         section_display = progression_view["section_display"]
 
-        b1, b2, b4 = st.columns(3)
+        bq, bh, b1, b2, b4 = st.columns(5)
 
+        with bq:
+            st.button(
+                "¼ bar",
+                key=f"cpl_bquarter_{edit_section}",
+                on_click=cpl_on_apply_bars_callback,
+                args=(0.25,),
+                use_container_width=True,
+                help="One beat in 4/4 — merges with the previous bar when possible",
+            )
+        with bh:
+            st.button(
+                "½ bar",
+                key=f"cpl_bhalf_{edit_section}",
+                on_click=cpl_on_apply_bars_callback,
+                args=(0.5,),
+                use_container_width=True,
+                help="Two beats in 4/4 — half-bar change",
+            )
         with b1:
             st.button(
                 "1 bar",
@@ -689,48 +702,10 @@ def render_custom_progression_lab_page() -> None:
                 use_container_width=True,
             )
 
-        st.markdown("**Type any chord**")
-        tc1, tc2, tc3 = st.columns([3, 1, 1])
-        with tc1:
-            custom_ch = st.text_input(
-                "Type any chord",
-                placeholder="Bb, B7, F#dim, Fmaj7|Am7|C/D, C:2|G:2…",
-                key=f"cpl_custom_{edit_section}",
-                label_visibility="collapsed",
-            )
-        with tc2:
-            if st.button("Select", key=f"cpl_custom_sel_{edit_section}", use_container_width=True):
-                ch = normalize_chord_symbol(custom_ch)
-                if ch:
-                    cpl_set_pending_chord(st.session_state, section=edit_section, chord=ch)
-                    st.rerun()
-        with tc3:
-            if st.button("Add now", key=f"cpl_custom_add_{edit_section}", use_container_width=True):
-                ch = normalize_chord_symbol(custom_ch)
-                if ch:
-                    section = str(st.session_state.get("cpl_edit_section") or edit_section or "Verse")
-                    bars = int(st.session_state.get(_last_bars_key(section), 1))
-                    active = cpl_apply_chord_with_bars_to_session(
-                        st.session_state,
-                        section_name=section,
-                        chord=ch,
-                        bars=bars,
-                        st=st,
-                        persist=True,
-                    )
-                    st.session_state["_cpl_last_bar_apply"] = {
-                        "section": section,
-                        "chord": ch,
-                        "bars": bars,
-                        "source": "custom_add_now",
-                        "chord_count": cpl_draft_chord_count(active),
-                    }
-                    st.rerun()
         st.caption(
-            "Tip: separate chords with `|` to put several inside one bar — "
+            "Tip: separate chords with `|` inside one bar — "
             "`Fmaj7|Am7|C/D` for three equal beats in 3/4, "
-            "`C:2|G:2` for a half-bar change in 4/4, "
-            "`C:3.5|D:0.5p` for a pushed chord on the last 8th."
+            "`C:2|G:2` for a half-bar change in 4/4."
         )
 
         _render_subbar_timing_panel(

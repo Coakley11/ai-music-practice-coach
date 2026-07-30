@@ -1021,13 +1021,17 @@ CPL_EPHEMERAL_WIDGET_PREFIXES = (
     "cpl_b1_",
     "cpl_b2_",
     "cpl_b4_",
+    "cpl_bhalf_",
+    "cpl_bquarter_",
     "cpl_use_slash_",
     "cpl_use_typed_",
-    "cpl_custom_sel_",
-    "cpl_custom_add_",
     "cpl_demo_",
     "cpl_pre_",
     "cpl_ext_",
+)
+
+# Builder inputs that must survive reruns (not exported to cloud persistence).
+CPL_BUILDER_INPUT_PREFIXES = (
     "cpl_slash_root_",
     "cpl_slash_bass_",
     "cpl_custom_text_",
@@ -1040,10 +1044,10 @@ CPL_ACTION_BUTTON_PREFIXES = (
     "cpl_b1_",
     "cpl_b2_",
     "cpl_b4_",
+    "cpl_bhalf_",
+    "cpl_bquarter_",
     "cpl_use_slash_",
     "cpl_use_typed_",
-    "cpl_custom_sel_",
-    "cpl_custom_add_",
     "cpl_demo_",
     "cpl_pre_",
     "cpl_ext_",
@@ -1056,6 +1060,8 @@ def is_cpl_ephemeral_widget_key(key: str) -> bool:
     """True for Streamlit widget keys that must not be written via session_state."""
     sk = str(key or "")
     if sk in CPL_WIDGET_PERSIST_SCALAR_KEYS:
+        return False
+    if any(sk.startswith(prefix) for prefix in CPL_BUILDER_INPUT_PREFIXES):
         return False
     if sk.startswith("cpl_custom_") and sk not in CPL_WIDGET_PERSIST_SCALAR_KEYS:
         # e.g. cpl_custom_Verse text_input — widget-owned, not cpl_custom_text_* builder.
@@ -2741,17 +2747,58 @@ def cpl_apply_chord_with_bars_to_session(
     *,
     section_name: str,
     chord: str,
-    bars: int,
+    bars: int | float,
     st: Any | None = None,
     persist: bool = False,
 ) -> dict:
     """Simulate CPL page flow: pick chord → choose bars → save draft."""
+    from chord_subdivisions import Subdivision, join_weighted_subdivisions
+
     active = cpl_active_from_session(session_state)
     home = ensure_all_cpl_sections(active.get("original_sections"))
     symbol = normalize_chord_symbol(chord) or str(chord or "").strip()
     if not symbol:
         return active
-    home[section_name].append({"chord": symbol, "bars": max(1, int(bars or 1))})
+    entries = list(home.get(section_name) or [])
+    duration = float(bars or 1)
+
+    if duration >= 1:
+        entries.append({"chord": symbol, "bars": max(1, int(duration))})
+    elif duration == 0.5:
+        if entries:
+            last = entries[-1]
+            last_chord = str(last.get("chord") or "").strip()
+            if last_chord and "|" not in last_chord and ":" not in last_chord.split("/", 1)[0]:
+                token = join_weighted_subdivisions([
+                    Subdivision(last_chord, 2.0, False),
+                    Subdivision(symbol, 2.0, False),
+                ])
+                entries[-1] = {"chord": token, "bars": 1}
+            else:
+                entries.append({"chord": f"{symbol}:2", "bars": 1})
+        else:
+            entries.append({"chord": f"{symbol}:2", "bars": 1})
+    elif duration == 0.25:
+        if entries:
+            last = entries[-1]
+            last_chord = str(last.get("chord") or "").strip()
+            if last_chord and "|" not in last_chord:
+                if ":" in last_chord.split("/", 1)[0]:
+                    entries.append({"chord": f"{symbol}:1", "bars": 1})
+                else:
+                    token = join_weighted_subdivisions([
+                        Subdivision(last_chord, 3.0, False),
+                        Subdivision(symbol, 1.0, False),
+                    ])
+                    entries[-1] = {"chord": token, "bars": 1}
+            else:
+                entries.append({"chord": f"{symbol}:1", "bars": 1})
+        else:
+            entries.append({"chord": f"{symbol}:1", "bars": 1})
+    else:
+        entries.append({"chord": symbol, "bars": max(1, int(duration))})
+
+    home[section_name] = entries
     cpl_clear_pending_chord(session_state, section_name)
     return cpl_save_draft(session_state, active, home, persist=persist, st=st)
 
@@ -2764,25 +2811,28 @@ def cpl_on_pick_chord_callback(chord: str) -> None:
     cpl_set_pending_chord(st.session_state, section=section, chord=chord)
 
 
-def cpl_on_apply_bars_callback(bars: int) -> None:
+def cpl_on_apply_bars_callback(bars: int | float) -> None:
     """Streamlit on_click — commit pending chord to the active section."""
     import streamlit as st
 
     section = str(st.session_state.get("cpl_edit_section") or "Verse").strip() or "Verse"
-    bars = max(1, int(bars or 1))
-    st.session_state[f"cpl_last_bars_{section}"] = bars
+    duration = float(bars or 1)
+    if duration >= 1:
+        st.session_state[f"cpl_last_bars_{section}"] = int(duration)
+    else:
+        st.session_state[f"cpl_last_bars_{section}"] = duration
     pending = cpl_get_pending_chord(st.session_state, section)
     if not pending:
         active = cpl_active_from_session(st.session_state)
         home = ensure_all_cpl_sections(active.get("original_sections"))
         entries = list(home.get(section) or [])
-        if entries:
-            entries[-1]["bars"] = bars
+        if entries and duration >= 1:
+            entries[-1]["bars"] = max(1, int(duration))
             home[section] = entries
             cpl_save_draft(st.session_state, active, home, persist=True, st=st)
             st.session_state["_cpl_last_bar_apply"] = {
                 "section": section,
-                "bars": bars,
+                "bars": duration,
                 "source": "resize_last_chord",
                 "chord_count": cpl_draft_chord_count(
                     cpl_active_from_session(st.session_state)
@@ -2791,7 +2841,7 @@ def cpl_on_apply_bars_callback(bars: int) -> None:
         else:
             st.session_state["_cpl_last_bar_apply"] = {
                 "section": section,
-                "bars": bars,
+                "bars": duration,
                 "error": "no_pending_chord",
             }
         return
@@ -2799,7 +2849,7 @@ def cpl_on_apply_bars_callback(bars: int) -> None:
         st.session_state,
         section_name=section,
         chord=str(pending),
-        bars=bars,
+        bars=duration,
         st=st,
         persist=True,
     )

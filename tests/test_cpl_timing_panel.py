@@ -64,8 +64,22 @@ class TestCplEphemeralWidgetKeys(unittest.TestCase):
         self.assertNotIn("cpl_sub_half_Verse", blob)
         self.assertNotIn("cpl_pick_practice_Verse_C", blob)
 
-    def test_timing_fix_marker_present(self) -> None:
-        self.assertIn("cpl-timing", CPL_TIMING_PANEL_FIX_ID)
+    def test_purge_keeps_builder_input_keys(self) -> None:
+        ss = {
+            "cpl_slash_root_C_Verse": "D",
+            "cpl_slash_bass_C_Verse": "F#",
+            "cpl_custom_text_C_Verse": "Cmaj7",
+            "cpl_sub_half_Verse": True,
+        }
+        purge_cpl_ephemeral_widget_keys(ss)
+        self.assertEqual(ss.get("cpl_slash_root_C_Verse"), "D")
+        self.assertEqual(ss.get("cpl_slash_bass_C_Verse"), "F#")
+        self.assertEqual(ss.get("cpl_custom_text_C_Verse"), "Cmaj7")
+        self.assertNotIn("cpl_sub_half_Verse", ss)
+
+    def test_builder_inputs_not_ephemeral(self) -> None:
+        self.assertFalse(is_cpl_ephemeral_widget_key("cpl_slash_root_C_Verse"))
+        self.assertFalse(is_cpl_ephemeral_widget_key("cpl_custom_text_C_Verse"))
 
 
 class TestHalfBarTokenLogic(unittest.TestCase):
