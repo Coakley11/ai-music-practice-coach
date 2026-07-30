@@ -12,6 +12,13 @@ from composition_chord_suggestions import (
     default_feeling_for_section,
     suggest_progressions,
 )
+from composition_melody_suggestions import (
+    MELODY_FEELINGS,
+    MELODY_STYLES,
+    coach_line_for_melody,
+    default_melody_feel_for_section,
+    suggest_melody_concepts,
+)
 from composition_document import (
     COMPOSITION_ENERGY_LEVELS,
     COMPOSITION_GENRES,
@@ -20,7 +27,9 @@ from composition_document import (
     COMPOSITION_PRACTICE_KEYS,
     COMPOSER_SECTION_LABELS,
     add_section,
+    add_melody_phrase,
     advance_workflow,
+    apply_melody_concept,
     apply_section_chords,
     apply_structure_template,
     bootstrap_from_vision,
@@ -32,14 +41,17 @@ from composition_document import (
     get_workflow_phase,
     harmonized_section_count,
     harmony_edit_target,
+    melodized_section_count,
     move_section,
     ordered_sections,
     parse_chord_paste,
     phase_is_reachable,
     remove_section,
+    remove_melody_phrase,
     section_by_id,
     section_css_type,
     section_has_chords,
+    section_has_melody,
     set_workflow_phase,
     suggest_musical_defaults,
     sync_linked_chord_sections,
@@ -784,13 +796,279 @@ def _render_phase_structure(session_state: dict, doc: dict[str, Any]) -> None:
         _render_library_sidebar(session_state)
 
 
+def _render_melody_concept_card(
+    session_state: dict,
+    doc: dict[str, Any],
+    section_id: str,
+    concept: dict[str, Any],
+    *,
+    prefix: str,
+) -> None:
+    cid = str(concept.get("id") or prefix)
+    name = str(concept.get("name") or "Melodic idea")
+    contour = str(concept.get("contour") or "")
+    motif = str(concept.get("motif_hint") or "")
+    why = str(concept.get("why") or "")
+
+    st.markdown(
+        f"""
+<div class="composer-suggestion-card">
+  <h4>{name}</h4>
+  <div class="composer-suggestion-chords">{motif}</div>
+  <p class="composer-suggestion-why">{contour}<br>{why}</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+    p1, p2 = st.columns(2)
+    with p1:
+        if st.button("▶ Hear harmony context", key=f"{prefix}_preview_{cid}", use_container_width=True):
+            wav = generate_preview_wav(doc, section_id=section_id)
+            if wav:
+                session_state[COMPOSER_PREVIEW_WAV_KEY] = wav
+            elif section_has_chords(section_by_id(doc, section_id) or {}):
+                st.warning("Could not generate preview.")
+            else:
+                st.info("Add chords to this section first — melody sits on your harmony.")
+    with p2:
+        if st.button("Use this concept", key=f"{prefix}_use_{cid}", type="primary", use_container_width=True):
+            apply_melody_concept(doc, section_id, concept)
+            _save_doc(session_state, doc)
+            st.rerun()
+
+
+def _render_melody_phrases_editor(session_state: dict, doc: dict[str, Any], section_id: str) -> None:
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return
+    melody = sec.setdefault("melody", {"intent": {}, "phrases": []})
+    phrases = list(melody.get("phrases") or [])
+
+    if phrases:
+        st.markdown("**Your melodic phrases**")
+        for phrase in phrases:
+            if not isinstance(phrase, dict):
+                continue
+            pid = str(phrase.get("id") or "")
+            plabel = str(phrase.get("label") or "Phrase")
+            pmotif = str(phrase.get("motif") or "")
+            pnotes = str(phrase.get("notes") or "")
+            st.markdown(f"**{plabel}**")
+            if pmotif:
+                st.caption(pmotif)
+            if pnotes:
+                st.code(pnotes)
+            if st.button("Remove phrase", key=f"composer_melody_rm_{section_id}_{pid}"):
+                remove_melody_phrase(doc, section_id, pid)
+                _save_doc(session_state, doc)
+                st.rerun()
+
+    st.markdown("**Add a phrase manually**")
+    label = st.text_input("Phrase label", value="Main hook", key=f"composer_melody_phrase_label_{section_id}")
+    motif = st.text_area(
+        "Describe the contour or motif",
+        key=f"composer_melody_phrase_motif_{section_id}",
+        placeholder="e.g. Step up from root to 5th, hold, step down",
+    )
+    notes = st.text_area(
+        "Notes (optional)",
+        key=f"composer_melody_phrase_notes_{section_id}",
+        placeholder="e.g. C D E G E or solfege / ABC paste",
+    )
+    if st.button("Save phrase", key=f"composer_melody_phrase_save_{section_id}"):
+        add_melody_phrase(doc, section_id, label=label, motif=motif, notes=notes)
+        _save_doc(session_state, doc)
+        st.rerun()
+
+
+def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
+    _ensure_active_section(session_state, doc)
+    sections = ordered_sections(doc)
+    if not sections:
+        st.warning("Your song has no sections yet. Head back to **Song Structure** first.")
+        return
+
+    active_id = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
+    section = section_by_id(doc, active_id) or sections[0]
+    active_id = str(section.get("id") or "")
+    session_state[COMPOSER_ACTIVE_SECTION_KEY] = active_id
+
+    melody = section.setdefault("melody", {"intent": {}, "phrases": []})
+    intent = melody.setdefault("intent", {})
+    variant = str(section.get("label_variant") or section.get("label") or "Section")
+
+    center, side = st.columns([2.3, 1])
+    with center:
+        done, total = melodized_section_count(doc)
+        st.markdown(
+            """
+<div class="composer-phase-card">
+  <h3>Melody</h3>
+  <p>What musical idea will people remember? Discover your song's voice before worrying about notation.</p>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<p class="composer-harmony-progress">Melody progress: <strong>{done}/{total}</strong> sections</p>',
+            unsafe_allow_html=True,
+        )
+        _render_melody_section_strip(session_state, doc)
+        st.markdown(f"### {variant}")
+
+        if section_has_chords(section):
+            g = doc.setdefault("global", {})
+            meter = str(g.get("time_signature") or "4/4")
+            chart = cpl_progression_bar_chart_html(section.get("chords") or [], time_signature=meter)
+            if chart:
+                st.caption("Harmony for this section")
+                st.markdown(chart, unsafe_allow_html=True)
+
+        st.markdown("**What should listeners remember most?**")
+        remember = st.text_input(
+            "Memorable idea",
+            value=str(intent.get("remember") or ""),
+            key=f"composer_melody_remember_{active_id}",
+            placeholder="e.g. The rising hook on the word 'home' in the chorus",
+            label_visibility="collapsed",
+        )
+
+        feel_ids = [f[0] for f in MELODY_FEELINGS]
+        current_feel = str(intent.get("feel") or default_melody_feel_for_section(section))
+        if current_feel not in feel_ids:
+            current_feel = default_melody_feel_for_section(section)
+
+        st.markdown("**How should this melody feel?**")
+        picked_feel = st.radio(
+            "Melody feel",
+            options=feel_ids,
+            index=feel_ids.index(current_feel),
+            format_func=lambda fid: next(l for i, l in MELODY_FEELINGS if i == fid),
+            key=f"composer_melody_feel_{active_id}",
+            label_visibility="collapsed",
+        )
+
+        style_ids = [s[0] for s in MELODY_STYLES]
+        current_style = str(intent.get("style") or "simple")
+        if current_style not in style_ids:
+            current_style = "simple"
+        st.markdown("**Simple & singable, or more expressive?**")
+        picked_style = st.radio(
+            "Melody style",
+            options=style_ids,
+            index=style_ids.index(current_style),
+            format_func=lambda sid: next(l for i, l in MELODY_STYLES if i == sid),
+            key=f"composer_melody_style_{active_id}",
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+
+        st.markdown("**Hum or imagine it first**")
+        hum = st.text_area(
+            "Hum notes",
+            value=str(intent.get("hum_notes") or ""),
+            key=f"composer_melody_hum_{active_id}",
+            height=70,
+            placeholder="Describe what you're hearing in your head — no notation required. (Future: capture audio here.)",
+        )
+
+        if (
+            remember != intent.get("remember")
+            or picked_feel != intent.get("feel")
+            or picked_style != intent.get("style")
+            or hum != intent.get("hum_notes")
+        ):
+            intent["remember"] = remember
+            intent["feel"] = picked_feel
+            intent["style"] = picked_style
+            intent["hum_notes"] = hum
+            _save_doc(session_state, doc)
+
+        phrases = list(melody.get("phrases") or [])
+        if phrases:
+            st.markdown("**Current melodic ideas**")
+            for phrase in phrases[:4]:
+                if isinstance(phrase, dict):
+                    st.markdown(f"- **{phrase.get('label') or 'Phrase'}:** {phrase.get('motif') or phrase.get('notes') or '…'}")
+            _render_section_transport(session_state, doc, active_id, preview_key=f"composer_melody_play_{active_id}")
+
+        st.markdown("**How would you like to explore?**")
+        path = st.radio(
+            "Melody workflow",
+            ["explore", "compare", "write"],
+            horizontal=True,
+            key=f"composer_melody_path_{active_id}",
+            format_func=lambda x: {
+                "explore": "Explore concepts",
+                "compare": "Compare approaches",
+                "write": "Write / refine directly",
+            }[x],
+        )
+
+        concepts = suggest_melody_concepts(doc, section, picked_feel, picked_style, limit=3)
+
+        if path == "explore":
+            st.caption("Each concept describes contour and intent — hear the harmony, then adopt what fits.")
+            for i, concept in enumerate(concepts):
+                _render_melody_concept_card(
+                    session_state, doc, active_id, concept, prefix=f"composer_melody_explore_{active_id}_{i}"
+                )
+        elif path == "compare":
+            queue_key = f"composer_melody_compare_{active_id}"
+            cids = [str(c.get("id") or "") for c in concepts]
+            labels_map = {cid: str(c.get("name") or cid) for cid, c in zip(cids, concepts)}
+            queue = st.multiselect(
+                "Select up to 3 concepts to compare",
+                options=cids,
+                default=[q for q in list(session_state.get(queue_key) or []) if q in cids][:3],
+                format_func=lambda x: labels_map.get(x, x),
+                key=f"composer_melody_compare_select_{active_id}",
+            )
+            session_state[queue_key] = queue[:3]
+            if queue:
+                by_id = {str(c.get("id")): c for c in concepts}
+                for i, qid in enumerate(queue[:3]):
+                    concept = by_id.get(qid)
+                    if concept:
+                        _render_melody_concept_card(
+                            session_state,
+                            doc,
+                            active_id,
+                            concept,
+                            prefix=f"composer_melody_cmp_{active_id}_{i}",
+                        )
+            else:
+                st.info("Pick concepts above to compare different melodic approaches.")
+        else:
+            st.caption("Direct control when you already hear the line clearly.")
+            with st.expander("Advanced phrase editor", expanded=not bool(phrases)):
+                _render_melody_phrases_editor(session_state, doc, active_id)
+
+        wf = ensure_workflow(doc)
+        next_label = "Review" if wf.get("skip_lyrics") else "Lyrics"
+        if done > 0 and st.button(f"Continue to {next_label} →", type="primary", key="composer_melody_continue"):
+            advance_workflow(doc, from_phase="melody")
+            _save_doc(session_state, doc)
+            st.rerun()
+        elif done == 0:
+            st.caption("Capture at least one melodic idea (concept, hum notes, or phrase) before continuing.")
+
+    with side:
+        _render_coach_panel(
+            doc,
+            lead=coach_line_for_melody(
+                doc,
+                section,
+                feel=str(intent.get("feel") or picked_feel),
+                remember=str(intent.get("remember") or remember),
+            ),
+        )
+        st.caption("Full melody preview with AI/humming arrives in a later sprint — for now, hear your harmony while you shape the line.")
+        _render_library_sidebar(session_state)
+
+
 def _render_phase_placeholder(session_state: dict, doc: dict[str, Any], phase: str) -> None:
     labels = {
-        "melody": (
-            "Melody",
-            "Sketch phrases that ride your harmony — framework only for now.",
-            "CS-B3",
-        ),
         "lyrics": (
             "Lyrics",
             "Write words section by section, tied to your song form.",
@@ -1078,7 +1356,14 @@ def _render_section_transport(
         st.audio(wav, format="audio/wav")
 
 
-def _render_chords_section_strip(session_state: dict, doc: dict[str, Any]) -> None:
+def _render_workflow_section_strip(
+    session_state: dict,
+    doc: dict[str, Any],
+    *,
+    done_fn,
+    button_prefix: str,
+    jump_key: str,
+) -> None:
     sections = ordered_sections(doc)
     if not sections:
         st.info("Add sections in Song Structure first.")
@@ -1088,15 +1373,19 @@ def _render_chords_section_strip(session_state: dict, doc: dict[str, Any]) -> No
     for i, sec in enumerate(sections):
         sid = str(sec.get("id") or "")
         label = str(sec.get("label_variant") or sec.get("label") or "Section")
-        done = " ✓" if section_has_chords(sec) else ""
+        done = " ✓" if done_fn(sec) else ""
         with cols[i % len(cols)]:
             btn_type = "primary" if sid == active_id else "secondary"
-            if st.button(f"{label}{done}", key=f"composer_chord_sec_{sid}", type=btn_type, use_container_width=True):
+            if st.button(
+                f"{label}{done}",
+                key=f"{button_prefix}_{sid}",
+                type=btn_type,
+                use_container_width=True,
+            ):
                 session_state[COMPOSER_ACTIVE_SECTION_KEY] = sid
                 invalidate_composer_preview(session_state)
                 st.rerun()
     if len(sections) > 6:
-        st.caption("Use the selector below for additional sections.")
         labels = [str(s.get("label_variant") or s.get("label") or "Section") for s in sections]
         ids = [str(s.get("id") or "") for s in sections]
         pick = st.selectbox(
@@ -1104,12 +1393,32 @@ def _render_chords_section_strip(session_state: dict, doc: dict[str, Any]) -> No
             options=range(len(ids)),
             index=ids.index(active_id) if active_id in ids else 0,
             format_func=lambda i: labels[i],
-            key="composer_chords_jump_section",
+            key=jump_key,
         )
         if ids[pick] != active_id:
             session_state[COMPOSER_ACTIVE_SECTION_KEY] = ids[pick]
             invalidate_composer_preview(session_state)
             st.rerun()
+
+
+def _render_chords_section_strip(session_state: dict, doc: dict[str, Any]) -> None:
+    _render_workflow_section_strip(
+        session_state,
+        doc,
+        done_fn=section_has_chords,
+        button_prefix="composer_chord_sec",
+        jump_key="composer_chords_jump_section",
+    )
+
+
+def _render_melody_section_strip(session_state: dict, doc: dict[str, Any]) -> None:
+    _render_workflow_section_strip(
+        session_state,
+        doc,
+        done_fn=section_has_melody,
+        button_prefix="composer_melody_sec",
+        jump_key="composer_melody_jump_section",
+    )
 
 
 def _render_suggestion_card(
@@ -1402,7 +1711,9 @@ def render_composition_studio_page() -> None:
         _render_phase_structure(session_state, doc)
     elif phase == "chords":
         _render_phase_chords(session_state, doc)
-    elif phase in {"melody", "lyrics", "review"}:
+    elif phase == "melody":
+        _render_phase_melody(session_state, doc)
+    elif phase in {"lyrics", "review"}:
         _render_phase_placeholder(session_state, doc, phase)
     else:
         _render_phase_vision(session_state, doc)

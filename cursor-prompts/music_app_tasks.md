@@ -94,15 +94,14 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 
 **Acceptance:** Continue Shape of You / Tenor Sax / Bm / 90 BPM opens Music with exact state; App Directory opens current workspace without blank generic state.
 
-### P1 — Composition Studio — CS-B3 Melody (active — highest priority)
+### P1 — Composition Studio — CS-B4 Lyrics (active — highest priority)
 
 **Plan:** [plans/2026-07-29-composition-studio-six-phase-songwriting.md](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)  
-**Shipped:** CS-B0 (`b9993a1`), CS-B1 (`22877a8`), CS-B2 (coach-first Chords).
+**Shipped:** CS-B0 (`b9993a1`), CS-B1 (`22877a8`), CS-B2 (`0fdaaa3`), CS-B3 (coach-first Melody).
 
-- [x] **CS-B0** — Journey rail, phase routing, Phase 1 Vision UI
-- [x] **CS-B1** — Visual structure timeline, templates, section CRUD, chord-link inheritance
 - [x] **CS-B2** — Coach-first Chords: section feeling, suggestions, compare, preview, grid secondary
-- [ ] **CS-B3** — Phase 4 Melody framework (no AI)
+- [x] **CS-B3** — Coach-first Melody: remember/feel/style questions, hum-first, concepts, compare, phrase editor secondary
+- [ ] **CS-B4** — Phase 5 Lyrics by section
 - [ ] **CS-B4** — Phase 5 Lyrics by section
 - [ ] **CS-B5** — Phase 6 Review + full-song playthrough
 - [ ] **CS-C** — OpenAI proposals per phase (after B2+ stable)

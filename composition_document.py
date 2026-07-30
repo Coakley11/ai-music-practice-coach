@@ -162,7 +162,15 @@ def empty_section(label: str, *, label_variant: str = "") -> dict[str, Any]:
         "chords": [],
         "chord_link": {"source_section_id": None, "linked": False},
         "harmony": {"feeling": ""},
-        "melody": {"phrases": []},
+        "melody": {
+            "intent": {
+                "remember": "",
+                "feel": "",
+                "style": "simple",
+                "hum_notes": "",
+            },
+            "phrases": [],
+        },
         "lyrics": {"lines": [], "raw_text": ""},
         "rhythm_override": None,
     }
@@ -622,6 +630,97 @@ def harmonized_section_count(doc: dict[str, Any]) -> tuple[int, int]:
         return 0, 0
     done = sum(1 for s in sections if section_has_chords(s))
     return done, len(sections)
+
+
+def _ensure_melody_block(sec: dict[str, Any]) -> dict[str, Any]:
+    melody = sec.get("melody")
+    if not isinstance(melody, dict):
+        melody = {"intent": {}, "phrases": []}
+        sec["melody"] = melody
+    intent = melody.get("intent")
+    if not isinstance(intent, dict):
+        melody["intent"] = intent = {}
+    intent.setdefault("remember", "")
+    intent.setdefault("feel", "")
+    intent.setdefault("style", "simple")
+    intent.setdefault("hum_notes", "")
+    if not isinstance(melody.get("phrases"), list):
+        melody["phrases"] = []
+    return melody
+
+
+def section_has_melody(sec: dict[str, Any]) -> bool:
+    melody = _ensure_melody_block(sec)
+    for phrase in melody.get("phrases") or []:
+        if not isinstance(phrase, dict):
+            continue
+        if str(phrase.get("motif") or "").strip() or str(phrase.get("notes") or "").strip():
+            return True
+    return bool(str((melody.get("intent") or {}).get("hum_notes") or "").strip())
+
+
+def melodized_section_count(doc: dict[str, Any]) -> tuple[int, int]:
+    sections = ordered_sections(doc)
+    if not sections:
+        return 0, 0
+    done = sum(1 for s in sections if section_has_melody(s))
+    return done, len(sections)
+
+
+def apply_melody_concept(
+    doc: dict[str, Any],
+    section_id: str,
+    concept: dict[str, Any],
+) -> dict[str, Any]:
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return {}
+    melody = _ensure_melody_block(sec)
+    phrase = {
+        "id": str(uuid.uuid4()),
+        "label": str(concept.get("name") or "Melodic idea"),
+        "concept_id": str(concept.get("id") or ""),
+        "motif": str(concept.get("motif_hint") or concept.get("contour") or ""),
+        "notes": "",
+    }
+    melody.setdefault("phrases", []).append(phrase)
+    touch_composition(doc)
+    return phrase
+
+
+def add_melody_phrase(
+    doc: dict[str, Any],
+    section_id: str,
+    *,
+    label: str = "My phrase",
+    motif: str = "",
+    notes: str = "",
+) -> dict[str, Any]:
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return {}
+    melody = _ensure_melody_block(sec)
+    phrase = {
+        "id": str(uuid.uuid4()),
+        "label": str(label or "My phrase").strip() or "My phrase",
+        "concept_id": "",
+        "motif": str(motif or "").strip(),
+        "notes": str(notes or "").strip(),
+    }
+    melody.setdefault("phrases", []).append(phrase)
+    touch_composition(doc)
+    return phrase
+
+
+def remove_melody_phrase(doc: dict[str, Any], section_id: str, phrase_id: str) -> bool:
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return False
+    melody = _ensure_melody_block(sec)
+    phrases = [p for p in (melody.get("phrases") or []) if str(p.get("id") or "") != phrase_id]
+    melody["phrases"] = phrases
+    touch_composition(doc)
+    return True
 
 
 def add_section(

@@ -1,7 +1,7 @@
 # Composition Studio — Six-Phase Songwriting UX
 
 **Last updated:** 2026-07-29  
-**Status:** CS-B2 shipped — coach-first Chords phase on `dev`; CS-B3 Melody next  
+**Status:** CS-B3 shipped — coach-first Melody phase on `dev`; CS-B4 Lyrics next  
 **Branch:** `dev`  
 **Supersedes step order in:** [2026-07-29-composition-studio-guided-ux.md](./2026-07-29-composition-studio-guided-ux.md) (structure moved before chords; Review added)  
 **Technical foundation:** [2026-07-29-composition-studio-v1-architecture.md](./2026-07-29-composition-studio-v1-architecture.md) · Sprint A (`5c49432`)
@@ -257,6 +257,19 @@ Rhythm/groove for audition lives here (BPM/meter from Phase 1 editable).
 5. User can complete Vision → Structure → lock one Verse progression → hear it **without** seeing CPL-style hero chord buttons.
 6. Review phase shows all five creative layers in one place.
 7. No mid-flow link “edit in Custom Progression Lab” (footer cross-link only).
+
+---
+
+## Creative question per phase (locked)
+
+| Phase | Question |
+|-------|----------|
+| Song Vision | What kind of song do I want to write? |
+| Song Structure | How should the song unfold? |
+| Chords | What harmony best supports each section? |
+| Melody | What musical idea will people remember? |
+| Lyrics | What story or message am I telling? |
+| Review | Is this song complete and ready? |
 
 ---
 
