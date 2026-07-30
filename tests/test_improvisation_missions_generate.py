@@ -66,10 +66,14 @@ class TestGenerateMissionExample(unittest.TestCase):
             variant="harder",
         )
         self.assertNotEqual(normal.motif.get("display"), harder.motif.get("display"))
-        self.assertGreaterEqual(
-            len(harder.motif.get("notes") or []),
-            len(normal.motif.get("notes") or []),
-        )
+        normal_len = len(normal.motif.get("notes") or [])
+        harder_len = len(harder.motif.get("notes") or [])
+        self.assertGreaterEqual(harder_len, 12)
+        self.assertGreaterEqual(harder_len, normal_len + 6)
+        self.assertTrue(harder.motif.get("harder_example"))
+        rhythm = str(harder.motif.get("rhythm") or "")
+        self.assertIn("♪", rhythm)
+        self.assertTrue("♬" in rhythm or rhythm.count("♪") >= 4)
 
     def test_new_idea_changes_each_nonce(self) -> None:
         ctx = ImprovSessionContext(

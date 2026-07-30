@@ -143,10 +143,11 @@ def _build_motif_for_mission(
     low = mission.lower()
     work_level = _effective_level(level, variant)
     idea = idea_variant % 12
+    harder = variant == "harder"
     if variant == "easier":
         work_level = _effective_level(level, "easier")
         idea = 0
-    elif variant == "harder":
+    elif harder:
         work_level = "Advanced"
         idea = (idea_variant * 5 + 7) % 12
     elif variant == "new":
@@ -158,7 +159,24 @@ def _build_motif_for_mission(
         level=work_level,
         rng=rng,
         idea_variant=idea,
+        harder_example=harder,
     )
+
+    if harder:
+        motif["variation_prompt"] = (
+            f"Advanced vocabulary on **{chord}** — chromatic approaches, enclosures, guide tones, "
+            f"and color tones. Learn the rhythm first, then the pitches."
+        )
+        if "guide tone" in low or "chord tone" in low:
+            motif["variation_prompt"] = (
+                f"Guide-tone language on **{chord}** — land 3rds and 7ths on strong beats; "
+                f"use the chromatic approaches as pickup notes only."
+            )
+        elif "rhythm" in low and "note" in low:
+            motif["variation_prompt"] = (
+                f"Rhythm-first advanced line on **{chord}** — clap the syncopation, then add the notes."
+            )
+        return motif
 
     if (
         ("chord tone" in low or "guide tone" in low)

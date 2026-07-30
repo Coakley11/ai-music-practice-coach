@@ -25,6 +25,9 @@ _RHYTHM_PATTERNS: dict[str, list[str]] = {
     "eighth-quart-eighth-eighth": ["♪", "♩", "♪", "♪"],
     "syncopated-four": ["♪", "♩", "♪", "♪"],
     "sixteenth-run-four": ["♬", "♬", "♬", "♬"],
+    "harder-mixed-a": ["♬", "♬", "♪", "♪", "♩", "♪", "♬", "♬", "♪", "♩", "♪", "♪", "♬", "♬", "♪", "♩"],
+    "harder-mixed-b": ["♪", "♬", "♬", "♪", "♩", "♪", "♪", "♬", "♬", "♬", "♪", "♩", "♪", "♪", "♬", "♬", "♪", "♩"],
+    "harder-triplet-feel": ["♪", "♪", "♪", "♩", "♬", "♬", "♪", "♪", "♩", "♪", "♬", "♬", "♪", "♪", "♩", "♪"],
 }
 
 _RHYTHM_TO_ABC_LEN: dict[str, str] = {
@@ -331,6 +334,75 @@ def _guide_tone_pair(chord_tones: list[str]) -> list[str]:
     return chord_tones
 
 
+def _color_extension_tones(
+    chord_tones: list[str],
+    scale_pcs: list[int],
+) -> tuple[str, str, str]:
+    root = chord_tones[0]
+    ninth = _scale_step_note(scale_pcs, root, 2)
+    eleventh = _scale_step_note(scale_pcs, root, 4)
+    thirteenth = _scale_step_note(scale_pcs, root, 6)
+    return ninth, eleventh, thirteenth
+
+
+def _dedupe_consecutive(notes: list[str]) -> list[str]:
+    out: list[str] = []
+    for n in notes:
+        if not out or out[-1] != n:
+            out.append(n)
+    return out
+
+
+def _harder_example_notes(
+    chord: str,
+    chord_tones: list[str],
+    scale_pcs: list[int],
+    rng: random.Random,
+    idea_variant: int,
+) -> list[str]:
+    """Long, vocabulary-rich lines for the Harder Example mission button (12–18 notes)."""
+    if len(chord_tones) < 2:
+        chord_tones = chord_tone_names(chord)[:4]
+    guides = _guide_tone_pair(chord_tones)
+    root = guides[0]
+    third = guides[1] if len(guides) > 1 else chord_tones[0]
+    seventh = guides[2] if len(guides) > 2 else _scale_step_note(scale_pcs, third, 2)
+    fifth = chord_tones[2] if len(chord_tones) > 2 else _scale_step_note(scale_pcs, root, 2)
+    ninth, eleventh, thirteenth = _color_extension_tones(chord_tones, scale_pcs)
+
+    approach3 = _chromatic_below(third)
+    approach7 = _chromatic_below(seventh)
+    enc_lo = _scale_step_note(scale_pcs, third, -1)
+    enc_hi = _scale_step_note(scale_pcs, third, 1)
+    pass7 = _scale_step_note(scale_pcs, seventh, -1)
+    pass5 = _scale_step_note(scale_pcs, fifth, -1)
+    upper7 = _scale_step_note(scale_pcs, seventh, 1)
+    arp = list(chord_tones[:4]) if len(chord_tones) >= 4 else [root, third, fifth, seventh]
+
+    # Motif A → variation A' → cadence (developed line, not scalar wash)
+    templates: list[list[str]] = [
+        [approach3, third, enc_lo, enc_hi, third, seventh, pass7, fifth, third, approach3, third, ninth, seventh, third],
+        [root, fifth, third, approach7, seventh, upper7, seventh, pass7, fifth, third, enc_lo, enc_hi, third, root, third],
+        [enc_lo, enc_hi, third, fifth, seventh, thirteenth, eleventh, ninth, seventh, pass7, fifth, third, approach3, third],
+        [root, third, fifth, seventh, upper7, eleventh, ninth, seventh, pass7, fifth, pass5, third, enc_lo, third, seventh, third],
+        [approach3, third, fifth, ninth, eleventh, ninth, seventh, pass7, fifth, third, approach3, third, seventh, root, third],
+        [root, approach3, third, seventh, third, fifth, seventh, upper7, seventh, pass7, fifth, enc_lo, enc_hi, third, ninth, third],
+        [third, seventh, pass7, fifth, third, root, fifth, third, approach7, seventh, upper7, ninth, seventh, third, root],
+        [arp[0], arp[1], arp[2], arp[3], upper7, eleventh, ninth, seventh, pass7, fifth, third, enc_lo, enc_hi, third, seventh, third],
+        [root, fifth, third, enc_lo, enc_hi, third, fifth, seventh, thirteenth, eleventh, ninth, seventh, pass7, fifth, third, root],
+        [approach7, seventh, third, fifth, ninth, seventh, pass7, fifth, third, approach3, third, seventh, upper7, seventh, third, root, third],
+        [root, third, fifth, seventh, pass7, fifth, third, enc_lo, enc_hi, third, ninth, eleventh, ninth, seventh, third, approach3, third],
+        [enc_lo, enc_hi, third, fifth, third, seventh, upper7, seventh, pass7, fifth, root, fifth, third, approach7, seventh, third, root],
+    ]
+    notes = list(templates[idea_variant % len(templates)])
+    notes = _dedupe_consecutive(notes)
+    target_len = 14 + (idea_variant % 5)  # 14–18
+    if len(notes) < target_len:
+        tail = [seventh, pass7, fifth, third, approach3, third, ninth, seventh, third]
+        notes = _dedupe_consecutive(notes + tail)
+    return notes[: min(20, max(12, len(notes)))]
+
+
 def _beginner_notes(chord_tones: list[str], rng: random.Random, idea_variant: int) -> list[str]:
     if len(chord_tones) >= 3:
         patterns = [
@@ -414,12 +486,16 @@ def _advanced_notes(
         [third, seventh, third, root, fifth, _scale_step_note(scale_pcs, fifth, 1), fifth],
     ]
     notes = list(templates[idea_variant % len(templates)])
-    # Dedupe consecutive duplicates while keeping length
-    compact: list[str] = []
-    for n in notes:
-        if not compact or compact[-1] != n:
-            compact.append(n)
-    return compact[:8] if compact else guides
+    return _dedupe_consecutive(notes)[:14]
+
+
+def _rhythm_for_harder(note_count: int, idea_variant: int) -> tuple[str, list[str]]:
+    keys = ["harder-mixed-a", "harder-mixed-b", "harder-triplet-feel"]
+    key = keys[idea_variant % len(keys)]
+    syms = list(_RHYTHM_PATTERNS[key])
+    while len(syms) < note_count:
+        syms.extend(_RHYTHM_PATTERNS[key])
+    return key, syms[:note_count]
 
 
 def _rhythm_for_level(level_norm: str, rng: random.Random, idea_variant: int, override: str) -> str:
@@ -454,6 +530,7 @@ def generate_motif_for_chord(
     level: str = "Intermediate",
     rng: random.Random | None = None,
     idea_variant: int = 0,
+    harder_example: bool = False,
 ) -> dict[str, Any]:
     """Build a motif; melodic and rhythmic complexity scale strongly with level."""
     rng = rng or random.Random(idea_variant)
@@ -461,21 +538,28 @@ def generate_motif_for_chord(
     tones = chord_tone_names(chord, reference_key=key_center)
     _mode, scale_pcs = _parse_key_scale(key_center)
 
-    if level_norm == "Beginner":
+    if harder_example:
+        notes = _harder_example_notes(chord, tones, scale_pcs, rng, idea_variant)
+        rhythm_key, rhythm_syms = _rhythm_for_harder(len(notes), idea_variant)
+    elif level_norm == "Beginner":
         notes = _beginner_notes(tones, rng, idea_variant)
         rhythm_key = _rhythm_for_level(level_norm, rng, idea_variant, rhythm_key)
+        rhythm_syms = _RHYTHM_PATTERNS.get(rhythm_key, _RHYTHM_PATTERNS["quarter-quarter-quarter"])
     elif level_norm == "Advanced":
         notes = _advanced_notes(chord, tones, scale_pcs, rng, idea_variant)
         rhythm_key = _rhythm_for_level(level_norm, rng, idea_variant, rhythm_key)
+        rhythm_syms = _RHYTHM_PATTERNS.get(rhythm_key, _RHYTHM_PATTERNS["quarter-quarter-quarter"])
     else:
         notes = _intermediate_notes(chord, tones, scale_pcs, rng, idea_variant)
         rhythm_key = _rhythm_for_level(level_norm, rng, idea_variant, rhythm_key)
+        rhythm_syms = _RHYTHM_PATTERNS.get(rhythm_key, _RHYTHM_PATTERNS["quarter-quarter-quarter"])
 
-    rhythm_syms = _RHYTHM_PATTERNS.get(rhythm_key, _RHYTHM_PATTERNS["quarter-quarter-quarter"])
-    while len(rhythm_syms) < len(notes):
-        rhythm_syms = rhythm_syms + rhythm_syms
-    rhythm_syms = rhythm_syms[: len(notes)]
+    if not harder_example:
+        while len(rhythm_syms) < len(notes):
+            rhythm_syms = rhythm_syms + rhythm_syms
+        rhythm_syms = rhythm_syms[: len(notes)]
     rhythm = " ".join(rhythm_syms)
+    tier = "Harder example" if harder_example else level_norm
     return {
         "chord": chord,
         "notes": notes,
@@ -483,7 +567,8 @@ def generate_motif_for_chord(
         "rhythm": rhythm,
         "rhythm_key": rhythm_key,
         "midi": [_midi_from_note(n, 4) for n in notes],
-        "variation_prompt": f"{level_norm} line on **{chord}** — {' – '.join(notes)}",
+        "variation_prompt": f"{tier} line on **{chord}** — vocabulary lick to internalize.",
+        "harder_example": harder_example,
     }
 
 
