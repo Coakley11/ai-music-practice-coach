@@ -74,6 +74,21 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "backing_volume",
             "backing_context",
             "creative_session",
+            "improv_mission_practice_lick",
+            "improv_mission_example",
+            "improv_mission_variant",
+            "improv_active_mission",
+            "improv_mission_pick",
+            "ii_selected_chord",
+            "ii_selected_section",
+            "backing_track_bpm",
+            "backing_track_loops",
+            "backing_track_scope",
+            "backing_track_single_section",
+            "backing_track_multi_sections",
+            "backing_groove_style",
+            "backing_time_signature",
+            "backing_time_signature_override",
         }
     ),
     "custom": frozenset(
@@ -118,6 +133,10 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "improv_mission_example",
             "improv_mission_variant",
             "improv_mission_practice_lick",
+            "improv_mission_pick",
+            "improv_mission_new_nonce",
+            "improv_mission_chord_options",
+            "improv_mission_progression",
             "improv_style",
             "improv_style_key",
             "improv_difficulty",
@@ -679,7 +698,15 @@ def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
         elif not session_state.get("multitrack_catalog_active_id") and snap.get("multitrack_catalog_active_id"):
             needs_restore = True
     if current == "creative" and not session_state.get("improv_motif_abc"):
-        if any(k in snap for k in ("improv_motif_abc", "improv_generated_sections", "improv_jam_session")):
+        if any(
+            k in snap
+            for k in (
+                "improv_motif_abc",
+                "improv_generated_sections",
+                "improv_jam_session",
+                "improv_mission_example",
+            )
+        ):
             needs_restore = True
     if current == "backing":
         snap_ctx = snap.get("backing_context") if isinstance(snap, dict) else None
@@ -696,6 +723,14 @@ def restore_current_page_snapshot_if_needed(session_state: dict) -> None:
                 needs_restore = True
         except ImportError:
             pass
+        if isinstance(snap, dict) and snap.get("improv_mission_practice_lick") and not session_state.get(
+            "improv_mission_practice_lick"
+        ):
+            needs_restore = True
+        if isinstance(snap, dict) and snap.get("improv_mission_example") and not session_state.get(
+            "improv_mission_example"
+        ):
+            needs_restore = True
     if needs_restore:
         try:
             from multitrack_project_load_trace import record_restore_event

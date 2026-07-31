@@ -448,6 +448,19 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "improv_jam_mood",
     "improv_song_concert_sections",
     "improv_song_chart_sections",
+    "improv_active_mission",
+    "improv_mission_pick",
+    "improv_mission_example",
+    "improv_mission_variant",
+    "improv_mission_new_nonce",
+    "improv_mission_practice_lick",
+    "improv_mission_chord_options",
+    "improv_mission_progression",
+    "ii_selected_chord",
+    "ii_selected_section",
+    "ii_selected_chord_index",
+    "ii_selected_chord_label",
+    "improv_mission_workspace_updated_at",
     "practice_key_by_source",
     "bpm_by_source",
     "practice_key_mode",
@@ -1676,6 +1689,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         sync_creative_session_before_persist(ss)
     except ImportError:
         pass
+    try:
+        from improvisation_mission_persistence import sync_mission_workspace_before_persist
+
+        sync_mission_workspace_before_persist(ss)
+    except ImportError:
+        pass
     for key in _PERSIST_KEYS:
         if key in ss:
             val = copy.deepcopy(ss[key])
@@ -2250,6 +2269,19 @@ def apply_music_disk_state(
     except Exception:
         pass
 
+    try:
+        from improvisation_mission_persistence import (
+            apply_cloud_mission_state_if_allowed,
+            is_mission_workspace_locally_dirty,
+        )
+
+        if is_mission_workspace_locally_dirty(ss):
+            ss["_mission_restore_skipped_reason"] = "local_dirty"
+        else:
+            apply_cloud_mission_state_if_allowed(ss, payload)
+    except ImportError:
+        pass
+
     ss["_suite_cloud_workspace_applied"] = True
 
     try:
@@ -2280,6 +2312,12 @@ def apply_music_disk_state(
         from creative_session_state import hydrate_creative_session_after_restore
 
         hydrate_creative_session_after_restore(ss)
+    except ImportError:
+        pass
+    try:
+        from improvisation_mission_persistence import hydrate_mission_workspace_after_restore
+
+        hydrate_mission_workspace_after_restore(ss)
     except ImportError:
         pass
 
@@ -2783,6 +2821,22 @@ def music_active_song_cloud_drift(
     return False, ""
 
 
+def music_content_cloud_drift(
+    st: Any,
+    cloud_state: dict[str, Any],
+    cloud_ts: str | None,
+) -> tuple[bool, str]:
+    drift, detail = music_active_song_cloud_drift(st, cloud_state, cloud_ts)
+    if drift:
+        return True, detail
+    try:
+        from improvisation_mission_persistence import music_mission_cloud_drift
+
+        return music_mission_cloud_drift(st, cloud_state, cloud_ts)
+    except ImportError:
+        return False, ""
+
+
 def prepare_music_workspace(
     st: Any,
     *,
@@ -2840,7 +2894,7 @@ def prepare_music_workspace(
         APP_ID,
         apply_state=_apply,
         cloud_first=True,
-        content_resync_needed=music_active_song_cloud_drift,
+        content_resync_needed=music_content_cloud_drift,
     )
     try:
         from music_perf_diagnostics import record_span

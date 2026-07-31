@@ -1226,6 +1226,12 @@ def _tab_missions(
             session_state=session_state,
         )
         store_mission_example(session_state, example)
+        try:
+            from studio_page_persistence import save_page_snapshot
+
+            save_page_snapshot(session_state, "creative")
+        except ImportError:
+            pass
         st.rerun()
 
     example = load_mission_example(session_state, improv_ctx)
@@ -1350,6 +1356,12 @@ def _tab_missions(
             )
             transform_clicked = True
     if transform_clicked:
+        try:
+            from studio_page_persistence import save_page_snapshot
+
+            save_page_snapshot(session_state, "creative")
+        except ImportError:
+            pass
         st.rerun()
 
     example = load_mission_example(session_state, improv_ctx)

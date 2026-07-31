@@ -445,6 +445,7 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
             mission_id=mission_id,
             intelligence_tab="Missions",
             sections=_mission_sections_from_session(session),
+            selected_section=str(session.get("ii_selected_section") or "").strip(),
         )
         set_creative_session(session, sess)
         return sess
@@ -600,6 +601,15 @@ def apply_creative_session_to_session(
     if sess.tool_type == "mission":
         session["improv_active_mission"] = sess.mission_id
         session["improv_mission_pick"] = sess.mission_id
+        if sess.sections:
+            sec_name = str(sess.selected_section or "").strip()
+            if not sec_name:
+                sec_name = next(iter(sess.sections.keys()), "")
+            chords = sess.sections.get(sec_name) or []
+            if sec_name:
+                session["ii_selected_section"] = sec_name
+            if chords:
+                session["ii_selected_chord"] = str(chords[0])
     elif sess.tool_type == "jam_session_generator":
         _set("improv_jam_style", sess.style)
         if widget_safe:

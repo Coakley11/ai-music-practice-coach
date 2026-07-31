@@ -583,6 +583,12 @@ def store_mission_example(session_state: dict, example: MissionExample) -> None:
         "show_piano": example.show_piano,
     }
     session_state[MISSION_VARIANT_KEY] = example.variant
+    try:
+        from improvisation_mission_persistence import mark_mission_workspace_dirty
+
+        mark_mission_workspace_dirty(session_state)
+    except ImportError:
+        pass
 
 
 def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) -> MissionExample | None:
@@ -659,8 +665,18 @@ def store_mission_practice_lick_for_backing(
         "level": ex.level,
         "key_center": ex.display_key,
         "example_variant": ex.variant,
+        "backing_track_scope": str(session_state.get("backing_track_scope") or ""),
+        "backing_track_loops": session_state.get("backing_track_loops"),
+        "backing_track_single_section": str(session_state.get("backing_track_single_section") or ""),
+        "backing_track_multi_sections": list(session_state.get("backing_track_multi_sections") or []),
     }
     session_state[MISSION_PRACTICE_LICK_KEY] = payload
+    try:
+        from improvisation_mission_persistence import mark_mission_workspace_dirty
+
+        mark_mission_workspace_dirty(session_state)
+    except ImportError:
+        pass
 
 
 def mission_practice_lick_payload(session_state: dict) -> dict[str, Any] | None:
