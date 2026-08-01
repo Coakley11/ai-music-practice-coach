@@ -451,8 +451,19 @@ def transpose_guitar_tabs(g_tabs: dict, from_key: str, to_key: str) -> dict:
     }
 
 
+class MissingOriginalSongKeyError(ValueError):
+    """Raised when section transposition requires a catalog original key."""
+
+
 def transpose_sections(song_data, target_key):
-    original_key = song_data["key"]
+    if not isinstance(song_data, dict):
+        raise TypeError("transpose_sections requires a song_data mapping")
+    original_key = song_data.get("key")
+    if original_key is None or not str(original_key).strip():
+        raise MissingOriginalSongKeyError(
+            "Cannot transpose song sections because the original song key is missing."
+        )
+    original_key = str(original_key).strip()
 
     steps = semitone_distance(
         original_key,

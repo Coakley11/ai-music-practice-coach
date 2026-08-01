@@ -10106,6 +10106,8 @@ _chart_bundle = session_cache_get_or_set(
         cpl_active_key=CPL_ACTIVE_KEY,
         sections_for_level=sections_for_level,
         transpose_sections=transpose_sections,
+        song_picker_catalog=SONG_PICKER_CATALOG,
+        song_library=SONG_LIBRARY,
     ),
     copy_result=True,
 )

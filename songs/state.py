@@ -694,6 +694,24 @@ def resolve_library_song_data(
     return lib_row if lib_row is not None else {}
 
 
+def load_catalog_song_record_by_pick_key(
+    pick_key: str,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]],
+) -> tuple[str, str, dict] | None:
+    """Load complete catalog song_data for a pick key (genre, title, record)."""
+    resolved = resolve_pick_key(pick_key, song_picker_catalog=song_picker_catalog)
+    if not resolved:
+        return None
+    genre, label = parse_pick_key(resolved)
+    built = _build_library_from_picker(genre, label, song_picker_catalog, song_library)
+    if not built:
+        return None
+    title, song_data = built
+    return genre, title, song_data
+
+
 def _build_library_from_picker(
     genre: str,
     label: str,
@@ -1239,16 +1257,45 @@ def get_song_context(
         except ImportError:
             return True
 
+    def _merge_sel_onto_canonical(canon: dict, overlay: dict) -> dict:
+        merged = dict(canon)
+        for key, val in overlay.items():
+            if key == "key" and (val is None or not str(val).strip()):
+                continue
+            if val is None:
+                continue
+            if key == "sections" and not val and merged.get("sections"):
+                continue
+            merged[key] = val
+        return merged
+
     def _context_from_sel_only() -> tuple[str, str, dict] | None:
         title = str(sel.get("title") or "").strip()
         if not title:
             return None
         genre = str(sel.get("genre") or "").strip()
+        pk = str(
+            sel.get("pick_key")
+            or st.session_state.get(ACTIVE_CATALOG_PICK_KEY)
+            or ""
+        ).strip()
+        if pk and not pk.startswith("custom::"):
+            loaded = load_catalog_song_record_by_pick_key(
+                pk,
+                song_picker_catalog=song_picker_catalog,
+                song_library=song_library,
+            )
+            if loaded is not None:
+                g, canon_title, canon_data = loaded
+                merged = _merge_sel_onto_canonical(canon_data, dict(sel))
+                return g or genre, canon_title or title, merged
         song_data = dict(sel)
-        if song_data.get("sections") or song_data.get("key"):
+        if song_data.get("key"):
             return genre, title, song_data
         if song_library and genre and title in (song_library.get(genre) or {}):
             return genre, title, dict(song_library[genre][title])
+        if song_data.get("sections"):
+            return None
         return genre, title, song_data
 
     def _commit(resolved_pk: str, *, notice: str | None = None) -> tuple[str, str, dict]:
