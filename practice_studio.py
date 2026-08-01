@@ -752,56 +752,12 @@ def _piano_easy_key(key: str) -> str:
 
 
 def scale_suggestions_for_chord(chord: str, key_name: str, level: str, instrument: str) -> str:
-    """Scale / arpeggio hints for a chord or short progression."""
-    if is_no_chord_token(chord):
-        # ``N.C.`` bars: harmony lays out, percussion carries the
-        # groove. Surface a tacet hint instead of inventing a
-        # nonsensical "N major" scale for the chart.
-        return (
-            "**N.C.** — *No chord / tacet.* Harmony instruments lay out; "
-            "lock into the **groove and dynamics** instead. Use this space "
-            "to set up the next entry with rhythm, breath, or a short "
-            "rhythmic motif on a single tone."
-        )
-    head = str(chord).split()[0] if " " in str(chord) and "–" in str(chord) else str(chord)
-    if "–" in str(chord) or "->" in str(chord):
-        return progression_coach_markdown(str(chord), key_name, level, instrument)
+    """Scale / arpeggio hints — canonical pipeline (Live Coach parity)."""
+    from practice_chord_coach import practice_scale_coach_markdown
 
-    from music_theory import chord_root_for_theory, classify_chord_quality, normalize_chord_for_theory
-
-    symbol = normalize_chord_for_theory(head) or head
-    root = chord_root_for_theory(symbol)
-    qual = classify_chord_quality(symbol)
-
-    if qual == "dom":
-        scale = f"{root} mixolydian · {root} blues · target 3rd & b7"
-        arpeggio = f"{root}7 chord tones: root, 3rd, 5th, b7"
-    elif qual in ("minor", "m7", "half-dim", "dim"):
-        scale = f"{root} natural minor · {root} dorian (raised 6)"
-        arpeggio = f"{root}m7 arpeggio: root, b3, 5th, b7"
-    elif qual == "sus":
-        scale = f"{root} mixolydian · {root} major pentatonic (resolve 4→3 when releasing sus)"
-        arpeggio = f"{symbol} sus chord tones — honor the 2nd or 4th before resolving"
-    elif qual == "aug":
-        scale = f"{root} whole-tone fragments · {root} melodic minor (Lydian aug color)"
-        arpeggio = f"{root} aug triad: root, 3rd, #5"
-    else:
-        scale = f"{root} major · {root} major pentatonic"
-        arpeggio = f"{root} triad + 6th color"
-
-    inst = (instrument or "").lower()
-    extra = ""
-    if "guitar" in inst:
-        if level == "Beginner":
-            extra = " · **Guitar:** one-octave box from root on strings 5–3; add b3 on beat 3 for minor."
-        elif level == "Advanced":
-            extra = " · **Guitar:** try 3-note-per-string run resolving to chord tone on beat 1."
-        else:
-            extra = " · **Guitar:** double stops on 3rd+5th or 3rd+7th through the bar."
-    elif "piano" in inst:
-        extra = " · **Piano:** RH scale in one hand position; LH root on 1."
-
-    return f"**{head}** — Scales: {scale}. Arpeggio: {arpeggio}.{extra}"
+    return practice_scale_coach_markdown(
+        chord, key_name, level, instrument, concert_key=key_name
+    )
 
 
 def progression_coach_markdown(progression: str, key_name: str, level: str, instrument: str) -> str:

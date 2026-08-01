@@ -3030,9 +3030,12 @@ def chord_function_summary(chord):
     return "Chord-tone target: identify root, 3rd, and 5th first, then add color tones."
 
 
-def chord_playing_advice(chord, instrument, level):
+def chord_playing_advice(chord, instrument, level, *, reference_key: str = "C"):
     family = _instrument_family(instrument)
-    tones = _chord_tone_names(chord)
+    from improvisation_motif import chord_tone_names
+
+    tones = chord_tone_names(chord, reference_key=reference_key)
+    tone_str = " · ".join(tones[:4]) if tones else "root · 3rd · 5th"
     if family == "guitar":
         options = GUITAR_FINGERING_OPTIONS.get(str(chord), [])
         if options:
@@ -3060,33 +3063,37 @@ def chord_playing_advice(chord, instrument, level):
     if family == "bass":
         return (
             f"- Outline **{chord}** with root, 5th, octave, then one approach note.\n"
-            f"- Emphasize chord tones: {tones}.\n"
+            f"- Emphasize chord tones: {tone_str}.\n"
             f"- If it is a slash chord, honor the written bass note on beat 1."
         )
     if family == "winds":
         return (
-            f"- Target chord tones: {tones}.\n"
+            f"- Target chord tones: {tone_str}.\n"
             f"- Put the 3rd or 7th on a strong beat for harmonic clarity.\n"
             f"- Use scale motion only to connect into a chord tone."
         )
     if family == "voice":
         return (
             f"- Sing the root, 3rd, and 5th of **{chord}** on a neutral vowel.\n"
-            f"- For harmony singing, try holding the 3rd or 7th while the melody moves.\n"
+            f"- Chord tones: {tone_str}.\n"
             f"- Listen for whether the chord feels resolved or suspended before shaping the phrase."
         )
-    return f"- Learn the chord tones first: {tones}. Then connect them to the next chord in the section."
+    return f"- Learn the chord tones first: {tone_str}. Then connect them to the next chord in the section."
 
 
-def chord_coach_markdown(chord, instrument, level):
-    return f"""
-**{chord}**
+def chord_coach_markdown(chord, instrument, level, *, display_key: str = "C"):
+    ref = display_key or "C"
+    playing = chord_playing_advice(chord, instrument, level, reference_key=ref)
+    from practice_chord_coach import practice_coach_body_markdown
 
-{chord_function_summary(chord)}
-
-**How to play / target it on {instrument}:**
-{chord_playing_advice(chord, instrument, level)}
-""".strip()
+    return practice_coach_body_markdown(
+        chord,
+        instrument,
+        level,
+        display_key=ref,
+        function_summary=chord_function_summary(chord),
+        playing_advice=playing,
+    )
 
 
 def render_chord_coach_ui(
@@ -3126,8 +3133,32 @@ def render_chord_coach_ui(
             key=f"{key_prefix}::chord_coach_select",
         )
         coach_target = "ii–V–I" if selected_chord == "ii–V–I (in key)" else selected_chord
-        st.markdown(chord_coach_markdown(coach_target, instrument, level))
-        st.markdown(scale_suggestions_for_chord(coach_target, display_key, level, instrument))
+        st.markdown(
+            chord_coach_markdown(
+                coach_target, instrument, level, display_key=display_key or "C"
+            )
+        )
+        from practice_chord_coach import (
+            practice_harmony_tone_markdown,
+            practice_scale_coach_markdown,
+        )
+
+        st.markdown(
+            practice_scale_coach_markdown(
+                coach_target,
+                display_key or "C",
+                level,
+                instrument,
+            )
+        )
+        _harmony_md = practice_harmony_tone_markdown(
+            coach_target,
+            display_key=display_key or "C",
+            instrument=instrument,
+            level=level,
+        )
+        if _harmony_md:
+            st.markdown(_harmony_md)
         if instrument == "Guitar":
             st.markdown(fretboard_ascii(coach_target if coach_target != "ii–V–I" else "G", level))
 

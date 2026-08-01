@@ -1,16 +1,18 @@
-# Mission Workspace Contract (long-term design)
+# Creative Workspace Contract (long-term design)
 
 **Last updated:** 2026-08-01  
-**Status:** **Frozen** — implementation complete on `dev` (`4106a86`); manual cross-device sign-off pending.  
-**Code:** `improvisation_mission_persistence.py`, `improvisation_missions.py`, `music_persistent_state._PERSIST_KEYS`, `studio_page_persistence` creative/backing snapshots.
+**Status:** Implementation complete on `dev` (`a936dd5`); **manual cross-device sign-off pending** — architecture freezes only after checklist below passes.  
+**Code:** `creative_workspace_persistence.py`, `improvisation_mission_persistence.py`, `music_persistent_state._PERSIST_KEYS`, `studio_page_persistence` creative/backing snapshots.
 
 ---
 
 ## Intent
 
-A Mission behaves like a **document in the user’s workspace**. Wherever they sign in, they continue exactly where they left off—refresh, close/reopen, or another device must not force regenerating work.
+The **entire Creative page** behaves like **one cloud document** per account. Refresh, reboot, or switching devices (e.g. Dell ↔ phone) must restore the same workspace—not regenerate educational content.
 
-There is **one active Mission workspace per account**. **Latest saved state wins** (no conflict resolution or version history for v1).
+There is **one Creative workspace per account**. **Latest saved state wins** (no conflict resolution or version history for v1).
+
+Mission Backing Jam is part of this same document (mission, motif, notation, transport).
 
 ---
 
@@ -18,86 +20,101 @@ There is **one active Mission workspace per account**. **Latest saved state wins
 
 | Area | Session / canonical keys (representative) |
 |------|-------------------------------------------|
+| Creative tab & analysis mode | `improv_intelligence_tab`, `creative_improv_intelligence_tab`, `creative_lab_analysis_mode` |
+| Deep Harmonic Analyzer | `deep_harmony_lesson_step`, `improv_deep_harmony_dha_section_idx` |
+| Harmony Map | `harmony_map_section`, `harmony_map_chord` |
+| Phrase & Motif | `improv_motif`, `improv_motif_abc`, `improv_motif_tab`, `improv_motif_output_mode` |
 | Mission selection | `improv_active_mission`, `improv_mission_pick` |
-| Song / section / chord | Active song hub + `ii_selected_*`, `improv_mission_progression` |
-| Instrument / level / focus | Global musician settings (same as rest of app) |
-| Generated example | `improv_mission_example` (full blob) |
+| Song / section / chord | `ii_selected_*`, `improv_mission_progression` |
+| Generated Mission example | `improv_mission_example` (full blob) |
 | Difficulty variant | `variant` inside example + `improv_mission_variant` |
-| Practice handoff | `improv_mission_practice_lick` |
-| Backing transport | `backing_track_*` + fields mirrored into practice lick on persist |
+| Mission Backing Jam | `improv_mission_practice_lick` + `backing_track_*` |
+| AI Metrics | `improv_ai_metric_ids`, `analysis_criteria_locked` |
 | Workspace stamp | `improv_mission_workspace_updated_at` |
-| Creative canonical | `creative_session` (tool_type `mission`) |
-
-Mission Backing Jam must restore the **same practice session** (lick, BPM, groove, meter, loops)—not rebuild a new phrase.
+| Creative canonical | `creative_session` |
 
 ---
 
 ## Single source of truth: motif
 
-The stored **`motif` object** inside `improv_mission_example` / `improv_mission_practice_lick` is authoritative.
+The stored **`motif` object** inside `improv_mission_example` / `improv_mission_practice_lick` / `improv_motif` is authoritative.
 
 **Must render from motif (never regenerate the phrase on restore):**
 
 - Notes and rhythm display  
-- Sheet music (ABC via `build_motif_notation_abc`)  
-- Guitar TAB (`build_motif_guitar_tab`)  
+- Sheet music (ABC)  
+- Guitar TAB  
 - Playback (ABC / abcjs)  
-- Future: MIDI export, MusicXML export  
+- Piano keyboard visualization  
 
-Allowed on restore: **rebuild notation/TAB at current BPM** from the same motif (`rebuild_mission_outputs` / `mission_example_for_display`).  
-Forbidden on restore: new `generate_motif_for_chord` / new random seed for the same saved example.
+Allowed on restore: **rebuild notation/TAB/display at current BPM or instrument** from the same motif.  
+Forbidden on restore: new random phrase for the same saved example.
 
 ---
 
 ## Persistence architecture (do not fork)
 
-Missions use the **same cloud workspace** as the rest of Music Practice Coach:
-
-1. **`_PERSIST_KEYS`** — mission keys in the workspace envelope (`build_music_disk_state` / cloud full session).  
+1. **`_PERSIST_KEYS`** — Creative workspace keys in the cloud envelope.  
 2. **Page snapshots** — `creative` + `backing` whitelists in `studio_page_persistence.py`.  
-3. **`sync_mission_workspace_before_persist`** — before every disk/cloud save; stamps `improv_mission_workspace_updated_at`.  
-4. **`prepare_music_workspace`** — `cloud_first=True`; **`music_mission_cloud_drift`** triggers content resync when cloud mission state differs.  
-5. **`apply_cloud_mission_state_if_allowed`** — overlay cloud mission slice on workspace restore (latest wins).
+3. **`sync_creative_workspace_before_persist`** — before disk/cloud save; stamps `improv_mission_workspace_updated_at`.  
+4. **`apply_cloud_creative_state_if_allowed`** — latest wins on restore.  
+5. **`music_creative_cloud_drift`** — cross-device resync when cloud differs.
 
-Do **not** introduce a separate Mission-only database, file, or sync channel.
+Do **not** introduce a separate Creative-only sync channel.
 
 ---
 
 ## Cross-device behavior
 
-- Laptop saves → phone opens same account → **same mission, example, lick, BPM, notation**.  
-- Phone saves → laptop refresh → **updated** mission state from cloud.  
-- User should feel like **opening the same project on another device**, not starting a new session.
+Laptop and phone are **two windows into the same Creative workspace**. Changes on either device appear on the other after sync.
 
-**Manual acceptance (sign-off):**
+---
 
-- [ ] Refresh Creative → Missions → exact same generated example  
-- [ ] Refresh Mission Backing Jam → exact same practice session  
-- [ ] Laptop → phone sync (generate harder → jam → BPM 70 → autosave → phone)  
-- [ ] Phone → laptop sync (new idea → BPM 85 → autosave → laptop refresh)  
-- [ ] Notation, playback, TAB match stored motif (no new phrase)
+## Official manual sign-off (copy-paste)
+
+Complete on **Streamlit Cloud `dev`** with the **same account** on **two devices** (e.g. Dell + phone). Check every box before marking the architecture **frozen**.
+
+```
+Creative Workspace — Manual Acceptance Sign-off
+Account: ______________________   Date: __________
+Tester (devices): ________________________________
+
+□ Refresh restores the same Creative tab.
+□ Refresh restores the same analysis mode.
+□ Deep Harmonic Analyzer restores the same lesson step and selected section.
+□ Harmony Map restores the same selected chord and analysis.
+□ Phrase & Motif restores the same generated motif.
+□ Phrase & Motif restores the same ABC, notation, and TAB.
+□ Mission restores the same generated example.
+□ Harder / Easier / New Idea restore the exact same generated example (same motif notes).
+□ Mission Backing Jam restores the same mission.
+□ Mission Backing Jam restores the same generated notation.
+□ Mission Backing Jam restores the same BPM.
+□ Mission Backing Jam restores groove, meter, loop count, and transport settings.
+□ Dell → Phone synchronization restores the exact same Creative workspace.
+□ Phone → Dell synchronization restores the exact same Creative workspace.
+□ Stored motif remains the Single Source of Truth (notation, TAB, MIDI, playback rebuild from the same stored object — never a new random phrase).
+
+Sign-off: PASS / FAIL   Notes: _________________________________
+```
+
+When **all items pass**, set plan **Status** to **Frozen (signed off)** and treat future Creative features as **extensions to this contract only** (new keys, not new persistence paths).
 
 ---
 
 ## Future features (same workspace)
 
-Build on this contract—**extend keys or catalog entries**, do not new persistence paths:
-
 | Feature | Direction |
 |---------|-----------|
-| **Full Creative page workspace** | `creative_workspace_persistence.py` — tabs, Phrase & Motif blobs, Harmony Map picks, Deep Harmonic step/section idx (2026-08-01) |
-| **Lick Library** | User-curated entries referencing saved `motif` blobs (+ metadata) in workspace or media catalog |
-| **Favorite licks** | Flag on library entries or mission examples |
-| **Practice history** | Append-only log keyed to motif fingerprint + mission id |
-| **Composition Studio** | Handoff imports motif + ABC as inspiration seed |
-| **AI feedback on past licks** | AMI context includes stored motif + mission metadata |
-
-Interactive Mission Practice workspace (loop counter, note highlight, rep counts) remains UI on top of the same motif + backing transport—see product backlog.
+| **Lick Library** | Entries reference saved `motif` blobs in workspace |
+| **Composition Studio handoff** | Import motif + ABC as seed |
+| **Practice Chord Coach** | Unified with `practice_chord_coach.py` + `chord_coach_insight` (2026-08-01 in progress) |
 
 ---
 
 ## Related plans
 
-- [2026-07-30-creative-experience-polish-sprint.md](./2026-07-30-creative-experience-polish-sprint.md) — Missions UX + Backing Jam  
-- [2026-06-29-creative-backing-track-routing.md](./2026-06-29-creative-backing-track-routing.md) — backing context handoff  
-- [music-persistence-audit-2026-06-08.md](./music-persistence-audit-2026-06-08.md) — global persistence baseline  
+- [2026-07-30-creative-experience-polish-sprint.md](./2026-07-30-creative-experience-polish-sprint.md)  
+- [2026-06-29-creative-backing-track-routing.md](./2026-06-29-creative-backing-track-routing.md)  
+- [2026-07-29-flagship-coaching-quality-standard.md](./2026-07-29-flagship-coaching-quality-standard.md) — three-pillar educational checklist  
+- [music-persistence-audit-2026-06-08.md](./music-persistence-audit-2026-06-08.md)
