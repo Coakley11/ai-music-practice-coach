@@ -9,7 +9,24 @@ Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadma
 
 ## Current Priorities
 
-### P0 — Composition Studio → `motif_engine` integration (next focused feature)
+### P0 — Music workspace persistence & state ownership (active)
+
+**Investigation report:** [plans/2026-08-01-music-workspace-persistence-audit.md](./plans/2026-08-01-music-workspace-persistence-audit.md)
+
+**Goal:** Saved workspace = applied = final UI after refresh, reboot, and Dell ↔ phone. No default song recovery; hydration gate (`fe859a3`) is prerequisite only.
+
+**Delivery commits (in order):**
+
+1. [ ] Audit panel + mission fail-closed + capo init guard + `resolve_session_key_from_family` (in progress on `dev`)
+2. [ ] Canonical `creative_workspace_state` + `practice_workspace_state` save/apply
+3. [ ] Navigation + Creative restore order; block post-hydrate overwrites
+4. [ ] Key-family wiring + capo regression suite
+5. [ ] Mission spec validation + structured results + 20× strict tests
+6. [ ] Practice Tools — single “Metronome, Tuner & Tone” launcher + persistence
+7. [ ] Cross-device workspace revision / conflict hardening
+8. [ ] Integration verification matrix
+
+### P0 — Composition Studio → `motif_engine` integration (queued)
 
 **Goal:** Wire Composition Studio melody/motif surfaces through the unified `motif_engine` (SSOT) without duplicating notation or coaching logic in page renderers.
 

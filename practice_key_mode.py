@@ -259,11 +259,24 @@ def resolve_fixed_practice_concert_key_for_family(
     song_original_key: str,
 ) -> str:
     """Resolve a song into the selected family, preserving the user's spelling."""
+    return resolve_session_key_from_family(option_id, key_mode(song_original_key))
+
+
+def resolve_session_key_from_family(key_family: str, musical_mode: str) -> str:
+    """
+    Canonical session tonal key from a fixed family + active object mode.
+
+    ``musical_mode`` must be ``major`` or ``minor`` from the active song/progression/jam/mission —
+    not inferred from the family label alone.
+    """
+    option_id = str(key_family or "").strip()
+    if FAMILY_OPTION_SEP not in option_id:
+        option_id = _family_option_id_for_major(option_id, prefer=option_id)
     major, minor_root = parse_family_option_id(option_id)
-    original = str(song_original_key or "C").strip() or "C"
-    if key_mode(original) == "major":
-        return major
-    return f"{minor_root}m"
+    mode = str(musical_mode or "major").strip().lower()
+    if mode == "minor":
+        return f"{minor_root}m"
+    return major
 
 
 def fixed_key_family_label(option_id: str) -> str:
@@ -502,6 +515,7 @@ __all__ = [
     "resolve_family_option_id",
     "resolve_fixed_practice_concert_key",
     "resolve_fixed_practice_concert_key_for_family",
+    "resolve_session_key_from_family",
     "resolve_fixed_practice_concert_key_for_session",
     "resolve_practice_concert_key_for_song",
     "set_fixed_practice_key",

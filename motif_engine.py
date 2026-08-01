@@ -89,6 +89,10 @@ def generate_mission_phrase(
     )
 
 
+class MissionMotifValidationError(RuntimeError):
+    """Raised when no mission-compliant phrase could be generated."""
+
+
 def generate_mission_phrase_validated(
     mission: str,
     chord: str,
@@ -123,18 +127,20 @@ def generate_mission_phrase_validated(
             key_center=key_center,
         )
         if ok:
+            candidate["_mission_valid"] = True
             return candidate
     if last is not None:
-        return last
-    return generate_mission_phrase(
-        mission,
-        chord,
-        key_center=key_center,
-        level=level,
-        variant=variant,
-        rng=rng,
-        idea_variant=idea_variant,
-    )
+        ok_last, reason_last = validate_mission_motif(
+            mission,
+            last,
+            chord=chord,
+            key_center=key_center,
+        )
+        if ok_last:
+            last["_mission_valid"] = True
+            return last
+        raise MissionMotifValidationError(reason_last or "mission validation failed")
+    raise MissionMotifValidationError("no mission phrase generated")
 
 
 def generate_musical_phrase(

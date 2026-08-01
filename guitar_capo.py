@@ -175,6 +175,17 @@ def flush_capo_edits_to_cloud(st_module: Any) -> bool:
 
 def init_capo_session_state(session_state: dict, *, concert_key: str) -> None:
     """Initialize capo session keys from the current practice display key."""
+    try:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+
+        meta = session_state.get(ACTIVE_SONG_STATE_KEY)
+        if isinstance(meta, dict) and meta.get(CAPO_ENABLED_KEY):
+            apply_capo_context_fields(session_state, meta)
+            return
+    except ImportError:
+        pass
+    if session_state.get(CAPO_ENABLED_KEY) and str(session_state.get(CAPO_SHAPE_KEY) or "").strip():
+        return
     sync_capo_from_practice_display_key(session_state, concert_key)
 
 

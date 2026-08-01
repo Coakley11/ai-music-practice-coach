@@ -1000,6 +1000,13 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
             st.text(f"{label}: {_trace_display(restore_rows.get(label))}")
 
+        try:
+            from music_workspace_persistence_audit import render_workspace_persistence_audit_sidebar
+
+            render_workspace_persistence_audit_sidebar(st)
+        except ImportError:
+            pass
+
         st.markdown("**Back/Forward nav (live UI)**")
         nav_rows = {label: trace.get(label) if label in trace else ss.get(label) for label in NAV_HISTORY_TRACE_LABELS}
         for label in NAV_HISTORY_TRACE_LABELS:
