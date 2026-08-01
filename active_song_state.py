@@ -1400,13 +1400,15 @@ def sync_active_song_context_from_core(session: dict[str, Any], core: dict[str, 
 
 
 def _custom_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
+    core = state.get("core") if isinstance(state.get("core"), dict) else {}
+    core_pk = str(core.get("pick_key") or "").strip()
+    if core_pk and not core_pk.startswith("custom::"):
+        return None
     session_extra = state.get("session") if isinstance(state.get("session"), dict) else {}
     source = str(session_extra.get("active_music_source") or "").strip()
     meta = state.get(ACTIVE_SONG_STATE_KEY)
     if not source and isinstance(meta, dict):
         source = str(meta.get("music_source") or "").strip()
-    core = state.get("core") if isinstance(state.get("core"), dict) else {}
-    core_pk = str(core.get("pick_key") or "").strip()
     if source != SOURCE_CUSTOM and not core_pk.startswith("custom::"):
         if not (isinstance(meta, dict) and str(meta.get("music_source") or "") == SOURCE_CUSTOM):
             return None

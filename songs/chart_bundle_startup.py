@@ -108,6 +108,14 @@ def collect_chart_bundle_restore_diagnostics(
     elif not stop_reason and last_error:
         stop_reason = "chart_build_not_ready"
 
+    workspace_fields: dict[str, Any] = {}
+    try:
+        from active_song_workspace_restore import merge_active_song_workspace_diagnostics
+
+        workspace_fields = merge_active_song_workspace_diagnostics(session_state)
+    except ImportError:
+        pass
+
     return {
         "recovery_attempts": chart_bundle_recovery_attempts(session_state),
         "recovery_max": CHART_BUNDLE_RECOVERY_MAX,
@@ -126,6 +134,7 @@ def collect_chart_bundle_restore_diagnostics(
         "restore_phase": restore_phase,
         "chart_cache_signature": repr(chart_cache_sig) if chart_cache_sig is not None else "(not captured)",
         "last_chart_error": last_error or "(none)",
+        **workspace_fields,
     }
 
 
@@ -250,6 +259,14 @@ def run_chart_bundle_automatic_recovery(
 ) -> bool:
     """One bounded recovery step. Returns True if caller should ``st.rerun()``."""
     ss = st.session_state
+    try:
+        from active_song_workspace_restore import should_block_chart_recovery_no_pick_key
+
+        if should_block_chart_recovery_no_pick_key(ss):
+            ss[CHART_BUNDLE_RECOVERY_STOP_REASON_KEY] = "missing_active_song_pick_key"
+            return False
+    except ImportError:
+        pass
     if chart_bundle_recovery_exhausted(ss):
         ss[CHART_BUNDLE_RECOVERY_STOP_REASON_KEY] = "recovery_attempts_exhausted"
         return False

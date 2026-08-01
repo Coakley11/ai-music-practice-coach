@@ -490,7 +490,7 @@ def apply_saved_music_context(
         )
 
     if skip_catalog_pick_key:
-        return False
+        return True
 
     resolved = resolve_pick_key(pick_key, song_picker_catalog=song_picker_catalog)
     target = resolved or pick_key
@@ -519,6 +519,15 @@ def apply_saved_music_context(
             )
         except Exception:
             return False
+        if instrument:
+            set_active_instrument(st.session_state, instrument)
+        if level:
+            set_active_level(st.session_state, level)
+        if focus:
+            set_active_focus(
+                st.session_state,
+                valid_focus_for(get_active_instrument(st.session_state), focus),
+            )
         if saved_display_key:
             st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
         elif restore_dk:
@@ -551,6 +560,15 @@ def apply_saved_music_context(
             )
         except Exception:
             return False
+        if instrument:
+            set_active_instrument(st.session_state, instrument)
+        if level:
+            set_active_level(st.session_state, level)
+        if focus:
+            set_active_focus(
+                st.session_state,
+                valid_focus_for(get_active_instrument(st.session_state), focus),
+            )
         if saved_display_key:
             st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
         elif restore_dk:
@@ -1065,10 +1083,25 @@ def _pick_key_from_cloud_payload(session_state: dict[str, Any]) -> str:
     pk = str(core.get("pick_key") or core.get("active_catalog_pick_key") or "").strip()
     if pk:
         return pk
+    ws = payload.get("music_workspace_state")
+    if isinstance(ws, dict):
+        pk = str(ws.get("pick_key") or "").strip()
+        if pk:
+            return pk
+        active = ws.get("active_song")
+        if isinstance(active, dict):
+            pk = str(active.get("pick_key") or "").strip()
+            if pk:
+                return pk
     extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
     pk = str(extra.get("active_catalog_pick_key") or "").strip()
     if pk:
         return pk
+    sel = extra.get("selected_song")
+    if isinstance(sel, dict):
+        pk = str(sel.get("pick_key") or "").strip()
+        if pk:
+            return pk
     meta = payload.get("active_song_state")
     if isinstance(meta, dict):
         pk = str(meta.get("pick_key") or meta.get("active_catalog_pick_key") or "").strip()
@@ -1186,7 +1219,7 @@ def apply_active_pick_key_reconciliation(
                 resolved,
                 song_picker_catalog,
                 song_library=song_library,
-                origin="restore_hydrate",
+                origin="restore",
                 persist=False,
                 skip_activity_log=True,
             )

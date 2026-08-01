@@ -26,6 +26,28 @@ class _FakeSession(dict):
         return self
 
 
+def _write_music_workspace_disk(tmp_path: Path, state: dict[str, Any]) -> Path:
+    ws_dir = tmp_path / "workspaces" / "daniel"
+    ws_dir.mkdir(parents=True, exist_ok=True)
+    path = ws_dir / "music_user_state.json"
+    path.write_text(
+        json.dumps({"version": 1, "app": "music", "saved_at": "2026-01-01T00:00:00+00:00", "state": state}),
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.fixture
+def isolated_music_persistence(tmp_path: Path, monkeypatch):
+    """Route suite disk restore to tmp_path and ignore live cloud workspace."""
+    import suite_user_persistence as sup
+    import suite_workspace as sw
+
+    monkeypatch.setattr(sup, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(sw, "DATA_DIR", tmp_path)
+    return tmp_path
+
+
 @pytest.fixture
 def mini_catalog():
     song_picker_catalog = {
@@ -72,7 +94,7 @@ def test_build_music_local_state_collects_globals(mini_catalog):
     assert snapshot["practice_focus_section"] == "Verse"
 
 
-def test_restore_runs_once_and_applies_saved_state(mini_catalog, tmp_path: Path):
+def test_restore_runs_once_and_applies_saved_state(mini_catalog, isolated_music_persistence, tmp_path: Path):
     song_picker_catalog, song_library = mini_catalog
     pick_key = format_pick_key("Jazz", "Autumn Leaves — Joseph Kosma")
     saved = {
@@ -86,15 +108,11 @@ def test_restore_runs_once_and_applies_saved_state(mini_catalog, tmp_path: Path)
         "practice_focus_section": "Chorus",
         "level": "Advanced",
     }
-    state_path = tmp_path / "music_user_state.json"
-    state_path.write_text(
-        json.dumps({"version": 1, "app": "music", "state": {"core": saved, "session": {}}}),
-        encoding="utf-8",
-    )
+    _write_music_workspace_disk(tmp_path, {"core": saved, "session": {}})
 
     st = _FakeSession({})
 
-    with patch("suite_user_persistence.DATA_DIR", tmp_path):
+    with patch("suite_cloud_state.load_cloud_full_session", return_value=({}, None)):
         restore_music_disk_state_once(
             st,
             song_picker_catalog=song_picker_catalog,
@@ -114,7 +132,7 @@ def test_restore_runs_once_and_applies_saved_state(mini_catalog, tmp_path: Path)
         for k, v in st.items()
         if not str(k).startswith("_suite_") and not str(k).startswith("_cloud_")
     }
-    with patch("suite_user_persistence.DATA_DIR", tmp_path):
+    with patch("suite_cloud_state.load_cloud_full_session", return_value=({}, None)):
         restore_music_disk_state_once(
             st,
             song_picker_catalog=song_picker_catalog,
@@ -156,22 +174,18 @@ def test_apply_music_disk_state_restores_core_pick_key(mini_catalog):
     assert st[PENDING_DISPLAY_KEY] == "Eb"
 
 
-def test_restore_missing_song_shows_neutral_notice(mini_catalog, tmp_path: Path):
+def test_restore_missing_song_shows_neutral_notice(mini_catalog, isolated_music_persistence, tmp_path: Path):
     song_picker_catalog, song_library = mini_catalog
     saved = {
         "pick_key": "Jazz|Missing Song — Nobody",
         "song": "Missing Song",
         "artist": "Nobody",
     }
-    state_path = tmp_path / "music_user_state.json"
-    state_path.write_text(
-        json.dumps({"version": 1, "app": "music", "state": {"core": saved, "session": {}}}),
-        encoding="utf-8",
-    )
+    _write_music_workspace_disk(tmp_path, {"core": saved, "session": {}})
 
     st = _FakeSession({})
 
-    with patch("suite_user_persistence.DATA_DIR", tmp_path):
+    with patch("suite_cloud_state.load_cloud_full_session", return_value=({}, None)):
         restore_music_disk_state_once(
             st,
             song_picker_catalog=song_picker_catalog,

@@ -10182,10 +10182,17 @@ except (MissingOriginalSongKeyError, ChartSongNotReadyError) as _chart_bundle_ex
     if _should_rerun:
         st.rerun()
     else:
-        st.warning(
-            "Your song chart is still syncing from the saved workspace. "
-            "Refresh once more if this message persists."
-        )
+        _choose_song = bool(st.session_state.get("_music_choose_song_restore_state"))
+        if _choose_song:
+            st.info(
+                "Your workspace restored, but no active song could be matched from the saved data. "
+                "Choose a song from Song Selection to continue — your other settings are intact."
+            )
+        else:
+            st.warning(
+                "Your song chart is still syncing from the saved workspace. "
+                "Refresh once more if this message persists."
+            )
         try:
             from music_dev_ui import music_dev_mode_enabled
 

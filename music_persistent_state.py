@@ -79,6 +79,48 @@ def clear_music_ephemeral_default_song(session_state: dict[str, Any]) -> None:
     session_state.pop("_music_default_init_this_run", None)
 
 
+def _reapply_core_practice_globals_from_payload(
+    session_state: dict[str, Any],
+    core: dict[str, Any],
+) -> None:
+    """Core musician globals from the workspace blob win over catalog/cloud side effects."""
+    if not isinstance(core, dict) or not core:
+        return
+    try:
+        from practice_setup_globals import (
+            get_active_instrument,
+            set_active_focus,
+            set_active_instrument,
+            set_active_level,
+            valid_focus_for,
+        )
+    except ImportError:
+        return
+    inst = str(core.get("instrument") or "").strip()
+    if inst:
+        set_active_instrument(session_state, inst)
+    lvl = str(core.get("level") or "").strip()
+    if lvl:
+        set_active_level(session_state, lvl)
+    foc = str(core.get("focus") or "").strip()
+    if foc:
+        set_active_focus(
+            session_state,
+            valid_focus_for(get_active_instrument(session_state), foc),
+        )
+    section = str(core.get("practice_focus_section") or "").strip()
+    if section:
+        session_state["practice_focus_section"] = section
+    display_key = str(core.get("display_key") or "").strip()
+    if display_key:
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY
+
+            session_state[PENDING_DISPLAY_KEY] = display_key
+        except ImportError:
+            pass
+
+
 def music_skip_master_song_init_reason(session_state: dict[str, Any]) -> str:
     """Human-readable reason when trusted-core default init must be skipped."""
     if session_state.get(SUITE_LOCAL_STATE_RESTORED_KEY):
@@ -255,16 +297,74 @@ def finalize_music_startup_restore(
     except ImportError:
         pass
 
+    payload = ss.get("_suite_last_cloud_fetch_payload")
+    if isinstance(payload, dict) and payload:
+        try:
+            from active_song_workspace_restore import (
+                ACTIVE_SONG_RESTORE_INCOMPLETE_KEY,
+                CHOOSE_SONG_RESTORE_STATE_KEY,
+                apply_canonical_active_song_from_workspace,
+                workspace_envelope_expects_catalog_song,
+            )
+
+            apply_canonical_active_song_from_workspace(
+                st,
+                payload,
+                song_picker_catalog=song_picker_catalog,
+                song_library=song_library,
+                allow_migration=True,
+                persist_migration=True,
+            )
+        except ImportError:
+            pass
+
     try:
-        from songs.state import apply_active_pick_key_reconciliation
+        from active_song_workspace_restore import (
+            ACTIVE_SONG_RESTORE_INCOMPLETE_KEY,
+            CHOOSE_SONG_RESTORE_STATE_KEY,
+            workspace_envelope_expects_catalog_song,
+        )
+    except ImportError:
+        ACTIVE_SONG_RESTORE_INCOMPLETE_KEY = "_music_active_song_restore_incomplete"  # type: ignore[misc]
+        CHOOSE_SONG_RESTORE_STATE_KEY = "_music_choose_song_restore_state"  # type: ignore[misc]
+
+        def workspace_envelope_expects_catalog_song(_payload: dict) -> bool:  # type: ignore[misc]
+            return False
+
+    try:
+        from songs.state import apply_active_pick_key_reconciliation, reconcile_active_pick_key
 
         apply_active_pick_key_reconciliation(
             st,
             song_picker_catalog=song_picker_catalog,
             song_library=song_library,
         )
+        reconciled = reconcile_active_pick_key(
+            ss,
+            song_picker_catalog=song_picker_catalog,
+        )
+        if (
+            isinstance(payload, dict)
+            and payload
+            and workspace_envelope_expects_catalog_song(payload)
+            and not str(reconciled or "").strip()
+        ):
+            ss[ACTIVE_SONG_RESTORE_INCOMPLETE_KEY] = True
+            ss[CHOOSE_SONG_RESTORE_STATE_KEY] = True
+        elif str(reconciled or "").strip():
+            ss.pop(ACTIVE_SONG_RESTORE_INCOMPLETE_KEY, None)
+            ss.pop(CHOOSE_SONG_RESTORE_STATE_KEY, None)
     except ImportError:
-        pass
+        try:
+            from songs.state import apply_active_pick_key_reconciliation
+
+            apply_active_pick_key_reconciliation(
+                st,
+                song_picker_catalog=song_picker_catalog,
+                song_library=song_library,
+            )
+        except ImportError:
+            pass
 
     try:
         from studio_cache import invalidate_session_cache
@@ -274,7 +374,11 @@ def finalize_music_startup_restore(
         pass
 
     ss[MUSIC_STARTUP_RESTORE_FINALIZED_KEY] = True
-    if complete_music_restore_phase is not None and not music_restore_phase_complete(ss):
+    if (
+        complete_music_restore_phase is not None
+        and not music_restore_phase_complete(ss)
+        and not ss.get(ACTIVE_SONG_RESTORE_INCOMPLETE_KEY)
+    ):
         complete_music_restore_phase(ss)
 
 
@@ -321,6 +425,14 @@ def _record_music_startup_restore_diag(
 
     mt_diag = ss.get("_multitrack_persist_diag") if isinstance(ss.get("_multitrack_persist_diag"), dict) else {}
 
+    workspace_diag: dict[str, Any] = {}
+    try:
+        from active_song_workspace_restore import merge_active_song_workspace_diagnostics
+
+        workspace_diag = merge_active_song_workspace_diagnostics(ss)
+    except ImportError:
+        pass
+
     ss[MUSIC_STARTUP_RESTORE_DIAG_KEY] = {
         "restored_studio_page": restored_studio_page or blob_studio_page or None,
         "final_studio_page": str(ss.get("studio_page") or "").strip() or None,
@@ -334,6 +446,7 @@ def _record_music_startup_restore_diag(
         "audio_persisted": mt_diag.get("audio_persisted"),
         "skipped_due_to_size": mt_diag.get("skipped_due_to_size"),
         "restore_source": mt_diag.get("restore_source"),
+        **workspace_diag,
     }
 
 
@@ -371,25 +484,27 @@ def _finalize_music_workspace_restore(
         except Exception:
             pass
     elif _payload_has_custom_active_signals(payload):
-        session_extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
-        cpl = session_extra.get("cpl_active_progression")
-        if not isinstance(cpl, dict):
-            cpl = ss.get("cpl_active_progression")
-        if isinstance(cpl, dict):
-            cid = str(cpl.get("id") or "").strip()
-            if cid:
-                try:
-                    from songs.state import apply_saved_custom_pick_key_context
+        core_pk_guard = str((core if isinstance(core, dict) else {}).get("pick_key") or "").strip()
+        if not (core_pk_guard and not core_pk_guard.startswith("custom::")):
+            session_extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+            cpl = session_extra.get("cpl_active_progression")
+            if not isinstance(cpl, dict):
+                cpl = ss.get("cpl_active_progression")
+            if isinstance(cpl, dict):
+                cid = str(cpl.get("id") or "").strip()
+                if cid:
+                    try:
+                        from songs.state import apply_saved_custom_pick_key_context
 
-                    apply_saved_custom_pick_key_context(
-                        st,
-                        f"custom::{cid}",
-                        core if isinstance(core, dict) else {},
-                        song_picker_catalog=song_picker_catalog,
-                        song_library=song_library,
-                    )
-                except Exception:
-                    pass
+                        apply_saved_custom_pick_key_context(
+                            st,
+                            f"custom::{cid}",
+                            core if isinstance(core, dict) else {},
+                            song_picker_catalog=song_picker_catalog,
+                            song_library=song_library,
+                        )
+                    except Exception:
+                        pass
 
     try:
         from multitrack_session_persistence import restore_multitrack_layers_from_workspace
@@ -1605,6 +1720,24 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
     except Exception:
         coach_page = str((core or {}).get("studio_page") or session_extra.get("studio_page") or "")
     active_song_meta = state.get("active_song_state") if isinstance(state.get("active_song_state"), dict) else {}
+    active_sel = (
+        active_song_meta.get("selected_song")
+        if isinstance(active_song_meta.get("selected_song"), dict)
+        else {}
+    )
+    active_pk = str(active_song_meta.get("pick_key") or (core or {}).get("pick_key") or "").strip()
+    active_title = str(active_sel.get("title") or (core or {}).get("song") or "").strip()
+    active_artist = str(active_sel.get("artist") or (core or {}).get("artist") or "").strip()
+    active_genre = str(active_sel.get("genre") or "").strip()
+    if not active_genre and active_pk and "::" in active_pk:
+        active_genre = active_pk.split("::", 1)[0]
+    active_original_key = str(active_sel.get("key") or active_song_meta.get("original_key") or "").strip()
+    active_source = (
+        active_song_meta.get("music_source")
+        or session_extra.get("active_music_source")
+        or (core or {}).get("music_source")
+        or ("custom_progression" if active_pk.startswith("custom::") else "catalog" if active_pk else "")
+    )
     studio_nav_meta = state.get("studio_nav_state") if isinstance(state.get("studio_nav_state"), dict) else {}
     practice_meta = state.get("practice_state") if isinstance(state.get("practice_state"), dict) else {}
     live_studio = ""
@@ -1634,14 +1767,17 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
         "instrument": active_song_meta.get("instrument") or (core or {}).get("instrument"),
         "display_key": active_song_meta.get("display_key") or (core or {}).get("display_key"),
         "active_song": {
-            "pick_key": active_song_meta.get("pick_key") or (core or {}).get("pick_key"),
+            "pick_key": active_pk or None,
+            "title": active_title or None,
+            "artist": active_artist or None,
+            "genre": active_genre or None,
+            "original_key": active_original_key or None,
+            "source_type": active_source or None,
             "display_key": active_song_meta.get("display_key") or (core or {}).get("display_key"),
             "instrument": active_song_meta.get("instrument") or (core or {}).get("instrument"),
             "level": active_song_meta.get("level") or (core or {}).get("level"),
             "focus": active_song_meta.get("focus") or (core or {}).get("focus"),
-            "music_source": active_song_meta.get("music_source")
-            or session_extra.get("active_music_source")
-            or (core or {}).get("music_source"),
+            "music_source": active_source,
             "custom_progression_name": active_song_meta.get("custom_progression_name"),
             "custom_home_key": active_song_meta.get("custom_home_key"),
             "show_chart_in_instrument_key": bool(
@@ -1982,6 +2118,19 @@ def apply_music_disk_state(
             except Exception:
                 ss[key] = payload[key]
 
+    try:
+        from active_song_workspace_restore import (
+            ACTIVE_SONG_WORKSPACE_DIAG_KEY,
+            inspect_workspace_envelope_identity,
+        )
+
+        ss[ACTIVE_SONG_WORKSPACE_DIAG_KEY] = {
+            **inspect_workspace_envelope_identity(payload),
+            **(ss.get(ACTIVE_SONG_WORKSPACE_DIAG_KEY) or {}),
+        }
+    except ImportError:
+        pass
+
     blob_studio = ""
     try:
         from studio_nav_state import _studio_page_from_blob
@@ -1997,6 +2146,10 @@ def apply_music_disk_state(
 
     applied = False
     defer_catalog_pick = _payload_has_custom_active_signals(payload)
+    if isinstance(core, dict) and core:
+        core_pk_for_defer = str(core.get("pick_key") or "").strip()
+        if core_pk_for_defer and not core_pk_for_defer.startswith("custom::"):
+            defer_catalog_pick = False
     if isinstance(core, dict) and core:
         core_for_apply = dict(core)
         if not str(core_for_apply.get("display_key") or "").strip():
@@ -2257,7 +2410,7 @@ def apply_music_disk_state(
             ss["_active_song_restore_skipped_reason"] = "local_dirty"
         elif apply_cloud_active_song_state_if_allowed(ss, payload):
             clear_active_song_local_edit(ss)
-        elif isinstance(core, dict) and core and applied:
+        elif isinstance(core, dict) and core:
             blob_custom = False
             try:
                 from active_song_state import _custom_context_from_blob
@@ -2268,6 +2421,7 @@ def apply_music_disk_state(
             if (
                 str(ss.get("active_music_source") or "") != "custom_progression"
                 and not blob_custom
+                and (core.get("pick_key") or core.get("song"))
             ):
                 sync_active_song_context_from_core(ss, core)
                 clear_active_song_local_edit(ss)
@@ -2361,6 +2515,21 @@ def apply_music_disk_state(
     except Exception:
         pass
 
+    if not _session_has_restored_song_context(ss):
+        try:
+            from active_song_workspace_restore import apply_canonical_active_song_from_workspace
+
+            apply_canonical_active_song_from_workspace(
+                st,
+                payload,
+                song_picker_catalog=song_picker_catalog,
+                song_library=song_library,
+                allow_migration=False,
+                persist_migration=False,
+            )
+        except ImportError:
+            pass
+
     try:
         _finalize_music_workspace_restore(
             st,
@@ -2396,6 +2565,9 @@ def apply_music_disk_state(
         hydrate_backing_context_after_restore(ss)
     except ImportError:
         pass
+
+    if isinstance(core, dict) and core:
+        _reapply_core_practice_globals_from_payload(ss, core)
 
     ss["_music_workspace_blob_hydrated"] = True
     if _session_has_restored_song_context(ss):
