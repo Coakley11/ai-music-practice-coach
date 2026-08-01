@@ -289,6 +289,14 @@ class TestPracticeState(unittest.TestCase):
 
         self.assertEqual(session["practice_groove_style"], "Bossa nova")
 
+    def test_resolve_groove_prefers_backing_studio_override(self) -> None:
+        from practice_state import resolve_practice_groove_style
+
+        session = {"backing_groove_style": "Jazz swing", "practice_groove_style": "Pop groove"}
+        groove = resolve_practice_groove_style(session, default_groove="Ballad")
+        self.assertEqual(groove, "Jazz swing")
+        self.assertEqual(session["practice_groove_style"], "Jazz swing")
+
 
 
     def test_practice_minutes_clamped_to_slider_range(self) -> None:

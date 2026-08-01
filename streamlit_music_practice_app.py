@@ -8618,19 +8618,14 @@ def _render_practice_setup_panel(
     original_key: str = "C",
     display_key_options: list[str] | None = None,
 ) -> None:
-    """Practice Control Center — instrument, level, focus, groove, session length."""
+    """Practice Control Center — instrument, level, focus, session length."""
     from practice_state import (
         PRACTICE_MINUTES_DEFAULT,
-        coerce_practice_groove_for_widget,
         prepare_practice_minutes_for_widget,
+        resolve_practice_groove_style,
     )
-    from practice_ui_labels import (
-        GROOVE_ICONS,
-    )
-    from songs.playback_defaults import GROOVE_STYLE_CHOICES
 
-    grooves = list(GROOVE_STYLE_CHOICES)
-    _groove = coerce_practice_groove_for_widget(st.session_state, default_groove=default_groove)
+    resolve_practice_groove_style(st.session_state, default_groove=default_groove)
     _minutes = prepare_practice_minutes_for_widget(st.session_state)
 
     with st.container(key="practice_control_panel", border=False):
@@ -8645,38 +8640,19 @@ def _render_practice_setup_panel(
             show_sync_caption=False,
         )
 
-        g1, g2 = st.columns([1, 1])
-        with g1:
-            st.markdown('<div class="ui-practice-control-field">', unsafe_allow_html=True)
-            render_backing_field_label(st, "Rhythm / groove feel", "Shapes coach pacing and backing style hints.")
-            st.selectbox(
-                "Rhythm / groove feel",
-                grooves,
-                key="practice_groove_style",
-                label_visibility="collapsed",
-                on_change=_on_practice_filter_change,
-            )
-            _groove_icon = GROOVE_ICONS.get(st.session_state.get("practice_groove_style", _groove), "✨")
-            _groove_label = html.escape(str(st.session_state.get("practice_groove_style", _groove)))
-            st.markdown(
-                f'<span class="ui-practice-groove-badge">{html.escape(_groove_icon)} {_groove_label}</span>',
-                unsafe_allow_html=True,
-            )
-            st.markdown("</div>", unsafe_allow_html=True)
-        with g2:
-            st.markdown('<div class="ui-practice-control-field">', unsafe_allow_html=True)
-            render_backing_field_label(st, "Practice length", "Session goal in minutes — coach scales to this.")
-            st.slider(
-                "Practice length (minutes)",
-                10,
-                120,
-                int(st.session_state.get("practice_minutes", _minutes or PRACTICE_MINUTES_DEFAULT)),
-                5,
-                key="practice_minutes",
-                label_visibility="collapsed",
-                on_change=_on_practice_filter_change,
-            )
-            st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown('<div class="ui-practice-control-field">', unsafe_allow_html=True)
+        render_backing_field_label(st, "Practice length", "Session goal in minutes — coach scales to this.")
+        st.slider(
+            "Practice length (minutes)",
+            10,
+            120,
+            int(st.session_state.get("practice_minutes", _minutes or PRACTICE_MINUTES_DEFAULT)),
+            5,
+            key="practice_minutes",
+            label_visibility="collapsed",
+            on_change=_on_practice_filter_change,
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
 
         try:
             from practice_key_mode import render_practice_key_behavior_panel
@@ -10421,9 +10397,15 @@ except Exception:
     _musician_chart_key = chart_key
 
 _practice_bpm = int(st.session_state.get("backing_track_bpm", _default_song_bpm))
-_practice_groove = str(
-    st.session_state.get("practice_groove_style", default_groove_style)
-)
+try:
+    from practice_state import resolve_practice_groove_style
+
+    _practice_groove = resolve_practice_groove_style(
+        st.session_state,
+        default_groove=default_groove_style,
+    )
+except ImportError:
+    _practice_groove = str(st.session_state.get("practice_groove_style", default_groove_style))
 
 if st.session_state.get("tutorial_open"):
 

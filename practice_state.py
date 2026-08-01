@@ -91,6 +91,7 @@ __all__ = (
     "coerce_practice_focus_for_widget",
 
     "coerce_practice_groove_for_widget",
+    "resolve_practice_groove_style",
 
     "flush_practice_edits",
 
@@ -471,39 +472,38 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
 
 
 
-def coerce_practice_groove_for_widget(session: dict[str, Any], *, default_groove: str = "") -> str:
-
-    """Ensure the groove selectbox always receives a valid option value."""
+def resolve_practice_groove_style(session: dict[str, Any], *, default_groove: str = "") -> str:
+    """Effective groove for Practice — canonical/restored filters, Backing override, then song default."""
 
     if not is_practice_locally_dirty(session):
-
         canonical = canonical_practice_filters(session) or {}
-
         canon_groove = normalize_practice_groove(canonical.get("practice_groove_style"))
-
         if canon_groove:
-
             session["practice_groove_style"] = canon_groove
-
             return canon_groove
 
-
+    backing_raw = str(session.get("backing_groove_style") or "").strip()
+    if backing_raw:
+        backing_groove = normalize_practice_groove(backing_raw)
+        if backing_groove:
+            session["practice_groove_style"] = backing_groove
+            return backing_groove
 
     current = session.get("practice_groove_style")
-
     if current is not None and str(current).strip():
-
         normalized = normalize_practice_groove(current)
-
         session["practice_groove_style"] = normalized
-
         return normalized
 
     fallback = normalize_practice_groove(default_groove) or "Auto"
-
     session.setdefault("practice_groove_style", fallback)
-
     return str(session["practice_groove_style"])
+
+
+def coerce_practice_groove_for_widget(session: dict[str, Any], *, default_groove: str = "") -> str:
+    """Backward-compatible alias — Practice page no longer renders a groove selectbox."""
+
+    return resolve_practice_groove_style(session, default_groove=default_groove)
 
 
 
