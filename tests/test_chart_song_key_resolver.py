@@ -11,7 +11,11 @@ from music_theory import (
     transpose_sections,
 )
 from song_catalog.catalog import format_pick_key
-from songs.music_source import build_active_chart_bundle, resolve_catalog_song_for_chart
+from songs.music_source import (
+    build_active_chart_bundle,
+    build_active_chart_bundle_for_app,
+    resolve_catalog_song_for_chart,
+)
 from songs.state import ACTIVE_CATALOG_PICK_KEY, get_song_context
 
 
@@ -258,6 +262,39 @@ class ChartSongKeyResolverTests(unittest.TestCase):
         self.assertNotEqual(sig_before, sig_after)
         bundle2 = session_cache_get_or_set(session, "chart_bundle", sig_after, _factory)
         self.assertEqual(bundle2["original_key"], "G")
+
+    def test_factory_style_call_via_build_active_chart_bundle_for_app(self) -> None:
+        from chart_level_arrangement import sections_for_level as _sections_for_level
+
+        catalog = _mini_catalog()
+        perfect_pk = format_pick_key("Pop", "Perfect — Ed Sheeran")
+        session: dict = {
+            ACTIVE_CATALOG_PICK_KEY: "",
+            "selected_song": {
+                "title": "Perfect",
+                "artist": "Ed Sheeran",
+                "genre": "Pop",
+                "sections": {"Verse 1": ["G", "Em7"]},
+            },
+            "active_song_state": {"pick_key": perfect_pk},
+        }
+        partial = dict(session["selected_song"])
+        bundle = build_active_chart_bundle_for_app(
+            session,
+            catalog_genre="Pop",
+            catalog_song="Perfect",
+            catalog_song_data=partial,
+            level="Advanced",
+            display_key="C",
+            cpl_active_key="cpl_active_progression",
+            sections_for_level=_sections_for_level,
+            transpose_sections=transpose_sections,
+            song_picker_catalog=catalog,
+            song_library=catalog,
+        )
+        self.assertEqual(bundle["original_key"], "G")
+        self.assertIn("_reconcile_song_library", session)
+        self.assertIn("_catalog_backup_library", session)
 
 
 if __name__ == "__main__":

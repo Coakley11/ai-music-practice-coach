@@ -2065,9 +2065,7 @@ def resolve_catalog_song_for_chart(
     if song_picker_catalog is None:
         song_picker_catalog = _catalog_picker_from_session(session_state)
     if song_library is None:
-        lib = session_state.get("_reconcile_song_library")
-        if isinstance(lib, dict) and lib:
-            song_library = lib
+        song_library = _catalog_library_from_session(session_state)
 
     overlay = dict(catalog_song_data or {})
     sel = session_state.get(SELECTED_SONG_STATE_KEY) or {}
@@ -2184,9 +2182,7 @@ def build_active_chart_bundle(
     if song_picker_catalog is None:
         song_picker_catalog = _catalog_picker_from_session(session_state)
     if song_library is None:
-        lib = session_state.get("_reconcile_song_library")
-        if isinstance(lib, dict) and lib:
-            song_library = lib
+        song_library = _catalog_library_from_session(session_state)
 
     resolved_song_data, original_key = resolve_catalog_song_for_chart(
         session_state,
@@ -2237,6 +2233,71 @@ def _catalog_picker_from_session(session_state: dict[str, Any]) -> dict[str, dic
         if isinstance(raw, dict) and raw:
             return raw
     return None
+
+
+def _catalog_library_from_session(session_state: dict[str, Any]) -> dict[str, dict[str, dict]] | None:
+    for key in ("_reconcile_song_library", "_catalog_backup_library"):
+        raw = session_state.get(key)
+        if isinstance(raw, dict) and raw:
+            return raw
+    return None
+
+
+def stamp_chart_bundle_catalog_context(
+    session_state: dict[str, Any],
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+    song_library: dict[str, dict[str, dict]] | None = None,
+) -> None:
+    """Persist catalog handles on session so chart bundle build survives API/caller drift."""
+    if isinstance(song_picker_catalog, dict) and song_picker_catalog:
+        session_state["_reconcile_song_picker_catalog"] = song_picker_catalog
+        session_state["_catalog_backup_picker"] = song_picker_catalog
+    if isinstance(song_library, dict) and song_library:
+        session_state["_reconcile_song_library"] = song_library
+        session_state["_catalog_backup_library"] = song_library
+
+
+def build_active_chart_bundle_for_app(
+    session_state: dict[str, Any],
+    *,
+    catalog_genre: str,
+    catalog_song: str,
+    catalog_song_data: dict[str, Any],
+    level: str,
+    display_key: str,
+    cpl_active_key: str,
+    sections_for_level: Callable[[dict, str], dict],
+    transpose_sections: Callable[[dict, str], dict],
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+    song_library: dict[str, dict[str, dict]] | None = None,
+) -> dict[str, Any]:
+    """App entry point: stamp session catalog context, then build (stable for Streamlit factory)."""
+    import inspect
+
+    stamp_chart_bundle_catalog_context(
+        session_state,
+        song_picker_catalog=song_picker_catalog,
+        song_library=song_library,
+    )
+    picker = song_picker_catalog or _catalog_picker_from_session(session_state)
+    library = song_library or _catalog_library_from_session(session_state)
+    kwargs: dict[str, Any] = {
+        "catalog_genre": catalog_genre,
+        "catalog_song": catalog_song,
+        "catalog_song_data": catalog_song_data,
+        "level": level,
+        "display_key": display_key,
+        "cpl_active_key": cpl_active_key,
+        "sections_for_level": sections_for_level,
+        "transpose_sections": transpose_sections,
+    }
+    params = inspect.signature(build_active_chart_bundle).parameters
+    if "song_picker_catalog" in params:
+        kwargs["song_picker_catalog"] = picker
+    if "song_library" in params:
+        kwargs["song_library"] = library
+    return build_active_chart_bundle(session_state, **kwargs)
 
 
 def normalize_catalog_pick_key(

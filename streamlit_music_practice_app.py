@@ -180,6 +180,7 @@ from songs.music_source import (
     SOURCE_CUSTOM,
     active_source_banner,
     build_active_chart_bundle,
+    build_active_chart_bundle_for_app,
     cpl_session_is_active,
     display_key_context,
     ensure_active_music_source,
@@ -10105,7 +10106,7 @@ _chart_bundle_sig = (
 
 
 def _factory_chart_bundle() -> dict:
-    return build_active_chart_bundle(
+    return build_active_chart_bundle_for_app(
         st.session_state,
         catalog_genre=_catalog_genre,
         catalog_song=_catalog_song,
