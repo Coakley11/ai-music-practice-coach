@@ -1,6 +1,6 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-07-30 (Tests A–E frozen)
+**Last updated:** 2026-07-31
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
@@ -9,6 +9,8 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 ## Current Priorities
 
 *Tests **A–E** are **passed** and **frozen** on `dev`. See [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).*
+
+*Platform **Single Source of Truth** + **One Music Generation Engine** — see [2026-07-31 plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) and `.cursor/rules/single-source-of-truth.mdc`.*
 
 *Active: **P0 media persistence sprint** — see [music_app_tasks.md](./music_app_tasks.md) and [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md).*
 
@@ -106,8 +108,13 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### Creative Progressions
 
+- **Mission interactive practice workspace** — loop counter, note highlight during playback, rep counts, mark learned/favorite (UI on existing motif + backing transport; persistence via [Mission workspace contract](./plans/2026-07-30-mission-workspace-contract.md))
+- **Lick Library** — save/favorite generated mission motifs; same workspace envelope + optional media catalog refs (no separate sync path)
+- **Composition Studio ← Mission handoff** — import stored motif/ABC as composition seed
+- **AI feedback on saved licks** — AMI context includes mission motif metadata from workspace
 - **Level-aware musical example generation (app-wide)** — every auto-generated example adapts to Beginner / Intermediate / Advanced: simpler rhythms and chord-tone lines for beginners; passing tones and variety for intermediate; syncopation, approach notes, and performance-like phrasing for advanced. Surfaces: Practice, Missions (started), TAB, ABC/sheet, Creative exercises, improvisation/harmony examples, Composition Studio suggestions, future AI ideas. Goal: examples feel teacher-written, not generic drills.
 - **Creative AI music coach (long-term)** — personal, conversational coach for improv, accompaniment, composition, hearing harmonic movement, and effective practice; adapts to instrument, level, goals, and repertoire (extends Deep Harmonic Analyzer + Missions)
+- **Global improvisation coaching profile** — AI Improvisation Metrics & AI = persistent priorities, tone, depth, long-term goals; Upload Analysis = today’s mission performance review inheriting profile ([plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md))
 - Import progression from Nashville number chart paste
 - MIDI export of custom progression
 - CPL → share link / QR for students

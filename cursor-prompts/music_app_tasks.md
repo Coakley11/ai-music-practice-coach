@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-07-30
+**Last updated:** 2026-07-31
 
 Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
@@ -113,8 +113,26 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 - [x] Song Catalog ↔ Custom Songs — last selection restore on toggle (`LAST_CUSTOM_STATE_KEY`, pending picker switch)
 - [x] Deep Harmonic Analyzer — single UI (`deep_harmonic_analyzer_ui.py`); guided lesson; instrument/level/focus personalization; collapsible Go deeper cards; homework
 - [x] Creative Missions → Backing — chord-by-location selection; Mission Backing Jam; user BPM preserved after handoff; instrument icons on backing card
-- [x] Mission examples — level-scaled motifs; harder/new-idea variety
+- [x] Mission examples — level-scaled motifs; relative Harder/Easier; practice lick → Mission Backing Jam; **Mission workspace cloud persistence** ([contract](./plans/2026-07-30-mission-workspace-contract.md), `4106a86`)
 - [x] Manual acceptance on Streamlit Cloud (DHA combos, mission BPM, icons) — **signed off 2026-07-30**
+- [ ] **Mission persistence cross-device** — manual laptop ↔ phone sign-off per [contract](./plans/2026-07-30-mission-workspace-contract.md)
+
+### P1 — Unified motif engine & coaching profile split
+
+**Plan:** [plans/2026-07-31-unified-motif-engine-and-coaching-profile.md](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md)
+
+- [x] Architecture — `motif_engine.py` facade, mission rules layer, cursor rules (theory + unified engine)
+- [x] Key-signature spelling across Creative coaching displays (`8664228`)
+- [ ] Route all new generation through `motif_engine.generate_musical_phrase`
+- [ ] Phrase & Motif — stylistic intents (lyrical, rhythmic, bluesy, jazz vocab, continue/contrast idea)
+- [ ] Composition Studio melody phase → engine + songwriting constraints (replace parallel hint-only path)
+- [ ] AI Coach — analysis-first; engine only for illustrative examples post-feedback
+- [ ] **Global coaching profile** — persistent skill priorities, tone, depth, long-term goals (Metrics & AI tab)
+- [ ] **Upload Analysis redesign** — mission-first “today’s performance”; inherit profile; remove duplicate metric multiselect
+- [ ] `merge_mission_and_profile()` in `mission_analysis.py` + tests
+
+**Acceptance:** Metrics tab = long-term coach settings; Upload = “how did I do today?”; Girl from Ipanema upload respects rhythm-first profile while scoring today’s chord-tone mission.
+
 - [ ] **Creative AI coach** — long-term vision ([backlog](./music_app_feature_backlog.md))
 
 **Acceptance:** Toggle catalog/custom restores correct song; mission “Jam” opens Backing on one chord; Deep Harmonic reads like a private lesson; mission tempo editable after launch.
@@ -252,7 +270,8 @@ Recent task completions (see [music_app_completed_features.md](./music_app_compl
 
 ## Notes
 
-- Work on branch **`dev`** only; push `origin/dev` for Streamlit Cloud dev app.
+- **SSOT + One Music Engine:** New musical logic belongs in canonical modules (`music_theory`, `motif_engine`, mission rules, persistence contracts)—not page files. See [2026-07-31 architecture plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) and `.cursor/rules/single-source-of-truth.mdc`.
+- Work on branch **`dev`** only; push `origin/dev` for Streamlit Cloud dev app. Do not push `main` unless releasing.
 - **UI polish** and **nav audit/fix** = separate commits; never mix with persistence.
 - When a task ships, move detail to `music_app_completed_features.md` and uncheck here.
 - For large implementation plans, save the full plan body under `cursor-prompts/plans/` and link from this file.

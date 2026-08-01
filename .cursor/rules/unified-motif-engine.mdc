@@ -1,0 +1,91 @@
+---
+description: One Music Generation Engine for all creative features; pages apply goals/constraints only
+alwaysApply: true
+---
+
+# One Music Generation Engine
+
+Part of platform **Single Source of Truth** — see [single-source-of-truth.mdc](./single-source-of-truth.mdc).
+
+## Platform principle
+
+We are building **one central musical generation engine**, not separate generators per page. Every creative feature uses the same engine; **pages differ only in purpose and constraints**.
+
+Improve the engine once → Missions, Phrase & Motif, Composition Studio, Practice, and AI Coach examples all improve automatically.
+
+## Engine owns (single implementation)
+
+- Musical phrase generation
+- Rhythm generation
+- Difficulty scaling (level + easier/harder relative tiers)
+- Theory (via `music_theory`: normalize, classify, chord tones, targets, scales)
+- Key-signature spelling (`spell_note_in_key`)
+- Chord-tone / target-note selection for generated lines
+- Sheet music (ABC), guitar TAB, MIDI, playback hooks
+
+## Canonical modules
+
+| Role | Module |
+|------|--------|
+| Public facade | `motif_engine.py` — `generate_musical_phrase`, re-exports |
+| Core engine | `improvisation_motif.py` |
+| Mission constraints | `improvisation_mission_rules.py` |
+| Theory / playback token separation | `music_theory.py`, `.cursor/rules/theory-playback-separation.mdc` |
+
+Full plan: `cursor-prompts/plans/2026-07-31-unified-motif-engine-and-coaching-profile.md`
+
+## Pages = goals, not generators
+
+### Missions — teach one concept
+
+Mission text **defines constraints** passed to the engine (after base phrase generation).
+
+Examples: chord tones only, guide tones, target 9ths, rhythmic variation, motif development, dominant tension, beat-1 resolution.
+
+Generated examples must **demonstrate the selected Mission**.
+
+### Phrase & Motif — idea generator
+
+Creative exploration on the same engine: New / Harder / Easier motif; future stylistic intents (more lyrical, rhythmic, bluesy, jazz vocabulary, continue idea, contrasting idea).
+
+**Transform tools** (invert, sequence up/down, rhythmic variation) operate on the **active motif** regardless of how it was generated.
+
+### Composition Studio — write songs
+
+Migrate from parallel text-only `motif_hint` paths to **songwriting constraints** on the same engine.
+
+Examples: verse melody, chorus hook, bridge, singable range, hook repeat, pre-chorus tension, style/harmony fit.
+
+### AI Coach — analyze first, generate when teaching
+
+Primary workflow:
+
+`Student recording → performance analysis → coaching feedback`
+
+Use the engine **only when the coach needs an example** (“here’s a better guide-tone line”, “a motif that demonstrates today’s Mission”). The coach analyzes; the engine illustrates.
+
+### Practice — performance-oriented examples
+
+Example lines via engine with practice-appropriate constraints (not a separate generator).
+
+## Coaching UX (separate from generation)
+
+| Page | Role |
+|------|------|
+| **AI Improvisation Metrics & AI** | Long-term **coaching profile** (skills, strictness, tone, depth, goals) — persists weeks/months |
+| **Mission Upload Analysis** | **Today’s performance review** — mission completion, strengths, fixes, next steps; **inherits** global profile for weighting and voice |
+
+Do not duplicate metric multiselect on both pages; profile + today’s mission merge at analysis time.
+
+## Do not
+
+- Add new standalone phrase/motif generators in page UI or Composition modules
+- Parse playback tokens for theory (use `normalize_chord_for_theory`)
+- Show musician-facing note names without key-signature spelling
+- Make AI Coach a music generator — analysis first, engine as teaching tool
+
+## When adding features
+
+1. Extend `improvisation_motif` / `motif_engine` for generation behavior.
+2. Add a **constraint module or parameters** for the page goal (mission rules, composition recipe, coach example request).
+3. Keep UI as a view over engine output (notation, TAB, playback).

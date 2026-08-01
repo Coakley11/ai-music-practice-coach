@@ -1,0 +1,40 @@
+---
+description: One canonical implementation per major musical concept; pages consume shared services
+alwaysApply: true
+---
+
+# Single Source of Truth (SSOT)
+
+## Platform philosophy
+
+We are building **core platform architecture**, not isolated features. Every major musical concept has **one canonical implementation**. Pages **consume** shared services; they do not reimplement the same logic.
+
+**Improve one engine or service → every page benefits automatically.**
+
+## Canonical services (SSOT map)
+
+| Concept | Canonical owner | Do not duplicate |
+|---------|-----------------|------------------|
+| Music theory (quality, chord tones, scales) | `music_theory.normalize_chord_for_theory`, `classify_chord_quality`, `chord_root_for_theory` | Suffix heuristics on playback tokens in page code |
+| Key spelling (musician-facing) | `music_theory.spell_note_in_key`, `respell_note_for_key` | Ad-hoc sharp lists, `CHROMATIC`-only display |
+| Motif / phrase generation | `motif_engine` → `improvisation_motif` | Per-page lick generators |
+| Mission example constraints | `improvisation_mission_rules` | One-off mission logic in UI |
+| Mission workspace persistence | [Mission workspace contract](../cursor-prompts/plans/2026-07-30-mission-workspace-contract.md) | Ad-hoc mission session keys |
+| AI coaching profile (long-term) | `improv_coaching_profile` (planned) — Metrics & AI tab | Duplicate metric multiselect on Upload |
+| Upload analysis (today’s take) | `mission_analysis` + mission-first scoring (planned UX split) | Second copy of coaching profile UI |
+| Playback vs theory | Playback: `chord_subdivisions`, backing; Theory: `music_theory` | Parsing `\|:weights\|` for chord quality |
+| Notation outputs | One **motif object** → ABC, sheet music, guitar TAB, MIDI | Separate note pipelines per output |
+| One Music Generation Engine | `.cursor/rules/unified-motif-engine.mdc` | Composition hint-only generators (migrate) |
+
+## Rules for new work
+
+1. **Search for an existing canonical module** before adding musical logic to a page file.
+2. **Extend the SSOT module** when behavior must change for all surfaces.
+3. **Page code** wires UI, session state, and calls into SSOT — not reimplementation.
+4. **Persistence contracts** live in documented plans (`cursor-prompts/plans/`) and dedicated persistence modules.
+
+## Related rules & plans
+
+- [theory-playback-separation.mdc](./theory-playback-separation.mdc)
+- [unified-motif-engine.mdc](./unified-motif-engine.mdc)
+- [2026-07-31-unified-motif-engine-and-coaching-profile.md](../cursor-prompts/plans/2026-07-31-unified-motif-engine-and-coaching-profile.md)

@@ -5,6 +5,8 @@ alwaysApply: true
 
 # Theory vs playback — permanent separation
 
+Part of platform **Single Source of Truth** — see [single-source-of-truth.mdc](./single-source-of-truth.mdc).
+
 ## Canonical theory pipeline
 
 All harmonic analysis, coaching, and displayed theory (chord tones, target notes, scales, pentatonics, tensions, avoid notes, function labels) must use:

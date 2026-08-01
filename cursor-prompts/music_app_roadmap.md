@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-07-30 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
+**Last updated:** 2026-07-31 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 This is the master planning document. Related files:
 
@@ -9,6 +9,23 @@ This is the master planning document. Related files:
 | [music_app_tasks.md](./music_app_tasks.md) | Active work and near-term execution |
 | [music_app_feature_backlog.md](./music_app_feature_backlog.md) | Queued ideas and enhancements |
 | [music_app_completed_features.md](./music_app_completed_features.md) | Shipped capabilities by area |
+
+---
+
+## Platform architecture (2026-07-31)
+
+We are building **core platform architecture**, not a bag of isolated features.
+
+**Single Source of Truth (SSOT):** Each major concept has one canonical implementation; studio pages consume shared services. Agent rules: `.cursor/rules/single-source-of-truth.mdc`, `.cursor/rules/unified-motif-engine.mdc`, `.cursor/rules/theory-playback-separation.mdc`.
+
+| Pillar | Plan / contract |
+|--------|-----------------|
+| One Music Generation Engine | [2026-07-31 plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) |
+| Theory vs playback tokens | `music_theory` + theory-playback rule |
+| Mission workspace | [2026-07-30 contract](./plans/2026-07-30-mission-workspace-contract.md) |
+| Coaching profile vs upload review | Same 2026-07-31 plan (Part B) |
+
+**Principle:** Improve one engine → Missions, Creative, Composition, Practice, Upload, and Coach all improve together.
 
 ---
 
@@ -52,8 +69,21 @@ This is the master planning document. Related files:
 11. **UI theme bundle** — `app_ui.py` studio panels, genre/instrument card modifiers, per-page style injectors.
 12. **Phase C cross-device sync (A–E)** — Canonical modules + `?dev=1` trace; manual Tests A–E **passed** on `dev` (2026-06-09, Test E v26 `1b00d58`).
 13. **Flagship masterclass coaching (frozen foundation)** — Song/instrument/level-aware curated profiles; unified instructor voice across Active Song card, Coach tab, Practice page, section overlays ([quality standard](./plans/2026-07-29-flagship-coaching-quality-standard.md)).
+14. **Mission workspace persistence (frozen contract)** — Missions as cloud workspace documents; motif SSOT; latest-save-wins cross-device sync ([contract](./plans/2026-07-30-mission-workspace-contract.md), `4106a86`).
+15. **Unified motif engine (foundation)** — Single generation pipeline for Missions + Phrase & Motif; mission rule constraints; key-signature spelling; facade `motif_engine.py` ([plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md), `8664228`).
 
 ---
+
+## In flight (architecture)
+
+**Principle:** [One Music Generation Engine](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) — one core for phrases, rhythm, theory, spelling, notation, MIDI, playback; every page applies constraints only.
+
+- **Missions** — teach one concept (mission rules on engine).
+- **Phrase & Motif** — idea generator + transforms on active motif.
+- **Composition Studio** — songwriting constraints on same engine (replace hint-only paths).
+- **AI Coach** — recording → analysis → feedback; engine generates examples when teaching.
+- **Metrics & AI** — long-term coaching profile (persistent).
+- **Upload Analysis** — today’s mission performance review (inherits profile).
 
 ## Cross-device persistence acceptance (manual, `?dev=1`)
 
@@ -153,7 +183,7 @@ Hero card (keys, BPM, meter, sections), Practice/Backing/Karaoke/Chord Coach act
 Sprint A foundation: `CompositionDocument`, library save/load, preview audio, musical snapshot. Current UI still CPL-like — **six-phase guided UX next** ([plan](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)): Vision → Structure → Chords → Melody → Lyrics → Review.
 
 ### Creative Progressions
-**Custom:** click-build sections, subdivisions, save/list, harmonic hints. **Creative:** Improvisation Intelligence tabs + text labs (deep harmony, arrangement, weakness, development).
+**Custom:** click-build sections, subdivisions, save/list, harmonic hints. **Creative:** Improvisation Intelligence tabs + text labs; **Missions** use the [Mission workspace contract](./plans/2026-07-30-mission-workspace-contract.md) (motif SSOT, cloud sync).
 
 ### Instrument modes
 Piano, Guitar, Bass, winds, Voice, etc.; per-instrument focus lists; voice body CSS; transposition helpers.
