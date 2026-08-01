@@ -107,9 +107,20 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
     shape_final = session.get("guitar_capo_shape_key")
 
     practice_tool_saved = None
-    snaps = _saved_from_envelope(session, "session", "_studio_page_snapshots")
-    if isinstance(snaps, dict) and isinstance(snaps.get("practice"), dict):
-        practice_tool_saved = snaps["practice"].get("practice_active_tool")
+    practice_audit: dict[str, Any] = {}
+    try:
+        from practice_workspace_persistence import collect_practice_workspace_audit
+
+        payload = session.get("_suite_last_cloud_fetch_payload")
+        practice_audit = collect_practice_workspace_audit(
+            session,
+            payload if isinstance(payload, dict) else None,
+        )
+        practice_tool_saved = practice_audit.get("practice_tool_saved")
+    except ImportError:
+        snaps = _saved_from_envelope(session, "session", "_studio_page_snapshots")
+        if isinstance(snaps, dict) and isinstance(snaps.get("practice"), dict):
+            practice_tool_saved = snaps["practice"].get("practice_active_tool")
     practice_tool_final = session.get("practice_active_tool")
 
     resolved_session_key = ""
@@ -165,6 +176,7 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
         "last_persistence_error": session.get("_music_commit_error") or session.get("_music_restore_error"),
         "newer_cloud_ignored": session.get("_suite_workspace_sync_skipped_no_apply"),
         "hydration": hydration,
+        **practice_audit,
         "active_page": _triple(saved_page, applied_page or "(source)", final_page),
         "active_song_pick_key": _triple(saved_pk, session.get("_music_active_pick_key_reconciled"), final_pk),
         "creative_mode": _triple(creative_mode_saved, "(session_extra)", creative_mode_final),
@@ -178,7 +190,7 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
         "resolved_session_key": resolved_session_key or "(n/a)",
         "capo_mode": _triple(capo_saved, "(session_extra)", capo_final),
         "shape_key": _triple(shape_saved, "(session_extra)", shape_final),
-        "practice_tool": _triple(practice_tool_saved, "(page_snapshot)", practice_tool_final),
+        "practice_tool": _triple(practice_tool_saved, practice_audit.get("practice_tool_applied"), practice_tool_final),
         "overwrite_stages": {
             "skip_master_song_init": session.get("_music_skip_master_song_init_reason"),
             "active_song_restore_skipped": session.get("_active_song_restore_skipped_reason"),
@@ -229,6 +241,10 @@ def render_workspace_persistence_audit_sidebar(st_module: Any) -> None:
                     f"{block_key}{flag}: saved={block.get('saved')} → "
                     f"applied={block.get('applied')} → final={block.get('final')}"
                 )
+        st_module.markdown("**Practice workspace**")
+        for pk, pv in sorted(audit.items()):
+            if pk.startswith("practice_") and pk != "practice_tool":
+                st_module.text(f"{pk}: {pv!r}")
         st_module.markdown("**Overwrite stages**")
         stages = audit.get("overwrite_stages") or {}
         if isinstance(stages, dict):

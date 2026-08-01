@@ -195,8 +195,20 @@ def render_practice_tools_launcher(
                     ):
                         if active == tool.tool_id:
                             session[PRACTICE_ACTIVE_TOOL_KEY] = ""
+                            try:
+                                from practice_workspace_persistence import commit_practice_tool_selection
+
+                                commit_practice_tool_selection(session, "")
+                            except ImportError:
+                                pass
                         else:
                             session[PRACTICE_ACTIVE_TOOL_KEY] = tool.tool_id
+                            try:
+                                from practice_workspace_persistence import commit_practice_tool_selection
+
+                                commit_practice_tool_selection(session, tool.tool_id)
+                            except ImportError:
+                                pass
                         if on_select:
                             on_select()
                         else:

@@ -10484,6 +10484,13 @@ if _developer_mode_enabled():
 if _studio_page == "practice":
 
     try:
+        from practice_workspace_persistence import prepare_practice_workspace_for_render
+
+        prepare_practice_workspace_for_render(st.session_state)
+    except ImportError:
+        pass
+
+    try:
         from practice_state import prepare_practice_page
         from global_active_song_state import prepare_global_active_song
         from music_ami_context import cache_music_ami_context
@@ -10805,17 +10812,27 @@ if _studio_page == "practice":
                 )
 
             elif _practice_active_tool == "timing":
+                try:
+                    from practice_workspace_persistence import metronome_render_defaults
+
+                    _metro_bpm, _metro_meter = metronome_render_defaults(
+                        st.session_state,
+                        fallback_bpm=_practice_bpm,
+                        fallback_meter=_time_sig,
+                    )
+                except ImportError:
+                    _metro_bpm, _metro_meter = _practice_bpm, _time_sig
                 if _is_full_song:
                     render_metronome_widget(
                         st,
-                        default_bpm=_practice_bpm,
-                        default_signature=_time_sig,
+                        default_bpm=_metro_bpm,
+                        default_signature=_metro_meter,
                     )
                 elif _active_section:
                     render_metronome_widget(
                         st,
-                        default_bpm=_practice_bpm,
-                        default_signature=_time_sig,
+                        default_bpm=_metro_bpm,
+                        default_signature=_metro_meter,
                         section_bars=_section_bar_count,
                         section_label=_active_section,
                         loop_section=True,

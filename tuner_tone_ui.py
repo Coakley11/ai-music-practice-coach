@@ -98,6 +98,16 @@ def _render_tone_target_selector(
         key=f"{key_prefix}::tone_target_select",
     )
     session_state[_pitch_class_storage_key(key_prefix)] = selected
+    try:
+        from practice_workspace_persistence import (
+            PRACTICE_TONE_PITCH_CLASS_KEY,
+            commit_practice_time_pitch_settings,
+        )
+
+        session_state[PRACTICE_TONE_PITCH_CLASS_KEY] = selected
+        commit_practice_time_pitch_settings(session_state, reason="tone_target")
+    except ImportError:
+        pass
 
     ctx = resolve_tone_target_from_pitch_class(
         selected,
@@ -176,6 +186,17 @@ def render_tuner_tone_section(
             horizontal=True,
             key=f"{key_prefix}::mode",
         )
+        try:
+            from practice_workspace_persistence import (
+                PRACTICE_TUNER_UI_MODE_KEY,
+                commit_practice_time_pitch_settings,
+            )
+
+            ui_mode = "live" if is_tune_live_mode(mode) else "tone"
+            st_module.session_state[PRACTICE_TUNER_UI_MODE_KEY] = ui_mode
+            commit_practice_time_pitch_settings(st_module.session_state, reason="tuner_mode")
+        except ImportError:
+            pass
 
         expected_note = _practice_expected_note(st_module.session_state)
 

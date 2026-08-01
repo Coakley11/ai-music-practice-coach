@@ -17,8 +17,8 @@ Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadma
 
 **Delivery commits (in order):**
 
-1. [ ] Audit panel + mission fail-closed + capo init guard + `resolve_session_key_from_family` (in progress on `dev`)
-2. [ ] Canonical `creative_workspace_state` + `practice_workspace_state` save/apply
+1. [x] Audit panel + mission fail-closed + capo init guard + `resolve_session_key_from_family` (`c412d7c`)
+2. [ ] Canonical `practice_workspace_state` save/apply (**next — this commit**)
 3. [ ] Navigation + Creative restore order; block post-hydrate overwrites
 4. [ ] Key-family wiring + capo regression suite
 5. [ ] Mission spec validation + structured results + 20× strict tests

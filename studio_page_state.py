@@ -169,12 +169,24 @@ def init_creative_lab_state(session_state: dict) -> None:
 
 def init_practice_page_state(session_state: dict) -> None:
     try:
+        from practice_workspace_persistence import practice_workspace_restored
+
+        if practice_workspace_restored(session_state):
+            return
+    except ImportError:
+        pass
+    if isinstance(session_state.get("practice_workspace_state"), dict) and str(
+        (session_state.get("practice_workspace_state") or {}).get("selected_practice_tool") or ""
+    ).strip():
+        return
+    try:
         from practice_studio import PRACTICE_FOCUS_FULL
 
         session_state.setdefault("practice_focus_section", PRACTICE_FOCUS_FULL)
     except ImportError:
         session_state.setdefault("practice_focus_section", "Full Song")
-    session_state.setdefault("practice_active_tool", "")
+    if "practice_active_tool" not in session_state:
+        session_state["practice_active_tool"] = ""
 
 
 def init_backing_page_state(session_state: dict) -> None:

@@ -682,6 +682,7 @@ _WORKSPACE_KEYS: tuple[str, ...] = (
     "active_song_state",
     "studio_nav_state",
     "practice_state",
+    "practice_workspace_state",
     "backing_track_state",
 )
 
@@ -1822,6 +1823,11 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             "last_practice_mode": practice_meta.get("last_practice_mode"),
         },
         "backing_filters": _backing_filters_for_envelope(st, state, save_reason=save_reason),
+        "practice_workspace_state": (
+            state.get("practice_workspace_state")
+            if isinstance(state.get("practice_workspace_state"), dict)
+            else {}
+        ),
     }
 
 
@@ -1888,6 +1894,15 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         pass
     except Exception as exc:
         ss["_music_commit_error"] = str(exc)
+    try:
+        from practice_workspace_persistence import (
+            practice_workspace_for_envelope,
+            sync_practice_workspace_before_persist,
+        )
+
+        sync_practice_workspace_before_persist(ss, reason=save_reason)
+    except ImportError:
+        pass
     core = build_music_local_state(st)
     if ss.get("_music_default_song_ephemeral"):
         for drop_key in ("pick_key", "song", "artist"):
@@ -2012,6 +2027,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
                 state[key] = copy.deepcopy(ss[key])
             except Exception:
                 state[key] = ss[key]
+    try:
+        from practice_workspace_persistence import practice_workspace_for_envelope
+
+        state["practice_workspace_state"] = practice_workspace_for_envelope(ss)
+    except ImportError:
+        pass
     save_reason = str(ss.pop("_suite_pending_save_reason", None) or save_reason)
     if save_reason == "page_change" and not page_change_target:
         page_change_target, page_change_source = _resolve_page_change_stamp_target(ss)
@@ -2465,6 +2486,16 @@ def apply_music_disk_state(
             from practice_state import prepare_practice_page
 
             prepare_practice_page(ss)
+        except ImportError:
+            pass
+        try:
+            from practice_workspace_persistence import apply_practice_workspace_from_payload
+
+            apply_practice_workspace_from_payload(
+                ss,
+                payload,
+                authoritative=authoritative_restore,
+            )
         except ImportError:
             pass
     except ImportError:
