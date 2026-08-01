@@ -767,17 +767,24 @@ def scale_suggestions_for_chord(chord: str, key_name: str, level: str, instrumen
     if "–" in str(chord) or "->" in str(chord):
         return progression_coach_markdown(str(chord), key_name, level, instrument)
 
-    root, suffix = split_chord(head)
-    root = normalize_root(root)
-    minor = "m" in suffix.lower() and "maj" not in suffix.lower()
-    dom = "7" in suffix.lower() and "maj7" not in suffix.lower() and not minor
+    from music_theory import chord_root_for_theory, classify_chord_quality, normalize_chord_for_theory
 
-    if dom:
+    symbol = normalize_chord_for_theory(head) or head
+    root = chord_root_for_theory(symbol)
+    qual = classify_chord_quality(symbol)
+
+    if qual == "dom":
         scale = f"{root} mixolydian · {root} blues · target 3rd & b7"
         arpeggio = f"{root}7 chord tones: root, 3rd, 5th, b7"
-    elif minor:
+    elif qual in ("minor", "m7", "half-dim", "dim"):
         scale = f"{root} natural minor · {root} dorian (raised 6)"
         arpeggio = f"{root}m7 arpeggio: root, b3, 5th, b7"
+    elif qual == "sus":
+        scale = f"{root} mixolydian · {root} major pentatonic (resolve 4→3 when releasing sus)"
+        arpeggio = f"{symbol} sus chord tones — honor the 2nd or 4th before resolving"
+    elif qual == "aug":
+        scale = f"{root} whole-tone fragments · {root} melodic minor (Lydian aug color)"
+        arpeggio = f"{root} aug triad: root, 3rd, #5"
     else:
         scale = f"{root} major · {root} major pentatonic"
         arpeggio = f"{root} triad + 6th color"

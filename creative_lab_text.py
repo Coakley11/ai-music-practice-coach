@@ -44,27 +44,15 @@ def current_song_context_lab(
 
 
 def chord_quality(ch):
-    c = str(ch).lower()
-    if "m7b5" in c:
-        return "half-diminished"
-    if "dim" in c:
-        return "diminished"
-    if "maj7" in c:
-        return "major seventh"
-    if "m7" in c:
-        return "minor seventh"
-    if "m" in c and "maj" not in c:
-        return "minor"
-    if "7" in c:
-        return "dominant seventh"
-    return "major"
+    from music_theory import chord_quality_label
+
+    return chord_quality_label(ch)
 
 
 def chord_root(ch):
-    ch = str(ch).split("/", 1)[0].strip()
-    if len(ch) >= 2 and ch[1] in ["b", "#"]:
-        return ch[:2]
-    return ch[:1]
+    from music_theory import chord_root_for_theory
+
+    return chord_root_for_theory(ch)
 
 
 NOTE_TO_PC = {
@@ -135,8 +123,9 @@ def roman_path(chords, key_name, limit=6):
         if pc is None:
             continue
         roman = ROMAN_MAJOR.get((pc - key_pc) % 12, "?")
-        low = str(ch).lower()
-        if "m" in low and "maj" not in low and roman.isupper():
+        from music_theory import classify_chord_quality
+
+        if classify_chord_quality(ch) in ("minor", "m7", "half-dim", "dim") and roman.isupper():
             roman = roman.lower()
         if not romans or romans[-1] != roman:
             romans.append(roman)

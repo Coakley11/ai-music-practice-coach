@@ -1844,7 +1844,9 @@ def detect_progression_patterns(chords, key_center):
 
     # dominant resolution moments
     for i, ch in enumerate(chords):
-        if "7" in str(ch).lower() and i + 1 < len(chords):
+        from music_theory import classify_chord_quality
+
+        if classify_chord_quality(ch) == "dom" and i + 1 < len(chords):
             nxt = chords[i + 1]
             if chord_quality(nxt) in ("major", "major seventh", "minor"):
                 findings.append(f"dominant resolution: {ch} -> {nxt}")
@@ -1878,6 +1880,10 @@ def suggested_scales_for_chord(ch, key_center):
         return [f"{root} major scale", f"{root} lydian (for #11 color)"]
     if "half-diminished" in q:
         return [f"{root} locrian", f"{root} locrian #2", "super Locrian / altered (over V)"]
+    if q == "augmented":
+        return [f"{root} whole-tone fragments", f"{root} melodic minor (Lydian aug)"]
+    if q == "suspended":
+        return [f"{root} mixolydian", f"{root} major pentatonic", f"{root} dorian (sus color)"]
     return [f"{root} major scale", f"{root} major pentatonic"]
 
 

@@ -106,25 +106,9 @@ def _frets_hi_to_lo(tab6: str) -> list[str]:
 
 
 def _chord_tones(chord: str) -> list[str]:
-    head = chord.split("/")[0]
-    root, suffix = split_chord(head)
-    root = normalize_root(root)
-    base = NOTE_TO_MIDI.get(root, 60)
-    low = suffix.lower()
-    if "m7b5" in low:
-        intervals = [0, 3, 6, 10]
-    elif "maj7" in low:
-        intervals = [0, 4, 7, 11]
-    elif "m7" in low and "maj" not in low:
-        intervals = [0, 3, 7, 10]
-    elif re.search(r"(?<![a-z])7", low) and "maj" not in low:
-        intervals = [0, 4, 7, 10]
-    elif "m" in low and "maj" not in low:
-        intervals = [0, 3, 7]
-    else:
-        intervals = [0, 4, 7]
-    names = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
-    return [names[(base + i) % 12] for i in intervals[:4]]
+    from improvisation_motif import chord_tone_names
+
+    return chord_tone_names(chord)
 
 
 def _abc_pitch(midi: int) -> str:

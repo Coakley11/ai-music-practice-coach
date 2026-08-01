@@ -84,16 +84,19 @@ def _voice_lead_pair(ch_a: str, ch_b: str) -> str:
 
 
 def _chord_tension_label(ch: str, next_ch: str, key: str) -> str:
+    from music_theory import classify_chord_quality, normalize_chord_for_theory
+
     q = chord_quality(ch)
-    low = str(ch).lower()
-    if "sus" in low:
+    qual = classify_chord_quality(ch)
+    if qual == "sus":
         return "suspended color — delays resolution and keeps the phrase hovering"
-    if q in ("dominant seventh",) or (q == "dominant seventh" and "7" in low):
+    if qual == "dom":
         return "dominant tension — wants to resolve forward"
-    if "dim" in low or "m7b5" in low or "half-diminished" in q:
+    if qual in ("dim", "half-dim"):
         return "passing tension — short, directional color"
-    if "/" in str(ch):
-        bass = str(ch).split("/", 1)[1].strip()
+    norm = normalize_chord_for_theory(ch)
+    if "/" in norm:
+        bass = norm.split("/", 1)[1].strip()
         return f"slash bass **{bass}** creates forward pull into the next harmony"
     if next_ch:
         nt = chord_tone_names(next_ch)

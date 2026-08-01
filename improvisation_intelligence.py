@@ -7,7 +7,14 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from music_theory import CHROMATIC, normalize_root, split_chord, transpose_chord
+from music_theory import (
+    CHROMATIC,
+    classify_chord_quality,
+    normalize_chord_for_theory,
+    normalize_root,
+    split_chord,
+    transpose_chord,
+)
 
 STYLE_JAM_STYLES: tuple[str, ...] = (
     "Bossa Nova",
@@ -213,28 +220,17 @@ class ImprovSessionContext:
 
 
 def _chord_quality(ch: str) -> str:
-    c = str(ch).lower()
-    if "m7b5" in c or "ø" in c:
-        return "half-dim"
-    if "dim" in c:
-        return "dim"
-    if "maj7" in c or "maj9" in c or "maj" in c:
-        return "maj7"
-    if "m7" in c or "m9" in c:
-        return "m7"
-    if c.endswith("m") and "maj" not in c:
-        return "minor"
-    if "7" in c or "13" in c or "9" in c or "11" in c:
-        return "dom"
-    return "major"
+    return classify_chord_quality(ch)
 
 
 def _chord_root(ch: str) -> str:
-    text = str(ch).split("/", 1)[0].strip()
+    from music_theory import chord_root_for_theory
+
+    text = normalize_chord_for_theory(ch).split("/", 1)[0].strip()
     if text.lower() == "dorian":
         return "D"
-    root, _ = split_chord(text)
-    return normalize_root(root)
+    root = chord_root_for_theory(ch)
+    return root or "C"
 
 
 def flatten_sections(
@@ -299,13 +295,15 @@ def chord_coach_insight(
 ) -> ChordCoachInsight:
     """Real-time improvisation suggestions for one harmony."""
     ref = str(key_center or "C")
-    root = _chord_root(chord)
-    qual = _chord_quality(chord)
-    third = transpose_chord(root, 4 if qual in ("major", "maj7", "dom") else 3, reference_key=ref)
-    if qual in ("minor", "m7", "half-dim"):
-        third = transpose_chord(root, 3, reference_key=ref)
-    fifth = transpose_chord(root, 7, reference_key=ref)
-    seventh = ""
+    symbol = normalize_chord_for_theory(chord) or str(chord or "").strip()
+    qual = _chord_quality(symbol)
+    root = _chord_root(symbol)
+    from improvisation_motif import chord_tone_names
+
+    tones = chord_tone_names(symbol, reference_key=ref)
+    third = tones[1] if len(tones) > 1 else transpose_chord(root, 4, reference_key=ref)
+    fifth = tones[2] if len(tones) > 2 else transpose_chord(root, 7, reference_key=ref)
+    seventh = tones[3] if len(tones) > 3 else ""
     scales: list[str] = []
     tensions: list[str] = []
     avoid: list[str] = []
@@ -333,7 +331,22 @@ def chord_coach_insight(
         scales = [f"{root} locrian", f"{root} locrian #2", "half-diminished scale"]
         tensions = ["b5 as color", "approach from below"]
         avoid = ["Natural major 3rd"]
-        targets = [root, transpose_chord(root, 3, reference_key=ref)]
+        targets = [root, third]
+    elif qual == "dim":
+        scales = [f"{root} whole-half diminished", f"{root} octatonic", f"{root} locrian #2"]
+        tensions = ["dim7 color", "chromatic approach"]
+        avoid = [f"Major 3rd on {symbol}"]
+        targets = [root, third, fifth]
+    elif qual == "aug":
+        scales = [f"{root} augmented / whole-tone fragments", f"{root} melodic minor (Lydian aug)"]
+        tensions = ["#5 color", "major 7th as tension"]
+        avoid = ["Avoid treating as plain major — honor the #5"]
+        targets = [root, third, fifth]
+    elif qual == "sus":
+        scales = [f"{root} mixolydian", f"{root} major pentatonic", f"{root} dorian (sus4 color)"]
+        tensions = ["4th as suspension", "resolve 4→3 when resolving"]
+        avoid = [f"Major 3rd until you resolve the sus"]
+        targets = [root, tones[1] if len(tones) > 1 else fifth, fifth]
     else:
         scales = [f"{root} major", f"{root} major pentatonic"]
         targets = [root, third, fifth]
@@ -342,9 +355,9 @@ def chord_coach_insight(
     resolve = ""
     if next_chord:
         nr = _chord_root(next_chord)
-        resolve = f"Resolve voice-leading into **{next_chord}** — land on a chord tone of {nr} on beat 1."
+        resolve = f"Resolve voice-leading into **{normalize_chord_for_theory(next_chord) or next_chord}** — land on a chord tone of {nr} on beat 1."
 
-    inst_tips = instrument_coaching_lines(instrument, chord, level, qual, root)
+    inst_tips = instrument_coaching_lines(instrument, symbol or chord, level, qual, root)
 
     scale_labels = scales[:4]
     scale_suggestions = [build_scale_suggestion(label) for label in scale_labels]
@@ -353,7 +366,7 @@ def chord_coach_insight(
         chord=chord,
         scales=scale_labels,
         scale_suggestions=scale_suggestions,
-        chord_tones=[root, third, fifth] + ([seventh] if seventh else []),
+        chord_tones=tones[:4] if tones else [root, third, fifth] + ([seventh] if seventh else []),
         tensions=tensions[:3],
         avoid_notes=avoid[:2],
         target_notes=targets[:4],

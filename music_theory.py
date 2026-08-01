@@ -1,5 +1,7 @@
 """Shared chord/key utilities for the practice coach and song catalog."""
 
+import re
+
 COMMON_KEYS = [
     "C", "Db", "D", "Eb", "E", "F",
     "Gb", "G", "Ab", "A", "Bb", "B",
@@ -101,6 +103,103 @@ def split_chord(chord):
     if len(chord) >= 2 and chord[1] in ["b", "#"]:
         return chord[:2], chord[2:]
     return chord[:1], chord[1:]
+
+
+_BAR_WEIGHT_SUFFIX = re.compile(
+    r"^(?P<chord>.+):(?P<weight>\d+(?:\.\d+)?)(?P<push>[pP!]?)$"
+)
+
+
+def _strip_trailing_bar_weight(chord: str) -> str:
+    """Remove whole-bar ``:beats`` suffix when not using ``|`` subdivisions."""
+    m = _BAR_WEIGHT_SUFFIX.match(str(chord or "").strip())
+    if not m:
+        return str(chord or "").strip()
+    return str(m.group("chord")).strip()
+
+
+def normalize_chord_for_theory(token: object) -> str:
+    """Bare chord symbol for analysis (no bar weights, pipes, push markers, or ``.hit``)."""
+    try:
+        from chord_subdivisions import hit_underlying_chord, parse_subdivisions
+    except ImportError:
+        hit_underlying_chord = lambda t: str(t or "").strip()  # type: ignore[misc,assignment]
+        parse_subdivisions = None  # type: ignore[assignment,misc]
+
+    raw = hit_underlying_chord(str(token or "").strip())
+    if not raw:
+        return ""
+    if parse_subdivisions is not None:
+        subs = parse_subdivisions(raw, beats_per_bar=4.0)
+        if subs:
+            out = str(subs[0].chord or "").strip()
+            if "|" not in raw:
+                out = _strip_trailing_bar_weight(out)
+            return out
+    head = raw.split("|", 1)[0].strip()
+    head = _strip_trailing_bar_weight(head)
+    if ":" in head and "|" in raw:
+        head = head.split(":", 1)[0].strip()
+    for mark in ("p", "P", "!"):
+        if head.endswith(mark):
+            head = head[: -len(mark)].strip()
+            break
+    return head
+
+
+def chord_root_for_theory(chord: object) -> str:
+    """Spelled root pitch class for harmonic analysis (playback tokens normalized first)."""
+    head = normalize_chord_for_theory(chord).split("/", 1)[0].strip()
+    if not head:
+        return ""
+    root, _ = split_chord(head)
+    return normalize_root(root)
+
+
+_QUALITY_COACHING_LABELS: dict[str, str] = {
+    "major": "major",
+    "minor": "minor",
+    "m7": "minor seventh",
+    "maj7": "major seventh",
+    "dom": "dominant seventh",
+    "half-dim": "half-diminished",
+    "dim": "diminished",
+    "aug": "augmented",
+    "sus": "suspended",
+}
+
+
+def chord_quality_label(chord: object) -> str:
+    """Human-readable quality for lab / analyzer text (uses :func:`classify_chord_quality`)."""
+    return _QUALITY_COACHING_LABELS.get(classify_chord_quality(chord), "major")
+
+
+def classify_chord_quality(chord: object) -> str:
+    """Quality bucket for coaching: major, minor, m7, maj7, dom, half-dim, dim, aug, sus."""
+    head = normalize_chord_for_theory(chord).split("/", 1)[0].strip()
+    if not head:
+        return "major"
+    _, suffix = split_chord(head)
+    low = str(suffix or "").lower()
+    if "m7b5" in low or "ø" in low:
+        return "half-dim"
+    if "dim" in low:
+        return "dim"
+    if "aug" in low or "+" in str(suffix or ""):
+        return "aug"
+    if "sus" in low:
+        return "sus"
+    if "maj7" in low or "maj9" in low or (low.startswith("maj") and "7" in low):
+        return "maj7"
+    if "m7" in low or "m9" in low or "m11" in low or "min7" in low:
+        return "m7"
+    if low == "m" or low.startswith("min") or (low.startswith("m") and "maj" not in low and "7" not in low):
+        return "minor"
+    if re.search(r"(?<![a-z])7", low) and "maj" not in low:
+        return "dom"
+    if "7" in low or "9" in low or "11" in low or "13" in low:
+        return "dom"
+    return "major"
 
 
 def key_is_minor(key: str) -> bool:

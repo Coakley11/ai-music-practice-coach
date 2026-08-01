@@ -240,9 +240,17 @@ def resolve_improv_chords(session_state: dict, improv_ctx: Any) -> list[str]:
 
 def chord_tone_names(chord: str, *, reference_key: str = "") -> list[str]:
     """Root, 3rd, 5th, and 7th when applicable — spelled for the selected key."""
-    from music_theory import reference_spelling_mode, spell_pitch_class, split_chord, normalize_root
+    from music_theory import (
+        normalize_chord_for_theory,
+        reference_spelling_mode,
+        spell_pitch_class,
+        split_chord,
+        normalize_root,
+    )
 
-    head = str(chord).split("/")[0].strip()
+    head = normalize_chord_for_theory(chord).split("/")[0].strip()
+    if not head:
+        head = str(chord).split("/")[0].strip()
     root, suffix = split_chord(head)
     root = normalize_root(root)
     ref = str(reference_key or root or "C")
@@ -251,6 +259,12 @@ def chord_tone_names(chord: str, *, reference_key: str = "") -> list[str]:
     low = suffix.lower()
     if "m7b5" in low:
         intervals = (0, 3, 6, 10)
+    elif "dim" in low:
+        intervals = (0, 3, 6, 9) if "dim7" in low or "°7" in low else (0, 3, 6)
+    elif "aug" in low or "+" in str(suffix or ""):
+        intervals = (0, 4, 8)
+    elif "sus" in low:
+        intervals = (0, 2, 7) if "sus2" in low else (0, 5, 7)
     elif "maj7" in low:
         intervals = (0, 4, 7, 11)
     elif "m7" in low and "maj" not in low:

@@ -1,0 +1,38 @@
+---
+description: Separate playback encoding from music-theory analysis; canonical normalize/classify pipeline
+alwaysApply: true
+---
+
+# Theory vs playback — permanent separation
+
+## Canonical theory pipeline
+
+All harmonic analysis, coaching, and displayed theory (chord tones, target notes, scales, pentatonics, tensions, avoid notes, function labels) must use:
+
+1. `music_theory.normalize_chord_for_theory(token)` — strip playback encoding before analysis
+2. `music_theory.classify_chord_quality(chord)` — quality bucket for coaching logic
+3. `music_theory.chord_root_for_theory(chord)` — root for spelling / Roman numerals
+4. `improvisation_motif.chord_tone_names(chord, reference_key=...)` — spelled chord tones (internally normalizes)
+
+For human-readable lab copy, `music_theory.chord_quality_label()` / `creative_lab_text.chord_quality()` map buckets to legacy phrases.
+
+## Playback encoding (never parse for theory)
+
+Weights, pushes, subdivisions, pipes, timing markers, `.hit`, etc. stay in **playback / chart rendering** only (`chord_subdivisions`, backing, CPL display). Do **not** infer major/minor from raw tokens (e.g. `endswith("m")` on `Em:3.5|D:0.5p`).
+
+Examples:
+
+| Playback token        | Theory symbol |
+|-----------------------|---------------|
+| `Em:3.5\|D:0.5p`      | `Em`          |
+| `C#m:2\|A:2`          | `C#m`         |
+| `G7sus4:4`            | `G7sus4`      |
+| `F#m7b5:2`            | `F#m7b5`      |
+
+## Surfaces that must use this pipeline
+
+Live Coach, Deep Harmonic Analyzer, Missions, Practice Page scale hints, Song Coach / lab analyzers, Harmony Map, and future AI coaching.
+
+## Tests
+
+Regressions: `tests/test_chord_coach_theory.py` and `tests/test_theory_pipeline.py`.

@@ -143,35 +143,22 @@ def _section_archetype(section_name: str) -> str:
     return name or "section"
 
 
-def _chord_quality(token: str) -> str:
-    head = primary_chord(str(token or ""))
-    if not head:
-        return ""
-    _, quality = split_chord(head)
-    return str(quality or "").lower()
+def _quality_bucket(token: str) -> str:
+    from music_theory import classify_chord_quality
+
+    return classify_chord_quality(token)
 
 
 def _is_minor_seventh(token: str) -> bool:
-    q = _chord_quality(token)
-    return "m7" in q or "min7" in q or (q.startswith("m") and "7" in q and "maj" not in q)
+    return _quality_bucket(token) in ("m7", "half-dim")
 
 
 def _is_dominant_seventh(token: str) -> bool:
-    q = _chord_quality(token)
-    if not q:
-        return False
-    if "maj7" in q or "m7" in q or "min7" in q or q.startswith("m"):
-        return False
-    return "7" in q or "9" in q or "13" in q or "alt" in q
+    return _quality_bucket(token) == "dom"
 
 
 def _is_major_tonic(token: str) -> bool:
-    q = _chord_quality(token)
-    if not q:
-        return True
-    if _is_minor_seventh(token) or _is_dominant_seventh(token):
-        return False
-    return "maj" in q or "6" in q or "Δ" in q or "△" in q or q in ("", "M")
+    return _quality_bucket(token) in ("major", "maj7")
 
 
 def _root_pc(token: str) -> int | None:

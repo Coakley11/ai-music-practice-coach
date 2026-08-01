@@ -294,12 +294,19 @@ def chord_tone_visual_html(chord: str) -> str:
     """Mini visual: chord name + role hint (HTML snippet)."""
     import html as html_mod
 
+    from music_theory import classify_chord_quality
+
     ch = html_mod.escape(str(chord or "").strip())
     hint = "home" if ch else ""
-    if "7" in ch.lower() and "maj7" not in ch.lower():
+    qual = classify_chord_quality(chord)
+    if qual == "dom":
         hint = "tension → resolve"
-    elif "m" in ch.lower() and not ch.lower().endswith("maj7"):
+    elif qual in ("minor", "m7", "half-dim", "dim"):
         hint = "color / minor"
+    elif qual == "sus":
+        hint = "suspended — resolve 4→3"
+    elif qual == "aug":
+        hint = "augmented color"
     return (
         f'<span class="dh-chord-chip" title="{html_mod.escape(hint)}">{ch}</span>'
     )
