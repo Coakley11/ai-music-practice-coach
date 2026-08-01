@@ -89,6 +89,7 @@ PRACTICE_MISSIONS: tuple[str, ...] = (
     "No repeated rhythmic pattern twice in a row",
     "Target only guide tones (3rds & 7ths)",
     "Play one chorus without scalar runs",
+    "Only scalar runs",
 )
 
 

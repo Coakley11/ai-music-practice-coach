@@ -176,6 +176,21 @@ def apply_mission_rules(
         motif["variation_prompt"] = "Five notes in one register — repeat the cell, don’t wander."
         return sync_motif_midi(motif)
 
+    if "scalar" in low and "only" in low:
+        _mode, scale_pcs = _parse_key_scale(key_center)
+        from improvisation_motif import _note_from_midi
+
+        if scale_pcs:
+            ordered = sorted(scale_pcs)
+            run: list[str] = []
+            start = rng.randrange(len(ordered))
+            for i in range(max(6, len(notes) or 8)):
+                pc = ordered[(start + i) % len(ordered)]
+                run.append(_note_from_midi(60 + pc, key_center))
+            motif["notes"] = run
+        motif["variation_prompt"] = "Scalar run only — step through the scale, not arpeggios."
+        return sync_motif_midi(motif)
+
     if "scalar" in low and "without" in low:
         pool = chord_tone_names(chord, reference_key=key_center)
         motif["notes"] = _line_from_pool(pool, 8, rng)

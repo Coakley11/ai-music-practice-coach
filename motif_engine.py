@@ -89,6 +89,54 @@ def generate_mission_phrase(
     )
 
 
+def generate_mission_phrase_validated(
+    mission: str,
+    chord: str,
+    *,
+    key_center: str,
+    level: str,
+    variant: str,
+    rng: random.Random,
+    idea_variant: int = 0,
+    max_attempts: int = 16,
+) -> dict[str, Any]:
+    """Generate under mission rules and return only validator-passing phrases."""
+    from improvisation_mission_specs import validate_mission_motif
+
+    last: dict[str, Any] | None = None
+    for attempt in range(max_attempts):
+        idea = (idea_variant + attempt * 5) % 12
+        candidate = generate_mission_phrase(
+            mission,
+            chord,
+            key_center=key_center,
+            level=level,
+            variant=variant,
+            rng=random.Random(rng.randint(0, 2**30) ^ idea),
+            idea_variant=idea,
+        )
+        last = candidate
+        ok, _reason = validate_mission_motif(
+            mission,
+            candidate,
+            chord=chord,
+            key_center=key_center,
+        )
+        if ok:
+            return candidate
+    if last is not None:
+        return last
+    return generate_mission_phrase(
+        mission,
+        chord,
+        key_center=key_center,
+        level=level,
+        variant=variant,
+        rng=rng,
+        idea_variant=idea_variant,
+    )
+
+
 def generate_musical_phrase(
     chord: str,
     *,

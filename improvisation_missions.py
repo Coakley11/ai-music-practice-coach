@@ -14,7 +14,7 @@ from improvisation_intelligence import (
     PRACTICE_MISSIONS,
     chord_coach_insight,
 )
-from motif_engine import generate_mission_phrase
+from motif_engine import generate_mission_phrase_validated
 from improvisation_motif import (
     build_motif_abc,
     build_motif_guitar_tab,
@@ -161,7 +161,7 @@ def _build_motif_for_mission(
     rng: random.Random,
     idea_variant: int = 0,
 ) -> dict[str, Any]:
-    return generate_mission_phrase(
+    return generate_mission_phrase_validated(
         mission,
         chord,
         key_center=key_center,
