@@ -787,7 +787,16 @@ def ensure_master_song_initialized(
     origin: str = "default",
 ) -> None:
     """Pick a default song once; migrate legacy sidebar session keys if present."""
-    sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
+    ss = st.session_state
+    try:
+        from active_song_workspace_restore import should_defer_default_master_song_init
+
+        if should_defer_default_master_song_init(ss):
+            ss["_music_skip_master_song_init_reason"] = "cloud_song_pending_apply"
+            return
+    except ImportError:
+        pass
+    sel = ss.get(SELECTED_SONG_STATE_KEY) or {}
     if isinstance(sel, dict) and sel.get("pick_key"):
         return
 

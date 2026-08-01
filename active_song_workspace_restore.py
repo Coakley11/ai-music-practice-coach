@@ -182,6 +182,25 @@ def workspace_envelope_expects_catalog_song(payload: dict[str, Any]) -> bool:
     return False
 
 
+def should_defer_default_master_song_init(session: dict[str, Any]) -> bool:
+    """Avoid pinning the first catalog song while a saved workspace song is not yet applied."""
+    if _session_pick_key(session):
+        return False
+    payload = session.get("_suite_last_cloud_fetch_payload")
+    if not isinstance(payload, dict) or not payload:
+        return False
+    ident = inspect_workspace_envelope_identity(payload)
+    expects_song = bool(
+        ident.get("workspace_has_active_song_pick_key") or ident.get("workspace_has_core_pick_key")
+    )
+    if not expects_song:
+        expects_song = workspace_envelope_expects_catalog_song(payload)
+    if expects_song:
+        session[ACTIVE_SONG_RESTORE_INCOMPLETE_KEY] = True
+        return True
+    return False
+
+
 def _record_pick_key_checkpoint(
     session: dict[str, Any],
     diag: dict[str, Any],
