@@ -72,6 +72,12 @@ def mark_improv_tab_user_touched(session_state: MutableMapping[str, object]) -> 
         session_state["creative_improv_intelligence_tab"] = tab
     session_state["_improv_tab_user_touched"] = True
     try:
+        from creative_workspace_persistence import mark_creative_workspace_dirty
+
+        mark_creative_workspace_dirty(session_state)
+    except ImportError:
+        pass
+    try:
         from studio_page_persistence import save_page_snapshot
 
         save_page_snapshot(session_state, "creative")

@@ -119,6 +119,7 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 
 - [x] Scale names ↔ displayed notes (`build_scale_suggestion`, natural minor intervals) — 2026-07-31
 - [x] **Live Coach + Harmony Map** — chart-key spelling via `coaching_reference_key`; half-dim scale labels; Harmony Map color/stable tones key-aware; Live Coach card fallback bug — 2026-08-01 (`tests/test_harmony_map_coaching.py`)
+- [x] **Creative cloud workspace** — full-page keys (tabs, motif, harmony map, DHA progress), chart-key piano keyboard — 2026-08-01 (`creative_workspace_persistence.py`, `tests/test_creative_workspace_persistence.py`)
 - [ ] **Next surface audit:** Deep Harmonic Analyzer scale pools (verify end-to-end) *or* legacy Practice **Chord Coach** (`chord_coach_markdown` in `streamlit_music_practice_app.py`) — route through same pipeline
 - [x] Creative Missions → Backing — chord-by-location selection; Mission Backing Jam; user BPM preserved after handoff; instrument icons on backing card
 - [x] Mission examples — level-scaled motifs; relative Harder/Easier; practice lick → Mission Backing Jam; **Mission workspace cloud persistence** ([contract](./plans/2026-07-30-mission-workspace-contract.md), `4106a86`)

@@ -461,6 +461,17 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "ii_selected_chord_index",
     "ii_selected_chord_label",
     "improv_mission_workspace_updated_at",
+    "harmony_map_section",
+    "harmony_map_chord",
+    "improv_motif",
+    "improv_motif_output_mode",
+    "improv_motif_abc",
+    "improv_motif_tab",
+    "deep_harmony_lesson_step",
+    "improv_deep_harmony_dha_section_idx",
+    "creative_lab_last_mode",
+    "improv_ai_metric_ids",
+    "analysis_criteria_locked",
     "practice_key_by_source",
     "bpm_by_source",
     "practice_key_mode",
@@ -2318,6 +2329,12 @@ def apply_music_disk_state(
         from improvisation_mission_persistence import hydrate_mission_workspace_after_restore
 
         hydrate_mission_workspace_after_restore(ss)
+    except ImportError:
+        pass
+    try:
+        from creative_workspace_persistence import hydrate_creative_workspace_after_restore
+
+        hydrate_creative_workspace_after_restore(ss)
     except ImportError:
         pass
 

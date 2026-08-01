@@ -1,4 +1,7 @@
-"""Cloud + page-snapshot persistence for Improvisation Intelligence Missions."""
+"""Cloud + page-snapshot persistence for Improvisation Intelligence Missions.
+
+Long-term design contract (frozen): cursor-prompts/plans/2026-07-30-mission-workspace-contract.md
+"""
 
 from __future__ import annotations
 
@@ -125,7 +128,16 @@ def mission_session_blob_from_envelope(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def sync_mission_workspace_before_persist(session: dict[str, Any]) -> None:
-    """Capture mission + mission-practice state immediately before disk/cloud save."""
+    """Capture mission + full Creative workspace before disk/cloud save."""
+    try:
+        from creative_workspace_persistence import sync_creative_workspace_before_persist
+
+        sync_creative_workspace_before_persist(session)
+    except ImportError:
+        _legacy_sync_mission_workspace_before_persist(session)
+
+
+def _legacy_sync_mission_workspace_before_persist(session: dict[str, Any]) -> None:
     if not any(session.get(k) for k in MISSION_WORKSPACE_KEYS if k != MISSION_WORKSPACE_UPDATED_AT_KEY):
         return
     _refresh_practice_lick_transport(session)
@@ -148,6 +160,7 @@ def sync_mission_workspace_before_persist(session: dict[str, Any]) -> None:
         pass
     session[MISSION_WORKSPACE_UPDATED_AT_KEY] = _utc_now_iso()
     clear_mission_workspace_local_edit(session)
+
 
 def hydrate_mission_workspace_after_restore(
     session: dict[str, Any],
@@ -203,7 +216,16 @@ def hydrate_mission_workspace_after_restore(
 
 
 def apply_cloud_mission_state_if_allowed(session: dict[str, Any], state: dict[str, Any]) -> bool:
-    """Apply cloud mission workspace when it differs (latest saved state wins)."""
+    """Apply cloud Creative workspace when it differs (latest saved state wins)."""
+    try:
+        from creative_workspace_persistence import apply_cloud_creative_state_if_allowed
+
+        return apply_cloud_creative_state_if_allowed(session, state)
+    except ImportError:
+        return _legacy_apply_cloud_mission_state_if_allowed(session, state)
+
+
+def _legacy_apply_cloud_mission_state_if_allowed(session: dict[str, Any], state: dict[str, Any]) -> bool:
     if is_mission_workspace_locally_dirty(session):
         session["_mission_restore_skipped_reason"] = "local_dirty"
         return False
@@ -231,7 +253,13 @@ def music_mission_cloud_drift(
     cloud_state: dict[str, Any],
     cloud_ts: str | None,
 ) -> tuple[bool, str]:
-    """Detect cross-device drift in the single active Mission workspace."""
+    """Detect cross-device drift in the Creative workspace."""
+    try:
+        from creative_workspace_persistence import music_creative_cloud_drift
+
+        return music_creative_cloud_drift(st, cloud_state, cloud_ts)
+    except ImportError:
+        pass
     _ = cloud_ts
     ss = getattr(st, "session_state", st)
     if not isinstance(ss, dict):

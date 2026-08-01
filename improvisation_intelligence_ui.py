@@ -83,6 +83,16 @@ from improvisation_motif import (
 MOTIF_OUTPUT_NONE = "none"
 MOTIF_OUTPUT_NOTATION = "notation"
 MOTIF_OUTPUT_TAB = "tab"
+
+
+def _touch_creative_workspace(session_state: dict) -> None:
+    try:
+        from creative_workspace_persistence import mark_creative_workspace_dirty
+
+        mark_creative_workspace_dirty(session_state)
+    except ImportError:
+        pass
+
 from studio_page_state import (
     IMPROV_ENTRY_MODES,
     IMPROV_SONG_SOURCES,
@@ -964,6 +974,7 @@ def _clear_motif_outputs(session_state: dict) -> None:
     session_state["improv_motif_output_mode"] = MOTIF_OUTPUT_NONE
     session_state.pop("improv_motif_abc", None)
     session_state.pop("improv_motif_tab", None)
+    _touch_creative_workspace(session_state)
 
 
 def _refresh_motif_output_after_transform(
@@ -1543,6 +1554,7 @@ def _tab_harmony_map(
                 ):
                     session_state["harmony_map_section"] = sec_label
                     session_state["harmony_map_chord"] = ch
+                    _touch_creative_workspace(session_state)
                     st.rerun()
 
     if not sel_chord:

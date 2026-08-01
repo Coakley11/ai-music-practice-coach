@@ -148,7 +148,7 @@ def test_music_mission_cloud_drift_detects_example_change() -> None:
     }
     drift, detail = music_mission_cloud_drift({"session_state": local}, cloud, "2026-07-30T12:00:00+00:00")
     assert drift is True
-    assert "mission" in detail
+    assert "mission" in detail or "creative_stamp" in detail
 
 
 def test_apply_cloud_mission_overwrites_local_example() -> None:

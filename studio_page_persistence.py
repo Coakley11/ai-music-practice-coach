@@ -155,6 +155,8 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "ii_selected_chord_label",
             "harmony_map_section",
             "harmony_map_chord",
+            "deep_harmony_lesson_step",
+            "improv_deep_harmony_dha_section_idx",
             "improv_ai_metric_ids",
             "analysis_criteria_locked",
             "analysis_return_to_improv_metrics",

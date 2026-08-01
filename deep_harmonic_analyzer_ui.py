@@ -85,9 +85,11 @@ def _render_reference_cards(
             with st.expander(title, expanded=default_expanded, key=exp_key):
                 st.caption("Pick one section — we'll focus there instead of dumping the whole form.")
                 nav_key = f"{key_prefix}_dha_section_idx"
-                idx = int(session_state.get(nav_key) or 0)
+                persist_key = "improv_deep_harmony_dha_section_idx"
+                idx = int(session_state.get(persist_key) or session_state.get(nav_key) or 0)
                 idx = max(0, min(idx, max(0, len(sections) - 1)))
                 session_state[nav_key] = idx
+                session_state[persist_key] = idx
                 if sections:
                     cols = st.columns(min(len(sections), 4))
                     for j, sec in enumerate(sections[:8]):
@@ -100,6 +102,13 @@ def _render_reference_cards(
                                 type="primary" if j == idx else "secondary",
                             ):
                                 session_state[nav_key] = j
+                                session_state[persist_key] = j
+                                try:
+                                    from creative_workspace_persistence import mark_creative_workspace_dirty
+
+                                    mark_creative_workspace_dirty(session_state)
+                                except ImportError:
+                                    pass
                                 st.rerun()
                     cur = sections[idx]
                     st.markdown(f"**{html.escape(str(cur.get('name') or ''))}**")
@@ -165,6 +174,12 @@ def render_deep_harmonic_lesson(st: Any, session_state: dict, lesson: dict) -> N
         with c_prev:
             if st.button("← Previous", key="dh_step_prev", disabled=step_idx <= 0, use_container_width=True):
                 session_state[step_key] = step_idx - 1
+                try:
+                    from creative_workspace_persistence import mark_creative_workspace_dirty
+
+                    mark_creative_workspace_dirty(session_state)
+                except ImportError:
+                    pass
                 st.rerun()
         with c_mid:
             st.markdown(
@@ -179,6 +194,12 @@ def render_deep_harmonic_lesson(st: Any, session_state: dict, lesson: dict) -> N
                 use_container_width=True,
             ):
                 session_state[step_key] = step_idx + 1
+                try:
+                    from creative_workspace_persistence import mark_creative_workspace_dirty
+
+                    mark_creative_workspace_dirty(session_state)
+                except ImportError:
+                    pass
                 st.rerun()
 
         cur = steps[step_idx]

@@ -11,7 +11,7 @@ from improvisation_motif import chord_tone_names, generate_motif_for_chord
 class TestPianoKeyboardMissions(unittest.TestCase):
     def test_bm_chord_shows_f_sharp_black_key(self) -> None:
         tones = chord_tone_names("Bm", reference_key="Bm")
-        html = _piano_keyboard_html(tones, tones)
+        html = _piano_keyboard_html(tones, tones, reference_key="Bm")
         self.assertIn("F#", html)
         self.assertIn("pk black", html)
         self.assertIn("hi", html)
