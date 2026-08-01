@@ -780,6 +780,14 @@ def sync_workspace_protocol(
     if content_resync:
         apply_reasons.append(f"content_resync:{content_resync_detail or 'drift'}")
 
+    try:
+        from workspace_revision import cloud_revision_newer_than_applied
+
+        if picked.source == "cloud" and cloud_revision_newer_than_applied(st.session_state, picked.state):
+            apply_reasons.append("workspace_revision_newer")
+    except ImportError:
+        pass
+
     should_apply = bool(
         picked.state
         and (
@@ -789,6 +797,7 @@ def sync_workspace_protocol(
             or page_mismatch_apply
             or comparison_mismatch_apply
             or content_resync
+            or "workspace_revision_newer" in apply_reasons
         )
     )
     apply_reason = ", ".join(apply_reasons) if apply_reasons else "none"
@@ -796,8 +805,22 @@ def sync_workspace_protocol(
     if cloud_newer_than_disk and picked.source == "cloud":
         st.session_state.pop(synced_key, None)
 
+    skip_reason = ""
     if not should_apply:
         skip_reason = f"workspace already synced ({apply_reason or 'no trigger'})"
+        try:
+            from workspace_revision import cloud_revision_newer_than_applied
+
+            if picked.source == "cloud" and cloud_revision_newer_than_applied(
+                st.session_state, picked.state
+            ):
+                should_apply = True
+                apply_reasons.append("workspace_revision_recheck")
+                skip_reason = ""
+        except ImportError:
+            pass
+
+    if not should_apply:
         st.session_state["_suite_persist_restore_skip_reason"] = skip_reason
         _record_workspace_sync_trace(
             st, app_id, cloud_state=cloud_state, cloud_ts=cloud_ts,
@@ -1374,6 +1397,8 @@ def force_autosave(
             "song_edit",
             "practice_edit",
             "backing_edit",
+            "practice_tool_select",
+            "practice_workspace_edit",
         )
         if st.session_state.get(block_key) and not bypass_block:
             st.session_state["_suite_autosave_blocked_after_restore"] = True

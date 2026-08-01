@@ -7,17 +7,25 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 PRACTICE_ACTIVE_TOOL_KEY = "practice_active_tool"
+PRACTICE_TIME_PITCH_TOOL_ID = "time_and_pitch"
+PRACTICE_TIME_PITCH_MODE_KEY = "practice_time_pitch_mode"
 
 # Legacy Streamlit tab labels → tool ids (for one-time migration).
 _LEGACY_TAB_TO_TOOL: dict[str, str] = {
     "Coach": "coach",
-    "Timing": "timing",
+    "Timing": "time_and_pitch",
     "Chart / TAB": "chart",
     "Lyrics": "lyrics",
     "Transpose / Instrument": "transpose",
     "Transpose helpers": "transpose",
-    "Tuner, Tone & Metronome": "tuner",
-    "Tuner & tone": "tuner",
+    "Tuner, Tone & Metronome": "time_and_pitch",
+    "Tuner & tone": "time_and_pitch",
+    "Metronome & rhythm": "time_and_pitch",
+}
+
+_LEGACY_TOOL_IDS: dict[str, str] = {
+    "timing": "time_and_pitch",
+    "tuner": "time_and_pitch",
 }
 
 
@@ -46,18 +54,11 @@ PRACTICE_TOOLS: tuple[PracticeToolDef, ...] = (
         "Section focus, scales, chord coach, and session exercises.",
     ),
     PracticeToolDef(
-        "timing",
-        "Metronome & rhythm",
-        "⏱",
-        "Time & pitch",
-        "Tempo click and groove rhythm guide for the focused section.",
-    ),
-    PracticeToolDef(
-        "tuner",
-        "Tuner & tone",
+        "time_and_pitch",
+        "Metronome, Tuner & Tone",
         "🎵",
         "Time & pitch",
-        "Live tuning, sustain-tone check, and reference pitch.",
+        "Metronome click, live tuner, and sustain-tone reference in one place.",
     ),
     PracticeToolDef(
         "chart",
@@ -87,6 +88,9 @@ _TOOLS_BY_ID: dict[str, PracticeToolDef] = {t.tool_id: t for t in PRACTICE_TOOLS
 
 def normalize_practice_active_tool(session: dict[str, Any]) -> str:
     raw = str(session.get(PRACTICE_ACTIVE_TOOL_KEY) or "").strip()
+    if raw in _LEGACY_TOOL_IDS:
+        raw = _LEGACY_TOOL_IDS[raw]
+        session[PRACTICE_ACTIVE_TOOL_KEY] = raw
     if raw in _TOOLS_BY_ID:
         return raw
     legacy = _LEGACY_TAB_TO_TOOL.get(raw)
@@ -204,11 +208,19 @@ def render_practice_tools_launcher(
                         else:
                             session[PRACTICE_ACTIVE_TOOL_KEY] = tool.tool_id
                             try:
-                                from practice_workspace_persistence import commit_practice_tool_selection
+                                from practice_workspace_persistence import persist_practice_tool_user_action
 
-                                commit_practice_tool_selection(session, tool.tool_id)
+                                persist_practice_tool_user_action(
+                                    st_module,
+                                    tool.tool_id,
+                                )
                             except ImportError:
-                                pass
+                                try:
+                                    from practice_workspace_persistence import commit_practice_tool_selection
+
+                                    commit_practice_tool_selection(session, tool.tool_id)
+                                except ImportError:
+                                    pass
                         if on_select:
                             on_select()
                         else:
@@ -239,6 +251,12 @@ def render_practice_tool_workspace_header(
     with h2:
         if st_module.button("Close", key="practice_tool_close_btn", use_container_width=True):
             session[PRACTICE_ACTIVE_TOOL_KEY] = ""
+            try:
+                from practice_workspace_persistence import persist_practice_tool_user_action
+
+                persist_practice_tool_user_action(st_module, "")
+            except ImportError:
+                pass
             if on_close:
                 on_close()
             else:

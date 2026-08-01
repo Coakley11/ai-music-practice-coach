@@ -1767,8 +1767,15 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             or (core or {}).get("studio_page")
             or session_extra.get("studio_page")
         )
+    try:
+        from workspace_revision import bump_workspace_revision
+
+        workspace_revision = bump_workspace_revision(st.session_state) if hasattr(st, "session_state") else 0
+    except ImportError:
+        workspace_revision = 0
     return {
         "schema_version": WORKSPACE_SCHEMA_VERSION,
+        "workspace_revision": workspace_revision,
         "updated_at": _utc_now_iso(),
         "device_id": _get_device_id(st),
         "save_reason": save_reason or "autosave",
@@ -2617,6 +2624,12 @@ def apply_music_disk_state(
         mark_workspace_blob_hydrated(ss)
     except ImportError:
         ss["_music_workspace_blob_hydrated"] = True
+    try:
+        from workspace_revision import stamp_applied_workspace_revision
+
+        stamp_applied_workspace_revision(ss, payload)
+    except ImportError:
+        pass
     if _session_has_restored_song_context(ss):
         ss["_music_workspace_blob_applied"] = True
     _record_music_startup_restore_diag(
@@ -3114,6 +3127,14 @@ def music_content_cloud_drift(
     cloud_state: dict[str, Any],
     cloud_ts: str | None,
 ) -> tuple[bool, str]:
+    try:
+        from practice_workspace_persistence import music_practice_workspace_cloud_drift
+
+        drift, detail = music_practice_workspace_cloud_drift(st, cloud_state, cloud_ts)
+        if drift:
+            return True, detail
+    except ImportError:
+        pass
     drift, detail = music_active_song_cloud_drift(st, cloud_state, cloud_ts)
     if drift:
         return True, detail

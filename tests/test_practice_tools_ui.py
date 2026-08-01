@@ -15,14 +15,19 @@ def test_all_tool_ids_unique():
 
 
 def test_normalize_valid_tool():
+    session = {PRACTICE_ACTIVE_TOOL_KEY: "time_and_pitch"}
+    assert normalize_practice_active_tool(session) == "time_and_pitch"
+
+
+def test_normalize_legacy_timing_maps_to_combined():
     session = {PRACTICE_ACTIVE_TOOL_KEY: "timing"}
-    assert normalize_practice_active_tool(session) == "timing"
+    assert normalize_practice_active_tool(session) == "time_and_pitch"
 
 
 def test_normalize_legacy_tab_label():
     session = {PRACTICE_ACTIVE_TOOL_KEY: "Tuner, Tone & Metronome"}
-    assert normalize_practice_active_tool(session) == "tuner"
-    assert session[PRACTICE_ACTIVE_TOOL_KEY] == "tuner"
+    assert normalize_practice_active_tool(session) == "time_and_pitch"
+    assert session[PRACTICE_ACTIVE_TOOL_KEY] == "time_and_pitch"
 
 
 def test_normalize_unknown_clears_key():

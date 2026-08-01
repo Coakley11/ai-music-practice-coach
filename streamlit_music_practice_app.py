@@ -10797,73 +10797,131 @@ if _studio_page == "practice":
                 tool_id=_practice_active_tool,
                 context_line=_practice_tool_ctx,
             )
-            if _practice_active_tool == "tuner":
-                render_tuner_tone_section(
-                    st,
-                    instrument=instrument,
-                    display_key=chart_key,
-                    key_prefix=tuner_key_prefix_for_song(song),
-                    metronome_bpm=_practice_bpm,
-                    metronome_signature=_time_sig,
-                    metronome_section_bars=_metro_section_bars,
-                    metronome_section_label=_active_section or "",
-                    metronome_loop_section=_metro_loop,
-                    include_metronome=False,
-                )
-
-            elif _practice_active_tool == "timing":
+            if _practice_active_tool in ("time_and_pitch", "timing", "tuner"):
                 try:
-                    from practice_workspace_persistence import metronome_render_defaults
+                    from practice_tools_ui import PRACTICE_TIME_PITCH_MODE_KEY, PRACTICE_TIME_PITCH_TOOL_ID
+                    from practice_workspace_persistence import (
+                        TIME_PITCH_MODE_METRONOME,
+                        TIME_PITCH_MODE_TONE,
+                        TIME_PITCH_MODE_TUNER,
+                        persist_practice_tool_user_action,
+                    )
 
-                    _metro_bpm, _metro_meter = metronome_render_defaults(
-                        st.session_state,
-                        fallback_bpm=_practice_bpm,
-                        fallback_meter=_time_sig,
+                    _tp_mode = str(st.session_state.get(PRACTICE_TIME_PITCH_MODE_KEY) or TIME_PITCH_MODE_METRONOME)
+                    if _practice_active_tool == "timing":
+                        _tp_mode = TIME_PITCH_MODE_METRONOME
+                    elif _practice_active_tool == "tuner":
+                        _tp_mode = TIME_PITCH_MODE_TUNER
+                    _mode_labels = {
+                        TIME_PITCH_MODE_METRONOME: "Metronome",
+                        TIME_PITCH_MODE_TUNER: "Tuner",
+                        TIME_PITCH_MODE_TONE: "Tone",
+                    }
+                    _label_list = [
+                        _mode_labels[TIME_PITCH_MODE_METRONOME],
+                        _mode_labels[TIME_PITCH_MODE_TUNER],
+                        _mode_labels[TIME_PITCH_MODE_TONE],
+                    ]
+                    _rev = {v: k for k, v in _mode_labels.items()}
+                    _pick = st.radio(
+                        "Mode",
+                        _label_list,
+                        horizontal=True,
+                        index=max(0, _label_list.index(_mode_labels.get(_tp_mode, "Metronome"))),
+                        key="practice_time_pitch_mode_radio",
                     )
+                    _new_mode = _rev[_pick]
+                    if _new_mode != _tp_mode:
+                        st.session_state[PRACTICE_TIME_PITCH_MODE_KEY] = _new_mode
+                        persist_practice_tool_user_action(
+                            st,
+                            PRACTICE_TIME_PITCH_TOOL_ID,
+                            time_pitch_mode=_new_mode,
+                        )
+                        _tp_mode = _new_mode
                 except ImportError:
-                    _metro_bpm, _metro_meter = _practice_bpm, _time_sig
-                if _is_full_song:
-                    render_metronome_widget(
-                        st,
-                        default_bpm=_metro_bpm,
-                        default_signature=_metro_meter,
-                    )
-                elif _active_section:
-                    render_metronome_widget(
-                        st,
-                        default_bpm=_metro_bpm,
-                        default_signature=_metro_meter,
-                        section_bars=_section_bar_count,
-                        section_label=_active_section,
-                        loop_section=True,
-                    )
-                else:
-                    st.caption("Choose a section in **Section Focus** above for a section loop metronome.")
-                if not _is_full_song and _active_section:
-                    _rhythm_md = ""
-                    _rhythm_error: Exception | None = None
+                    _tp_mode = "metronome"
+                    TIME_PITCH_MODE_METRONOME = "metronome"
+                    TIME_PITCH_MODE_TUNER = "tuner"
+                    TIME_PITCH_MODE_TONE = "tone"
+
+                if _tp_mode == TIME_PITCH_MODE_METRONOME:
                     try:
-                        _rhythm_md = rhythm_guide_markdown(
-                            instrument,
-                            _practice_groove,
-                            _time_sig,
-                            song_data=song_data,
-                        ) or ""
-                    except Exception as _rhythm_exc:
-                        _rhythm_error = _rhythm_exc
-                    with st.expander("Rhythm guide", expanded=pp.expander_default(st)):
-                        if _rhythm_md.strip():
-                            st.markdown(_rhythm_md)
-                        else:
-                            st.info(
-                                f"Lock to **{_practice_groove}** at **{_time_sig}** — "
-                                "use the metronome and stay relaxed on beats 2 & 4."
-                            )
-                            if _developer_mode_enabled() and _rhythm_error is not None:
-                                st.caption(
-                                    f"Developer Mode · rhythm guide: "
-                                    f"`{type(_rhythm_error).__name__}: {_rhythm_error}`"
+                        from practice_workspace_persistence import metronome_render_defaults
+
+                        _metro_bpm, _metro_meter = metronome_render_defaults(
+                            st.session_state,
+                            fallback_bpm=_practice_bpm,
+                            fallback_meter=_time_sig,
+                        )
+                    except ImportError:
+                        _metro_bpm, _metro_meter = _practice_bpm, _time_sig
+                    if _is_full_song:
+                        render_metronome_widget(
+                            st,
+                            default_bpm=_metro_bpm,
+                            default_signature=_metro_meter,
+                        )
+                    elif _active_section:
+                        render_metronome_widget(
+                            st,
+                            default_bpm=_metro_bpm,
+                            default_signature=_metro_meter,
+                            section_bars=_section_bar_count,
+                            section_label=_active_section,
+                            loop_section=True,
+                        )
+                    else:
+                        st.caption("Choose a section in **Section Focus** above for a section loop metronome.")
+                    if not _is_full_song and _active_section:
+                        _rhythm_md = ""
+                        _rhythm_error: Exception | None = None
+                        try:
+                            _rhythm_md = rhythm_guide_markdown(
+                                instrument,
+                                _practice_groove,
+                                _time_sig,
+                                song_data=song_data,
+                            ) or ""
+                        except Exception as _rhythm_exc:
+                            _rhythm_error = _rhythm_exc
+                        with st.expander("Rhythm guide", expanded=pp.expander_default(st)):
+                            if _rhythm_md.strip():
+                                st.markdown(_rhythm_md)
+                            else:
+                                st.info(
+                                    f"Lock to **{_practice_groove}** at **{_time_sig}** — "
+                                    "use the metronome and stay relaxed on beats 2 & 4."
                                 )
+                                if _developer_mode_enabled() and _rhythm_error is not None:
+                                    st.caption(
+                                        f"Developer Mode · rhythm guide: "
+                                        f"`{type(_rhythm_error).__name__}: {_rhythm_error}`"
+                                    )
+                else:
+                    try:
+                        from practice_workspace_persistence import (
+                            PRACTICE_TUNER_UI_MODE_KEY,
+                            TIME_PITCH_MODE_TONE,
+                        )
+
+                        st.session_state[PRACTICE_TUNER_UI_MODE_KEY] = (
+                            "tone" if _tp_mode == TIME_PITCH_MODE_TONE else "live"
+                        )
+                    except ImportError:
+                        pass
+                    render_tuner_tone_section(
+                        st,
+                        instrument=instrument,
+                        display_key=chart_key,
+                        key_prefix=tuner_key_prefix_for_song(song),
+                        metronome_bpm=_practice_bpm,
+                        metronome_signature=_time_sig,
+                        metronome_section_bars=_metro_section_bars,
+                        metronome_section_label=_active_section or "",
+                        metronome_loop_section=_metro_loop,
+                        include_metronome=False,
+                    )
 
             elif _practice_active_tool == "coach":
                 try:

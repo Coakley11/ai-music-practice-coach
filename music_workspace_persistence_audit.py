@@ -245,6 +245,14 @@ def render_workspace_persistence_audit_sidebar(st_module: Any) -> None:
         for pk, pv in sorted(audit.items()):
             if pk.startswith("practice_") and pk != "practice_tool":
                 st_module.text(f"{pk}: {pv!r}")
+        try:
+            from workspace_revision import collect_workspace_revision_diagnostics
+
+            st_module.markdown("**Workspace revision / sync**")
+            for rk, rv in collect_workspace_revision_diagnostics(st_module.session_state).items():
+                st_module.text(f"{rk}: {rv!r}")
+        except ImportError:
+            pass
         st_module.markdown("**Overwrite stages**")
         stages = audit.get("overwrite_stages") or {}
         if isinstance(stages, dict):

@@ -56,7 +56,7 @@ class TestPracticeWorkspacePersistence(unittest.TestCase):
 
     def test_tuner_time_pitch_mode_persists(self) -> None:
         ss: dict = {"studio_page": "practice"}
-        commit_practice_tool_selection(ss, "tuner")
+        commit_practice_tool_selection(ss, "time_and_pitch")
         ss[PRACTICE_TUNER_UI_MODE_KEY] = "live"
         sync_practice_workspace_before_persist(ss)
         self.assertEqual(
@@ -64,6 +64,10 @@ class TestPracticeWorkspacePersistence(unittest.TestCase):
             "tuner",
         )
         ss[PRACTICE_TUNER_UI_MODE_KEY] = "tone"
+        ss.pop("practice_time_pitch_mode", None)
+        from practice_tools_ui import PRACTICE_TIME_PITCH_MODE_KEY
+
+        ss.pop(PRACTICE_TIME_PITCH_MODE_KEY, None)
         sync_practice_workspace_before_persist(ss)
         self.assertEqual(
             ss[PRACTICE_WORKSPACE_STATE_KEY]["selected_time_pitch_mode"],
@@ -110,7 +114,8 @@ class TestPracticeWorkspacePersistence(unittest.TestCase):
         }
         migrated = migrate_legacy_practice_workspace_once(ss, payload)
         self.assertIsNotNone(migrated)
-        self.assertEqual(migrated["selected_practice_tool"], "timing")
+        self.assertEqual(migrated["selected_practice_tool"], "time_and_pitch")
+        self.assertEqual(migrated["selected_time_pitch_mode"], "metronome")
         self.assertTrue(ss.get(PRACTICE_WORKSPACE_MIGRATED_KEY))
         self.assertIsNone(migrate_legacy_practice_workspace_once(ss, payload))
 
@@ -162,13 +167,13 @@ class TestPracticeWorkspacePersistence(unittest.TestCase):
         self.assertEqual(dell.session_state.get(PRACTICE_ACTIVE_TOOL_KEY), "transpose")
 
     def test_envelope_includes_music_workspace_state_section(self) -> None:
-        ss = {"studio_page": "practice", PRACTICE_ACTIVE_TOOL_KEY: "timing"}
+        ss = {"studio_page": "practice", PRACTICE_ACTIVE_TOOL_KEY: "time_and_pitch"}
         sync_practice_workspace_before_persist(ss)
         st = _FakeSt(ss)
         state = build_music_disk_state(st)
         ws = state.get("music_workspace_state") or {}
         self.assertIn("practice_workspace_state", ws)
-        self.assertEqual(ws["practice_workspace_state"]["selected_practice_tool"], "timing")
+        self.assertEqual(ws["practice_workspace_state"]["selected_practice_tool"], "time_and_pitch")
 
 
 if __name__ == "__main__":
