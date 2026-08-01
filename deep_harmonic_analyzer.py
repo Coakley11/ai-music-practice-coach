@@ -121,19 +121,6 @@ def _detect_character(
     t = (title or "").lower()
     meter_note = f" Written in **{meter}** — phrasing should follow the compound pulse." if meter else ""
 
-    if "perfect" in t:
-        return {
-            "style": "Acoustic **pop ballad** / singer-songwriter progression",
-            "feel": "Warm, intimate, wedding-song emotional arc — gentle lift in the chorus without jazz complexity.",
-            "movement": (
-                "Verse centers on **G–Em7–Cadd9–D/F#** (home → relative minor → subdominant color → dominant with bass lead). "
-                "Chorus rotates **Em7–Cadd9–G–D/F#** for open, singable lift. Intro/Outro use a descending walk back to **G**."
-            ),
-            "signature": "Slash bass on **D/F#** and add9/sus extensions on **C** — that is the recognizable color.",
-            "similar": "Similar harmonic *feel* to modern acoustic pop ballads (I–vi–IV–V family with bass-line motion).",
-            "meter": meter_note or " **6/8** ballad feel — two beats per bar group, long chord holds in the verse.",
-        }
-
     if "blue bossa" in t or "bossa" in g:
         return {
             "style": "**Bossa nova / jazz standard** harmony",

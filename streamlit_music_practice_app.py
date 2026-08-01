@@ -13463,21 +13463,30 @@ elif _studio_page == "creative":
         if lab_mode == "Deep Harmonic Analyzer":
             from improvisation_intelligence import ImprovSessionContext, flatten_sections
             from deep_harmonic_analyzer_ui import render_deep_harmonic_analyzer_tab
+            from effective_practice_context import build_effective_practice_context
 
+            _eff = build_effective_practice_context(
+                st.session_state,
+                original_key=str(original_key or "C"),
+                sections=level_source_sections,
+                instrument=str(instrument),
+                song_data=_catalog_song_data,
+            )
+            _dha_sections = _eff.sections_chart
             _dha_section_order = list(song_data.get("section_order") or [])
             _dha_improv_ctx = ImprovSessionContext(
                 song_title=str(song),
                 artist=str(song_data.get("artist") or ""),
-                key_center=str(display_key or "C"),
-                display_key=str(chart_key or "C"),
+                key_center=str(_eff.practice_concert_key or "C"),
+                display_key=str(_eff.chart_key or "C"),
                 instrument=str(instrument),
                 level=str(level),
                 focus=str(focus),
-                sections=sections_for_practice,
+                sections=_dha_sections,
                 bpm=int(st.session_state.get("backing_track_bpm", _default_song_bpm)),
                 style_label=str(genre or ""),
                 progression_flat=flatten_sections(
-                    sections_for_practice,
+                    _dha_sections,
                     section_names=_dha_section_order or None,
                 ),
                 section_order=_dha_section_order,

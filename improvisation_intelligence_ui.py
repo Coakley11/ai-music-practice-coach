@@ -27,6 +27,7 @@ from improvisation_intelligence import (
     ai_feedback_preview_lines,
     build_scale_suggestion,
     chord_coach_insight,
+    coaching_reference_key,
     format_scale_line,
     flatten_sections,
     generate_jam_session,
@@ -83,6 +84,13 @@ from improvisation_motif import (
 MOTIF_OUTPUT_NONE = "none"
 MOTIF_OUTPUT_NOTATION = "notation"
 MOTIF_OUTPUT_TAB = "tab"
+
+
+def _motif_notation_reference_key(improv_ctx: ImprovSessionContext) -> str:
+    return coaching_reference_key(
+        key_center=improv_ctx.key_center,
+        display_key=improv_ctx.display_key,
+    )
 
 
 def _touch_creative_workspace(session_state: dict) -> None:
@@ -855,7 +863,7 @@ def _tab_motif(
                 )
                 _refresh_motif_output_after_transform(
                     session_state,
-                    key_center=improv_ctx.key_center,
+                    key_center=_motif_notation_reference_key(improv_ctx),
                     bpm=bpm,
                 )
                 st.rerun()
@@ -872,7 +880,7 @@ def _tab_motif(
             session_state["improv_motif_output_mode"] = MOTIF_OUTPUT_NOTATION
             session_state["improv_motif_abc"] = build_motif_notation_abc(
                 session_state["improv_motif"],
-                key_center=improv_ctx.key_center,
+                key_center=_motif_notation_reference_key(improv_ctx),
                 bpm=bpm,
             )
             session_state.pop("improv_motif_tab", None)
