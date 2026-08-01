@@ -1,5 +1,7 @@
 """Shared chord/key utilities for the practice coach and song catalog."""
 
+from typing import Any
+
 import re
 
 COMMON_KEYS = [
@@ -455,6 +457,79 @@ class MissingOriginalSongKeyError(ValueError):
     """Raised when section transposition requires a catalog original key."""
 
 
+class ChartSongNotReadyError(ValueError):
+    """Raised when chart construction lacks a complete canonical song record."""
+
+
+def validate_chart_song_for_transpose(
+    level_song_data: dict[str, Any],
+    *,
+    original_key: str,
+    provenance: str,
+) -> None:
+    """Guard before transpose_sections — partial session overlays must not pass through."""
+    if not isinstance(level_song_data, dict):
+        raise ChartSongNotReadyError(
+            f"Chart song payload is not a mapping (provenance={provenance})."
+        )
+    key = level_song_data.get("key")
+    if key is None or not str(key).strip():
+        raise MissingOriginalSongKeyError(
+            "Cannot transpose song sections because the original song key is missing."
+        )
+    if not str(original_key or "").strip():
+        raise MissingOriginalSongKeyError(
+            "Cannot transpose song sections because the original song key is missing."
+        )
+    sections = level_song_data.get("sections")
+    if not isinstance(sections, dict):
+        raise ChartSongNotReadyError(
+            f"Chart song sections are missing (provenance={provenance})."
+        )
+    title = str(level_song_data.get("title") or level_song_data.get("name") or "").strip()
+    if not title and provenance.startswith("catalog"):
+        raise ChartSongNotReadyError(
+            f"Chart song identity is incomplete (provenance={provenance})."
+        )
+
+
+def chart_bundle_cache_signature(
+    session_state: dict[str, Any],
+    catalog_song_data: dict[str, Any],
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+) -> tuple[Any, ...]:
+    """Cache key fragment so pre-reconciliation partial overlays cannot reuse chart bundles."""
+    from songs.state import reconcile_active_pick_key
+
+    reconciled_pk = reconcile_active_pick_key(
+        session_state,
+        song_picker_catalog=song_picker_catalog,
+    )
+    sel = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}
+    overlay_key = str((catalog_song_data or {}).get("key") or "").strip()
+    sel_key = str(sel.get("key") or "").strip()
+    meta_pk = ""
+    try:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+
+        meta = session_state.get(ACTIVE_SONG_STATE_KEY)
+        if isinstance(meta, dict):
+            meta_pk = str(meta.get("pick_key") or meta.get("active_catalog_pick_key") or "").strip()
+    except ImportError:
+        pass
+    return (
+        reconciled_pk,
+        meta_pk,
+        overlay_key,
+        sel_key,
+        bool(session_state.get("_music_active_pick_key_reconciled")),
+        bool(session_state.get("_music_startup_restore_finalized")),
+        bool(session_state.get("_music_workspace_blob_hydrated")),
+        bool((catalog_song_data or {}).get("sections")),
+    )
+
+
 def transpose_sections(song_data, target_key):
     if not isinstance(song_data, dict):
         raise TypeError("transpose_sections requires a song_data mapping")
@@ -472,7 +547,7 @@ def transpose_sections(song_data, target_key):
 
     out = {}
 
-    for section_name, chords in song_data["sections"].items():
+    for section_name, chords in (song_data.get("sections") or {}).items():
 
         out[section_name] = [
             transpose_chord(ch, steps, reference_key=target_key)

@@ -2062,6 +2062,13 @@ def resolve_catalog_song_for_chart(
         reconcile_active_pick_key,
     )
 
+    if song_picker_catalog is None:
+        song_picker_catalog = _catalog_picker_from_session(session_state)
+    if song_library is None:
+        lib = session_state.get("_reconcile_song_library")
+        if isinstance(lib, dict) and lib:
+            song_library = lib
+
     overlay = dict(catalog_song_data or {})
     sel = session_state.get(SELECTED_SONG_STATE_KEY) or {}
     if isinstance(sel, dict) and sel:
@@ -2133,12 +2140,20 @@ def build_active_chart_bundle(
             )
         home_sections = active.get("original_sections") or {}
         level_source_sections = sections_to_chord_lists(home_sections)
+        title = active.get("name", "Custom Progression")
         level_song_data = {
             "key": home_key,
             "sections": level_source_sections,
+            "title": title,
         }
+        from music_theory import validate_chart_song_for_transpose
+
+        validate_chart_song_for_transpose(
+            level_song_data,
+            original_key=home_key,
+            provenance="custom_chart_bundle",
+        )
         sections = transpose_sections(level_song_data, display_key)
-        title = active.get("name", "Custom Progression")
         return {
             "source": SOURCE_CUSTOM,
             "genre": "Custom",
@@ -2163,7 +2178,15 @@ def build_active_chart_bundle(
         }
 
     from backing_audio import infer_groove_style
+    from music_theory import validate_chart_song_for_transpose
     from .playback_defaults import default_bpm_for_song_data, default_groove_for_song
+
+    if song_picker_catalog is None:
+        song_picker_catalog = _catalog_picker_from_session(session_state)
+    if song_library is None:
+        lib = session_state.get("_reconcile_song_library")
+        if isinstance(lib, dict) and lib:
+            song_library = lib
 
     resolved_song_data, original_key = resolve_catalog_song_for_chart(
         session_state,
@@ -2177,6 +2200,11 @@ def build_active_chart_bundle(
         "key": original_key,
         "sections": level_source_sections,
     }
+    validate_chart_song_for_transpose(
+        level_song_data,
+        original_key=original_key,
+        provenance="catalog_chart_bundle",
+    )
     sections = transpose_sections(level_song_data, display_key)
     ext = resolved_song_data.get("extensions") or {}
     return {

@@ -266,6 +266,13 @@ def finalize_music_startup_restore(
     except ImportError:
         pass
 
+    try:
+        from studio_cache import invalidate_session_cache
+
+        invalidate_session_cache(ss, "chart_bundle")
+    except ImportError:
+        pass
+
     ss[MUSIC_STARTUP_RESTORE_FINALIZED_KEY] = True
     if complete_music_restore_phase is not None and not music_restore_phase_complete(ss):
         complete_music_restore_phase(ss)

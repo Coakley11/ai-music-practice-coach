@@ -1193,6 +1193,12 @@ def apply_active_pick_key_reconciliation(
         origin="restore",
         persist=persist,
     )
+    try:
+        from studio_cache import invalidate_session_cache
+
+        invalidate_session_cache(ss, "chart_bundle")
+    except ImportError:
+        pass
     ss["_music_active_pick_key_reconciled"] = True
     return resolved
 
@@ -1279,6 +1285,17 @@ def get_song_context(
             or st.session_state.get(ACTIVE_CATALOG_PICK_KEY)
             or ""
         ).strip()
+        if not pk:
+            try:
+                from active_song_state import ACTIVE_SONG_STATE_KEY
+
+                meta = st.session_state.get(ACTIVE_SONG_STATE_KEY)
+                if isinstance(meta, dict):
+                    pk = str(
+                        meta.get("pick_key") or meta.get("active_catalog_pick_key") or ""
+                    ).strip()
+            except ImportError:
+                pass
         if pk and not pk.startswith("custom::"):
             loaded = load_catalog_song_record_by_pick_key(
                 pk,

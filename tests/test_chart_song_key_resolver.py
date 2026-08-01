@@ -5,7 +5,11 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from music_theory import MissingOriginalSongKeyError, transpose_sections
+from music_theory import (
+    MissingOriginalSongKeyError,
+    chart_bundle_cache_signature,
+    transpose_sections,
+)
 from song_catalog.catalog import format_pick_key
 from songs.music_source import build_active_chart_bundle, resolve_catalog_song_for_chart
 from songs.state import ACTIVE_CATALOG_PICK_KEY, get_song_context
@@ -189,6 +193,71 @@ class ChartSongKeyResolverTests(unittest.TestCase):
                     sections_for_level=lambda data, _lvl: dict(data.get("sections") or {}),
                     transpose_sections=transpose_sections,
                 )
+
+
+    def test_startup_partial_selected_song_cloud_pick_builds_via_cache(self) -> None:
+        """Reproduces deploy failure: sections-only selected_song, empty live pick, cloud identity."""
+        from studio_cache import session_cache_get_or_set
+
+        catalog = _mini_catalog()
+        perfect_pk = format_pick_key("Pop", "Perfect — Ed Sheeran")
+        session: dict = {
+            ACTIVE_CATALOG_PICK_KEY: "",
+            "selected_song": {
+                "title": "Perfect",
+                "artist": "Ed Sheeran",
+                "genre": "Pop",
+                "sections": {"Verse 1": ["G", "Em7"]},
+            },
+            "active_song_state": {"pick_key": perfect_pk},
+            "_music_workspace_blob_hydrated": True,
+            "_music_startup_restore_finalized": True,
+            "_music_active_pick_key_reconciled": False,
+        }
+        partial_overlay = dict(session["selected_song"])
+        sig_before = (
+            "",
+            chart_bundle_cache_signature(
+                session,
+                partial_overlay,
+                song_picker_catalog=catalog,
+            ),
+            "catalog",
+        )
+
+        def _factory() -> dict:
+            return build_active_chart_bundle(
+                session,
+                catalog_genre="Pop",
+                catalog_song="Perfect",
+                catalog_song_data=partial_overlay,
+                level="Advanced",
+                display_key="C",
+                cpl_active_key="cpl_active",
+                sections_for_level=lambda data, _lvl: dict(data.get("sections") or {}),
+                transpose_sections=transpose_sections,
+                song_picker_catalog=catalog,
+                song_library=catalog,
+            )
+
+        bundle = session_cache_get_or_set(session, "chart_bundle", sig_before, _factory)
+        self.assertEqual(bundle["original_key"], "G")
+        self.assertEqual(bundle["sections"]["Verse 1"][0], "C")
+
+        session[ACTIVE_CATALOG_PICK_KEY] = perfect_pk
+        session["_music_active_pick_key_reconciled"] = True
+        sig_after = (
+            perfect_pk,
+            chart_bundle_cache_signature(
+                session,
+                partial_overlay,
+                song_picker_catalog=catalog,
+            ),
+            "catalog",
+        )
+        self.assertNotEqual(sig_before, sig_after)
+        bundle2 = session_cache_get_or_set(session, "chart_bundle", sig_after, _factory)
+        self.assertEqual(bundle2["original_key"], "G")
 
 
 if __name__ == "__main__":

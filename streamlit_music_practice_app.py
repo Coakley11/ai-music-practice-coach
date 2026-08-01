@@ -140,6 +140,9 @@ semitone_distance = _music_theory.semitone_distance
 transpose_chord = _music_theory.transpose_chord
 transpose_sections = _music_theory.transpose_sections
 transpose_sections_dict = _music_theory.transpose_sections_dict
+chart_bundle_cache_signature = _music_theory.chart_bundle_cache_signature
+MissingOriginalSongKeyError = _music_theory.MissingOriginalSongKeyError
+ChartSongNotReadyError = _music_theory.ChartSongNotReadyError
 transpose_guitar_tabs = _music_theory.transpose_guitar_tabs
 display_key_options = _music_theory.display_key_options
 
@@ -10076,27 +10079,33 @@ _capo_shape_cache = (
     else ""
 )
 
-_chart_bundle = session_cache_get_or_set(
-    st.session_state,
-    "chart_bundle",
-    (
-        st.session_state.get(ACTIVE_CATALOG_PICK_KEY),
-        "custom" if cpl_session_is_active(st.session_state) else "catalog",
-        str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("id", ""))
-        if cpl_session_is_active(st.session_state)
-        else "",
-        str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("original_key_center", "")),
-        str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("progression_style", "")),
-        level,
-        _chart_bundle_transpose_key,
-        chart_key_mode,
-        _capo_shape_cache,
-        chart_transpose_cache_signature(st.session_state, instrument),
-        st.session_state.get("_catalog_revision"),
-        st.session_state.get("_user_chart_overrides_revision", 0),
-        ((_catalog_song_data.get("user_override") or {}).get("saved_at")),
+_chart_bundle = None
+_chart_bundle_sig = (
+    st.session_state.get(ACTIVE_CATALOG_PICK_KEY),
+    chart_bundle_cache_signature(
+        st.session_state,
+        _catalog_song_data,
+        song_picker_catalog=SONG_PICKER_CATALOG,
     ),
-    lambda: build_active_chart_bundle(
+    "custom" if cpl_session_is_active(st.session_state) else "catalog",
+    str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("id", ""))
+    if cpl_session_is_active(st.session_state)
+    else "",
+    str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("original_key_center", "")),
+    str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("progression_style", "")),
+    level,
+    _chart_bundle_transpose_key,
+    chart_key_mode,
+    _capo_shape_cache,
+    chart_transpose_cache_signature(st.session_state, instrument),
+    st.session_state.get("_catalog_revision"),
+    st.session_state.get("_user_chart_overrides_revision", 0),
+    ((_catalog_song_data.get("user_override") or {}).get("saved_at")),
+)
+
+
+def _factory_chart_bundle() -> dict:
+    return build_active_chart_bundle(
         st.session_state,
         catalog_genre=_catalog_genre,
         catalog_song=_catalog_song,
@@ -10108,9 +10117,37 @@ _chart_bundle = session_cache_get_or_set(
         transpose_sections=transpose_sections,
         song_picker_catalog=SONG_PICKER_CATALOG,
         song_library=SONG_LIBRARY,
-    ),
-    copy_result=True,
-)
+    )
+
+
+try:
+    _chart_bundle = session_cache_get_or_set(
+        st.session_state,
+        "chart_bundle",
+        _chart_bundle_sig,
+        _factory_chart_bundle,
+        copy_result=True,
+    )
+except (MissingOriginalSongKeyError, ChartSongNotReadyError):
+    invalidate_session_cache(st.session_state, "chart_bundle")
+    if not st.session_state.get("_chart_bundle_build_retry"):
+        st.session_state["_chart_bundle_build_retry"] = True
+        try:
+            from songs.state import apply_active_pick_key_reconciliation
+
+            apply_active_pick_key_reconciliation(
+                st,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+            )
+        except Exception:
+            pass
+        st.rerun()
+    st.warning(
+        "Your song chart is still syncing from the saved workspace. "
+        "Refresh once more if this message persists."
+    )
+    st.stop()
 genre = _chart_bundle["genre"]
 song = _chart_bundle["song"]
 song_data = _chart_bundle["song_data"]
