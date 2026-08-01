@@ -26,6 +26,7 @@ from practice_workspace_persistence import (
     prepare_practice_workspace_for_render,
     project_practice_workspace_to_session,
     sync_practice_workspace_before_persist,
+    upgrade_practice_workspace_blob,
 )
 from studio_page_state import init_practice_page_state
 
@@ -54,25 +55,31 @@ class TestPracticeWorkspacePersistence(unittest.TestCase):
         self.assertEqual(fresh.session_state.get(PRACTICE_ACTIVE_TOOL_KEY), "chart")
         self.assertTrue(fresh.session_state.get(PRACTICE_WORKSPACE_RESTORED_KEY))
 
-    def test_tuner_time_pitch_mode_persists(self) -> None:
+    def test_time_pitch_view_persists(self) -> None:
         ss: dict = {"studio_page": "practice"}
         commit_practice_tool_selection(ss, "time_and_pitch")
-        ss[PRACTICE_TUNER_UI_MODE_KEY] = "live"
-        sync_practice_workspace_before_persist(ss)
-        self.assertEqual(
-            ss[PRACTICE_WORKSPACE_STATE_KEY]["selected_time_pitch_mode"],
-            "tuner",
+        from practice_tools_ui import PRACTICE_TIME_PITCH_VIEW_KEY
+        from practice_workspace_persistence import (
+            TIME_PITCH_VIEW_LIVE_TUNER,
+            TIME_PITCH_VIEW_TONE_SUSTAIN,
+            commit_practice_time_pitch_view,
         )
-        ss[PRACTICE_TUNER_UI_MODE_KEY] = "tone"
-        ss.pop("practice_time_pitch_mode", None)
-        from practice_tools_ui import PRACTICE_TIME_PITCH_MODE_KEY
 
-        ss.pop(PRACTICE_TIME_PITCH_MODE_KEY, None)
+        commit_practice_time_pitch_view(ss, TIME_PITCH_VIEW_LIVE_TUNER)
         sync_practice_workspace_before_persist(ss)
-        self.assertEqual(
-            ss[PRACTICE_WORKSPACE_STATE_KEY]["selected_time_pitch_mode"],
-            "tone",
-        )
+        self.assertEqual(ss[PRACTICE_WORKSPACE_STATE_KEY]["time_pitch_view"], TIME_PITCH_VIEW_LIVE_TUNER)
+        commit_practice_time_pitch_view(ss, TIME_PITCH_VIEW_TONE_SUSTAIN)
+        sync_practice_workspace_before_persist(ss)
+        self.assertEqual(ss[PRACTICE_WORKSPACE_STATE_KEY]["time_pitch_view"], TIME_PITCH_VIEW_TONE_SUSTAIN)
+
+    def test_legacy_time_pitch_mode_migrates_to_view(self) -> None:
+        blob = default_practice_workspace_state()
+        blob.pop("time_pitch_view", None)
+        blob["selected_time_pitch_mode"] = "tone"
+        upgraded = upgrade_practice_workspace_blob(blob)
+        from practice_workspace_persistence import TIME_PITCH_VIEW_TONE_SUSTAIN
+
+        self.assertEqual(upgraded["time_pitch_view"], TIME_PITCH_VIEW_TONE_SUSTAIN)
 
     def test_metronome_settings_persist(self) -> None:
         ss = {
@@ -115,7 +122,7 @@ class TestPracticeWorkspacePersistence(unittest.TestCase):
         migrated = migrate_legacy_practice_workspace_once(ss, payload)
         self.assertIsNotNone(migrated)
         self.assertEqual(migrated["selected_practice_tool"], "time_and_pitch")
-        self.assertEqual(migrated["selected_time_pitch_mode"], "metronome")
+        self.assertEqual(migrated["time_pitch_view"], "live_tuner")
         self.assertTrue(ss.get(PRACTICE_WORKSPACE_MIGRATED_KEY))
         self.assertIsNone(migrate_legacy_practice_workspace_once(ss, payload))
 

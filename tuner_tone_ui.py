@@ -129,6 +129,175 @@ def _render_tone_target_selector(
     return ctx
 
 
+def _normalize_key_prefix(key_prefix: str) -> str:
+    if "::" in key_prefix:
+        parts = key_prefix.split("::", 1)
+        key_prefix = tuner_key_prefix_for_song(parts[-1] if len(parts) > 1 else "song")
+    elif not key_prefix.startswith("practice_tuner_"):
+        key_prefix = tuner_key_prefix_for_song(key_prefix)
+    return key_prefix
+
+
+def _instrument_profile(st_module: Any, instrument: str) -> tuple[str, InstrumentTunerProfile]:
+    transposing_type = ""
+    if is_transposing_instrument(instrument):
+        transposing_type = selected_transposing_type(
+            st_module.session_state,
+            instrument,
+        )
+    profile = _profile_for_instrument(instrument, sax_type=transposing_type)
+    return transposing_type, profile
+
+
+def render_live_tuner_with_metronome(
+    st_module: Any,
+    *,
+    instrument: str,
+    display_key: str,
+    key_prefix: str = "practice_tuner",
+    default_bpm: int = 100,
+    default_signature: str = "4/4",
+    section_bars: int = 0,
+    section_label: str = "",
+    loop_section: bool = False,
+) -> None:
+    """Live microphone tuner and practice metronome on one screen (no mode switch)."""
+    key_prefix = _normalize_key_prefix(key_prefix)
+    transposing_type, profile = _instrument_profile(st_module, instrument)
+
+    from practice_metronome import render_metronome_widget
+
+    render_metronome_widget(
+        st_module,
+        default_bpm=int(default_bpm),
+        default_signature=str(default_signature or "4/4"),
+        section_bars=int(section_bars or 0),
+        section_label=str(section_label or ""),
+        loop_section=bool(loop_section),
+        compact=False,
+    )
+    st_module.markdown("---")
+    st_module.caption(profile.hint)
+    if profile.tone_focus:
+        st_module.markdown(
+            "**Tone focus:** " + " · ".join(profile.tone_focus),
+        )
+
+    expected_note = _practice_expected_note(st_module.session_state)
+    string_targets: list[str] | None = None
+    if profile.mode == "strings" and profile.string_targets:
+        string_targets = list(profile.string_targets)
+        st_module.caption(
+            "Tap a string inside the tuner — the active string lights up **red** "
+            "and tuning is judged against that note while you play."
+        )
+
+    st_module.markdown("##### Live tuner")
+    st_module.caption(
+        "Press **Start Tuner** — your browser listens continuously. "
+        "Play any note; the needle shows flat ← in tune → sharp."
+    )
+    instrument_label = instrument
+    try:
+        from practice_setup_globals import get_active_instrument_display_name
+
+        instrument_label = str(
+            get_active_instrument_display_name(st_module.session_state) or instrument
+        ).strip()
+    except ImportError:
+        pass
+    live_display = live_tuner_display_settings(
+        instrument=instrument,
+        transposing_type=transposing_type,
+        instrument_display_name=instrument_label,
+    )
+    if live_display.get("display_mode") == "transposing_written":
+        st_module.caption(
+            f"Showing **{html.escape(instrument_label)}** written note — "
+            "concert pitch shown as secondary info."
+        )
+    else:
+        st_module.caption("Showing concert pitch.")
+    render_live_tuner(
+        st_module,
+        key_prefix=key_prefix,
+        target_note=None,
+        expected_note=expected_note,
+        string_targets=string_targets,
+        display_mode=str(live_display.get("display_mode") or "concert"),
+        concert_to_written_semitones=int(live_display.get("concert_to_written_semitones") or 0),
+        instrument_label=str(live_display.get("instrument_label") or ""),
+    )
+    if expected_note:
+        st_module.caption(
+            f"Practice target: **{html.escape(expected_note)}** — "
+            "match this note while the tuner listens."
+        )
+    render_tone_take_history_section(
+        st_module,
+        st_module.session_state,
+        key_prefix=key_prefix,
+        instrument=instrument,
+        display_key=display_key,
+        transposing_type=transposing_type,
+    )
+
+
+def render_tone_sustain_practice_view(
+    st_module: Any,
+    *,
+    instrument: str,
+    display_key: str,
+    key_prefix: str = "practice_tuner",
+) -> None:
+    """Sustained-tone practice — no metronome."""
+    key_prefix = _normalize_key_prefix(key_prefix)
+    transposing_type, profile = _instrument_profile(st_module, instrument)
+
+    st_module.caption(profile.hint)
+    if profile.tone_focus:
+        st_module.markdown(
+            "**Tone focus:** " + " · ".join(profile.tone_focus),
+        )
+
+    tone_target_ctx: dict[str, Any] | None = None
+    if shows_tone_sustain_note_dropdown(MODE_TONE_SUSTAIN, profile.mode):
+        tone_target_ctx = _render_tone_target_selector(
+            st_module,
+            st_module.session_state,
+            key_prefix=key_prefix,
+            instrument=instrument,
+            transposing_type=transposing_type,
+        )
+
+    _render_tone_practice_mode(
+        st_module,
+        key_prefix=key_prefix,
+        tone_target_ctx=tone_target_ctx,
+        profile=profile,
+        instrument=instrument,
+        display_key=display_key,
+        transposing_type=transposing_type,
+    )
+    if pending_tone_take_ready(st_module.session_state):
+        render_pending_tone_save(
+            st_module,
+            st_module.session_state,
+            key_prefix=key_prefix,
+            instrument=instrument,
+            display_key=display_key,
+            transposing_type=transposing_type,
+        )
+    render_tone_take_history_section(
+        st_module,
+        st_module.session_state,
+        key_prefix=key_prefix,
+        instrument=instrument,
+        display_key=display_key,
+        transposing_type=transposing_type,
+    )
+
+
 def render_tuner_tone_section(
     st_module: Any,
     *,
@@ -142,44 +311,11 @@ def render_tuner_tone_section(
     metronome_loop_section: bool = False,
     include_metronome: bool = True,
 ) -> None:
-    """Collapsible Tuner, Tone & Metronome block for the Practice page."""
-    if "::" in key_prefix:
-        parts = key_prefix.split("::", 1)
-        key_prefix = tuner_key_prefix_for_song(parts[-1] if len(parts) > 1 else "song")
-    elif not key_prefix.startswith("practice_tuner_"):
-        key_prefix = tuner_key_prefix_for_song(key_prefix)
-
-    transposing_type = ""
-    if is_transposing_instrument(instrument):
-        transposing_type = selected_transposing_type(
-            st_module.session_state,
-            instrument,
-        )
-
-    profile = _profile_for_instrument(instrument, sax_type=transposing_type)
+    """Legacy collapsible Tuner, Tone & Metronome block (non–Practice-Tool entry points)."""
+    key_prefix = _normalize_key_prefix(key_prefix)
 
     expander_title = "🎵 Tuner, Tone & Metronome"
     with st_module.expander(expander_title, expanded=False):
-        if include_metronome and metronome_bpm is not None:
-            from practice_metronome import render_metronome_widget
-
-            render_metronome_widget(
-                st_module,
-                default_bpm=int(metronome_bpm),
-                default_signature=str(metronome_signature or "4/4"),
-                section_bars=int(metronome_section_bars or 0),
-                section_label=str(metronome_section_label or ""),
-                loop_section=bool(metronome_loop_section),
-                compact=True,
-            )
-            st_module.markdown("---")
-
-        st_module.caption(profile.hint)
-        if profile.tone_focus:
-            st_module.markdown(
-                "**Tone focus:** " + " · ".join(profile.tone_focus),
-            )
-
         mode = st_module.radio(
             "Mode",
             [MODE_TUNE_LIVE, MODE_TONE_SUSTAIN],
@@ -188,113 +324,37 @@ def render_tuner_tone_section(
         )
         try:
             from practice_workspace_persistence import (
-                PRACTICE_TUNER_UI_MODE_KEY,
-                commit_practice_time_pitch_settings,
+                TIME_PITCH_VIEW_LIVE_TUNER,
+                TIME_PITCH_VIEW_TONE_SUSTAIN,
+                commit_practice_time_pitch_view,
+                resolve_time_pitch_view,
             )
 
-            ui_mode = "live" if is_tune_live_mode(mode) else "tone"
-            st_module.session_state[PRACTICE_TUNER_UI_MODE_KEY] = ui_mode
-            commit_practice_time_pitch_settings(st_module.session_state, reason="tuner_mode")
+            view = TIME_PITCH_VIEW_TONE_SUSTAIN if not is_tune_live_mode(mode) else TIME_PITCH_VIEW_LIVE_TUNER
+            if resolve_time_pitch_view(st_module.session_state) != view:
+                commit_practice_time_pitch_view(st_module.session_state, view, reason="tuner_mode")
         except ImportError:
             pass
 
-        expected_note = _practice_expected_note(st_module.session_state)
-
         if is_tune_live_mode(mode):
-            string_targets: list[str] | None = None
-            if profile.mode == "strings" and profile.string_targets:
-                string_targets = list(profile.string_targets)
-                st_module.caption(
-                    "Tap a string inside the tuner — the active string lights up **red** "
-                    "and tuning is judged against that note while you play."
-                )
-
-            st_module.markdown("##### Live tuner")
-            st_module.caption(
-                "Press **Start Tuner** — your browser listens continuously. "
-                "Play any note; the needle shows flat ← in tune → sharp."
-            )
-            instrument_label = instrument
-            try:
-                from practice_setup_globals import get_active_instrument_display_name
-
-                instrument_label = str(
-                    get_active_instrument_display_name(st_module.session_state) or instrument
-                ).strip()
-            except ImportError:
-                pass
-            live_display = live_tuner_display_settings(
-                instrument=instrument,
-                transposing_type=transposing_type,
-                instrument_display_name=instrument_label,
-            )
-            if live_display.get("display_mode") == "transposing_written":
-                st_module.caption(
-                    f"Showing **{html.escape(instrument_label)}** written note — "
-                    "concert pitch shown as secondary info."
-                )
-            else:
-                st_module.caption("Showing concert pitch.")
-            render_live_tuner(
+            render_live_tuner_with_metronome(
                 st_module,
-                key_prefix=key_prefix,
-                target_note=None,
-                expected_note=expected_note,
-                string_targets=string_targets,
-                display_mode=str(live_display.get("display_mode") or "concert"),
-                concert_to_written_semitones=int(live_display.get("concert_to_written_semitones") or 0),
-                instrument_label=str(live_display.get("instrument_label") or ""),
-            )
-            if expected_note:
-                st_module.caption(
-                    f"Practice target: **{html.escape(expected_note)}** — "
-                    "match this note while the tuner listens."
-                )
-            render_tone_take_history_section(
-                st_module,
-                st_module.session_state,
-                key_prefix=key_prefix,
                 instrument=instrument,
                 display_key=display_key,
-                transposing_type=transposing_type,
+                key_prefix=key_prefix,
+                default_bpm=int(metronome_bpm or 100),
+                default_signature=str(metronome_signature or "4/4"),
+                section_bars=int(metronome_section_bars or 0),
+                section_label=str(metronome_section_label or ""),
+                loop_section=bool(metronome_loop_section),
             )
             return
 
-        tone_target_ctx: dict[str, Any] | None = None
-        if shows_tone_sustain_note_dropdown(mode, profile.mode):
-            tone_target_ctx = _render_tone_target_selector(
-                st_module,
-                st_module.session_state,
-                key_prefix=key_prefix,
-                instrument=instrument,
-                transposing_type=transposing_type,
-            )
-
-        _render_tone_practice_mode(
+        render_tone_sustain_practice_view(
             st_module,
-            key_prefix=key_prefix,
-            tone_target_ctx=tone_target_ctx,
-            profile=profile,
             instrument=instrument,
             display_key=display_key,
-            transposing_type=transposing_type,
-        )
-        if pending_tone_take_ready(st_module.session_state):
-            render_pending_tone_save(
-                st_module,
-                st_module.session_state,
-                key_prefix=key_prefix,
-                instrument=instrument,
-                display_key=display_key,
-                transposing_type=transposing_type,
-            )
-        render_tone_take_history_section(
-            st_module,
-            st_module.session_state,
             key_prefix=key_prefix,
-            instrument=instrument,
-            display_key=display_key,
-            transposing_type=transposing_type,
         )
 
 

@@ -8,6 +8,8 @@ from typing import Any, Callable
 
 PRACTICE_ACTIVE_TOOL_KEY = "practice_active_tool"
 PRACTICE_TIME_PITCH_TOOL_ID = "time_and_pitch"
+PRACTICE_TIME_PITCH_VIEW_KEY = "practice_time_pitch_view"
+# Legacy session key (metronome | tuner | tone) — read only for migration.
 PRACTICE_TIME_PITCH_MODE_KEY = "practice_time_pitch_mode"
 
 # Legacy Streamlit tab labels → tool ids (for one-time migration).
@@ -198,15 +200,13 @@ def render_practice_tools_launcher(
                         type="primary" if is_active else "secondary",
                     ):
                         if active == tool.tool_id:
-                            session[PRACTICE_ACTIVE_TOOL_KEY] = ""
                             try:
-                                from practice_workspace_persistence import commit_practice_tool_selection
+                                from practice_workspace_persistence import persist_practice_tool_user_action
 
-                                commit_practice_tool_selection(session, "")
+                                persist_practice_tool_user_action(st_module, "")
                             except ImportError:
-                                pass
+                                session[PRACTICE_ACTIVE_TOOL_KEY] = ""
                         else:
-                            session[PRACTICE_ACTIVE_TOOL_KEY] = tool.tool_id
                             try:
                                 from practice_workspace_persistence import persist_practice_tool_user_action
 

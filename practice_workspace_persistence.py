@@ -10,6 +10,7 @@ from practice_tools_ui import (
     PRACTICE_ACTIVE_TOOL_KEY,
     PRACTICE_TIME_PITCH_MODE_KEY,
     PRACTICE_TIME_PITCH_TOOL_ID,
+    PRACTICE_TIME_PITCH_VIEW_KEY,
     normalize_practice_active_tool,
 )
 
@@ -39,7 +40,15 @@ TIME_PITCH_MODE_METRONOME = "metronome"
 TIME_PITCH_MODE_TUNER = "tuner"
 TIME_PITCH_MODE_TONE = "tone"
 
-SCHEMA_VERSION = 1
+TIME_PITCH_VIEW_LIVE_TUNER = "live_tuner"
+TIME_PITCH_VIEW_TONE_SUSTAIN = "tone_sustain"
+
+TIME_PITCH_VIEW_UI_LABELS: dict[str, str] = {
+    TIME_PITCH_VIEW_LIVE_TUNER: "Live Tuner",
+    TIME_PITCH_VIEW_TONE_SUSTAIN: "Tone Sustain Practice",
+}
+
+SCHEMA_VERSION = 2
 
 _DEFAULT_METRONOME = {
     "bpm": 100,
@@ -80,7 +89,7 @@ def default_practice_workspace_state() -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "selected_practice_tool": "",
-        "selected_time_pitch_mode": "",
+        "time_pitch_view": TIME_PITCH_VIEW_LIVE_TUNER,
         "metronome": copy.deepcopy(_DEFAULT_METRONOME),
         "tuner": copy.deepcopy(_DEFAULT_TUNER),
         "tone": copy.deepcopy(_DEFAULT_TONE),
@@ -88,28 +97,54 @@ def default_practice_workspace_state() -> dict[str, Any]:
     }
 
 
-def _time_pitch_mode_for_tool(tool_id: str, *, tuner_ui_mode: str = "", explicit_mode: str = "") -> str:
-    mode = str(explicit_mode or session_mode_from_session_keys(tuner_ui_mode) or "").strip().lower()
-    if tool_id == PRACTICE_TIME_PITCH_TOOL_ID or tool_id in ("timing", "tuner"):
-        if mode in (TIME_PITCH_MODE_METRONOME, TIME_PITCH_MODE_TUNER, TIME_PITCH_MODE_TONE):
-            return mode
-        if "sustain" in mode or mode == "tone":
-            return TIME_PITCH_MODE_TONE
-        if mode == "live" or mode == "tuner":
-            return TIME_PITCH_MODE_TUNER
-        if tool_id == "timing":
-            return TIME_PITCH_MODE_METRONOME
-        return TIME_PITCH_MODE_TUNER
-    return ""
-
-
-def session_mode_from_session_keys(tuner_ui_mode: str = "") -> str:
+def _legacy_mode_to_time_pitch_view(mode: str, *, tuner_ui_mode: str = "") -> str:
+    text = str(mode or "").strip().lower()
     ui = str(tuner_ui_mode or "").strip().lower()
+    if text in (TIME_PITCH_MODE_TONE, "tone_sustain", TIME_PITCH_VIEW_TONE_SUSTAIN):
+        return TIME_PITCH_VIEW_TONE_SUSTAIN
     if ui in ("tone", "sustain"):
-        return TIME_PITCH_MODE_TONE
-    if ui == "live":
-        return TIME_PITCH_MODE_TUNER
-    return ""
+        return TIME_PITCH_VIEW_TONE_SUSTAIN
+    return TIME_PITCH_VIEW_LIVE_TUNER
+
+
+def normalize_time_pitch_view_value(raw: str) -> str:
+    text = str(raw or "").strip().lower()
+    if text in (TIME_PITCH_VIEW_LIVE_TUNER, "live", "live_tuner", "tuner", "metronome"):
+        return TIME_PITCH_VIEW_LIVE_TUNER
+    if text in (TIME_PITCH_VIEW_TONE_SUSTAIN, "tone", "tone_sustain", "sustain"):
+        return TIME_PITCH_VIEW_TONE_SUSTAIN
+    return TIME_PITCH_VIEW_LIVE_TUNER
+
+
+def resolve_time_pitch_view(session: dict[str, Any], canonical: dict[str, Any] | None = None) -> str:
+    """Session + canonical → live_tuner | tone_sustain."""
+    base = canonical if isinstance(canonical, dict) else {}
+    explicit = str(session.get(PRACTICE_TIME_PITCH_VIEW_KEY) or base.get("time_pitch_view") or "").strip()
+    if explicit:
+        return normalize_time_pitch_view_value(explicit)
+    legacy_mode = str(session.get(PRACTICE_TIME_PITCH_MODE_KEY) or base.get("selected_time_pitch_mode") or "").strip()
+    tuner_ui = str(session.get(PRACTICE_TUNER_UI_MODE_KEY) or (base.get("tuner") or {}).get("ui_mode") or "")
+    if legacy_mode or tuner_ui:
+        return _legacy_mode_to_time_pitch_view(legacy_mode, tuner_ui_mode=tuner_ui)
+    tool = normalize_practice_active_tool(session) or str(base.get("selected_practice_tool") or "")
+    if tool in ("timing", "tuner", PRACTICE_TIME_PITCH_TOOL_ID):
+        return TIME_PITCH_VIEW_LIVE_TUNER
+    return TIME_PITCH_VIEW_LIVE_TUNER
+
+
+def upgrade_practice_workspace_blob(blob: dict[str, Any]) -> dict[str, Any]:
+    """Ensure time_pitch_view is set; migrate legacy selected_time_pitch_mode."""
+    raw = copy.deepcopy(blob or {})
+    out = _deep_merge_missing(raw, default_practice_workspace_state())
+    if not str(raw.get("time_pitch_view") or "").strip():
+        out["time_pitch_view"] = _legacy_mode_to_time_pitch_view(
+            str(raw.get("selected_time_pitch_mode") or ""),
+            tuner_ui_mode=str((raw.get("tuner") or out.get("tuner") or {}).get("ui_mode") or ""),
+        )
+    else:
+        out["time_pitch_view"] = normalize_time_pitch_view_value(str(raw["time_pitch_view"]))
+    out["schema_version"] = max(int(out.get("schema_version") or 0), SCHEMA_VERSION)
+    return out
 
 
 def gather_practice_workspace_from_session(session: dict[str, Any]) -> dict[str, Any]:
@@ -122,17 +157,7 @@ def gather_practice_workspace_from_session(session: dict[str, Any]) -> dict[str,
 
     tool = normalize_practice_active_tool(session)
     base["selected_practice_tool"] = tool
-    tuner_ui = str(session.get(PRACTICE_TUNER_UI_MODE_KEY) or base.get("tuner", {}).get("ui_mode") or "live")
-    explicit_mode = str(session.get(PRACTICE_TIME_PITCH_MODE_KEY) or "").strip()
-    if not explicit_mode and tool in (PRACTICE_TIME_PITCH_TOOL_ID, "timing", "tuner"):
-        explicit_mode = session_mode_from_session_keys(str(session.get(PRACTICE_TUNER_UI_MODE_KEY) or ""))
-    if not explicit_mode:
-        explicit_mode = str(base.get("selected_time_pitch_mode") or "").strip()
-    base["selected_time_pitch_mode"] = _time_pitch_mode_for_tool(
-        tool,
-        tuner_ui_mode=tuner_ui,
-        explicit_mode=explicit_mode,
-    )
+    base["time_pitch_view"] = resolve_time_pitch_view(session, base)
 
     metro = dict(base.get("metronome") or {})
     try:
@@ -192,7 +217,7 @@ def write_canonical_practice_workspace(
     *,
     reason: str = "autosave",
 ) -> dict[str, Any]:
-    canonical = _deep_merge_missing(blob, default_practice_workspace_state())
+    canonical = upgrade_practice_workspace_blob(_deep_merge_missing(blob, default_practice_workspace_state()))
     session[PRACTICE_WORKSPACE_STATE_KEY] = copy.deepcopy(canonical)
     session[PRACTICE_WORKSPACE_LAST_SAVE_REASON_KEY] = reason
     session.pop(PRACTICE_WORKSPACE_DIRTY_KEY, None)
@@ -263,14 +288,14 @@ def migrate_legacy_practice_workspace_once(
     if raw_tool in ("timing", "tuner") and tool != PRACTICE_TIME_PITCH_TOOL_ID:
         tool = PRACTICE_TIME_PITCH_TOOL_ID
     if raw_tool == "timing":
-        mode = TIME_PITCH_MODE_METRONOME
+        view = TIME_PITCH_VIEW_LIVE_TUNER
     elif raw_tool == "tuner":
-        mode = TIME_PITCH_MODE_TUNER
+        view = TIME_PITCH_VIEW_LIVE_TUNER
     else:
-        mode = _time_pitch_mode_for_tool(tool)
+        view = resolve_time_pitch_view({PRACTICE_ACTIVE_TOOL_KEY: tool})
     blob = default_practice_workspace_state()
     blob["selected_practice_tool"] = tool
-    blob["selected_time_pitch_mode"] = mode
+    blob["time_pitch_view"] = view
     session[PRACTICE_WORKSPACE_MIGRATED_KEY] = True
     session["_practice_workspace_migrated_from"] = "page_snapshot"
     return blob
@@ -282,7 +307,7 @@ def apply_practice_workspace_to_session(
     *,
     source: str = "cloud_restore",
 ) -> None:
-    canonical = _deep_merge_missing(blob, default_practice_workspace_state())
+    canonical = upgrade_practice_workspace_blob(_deep_merge_missing(blob, default_practice_workspace_state()))
     write_canonical_practice_workspace(session, canonical, reason=source)
     project_practice_workspace_to_session(session, overwrite=True)
     session[PRACTICE_WORKSPACE_RESTORED_KEY] = True
@@ -324,12 +349,18 @@ def project_practice_workspace_to_session(session: dict[str, Any], *, overwrite:
         elif overwrite and PRACTICE_ACTIVE_TOOL_KEY in session and not tool:
             session[PRACTICE_ACTIVE_TOOL_KEY] = ""
     mode = str(meta.get("selected_time_pitch_mode") or "").strip()
-    if mode:
-        session[PRACTICE_TIME_PITCH_MODE_KEY] = mode
-        if mode == TIME_PITCH_MODE_TONE:
+    view = resolve_time_pitch_view(
+        session,
+        upgrade_practice_workspace_blob(meta) if isinstance(meta, dict) else None,
+    )
+    if view or overwrite:
+        session[PRACTICE_TIME_PITCH_VIEW_KEY] = view or TIME_PITCH_VIEW_LIVE_TUNER
+        if view == TIME_PITCH_VIEW_TONE_SUSTAIN:
             session[PRACTICE_TUNER_UI_MODE_KEY] = "tone"
-        elif mode == TIME_PITCH_MODE_TUNER:
+        else:
             session[PRACTICE_TUNER_UI_MODE_KEY] = "live"
+    elif mode:
+        session[PRACTICE_TIME_PITCH_VIEW_KEY] = _legacy_mode_to_time_pitch_view(mode)
 
     metro = meta.get("metronome") if isinstance(meta.get("metronome"), dict) else {}
     if overwrite or PRACTICE_METRONOME_BPM_KEY not in session:
@@ -348,7 +379,9 @@ def project_practice_workspace_to_session(session: dict[str, Any], *, overwrite:
         session[PRACTICE_TUNER_INSTRUMENT_CONTEXT_KEY] = str(tuner.get("instrument_context") or "")
     if overwrite or PRACTICE_TUNER_TRANSPOSITION_MODE_KEY not in session:
         session[PRACTICE_TUNER_TRANSPOSITION_MODE_KEY] = str(tuner.get("transposition_mode") or "concert")
-    if overwrite or PRACTICE_TUNER_UI_MODE_KEY not in session:
+    if (overwrite or PRACTICE_TUNER_UI_MODE_KEY not in session) and not (
+        str(meta.get("time_pitch_view") or meta.get("selected_time_pitch_mode") or "").strip()
+    ):
         session[PRACTICE_TUNER_UI_MODE_KEY] = str(tuner.get("ui_mode") or "live")
 
     tone = meta.get("tone") if isinstance(meta.get("tone"), dict) else {}
@@ -375,6 +408,15 @@ def commit_practice_tool_selection(session: dict[str, Any], tool_id: str) -> Non
     session[PRACTICE_ACTIVE_TOOL_KEY] = str(tool_id or "").strip()
     mark_practice_workspace_dirty(session, reason="tool_select")
     sync_practice_workspace_before_persist(session, reason="tool_select")
+
+
+def commit_practice_time_pitch_view(session: dict[str, Any], view: str, *, reason: str = "time_pitch_view") -> None:
+    session[PRACTICE_TIME_PITCH_VIEW_KEY] = normalize_time_pitch_view_value(view)
+    session[PRACTICE_TUNER_UI_MODE_KEY] = (
+        "tone" if session[PRACTICE_TIME_PITCH_VIEW_KEY] == TIME_PITCH_VIEW_TONE_SUSTAIN else "live"
+    )
+    mark_practice_workspace_dirty(session, reason=reason)
+    sync_practice_workspace_before_persist(session, reason=reason)
 
 
 def commit_practice_time_pitch_settings(session: dict[str, Any], *, reason: str = "tool_settings") -> None:
@@ -425,7 +467,7 @@ def music_practice_workspace_cloud_drift(
     live = ss.get(PRACTICE_WORKSPACE_STATE_KEY)
     if not isinstance(live, dict):
         return True, "practice_workspace_missing_local"
-    for key in ("selected_practice_tool", "selected_time_pitch_mode", "updated_at"):
+    for key in ("selected_practice_tool", "time_pitch_view", "updated_at"):
         if cloud_pw.get(key) != live.get(key):
             return True, f"practice_workspace:{key}"
     return False, ""
@@ -443,9 +485,10 @@ def persist_practice_tool_user_action(
     st: Any,
     tool_id: str,
     *,
+    time_pitch_view: str = "",
     time_pitch_mode: str = "",
 ) -> bool:
-    """User selected a Practice Tool — update canonical state and force cloud save."""
+    """User selected a Practice Tool or time/pitch view — update canonical state and force cloud save."""
     ss = st.session_state
     _record_practice_tool_sync_diag(
         ss,
@@ -453,13 +496,14 @@ def persist_practice_tool_user_action(
         canonical_practice_tool_after_click=str(tool_id or ""),
     )
     commit_practice_tool_selection(ss, tool_id)
-    if time_pitch_mode:
-        ss[PRACTICE_TIME_PITCH_MODE_KEY] = time_pitch_mode
-        if time_pitch_mode == TIME_PITCH_MODE_TONE:
-            ss[PRACTICE_TUNER_UI_MODE_KEY] = "tone"
-        elif time_pitch_mode == TIME_PITCH_MODE_TUNER:
-            ss[PRACTICE_TUNER_UI_MODE_KEY] = "live"
-        sync_practice_workspace_before_persist(ss, reason="time_pitch_mode")
+    view = normalize_time_pitch_view_value(time_pitch_view) if time_pitch_view else ""
+    if not view and time_pitch_mode:
+        view = _legacy_mode_to_time_pitch_view(time_pitch_mode)
+    if view:
+        ss[PRACTICE_TIME_PITCH_VIEW_KEY] = view
+        ss[PRACTICE_TUNER_UI_MODE_KEY] = "tone" if view == TIME_PITCH_VIEW_TONE_SUSTAIN else "live"
+        sync_practice_workspace_before_persist(ss, reason="time_pitch_view")
+        _record_practice_tool_sync_diag(ss, canonical_time_pitch_view_after_click=view)
     _record_practice_tool_sync_diag(
         ss,
         practice_workspace_dirty=bool(ss.get(PRACTICE_WORKSPACE_DIRTY_KEY)),
@@ -513,6 +557,7 @@ def persist_practice_tool_user_action(
             _record_practice_tool_sync_diag(
                 ss,
                 cloud_saved_practice_tool=str(cloud_pw.get("selected_practice_tool") or ""),
+                cloud_saved_time_pitch_view=str(cloud_pw.get("time_pitch_view") or ""),
             )
         except Exception:
             pass
@@ -537,8 +582,10 @@ def record_practice_tool_apply_diag(session: dict[str, Any], payload: dict[str, 
         session,
         device_loaded_revision=device_rev,
         device_applied_practice_tool=str(cloud_pw.get("selected_practice_tool") or ""),
+        device_applied_time_pitch_view=str(cloud_pw.get("time_pitch_view") or ""),
         apply_skipped_reason=session.get(PRACTICE_WORKSPACE_LAST_SKIP_KEY),
         final_rendered_practice_tool=normalize_practice_active_tool(session),
+        final_rendered_time_pitch_view=resolve_time_pitch_view(session),
     )
 
 
@@ -551,12 +598,19 @@ def collect_practice_workspace_audit(session: dict[str, Any], payload: dict[str,
     saved_tool = str((saved_blob or {}).get("selected_practice_tool") or "").strip()
     applied_tool = str((applied or {}).get("selected_practice_tool") or "").strip()
 
-    saved_mode = str((saved_blob or {}).get("selected_time_pitch_mode") or "").strip()
-    applied_mode = str((applied or {}).get("selected_time_pitch_mode") or "").strip()
-    final_mode = _time_pitch_mode_for_tool(
-        final_tool,
-        tuner_ui_mode=str(session.get(PRACTICE_TUNER_UI_MODE_KEY) or ""),
-    )
+    saved_view = str((saved_blob or {}).get("time_pitch_view") or "").strip()
+    if not saved_view and saved_blob:
+        saved_view = _legacy_mode_to_time_pitch_view(
+            str((saved_blob or {}).get("selected_time_pitch_mode") or ""),
+            tuner_ui_mode=str(((saved_blob or {}).get("tuner") or {}).get("ui_mode") or ""),
+        )
+    applied_view = str((applied or {}).get("time_pitch_view") or "").strip()
+    if not applied_view and applied:
+        applied_view = _legacy_mode_to_time_pitch_view(
+            str((applied or {}).get("selected_time_pitch_mode") or ""),
+            tuner_ui_mode=str(((applied or {}).get("tuner") or {}).get("ui_mode") or ""),
+        )
+    final_view = resolve_time_pitch_view(session)
 
     def _match_block(name: str) -> bool:
         if not saved_blob:
@@ -571,9 +625,9 @@ def collect_practice_workspace_audit(session: dict[str, Any], payload: dict[str,
         "practice_tool_saved": saved_tool or "(none)",
         "practice_tool_applied": applied_tool or "(none)",
         "practice_tool_final": final_tool or "(none)",
-        "time_pitch_mode_saved": saved_mode or "(none)",
-        "time_pitch_mode_applied": applied_mode or "(none)",
-        "time_pitch_mode_final": final_mode or "(none)",
+        "time_pitch_view_saved": saved_view or "(none)",
+        "time_pitch_view_applied": applied_view or "(none)",
+        "time_pitch_view_final": final_view or "(none)",
         "metronome_settings_match": _match_block("metronome"),
         "tuner_settings_match": _match_block("tuner"),
         "tone_settings_match": _match_block("tone"),
@@ -589,7 +643,13 @@ __all__ = [
     "PRACTICE_WORKSPACE_STATE_KEY",
     "apply_practice_workspace_from_payload",
     "commit_practice_tool_selection",
+    "commit_practice_time_pitch_view",
     "commit_practice_time_pitch_settings",
+    "resolve_time_pitch_view",
+    "normalize_time_pitch_view_value",
+    "TIME_PITCH_VIEW_LIVE_TUNER",
+    "TIME_PITCH_VIEW_TONE_SUSTAIN",
+    "TIME_PITCH_VIEW_UI_LABELS",
     "gather_practice_workspace_from_session",
     "metronome_render_defaults",
     "prepare_practice_workspace_for_render",
@@ -600,5 +660,6 @@ __all__ = [
     "persist_practice_tool_user_action",
     "music_practice_workspace_cloud_drift",
     "record_practice_tool_apply_diag",
+    "upgrade_practice_workspace_blob",
     "collect_practice_workspace_audit",
 ]

@@ -282,7 +282,11 @@ from songs.meter_state import (
     BACKING_METER_OVERRIDE_KEY,
     apply_backing_meter_for_song,
 )
-from tuner_tone_ui import render_tuner_tone_section, tuner_key_prefix_for_song
+from tuner_tone_ui import (
+    render_live_tuner_with_metronome,
+    render_tone_sustain_practice_view,
+    tuner_key_prefix_for_song,
+)
 from practice_metronome import render_metronome_widget
 from practice_setup_controls import (
     DEFAULT_INSTRUMENT_OPTIONS,
@@ -10799,56 +10803,58 @@ if _studio_page == "practice":
             )
             if _practice_active_tool in ("time_and_pitch", "timing", "tuner"):
                 try:
-                    from practice_tools_ui import PRACTICE_TIME_PITCH_MODE_KEY, PRACTICE_TIME_PITCH_TOOL_ID
+                    from practice_tools_ui import PRACTICE_TIME_PITCH_VIEW_KEY, PRACTICE_TIME_PITCH_TOOL_ID
                     from practice_workspace_persistence import (
-                        TIME_PITCH_MODE_METRONOME,
-                        TIME_PITCH_MODE_TONE,
-                        TIME_PITCH_MODE_TUNER,
+                        TIME_PITCH_VIEW_LIVE_TUNER,
+                        TIME_PITCH_VIEW_TONE_SUSTAIN,
+                        TIME_PITCH_VIEW_UI_LABELS,
+                        metronome_render_defaults,
                         persist_practice_tool_user_action,
+                        prepare_practice_workspace_for_render,
+                        resolve_time_pitch_view,
                     )
 
-                    _tp_mode = str(st.session_state.get(PRACTICE_TIME_PITCH_MODE_KEY) or TIME_PITCH_MODE_METRONOME)
-                    if _practice_active_tool == "timing":
-                        _tp_mode = TIME_PITCH_MODE_METRONOME
-                    elif _practice_active_tool == "tuner":
-                        _tp_mode = TIME_PITCH_MODE_TUNER
-                    _mode_labels = {
-                        TIME_PITCH_MODE_METRONOME: "Metronome",
-                        TIME_PITCH_MODE_TUNER: "Tuner",
-                        TIME_PITCH_MODE_TONE: "Tone",
-                    }
-                    _label_list = [
-                        _mode_labels[TIME_PITCH_MODE_METRONOME],
-                        _mode_labels[TIME_PITCH_MODE_TUNER],
-                        _mode_labels[TIME_PITCH_MODE_TONE],
+                    prepare_practice_workspace_for_render(st.session_state)
+                    _tp_view = resolve_time_pitch_view(st.session_state)
+                    _view_label_list = [
+                        TIME_PITCH_VIEW_UI_LABELS[TIME_PITCH_VIEW_LIVE_TUNER],
+                        TIME_PITCH_VIEW_UI_LABELS[TIME_PITCH_VIEW_TONE_SUSTAIN],
                     ]
-                    _rev = {v: k for k, v in _mode_labels.items()}
-                    _pick = st.radio(
-                        "Mode",
-                        _label_list,
-                        horizontal=True,
-                        index=max(0, _label_list.index(_mode_labels.get(_tp_mode, "Metronome"))),
-                        key="practice_time_pitch_mode_radio",
+                    _view_rev = {label: vid for vid, label in TIME_PITCH_VIEW_UI_LABELS.items()}
+                    _current_label = TIME_PITCH_VIEW_UI_LABELS.get(
+                        _tp_view, TIME_PITCH_VIEW_UI_LABELS[TIME_PITCH_VIEW_LIVE_TUNER]
                     )
-                    _new_mode = _rev[_pick]
-                    if _new_mode != _tp_mode:
-                        st.session_state[PRACTICE_TIME_PITCH_MODE_KEY] = _new_mode
+                    _pick_view = st.radio(
+                        "Tuner view",
+                        _view_label_list,
+                        horizontal=True,
+                        index=max(0, _view_label_list.index(_current_label)),
+                        key="practice_time_pitch_view_radio",
+                    )
+                    _new_view = _view_rev[_pick_view]
+                    if _new_view != _tp_view:
+                        st.session_state[PRACTICE_TIME_PITCH_VIEW_KEY] = _new_view
                         persist_practice_tool_user_action(
                             st,
                             PRACTICE_TIME_PITCH_TOOL_ID,
-                            time_pitch_mode=_new_mode,
+                            time_pitch_view=_new_view,
                         )
-                        _tp_mode = _new_mode
+                        _tp_view = _new_view
                 except ImportError:
-                    _tp_mode = "metronome"
-                    TIME_PITCH_MODE_METRONOME = "metronome"
-                    TIME_PITCH_MODE_TUNER = "tuner"
-                    TIME_PITCH_MODE_TONE = "tone"
+                    from practice_workspace_persistence import TIME_PITCH_VIEW_LIVE_TUNER
 
-                if _tp_mode == TIME_PITCH_MODE_METRONOME:
+                    _tp_view = TIME_PITCH_VIEW_LIVE_TUNER
+
+                _tuner_prefix = tuner_key_prefix_for_song(song)
+                if _tp_view == TIME_PITCH_VIEW_TONE_SUSTAIN:
+                    render_tone_sustain_practice_view(
+                        st,
+                        instrument=instrument,
+                        display_key=chart_key,
+                        key_prefix=_tuner_prefix,
+                    )
+                else:
                     try:
-                        from practice_workspace_persistence import metronome_render_defaults
-
                         _metro_bpm, _metro_meter = metronome_render_defaults(
                             st.session_state,
                             fallback_bpm=_practice_bpm,
@@ -10857,14 +10863,20 @@ if _studio_page == "practice":
                     except ImportError:
                         _metro_bpm, _metro_meter = _practice_bpm, _time_sig
                     if _is_full_song:
-                        render_metronome_widget(
+                        render_live_tuner_with_metronome(
                             st,
+                            instrument=instrument,
+                            display_key=chart_key,
+                            key_prefix=_tuner_prefix,
                             default_bpm=_metro_bpm,
                             default_signature=_metro_meter,
                         )
                     elif _active_section:
-                        render_metronome_widget(
+                        render_live_tuner_with_metronome(
                             st,
+                            instrument=instrument,
+                            display_key=chart_key,
+                            key_prefix=_tuner_prefix,
                             default_bpm=_metro_bpm,
                             default_signature=_metro_meter,
                             section_bars=_section_bar_count,
@@ -10872,56 +10884,18 @@ if _studio_page == "practice":
                             loop_section=True,
                         )
                     else:
-                        st.caption("Choose a section in **Section Focus** above for a section loop metronome.")
-                    if not _is_full_song and _active_section:
-                        _rhythm_md = ""
-                        _rhythm_error: Exception | None = None
-                        try:
-                            _rhythm_md = rhythm_guide_markdown(
-                                instrument,
-                                _practice_groove,
-                                _time_sig,
-                                song_data=song_data,
-                            ) or ""
-                        except Exception as _rhythm_exc:
-                            _rhythm_error = _rhythm_exc
-                        with st.expander("Rhythm guide", expanded=pp.expander_default(st)):
-                            if _rhythm_md.strip():
-                                st.markdown(_rhythm_md)
-                            else:
-                                st.info(
-                                    f"Lock to **{_practice_groove}** at **{_time_sig}** — "
-                                    "use the metronome and stay relaxed on beats 2 & 4."
-                                )
-                                if _developer_mode_enabled() and _rhythm_error is not None:
-                                    st.caption(
-                                        f"Developer Mode · rhythm guide: "
-                                        f"`{type(_rhythm_error).__name__}: {_rhythm_error}`"
-                                    )
-                else:
-                    try:
-                        from practice_workspace_persistence import (
-                            PRACTICE_TUNER_UI_MODE_KEY,
-                            TIME_PITCH_MODE_TONE,
+                        st.caption(
+                            "Choose a section in **Section Focus** above for a section-loop metronome, "
+                            "or use **Full Song** focus."
                         )
-
-                        st.session_state[PRACTICE_TUNER_UI_MODE_KEY] = (
-                            "tone" if _tp_mode == TIME_PITCH_MODE_TONE else "live"
+                        render_live_tuner_with_metronome(
+                            st,
+                            instrument=instrument,
+                            display_key=chart_key,
+                            key_prefix=_tuner_prefix,
+                            default_bpm=_metro_bpm,
+                            default_signature=_metro_meter,
                         )
-                    except ImportError:
-                        pass
-                    render_tuner_tone_section(
-                        st,
-                        instrument=instrument,
-                        display_key=chart_key,
-                        key_prefix=tuner_key_prefix_for_song(song),
-                        metronome_bpm=_practice_bpm,
-                        metronome_signature=_time_sig,
-                        metronome_section_bars=_metro_section_bars,
-                        metronome_section_label=_active_section or "",
-                        metronome_loop_section=_metro_loop,
-                        include_metronome=False,
-                    )
 
             elif _practice_active_tool == "coach":
                 try:
