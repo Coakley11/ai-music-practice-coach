@@ -33,6 +33,8 @@ def begin_music_script_run(session_state: dict[str, Any]) -> None:
         session_state[MUSIC_SCRIPT_SESSION_KEY] = run_seq
         session_state.pop("_studio_active_page_id", None)
         session_state.pop(MUSIC_RESTORE_PHASE_COMPLETE_KEY, None)
+        session_state.pop("_improv_tab_user_touched", None)
+        session_state.pop("_creative_mode_user_touched", None)
         for key in list(session_state.keys()):
             if str(key).startswith(MUSIC_PAGE_SNAPSHOT_HYDRATED_PREFIX):
                 session_state.pop(key, None)

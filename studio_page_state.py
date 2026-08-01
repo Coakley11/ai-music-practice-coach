@@ -153,13 +153,15 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
 
 def init_creative_lab_state(session_state: dict) -> None:
     last = str(session_state.get("creative_lab_last_mode") or "").strip()
+    live = str(session_state.get("creative_lab_analysis_mode") or "").strip()
     if last:
-        session_state.setdefault("creative_lab_analysis_mode", last)
-    else:
+        if not live:
+            session_state["creative_lab_analysis_mode"] = last
+    elif not live:
         session_state.setdefault("creative_lab_analysis_mode", "Deep Harmonic Analyzer")
     session_state.setdefault(
         "creative_lab_last_mode",
-        session_state.get("creative_lab_analysis_mode") or "Deep Harmonic Analyzer",
+        session_state.get("creative_lab_analysis_mode") or last or "Deep Harmonic Analyzer",
     )
     session_state.setdefault("creative_arrangement_target_style", "Jobim / Bossa")
     session_state.setdefault("creative_arrangement_section_focus", "Full song")

@@ -40,3 +40,38 @@ def test_sync_creative_workspace_stamps_updated_at() -> None:
     ss = {"studio_page": "creative", "improv_motif": {"notes": ["C"]}, "harmony_map_chord": "C"}
     sync_creative_workspace_before_persist(ss)
     assert ss.get(MISSION_WORKSPACE_UPDATED_AT_KEY)
+
+
+def test_apply_creative_session_respects_persisted_analysis_mode() -> None:
+    from creative_session_state import CreativeSession, apply_creative_session_to_session, set_creative_session
+
+    session = {
+        "creative_lab_analysis_mode": "Improvisation Intelligence",
+        "creative_lab_last_mode": "Improvisation Intelligence",
+        "improv_entry_mode": "Song-Based Improvisation",
+    }
+    sess = CreativeSession(
+        session_id="abc",
+        tool_type="song_based_improvisation",
+        entry_mode="Song-Based Improvisation",
+    )
+    set_creative_session(session, sess)
+    apply_creative_session_to_session(session, sess, widget_safe=False)
+    assert session.get("creative_lab_analysis_mode") == "Improvisation Intelligence"
+    assert session.get("creative_lab_last_mode") == "Improvisation Intelligence"
+
+
+def test_hydrate_rebuilds_abc_without_regenerating_motif_notes() -> None:
+    from creative_workspace_persistence import hydrate_creative_workspace_after_restore
+
+    motif = {"chord": "Am7", "notes": ["A", "C", "E", "G"], "rhythm": "q q q q"}
+    session = {
+        "improv_motif": dict(motif),
+        "improv_motif_output_mode": "notation",
+        "concert_key": "C",
+        "chart_key": "A",
+    }
+    hydrate_creative_workspace_after_restore(session)
+    assert session["improv_motif"]["notes"] == motif["notes"]
+    assert "K:A" in str(session.get("improv_motif_abc") or "")
+

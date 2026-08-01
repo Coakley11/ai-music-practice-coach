@@ -564,8 +564,15 @@ def apply_creative_session_to_session(
     else:
         _set("improv_intelligence_tab", tab)
         _set("creative_improv_intelligence_tab", tab)
-    _set("creative_lab_analysis_mode", "Improvisation Intelligence")
-    _set("creative_lab_last_mode", "Improvisation Intelligence")
+    saved_mode = str(
+        session.get("creative_lab_analysis_mode") or session.get("creative_lab_last_mode") or ""
+    ).strip()
+    if saved_mode:
+        _set("creative_lab_analysis_mode", saved_mode)
+        _set("creative_lab_last_mode", saved_mode)
+    elif sess.tool_type == "song_based_improvisation":
+        _set("creative_lab_analysis_mode", "Improvisation Intelligence")
+        _set("creative_lab_last_mode", "Improvisation Intelligence")
     _set("improv_song_source", sess.song_source)
     try:
         from source_session_state import set_sbi_preview_source
@@ -804,7 +811,13 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
         and sess.tool_type in {"entry_style_jam", "jam_session_generator", "song_based_improvisation"}
     ):
         should_apply = True
-    if page == "creative" and session.get("_improv_tab_user_touched"):
+    if (
+        page == "creative"
+        and session.get("_improv_tab_user_touched")
+        and session.get("_music_restore_phase_complete")
+        and not session.get("_suite_persist_restore_applied")
+        and not session.get("_cloud_workspace_restored_this_run")
+    ):
         should_apply = False
     if should_apply and sess is not None:
         apply_creative_session_to_session(session, sess, widget_safe=True)
