@@ -9,6 +9,14 @@ Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadma
 
 ## Current Priorities
 
+### P0 — Composition Studio → `motif_engine` integration (next focused feature)
+
+**Goal:** Wire Composition Studio melody/motif surfaces through the unified `motif_engine` (SSOT) without duplicating notation or coaching logic in page renderers.
+
+**Status:** Not started — Practice Tools responsive launcher (`1196089`) is **complete**; no further Practice Tools UX work in this phase.
+
+**Plan:** Extend [2026-07-29-composition-studio-v1-architecture.md](./plans/2026-07-29-composition-studio-v1-architecture.md) / six-phase plan as implementation proceeds.
+
 ### P0 — Style Identity & Creative Engine Phase 2
 
 **Plan:** [plans/2026-07-03-style-identity-phase-2.md](./plans/2026-07-03-style-identity-phase-2.md)

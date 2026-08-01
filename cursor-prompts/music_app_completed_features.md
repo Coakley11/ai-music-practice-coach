@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-07-30
+**Last updated:** 2026-08-01
 
 ---
 
@@ -23,6 +23,13 @@
 ---
 
 ## Completed Features
+
+### Practice Tools — responsive launcher (2026-08-01)
+
+- [x] Grouped Practice Tools launcher + single active-tool workspace (`practice_tools_ui.py`, commit `1196089`)
+- [x] `practice_active_tool` page snapshot persistence; legacy tab label migration
+- [x] Metronome owned by Timing only; coach setup deduplicated from Practice setup panel
+- [x] Tests: `tests/test_practice_tools_ui.py`
 
 ### Composition Studio CS-B5 — Review (2026-07-30)
 
@@ -188,6 +195,16 @@
 - [x] Custom progression hub variant (CPL active)
 - [x] Sidebar active source banner + jump to Song Selection
 
+### Mission workspace persistence & contract (2026-07-30)
+
+- [x] Single Mission workspace per account — latest saved state wins (`improv_mission_workspace_updated_at`)
+- [x] Mission keys in `_PERSIST_KEYS` + creative/backing page snapshots (`improvisation_mission_persistence.py`)
+- [x] Cross-device drift via `music_mission_cloud_drift` + `apply_cloud_mission_state_if_allowed`
+- [x] Practice lick transport (BPM, groove, meter, loops) synced on persist; motif is SSOT for notation/TAB/playback
+- [x] Tests: `tests/test_improvisation_mission_persistence.py`
+- [x] **Design contract (frozen):** [plans/2026-07-30-mission-workspace-contract.md](./plans/2026-07-30-mission-workspace-contract.md)
+- [ ] Manual cross-device sign-off (pending)
+
 ### Creative Progressions
 
 - [x] **Custom Progression Lab:** section builder, chord subdivisions, saved progressions, analysis text, exercises (`custom_progression_lab.py`, `cpl_page_ui.py`)
@@ -195,7 +212,8 @@
 - [x] **Creative Lab:** mode selector
 - [x] **Improvisation Intelligence:** Entry & Jam, Live Coach, Phrase/Motif, Missions, Harmony Map, Deep Harmony, Metrics & AI (`improvisation_intelligence_ui.py`)
 - [x] **Deep Harmonic Analyzer (2026-07-30):** one guided-lesson UI for Creative Lab + II; instrument/level/focus personalization; collapsible reference cards; section navigator; homework (`deep_harmonic_analyzer_ui.py`, `deep_harmonic_personalization.py`)
-- [x] Mission Backing Jam — single-chord loop, BPM handoff preserves user tempo, instrument icons on backing card
+- [x] Mission Backing Jam — single-chord loop, BPM handoff preserves user tempo, instrument icons on backing card; Mission Practice panel + return to Mission
+- [x] Mission relative Harder/Easier + practice handoff (`caea38c`)
 - [x] Arrangement Assistant, Weakness Detection, Development Tracking (text labs)
 - [x] Cross-links to Practice, Backing, Analysis, Picker, Custom
 
