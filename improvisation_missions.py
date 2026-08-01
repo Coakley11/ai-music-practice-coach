@@ -14,6 +14,7 @@ from improvisation_intelligence import (
     PRACTICE_MISSIONS,
     chord_coach_insight,
 )
+from improvisation_mission_rules import apply_mission_rules
 from improvisation_motif import (
     build_motif_guitar_tab,
     build_motif_notation_abc,
@@ -142,7 +143,6 @@ def _build_motif_for_mission(
     rng: random.Random,
     idea_variant: int = 0,
 ) -> dict[str, Any]:
-    low = mission.lower()
     student_level = _normalize_motif_level(level)
     tier = variant if variant in ("easier", "normal", "harder") else "normal"
     idea = idea_variant % 12
@@ -163,75 +163,15 @@ def _build_motif_for_mission(
         difficulty_tier=tier,
     )
 
-    if (
-        ("chord tone" in low or "guide tone" in low)
-        and variant in {"normal", "easier"}
-        and student_level == "Beginner"
-        and tier != "harder"
-    ):
-        if "guide" in low:
-            notes = _guide_tones(chord)[:3]
-        else:
-            notes = chord_tone_names(chord)[:3]
-        motif = _motif_chord_tones_only(chord, count=min(3, len(notes)))
-        motif["notes"] = notes
-        motif["display"] = " – ".join(notes)
-        motif["rhythm"] = "♩ ♩ ♩" if variant != "easier" else "♩ 𝅗"
-        motif["rhythm_key"] = "quarter-quarter-quarter" if variant != "easier" else "quarter-quarter-half"
-        return motif
-
-    if "5 notes" in low:
-        insight = chord_coach_insight(chord, key_center=key_center, level=student_level)
-        scale_notes = (
-            insight.scale_suggestions[0].notes
-            if insight.scale_suggestions
-            else chord_tone_names(chord)
-        )
-        count = 3 if student_level == "Beginner" else (5 if student_level == "Intermediate" else 7)
-        pick = scale_notes[:count]
-        motif = generate_motif_for_chord(
-            chord,
-            key_center=key_center,
-            level=student_level,
-            rng=rng,
-            idea_variant=idea,
-            difficulty_tier=tier,
-        )
-        motif["notes"] = pick[: len(motif["notes"])]
-        motif["display"] = " – ".join(motif["notes"])
-        motif["variation_prompt"] = "Five-note cell in one register"
-        return motif
-
-    if "silence" in low or "rest" in low:
-        motif["rhythm"] = "♩ z ♩"
-        motif["rhythm_key"] = "quarter-quarter-quarter"
-        motif["variation_prompt"] = f"Leave space — play **{motif['notes'][0]}**, rest, continue."
-        return motif
-
-    if "rhythm" in low and "note" in low:
-        motif["variation_prompt"] = (
-            f"Rhythm-first idea on **{chord}**: repeat the rhythm, change only one pitch."
-        )
-    elif "motif" in low and "solo" in low:
-        motif["variation_prompt"] = (
-            f"Core motif for **{chord}** — repeat through every section of the song."
-        )
-    elif "dominant" in low or "tension" in low:
-        motif["variation_prompt"] = (
-            f"Tension color on **{chord}** — lean on 3rd and 7th, resolve on the next change."
-        )
-    elif "resolve" in low and "beat 1" in low:
-        motif["notes"] = [chord_tone_names(chord)[0]] + motif["notes"][1:3]
-        motif["display"] = " – ".join(motif["notes"])
-        motif["variation_prompt"] = "Land the first note of each phrase on beat 1."
-    elif "scalar" in low and student_level == "Beginner" and tier != "harder":
-        motif["notes"] = chord_tone_names(chord)[:3]
-        motif["display"] = " – ".join(motif["notes"])
-        motif["variation_prompt"] = "Step between chord tones only — no long scalar runs."
-    elif "pattern" in low:
-        motif = transform_motif(motif, "rhythmic", key_center=key_center)
-
-    return motif
+    return apply_mission_rules(
+        mission,
+        motif,
+        chord=chord,
+        key_center=key_center,
+        level=student_level,
+        variant=variant,
+        rng=rng,
+    )
 
 
 def _why_it_works(

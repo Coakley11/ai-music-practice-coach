@@ -283,9 +283,10 @@ def _midi_from_note(name: str, octave: int = 4) -> int:
     return NOTE_TO_MIDI.get(root, 60) + 12 * (octave - 4)
 
 
-def _note_from_midi(midi: int) -> str:
-    names = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
-    return names[midi % 12]
+def _note_from_midi(midi: int, reference_key: str = "C") -> str:
+    from music_theory import spell_note_in_key
+
+    return spell_note_in_key(midi % 12, reference_key)
 
 
 def _abc_pitch(midi: int) -> str:
@@ -703,6 +704,41 @@ def _rhythm_for_level(level_norm: str, rng: random.Random, idea_variant: int, ov
     return opts[idea_variant % len(opts)]
 
 
+MOTIF_NEW_NONCE_KEY = "improv_motif_new_nonce"
+
+
+def generate_motif_with_variant(
+    chord: str,
+    *,
+    key_center: str = "C",
+    level: str = "Intermediate",
+    variant: str = "normal",
+    session_state: dict | None = None,
+    rhythm_key: str = "quarter-quarter-quarter",
+) -> dict[str, Any]:
+    """Shared entry for Phrase & Motif and Missions (easier / harder / new idea)."""
+    variant = variant if variant in ("normal", "easier", "harder", "new") else "normal"
+    tier = {"easier": "easier", "harder": "harder"}.get(variant, "normal")
+    idea = 0
+    seed = hash(f"{chord}|{key_center}|{level}|{variant}") % 100000
+    rng = random.Random(seed)
+    if variant == "new" and session_state is not None:
+        idea = int(session_state.get(MOTIF_NEW_NONCE_KEY) or 0)
+        session_state[MOTIF_NEW_NONCE_KEY] = idea + 1
+        rng = random.Random(seed + idea * 997)
+    elif variant == "harder":
+        idea = (seed * 5 + 7) % 12
+    return generate_motif_for_chord(
+        chord,
+        key_center=key_center,
+        rhythm_key=rhythm_key,
+        level=level,
+        rng=rng,
+        idea_variant=idea if variant == "new" else idea,
+        difficulty_tier=tier,
+    )
+
+
 def generate_motif_for_chord(
     chord: str,
     *,
@@ -736,6 +772,9 @@ def generate_motif_for_chord(
 
     rhythm = " ".join(rhythm_syms)
     tier_label = {"easier": "Easier", "harder": "Harder", "normal": level_norm}.get(tier, level_norm)
+    from music_theory import respell_notes_for_key
+
+    notes = respell_notes_for_key(notes, key_center)
     return {
         "chord": chord,
         "notes": notes,
@@ -769,13 +808,13 @@ def transform_motif(
         for n in notes:
             deg = _nearest_scale_degree(n, scale_pcs)
             new_pc = scale_pcs[(deg + 1) % len(scale_pcs)]
-            out_notes.append(_note_from_midi(new_pc + 60))
+            out_notes.append(_note_from_midi(new_pc + 60, key_center))
     elif operation == "sequence_down":
         out_notes = []
         for n in notes:
             deg = _nearest_scale_degree(n, scale_pcs)
             new_pc = scale_pcs[(deg - 1) % len(scale_pcs)]
-            out_notes.append(_note_from_midi(new_pc + 60))
+            out_notes.append(_note_from_midi(new_pc + 60, key_center))
     elif operation == "invert":
         out_notes = list(reversed(notes))
     elif operation in ("rhythmic", "change_rhythm"):
@@ -787,6 +826,9 @@ def transform_motif(
         "invert": "Inversion",
     }
     label = op_labels.get(operation, operation)
+    from music_theory import respell_notes_for_key
+
+    out_notes = respell_notes_for_key(out_notes, key_center)
     return sync_motif_midi({
         "chord": motif.get("chord", ""),
         "notes": out_notes,

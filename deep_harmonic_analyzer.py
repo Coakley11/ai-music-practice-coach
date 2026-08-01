@@ -21,7 +21,7 @@ from improvisation_intelligence import (
 from improvisation_missions import instrument_family
 from improvisation_motif import chord_tone_names, dedupe_sections_for_display, single_progression_cycle
 from songs.form import section_order
-from music_theory import CHROMATIC, normalize_root, split_chord
+from music_theory import CHROMATIC, normalize_root, relative_minor_of_major, split_chord
 
 
 @dataclass
@@ -517,14 +517,11 @@ def _scales_section(
         lines.append("*Use chord tones on strong beats when improvising.*")
     is_minor_key = str(key).endswith("m")
     parent = key.replace("m", "") if is_minor_key else key
-    rel_minor = parent
+    rel_minor = relative_minor_of_major(parent) if not is_minor_key else parent
     if not is_minor_key:
-        try:
-            idx = CHROMATIC.index(normalize_root(split_chord(parent)[0]))
-            rel_minor = CHROMATIC[(idx + 9) % 12] + " minor"
-        except ValueError:
-            rel_minor = f"{parent} minor"
+        rel_minor = f"{rel_minor} natural minor"
 
+    ref_key = str(key or "C")
     for name, chords in section_map[:6]:
         cyc = single_progression_cycle(chords)
         if not cyc:
@@ -557,8 +554,8 @@ def _scales_section(
                 f"{rel_minor}",
             ]
         for label in suggestions[:3]:
-            sug = build_scale_suggestion(label)
-            tones = chord_tone_names(cyc[0])
+            sug = build_scale_suggestion(label, reference_key=ref_key)
+            tones = chord_tone_names(cyc[0], reference_key=ref_key)
             lines.append(f"- {format_scale_line(sug, tones)}")
     return lines
 

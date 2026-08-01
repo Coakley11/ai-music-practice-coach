@@ -262,6 +262,24 @@ def spell_pitch_class(pitch_idx: int, *, mode: str) -> str:
     return _FLAT_PITCH_CLASSES[idx]
 
 
+def spell_note_in_key(pitch_class: int, reference_key: str) -> str:
+    """Musician-facing pitch-class name for the key signature (flat vs sharp family)."""
+    return spell_pitch_class(int(pitch_class) % 12, mode=reference_spelling_mode(reference_key))
+
+
+def respell_note_for_key(note_name: str, reference_key: str) -> str:
+    """Re-spell a note name to match the reference key's accidental family."""
+    root, _ = split_chord(str(note_name or "C").strip() or "C")
+    nr = normalize_root(root)
+    if nr not in CHROMATIC:
+        return str(note_name)
+    return spell_note_in_key(CHROMATIC.index(nr), reference_key)
+
+
+def respell_notes_for_key(notes: list[str], reference_key: str) -> list[str]:
+    return [respell_note_for_key(n, reference_key) for n in notes]
+
+
 def _practice_key_for_pitch_class(key: str, mode: str) -> str:
     """Pick a dropdown spelling for a pitch class, preserving user spelling when possible."""
     raw = str(key or "C").strip() or "C"

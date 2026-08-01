@@ -70,6 +70,7 @@ from improvisation_motif import (
     build_motif_notation_abc,
     flatten_section_map,
     generate_motif_for_chord,
+    generate_motif_with_variant,
     global_chord_index,
     resolve_improv_chords,
     resolve_improv_sections,
@@ -708,7 +709,8 @@ def _render_chord_coach_card(st: Any, insight: ChordCoachInsight) -> None:
     with c1:
         st.markdown("**Suggested scales**")
         suggestions = insight.scale_suggestions or [
-            build_scale_suggestion(label) for label in insight.scales
+            build_scale_suggestion(label, reference_key=improv_ctx.key_center)
+            for label in insight.scales
         ]
         for suggestion in suggestions:
             st.markdown(format_scale_line(suggestion, insight.chord_tones))
@@ -758,17 +760,50 @@ def _tab_motif(
 
     cur, _idx = _selected_chord(session_state, chords)
 
-    if st.button(
-        f"Generate motif for {cur}",
-        type="primary",
-        key="improv_gen_motif_chord",
-        use_container_width=True,
-    ):
-        session_state["improv_motif"] = generate_motif_for_chord(
-            cur, key_center=improv_ctx.key_center
-        )
-        _clear_motif_outputs(session_state)
-        st.rerun()
+    g0, g1, g2, g3 = st.columns(4)
+    with g0:
+        if st.button(
+            f"Generate motif for {cur}",
+            type="primary",
+            key="improv_gen_motif_chord",
+            use_container_width=True,
+        ):
+            session_state["improv_motif"] = generate_motif_for_chord(
+                cur, key_center=improv_ctx.key_center, level=level
+            )
+            _clear_motif_outputs(session_state)
+            st.rerun()
+    with g1:
+        if st.button("New motif", key="improv_motif_new", use_container_width=True):
+            session_state["improv_motif"] = generate_motif_with_variant(
+                cur,
+                key_center=improv_ctx.key_center,
+                level=level,
+                variant="new",
+                session_state=session_state,
+            )
+            _clear_motif_outputs(session_state)
+            st.rerun()
+    with g2:
+        if st.button("Harder motif", key="improv_motif_harder", use_container_width=True):
+            session_state["improv_motif"] = generate_motif_with_variant(
+                cur,
+                key_center=improv_ctx.key_center,
+                level=level,
+                variant="harder",
+            )
+            _clear_motif_outputs(session_state)
+            st.rerun()
+    with g3:
+        if st.button("Easier motif", key="improv_motif_easier", use_container_width=True):
+            session_state["improv_motif"] = generate_motif_with_variant(
+                cur,
+                key_center=improv_ctx.key_center,
+                level=level,
+                variant="easier",
+            )
+            _clear_motif_outputs(session_state)
+            st.rerun()
 
     motif = session_state.get("improv_motif")
     if not motif:
@@ -1374,7 +1409,8 @@ def _tab_missions(
     if family != "wind":
         st.markdown("**Suggested scales**")
         suggestions = example.insight.scale_suggestions or [
-            build_scale_suggestion(label) for label in example.insight.scales
+            build_scale_suggestion(label, reference_key=example.display_key)
+            for label in example.insight.scales
         ]
         for suggestion in suggestions:
             st.markdown(format_scale_line(suggestion, example.insight.chord_tones))

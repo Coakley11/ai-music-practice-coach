@@ -132,14 +132,17 @@ _SCALE_INTERVALS: dict[str, tuple[int, ...]] = {
 }
 
 
-def _note_name_at_semitone(root: str, semitone: int) -> str:
+def _note_name_at_semitone(root: str, semitone: int, reference_key: str) -> str:
+    from music_theory import spell_note_in_key
+
     r = normalize_root(split_chord(str(root))[0])
     if r not in CHROMATIC:
         return str(root)
-    return CHROMATIC[(CHROMATIC.index(r) + semitone) % 12]
+    base_pc = CHROMATIC.index(r)
+    return spell_note_in_key((base_pc + int(semitone)) % 12, reference_key)
 
 
-def spell_scale_notes(root: str, kind: str) -> list[str]:
+def spell_scale_notes(root: str, kind: str, reference_key: str) -> list[str]:
     """Spell scale degrees from a root and mode name (matches chart/display key)."""
     low = str(kind or "major").lower().strip()
     intervals = _SCALE_INTERVALS.get(low)
@@ -150,7 +153,7 @@ def spell_scale_notes(root: str, kind: str) -> list[str]:
                 break
     if intervals is None:
         intervals = _SCALE_INTERVALS["major"]
-    return [_note_name_at_semitone(root, i) for i in intervals]
+    return [_note_name_at_semitone(root, i, reference_key) for i in intervals]
 
 
 def _pretty_scale_label(root: str, kind: str) -> str:
@@ -178,15 +181,18 @@ def _pretty_scale_label(root: str, kind: str) -> str:
     return f"{root} {kind.title()} Scale"
 
 
-def build_scale_suggestion(label: str) -> ScaleSuggestion:
+def build_scale_suggestion(label: str, *, reference_key: str = "C") -> ScaleSuggestion:
     """Parse 'G mixolydian' / 'C major pentatonic' into labeled note spellings."""
     text = str(label or "").strip()
     parts = text.split(None, 1)
     root = parts[0] if parts else "C"
     kind = parts[1] if len(parts) > 1 else "major"
+    from music_theory import respell_note_for_key
+
+    root = respell_note_for_key(root, reference_key)
     return ScaleSuggestion(
         label=_pretty_scale_label(root, kind),
-        notes=spell_scale_notes(root, kind),
+        notes=spell_scale_notes(root, kind, reference_key),
     )
 
 
@@ -360,7 +366,7 @@ def chord_coach_insight(
     inst_tips = instrument_coaching_lines(instrument, symbol or chord, level, qual, root)
 
     scale_labels = scales[:4]
-    scale_suggestions = [build_scale_suggestion(label) for label in scale_labels]
+    scale_suggestions = [build_scale_suggestion(label, reference_key=ref) for label in scale_labels]
 
     return ChordCoachInsight(
         chord=chord,

@@ -331,7 +331,8 @@ def analyze_chord_for_harmony_map(
     focus_low = focus.lower()
     if "scale" in focus_low or level != "Beginner":
         suggestions = insight.scale_suggestions or [
-            build_scale_suggestion(label) for label in insight.scales
+            build_scale_suggestion(label, reference_key=improv_ctx.display_key)
+            for label in insight.scales
         ]
         max_scales = 2 if level == "Beginner" else 4
         scale_lines = [

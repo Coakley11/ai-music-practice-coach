@@ -12,7 +12,8 @@ All harmonic analysis, coaching, and displayed theory (chord tones, target notes
 1. `music_theory.normalize_chord_for_theory(token)` — strip playback encoding before analysis
 2. `music_theory.classify_chord_quality(chord)` — quality bucket for coaching logic
 3. `music_theory.chord_root_for_theory(chord)` — root for spelling / Roman numerals
-4. `improvisation_motif.chord_tone_names(chord, reference_key=...)` — spelled chord tones (internally normalizes)
+4. `music_theory.spell_note_in_key(pitch_class, reference_key)` — single pitch class for display
+5. `improvisation_motif.chord_tone_names(chord, reference_key=...)` — spelled chord tones (internally normalizes)
 
 For human-readable lab copy, `music_theory.chord_quality_label()` / `creative_lab_text.chord_quality()` map buckets to legacy phrases.
 
