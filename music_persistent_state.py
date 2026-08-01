@@ -291,6 +291,17 @@ def finalize_music_startup_restore(
         return
 
     try:
+        from music_workspace_hydration import can_finalize_music_restore
+
+        if not can_finalize_music_restore(ss):
+            return
+    except ImportError:
+        if not ss.get("_music_workspace_blob_hydrated") and not ss.get(
+            "_music_workspace_empty_confirmed"
+        ):
+            return
+
+    try:
         from studio_page_persistence import restore_current_page_snapshot_if_needed
 
         restore_current_page_snapshot_if_needed(ss)
@@ -2569,7 +2580,12 @@ def apply_music_disk_state(
     if isinstance(core, dict) and core:
         _reapply_core_practice_globals_from_payload(ss, core)
 
-    ss["_music_workspace_blob_hydrated"] = True
+    try:
+        from music_workspace_hydration import mark_workspace_blob_hydrated
+
+        mark_workspace_blob_hydrated(ss)
+    except ImportError:
+        ss["_music_workspace_blob_hydrated"] = True
     if _session_has_restored_song_context(ss):
         ss["_music_workspace_blob_applied"] = True
     _record_music_startup_restore_diag(
@@ -3087,8 +3103,16 @@ def prepare_music_workspace(
     """Authoritative cloud/disk workspace sync before sidebar widgets."""
     ss = st.session_state
     run_seq = int(ss.get("_script_run_seq") or 0)
-    if ss.get("_music_workspace_prepared_for_run") == run_seq:
-        return bool(ss.get("_music_workspace_last_result", False))
+    try:
+        from music_workspace_hydration import can_finalize_music_restore
+
+        if ss.get("_music_workspace_prepared_for_run") == run_seq and can_finalize_music_restore(ss):
+            return bool(ss.get("_music_workspace_last_result", False))
+        if ss.get("_music_workspace_prepared_for_run") == run_seq:
+            ss.pop("_music_workspace_prepared_for_run", None)
+    except ImportError:
+        if ss.get("_music_workspace_prepared_for_run") == run_seq:
+            return bool(ss.get("_music_workspace_last_result", False))
 
     try:
         from suite_cloud_state import (
@@ -3145,6 +3169,19 @@ def prepare_music_workspace(
         pass
     ss["_music_workspace_prepared_for_run"] = run_seq
     ss["_music_workspace_last_result"] = bool(result)
+    try:
+        from music_workspace_hydration import (
+            can_finalize_music_restore,
+            mark_workspace_hydration_attempted,
+            mark_workspace_hydration_started,
+            record_sync_outcome_after_attempt,
+        )
+
+        mark_workspace_hydration_started(ss)
+        mark_workspace_hydration_attempted(ss)
+        record_sync_outcome_after_attempt(ss, sync_applied=bool(result))
+    except ImportError:
+        pass
     if result:
         try:
             from music_restore_phase import mark_music_workspace_restore_applied

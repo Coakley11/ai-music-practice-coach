@@ -352,6 +352,14 @@ def merge_active_song_workspace_diagnostics(session: dict[str, Any]) -> dict[str
     """Diagnostics fields for chart bundle / dev sidebar."""
     payload = session.get("_suite_last_cloud_fetch_payload")
     base = inspect_workspace_envelope_identity(payload if isinstance(payload, dict) else {})
+    hydrated = bool(session.get("_music_workspace_blob_hydrated"))
+    base["workspace_inspection_authoritative"] = hydrated
+    if not hydrated:
+        base["workspace_expects_catalog_song"] = None
+    else:
+        base["workspace_expects_catalog_song"] = workspace_envelope_expects_catalog_song(
+            payload if isinstance(payload, dict) else {}
+        )
     extra = session.get(ACTIVE_SONG_WORKSPACE_DIAG_KEY)
     if isinstance(extra, dict):
         base.update(
@@ -368,17 +376,28 @@ def merge_active_song_workspace_diagnostics(session: dict[str, Any]) -> dict[str
                 if k in extra
             }
         )
-    base["workspace_expects_catalog_song"] = workspace_envelope_expects_catalog_song(
-        payload if isinstance(payload, dict) else {}
-    )
     base["active_song_restore_incomplete"] = bool(session.get(ACTIVE_SONG_RESTORE_INCOMPLETE_KEY))
+    try:
+        from music_workspace_hydration import collect_workspace_hydration_diagnostics
+
+        base.update(collect_workspace_hydration_diagnostics(session))
+    except ImportError:
+        pass
     return base
 
 
 def should_block_chart_recovery_no_pick_key(session: dict[str, Any]) -> bool:
-    """Do not retry chart construction when envelope expected a song but pick_key is empty."""
-    if not session.get("_music_workspace_blob_hydrated"):
-        return False
+    """Block chart recovery while workspace hydration is unknown or pick_key missing after hydrate."""
+    try:
+        from music_workspace_hydration import can_finalize_music_restore, workspace_blob_hydrated
+
+        if not can_finalize_music_restore(session):
+            return True
+        if not workspace_blob_hydrated(session):
+            return False
+    except ImportError:
+        if not session.get("_music_workspace_blob_hydrated"):
+            return True
     payload = session.get("_suite_last_cloud_fetch_payload")
     if not isinstance(payload, dict) or not workspace_envelope_expects_catalog_song(payload):
         return False

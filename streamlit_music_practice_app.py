@@ -9355,13 +9355,20 @@ try:
         raise NameError("_catalog_song_data invalid")
 except NameError:
     try:
-        from music_persistent_state import finalize_music_startup_restore
+        from music_persistent_state import prepare_music_workspace, finalize_music_startup_restore
+        from music_workspace_hydration import can_finalize_music_restore
 
-        finalize_music_startup_restore(
+        prepare_music_workspace(
             st,
             song_picker_catalog=SONG_PICKER_CATALOG,
             song_library=SONG_LIBRARY,
         )
+        if can_finalize_music_restore(st.session_state):
+            finalize_music_startup_restore(
+                st,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+            )
         _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
             st,
             song_library=SONG_LIBRARY,
@@ -10081,6 +10088,18 @@ _capo_shape_cache = (
 )
 
 try:
+    from music_workspace_hydration import render_workspace_hydration_wait_or_stop
+
+    if render_workspace_hydration_wait_or_stop(
+        st,
+        song_picker_catalog=SONG_PICKER_CATALOG,
+        song_library=SONG_LIBRARY,
+    ):
+        st.stop()
+except ImportError:
+    pass
+
+try:
     from songs.chart_bundle_startup import (
         clear_chart_bundle_recovery_state,
         prepare_catalog_song_for_chart_bundle,
@@ -10183,7 +10202,32 @@ except (MissingOriginalSongKeyError, ChartSongNotReadyError) as _chart_bundle_ex
     if _should_rerun:
         st.rerun()
     else:
+        try:
+            from music_workspace_hydration import (
+                can_finalize_music_restore,
+                render_workspace_hydration_wait_or_stop,
+            )
+
+            if not can_finalize_music_restore(st.session_state):
+                if render_workspace_hydration_wait_or_stop(
+                    st,
+                    song_picker_catalog=SONG_PICKER_CATALOG,
+                    song_library=SONG_LIBRARY,
+                ):
+                    st.stop()
+        except ImportError:
+            pass
         _choose_song = bool(st.session_state.get("_music_choose_song_restore_state"))
+        try:
+            from music_workspace_hydration import workspace_blob_hydrated, workspace_empty_confirmed
+
+            if _choose_song and not (
+                workspace_empty_confirmed(st.session_state)
+                or workspace_blob_hydrated(st.session_state)
+            ):
+                _choose_song = False
+        except ImportError:
+            pass
         _missing_original_key = isinstance(_chart_bundle_exc, MissingOriginalSongKeyError) or bool(
             st.session_state.get("_chart_song_resolve_diag")
         )

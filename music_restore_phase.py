@@ -22,6 +22,12 @@ def begin_music_script_run(session_state: dict[str, Any]) -> None:
     """Start-of-script hook — reset page tracker only on true new browser session."""
     session_state.pop(STREAMLIT_WIDGETS_LOCKED_KEY, None)
     try:
+        from music_workspace_hydration import clear_stale_restore_completion_flags
+
+        clear_stale_restore_completion_flags(session_state)
+    except ImportError:
+        pass
+    try:
         from multitrack_session_persistence import reset_mt_workspace_run_diag
 
         reset_mt_workspace_run_diag(session_state)
@@ -52,6 +58,16 @@ def mark_music_workspace_restore_applied(session_state: dict[str, Any]) -> None:
 
 def complete_music_restore_phase(session_state: dict[str, Any]) -> None:
     """Call once after all startup restore/reconcile paths finish."""
+    try:
+        from music_workspace_hydration import can_finalize_music_restore
+
+        if not can_finalize_music_restore(session_state):
+            return
+    except ImportError:
+        if not session_state.get("_music_workspace_blob_hydrated") and not session_state.get(
+            "_music_workspace_empty_confirmed"
+        ):
+            return
     session_state[MUSIC_RESTORE_PHASE_COMPLETE_KEY] = True
 
 
@@ -93,6 +109,13 @@ def should_hydrate_page_snapshot(
 
 def workspace_is_truly_empty(session_state: dict[str, Any]) -> bool:
     """True when cold-start default song seeding is allowed (never after failed restore)."""
+    try:
+        from music_workspace_hydration import workspace_empty_confirmed
+
+        if workspace_empty_confirmed(session_state):
+            return True
+    except ImportError:
+        pass
     if session_state.get("_suite_persist_restore_applied"):
         return False
     if session_state.get("_music_workspace_blob_hydrated"):

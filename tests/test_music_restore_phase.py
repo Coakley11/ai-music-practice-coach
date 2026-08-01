@@ -12,6 +12,7 @@ from music_restore_phase import (
     should_hydrate_page_snapshot,
     workspace_is_truly_empty,
 )
+from music_workspace_hydration import mark_workspace_blob_hydrated, mark_workspace_empty_confirmed
 
 
 class TestMusicRestorePhase(unittest.TestCase):
@@ -25,6 +26,7 @@ class TestMusicRestorePhase(unittest.TestCase):
 
     def test_page_snapshot_hydrates_once_after_restore_complete(self) -> None:
         ss: dict = {}
+        mark_workspace_blob_hydrated(ss)
         complete_music_restore_phase(ss)
         self.assertTrue(should_hydrate_page_snapshot(ss, page_id="picker", page_changed=False))
         mark_page_snapshot_hydrated(ss, "picker")
@@ -32,6 +34,7 @@ class TestMusicRestorePhase(unittest.TestCase):
 
     def test_page_change_always_hydrates(self) -> None:
         ss: dict = {}
+        mark_workspace_blob_hydrated(ss)
         complete_music_restore_phase(ss)
         mark_page_snapshot_hydrated(ss, "picker")
         self.assertTrue(should_hydrate_page_snapshot(ss, page_id="backing", page_changed=True))
@@ -39,6 +42,11 @@ class TestMusicRestorePhase(unittest.TestCase):
     def test_workspace_not_empty_when_cloud_restored(self) -> None:
         ss = {"_suite_persist_restore_applied": True}
         self.assertFalse(workspace_is_truly_empty(ss))
+
+    def test_workspace_empty_when_confirmed(self) -> None:
+        ss: dict = {}
+        mark_workspace_empty_confirmed(ss, "no workspace blob")
+        self.assertTrue(workspace_is_truly_empty(ss))
 
 
 if __name__ == "__main__":
