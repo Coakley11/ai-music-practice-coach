@@ -457,6 +457,17 @@ class MissingOriginalSongKeyError(ValueError):
     """Raised when section transposition requires a catalog original key."""
 
 
+def resolve_original_song_key(
+    record: dict[str, Any] | None,
+    *,
+    catalog_session: dict[str, Any] | None = None,
+) -> str:
+    """Public helper — see ``songs.catalog_song_resolution``."""
+    from songs.catalog_song_resolution import resolve_original_song_key as _resolve
+
+    return _resolve(record, catalog_session=catalog_session)
+
+
 class ChartSongNotReadyError(ValueError):
     """Raised when chart construction lacks a complete canonical song record."""
 

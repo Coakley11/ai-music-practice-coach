@@ -116,7 +116,7 @@ def collect_chart_bundle_restore_diagnostics(
     except ImportError:
         pass
 
-    return {
+    result = {
         "recovery_attempts": chart_bundle_recovery_attempts(session_state),
         "recovery_max": CHART_BUNDLE_RECOVERY_MAX,
         "recovery_exhausted": chart_bundle_recovery_exhausted(session_state),
@@ -136,6 +136,11 @@ def collect_chart_bundle_restore_diagnostics(
         "last_chart_error": last_error or "(none)",
         **workspace_fields,
     }
+    resolve_diag = session_state.get("_chart_song_resolve_diag")
+    if isinstance(resolve_diag, dict):
+        for key, val in resolve_diag.items():
+            result[f"resolve_{key}"] = val
+    return result
 
 
 def render_chart_bundle_restore_diagnostics(st_module: Any, session_state: dict[str, Any]) -> None:
@@ -264,6 +269,9 @@ def run_chart_bundle_automatic_recovery(
 
         if should_block_chart_recovery_no_pick_key(ss):
             ss[CHART_BUNDLE_RECOVERY_STOP_REASON_KEY] = "missing_active_song_pick_key"
+            return False
+        if ss.get("_chart_song_resolve_diag"):
+            ss[CHART_BUNDLE_RECOVERY_STOP_REASON_KEY] = "missing_original_song_key"
             return False
     except ImportError:
         pass

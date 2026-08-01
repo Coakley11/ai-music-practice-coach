@@ -2034,17 +2034,9 @@ def commit_custom_active_song(
 
 
 def _merge_chart_song_overlay(canonical: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
-    """Overlay session/partial rows onto a catalog record without dropping canonical key."""
-    merged = dict(canonical)
-    for key, val in overlay.items():
-        if key == "key" and (val is None or not str(val).strip()):
-            continue
-        if val is None:
-            continue
-        if key == "sections" and not val and merged.get("sections"):
-            continue
-        merged[key] = val
-    return merged
+    from songs.catalog_song_resolution import merge_chart_song_overlay
+
+    return merge_chart_song_overlay(canonical, overlay)
 
 
 def resolve_catalog_song_for_chart(
@@ -2054,50 +2046,14 @@ def resolve_catalog_song_for_chart(
     song_picker_catalog: dict[str, dict[str, dict]] | None = None,
     song_library: dict[str, dict[str, dict]] | None = None,
 ) -> tuple[dict[str, Any], str]:
-    """Canonical catalog record + legitimate overrides; raises if original key missing."""
-    from music_theory import MissingOriginalSongKeyError
-    from songs.state import (
-        SELECTED_SONG_STATE_KEY,
-        load_catalog_song_record_by_pick_key,
-        reconcile_active_pick_key,
+    from songs.catalog_song_resolution import resolve_catalog_song_for_chart as _resolve
+
+    return _resolve(
+        session_state,
+        catalog_song_data,
+        song_picker_catalog=song_picker_catalog,
+        song_library=song_library,
     )
-
-    if song_picker_catalog is None:
-        song_picker_catalog = _catalog_picker_from_session(session_state)
-    if song_library is None:
-        song_library = _catalog_library_from_session(session_state)
-
-    overlay = dict(catalog_song_data or {})
-    sel = session_state.get(SELECTED_SONG_STATE_KEY) or {}
-    if isinstance(sel, dict) and sel:
-        overlay = _merge_chart_song_overlay(overlay, sel)
-
-    canonical: dict[str, Any] | None = None
-    if song_picker_catalog is not None and song_library is not None:
-        pk = reconcile_active_pick_key(
-            session_state,
-            song_picker_catalog=song_picker_catalog,
-        ) or str(overlay.get("pick_key") or "").strip()
-        if pk and not pk.startswith("custom::"):
-            loaded = load_catalog_song_record_by_pick_key(
-                pk,
-                song_picker_catalog=song_picker_catalog,
-                song_library=song_library,
-            )
-            if loaded is not None:
-                _, _, canonical = loaded
-
-    if canonical:
-        merged = _merge_chart_song_overlay(canonical, overlay)
-    else:
-        merged = dict(overlay)
-
-    original_key = str(merged.get("key") or "").strip()
-    if not original_key:
-        raise MissingOriginalSongKeyError(
-            "Cannot transpose song sections because the original song key is missing."
-        )
-    return merged, original_key
 
 
 def build_active_chart_bundle(

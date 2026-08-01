@@ -10155,6 +10155,7 @@ try:
         copy_result=True,
     )
 except (MissingOriginalSongKeyError, ChartSongNotReadyError) as _chart_bundle_exc:
+    _chart_bundle = None
     invalidate_session_cache(st.session_state, "chart_bundle")
     try:
         from songs.chart_bundle_startup import (
@@ -10183,10 +10184,18 @@ except (MissingOriginalSongKeyError, ChartSongNotReadyError) as _chart_bundle_ex
         st.rerun()
     else:
         _choose_song = bool(st.session_state.get("_music_choose_song_restore_state"))
+        _missing_original_key = isinstance(_chart_bundle_exc, MissingOriginalSongKeyError) or bool(
+            st.session_state.get("_chart_song_resolve_diag")
+        )
         if _choose_song:
             st.info(
                 "Your workspace restored, but no active song could be matched from the saved data. "
                 "Choose a song from Song Selection to continue — your other settings are intact."
+            )
+        elif _missing_original_key:
+            st.warning(
+                "This song's chart needs an original key before transposition. "
+                "Choose a song from Song Selection or set the home key for a custom progression."
             )
         else:
             st.warning(
@@ -10202,6 +10211,9 @@ except (MissingOriginalSongKeyError, ChartSongNotReadyError) as _chart_bundle_ex
         except ImportError:
             pass
         st.stop()
+
+if _chart_bundle is None:
+    st.stop()
 
 try:
     from songs.chart_bundle_startup import clear_chart_bundle_recovery_state

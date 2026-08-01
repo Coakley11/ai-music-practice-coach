@@ -82,13 +82,59 @@ class ChartSongKeyResolverTests(unittest.TestCase):
 
     def test_partial_without_key_or_pick_raises_domain_error(self) -> None:
         partial = {"title": "Perfect", "sections": {"Verse": ["G"]}}
+        session: dict = {"selected_song": partial}
         with self.assertRaises(MissingOriginalSongKeyError):
             resolve_catalog_song_for_chart(
-                {"selected_song": partial},
+                session,
                 partial,
                 song_picker_catalog=_mini_catalog(),
                 song_library=_mini_catalog(),
             )
+        self.assertIn("_chart_song_resolve_diag", session)
+
+    def test_canonical_original_key_field_not_key(self) -> None:
+        from music_theory import resolve_original_song_key
+
+        self.assertEqual(resolve_original_song_key({"original_key": "Eb"}), "Eb")
+
+    def test_resolve_from_catalog_session_when_picker_row_lacks_key(self) -> None:
+        catalog = _mini_catalog()
+        perfect_pk = format_pick_key("Pop", "Perfect — Ed Sheeran")
+        partial = {
+            "title": "Perfect",
+            "artist": "Ed Sheeran",
+            "genre": "Pop",
+            "sections": {"Verse 1": ["G"]},
+        }
+        picker_row = dict(catalog["Pop"]["Perfect — Ed Sheeran"])
+        picker_row.pop("key", None)
+        catalog_no_key = {"Pop": {"Perfect — Ed Sheeran": picker_row}}
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: perfect_pk,
+            "selected_song": partial,
+            "catalog_session": {"pick_key": perfect_pk, "original_key": "G"},
+        }
+        _merged, original = resolve_catalog_song_for_chart(
+            session,
+            partial,
+            song_picker_catalog=catalog_no_key,
+            song_library=catalog_no_key,
+        )
+        self.assertEqual(original, "G")
+
+    def test_stale_pick_title_genre_fallback(self) -> None:
+        catalog = _mini_catalog()
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: "Pop|Stale Label",
+            "selected_song": {"title": "Perfect", "artist": "Ed Sheeran", "genre": "Pop"},
+        }
+        _merged, original = resolve_catalog_song_for_chart(
+            session,
+            {},
+            song_picker_catalog=catalog,
+            song_library=catalog,
+        )
+        self.assertEqual(original, "G")
 
     def test_deferred_restore_context_does_not_return_sections_only_without_key(self) -> None:
         catalog = _mini_catalog()
