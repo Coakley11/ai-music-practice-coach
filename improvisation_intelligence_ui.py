@@ -65,17 +65,19 @@ from improvisation_missions import (
     instrument_family,
     wind_phrasing_lines,
 )
-from improvisation_motif import (
+from motif_engine import (
     build_motif_guitar_tab,
     build_motif_notation_abc,
+    generate_mission_phrase,
+    generate_musical_phrase,
+    transform_motif,
+)
+from improvisation_motif import (
     flatten_section_map,
-    generate_motif_for_chord,
-    generate_motif_with_variant,
     global_chord_index,
     resolve_improv_chords,
     resolve_improv_sections,
     section_and_chord_at_global_index,
-    transform_motif,
 )
 
 MOTIF_OUTPUT_NONE = "none"
@@ -768,17 +770,18 @@ def _tab_motif(
             key="improv_gen_motif_chord",
             use_container_width=True,
         ):
-            session_state["improv_motif"] = generate_motif_for_chord(
-                cur, key_center=improv_ctx.key_center, level=level
+            session_state["improv_motif"] = generate_musical_phrase(
+                cur, key_center=improv_ctx.key_center, level=level, kind="creative"
             )
             _clear_motif_outputs(session_state)
             st.rerun()
     with g1:
         if st.button("New motif", key="improv_motif_new", use_container_width=True):
-            session_state["improv_motif"] = generate_motif_with_variant(
+            session_state["improv_motif"] = generate_musical_phrase(
                 cur,
                 key_center=improv_ctx.key_center,
                 level=level,
+                kind="creative",
                 variant="new",
                 session_state=session_state,
             )
@@ -786,20 +789,22 @@ def _tab_motif(
             st.rerun()
     with g2:
         if st.button("Harder motif", key="improv_motif_harder", use_container_width=True):
-            session_state["improv_motif"] = generate_motif_with_variant(
+            session_state["improv_motif"] = generate_musical_phrase(
                 cur,
                 key_center=improv_ctx.key_center,
                 level=level,
+                kind="creative",
                 variant="harder",
             )
             _clear_motif_outputs(session_state)
             st.rerun()
     with g3:
         if st.button("Easier motif", key="improv_motif_easier", use_container_width=True):
-            session_state["improv_motif"] = generate_motif_with_variant(
+            session_state["improv_motif"] = generate_musical_phrase(
                 cur,
                 key_center=improv_ctx.key_center,
                 level=level,
+                kind="creative",
                 variant="easier",
             )
             _clear_motif_outputs(session_state)
@@ -1018,8 +1023,8 @@ def _render_section_chord_map(
                         session_state.pop(MISSION_EXAMPLE_KEY, None)
                         session_state.pop(MISSION_NEW_NONCE_KEY, None)
                         if generate_motif_on_select:
-                            session_state["improv_motif"] = generate_motif_for_chord(
-                                ch, key_center=key_center
+                            session_state["improv_motif"] = generate_musical_phrase(
+                                ch, key_center=key_center, kind="creative"
                             )
                             _clear_motif_outputs(session_state)
                         st.rerun()

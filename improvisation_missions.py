@@ -14,13 +14,12 @@ from improvisation_intelligence import (
     PRACTICE_MISSIONS,
     chord_coach_insight,
 )
-from improvisation_mission_rules import apply_mission_rules
+from motif_engine import generate_mission_phrase
 from improvisation_motif import (
     build_motif_guitar_tab,
     build_motif_notation_abc,
     chord_tone_names,
     cycle_motif_rhythm,
-    generate_motif_for_chord,
     sync_motif_midi,
     transform_motif,
     _normalize_motif_level,
@@ -143,34 +142,14 @@ def _build_motif_for_mission(
     rng: random.Random,
     idea_variant: int = 0,
 ) -> dict[str, Any]:
-    student_level = _normalize_motif_level(level)
-    tier = variant if variant in ("easier", "normal", "harder") else "normal"
-    idea = idea_variant % 12
-    if variant == "easier":
-        idea = 0
-    elif variant == "harder":
-        idea = (idea_variant * 5 + 7) % 12
-    elif variant == "new":
-        tier = "normal"
-        idea = idea_variant % 12
-
-    motif = generate_motif_for_chord(
+    return generate_mission_phrase(
+        mission,
         chord,
         key_center=key_center,
-        level=student_level,
-        rng=rng,
-        idea_variant=idea,
-        difficulty_tier=tier,
-    )
-
-    return apply_mission_rules(
-        mission,
-        motif,
-        chord=chord,
-        key_center=key_center,
-        level=student_level,
+        level=level,
         variant=variant,
         rng=rng,
+        idea_variant=idea_variant,
     )
 
 
