@@ -36,6 +36,8 @@ _RHYTHM_TO_ABC_LEN: dict[str, str] = {
     "♬": "/4",
     "♩.": "3/2",
     "𝅗": "2",
+    "z": "",
+    "Z": "",
 }
 
 _RHYTHM_BEATS: dict[str, float] = {
@@ -44,6 +46,8 @@ _RHYTHM_BEATS: dict[str, float] = {
     "♬": 0.25,
     "♩.": 1.5,
     "𝅗": 2.0,
+    "z": 1.0,
+    "Z": 1.0,
 }
 
 RHYTHM_PATTERN_KEYS: tuple[str, ...] = tuple(_RHYTHM_PATTERNS.keys())
@@ -874,6 +878,11 @@ def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:
     motif["notes"] = notes
     motif["display"] = " – ".join(notes)
     motif["midi"] = [_midi_from_note(n, 4) for n in notes]
+    stored = motif.get("rhythm_symbols")
+    if isinstance(stored, list) and stored and any(str(s) in ("z", "Z") for s in stored):
+        motif["rhythm_symbols"] = [str(s) for s in stored]
+        motif["rhythm"] = " ".join(motif["rhythm_symbols"])
+        return motif
     syms = motif_rhythm_symbols(motif)
     motif["rhythm_symbols"] = syms
     motif["rhythm"] = " ".join(syms)
@@ -896,11 +905,17 @@ def build_motif_abc(
 
     abc_tokens: list[str] = []
     beats_in_bar = 0.0
-    for i, note in enumerate(notes):
-        sym = syms[i] if i < len(syms) else "♩"
+    note_idx = 0
+    for sym in syms:
         length = _RHYTHM_TO_ABC_LEN.get(sym, "")
-        pitch = _note_name_to_abc_pitch(str(note), octave=4)
-        abc_tokens.append(f"{pitch}{length}")
+        if sym in ("z", "Z"):
+            abc_tokens.append(f"z{length}")
+        else:
+            if note_idx >= len(notes):
+                break
+            pitch = _note_name_to_abc_pitch(str(notes[note_idx]), octave=4)
+            abc_tokens.append(f"{pitch}{length}")
+            note_idx += 1
         beats_in_bar += _RHYTHM_BEATS.get(sym, 1.0)
         if beats_in_bar >= 4.0 - 1e-6:
             abc_tokens.append("|")

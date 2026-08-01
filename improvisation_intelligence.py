@@ -115,6 +115,9 @@ class ChordCoachInsight:
 _SCALE_INTERVALS: dict[str, tuple[int, ...]] = {
     "major": (0, 2, 4, 5, 7, 9, 11),
     "major scale": (0, 2, 4, 5, 7, 9, 11),
+    "natural minor": (0, 2, 3, 5, 7, 8, 10),
+    "aeolian": (0, 2, 3, 5, 7, 8, 10),
+    "harmonic minor": (0, 2, 3, 5, 7, 8, 11),
     "major pentatonic": (0, 2, 4, 7, 9),
     "minor pentatonic": (0, 3, 5, 7, 10),
     "mixolydian": (0, 2, 4, 5, 7, 9, 10),
@@ -132,6 +135,17 @@ _SCALE_INTERVALS: dict[str, tuple[int, ...]] = {
 }
 
 
+def _resolve_scale_kind(kind: str) -> str:
+    """Map free-text scale names to a canonical ``_SCALE_INTERVALS`` key (longest match wins)."""
+    low = str(kind or "major").lower().strip()
+    if low in _SCALE_INTERVALS:
+        return low
+    matches = [key for key in _SCALE_INTERVALS if key in low]
+    if not matches:
+        return "major"
+    return max(matches, key=len)
+
+
 def _note_name_at_semitone(root: str, semitone: int, reference_key: str) -> str:
     from music_theory import spell_note_in_key
 
@@ -144,41 +158,41 @@ def _note_name_at_semitone(root: str, semitone: int, reference_key: str) -> str:
 
 def spell_scale_notes(root: str, kind: str, reference_key: str) -> list[str]:
     """Spell scale degrees from a root and mode name (matches chart/display key)."""
-    low = str(kind or "major").lower().strip()
-    intervals = _SCALE_INTERVALS.get(low)
-    if intervals is None:
-        for key, ivals in _SCALE_INTERVALS.items():
-            if key in low or low in key:
-                intervals = ivals
-                break
-    if intervals is None:
-        intervals = _SCALE_INTERVALS["major"]
+    canon = _resolve_scale_kind(kind)
+    intervals = _SCALE_INTERVALS[canon]
     return [_note_name_at_semitone(root, i, reference_key) for i in intervals]
 
 
 def _pretty_scale_label(root: str, kind: str) -> str:
+    canon = _resolve_scale_kind(kind)
     k = str(kind or "major").lower().strip()
-    if "pentatonic" in k:
-        return f"{root} Minor Pentatonic" if "minor" in k else f"{root} Major Pentatonic"
-    if "mixolydian" in k:
+    if "pentatonic" in canon or "pentatonic" in k:
+        return f"{root} Minor Pentatonic" if "minor" in canon else f"{root} Major Pentatonic"
+    if canon == "mixolydian":
         return f"{root} Mixolydian"
-    if "dorian" in k:
+    if canon == "dorian":
         return f"{root} Dorian"
-    if "lydian" in k:
+    if canon == "lydian":
         return f"{root} Lydian"
-    if "locrian" in k:
+    if "locrian" in canon:
         return f"{root} Locrian" + (" #2" if "#2" in k else "")
-    if "blues" in k:
+    if canon == "blues":
         return f"{root} Blues"
-    if "altered" in k:
+    if "altered" in canon:
         return f"{root} Altered"
-    if "melodic minor" in k:
+    if "melodic minor" in canon:
         return f"{root} Melodic Minor"
-    if "half-diminished" in k or "diminished" in k:
-        return f"{root} Half-Diminished" if "half" in k else f"{root} Diminished"
-    if k in ("major", ""):
+    if "half-diminished" in canon or (canon == "half-diminished"):
+        return f"{root} Half-Diminished Scale"
+    if "diminished" in k and "half" not in k:
+        return f"{root} Diminished Scale"
+    if canon in ("natural minor", "aeolian"):
+        return f"{root} Natural Minor Scale"
+    if canon == "harmonic minor":
+        return f"{root} Harmonic Minor Scale"
+    if canon in ("major", "major scale"):
         return f"{root} Major Scale"
-    return f"{root} {kind.title()} Scale"
+    return f"{root} {kind.strip().title()} Scale"
 
 
 def build_scale_suggestion(label: str, *, reference_key: str = "C") -> ScaleSuggestion:
@@ -190,10 +204,10 @@ def build_scale_suggestion(label: str, *, reference_key: str = "C") -> ScaleSugg
     from music_theory import respell_note_for_key
 
     root = respell_note_for_key(root, reference_key)
-    return ScaleSuggestion(
-        label=_pretty_scale_label(root, kind),
-        notes=spell_scale_notes(root, kind, reference_key),
-    )
+    canon = _resolve_scale_kind(kind)
+    notes = spell_scale_notes(root, canon, reference_key)
+    display_label = _pretty_scale_label(root, canon)
+    return ScaleSuggestion(label=display_label, notes=notes)
 
 
 def format_scale_line(suggestion: ScaleSuggestion, chord_tones: list[str] | None = None) -> str:

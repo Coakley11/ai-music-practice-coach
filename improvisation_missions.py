@@ -16,14 +16,33 @@ from improvisation_intelligence import (
 )
 from motif_engine import generate_mission_phrase
 from improvisation_motif import (
+    build_motif_abc,
     build_motif_guitar_tab,
-    build_motif_notation_abc,
     chord_tone_names,
     cycle_motif_rhythm,
     sync_motif_midi,
     transform_motif,
     _normalize_motif_level,
 )
+
+
+def build_mission_notation_abc(
+    motif: dict[str, Any],
+    *,
+    mission: str = "",
+    key_center: str = "C",
+    bpm: int = 100,
+) -> str:
+    """ABC title for Missions (not Phrase & Motif)."""
+    chord = str(motif.get("chord") or "").strip()
+    short = str(mission or "").strip()
+    if short and len(short) <= 48:
+        title = f"Mission: {short} — {chord}" if chord else f"Mission: {short}"
+    elif chord:
+        title = f"Mission Example — {chord}"
+    else:
+        title = "Mission Example"
+    return build_motif_abc(motif, key_center=key_center, bpm=bpm, title=title)
 
 MISSION_EXAMPLE_KEY = "improv_mission_example"
 MISSION_VARIANT_KEY = "improv_mission_variant"
@@ -321,11 +340,14 @@ def rebuild_mission_outputs(
     instrument: str,
     key_center: str,
     bpm: int,
+    mission: str = "",
 ) -> dict[str, Any]:
     """Rebuild ABC, TAB, and piano HTML from the current motif (no stale displays)."""
     motif = sync_motif_midi(dict(motif))
     family = _instrument_family(instrument)
-    abc = build_motif_notation_abc(motif, key_center=key_center, bpm=bpm)
+    abc = build_mission_notation_abc(
+        motif, mission=mission, key_center=key_center, bpm=bpm
+    )
     tab = build_motif_guitar_tab(motif) if family == "guitar" else ""
     piano_html = ""
     if family == "piano":
@@ -359,6 +381,7 @@ def refresh_mission_example(
         instrument=inst,
         key_center=example.display_key,
         bpm=tempo,
+        mission=example.mission,
     )
     example.instrument = inst
     example.motif = out["motif"]
@@ -450,6 +473,7 @@ def generate_mission_example(
         instrument=instrument,
         key_center=improv_ctx.display_key,
         bpm=bpm,
+        mission=mission,
     )
     motif = out["motif"]
     family = _instrument_family(instrument)

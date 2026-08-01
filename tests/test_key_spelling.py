@@ -60,6 +60,27 @@ class TestFlatKeyScaleSpellings(unittest.TestCase):
         self.assertNotIn("A#", " ".join(sug.notes))
         self.assertIn("C", sug.notes)
 
+    def test_f_natural_minor_label_matches_notes(self) -> None:
+        sug = build_scale_suggestion("F natural minor", reference_key="F")
+        self.assertIn("Natural Minor", sug.label)
+        self.assertIn("Ab", sug.notes)
+        self.assertIn("Db", sug.notes)
+        self.assertIn("Eb", sug.notes)
+        self.assertNotIn("A", sug.notes)
+
+    def test_f_major_label_matches_notes_not_natural_minor(self) -> None:
+        sug = build_scale_suggestion("F major", reference_key="F")
+        self.assertIn("Major", sug.label)
+        self.assertIn("A", sug.notes)
+        self.assertIn("Bb", sug.notes)
+        self.assertNotIn("Ab", sug.notes)
+
+    def test_gm7_section_suggestions_use_dorian_not_mislabeled_minor(self) -> None:
+        sug = build_scale_suggestion("G dorian", reference_key="F")
+        self.assertIn("Dorian", sug.label)
+        self.assertIn("F", sug.notes)
+        self.assertIn("Bb", sug.notes)
+
 
 class TestChordTonesFlatKeys(unittest.TestCase):
     def test_bb7_in_f_minor(self) -> None:

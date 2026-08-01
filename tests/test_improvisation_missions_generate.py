@@ -33,6 +33,9 @@ class TestGenerateMissionExample(unittest.TestCase):
         self.assertTrue(example.show_tab)
         self.assertFalse(example.show_piano)
         self.assertIsInstance(example.motif, dict)
+        self.assertIn("Mission", example.abc)
+        self.assertNotIn("Motif —", example.abc)
+        self.assertNotIn("Motif -", example.abc)
 
     def test_harder_differs_from_normal(self) -> None:
         ctx = ImprovSessionContext(

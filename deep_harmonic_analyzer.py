@@ -543,9 +543,9 @@ def _scales_section(
             ]
         elif is_minor_key or "m" in str(cyc[0]).lower():
             suggestions = [
-                f"{parent} natural minor",
-                f"{parent} minor pentatonic",
                 f"{root0} dorian",
+                f"{parent} major",
+                f"{root0} minor pentatonic",
             ]
         else:
             suggestions = [
