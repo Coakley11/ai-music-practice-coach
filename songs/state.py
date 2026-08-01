@@ -1088,6 +1088,97 @@ def _pick_key_from_canonical_session(session_state: dict[str, Any]) -> str:
     return ""
 
 
+def reconcile_active_pick_key(
+    session_state: dict[str, Any],
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]] | None = None,
+) -> str:
+    """Best pick_key from workspace sources — never the catalog default."""
+    pk = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if pk:
+        return pk
+    sel = session_state.get(SELECTED_SONG_STATE_KEY) or {}
+    pk = str(sel.get("pick_key") or "").strip()
+    if pk:
+        return pk
+    pk = _pick_key_from_canonical_session(session_state)
+    if pk:
+        return pk
+    pk = _pick_key_from_cloud_payload(session_state)
+    if not pk:
+        return ""
+    if song_picker_catalog is not None:
+        resolved = resolve_pick_key(pk, song_picker_catalog=song_picker_catalog)
+        return resolved or pk
+    return pk
+
+
+def _catalog_default_pick_key(
+    song_picker_catalog: dict[str, dict[str, dict]] | None,
+) -> str | None:
+    return first_valid_pick_key(song_picker_catalog)
+
+
+def _may_persist_pick_key_recovery(
+    session_state: dict[str, Any],
+    resolved_pk: str,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]] | None,
+) -> bool:
+    """True when a recovery commit may be written to disk/cloud."""
+    try:
+        from music_restore_phase import (
+            authoritative_restore_in_progress,
+            music_restore_phase_complete,
+            workspace_is_truly_empty,
+        )
+    except ImportError:
+        return True
+
+    if authoritative_restore_in_progress(session_state):
+        return False
+    default_pk = _catalog_default_pick_key(song_picker_catalog)
+    if default_pk and resolved_pk == default_pk:
+        if not music_restore_phase_complete(session_state):
+            return False
+        return workspace_is_truly_empty(session_state)
+    return True
+
+
+def apply_active_pick_key_reconciliation(
+    st: Any,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]] | None = None,
+) -> str:
+    """Stamp session pick_key from cloud/canonical sources during startup restore."""
+    ss = st.session_state
+    candidate = reconcile_active_pick_key(ss, song_picker_catalog=song_picker_catalog)
+    if not candidate:
+        ss["_music_active_pick_key_reconciled"] = False
+        return ""
+    resolved = resolve_pick_key(candidate, song_picker_catalog=song_picker_catalog) or candidate
+    live = str(ss.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if live == resolved:
+        ss["_music_active_pick_key_reconciled"] = True
+        return resolved
+    persist = _may_persist_pick_key_recovery(
+        ss,
+        resolved,
+        song_picker_catalog=song_picker_catalog,
+    )
+    apply_pick_key(
+        st,
+        resolved,
+        song_picker_catalog,
+        song_library=song_library,
+        origin="restore",
+        persist=persist,
+    )
+    ss["_music_active_pick_key_reconciled"] = True
+    return resolved
+
+
 def get_song_context(
     st: Any,
     *,
@@ -1106,19 +1197,17 @@ def get_song_context(
         custom_song_context_from_session = None  # type: ignore[assignment,misc]
 
     sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
-    pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or "").strip()
-    if is_custom_progression(st.session_state) or pk.startswith("custom::"):
+    pk_early = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or "").strip()
+    if is_custom_progression(st.session_state) or pk_early.startswith("custom::"):
         if custom_song_context_from_session is not None:
             return custom_song_context_from_session(st.session_state)
 
-    sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
-    pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or "").strip()
-    if not pk:
-        pk = _pick_key_from_cloud_payload(st.session_state)
-    if not pk:
-        pk = _pick_key_from_canonical_session(st.session_state)
+    pk = reconcile_active_pick_key(
+        st.session_state,
+        song_picker_catalog=song_picker_catalog,
+    )
 
-    def _recovery_may_persist() -> bool:
+    def _restore_still_in_progress() -> bool:
         try:
             from music_restore_phase import (
                 authoritative_restore_in_progress,
@@ -1126,12 +1215,29 @@ def get_song_context(
             )
 
             if authoritative_restore_in_progress(st.session_state):
-                return False
+                return True
             if not music_restore_phase_complete(st.session_state):
-                return False
+                return True
         except ImportError:
             pass
-        return True
+        return False
+
+    def _recovery_may_persist(resolved_pk: str) -> bool:
+        return _may_persist_pick_key_recovery(
+            st.session_state,
+            resolved_pk,
+            song_picker_catalog=song_picker_catalog,
+        )
+
+    def _may_apply_catalog_default() -> bool:
+        try:
+            from music_restore_phase import music_restore_phase_complete, workspace_is_truly_empty
+
+            if not music_restore_phase_complete(st.session_state):
+                return False
+            return workspace_is_truly_empty(st.session_state)
+        except ImportError:
+            return True
 
     def _context_from_sel_only() -> tuple[str, str, dict] | None:
         title = str(sel.get("title") or "").strip()
@@ -1161,7 +1267,7 @@ def get_song_context(
                 song_picker_catalog,
                 song_library=song_library,
                 origin="recovery",
-                persist=_recovery_may_persist(),
+                persist=_recovery_may_persist(resolved_pk),
                 display_key_override=restore_dk or None,
             )
         genre, label = parse_pick_key(resolved_pk)
@@ -1176,6 +1282,11 @@ def get_song_context(
             fallback = first_valid_pick_key(song_picker_catalog)
             if not fallback:
                 raise RuntimeError("Song catalog is empty — cannot select a default song.")
+            if not _may_apply_catalog_default():
+                deferred = _context_from_sel_only()
+                if deferred is not None:
+                    return deferred
+                raise RuntimeError("Song catalog default blocked — workspace is not empty.")
             return _commit(
                 fallback,
                 notice=notice or "Restored default song selection.",
@@ -1187,13 +1298,13 @@ def get_song_context(
         cloud_pk = _pick_key_from_cloud_payload(st.session_state)
         if cloud_pk and resolve_pick_key(cloud_pk, song_picker_catalog=song_picker_catalog):
             resolved_cloud = resolve_pick_key(cloud_pk, song_picker_catalog=song_picker_catalog) or cloud_pk
-            if not _recovery_may_persist():
+            if _restore_still_in_progress():
                 deferred = _context_from_sel_only()
                 if deferred is not None:
                     st.session_state["_pick_key_recovery_deferred"] = cloud_pk
                     return deferred
             return _commit(resolved_cloud)
-        if not _recovery_may_persist():
+        if _restore_still_in_progress():
             deferred = _context_from_sel_only()
             if deferred is not None:
                 st.session_state["_pick_key_recovery_deferred"] = cloud_pk or pk
@@ -1201,6 +1312,11 @@ def get_song_context(
         fallback = first_valid_pick_key(song_picker_catalog)
         if not fallback:
             raise RuntimeError("Master song not initialized — call ensure_master_song_initialized first.")
+        if not _may_apply_catalog_default():
+            deferred = _context_from_sel_only()
+            if deferred is not None:
+                return deferred
+            raise RuntimeError("Master song not initialized — workspace restore pending.")
         return _commit(fallback, notice="No saved song selection; restored default catalog song.")
 
     resolved_pk = resolve_pick_key(pk, song_picker_catalog=song_picker_catalog)
@@ -1223,7 +1339,7 @@ def get_song_context(
             notice=f'"{old}" was moved or renamed in the catalog; selection updated.',
         )
 
-    if not _recovery_may_persist():
+    if _restore_still_in_progress():
         deferred = _context_from_sel_only()
         if deferred is not None:
             st.session_state["_pick_key_recovery_deferred"] = pk
@@ -1242,6 +1358,11 @@ def get_song_context(
     fallback = first_valid_pick_key(song_picker_catalog)
     if not fallback:
         raise RuntimeError("Song catalog is empty — cannot recover from stale pick key.")
+    if not _may_apply_catalog_default():
+        deferred = _context_from_sel_only()
+        if deferred is not None:
+            return deferred
+        raise RuntimeError(f'Previous song "{sel.get("title") or pk}" is no longer in the catalog.')
     old = sel.get("title") or sel.get("label") or pk
     return _commit(
         fallback,

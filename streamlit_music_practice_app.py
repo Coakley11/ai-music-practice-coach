@@ -1174,12 +1174,6 @@ if hasattr(st, "session_state"):
                     song_library=SONG_LIBRARY,
                 )
             maybe_flush_deferred_page_change_save(st)
-            try:
-                from music_restore_phase import complete_music_restore_phase
-
-                complete_music_restore_phase(st.session_state)
-            except Exception:
-                pass
         except Exception:
             pass
     except Exception as _music_restore_exc:
@@ -9296,6 +9290,13 @@ try:
             song_library=SONG_LIBRARY,
             force=_ami_applied,
         )
+        from music_persistent_state import finalize_music_startup_restore
+
+        finalize_music_startup_restore(
+            st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+        )
         _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
             st,
             song_library=SONG_LIBRARY,
@@ -9303,7 +9304,13 @@ try:
         )
         _pick_key_recovery = st.session_state.pop(PICK_KEY_RECOVERY_NOTICE_KEY, None)
         if _pick_key_recovery:
-            st.warning(_pick_key_recovery)
+            try:
+                from music_restore_phase import music_restore_phase_complete
+
+                if music_restore_phase_complete(st.session_state):
+                    st.warning(_pick_key_recovery)
+            except ImportError:
+                st.warning(_pick_key_recovery)
         maybe_flush_deferred_page_change_save(st)
         try:
             from local_nav_trace import record_local_nav_checkpoint
@@ -9337,6 +9344,13 @@ try:
         raise NameError("_catalog_song_data invalid")
 except NameError:
     try:
+        from music_persistent_state import finalize_music_startup_restore
+
+        finalize_music_startup_restore(
+            st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+        )
         _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
             st,
             song_library=SONG_LIBRARY,

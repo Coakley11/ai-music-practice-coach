@@ -863,12 +863,6 @@ def handle_studio_page_transition(session_state: dict) -> None:
             if mark_page_snapshot_hydrated is not None:
                 mark_page_snapshot_hydrated(session_state, current)
     session_state[_ACTIVE_PAGE_TRACKER] = current
-    try:
-        from music_restore_phase import complete_music_restore_phase
-
-        complete_music_restore_phase(session_state)
-    except ImportError:
-        pass
 
 
 def make_history_entry(session_state: dict, page_id: str) -> dict[str, Any]:

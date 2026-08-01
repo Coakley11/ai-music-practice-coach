@@ -226,6 +226,51 @@ def run_post_nav_music_startup_init(
     return skip
 
 
+def finalize_music_startup_restore(
+    st: Any,
+    *,
+    song_picker_catalog: dict,
+    song_library: dict | None,
+) -> None:
+    """Finish startup restore: page snapshot, active pick key, then restore-phase gate."""
+    ss = st.session_state
+    try:
+        from music_restore_phase import (
+            MUSIC_STARTUP_RESTORE_FINALIZED_KEY,
+            complete_music_restore_phase,
+            music_restore_phase_complete,
+        )
+    except ImportError:
+        complete_music_restore_phase = None  # type: ignore[assignment,misc]
+        music_restore_phase_complete = lambda _s: False  # type: ignore[assignment,misc]
+        MUSIC_STARTUP_RESTORE_FINALIZED_KEY = "_music_startup_restore_finalized"  # type: ignore[misc]
+
+    if ss.get(MUSIC_STARTUP_RESTORE_FINALIZED_KEY):
+        return
+
+    try:
+        from studio_page_persistence import restore_current_page_snapshot_if_needed
+
+        restore_current_page_snapshot_if_needed(ss)
+    except ImportError:
+        pass
+
+    try:
+        from songs.state import apply_active_pick_key_reconciliation
+
+        apply_active_pick_key_reconciliation(
+            st,
+            song_picker_catalog=song_picker_catalog,
+            song_library=song_library,
+        )
+    except ImportError:
+        pass
+
+    ss[MUSIC_STARTUP_RESTORE_FINALIZED_KEY] = True
+    if complete_music_restore_phase is not None and not music_restore_phase_complete(ss):
+        complete_music_restore_phase(ss)
+
+
 def music_should_skip_master_song_init(session_state: dict[str, Any]) -> bool:
     """True when cold-start trusted-core pin would clobber restored workspace state."""
     reason = music_skip_master_song_init_reason(session_state)

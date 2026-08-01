@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 MUSIC_RESTORE_PHASE_COMPLETE_KEY = "_music_restore_phase_complete"
+MUSIC_STARTUP_RESTORE_FINALIZED_KEY = "_music_startup_restore_finalized"
+MUSIC_ACTIVE_PICK_KEY_RECONCILED_KEY = "_music_active_pick_key_reconciled"
 MUSIC_PAGE_SNAPSHOT_HYDRATED_PREFIX = "_music_page_snapshot_hydrated::"
 MUSIC_SCRIPT_SESSION_KEY = "_music_script_browser_session_id"
 STREAMLIT_WIDGETS_LOCKED_KEY = "_streamlit_widgets_locked_this_run"
