@@ -1177,7 +1177,26 @@ def apply_active_pick_key_reconciliation(
         return ""
     resolved = resolve_pick_key(candidate, song_picker_catalog=song_picker_catalog) or candidate
     live = str(ss.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    sel = ss.get(SELECTED_SONG_STATE_KEY) or {}
+    sel_missing_key = isinstance(sel, dict) and not str(sel.get("key") or "").strip()
     if live == resolved:
+        if sel_missing_key and resolved:
+            apply_pick_key(
+                st,
+                resolved,
+                song_picker_catalog,
+                song_library=song_library,
+                origin="restore_hydrate",
+                persist=False,
+                skip_activity_log=True,
+            )
+        try:
+            from studio_cache import invalidate_session_cache
+
+            if sel_missing_key:
+                invalidate_session_cache(ss, "chart_bundle")
+        except ImportError:
+            pass
         ss["_music_active_pick_key_reconciled"] = True
         return resolved
     persist = _may_persist_pick_key_recovery(
