@@ -10,13 +10,14 @@ from improvisation_intelligence import (
     ImprovSessionContext,
     _chord_quality,
     _chord_root,
+    _note_name_at_semitone,
     build_scale_suggestion,
     chord_coach_insight,
+    coaching_reference_key,
     format_scale_line,
     instrument_coaching_lines,
 )
 from improvisation_motif import chord_tone_names
-from music_theory import CHROMATIC, normalize_root, split_chord
 
 
 @dataclass
@@ -46,15 +47,12 @@ class HarmonyChordGuide:
     focus_note: str = ""
 
 
-def _note_at_semitone(root: str, semitone: int) -> str:
-    r = _chord_root(root)
-    if r not in CHROMATIC:
-        r = "C"
-    return CHROMATIC[(CHROMATIC.index(r) + semitone) % 12]
+def _note_at_semitone(root: str, semitone: int, reference_key: str) -> str:
+    return _note_name_at_semitone(_chord_root(root), semitone, reference_key)
 
 
-def _stable_tones(chord: str) -> list[str]:
-    tones = chord_tone_names(chord)
+def _stable_tones(chord: str, *, reference_key: str) -> list[str]:
+    tones = chord_tone_names(chord, reference_key=reference_key)
     qual = _chord_quality(chord)
     if qual in ("major", "minor", "dom") and len(tones) >= 3:
         if qual == "major":
@@ -81,8 +79,10 @@ def _color_catalog(
     level: str,
     style_label: str,
     song_title: str,
+    reference_key: str,
 ) -> tuple[list[ColorToneNote], list[AvoidNote]]:
     root = _chord_root(chord)
+    ref = reference_key
     qual = _chord_quality(chord)
     ballad = _style_is_ballad(style_label, song_title)
     jazz = _style_is_jazz(style_label, song_title)
@@ -93,13 +93,13 @@ def _color_catalog(
         if "maj7" in str(chord).lower() or qual == "maj7":
             colors.extend([
                 ColorToneNote(
-                    _note_at_semitone(root, 14),
+                    _note_at_semitone(root, 14, ref),
                     "9th",
                     "open, lyrical top — singer-songwriter or jazz-ballad color",
                     "Beginner" if ballad else "Intermediate",
                 ),
                 ColorToneNote(
-                    _note_at_semitone(root, 21),
+                    _note_at_semitone(root, 21, ref),
                     "13th / 6th",
                     "warm extension over maj7 — land on phrase endings",
                     "Intermediate",
@@ -108,7 +108,7 @@ def _color_catalog(
             if level == "Advanced" or jazz:
                 colors.append(
                     ColorToneNote(
-                        _note_at_semitone(root, 18),
+                        _note_at_semitone(root, 18, ref),
                         "#11 (lydian)",
                         "dreamy lift — use on sustained chords, not every beat",
                         "Advanced",
@@ -117,19 +117,19 @@ def _color_catalog(
         else:
             colors.extend([
                 ColorToneNote(
-                    _note_at_semitone(root, 9),
+                    _note_at_semitone(root, 9, ref),
                     "6th / 13th",
                     "warmer, softer, more emotional — great on ballad endings",
                     "Beginner",
                 ),
                 ColorToneNote(
-                    _note_at_semitone(root, 14),
+                    _note_at_semitone(root, 14, ref),
                     "9th",
                     "open, modern pop color — light and bright",
                     "Beginner" if ballad else "Intermediate",
                 ),
                 ColorToneNote(
-                    _note_at_semitone(root, 11),
+                    _note_at_semitone(root, 11, ref),
                     "maj7",
                     "dreamy, smooth — connects toward the next chord in a lift",
                     "Intermediate",
@@ -137,26 +137,26 @@ def _color_catalog(
             ])
             avoids.append(
                 AvoidNote(
-                    _note_at_semitone(root, 5),
+                    _note_at_semitone(root, 5, ref),
                     "4th / 11th — can clash with the major 3rd unless used as sus4 or a quick passing tone",
                 )
             )
     elif qual in ("m7", "minor"):
         colors.extend([
             ColorToneNote(
-                _note_at_semitone(root, 14),
+                _note_at_semitone(root, 14, ref),
                 "9th",
                 "dorian color — soulful, not too dark",
                 "Intermediate",
             ),
             ColorToneNote(
-                _note_at_semitone(root, 9),
+                _note_at_semitone(root, 9, ref),
                 "6th / 13th",
                 "dorian 6 — hopeful minor color",
                 "Intermediate",
             ),
             ColorToneNote(
-                _note_at_semitone(root, 17),
+                _note_at_semitone(root, 17, ref),
                 "11th",
                 "suspended, open minor — use on longer notes",
                 "Advanced",
@@ -165,13 +165,13 @@ def _color_catalog(
     elif qual == "dom":
         colors.extend([
             ColorToneNote(
-                _note_at_semitone(root, 14),
+                _note_at_semitone(root, 14, ref),
                 "9th",
                 "classic dominant color — resolves forward",
                 "Intermediate",
             ),
             ColorToneNote(
-                _note_at_semitone(root, 21),
+                _note_at_semitone(root, 21, ref),
                 "13th",
                 "bluesy dominant — strong on beat 4 before resolution",
                 "Intermediate",
@@ -180,13 +180,13 @@ def _color_catalog(
         if level == "Advanced" or jazz:
             colors.extend([
                 ColorToneNote(
-                    _note_at_semitone(root, 13),
+                    _note_at_semitone(root, 13, ref),
                     "b9",
                     "sharp tension — resolve quickly into the next chord",
                     "Advanced",
                 ),
                 ColorToneNote(
-                    _note_at_semitone(root, 15),
+                    _note_at_semitone(root, 15, ref),
                     "#9",
                     "blues/jazz bite — short accent only",
                     "Advanced",
@@ -195,7 +195,7 @@ def _color_catalog(
     elif qual == "half-dim":
         colors.append(
             ColorToneNote(
-                _note_at_semitone(root, 14),
+                _note_at_semitone(root, 14, ref),
                 "9th",
                 "half-diminished line color — approach from below",
                 "Advanced",
@@ -203,7 +203,7 @@ def _color_catalog(
         )
         avoids.append(
             AvoidNote(
-                _note_at_semitone(root, 4),
+                _note_at_semitone(root, 4, ref),
                 "major 3rd — fights the minor-third quality of this chord",
             )
         )
@@ -221,7 +221,7 @@ def _color_catalog(
 
     seen: set[str] = set()
     unique: list[ColorToneNote] = []
-    stable = set(_stable_tones(chord))
+    stable = set(_stable_tones(chord, reference_key=reference_key))
     for item in filtered:
         if item.note in stable or item.note in seen:
             continue
@@ -311,17 +311,22 @@ def analyze_chord_for_harmony_map(
 ) -> HarmonyChordGuide:
     level = improv_ctx.level or "Intermediate"
     focus = improv_ctx.focus or "Improvisation"
-    stable = _stable_tones(chord)
+    ref_key = coaching_reference_key(
+        key_center=improv_ctx.key_center,
+        display_key=improv_ctx.display_key,
+    )
+    stable = _stable_tones(chord, reference_key=ref_key)
     colors, avoids = _color_catalog(
         chord,
         level=level,
         style_label=improv_ctx.style_label,
         song_title=improv_ctx.song_title,
+        reference_key=ref_key,
     )
 
     insight = chord_coach_insight(
         chord,
-        key_center=improv_ctx.display_key,
+        key_center=ref_key,
         next_chord=next_chord,
         instrument=improv_ctx.instrument,
         level=level,
@@ -331,7 +336,7 @@ def analyze_chord_for_harmony_map(
     focus_low = focus.lower()
     if "scale" in focus_low or level != "Beginner":
         suggestions = insight.scale_suggestions or [
-            build_scale_suggestion(label, reference_key=improv_ctx.display_key)
+            build_scale_suggestion(label, reference_key=ref_key)
             for label in insight.scales
         ]
         max_scales = 2 if level == "Beginner" else 4

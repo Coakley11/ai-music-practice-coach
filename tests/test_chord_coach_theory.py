@@ -50,6 +50,10 @@ class TestChordCoachInsight(unittest.TestCase):
     def test_f_sharp_half_dim(self) -> None:
         insight = chord_coach_insight("F#m7b5", key_center="Bm")
         self.assertIn("A", insight.chord_tones)
+        labels = " ".join(s.label for s in insight.scale_suggestions)
+        self.assertIn("Half-Diminished", labels)
+        for sug in insight.scale_suggestions:
+            self.assertTrue(all(len(n) <= 3 for n in sug.notes))
 
 
 if __name__ == "__main__":

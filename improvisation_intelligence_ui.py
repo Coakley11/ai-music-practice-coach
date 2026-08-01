@@ -684,14 +684,15 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
     )
 
     nxt = chords[idx + 1] if idx + 1 < len(chords) else ""
+    ref_key = improv_ctx.display_key or improv_ctx.key_center
     insight = chord_coach_insight(
         cur,
-        key_center=improv_ctx.key_center,
+        key_center=ref_key,
         next_chord=nxt,
         instrument=live_inst,
         level=live_level,
     )
-    _render_chord_coach_card(st, insight)
+    _render_chord_coach_card(st, insight, reference_key=ref_key)
 
     st.markdown("##### Instrument-adaptive coaching")
     for line in insight.instrument_tips:
@@ -701,7 +702,9 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
         st.caption("Tip: play your backing track and tap each chord as it passes.")
 
 
-def _render_chord_coach_card(st: Any, insight: ChordCoachInsight) -> None:
+def _render_chord_coach_card(
+    st: Any, insight: ChordCoachInsight, *, reference_key: str = "C"
+) -> None:
     st.markdown(
         f'<div class="ui-card soft" style="border-left:4px solid #22c55e;">'
         f'<p class="ui-card-title">Current chord: {html.escape(insight.chord)}</p></div>',
@@ -711,7 +714,7 @@ def _render_chord_coach_card(st: Any, insight: ChordCoachInsight) -> None:
     with c1:
         st.markdown("**Suggested scales**")
         suggestions = insight.scale_suggestions or [
-            build_scale_suggestion(label, reference_key=improv_ctx.key_center)
+            build_scale_suggestion(label, reference_key=reference_key)
             for label in insight.scales
         ]
         for suggestion in suggestions:

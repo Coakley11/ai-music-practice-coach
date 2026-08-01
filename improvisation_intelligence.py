@@ -156,6 +156,12 @@ def _note_name_at_semitone(root: str, semitone: int, reference_key: str) -> str:
     return spell_note_in_key((base_pc + int(semitone)) % 12, reference_key)
 
 
+def coaching_reference_key(*, key_center: str = "C", display_key: str = "") -> str:
+    """Key used to spell chord tones and scales the way the chart is written."""
+    text = str(display_key or key_center or "C").strip()
+    return text or "C"
+
+
 def spell_scale_notes(root: str, kind: str, reference_key: str) -> list[str]:
     """Spell scale degrees from a root and mode name (matches chart/display key)."""
     canon = _resolve_scale_kind(kind)
@@ -348,12 +354,16 @@ def chord_coach_insight(
         avoid = [f"b3 on {root} major sonority"]
         targets = [third, seventh or root]
     elif qual == "half-dim":
-        scales = [f"{root} locrian", f"{root} locrian #2", "half-diminished scale"]
+        scales = [
+            f"{root} locrian",
+            f"{root} locrian #2",
+            f"{root} half-diminished scale",
+        ]
         tensions = ["b5 as color", "approach from below"]
         avoid = ["Natural major 3rd"]
         targets = [root, third]
     elif qual == "dim":
-        scales = [f"{root} whole-half diminished", f"{root} octatonic", f"{root} locrian #2"]
+        scales = [f"{root} locrian #2", f"{root} half-diminished scale", f"{root} blues"]
         tensions = ["dim7 color", "chromatic approach"]
         avoid = [f"Major 3rd on {symbol}"]
         targets = [root, third, fifth]

@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-07-31
+**Last updated:** 2026-08-01
 
 Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
@@ -112,6 +112,14 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 
 - [x] Song Catalog ↔ Custom Songs — last selection restore on toggle (`LAST_CUSTOM_STATE_KEY`, pending picker switch)
 - [x] Deep Harmonic Analyzer — single UI (`deep_harmonic_analyzer_ui.py`); guided lesson; instrument/level/focus personalization; collapsible Go deeper cards; homework
+
+### P1 — Coaching theory & educational consistency (depth-first)
+
+**Checklist (all new coaching features):** [Flagship coaching quality standard — three pillars](./plans/2026-07-29-flagship-coaching-quality-standard.md#educational-feature-completion--three-pillars-all-coaching-surfaces)
+
+- [x] Scale names ↔ displayed notes (`build_scale_suggestion`, natural minor intervals) — 2026-07-31
+- [x] **Live Coach + Harmony Map** — chart-key spelling via `coaching_reference_key`; half-dim scale labels; Harmony Map color/stable tones key-aware; Live Coach card fallback bug — 2026-08-01 (`tests/test_harmony_map_coaching.py`)
+- [ ] **Next surface audit:** Deep Harmonic Analyzer scale pools (verify end-to-end) *or* legacy Practice **Chord Coach** (`chord_coach_markdown` in `streamlit_music_practice_app.py`) — route through same pipeline
 - [x] Creative Missions → Backing — chord-by-location selection; Mission Backing Jam; user BPM preserved after handoff; instrument icons on backing card
 - [x] Mission examples — level-scaled motifs; relative Harder/Easier; practice lick → Mission Backing Jam; **Mission workspace cloud persistence** ([contract](./plans/2026-07-30-mission-workspace-contract.md), `4106a86`)
 - [x] Manual acceptance on Streamlit Cloud (DHA combos, mission BPM, icons) — **signed off 2026-07-30**
