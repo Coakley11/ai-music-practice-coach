@@ -174,6 +174,7 @@ def init_practice_page_state(session_state: dict) -> None:
         session_state.setdefault("practice_focus_section", PRACTICE_FOCUS_FULL)
     except ImportError:
         session_state.setdefault("practice_focus_section", "Full Song")
+    session_state.setdefault("practice_active_tool", "")
 
 
 def init_backing_page_state(session_state: dict) -> None:

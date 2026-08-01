@@ -48,6 +48,8 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "practice_notation_difficulty",
             "practice_notation_sig",
             "practice_notation_result",
+            "practice_active_tool",
+            "practice_chart_panel_open",
             "picker_open_chord_coach",
         }
     ),

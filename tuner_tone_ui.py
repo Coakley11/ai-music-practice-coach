@@ -130,6 +130,7 @@ def render_tuner_tone_section(
     metronome_section_bars: int = 0,
     metronome_section_label: str = "",
     metronome_loop_section: bool = False,
+    include_metronome: bool = True,
 ) -> None:
     """Collapsible Tuner, Tone & Metronome block for the Practice page."""
     if "::" in key_prefix:
@@ -149,7 +150,7 @@ def render_tuner_tone_section(
 
     expander_title = "🎵 Tuner, Tone & Metronome"
     with st_module.expander(expander_title, expanded=False):
-        if metronome_bpm is not None:
+        if include_metronome and metronome_bpm is not None:
             from practice_metronome import render_metronome_widget
 
             render_metronome_widget(
