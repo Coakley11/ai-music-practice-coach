@@ -10154,28 +10154,47 @@ try:
         _factory_chart_bundle,
         copy_result=True,
     )
-except (MissingOriginalSongKeyError, ChartSongNotReadyError):
+except (MissingOriginalSongKeyError, ChartSongNotReadyError) as _chart_bundle_exc:
     invalidate_session_cache(st.session_state, "chart_bundle")
-    _should_rerun = False
     try:
-        from songs.chart_bundle_startup import run_chart_bundle_automatic_recovery
+        from songs.chart_bundle_startup import (
+            record_chart_bundle_failure,
+            render_chart_bundle_restore_diagnostics,
+            run_chart_bundle_automatic_recovery,
+        )
 
+        record_chart_bundle_failure(
+            st.session_state,
+            _chart_bundle_exc,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            catalog_song_data=_catalog_song_data,
+            chart_cache_sig=_chart_bundle_sig,
+        )
         _should_rerun = run_chart_bundle_automatic_recovery(
             st,
             song_picker_catalog=SONG_PICKER_CATALOG,
             song_library=SONG_LIBRARY,
         )
     except ImportError:
-        if not st.session_state.get("_chart_bundle_build_retry"):
+        _should_rerun = not st.session_state.get("_chart_bundle_build_retry")
+        if _should_rerun:
             st.session_state["_chart_bundle_build_retry"] = True
-            _should_rerun = True
     if _should_rerun:
         st.rerun()
-    st.warning(
-        "Your song chart is still syncing from the saved workspace. "
-        "Refresh once more if this message persists."
-    )
-    st.stop()
+    else:
+        st.warning(
+            "Your song chart is still syncing from the saved workspace. "
+            "Refresh once more if this message persists."
+        )
+        try:
+            from music_dev_ui import music_dev_mode_enabled
+
+            if music_dev_mode_enabled(st=st):
+                with st.expander("Chart restore diagnostics (?dev=1)", expanded=True):
+                    render_chart_bundle_restore_diagnostics(st, st.session_state)
+        except ImportError:
+            pass
+        st.stop()
 
 try:
     from songs.chart_bundle_startup import clear_chart_bundle_recovery_state

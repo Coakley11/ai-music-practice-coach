@@ -229,3 +229,11 @@ def render_music_deploy_probe(st: Any) -> None:
             ):
                 val = snapshot_restore.get(key)
                 st.text(f"{key}: {val if val not in (None, '') else '(not set)'}")
+
+        try:
+            from songs.chart_bundle_startup import render_chart_bundle_restore_diagnostics
+
+            st.markdown("**Chart bundle restore (?dev=1)**")
+            render_chart_bundle_restore_diagnostics(st, ss)
+        except ImportError:
+            pass

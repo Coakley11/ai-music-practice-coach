@@ -12,6 +12,7 @@ from songs.chart_bundle_startup import (
     clear_chart_bundle_recovery_state,
     prepare_catalog_song_for_chart_bundle,
     run_chart_bundle_automatic_recovery,
+    stash_chart_bundle_recovery_context,
 )
 from songs.music_source import build_active_chart_bundle_for_app
 from songs.state import ACTIVE_CATALOG_PICK_KEY, get_song_context
@@ -36,6 +37,50 @@ class _FakeSt:
 
 
 class ChartBundleStartupRecoveryTests(unittest.TestCase):
+    def test_prepare_hydrates_from_active_song_state_pick_without_live_catalog_key(self) -> None:
+        catalog = _mini_catalog()
+        perfect_pk = format_pick_key("Pop", "Perfect — Ed Sheeran")
+        st = _FakeSt(
+            {
+                ACTIVE_CATALOG_PICK_KEY: "",
+                "selected_song": {
+                    "title": "Perfect",
+                    "sections": {"Verse 1": ["G"]},
+                },
+                "active_song_state": {"pick_key": perfect_pk},
+            }
+        )
+        _g, _t, data = prepare_catalog_song_for_chart_bundle(
+            st,
+            "Pop",
+            "Perfect",
+            dict(st.session_state["selected_song"]),
+            song_picker_catalog=catalog,
+            song_library=catalog,
+        )
+        self.assertEqual(data.get("key"), "G")
+        self.assertEqual(str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""), perfect_pk)
+
+    def test_diagnostics_capture_recovery_fields(self) -> None:
+        from songs.chart_bundle_startup import collect_chart_bundle_restore_diagnostics
+
+        catalog = _mini_catalog()
+        perfect_pk = format_pick_key("Pop", "Perfect — Ed Sheeran")
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: perfect_pk,
+            "selected_song": {"title": "Perfect", "sections": {"Verse 1": ["G"]}},
+            "_chart_bundle_recovery_attempts": 2,
+        }
+        diag = collect_chart_bundle_restore_diagnostics(
+            session,
+            song_picker_catalog=catalog,
+            catalog_song_data=session["selected_song"],
+            last_error="ChartSongNotReadyError: test",
+        )
+        self.assertTrue(diag["recovery_exhausted"])
+        self.assertEqual(diag["reconciled_pick_key"], perfect_pk)
+        self.assertTrue(diag["canonical_catalog_found"])
+
     def test_prepare_hydrates_partial_selected_song_from_cloud_pick(self) -> None:
         catalog = _mini_catalog()
         perfect_pk = format_pick_key("Pop", "Perfect — Ed Sheeran")
@@ -67,13 +112,19 @@ class ChartBundleStartupRecoveryTests(unittest.TestCase):
 
     def test_automatic_recovery_bounded_then_exhausted(self) -> None:
         catalog = _mini_catalog()
-        perfect_pk = format_pick_key("Pop", "Perfect — Ed Sheeran")
         session = {
             ACTIVE_CATALOG_PICK_KEY: "",
-            "selected_song": {"title": "Perfect", "sections": {"Verse 1": ["G"]}},
-            "active_song_state": {"pick_key": perfect_pk},
+            "selected_song": {"title": "Not In Catalog", "sections": {"Verse 1": ["G"]}},
+            "_music_workspace_blob_hydrated": True,
+            "_music_startup_restore_finalized": True,
         }
         st = _FakeSt(session)
+        stash_chart_bundle_recovery_context(
+            session,
+            genre="Pop",
+            song="Not In Catalog",
+            song_data=dict(session["selected_song"]),
+        )
         self.assertTrue(
             run_chart_bundle_automatic_recovery(
                 st, song_picker_catalog=catalog, song_library=catalog
