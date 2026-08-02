@@ -137,6 +137,30 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
         )
     except ImportError:
         pass
+
+    user_run = _normalize_page(session.get("_music_user_navigated_page_this_run"))
+    if user_run:
+        return write_canonical_studio_nav_state(
+            session,
+            user_run,
+            reason="user_nav_this_run",
+            local_edit=True,
+        )
+    try:
+        from music_startup_save_suppression import get_page_change_origin
+
+        if get_page_change_origin(session) == "user_navigation":
+            live_nav = _normalize_page(session.get("studio_page"))
+            if live_nav:
+                return write_canonical_studio_nav_state(
+                    session,
+                    live_nav,
+                    reason="user_navigation_preserve",
+                    local_edit=True,
+                )
+    except ImportError:
+        pass
+
     if is_studio_nav_locally_dirty(session):
         page = _normalize_page(session.get("studio_page")) or "practice"
         try:
@@ -155,7 +179,9 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
     try:
         from music_restore_phase import studio_page_restore_projection_complete
 
-        if studio_page_restore_projection_complete(session):
+        if studio_page_restore_projection_complete(session) and not session.get(
+            "_music_user_navigated_page_this_run"
+        ):
             canonical = canonical_studio_page(session)
             if canonical:
                 return write_canonical_studio_nav_state(session, canonical, reason="canonical_post_restore")
@@ -176,6 +202,13 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
                 local_edit=True,
             )
         if restore_source in ("workspace_blob", "cloud_restore", "session_page", "session_page_preserved"):
+            if session.get("_music_user_navigated_page_this_run") or user_nav:
+                return write_canonical_studio_nav_state(
+                    session,
+                    live,
+                    reason="user_nav_over_stale_blob",
+                    local_edit=True,
+                )
             return write_canonical_studio_nav_state(session, canonical, reason="canonical_after_restore")
         try:
             from music_startup_save_suppression import get_page_change_origin

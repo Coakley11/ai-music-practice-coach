@@ -538,6 +538,12 @@ def render_phase1_write_journal_expander(st: Any, session: dict[str, Any]) -> No
                     f"{viol.get('code')}: {viol.get('field') or viol.get('hydrated_page')} "
                     f"→ {viol.get('overwrite_writer')} ({viol.get('overwrite_reason')})"
                 )
+        page_viol = session.get("_phase1_last_page_payload_violation")
+        if isinstance(page_viol, dict):
+            st.error(
+                f"{page_viol.get('code')}: clicked={page_viol.get('clicked_page')} "
+                f"target={page_viol.get('target')} stale={page_viol.get('stale_fields')}"
+            )
         st.markdown("**Final owner / value summary**")
         st.json(summary or j.get("final_summary") or {})
         st.markdown("**Global control writes this rerun**")

@@ -760,6 +760,87 @@ def _studio_nav_page_from_session(ss: dict[str, Any]) -> str:
 
 _PAGE_CHANGE_STAMP_TARGET_KEY = "_suite_page_change_stamp_target"
 _PAGE_CHANGE_WRITE_PENDING_KEY = "_suite_page_change_write_pending"
+MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY = "_music_user_navigated_page_this_run"
+
+
+def mark_user_navigated_page_this_run(session: dict[str, Any], page: str) -> str:
+    """Record genuine user navigation for this script run (wins over stale workspace blob)."""
+    normalized = _normalize_studio_page_for_save(page)
+    if not normalized:
+        return ""
+    session[MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY] = normalized
+    _mark_page_change_write_pending(session, normalized)
+    return normalized
+
+
+def clear_user_navigated_page_this_run(session: dict[str, Any], *, page: str = "") -> None:
+    cur = _normalize_studio_page_for_save(session.get(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY))
+    want = _normalize_studio_page_for_save(page)
+    if not cur:
+        return
+    if not want or cur == want:
+        session.pop(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY, None)
+
+
+def synchronize_page_bearing_state_for_save(session: dict[str, Any], page: str) -> None:
+    """Stamp authoritative page into session + workspace blobs before payload build."""
+    normalized = _normalize_studio_page_for_save(page)
+    if not normalized:
+        return
+    _apply_page_change_stamp_to_session(session, normalized)
+    pws = session.get("practice_workspace_state")
+    if isinstance(pws, dict):
+        pws = copy.deepcopy(pws)
+        pws["studio_page"] = normalized
+        pws["page"] = normalized
+        session["practice_workspace_state"] = pws
+
+
+def _assert_page_change_payload_not_stale(
+    session: dict[str, Any],
+    *,
+    target: str,
+    trace: dict[str, Any],
+) -> None:
+    try:
+        from music_startup_save_suppression import get_page_change_origin
+    except ImportError:
+        return
+    if get_page_change_origin(session) != "user_navigation":
+        return
+    clicked = _normalize_studio_page_for_save(
+        session.get(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY)
+        or session.get("requested_page")
+    )
+    if not clicked:
+        return
+    fields = (
+        trace.get("save_payload_core_page"),
+        trace.get("save_payload_session_page"),
+        trace.get("save_payload_workspace_page"),
+        trace.get("save_payload_studio_nav_page"),
+        trace.get("post_stamp_core_page"),
+        trace.get("post_stamp_session_page"),
+        trace.get("post_stamp_workspace_page"),
+        trace.get("post_stamp_studio_nav_page"),
+    )
+    stale = [f for f in fields if f and _normalize_studio_page_for_save(f) != clicked]
+    if not stale and _normalize_studio_page_for_save(target) == clicked:
+        return
+    viol = {
+        "code": "PHASE1_PAGE_PAYLOAD_STALE",
+        "clicked_page": clicked,
+        "target": target,
+        "stale_fields": stale,
+        "trace": {k: trace.get(k) for k in fields if trace.get(k)},
+    }
+    session.setdefault("_phase1_page_payload_violations", []).append(viol)
+    try:
+        import streamlit as st
+
+        st.session_state["_phase1_last_page_payload_violation"] = viol
+    except Exception:
+        pass
 
 
 def _normalized_session_studio_page_for_save(ss: dict[str, Any]) -> tuple[str, str]:
@@ -832,49 +913,38 @@ def _maybe_clear_page_change_write_pending(
     )
     if written == pending:
         _clear_page_change_write_pending(ss)
+        clear_user_navigated_page_this_run(ss, page=pending)
 
 
 def _page_change_write_target(ss: dict[str, Any]) -> tuple[str, str]:
     """Resolve the page id that must be written for page_change (session/workspace/nav)."""
+    user_run = _normalize_studio_page_for_save(ss.get(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY))
+    if user_run:
+        return user_run, MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY
+
+    live, live_source = _normalized_session_studio_page_for_save(ss)
+    user_nav = bool(ss.get("_suite_page_user_nav"))
+
+    if user_nav and live:
+        return live, live_source
+
     write_pending = _normalize_studio_page_for_save(ss.get(_PAGE_CHANGE_WRITE_PENDING_KEY))
     if write_pending:
-        live, live_source = _normalized_session_studio_page_for_save(ss)
-        if live == write_pending:
+        if live and live != write_pending:
             return live, live_source
         return write_pending, _PAGE_CHANGE_WRITE_PENDING_KEY
 
-    stamp = _normalize_studio_page_for_save(ss.get(_PAGE_CHANGE_STAMP_TARGET_KEY))
-    stamp_source = _PAGE_CHANGE_STAMP_TARGET_KEY
-    live, live_source = _normalized_session_studio_page_for_save(ss)
-    nav = _studio_nav_page_from_session(ss)
-    ws = ss.get("music_workspace_state")
-    ws_page = (
-        _normalize_studio_page_for_save(ws.get("studio_page"))
-        if isinstance(ws, dict)
-        else ""
-    )
-    user_nav = bool(ss.get("_suite_page_user_nav"))
-
-    if user_nav and ws_page and nav and ws_page == nav:
-        if live and live == ws_page:
-            return live, live_source
-        if live and live != ws_page:
-            return ws_page, "music_workspace_state.studio_page"
-        return ws_page, "music_workspace_state.studio_page"
     if live:
         return live, live_source
-    if user_nav and nav:
-        return nav, "studio_nav_state"
-    if user_nav and ws_page:
-        return ws_page, "music_workspace_state.studio_page"
-    if stamp:
-        if live and live != stamp:
-            return live, live_source
-        return stamp, stamp_source
-    if ws_page:
-        return ws_page, "music_workspace_state.studio_page"
+
+    nav = _studio_nav_page_from_session(ss)
     if nav:
         return nav, "studio_nav_state"
+
+    stamp = _normalize_studio_page_for_save(ss.get(_PAGE_CHANGE_STAMP_TARGET_KEY))
+    if stamp:
+        return stamp, _PAGE_CHANGE_STAMP_TARGET_KEY
+
     return _resolve_page_change_stamp_target(ss)
 
 
@@ -984,6 +1054,7 @@ def finalize_music_page_change_cloud_payload(
             ran=False,
         )
 
+    synchronize_page_bearing_state_for_save(ss, target)
     try:
         pre = _payload_page_snapshot(state)
         post_trace = _stamp_live_studio_page_into_save_payload(
@@ -1016,6 +1087,7 @@ def finalize_music_page_change_cloud_payload(
                 "final_payload_source": source or "normalized_studio_page",
             }
         )
+        _assert_page_change_payload_not_stale(ss, target=target, trace=trace)
         return state, trace
     except Exception as exc:
         return state, _finalize_trace_shell(
@@ -1607,6 +1679,7 @@ def prepare_page_change_save_state(
     if not page:
         return ""
     session["studio_page"] = page
+    synchronize_page_bearing_state_for_save(session, page)
     try:
         from studio_nav_state import write_canonical_studio_nav_state
 
@@ -1988,7 +2061,8 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
             _apply_page_change_stamp_to_session(ss, explicit)
         page_change_target, page_change_source = _page_change_write_target(ss)
         if page_change_target:
-            _apply_page_change_stamp_to_session(ss, page_change_target)
+            synchronize_page_bearing_state_for_save(ss, page_change_target)
+            ss[_PAGE_CHANGE_STAMP_TARGET_KEY] = page_change_target
             ss["_music_build_page_change_target"] = page_change_target
     try:
         from active_song_state import commit_active_song_state_from_session
@@ -2586,6 +2660,10 @@ def apply_music_disk_state(
         except ImportError:
             pass
         old_hydrated = ss.get("_music_hydrated_studio_page")
+        user_nav_page = _normalize_studio_page_for_save(ss.get(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY))
+        if user_nav_page and active_studio and active_studio != user_nav_page:
+            active_studio = user_nav_page
+            overwrite_source = "user_nav_this_run"
         try:
             from music_phase1_write_journal import record_phase1_page_write
 
